@@ -107,6 +107,4 @@ export interface CarrierFrameworkState {
   taskforceConfiguredCarriers: Set<string>;
   /** squadron 활성화된 carrier ID 집합 */
   squadronEnabledCarriers: Set<string>;
-  /** 캐리어 등록 전 로드된 cliType override (carrier 등록 시 자동 적용) */
-  pendingCliTypeOverrides: Map<string, CliType>;
 }

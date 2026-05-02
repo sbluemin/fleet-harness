@@ -21,7 +21,7 @@
 | `packages/unified-agent/` | Minimal-dependency SDK for multi-CLI integration (Gemini, Claude, Codex). Now includes `service-status/` for unified health tracking. |
 | `packages/pi-fleet-extension/src/` | Root of pi-facing domains |
 | `packages/pi-fleet-extension/src/boot.ts` | Entry point — assembles the Fleet runtime by composing domain modules |
-| `packages/pi-fleet-extension/src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation |
+| `packages/pi-fleet-extension/src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation. `bootstrapFleetState()` is the single entry point for both boot-time and `session_start` fleet state restoration, carrier registration, and deferred reconciliation. |
 | `packages/pi-fleet-extension/src/{agent,grand-fleet,fleet-wiki,shell}/` | Domain-internal homes. Each owns its commands, keybinds, tools, and UI. |
 | `packages/pi-fleet-extension/src/{fleet,metaphor,job,settings,log,tool-registry}.ts` | Domain entrypoints mapping 1:1 to fleet-core services |
 | `packages/pi-fleet-extension/src/{commands,keybinds,tools,tui,provider,session}/` | Removed legacy capability buckets. Do not reintroduce; all features are now organized by domain. |

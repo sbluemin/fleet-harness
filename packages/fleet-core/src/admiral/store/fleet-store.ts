@@ -175,6 +175,8 @@ export async function updateAllModelSelections(
 export function reconcileActiveModelSelections(
   cliTypesByCarrier: Record<string, CliType>,
 ): boolean {
+  if (Object.keys(cliTypesByCarrier).length === 0) return false;
+
   let changed = false;
   updateStates((states) => {
     const models = sanitizeSelectedModelsConfig(states.models);
@@ -386,6 +388,12 @@ export function loadCliTypeOverrides(validIds?: Set<string>): Record<string, str
   );
 }
 
+/** 디스크의 carrier별 cliType override를 읽어 현재 등록에 사용할 CLI를 결정합니다. */
+export function resolveCarrierCliType(carrierId: string, defaultCliType: CliType): CliType {
+  const overrides = sanitizeCliTypeOverrides(readStates().cliTypeOverrides);
+  return (overrides[carrierId] as CliType | undefined) ?? defaultCliType;
+}
+
 /**
  * 단일 carrier의 cliType 오버라이드를 저장하거나 기본값이면 제거합니다.
  */
@@ -405,7 +413,11 @@ export function updateCliTypeOverride(
     } else {
       overrides[sanitizedCarrierId] = cliType;
     }
-    states.cliTypeOverrides = overrides;
+    if (Object.keys(overrides).length > 0) {
+      states.cliTypeOverrides = overrides;
+    } else {
+      delete states.cliTypeOverrides;
+    }
   });
 }
 
@@ -440,7 +452,9 @@ function updateStates(mutator: (states: FleetStates) => void): void {
   if (!storeDir) return;
   withStoreLock(() => {
     const states = readStates();
+    const snapshot = structuredClone(states);
     mutator(states);
+    if (JSON.stringify(snapshot) === JSON.stringify(states)) return;
     writeStates(states);
   });
 }

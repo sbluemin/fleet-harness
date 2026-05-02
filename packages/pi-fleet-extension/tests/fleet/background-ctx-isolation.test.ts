@@ -124,7 +124,6 @@ function resetPanelGlobals(): void {
     sortieDisabledCarriers: new Set(),
     taskforceConfiguredCarriers: new Set(),
     squadronEnabledCarriers: new Set(),
-    pendingCliTypeOverrides: new Map(),
   };
 }
 

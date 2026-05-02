@@ -11,11 +11,9 @@ import { bootBridge } from "./agent/ui/acp-shell/register.js";
 import { registerFleetPiCommands } from "./fleet.js";
 import {
   getFleetRuntime,
+  bootstrapFleetState,
   initializeFleetRuntime,
-  registerFleetCarriers,
   resolveFleetDataDir,
-  restoreFleetPreRegistrationState,
-  scheduleFleetBootReconciliation,
   shouldBootFleet,
   wireFleetPiEvents,
 } from "./fleet.js";
@@ -62,10 +60,8 @@ function registerStreamingHandler(pi: ExtensionAPI): void {
 function registerFleet(pi: ExtensionAPI, fleetEnabled: boolean): void {
   if (!fleetEnabled) return;
 
-  restoreFleetPreRegistrationState();
+  bootstrapFleetState(pi);
   syncModelConfig();
-  registerFleetCarriers(pi);
-  scheduleFleetBootReconciliation();
   wireFleetPiEvents(pi);
   bootBridge(pi);
   registerModelCommands(pi);

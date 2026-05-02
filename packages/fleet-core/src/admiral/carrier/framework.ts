@@ -22,6 +22,7 @@ import {
   CLI_DISPLAY_NAMES,
   CLI_TYPE_DISPLAY_ORDER,
 } from "../../constants.js";
+import { resolveCarrierCliType } from "../store/fleet-store.js";
 
 import type {
   CarrierConfig,
@@ -49,17 +50,32 @@ export function registerCarrier(
   config: CarrierConfig,
 ): void {
   const gs = getState();
+  const existingState = gs.modes.get(config.id);
+  const resolvedCliType = resolveCarrierCliType(config.id, config.defaultCliType);
 
   // Carrier 상태 등록
-  gs.modes.set(config.id, { config });
-
-  // carrier 등록 후 pending cliType override 적용
-  const pendingCli = gs.pendingCliTypeOverrides.get(config.id);
-  if (pendingCli) {
-    config.cliType = pendingCli;
-    config.color = CARRIER_COLORS[pendingCli] ?? "";
-    config.bgColor = CARRIER_BG_COLORS[pendingCli];
-    gs.pendingCliTypeOverrides.delete(config.id);
+  if (existingState) {
+    const existing = existingState.config;
+    existing.displayName = config.displayName;
+    existing.slot = config.slot;
+    existing.defaultCliType = config.defaultCliType;
+    existing.renderResponse = config.renderResponse;
+    existing.renderUser = config.renderUser;
+    existing.carrierMetadata = config.carrierMetadata;
+    existing.cliType = resolvedCliType;
+    existing.color = config.color;
+    existing.bgColor = config.bgColor;
+    if (resolvedCliType !== config.cliType) {
+      existing.color = CARRIER_COLORS[resolvedCliType] ?? "";
+      existing.bgColor = CARRIER_BG_COLORS[resolvedCliType];
+    }
+  } else {
+    if (resolvedCliType !== config.cliType) {
+      config.cliType = resolvedCliType;
+      config.color = CARRIER_COLORS[resolvedCliType] ?? "";
+      config.bgColor = CARRIER_BG_COLORS[resolvedCliType];
+    }
+    gs.modes.set(config.id, { config });
   }
 
   // registeredOrder에 slot 순으로 삽입 (resume 시 중복 방지: 기존 항목 먼저 제거)
@@ -237,39 +253,6 @@ export function setTaskForceConfiguredCarriers(ids: string[]): void {
 }
 
 /**
- * 부팅 시 디스크에서 복원한 cliType override를 pending으로 저장합니다.
- * carrier 등록 시 registerCarrier()에서 자동 적용됩니다.
- */
-export function setPendingCliTypeOverrides(overrides: Record<string, CliType>): void {
-  const gs = getState();
-  gs.pendingCliTypeOverrides = new Map();
-  let changed = false;
-
-  for (const [carrierId, cliType] of Object.entries(overrides)) {
-    const registered = gs.modes.get(carrierId);
-    if (!registered) {
-      gs.pendingCliTypeOverrides.set(carrierId, cliType);
-      continue;
-    }
-
-    const config = registered.config;
-    if (config.cliType === cliType) {
-      continue;
-    }
-
-    config.cliType = cliType;
-    config.color = CARRIER_COLORS[cliType] ?? "";
-    config.bgColor = CARRIER_BG_COLORS[cliType];
-    changed = true;
-  }
-
-  if (changed) {
-    reorderRegisteredByCliType();
-    notifyStatusUpdate();
-  }
-}
-
-/**
  * 지정 carrier의 cliType을 동적으로 변경합니다.
  * 색상·배경색을 새 cliType에 맞게 갱신하고 정렬 + 상태바를 업데이트합니다.
  */
@@ -364,12 +347,10 @@ function getState(): CarrierFrameworkState {
       sortieDisabledCarriers: new Set(),
       taskforceConfiguredCarriers: new Set(),
       squadronEnabledCarriers: new Set(),
-      pendingCliTypeOverrides: new Map(),
     };
     (globalThis as any)[CARRIER_FRAMEWORK_KEY] = s;
   }
   // 런타임 방어: 기존 상태에 필드가 없을 경우 초기화
-  if (!s.pendingCliTypeOverrides) s.pendingCliTypeOverrides = new Map();
   if (!s.squadronEnabledCarriers) s.squadronEnabledCarriers = new Set();
   if (!s.taskforceConfiguredCarriers) s.taskforceConfiguredCarriers = new Set();
   return s;

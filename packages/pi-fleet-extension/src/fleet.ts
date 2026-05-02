@@ -27,7 +27,6 @@ import {
 import { registerDefaultCarrierPersonas } from "@sbluemin/fleet-core/admiral/carrier/personas";
 import {
   getConfiguredTaskForceCarrierIds,
-  loadCliTypeOverrides,
   loadSortieDisabled,
   loadSquadronEnabled,
   reconcileActiveModelSelections,
@@ -54,7 +53,6 @@ import {
   registerRequestDirective,
   registerSingleCarrier,
   createFleetRegistryPorts,
-  setPendingCliTypeOverrides,
   setSortieDisabledCarriers,
   setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
@@ -129,6 +127,7 @@ const OPERATION_NAME_ATTEMPTS = new Set<string>();
 
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
 let bootConfig: BootConfig | null = null;
+let reconciliationScheduled = false;
 
 export { bootBridge, ensureBridgeKeybinds };
 
@@ -142,11 +141,9 @@ export function registerFleetLifecycle(pi: ExtensionAPI): FleetLifecycleRuntime 
 
   const dataDir = resolveFleetDataDir();
   initializeFleetRuntime(dataDir, pi);
-  restoreFleetPreRegistrationState();
 
   bootAdmiral(pi);
-  registerFleetCarriers(pi);
-  scheduleFleetBootReconciliation();
+  bootstrapFleetState(pi);
   wireFleetPiEvents(pi);
   registerGrandFleet(pi);
 
@@ -217,19 +214,10 @@ export async function shutdownFleetRuntime(): Promise<void> {
 
 export function restoreFleetPreRegistrationState(): void {
   const restoredDisabled = loadSortieDisabled();
-  if (restoredDisabled.length > 0) {
-    setSortieDisabledCarriers(restoredDisabled);
-  }
+  setSortieDisabledCarriers(restoredDisabled);
 
   const restoredSquadron = loadSquadronEnabled();
-  if (restoredSquadron.length > 0) {
-    setSquadronEnabledCarriers(restoredSquadron);
-  }
-
-  const restoredCliTypeOverrides = loadCliTypeOverrides();
-  if (Object.keys(restoredCliTypeOverrides).length > 0) {
-    setPendingCliTypeOverrides(restoredCliTypeOverrides as Record<string, CliType>);
-  }
+  setSquadronEnabledCarriers(restoredSquadron);
 }
 
 export function registerFleetCarriers(pi: ExtensionAPI): void {
@@ -240,12 +228,24 @@ export function registerFleetCarriers(pi: ExtensionAPI): void {
   });
 }
 
-export function scheduleFleetBootReconciliation(): void {
+export function bootstrapFleetState(pi: ExtensionAPI): void {
+  restoreFleetPreRegistrationState();
+  registerFleetCarriers(pi);
+  scheduleFleetReconciliation();
+}
+
+export function scheduleFleetReconciliation(): void {
+  if (reconciliationScheduled) return;
+  reconciliationScheduled = true;
   setTimeout(() => {
-    reconcileRegisteredCarrierModels();
-    pruneStaleSquadronIds();
-    syncTaskForceConfiguredCarriers();
-    notifyStatusUpdate();
+    try {
+      reconcileRegisteredCarrierModels();
+      pruneStaleSquadronIds();
+      syncTaskForceConfiguredCarriers();
+      notifyStatusUpdate();
+    } finally {
+      reconciliationScheduled = false;
+    }
   }, 0);
 }
 
@@ -259,6 +259,7 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     bindFleetHostSession(ctx);
+    bootstrapFleetState(pi);
     syncModelConfig();
     syncProtocolToHud(getActiveProtocol());
     registerAdmiralSettingsSection();

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -6,10 +9,10 @@ import type { CliType } from "@sbluemin/unified-agent";
 import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  registerCarrier,
-  setPendingCliTypeOverrides,
+  registerSingleCarrier,
 } from "../../src/tool-registry.js";
-import { CARRIER_FRAMEWORK_KEY, type CarrierConfig } from "@sbluemin/fleet-core/admiral/carrier";
+import { CARRIER_FRAMEWORK_KEY, type CarrierMetadata } from "@sbluemin/fleet-core/admiral/carrier";
+import { initStore } from "@sbluemin/fleet-core/admiral/store";
 
 const TEST_EXTENSION_API = {
   registerMessageRenderer: vi.fn(),
@@ -28,44 +31,64 @@ vi.mock("../../src/fleet.js", () => ({
   }),
 }));
 
-function makeCarrierConfig(id: string, cliType: CliType, slot: number): CarrierConfig {
+let storeDir: string;
+
+function makeMetadata(): CarrierMetadata {
   return {
-    id,
-    cliType,
-    defaultCliType: cliType,
-    slot,
-    displayName: id,
-    color: "",
+    title: "Test",
+    summary: "Test carrier",
+    whenToUse: [],
+    whenNotToUse: [],
+    permissions: [],
+    requestBlocks: [],
+    outputFormat: "",
   };
+}
+
+function writeStates(states: unknown): void {
+  writeFileSync(join(storeDir, "states.json"), JSON.stringify(states, null, 2), "utf-8");
 }
 
 describe("framework cliType override restore", () => {
   beforeEach(() => {
     delete (globalThis as Record<string, unknown>)[CARRIER_FRAMEWORK_KEY];
+    if (storeDir) rmSync(storeDir, { recursive: true, force: true });
+    storeDir = mkdtempSync(join(tmpdir(), "fleet-framework-cli-"));
+    initStore(storeDir);
     vi.clearAllMocks();
   });
 
-  it("이미 등록된 캐리어에도 cliType override를 즉시 적용한다", () => {
-    registerCarrier(TEST_EXTENSION_API, makeCarrierConfig("vanguard", "gemini", 7));
+  it("등록 시 states.json의 cliType override를 pull 방식으로 적용한다", () => {
+    writeStates({ cliTypeOverrides: { vanguard: "codex" } });
 
-    setPendingCliTypeOverrides({ vanguard: "codex" });
-
-    expect(getRegisteredCarrierConfig("vanguard")?.cliType).toBe("codex");
-  });
-
-  it("미등록 캐리어 override는 pending으로 유지하다가 등록 시 적용한다", () => {
-    setPendingCliTypeOverrides({ vanguard: "codex" });
-
-    registerCarrier(TEST_EXTENSION_API, makeCarrierConfig("vanguard", "gemini", 7));
+    registerSingleCarrier(TEST_EXTENSION_API, "gemini", makeMetadata(), { id: "vanguard", slot: 7 });
 
     expect(getRegisteredCarrierConfig("vanguard")?.cliType).toBe("codex");
   });
 
-  it("즉시 적용 시 등록 순서를 새 cliType 기준으로 재정렬한다", () => {
-    registerCarrier(TEST_EXTENSION_API, makeCarrierConfig("sentinel", "codex", 5));
-    registerCarrier(TEST_EXTENSION_API, makeCarrierConfig("vanguard", "gemini", 7));
+  it("재등록은 기존 config 객체를 유지하면서 override cliType을 보존한다", () => {
+    writeStates({ cliTypeOverrides: { vanguard: "codex" } });
+    registerSingleCarrier(TEST_EXTENSION_API, "gemini", makeMetadata(), { id: "vanguard", slot: 7 });
+    const firstConfig = getRegisteredCarrierConfig("vanguard");
 
-    setPendingCliTypeOverrides({ vanguard: "claude" });
+    registerSingleCarrier(TEST_EXTENSION_API, "gemini", makeMetadata(), {
+      id: "vanguard",
+      slot: 3,
+      displayName: "Vanguard Updated",
+    });
+
+    const secondConfig = getRegisteredCarrierConfig("vanguard");
+    expect(secondConfig).toBe(firstConfig);
+    expect(secondConfig?.displayName).toBe("Vanguard Updated");
+    expect(secondConfig?.slot).toBe(3);
+    expect(secondConfig?.cliType).toBe("codex");
+  });
+
+  it("재등록 시 등록 순서를 slot 기준으로 중복 없이 갱신한다", () => {
+    registerSingleCarrier(TEST_EXTENSION_API, "codex", makeMetadata(), { id: "sentinel", slot: 5 });
+    registerSingleCarrier(TEST_EXTENSION_API, "gemini", makeMetadata(), { id: "vanguard", slot: 7 });
+
+    registerSingleCarrier(TEST_EXTENSION_API, "gemini", makeMetadata(), { id: "vanguard", slot: 3 });
 
     expect(getRegisteredOrder()).toEqual(["vanguard", "sentinel"]);
   });
