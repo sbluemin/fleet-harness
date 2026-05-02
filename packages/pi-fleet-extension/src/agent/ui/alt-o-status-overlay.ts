@@ -165,6 +165,7 @@ function buildStatusEntries(): CarrierStatusEntry[] {
       isSortieEnabled: isSortieCarrierEnabled(id),
       isSquadronEnabled: isSquadronCarrierEnabled(id),
       taskForceBackendCount: getConfiguredTaskForceBackends(id).length,
+      category: meta?.category,
     });
   }
 

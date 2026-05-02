@@ -15,6 +15,7 @@ import type {
   TrackMeta,
   TrackStatus,
 } from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
+import type { CarrierCategory } from "@sbluemin/fleet-core/admiral/carrier/types";
 import {
   coalesceTextBlock,
   coalesceThoughtBlock,
@@ -22,7 +23,7 @@ import {
 } from "@sbluemin/fleet-core/admiral/_shared/stream-reducers";
 import { CARRIER_RESULT_CUSTOM_TYPE, type CarrierResultMessageDetails } from "../../../job.js";
 import { getDeliverAs } from "../../../settings.js";
-import { getRegisteredOrder, isSquadronCarrierEnabled } from "../../../tool-registry.js";
+import { getRegisteredCarrierConfig, getRegisteredOrder, isSquadronCarrierEnabled } from "../../../tool-registry.js";
 import { syncCurrentWidget } from "./widget-sync.js";
 import type { AgentCol, ColBlock, ColStatus, ColumnTrack, PanelJob } from "./types.js";
 
@@ -87,8 +88,26 @@ export interface AgentPanelState {
 export const WIDGET_KEY = "ua-panel";
 export const PANEL_JOB_RETENTION = 8;
 
+const CATEGORY_ORDER: CarrierCategory[] = ["strategy", "planning", "operations"];
+const CATEGORY_RANK = new Map<CarrierCategory | "uncategorized", number>(
+  [...CATEGORY_ORDER.map((c, i) => [c, i] as const), ["uncategorized", CATEGORY_ORDER.length] as const],
+);
+
 let panelState: AgentPanelState | null = null;
 let carrierResultPi: ExtensionAPI | null = null;
+
+function sortByCategory(ids: readonly string[]): string[] {
+  return [...ids].sort((a, b) => {
+    const catA = getRegisteredCarrierConfig(a)?.carrierMetadata?.category ?? "uncategorized";
+    const catB = getRegisteredCarrierConfig(b)?.carrierMetadata?.category ?? "uncategorized";
+    const rankA = CATEGORY_RANK.get(catA) ?? CATEGORY_ORDER.length;
+    const rankB = CATEGORY_RANK.get(catB) ?? CATEGORY_ORDER.length;
+    if (rankA !== rankB) return rankA - rankB;
+    const slotA = getRegisteredCarrierConfig(a)?.slot ?? 0;
+    const slotB = getRegisteredCarrierConfig(b)?.slot ?? 0;
+    return slotA - slotB;
+  });
+}
 
 export function bindCarrierJobStreamPi(pi: ExtensionAPI | null): void {
   carrierResultPi = pi;
@@ -100,7 +119,7 @@ export function bindCarrierJobStreamPi(pi: ExtensionAPI | null): void {
  * 기본 경로에서는 여기서 빈 registeredOrder를 보지 않습니다.
  */
 export function getDefaultClis(): readonly string[] {
-  return getRegisteredOrder().filter(id => !isSquadronCarrierEnabled(id));
+  return sortByCategory(getRegisteredOrder().filter(id => !isSquadronCarrierEnabled(id)));
 }
 
 export function getState(): AgentPanelState {
@@ -243,7 +262,7 @@ export function makeFooterCols(): AgentCol[] {
   const activeCols = new Map(s.cols.map((col) => [col.cli, col] as const));
   const sessionMap = getAgentSessionStore().getAll() as Readonly<Record<string, string | undefined>>;
 
-  return getRegisteredOrder().map((cli) => {
+  return sortByCategory(getRegisteredOrder()).map((cli) => {
     const activeCol = activeCols.get(cli);
     if (activeCol) return activeCol;
 

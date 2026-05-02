@@ -37,6 +37,7 @@ function makeMetadata(): CarrierMetadata {
   return {
     title: "Test",
     summary: "Test carrier",
+    category: "operations",
     whenToUse: [],
     whenNotToUse: [],
     permissions: [],

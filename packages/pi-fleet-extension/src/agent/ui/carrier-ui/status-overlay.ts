@@ -14,6 +14,7 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 
 import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "@sbluemin/fleet-core/constants";
 import { CLI_BACKENDS, type HealthStatus } from "@sbluemin/unified-agent";
+import type { CarrierCategory } from "@sbluemin/fleet-core/admiral/carrier/types";
 
 import { createOverlayFrame } from "./overlay-frame.js";
 import { buildModelEffortTransition } from "./overlay-model-flow.js";
@@ -36,7 +37,7 @@ interface EntrySnapshot {
 }
 
 interface GroupedEntries {
-  cliType: CarrierCliType;
+  category: CarrierCategory | "uncategorized";
   color: string;
   entries: CarrierStatusEntry[];
   header: string;
@@ -213,11 +214,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
     for (let gi = 0; gi < viewModel.groupedEntries.length; gi++) {
       const group = viewModel.groupedEntries[gi]!;
-      const snapshot = viewModel.snapshots.get(group.cliType);
-      const statusToken = snapshot
-        ? `  ${STATUS_COLORS[snapshot.status]}${STATUS_TEXT[snapshot.status]}${ANSI_RESET}`
-        : dim("  ...");
-      lines.push(frame.row(`  ${group.color}◇${ANSI_RESET} ${group.color}${group.header}${ANSI_RESET}${statusToken}`));
+      lines.push(frame.row(`  ${group.color}◇${ANSI_RESET} ${group.color}${group.header}${ANSI_RESET}`));
       lines.push(frame.emptyRow());
 
       for (const entry of group.entries) {
@@ -305,15 +302,61 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getGroupedEntries(): GroupedEntries[] {
+    const CATEGORY_ORDER: CarrierCategory[] = ["strategy", "planning", "operations"];
+    const CATEGORY_LABELS: Record<CarrierCategory | "uncategorized", string> = {
+      strategy: "Strategy",
+      planning: "Planning",
+      operations: "Operations",
+      uncategorized: "Uncategorized",
+    };
+    const CATEGORY_COLORS: Record<CarrierCategory | "uncategorized", string> = {
+      strategy: "\x1b[38;2;100;180;255m",
+      planning: "\x1b[38;2;180;140;255m",
+      operations: "\x1b[38;2;80;200;120m",
+      uncategorized: ANSI_DIM,
+    };
+
     const entries = this.getEntries();
-    return ALL_CLI_TYPES
-      .map((cliType) => ({
-        cliType,
-        color: CARRIER_COLORS[cliType] ?? "",
-        entries: entries.filter((entry) => entry.cliType === cliType),
-        header: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-      }))
-      .filter((group) => group.entries.length > 0);
+    const bucket = new Map<CarrierCategory | "uncategorized", CarrierStatusEntry[]>();
+
+    for (const entry of entries) {
+      const key: CarrierCategory | "uncategorized" = entry.category ?? "uncategorized";
+      let list = bucket.get(key);
+      if (!list) {
+        list = [];
+        bucket.set(key, list);
+      }
+      list.push(entry);
+    }
+
+    // 각 카테고리 내에서 slot 순 정렬
+    for (const list of bucket.values()) {
+      list.sort((a, b) => a.slot - b.slot);
+    }
+
+    const result: GroupedEntries[] = [];
+    for (const cat of CATEGORY_ORDER) {
+      const group = bucket.get(cat);
+      if (!group || group.length === 0) continue;
+      result.push({
+        category: cat,
+        color: CATEGORY_COLORS[cat],
+        entries: group,
+        header: CATEGORY_LABELS[cat],
+      });
+    }
+
+    const uncategorized = bucket.get("uncategorized");
+    if (uncategorized && uncategorized.length > 0) {
+      result.push({
+        category: "uncategorized",
+        color: CATEGORY_COLORS.uncategorized,
+        entries: uncategorized,
+        header: CATEGORY_LABELS.uncategorized,
+      });
+    }
+
+    return result;
   }
 
   private getFlatEntries(): CarrierStatusEntry[] {
