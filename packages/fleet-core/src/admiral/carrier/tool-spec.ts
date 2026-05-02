@@ -127,7 +127,7 @@ export function buildSortieToolSpec(): AgentToolSpec | null {
     },
 
     async execute(args: unknown, ctx) {
-      const t0 = ctx.now();
+      const t0 = Date.now();
       const cwd = ctx.cwd;
       const params = args as { expected_carrier_count: number; carriers: CarrierAssignment[] };
       const assignments = params.carriers;

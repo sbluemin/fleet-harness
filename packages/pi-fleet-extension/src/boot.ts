@@ -5,7 +5,7 @@ import registerBoot from "./fleet.js";
 import registerFleetWiki from "./fleet-wiki/index.js";
 import registerGrandFleet from "./grand-fleet/index.js";
 import { registerJob } from "./job.js";
-import registerProviderGuardCommand from "./agent/provider-guard-command.js";
+import { registerProviderGuardCommand } from "./agent/provider.js";
 import { registerModelCommands, syncModelConfig } from "./agent/carrier/model-ui.js";
 import { bootBridge } from "./agent/ui/acp-shell/register.js";
 import { registerFleetPiCommands } from "./fleet.js";

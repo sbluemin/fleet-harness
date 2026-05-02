@@ -5,7 +5,11 @@ Owns Pi-side agent capability registration and runtime glue for `pi-fleet-extens
 ## Scope
 
 - `registerAgent(ctx)` — single agent capability entry point
-- `provider.ts` — the sole `@mariozechner/pi-ai` gateway; provider registration wiring (including per-carrier `ANTHROPIC_AUTH_TOKEN` injection via `fleet.auth.getApiKey()`) lives under `provider-internal/`
+- `provider.ts` — the sole `@mariozechner/pi-ai` gateway
+- `provider-runtime.ts` — host adapter: provider registration via `admiral.models.listProviders()`, session lifecycle binding via `admiral.lifecycle`
+- `provider-stream.ts` — host adapter: ~50-line `streamAcp` consuming `admiral.session.*` and `admiral.events.*`; event-to-Pi-stream mapping with host-local `Map<sessionId, handler>`
+- `provider-guard.ts` — host-local Pi ModelRegistry monkeypatch (Decision: Pi registry mutation stays host-side)
+- `thinking-level-patch.ts` — host-local AgentSession prototype patch using `admiral.models.getThinkingLevels()`
 - `runner.ts` — operation runner and background carrier request adapter
 - `ui/` — Agent Panel, Streaming Widget, carrier status UI, ACP shell UI, and carrier completion push delivery via `ui/panel/state.ts`
 

@@ -19,6 +19,8 @@ export interface ShellPopupOptions {
   title?: string;
   /** 작업 디렉토리 */
   cwd?: string;
+  /** 자식 프로세스에 병합할 환경 변수 (process.env에 override) */
+  env?: Record<string, string>;
 }
 
 export type PopupState = "interactive" | "exited";

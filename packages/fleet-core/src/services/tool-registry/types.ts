@@ -8,16 +8,6 @@ export interface CompletionPushPayload {
   readonly details?: unknown;
 }
 
-export interface FleetToolRegistryHostPorts {
-  sendCarrierResultPush(payload: CompletionPushPayload): void | Promise<void>;
-  notify(level: FleetLogLevel, message: string): void | Promise<void>;
-  loadSetting<T = unknown>(key: string): T | undefined | Promise<T | undefined>;
-  saveSetting<T = unknown>(key: string, value: T): void | Promise<void>;
-  registerKeybind(binding: unknown): (() => void) | Promise<() => void>;
-  now(): number;
-  getDeliverAs(): string | undefined;
-}
-
 export interface TypeBoxSchema {
   readonly [key: string]: unknown;
 }
@@ -26,8 +16,6 @@ export interface AgentToolCtx {
   readonly cwd: string;
   readonly toolCallId?: string;
   readonly signal?: AbortSignal;
-  readonly now: () => number;
-  readonly ports: FleetToolRegistryHostPorts;
 }
 
 export interface AgentToolRenderDescriptor {

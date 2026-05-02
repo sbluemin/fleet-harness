@@ -1,5 +1,3 @@
-import * as os from "node:os";
-import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 const mockState = vi.hoisted(() => ({
@@ -31,11 +29,6 @@ vi.mock("@sbluemin/unified-agent", () => ({
   },
 }));
 
-vi.mock("../../src/agent/provider-internal/session-runtime.js", () => ({
-  initRuntime: vi.fn(),
-  onHostSessionChange: vi.fn(),
-}));
-
 vi.mock("@sbluemin/fleet-core/services/log", () => ({
   getLogAPI: () => ({
     debug: vi.fn(),
@@ -43,23 +36,31 @@ vi.mock("@sbluemin/fleet-core/services/log", () => ({
   }),
 }));
 
-vi.mock("../../src/agent/provider-internal/provider-stream.js", () => ({
-  streamAcp: vi.fn(),
-  cleanupAll: vi.fn(async () => {}),
-  handleSessionStart: vi.fn(async () => {}),
+vi.mock("@sbluemin/fleet-core/services/settings", () => ({
+  getSettingsService: () => ({
+    load: vi.fn(() => ({})),
+    save: vi.fn(),
+  }),
 }));
 
-vi.mock("../../src/agent/provider-internal/thinking-level-patch.js", () => ({
-  installAcpThinkingLevelPatch: vi.fn(),
-  reconcileAcpThinkingLevel: vi.fn(),
+vi.mock("@sbluemin/fleet-core", () => ({
+  buildModelId: (_cli: string, model: string) => `${model} (Unified)`,
+  buildProviderId: (_cli: string) => "OpenAI Codex CLI",
+  getProviderIds: () => ["OpenAI Codex CLI"],
+  parseModelId: (_id: string) => ({ cli: "codex", backendModel: "gpt-5.4" }),
+  getThinkingLevels: () => ["off", "low", "medium", "high", "xhigh"],
+  bindHostSession: vi.fn(),
+  shutdownAllSessions: vi.fn(async () => {}),
 }));
 
-import registerProviderRuntime from "../../src/agent/provider-internal/provider-register.js";
-import { handleSessionStart } from "../../src/agent/provider-internal/provider-stream.js";
-import { initRuntime, onHostSessionChange } from "../../src/agent/provider-internal/session-runtime.js";
+import registerProviderRuntime from "../../src/agent/provider.js";
+import { bindHostSession } from "@sbluemin/fleet-core";
 
 describe("provider register", () => {
   it("provider/model 등록 라벨을 Unified 표기로 노출한다", () => {
+    const streamAcp = vi.fn();
+
+    const fleetServices = {} as any;
     const pi = {
       on: vi.fn((event: string, handler: Function) => {
         mockState.handlers.set(event, handler);
@@ -67,7 +68,7 @@ describe("provider register", () => {
       registerProvider: vi.fn(),
     };
 
-    registerProviderRuntime(pi as any);
+    registerProviderRuntime(pi as any, fleetServices, streamAcp);
 
     expect(pi.registerProvider).toHaveBeenCalledWith(
       "OpenAI Codex CLI",
@@ -76,7 +77,7 @@ describe("provider register", () => {
         api: "OpenAI Codex CLI",
         models: [
           expect.objectContaining({
-            id: "GPT-5.4 (Unified)",
+            id: "gpt-5.4 (Unified)",
             name: "GPT-5.4",
           }),
         ],
@@ -84,7 +85,10 @@ describe("provider register", () => {
     );
   });
 
-  it("provider 자체가 Fleet session-map runtime을 초기화하고 session_start에서 PI session에 바인딩한다", async () => {
+  it("session_start에서 bindHostSession을 호출한다", async () => {
+    const streamAcp = vi.fn();
+
+    const fleetServices = {} as any;
     const pi = {
       on: vi.fn((event: string, handler: Function) => {
         mockState.handlers.set(event, handler);
@@ -92,9 +96,7 @@ describe("provider register", () => {
       registerProvider: vi.fn(),
     };
 
-    registerProviderRuntime(pi as any);
-
-    expect(initRuntime).toHaveBeenCalledWith(path.join(os.homedir(), ".pi", "fleet"));
+    registerProviderRuntime(pi as any, fleetServices, streamAcp);
 
     const sessionStart = mockState.handlers.get("session_start");
     expect(sessionStart).toBeTruthy();
@@ -109,37 +111,6 @@ describe("provider register", () => {
       },
     );
 
-    await vi.waitFor(() => {
-      expect(handleSessionStart).toHaveBeenCalledWith("resume", "pi-session-resume");
-    });
-
-    expect(onHostSessionChange).toHaveBeenCalledWith("pi-session-resume");
-    expect(vi.mocked(onHostSessionChange).mock.invocationCallOrder[0])
-      .toBeLessThan(vi.mocked(handleSessionStart).mock.invocationCallOrder[0]);
-  });
-
-  it("session_tree 이벤트도 provider runtime store를 활성 PI session에 바인딩한다", () => {
-    const pi = {
-      on: vi.fn((event: string, handler: Function) => {
-        mockState.handlers.set(event, handler);
-      }),
-      registerProvider: vi.fn(),
-    };
-
-    registerProviderRuntime(pi as any);
-
-    const sessionTree = mockState.handlers.get("session_tree");
-    expect(sessionTree).toBeTruthy();
-
-    sessionTree?.(
-      {},
-      {
-        sessionManager: {
-          getSessionId: () => "pi-session-tree",
-        },
-      },
-    );
-
-    expect(onHostSessionChange).toHaveBeenCalledWith("pi-session-tree");
+    expect(bindHostSession).toHaveBeenCalledWith("pi-session-resume");
   });
 });

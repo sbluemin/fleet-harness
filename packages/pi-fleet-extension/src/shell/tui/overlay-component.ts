@@ -76,6 +76,7 @@ export class PopupOverlay implements Component, Focusable {
       {
         command: options.command,
         cwd: options.cwd,
+        env: options.env,
         cols,
         rows,
         scrollback: this.config.scrollbackLines,

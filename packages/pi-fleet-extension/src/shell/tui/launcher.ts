@@ -76,6 +76,7 @@ function normalizeLaunchOptions(
     command,
     title: opts.title?.trim() || extractDefaultTitle(command),
     cwd: opts.cwd ?? ctx.cwd,
+    env: opts.env,
   };
 }
 

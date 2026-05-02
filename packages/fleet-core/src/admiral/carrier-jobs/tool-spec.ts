@@ -24,6 +24,7 @@ export function buildCarrierJobsToolSpec(): AgentToolSpec {
       const result = dispatchCarrierJobsAction(args as CarrierJobsParams);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+        isError: false,
         details: result,
       };
     },

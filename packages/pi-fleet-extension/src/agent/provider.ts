@@ -1,3 +1,28 @@
+/**
+ * provider — Pi 호스트의 ACP/AI 어댑터 통합 모듈.
+ *
+ * 분할되어 있던 provider-stream / provider-runtime / provider-guard / provider-guard-command /
+ * thinking-level-patch 파일들을 단일 모듈로 통합. 섹션 구분(═══)을 region 경계로 사용한다.
+ *
+ * 책임 영역:
+ *   #region pi-ai gateway        — @mariozechner/pi-ai re-export (유일한 게이트웨이)
+ *   #region streamAcp adapter    — admiral.agent 공개 API → Pi AssistantMessageEventStream 매핑
+ *   #region thinking-level patch — Pi AgentSession prototype monkeypatch
+ *   #region provider-guard       — Pi ModelRegistry monkeypatch (허용 provider만 노출)
+ *   #region provider-guard cmd   — `fleet:guard:toggle` 슬래시 커맨드
+ *   #region provider-runtime     — Provider 등록 + 세션 라이프사이클 hook
+ *
+ * imports → types/interfaces → constants → functions 순서 준수.
+ */
+
+import * as os from "node:os";
+import * as path from "node:path";
+
+import {
+  AgentSession,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import {
   completeSimple as piCompleteSimple,
   createAssistantMessageEventStream,
@@ -10,9 +35,42 @@ import type {
   Model,
   SimpleStreamOptions,
   ThinkingBudgets,
-  ThinkingLevel,
-  Tool,
+  ThinkingLevel as PiThinkingLevel,
+  Tool as PiTool,
 } from "@mariozechner/pi-ai";
+import {
+  CLI_BACKENDS,
+  getModelsRegistry,
+  type CliType,
+} from "@sbluemin/unified-agent";
+import type {
+  AgentStreamEvent,
+  ConversationHistoryEntry,
+  FleetServices,
+  ToolResultEnvelope,
+} from "@sbluemin/fleet-core";
+import {
+  bindHostSession,
+  buildModelId,
+  buildProviderId,
+  deliverToolResults,
+  ensure,
+  getProviderIds,
+  getThinkingLevels,
+  hashSystemPrompt,
+  parseModelId,
+  registerExtraTools,
+  registerStreamHandler,
+  sendMessage,
+  shutdownAllSessions,
+  type AgentToolSpec,
+} from "@sbluemin/fleet-core";
+import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { getSettingsService } from "@sbluemin/fleet-core/services/settings";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region pi-ai gateway (re-export)
+// ═══════════════════════════════════════════════════════════════════════════
 
 export { createAssistantMessageEventStream, piCompleteSimple as completeSimple };
 export type {
@@ -23,6 +81,804 @@ export type {
   Model,
   SimpleStreamOptions,
   ThinkingBudgets,
-  ThinkingLevel,
-  Tool,
+  PiThinkingLevel as ThinkingLevel,
+  PiTool as Tool,
 };
+
+// #endregion
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region streamAcp adapter — types / state
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type SimpleStreamFn = (
+  model: Model<any>,
+  context: Context,
+  options?: SimpleStreamOptions,
+) => AssistantMessageEventStream;
+
+interface StreamOptionsLike extends SimpleStreamOptions {
+  cwd?: string;
+  sessionId?: string;
+  piSessionId?: string;
+  conversationId?: string;
+}
+
+const SESSION_SCOPE_PREFIX = "session";
+
+/** sessionId → Pi turn event 핸들러 매핑 (host-local; fleet-core에 stream 객체 넣지 않음) */
+const activeStreams = new Map<string, (event: AgentStreamEvent) => void>();
+
+/** toolCallId → sessionId 매핑 — toolResult delivery 라우팅용 */
+const toolCallToSessionId = new Map<string, string>();
+
+let eventHandlerRegistered = false;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region streamAcp adapter — public functions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** boot-time event 핸들러 1회 등록 — registerProviderRuntime에서 호출 */
+export function initStreamEventHandler(): void {
+  if (eventHandlerRegistered) return;
+  eventHandlerRegistered = true;
+
+  registerStreamHandler((event: AgentStreamEvent) => {
+    const push = activeStreams.get(event.sessionId);
+    if (!push) return;
+
+    if (event.type === "mcpToolCall") {
+      toolCallToSessionId.set(event.toolCallId, event.sessionId);
+    }
+
+    push(event);
+  });
+}
+
+export function streamAcp(
+  model: Model<any>,
+  context: Context,
+  options?: SimpleStreamOptions,
+): AssistantMessageEventStream {
+  const parsed = parseModelId(model.id, model.provider) ?? parseModelId(model.id);
+  if (!parsed) {
+    return createErrorStream(`잘못된 ACP model ID: ${model.id}`);
+  }
+
+  const { cli, backendModel } = parsed;
+  const streamOpts = options as StreamOptionsLike | undefined;
+  const cwd = streamOpts?.cwd ?? process.cwd();
+
+  let scopeKey: string;
+  try {
+    scopeKey = getScopeKey(streamOpts, cwd);
+  } catch (err) {
+    return createErrorStream(String(err));
+  }
+
+  const systemPrompt = context.systemPrompt ?? undefined;
+  hashSystemPrompt(systemPrompt);
+  const toolResults = extractAllToolResults(context);
+  const isToolResultDelivery = toolResults.length > 0;
+  const effort = options?.reasoning === "minimal" ? "none" : options?.reasoning;
+
+  const piStream = createAssistantMessageEventStream();
+  const piOutput = createAssistantOutput(model);
+  const blockTracker = new BlockTracker();
+
+  const turnHandler = (event: AgentStreamEvent): void => {
+    mapEventToPiStream(event, piStream, piOutput, blockTracker);
+  };
+
+  if (isToolResultDelivery) {
+    runToolResultDelivery(toolResults, turnHandler, options).catch((err) => {
+      emitPiError(piStream, piOutput, String(err));
+    });
+  } else {
+    runFreshQuery(
+      cli,
+      backendModel,
+      scopeKey,
+      cwd,
+      context,
+      systemPrompt,
+      effort,
+      context.tools,
+      turnHandler,
+      options,
+    ).catch((err) => {
+      emitPiError(piStream, piOutput, String(err));
+    });
+  }
+
+  return piStream;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region streamAcp adapter — case 1: fresh query
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function runFreshQuery(
+  cli: Parameters<typeof ensure>[0]["cli"],
+  backendModel: string,
+  scopeKey: string,
+  cwd: string,
+  context: Context,
+  systemPrompt: string | undefined,
+  effort: string | undefined,
+  piTools: readonly PiTool[] | undefined,
+  turnHandler: (event: AgentStreamEvent) => void,
+  options: SimpleStreamOptions | undefined,
+): Promise<void> {
+  let userRequest = extractLatestUserMessage(context);
+  if (!userRequest) userRequest = "Continue.";
+  const history = extractConversationHistory(context);
+
+  // host extra tools 등록 — ensure 전에. ensure 내부 toolHash 계산이 첫/이후 호출에서 일관되도록.
+  if (piTools && piTools.length > 0) {
+    registerExtraTools(scopeKey, piTools.map(piToolToAgentSpec));
+  }
+
+  const handle = await ensure({ cli, backendModel, scopeKey, cwd, systemPrompt, effort });
+
+  activeStreams.set(handle.sessionId, turnHandler);
+
+  const donePromise = new Promise<void>((resolve) => {
+    const wrapped = (event: AgentStreamEvent): void => {
+      turnHandler(event);
+      if (event.type === "complete" || event.type === "error" || event.type === "exit") {
+        activeStreams.delete(handle.sessionId);
+        resolve();
+      }
+    };
+    activeStreams.set(handle.sessionId, wrapped);
+  });
+
+  // sendMessage — fleet-core가 firstPromptSent 분기 + buildRuntimeContextPrompt 자체 처리
+  await sendMessage(handle, { userRequest, history }, options?.signal);
+
+  await donePromise;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region streamAcp adapter — case 2: tool result delivery
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function runToolResultDelivery(
+  toolResults: ToolResultEnvelope[],
+  turnHandler: (event: AgentStreamEvent) => void,
+  options: SimpleStreamOptions | undefined,
+): Promise<void> {
+  const firstToolCallId = toolResults[0]?.toolCallId;
+  if (!firstToolCallId) throw new Error("toolResult에 toolCallId가 없습니다");
+
+  const sessionId = toolCallToSessionId.get(firstToolCallId);
+  if (!sessionId) throw new Error("toolResult 라우팅 실패: toolCallId로 sessionId를 찾을 수 없습니다");
+
+  for (const result of toolResults) {
+    if (result.toolCallId) {
+      const mapped = toolCallToSessionId.get(result.toolCallId);
+      if (mapped && mapped !== sessionId) {
+        throw new Error("서로 다른 ACP 세션의 toolResult가 한 턴에 섞였습니다");
+      }
+    }
+  }
+
+  const handle = { sessionId };
+
+  const donePromise = new Promise<void>((resolve) => {
+    const wrapped = (event: AgentStreamEvent): void => {
+      turnHandler(event);
+      if (event.type === "complete" || event.type === "error" || event.type === "exit") {
+        activeStreams.delete(sessionId);
+        resolve();
+      }
+    };
+    activeStreams.set(sessionId, wrapped);
+  });
+
+  await deliverToolResults(handle, toolResults, options?.signal);
+
+  await donePromise;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region streamAcp adapter — event → Pi stream mapping
+// ═══════════════════════════════════════════════════════════════════════════
+
+function mapEventToPiStream(
+  event: AgentStreamEvent,
+  piStream: AssistantMessageEventStream,
+  piOutput: AssistantMessage,
+  bt: BlockTracker,
+): void {
+  switch (event.type) {
+    case "text":
+      bt.ensureText(piStream, piOutput);
+      bt.appendText(event.text, piStream, piOutput);
+      break;
+    case "thought":
+      bt.closeText(piStream, piOutput);
+      bt.ensureThinking(piStream, piOutput);
+      bt.appendThinking(event.text, piStream, piOutput);
+      break;
+    case "toolCall": {
+      const label = event.title || event.toolCallId;
+      if (label) {
+        bt.closeThinking(piStream, piOutput);
+        bt.ensureText(piStream, piOutput);
+        const isError = event.status === "error" || event.status === "failed";
+        const tag = isError ? "**✘**" : "**✔**";
+        const delta = `\n\n\`${label}\` ${tag}\n\n`;
+        bt.appendText(delta, piStream, piOutput);
+      }
+      break;
+    }
+    case "mcpToolCall":
+      bt.ensureStarted(piStream, piOutput);
+      bt.closeText(piStream, piOutput);
+      bt.closeThinking(piStream, piOutput);
+      {
+        const block = { type: "toolCall" as const, id: event.toolCallId, name: event.name, arguments: event.args };
+        piOutput.content.push(block);
+        const idx = piOutput.content.length - 1;
+        piStream.push({ type: "toolcall_start", contentIndex: idx, partial: piOutput });
+        piStream.push({ type: "toolcall_end", contentIndex: idx, toolCall: block, partial: piOutput });
+        piOutput.stopReason = "toolUse";
+        piStream.push({ type: "done", reason: "toolUse", message: piOutput });
+        piStream.end();
+      }
+      break;
+    case "complete":
+      bt.ensureStarted(piStream, piOutput);
+      bt.closeText(piStream, piOutput);
+      bt.closeThinking(piStream, piOutput);
+      if (event.done === "stop") {
+        piOutput.stopReason = "stop";
+        piStream.push({ type: "done", reason: "stop", message: piOutput });
+        piStream.end();
+      }
+      break;
+    case "error":
+      bt.ensureStarted(piStream, piOutput);
+      bt.closeText(piStream, piOutput);
+      bt.closeThinking(piStream, piOutput);
+      piOutput.stopReason = "error";
+      piOutput.errorMessage = event.error;
+      piStream.push({ type: "error", reason: "error", error: piOutput });
+      piStream.end();
+      break;
+    case "exit":
+      bt.ensureStarted(piStream, piOutput);
+      bt.closeText(piStream, piOutput);
+      bt.closeThinking(piStream, piOutput);
+      piOutput.stopReason = "error";
+      piStream.push({ type: "error", reason: "error", error: piOutput });
+      piStream.end();
+      break;
+  }
+}
+
+class BlockTracker {
+  private started = false;
+  private textOpen = false;
+  private textIdx = 0;
+  private thinkingOpen = false;
+  private thinkingIdx = 0;
+
+  /** stream `start` 이벤트 1회 push — pi consumer가 streaming UI를 시작하는 트리거. */
+  ensureStarted(stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    if (this.started) return;
+    this.started = true;
+    stream.push({ type: "start", partial: output });
+  }
+
+  ensureText(stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    this.ensureStarted(stream, output);
+    if (this.textOpen) return;
+    this.closeThinking(stream, output);
+    const block = { type: "text" as const, text: "" };
+    output.content.push(block);
+    this.textIdx = output.content.length - 1;
+    this.textOpen = true;
+    stream.push({ type: "text_start", contentIndex: this.textIdx, partial: output });
+  }
+
+  appendText(text: string, stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    const block = output.content[this.textIdx] as { text: string };
+    block.text += text;
+    stream.push({ type: "text_delta", contentIndex: this.textIdx, delta: text, partial: output });
+  }
+
+  closeText(stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    if (!this.textOpen) return;
+    this.textOpen = false;
+    const block = output.content[this.textIdx];
+    if (block && block.type === "text") {
+      stream.push({ type: "text_end", contentIndex: this.textIdx, content: block.text ?? "", partial: output });
+    }
+  }
+
+  ensureThinking(stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    this.ensureStarted(stream, output);
+    if (this.thinkingOpen) return;
+    this.closeText(stream, output);
+    const block = { type: "thinking" as const, thinking: "" };
+    output.content.push(block);
+    this.thinkingIdx = output.content.length - 1;
+    this.thinkingOpen = true;
+    stream.push({ type: "thinking_start", contentIndex: this.thinkingIdx, partial: output });
+  }
+
+  appendThinking(text: string, stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    const block = output.content[this.thinkingIdx] as { thinking: string };
+    block.thinking += text;
+    stream.push({ type: "thinking_delta", contentIndex: this.thinkingIdx, delta: text, partial: output });
+  }
+
+  closeThinking(stream: AssistantMessageEventStream, output: AssistantMessage): void {
+    if (!this.thinkingOpen) return;
+    this.thinkingOpen = false;
+    const block = output.content[this.thinkingIdx];
+    if (block && block.type === "thinking") {
+      stream.push({ type: "thinking_end", contentIndex: this.thinkingIdx, content: block.thinking ?? "", partial: output });
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region streamAcp adapter — internal helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+function emitPiError(piStream: AssistantMessageEventStream, piOutput: AssistantMessage, message: string): void {
+  piOutput.stopReason = "error";
+  piOutput.errorMessage = message;
+  piStream.push({ type: "error", reason: "error", error: piOutput });
+  piStream.end();
+}
+
+function getScopeKey(options: StreamOptionsLike | undefined, cwd: string): string {
+  if (options?.sessionId) return `${SESSION_SCOPE_PREFIX}:pi:${options.sessionId}`;
+  if (options?.piSessionId) return `${SESSION_SCOPE_PREFIX}:pi-session:${options.piSessionId}`;
+  if (options?.conversationId) return `${SESSION_SCOPE_PREFIX}:conversation:${options.conversationId}`;
+  throw new Error(`ACP 세션 스코프 식별자가 없습니다 (cwd fallback 금지): ${cwd}`);
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const texts: string[] = [];
+    for (const block of content) {
+      if (block && (block as { type?: string }).type === "text" && (block as { text?: string }).text) {
+        texts.push((block as { text: string }).text);
+      }
+    }
+    return texts.join("\n");
+  }
+  return "";
+}
+
+/** fleet-core sendMessage에 전달할 user/assistant 히스토리만 추출. 마지막 user 메시지는 userRequest로 별도 전달되므로 제외. */
+function extractConversationHistory(context: Context): ConversationHistoryEntry[] {
+  const result: ConversationHistoryEntry[] = [];
+  const historyMessages = context.messages.slice(0, -1);
+  for (const msg of historyMessages) {
+    if (msg.role !== "user" && msg.role !== "assistant") continue;
+    const text = extractMessageText(msg.content);
+    if (!text) continue;
+    result.push({ role: msg.role, text });
+  }
+  return result;
+}
+
+function extractLatestUserMessage(context: Context): string | null {
+  const last = context.messages[context.messages.length - 1];
+  if (!last || last.role !== "user") return null;
+  if (typeof last.content === "string") return last.content;
+  if (Array.isArray(last.content)) {
+    const texts: string[] = [];
+    for (const block of last.content) {
+      if (block.type === "text" && block.text) texts.push(block.text);
+    }
+    return texts.join("\n") || null;
+  }
+  return null;
+}
+
+function extractAllToolResults(context: Context): ToolResultEnvelope[] {
+  const results: ToolResultEnvelope[] = [];
+  for (let i = context.messages.length - 1; i >= 0; i--) {
+    const msg = context.messages[i];
+    if (msg.role === "toolResult") {
+      results.unshift({ content: msg.content, isError: (msg as any).isError, toolCallId: (msg as any).toolCallId });
+    } else {
+      break;
+    }
+  }
+  return results;
+}
+
+function piToolToAgentSpec(tool: PiTool): AgentToolSpec {
+  return {
+    name: tool.name,
+    label: undefined,
+    description: tool.description,
+    promptSnippet: undefined,
+    promptGuidelines: undefined,
+    parameters: tool.parameters as AgentToolSpec["parameters"],
+    execute: async () => ({ content: [{ type: "text", text: "(host tool)" }] }),
+  };
+}
+
+function createAssistantOutput(model: Model<any>): any {
+  return {
+    role: "assistant",
+    content: [],
+    api: model.provider,
+    provider: model.provider,
+    model: model.id,
+    usage: { input: 0, output: 0, totalTokens: 0, cost: { input: 0, output: 0, total: 0 } },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  };
+}
+
+function createErrorStream(message: string): AssistantMessageEventStream {
+  const stream = createAssistantMessageEventStream();
+  const errorOutput: any = {
+    role: "assistant",
+    content: [],
+    stopReason: "error",
+    errorMessage: message,
+  };
+  queueMicrotask(() => {
+    stream.push({ type: "error", reason: "error", error: errorOutput });
+    stream.end();
+  });
+  return stream;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region thinking-level patch — Pi AgentSession prototype monkeypatch
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type UiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+type PatchableModel = Pick<Model<any>, "id" | "provider" | "reasoning">;
+
+type PatchableAgentSession = InstanceType<typeof AgentSession> & {
+  getAvailableThinkingLevels(): UiThinkingLevel[];
+  supportsXhighThinking(): boolean;
+  model?: PatchableModel;
+};
+
+type PatchedThinkingLevelFn = (() => unknown) & {
+  __fleetAcpThinkingLevelPatched?: boolean;
+};
+
+type OriginalGetAvailableThinkingLevels = (this: PatchableAgentSession) => UiThinkingLevel[];
+type OriginalSupportsXhighThinking = (this: PatchableAgentSession) => boolean;
+
+const THINKING_LEVEL_ORDER: UiThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+const ACP_UI_LEVELS = new Set<UiThinkingLevel>(["low", "medium", "high", "xhigh"]);
+
+let acpThinkingLevelPatchInstalled = false;
+
+export function installAcpThinkingLevelPatch(): void {
+  if (acpThinkingLevelPatchInstalled) return;
+
+  const prototype = AgentSession.prototype as PatchableAgentSession;
+  const originalGetAvailableThinkingLevels: OriginalGetAvailableThinkingLevels = prototype.getAvailableThinkingLevels;
+  const originalSupportsXhighThinking: OriginalSupportsXhighThinking = prototype.supportsXhighThinking;
+  if (isPatchedThinkingLevelFn(originalGetAvailableThinkingLevels) || isPatchedThinkingLevelFn(originalSupportsXhighThinking)) {
+    acpThinkingLevelPatchInstalled = true;
+    return;
+  }
+
+  const getAvailableThinkingLevelsPatched: PatchedThinkingLevelFn = function getAvailableThinkingLevelsPatched(this: PatchableAgentSession): UiThinkingLevel[] {
+    const override = getAcpAvailableThinkingLevels(this.model);
+    return override ?? Reflect.apply(originalGetAvailableThinkingLevels, this, []) as UiThinkingLevel[];
+  };
+  getAvailableThinkingLevelsPatched.__fleetAcpThinkingLevelPatched = true;
+  prototype.getAvailableThinkingLevels = getAvailableThinkingLevelsPatched as PatchableAgentSession["getAvailableThinkingLevels"];
+
+  const supportsXhighThinkingPatched: PatchedThinkingLevelFn = function supportsXhighThinkingPatched(this: PatchableAgentSession): boolean {
+    const override = getAcpAvailableThinkingLevels(this.model);
+    if (override) return override.includes("xhigh");
+    return Reflect.apply(originalSupportsXhighThinking, this, []) as boolean;
+  };
+  supportsXhighThinkingPatched.__fleetAcpThinkingLevelPatched = true;
+  prototype.supportsXhighThinking = supportsXhighThinkingPatched as PatchableAgentSession["supportsXhighThinking"];
+
+  acpThinkingLevelPatchInstalled = true;
+}
+
+export function reconcileAcpThinkingLevel(
+  pi: Pick<ExtensionAPI, "getThinkingLevel" | "setThinkingLevel">,
+  model: PatchableModel | undefined,
+): void {
+  const availableLevels = getAcpAvailableThinkingLevels(model);
+  if (!availableLevels) return;
+
+  const currentLevel = pi.getThinkingLevel() as UiThinkingLevel;
+  const nextLevel = availableLevels.includes(currentLevel)
+    ? currentLevel
+    : clampThinkingLevel(currentLevel, availableLevels);
+
+  if (nextLevel !== currentLevel) {
+    pi.setThinkingLevel(nextLevel);
+  }
+}
+
+function getAcpAvailableThinkingLevels(model: PatchableModel | undefined): UiThinkingLevel[] | null {
+  if (!model || !model.reasoning) return null;
+  const levels = getThinkingLevels(model.id, model.provider);
+  if (!levels) return null;
+  return levels.filter((level): level is UiThinkingLevel => ACP_UI_LEVELS.has(level as UiThinkingLevel));
+}
+
+function clampThinkingLevel(level: UiThinkingLevel, availableLevels: UiThinkingLevel[]): UiThinkingLevel {
+  const available = new Set(availableLevels);
+  const requestedIndex = THINKING_LEVEL_ORDER.indexOf(level);
+
+  if (requestedIndex === -1) return availableLevels[0] ?? "off";
+
+  for (let i = requestedIndex; i < THINKING_LEVEL_ORDER.length; i++) {
+    const candidate = THINKING_LEVEL_ORDER[i];
+    if (available.has(candidate)) return candidate;
+  }
+  for (let i = requestedIndex - 1; i >= 0; i--) {
+    const candidate = THINKING_LEVEL_ORDER[i];
+    if (available.has(candidate)) return candidate;
+  }
+  return availableLevels[0] ?? "off";
+}
+
+function isPatchedThinkingLevelFn(value: unknown): value is PatchedThinkingLevelFn {
+  return typeof value === "function" && (value as PatchedThinkingLevelFn).__fleetAcpThinkingLevelPatched === true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region provider-guard — Pi ModelRegistry monkeypatch
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ProviderGuardSettings {
+  enabled?: boolean;
+}
+
+export interface ProviderGuardState {
+  enabled: boolean;
+}
+
+interface GuardedModel {
+  provider: string;
+}
+
+interface PatchableModelRegistry {
+  __providerGuardPatched?: boolean;
+  models: GuardedModel[];
+  refresh(): void;
+  getAvailable(): GuardedModel[];
+}
+
+const PROVIDER_GUARD_SECTION_KEY = "core-provider-guard";
+const DEFAULT_PROVIDER_GUARD_ENABLED = true;
+
+let guardState: ProviderGuardState | null = null;
+let guardedAllowedProviders: Set<string> | null = null;
+
+export function registerProviderGuard(pi: ExtensionAPI): void {
+  const fleetProviderIds = getProviderIds();
+  guardedAllowedProviders = new Set([...fleetProviderIds, "openai-codex"]);
+
+  pi.on("session_start", (_event, ctx) => {
+    patchModelRegistry(pi, ctx);
+  });
+}
+
+export function getGuardState(): ProviderGuardState {
+  if (!guardState) {
+    guardState = createProviderGuardState(loadProviderGuardSettings());
+  }
+  return guardState;
+}
+
+export function saveProviderGuardSettings(settings: ProviderGuardSettings): void {
+  const api = getSettingsService();
+  if (!api) throw new Error("Fleet-Core Settings API not available");
+  api.save(PROVIDER_GUARD_SECTION_KEY, settings);
+}
+
+export function filterProviderGuardModels(registry: PatchableModelRegistry): void {
+  if (!guardedAllowedProviders) return;
+  registry.models = registry.models.filter((model) => guardedAllowedProviders!.has(model.provider));
+}
+
+export function enforceProviderGuardAllowedModel(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  if (!guardedAllowedProviders) return;
+  const current = ctx.model;
+  if (!current || guardedAllowedProviders.has(current.provider)) return;
+
+  const fallback = ctx.modelRegistry
+    .getAvailable()
+    .find((model) => guardedAllowedProviders!.has(model.provider));
+
+  if (fallback) {
+    pi.setModel(fallback as Parameters<ExtensionAPI["setModel"]>[0]);
+  }
+}
+
+function loadProviderGuardSettings(): ProviderGuardSettings {
+  const api = getSettingsService();
+  if (!api) return {};
+  try {
+    return api.load<ProviderGuardSettings>(PROVIDER_GUARD_SECTION_KEY);
+  } catch {
+    return {};
+  }
+}
+
+function createProviderGuardState(settings: ProviderGuardSettings = {}): ProviderGuardState {
+  return { enabled: settings.enabled ?? DEFAULT_PROVIDER_GUARD_ENABLED };
+}
+
+function patchModelRegistry(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  const registry = ctx.modelRegistry as unknown as PatchableModelRegistry;
+
+  if (!registry.__providerGuardPatched) {
+    registry.__providerGuardPatched = true;
+
+    const originalRefresh = registry.refresh.bind(registry);
+    registry.refresh = () => {
+      originalRefresh();
+      if (getGuardState().enabled) {
+        filterProviderGuardModels(registry);
+        enforceProviderGuardAllowedModel(pi, ctx);
+      }
+    };
+  }
+
+  if (getGuardState().enabled) {
+    filterProviderGuardModels(registry);
+    enforceProviderGuardAllowedModel(pi, ctx);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region provider-guard command — `fleet:guard:toggle`
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function registerProviderGuardCommand(pi: ExtensionAPI): void {
+  pi.registerCommand("fleet:guard:toggle", {
+    description: "프로바이더 가드 on/off 토글",
+    handler: async (_args, ctx) => {
+      const state = getGuardState();
+      state.enabled = !state.enabled;
+
+      saveProviderGuardSettings({ enabled: state.enabled });
+
+      const registry = ctx.modelRegistry as any;
+
+      if (state.enabled) {
+        filterProviderGuardModels(registry);
+        enforceProviderGuardAllowedModel(pi, ctx);
+      } else {
+        registry.refresh();
+      }
+
+      ctx.ui.notify(`Provider Guard: ${state.enabled ? "ON" : "OFF"}`, "info");
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #region provider-runtime — provider 등록 + session 라이프사이클
+// ═══════════════════════════════════════════════════════════════════════════
+
+type ProviderModels = NonNullable<Parameters<ExtensionAPI["registerProvider"]>[1]["models"]>;
+
+const FLEET_DATA_DIR = path.join(os.homedir(), ".pi", "fleet");
+void FLEET_DATA_DIR;
+
+const PROVIDER_REGISTRATIONS = Object.entries(getModelsRegistry().providers)
+  .flatMap(([cliKey, provider]) => {
+    const cli = cliKey as CliType;
+    const models = buildProviderModels(cli, provider);
+    if (models.length === 0) return [];
+    return [{ providerId: buildProviderId(cli), models }];
+  });
+
+let activeStreamRef: SimpleStreamFn | null = null;
+
+export function getActiveStreamRef(): SimpleStreamFn | null {
+  return activeStreamRef;
+}
+
+export function setActiveStreamRef(stream: SimpleStreamFn): void {
+  activeStreamRef = stream;
+}
+
+export function clearActiveStreamRef(stream?: SimpleStreamFn): void {
+  if (!stream || activeStreamRef === stream) {
+    activeStreamRef = null;
+  }
+}
+
+/** provider 등록 + 세션 라이프사이클 바인딩 — agent/index.ts에서 호출 */
+export function registerProviderRuntime(
+  pi: ExtensionAPI,
+  _fleetServices: FleetServices,
+  streamFn: SimpleStreamFn,
+): void {
+  const log = getLogAPI();
+  log.registerCategory({ id: "acp", label: "ACP Provider", description: "ACP 프로바이더 일반 로그" });
+  log.registerCategory({ id: "acp-system-prompt", label: "ACP System Prompt", description: "시스템 프롬프트 전문 로그" });
+  log.registerCategory({ id: "acp-stderr", label: "ACP Stderr", description: "ACP CLI stderr 출력" });
+
+  installAcpThinkingLevelPatch();
+  registerProviderGuard(pi);
+
+  pi.on("session_start", (_event, ctx) => {
+    reconcileAcpThinkingLevel(pi, ctx.model);
+    // reason 분기 제거 — 모든 session_start에서 bindHostSession 호출.
+    // restore 호출 누락 시 sessionStore의 mapFilePath가 null로 남아 store.set이 no-op되고
+    // 다음 /resume에서 saved sessionId를 찾지 못해 fresh 세션이 생긴다.
+    bindHostSession(ctx.sessionManager.getSessionId());
+  });
+
+  pi.on("session_tree", (_event, ctx) => {
+    bindHostSession(ctx.sessionManager.getSessionId());
+  });
+
+  pi.on("model_select", (event) => {
+    reconcileAcpThinkingLevel(pi, event.model);
+  });
+
+  pi.on("session_shutdown", () => {
+    shutdownAllSessions()
+      .catch((err) => {
+        console.error("[fleet-acp] session_shutdown 정리 실패:", err);
+      })
+      .finally(() => {
+        clearActiveStreamRef(streamFn);
+      });
+  });
+
+  if (!getActiveStreamRef()) {
+    setActiveStreamRef(streamFn);
+
+    for (const { providerId, models } of PROVIDER_REGISTRATIONS) {
+      pi.registerProvider(providerId, {
+        baseUrl: providerId,
+        apiKey: "not-used",
+        api: providerId,
+        models,
+        streamSimple: streamFn,
+      });
+    }
+  }
+}
+
+function buildProviderModels(
+  cli: CliType,
+  provider: ReturnType<typeof getModelsRegistry>["providers"][CliType],
+): ProviderModels {
+  const backend = CLI_BACKENDS[cli];
+  if (!backend) return [] as ProviderModels;
+
+  const reasoning = provider.reasoningEffort.supported;
+
+  return provider.models.map((m) => ({
+    id: buildModelId(cli, m.modelId),
+    name: m.name,
+    reasoning,
+    input: ["text", "image"] as ("text" | "image")[],
+    cost: { input: 0, output: 0 },
+    maxTokens: backend.defaultMaxTokens,
+  })) as unknown as ProviderModels;
+}
+
+// 호환 별칭 — 이전 default export 사용처를 점진 정리하기 위해 유지
+export default registerProviderRuntime;
+
+// #endregion

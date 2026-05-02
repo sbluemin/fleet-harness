@@ -3,6 +3,7 @@ import {
 } from "@sbluemin/unified-agent";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime } from "../admiral/_shared/agent-runtime.js";
+import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
 import {
   initSettingsService,
   resetSettingsService,
@@ -59,6 +60,7 @@ export function createFleetCoreRuntime(
   options: FleetCoreRuntimeOptions,
 ): FleetCoreRuntimeContext {
   initRuntime(options.dataDir);
+  initAgentSessionRuntime(options.dataDir);
   initStore(options.dataDir);
   const settings = new SettingsService();
   initSettingsService(settings);

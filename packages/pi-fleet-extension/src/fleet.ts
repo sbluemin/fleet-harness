@@ -9,7 +9,6 @@ import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import { createFleetCoreRuntime, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 import {
-  buildRuntimeContextPrompt,
   buildSystemPrompt,
   getActiveProtocol,
   getAllProtocols,
@@ -34,14 +33,12 @@ import {
 } from "@sbluemin/fleet-core/admiral/store";
 import { isWorldviewEnabled } from "@sbluemin/fleet-core/metaphor";
 import { getLogAPI } from "@sbluemin/fleet-core/services/log";
-import { setCliRuntimeContext } from "./agent/provider-internal/state.js";
 import { bootBridge, ensureBridgeKeybinds } from "./agent/ui/acp-shell/register.js";
 import { syncModelConfig } from "./agent/carrier/model-ui.js";
 import { completeSimple } from "./agent/provider.js";
 import type { Api, Model, ThinkingLevel } from "./agent/provider.js";
 import { registerGrandFleet } from "./grand-fleet/index.js";
 import { getKeybindAPI } from "./shell/keybinds/bridge.js";
-import { exposeAgentApi } from "./agent/runner.js";
 import { detachAgentPanelUi, refreshAgentPanel } from "./agent/ui/panel-lifecycle.js";
 import { requestHudRender } from "./shell/hud/editor.js";
 import { setDeliverAs, getDeliverAs } from "./settings.js";
@@ -192,7 +189,6 @@ export function resolveFleetDataDir(): string {
 export function initializeFleetRuntime(dataDir: string, pi?: ExtensionAPI): void {
   void pi;
   fleetRuntime = createFleetCoreRuntime({ dataDir });
-  exposeAgentApi();
 }
 
 export function getFleetRuntime(): FleetCoreRuntimeContext {
@@ -247,7 +243,6 @@ export function scheduleFleetReconciliation(): void {
 
 export function wireFleetPiEvents(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
-    syncAcpRuntimeContext();
     scheduleOperationNameGeneration(ctx, event.prompt);
     if (process.env.PI_GRAND_FLEET_ROLE === "fleet") return;
     return { systemPrompt: `${event.systemPrompt}\n\n${buildSystemPrompt()}` };
@@ -271,7 +266,6 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (_event, ctx) => {
     detachAgentPanelUi();
     detachStatusContext();
-    clearFleetAcpPrompts();
     persistDirectChatIfEmpty(ctx);
     await shutdownFleetRuntime();
   });
@@ -382,7 +376,6 @@ function registerProtocolKeybinds(): void {
         }
         setActiveProtocol(protocol.id);
         syncProtocolToHud(protocol);
-        setCliRuntimeContext(buildRuntimeContextPrompt);
         ctx.ui.notify(`Protocol → ${protocol.name}`, "info");
       },
     });
@@ -422,14 +415,6 @@ function bindFleetHostSession(ctx: ExtensionContext): void {
   cleanIdleClients();
   refreshAgentPanel(ctx);
   attachStatusContext(toServiceStatusContext(ctx));
-}
-
-function clearFleetAcpPrompts(): void {
-  setCliRuntimeContext(null);
-}
-
-function syncAcpRuntimeContext(): void {
-  setCliRuntimeContext(buildRuntimeContextPrompt);
 }
 
 function syncProtocolToHud(protocol: { color: string; shortLabel: string }): void {

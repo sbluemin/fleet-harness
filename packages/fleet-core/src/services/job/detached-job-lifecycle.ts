@@ -57,9 +57,10 @@ export interface FinalizeDetachedJobOptions {
   permit: JobPermitAccepted;
 }
 
-export function launchResponseResult(response: CarrierJobLaunchResponse): { content: { type: "text"; text: string }[]; details: CarrierJobLaunchResponse } {
+export function launchResponseResult(response: CarrierJobLaunchResponse): { content: { type: "text"; text: string }[]; isError: boolean; details: CarrierJobLaunchResponse } {
   return {
     content: [{ type: "text", text: formatLaunchResponseText(response, response.accepted) }],
+    isError: !response.accepted,
     details: response,
   };
 }

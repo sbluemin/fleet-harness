@@ -112,7 +112,7 @@ export function buildTaskForceToolSpec(): AgentToolSpec | null {
     },
 
     async execute(args: unknown, ctx) {
-      const t0 = ctx.now();
+      const t0 = Date.now();
       const cwd = ctx.cwd;
       const params = args as { carrier: string; request: string };
       const { carrier: carrierId, request } = params;

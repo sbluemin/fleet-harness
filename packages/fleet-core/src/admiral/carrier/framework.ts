@@ -336,6 +336,13 @@ export function resolveCarrierCliDisplayName(carrierId: string): string {
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────
 
+/**
+ * 등록된 모든 캐리어 상태를 초기화합니다 (테스트용).
+ */
+export function clearRegisteredCarriers(): void {
+  (globalThis as any)[CARRIER_FRAMEWORK_KEY] = undefined;
+}
+
 /** globalThis 기반 공유 상태를 반환합니다. */
 function getState(): CarrierFrameworkState {
   let s = (globalThis as any)[CARRIER_FRAMEWORK_KEY] as CarrierFrameworkState | undefined;

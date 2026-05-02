@@ -1,7 +1,17 @@
+/**
+ * admiral/agent/internal/session-runtime — 세션 맵 영속화 및 resume 실패 분류.
+ *
+ * imports → types/interfaces → constants → functions 순서 준수.
+ */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { CLI_BACKENDS } from "@sbluemin/unified-agent";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Types / Interfaces
+// ═══════════════════════════════════════════════════════════════════════════
 
 type SessionMap = Record<string, string>;
 
@@ -23,14 +33,11 @@ export type ResumeFailureKind =
   | "abort"
   | "unknown";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Constants
+// ═══════════════════════════════════════════════════════════════════════════
+
 const LEGACY_CLI_KEYS = new Set(Object.keys(CLI_BACKENDS));
-const noopStore: SessionMapStore = {
-  restore() {},
-  get() { return undefined; },
-  set() {},
-  clear() {},
-  getAll() { return {}; },
-};
 const DEAD_SESSION_PATTERNS = [
   /session not found/i,
   /unknown session/i,
@@ -46,8 +53,17 @@ const AUTH_PATTERNS = [
   /invalid api key/i,
 ];
 
-let dataDir: string | null = null;
-let sessionStore: SessionMapStore | null = null;
+const noopStore: SessionMapStore = {
+  restore() {},
+  get() { return undefined; },
+  set() {},
+  clear() {},
+  getAll() { return {}; },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Functions
+// ═══════════════════════════════════════════════════════════════════════════
 
 export function initRuntime(dir: string): void {
   dataDir = dir;
@@ -145,6 +161,13 @@ export function classifyResumeFailure(error: unknown): ResumeFailureKind {
 export function isDeadSessionError(err: unknown): boolean {
   return classifyResumeFailure(err) === "dead-session";
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Internal
+// ═══════════════════════════════════════════════════════════════════════════
+
+let dataDir: string | null = null;
+let sessionStore: SessionMapStore | null = null;
 
 function migrateLegacyKeys(map: SessionMap): boolean {
   let migrated = false;

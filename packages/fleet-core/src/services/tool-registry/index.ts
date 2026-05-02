@@ -6,7 +6,6 @@ export type {
   AgentToolSpec,
   CompletionPushPayload,
   FleetLogLevel,
-  FleetToolRegistryHostPorts,
   ToolPromptManifest,
   TypeBoxSchema,
 } from "./types.js";

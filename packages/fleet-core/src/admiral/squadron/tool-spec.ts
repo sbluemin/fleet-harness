@@ -111,7 +111,7 @@ export function buildSquadronToolSpec(): AgentToolSpec | null {
     },
 
     async execute(args: unknown, ctx) {
-      const t0 = ctx.now();
+      const t0 = Date.now();
       const cwd = ctx.cwd;
       const params = args as { carrier: string; expected_subtask_count: number; subtasks: Array<{ title: string; request: string }> };
       const { carrier: carrierId, expected_subtask_count, subtasks } = params;

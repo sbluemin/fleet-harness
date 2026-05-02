@@ -18,12 +18,6 @@ import {
 import type { CarrierConfig, CarrierMetadata } from "@sbluemin/fleet-core/admiral/carrier";
 import * as carrierCore from "@sbluemin/fleet-core/admiral/carrier";
 import { loadModels as getModelConfig } from "@sbluemin/fleet-core/admiral/store";
-import {
-  executeWithPool,
-  type AgentStatus,
-  type ExecuteOptions,
-} from "@sbluemin/fleet-core/admiral/agent-runtime";
-import type { LogOptions } from "@sbluemin/fleet-core/services/log";
 import type { BackendProgress, TaskForceResult, TaskForceState } from "@sbluemin/fleet-core/admiral/taskforce";
 import type { SubtaskProgress, SquadronResult, SquadronState } from "@sbluemin/fleet-core/admiral/squadron";
 import { SQUADRON_MAX_INSTANCES } from "@sbluemin/fleet-core/admiral/squadron";
@@ -69,8 +63,6 @@ interface RenderEntry {
   text: string;
 }
 
-type UnifiedAgentRequestStatus = "done" | "error" | "aborted";
-
 export interface SingleCarrierOptions {
   /** 정렬 및 표시용 슬롯 번호 */
   slot: number;
@@ -87,19 +79,7 @@ export interface SingleCarrierOptions {
 const COLLAPSED_MAX_LINES = 5;
 const PREFIX = "╎";
 const DIM = "\x1b[2m";
-const noopToolPorts: AgentToolCtx["ports"] = {
-  sendCarrierResultPush() {},
-  notify(level, message) {
-    getLogAPI().log(level, "fleet-tool", message);
-  },
-  loadSetting() { return undefined; },
-  saveSetting() {},
-  registerKeybind() { return () => {}; },
-  now: () => Date.now(),
-  getDeliverAs() { return undefined; },
-};
 
-let fleetRegistryPi: ExtensionAPI | undefined;
 let shipyardLogCategoriesRegistered = false;
 
 export function registerToolRegistry(ctx: ExtensionAPI, fleetEnabled: boolean): void {
@@ -112,7 +92,6 @@ export function registerToolRegistry(ctx: ExtensionAPI, fleetEnabled: boolean): 
 }
 
 export function registerFleetPiTools(pi: ExtensionAPI): void {
-  fleetRegistryPi = pi;
   const specs = (getFleetRuntime().fleet as unknown as { readonly tools: readonly AgentToolSpec[] }).tools;
 
   for (const spec of specs) {
@@ -267,7 +246,9 @@ function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
       return renderToolResult(spec, result, options, theme, context);
     },
     execute(id: string, params: unknown, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-      return spec.execute(params, buildAgentToolCtx(id, signal, ctx));
+      const runtime = getFleetRuntime();
+      const admiral = runtime.fleet as unknown as { readonly admiral: { tools: { invoke(name: string, args: unknown, ctx?: { cwd?: string; toolCallId?: string; signal?: AbortSignal | undefined }): Promise<{ content: Array<{ type: string; text: string }>; isError: boolean }> } } };
+      return admiral.admiral.tools.invoke(spec.name, params, { cwd: ctx.cwd, toolCallId: id, signal });
     },
   } as any;
 }
@@ -277,59 +258,9 @@ function buildAgentToolCtx(toolCallId: string, signal: AbortSignal | undefined, 
     cwd: ctx.cwd,
     toolCallId,
     signal,
-    now: () => Date.now(),
-    ports: noopToolPorts,
   };
 }
 
-async function runAgentRequestBackground(options: {
-  cli: ExecuteOptions["cliType"];
-  carrierId: string;
-  request: string;
-  cwd: string;
-  signal?: AbortSignal;
-  connectSystemPrompt?: string | null;
-  onMessageChunk?: ExecuteOptions["onMessageChunk"];
-  onThoughtChunk?: ExecuteOptions["onThoughtChunk"];
-  onToolCall?: ExecuteOptions["onToolCall"];
-}) {
-  const cliConfig = getModelConfig()[options.carrierId];
-  const result = await executeWithPool({
-    carrierId: options.carrierId,
-    cliType: options.cli,
-    request: options.request,
-    cwd: options.cwd,
-    model: cliConfig?.model,
-    effort: cliConfig?.effort,
-    connectSystemPrompt: options.connectSystemPrompt,
-    signal: options.signal,
-    onMessageChunk: options.onMessageChunk,
-    onThoughtChunk: options.onThoughtChunk,
-    onToolCall: options.onToolCall,
-  });
-  const finalStatus = toFinalStatus(result.status);
-  return {
-    status: finalStatus,
-    responseText: result.responseText,
-    sessionId: result.connectionInfo.sessionId ?? undefined,
-    error: result.error,
-    thinking: result.thoughtText || undefined,
-    toolCalls: result.toolCalls.length > 0
-      ? result.toolCalls.map((toolCall) => ({
-        title: toolCall.title,
-        status: toolCall.status,
-      }))
-      : undefined,
-    streamData: result.streamData,
-  };
-}
-
-function toFinalStatus(status: AgentStatus): UnifiedAgentRequestStatus {
-  if (status === "done" || status === "aborted") {
-    return status;
-  }
-  return "error";
-}
 
 function renderToolCall(spec: AgentToolSpec, args: unknown, _theme: Theme, context: PiRenderContext): unknown {
   if (spec.name === "carrier_jobs") {

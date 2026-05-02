@@ -2,6 +2,7 @@ import * as AdmiralProtocolFacade from "../admiral/index.js";
 import * as CarrierServiceFacade from "../admiral/carrier/index.js";
 import * as SquadronServiceFacade from "../admiral/squadron/index.js";
 import * as TaskForceServiceFacade from "../admiral/taskforce/index.js";
+import * as AgentFacade from "../admiral/agent/index.js";
 import { buildCarrierJobsToolSpec } from "../admiral/carrier-jobs/tool-spec.js";
 import { buildSortieToolSpec } from "../admiral/carrier/tool-spec.js";
 import { buildSquadronToolSpec } from "../admiral/squadron/tool-spec.js";
@@ -10,11 +11,9 @@ import {
   clearPendingForSession,
   hasPendingToolCall,
   resolveNextToolCall,
-  setOnToolCallArrived,
   startMcpServer,
   stopMcpServer,
   type McpCallToolResult,
-  type ToolCallArrivedCallback,
 } from "../admiral/_shared/mcp.js";
 import {
   clearAllTools,
@@ -30,9 +29,11 @@ import {
 import { createAuthService } from "../services/auth/index.js";
 import type { AuthService } from "../services/auth/index.js";
 import type { AgentToolSpec } from "../services/tool-registry/types.js";
+import { registerDefaultTool } from "../admiral/agent/tools.js";
 
-export type { McpCallToolResult, ToolCallArrivedCallback };
+export type { McpCallToolResult };
 export type { RegisteredTool, Tool };
+export type { AgentFacade as AgentFacadeType };
 
 export interface FleetServices {
   readonly protocols: typeof AdmiralProtocolFacade;
@@ -41,9 +42,9 @@ export interface FleetServices {
   readonly taskForce: typeof TaskForceServiceFacade;
   readonly auth: AuthService;
   readonly tools: readonly AgentToolSpec[];
+  readonly admiral: typeof AgentFacade.admiral;
   readonly mcp: {
     url(): Promise<string>;
-    setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void;
     resolveNextToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
     hasPendingToolCall(token: string): boolean;
     clearPendingForSession(token: string): void;
@@ -68,14 +69,16 @@ export function createFleetServices(): FleetServices {
     squadron: SquadronServiceFacade,
     taskForce: TaskForceServiceFacade,
     auth,
-      // carrier 등록은 runtime 초기화 이후에 일어나므로 매 접근마다 lazy로 재계산해야
-      // sortie/squadron/taskforce ToolSpec이 정상 노출됨.
+    admiral: AgentFacade.admiral,
     get tools(): readonly AgentToolSpec[] {
-      return buildFleetToolSpecs();
+      const specs = buildFleetToolSpecs();
+      for (const spec of specs) {
+        registerDefaultTool(spec);
+      }
+      return specs;
     },
     mcp: {
       url: getFleetMcpUrl,
-      setOnToolCallArrived,
       resolveNextToolCall,
       hasPendingToolCall,
       clearPendingForSession,

@@ -30,7 +30,6 @@ const TILE_SEPARATOR = ` ${PANEL_DIM_COLOR}│${ANSI_RESET} `;
 const SEPARATOR_VIS_W = 3;
 const COLOR_DONE = "\x1b[38;2;80;200;120m";
 const COLOR_ERROR = "\x1b[38;2;255;80;80m";
-const COLOR_ACTIVE = "\x1b[38;2;100;180;255m";
 const STREAM_PREFIX = "  ";
 const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
 const FOCUS_BG_FACTOR = 0.12;

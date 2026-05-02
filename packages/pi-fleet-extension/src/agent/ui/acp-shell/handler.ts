@@ -1,14 +1,9 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getShellPopupBridge } from "../../../shell/tui/types.js";
-import {
-  DEFAULT_BRIDGE_SCOPE,
-  getBridgeScopeSession,
-  getOrInitState,
-  getSessionLaunchConfig,
-  parseModelId,
-} from "../../provider-internal/state.js";
+import { buildLaunchCommand } from "@sbluemin/fleet-core";
 import { buildBridgeCommand } from "./command.js";
 import type { ActiveBridgeSession } from "./types.js";
+import type { CliType } from "@sbluemin/unified-agent";
 
 export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
   if (!ctx.hasUI) {
@@ -20,45 +15,37 @@ export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
     throw new Error("Interactive shell bridge is not available.");
   }
   if (shellBridge.isOpen()) {
-    ctx.ui.notify("브리지 쉘이 이미 열려 있습니다.", "warning");
+    ctx.ui.notify("브릿지 쉘이 이미 열려 있습니다.", "warning");
     return;
   }
 
-  const session = getActiveBridgeSession();
-  const command = buildBridgeCommand({
-    cli: session.cli,
-    model: session.model,
-    sessionId: session.sessionId,
-    cwd: session.cwd,
-    effort: session.effort,
-  });
-
-  await shellBridge.open(command);
-}
-
-function getActiveBridgeSession(): ActiveBridgeSession {
-  const state = getOrInitState();
-  const sessionKey = getBridgeScopeSession(DEFAULT_BRIDGE_SCOPE);
-  if (!sessionKey) {
+  const launchData = buildLaunchCommand({ scope: "default" });
+  if (!launchData) {
     throw new Error("기본 bridge scope에 활성 ACP 세션이 없습니다.");
   }
 
-  const session = state.sessions.get(sessionKey);
-  if (!session?.sessionId) {
-    throw new Error("활성 ACP 세션을 찾을 수 없습니다.");
-  }
+  const command = buildBridgeCommand({
+    cli: launchData.cli as CliType,
+    model: launchData.backendModel,
+    sessionId: launchData.sessionId,
+    cwd: launchData.cwd,
+    effort: launchData.effort,
+  });
 
-  const launchConfig = getSessionLaunchConfig(sessionKey);
-  const parsed = parseModelId(launchConfig?.modelId ?? "");
-  if (!parsed) {
-    throw new Error("활성 ACP 세션의 모델 ID를 해석할 수 없습니다.");
+  await shellBridge.open({ ...command, env: launchData.env });
+}
+
+export function getActiveBridgeSession(): ActiveBridgeSession {
+  const launchData = buildLaunchCommand({ scope: "default" });
+  if (!launchData) {
+    throw new Error("기본 bridge scope에 활성 ACP 세션이 없습니다.");
   }
 
   return {
-    cli: parsed.cli,
-    model: parsed.backendModel,
-    sessionId: session.sessionId,
-    cwd: session.cwd,
-    effort: launchConfig?.effort,
+    cli: launchData.cli as CliType,
+    model: launchData.backendModel,
+    sessionId: launchData.sessionId,
+    cwd: launchData.cwd,
+    effort: launchData.effort,
   };
 }

@@ -142,29 +142,6 @@ function deriveCarrierStatus(
   return "idle";
 }
 
-function deriveCarrierTask(run: StreamRunLikeState | undefined): string | undefined {
-  const requestPreview = run?.requestPreview?.trim();
-  if (requestPreview) {
-    return sanitizeTaskText(requestPreview);
-  }
-  const error = run?.error?.trim();
-  return error ? sanitizeTaskText(error) : undefined;
-}
-
 function normalizeCliBackend(value: string | undefined): CliType | undefined {
   return value !== undefined && value in CLI_BACKENDS ? value as CliType : undefined;
-}
-
-function sanitizeTaskText(value: string): string {
-  const masked = value
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\x1b[@-_][0-?]*[ -/]*[@-~]/g, "")
-    .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, "")
-    .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]")
-    .replace(/sk-[a-zA-Z0-9]{20,}/g, "[REDACTED]")
-    .replace(/ghp_[a-zA-Z0-9]{36,}/g, "[REDACTED]")
-    .replace(/xox[bpras]-[a-zA-Z0-9-]+/g, "[REDACTED]")
-    .replace(/\b[a-zA-Z0-9_-]{40,}\b/g, "[REDACTED]");
-
-  return masked.slice(0, 80);
 }

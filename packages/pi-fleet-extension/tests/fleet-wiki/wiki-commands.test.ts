@@ -64,20 +64,6 @@ describe("wiki commands", () => {
   });
 });
 
-function makeContext(root: string, notify: ReturnType<typeof vi.fn>): any {
-  return {
-    cwd: root,
-    ui: {
-      notify,
-      select: vi.fn(),
-    },
-    sessionManager: {
-      getBranch: () => [],
-      getSessionId: () => "session-1",
-    },
-  };
-}
-
 function makeNotifyContext(root: string, notify: ReturnType<typeof vi.fn>): any {
   return {
     cwd: root,

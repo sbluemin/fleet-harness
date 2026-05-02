@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { CliType } from "@sbluemin/unified-agent";
 
 import {
   getRegisteredCarrierConfig,
