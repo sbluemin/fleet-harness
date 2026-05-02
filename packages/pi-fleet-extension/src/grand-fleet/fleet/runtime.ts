@@ -5,9 +5,10 @@ import { getState } from "../state.js";
 import { FleetClient } from "./client.js";
 import { registerFleetHandlers } from "../admiralty/methods.js";
 import {
-  GRAND_FLEET_FLEET_RUNTIME_KEY,
+  getFleetRuntime as getCoreFleetRuntime,
   HEARTBEAT_INTERVAL_MS,
   PROTOCOL_VERSION,
+  setFleetRuntime as setCoreFleetRuntime,
   type FleetId,
   type FleetRuntimeState,
 } from "@sbluemin/fleet-core/admiralty";
@@ -26,7 +27,7 @@ interface FleetRegisterPayload {
 }
 
 export function getFleetRuntime(): FleetRuntimeState {
-  const existing = (globalThis as any)[GRAND_FLEET_FLEET_RUNTIME_KEY] as FleetRuntimeState | undefined;
+  const existing = getCoreFleetRuntime();
   if (existing) {
     return existing;
   }
@@ -40,7 +41,7 @@ export function getFleetRuntime(): FleetRuntimeState {
     sessionGeneration: 0,
     statusSyncTimer: null,
   };
-  (globalThis as any)[GRAND_FLEET_FLEET_RUNTIME_KEY] = runtime;
+  setCoreFleetRuntime(runtime);
   return runtime;
 }
 

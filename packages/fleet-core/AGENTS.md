@@ -47,7 +47,7 @@
 
 - `api/PUBLIC_API.md` is the frozen public API contract for the productization migration.
 - Provider MCP FIFO, token isolation, pre-queue, and HTTP-hold behavior are invariants.
-- Preserve existing `globalThis` compatibility keys exactly unless a higher-order doctrine explicitly changes them.
+- `pi-fleet-extension` must not introduce or preserve `globalThis` usage patterns; compatibility state should flow through explicit public accessors or module-level singleton state. Existing fleet-core-owned `globalThis` keys are retained only until a separate fleet-core deprecation track removes them.
 - Background paths must accept plain runtime data and host ports, never Pi `ExtensionContext`.
 - Job archive behavior remains read-many within TTL.
 - Fleet Store (`admiral/store/fleet-store.ts`) writes are guarded by compare-then-write: `updateStates()` computes a pre-mutation snapshot via `structuredClone`, applies the mutator, and skips `writeStates()` when `JSON.stringify` comparison shows no delta. This prevents spurious disk I/O and reduces lock contention.

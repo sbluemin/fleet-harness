@@ -1,4 +1,5 @@
 export * from "./framework.js";
+export * from "./framework-access.js";
 export * from "./overlay-types.js";
 export * from "./prompts.js";
 export * from "./sortie-execute.js";

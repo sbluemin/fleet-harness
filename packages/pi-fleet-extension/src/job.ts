@@ -36,10 +36,11 @@ interface CarrierJobsVerboseState {
   value: boolean;
 }
 
-const CARRIER_JOBS_VERBOSE_KEY = "__pi_fleet_carrier_jobs_verbose__";
 const ICON = "◈";
 const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
+
+const carrierJobsVerboseState: CarrierJobsVerboseState = { value: false };
 
 export const CARRIER_RESULT_CUSTOM_TYPE = "carrier-result";
 
@@ -182,10 +183,5 @@ function wrapLine(line: string, width: number): string[] {
 }
 
 function getState(): CarrierJobsVerboseState {
-  const root = globalThis as Record<string, unknown>;
-  const existing = root[CARRIER_JOBS_VERBOSE_KEY] as CarrierJobsVerboseState | undefined;
-  if (existing) return existing;
-  const state: CarrierJobsVerboseState = { value: false };
-  root[CARRIER_JOBS_VERBOSE_KEY] = state;
-  return state;
+  return carrierJobsVerboseState;
 }

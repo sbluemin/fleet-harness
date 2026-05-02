@@ -5,3 +5,4 @@ export * from "./status-source.js";
 export * from "./text-sanitize.js";
 export * from "./tool-specs.js";
 export * from "./types.js";
+export * from "./runtime-access.js";

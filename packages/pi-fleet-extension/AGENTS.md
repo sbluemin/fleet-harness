@@ -14,7 +14,7 @@
 
 | pi-fleet-extension (Adapter) | fleet-core (Public Service) | Description |
 | :--- | :--- | :--- |
-| `src/agent/` | `FleetServices` (Partial) | Pi AI provider, streaming, Agent Panel UI, and session management (`state.ts`, `session-runtime.ts`, `service-status-store.ts`, `thinking-level-patch.ts`). MCP and tool snapshots are now consumed via `fleet.mcp`. |
+| `src/agent/` | `FleetServices` (Partial) | Pi AI provider, streaming, Agent Panel UI, and session management (`state.ts`, `session-runtime.ts`, `thinking-level-patch.ts`). Service status is consumed from `@sbluemin/unified-agent` public APIs, and MCP/tool snapshots are consumed via `fleet.mcp`. |
 | `src/grand-fleet/` | `GrandFleetServices` / `Admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
 | `src/fleet-wiki/` | `@sbluemin/fleet-wiki` | Fleet Wiki tool/command registration and overlays |
 | `src/shell/` | (Host Surfaces) | HUD, Welcome UI, shared TUI overlays, and shortcuts |
@@ -61,6 +61,6 @@
 
 ## Compatibility Rules
 
-- Preserve slash command names and existing `globalThis` compatibility keys.
+- Preserve slash command names while replacing compatibility state with module-level singleton state and explicit set/get APIs; follow the `shell/hud/border-bridge.ts` precedent.
 - Preserve custom message delivery semantics for carrier completion pushes.
 - Compatibility bridges are integrated into their respective domain adapters; no separate `bindings/` directory is permitted.

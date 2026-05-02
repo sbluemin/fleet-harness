@@ -257,7 +257,7 @@ vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
 
 import { handleSessionStart, streamAcp } from "../../src/agent/provider-internal/provider-stream.js";
 import { onHostSessionChange } from "../../src/agent/provider-internal/session-runtime.js";
-import { GLOBAL_STATE_KEY, type AcpProviderState, type AcpSessionState } from "../../src/agent/provider-internal/state.js";
+import { getOrInitState, resetAcpProviderState, type AcpProviderState, type AcpSessionState } from "../../src/agent/provider-internal/state.js";
 
 describe("provider-stream", () => {
   afterEach(() => {
@@ -283,7 +283,7 @@ describe("provider-stream", () => {
     mockState.sessionStoreState = {};
     mockState.persistedSessionMaps = {};
     mockState.boundPiSessionId = null;
-    delete (globalThis as Record<symbol, unknown>)[GLOBAL_STATE_KEY];
+    resetAcpProviderState();
   });
 
   it("cold host provider 연결 후 sessionId를 PI session-map에 저장한다", async () => {
@@ -466,7 +466,7 @@ describe("provider-stream", () => {
       bridgeScopeSessionKeys: new Map(),
       sessionLaunchConfigs: new Map(),
     };
-    (globalThis as Record<symbol, unknown>)[GLOBAL_STATE_KEY] = providerState;
+    Object.assign(getOrInitState(), providerState);
 
     await handleSessionStart("resume", "pi-session-1");
 
@@ -518,7 +518,7 @@ describe("provider-stream", () => {
       bridgeScopeSessionKeys: new Map(),
       sessionLaunchConfigs: new Map(),
     };
-    (globalThis as Record<symbol, unknown>)[GLOBAL_STATE_KEY] = providerState;
+    Object.assign(getOrInitState(), providerState);
 
     streamAcp(
       { id: "gpt-5.4", provider: "Fleet ACP", reasoning: true } as any,
@@ -587,7 +587,7 @@ describe("provider-stream", () => {
       bridgeScopeSessionKeys: new Map(),
       sessionLaunchConfigs: new Map(),
     };
-    (globalThis as Record<symbol, unknown>)[GLOBAL_STATE_KEY] = providerState;
+    Object.assign(getOrInitState(), providerState);
 
     streamAcp(
       { id: "gpt-5.4", provider: "Fleet ACP", reasoning: true } as any,
@@ -699,7 +699,7 @@ describe("provider-stream", () => {
       bridgeScopeSessionKeys: new Map(),
       sessionLaunchConfigs: new Map(),
     };
-    (globalThis as Record<symbol, unknown>)[GLOBAL_STATE_KEY] = providerState;
+    Object.assign(getOrInitState(), providerState);
 
     streamAcp(
       { id: "gpt-5.4", provider: "Fleet ACP", reasoning: true } as any,

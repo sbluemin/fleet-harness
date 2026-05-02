@@ -149,7 +149,7 @@ System Prompt
 
 ### UI & UX Integration
 
-- **Editor Border Color**: The editor's border color changes based on the active protocol (communicated via `globalThis.__pi_hud_editor_border_color__`).
+- **Editor Border Color**: The editor's border color changes based on the active protocol through the `core-hud/border-bridge` module-level set/get API.
 - **Editor Top Border (Center Label)**: The active protocol short label (e.g., `⚓ Fleet Action`) is rendered at the center of the editor's top border via the `core-hud/border-bridge` `setEditorRightLabel` API.
 - **Editor Bottom Border (Right Label)**: The current session's operation name (managed by the `metaphor:operation` domain) is rendered at the right end of the editor's bottom border via the `core-hud/border-bridge` `setEditorBottomRightLabel` API. Distinct domain from protocol UI but shares the editor border surface.
 - **Settings Popup (Alt+/)**: The "Admiral" section allows manual selection of the `activeProtocol` and toggling of the `worldview`.

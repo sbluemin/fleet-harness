@@ -17,38 +17,53 @@ type PatchableAgentSession = InstanceType<typeof AgentSession> & {
   model?: PatchableModel;
 };
 
+type PatchedThinkingLevelFn = (() => unknown) & {
+  __fleetAcpThinkingLevelPatched?: boolean;
+};
+
+type OriginalGetAvailableThinkingLevels = (this: PatchableAgentSession) => UiThinkingLevel[];
+type OriginalSupportsXhighThinking = (this: PatchableAgentSession) => boolean;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const THINKING_LEVEL_PATCH_KEY = Symbol.for("__pi_fleet_acp_thinking_level_patch__");
 const THINKING_LEVEL_ORDER: UiThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 const ACP_UI_LEVELS = new Set<UiThinkingLevel>(["low", "medium", "high", "xhigh"]);
 
+let acpThinkingLevelPatchInstalled = false;
+
 export function installAcpThinkingLevelPatch(): void {
-  const g = globalThis as Record<symbol, unknown>;
-  if (g[THINKING_LEVEL_PATCH_KEY]) {
+  if (acpThinkingLevelPatchInstalled) {
     return;
   }
 
   const prototype = AgentSession.prototype as PatchableAgentSession;
-  const originalGetAvailableThinkingLevels = prototype.getAvailableThinkingLevels;
-  const originalSupportsXhighThinking = prototype.supportsXhighThinking;
+  const originalGetAvailableThinkingLevels: OriginalGetAvailableThinkingLevels = prototype.getAvailableThinkingLevels;
+  const originalSupportsXhighThinking: OriginalSupportsXhighThinking = prototype.supportsXhighThinking;
+  if (isPatchedThinkingLevelFn(originalGetAvailableThinkingLevels) || isPatchedThinkingLevelFn(originalSupportsXhighThinking)) {
+    acpThinkingLevelPatchInstalled = true;
+    return;
+  }
 
-  prototype.getAvailableThinkingLevels = function getAvailableThinkingLevelsPatched(this: PatchableAgentSession): UiThinkingLevel[] {
+  const getAvailableThinkingLevelsPatched: PatchedThinkingLevelFn = function getAvailableThinkingLevelsPatched(this: PatchableAgentSession): UiThinkingLevel[] {
     const override = getAcpAvailableThinkingLevels(this.model);
-    return override ?? originalGetAvailableThinkingLevels.call(this);
+    return override ?? Reflect.apply(originalGetAvailableThinkingLevels, this, []) as UiThinkingLevel[];
   };
+  getAvailableThinkingLevelsPatched.__fleetAcpThinkingLevelPatched = true;
+  prototype.getAvailableThinkingLevels = getAvailableThinkingLevelsPatched as PatchableAgentSession["getAvailableThinkingLevels"];
 
-  prototype.supportsXhighThinking = function supportsXhighThinkingPatched(this: PatchableAgentSession): boolean {
+  const supportsXhighThinkingPatched: PatchedThinkingLevelFn = function supportsXhighThinkingPatched(this: PatchableAgentSession): boolean {
     const override = getAcpAvailableThinkingLevels(this.model);
     if (override) {
       return override.includes("xhigh");
     }
-    return originalSupportsXhighThinking.call(this);
+    return Reflect.apply(originalSupportsXhighThinking, this, []) as boolean;
   };
+  supportsXhighThinkingPatched.__fleetAcpThinkingLevelPatched = true;
+  prototype.supportsXhighThinking = supportsXhighThinkingPatched as PatchableAgentSession["supportsXhighThinking"];
 
-  g[THINKING_LEVEL_PATCH_KEY] = true;
+  acpThinkingLevelPatchInstalled = true;
 }
 
 export function reconcileAcpThinkingLevel(
@@ -120,4 +135,8 @@ export function clampThinkingLevel(
   }
 
   return availableLevels[0] ?? "off";
+}
+
+function isPatchedThinkingLevelFn(value: unknown): value is PatchedThinkingLevelFn {
+  return typeof value === "function" && (value as PatchedThinkingLevelFn).__fleetAcpThinkingLevelPatched === true;
 }

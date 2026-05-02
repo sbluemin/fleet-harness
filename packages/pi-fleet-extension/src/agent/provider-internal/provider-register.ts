@@ -19,9 +19,12 @@ import {
 
 import { getLogAPI } from "@sbluemin/fleet-core/services/log";
 import {
-  ACTIVE_STREAM_KEY,
   buildModelId,
   buildProviderId,
+  clearActiveStreamRef,
+  getActiveStreamRef,
+  resetAcpProviderState,
+  setActiveStreamRef,
 } from "./state.js";
 import { initRuntime, onHostSessionChange } from "./session-runtime.js";
 import { streamAcp, cleanupAll, handleSessionStart } from "./provider-stream.js";
@@ -91,24 +94,21 @@ export default function registerProviderRuntime(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
-    cleanupAll().catch((err) => {
-      console.error("[fleet-acp] session_shutdown 정리 실패:", err);
-    });
-
-    // globalThis 스트림 참조 해제 — /reload 시 새 인스턴스가 등록 가능하도록
-    const g = globalThis as Record<symbol, unknown>;
-    if (g[ACTIVE_STREAM_KEY] === streamAcp) {
-      g[ACTIVE_STREAM_KEY] = undefined;
-    }
+    cleanupAll()
+      .catch((err) => {
+        console.error("[fleet-acp] session_shutdown 정리 실패:", err);
+      })
+      .finally(() => {
+        resetAcpProviderState();
+        clearActiveStreamRef(streamAcp);
+      });
   });
 
   // ── Provider 등록 (subagent 중복 방지) ──
 
-  const g = globalThis as Record<symbol, unknown>;
-
-  if (!g[ACTIVE_STREAM_KEY]) {
+  if (!getActiveStreamRef()) {
     // 최초 인스턴스: streamSimple 참조 저장 후 등록
-    g[ACTIVE_STREAM_KEY] = streamAcp;
+    setActiveStreamRef(streamAcp);
 
     for (const { providerId, models } of PROVIDER_REGISTRATIONS) {
       pi.registerProvider(providerId, {

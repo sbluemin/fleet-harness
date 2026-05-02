@@ -146,7 +146,7 @@ export interface HudEditorState {
   getThinkingLevelFn: (() => string) | null;
   currentEditor: any;
   config: HudCoreConfig;
-  /** footer 콜백에서 직접 수신한 데이터 제공자 (hud-footer globalThis 불필요) */
+  /** footer 콜백에서 직접 수신한 데이터 제공자 (hud-footer 전역 브릿지 불필요) */
   footerDataRef: ReadonlyFooterDataProvider | null;
   /** footer 콜백에서 직접 수신한 TUI 인스턴스 */
   tuiRef: any;

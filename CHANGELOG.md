@@ -27,6 +27,12 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`admiral/carrier/status-overlay-controller.ts`**: Overlay controller relocated from the removed `bridge/carrier-control/` to `admiral/carrier/`.
 - **`admiral/carrier/overlay-types.ts`**: Overlay types relocated alongside the status overlay controller.
 
+### Changed
+- Removed all `globalThis` usage from `pi-fleet-extension`; migrated runtime state to module-level singletons following the `border-bridge` precedent.
+- Redesigned `/reload` lifecycle to reset ACP provider state on `session_shutdown` and re-establish carrier sessions via the existing resume path on the next `session_start`.
+- Added `fleet-core` public accessors for Grand Fleet state, Admiralty runtime, Fleet runtime, and carrier framework state, replacing direct `globalThis` lookups in `pi-fleet-extension`.
+- Switched service-status consumption to the `@sbluemin/unified-agent` public API and removed the duplicated `service-status-store.ts` from `pi-fleet-extension`.
+
 ## [0.9.0] - 2026-05-02
 
 ### Added

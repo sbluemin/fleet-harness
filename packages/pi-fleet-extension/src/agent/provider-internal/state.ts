@@ -73,9 +73,8 @@ export interface CliCapability {
 }
 
 export type CliRuntimeContextBuilder = (userRequest: string) => string;
+export type SimpleStreamFn = (model: never, context: never, options?: never) => unknown;
 
-export const GLOBAL_STATE_KEY = Symbol.for("__pi_fleet_acp_state__");
-export const ACTIVE_STREAM_KEY = Symbol.for("__pi_fleet_acp_stream__");
 export const DEFAULT_REQUEST_TIMEOUT = 600_000;
 export const DEFAULT_INIT_TIMEOUT = 60_000;
 export const DEFAULT_PROMPT_IDLE_TIMEOUT = 1_800_000;
@@ -92,7 +91,6 @@ export const CLI_CAPABILITIES: Record<CliType, CliCapability> = Object.fromEntri
   ]),
 ) as Record<CliType, CliCapability>;
 
-const CLI_RUNTIME_CONTEXT_KEY = Symbol.for("__pi_fleet_acp_cli_runtime_context__");
 const LEGACY_PROVIDER_PREFIX = "Fleet ";
 const MODEL_ID_POSTFIX = " (Unified)";
 const LEGACY_MODEL_ID_POSTFIX = " (ACP)";
@@ -124,6 +122,10 @@ const MODEL_LOOKUP: {
 
   return { byRegisteredId, byProviderAndRegisteredId, byCliModel };
 })();
+
+let acpProviderState: AcpProviderState | null = null;
+let activeStreamRef: SimpleStreamFn | null = null;
+let cliRuntimeContextBuilder: CliRuntimeContextBuilder | null = null;
 
 export function parseModelId(modelId: string, providerId?: string): ParsedModelId | null {
   if (providerId) {
@@ -172,11 +174,30 @@ export function hashSystemPrompt(prompt: string | undefined): string {
 }
 
 export function getOrInitState(): AcpProviderState {
-  const g = globalThis as Record<symbol, unknown>;
-  if (!g[GLOBAL_STATE_KEY]) {
-    g[GLOBAL_STATE_KEY] = createInitialState();
+  if (!acpProviderState) {
+    acpProviderState = createInitialState();
   }
-  return g[GLOBAL_STATE_KEY] as AcpProviderState;
+  return acpProviderState;
+}
+
+export function resetAcpProviderState(): void {
+  acpProviderState = null;
+  activeStreamRef = null;
+  cliRuntimeContextBuilder = null;
+}
+
+export function getActiveStreamRef(): SimpleStreamFn | null {
+  return activeStreamRef;
+}
+
+export function setActiveStreamRef(stream: SimpleStreamFn): void {
+  activeStreamRef = stream;
+}
+
+export function clearActiveStreamRef(stream?: SimpleStreamFn): void {
+  if (!stream || activeStreamRef === stream) {
+    activeStreamRef = null;
+  }
 }
 
 export function setBridgeScopeSession(scopeName: string, sessionKey: string): void {
@@ -214,11 +235,11 @@ export function clearSessionLaunchConfig(sessionKey: string): void {
 }
 
 export function setCliRuntimeContext(builder: CliRuntimeContextBuilder | null): void {
-  (globalThis as Record<symbol, unknown>)[CLI_RUNTIME_CONTEXT_KEY] = builder;
+  cliRuntimeContextBuilder = builder;
 }
 
 export function getCliRuntimeContext(): CliRuntimeContextBuilder | null {
-  return ((globalThis as Record<symbol, unknown>)[CLI_RUNTIME_CONTEXT_KEY] as CliRuntimeContextBuilder | null) ?? null;
+  return cliRuntimeContextBuilder;
 }
 
 function createInitialState(): AcpProviderState {

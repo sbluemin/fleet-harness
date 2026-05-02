@@ -84,7 +84,6 @@ export interface SingleCarrierOptions {
   bgColor?: string;
 }
 
-const SHIPYARD_PROMPT_CATEGORY_BOOTSTRAP_KEY = "__fleet_shipyard_prompt_category_registered__";
 const COLLAPSED_MAX_LINES = 5;
 const PREFIX = "╎";
 const DIM = "\x1b[2m";
@@ -101,6 +100,7 @@ const noopToolPorts: AgentToolCtx["ports"] = {
 };
 
 let fleetRegistryPi: ExtensionAPI | undefined;
+let shipyardLogCategoriesRegistered = false;
 
 export function registerToolRegistry(ctx: ExtensionAPI, fleetEnabled: boolean): void {
   if (fleetEnabled) {
@@ -237,10 +237,10 @@ export function registerSingleCarrier(
 }
 
 export function ensureShipyardLogCategories(): void {
-  if ((globalThis as any)[SHIPYARD_PROMPT_CATEGORY_BOOTSTRAP_KEY]) {
+  if (shipyardLogCategoriesRegistered) {
     return;
   }
-  (globalThis as any)[SHIPYARD_PROMPT_CATEGORY_BOOTSTRAP_KEY] = true;
+  shipyardLogCategoriesRegistered = true;
   getLogAPI().registerCategory({
     id: "prompt",
     label: "Carrier Prompt",

@@ -4,7 +4,9 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import {
-  GRAND_FLEET_ADMIRALTY_RUNTIME_KEY,
+  clearAdmiraltyRuntime,
+  getAdmiraltyRuntime,
+  setAdmiraltyRuntime,
   type AdmiraltyPresenter,
   type AdmiraltyRuntimeState,
   type MissionReportParams,
@@ -62,12 +64,12 @@ export function ensureAdmiraltyRuntime(): AdmiraltyRuntimeState {
     }
   });
 
-  (globalThis as any)[GRAND_FLEET_ADMIRALTY_RUNTIME_KEY] = runtime;
+  setAdmiraltyRuntime(runtime);
   return runtime;
 }
 
 export function readAdmiraltyRuntime(): AdmiraltyRuntimeState | null {
-  return ((globalThis as any)[GRAND_FLEET_ADMIRALTY_RUNTIME_KEY] ?? null) as AdmiraltyRuntimeState | null;
+  return getAdmiraltyRuntime();
 }
 
 export function getAdmiraltyRegistry(): FleetRegistry {
@@ -113,7 +115,7 @@ export function disposeRosterListener(): void {
 }
 
 export function disposeAdmiraltyRuntime(): void {
-  delete (globalThis as any)[GRAND_FLEET_ADMIRALTY_RUNTIME_KEY];
+  clearAdmiraltyRuntime();
 }
 
 function createPresenter(

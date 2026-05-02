@@ -151,7 +151,7 @@ When editing or reviewing this repo:
 The migration does **not** authorize silent behavioral drift. Preserve:
 
 - slash command names
-- existing `globalThis` compatibility keys
+- explicit compatibility accessors or module-level singleton state following the `border-bridge` pattern
 - carrier completion push semantics
 - detached-job acceptance vs completion-push distinction
 - MCP/provider FIFO and archive behavior

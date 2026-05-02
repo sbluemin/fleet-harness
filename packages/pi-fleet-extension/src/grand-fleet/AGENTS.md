@@ -5,7 +5,7 @@ Owns the Pi-side Grand Fleet domain integration for `pi-fleet-extension`. This d
 ## Scope
 
 - Admiralty/Fleet role detection and branch logic based on `PI_GRAND_FLEET_ROLE`
-- `globalThis.__fleet_state__` management for Grand Fleet session state
+- Grand Fleet session state access through `@sbluemin/fleet-core/admiralty` public accessors
 - Admiralty/Fleet IPC client/server runtime and session event wiring
 - Grand Fleet domain-specific command, tool, keybind, and TUI registration
 - Grand Fleet session lifecycle, prompt binding, and mission/report buffers

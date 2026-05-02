@@ -121,12 +121,12 @@ This is a hard prerequisite. Do NOT skip this step or assume you already know th
 - All responses must be written in Korean.
 `;
 
-const OPERATION_NAME_GLOBAL_KEY = "__pi_fleet_operation_name__";
 const OPERATION_NAME_ATTEMPTS = new Set<string>();
 
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
 let bootConfig: BootConfig | null = null;
 let reconciliationScheduled = false;
+let operationNameStore: OperationNameGlobalStore | OperationNameGlobalState | null = null;
 
 export { bootBridge, ensureBridgeKeybinds };
 
@@ -564,16 +564,13 @@ function syncOperationNameSession(sessionId: string, pending = false, displayNam
     displayName: nextDisplayName,
     pending,
   };
-  (globalThis as any)[OPERATION_NAME_GLOBAL_KEY] = store;
+  operationNameStore = store;
   setEditorTopRightLabel(!pending && nextDisplayName ? nextDisplayName : null);
   requestHudRender();
 }
 
 function readOperationNameStore(): OperationNameGlobalStore {
-  const current = (globalThis as any)[OPERATION_NAME_GLOBAL_KEY] as
-    | OperationNameGlobalStore
-    | OperationNameGlobalState
-    | undefined;
+  const current = operationNameStore ?? undefined;
   if (isOperationNameGlobalStore(current)) {
     return current;
   }
