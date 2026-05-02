@@ -11,6 +11,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Captain · Multi-Wave Strike Execution",
   summary: "Receives a Kirov-authored plan_file and executes it wave-by-wave to completion — silent, patient, sequential delivery of plan steps. As the Captain (함장) of this Carrier, Ohio commands multi-wave strike execution and is the sole carrier authorised to consume plan_file inputs.",
+  category: "planning",
   whenToUse: [
     "multi-wave builds driven by an explicit plan_file",
     "PRD-driven implementations with structured execution waves",

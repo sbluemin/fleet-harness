@@ -11,6 +11,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Captain · Strategic Command & Judgment",
   summary: "Read-only strategic command — decides the technical path through doctrinal judgment, architecture decisions, deep analysis, and trade-off adjudication. As the Captain (함장) of this Carrier, Nimitz commands strategic technical judgment from the flagship bridge without entering the implementation path.",
+  category: "strategy",
   whenToUse: [
     "architecture and design decisions",
     "choosing between competing technical paths before planning or implementation",

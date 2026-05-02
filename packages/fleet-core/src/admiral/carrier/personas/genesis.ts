@@ -11,6 +11,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Captain · Chief Engineer",
   summary: "Full-stack implementation workhorse — builds features, writes production-quality clean code, and maintains structural integrity throughout. As the Captain (함장) of this Carrier, Genesis takes direct command of build and implementation operations.",
+  category: "operations",
   whenToUse: [
     "new features",
     "integrations",

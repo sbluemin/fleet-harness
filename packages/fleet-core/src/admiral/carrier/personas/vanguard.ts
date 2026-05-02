@@ -11,6 +11,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Captain · Scout Specialist",
   summary: "Fast reconnaissance — codebase exploration, symbol tracing, web research. As the Captain (함장) of this Carrier, Vanguard leads forward scouting and fast intelligence gathering before heavier operations begin.",
+  category: "operations",
   whenToUse: [
     "codebase exploration",
     "symbol tracing",

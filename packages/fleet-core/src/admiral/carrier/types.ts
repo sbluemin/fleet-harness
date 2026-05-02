@@ -20,6 +20,11 @@ export type {
   ResolvedCliSelection,
 } from "./overlay-types.js";
 
+// ─── Carrier 카테고리 ─────────────────────────────────────
+
+/** Carrier 카테고리 — 운영 계층 분류 */
+export type CarrierCategory = "strategy" | "planning" | "operations";
+
 // ─── Carrier 메타데이터 (2-Tier) ────────────────────────
 
 /** 구조화 요청 블록 정의 */
@@ -44,6 +49,8 @@ export interface CarrierMetadata {
   title: string;
   /** 한줄 역할+특징 요약 */
   summary: string;
+  /** 운영 카테고리 — strategy | planning | operations */
+  category: CarrierCategory;
   /** 긍정 호출 조건 (N개, 짧은 구문) */
   whenToUse: string[];
   /** 부정 호출 조건 (N개, 짧은 구문) */

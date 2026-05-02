@@ -1,4 +1,5 @@
 import type { HealthStatus, ProviderKey } from "@sbluemin/unified-agent";
+import type { CarrierCategory } from "./types.js";
 
 export type CarrierCliType = ProviderKey;
 
@@ -47,6 +48,7 @@ export interface CarrierStatusEntry {
   isSortieEnabled: boolean;
   isSquadronEnabled: boolean;
   taskForceBackendCount: number;
+  category?: CarrierCategory;
 }
 
 export interface CarrierStatusGroup {

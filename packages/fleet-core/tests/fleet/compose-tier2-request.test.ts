@@ -9,6 +9,7 @@ describe("composeTier2Request", () => {
     const metadata: CarrierMetadata = {
       title: "Test",
       summary: "Test",
+      category: "operations",
       whenToUse: [],
       whenNotToUse: [],
       permissions: [],
@@ -25,6 +26,7 @@ describe("composeTier2Request", () => {
     const metadata: CarrierMetadata = {
       title: "Test",
       summary: "Test",
+      category: "operations",
       whenToUse: [],
       whenNotToUse: [],
       permissions: [],
@@ -42,6 +44,7 @@ describe("composeTier2Request", () => {
     const metadata: CarrierMetadata = {
       title: "Test",
       summary: "Test",
+      category: "operations",
       whenToUse: [],
       whenNotToUse: [],
       permissions: ["Can read files", "Can write files"],
@@ -71,6 +74,7 @@ describe("composeTier2Request", () => {
     const metadata: CarrierMetadata = {
       title: "Test",
       summary: "Test",
+      category: "operations",
       whenToUse: [],
       whenNotToUse: [],
       permissions: ["Read"],

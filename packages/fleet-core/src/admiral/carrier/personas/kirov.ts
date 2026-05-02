@@ -11,6 +11,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
   title: "Captain · Operational Planning Bridge",
   summary: "Clarifies requirements, closes planning gaps, and writes executable .fleet/plans/*.md plan_files with ordered waves, ownership, dependencies, QA gates, acceptance criteria, documentation impacts, and escalation triggers.",
+  category: "planning",
   whenToUse: [
     "explicit requests for a structured .fleet/plans/*.md plan_file, PRD decomposition, or Ohio-executable execution plan",
     "multi-Carrier or multi-wave work requiring dependencies, file ownership, and QA gates",

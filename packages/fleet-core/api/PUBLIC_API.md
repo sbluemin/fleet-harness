@@ -116,7 +116,7 @@ Current Fleet domain compatibility subpaths (based on `package.json` exports):
 - `@sbluemin/fleet-core/admiral`
 - `@sbluemin/fleet-core/admiral/carrier`
 - `@sbluemin/fleet-core/admiral/carrier/status-overlay-controller`
-- `@sbluemin/fleet-core/admiral/carrier/types`
+- `@sbluemin/fleet-core/admiral/carrier/types` — `CarrierMetadata`, `CarrierCategory`, `CarrierStatusEntry`, `RequestBlock`, `OverlayState`, and overlay callback types.
 - `@sbluemin/fleet-core/admiral/carrier/personas`
 - `@sbluemin/fleet-core/admiral/squadron`
 - `@sbluemin/fleet-core/admiral/taskforce`
