@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createDefaultResponseRenderer } from "../../src/shell/render/message-renderers.js";
-import type { ColBlock } from "@sbluemin/fleet-core/admiral/bridge/run-stream";
+import type { ColBlock } from "@sbluemin/fleet-core/admiral/agent-runtime";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 

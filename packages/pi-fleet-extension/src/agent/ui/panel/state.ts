@@ -1,16 +1,27 @@
 /**
- * panel/state.ts — 에이전트 패널 globalThis 상태 싱글턴 + 칼럼 헬퍼
+ * panel/state.ts — 에이전트 패널 모듈-레벨 상태 + 스트리밍 이벤트 소비
  *
  * 패널 모듈 내부에서만 사용합니다.
- * getState()를 통해 공유 상태에 접근합니다.
+ * fleet-core의 스트리밍 이벤트를 받아 Pi가 렌더링 상태를 직접 소유합니다.
  */
 
-import { DEFAULT_BODY_H, formatPanelMultiColHint } from "@sbluemin/fleet-core/constants";
-import { ensureVisibleRun, setRunSessionId } from "@sbluemin/fleet-core/admiral/bridge/run-stream";
+import { DEFAULT_BODY_H, formatPanelMultiColHint, ANIM_INTERVAL_MS } from "@sbluemin/fleet-core/constants";
+import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
 import { getSessionStore } from "@sbluemin/fleet-core/admiral/agent-runtime";
 import type { ServiceSnapshot } from "@sbluemin/unified-agent";
+import type {
+  CarrierJobStreamEvent,
+  TrackMeta,
+  TrackStatus,
+} from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
+import {
+  coalesceTextBlock,
+  coalesceThoughtBlock,
+  upsertToolBlock,
+} from "@sbluemin/fleet-core/admiral/_shared/stream-reducers";
 import { getRegisteredOrder, isSquadronCarrierEnabled } from "../../../tool-registry.js";
-import type { AgentCol, PanelJob } from "./types.js";
+import { syncCurrentWidget } from "./widget-sync.js";
+import type { AgentCol, ColBlock, ColStatus, ColumnTrack, PanelJob } from "./types.js";
 
 export type { AgentCol } from "./types.js";
 export type { ServiceSnapshot } from "@sbluemin/unified-agent";
@@ -20,9 +31,32 @@ export interface FooterModelInfo {
   effort?: string;
 }
 
+export interface PanelRun {
+  runId: string;
+  cli: string;
+  blocks: ColBlock[];
+  status: ColStatus;
+  sessionId?: string;
+  error?: string;
+  requestPreview?: string;
+  text: string;
+  thinking: string;
+  toolCalls: { title: string; status: string }[];
+  toCollectedData(): CollectedPanelStreamData;
+}
+
+export interface CollectedPanelStreamData {
+  text: string;
+  thinking: string;
+  toolCalls: { title: string; status: string }[];
+  blocks: ColBlock[];
+  lastStatus: string;
+}
+
 export interface AgentPanelState {
   cols: AgentCol[];
   panelJobs: Map<string, PanelJob>;
+  runs: Map<string, PanelRun>;
   expanded: boolean;
   streaming: boolean;
   frame: number;
@@ -47,9 +81,10 @@ export interface AgentPanelState {
   jobBarExpandedJobId: string | null;
 }
 
-export const STATE_KEY = "__pi_agent_panel_state__";
 export const WIDGET_KEY = "ua-panel";
 export const PANEL_JOB_RETENTION = 8;
+
+let panelState: AgentPanelState | null = null;
 
 /**
  * 동적으로 등록된 carrier 순서를 반환합니다.
@@ -61,11 +96,12 @@ export function getDefaultClis(): readonly string[] {
 }
 
 export function getState(): AgentPanelState {
-  let s = (globalThis as any)[STATE_KEY] as AgentPanelState | undefined;
+  let s = panelState;
   if (!s) {
     s = {
       cols: makeCols(),
       panelJobs: new Map(),
+      runs: new Map(),
       expanded: false,
       streaming: false,
       frame: 0,
@@ -83,26 +119,9 @@ export function getState(): AgentPanelState {
       jobBarCursor: -1,
       jobBarExpandedJobId: null,
     };
-    (globalThis as any)[STATE_KEY] = s;
+    panelState = s;
   }
-  if (s.detailTrackId === undefined) s.detailTrackId = null;
-  if (!(s.panelJobs instanceof Map)) s.panelJobs = new Map();
-  if ("activeJobId" in s) delete (s as AgentPanelState & { activeJobId?: string | null }).activeJobId;
-  if (s.bottomHint === undefined) s.bottomHint = formatPanelMultiColHint();
-  if (!s.modelConfig) s.modelConfig = {};
-  if (!s.serviceSnapshots) s.serviceSnapshots = [];
-  if (s.serviceLastUpdatedAt === undefined) s.serviceLastUpdatedAt = null;
-  if (s.serviceLoading === undefined) s.serviceLoading = false;
-  if (!s.toggleCallbacks) s.toggleCallbacks = [];
-  if (s.bodyH === undefined) s.bodyH = DEFAULT_BODY_H;
-  if (s.cursorColumn === undefined) s.cursorColumn = -1;
-  if (s.jobBarMode === undefined) s.jobBarMode = false;
-  if (s.jobBarCursor === undefined) s.jobBarCursor = -1;
-  if (s.jobBarExpandedJobId === undefined) s.jobBarExpandedJobId = null;
-  if ("lastCtx" in s) delete (s as AgentPanelState & { lastCtx?: unknown }).lastCtx;
 
-  // cols가 비어있는데 캐리어가 이미 등록된 경우 lazy 재생성
-  // 초기화 타이밍 경합(state 생성 시점 < 캐리어 등록 시점)으로 발생하는 빈 패널을 복구한다
   if (s.cols.length === 0 && getDefaultClis().length > 0) {
     s.cols = makeCols();
   }
@@ -110,13 +129,16 @@ export function getState(): AgentPanelState {
   return s;
 }
 
+export function resetPanelStateForTest(): void {
+  if (panelState?.animTimer) {
+    clearInterval(panelState.animTimer);
+  }
+  panelState = null;
+}
+
 export function makeCols(clis?: readonly string[]): AgentCol[] {
   const sessionMap = getAgentSessionStore().getAll() as Readonly<Record<string, string | undefined>>;
   const targets = clis ?? getDefaultClis();
-
-  for (const cli of targets) {
-    ensureVisibleRun(cli);
-  }
 
   return targets.map((cli) => ({
     cli,
@@ -132,6 +154,20 @@ export function makeCols(clis?: readonly string[]): AgentCol[] {
 
 export function getPanelJobs(): Map<string, PanelJob> {
   return getState().panelJobs;
+}
+
+export function getPanelRuns(): Map<string, PanelRun> {
+  return getState().runs;
+}
+
+export function getActiveJobs(): PanelJob[] {
+  return Array.from(getPanelJobs().values())
+    .filter((job) => job.status === "active")
+    .sort((a, b) => a.startedAt - b.startedAt);
+}
+
+export function getJobById(jobId: string): PanelJob | undefined {
+  return getPanelJobs().get(jobId);
 }
 
 export function getRegisteredCarrierCols(): AgentCol[] {
@@ -155,16 +191,14 @@ export function syncColsWithRegisteredOrder(): void {
   s.cols = orderedIds.map((cli) => {
     const col = existing.get(cli);
     const sessionId = sessionMap[cli];
-    setRunSessionId(cli, sessionId);
     if (col) {
-      col.sessionId = sessionId;
+      col.sessionId = sessionId ?? col.sessionId;
       return col;
     }
 
-    const run = ensureVisibleRun(cli);
     return {
       cli,
-      sessionId: sessionId ?? run.sessionId,
+      sessionId,
       text: "",
       blocks: [],
       thinking: "",
@@ -205,10 +239,9 @@ export function makeFooterCols(): AgentCol[] {
     const activeCol = activeCols.get(cli);
     if (activeCol) return activeCol;
 
-    const run = ensureVisibleRun(cli);
     return {
       cli,
-      sessionId: sessionMap[cli] ?? run.sessionId,
+      sessionId: sessionMap[cli],
       text: "",
       blocks: [],
       thinking: "",
@@ -218,6 +251,333 @@ export function makeFooterCols(): AgentCol[] {
       scroll: 0,
     };
   });
+}
+
+export function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void {
+  if (event.type === "job:registered") {
+    registerStreamJob(event);
+    schedulePanelRender(true);
+    return;
+  }
+
+  if (event.type === "job:finalized") {
+    finalizeStreamJob(event);
+    schedulePanelRender(false);
+    return;
+  }
+
+  if (event.type === "track:begin") {
+    beginTrack(event);
+    schedulePanelRender(true);
+    return;
+  }
+
+  if (event.type === "track:status") {
+    updateTrackStatus(event.jobId, event.trackId, event.status);
+    schedulePanelRender(isActiveTrackStatus(event.status));
+    return;
+  }
+
+  if (event.type === "track:runId") {
+    updateTrackRunId(event.jobId, event.trackId, event.runId);
+    schedulePanelRender(true);
+    return;
+  }
+
+  if (event.type === "track:text") {
+    updateRunBlocks(event.jobId, event.trackId, (run) => {
+      coalesceTextBlock(run.blocks, event.text);
+      run.status = "stream";
+    });
+    schedulePanelRender(true);
+    return;
+  }
+
+  if (event.type === "track:thought") {
+    updateRunBlocks(event.jobId, event.trackId, (run) => {
+      coalesceThoughtBlock(run.blocks, event.text);
+      run.status = "stream";
+    });
+    schedulePanelRender(true);
+    return;
+  }
+
+  if (event.type === "track:tool") {
+    updateRunBlocks(event.jobId, event.trackId, (run) => {
+      upsertToolBlock(run.blocks, event.toolCallId, event.title, event.status);
+      if (run.status === "wait" || run.status === "conn") run.status = "stream";
+    });
+    schedulePanelRender(true);
+    return;
+  }
+
+  finalizeTrack(event);
+  schedulePanelRender(false);
+}
+
+export function getGrandFleetStreamStoreState(): {
+  runs: Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>;
+  visibleRunIdByCli: Map<string, string>;
+} {
+  const runs = new Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>();
+  const visibleRunIdByCli = new Map<string, string>();
+
+  for (const job of getPanelJobs().values()) {
+    for (const track of job.tracks) {
+      const run = resolveRunForTrack(track);
+      if (!run) continue;
+      runs.set(run.runId, {
+        error: run.error,
+        requestPreview: run.requestPreview,
+        status: run.status,
+      });
+      visibleRunIdByCli.set(track.displayCli, run.runId);
+    }
+  }
+
+  return { runs, visibleRunIdByCli };
+}
+
+function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:registered" }>): void {
+  const s = getState();
+  const job: PanelJob = {
+    jobId: event.jobId,
+    kind: event.kind,
+    ownerCarrierId: event.ownerCarrierId,
+    label: event.label,
+    startedAt: event.startedAt,
+    status: "active",
+    activeJobToolCallId: event.activeJobToolCallId,
+    tracks: event.tracks.map(toColumnTrack),
+  };
+  s.panelJobs.set(job.jobId, job);
+  for (const track of job.tracks) {
+    const runId = track.runId ?? track.streamKey;
+    const run = ensureRun(runId, track.displayCli, "wait");
+    run.sessionId = getAgentSessionStore().getAll()[track.displayCli] ?? run.sessionId;
+    s.runs.set(track.streamKey, run);
+  }
+  s.streaming = true;
+}
+
+function finalizeStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:finalized" }>): void {
+  const job = getPanelJobs().get(event.jobId);
+  if (!job) return;
+  job.status = event.status;
+  job.finishedAt = event.finishedAt;
+  trimFinalizedJobs();
+  getState().streaming = getActiveJobs().length > 0;
+}
+
+function beginTrack(event: Extract<CarrierJobStreamEvent, { type: "track:begin" }>): void {
+  const track = getTrack(event.jobId, event.trackId);
+  if (!track) return;
+  const run = ensureRun(track.runId ?? track.streamKey, track.displayCli, "conn");
+  run.requestPreview = event.requestPreview ?? run.requestPreview;
+  track.status = "conn";
+  syncCarrierColumn(track, run);
+}
+
+function updateTrackStatus(jobId: string, trackId: string, status: TrackStatus): void {
+  const track = getTrack(jobId, trackId);
+  if (!track) return;
+  track.status = toColStatus(status);
+  const run = resolveRunForTrack(track);
+  if (run) {
+    run.status = track.status;
+    syncCarrierColumn(track, run);
+  }
+}
+
+function updateTrackRunId(jobId: string, trackId: string, runId: string): void {
+  const track = getTrack(jobId, trackId);
+  if (!track) return;
+  const previousRun = resolveRunForTrack(track);
+  track.runId = runId;
+  const run = previousRun ?? ensureRun(runId, track.displayCli, "conn");
+  run.runId = runId;
+  run.cli = track.displayCli;
+  if (run.status === "wait") run.status = "conn";
+  getPanelRuns().set(runId, run);
+  getPanelRuns().set(track.streamKey, run);
+  syncCarrierColumn(track, run);
+}
+
+function updateRunBlocks(jobId: string, trackId: string, update: (run: PanelRun) => void): void {
+  const track = getTrack(jobId, trackId);
+  if (!track) return;
+  const run = resolveRunForTrack(track) ?? ensureRun(track.runId ?? track.streamKey, track.displayCli, "stream");
+  update(run);
+  refreshRunDerivedFields(run);
+  syncCarrierColumn(track, run);
+}
+
+function finalizeTrack(event: Extract<CarrierJobStreamEvent, { type: "track:finalized" }>): void {
+  const track = getTrack(event.jobId, event.trackId);
+  if (!track) return;
+  const run = resolveRunForTrack(track) ?? ensureRun(track.runId ?? track.streamKey, track.displayCli, toColStatus(event.status));
+  track.status = toColStatus(event.status);
+  run.status = track.status;
+  if (event.sessionId !== undefined) run.sessionId = event.sessionId;
+  if (event.error !== undefined) run.error = event.error;
+  prependFallbackBlocks(run, event.fallbackText, event.fallbackThought);
+  refreshRunDerivedFields(run);
+  syncCarrierColumn(track, run);
+  getState().streaming = hasActiveStreamingTrack();
+}
+
+function toColumnTrack(input: TrackMeta): ColumnTrack {
+  return {
+    trackId: input.trackId,
+    streamKey: input.streamKey,
+    displayCli: input.displayCli,
+    runId: input.runId,
+    displayName: input.displayName,
+    subtitle: input.subtitle,
+    kind: input.kind,
+    status: "wait",
+  };
+}
+
+function getTrack(jobId: string, trackId: string): ColumnTrack | undefined {
+  return getPanelJobs().get(jobId)?.tracks.find((track) => track.trackId === trackId);
+}
+
+function ensureRun(runId: string, cli: string, status: ColStatus): PanelRun {
+  const runs = getPanelRuns();
+  const existing = runs.get(runId);
+  if (existing) {
+    existing.cli = cli;
+    if (existing.status === "wait" || status !== "wait") existing.status = status;
+    return existing;
+  }
+  const run = createPanelRun(runId, cli, status);
+  runs.set(runId, run);
+  return run;
+}
+
+function createPanelRun(runId: string, cli: string, status: ColStatus): PanelRun {
+  return {
+    runId,
+    cli,
+    blocks: [],
+    status,
+    text: "",
+    thinking: "",
+    toolCalls: [],
+    toCollectedData() {
+      return {
+        text: this.text,
+        thinking: this.thinking,
+        toolCalls: this.toolCalls.map((toolCall) => ({ ...toolCall })),
+        blocks: this.blocks.map((block) => ({ ...block })),
+        lastStatus: this.status,
+      };
+    },
+  };
+}
+
+function resolveRunForTrack(track: ColumnTrack): PanelRun | undefined {
+  return (
+    (track.runId ? getPanelRuns().get(track.runId) : undefined) ??
+    getPanelRuns().get(track.streamKey) ??
+    getPanelRuns().get(track.trackId)
+  );
+}
+
+function refreshRunDerivedFields(run: PanelRun): void {
+  run.text = run.blocks
+    .filter((block): block is Extract<ColBlock, { type: "text" }> => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+  run.thinking = run.blocks
+    .filter((block): block is Extract<ColBlock, { type: "thought" }> => block.type === "thought")
+    .map((block) => block.text)
+    .join("");
+  run.toolCalls = run.blocks
+    .filter((block): block is Extract<ColBlock, { type: "tool" }> => block.type === "tool")
+    .map((block) => ({ title: block.title, status: block.status }));
+}
+
+function prependFallbackBlocks(run: PanelRun, fallbackText?: string, fallbackThought?: string): void {
+  if (fallbackText && !run.text.trim()) {
+    run.blocks.unshift({ type: "text", text: fallbackText });
+  }
+  if (fallbackThought && !run.thinking.trim()) {
+    run.blocks.unshift({ type: "thought", text: fallbackThought });
+  }
+}
+
+function syncCarrierColumn(track: ColumnTrack, run: PanelRun): void {
+  const colIndex = findColIndex(track.displayCli);
+  if (colIndex < 0) return;
+  const col = getState().cols[colIndex];
+  if (!col) return;
+  Object.assign(col, {
+    sessionId: run.sessionId ?? col.sessionId,
+    status: run.status,
+    text: run.text,
+    thinking: run.thinking,
+    toolCalls: run.toolCalls,
+    blocks: run.blocks,
+    error: run.error,
+  });
+}
+
+function toColStatus(status: TrackStatus): ColStatus {
+  if (status === "done") return "done";
+  if (status === "err" || status === "aborted") return "err";
+  if (status === "stream") return "stream";
+  if (status === "conn") return "conn";
+  return "wait";
+}
+
+function isActiveTrackStatus(status: TrackStatus): boolean {
+  return status === "conn" || status === "stream";
+}
+
+function hasActiveStreamingTrack(): boolean {
+  return getActiveJobs().some((job) =>
+    job.tracks.some((track) => track.status === "conn" || track.status === "stream"),
+  );
+}
+
+function trimFinalizedJobs(): void {
+  const jobs = getPanelJobs();
+  const finalized = Array.from(jobs.values())
+    .filter((job) => job.status !== "active" && job.finishedAt)
+    .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
+  for (const job of finalized.slice(PANEL_JOB_RETENTION)) {
+    jobs.delete(job.jobId);
+  }
+}
+
+function schedulePanelRender(animate: boolean): void {
+  if (animate) ensurePanelAnimTimer();
+  syncCurrentWidget();
+  if (!animate) stopPanelAnimTimerIfIdle();
+}
+
+function ensurePanelAnimTimer(): void {
+  const s = getState();
+  if (s.animTimer) return;
+  s.animTimer = setInterval(() => {
+    s.frame++;
+    syncCurrentWidget();
+    stopPanelAnimTimerIfIdle();
+  }, ANIM_INTERVAL_MS);
+}
+
+function stopPanelAnimTimerIfIdle(): void {
+  const s = getState();
+  const stillStreaming =
+    s.streaming ||
+    s.cols.some((col) => col.status === "conn" || col.status === "stream") ||
+    getActiveJobs().length > 0;
+  if (stillStreaming || getActiveBackgroundJobCount() > 0) return;
+  if (!s.animTimer) return;
+  clearInterval(s.animTimer);
+  s.animTimer = null;
 }
 
 function getAgentSessionStore(): { getAll(): Record<string, string | undefined> } {

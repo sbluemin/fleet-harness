@@ -33,6 +33,16 @@
       "import": "./dist/admiral/carrier.js",
       "require": "./dist/admiral/carrier.cjs"
     },
+    "./admiral/carrier/status-overlay-controller": {
+      "types": "./dist/admiral/carrier/status-overlay-controller.d.ts",
+      "import": "./dist/admiral/carrier/status-overlay-controller.js",
+      "require": "./dist/admiral/carrier/status-overlay-controller.cjs"
+    },
+    "./admiral/carrier/types": {
+      "types": "./dist/admiral/carrier/types.d.ts",
+      "import": "./dist/admiral/carrier/types.js",
+      "require": "./dist/admiral/carrier/types.cjs"
+    },
     "./admiral/carrier/personas": {
       "types": "./dist/admiral/carrier/personas.d.ts",
       "import": "./dist/admiral/carrier/personas.js",
@@ -58,25 +68,25 @@
       "import": "./dist/admiral/agent-runtime.js",
       "require": "./dist/admiral/agent-runtime.cjs"
     },
+    "./admiral/_shared/carrier-job-events": {
+      "types": "./dist/admiral/_shared/carrier-job-events.d.ts",
+      "import": "./dist/admiral/_shared/carrier-job-events.js",
+      "require": "./dist/admiral/_shared/carrier-job-events.cjs"
+    },
+    "./admiral/_shared/stream-reducers": {
+      "types": "./dist/admiral/_shared/stream-reducers.d.ts",
+      "import": "./dist/admiral/_shared/stream-reducers.js",
+      "require": "./dist/admiral/_shared/stream-reducers.cjs"
+    },
+    "./admiral/_shared/view-model": {
+      "types": "./dist/admiral/_shared/view-model.d.ts",
+      "import": "./dist/admiral/_shared/view-model.js",
+      "require": "./dist/admiral/_shared/view-model.cjs"
+    },
     "./carrier-jobs": {
       "types": "./dist/carrier-jobs.d.ts",
       "import": "./dist/carrier-jobs.js",
       "require": "./dist/carrier-jobs.cjs"
-    },
-    "./admiral/bridge/run-stream": {
-      "types": "./dist/admiral/bridge/run-stream.d.ts",
-      "import": "./dist/admiral/bridge/run-stream.js",
-      "require": "./dist/admiral/bridge/run-stream.cjs"
-    },
-    "./admiral/bridge/carrier-panel": {
-      "types": "./dist/admiral/bridge/carrier-panel.d.ts",
-      "import": "./dist/admiral/bridge/carrier-panel.js",
-      "require": "./dist/admiral/bridge/carrier-panel.cjs"
-    },
-    "./admiral/bridge/carrier-control": {
-      "types": "./dist/admiral/bridge/carrier-control.d.ts",
-      "import": "./dist/admiral/bridge/carrier-control.js",
-      "require": "./dist/admiral/bridge/carrier-control.cjs"
     },
     "./admiral": {
       "types": "./dist/admiral.d.ts",

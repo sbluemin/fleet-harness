@@ -1,15 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
-import { createRun, finalizeRun } from "@sbluemin/fleet-core/admiral/bridge/run-stream";
 import type { AgentCol } from "../../src/agent/ui/panel/types.js";
-import { getState, makeFooterCols } from "../../src/agent/ui/panel/state.js";
+import { getState, makeFooterCols, resetPanelStateForTest } from "../../src/agent/ui/panel/state.js";
 
 vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
   getSessionStore: vi.fn(() => ({
     get: vi.fn(),
     set: vi.fn(),
     clear: vi.fn(),
-    getAll: vi.fn(() => ({})),
+    getAll: vi.fn(() => ({ vanguard: "vanguard-last-session" })),
     restore: vi.fn(),
   })),
 }));
@@ -28,8 +27,7 @@ function makeCol(cli: string, status: AgentCol["status"]): AgentCol {
 }
 
 beforeEach(() => {
-  (globalThis as any)["__pi_agent_panel_state__"] = undefined;
-  (globalThis as any)["__pi_stream_store__"] = undefined;
+  resetPanelStateForTest();
   // carrier framework 상태를 테스트용으로 설정 (getRegisteredOrder 대응)
   (globalThis as any)[CARRIER_FRAMEWORK_KEY] = {
     modes: new Map(),
@@ -45,12 +43,6 @@ describe("makeFooterCols", () => {
       makeCol("genesis", "stream"),
       makeCol("sentinel", "done"),
     ];
-
-    createRun("vanguard");
-    finalizeRun("vanguard", "done", {
-      sessionId: "vanguard-last-session",
-      fallbackText: "previous output",
-    });
 
     const footerCols = makeFooterCols();
 

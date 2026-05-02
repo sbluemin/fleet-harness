@@ -9,7 +9,6 @@
 import type { ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { PANEL_DIM_COLOR } from "@sbluemin/fleet-core/constants";
-import { getActiveJobs } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
 import {
   isJobBarMode,
   enterJobBarMode,
@@ -17,6 +16,7 @@ import {
   navigateJobBar,
   toggleJobBarExpanded,
 } from "../../agent/ui/panel-lifecycle.js";
+import { getActiveJobs } from "../../agent/ui/panel/state.js";
 
 import type { HudEditorState } from "./types.js";
 import type { SegmentStateProvider } from "./types.js";

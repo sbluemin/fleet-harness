@@ -28,10 +28,13 @@ vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
   })),
 }));
 
-import { createPanelStreamingSink } from "../../src/agent/ui/agent-panel/streaming-sink.js";
-import { getState, syncColsWithRegisteredOrder } from "../../src/agent/ui/panel/state.js";
+import {
+  getState,
+  handleCarrierJobStreamEvent,
+  resetPanelStateForTest,
+  syncColsWithRegisteredOrder,
+} from "../../src/agent/ui/panel/state.js";
 import * as panelState from "../../src/agent/ui/panel/state.js";
-import { resetRuns } from "@sbluemin/fleet-core/admiral/bridge/run-stream";
 import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
 import { isStaleExtensionContextError } from "../../src/shell/context-errors.js";
 import { syncCurrentWidget, syncWidget } from "../../src/agent/ui/panel/widget-sync.js";
@@ -77,13 +80,15 @@ describe("background ctx isolation", () => {
       sessionManager: { getSessionId: () => "session-1" },
       ui: { setWidget: vi.fn() },
     };
-    const sink = createPanelStreamingSink(() => ctx as any);
 
     syncColsWithRegisteredOrder();
     getState().cols = [{ cli: "genesis", text: "", blocks: [], thinking: "", toolCalls: [], status: "wait", scroll: 0 }];
     expect(panelState.findColIndex("genesis")).toBe(0);
-    sink.onAgentStreamEvent({ type: "request_begin", key: { carrierId: "genesis", cli: "codex" } });
-    sink.onAgentStreamEvent({ type: "request_end", key: { carrierId: "genesis", cli: "codex" }, reason: "done" });
+    syncWidget(ctx as any);
+    emitSingleTrackJob("job-1");
+    handleCarrierJobStreamEvent({ type: "track:begin", jobId: "job-1", trackId: "genesis" });
+    handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "job-1", trackId: "genesis", status: "done" });
+    handleCarrierJobStreamEvent({ type: "job:finalized", jobId: "job-1", status: "done", finishedAt: Date.now(), summary: "" });
     syncCurrentWidget();
     await Promise.resolve();
 
@@ -91,28 +96,27 @@ describe("background ctx isolation", () => {
     expect(getState().streaming).toBe(false);
   });
 
-  it("uses the begin-time ctx when ending an overlapping foreground stream", async () => {
+  it("uses the current widget ctx when processing stream events", async () => {
     resetPanelGlobals();
     const ctxA = makeCtx();
-    const ctxB = makeCtx();
-    const contexts = [ctxA, ctxB];
-    const sink = createPanelStreamingSink(() => contexts.shift() as any);
 
     syncColsWithRegisteredOrder();
     getState().cols = [{ cli: "genesis", text: "", blocks: [], thinking: "", toolCalls: [], status: "wait", scroll: 0 }];
-    sink.onAgentStreamEvent({ type: "request_begin", key: { carrierId: "genesis", cli: "codex" } });
-    sink.onAgentStreamEvent({ type: "request_end", key: { carrierId: "genesis", cli: "codex" }, reason: "done" });
+    syncWidget(ctxA as any);
+    emitSingleTrackJob("job-2");
+    handleCarrierJobStreamEvent({ type: "track:begin", jobId: "job-2", trackId: "genesis" });
+    handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "job-2", trackId: "genesis", status: "done" });
+    handleCarrierJobStreamEvent({ type: "job:finalized", jobId: "job-2", status: "done", finishedAt: Date.now(), summary: "" });
+    syncCurrentWidget();
     await Promise.resolve();
 
     expect(ctxA.ui.setWidget).toHaveBeenCalled();
-    expect(ctxB.ui.setWidget).not.toHaveBeenCalled();
     expect(getState().streaming).toBe(false);
   });
 });
 
 function resetPanelGlobals(): void {
-  resetRuns();
-  (globalThis as any)["__pi_agent_panel_state__"] = undefined;
+  resetPanelStateForTest();
   (globalThis as any)[CARRIER_FRAMEWORK_KEY] = {
     modes: new Map(),
     registeredOrder: ["genesis"],
@@ -122,6 +126,24 @@ function resetPanelGlobals(): void {
     squadronEnabledCarriers: new Set(),
     pendingCliTypeOverrides: new Map(),
   };
+}
+
+function emitSingleTrackJob(jobId: string): void {
+  handleCarrierJobStreamEvent({
+    type: "job:registered",
+    jobId,
+    kind: "sortie",
+    ownerCarrierId: "genesis",
+    label: "Genesis",
+    startedAt: Date.now(),
+    tracks: [{
+      trackId: "genesis",
+      streamKey: `genesis:${jobId}`,
+      displayCli: "genesis",
+      displayName: "Genesis",
+      kind: "carrier",
+    }],
+  });
 }
 
 function makeCtx(error?: Error): { sessionManager: { getSessionId: () => string }; ui: { setWidget: ReturnType<typeof vi.fn> } } {

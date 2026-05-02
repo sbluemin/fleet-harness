@@ -8,8 +8,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { ANIM_INTERVAL_MS, formatPanelMultiColHint, PANEL_DETAIL_HINT } from "@sbluemin/fleet-core/constants";
 import { getActiveBackgroundJobCount, onActiveJobCountChange } from "@sbluemin/fleet-core/job";
-import { getActiveJobs } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
-import { getState, syncColsWithRegisteredOrder } from "./panel/state.js";
+import { getActiveJobs, getState, syncColsWithRegisteredOrder } from "./panel/state.js";
 import type { AgentCol } from "./panel/types.js";
 import { detachWidgetSync, syncCurrentWidget, syncWidget } from "./panel/widget-sync.js";
 

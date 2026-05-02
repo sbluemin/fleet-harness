@@ -6,6 +6,19 @@
  */
 
 import type { CliType } from "@sbluemin/unified-agent";
+export type {
+  BatchCliChoice,
+  CarrierCliType,
+  CarrierOverlayCallbacks,
+  CarrierStatusEntry,
+  CliModelInfo,
+  CliServiceSnapshot,
+  CliTypeChangeResult,
+  CliTypeChoice,
+  ModelSelection,
+  OverlayState,
+  ResolvedCliSelection,
+} from "./overlay-types.js";
 
 // ─── Carrier 메타데이터 (2-Tier) ────────────────────────
 

@@ -1,4 +1,4 @@
-import type { CarrierConfig } from "../../carrier/types.js";
+import type { CarrierConfig } from "./types.js";
 import type {
   CarrierCliType,
   CarrierOverlayCallbacks,
@@ -7,7 +7,7 @@ import type {
   CliTypeChangeResult,
   ModelSelection,
   ResolvedCliSelection,
-} from "./types.js";
+} from "./overlay-types.js";
 
 interface StoredCliSelection {
   model?: string;

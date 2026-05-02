@@ -1,26 +1,21 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { configureBridgeStateStorage } from "@sbluemin/fleet-core/admiral/bridge/run-stream";
-import {
-  appendTextBlock,
-  createRun,
-} from "@sbluemin/fleet-core/admiral/bridge/run-stream";
+import type { ColBlock } from "@sbluemin/fleet-core/admiral/agent-runtime";
+import type { PanelRun } from "../../src/agent/ui/panel/state.js";
 import type { PanelJob } from "../../src/agent/ui/panel/types.js";
 import { renderPanelFull } from "../../src/shell/render/panel-renderer.js";
 
-beforeEach(() => {
-  configureBridgeStateStorage(null);
-  (globalThis as any)["__pi_stream_store__"] = undefined;
-});
-
 describe("renderPanelFull", () => {
   it("긴 단일 text block도 최근 5줄 tail로 제한한다", () => {
-    const runId = createRun("genesis", "stream");
-    appendTextBlock("genesis", "line1\nline2\nline3\nline4\nline5\nline6\nline7\n");
+    const runId = "run-1";
+    const runs = new Map<string, PanelRun>([
+      [runId, buildRun(runId, [{ type: "text", text: "line1\nline2\nline3\nline4\nline5\nline6\nline7\n" }])],
+    ]);
 
     const rendered = renderPanelFull(
       100,
       [buildJob(runId)],
+      runs,
       0,
       "",
       "",
@@ -52,5 +47,26 @@ function buildJob(runId: string): PanelJob {
       kind: "carrier",
       status: "wait",
     }],
+  };
+}
+
+function buildRun(runId: string, blocks: ColBlock[]): PanelRun {
+  return {
+    runId,
+    cli: "genesis",
+    blocks,
+    status: "stream",
+    text: "",
+    thinking: "",
+    toolCalls: [],
+    toCollectedData() {
+      return {
+        text: "",
+        thinking: "",
+        toolCalls: [],
+        blocks,
+        lastStatus: "stream",
+      };
+    },
   };
 }

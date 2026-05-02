@@ -77,11 +77,9 @@ The old compatibility names are intentionally absent from the runtime context:
 
 The root export also provides support types needed to host the runtime:
 
-- `FleetServicesPorts` — Host-supplied ports for logging, background execution, and push notifications.
-  - `logDebug`: Debug logging bridge.
-  - `runAgentRequestBackground`: Background execution port for fleet requests.
-  - `enqueueCarrierCompletionPush`: Push notification port for job completion.
-  - `streamingSink`: (Optional) Sink for agent stream events.
+- `FleetServicesPorts` — Reserved host port object for runtime compatibility; carrier execution now uses core services directly.
+- `FleetJobServices.streaming.register(handler)` — Registers a synchronous handler for normalized carrier job stream events.
+- `FleetJobServices.streaming.unregister(handler)` — Unregisters a carrier job stream handler.
 - `AgentToolSpec` — Host-agnostic agent tool metadata and execution contract.
 - `AgentToolCtx` — Execution context passed to registered agent tools.
 - `McpCallToolResult` / `ToolCallArrivedCallback` — Types for MCP interaction.
@@ -118,15 +116,17 @@ Current Fleet domain compatibility subpaths (based on `package.json` exports):
 - `@sbluemin/fleet-core/job`
 - `@sbluemin/fleet-core/admiral`
 - `@sbluemin/fleet-core/admiral/carrier`
+- `@sbluemin/fleet-core/admiral/carrier/status-overlay-controller`
+- `@sbluemin/fleet-core/admiral/carrier/types`
 - `@sbluemin/fleet-core/admiral/carrier/personas`
 - `@sbluemin/fleet-core/admiral/squadron`
 - `@sbluemin/fleet-core/admiral/taskforce`
 - `@sbluemin/fleet-core/admiral/store`
 - `@sbluemin/fleet-core/admiral/agent-runtime`
+- `@sbluemin/fleet-core/admiral/_shared/carrier-job-events`
+- `@sbluemin/fleet-core/admiral/_shared/stream-reducers`
+- `@sbluemin/fleet-core/admiral/_shared/view-model`
 - `@sbluemin/fleet-core/carrier-jobs`
-- `@sbluemin/fleet-core/admiral/bridge/run-stream`
-- `@sbluemin/fleet-core/admiral/bridge/carrier-panel`
-- `@sbluemin/fleet-core/admiral/bridge/carrier-control`
 - `@sbluemin/fleet-core/admiral/protocols/standing-orders`
 - `@sbluemin/fleet-core/services/tool-registry`
 - `@sbluemin/fleet-core/metaphor`

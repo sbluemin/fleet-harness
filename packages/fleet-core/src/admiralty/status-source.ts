@@ -72,30 +72,23 @@ export function buildFleetPingPayloadFromState(input: {
 
 export function collectCarrierMap(
   framework: FleetFrameworkLikeState,
-  streams: StreamStoreLikeState,
+  _streams: StreamStoreLikeState,
 ): CarrierMap {
-  const runs = getVisibleRunMap(streams);
   const carriers: CarrierMap = {};
   const order = framework.registeredOrder ?? [];
 
   for (const carrierId of order) {
     const mode = framework.modes?.get(carrierId);
     const cli = normalizeCliBackend(mode?.config?.cliType);
-    const run = runs.get(carrierId);
     const isUnavailable = framework.sortieDisabledCarriers?.has(carrierId) ?? false;
     const isStandby = framework.squadronEnabledCarriers?.has(carrierId) ?? false;
-    const status = deriveCarrierStatus(run?.status, isUnavailable, isStandby);
+    const status = deriveCarrierStatus(undefined, isUnavailable, isStandby);
     const info: CarrierInfo = {
       status,
     };
 
     if (cli) {
       info.cli = cli;
-    }
-
-    const task = deriveCarrierTask(run);
-    if (task) {
-      info.task = task;
     }
 
     if (framework.taskforceConfiguredCarriers?.has(carrierId)) {
@@ -160,25 +153,6 @@ function deriveCarrierTask(run: StreamRunLikeState | undefined): string | undefi
 
 function normalizeCliBackend(value: string | undefined): CliType | undefined {
   return value !== undefined && value in CLI_BACKENDS ? value as CliType : undefined;
-}
-
-function getVisibleRunMap(streams: StreamStoreLikeState): Map<string, StreamRunLikeState> {
-  const visibleRunMap = new Map<string, StreamRunLikeState>();
-  const visibleRunIdByCli = streams.visibleRunIdByCli;
-  const runs = streams.runs;
-
-  if (!visibleRunIdByCli || !runs) {
-    return visibleRunMap;
-  }
-
-  for (const [carrierId, runId] of visibleRunIdByCli.entries()) {
-    const run = runs.get(runId);
-    if (run) {
-      visibleRunMap.set(carrierId, run);
-    }
-  }
-
-  return visibleRunMap;
 }
 
 function sanitizeTaskText(value: string): string {

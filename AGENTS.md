@@ -13,10 +13,10 @@
 | `docs/admiral-workflow-reference.md` | **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
 | `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `pi-fleet-extension` |
 | `packages/fleet-core/` | Pi-agnostic Fleet product core — Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, **Admiral orchestration runtime**, and public APIs |
-| `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (detached-fanout), `bridge/`, `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
+| `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (agent-runtime, carrier-job-events, stream-reducers, view-model), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
 | `packages/fleet-core/src/services/` | Shared pure service modules. Includes `job/`, `log/`, `settings/`, and **tool-registry**. |
 | `packages/fleet-core/src/admiralty/` | Grand Fleet domain home inside `fleet-core` (renamed from `gfleet`). Exposed via `@sbluemin/fleet-core/admiralty`. |
-| `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus domain service modules only (`fleet-services`, `grand-fleet-services`, `metaphor-services`, `job-services`, `log-services`, `settings-services`). Note that `agent-services`, `tool-registry-services`, and `agent-request` have been removed from the public surface. |
+| `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus domain service modules only (`fleet-services`, `grand-fleet-services`, `metaphor-services`, `job-services`, `log-services`, `settings-services`). Note that `agent-services`, `tool-registry-services`, and `agent-request` have been removed from the public surface. `job-services` exposes `streaming.register(handler)` for SSOT carrier job stream event consumption. |
 | `packages/pi-fleet-extension/` | Pi capability package — Flat Domain Architecture mirroring fleet-core public services |
 | `packages/unified-agent/` | Minimal-dependency SDK for multi-CLI integration (Gemini, Claude, Codex). Now includes `service-status/` for unified health tracking. |
 | `packages/pi-fleet-extension/src/` | Root of pi-facing domains |

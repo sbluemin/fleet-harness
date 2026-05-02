@@ -15,7 +15,6 @@ import {
   MIN_BODY_H,
 } from "@sbluemin/fleet-core/constants";
 import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
-import { getActiveJobs } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
 
 import {
   renderPanelFull,
@@ -23,7 +22,7 @@ import {
 import { renderJobBar } from "../../../shell/render/job-bar-renderer.js";
 import { renderCarrierStatus } from "../carrier-ui/status-renderer.js";
 import { isStaleExtensionContextError } from "../../../shell/context-errors.js";
-import { getState, makeFooterCols, WIDGET_KEY } from "./state.js";
+import { getActiveJobs, getPanelRuns, getState, makeFooterCols, WIDGET_KEY } from "./state.js";
 
 const FLEET_CARRIER_STATUS_WIDGET_KEY = "fleet-carrier-status";
 
@@ -126,7 +125,7 @@ function applyWidgetSync(ctx: ExtensionContext): void {
           const effectiveBodyH = Math.min(state.bodyH, maxBodyH);
 
           return renderPanelFull(
-            width, activeJobs, state.frame, frameColor,
+            width, activeJobs, getPanelRuns(), state.frame, frameColor,
             state.bottomHint, state.detailTrackId, effectiveBodyH,
             state.cursorColumn,
           );

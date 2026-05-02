@@ -73,60 +73,6 @@ export interface CollectedStreamData {
   lastStatus: AgentStatus;
 }
 
-export type AgentStreamEndReason = "done" | "error" | "aborted";
-
-export interface AgentStreamKey {
-  readonly carrierId: string;
-  readonly cli?: CliType;
-  readonly requestId?: string;
-}
-
-export interface AgentStreamToolEvent {
-  readonly type: "tool";
-  readonly key: AgentStreamKey;
-  readonly title: string;
-  readonly status: string;
-  readonly toolCallId?: string;
-}
-
-export type AgentStreamEvent =
-  | {
-    readonly type: "request_begin";
-    readonly key: AgentStreamKey;
-    readonly requestPreview?: string;
-  }
-  | {
-    readonly type: "status";
-    readonly key: AgentStreamKey;
-    readonly status: AgentStatus;
-  }
-  | {
-    readonly type: "message";
-    readonly key: AgentStreamKey;
-    readonly text: string;
-  }
-  | {
-    readonly type: "thought";
-    readonly key: AgentStreamKey;
-    readonly text: string;
-  }
-  | AgentStreamToolEvent
-  | {
-    readonly type: "request_end";
-    readonly key: AgentStreamKey;
-    readonly reason: AgentStreamEndReason;
-    readonly sessionId?: string;
-    readonly responseText?: string;
-    readonly thoughtText?: string;
-    readonly streamData?: CollectedStreamData;
-    readonly error?: string;
-  }
-  | {
-    readonly type: "error";
-    readonly key: AgentStreamKey;
-    readonly message: string;
-  };
-
 /** executeWithPool / executeOneShot 공통 옵션 */
 export interface ExecuteOptions {
   /** 고유 carrier 식별자 — 풀 키, 세션 스토어 키 */

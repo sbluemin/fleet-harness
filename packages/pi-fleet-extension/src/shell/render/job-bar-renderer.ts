@@ -15,13 +15,10 @@ import {
 	SYM_INDICATOR,
 	CLI_DISPLAY_NAMES,
 } from "@sbluemin/fleet-core/constants";
-import {
-	buildPanelViewModel,
-	getActiveJobs,
-} from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
-import type { PanelJobViewModel, PanelTrackViewModel } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
+import { buildPanelViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
+import type { PanelJobViewModel, PanelTrackViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
 import { resolveCarrierColor, resolveCarrierRgb } from "../../tool-registry.js";
-import { getState } from "../../agent/ui/panel/state.js";
+import { getActiveJobs, getPanelRuns, getState } from "../../agent/ui/panel/state.js";
 import { renderBlockLines } from "./block-renderer.js";
 import { waveText } from "./panel-renderer.js";
 
@@ -52,7 +49,7 @@ export function renderJobBar(width: number, frame: number): string[] {
 	if (jobs.length === 0) return [];
 
 	const s = getState();
-	const vmJobs = buildPanelViewModel(jobs, { maxTrackBlocks: MAX_EXPANDED_STREAM_LINES });
+	const vmJobs = buildPanelViewModel(jobs, getPanelRuns(), { maxTrackBlocks: MAX_EXPANDED_STREAM_LINES });
 	const cursor = Math.min(s.jobBarCursor, vmJobs.length - 1);
 
 	if (s.jobBarExpandedJobId && vmJobs.some((j) => j.jobId === s.jobBarExpandedJobId)) {
@@ -234,4 +231,3 @@ function trackDisplayName(track: PanelTrackViewModel): string {
 	}
 	return track.displayName;
 }
-

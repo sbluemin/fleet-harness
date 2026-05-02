@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-import { StatusOverlayController } from "../../src/admiral/bridge/carrier-control/status-overlay-controller.js";
+import { StatusOverlayController } from "../../src/admiral/carrier/status-overlay-controller.js";
 import type {
   CarrierCliType,
   CarrierStatusEntry,
   CliModelInfo,
   ModelSelection,
-} from "../../src/admiral/bridge/carrier-control/types.js";
+} from "../../src/admiral/carrier/overlay-types.js";
 import type { CarrierConfig } from "../../src/admiral/carrier/types.js";
 
 interface TestState {

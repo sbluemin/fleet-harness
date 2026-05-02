@@ -72,7 +72,7 @@ Current Flat Domain Architecture in `pi-fleet-extension`:
 | `src/grand-fleet/` | Domain-internal home for multi-instance Grand Fleet orchestration |
 | `src/fleet-wiki/` | Domain-internal home for knowledge base, ingest, and patching |
 | `src/shell/` | Domain-internal home for host shell integration and terminal features |
-| `src/fleet.ts` | Domain entrypoint for fleet-wide bridge and orchestration features |
+| `src/fleet.ts` | Domain entrypoint for fleet-wide orchestration and event adapter features |
 | `src/metaphor.ts` | Domain entrypoint for persona, worldview, and naval metaphors |
 | `src/job.ts` | Domain entrypoint for detached carrier job management |
 | `src/settings.ts` | Domain entrypoint for fleet-wide settings and configuration |

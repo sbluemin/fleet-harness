@@ -10,6 +10,7 @@ import { registerModelCommands, syncModelConfig } from "./agent/carrier/model-ui
 import { bootBridge } from "./agent/ui/acp-shell/register.js";
 import { registerFleetPiCommands } from "./fleet.js";
 import {
+  getFleetRuntime,
   initializeFleetRuntime,
   registerFleetCarriers,
   resolveFleetDataDir,
@@ -18,11 +19,14 @@ import {
   shouldBootFleet,
   wireFleetPiEvents,
 } from "./fleet.js";
+import { handleCarrierJobStreamEvent } from "./agent/ui/panel/state.js";
 import { registerLog as registerLogDomain } from "./log.js";
 import { registerMetaphor } from "./metaphor.js";
 import { registerSettings } from "./settings.js";
 import { registerShell } from "./shell/index.js";
 import { registerToolRegistry } from "./tool-registry.js";
+
+let unregisterStreamingHandler: (() => void) | null = null;
 
 export function bootFleet(ctx: ExtensionAPI): void {
   registerBoot(ctx);
@@ -30,6 +34,7 @@ export function bootFleet(ctx: ExtensionAPI): void {
 
   if (fleetEnabled) {
     initializeFleetRuntime(resolveFleetDataDir());
+    registerStreamingHandler(ctx);
   }
 
   registerShell(ctx);
@@ -43,6 +48,15 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerLog(ctx, fleetEnabled);
   registerToolRegistry(ctx, fleetEnabled);
   registerProviderGuardCommand(ctx);
+}
+
+function registerStreamingHandler(pi: ExtensionAPI): void {
+  unregisterStreamingHandler?.();
+  unregisterStreamingHandler = getFleetRuntime().jobs.streaming.register(handleCarrierJobStreamEvent);
+  pi.on("session_shutdown", () => {
+    unregisterStreamingHandler?.();
+    unregisterStreamingHandler = null;
+  });
 }
 
 function registerFleet(pi: ExtensionAPI, fleetEnabled: boolean): void {

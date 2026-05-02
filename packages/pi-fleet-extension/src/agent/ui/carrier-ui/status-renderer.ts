@@ -14,7 +14,6 @@ import {
   SYM_INDICATOR,
   TASKFORCE_BADGE_COLOR,
 } from "@sbluemin/fleet-core/constants";
-import { getActiveJobs } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
 import { getConfiguredTaskForceBackends } from "@sbluemin/fleet-core/admiral/store";
 
 import {
@@ -25,7 +24,9 @@ import {
   isSquadronCarrierEnabled,
 } from "../../../tool-registry.js";
 import { waveText } from "../../../shell/render/panel-renderer.js";
+import { getActiveJobs } from "../panel/state.js";
 import type { AgentCol } from "../panel/types.js";
+import type { PanelJob } from "../panel/types.js";
 
 /** renderCarrierStatus에 필요한 최소 상태 */
 interface CarrierStatusRenderInput {
@@ -102,7 +103,7 @@ function toFooterCol(col: AgentCol, streaming: boolean, hasActiveJob: boolean): 
 }
 
 function hasActiveJobForCarrier(
-  activeJobs: ReturnType<typeof getActiveJobs>,
+  activeJobs: PanelJob[],
   carrierId: AgentCol["cli"],
 ): boolean {
   return activeJobs.some((job) => (

@@ -7,16 +7,17 @@
  */
 
 import type {
-  PanelJobKind,
-  PanelJobStatus,
-} from "@sbluemin/fleet-core/admiral/bridge/run-stream";
+  ColBlock,
+  CollectedStreamData,
+} from "@sbluemin/fleet-core/admiral/agent-runtime";
+import type {
+  CarrierJobKind,
+  CarrierJobStatus,
+} from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
 
 export type ColStatus = "wait" | "conn" | "stream" | "done" | "err";
 
-export type ColBlock =
-  | { type: "thought"; text: string }
-  | { type: "text"; text: string }
-  | { type: "tool"; title: string; status: string; rawOutput?: string; toolCallId?: string };
+export type { ColBlock, CollectedStreamData };
 
 /** 에이전트 패널 칼럼 데이터 */
 export interface AgentCol {
@@ -49,12 +50,12 @@ export interface ColumnTrack {
 
 export interface PanelJob {
   jobId: string;
-  kind: PanelJobKind;
+  kind: CarrierJobKind;
   ownerCarrierId: string;
   label: string;
   startedAt: number;
   finishedAt?: number;
-  status: PanelJobStatus;
+  status: "active" | CarrierJobStatus;
   tracks: ColumnTrack[];
   activeJobToolCallId?: string;
 }

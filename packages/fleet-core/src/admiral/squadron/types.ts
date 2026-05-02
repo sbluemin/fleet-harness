@@ -1,7 +1,7 @@
 /**
  * fleet/shipyard/squadron/types.ts — Squadron 도구 타입 정의
  *
- * SubtaskProgress, SquadronResult, SquadronState 및 globalThis 키 상수를 정의합니다.
+ * SubtaskProgress, SquadronResult, SquadronState를 정의합니다.
  */
 
 // ─── 타입 정의 ──────────────────────────────────────────
@@ -33,7 +33,7 @@ export interface SquadronResult {
   toolCalls?: { title: string; status: string }[];
 }
 
-/** Squadron 실행 중 상태 (실행 중에만 globalThis에 존재) */
+/** Squadron 실행 중 상태 (실행 중에만 모듈 레벨 Map에 존재) */
 export interface SquadronState {
   /** 선택된 캐리어 ID */
   carrierId: string;
@@ -53,6 +53,3 @@ export interface SquadronState {
 
 /** 최대 동시 인스턴스 수 (하드 캡) */
 export const SQUADRON_MAX_INSTANCES = 10;
-
-/** globalThis 진행 상태 키 */
-export const SQUADRON_STATE_KEY = "__pi_carrier_squadron_state__";

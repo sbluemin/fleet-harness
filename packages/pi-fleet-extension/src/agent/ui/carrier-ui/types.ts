@@ -10,7 +10,7 @@ import type {
   ModelSelection,
   OverlayState,
   ResolvedCliSelection,
-} from "@sbluemin/fleet-core/admiral/bridge/carrier-control";
+} from "@sbluemin/fleet-core/admiral/carrier/types";
 
 export type {
   BatchCliChoice,
@@ -24,4 +24,4 @@ export type {
   ModelSelection,
   OverlayState,
   ResolvedCliSelection,
-} from "@sbluemin/fleet-core/admiral/bridge/carrier-control";
+} from "@sbluemin/fleet-core/admiral/carrier/types";

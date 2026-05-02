@@ -26,7 +26,7 @@ import {
 import type { LogOptions } from "@sbluemin/fleet-core/services/log";
 import type { BackendProgress, TaskForceResult, TaskForceState } from "@sbluemin/fleet-core/admiral/taskforce";
 import type { SubtaskProgress, SquadronResult, SquadronState } from "@sbluemin/fleet-core/admiral/squadron";
-import { SQUADRON_MAX_INSTANCES, SQUADRON_STATE_KEY } from "@sbluemin/fleet-core/admiral/squadron";
+import { SQUADRON_MAX_INSTANCES } from "@sbluemin/fleet-core/admiral/squadron";
 import { getLogAPI } from "@sbluemin/fleet-core/services/log";
 import {
   deriveToolDescription,
@@ -49,7 +49,6 @@ import type {
 } from "@sbluemin/fleet-core";
 
 import { enqueueCarrierCompletionPush } from "./agent/carrier-completion.js";
-import { createPanelStreamingSink } from "./agent/ui/agent-panel/streaming-sink.js";
 import { setAgentPanelModelConfig } from "./agent/ui/panel/config.js";
 import { renderCarrierJobsCall, renderCarrierJobsResult, type CarrierJobsToolResult } from "./job.js";
 import { getFleetRuntime } from "./fleet.js";
@@ -59,7 +58,7 @@ import {
 } from "./shell/render/message-renderers.js";
 
 export type { BackendProgress, CarrierConfig, SquadronResult, SquadronState, SubtaskProgress, TaskForceResult, TaskForceState };
-export { SQUADRON_MAX_INSTANCES, SQUADRON_STATE_KEY };
+export { SQUADRON_MAX_INSTANCES };
 export * from "@sbluemin/fleet-core/admiral/carrier";
 
 interface PiRenderContext {
@@ -269,7 +268,6 @@ export function createFleetRegistryPorts(pi?: ExtensionAPI): FleetServicesPorts 
         enqueueCarrierCompletionPush(currentPi, payload);
       }
     },
-    streamingSink: createPanelStreamingSink(),
   };
 }
 

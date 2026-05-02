@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Breaking Changes
+- **`streamingSink` removed from `FleetServicesPorts`**: The public `streamingSink` API signature has been removed from `FleetServicesPorts`. Consumers must migrate to `jobServices.streaming.register(handler)` for SSOT carrier job stream event consumption.
+- **Bridge subpaths removed**: The three public subpaths `@sbluemin/fleet-core/admiral/bridge/run-stream`, `admiral/bridge/carrier-panel`, and `admiral/bridge/carrier-control` are no longer exported.
+- **`AgentStreamEvent` replaced**: The `AgentStreamEvent` type has been removed. Use `CarrierJobStreamEvent` (SSOT) instead.
+
+### Removed
+- **`bridge/` directory entirely**: Removed `packages/fleet-core/src/admiral/bridge/` including `run-stream/`, `carrier-panel/`, and `carrier-control/`.
+- **`detached-fanout.ts`**: Removed `packages/fleet-core/src/admiral/_shared/detached-fanout.ts`.
+- **`XxxToolPorts` interfaces**: Removed `SortieToolPorts`, `SquadronToolPorts`, and `TaskForceToolPorts` interfaces.
+- **`streaming-sink.ts` (pi-fleet-extension)**: Removed `packages/pi-fleet-extension/src/agent/ui/streaming-sink.ts`.
+- **Global bridge keys**: Removed 6 `globalThis` bridge keys related to bridge streaming and panel state.
+
+### Added
+- **`CarrierJobStreamEvent` SSOT type**: New normalized carrier job stream event type unifying sortie, squadron, and taskforce streaming contracts.
+- **`jobServices.streaming.register(handler)`**: Public API for registering synchronous handlers for normalized carrier job stream events.
+- **`services/job/sanitize.ts`**: Unified sanitize module for detached job inputs and outputs.
+- **`services/job/detached-job-lifecycle.ts`**: Detached job lifecycle helper for consistent job state management.
+- **`admiral/_shared/stream-reducers.ts`**: Pure coalescing reducers for carrier job stream events.
+- **`admiral/_shared/view-model.ts`**: Store-free `buildPanelViewModel` builder for render-agnostic panel state.
+- **`admiral/carrier/status-overlay-controller.ts`**: Overlay controller relocated from the removed `bridge/carrier-control/` to `admiral/carrier/`.
+- **`admiral/carrier/overlay-types.ts`**: Overlay types relocated alongside the status overlay controller.
+
 ## [0.9.0] - 2026-05-02
 
 ### Added

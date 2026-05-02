@@ -1,30 +1,50 @@
 /**
  * squadron/tool-spec.ts — carrier_squadron 도구 스펙
  *
- * 동일 캐리어 타입의 여러 인스턴스를 병렬로 출격하여
- * 하나의 임무를 분할 처리합니다.
- *
- * - execute(): executeOneShot 기반 비세션 병렬 실행
- * - renderCall/renderResult: 고정 요약만 반환하고 실시간 스트리밍은 Agent Panel이 전담
+ * 동일 캐리어 타입의 여러 인스턴스를 병렬로 출격하여 하나의 임무를 분할 처리합니다.
  */
 
+import type { CliType } from "@sbluemin/unified-agent";
+
 import type { AgentToolSpec } from "../../services/tool-registry/index.js";
-import { registerToolPromptManifest } from "../../services/tool-registry/index.js";
-import { registerSquadronJob } from "../bridge/carrier-panel/index.js";
-import { getVisibleRun } from "../bridge/run-stream/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../services/job/index.js";
+import type { LogOptions } from "../../services/log/index.js";
+import type { ExecuteResult, AgentStatus } from "../_shared/agent-runtime.js";
+
 import {
-  finalizeDetachedFanoutJob,
+  appendBlock,
+  finalizeDetachedJob,
   launchResponseResult,
-  runDetachedFanoutTrack,
-  startDetachedFanoutJob,
-  type DetachedFanoutOneShotResult,
-  type DetachedFanoutPermit,
-} from "../_shared/detached-fanout.js";
+  sanitizeChunk,
+  sanitizeToolLabel,
+  startDetachedJob,
+  toMessageArchiveBlock,
+  toThoughtArchiveBlock,
+} from "../../services/job/index.js";
+import { getLogAPI } from "../../services/log/store.js";
+import { registerToolPromptManifest } from "../../services/tool-registry/index.js";
+import { executeOneShot } from "../_shared/agent-runtime.js";
+import {
+  emitStreamEvent,
+  type CarrierJobStatus,
+  type TrackMeta,
+  type TrackStatus,
+} from "../_shared/carrier-job-events.js";
+import {
+  getActiveSquadronIds,
+  getRegisteredCarrierConfig,
+  getRegisteredOrder,
+  isSortieCarrierEnabled,
+  isSquadronCarrierEnabled,
+  resolveCarrierDisplayName,
+} from "../carrier/framework.js";
+import { buildCarrierSystemPrompt, composeTier2Request } from "../carrier/prompts.js";
+import { loadModels } from "../store/index.js";
 import {
   FLEET_SQUADRON_DESCRIPTION,
   SQUADRON_MANIFEST,
-  buildSquadronPromptSnippet,
   buildSquadronPromptGuidelines,
+  buildSquadronPromptSnippet,
   buildSquadronSchema,
 } from "./prompts.js";
 import {
@@ -37,33 +57,12 @@ import {
   validateSquadronSubtaskLimit,
 } from "./squadron-execute.js";
 import {
-  SQUADRON_STATE_KEY,
   SQUADRON_MAX_INSTANCES,
   type SquadronResult,
   type SquadronState,
 } from "./types.js";
-import type { CarrierJobStatus } from "../../services/job/index.js";
-import { loadModels } from "../store/index.js";
-
-import {
-  getActiveSquadronIds,
-  getRegisteredOrder,
-  getRegisteredCarrierConfig,
-  isSortieCarrierEnabled,
-  isSquadronCarrierEnabled,
-  resolveCarrierDisplayName,
-} from "../carrier/framework.js";
-import { buildCarrierSystemPrompt, composeTier2Request } from "../carrier/prompts.js";
-
-// ─── 타입 ────────────────────────────────────────────────
-
-interface SquadronToolPorts {
-  readonly logDebug: (category: string, message: string, options?: unknown) => void;
-  readonly enqueueCarrierCompletionPush: (payload: { jobId: string; summary: string }) => void;
-}
 
 interface SquadronBackgroundOptions {
-  ports: SquadronToolPorts;
   jobId: string;
   carrierId: string;
   requestKey: string;
@@ -73,7 +72,7 @@ interface SquadronBackgroundOptions {
   signal: AbortSignal | undefined;
   cwd: string;
   carrierConfig: ReturnType<typeof getRegisteredCarrierConfig>;
-  permit: DetachedFanoutPermit;
+  permit: JobPermitAccepted;
   startedAt: number;
 }
 
@@ -84,23 +83,14 @@ const SQUADRON_LOG_CATEGORY_STREAM = "fleet-squadron:stream";
 const SQUADRON_LOG_CATEGORY_EXEC = "fleet-squadron:exec";
 const SQUADRON_LOG_CATEGORY_RESULT = "fleet-squadron:result";
 const SQUADRON_LOG_CATEGORY_ERROR = "fleet-squadron:error";
+const squadronStateStore = new Map<string, SquadronState>();
 
-// ─── 공개 API ────────────────────────────────────────────
-
-/**
- * carrier_squadron 도구 정의(ToolDefinition)를 조립해 반환합니다.
- *
- * 도구 등록 호출 오너쉽은 fleet/index.ts가 부팅 시 1회 등록합니다.
- * 이 팩토리는 등록 시 필요한 schema/guidelines/execute/render 등
- * 도구 기능 자체만을 제공합니다. 등록 불필요 시 null을 반환합니다.
- */
-export function buildSquadronToolSpec(ports: SquadronToolPorts): AgentToolSpec | null {
+export function buildSquadronToolSpec(): AgentToolSpec | null {
   const allCarriers = getRegisteredOrder();
   if (allCarriers.length < 1) return null;
 
   registerToolPromptManifest(SQUADRON_MANIFEST);
 
-  // squadron 활성 캐리어만 스키마/가이드라인에 반영
   const enabledCarriers = getActiveSquadronIds();
   const guidelines = buildSquadronPromptGuidelines(enabledCarriers);
 
@@ -112,7 +102,6 @@ export function buildSquadronToolSpec(ports: SquadronToolPorts): AgentToolSpec |
     promptGuidelines: guidelines,
     parameters: buildSquadronSchema(enabledCarriers),
 
-    // ── renderCall: 고정 1줄 요약 (실시간 스트리밍은 Agent Panel 전담) ──
     render: {
       call(args: unknown) {
         const typedArgs = args as { carrier?: string; subtasks?: Array<{ title: string; request: string }> };
@@ -120,40 +109,35 @@ export function buildSquadronToolSpec(ports: SquadronToolPorts): AgentToolSpec |
       },
     },
 
-    // ── execute: 병렬 job 등록 ──
     async execute(args: unknown, ctx) {
       const t0 = ctx.now();
       const cwd = ctx.cwd;
       const params = args as { carrier: string; expected_subtask_count: number; subtasks: Array<{ title: string; request: string }> };
       const { carrier: carrierId, expected_subtask_count, subtasks } = params;
-      ports.logDebug(
+      logDebug(
         SQUADRON_LOG_CATEGORY_INVOKE,
         `execute start carrier=${carrierId} subtasks=${subtasks.length} ids=${subtasks.map((_, index) => `${index}`).join(", ") || "(none)"}`,
       );
 
-      // 1. 검증
-      assertRegisteredCarrier(ports, carrierId);
-      assertSortieEnabled(ports, carrierId);
-      assertSquadronEnabled(ports, carrierId);
-      assertSubtaskCount(ports, expected_subtask_count, subtasks.length);
-      assertSubtaskLimit(ports, subtasks.length);
-      ports.logDebug(
+      assertRegisteredCarrier(carrierId);
+      assertSortieEnabled(carrierId);
+      assertSquadronEnabled(carrierId);
+      assertSubtaskCount(expected_subtask_count, subtasks.length);
+      assertSubtaskLimit(subtasks.length);
+      logDebug(
         SQUADRON_LOG_CATEGORY_VALIDATE,
         `validated carrier=${carrierId} expected=${expected_subtask_count} subtasks=${subtasks.length}`,
       );
 
-      // 1.5. title 새니타이즈 — 경계 마커 인젝션 방지
       const sanitizedSubtasks = sanitizeSquadronSubtasks(subtasks);
-
-      // 2. Tier 2 request 조합 (base 캐리어의 persona 상속)
       const carrierConfig = getRegisteredCarrierConfig(carrierId);
-      const composedSubtasks = sanitizedSubtasks.map((st) =>
+      const composedSubtasks = sanitizedSubtasks.map((subtask) =>
         carrierConfig?.carrierMetadata
-          ? composeTier2Request(carrierConfig.carrierMetadata, st.request)
-          : st.request,
+          ? composeTier2Request(carrierConfig.carrierMetadata, subtask.request)
+          : subtask.request,
       );
 
-      const launch = startDetachedFanoutJob({
+      const launch = startDetachedJob({
         jobKind: "squadron",
         toolName: "carrier_squadron",
         toolCallId: ctx.toolCallId,
@@ -163,12 +147,11 @@ export function buildSquadronToolSpec(ports: SquadronToolPorts): AgentToolSpec |
       });
       if (!launch.accepted) return launch.response;
 
-      // 3. 진행 상태 초기화
       const requestKey = buildSquadronRequestKey(carrierId, sanitizedSubtasks);
       const state = initSquadronState(carrierId, requestKey, sanitizedSubtasks);
+      emitSquadronJobRegistered(launch.jobId, carrierId, requestKey, sanitizedSubtasks, t0);
 
       void runSquadronJobInBackground({
-        ports,
         jobId: launch.jobId,
         carrierId,
         requestKey,
@@ -182,39 +165,22 @@ export function buildSquadronToolSpec(ports: SquadronToolPorts): AgentToolSpec |
         startedAt: t0,
       });
 
-      ports.logDebug(SQUADRON_LOG_CATEGORY_RESULT, `carrier=${carrierId} accepted job=${launch.jobId}`);
+      logDebug(SQUADRON_LOG_CATEGORY_RESULT, `carrier=${carrierId} accepted job=${launch.jobId}`);
       return launchResponseResult({ job_id: launch.jobId, accepted: true });
     },
   };
 }
 
-// ─── 내부 상태 관리 ──────────────────────────────────────
-
 async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Promise<void> {
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let results: SquadronResult[] = [];
-  registerSquadronJob(
-    opts.jobId,
-    opts.carrierId,
-    `${opts.sanitizedSubtasks.length} subtasks`,
-    opts.sanitizedSubtasks.map((subtask, index) => ({
-      trackId: `${opts.jobId}:${index}`,
-      streamKey: buildSquadronRunId(opts.requestKey, index),
-      displayCli: opts.carrierId,
-      runId: getVisibleRun(buildSquadronRunId(opts.requestKey, index))?.runId,
-      displayName: subtask.title,
-      subtitle: resolveCarrierDisplayName(opts.carrierId),
-      kind: "subtask" as const,
-    })),
-  );
   try {
     const modelConfig = loadModels()[opts.carrierId];
-    const cliType = opts.carrierConfig?.cliType ?? "claude";
+    const cliType = (opts.carrierConfig?.cliType ?? "claude") as CliType;
     const settledResults = await Promise.allSettled(
-      opts.sanitizedSubtasks.map((st, index) =>
-        runSquadronInstance(index, st.title, opts.composedSubtasks[index]!, {
-          ports: opts.ports,
+      opts.sanitizedSubtasks.map((subtask, index) =>
+        runSquadronInstance(index, subtask.title, opts.composedSubtasks[index]!, {
           carrierId: opts.carrierId,
           cliType,
           modelConfig,
@@ -222,15 +188,14 @@ async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Prom
           signal: opts.signal,
           cwd: opts.cwd,
           requestKey: opts.requestKey,
-          totalSubtasks: opts.sanitizedSubtasks.length,
           jobId: opts.jobId,
         }),
       ),
     );
     opts.state.finishedAt = Date.now();
-    results = collectSquadronResults(opts.ports, settledResults, opts.sanitizedSubtasks);
-    finalStatus = computeSquadronFinalStatus(results);
-    opts.ports.logDebug(
+    results = collectSquadronResults(settledResults, opts.sanitizedSubtasks);
+    finalStatus = computeSquadronFinalStatus(results) as CarrierJobStatus;
+    logDebug(
       SQUADRON_LOG_CATEGORY_RESULT,
       `carrier=${opts.carrierId} success=${results.filter((r) => r.status === "done").length} failure=${results.filter((r) => r.status !== "done").length}`,
     );
@@ -239,9 +204,8 @@ async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Prom
     finalError = error instanceof Error ? error.message : String(error);
   } finally {
     const finishedAt = Date.now();
-    const summary = buildSquadronJobSummary(opts.jobId, opts.startedAt, finishedAt, opts.carrierId, results, finalStatus, finalError);
-    finalizeDetachedFanoutJob({
-      ports: opts.ports,
+    const summary = buildSquadronJobSummary(opts.jobId, opts.startedAt, finishedAt, opts.carrierId, results, finalStatus as StoredCarrierJobStatus, finalError);
+    finalizeDetachedJob({
       jobId: opts.jobId,
       status: finalStatus,
       error: finalError,
@@ -249,74 +213,16 @@ async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Prom
       summary,
       permit: opts.permit,
     });
+    emitStreamEvent({
+      type: "job:finalized",
+      jobId: opts.jobId,
+      status: finalStatus,
+      finishedAt,
+      error: finalError,
+      summary: summary.summary,
+    });
     clearSquadronState(opts.requestKey);
-    opts.ports.logDebug(SQUADRON_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);
-  }
-}
-
-function formatCarrierIdForMessage(carrierId: string): string {
-  return JSON.stringify(carrierId);
-}
-
-function assertRegisteredCarrier(ports: SquadronToolPorts, carrierId: string): void {
-  const allIds = new Set(getRegisteredOrder());
-  if (!allIds.has(carrierId)) {
-    const registered = [...allIds].map(formatCarrierIdForMessage).join(", ") || "(none)";
-    ports.logDebug(
-      SQUADRON_LOG_CATEGORY_ERROR,
-      `unknown carrier carrier=${carrierId}`,
-    );
-    throw new Error(
-      `Unknown carrier: ${formatCarrierIdForMessage(carrierId)}. Registered carriers: ${registered}`,
-    );
-  }
-}
-
-function assertSortieEnabled(ports: SquadronToolPorts, carrierId: string): void {
-  if (isSortieCarrierEnabled(carrierId)) return;
-  ports.logDebug(
-    SQUADRON_LOG_CATEGORY_ERROR,
-    `carrier=${carrierId} sortieEnabled=false reason=manually disabled`,
-  );
-  throw new Error(
-    `Carrier ${formatCarrierIdForMessage(carrierId)} is not available for squadron: manually disabled.`,
-  );
-}
-
-function assertSquadronEnabled(ports: SquadronToolPorts, carrierId: string): void {
-  if (!isSquadronCarrierEnabled(carrierId)) {
-    ports.logDebug(
-      SQUADRON_LOG_CATEGORY_ERROR,
-      `carrier=${carrierId} squadronEnabled=false`,
-    );
-    throw new Error(
-      `Carrier ${formatCarrierIdForMessage(carrierId)} is not enabled for Squadron.\n` +
-      `→ Open Carrier Status (Alt+O), select ${formatCarrierIdForMessage(carrierId)}, press S to enable.`,
-    );
-  }
-}
-
-function assertSubtaskCount(ports: SquadronToolPorts, expected: number, actual: number): void {
-  try {
-    validateSquadronSubtaskCount(expected, actual);
-  } catch (error) {
-    ports.logDebug(
-      SQUADRON_LOG_CATEGORY_ERROR,
-      `subtask count mismatch expected=${expected} actual=${actual}`,
-    );
-    throw error;
-  }
-}
-
-function assertSubtaskLimit(ports: SquadronToolPorts, count: number): void {
-  try {
-    validateSquadronSubtaskLimit(count);
-  } catch (error) {
-    ports.logDebug(
-      SQUADRON_LOG_CATEGORY_ERROR,
-      count < 1 ? `subtask count invalid count=${count}` : `subtask count over limit count=${count} max=${SQUADRON_MAX_INSTANCES}`,
-    );
-    throw error;
+    logDebug(SQUADRON_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);
   }
 }
 
@@ -325,24 +231,23 @@ async function runSquadronInstance(
   title: string,
   request: string,
   opts: {
-    ports: SquadronToolPorts;
     carrierId: string;
-    cliType: string;
+    cliType: CliType;
     modelConfig: { model?: string; effort?: string } | undefined;
     state: SquadronState;
     signal: AbortSignal | undefined;
     cwd: string;
     requestKey: string;
-    totalSubtasks: number;
     jobId: string;
   },
 ): Promise<SquadronResult> {
   const execStartedAt = Date.now();
   const progress = opts.state.subtasks.get(index)!;
+  const trackId = `${opts.jobId}:${index}`;
   progress.status = "connecting";
 
   const syntheticId = buildSquadronRunId(opts.requestKey, index);
-  opts.ports.logDebug(
+  logDebug(
     SQUADRON_LOG_CATEGORY_DISPATCH,
     [
       `carrier=${opts.carrierId} subtask=${index} model=${opts.modelConfig?.model ?? opts.cliType} promptChars=${request.length} run=${syntheticId}`,
@@ -353,39 +258,136 @@ async function runSquadronInstance(
     { hideFromFooter: true, category: "prompt" },
   );
 
+  emitStreamEvent({
+    type: "track:begin",
+    jobId: opts.jobId,
+    trackId,
+    requestPreview: request.trim().split(/\r?\n/, 1)[0],
+  });
+
   try {
-    const result = await runDetachedFanoutTrack({
-      ports: opts.ports,
-      syntheticId,
+    const result = await executeOneShot({
+      carrierId: syntheticId,
       cliType: opts.cliType,
       request,
       cwd: opts.cwd,
-      modelConfig: opts.modelConfig,
-      signal: opts.signal,
-      progress,
+      model: opts.modelConfig?.model,
+      effort: opts.modelConfig?.effort,
       connectSystemPrompt: buildCarrierSystemPrompt(),
-      jobId: opts.jobId,
-      archiveCarrierId: opts.carrierId,
-      archiveLabel: `subtask ${index}: ${title}`,
-      sanitizeChunk,
-      sanitizeToolLabel,
-      onThought: (text) => {
-        opts.ports.logDebug(SQUADRON_LOG_CATEGORY_STREAM, `carrier=${opts.carrierId} subtask=${index} type=thought\n${text}`, { hideFromFooter: true });
+      signal: opts.signal,
+      onStatusChange: (status) => {
+        emitTrackStatus(opts.jobId, trackId, status);
       },
-      onToolCall: (toolTitle, toolStatus) => {
-        opts.ports.logDebug(SQUADRON_LOG_CATEGORY_STREAM, `carrier=${opts.carrierId} subtask=${index} type=toolCall title=${sanitizeToolLabel(toolTitle)} status=${sanitizeToolLabel(toolStatus)}`, { hideFromFooter: true });
+      onMessageChunk: (text) => {
+        progress.status = "streaming";
+        progress.lineCount++;
+        const cleanText = sanitizeChunk(text);
+        appendBlock(opts.jobId, toMessageArchiveBlock(opts.carrierId, text, `subtask ${index}: ${title}`));
+        emitStreamEvent({ type: "track:text", jobId: opts.jobId, trackId, text: cleanText });
       },
-      buildResult: (result) => result,
+      onThoughtChunk: (text) => {
+        const cleanText = sanitizeChunk(text);
+        appendBlock(opts.jobId, toThoughtArchiveBlock(opts.carrierId, text, `subtask ${index}: ${title}`));
+        logDebug(SQUADRON_LOG_CATEGORY_STREAM, `carrier=${opts.carrierId} subtask=${index} type=thought\n${cleanText}`, { hideFromFooter: true });
+        emitStreamEvent({ type: "track:thought", jobId: opts.jobId, trackId, text: cleanText });
+      },
+      onToolCall: (toolTitle, toolStatus, _rawOutput, toolCallId) => {
+        progress.status = "streaming";
+        progress.toolCallCount++;
+        const cleanTitle = sanitizeToolLabel(toolTitle);
+        const cleanStatus = sanitizeToolLabel(toolStatus);
+        logDebug(SQUADRON_LOG_CATEGORY_STREAM, `carrier=${opts.carrierId} subtask=${index} type=toolCall title=${cleanTitle} status=${cleanStatus}`, { hideFromFooter: true });
+        emitStreamEvent({ type: "track:tool", jobId: opts.jobId, trackId, title: cleanTitle, status: cleanStatus, toolCallId });
+      },
     });
-    opts.ports.logDebug(
+    progress.status = result.status === "done" ? "done" : "error";
+    emitTrackFinalized(opts.jobId, trackId, result);
+    logDebug(
       SQUADRON_LOG_CATEGORY_EXEC,
       `carrier=${opts.carrierId} subtask=${index} success=${result.status === "done"} status=${result.status} elapsedMs=${Date.now() - execStartedAt}`,
     );
     return buildSquadronResult(index, title, result);
   } catch (error) {
-    opts.ports.logDebug(
+    const message = error instanceof Error ? error.message : String(error);
+    emitStreamEvent({ type: "track:finalized", jobId: opts.jobId, trackId, status: "err", error: message });
+    logDebug(
       SQUADRON_LOG_CATEGORY_EXEC,
       `carrier=${opts.carrierId} subtask=${index} success=false status=error elapsedMs=${Date.now() - execStartedAt}`,
+    );
+    throw error;
+  }
+}
+
+function emitSquadronJobRegistered(
+  jobId: string,
+  carrierId: string,
+  requestKey: string,
+  subtasks: Array<{ title: string; request: string }>,
+  startedAt: number,
+): void {
+  const tracks: TrackMeta[] = subtasks.map((subtask, index) => ({
+    trackId: `${jobId}:${index}`,
+    streamKey: buildSquadronRunId(requestKey, index),
+    displayCli: carrierId,
+    displayName: subtask.title,
+    subtitle: resolveCarrierDisplayName(carrierId),
+    kind: "subtask",
+  }));
+  emitStreamEvent({
+    type: "job:registered",
+    jobId,
+    kind: "squadron",
+    ownerCarrierId: carrierId,
+    label: `${subtasks.length} subtasks`,
+    startedAt,
+    tracks,
+  });
+}
+
+function formatCarrierIdForMessage(carrierId: string): string {
+  return JSON.stringify(carrierId);
+}
+
+function assertRegisteredCarrier(carrierId: string): void {
+  const allIds = new Set(getRegisteredOrder());
+  if (!allIds.has(carrierId)) {
+    const registered = [...allIds].map(formatCarrierIdForMessage).join(", ") || "(none)";
+    logDebug(SQUADRON_LOG_CATEGORY_ERROR, `unknown carrier carrier=${carrierId}`);
+    throw new Error(`Unknown carrier: ${formatCarrierIdForMessage(carrierId)}. Registered carriers: ${registered}`);
+  }
+}
+
+function assertSortieEnabled(carrierId: string): void {
+  if (isSortieCarrierEnabled(carrierId)) return;
+  logDebug(SQUADRON_LOG_CATEGORY_ERROR, `carrier=${carrierId} sortieEnabled=false reason=manually disabled`);
+  throw new Error(`Carrier ${formatCarrierIdForMessage(carrierId)} is not available for squadron: manually disabled.`);
+}
+
+function assertSquadronEnabled(carrierId: string): void {
+  if (isSquadronCarrierEnabled(carrierId)) return;
+  logDebug(SQUADRON_LOG_CATEGORY_ERROR, `carrier=${carrierId} squadronEnabled=false`);
+  throw new Error(
+    `Carrier ${formatCarrierIdForMessage(carrierId)} is not enabled for Squadron.\n` +
+    `→ Open Carrier Status (Alt+O), select ${formatCarrierIdForMessage(carrierId)}, press S to enable.`,
+  );
+}
+
+function assertSubtaskCount(expected: number, actual: number): void {
+  try {
+    validateSquadronSubtaskCount(expected, actual);
+  } catch (error) {
+    logDebug(SQUADRON_LOG_CATEGORY_ERROR, `subtask count mismatch expected=${expected} actual=${actual}`);
+    throw error;
+  }
+}
+
+function assertSubtaskLimit(count: number): void {
+  try {
+    validateSquadronSubtaskLimit(count);
+  } catch (error) {
+    logDebug(
+      SQUADRON_LOG_CATEGORY_ERROR,
+      count < 1 ? `subtask count invalid count=${count}` : `subtask count over limit count=${count} max=${SQUADRON_MAX_INSTANCES}`,
     );
     throw error;
   }
@@ -394,7 +396,7 @@ async function runSquadronInstance(
 function buildSquadronResult(
   index: number,
   title: string,
-  result: DetachedFanoutOneShotResult,
+  result: ExecuteResult,
 ): SquadronResult {
   return {
     index,
@@ -403,32 +405,28 @@ function buildSquadronResult(
     responseText: sanitizeChunk(result.responseText) || "(no output)",
     error: result.error ? sanitizeChunk(result.error) : undefined,
     thinking: result.thoughtText ? sanitizeChunk(result.thoughtText) : undefined,
-    toolCalls: result.toolCalls.map((tc) => ({
-      title: sanitizeToolLabel(tc.title),
-      status: sanitizeToolLabel(tc.status),
+    toolCalls: result.toolCalls.map((toolCall) => ({
+      title: sanitizeToolLabel(toolCall.title),
+      status: sanitizeToolLabel(toolCall.status),
     })),
   };
 }
 
 function collectSquadronResults(
-  ports: SquadronToolPorts,
   settledResults: PromiseSettledResult<SquadronResult>[],
   subtasks: Array<{ title: string; request: string }>,
 ): SquadronResult[] {
   return settledResults.map((settled, index) => {
     if (settled.status === "fulfilled") return settled.value;
-    return buildSquadronErrorResult(ports, index, subtasks[index]!.title, settled.reason);
+    return buildSquadronErrorResult(index, subtasks[index]!.title, settled.reason);
   });
 }
 
-function buildSquadronErrorResult(ports: SquadronToolPorts, index: number, title: string, reason: unknown): SquadronResult {
+function buildSquadronErrorResult(index: number, title: string, reason: unknown): SquadronResult {
   const errorMessage = sanitizeChunk(
     reason instanceof Error ? reason.message : String(reason),
   );
-  ports.logDebug(
-    SQUADRON_LOG_CATEGORY_ERROR,
-    `subtask=${index} title=${title} message=${errorMessage}`,
-  );
+  logDebug(SQUADRON_LOG_CATEGORY_ERROR, `subtask=${index} title=${title} message=${errorMessage}`);
   return {
     index,
     title,
@@ -438,15 +436,41 @@ function buildSquadronErrorResult(ports: SquadronToolPorts, index: number, title
   };
 }
 
-// ─── State Store (Map<requestKey, SquadronState>) ──────
+function emitTrackStatus(jobId: string, trackId: string, status: AgentStatus): void {
+  emitStreamEvent({ type: "track:status", jobId, trackId, status: toTrackStatus(status) });
+}
 
-function getStateStore(): Map<string, SquadronState> {
-  let store = (globalThis as any)[SQUADRON_STATE_KEY] as Map<string, SquadronState> | undefined;
-  if (!store) {
-    store = new Map();
-    (globalThis as any)[SQUADRON_STATE_KEY] = store;
-  }
-  return store;
+function emitTrackFinalized(jobId: string, trackId: string, result: ExecuteResult): void {
+  const status = toCarrierJobStatus(result.status);
+  emitStreamEvent({
+    type: "track:finalized",
+    jobId,
+    trackId,
+    status: toTrackFinalStatus(status),
+    error: status === "aborted" ? "aborted" : result.error,
+    fallbackText: sanitizeChunk(result.responseText),
+    fallbackThought: sanitizeChunk(result.thoughtText),
+  });
+}
+
+function toCarrierJobStatus(status: AgentStatus): CarrierJobStatus {
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "error";
+}
+
+function toTrackStatus(status: AgentStatus): TrackStatus {
+  if (status === "connecting") return "conn";
+  if (status === "running") return "stream";
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "err";
+}
+
+function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "err";
 }
 
 function initSquadronState(
@@ -454,40 +478,23 @@ function initSquadronState(
   requestKey: string,
   subtasks: Array<{ title: string; request: string }>,
 ): SquadronState {
-  const store = getStateStore();
   const state: SquadronState = {
     carrierId,
     requestKey,
     subtasks: new Map(
-      subtasks.map((_, i) => [i, { status: "queued", toolCallCount: 0, lineCount: 0 }]),
+      subtasks.map((_, index) => [index, { status: "queued", toolCallCount: 0, lineCount: 0 }]),
     ),
-    subtaskTitles: subtasks.map((st) => st.title),
+    subtaskTitles: subtasks.map((subtask) => subtask.title),
     startedAt: Date.now(),
   };
-  store.set(requestKey, state);
+  squadronStateStore.set(requestKey, state);
   return state;
 }
 
 function clearSquadronState(requestKey: string): void {
-  const store = getStateStore();
-  store.delete(requestKey);
+  squadronStateStore.delete(requestKey);
 }
 
-function sanitizeChunk(text: string): string {
-  return text
-    .replace(/\r/g, "")
-    // CSI 시퀀스 제거
-    .replace(/\x1b\[\d*[ABCDEFGHJKST]/g, "")
-    .replace(/\x1b\[\d*;\d*[Hf]/g, "")
-    .replace(/\x1b\[(?:\??\d+[hl]|2J|K)/g, "")
-    // OSC 시퀀스 제거 (\x1b]...\x07 또는 \x1b]...\x1b\\)
-    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "")
-    // DCS/APC/PM 시퀀스 제거 (\x1bP...\x1b\\, \x1b_...\x1b\\, \x1b^...\x1b\\)
-    .replace(/\x1b[P_^][\s\S]*?\x1b\\/g, "")
-    // 제어 문자 제거
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
-}
-
-function sanitizeToolLabel(text: string): string {
-  return sanitizeChunk(text).replace(/\s+/g, " ").trim() || "(unnamed)";
+function logDebug(category: string, message: string, options?: unknown): void {
+  getLogAPI().debug(category, message, options as LogOptions | undefined);
 }

@@ -42,14 +42,14 @@ import {
 import { syncModelConfig } from "../carrier/model-ui.js";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "@sbluemin/fleet-core/admiral/taskforce";
 import { CarrierStatusOverlay } from "./carrier-ui/status-overlay.js";
-import { StatusOverlayController } from "@sbluemin/fleet-core/admiral/bridge/carrier-control";
+import { StatusOverlayController } from "@sbluemin/fleet-core/admiral/carrier/status-overlay-controller";
 import { TaskForceConfigOverlay } from "./carrier-ui/taskforce-config-overlay.js";
 import type {
   CarrierCliType,
   CarrierStatusEntry,
   CliModelInfo,
   ModelSelection as OverlayModelSelection,
-} from "@sbluemin/fleet-core/admiral/bridge/carrier-control";
+} from "@sbluemin/fleet-core/admiral/carrier/types";
 
 let activeStatusPopup: Promise<void> | null = null;
 let dismissStatusPopup: (() => void) | null = null;

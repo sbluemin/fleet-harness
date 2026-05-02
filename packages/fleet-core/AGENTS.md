@@ -1,6 +1,6 @@
 # fleet-core Doctrine
 
-`packages/fleet-core` is the Pi-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, tool contracts, MCP/runtime internals, job services, bridge data/state layers, and adapter-facing public APIs.
+`packages/fleet-core` is the Pi-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, tool contracts, MCP/runtime internals, job services, SSOT streaming event contracts, and adapter-facing public APIs.
 
 ## Current Architecture Status
 
@@ -11,13 +11,13 @@
 
 ## Owns
 
-- Fleet domain modules such as `admiral/` (including `_shared/` for agent-runtime with session pool, `executeWithPool`, `executeOneShot`, MCP servers, and `detached-fanout.ts`, `bridge/` with allowlist exports, `carrier/`, `carrier-jobs/`, `squadron/`, `store/`, `taskforce/`, and `protocols/` with integrated `standing-orders/`), `admiralty/` (internalized Grand Fleet domain), `services/auth/`, `services/job/`, unified settings/log/tool-registry services (now absorbing tool-snapshot), and `metaphor/`
+- Fleet domain modules such as `admiral/` (including `_shared/` for agent-runtime with session pool, `executeWithPool`, `executeOneShot`, MCP servers, SSOT carrier job stream events (`carrier-job-events`), pure coalescing reducers (`stream-reducers`), store-free view-model builders (`view-model`), `carrier/`, `carrier-jobs/`, `squadron/`, `store/`, `taskforce/`, and `protocols/` with integrated `standing-orders/`). **The former `admiral/bridge/` directory (run-stream, carrier-panel, carrier-control) has been removed; streaming consumers now use `jobs.streaming.register()` via the SSOT event system.** `admiralty/` (internalized Grand Fleet domain), `services/auth/`, `services/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log/tool-registry services (now absorbing tool-snapshot), and `metaphor/`
 - Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly. Note that `agent-services.ts` and `tool-registry-services.ts` have been removed from the public surface.
 - `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes the runtime-owned state and domain services by exposing explicit public APIs in `public/`; it returns `FleetCoreRuntimeContext` containing `fleet`, `grandFleet`, `metaphor`, `jobs`, `log`, and `settings` services. The `fleet` service surface now also exposes runtime-owned auth access. It also owns the `shutdown` lifecycle that cleans up the agent, resets the settings service, and cleans up service status state.
 - Agent execution is orchestrated through the internal `@sbluemin/fleet-core/admiral/agent-runtime` layer. Unified-agent request orchestration remains an internal implementation detail and must not be reintroduced as a public `AgentRequestService`/`agentRequest` runtime field.
 
 - Fleet tool specs and registry factories that are host-agnostic and registered by adapters through public APIs
-- Global runtime stores, **runtime-owned settings singletons (owned by `services/settings`)**, **`BridgeStateStorage` (owned by `admiral/bridge/run-stream`)**, and compatibility keys used by Pi adapters
+- Global runtime stores, **runtime-owned settings singletons (owned by `services/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by Pi adapters
 - Pure prompt composition, domain-level orchestration logic, and **render-agnostic view-model builders**
 - The Fleet Wiki domain extracted to the leaf `packages/fleet-wiki`
 

@@ -12,8 +12,7 @@ import { getKeybindAPI } from "../../shell/keybinds/bridge.js";
 import { BODY_H_STEP } from "@sbluemin/fleet-core/constants";
 import { toggleAgentPanel, showAgentPanel, setDetailView } from "./panel-lifecycle.js";
 import { adjustPanelHeight } from "./panel/config.js";
-import { getActiveJobs } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
-import { getState } from "./panel/state.js";
+import { getActiveJobs, getState } from "./panel/state.js";
 import { syncWidget } from "./panel/widget-sync.js";
 
 export function registerAgentPanelShortcut(): void {

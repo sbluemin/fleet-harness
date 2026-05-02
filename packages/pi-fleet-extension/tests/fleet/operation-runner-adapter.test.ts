@@ -24,9 +24,12 @@ import {
   exposeAgentApi,
   runAgentRequest,
 } from "../../src/agent/runner.js";
-import { createPanelStreamingSink } from "../../src/agent/ui/agent-panel/streaming-sink.js";
-import { getState } from "../../src/agent/ui/panel/state.js";
-import { getRunById, listRuns, resetRuns } from "@sbluemin/fleet-core/admiral/bridge/run-stream";
+import {
+  getPanelRuns,
+  getState,
+  handleCarrierJobStreamEvent,
+  resetPanelStateForTest,
+} from "../../src/agent/ui/panel/state.js";
 import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
 
 beforeEach(() => {
@@ -68,29 +71,29 @@ describe("operation runner adapter", () => {
     })).resolves.toEqual(createRunnerResult("run"));
   });
 
-  it("maps panel streaming sink events to panel column lifecycle", () => {
-    const ctx = makeCtx();
-    const sink = createPanelStreamingSink(ctx as any);
+  it("maps carrier job stream events to panel column lifecycle", () => {
+    emitSingleTrackJob("job-1", "genesis");
 
-    sink.onAgentStreamEvent({ type: "request_begin", key: { carrierId: "genesis", cli: "codex" } });
-    sink.onAgentStreamEvent({ type: "status", key: { carrierId: "genesis", cli: "codex" }, status: "running" });
-    sink.onAgentStreamEvent({ type: "thought", key: { carrierId: "genesis", cli: "codex" }, text: "think" });
-    sink.onAgentStreamEvent({
-      type: "tool",
-      key: { carrierId: "genesis", cli: "codex" },
+    handleCarrierJobStreamEvent({ type: "track:begin", jobId: "job-1", trackId: "genesis" });
+    handleCarrierJobStreamEvent({ type: "track:status", jobId: "job-1", trackId: "genesis", status: "stream" });
+    handleCarrierJobStreamEvent({ type: "track:thought", jobId: "job-1", trackId: "genesis", text: "think" });
+    handleCarrierJobStreamEvent({
+      type: "track:tool",
+      jobId: "job-1",
+      trackId: "genesis",
       title: "Read",
       status: "done",
       toolCallId: "tool-1",
     });
-    sink.onAgentStreamEvent({ type: "message", key: { carrierId: "genesis", cli: "codex" }, text: "hello" });
-    sink.onAgentStreamEvent({
-      type: "request_end",
-      key: { carrierId: "genesis", cli: "codex" },
-      reason: "done",
+    handleCarrierJobStreamEvent({ type: "track:text", jobId: "job-1", trackId: "genesis", text: "hello" });
+    handleCarrierJobStreamEvent({
+      type: "track:finalized",
+      jobId: "job-1",
+      trackId: "genesis",
+      status: "done",
       sessionId: "session-1",
-      responseText: "hello",
-      thoughtText: "think",
     });
+    handleCarrierJobStreamEvent({ type: "job:finalized", jobId: "job-1", status: "done", finishedAt: Date.now(), summary: "" });
 
     const state = getState();
     expect(state.cols[0]).toMatchObject({
@@ -104,39 +107,29 @@ describe("operation runner adapter", () => {
   });
 
   it("keeps same-carrier foreground streams isolated by request id", () => {
-    const ctx = makeCtx();
-    const sink = createPanelStreamingSink(ctx as any);
-    const firstKey = { carrierId: "genesis", cli: "codex" as const, requestId: "request-1" };
-    const secondKey = { carrierId: "genesis", cli: "codex" as const, requestId: "request-2" };
+    const firstRunId = "run-1";
+    const secondRunId = "run-2";
 
-    sink.onAgentStreamEvent({ type: "request_begin", key: firstKey });
-    const firstRunId = listRuns().at(-1)?.runId;
-    sink.onAgentStreamEvent({ type: "request_begin", key: secondKey });
-    const secondRunId = listRuns().at(-1)?.runId;
+    emitSingleTrackJob("job-1", "genesis", firstRunId);
+    emitSingleTrackJob("job-2", "genesis", secondRunId);
+    handleCarrierJobStreamEvent({ type: "track:text", jobId: "job-1", trackId: "genesis", text: "first" });
+    handleCarrierJobStreamEvent({ type: "track:text", jobId: "job-2", trackId: "genesis", text: "second" });
+    handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "job-1", trackId: "genesis", status: "done" });
+    handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "job-2", trackId: "genesis", status: "done" });
 
-    sink.onAgentStreamEvent({ type: "message", key: firstKey, text: "first" });
-    sink.onAgentStreamEvent({ type: "message", key: secondKey, text: "second" });
-    sink.onAgentStreamEvent({ type: "request_end", key: firstKey, reason: "done", responseText: "first" });
-    sink.onAgentStreamEvent({ type: "request_end", key: secondKey, reason: "done", responseText: "second" });
-
-    expect(firstRunId).toBeTruthy();
-    expect(secondRunId).toBeTruthy();
     expect(firstRunId).not.toBe(secondRunId);
-    expect(getRunById(firstRunId!)?.text).toBe("first");
-    expect(getRunById(secondRunId!)?.text).toBe("second");
+    expect(getPanelRuns().get(firstRunId)?.text).toBe("first");
+    expect(getPanelRuns().get(secondRunId)?.text).toBe("second");
     expect(getState().cols[0]).toMatchObject({
       status: "done",
       text: "second",
     });
   });
 
-  it("short-circuits panel streaming sink when the carrier column is missing", () => {
-    const ctx = makeCtx();
-    const sink = createPanelStreamingSink(ctx as any);
-
-    sink.onAgentStreamEvent({ type: "request_begin", key: { carrierId: "missing", cli: "codex" } });
-    sink.onAgentStreamEvent({ type: "message", key: { carrierId: "missing", cli: "codex" }, text: "ignored" });
-    sink.onAgentStreamEvent({ type: "request_end", key: { carrierId: "missing", cli: "codex" }, reason: "done" });
+  it("short-circuits panel stream events when the carrier column is missing", () => {
+    emitSingleTrackJob("job-missing", "missing");
+    handleCarrierJobStreamEvent({ type: "track:text", jobId: "job-missing", trackId: "missing", text: "ignored" });
+    handleCarrierJobStreamEvent({ type: "track:finalized", jobId: "job-missing", trackId: "missing", status: "done" });
 
     expect(getState().cols[0]?.text).toBe("");
   });
@@ -180,13 +173,31 @@ function createRunnerResult(responseText: string) {
 }
 
 function resetPanelGlobals(): void {
-  resetRuns(["genesis"]);
-  (globalThis as any)["__pi_agent_panel_state__"] = undefined;
+  resetPanelStateForTest();
   (globalThis as any)[CARRIER_FRAMEWORK_KEY] = {
     modes: new Map(),
     registeredOrder: ["genesis"],
     statusUpdateCallbacks: [],
   };
+}
+
+function emitSingleTrackJob(jobId: string, carrierId: string, runId?: string): void {
+  handleCarrierJobStreamEvent({
+    type: "job:registered",
+    jobId,
+    kind: "sortie",
+    ownerCarrierId: carrierId,
+    label: carrierId,
+    startedAt: Date.now(),
+    tracks: [{
+      trackId: carrierId,
+      streamKey: `${carrierId}:${jobId}`,
+      displayCli: carrierId,
+      displayName: carrierId,
+      kind: "carrier",
+      runId,
+    }],
+  });
 }
 
 function makeCtx(sessionId = "session-1"): { cwd: string; sessionManager: { getSessionId: () => string }; ui: { setWidget: ReturnType<typeof vi.fn> } } {

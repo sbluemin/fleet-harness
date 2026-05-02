@@ -6,10 +6,10 @@ import {
   type StreamStoreLikeState,
 } from "@sbluemin/fleet-core/admiralty";
 
+import { getGrandFleetStreamStoreState } from "../../agent/ui/panel/state.js";
 import { getState } from "../state.js";
 
 const CARRIER_FRAMEWORK_KEY = "__pi_bridge_framework__";
-const STREAM_STORE_KEY = "__pi_stream_store__";
 
 export function buildFleetPingPayload(fleetId: FleetId): FleetPingPayload {
   const state = getState();
@@ -30,5 +30,5 @@ function getFleetFrameworkState(): FleetFrameworkLikeState {
 }
 
 function getStreamStoreState(): StreamStoreLikeState {
-  return ((globalThis as any)[STREAM_STORE_KEY] ?? {}) as StreamStoreLikeState;
+  return getGrandFleetStreamStoreState();
 }

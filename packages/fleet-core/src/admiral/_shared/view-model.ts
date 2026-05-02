@@ -1,6 +1,34 @@
-import { getRunById, getVisibleRun } from "../run-stream/stream-store.js";
-import type { ColBlock, ColStatus } from "../../_shared/agent-runtime.js";
-import type { ColumnTrack, PanelJob } from "./types.js";
+import type { ColBlock, ColStatus } from "./agent-runtime.js";
+import type { CarrierJobKind, CarrierJobStatus, TrackKind } from "./carrier-job-events.js";
+
+export interface PanelRunViewModelSource {
+  runId?: string;
+  status?: ColStatus;
+  blocks?: readonly ColBlock[];
+}
+
+export interface ColumnTrack {
+  trackId: string;
+  streamKey: string;
+  displayCli: string;
+  runId?: string;
+  displayName: string;
+  subtitle?: string;
+  kind: TrackKind;
+  status: ColStatus;
+}
+
+export interface PanelJob {
+  jobId: string;
+  kind: CarrierJobKind;
+  ownerCarrierId: string;
+  label: string;
+  startedAt: number;
+  finishedAt?: number;
+  status: "active" | CarrierJobStatus;
+  tracks: ColumnTrack[];
+  activeJobToolCallId?: string;
+}
 
 export interface PanelTrackViewModel {
   trackId: string;
@@ -37,6 +65,7 @@ const DEFAULT_MAX_TRACK_BLOCKS = 5;
 
 export function buildPanelViewModel(
   jobs: readonly PanelJob[],
+  runs: ReadonlyMap<string, PanelRunViewModelSource>,
   options: BuildPanelViewModelOptions = {},
 ): PanelJobViewModel[] {
   const maxTrackBlocks = options.maxTrackBlocks ?? DEFAULT_MAX_TRACK_BLOCKS;
@@ -49,15 +78,16 @@ export function buildPanelViewModel(
     finishedAt: job.finishedAt,
     status: job.status,
     activeJobToolCallId: job.activeJobToolCallId,
-    tracks: job.tracks.map((track) => buildPanelTrackViewModel(track, maxTrackBlocks)),
+    tracks: job.tracks.map((track) => buildPanelTrackViewModel(track, runs, maxTrackBlocks)),
   }));
 }
 
 export function buildPanelTrackViewModel(
   track: ColumnTrack,
+  runs: ReadonlyMap<string, PanelRunViewModelSource>,
   maxTrackBlocks = DEFAULT_MAX_TRACK_BLOCKS,
 ): PanelTrackViewModel {
-  const run = track.runId ? getRunById(track.runId) : getVisibleRun(track.streamKey);
+  const run = resolveRun(track, runs);
   const blocks = run?.blocks ?? [];
   const blockTail = maxTrackBlocks > 0 ? blocks.slice(-maxTrackBlocks).map((block) => ({ ...block })) : [];
   const status = run?.status ?? track.status;
@@ -76,6 +106,17 @@ export function buildPanelTrackViewModel(
     textLineCount: stats.textLineCount,
     isComplete: status === "done",
   };
+}
+
+function resolveRun(
+  track: ColumnTrack,
+  runs: ReadonlyMap<string, PanelRunViewModelSource>,
+): PanelRunViewModelSource | undefined {
+  if (track.runId) {
+    const byRunId = runs.get(track.runId);
+    if (byRunId) return byRunId;
+  }
+  return runs.get(track.streamKey);
 }
 
 function collectBlockStats(blocks: readonly ColBlock[]): { toolCallCount: number; textLineCount: number } {

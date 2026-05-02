@@ -7,10 +7,6 @@ import {
 } from "@sbluemin/fleet-core/job";
 import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
 import { SPINNER_FRAMES } from "@sbluemin/fleet-core/constants";
-import {
-  registerSquadronJob,
-  registerTaskforceJob,
-} from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
 import type { CarrierJobRecord } from "@sbluemin/fleet-core/job";
 import {
   bindPanelBackgroundJobAnimation,
@@ -18,7 +14,7 @@ import {
   endColStreaming,
   ensureAnimTimer,
 } from "../../src/agent/ui/panel-lifecycle.js";
-import { getState, STATE_KEY } from "../../src/agent/ui/panel/state.js";
+import { getState, handleCarrierJobStreamEvent, resetPanelStateForTest } from "../../src/agent/ui/panel/state.js";
 import { syncWidget } from "../../src/agent/ui/panel/widget-sync.js";
 import type { AgentCol } from "../../src/agent/ui/panel/types.js";
 
@@ -37,7 +33,7 @@ vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
 beforeEach(() => {
   vi.useFakeTimers();
   resetJobConcurrencyForTest();
-  delete (globalThis as Record<string, unknown>)[STATE_KEY];
+  resetPanelStateForTest();
   (globalThis as any)[CARRIER_FRAMEWORK_KEY] = {
     modes: new Map([["genesis", { config: { id: "genesis", displayName: "Genesis", cliType: "codex", slot: 1, color: "" } }]]),
     registeredOrder: ["genesis"],
@@ -142,13 +138,21 @@ describe("panel animation lifecycle", () => {
     state.cols = [buildCol("wait")];
     const permit = acquireJobPermit(buildRecord("squadron:active", ["genesis"], "carrier_squadron"));
     expect(permit.accepted).toBe(true);
-    registerSquadronJob("squadron:active", "genesis", "1 subtask", [{
-      trackId: "squadron:active:0",
-      streamKey: "squadron:genesis:0",
-      displayCli: "genesis",
-      displayName: "Subtask",
-      kind: "subtask",
-    }]);
+    handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "squadron:active",
+      kind: "squadron",
+      ownerCarrierId: "genesis",
+      label: "1 subtask",
+      startedAt: Date.now(),
+      tracks: [{
+        trackId: "squadron:active:0",
+        streamKey: "squadron:genesis:0",
+        displayCli: "genesis",
+        displayName: "Subtask",
+        kind: "subtask",
+      }],
+    });
     const ctx = buildCtx();
 
     syncWidget(ctx);
@@ -168,13 +172,21 @@ describe("panel animation lifecycle", () => {
     state.cols = [buildCol("wait")];
     const permit = acquireJobPermit(buildRecord("taskforce:active", ["genesis"], "carrier_taskforce"));
     expect(permit.accepted).toBe(true);
-    registerTaskforceJob("taskforce:active", "genesis", "1 backend", [{
-      trackId: "taskforce:active:codex",
-      streamKey: "taskforce:genesis:codex",
-      displayCli: "codex",
-      displayName: "Codex",
-      kind: "backend",
-    }]);
+    handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "taskforce:active",
+      kind: "taskforce",
+      ownerCarrierId: "genesis",
+      label: "1 backend",
+      startedAt: Date.now(),
+      tracks: [{
+        trackId: "taskforce:active:codex",
+        streamKey: "taskforce:genesis:codex",
+        displayCli: "codex",
+        displayName: "Codex",
+        kind: "backend",
+      }],
+    });
     const ctx = buildCtx();
 
     syncWidget(ctx);

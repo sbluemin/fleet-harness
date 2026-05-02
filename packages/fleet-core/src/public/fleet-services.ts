@@ -35,10 +35,6 @@ export type { McpCallToolResult, ToolCallArrivedCallback };
 export type { RegisteredTool, Tool };
 
 export interface FleetServicesPorts {
-  readonly logDebug: (category: string, message: string, options?: unknown) => void;
-  readonly runAgentRequestBackground: (options: any) => Promise<any>;
-  readonly enqueueCarrierCompletionPush: (payload: { jobId: string; summary: string }) => void;
-  readonly streamingSink?: { onAgentStreamEvent(event: unknown): void | Promise<void> };
 }
 
 export interface FleetServices {
@@ -66,7 +62,7 @@ export interface FleetServices {
 
 let cachedMcpUrlPromise: Promise<string> | null = null;
 
-export function createFleetServices(ports: FleetServicesPorts): FleetServices {
+export function createFleetServices(_ports?: FleetServicesPorts): FleetServices {
   const auth = createAuthService();
 
   return {
@@ -75,10 +71,10 @@ export function createFleetServices(ports: FleetServicesPorts): FleetServices {
     squadron: SquadronServiceFacade,
     taskForce: TaskForceServiceFacade,
     auth,
-    // carrier 등록은 runtime 초기화 이후에 일어나므로 매 접근마다 lazy로 재계산해야
-    // sortie/squadron/taskforce ToolSpec이 정상 노출됨.
+      // carrier 등록은 runtime 초기화 이후에 일어나므로 매 접근마다 lazy로 재계산해야
+      // sortie/squadron/taskforce ToolSpec이 정상 노출됨.
     get tools(): readonly AgentToolSpec[] {
-      return buildFleetToolSpecs(ports);
+      return buildFleetToolSpecs();
     },
     mcp: {
       url: getFleetMcpUrl,
@@ -115,11 +111,11 @@ function computeMcpToolHash(tools: readonly Tool[]): string {
   return computeToolHash([...tools]);
 }
 
-function buildFleetToolSpecs(ports: FleetServicesPorts): readonly AgentToolSpec[] {
+function buildFleetToolSpecs(): readonly AgentToolSpec[] {
   const specs: AgentToolSpec[] = [];
-  const sortie = buildSortieToolSpec(ports);
-  const squadron = buildSquadronToolSpec(ports);
-  const taskForce = buildTaskForceToolSpec(ports);
+  const sortie = buildSortieToolSpec();
+  const squadron = buildSquadronToolSpec();
+  const taskForce = buildTaskForceToolSpec();
 
   if (sortie) specs.push(sortie);
   if (squadron) specs.push(squadron);

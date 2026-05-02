@@ -3,7 +3,7 @@
 ## Background
 Fleet has completed the logical product split that separates the product core from the Pi host adapter.
 
-- `packages/fleet-core` owns Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, bridge state, and public APIs.
+- `packages/fleet-core` owns Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, SSOT streaming event contracts, and public APIs.
 - `packages/pi-fleet-extension` owns Pi lifecycle wiring, command/keybind/tool registration, TUI rendering, provider registration/stream glue, non-provider session features, config bridges, adapters, and compatibility seams.
 - `packages/unified-agent` remains an independent backend client package used by the Fleet runtime.
 

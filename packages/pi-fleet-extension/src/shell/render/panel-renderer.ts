@@ -15,14 +15,15 @@ import {
   SPINNER_FRAMES,
   SYM_INDICATOR,
 } from "@sbluemin/fleet-core/constants";
-import { buildPanelViewModel } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
-import type { PanelJobViewModel, PanelTrackViewModel } from "@sbluemin/fleet-core/admiral/bridge/carrier-panel";
+import { buildPanelViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
+import type { PanelJobViewModel, PanelTrackViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
 
 import {
   resolveCarrierBgColor,
   resolveCarrierColor,
   resolveCarrierRgb,
 } from "../../tool-registry.js";
+import type { PanelRun } from "../../agent/ui/panel/state.js";
 import type { PanelJob } from "../../agent/ui/panel/types.js";
 import type { ColStatus } from "../../agent/ui/panel/types.js";
 import { blockLineToAnsi, renderBlockLines } from "./block-renderer.js";
@@ -39,6 +40,7 @@ const MAX_TRACK_STREAM_LINES = 5;
 export function renderPanelFull(
   w: number,
   jobs: PanelJob[],
+  runs: ReadonlyMap<string, PanelRun>,
   frame: number,
   frameColor: string,
   bottomHint: string,
@@ -46,7 +48,7 @@ export function renderPanelFull(
   bodyH: number,
   cursorColumn = -1,
 ): string[] {
-  const visibleJobs = buildPanelViewModel(jobs, { maxTrackBlocks: MAX_TRACK_STREAM_LINES });
+  const visibleJobs = buildPanelViewModel(jobs, runs, { maxTrackBlocks: MAX_TRACK_STREAM_LINES });
   const detailTarget = detailTrackId ? findTrackById(visibleJobs, detailTrackId) : null;
   const panelH = 3 + bodyH + 1;
   const totalDiag = (w - 1) + (panelH - 1);
