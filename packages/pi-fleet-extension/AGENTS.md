@@ -31,6 +31,7 @@
 - Pi widget/editor/footer/overlay rendering and TUI component mounting
 - Pi-specific lifecycle coordination (`src/boot.ts`, `src/fleet.ts`). `bootstrapFleetState(pi)` is the single entry point for both cold boot and warm `session_start`; it composes `restoreFleetPreRegistrationState()`, carrier registration, and deferred reconciliation. `scheduleFleetReconciliation()` (formerly `scheduleFleetBootReconciliation`) defers model reconciliation, squadron pruning, and Task Force sync into the next tick with a re-entrancy guard. `restoreFleetPreRegistrationState()` always applies stored sortie/squadron state, including empty lists, to reset stale in-memory Sets.
 - The sole `@mariozechner/pi-ai` gateway at `src/agent/provider.ts`
+- `handleCarrierJobStreamEvent` as the canonical Pi adapter for forwarding `systemReminder` payloads to the host LLM via `pi.sendMessage`; `carrier-completion.ts` is removed.
 
 ## Must Not Own
 

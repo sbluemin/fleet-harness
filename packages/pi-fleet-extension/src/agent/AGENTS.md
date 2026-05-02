@@ -7,8 +7,7 @@ Owns Pi-side agent capability registration and runtime glue for `pi-fleet-extens
 - `registerAgent(ctx)` — single agent capability entry point
 - `provider.ts` — the sole `@mariozechner/pi-ai` gateway; provider registration wiring (including per-carrier `ANTHROPIC_AUTH_TOKEN` injection via `fleet.auth.getApiKey()`) lives under `provider-internal/`
 - `runner.ts` — operation runner and background carrier request adapter
-- `carrier-completion.ts` — carrier completion push delivery
-- `ui/` — Agent Panel, Streaming Widget, carrier status UI, and ACP shell UI
+- `ui/` — Agent Panel, Streaming Widget, carrier status UI, ACP shell UI, and carrier completion push delivery via `ui/panel/state.ts`
 
 ## Rules
 

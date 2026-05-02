@@ -15,6 +15,7 @@ import type { CarrierSortieOutcome } from "./sortie-execute.js";
 import { ANSI_RESET, SORTIE_SUMMARY_COLOR } from "../../constants.js";
 import {
   appendBlock,
+  buildCarrierResultSystemReminder,
   buildCarrierJobId,
   finalizeDetachedJob,
   launchResponseResult,
@@ -233,6 +234,14 @@ async function runSortieJobInBackground(opts: SortieBackgroundOptions): Promise<
       finishedAt,
       error: finalError,
       summary: summary.summary,
+      systemReminder: buildCarrierResultSystemReminder({
+        jobId: opts.jobId,
+        kind: "carrier",
+        status: finalStatus as StoredCarrierJobStatus,
+        summary,
+        error: finalError,
+        label: opts.assignments.map((assignment) => resolveCarrierDisplayName(assignment.carrier)).join(", "),
+      }),
     });
     clearSortieState(opts.sortieKey);
     logDebug(SORTIE_LOG_CATEGORY_INVOKE, `execute end elapsedMs=${finishedAt - opts.startedAt}`);

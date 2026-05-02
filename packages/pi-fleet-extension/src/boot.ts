@@ -17,7 +17,7 @@ import {
   shouldBootFleet,
   wireFleetPiEvents,
 } from "./fleet.js";
-import { handleCarrierJobStreamEvent } from "./agent/ui/panel/state.js";
+import { bindCarrierJobStreamPi, handleCarrierJobStreamEvent } from "./agent/ui/panel/state.js";
 import { registerLog as registerLogDomain } from "./log.js";
 import { registerMetaphor } from "./metaphor.js";
 import { registerSettings } from "./settings.js";
@@ -50,10 +50,12 @@ export function bootFleet(ctx: ExtensionAPI): void {
 
 function registerStreamingHandler(pi: ExtensionAPI): void {
   unregisterStreamingHandler?.();
+  bindCarrierJobStreamPi(pi);
   unregisterStreamingHandler = getFleetRuntime().jobs.streaming.register(handleCarrierJobStreamEvent);
   pi.on("session_shutdown", () => {
     unregisterStreamingHandler?.();
     unregisterStreamingHandler = null;
+    bindCarrierJobStreamPi(null);
   });
 }
 

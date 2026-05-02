@@ -34,6 +34,7 @@ export type CarrierJobStreamEvent =
     finishedAt: number;
     error?: string;
     summary: string;
+    systemReminder?: string;
   }
   | {
     type: "track:begin";

@@ -5,6 +5,7 @@
  * fleet-core의 스트리밍 이벤트를 받아 Pi가 렌더링 상태를 직접 소유합니다.
  */
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DEFAULT_BODY_H, formatPanelMultiColHint, ANIM_INTERVAL_MS } from "@sbluemin/fleet-core/constants";
 import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
 import { getSessionStore } from "@sbluemin/fleet-core/admiral/agent-runtime";
@@ -19,6 +20,8 @@ import {
   coalesceThoughtBlock,
   upsertToolBlock,
 } from "@sbluemin/fleet-core/admiral/_shared/stream-reducers";
+import { CARRIER_RESULT_CUSTOM_TYPE, type CarrierResultMessageDetails } from "../../../job.js";
+import { getDeliverAs } from "../../../settings.js";
 import { getRegisteredOrder, isSquadronCarrierEnabled } from "../../../tool-registry.js";
 import { syncCurrentWidget } from "./widget-sync.js";
 import type { AgentCol, ColBlock, ColStatus, ColumnTrack, PanelJob } from "./types.js";
@@ -85,6 +88,11 @@ export const WIDGET_KEY = "ua-panel";
 export const PANEL_JOB_RETENTION = 8;
 
 let panelState: AgentPanelState | null = null;
+let carrierResultPi: ExtensionAPI | null = null;
+
+export function bindCarrierJobStreamPi(pi: ExtensionAPI | null): void {
+  carrierResultPi = pi;
+}
 
 /**
  * 동적으로 등록된 carrier 순서를 반환합니다.
@@ -263,6 +271,7 @@ export function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void 
   if (event.type === "job:finalized") {
     finalizeStreamJob(event);
     schedulePanelRender(false);
+    dispatchCarrierResultSystemReminder(event);
     return;
   }
 
@@ -313,6 +322,24 @@ export function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void 
 
   finalizeTrack(event);
   schedulePanelRender(false);
+}
+
+function dispatchCarrierResultSystemReminder(event: Extract<CarrierJobStreamEvent, { type: "job:finalized" }>): void {
+  if (typeof event.systemReminder !== "string" || event.systemReminder.trim().length === 0) return;
+  if (!carrierResultPi) return;
+  const details: CarrierResultMessageDetails = {
+    jobIds: [event.jobId],
+    summaries: [event.summary],
+  };
+  carrierResultPi.sendMessage({
+    customType: CARRIER_RESULT_CUSTOM_TYPE,
+    content: event.systemReminder,
+    display: false,
+    details,
+  }, {
+    triggerTurn: true,
+    deliverAs: getDeliverAs(),
+  });
 }
 
 export function getGrandFleetStreamStoreState(): {

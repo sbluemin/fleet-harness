@@ -34,9 +34,6 @@ import type { AgentToolSpec } from "../services/tool-registry/types.js";
 export type { McpCallToolResult, ToolCallArrivedCallback };
 export type { RegisteredTool, Tool };
 
-export interface FleetServicesPorts {
-}
-
 export interface FleetServices {
   readonly protocols: typeof AdmiralProtocolFacade;
   readonly carrier: typeof CarrierServiceFacade;
@@ -62,7 +59,7 @@ export interface FleetServices {
 
 let cachedMcpUrlPromise: Promise<string> | null = null;
 
-export function createFleetServices(_ports?: FleetServicesPorts): FleetServices {
+export function createFleetServices(): FleetServices {
   const auth = createAuthService();
 
   return {

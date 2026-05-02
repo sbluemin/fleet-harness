@@ -22,7 +22,7 @@ The lightweight follow-up exists to reduce the amount of product behavior that s
 - **Thin Pi adapter:** Keep `pi-fleet-extension` focused on Pi registration, rendering, lifecycle, and bridge code.
 - **Thick product core:** Move reusable Fleet behavior, product policy, domain decisions, state machines, prompt assembly, and pure execution contracts toward `fleet-core`.
 - **Public API hardening:** Make `packages/fleet-core/api/PUBLIC_API.md` and exported subpaths sufficient for Pi integration without deep imports.
-- **Loose coupling:** Replace implicit knowledge of `fleet-core` internals with explicit ports, services, and public contracts.
+- **Loose coupling:** Replace implicit knowledge of `fleet-core` internals with explicit services and public contracts.
 - **Future host readiness:** Leave the architecture in a state where a future `fleet-cli` or other host can reuse the same core without depending on Pi runtime objects.
 
 ## Non-Goals
@@ -55,15 +55,15 @@ The Pi extension should increasingly read like host wiring. If a module requires
 ## Suggested Work Streams
 1. **Adapter thinning audit:** In progress. Agent execution is now orchestrated through the internal `@sbluemin/fleet-core/admiral/agent-runtime` layer; the old public `AgentRequestService`/`agentRequest` surface is legacy and should not be reintroduced.
 2. **Public API closure:** Compare every `pi-fleet-extension` integration need against `packages/fleet-core/api/PUBLIC_API.md`; add public contracts before adding adapter workarounds.
-3. **Port cleanup:** Replace host-specific assumptions with explicit core ports (`FleetServicesPorts`) where future non-Pi hosts would need the same behavior.
+3. **Runtime service cleanup:** Keep future non-Pi host behavior on public services and SSOT stream events instead of host port plumbing.
 4. **Boundary tests:** Add focused tests that fail on `fleet-core` Pi imports, `pi-fleet-extension` deep imports, and legacy directory reintroduction.
 5. **Documentation hygiene:** Keep `docs/pi-development-reference.md`, `docs/admiral-workflow-reference.md`, and package `AGENTS.md` aligned with the current state.
 
 ## Worked Example
 
 - Fleet tool specs for carrier sortie, squadron, taskforce, and carrier job lookup now live behind the `fleet-core` public registry surface.
-- `pi-fleet-extension/src/tool-registry.ts` acts as a Pi adapter loop: it builds the host ports, iterates the core registry, and calls `pi.registerTool(...)`.
+- `pi-fleet-extension/src/tool-registry.ts` acts as a Pi adapter loop: it iterates the core registry and calls `pi.registerTool(...)`.
 - Pi-only surfaces such as custom message rendering and modal/request UI remain in the Pi extension.
-- `createFleetCoreRuntime` (in `fleet-core`) centralizes the initialization of agent runtime, domain stores, settings singletons, and optional service status; the Pi extension (via `src/boot.ts`) acts as the host that triggers this composition and manages its shutdown lifecycle by injecting host-supplied `ports`.
-- Foreground carrier requests now flow through internal execution logic in `fleet-core`. Pi supplies host ports that map core lifecycle events back to panel APIs.
-- The host ports provide callbacks for `logDebug`, `runAgentRequestBackground`, and `enqueueCarrierCompletionPush` to ensure the core remains agnostic of the host's background execution model.
+- `createFleetCoreRuntime` (in `fleet-core`) centralizes the initialization of agent runtime, domain stores, settings singletons, and optional service status; the Pi extension (via `src/boot.ts`) acts as the host that triggers this composition and manages its shutdown lifecycle.
+- Foreground carrier requests now flow through internal execution logic in `fleet-core`. Pi consumes SSOT stream events and maps lifecycle events back to panel APIs.
+- Carrier completion pushes are assembled in `fleet-core` as `job:finalized.systemReminder`; Pi forwards that payload through `pi.sendMessage`.

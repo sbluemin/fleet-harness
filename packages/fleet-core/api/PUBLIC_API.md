@@ -8,7 +8,7 @@ legacy public leaf APIs such as `CoreServices`, `AgentRequestService`,
 ## Canonical Runtime
 
 - Subpath: `@sbluemin/fleet-core`
-- `createFleetCoreRuntime(options: { dataDir: string; ports: FleetServicesPorts }): FleetCoreRuntimeContext`
+- `createFleetCoreRuntime(options: { dataDir: string }): FleetCoreRuntimeContext`
 
 `FleetCoreRuntimeContext` is the only host-consumer context:
 
@@ -77,7 +77,6 @@ The old compatibility names are intentionally absent from the runtime context:
 
 The root export also provides support types needed to host the runtime:
 
-- `FleetServicesPorts` — Reserved host port object for runtime compatibility; carrier execution now uses core services directly.
 - `FleetJobServices.streaming.register(handler)` — Registers a synchronous handler for normalized carrier job stream events.
 - `FleetJobServices.streaming.unregister(handler)` — Unregisters a carrier job stream handler.
 - `AgentToolSpec` — Host-agnostic agent tool metadata and execution contract.

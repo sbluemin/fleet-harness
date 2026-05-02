@@ -7,7 +7,7 @@ import * as path from "node:path";
 
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import { createFleetCoreRuntime, type FleetCoreRuntimeContext, type FleetServicesPorts } from "@sbluemin/fleet-core";
+import { createFleetCoreRuntime, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 import {
   buildRuntimeContextPrompt,
   buildSystemPrompt,
@@ -52,7 +52,6 @@ import {
   notifyStatusUpdate,
   registerRequestDirective,
   registerSingleCarrier,
-  createFleetRegistryPorts,
   setSortieDisabledCarriers,
   setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
@@ -191,11 +190,8 @@ export function resolveFleetDataDir(): string {
 }
 
 export function initializeFleetRuntime(dataDir: string, pi?: ExtensionAPI): void {
-  const createRuntime = createFleetCoreRuntime as unknown as (options: {
-    dataDir: string;
-    ports: FleetServicesPorts;
-  }) => FleetCoreRuntimeContext;
-  fleetRuntime = createRuntime({ dataDir, ports: createFleetRegistryPorts(pi) });
+  void pi;
+  fleetRuntime = createFleetCoreRuntime({ dataDir });
   exposeAgentApi();
 }
 
@@ -310,12 +306,12 @@ export function registerFleetPiCommands(pi: ExtensionAPI): void {
         {
           value: "followUp",
           label: current === "followUp" ? "Follow-up (recommended, default) (active)" : "Follow-up (recommended, default)",
-          description: "Carrier result delivered after current turn ends. Safe with batch window. doctrinal default.",
+          description: "Carrier result is pushed once per finalized job after the current turn ends. doctrinal default.",
         },
         {
           value: "steer",
           label: current === "steer" ? "Steer (advanced) (active)" : "Steer (advanced)",
-          description: "Uses the same 2s batch queue, then may interrupt an ongoing response when the push fires; FIFO race-safety unverified. Use only when latency truly matters.",
+          description: "Carrier result is pushed once per finalized job and may interrupt an ongoing response. Use only when latency truly matters.",
         },
       ];
 

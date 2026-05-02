@@ -13,6 +13,7 @@ import type { ExecuteResult, AgentStatus } from "../_shared/agent-runtime.js";
 
 import {
   appendBlock,
+  buildCarrierResultSystemReminder,
   finalizeDetachedJob,
   launchResponseResult,
   sanitizeChunk,
@@ -220,6 +221,14 @@ async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Prom
       finishedAt,
       error: finalError,
       summary: summary.summary,
+      systemReminder: buildCarrierResultSystemReminder({
+        jobId: opts.jobId,
+        kind: "squadron",
+        status: finalStatus as StoredCarrierJobStatus,
+        summary,
+        error: finalError,
+        label: `${opts.sanitizedSubtasks.length} subtasks`,
+      }),
     });
     clearSquadronState(opts.requestKey);
     logDebug(SQUADRON_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);

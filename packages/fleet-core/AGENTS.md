@@ -17,6 +17,7 @@
 - Agent execution is orchestrated through the internal `@sbluemin/fleet-core/admiral/agent-runtime` layer. Unified-agent request orchestration remains an internal implementation detail and must not be reintroduced as a public `AgentRequestService`/`agentRequest` runtime field.
 
 - Fleet tool specs and registry factories that are host-agnostic and registered by adapters through public APIs
+- `[carrier:result]` system-reminder assembly via `services/job/job-reminders.ts`; the `job:finalized` SSOT event carries the pre-assembled string for host adapters to forward.
 - Global runtime stores, **runtime-owned settings singletons (owned by `services/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by Pi adapters
 - Pure prompt composition, domain-level orchestration logic, and **render-agnostic view-model builders**
 - The Fleet Wiki domain extracted to the leaf `packages/fleet-wiki`

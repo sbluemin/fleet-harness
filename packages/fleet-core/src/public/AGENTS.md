@@ -9,7 +9,7 @@ fleet-core의 외부 소비자에게 노출되는 서비스 조립 계층. 비�
 3. **동결된 인터페이스** — 각 `FleetXxxServices` 타입이 공개 API 계약. 시그니처 변경은 breaking change.
 4. **runtime.ts가 유일한 진입점** — `createFleetCoreRuntime()`이 모든 서비스를 초기화. 호스트는 이 함수만 호출.
 5. **Host-agnostic** — Pi, 커스텀 CLI, 테스트 모두 동일 방식으로 소비 가능. 특정 호스트 의존 금지.
-6. **Ports 최소화** — `FleetServicesPorts`는 필수 불가결한 최소만 유지. 새 포트 추가는 금지.
+6. **포트 제거 우선** — 호스트 포트는 기본적으로 두지 않는다. 새 포트 추가는 금지.
 
 ## File-Role Mapping
 

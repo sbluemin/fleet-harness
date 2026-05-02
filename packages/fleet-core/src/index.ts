@@ -31,7 +31,6 @@ export type {
 } from "./public/runtime.js";
 export type {
   FleetServices,
-  FleetServicesPorts,
   McpCallToolResult,
   Tool,
   ToolCallArrivedCallback,

@@ -12,7 +12,6 @@ import {
   createFleetServices,
   shutdownFleetMcp,
   type FleetServices,
-  type FleetServicesPorts,
 } from "./fleet-services.js";
 import {
   createGrandFleetServices,
@@ -44,7 +43,6 @@ export type { FleetSettingsServices } from "./settings-services.js";
 
 export interface FleetCoreRuntimeOptions {
   readonly dataDir: string;
-  readonly ports: FleetServicesPorts;
 }
 
 export interface FleetCoreRuntimeContext {
@@ -67,7 +65,7 @@ export function createFleetCoreRuntime(
 
   let fleet: FleetServices;
   try {
-    fleet = createFleetServices(options.ports);
+    fleet = createFleetServices();
   } catch (error) {
     resetSettingsService(settings);
     throw error;

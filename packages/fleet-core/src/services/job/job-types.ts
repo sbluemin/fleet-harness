@@ -50,9 +50,4 @@ export interface CarrierJobLaunchResponse {
   current_job_id?: string;
 }
 
-export interface CompletionPushItem {
-  jobId: string;
-  summary: string;
-}
-
 export const CARRIER_JOB_TTL_MS = 3 * 60 * 60 * 1000;

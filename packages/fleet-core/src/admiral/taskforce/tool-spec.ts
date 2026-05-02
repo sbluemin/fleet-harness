@@ -16,6 +16,7 @@ import {
 } from "../../constants.js";
 import {
   appendBlock,
+  buildCarrierResultSystemReminder,
   finalizeDetachedJob,
   launchResponseResult,
   sanitizeChunk,
@@ -201,6 +202,15 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
       finishedAt,
       error: finalError,
       summary: summary.summary,
+      systemReminder: buildCarrierResultSystemReminder({
+        jobId: opts.jobId,
+        kind: "taskforce",
+        status: finalStatus as StoredCarrierJobStatus,
+        summary,
+        error: finalError,
+        taskforceBackend: opts.activeBackends.join(", "),
+        label: `${opts.activeBackends.length} backends`,
+      }),
     });
     clearTaskForceState(opts.requestKey);
     logDebug(TASKFORCE_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);

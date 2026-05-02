@@ -45,10 +45,8 @@ import {
 import type {
   AgentToolCtx,
   AgentToolSpec,
-  FleetServicesPorts,
 } from "@sbluemin/fleet-core";
 
-import { enqueueCarrierCompletionPush } from "./agent/carrier-completion.js";
 import { setAgentPanelModelConfig } from "./agent/ui/panel/config.js";
 import { renderCarrierJobsCall, renderCarrierJobsResult, type CarrierJobsToolResult } from "./job.js";
 import { getFleetRuntime } from "./fleet.js";
@@ -252,23 +250,6 @@ export function ensureShipyardLogCategories(): void {
 
 function syncModelConfig(): void {
   setAgentPanelModelConfig(getModelConfig());
-}
-
-export function createFleetRegistryPorts(pi?: ExtensionAPI): FleetServicesPorts {
-  return {
-    logDebug(category: string, message: string, options?: unknown) {
-      getLogAPI().debug(category, message, options as Parameters<ReturnType<typeof getLogAPI>["debug"]>[2]);
-    },
-    runAgentRequestBackground(options: Parameters<typeof runAgentRequestBackground>[0]) {
-      return runAgentRequestBackground(options);
-    },
-    enqueueCarrierCompletionPush(payload: Parameters<typeof enqueueCarrierCompletionPush>[1]) {
-      const currentPi = pi ?? fleetRegistryPi;
-      if (currentPi) {
-        enqueueCarrierCompletionPush(currentPi, payload);
-      }
-    },
-  };
 }
 
 function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
