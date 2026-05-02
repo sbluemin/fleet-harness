@@ -6,6 +6,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Breaking Changes
+- **`CarrierMetadata` now requires `category`**: The `CarrierMetadata` interface (exported from `@sbluemin/fleet-core/admiral/carrier/types`) now includes a mandatory `category: CarrierCategory` field. Any custom carrier persona definitions outside the built-in set must be updated to include `category: "strategy" | "planning" | "operations"`.
 - **`streamingSink` removed from `FleetServicesPorts`**: The public `streamingSink` API signature has been removed from `FleetServicesPorts`. Consumers must migrate to `jobServices.streaming.register(handler)` for SSOT carrier job stream event consumption.
 - **Bridge subpaths removed**: The three public subpaths `@sbluemin/fleet-core/admiral/bridge/run-stream`, `admiral/bridge/carrier-panel`, and `admiral/bridge/carrier-control` are no longer exported.
 - **`AgentStreamEvent` replaced**: The `AgentStreamEvent` type has been removed. Use `CarrierJobStreamEvent` (SSOT) instead.
@@ -18,6 +19,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Global bridge keys**: Removed 6 `globalThis` bridge keys related to bridge streaming and panel state.
 
 ### Added
+- **`CarrierCategory` type and `category` field on `CarrierMetadata`**: New `CarrierCategory = "strategy" | "planning" | "operations"` union type added to `fleet-core/admiral/carrier/types`. All 8 built-in carrier personas now declare a category: `strategy` (Nimitz, Sentinel), `planning` (Kirov, Ohio), and `operations` (Genesis, Vanguard, Tempest, Chronicle). The Carrier Status overlay (Alt+O) groups entries by category instead of CLI type, and the HUD/agent panel footer sorts the carrier lineup in category order (`strategy` → `planning` → `operations`).
 - **`CarrierJobStreamEvent` SSOT type**: New normalized carrier job stream event type unifying sortie, squadron, and taskforce streaming contracts.
 - **`jobServices.streaming.register(handler)`**: Public API for registering synchronous handlers for normalized carrier job stream events.
 - **`services/job/sanitize.ts`**: Unified sanitize module for detached job inputs and outputs.
