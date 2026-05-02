@@ -39,7 +39,7 @@ import {
   updateModelSelection,
   updateTaskForceModelSelection,
 } from "@sbluemin/fleet-core/admiral/store";
-import { syncModelConfig } from "../carrier/model-ui.js";
+import { syncModelConfig } from "./panel/config.js";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "@sbluemin/fleet-core/admiral/taskforce";
 import { CarrierStatusOverlay } from "./carrier-ui/status-overlay.js";
 import { StatusOverlayController } from "@sbluemin/fleet-core/admiral/carrier/status-overlay-controller";

@@ -6,7 +6,7 @@ import registerFleetWiki from "./fleet-wiki/index.js";
 import registerGrandFleet from "./grand-fleet/index.js";
 import { registerJob } from "./job.js";
 import { registerProviderGuardCommand } from "./agent/provider.js";
-import { registerModelCommands, syncModelConfig } from "./agent/carrier/model-ui.js";
+import { syncModelConfig } from "./agent/ui/panel/config.js";
 import { bootBridge } from "./agent/ui/acp-shell/register.js";
 import { registerFleetPiCommands } from "./fleet.js";
 import {
@@ -66,7 +66,6 @@ function registerFleet(pi: ExtensionAPI, fleetEnabled: boolean): void {
   syncModelConfig();
   wireFleetPiEvents(pi);
   bootBridge(pi);
-  registerModelCommands(pi);
   registerFleetPiCommands(pi);
 }
 

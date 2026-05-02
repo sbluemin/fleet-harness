@@ -17,7 +17,7 @@ import {
 } from "@sbluemin/fleet-core/admiral";
 import type { CarrierConfig, CarrierMetadata } from "@sbluemin/fleet-core/admiral/carrier";
 import * as carrierCore from "@sbluemin/fleet-core/admiral/carrier";
-import { loadModels as getModelConfig } from "@sbluemin/fleet-core/admiral/store";
+
 import type { BackendProgress, TaskForceResult, TaskForceState } from "@sbluemin/fleet-core/admiral/taskforce";
 import type { SubtaskProgress, SquadronResult, SquadronState } from "@sbluemin/fleet-core/admiral/squadron";
 import { SQUADRON_MAX_INSTANCES } from "@sbluemin/fleet-core/admiral/squadron";
@@ -41,7 +41,7 @@ import type {
   AgentToolSpec,
 } from "@sbluemin/fleet-core";
 
-import { setAgentPanelModelConfig } from "./agent/ui/panel/config.js";
+import { syncModelConfig } from "./agent/ui/panel/config.js";
 import { renderCarrierJobsCall, renderCarrierJobsResult, type CarrierJobsToolResult } from "./job.js";
 import { getFleetRuntime } from "./fleet.js";
 import {
@@ -225,10 +225,6 @@ export function ensureShipyardLogCategories(): void {
     label: "Carrier Prompt",
     description: "캐리어 프롬프트 전문 로그",
   });
-}
-
-function syncModelConfig(): void {
-  setAgentPanelModelConfig(getModelConfig());
 }
 
 function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {

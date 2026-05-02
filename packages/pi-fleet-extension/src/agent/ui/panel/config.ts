@@ -7,6 +7,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { MIN_BODY_H, MAX_BODY_H, formatPanelMultiColHint } from "@sbluemin/fleet-core/constants";
+import { loadModels } from "@sbluemin/fleet-core/admiral/store";
 import { getState } from "./state.js";
 import type { ServiceSnapshot } from "./state.js";
 import { syncCurrentWidget, syncWidget } from "./widget-sync.js";
@@ -23,6 +24,11 @@ export function setAgentPanelModelConfig(
   const s = getState();
   s.modelConfig = config;
   syncCurrentWidget();
+}
+
+/** 모델 설정을 런타임에서 읽어 패널에 반영합니다. */
+export function syncModelConfig(): void {
+  setAgentPanelModelConfig(loadModels());
 }
 
 // ─── 서비스 상태 동기화 ────────────────────────────────────

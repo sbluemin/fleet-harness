@@ -34,7 +34,7 @@ import {
 import { isWorldviewEnabled } from "@sbluemin/fleet-core/metaphor";
 import { getLogAPI } from "@sbluemin/fleet-core/services/log";
 import { bootBridge, ensureBridgeKeybinds } from "./agent/ui/acp-shell/register.js";
-import { syncModelConfig } from "./agent/carrier/model-ui.js";
+import { syncModelConfig } from "./agent/ui/panel/config.js";
 import { completeSimple } from "./agent/provider.js";
 import type { Api, Model, ThinkingLevel } from "./agent/provider.js";
 import { registerGrandFleet } from "./grand-fleet/index.js";
