@@ -6,8 +6,8 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { ANIM_INTERVAL_MS, BODY_H_STEP, formatPanelMultiColHint, PANEL_DETAIL_HINT } from "@sbluemin/fleet-core/constants";
-import { getActiveBackgroundJobCount, onActiveJobCountChange } from "@sbluemin/fleet-core/job";
+import { ANIM_INTERVAL_MS, BODY_H_STEP, formatPanelMultiColHint, PANEL_DETAIL_HINT } from "../fleet-core-facades.js";
+import { getActiveBackgroundJobCount, onActiveJobCountChange } from "../fleet-core-facades.js";
 import { getActiveJobs, getState, syncColsWithRegisteredOrder } from "./state.js";
 import type { AgentCol } from "./types.js";
 import { detachWidgetSync, syncCurrentWidget, syncWidget } from "./widget-sync.js";

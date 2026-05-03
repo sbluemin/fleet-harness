@@ -3,42 +3,23 @@ import { keyHint } from "@mariozechner/pi-coding-agent";
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { CliType } from "@sbluemin/unified-agent";
 import {
-  REQUEST_DIRECTIVE_MANIFEST,
-  RequestDirectiveParams,
+  admiral,
+  infra,
   type DirectiveAnswer,
   type DirectiveOption,
   type DirectiveQuestion,
   type DirectiveResult,
   type RenderOption,
-  clampHeader,
-  errorResult,
-  hasPreview,
-  validateQuestions,
-} from "@sbluemin/fleet-core/admiral";
-import type { CarrierConfig, CarrierMetadata } from "@sbluemin/fleet-core/admiral/carrier";
-import * as carrierCore from "@sbluemin/fleet-core/admiral/carrier";
-
-import type { BackendProgress, TaskForceResult, TaskForceState } from "@sbluemin/fleet-core/admiral/taskforce";
-import type { SubtaskProgress, SquadronResult, SquadronState } from "@sbluemin/fleet-core/admiral/squadron";
-import { SQUADRON_MAX_INSTANCES } from "@sbluemin/fleet-core/admiral/squadron";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
-import {
-  deriveToolDescription,
-  registerToolPromptManifest,
-} from "@sbluemin/fleet-core/services/tool-registry";
-import {
-  ANSI_RESET,
-  CARRIER_BG_COLORS,
-  CARRIER_COLORS,
-  CLI_DISPLAY_NAMES,
-  PANEL_DIM_COLOR,
-  SORTIE_SUMMARY_COLOR,
-  SQUADRON_BADGE_COLOR,
-  TASKFORCE_BADGE_COLOR,
-} from "@sbluemin/fleet-core/constants";
-import type {
   AgentToolCtx,
   AgentToolSpec,
+  BackendProgress,
+  CarrierConfig,
+  CarrierMetadata,
+  SquadronResult,
+  SquadronState,
+  SubtaskProgress,
+  TaskForceResult,
+  TaskForceState,
 } from "@sbluemin/fleet-core";
 
 import { syncModelConfig } from "./panel/config.js";
@@ -50,8 +31,51 @@ import {
 } from "./panel/message-render.js";
 
 export type { BackendProgress, CarrierConfig, SquadronResult, SquadronState, SubtaskProgress, TaskForceResult, TaskForceState };
-export { SQUADRON_MAX_INSTANCES };
-export * from "@sbluemin/fleet-core/admiral/carrier";
+export const {
+  getOfflineCarrierIds,
+  getRegisteredCarrierConfig,
+  getRegisteredOrder,
+  getSquadronEnabledIds,
+  isCarrierOnline,
+  isSquadronCarrierEnabled,
+  notifyStatusUpdate,
+  resolveCarrierBgColor,
+  resolveCarrierColor,
+  resolveCarrierDisplayName,
+  resolveCarrierRgb,
+  setCarrierOffline,
+  setCarrierOnline,
+  setOfflineCarriers,
+  setSquadronEnabledCarriers,
+  setTaskForceConfiguredCarriers,
+  updateCarrierCliType,
+} = admiral.carrier;
+export const {
+  disableSquadronCarrier,
+  enableSquadronCarrier,
+} = admiral.carrier;
+export const { SQUADRON_MAX_INSTANCES } = admiral.squadron;
+
+const {
+  REQUEST_DIRECTIVE_MANIFEST,
+  RequestDirectiveParams,
+  clampHeader,
+  errorResult,
+  hasPreview,
+  validateQuestions,
+} = admiral.requestDirective;
+const {
+  ANSI_RESET,
+  CARRIER_BG_COLORS,
+  CARRIER_COLORS,
+  CLI_DISPLAY_NAMES,
+  PANEL_DIM_COLOR,
+  SORTIE_SUMMARY_COLOR,
+  SQUADRON_BADGE_COLOR,
+  TASKFORCE_BADGE_COLOR,
+} = admiral.constants;
+const { deriveToolDescription, registerToolPromptManifest } = infra.toolRegistry;
+const carrierCore = admiral.carrier;
 
 interface PiRenderContext {
   readonly args?: unknown;
@@ -92,7 +116,7 @@ export function registerToolRegistry(ctx: ExtensionAPI, fleetEnabled: boolean): 
 }
 
 export function registerFleetPiTools(pi: ExtensionAPI): void {
-  const specs = (getFleetRuntime().fleet as unknown as { readonly tools: readonly AgentToolSpec[] }).tools;
+  const specs = getFleetRuntime().admiral.agent.tools.listSpecs();
 
   for (const spec of specs) {
     pi.registerTool(toPiToolConfig(spec) as any);
@@ -220,7 +244,7 @@ export function ensureShipyardLogCategories(): void {
     return;
   }
   shipyardLogCategoriesRegistered = true;
-  getLogAPI().registerCategory({
+  infra.log.getLogAPI().registerCategory({
     id: "prompt",
     label: "Carrier Prompt",
     description: "캐리어 프롬프트 전문 로그",
@@ -243,8 +267,7 @@ function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
     },
     execute(id: string, params: unknown, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
       const runtime = getFleetRuntime();
-      const admiral = runtime.fleet as unknown as { readonly admiral: { tools: { invoke(name: string, args: unknown, ctx?: { cwd?: string; toolCallId?: string; signal?: AbortSignal | undefined }): Promise<{ content: Array<{ type: string; text: string }>; isError: boolean }> } } };
-      return admiral.admiral.tools.invoke(spec.name, params, { cwd: ctx.cwd, toolCallId: id, signal });
+      return runtime.admiral.agent.tools.invoke(spec.name, params, { cwd: ctx.cwd, toolCallId: id, signal });
     },
   } as any;
 }

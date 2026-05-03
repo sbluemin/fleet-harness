@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getShellPopupBridge } from "../pty/overlay.js";
-import { buildLaunchCommand } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
 import { buildBridgeCommand } from "./command.js";
 import {
   BRIDGE_ACTION_ID,
@@ -27,7 +27,7 @@ export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
     return;
   }
 
-  const launchData = buildLaunchCommand({ scope: "default" });
+  const launchData = admiral.agent.bridge.buildLaunchCommand({ scope: "default" });
   if (!launchData) {
     throw new Error("기본 bridge scope에 활성 ACP 세션이 없습니다.");
   }
@@ -44,7 +44,7 @@ export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
 }
 
 export function getActiveBridgeSession(): ActiveBridgeSession {
-  const launchData = buildLaunchCommand({ scope: "default" });
+  const launchData = admiral.agent.bridge.buildLaunchCommand({ scope: "default" });
   if (!launchData) {
     throw new Error("기본 bridge scope에 활성 ACP 세션이 없습니다.");
   }

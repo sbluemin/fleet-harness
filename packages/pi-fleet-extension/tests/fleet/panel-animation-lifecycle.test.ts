@@ -1,13 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  acquireJobPermit,
-  getActiveBackgroundJobCount,
-  resetJobConcurrencyForTest,
-} from "@sbluemin/fleet-core/job";
-import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
-import { SPINNER_FRAMES } from "@sbluemin/fleet-core/constants";
-import type { CarrierJobRecord } from "@sbluemin/fleet-core/job";
+  admiral,
+  infra,
+  type CarrierJobRecord,
+} from "@sbluemin/fleet-core";
 import {
   bindPanelBackgroundJobAnimation,
   detachAgentPanelUi,
@@ -19,6 +16,13 @@ import { syncWidget } from "../../src/panel/widget-sync.js";
 import type { AgentCol } from "../../src/panel/types.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+const { CARRIER_FRAMEWORK_KEY } = admiral.carrier;
+const { SPINNER_FRAMES } = admiral.constants;
+const {
+  acquireJobPermit,
+  getActiveBackgroundJobCount,
+  resetJobConcurrencyForTest,
+} = infra.job;
 
 beforeEach(() => {
   vi.useFakeTimers();

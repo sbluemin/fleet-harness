@@ -8,7 +8,7 @@ Pi-specific capabilities are organized into domain-mirroring adapters under `src
 
 ### Large Domains (Subdirectories)
 - **agent**: `AgentServices` adapter, Pi AI Provider registration, streaming, and Agent Panel UI
-- **grand-fleet**: `GrandFleetServices` / `Admiralty` adapter, IPC, and GF session state
+- **grand-fleet**: `admiralty` facade adapter, IPC, and GF session state
 - **fleet-wiki**: `@sbluemin/fleet-wiki` adapter, tool/command registration, and overlays
 - **shell**: Host shell surfaces (HUD, Welcome UI, Overlays) and shortcut registration
 

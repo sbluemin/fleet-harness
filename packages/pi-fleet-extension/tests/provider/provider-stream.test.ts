@@ -8,37 +8,49 @@ vi.mock("@mariozechner/pi-ai", () => ({
 }));
 
 let capturedStreamHandler: Function | null = null;
+const parseModelIdMock = vi.fn((id: string, _provider?: string) => {
+  if (id === "gpt-5.4 (Unified)" || id === "gpt-5.4") return { cli: "codex", backendModel: "gpt-5.4" };
+  return null;
+});
+const ensureMock = vi.fn(async () => ({ sessionId: "acp-session-1" }));
+const sendMessageMock = vi.fn(async () => {});
+const deliverToolResultsMock = vi.fn(async () => {});
 
 vi.mock("@sbluemin/fleet-core", () => ({
-  parseModelId: vi.fn((id: string, _provider?: string) => {
-    if (id === "gpt-5.4 (Unified)" || id === "gpt-5.4") return { cli: "codex", backendModel: "gpt-5.4" };
-    return null;
-  }),
-  hashSystemPrompt: vi.fn(() => "hash-123"),
-  ensure: vi.fn(async () => ({ sessionId: "acp-session-1" })),
-  sendMessage: vi.fn(async () => {}),
-  deliverToolResults: vi.fn(async () => {}),
-  registerExtraTools: vi.fn(),
-  registerStreamHandler: vi.fn((handler: Function) => {
-    capturedStreamHandler = handler;
-    return () => { capturedStreamHandler = null; };
-  }),
-  resolveSession: vi.fn(() => null),
-  buildLaunchCommand: vi.fn(() => null),
-  buildModelId: vi.fn((cli: string, modelId: string) => `${modelId} (${cli})`),
-  buildProviderId: vi.fn((cli: string) => `provider-${cli}`),
-  getProviderIds: vi.fn(() => []),
-  getThinkingLevels: vi.fn(() => null),
-  bindHostSession: vi.fn(),
-  shutdownAllSessions: vi.fn(async () => {}),
-}));
-
-vi.mock("@sbluemin/fleet-core/services/log", () => ({
-  getLogAPI: vi.fn(() => ({ registerCategory: vi.fn() })),
-}));
-
-vi.mock("@sbluemin/fleet-core/services/settings", () => ({
-  getSettingsService: vi.fn(() => null),
+  admiral: {
+    agent: {
+      models: {
+        parseModelId: parseModelIdMock,
+        hashSystemPrompt: vi.fn(() => "hash-123"),
+        buildModelId: vi.fn((cli: string, modelId: string) => `${modelId} (${cli})`),
+        buildProviderId: vi.fn((cli: string) => `provider-${cli}`),
+        getProviderIds: vi.fn(() => []),
+        getThinkingLevels: vi.fn(() => null),
+      },
+      session: {
+        ensure: ensureMock,
+        sendMessage: sendMessageMock,
+        deliverToolResults: deliverToolResultsMock,
+        resolveSession: vi.fn(() => null),
+      },
+      tools: { registerExtraTools: vi.fn() },
+      events: {
+        registerStreamHandler: vi.fn((handler: Function) => {
+          capturedStreamHandler = handler;
+          return () => { capturedStreamHandler = null; };
+        }),
+      },
+      bridge: { buildLaunchCommand: vi.fn(() => null) },
+      lifecycle: {
+        bindHostSession: vi.fn(),
+        shutdownAllSessions: vi.fn(async () => {}),
+      },
+    },
+  },
+  infra: {
+    log: { getLogAPI: vi.fn(() => ({ registerCategory: vi.fn() })) },
+    settings: { getSettingsService: vi.fn(() => null) },
+  },
 }));
 
 vi.mock("@sbluemin/unified-agent", () => ({
@@ -59,7 +71,7 @@ describe("provider-stream adapter", () => {
   it("잘못된 model ID는 에러 스트림을 반환한다", async () => {
     vi.resetModules();
     const { streamAcp } = await import("../../src/provider.js");
-    const { parseModelId } = await import("@sbluemin/fleet-core");
+    const parseModelId = parseModelIdMock;
 
     vi.mocked(parseModelId).mockReturnValueOnce(null);
 
@@ -75,7 +87,8 @@ describe("provider-stream adapter", () => {
   it("fresh query는 ensure → sendMessage(SendMessageRequest)를 호출한다", async () => {
     vi.resetModules();
     const { streamAcp, initStreamEventHandler } = await import("../../src/provider.js");
-    const { ensure, sendMessage } = await import("@sbluemin/fleet-core");
+    const ensure = ensureMock;
+    const sendMessage = sendMessageMock;
 
     initStreamEventHandler();
     vi.mocked(ensure).mockResolvedValueOnce({ sessionId: "acp-session-1" });
@@ -114,7 +127,9 @@ describe("provider-stream adapter", () => {
   it("toolResult delivery는 mcpToolCall 이벤트에서 등록된 sessionId로 라우팅한다", async () => {
     vi.resetModules();
     const { streamAcp, initStreamEventHandler } = await import("../../src/provider.js");
-    const { ensure, sendMessage, deliverToolResults } = await import("@sbluemin/fleet-core");
+    const ensure = ensureMock;
+    const sendMessage = sendMessageMock;
+    const deliverToolResults = deliverToolResultsMock;
 
     initStreamEventHandler();
     vi.mocked(ensure).mockResolvedValueOnce({ sessionId: "acp-session-1" });

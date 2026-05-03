@@ -1,4 +1,4 @@
-import { getSettingsService } from "../services/settings/runtime.js";
+import { getSettingsService } from "../infra/settings/runtime.js";
 
 import { WORLDVIEW_SETTINGS_KEY, type MetaphorSettings } from "./prompts.js";
 

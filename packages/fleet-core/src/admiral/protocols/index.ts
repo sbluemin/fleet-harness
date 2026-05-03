@@ -7,9 +7,11 @@
 
 import type { AdmiralProtocol } from "./types.js";
 
-import { getSettingsService } from "../../services/settings/runtime.js";
+import { getSettingsService } from "../../infra/settings/runtime.js";
 import { FLEET_ACTION } from "./fleet-action.js";
 import { POSITIVE_CONTROL } from "./positive-control.js";
+import * as standingOrders from "./standing-orders/index.js";
+export { standingOrders };
 
 // ─────────────────────────────────────────────────────────
 // 타입
@@ -33,6 +35,13 @@ const PROTOCOLS: readonly AdmiralProtocol[] = [
 
 /** 초기 부팅 시 기본 활성 프로토콜 ID */
 const DEFAULT_ACTIVE_PROTOCOL_ID = "fleet-action";
+
+export const protocols = {
+  standingOrders,
+  getAllProtocols,
+  getActiveProtocol,
+  setActiveProtocol,
+};
 
 // ─────────────────────────────────────────────────────────
 // 함수

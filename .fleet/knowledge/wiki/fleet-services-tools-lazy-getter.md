@@ -1,49 +1,42 @@
 ---
 id: "fleet-services-tools-lazy-getter"
-title: "FleetServices.tools must be a lazy getter"
-tags: ["fleet-core", "fleet-services", "invariant", "mcp", "tool-spec"]
-created: "2026-04-30T17:57:54.360Z"
-updated: "2026-04-30T17:57:54.360Z"
+title: "FleetServices.tools lazy getter — SUPERSEDED by admiral.agent.tools (2026-05)"
+tags: ["fleet-core", "superseded", "doctrine", "history", "tool-spec"]
+created: "2026-05-03T16:19:09.790Z"
+updated: "2026-05-03T16:19:09.790Z"
 version: 1
-rawSourceRef: "raw/2026-04-30-fleet-services-tools-lazy-getter-source.md"
+rawSourceRef: "raw/2026-05-03-fleet-services-tools-lazy-getter-source.md"
 ---
-## Invariant
+## Status: SUPERSEDED
 
-`FleetServices.tools` (in `packages/fleet-core/src/public/fleet-services.ts`) MUST be exposed as a lazy getter that re-evaluates `buildFleetToolSpecs(ports)` on every access. It MUST NOT be a frozen array set at `createFleetServices(ports)` time.
+This invariant no longer applies. The 2026-05 4-domain unification removed `FleetServices`, `public/fleet-services.ts`, and the `tools` lazy getter pattern entirely.
 
-```ts
-// CORRECT
-get tools(): readonly AgentToolSpec[] {
-  return buildFleetToolSpecs(ports);
-}
+## What replaced it
 
-// WRONG (carrier registry is empty at this moment)
-tools: buildFleetToolSpecs(ports),
-```
+The Fleet tool catalog is now sourced through:
 
-## Why
+- `runtime.admiral.agent.tools.list()` — returns the registered tool specs
+- `runtime.admiral.agent.tools.invoke(...)` — invokes a tool
+- `runtime.admiral.agent.tools.registerExtraTools(scopeKey, specs)` — host-scoped extras
+- `runtime.admiral.agent.tools.unregisterExtraTools(scopeKey)`
 
-`buildFleetToolSpecs(ports)` calls `buildSortieToolSpec(ports)`, `buildSquadronToolSpec(ports)`, and `buildTaskForceToolSpec(ports)`. Each of these inspects the carrier registry via `getRegisteredOrder()` (defined in `packages/fleet-core/src/admiral/carrier/framework.ts`) and returns `null` when the registry is empty:
+Default Fleet tool specs are auto-registered when the `admiral.agent` facade module is loaded. There is no lazy getter at the public layer.
 
-```ts
-// admiral/carrier/tool-spec.ts:155-157
-export function buildSortieToolSpec(ports): AgentToolSpec | null {
-  const allCarriers = getRegisteredOrder();
-  if (allCarriers.length < 1) return null;
-  ...
-}
-```
+## What survives from the old invariant
 
-Carrier registration happens in `pi-fleet-extension/src/tool-registry.ts:registerCarrier()` which runs **after** `createFleetCoreRuntime({ dataDir, ports })` returns. If `createFleetServices(ports)` evaluates `tools` immediately, the carrier registry is empty at that moment and only `buildCarrierJobsToolSpec()` (which has no carrier guard) survives — `sortie` / `squadron` / `taskforce` are dropped permanently.
+The motivation (lazy-evaluating Fleet tool specs to avoid stale catalogs and to register MCP defaults exactly once) survives, but the implementation moved into `admiral/agent/tools.ts` module-level state. `registerDefaultTool` is invoked at facade load time. There is no longer a getter on the public service object.
 
-The frozen-array bug manifests as: ACP CLI (Codex / Claude / Gemini) calls MCP `tools/list` and only sees `carrier_jobs`, `wiki_*` — `carriers_sortie`, `carrier_squadron`, `carrier_taskforce` are silently missing. No error, no log.
+## Where to look now
 
-## How to apply
+- Public consumer surface: `runtime.admiral.agent.tools.*`
+- Source of truth for tool registry state: `packages/fleet-core/src/admiral/agent/tools.ts`
+- Default fleet tool spec builders: `packages/fleet-core/src/admiral/{carrier,squadron,taskforce,carrier-jobs}/tool-spec.ts`
 
-- Never replace the lazy getter with an eager array — even for "perf" reasons. The getter is cheap (4 build calls, each O(carrierCount)) and only runs when `provider-stream.ts` actually needs `fleet.tools` for `[...PI tools, ...fleet.tools.map(specToTool)]` registration.
-- If you add a 5th built-in ToolSpec that has no carrier dependency, it can be safely included in `buildFleetToolSpecs` regardless — but the lazy contract still applies for the carrier-dependent ones.
-- After modifying `fleet-services.ts`, always rebuild dist (`pnpm -r build`) and restart any pi process; the running process holds the old dist in memory.
+## Do not re-introduce
 
-## Verification
+- A `tools` getter on any `public/*-services.ts` factory — `public/` is assembly-only (4-line factory shape).
+- A separate `FleetServices` interface — public services are exactly four (`admiral/admiralty/metaphor/infra`).
 
-E2E check: launch a pi process, register at least one carrier, start an ACP session, inspect MCP `tools/list` — `carriers_sortie`, `carrier_squadron`, `carrier_taskforce` MUST appear alongside `carrier_jobs` and `wiki_*`.
+## Reference
+
+See companion entry `fleet-core-public-services-4-domain-architecture` for the canonical four-domain shape and the 9-slot `admiral.agent` contract.

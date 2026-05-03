@@ -1,8 +1,7 @@
 import type { Component, Focusable } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
-import type { FleetSettingsServices } from "@sbluemin/fleet-core";
-import type { SectionDisplayConfig } from "@sbluemin/fleet-core/services/settings";
+import type { FleetInfraServices, SectionDisplayConfig } from "@sbluemin/fleet-core";
 
 import { getKeybindAPI } from "./keybinds.js";
 import { getFleetRuntime } from "./fleet.js";
@@ -106,14 +105,14 @@ export function registerSettings(_ctx: ExtensionAPI): void {
 
 export function loadSettings(): FleetPushModeSettings {
   try {
-    return getSettingsServices().settings.load<FleetPushModeSettings>(SECTION_KEY);
+    return getInfraSettingsFacade().getSettingsService()?.load<FleetPushModeSettings>(SECTION_KEY) ?? {};
   } catch {
     return {};
   }
 }
 
 export function saveSettings(settings: FleetPushModeSettings): void {
-  getSettingsServices().settings.save(SECTION_KEY, settings);
+  getInfraSettingsFacade().getSettingsService()?.save(SECTION_KEY, settings);
 }
 
 export function getDeliverAs(): "followUp" | "steer" {
@@ -140,7 +139,7 @@ function registerSettingsOverlayKeybind(): void {
 }
 
 function registerPushModeSettingsSection(): void {
-  const settingsApi = getSettingsServicesOrNull()?.settings;
+  const settingsApi = getInfraSettingsFacadeOrNull()?.getSettingsService();
   settingsApi?.registerSection({
     key: SECTION_KEY,
     displayName: "Push Mode",
@@ -161,7 +160,7 @@ async function openSettingsPopup(ctx: ExtensionContext): Promise<void> {
   if (!ctx.hasUI) return;
   if (activePopup) return;
 
-  const sections = getSettingsServicesOrNull()?.settings.getSections() ?? [];
+  const sections = getInfraSettingsFacadeOrNull()?.getSettingsService()?.getSections() ?? [];
 
   activePopup = ctx.ui.custom<void>(
     (_tui, theme, _keybindings, done) =>
@@ -184,13 +183,13 @@ async function openSettingsPopup(ctx: ExtensionContext): Promise<void> {
   }
 }
 
-function getSettingsServices(): FleetSettingsServices {
-  return getFleetRuntime().settings;
+function getInfraSettingsFacade(): FleetInfraServices["settings"] {
+  return getFleetRuntime().infra.settings;
 }
 
-function getSettingsServicesOrNull(): FleetSettingsServices | null {
+function getInfraSettingsFacadeOrNull(): FleetInfraServices["settings"] | null {
   try {
-    return getSettingsServices();
+    return getInfraSettingsFacade();
   } catch {
     return null;
   }

@@ -1,11 +1,11 @@
 import { describe, expect, beforeEach, it } from "vitest";
 
-import { registerJobAbortController, resetJobCancelRegistryForTest } from "../../src/services/job/job-cancel-registry.js";
-import { acquireJobPermit, resetJobConcurrencyForTest } from "../../src/services/job/concurrency-guard.js";
-import { appendBlock, createJobArchive, finalizeJobArchive, resetJobArchivesForTest } from "../../src/services/job/job-stream-archive.js";
-import { toMessageArchiveBlock } from "../../src/services/job/archive-block-converter.js";
-import type { CarrierJobRecord, CarrierJobSummary } from "../../src/services/job/job-types.js";
-import { putJobSummary, resetJobSummaryCacheForTest } from "../../src/services/job/lru-cache.js";
+import { registerJobAbortController, resetJobCancelRegistryForTest } from "../../src/infra/job/job-cancel-registry.js";
+import { acquireJobPermit, resetJobConcurrencyForTest } from "../../src/infra/job/concurrency-guard.js";
+import { appendBlock, createJobArchive, finalizeJobArchive, resetJobArchivesForTest } from "../../src/infra/job/job-stream-archive.js";
+import { toMessageArchiveBlock } from "../../src/infra/job/archive-block-converter.js";
+import type { CarrierJobRecord, CarrierJobSummary } from "../../src/infra/job/job-types.js";
+import { putJobSummary, resetJobSummaryCacheForTest } from "../../src/infra/job/lru-cache.js";
 import { dispatchCarrierJobsAction } from "../../src/admiral/carrier-jobs/index.js";
 import { buildCarrierJobsSchema, CARRIER_JOBS_MANIFEST } from "../../src/admiral/carrier-jobs/prompts.js";
 

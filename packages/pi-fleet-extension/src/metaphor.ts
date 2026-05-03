@@ -7,40 +7,49 @@
 import { BorderedLoader } from "@mariozechner/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
-  composeDirectiveRefinementRequest,
-  isWorldviewEnabled,
-  setWorldviewEnabled,
-} from "@sbluemin/fleet-core/metaphor";
-import type {
-  DirectiveRefinementSettings,
-  ReasoningLevel as DirectiveReasoningLevel,
-} from "@sbluemin/fleet-core/metaphor/directive-refinement";
-import {
-  isValidReasoning as isValidDirectiveReasoning,
-  loadSettings as loadDirectiveSettings,
-  REASONING_COLORS as DIRECTIVE_REASONING_COLORS,
-  REASONING_LABELS as DIRECTIVE_REASONING_LABELS,
-  REASONING_LEVELS as DIRECTIVE_REASONING_LEVELS,
-  REFINE_DIRECTIVE_COMMAND,
-  saveSettings as saveDirectiveSettings,
-  SECTION_KEY as DIRECTIVE_SECTION_KEY,
-} from "@sbluemin/fleet-core/metaphor/directive-refinement";
-import type {
-  OperationNameSettings,
-  ReasoningLevel as OperationReasoningLevel,
-} from "@sbluemin/fleet-core/metaphor/operation-name";
-import {
-  isValidReasoning as isValidOperationReasoning,
-  loadSettings as loadOperationSettings,
-  REASONING_LABELS as OPERATION_REASONING_LABELS,
-  REASONING_LEVELS as OPERATION_REASONING_LEVELS,
-  saveSettings as saveOperationSettings,
-} from "@sbluemin/fleet-core/metaphor/operation-name";
-import { getSettingsService } from "@sbluemin/fleet-core/services/settings";
+  infra,
+  metaphor,
+  type DirectiveRefinementSettings,
+  type DirectiveReasoningLevel,
+  type OperationNameSettings,
+  type OperationReasoningLevel,
+} from "@sbluemin/fleet-core";
 
 import { getKeybindAPI } from "./keybinds.js";
 import { completeSimple } from "./provider.js";
 import type { Api, Model, ThinkingLevel } from "./provider.js";
+
+const {
+  composeDirectiveRefinementRequest,
+  constants: directiveConstants,
+  settings: directiveSettings,
+  isValidReasoning: isValidDirectiveReasoning,
+  SECTION_KEY: DIRECTIVE_SECTION_KEY,
+} = metaphor.directiveRefinement;
+const {
+  constants: operationConstants,
+  settings: operationSettings,
+  isValidReasoning: isValidOperationReasoning,
+} = metaphor.operationName;
+const { isWorldviewEnabled, setWorldviewEnabled } = metaphor.worldview;
+const {
+  loadSettings: loadDirectiveSettings,
+  saveSettings: saveDirectiveSettings,
+} = directiveSettings;
+const {
+  REASONING_COLORS: DIRECTIVE_REASONING_COLORS,
+  REASONING_LABELS: DIRECTIVE_REASONING_LABELS,
+  REASONING_LEVELS: DIRECTIVE_REASONING_LEVELS,
+  REFINE_DIRECTIVE_COMMAND,
+} = directiveConstants;
+const {
+  loadSettings: loadOperationSettings,
+  saveSettings: saveOperationSettings,
+} = operationSettings;
+const {
+  REASONING_LABELS: OPERATION_REASONING_LABELS,
+  REASONING_LEVELS: OPERATION_REASONING_LEVELS,
+} = operationConstants;
 
 export function registerMetaphor(ctx: ExtensionAPI): void {
   registerWorldviewCommand(ctx);
@@ -283,7 +292,7 @@ function registerDirectiveRefinement(pi: ExtensionAPI): void {
       ? initialSettings.reasoning
       : "off";
 
-  const settingsApi = getSettingsService();
+  const settingsApi = infra.settings.getSettingsService();
   settingsApi?.registerSection({
     key: DIRECTIVE_SECTION_KEY,
     displayName: "Directive Refinement",

@@ -18,8 +18,8 @@ import {
   type UnifiedClientOptions,
 } from "@sbluemin/unified-agent";
 
-import { resolveAuthEnv } from "../../../services/auth/index.js";
-import { getLogAPI } from "../../../services/log/store.js";
+import { resolveAuthEnv } from "../../../infra/auth/index.js";
+import { getLogAPI } from "../../../infra/log/store.js";
 import { getSessionStore, classifyResumeFailure } from "./session-runtime.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 import type { TrackStatus } from "../../_shared/carrier-job-events.js";

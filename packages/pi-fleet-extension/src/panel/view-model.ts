@@ -1,5 +1,5 @@
 import type { ColBlock, ColStatus } from "./types.js";
-import type { CarrierJobKind, CarrierJobStatus, TrackKind } from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
+import type { CarrierJobKind, CarrierJobStatus, TrackKind } from "@sbluemin/fleet-core";
 
 export interface PanelRunViewModelSource {
   runId?: string;

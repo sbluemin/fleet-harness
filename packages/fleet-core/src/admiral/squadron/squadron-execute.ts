@@ -1,4 +1,4 @@
-import type { CarrierJobStatus, CarrierJobSummary } from "../../services/job/index.js";
+import type { CarrierJobStatus, CarrierJobSummary } from "../../infra/job/index.js";
 import type { CarrierMetadata } from "../carrier/types.js";
 import { validateRequiredRequestBlocks } from "../carrier/request-blocks.js";
 import { SQUADRON_MAX_INSTANCES, type SquadronResult } from "./types.js";

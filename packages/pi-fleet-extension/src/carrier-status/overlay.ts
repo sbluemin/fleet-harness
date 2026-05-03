@@ -13,7 +13,7 @@ import type { Component, Focusable, TUI } from "@mariozechner/pi-tui";
 import { Key, matchesKey, visibleWidth } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
-import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "@sbluemin/fleet-core/constants";
+import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "../fleet-core-facades.js";
 import { CLI_BACKENDS, type HealthStatus } from "@sbluemin/unified-agent";
 import {
   getProviderModels,
@@ -22,8 +22,7 @@ import {
   refreshStatusQuiet,
 } from "@sbluemin/unified-agent";
 import type { CliType, ProviderModelInfo } from "@sbluemin/unified-agent";
-import type { CarrierCategory } from "@sbluemin/fleet-core/admiral/carrier/types";
-import { StatusOverlayController } from "@sbluemin/fleet-core/admiral/carrier/status-overlay-controller";
+import type { CarrierCategory, TaskForceCliType } from "@sbluemin/fleet-core";
 import {
   getConfiguredTaskForceBackends,
   getConfiguredTaskForceCarrierIds,
@@ -37,8 +36,9 @@ import {
   updateCliTypeOverride,
   updateModelSelection,
   updateTaskForceModelSelection,
-} from "@sbluemin/fleet-core/admiral/store";
-import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "@sbluemin/fleet-core/admiral/taskforce";
+  StatusOverlayController,
+  TASKFORCE_CLI_TYPES,
+} from "../fleet-core-facades.js";
 
 import { getKeybindAPI } from "../keybinds.js";
 import { refreshAgentPanel } from "../panel/ui.js";
@@ -1197,7 +1197,7 @@ function buildStatusEntries(): CarrierStatusEntry[] {
 function createStatusOverlayController(
   entries: CarrierStatusEntry[],
   refreshPanel: () => void,
-): StatusOverlayController {
+): InstanceType<typeof StatusOverlayController> {
   return new StatusOverlayController({
     getEntries: () => entries,
     getRegisteredOrder,
@@ -1205,19 +1205,19 @@ function createStatusOverlayController(
     getCurrentModelSelection: (carrierId: string) => getModelConfig()[carrierId],
     getAvailableModels: getCliModelInfo,
     getPerCliSettings: (carrierId: string, cliType: CarrierCliType) => getPerCliSettings(carrierId, cliType),
-    savePerCliSettings: (carrierId: string, cliType: CarrierCliType, selection) => {
+    savePerCliSettings: (carrierId: string, cliType: CarrierCliType, selection: unknown) => {
       savePerCliSettings(carrierId, cliType, selection);
     },
     updateCarrierCliType: (carrierId: string, cliType: CarrierCliType) => {
       updateCarrierCliType(carrierId, cliType as CliType);
     },
-    updateModelSelection: async (carrierId: string, selection) => {
+    updateModelSelection: async (carrierId: string, selection: unknown) => {
       await updateModelSelection(carrierId, selection);
     },
     refreshAgentPanel: refreshPanel,
     syncModelConfig,
     notifyStatusUpdate,
-    updateCliTypeOverride: (carrierId, cliType, defaultCliType) => {
+    updateCliTypeOverride: (carrierId: string, cliType: CarrierCliType, defaultCliType: CarrierCliType) => {
       updateCliTypeOverride(carrierId, cliType, defaultCliType);
     },
   });

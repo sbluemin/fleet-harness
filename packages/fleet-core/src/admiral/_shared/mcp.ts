@@ -14,10 +14,10 @@
 import http from "http";
 import crypto from "crypto";
 
-import { getLogAPI } from "../../services/log/store.js";
+import { getLogAPI } from "../../infra/log/store.js";
 import {
   getToolsForSession,
-} from "../../services/tool-registry/tool-snapshot.js";
+} from "../../infra/tool-registry/tool-snapshot.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

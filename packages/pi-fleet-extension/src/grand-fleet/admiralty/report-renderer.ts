@@ -6,7 +6,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import type { FleetId, MissionReportParams } from "@sbluemin/fleet-core/admiralty";
 
 interface ReportRenderOptions {
@@ -27,7 +27,7 @@ export function renderReport(
   options: ReportRenderOptions = {},
 ): void {
   const fleetLabel = formatFleetLabel(params.fleetId, options.designation);
-  getLogAPI().debug(
+  infra.log.getLogAPI().debug(
     LOG_SOURCE,
     `보고서 수신: ${fleetLabel}, type=${params.type}`,
   );
@@ -62,7 +62,7 @@ export function renderFleetEvent(
   options: ReportRenderOptions = {},
 ): void {
   const fleetLabel = formatFleetLabel(fleetId, options.designation);
-  getLogAPI().debug(LOG_SOURCE, `이벤트 렌더링: ${fleetLabel}, ${event}`);
+  infra.log.getLogAPI().debug(LOG_SOURCE, `이벤트 렌더링: ${fleetLabel}, ${event}`);
 
   const isConnect = event === "connected";
   const color = isConnect ? "\x1b[38;2;80;220;120m" : "\x1b[38;2;255;100;90m";

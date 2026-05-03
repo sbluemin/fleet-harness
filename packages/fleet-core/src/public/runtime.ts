@@ -3,46 +3,28 @@ import {
 } from "@sbluemin/unified-agent";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
-import { getFleetDataDir } from "../services/data-dir/paths.js";
-import { migrateLegacyFleetDataDir } from "../services/data-dir/migrate.js";
-import {
-  initSettingsService,
-  resetSettingsService,
-} from "../services/settings/runtime.js";
-import { SettingsService } from "../services/settings/service.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
 import {
-  createFleetServices,
-  shutdownFleetMcp,
-  type FleetServices,
-} from "./fleet-services.js";
+  createFleetAdmiralServices,
+  type FleetAdmiralServices,
+} from "./admiral-services.js";
 import {
-  createGrandFleetServices,
-  type GrandFleetServices,
-} from "./grand-fleet-services.js";
+  createFleetAdmiraltyServices,
+  type FleetAdmiraltyServices,
+} from "./admiralty-services.js";
 import {
-  createJobServices,
-  type FleetJobServices,
-} from "./job-services.js";
+  createFleetInfraServices,
+  type FleetInfraServices,
+} from "./infra-services.js";
 import {
-  createLogServices,
-  type FleetLogServices,
-} from "./log-services.js";
-import {
-  createMetaphorServices,
+  createFleetMetaphorServices,
   type FleetMetaphorServices,
 } from "./metaphor-services.js";
-import {
-  createSettingsServices,
-  type FleetSettingsServices,
-} from "./settings-services.js";
 
-export type { FleetServices } from "./fleet-services.js";
-export type { GrandFleetServices } from "./grand-fleet-services.js";
-export type { FleetJobServices } from "./job-services.js";
-export type { FleetLogServices } from "./log-services.js";
+export type { FleetAdmiralServices } from "./admiral-services.js";
+export type { FleetAdmiraltyServices } from "./admiralty-services.js";
+export type { FleetInfraServices } from "./infra-services.js";
 export type { FleetMetaphorServices } from "./metaphor-services.js";
-export type { FleetSettingsServices } from "./settings-services.js";
 
 export interface FleetCoreRuntimeOptions {
   readonly dataDir: string;
@@ -50,47 +32,36 @@ export interface FleetCoreRuntimeOptions {
 }
 
 export interface FleetCoreRuntimeContext {
-  readonly fleet: FleetServices;
-  readonly grandFleet: GrandFleetServices;
+  readonly admiral: FleetAdmiralServices;
+  readonly admiralty: FleetAdmiraltyServices;
   readonly metaphor: FleetMetaphorServices;
-  readonly jobs: FleetJobServices;
-  readonly log: FleetLogServices;
-  readonly settings: FleetSettingsServices;
+  readonly infra: FleetInfraServices;
   shutdown(): Promise<void>;
 }
 
 export function createFleetCoreRuntime(
   options: FleetCoreRuntimeOptions,
 ): FleetCoreRuntimeContext {
+  const infra = createFleetInfraServices();
   setFleetCoreBootMode(options.bootMode ?? "normal");
-  if (options.dataDir === getFleetDataDir()) {
-    migrateLegacyFleetDataDir(options.dataDir);
+  if (options.dataDir === infra.dataDir.getFleetDataDir()) {
+    infra.dataDir.migrateLegacyFleetDataDir(options.dataDir);
   }
   initAgentSessionRuntime(options.dataDir);
   initStore(options.dataDir);
-  const settings = new SettingsService();
-  initSettingsService(settings);
-
-  let fleet: FleetServices;
-  try {
-    fleet = createFleetServices();
-  } catch (error) {
-    resetSettingsService(settings);
-    throw error;
-  }
+  const settings = infra.settings.create();
+  infra.settings.initSettingsService(settings);
 
   resetServiceStatus();
 
   return {
-    fleet,
-    grandFleet: createGrandFleetServices(),
-    metaphor: createMetaphorServices(),
-    jobs: createJobServices(),
-    log: createLogServices(),
-    settings: createSettingsServices(settings),
+    admiral: createFleetAdmiralServices(),
+    admiralty: createFleetAdmiraltyServices(),
+    metaphor: createFleetMetaphorServices(),
+    infra,
     async shutdown() {
-      await shutdownFleetMcp();
-      resetSettingsService(settings);
+      await infra.toolRegistry.mcp.stopMcpServer();
+      infra.settings.resetSettingsService(settings);
       resetServiceStatus();
     },
   };

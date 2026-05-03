@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import { getState } from "../state.js";
 import { FleetClient } from "./client.js";
 import { registerFleetHandlers } from "../admiralty/methods.js";
@@ -103,7 +103,7 @@ export function connectToAdmiralty(
 ): void {
   const runtime = getFleetRuntime();
   const state = getState();
-  const log = getLogAPI();
+  const log = infra.log.getLogAPI();
 
   if (runtime.client) {
     if (runtime.client.getState() === "connected") {
@@ -232,7 +232,7 @@ export function shutdownFleetRuntime(
     return;
   }
 
-  getLogAPI().info(LOG_SOURCE, "Fleet 종료: deregister 전송");
+  infra.log.getLogAPI().info(LOG_SOURCE, "Fleet 종료: deregister 전송");
   runtime.client.sendNotification("fleet.deregister", {
     fleetId,
     reason: "shutdown",
@@ -286,7 +286,7 @@ function startHeartbeat(fleetId: FleetId): void {
   stopHeartbeat();
   runtime.heartbeatTimer = setInterval(() => {
     runtime.lastHeartbeatAt = Date.now();
-    getLogAPI().debug(
+    infra.log.getLogAPI().debug(
       LOG_SOURCE,
       `heartbeat 전송: fleetId=${fleetId}`,
       { hideFromFooter: true },

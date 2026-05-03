@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { GrandFleetRole } from "@sbluemin/fleet-core/admiralty";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import { getBootConfig } from "../fleet.js";
 import registerAdmiralty from "./admiralty/register.js";
 import registerFleet from "./fleet/register.js";
@@ -14,7 +14,7 @@ export function registerGrandFleet(ctx: ExtensionAPI | ExtensionContext): void {
   const bootCfg = getBootConfig();
   if (bootCfg && !bootCfg.grandFleet) return;
 
-  const log = getLogAPI();
+  const log = infra.log.getLogAPI();
   const role = detectRole();
   if (!role) {
     log.debug("grand-fleet", "PI_GRAND_FLEET_ROLE 미설정 — 단일 함대 모드");

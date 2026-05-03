@@ -16,8 +16,8 @@ import {
   type UnifiedClientOptions,
 } from "@sbluemin/unified-agent";
 
-import { resolveAuthEnv } from "../../../services/auth/index.js";
-import { getLogAPI } from "../../../services/log/store.js";
+import { resolveAuthEnv } from "../../../infra/auth/index.js";
+import { getLogAPI } from "../../../infra/log/store.js";
 import { emitStreamEvent } from "../events.js";
 import {
   type AgentSessionState,
@@ -684,7 +684,7 @@ function convertToMcpResult(result: ToolResultEnvelope): { content: Array<{ type
 }
 
 async function getMcpUrl(): Promise<string> {
-  // MCP URL은 fleet-services의 cachedMcpUrlPromise를 통해 확보
+  // MCP URL은 infra.toolRegistry.mcp singleton을 통해 확보
   // 내부 모듈이므로 직접 mcp.ts의 startMcpServer를 호출
   const { startMcpServer } = await import("../../_shared/mcp.js");
   return startMcpServer();

@@ -16,12 +16,10 @@ fleet-core의 외부 소비자에게 노출되는 서비스 조립 계층. 비�
 | File | Domain |
 |------|--------|
 | `runtime.ts` | Composition root — 전체 초기화 + shutdown |
-| `fleet-services.ts` | 캐리어 오케스트레이션 (sortie/squadron/taskforce/tools/mcp) |
-| `grand-fleet-services.ts` | 다중 인스턴스 그랜드 플릿 |
-| `job-services.ts` | 잡 아카이브 + 스트리밍 이벤트 |
-| `log-services.ts` | 플릿 로그 |
+| `admiral-services.ts` | 캐리어 오케스트레이션, agent/session/executor, carrier jobs |
+| `admiralty-services.ts` | 다중 인스턴스 그랜드 플릿 |
 | `metaphor-services.ts` | 페르소나/세계관 |
-| `settings-services.ts` | 설정 |
+| `infra-services.ts` | auth/data-dir/job/log/settings/tool-registry |
 
 ## Prohibited
 

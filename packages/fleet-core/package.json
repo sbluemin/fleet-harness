@@ -18,110 +18,25 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./constants": {
-      "types": "./dist/constants.d.ts",
-      "import": "./dist/constants.js",
-      "require": "./dist/constants.cjs"
-    },
-    "./job": {
-      "types": "./dist/job.d.ts",
-      "import": "./dist/job.js",
-      "require": "./dist/job.cjs"
-    },
-    "./admiral/carrier": {
-      "types": "./dist/admiral/carrier.d.ts",
-      "import": "./dist/admiral/carrier.js",
-      "require": "./dist/admiral/carrier.cjs"
-    },
-    "./admiral/carrier/status-overlay-controller": {
-      "types": "./dist/admiral/carrier/status-overlay-controller.d.ts",
-      "import": "./dist/admiral/carrier/status-overlay-controller.js",
-      "require": "./dist/admiral/carrier/status-overlay-controller.cjs"
-    },
-    "./admiral/carrier/types": {
-      "types": "./dist/admiral/carrier/types.d.ts",
-      "import": "./dist/admiral/carrier/types.js",
-      "require": "./dist/admiral/carrier/types.cjs"
-    },
-    "./admiral/carrier/personas": {
-      "types": "./dist/admiral/carrier/personas.d.ts",
-      "import": "./dist/admiral/carrier/personas.js",
-      "require": "./dist/admiral/carrier/personas.cjs"
-    },
-    "./admiral/squadron": {
-      "types": "./dist/admiral/squadron.d.ts",
-      "import": "./dist/admiral/squadron.js",
-      "require": "./dist/admiral/squadron.cjs"
-    },
-    "./admiral/taskforce": {
-      "types": "./dist/admiral/taskforce.d.ts",
-      "import": "./dist/admiral/taskforce.js",
-      "require": "./dist/admiral/taskforce.cjs"
-    },
-    "./admiral/store": {
-      "types": "./dist/admiral/store.d.ts",
-      "import": "./dist/admiral/store.js",
-      "require": "./dist/admiral/store.cjs"
-    },
-    "./admiral/_shared/carrier-job-events": {
-      "types": "./dist/admiral/_shared/carrier-job-events.d.ts",
-      "import": "./dist/admiral/_shared/carrier-job-events.js",
-      "require": "./dist/admiral/_shared/carrier-job-events.cjs"
-    },
-    "./carrier-jobs": {
-      "types": "./dist/carrier-jobs.d.ts",
-      "import": "./dist/carrier-jobs.js",
-      "require": "./dist/carrier-jobs.cjs"
-    },
     "./admiral": {
       "types": "./dist/admiral.d.ts",
       "import": "./dist/admiral.js",
       "require": "./dist/admiral.cjs"
     },
-    "./admiral/protocols/standing-orders": {
-      "types": "./dist/admiral/protocols/standing-orders.d.ts",
-      "import": "./dist/admiral/protocols/standing-orders.js",
-      "require": "./dist/admiral/protocols/standing-orders.cjs"
-    },
-    "./services/tool-registry": {
-      "types": "./dist/services/tool-registry.d.ts",
-      "import": "./dist/services/tool-registry.js",
-      "require": "./dist/services/tool-registry.cjs"
+    "./admiralty": {
+      "types": "./dist/admiralty.d.ts",
+      "import": "./dist/admiralty.js",
+      "require": "./dist/admiralty.cjs"
     },
     "./metaphor": {
       "types": "./dist/metaphor.d.ts",
       "import": "./dist/metaphor.js",
       "require": "./dist/metaphor.cjs"
     },
-    "./metaphor/operation-name": {
-      "types": "./dist/metaphor/operation-name.d.ts",
-      "import": "./dist/metaphor/operation-name.js",
-      "require": "./dist/metaphor/operation-name.cjs"
-    },
-    "./metaphor/directive-refinement": {
-      "types": "./dist/metaphor/directive-refinement.d.ts",
-      "import": "./dist/metaphor/directive-refinement.js",
-      "require": "./dist/metaphor/directive-refinement.cjs"
-    },
-    "./services/settings": {
-      "types": "./dist/services/settings.d.ts",
-      "import": "./dist/services/settings.js",
-      "require": "./dist/services/settings.cjs"
-    },
-    "./services/log": {
-      "types": "./dist/services/log.d.ts",
-      "import": "./dist/services/log.js",
-      "require": "./dist/services/log.cjs"
-    },
-    "./services/data-dir": {
-      "types": "./dist/services/data-dir.d.ts",
-      "import": "./dist/services/data-dir.js",
-      "require": "./dist/services/data-dir.cjs"
-    },
-    "./admiralty": {
-      "types": "./dist/admiralty.d.ts",
-      "import": "./dist/admiralty.js",
-      "require": "./dist/admiralty.cjs"
+    "./infra": {
+      "types": "./dist/infra.d.ts",
+      "import": "./dist/infra.js",
+      "require": "./dist/infra.cjs"
     }
   },
   "scripts": {

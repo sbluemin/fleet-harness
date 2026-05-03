@@ -4,7 +4,7 @@ import {
   type FleetId,
   type StreamStoreLikeState,
 } from "@sbluemin/fleet-core/admiralty";
-import { getCarrierFrameworkState } from "@sbluemin/fleet-core/admiral/carrier";
+import { getCarrierFrameworkState } from "../../fleet-core-facades.js";
 
 import { getGrandFleetStreamStoreState } from "../../panel/state.js";
 import { getState } from "../state.js";

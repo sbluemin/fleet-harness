@@ -45,14 +45,14 @@
   - `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/` — fleet tool specs and execution doctrine.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
-- `admiralty/` (internalized Grand Fleet domain), `services/auth/`, `services/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log/tool-registry services (now absorbing tool-snapshot), and `metaphor/`.
+- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log/tool-registry infra, and `metaphor/`.
 - Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly. Note that `agent-services.ts` and `tool-registry-services.ts` have been removed from the public surface.
-- `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes the runtime-owned state and domain services by exposing explicit public APIs in `public/`; it returns `FleetCoreRuntimeContext` containing `fleet`, `grandFleet`, `metaphor`, `jobs`, `log`, and `settings` services. The `fleet` service surface now also exposes runtime-owned auth access. It also owns the `shutdown` lifecycle that cleans up the agent, resets the settings service, and cleans up service status state.
-- Agent execution is orchestrated through `admiral/agent/executor.ts` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Session lifecycle is owned by `admiral/agent/internal/session-engine.ts` with persistence in `admiral/agent/internal/session-runtime.ts`. Public connections/lifecycle surface is exposed via root barrel re-exports (`getSessionIdFor`, `disconnect`, `disconnectAll`, `cleanIdle`, `bindHostSession`, `shutdownAllSessions`). Unified-agent request orchestration remains an internal implementation detail and must not be reintroduced as a public `AgentRequestService`/`agentRequest` runtime field.
+- `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes runtime-owned state and returns `FleetCoreRuntimeContext` containing exactly `admiral`, `admiralty`, `metaphor`, `infra`, and `shutdown`.
+- Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Session lifecycle is owned by `admiral.agent.session` and `admiral.agent.lifecycle`; internal persistence remains in `admiral/agent/internal/session-runtime.ts`.
 
 - Fleet tool specs and registry factories that are host-agnostic and registered by adapters through public APIs
-- `[carrier:result]` system-reminder assembly via `services/job/job-reminders.ts`; the `job:finalized` SSOT event carries the pre-assembled string for host adapters to forward.
-- Global runtime stores, **runtime-owned settings singletons (owned by `services/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by Pi adapters
+- `[carrier:result]` system-reminder assembly via `infra/job/job-reminders.ts`; the `job:finalized` SSOT event carries the pre-assembled string for host adapters to forward.
+- Global runtime stores, **runtime-owned settings singletons (owned by `infra/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by Pi adapters
 - Pure prompt composition, domain-level orchestration logic, and **render-agnostic view-model builders** (view-model builders have moved to the Pi host `panel/` domain)
 - The Fleet Wiki domain extracted to the leaf `packages/fleet-wiki`
 

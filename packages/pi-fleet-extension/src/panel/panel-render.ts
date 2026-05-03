@@ -14,7 +14,7 @@ import {
   PANEL_RGB,
   SPINNER_FRAMES,
   SYM_INDICATOR,
-} from "@sbluemin/fleet-core/constants";
+} from "../fleet-core-facades.js";
 import { buildPanelViewModel } from "./view-model.js";
 import type { PanelJobViewModel, PanelTrackViewModel } from "./view-model.js";
 

@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PROTOCOL_PREAMBLE } from "@sbluemin/fleet-core/admiral";
-import { DELEGATION_POLICY } from "@sbluemin/fleet-core/admiral/protocols/standing-orders";
-import { buildCarrierToolManifest, buildCarrierToolSchema } from "@sbluemin/fleet-core/admiral/carrier";
-import { CARRIER_JOBS_MANIFEST, buildCarrierJobsSchema } from "@sbluemin/fleet-core/carrier-jobs";
-import { SQUADRON_MANIFEST, buildSquadronSchema } from "@sbluemin/fleet-core/admiral/squadron";
-import { TASKFORCE_MANIFEST, buildTaskForceSchema } from "@sbluemin/fleet-core/admiral/taskforce";
+import { admiral } from "@sbluemin/fleet-core";
 import { CARRIER_RESULT_CUSTOM_TYPE } from "../../src/jobs.js";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
+const { PROTOCOL_PREAMBLE } = admiral.prompts;
+const { DELEGATION_POLICY } = admiral.protocols.standingOrders;
+const { buildCarrierToolManifest, buildCarrierToolSchema } = admiral.carrier;
+const { CARRIER_JOBS_MANIFEST, buildCarrierJobsSchema } = admiral.carrierJobs;
+const { SQUADRON_MANIFEST, buildSquadronSchema } = admiral.squadron;
+const { TASKFORCE_MANIFEST, buildTaskForceSchema } = admiral.taskforce;
 
 describe("carrier prompt doctrine", () => {
   it("contains fire-and-forget doctrine and carrier_jobs TTL-based read-many guidance", () => {

@@ -1,11 +1,11 @@
 import { Type, type TObject } from "@sinclair/typebox";
 
-import type { ToolPromptManifest } from "../../services/tool-registry/index.js";
+import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
 import {
   deriveToolDescription,
   deriveToolPromptGuidelines,
   deriveToolPromptSnippet,
-} from "../../services/tool-registry/index.js";
+} from "../../infra/tool-registry/index.js";
 
 export const CARRIER_JOBS_MANIFEST: ToolPromptManifest = {
   id: "carrier_jobs",

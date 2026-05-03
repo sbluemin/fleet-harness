@@ -43,27 +43,14 @@ import {
 import type {
   AgentStreamEvent,
   ConversationHistoryEntry,
-  FleetServices,
+  FleetAdmiralServices,
   ToolResultEnvelope,
 } from "@sbluemin/fleet-core";
 import {
-  bindHostSession,
-  buildModelId,
-  buildProviderId,
-  deliverToolResults,
-  ensure,
-  getProviderIds,
-  getThinkingLevels,
-  hashSystemPrompt,
-  parseModelId,
-  registerExtraTools,
-  registerStreamHandler,
-  sendMessage,
-  shutdownAllSessions,
+  admiral,
+  infra,
   type AgentToolSpec,
 } from "@sbluemin/fleet-core";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
-import { getSettingsService } from "@sbluemin/fleet-core/services/settings";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // #region pi-ai gateway (re-export)
@@ -110,6 +97,26 @@ const activeStreams = new Map<string, (event: AgentStreamEvent) => void>();
 const toolCallToSessionId = new Map<string, string>();
 
 let eventHandlerRegistered = false;
+
+const {
+  buildModelId,
+  buildProviderId,
+  getProviderIds,
+  getThinkingLevels,
+  hashSystemPrompt,
+  parseModelId,
+} = admiral.agent.models;
+const {
+  deliverToolResults,
+  ensure,
+  sendMessage,
+} = admiral.agent.session;
+const {
+  bindHostSession,
+  shutdownAllSessions,
+} = admiral.agent.lifecycle;
+const { registerExtraTools } = admiral.agent.tools;
+const { registerStreamHandler } = admiral.agent.events;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // #region streamAcp adapter — public functions
@@ -681,7 +688,7 @@ export function getGuardState(): ProviderGuardState {
 }
 
 export function saveProviderGuardSettings(settings: ProviderGuardSettings): void {
-  const api = getSettingsService();
+  const api = infra.settings.getSettingsService();
   if (!api) throw new Error("Fleet-Core Settings API not available");
   api.save(PROVIDER_GUARD_SECTION_KEY, settings);
 }
@@ -706,7 +713,7 @@ export function enforceProviderGuardAllowedModel(pi: ExtensionAPI, ctx: Extensio
 }
 
 function loadProviderGuardSettings(): ProviderGuardSettings {
-  const api = getSettingsService();
+  const api = infra.settings.getSettingsService();
   if (!api) return {};
   try {
     return api.load<ProviderGuardSettings>(PROVIDER_GUARD_SECTION_KEY);
@@ -801,10 +808,10 @@ export function clearActiveStreamRef(stream?: SimpleStreamFn): void {
 /** provider 등록 + 세션 라이프사이클 바인딩 — agent/index.ts에서 호출 */
 export function registerProviderRuntime(
   pi: ExtensionAPI,
-  _fleetServices: FleetServices,
+  _fleetServices: FleetAdmiralServices,
   streamFn: SimpleStreamFn,
 ): void {
-  const log = getLogAPI();
+  const log = infra.log.getLogAPI();
   log.registerCategory({ id: "acp", label: "ACP Provider", description: "ACP 프로바이더 일반 로그" });
   log.registerCategory({ id: "acp-system-prompt", label: "ACP System Prompt", description: "시스템 프롬프트 전문 로그" });
   log.registerCategory({ id: "acp-stderr", label: "ACP Stderr", description: "ACP CLI stderr 출력" });

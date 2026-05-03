@@ -12,7 +12,7 @@ import {
   TOOLS_COLOR,
   SYM_INDICATOR,
   SYM_THINKING,
-} from "@sbluemin/fleet-core/constants";
+} from "../../src/fleet-core-facades.js";
 
 const ERROR_COLOR = "\x1b[38;2;255;80;80m";
 

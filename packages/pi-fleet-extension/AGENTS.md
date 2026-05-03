@@ -12,8 +12,8 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Current Architecture Status: Flat Domain Architecture
 
-- The **physical layout mirrors fleet-core services**:
-  - `src/` houses thin adapters that bridge `fleet-core` services to Pi capabilities.
+- The **physical layout mirrors fleet-core facades**:
+  - `src/` houses thin adapters that bridge `fleet-core` facades to Pi capabilities.
   - Large domains with UI or complex registration live in subdirectories (`grand-fleet/`, `wiki/`).
   - Lean services live as single files in `src/` (e.g., `fleet.ts`, `jobs.ts`).
 - **Do not reintroduce "Capability Buckets"** (commands/, keybinds/, tools/, etc.) at the root level of `src/`.
@@ -23,15 +23,15 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 | pi-fleet-extension (Adapter) | fleet-core (Public Service) | Description |
 | :--- | :--- | :--- |
 | `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Pi gateway (#region structure: pi-ai gateway / streamAcp adapter / thinking-level patch / provider-guard registry patch / `fleet:guard:toggle` command / provider runtime registration). Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
-| `src/grand-fleet/` | `GrandFleetServices` / `Admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
+| `src/grand-fleet/` | `admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
 | `src/wiki/` | `@sbluemin/fleet-wiki` | Fleet Wiki tool/command registration and overlays |
 | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | (Host Surfaces) | HUD, Welcome UI, shared TUI overlays, and shortcuts |
-| `src/fleet.ts` | `FleetServices` (Core) | Core Fleet state and event adapters |
-| `src/metaphor.ts` | `MetaphorServices` | Worldview and directive refinement wiring |
-| `src/jobs.ts` | `JobServices` | Fleet carrier job lifecycle and status tracking |
-| `src/settings.ts` | `SettingsServices` | Fleet-to-Pi settings sync and persistence |
-| `src/logs.ts` | `LogServices` | Fleet log store and terminal output streaming |
-| `src/tools.ts` | `FleetServices` (Tools) | Pi-side tool registration consuming `fleet.tools` from core |
+| `src/fleet.ts` | `admiral` + `metaphor` + `infra` | Core Fleet state, protocols, operation naming, event adapters |
+| `src/metaphor.ts` | `metaphor` | Worldview and directive refinement wiring |
+| `src/jobs.ts` | `admiral.carrierJobs` + `infra.job` | Fleet carrier job lifecycle and status tracking |
+| `src/settings.ts` | `infra.settings` | Fleet-to-Pi settings sync and persistence |
+| `src/logs.ts` | `infra.log` | Fleet log store and terminal output streaming |
+| `src/tools.ts` | `admiral.agent.tools` | Pi-side tool registration consuming core tool specs and invoke surface |
 
 ## Must Own
 
@@ -50,8 +50,8 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Import Boundaries
 
-- Consume `@sbluemin/fleet-core` only through documented public root or subpath exports.
-- Consume Grand Fleet domain APIs through `@sbluemin/fleet-core/admiralty` and `@sbluemin/fleet-core/admiralty/ipc`.
+- Consume `@sbluemin/fleet-core` only through the root barrel or the four documented subpaths: `admiral`, `admiralty`, `metaphor`, `infra`.
+- Consume Grand Fleet domain APIs through `@sbluemin/fleet-core/admiralty` or the root `admiralty` facade.
 - Large domain adapters (`grand-fleet/`) may export specialized hooks or components for host UI modules to consume.
 - Tool definitions must come from `fleet-core` registries; Pi adapters only handle host registration and rendering.
 

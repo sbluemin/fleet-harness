@@ -1,13 +1,7 @@
-import * as FleetMetaphorServiceFacade from "../metaphor/index.js";
+import { metaphor as Facade } from "../metaphor/index.js";
 
-export interface FleetMetaphorServices {
-  readonly core: typeof FleetMetaphorServiceFacade;
-}
+export type FleetMetaphorServices = typeof Facade;
 
-const METAPHOR_SERVICES: FleetMetaphorServices = {
-  core: FleetMetaphorServiceFacade,
-};
-
-export function createMetaphorServices(): FleetMetaphorServices {
-  return METAPHOR_SERVICES;
+export function createFleetMetaphorServices(): FleetMetaphorServices {
+  return Facade;
 }

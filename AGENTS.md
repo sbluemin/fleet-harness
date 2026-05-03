@@ -14,9 +14,9 @@
 | `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `pi-fleet-extension` |
 | `packages/fleet-core/` | Pi-agnostic Fleet product core — Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, **Admiral orchestration runtime**, and public APIs |
 | `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (carrier-job-events SSOT stream events, cli-tool-types, MCP server singleton), **`agent/`** (the canonical agent domain — `session/lifecycle/connections/models/events/serviceStatus/tools/bridge/executor` + `internal/{state,session-runtime,session-engine,event-normalizer,mcp-router,executor-engine,post-connect}`), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog and `fleet-store.ts` unified persistence), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
-| `packages/fleet-core/src/services/` | Shared pure service modules. Includes `job/`, `log/`, `settings/`, and **tool-registry**. |
+| `packages/fleet-core/src/infra/` | Shared pure infrastructure modules. Includes `auth/`, `data-dir/`, `job/`, `log/`, `settings/`, and **tool-registry**. |
 | `packages/fleet-core/src/admiralty/` | Grand Fleet domain home inside `fleet-core` (renamed from `gfleet`). Exposed via `@sbluemin/fleet-core/admiralty`. |
-| `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus domain service modules only (`fleet-services`, `grand-fleet-services`, `metaphor-services`, `job-services`, `log-services`, `settings-services`). Note that `agent-services`, `tool-registry-services`, and `agent-request` have been removed from the public surface. `job-services` exposes `streaming.register(handler)` for SSOT carrier job stream event consumption. |
+| `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus four assembly-only service modules: `admiral-services`, `admiralty-services`, `metaphor-services`, and `infra-services`. |
 | `packages/pi-fleet-extension/` | Pi capability package — Flat Domain Architecture mirroring fleet-core public services |
 | `packages/unified-agent/` | Minimal-dependency SDK for multi-CLI integration (Gemini, Claude, Codex). Now includes `service-status/` for unified health tracking. |
 | `packages/pi-fleet-extension/src/` | Root of pi-facing domains |
@@ -36,12 +36,10 @@ The `pi-fleet-extension` architecture mirrors the public services of `fleet-core
 
 | fleet-core Public Service | pi-fleet-extension Domain | Description |
 |---------------------------|---------------------------|-------------|
-| `fleet-services`          | `src/provider.ts` & `src/fleet.ts` | Agent orchestration, providers, and carrier gateway |
-| `grand-fleet-services`    | `src/grand-fleet/`        | Multi-instance Grand Fleet orchestration |
-| `metaphor-services`       | `src/metaphor.ts`         | Persona, worldview, and naval metaphors |
-| `job-services`            | `src/jobs.ts`             | Detached carrier job management |
-| `settings-services`       | `src/settings.ts`         | Fleet-wide settings and configuration |
-| `log-services`            | `src/logs.ts`             | Fleet activity logging and categories |
+| `admiral`                 | `src/provider.ts`, `src/fleet.ts`, `src/tools.ts`, `src/jobs.ts` | Agent orchestration, providers, carrier jobs, protocols, carrier status |
+| `admiralty`               | `src/grand-fleet/`        | Multi-instance Grand Fleet orchestration |
+| `metaphor`                | `src/metaphor.ts`         | Persona, worldview, operation naming, directive refinement |
+| `infra`                   | `src/settings.ts`, `src/logs.ts`, `src/panel/`, host helpers | Settings, logs, job archive/lifecycle utilities, tool registry, shared constants via facades |
 | `@sbluemin/fleet-wiki`    | `src/wiki/`               | Fleet knowledge base and ingest |
 | (Host specific)           | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | Host shell integration and terminal features |
 

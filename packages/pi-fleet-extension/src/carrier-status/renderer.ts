@@ -13,8 +13,8 @@ import {
   SQUADRON_BADGE_COLOR,
   SYM_INDICATOR,
   TASKFORCE_BADGE_COLOR,
-} from "@sbluemin/fleet-core/constants";
-import { getConfiguredTaskForceBackends } from "@sbluemin/fleet-core/admiral/store";
+} from "../fleet-core-facades.js";
+import { getConfiguredTaskForceBackends } from "../fleet-core-facades.js";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
 import {

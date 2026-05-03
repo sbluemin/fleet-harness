@@ -58,7 +58,7 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerCarrierStatusKeybind(ctx);
   bindPanelBackgroundJobAnimation();
 
-  const fleetServices = getFleetRuntime().fleet;
+  const fleetServices = getFleetRuntime().admiral;
   initStreamEventHandler();
   registerProviderRuntime(ctx, fleetServices, streamAcp);
   registerFleet(ctx, fleetEnabled);
@@ -75,7 +75,7 @@ export function bootFleet(ctx: ExtensionAPI): void {
 function registerStreamingHandler(pi: ExtensionAPI): void {
   unregisterStreamingHandler?.();
   bindCarrierJobStreamPi(pi);
-  unregisterStreamingHandler = getFleetRuntime().jobs.streaming.register(handleCarrierJobStreamEvent);
+  unregisterStreamingHandler = getFleetRuntime().admiral.carrierJobs.streaming.register(handleCarrierJobStreamEvent);
   pi.on("session_shutdown", () => {
     unregisterStreamingHandler?.();
     unregisterStreamingHandler = null;

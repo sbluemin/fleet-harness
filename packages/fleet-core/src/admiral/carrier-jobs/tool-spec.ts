@@ -1,5 +1,5 @@
-import type { AgentToolSpec } from "../../services/tool-registry/types.js";
-import { registerToolPromptManifest } from "../../services/tool-registry/index.js";
+import type { AgentToolSpec } from "../../infra/tool-registry/types.js";
+import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
 import { dispatchCarrierJobsAction } from "./dispatch.js";
 import {
   CARRIER_JOBS_DESCRIPTION,

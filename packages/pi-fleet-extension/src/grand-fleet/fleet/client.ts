@@ -19,7 +19,7 @@ import {
   createJsonRpcResponse,
   createJsonRpcErrorResponse,
 } from "../protocol.js";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 type RequestHandler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -72,7 +72,7 @@ export class FleetClient {
     if (this.state !== "disconnected") return;
     this.intentionalClose = false;
     this.state = "connecting";
-    getLogAPI().debug(LOG_SOURCE, `Admiralty 접속 시도: ${this.socketPath}`);
+    infra.log.getLogAPI().debug(LOG_SOURCE, `Admiralty 접속 시도: ${this.socketPath}`);
     this.attemptConnect();
   }
 
@@ -135,7 +135,7 @@ export class FleetClient {
       this.socket = socket;
       this.state = "connected";
       this.reconnectDelay = RECONNECT_BASE_MS;
-      const log = getLogAPI();
+      const log = infra.log.getLogAPI();
       log.info(LOG_SOURCE, `Admiralty 접속 성공: ${this.socketPath}`);
       createFramer(
         socket,
@@ -156,21 +156,21 @@ export class FleetClient {
       }
       if (!this.intentionalClose) {
         if (wasConnected) {
-          getLogAPI().warn(LOG_SOURCE, "Admiralty 연결 끊김 — 재연결 대기");
+          infra.log.getLogAPI().warn(LOG_SOURCE, "Admiralty 연결 끊김 — 재연결 대기");
         }
         this.scheduleReconnect();
       }
     });
 
     socket.on("error", (err: Error) => {
-      getLogAPI().error(LOG_SOURCE, `소켓 오류: ${err.message}`);
+      infra.log.getLogAPI().error(LOG_SOURCE, `소켓 오류: ${err.message}`);
     });
   }
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
 
-    getLogAPI().debug(LOG_SOURCE, `재연결 스케줄: ${this.reconnectDelay}ms 후`);
+    infra.log.getLogAPI().debug(LOG_SOURCE, `재연결 스케줄: ${this.reconnectDelay}ms 후`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.state = "connecting";
@@ -197,7 +197,7 @@ export class FleetClient {
       return;
     }
 
-    const log = getLogAPI();
+    const log = infra.log.getLogAPI();
     const handler = this.requestHandlers.get(msg.method);
     if (!handler) {
       log.warn(LOG_SOURCE, `알 수 없는 메서드: ${msg.method}`);

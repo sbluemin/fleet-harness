@@ -4,6 +4,10 @@ const mockState = vi.hoisted(() => ({
   handlers: new Map<string, Function>(),
 }));
 
+const mockFleetCore = vi.hoisted(() => ({
+  bindHostSession: vi.fn(),
+}));
+
 vi.mock("@sbluemin/unified-agent", () => ({
   getModelsRegistry: () => ({
     providers: {
@@ -29,32 +33,42 @@ vi.mock("@sbluemin/unified-agent", () => ({
   },
 }));
 
-vi.mock("@sbluemin/fleet-core/services/log", () => ({
-  getLogAPI: () => ({
-    debug: vi.fn(),
-    registerCategory: vi.fn(),
-  }),
-}));
-
-vi.mock("@sbluemin/fleet-core/services/settings", () => ({
-  getSettingsService: () => ({
-    load: vi.fn(() => ({})),
-    save: vi.fn(),
-  }),
-}));
-
 vi.mock("@sbluemin/fleet-core", () => ({
-  buildModelId: (_cli: string, model: string) => `${model} (Unified)`,
-  buildProviderId: (_cli: string) => "OpenAI Codex CLI",
-  getProviderIds: () => ["OpenAI Codex CLI"],
-  parseModelId: (_id: string) => ({ cli: "codex", backendModel: "gpt-5.4" }),
-  getThinkingLevels: () => ["off", "low", "medium", "high", "xhigh"],
-  bindHostSession: vi.fn(),
-  shutdownAllSessions: vi.fn(async () => {}),
+  admiral: {
+    agent: {
+      lifecycle: {
+        bindHostSession: mockFleetCore.bindHostSession,
+        shutdownAllSessions: vi.fn(async () => {}),
+      },
+      models: {
+        buildModelId: (_cli: string, model: string) => `${model} (Unified)`,
+        buildProviderId: (_cli: string) => "OpenAI Codex CLI",
+        getProviderIds: () => ["OpenAI Codex CLI"],
+        parseModelId: (_id: string) => ({ cli: "codex", backendModel: "gpt-5.4" }),
+        getThinkingLevels: () => ["off", "low", "medium", "high", "xhigh"],
+      },
+      events: { registerStreamHandler: vi.fn() },
+      session: {},
+      tools: { registerExtraTools: vi.fn() },
+    },
+  },
+  infra: {
+    log: {
+      getLogAPI: () => ({
+        debug: vi.fn(),
+        registerCategory: vi.fn(),
+      }),
+    },
+    settings: {
+      getSettingsService: () => ({
+        load: vi.fn(() => ({})),
+        save: vi.fn(),
+      }),
+    },
+  },
 }));
 
 import registerProviderRuntime from "../../src/provider.js";
-import { bindHostSession } from "@sbluemin/fleet-core";
 
 describe("provider register", () => {
   it("provider/model 등록 라벨을 Unified 표기로 노출한다", () => {
@@ -111,6 +125,6 @@ describe("provider register", () => {
       },
     );
 
-    expect(bindHostSession).toHaveBeenCalledWith("pi-session-resume");
+    expect(mockFleetCore.bindHostSession).toHaveBeenCalledWith("pi-session-resume");
   });
 });

@@ -18,7 +18,7 @@ import { FLEET_PI_PERSONA_PROMPT, FLEET_TONE_PROMPT } from "../metaphor/prompts.
 import { isWorldviewEnabled } from "../metaphor/worldview.js";
 import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
-import { getAllToolPromptManifests, renderToolPromptManifestTagBlock } from "../services/tool-registry/index.js";
+import { getAllToolPromptManifests, renderToolPromptManifestTagBlock } from "../infra/tool-registry/index.js";
 import {
   getActiveSquadronIds,
   getActiveTaskForceIds,

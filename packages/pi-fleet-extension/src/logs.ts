@@ -1,7 +1,15 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import type { CoreLogAPI, LogCategoryMeta, LogEntry, LogLevel, LogOptions } from "@sbluemin/fleet-core/services/log";
 import {
+  infra,
+  type CoreLogAPI,
+  type LogCategoryMeta,
+  type LogEntry,
+  type LogLevel,
+  type LogOptions,
+} from "@sbluemin/fleet-core";
+
+const {
   appendLog,
   clearFileLogs,
   clearLogs,
@@ -13,8 +21,7 @@ import {
   loadSettings,
   registerCategory,
   saveSettings,
-} from "@sbluemin/fleet-core/services/log";
-import { getSettingsService } from "@sbluemin/fleet-core/services/settings";
+} = infra.log;
 
 interface LogFooterBridge {
   lines: string[] | null;
@@ -103,7 +110,7 @@ function createAPI(): CoreLogAPI {
 }
 
 function registerLogSettingsSection(): void {
-  const settingsApi = getSettingsService();
+  const settingsApi = infra.settings.getSettingsService();
   settingsApi?.registerSection({
     key: "core-log",
     displayName: "Log",

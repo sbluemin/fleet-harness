@@ -6,7 +6,7 @@ import type {
   CarrierStatusEntry,
   CliModelInfo,
   OverlayState,
-} from "@sbluemin/fleet-core/admiral/carrier/types";
+} from "@sbluemin/fleet-core";
 import type { ProviderKey } from "@sbluemin/unified-agent";
 
 interface DeferredPromise<T> {

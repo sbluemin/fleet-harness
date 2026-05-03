@@ -12,7 +12,7 @@
 
 import { Type } from "@sinclair/typebox";
 import { SYSTEM_REMINDER_HINT } from "./constants.js";
-import type { ToolPromptManifest } from "../../services/tool-registry/index.js";
+import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
 import { getRegisteredCarrierConfig } from "./framework.js";
 import type { CarrierMetadata } from "./types.js";
 

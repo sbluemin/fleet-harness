@@ -6,7 +6,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import type { CarrierMap, FleetStatus } from "@sbluemin/fleet-core/admiralty";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import { getState } from "../state.js";
 import { registerFleetPiCommands } from "./commands.js";
 import { registerFleetPiEvents } from "./events.js";
@@ -36,7 +36,7 @@ export default function registerFleet(pi: ExtensionAPI): void {
   const fleetId = state?.fleetId ?? "unset";
   const socketPath = state?.socketPath ?? "unset";
 
-  getLogAPI().info(LOG_SOURCE, `Fleet 모드 초기화: fleetId=${fleetId}, socket=${socketPath}`);
+  infra.log.getLogAPI().info(LOG_SOURCE, `Fleet 모드 초기화: fleetId=${fleetId}, socket=${socketPath}`);
   getFleetRuntime();
   registerFleetStatusOverlayKeybind();
   registerFleetPiCommands(pi);

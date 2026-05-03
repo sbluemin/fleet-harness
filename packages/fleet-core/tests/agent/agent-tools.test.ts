@@ -20,6 +20,10 @@ const testSpec: AgentToolSpec = {
   },
 };
 
+function listTestTools() {
+  return list().filter((meta) => meta.name !== "carrier_jobs");
+}
+
 describe("admiral.agent.tools", () => {
   beforeEach(() => {
     clearAllDefaultTools();
@@ -27,13 +31,14 @@ describe("admiral.agent.tools", () => {
   });
 
   describe("list()", () => {
-    it("빈 상태에서 빈 배열을 반환한다", () => {
-      expect(list()).toHaveLength(0);
+    it("빈 상태에서 기본 Fleet tool catalog만 반환한다", () => {
+      expect(list().map((meta) => meta.name)).toContain("carrier_jobs");
+      expect(listTestTools()).toHaveLength(0);
     });
 
     it("등록된 기본 도구의 메타데이터를 반환한다", () => {
       registerDefaultTool(testSpec);
-      const metas = list();
+      const metas = listTestTools();
       expect(metas).toHaveLength(1);
       expect(metas[0]!.name).toBe("test_tool");
       expect(metas[0]!.label).toBe("Test Tool");
@@ -84,8 +89,8 @@ describe("admiral.agent.tools", () => {
         },
       };
       registerExtraTools("scope1", [extraSpec]);
-      expect(list()).toHaveLength(1);
-      expect(list()[0]!.name).toBe("extra_tool");
+      expect(listTestTools()).toHaveLength(1);
+      expect(listTestTools()[0]!.name).toBe("extra_tool");
     });
 
     it("추가 도구를 invoke로 실행할 수 있다", async () => {
@@ -120,11 +125,11 @@ describe("admiral.agent.tools", () => {
         },
       };
       registerExtraTools("scope1", [spec1, spec2]);
-      expect(list()).toHaveLength(2);
+      expect(listTestTools()).toHaveLength(2);
 
       unregisterExtraTools("scope1", ["extra_a"]);
-      expect(list()).toHaveLength(1);
-      expect(list()[0]!.name).toBe("extra_b");
+      expect(listTestTools()).toHaveLength(1);
+      expect(listTestTools()[0]!.name).toBe("extra_b");
     });
 
     it("모든 도구를 unregister하면 스코프가 자동 제거된다", () => {
@@ -138,7 +143,7 @@ describe("admiral.agent.tools", () => {
       };
       registerExtraTools("scope1", [spec]);
       unregisterExtraTools("scope1", ["auto_clean"]);
-      expect(list()).toHaveLength(0);
+      expect(listTestTools()).toHaveLength(0);
     });
 
     it("존재하지 않는 스코프의 unregister는 무시된다", () => {

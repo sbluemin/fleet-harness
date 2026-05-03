@@ -24,8 +24,10 @@ import {
   syncColsWithRegisteredOrder,
 } from "../../src/panel/state.js";
 import * as panelState from "../../src/panel/state.js";
-import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
+import { admiral } from "@sbluemin/fleet-core";
 import { syncCurrentWidget, syncWidget } from "../../src/panel/widget-sync.js";
+
+const { CARRIER_FRAMEWORK_KEY } = admiral.carrier;
 
 function isStaleExtensionContextError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;

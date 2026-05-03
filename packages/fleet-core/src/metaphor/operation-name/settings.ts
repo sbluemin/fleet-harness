@@ -5,8 +5,8 @@
  */
 
 import type { ReasoningLevel } from "./constants.js";
-import type { CoreSettingsAPI } from "../../services/settings/index.js";
-import { getSettingsService } from "../../services/settings/runtime.js";
+import type { CoreSettingsAPI } from "../../infra/settings/index.js";
+import { getSettingsService } from "../../infra/settings/runtime.js";
 
 export interface OperationNameSettings {
   /** 모델 프로바이더 (미설정 시 세션 모델 사용) */

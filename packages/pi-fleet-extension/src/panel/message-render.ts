@@ -16,7 +16,7 @@ import {
   TOOLS_COLOR,
   SYM_INDICATOR,
   SYM_THINKING,
-} from "@sbluemin/fleet-core/constants";
+} from "../fleet-core-facades.js";
 import type { ColBlock } from "./types.js";
 
 // ─── 블록 라인 타입 ──────────────────────────────────────

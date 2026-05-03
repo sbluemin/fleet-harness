@@ -18,7 +18,7 @@ import {
   registerToolsForSession,
   removeToolsForSession,
   getToolNamesForSession,
-} from "../../../services/tool-registry/tool-snapshot.js";
+} from "../../../infra/tool-registry/tool-snapshot.js";
 import type { ToolMetadata } from "../types.js";
 
 import type { AgentSessionState, AgentProviderState, PendingToolCallState } from "./state.js";

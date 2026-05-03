@@ -1,13 +1,19 @@
 import type { AgentToolCtx, AgentToolSpec, McpCallToolResult, ToolMetadata } from "./types.js";
+import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
+import { buildCarrierToolSpecs } from "../carrier/tool-spec.js";
+import { buildSquadronToolSpec } from "../squadron/tool-spec.js";
+import { buildTaskForceToolSpec } from "../taskforce/tool-spec.js";
 
 const defaultTools = new Map<string, AgentToolSpec>();
 const extraTools = new Map<string, Map<string, AgentToolSpec>>();
+let defaultToolsBuilt = false;
 
 export function registerDefaultTool(spec: AgentToolSpec): void {
   defaultTools.set(spec.name, spec);
 }
 
 export function list(): readonly ToolMetadata[] {
+  ensureDefaultToolsRegistered();
   const metas: ToolMetadata[] = [];
   for (const spec of defaultTools.values()) {
     metas.push(specToMetadata(spec));
@@ -20,7 +26,13 @@ export function list(): readonly ToolMetadata[] {
   return metas;
 }
 
+export function listSpecs(): readonly AgentToolSpec[] {
+  ensureDefaultToolsRegistered();
+  return [...defaultTools.values()];
+}
+
 export async function invoke(name: string, args: unknown, ctx?: Partial<AgentToolCtx>): Promise<McpCallToolResult> {
+  ensureDefaultToolsRegistered();
   const fullCtx: AgentToolCtx = {
     cwd: ctx?.cwd ?? process.cwd(),
     toolCallId: ctx?.toolCallId,
@@ -60,6 +72,7 @@ export function unregisterExtraTools(scopeKey: string, names: readonly string[])
 
 export function clearAllDefaultTools(): void {
   defaultTools.clear();
+  defaultToolsBuilt = false;
 }
 
 export function clearAllExtraTools(): void {
@@ -72,6 +85,27 @@ function findExtraTool(name: string): AgentToolSpec | undefined {
     if (spec) return spec;
   }
   return undefined;
+}
+
+function ensureDefaultToolsRegistered(): void {
+  if (defaultToolsBuilt) return;
+  defaultToolsBuilt = true;
+  for (const spec of buildDefaultToolSpecs()) {
+    registerDefaultTool(spec);
+  }
+}
+
+function buildDefaultToolSpecs(): readonly AgentToolSpec[] {
+  const specs: AgentToolSpec[] = [];
+  specs.push(...buildCarrierToolSpecs());
+  const squadron = buildSquadronToolSpec();
+  const taskForce = buildTaskForceToolSpec();
+
+  if (squadron) specs.push(squadron);
+  if (taskForce) specs.push(taskForce);
+  specs.push(buildCarrierJobsToolSpec());
+
+  return specs;
 }
 
 function specToMetadata(spec: AgentToolSpec): ToolMetadata {

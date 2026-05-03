@@ -6,16 +6,16 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { DEFAULT_BODY_H, formatPanelMultiColHint, ANIM_INTERVAL_MS } from "@sbluemin/fleet-core/constants";
-import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
-import { getSessionIdFor } from "@sbluemin/fleet-core";
+import { DEFAULT_BODY_H, formatPanelMultiColHint, ANIM_INTERVAL_MS } from "../fleet-core-facades.js";
+import { getActiveBackgroundJobCount } from "../fleet-core-facades.js";
+import { admiral } from "@sbluemin/fleet-core";
 import type { ServiceSnapshot } from "@sbluemin/unified-agent";
 import type {
   CarrierJobStreamEvent,
+  CarrierCategory,
   TrackMeta,
   TrackStatus,
-} from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
-import type { CarrierCategory } from "@sbluemin/fleet-core/admiral/carrier/types";
+} from "@sbluemin/fleet-core";
 import {
   coalesceTextBlock,
   coalesceThoughtBlock,
@@ -34,6 +34,8 @@ export interface FooterModelInfo {
   model: string;
   effort?: string;
 }
+
+const { getSessionIdFor } = admiral.agent.connections;
 
 export interface PanelRun {
   runId: string;
@@ -622,4 +624,3 @@ function stopPanelAnimTimerIfIdle(): void {
   clearInterval(s.animTimer);
   s.animTimer = null;
 }
-

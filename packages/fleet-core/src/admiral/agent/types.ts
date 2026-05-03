@@ -1,4 +1,4 @@
-import type { TypeBoxSchema } from "../../services/tool-registry/types.js";
+import type { TypeBoxSchema } from "../../infra/tool-registry/types.js";
 import type { McpCallToolResult } from "../_shared/mcp.js";
 
 export interface SessionHandle {

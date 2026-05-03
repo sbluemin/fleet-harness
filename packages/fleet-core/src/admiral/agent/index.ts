@@ -1,3 +1,13 @@
+import * as bridge from "./bridge.js";
+import * as connections from "./connections.js";
+import * as events from "./events.js";
+import * as executor from "./executor.js";
+import * as lifecycle from "./lifecycle.js";
+import * as models from "./models.js";
+import * as serviceStatus from "./service-status.js";
+import * as session from "./session.js";
+import * as tools from "./tools.js";
+
 export type {
   AgentStreamEvent,
   AgentToolCtx,
@@ -41,6 +51,7 @@ export {
   clearAllExtraTools,
   invoke,
   list,
+  listSpecs,
   registerDefaultTool,
   registerExtraTools,
   unregisterExtraTools,
@@ -86,17 +97,7 @@ export {
   executeOneShot,
 } from "./executor.js";
 
-// Decision 28: nested object barrel — agent 제거
-import * as tools from "./tools.js";
-import * as session from "./session.js";
-import * as events from "./events.js";
-import * as lifecycle from "./lifecycle.js";
-import * as connections from "./connections.js";
-import * as models from "./models.js";
-import * as serviceStatus from "./service-status.js";
-import * as bridge from "./bridge.js";
-
-export const admiral = {
+export const agent = {
   tools,
   session,
   events,
@@ -105,4 +106,5 @@ export const admiral = {
   models,
   serviceStatus,
   bridge,
+  executor,
 };

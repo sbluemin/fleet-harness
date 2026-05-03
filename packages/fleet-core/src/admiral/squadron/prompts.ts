@@ -6,12 +6,12 @@
  */
 
 import { Type, type TObject } from "@sinclair/typebox";
-import type { ToolPromptManifest } from "../../services/tool-registry/index.js";
+import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
 import {
   deriveToolDescription,
   deriveToolPromptGuidelines,
   deriveToolPromptSnippet,
-} from "../../services/tool-registry/index.js";
+} from "../../infra/tool-registry/index.js";
 import { SQUADRON_MAX_INSTANCES } from "./types.js";
 
 // ─────────────────────────────────────────────────────────

@@ -13,8 +13,8 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
   PANEL_COLOR,
   MIN_BODY_H,
-} from "@sbluemin/fleet-core/constants";
-import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
+} from "../fleet-core-facades.js";
+import { getActiveBackgroundJobCount } from "../fleet-core-facades.js";
 
 import {
   renderPanelFull,

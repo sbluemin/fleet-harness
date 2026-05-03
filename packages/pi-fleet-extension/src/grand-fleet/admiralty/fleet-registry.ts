@@ -4,7 +4,7 @@
  */
 import type { Socket } from "node:net";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import type { FleetId, ConnectedFleet, CarrierMap } from "@sbluemin/fleet-core/admiralty";
 import {
   PROTOCOL_VERSION,
@@ -35,7 +35,7 @@ export class FleetRegistry {
     const fleetId = params.fleetId as FleetId;
     const designation = normalizeDesignation(params.designation, fleetId);
     const state = getState();
-    const log = getLogAPI();
+    const log = infra.log.getLogAPI();
 
     try {
       if (!fleetId) {
@@ -109,7 +109,7 @@ export class FleetRegistry {
     if (socket && !socket.destroyed) {
       socket.destroy();
     }
-    getLogAPI().info(LOG_SOURCE, `Fleet ${fleetId} 등록 해제`);
+    infra.log.getLogAPI().info(LOG_SOURCE, `Fleet ${fleetId} 등록 해제`);
     if (!hadFleet) {
       return;
     }
@@ -119,7 +119,7 @@ export class FleetRegistry {
   deregisterBySocket(socket: Socket, reason = "socket_closed"): FleetId | null {
     const fleetId = this.findFleetIdBySocket(socket);
     if (!fleetId) return null;
-    getLogAPI().warn(LOG_SOURCE, `Fleet ${fleetId} 연결 종료 감지 (${reason})`);
+    infra.log.getLogAPI().warn(LOG_SOURCE, `Fleet ${fleetId} 연결 종료 감지 (${reason})`);
     this.deregister(fleetId);
     return fleetId;
   }
@@ -153,7 +153,7 @@ export class FleetRegistry {
 
     state.totalCost = calculateTotalCost();
     this.resetHeartbeatTimer(fleetId);
-    getLogAPI().debug(LOG_SOURCE, `Fleet ${fleetId} heartbeat (cost=${fleet.cost})`);
+    infra.log.getLogAPI().debug(LOG_SOURCE, `Fleet ${fleetId} heartbeat (cost=${fleet.cost})`);
     this.notifyChange();
   }
 
@@ -180,7 +180,7 @@ export class FleetRegistry {
       fleet.activeMissionObjective = params.activeMissionObjective as string | null;
     }
 
-    getLogAPI().debug(LOG_SOURCE, `Fleet ${fleetId} 상태 변경: ${fleet.status}`);
+    infra.log.getLogAPI().debug(LOG_SOURCE, `Fleet ${fleetId} 상태 변경: ${fleet.status}`);
     this.notifyChange();
   }
 
@@ -192,7 +192,7 @@ export class FleetRegistry {
     if (!fleet) return;
 
     const type = params.type as string;
-    getLogAPI().info(LOG_SOURCE, `Fleet ${fleetId} 보고: ${type}`);
+    infra.log.getLogAPI().info(LOG_SOURCE, `Fleet ${fleetId} 보고: ${type}`);
     if (type === "complete" || type === "failed") {
       fleet.activeMissionId = null;
       fleet.activeMissionObjective = null;
@@ -262,7 +262,7 @@ export class FleetRegistry {
     this.heartbeatTimers.set(
       fleetId,
       setTimeout(() => {
-        getLogAPI().warn(LOG_SOURCE, `Fleet ${fleetId} heartbeat 타임아웃 — 등록 해제`);
+        infra.log.getLogAPI().warn(LOG_SOURCE, `Fleet ${fleetId} heartbeat 타임아웃 — 등록 해제`);
         this.deregister(fleetId);
       }, HEARTBEAT_TIMEOUT_MS),
     );

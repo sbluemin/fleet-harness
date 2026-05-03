@@ -11,4 +11,4 @@ export type {
   ModelSelection,
   OverlayState,
   ResolvedCliSelection,
-} from "@sbluemin/fleet-core/admiral/carrier/types";
+} from "@sbluemin/fleet-core";

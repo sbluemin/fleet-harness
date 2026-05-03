@@ -23,7 +23,7 @@ import type {
   JsonRpcRequest,
   JsonRpcResponse,
 } from "@sbluemin/fleet-core/admiralty";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 
 /** Admiralty → Fleet 방향의 메서드 핸들러 */
 type RequestHandler = (
@@ -79,7 +79,7 @@ export class AdmiraltyServer {
 
   /** 서버 시작 */
   async start(): Promise<void> {
-    const log = getLogAPI();
+    const log = infra.log.getLogAPI();
     if (this.server?.listening) {
       log.debug(LOG_SOURCE, `이미 리스닝 중인 서버 재사용: ${this.socketPath}`);
       return;
@@ -145,7 +145,7 @@ export class AdmiraltyServer {
 
   /** 서버 종료 */
   async close(): Promise<void> {
-    const log = getLogAPI();
+    const log = infra.log.getLogAPI();
     log.info(LOG_SOURCE, `서버 종료 (활성 연결 ${this.connections.size}개 해제)`);
     for (const socket of this.connections) {
       socket.destroy();
@@ -192,7 +192,7 @@ export class AdmiraltyServer {
     msg: JsonRpcRequest,
     socket: net.Socket,
   ): Promise<void> {
-    const log = getLogAPI();
+    const log = infra.log.getLogAPI();
     const handler = this.requestHandlers.get(msg.method);
     if (!handler) {
       log.warn(LOG_SOURCE, `알 수 없는 메서드: ${msg.method}`);
@@ -228,7 +228,7 @@ export class AdmiraltyServer {
   ): void {
     const handler = this.notificationHandlers.get(msg.method);
     if (!handler) return;
-    getLogAPI().debug(LOG_SOURCE, `Notification 수신: ${msg.method}`);
+    infra.log.getLogAPI().debug(LOG_SOURCE, `Notification 수신: ${msg.method}`);
     handler(msg.params ?? {}, socket);
   }
 
@@ -251,7 +251,7 @@ export class AdmiraltyServer {
   }
 
   private handleSocketTermination(socket: net.Socket, reason: string): void {
-    const log = getLogAPI();
+    const log = infra.log.getLogAPI();
     const wasTracked = this.connections.delete(socket);
     this.cancelPendingRequests(socket, reason);
     this.pendingRequests.delete(socket);

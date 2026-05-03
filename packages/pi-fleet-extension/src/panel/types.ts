@@ -9,7 +9,7 @@
 import type {
   CarrierJobKind,
   CarrierJobStatus,
-} from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
+} from "@sbluemin/fleet-core";
 
 export type ColStatus = "wait" | "conn" | "stream" | "done" | "err";
 

@@ -1,9 +1,12 @@
 import type { ExtensionAPI, MessageRenderer } from "@mariozechner/pi-coding-agent";
 import { visibleWidth } from "@mariozechner/pi-tui";
 
-import type { CarrierJobsParams } from "@sbluemin/fleet-core/carrier-jobs";
-import type { CarrierJobRecord, CarrierJobSummary } from "@sbluemin/fleet-core/job";
-import { configureJobSummaryCache, detachJobArchive } from "@sbluemin/fleet-core/job";
+import {
+  infra,
+  type CarrierJobRecord,
+  type CarrierJobSummary,
+  type CarrierJobsParams,
+} from "@sbluemin/fleet-core";
 
 interface CarrierJobsRenderContext {
   readonly lastComponent?: unknown;
@@ -47,7 +50,7 @@ export const CARRIER_RESULT_CUSTOM_TYPE = "carrier-result";
 export const carrierResultRenderer: MessageRenderer<CarrierResultMessageDetails> = () => undefined;
 
 export function registerJob(ctx: ExtensionAPI): void {
-  configureJobSummaryCache(50, detachJobArchive);
+  infra.job.configureJobSummaryCache(50, infra.job.detachJobArchive);
   ctx.registerMessageRenderer(CARRIER_RESULT_CUSTOM_TYPE, carrierResultRenderer);
 }
 

@@ -7,7 +7,7 @@ import {
   type ReportType,
 } from "@sbluemin/fleet-core/admiralty";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import { getState } from "../state.js";
 import { sendMissionReport } from "./reporter.js";
 import { flushFleetStatus, getFleetClient, getFleetRuntime } from "./runtime.js";
@@ -17,7 +17,7 @@ const LOG_SOURCE = "grand-fleet";
 export function registerFleetPiTools(pi: ExtensionAPI): void {
   const state = getState();
   const fleetId = state?.fleetId ?? "unset";
-  const log = getLogAPI();
+  const log = infra.log.getLogAPI();
 
   pi.registerTool({
     name: MISSION_REPORT_NAME,

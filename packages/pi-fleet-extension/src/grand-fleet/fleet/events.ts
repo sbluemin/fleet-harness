@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { buildFleetAcpSystemPrompt, buildFleetContextPrompt } from "@sbluemin/fleet-core/admiralty";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 
 import { getState } from "../state.js";
 import { sendCompleteReport } from "./reporter.js";
@@ -20,7 +20,7 @@ const LOG_SOURCE = "grand-fleet";
 export function registerFleetPiEvents(pi: ExtensionAPI): void {
   const state = getState();
   const fleetId = state?.fleetId ?? "unset";
-  const log = getLogAPI();
+  const log = infra.log.getLogAPI();
 
   pi.on("before_agent_start", (event) => {
     const client = getFleetClient();

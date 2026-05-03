@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import { getState } from "../state.js";
 import { connectToAdmiralty, disconnectFromAdmiralty, getFleetClient } from "./runtime.js";
 
@@ -9,7 +9,7 @@ const LOG_SOURCE = "grand-fleet";
 export function registerFleetPiCommands(pi: ExtensionAPI): void {
   const state = getState();
   const fleetId = state?.fleetId ?? "unset";
-  const log = getLogAPI();
+  const log = infra.log.getLogAPI();
 
   pi.registerCommand("fleet:grand-fleet:connect", {
     description: "Admiralty에 접속 — Grand Fleet에 합류",

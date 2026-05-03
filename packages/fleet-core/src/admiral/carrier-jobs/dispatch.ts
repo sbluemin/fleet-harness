@@ -1,10 +1,10 @@
-import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "../../services/job/job-stream-archive.js";
-import { cancelJob } from "../../services/job/job-cancel-registry.js";
-import { getActiveJob, listActiveJobs } from "../../services/job/concurrency-guard.js";
-import { isCarrierJobId } from "../../services/job/job-id.js";
-import { serializeJobArchive } from "../../services/job/archive-serializer.js";
-import { getJobSummary, listJobSummaries } from "../../services/job/lru-cache.js";
-import type { CarrierJobRecord, CarrierJobSummary } from "../../services/job/job-types.js";
+import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "../../infra/job/job-stream-archive.js";
+import { cancelJob } from "../../infra/job/job-cancel-registry.js";
+import { getActiveJob, listActiveJobs } from "../../infra/job/concurrency-guard.js";
+import { isCarrierJobId } from "../../infra/job/job-id.js";
+import { serializeJobArchive } from "../../infra/job/archive-serializer.js";
+import { getJobSummary, listJobSummaries } from "../../infra/job/lru-cache.js";
+import type { CarrierJobRecord, CarrierJobSummary } from "../../infra/job/job-types.js";
 import type { CarrierJobsAvailability, CarrierJobsFormat, CarrierJobsParams } from "./types.js";
 
 export interface CarrierJobsResponse {

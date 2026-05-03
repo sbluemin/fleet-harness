@@ -6,9 +6,9 @@
 
 import type { CliType } from "@sbluemin/unified-agent";
 
-import type { AgentToolSpec } from "../../services/tool-registry/index.js";
-import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../services/job/index.js";
-import type { LogOptions } from "../../services/log/index.js";
+import type { AgentToolSpec } from "../../infra/tool-registry/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
+import type { LogOptions } from "../../infra/log/index.js";
 import type { CarrierExecResult } from "../agent/executor.js";
 
 import {
@@ -25,9 +25,9 @@ import {
   startDetachedJob,
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
-} from "../../services/job/index.js";
-import { getLogAPI } from "../../services/log/store.js";
-import { registerToolPromptManifest } from "../../services/tool-registry/index.js";
+} from "../../infra/job/index.js";
+import { getLogAPI } from "../../infra/log/store.js";
+import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
 import { executeOneShot } from "../agent/executor.js";
 import {
   emitStreamEvent,

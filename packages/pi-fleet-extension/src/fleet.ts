@@ -6,33 +6,13 @@ import * as path from "node:path";
 
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import { getFleetDataDir } from "@sbluemin/fleet-core/services/data-dir";
-import { createFleetCoreRuntime, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 import {
-  buildSystemPrompt,
-  getActiveProtocol,
-  getAllProtocols,
-  setActiveProtocol,
-} from "@sbluemin/fleet-core/admiral";
-import {
-  bindHostSession,
-  cleanIdle,
+  admiral,
+  createFleetCoreRuntime,
+  infra,
+  metaphor,
+  type FleetCoreRuntimeContext,
 } from "@sbluemin/fleet-core";
-import {
-  composeOperationNameRequest,
-  loadSettings as loadOperationNameSettings,
-  sanitizeOperationNameDisplay,
-} from "@sbluemin/fleet-core/metaphor/operation-name";
-import { registerDefaultCarrierPersonas } from "@sbluemin/fleet-core/admiral/carrier/personas";
-import {
-  getConfiguredTaskForceCarrierIds,
-  loadOfflineCarriers,
-  loadSquadronEnabled,
-  reconcileActiveModelSelections,
-  saveSquadronEnabled,
-} from "@sbluemin/fleet-core/admiral/store";
-import { isWorldviewEnabled } from "@sbluemin/fleet-core/metaphor";
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
 import { bootBridge, ensureBridgeKeybinds } from "./bridge/handler.js";
 import { syncModelConfig } from "./panel/config.js";
 import { completeSimple } from "./provider.js";
@@ -96,6 +76,33 @@ interface PiServiceStatusContextLike {
 
 const OPERATION_NAME_ATTEMPTS = new Set<string>();
 
+const {
+  buildSystemPrompt,
+} = admiral.prompts;
+const {
+  getActiveProtocol,
+  getAllProtocols,
+  setActiveProtocol,
+} = admiral.protocols;
+const {
+  bindHostSession,
+} = admiral.agent.lifecycle;
+const { cleanIdle } = admiral.agent.connections;
+const {
+  getConfiguredTaskForceCarrierIds,
+  loadOfflineCarriers,
+  loadSquadronEnabled,
+  reconcileActiveModelSelections,
+  saveSquadronEnabled,
+} = admiral.store;
+const { registerDefaultCarrierPersonas } = admiral.carrier.personas;
+const {
+  composeOperationNameRequest,
+  loadSettings: loadOperationNameSettings,
+  sanitizeOperationNameDisplay,
+} = metaphor.operationName;
+const { isWorldviewEnabled } = metaphor.worldview;
+
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
 let bootConfig: BootConfig | null = null;
 let reconciliationScheduled = false;
@@ -146,7 +153,7 @@ export function shouldBootFleet(): boolean {
 }
 
 export function resolveFleetDataDir(): string {
-  return getFleetDataDir();
+  return infra.dataDir.getFleetDataDir();
 }
 
 export function initializeFleetRuntime(dataDir: string, pi?: ExtensionAPI): void {
@@ -209,7 +216,7 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
     scheduleOperationNameGeneration(ctx, event.prompt);
     if (process.env.PI_GRAND_FLEET_ROLE === "fleet") return;
     const fleetPrompt = buildSystemPrompt();
-    getLogAPI().debug("acp-system-prompt", fleetPrompt, { category: "acp-system-prompt" });
+    infra.log.getLogAPI().debug("acp-system-prompt", fleetPrompt, { category: "acp-system-prompt" });
     return { systemPrompt: fleetPrompt };
   });
 
@@ -388,7 +395,7 @@ function syncProtocolToHud(protocol: { color: string; shortLabel: string }): voi
 }
 
 function registerAdmiralSettingsSection(): void {
-  const settingsApi = getFleetRuntime().settings.settings;
+  const settingsApi = getFleetRuntime().infra.settings.getSettingsService();
   settingsApi?.registerSection({
     key: "admiral",
     displayName: "Admiral",
@@ -461,7 +468,7 @@ async function generateOperationName(ctx: ExtensionContext, sessionId: string, p
     if (!isCurrentOperationNameSession(ctx, sessionId)) return;
     syncOperationNameSession(sessionId, false, displayName ?? undefined);
   } catch (error) {
-    getLogAPI().debug(
+    infra.log.getLogAPI().debug(
       "metaphor-operation",
       `operation name generation failed: ${error instanceof Error ? error.message : String(error)}`,
       { hideFromFooter: true },
@@ -498,7 +505,7 @@ function resolveOperationNameModel(ctx: ExtensionContext): Model<Api> | null {
     : ctx.model;
 
   if (!model) {
-    getLogAPI().debug("metaphor-operation", "operation name model not available", { hideFromFooter: true });
+    infra.log.getLogAPI().debug("metaphor-operation", "operation name model not available", { hideFromFooter: true });
     return null;
   }
 

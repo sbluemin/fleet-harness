@@ -1,6 +1,6 @@
 # grand-fleet
 
-Owns the Pi-side Grand Fleet domain integration for `pi-fleet-extension`. This domain mirrors `GrandFleetServices` and `Admiralty` exports from `fleet-core`.
+Owns the Pi-side Grand Fleet domain integration for `pi-fleet-extension`. This domain mirrors the `admiralty` facade from `fleet-core`.
 
 ## Scope
 
@@ -12,7 +12,7 @@ Owns the Pi-side Grand Fleet domain integration for `pi-fleet-extension`. This d
 
 ## Rules
 
-- **Service Mapping**: Consume provider-agnostic Grand Fleet domain logic from `@sbluemin/fleet-core/admiralty` public subpaths.
+- **Service Mapping**: Consume provider-agnostic Grand Fleet domain logic from the `@sbluemin/fleet-core/admiralty` public subpath or the root `admiralty` facade.
 - **Registration**: All Grand Fleet-specific Pi capabilities must be registered within this domain, not in a global capability bucket.
 - **Role Isolation**: Maintain clear isolation between Admiralty-only and Fleet-only registration logic.
 - Do not bring provider registration or streaming logic into this domain; those belong in `src/agent/`.

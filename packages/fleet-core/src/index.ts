@@ -2,50 +2,36 @@ export {
   createFleetCoreRuntime,
 } from "./public/runtime.js";
 export type { BootMode } from "./runtime-flags.js";
+export { admiral } from "./admiral/index.js";
+export { admiralty } from "./admiralty/index.js";
+export { metaphor } from "./metaphor/index.js";
+export { infra } from "./infra/index.js";
 export {
-  createFleetServices,
-} from "./public/fleet-services.js";
+  createFleetAdmiralServices,
+} from "./public/admiral-services.js";
 export {
-  createGrandFleetServices,
-} from "./public/grand-fleet-services.js";
+  createFleetAdmiraltyServices,
+} from "./public/admiralty-services.js";
 export {
-  createMetaphorServices,
+  createFleetMetaphorServices,
 } from "./public/metaphor-services.js";
 export {
-  createJobServices,
-} from "./public/job-services.js";
-export {
-  createLogServices,
-} from "./public/log-services.js";
-export {
-  createSettingsServices,
-} from "./public/settings-services.js";
-export {
-  CLI_TO_AUTH_PROVIDER_ID,
-  createAuthService,
-  resolveAuthEnv,
-} from "./services/auth/index.js";
+  createFleetInfraServices,
+} from "./public/infra-services.js";
 
 export type {
   FleetCoreRuntimeContext,
   FleetCoreRuntimeOptions,
 } from "./public/runtime.js";
-export type {
-  FleetServices,
-  McpCallToolResult,
-  Tool,
-  AgentFacadeType,
-} from "./public/fleet-services.js";
-export type { GrandFleetServices } from "./public/grand-fleet-services.js";
+export type { FleetAdmiralServices } from "./public/admiral-services.js";
+export type { FleetAdmiraltyServices } from "./public/admiralty-services.js";
 export type { FleetMetaphorServices } from "./public/metaphor-services.js";
-export type { FleetJobServices } from "./public/job-services.js";
-export type { FleetLogServices } from "./public/log-services.js";
-export type { FleetSettingsServices } from "./public/settings-services.js";
+export type { FleetInfraServices } from "./public/infra-services.js";
 export type {
   AuthService,
   AuthStorageData,
   AuthStorageEntry,
-} from "./services/auth/index.js";
+} from "./infra/auth/index.js";
 export type {
   AgentToolCtx,
   AgentToolMcpDescriptor,
@@ -53,44 +39,68 @@ export type {
   AgentToolRenderDescriptor,
   AgentToolSpec,
   TypeBoxSchema,
-} from "./services/tool-registry/types.js";
-
-// admiral.agent 공개 API re-export (Decision 25: subpath export 금지, root barrel re-export 허용)
-export {
-  parseModelId,
-  buildModelId,
-  buildProviderId,
-  getProviderIds,
-  isFleetProviderId,
-  parseProviderId,
-  listProviders,
-  getThinkingLevels,
-  hashSystemPrompt,
-  ensure,
-  sendMessage,
-  deliverToolResults,
-  resolveSession,
-  bindHostSession,
-  shutdownAllSessions,
-  buildLaunchCommand,
-  registerStreamHandler,
-  unregisterStreamHandler,
-  clearStreamHandlers,
-  emitStreamEvent,
-  list as listAgentTools,
-  invoke as invokeAgentTool,
-  registerExtraTools,
-  unregisterExtraTools,
-  registerDefaultTool,
-  clearAllDefaultTools,
-  clearAllExtraTools,
-  getSessionIdFor,
-  disconnect,
-  disconnectAll,
-  cleanIdle,
-  executeWithPool,
-  executeOneShot,
-} from "./admiral/agent/index.js";
+} from "./infra/tool-registry/types.js";
+export type {
+  CarrierCategory,
+  CarrierConfig,
+  CarrierMetadata,
+} from "./admiral/carrier/types.js";
+export type {
+  BackendProgress,
+  TaskForceResult,
+  TaskForceState,
+  TaskForceCliType,
+} from "./admiral/taskforce/types.js";
+export type {
+  SquadronResult,
+  SquadronState,
+  SubtaskProgress,
+} from "./admiral/squadron/types.js";
+export type {
+  CarrierJobsParams,
+} from "./admiral/carrier-jobs/types.js";
+export type {
+  CarrierJobRecord,
+  CarrierJobSummary,
+} from "./infra/job/job-types.js";
+export type {
+  CarrierJobKind,
+  CarrierJobStreamEvent,
+  CarrierJobStatus,
+  TrackMeta,
+  TrackKind,
+  TrackStatus,
+} from "./admiral/_shared/carrier-job-events.js";
+export type {
+  CoreLogAPI,
+  LogCategoryMeta,
+  LogEntry,
+  LogLevel,
+  LogOptions,
+} from "./infra/log/types.js";
+export type {
+  SectionDisplayConfig,
+} from "./infra/settings/types.js";
+export type {
+  DirectiveRefinementSettings,
+} from "./metaphor/directive-refinement/settings.js";
+export type {
+  ReasoningLevel as DirectiveReasoningLevel,
+} from "./metaphor/directive-refinement/constants.js";
+export type {
+  OperationNameSettings,
+} from "./metaphor/operation-name/settings.js";
+export type {
+  ReasoningLevel as OperationReasoningLevel,
+} from "./metaphor/operation-name/constants.js";
+export type {
+  DirectiveAnswer,
+  DirectiveOption,
+  DirectiveQuestion,
+  DirectiveResult,
+  RenderOption,
+} from "./admiral/request-directive.js";
+export type * from "./admiral/carrier/overlay-types.js";
 export type {
   AgentStreamEvent,
   AgentStreamHandler,

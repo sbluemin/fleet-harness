@@ -32,7 +32,7 @@ import {
   type MissionId,
 } from "@sbluemin/fleet-core/admiralty";
 
-import { getLogAPI } from "@sbluemin/fleet-core/services/log";
+import { infra } from "@sbluemin/fleet-core";
 import { getState } from "../state.js";
 import type { FleetRegistry } from "./fleet-registry.js";
 import { getAdmiraltyRegistry, getAdmiraltyServer } from "./runtime.js";
@@ -127,7 +127,7 @@ export function registerAdmiraltyTools(
     description: GRAND_FLEET_DEPLOY_DESCRIPTION,
     parameters: GrandFleetDeployParams as any,
     async execute(_toolCallId: string, params: DeployParams) {
-      const log = getLogAPI();
+      const log = infra.log.getLogAPI();
       const { registry } = requireRuntime();
 
       log.info(
@@ -156,7 +156,7 @@ export function registerAdmiraltyTools(
     description: GRAND_FLEET_DISPATCH_DESCRIPTION,
     parameters: GrandFleetDispatchParams as any,
     async execute(_toolCallId: string, params: DispatchParams) {
-      const log = getLogAPI();
+      const log = infra.log.getLogAPI();
       const { registry, server } = requireRuntime();
       const priority = normalizePriority(params.priority);
       const missionId = createMissionId();
@@ -220,7 +220,7 @@ export function registerAdmiraltyTools(
     description: GRAND_FLEET_RECALL_DESCRIPTION,
     parameters: GrandFleetRecallParams as any,
     async execute(_toolCallId: string, params: RecallParams) {
-      const log = getLogAPI();
+      const log = infra.log.getLogAPI();
       const { registry } = requireRuntime();
       const fleet = requireFleetRecord(registry, params.fleetId);
       const snapshot = createRecallSnapshot(fleet);
@@ -252,7 +252,7 @@ export function registerAdmiraltyTools(
     description: GRAND_FLEET_BROADCAST_DESCRIPTION,
     parameters: GrandFleetBroadcastParams as any,
     async execute(_toolCallId: string, params: BroadcastParams) {
-      const log = getLogAPI();
+      const log = infra.log.getLogAPI();
       const { registry, server } = requireRuntime();
       const priority = normalizePriority(params.priority);
       const missionId = createMissionId();
@@ -312,7 +312,7 @@ export function registerAdmiraltyTools(
     description: GRAND_FLEET_STATUS_DESCRIPTION,
     parameters: GrandFleetStatusParams as any,
     async execute(_toolCallId: string, params: StatusParams) {
-      const log = getLogAPI();
+      const log = infra.log.getLogAPI();
       const { registry } = requireRuntime();
       const fleets = params.fleetId
         ? [requireFleetRecord(registry, params.fleetId)]
@@ -430,7 +430,7 @@ function requireFleetRecord(
   const normalized = normalizeFleetRecord(directMatch, fleetId);
 
   if (!normalized) {
-    getLogAPI().warn(LOG_SOURCE, `함대 미등록: ${fleetId}`);
+    infra.log.getLogAPI().warn(LOG_SOURCE, `함대 미등록: ${fleetId}`);
     throw new Error(`등록되지 않은 함대입니다: ${fleetId}`);
   }
 

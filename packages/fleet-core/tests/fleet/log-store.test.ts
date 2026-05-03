@@ -4,16 +4,16 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CoreSettingsAPI, SectionDisplayConfig } from "../../src/services/settings/index.js";
-import type { LogEntry } from "../../src/services/log/types.js";
-import { DEFAULT_LOG_CATEGORY } from "../../src/services/log/types.js";
+import type { CoreSettingsAPI, SectionDisplayConfig } from "../../src/infra/settings/index.js";
+import type { LogEntry } from "../../src/infra/log/types.js";
+import { DEFAULT_LOG_CATEGORY } from "../../src/infra/log/types.js";
 
 interface MemorySettingsAPI extends CoreSettingsAPI {
   readonly data: Record<string, unknown>;
 }
 
-type LogStoreModule = typeof import("../../src/services/log/store.js");
-type SettingsRuntimeModule = typeof import("../../src/services/settings/runtime.js");
+type LogStoreModule = typeof import("../../src/infra/log/store.js");
+type SettingsRuntimeModule = typeof import("../../src/infra/settings/runtime.js");
 
 const FILE_LOG_SETTINGS = {
   enabled: true,
@@ -147,8 +147,8 @@ async function loadLogStoreModules(): Promise<{
   store: LogStoreModule;
 }> {
   const [settingsRuntime, store] = await Promise.all([
-    import("../../src/services/settings/runtime.js"),
-    import("../../src/services/log/store.js"),
+    import("../../src/infra/settings/runtime.js"),
+    import("../../src/infra/log/store.js"),
   ]);
   store.setCoreLogSettingsPort(null);
   settingsRuntime.resetSettingsService();

@@ -10,8 +10,10 @@ import {
   getRegisteredOrder,
   registerSingleCarrier,
 } from "../../src/tools.js";
-import { CARRIER_FRAMEWORK_KEY, type CarrierMetadata } from "@sbluemin/fleet-core/admiral/carrier";
-import { initStore } from "@sbluemin/fleet-core/admiral/store";
+import { admiral, type CarrierMetadata } from "@sbluemin/fleet-core";
+
+const { CARRIER_FRAMEWORK_KEY } = admiral.carrier;
+const { initStore } = admiral.store;
 
 const TEST_EXTENSION_API = {
   registerMessageRenderer: vi.fn(),

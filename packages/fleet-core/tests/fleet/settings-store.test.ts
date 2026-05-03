@@ -32,7 +32,7 @@ describe("core settings store", () => {
     fs.writeFileSync(outsideFile, "{\"outside\":true}");
     fs.symlinkSync(outsideFile, path.join(fleetDir, "settings.json"));
 
-    const store = await import("../../src/services/settings/store.js");
+    const store = await import("../../src/infra/settings/store.js");
 
     store.saveSection("core-log", { enabled: true });
 
@@ -44,7 +44,7 @@ describe("core settings store", () => {
     const fleetDir = path.join(testHomeDir, ".fleet");
     fs.mkdirSync(fleetDir, { mode: 0o777, recursive: true });
 
-    const store = await import("../../src/services/settings/store.js");
+    const store = await import("../../src/infra/settings/store.js");
 
     store.saveSection("core-log", { enabled: true });
 

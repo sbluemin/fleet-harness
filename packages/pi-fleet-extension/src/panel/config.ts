@@ -6,8 +6,8 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { MIN_BODY_H, MAX_BODY_H, formatPanelMultiColHint } from "@sbluemin/fleet-core/constants";
-import { loadModels } from "@sbluemin/fleet-core/admiral/store";
+import { MIN_BODY_H, MAX_BODY_H, formatPanelMultiColHint } from "../fleet-core-facades.js";
+import { loadModels } from "../fleet-core-facades.js";
 import { getState } from "./state.js";
 import type { ServiceSnapshot } from "./state.js";
 import { syncCurrentWidget, syncWidget } from "./widget-sync.js";

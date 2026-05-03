@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
+import { admiral } from "@sbluemin/fleet-core";
 import type { AgentCol } from "../../src/panel/types.js";
 import { getState, makeFooterCols, resetPanelStateForTest } from "../../src/panel/state.js";
+
+const { CARRIER_FRAMEWORK_KEY } = admiral.carrier;
 
 function makeCol(cli: string, status: AgentCol["status"]): AgentCol {
   return {

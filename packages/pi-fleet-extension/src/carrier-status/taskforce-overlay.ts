@@ -10,12 +10,12 @@
 import type { Component, Focusable, TUI } from "@mariozechner/pi-tui";
 import { Key, matchesKey } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "@sbluemin/fleet-core/constants";
+import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "../fleet-core-facades.js";
 import type { ProviderModelInfo } from "@sbluemin/unified-agent";
 import {
   TASKFORCE_CLI_TYPES,
-  type TaskForceCliType,
-} from "@sbluemin/fleet-core/admiral/taskforce";
+} from "../fleet-core-facades.js";
+import type { TaskForceCliType } from "@sbluemin/fleet-core";
 
 import { createOverlayFrame } from "./frame.js";
 import { buildModelEffortTransition } from "./model-flow.js";

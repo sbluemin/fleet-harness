@@ -8,7 +8,7 @@
 
 import type { ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { PANEL_DIM_COLOR } from "@sbluemin/fleet-core/constants";
+import { PANEL_DIM_COLOR } from "../fleet-core-facades.js";
 import {
   isJobBarMode,
   enterJobBarMode,
