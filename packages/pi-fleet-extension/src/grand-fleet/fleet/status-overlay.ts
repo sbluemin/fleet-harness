@@ -4,7 +4,7 @@ import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import { stripControlChars } from "@sbluemin/fleet-core/admiralty";
 import { getState } from "../state.js";
-import { createOverlayFrame } from "../../agent/ui/carrier-ui/overlay-frame.js";
+import { createOverlayFrame } from "../../carrier-status/frame.js";
 import { getFleetOverlayRuntimeState } from "./register.js";
 
 const ANSI_RESET = "\x1b[0m";

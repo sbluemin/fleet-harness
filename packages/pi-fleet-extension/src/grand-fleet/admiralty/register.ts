@@ -9,7 +9,7 @@ import { getState } from "../state.js";
 import { FleetRegistry } from "./fleet-registry.js";
 import { registerAdmiraltyPiEvents } from "./events.js";
 import { registerAdmiraltyTools } from "./tools.js";
-import { getKeybindAPI } from "../../shell/keybinds/bridge.js";
+import { getKeybindAPI } from "../../keybinds.js";
 import { openAdmiraltyStatusOverlay } from "./status-overlay.js";
 import {
   ensureAdmiraltyRuntime,

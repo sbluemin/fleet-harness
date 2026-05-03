@@ -13,7 +13,7 @@ import { registerFleetPiEvents } from "./events.js";
 import { registerFleetPiTools } from "./tools.js";
 import { getFleetRuntime } from "./runtime.js";
 import { buildFleetPingPayload } from "./status-source.js";
-import { getKeybindAPI } from "../../shell/keybinds/bridge.js";
+import { getKeybindAPI } from "../../keybinds.js";
 import { openFleetStatusOverlay } from "./status-overlay.js";
 
 interface FleetOverlayRuntimeState {

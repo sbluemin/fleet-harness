@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { approveAndNotify, listQueueItems, rejectAndNotify, runDrydock, runStatus, showPatchDetail } from "../../src/fleet-wiki/handlers.js";
-import { registerWikiCommands } from "../../src/fleet-wiki/index.js";
+import { approveAndNotify, listQueueItems, rejectAndNotify, runDrydock, runStatus, showPatchDetail } from "../../src/wiki/handlers.js";
+import { registerWikiCommands } from "../../src/wiki/ui.js";
 import { enqueuePatch, parsePatch } from "@sbluemin/fleet-wiki";
 import { resolveMemoryPaths } from "@sbluemin/fleet-wiki";
 

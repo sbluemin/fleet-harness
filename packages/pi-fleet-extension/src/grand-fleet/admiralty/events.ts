@@ -13,7 +13,7 @@ import {
   setRosterListenerDisposer,
 } from "./runtime.js";
 import { initRosterWidget, disposeRosterWidget, syncRosterWidget } from "./roster-widget.js";
-import { setEditorBorderColor, setEditorRightLabel } from "../../shell/hud/border-bridge.js";
+import { setEditorBorderColor, setEditorRightLabel } from "../../hud/border-bridge.js";
 
 const ADMIRALTY_COLOR = "\x1b[38;2;255;200;60m";
 

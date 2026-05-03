@@ -38,9 +38,9 @@ import {
 } from "@sbluemin/fleet-core/metaphor/operation-name";
 import { getSettingsService } from "@sbluemin/fleet-core/services/settings";
 
-import { getKeybindAPI } from "./shell/keybinds/bridge.js";
-import { completeSimple } from "./agent/provider.js";
-import type { Api, Model, ThinkingLevel } from "./agent/provider.js";
+import { getKeybindAPI } from "./keybinds.js";
+import { completeSimple } from "./provider.js";
+import type { Api, Model, ThinkingLevel } from "./provider.js";
 
 export function registerMetaphor(ctx: ExtensionAPI): void {
   registerWorldviewCommand(ctx);

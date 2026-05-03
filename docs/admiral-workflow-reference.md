@@ -83,16 +83,15 @@ In the Flat Domain Architecture, Pi ownership is expressed through these domain-
 
 - `src/boot.ts` — Entry point — assembles the Fleet runtime by composing domain modules
 - `src/fleet.ts` — Fleet lifecycle, runtime initialization, and Pi host port implementation
-- `src/agent/` — Agent orchestration, providers, and carrier gateway
+- `src/provider.ts` — Pi-AI gateway, streamAcp adapter, and provider runtime registration
 - `src/grand-fleet/` — Multi-instance Grand Fleet orchestration
-- `src/fleet-wiki/` — Fleet knowledge base and ingest
-- `src/shell/` — Host shell integration and terminal features
-- `src/fleet.ts` — Fleet-wide bridge and orchestration features
+- `src/wiki/` — Fleet knowledge base and ingest
+- `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` — Host shell integration and terminal features
 - `src/metaphor.ts` — Persona, worldview, and naval metaphors
-- `src/job.ts` — Detached carrier job management
+- `src/jobs.ts` — Detached carrier job management
 - `src/settings.ts` — Fleet-wide settings and configuration
-- `src/log.ts` — Fleet activity logging and categories
-- `src/tool-registry.ts` — Tool registration and discovery
+- `src/logs.ts` — Fleet activity logging and categories
+- `src/tools.ts` — Tool registration and discovery
 
 These are the **current doctrinal homes** even though the package still physically retains `src/`.
 

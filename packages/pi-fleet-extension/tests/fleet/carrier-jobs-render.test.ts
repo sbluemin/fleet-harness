@@ -15,7 +15,7 @@ import {
   setCarrierJobsVerbose,
   shortenJobId,
   toggleCarrierJobsVerbose,
-} from "../../src/job.js";
+} from "../../src/jobs.js";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 

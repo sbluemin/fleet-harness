@@ -53,7 +53,7 @@ vi.mock("@sbluemin/fleet-core", () => ({
   shutdownAllSessions: vi.fn(async () => {}),
 }));
 
-import registerProviderRuntime from "../../src/agent/provider.js";
+import registerProviderRuntime from "../../src/provider.js";
 import { bindHostSession } from "@sbluemin/fleet-core";
 
 describe("provider register", () => {

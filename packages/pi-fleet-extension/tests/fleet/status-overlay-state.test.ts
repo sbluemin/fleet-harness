@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CarrierStatusOverlay } from "../../src/agent/ui/carrier-ui/status-overlay.js";
+import { CarrierStatusOverlay } from "../../src/carrier-status/overlay.js";
 import type {
   CarrierOverlayCallbacks,
   CarrierStatusEntry,

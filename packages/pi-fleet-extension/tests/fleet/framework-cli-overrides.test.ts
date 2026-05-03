@@ -9,7 +9,7 @@ import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   registerSingleCarrier,
-} from "../../src/tool-registry.js";
+} from "../../src/tools.js";
 import { CARRIER_FRAMEWORK_KEY, type CarrierMetadata } from "@sbluemin/fleet-core/admiral/carrier";
 import { initStore } from "@sbluemin/fleet-core/admiral/store";
 

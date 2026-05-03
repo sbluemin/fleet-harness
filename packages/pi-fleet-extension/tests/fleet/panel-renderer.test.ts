@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { ColBlock } from "../../src/agent/ui/panel/types.js";
-import type { PanelRun } from "../../src/agent/ui/panel/state.js";
-import type { PanelJob } from "../../src/agent/ui/panel/types.js";
-import { renderPanelFull } from "../../src/shell/render/panel-renderer.js";
+import type { ColBlock } from "../../src/panel/types.js";
+import type { PanelRun } from "../../src/panel/state.js";
+import type { PanelJob } from "../../src/panel/types.js";
+import { renderPanelFull } from "../../src/panel/panel-render.js";
 
 describe("renderPanelFull", () => {
   it("긴 단일 text block도 최근 5줄 tail로 제한한다", () => {

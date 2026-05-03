@@ -13,10 +13,10 @@ import {
   detachAgentPanelUi,
   endColStreaming,
   ensureAnimTimer,
-} from "../../src/agent/ui/panel-lifecycle.js";
-import { getState, handleCarrierJobStreamEvent, resetPanelStateForTest } from "../../src/agent/ui/panel/state.js";
-import { syncWidget } from "../../src/agent/ui/panel/widget-sync.js";
-import type { AgentCol } from "../../src/agent/ui/panel/types.js";
+} from "../../src/panel/ui.js";
+import { getState, handleCarrierJobStreamEvent, resetPanelStateForTest } from "../../src/panel/state.js";
+import { syncWidget } from "../../src/panel/widget-sync.js";
+import type { AgentCol } from "../../src/panel/types.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 

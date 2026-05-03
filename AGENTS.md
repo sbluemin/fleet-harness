@@ -22,8 +22,8 @@
 | `packages/pi-fleet-extension/src/` | Root of pi-facing domains |
 | `packages/pi-fleet-extension/src/boot.ts` | Entry point — assembles the Fleet runtime by composing domain modules |
 | `packages/pi-fleet-extension/src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation. `bootstrapFleetState()` is the single entry point for both boot-time and `session_start` fleet state restoration, carrier registration, and deferred reconciliation. |
-| `packages/pi-fleet-extension/src/{agent,grand-fleet,fleet-wiki,shell}/` | Domain-internal homes. Each owns its commands, keybinds, tools, and UI. |
-| `packages/pi-fleet-extension/src/{fleet,metaphor,job,settings,log,tool-registry}.ts` | Domain entrypoints mapping 1:1 to fleet-core services |
+| `packages/pi-fleet-extension/src/{grand-fleet,wiki}/` | Domain-internal homes. Each owns its commands, keybinds, tools, and UI. |
+| `packages/pi-fleet-extension/src/{fleet,metaphor,job,settings,logs,tools}.ts` | Domain entrypoints mapping 1:1 to fleet-core services |
 | `packages/pi-fleet-extension/src/{commands,keybinds,tools,tui,provider,session}/` | Removed legacy capability buckets. Do not reintroduce; all features are now organized by domain. |
 
 > Currently, there is no `pi/` directory — symlink setup is not required.
@@ -36,14 +36,14 @@ The `pi-fleet-extension` architecture mirrors the public services of `fleet-core
 
 | fleet-core Public Service | pi-fleet-extension Domain | Description |
 |---------------------------|---------------------------|-------------|
-| `fleet-services`          | `src/agent/` & `src/fleet.ts` | Agent orchestration, providers, and carrier gateway |
+| `fleet-services`          | `src/provider.ts` & `src/fleet.ts` | Agent orchestration, providers, and carrier gateway |
 | `grand-fleet-services`    | `src/grand-fleet/`        | Multi-instance Grand Fleet orchestration |
 | `metaphor-services`       | `src/metaphor.ts`         | Persona, worldview, and naval metaphors |
-| `job-services`            | `src/job.ts`              | Detached carrier job management |
+| `job-services`            | `src/jobs.ts`             | Detached carrier job management |
 | `settings-services`       | `src/settings.ts`         | Fleet-wide settings and configuration |
-| `log-services`            | `src/log.ts`              | Fleet activity logging and categories |
-| `@sbluemin/fleet-wiki`    | `src/fleet-wiki/`         | Fleet knowledge base and ingest |
-| (Host specific)           | `src/shell/`              | Host shell integration and terminal features |
+| `log-services`            | `src/logs.ts`             | Fleet activity logging and categories |
+| `@sbluemin/fleet-wiki`    | `src/wiki/`               | Fleet knowledge base and ingest |
+| (Host specific)           | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | Host shell integration and terminal features |
 
 
 ## Fleet Architecture (Metaphor)
@@ -170,7 +170,7 @@ The Fleet codebase is built on **four core principles**. Every contribution and 
 
 The split between `fleet-core` (Pi-agnostic Fleet domain) and `pi-fleet-extension` (Pi host adapter) is **not a guideline; it is enforced by build/grep gates**:
 
-- `fleet-core` MUST NOT import any `@mariozechner/pi-*` or `@anthropic-ai/*` package. The single Pi-AI gateway lives in `pi-fleet-extension/src/agent/provider.ts`.
+- `fleet-core` MUST NOT import any `@mariozechner/pi-*` or `@anthropic-ai/*` package. The single Pi-AI gateway lives in `pi-fleet-extension/src/provider.ts`.
 - `pi-fleet-extension` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
 - Pi UI, host event hooks (`pi.on/registerTool/registerProvider/...`), and any `ExtensionContext`/`ExtensionAPI` dependency belong exclusively to the Pi side.
 - When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the Pi adapter half stays in `pi-fleet-extension`.

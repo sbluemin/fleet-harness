@@ -68,16 +68,15 @@ Current Flat Domain Architecture in `pi-fleet-extension`:
 |-------------------|----------------|
 | `src/boot.ts` | Entry point — assembles the Fleet runtime by composing domain modules |
 | `src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation |
-| `src/agent/` | Domain-internal home for agent orchestration, providers, and carrier gateway |
+| `src/provider.ts` | Pi-AI gateway, streamAcp adapter, and provider runtime registration |
 | `src/grand-fleet/` | Domain-internal home for multi-instance Grand Fleet orchestration |
-| `src/fleet-wiki/` | Domain-internal home for knowledge base, ingest, and patching |
-| `src/shell/` | Domain-internal home for host shell integration and terminal features |
-| `src/fleet.ts` | Domain entrypoint for fleet-wide orchestration and event adapter features |
+| `src/wiki/` | Domain-internal home for knowledge base, ingest, and patching |
+| `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | Host shell integration and terminal features |
 | `src/metaphor.ts` | Domain entrypoint for persona, worldview, and naval metaphors |
-| `src/job.ts` | Domain entrypoint for detached carrier job management |
+| `src/jobs.ts` | Domain entrypoint for detached carrier job management |
 | `src/settings.ts` | Domain entrypoint for fleet-wide settings and configuration |
-| `src/log.ts` | Domain entrypoint for fleet activity logging and categories |
-| `src/tool-registry.ts` | Domain entrypoint for tool registration and discovery |
+| `src/logs.ts` | Domain entrypoint for fleet activity logging and categories |
+| `src/tools.ts` | Domain entrypoint for tool registration and discovery |
 
 ## 5. Removed Legacy Directory Guidance
 
@@ -90,14 +89,14 @@ The following legacy directories under `packages/pi-fleet-extension/src/` are al
 - `src/provider/`
 - `src/session/`
 
-Do not treat historical paths as present-day ownership signals. Their features have been absorbed into the respective domain homes (e.g., `src/agent/` owns its tools and UI).
+Do not treat historical paths as present-day ownership signals. Their features have been absorbed into the respective domain homes (e.g., `src/provider.ts` owns its tools and UI).
 
-Do not treat historical paths such as `src/metaphor/`, `src/fleet/admiral/`, or `src/fleet/shipyard/carrier_jobs/` as present-day ownership signals. Their former existence does not change current ownership: Fleet domain logic belongs in `fleet-core`, and Pi host wiring belongs in the active capability buckets under `src/`.
+Do not treat historical paths such as `src/metaphor/`, `src/fleet/admiral/`, or `src/fleet/shipyard/carrier_jobs/` as present-day ownership signals. Their former existence does not change current ownership: Fleet domain logic belongs in `fleet-core`, and Pi host wiring belongs in the active domain adapters under `src/`.
 
 When migrating or restoring behavior that once lived under those paths:
 
 1. move pure/domain code toward `fleet-core`
-2. move Pi registration/rendering code toward the correct capability bucket
+2. move Pi registration/rendering code toward the correct domain adapter
 3. do not recreate the deleted legacy directory as a shim
 
 ## 6. Import Rules
@@ -105,12 +104,12 @@ When migrating or restoring behavior that once lived under those paths:
 - `pi-fleet-extension` must consume `fleet-core` through public exports only.
 - For runtime composition, use `@sbluemin/fleet-core` and consume domain APIs through `FleetCoreRuntimeContext`. Direct shared-service subpaths are migration compatibility surfaces only; new public API should be modeled as a domain service. Keybind is not a Fleet Core public service.
 - `pi-fleet-extension` must consume Grand Fleet surfaces through `@sbluemin/fleet-core/admiralty` or `@sbluemin/fleet-core/admiralty/ipc`.
-- `pi-fleet-extension` may consume `@sbluemin/fleet-wiki` for Fleet Wiki adapters that live in the active bucket-local `src/*/fleet-wiki/` homes.
+- `pi-fleet-extension` may consume `@sbluemin/fleet-wiki` for Fleet Wiki adapters that live in `src/wiki/`.
 - Do not deep-import `@sbluemin/fleet-core/src/**` or `@sbluemin/fleet-core/internal/**`.
 - Do not import Grand Fleet surfaces from the deprecated Fleet Core location.
 - `fleet-core` must not import Pi packages.
 - `fleet-core` must not split internal admiralty ownership back out into a separate package.
-- `@mariozechner/pi-ai` imports stay confined to `packages/pi-fleet-extension/src/agent/provider.ts`.
+- `@mariozechner/pi-ai` imports stay confined to `packages/pi-fleet-extension/src/provider.ts`.
 
 ## 7. PI Runtime Rules
 

@@ -4,9 +4,9 @@ import {
   _bootstrapKeybind,
   getKeybindAPI,
   prepareKeybindBridgeForExtensionLoad,
-} from "../../src/shell/keybinds/bridge.js";
-import type { CoreKeybindAPI, KeybindRegistration } from "../../src/shell/keybinds/types.js";
-import { addBinding, getBindings, getKey } from "../../src/shell/keybinds/registry.js";
+} from "../../src/keybinds.js";
+import type { CoreKeybindAPI, KeybindRegistration } from "../../src/keybinds.js";
+import { addBinding, getBindings, getKey } from "../../src/keybinds.js";
 
 describe("keybind bridge reload lifecycle", () => {
   beforeEach(() => {

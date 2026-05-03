@@ -4,8 +4,8 @@ import {
   renderBlockLines,
   blockLineAnsiColor,
   blockLineToAnsi,
-} from "../../src/shell/render/block-renderer.js";
-import type { ColBlock } from "../../src/agent/ui/panel/types.js";
+} from "../../src/panel/message-render.js";
+import type { ColBlock } from "../../src/panel/types.js";
 import {
   ANSI_RESET,
   PANEL_DIM_COLOR,

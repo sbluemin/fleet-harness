@@ -58,7 +58,7 @@ describe("provider-stream adapter", () => {
 
   it("잘못된 model ID는 에러 스트림을 반환한다", async () => {
     vi.resetModules();
-    const { streamAcp } = await import("../../src/agent/provider.js");
+    const { streamAcp } = await import("../../src/provider.js");
     const { parseModelId } = await import("@sbluemin/fleet-core");
 
     vi.mocked(parseModelId).mockReturnValueOnce(null);
@@ -74,7 +74,7 @@ describe("provider-stream adapter", () => {
 
   it("fresh query는 ensure → sendMessage(SendMessageRequest)를 호출한다", async () => {
     vi.resetModules();
-    const { streamAcp, initStreamEventHandler } = await import("../../src/agent/provider.js");
+    const { streamAcp, initStreamEventHandler } = await import("../../src/provider.js");
     const { ensure, sendMessage } = await import("@sbluemin/fleet-core");
 
     initStreamEventHandler();
@@ -113,7 +113,7 @@ describe("provider-stream adapter", () => {
 
   it("toolResult delivery는 mcpToolCall 이벤트에서 등록된 sessionId로 라우팅한다", async () => {
     vi.resetModules();
-    const { streamAcp, initStreamEventHandler } = await import("../../src/agent/provider.js");
+    const { streamAcp, initStreamEventHandler } = await import("../../src/provider.js");
     const { ensure, sendMessage, deliverToolResults } = await import("@sbluemin/fleet-core");
 
     initStreamEventHandler();

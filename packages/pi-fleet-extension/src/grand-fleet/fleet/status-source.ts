@@ -6,7 +6,7 @@ import {
 } from "@sbluemin/fleet-core/admiralty";
 import { getCarrierFrameworkState } from "@sbluemin/fleet-core/admiral/carrier";
 
-import { getGrandFleetStreamStoreState } from "../../agent/ui/panel/state.js";
+import { getGrandFleetStreamStoreState } from "../../panel/state.js";
 import { getState } from "../state.js";
 
 export function buildFleetPingPayload(fleetId: FleetId): FleetPingPayload {

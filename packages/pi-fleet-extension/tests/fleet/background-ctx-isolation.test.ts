@@ -22,11 +22,26 @@ import {
   handleCarrierJobStreamEvent,
   resetPanelStateForTest,
   syncColsWithRegisteredOrder,
-} from "../../src/agent/ui/panel/state.js";
-import * as panelState from "../../src/agent/ui/panel/state.js";
+} from "../../src/panel/state.js";
+import * as panelState from "../../src/panel/state.js";
 import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
-import { isStaleExtensionContextError } from "../../src/shell/context-errors.js";
-import { syncCurrentWidget, syncWidget } from "../../src/agent/ui/panel/widget-sync.js";
+import { syncCurrentWidget, syncWidget } from "../../src/panel/widget-sync.js";
+
+function isStaleExtensionContextError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  if (message.includes("agent listener invoked outside active run")) return true;
+  const mentionsExtensionCtx =
+    message.includes("extensioncontext") ||
+    message.includes("extension ctx") ||
+    message.includes("extension context");
+  const mentionsStaleSession =
+    message.includes("stale") ||
+    message.includes("session") ||
+    message.includes("replacement") ||
+    message.includes("reload");
+  return mentionsExtensionCtx && mentionsStaleSession;
+}
 
 describe("background ctx isolation", () => {
   it("runs background carrier requests through agent-runtime with explicit cwd and no ExtensionContext", async () => {

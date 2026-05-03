@@ -33,14 +33,14 @@ import {
 } from "@sbluemin/fleet-core/admiral/store";
 import { isWorldviewEnabled } from "@sbluemin/fleet-core/metaphor";
 import { getLogAPI } from "@sbluemin/fleet-core/services/log";
-import { bootBridge, ensureBridgeKeybinds } from "./agent/ui/acp-shell/register.js";
-import { syncModelConfig } from "./agent/ui/panel/config.js";
-import { completeSimple } from "./agent/provider.js";
-import type { Api, Model, ThinkingLevel } from "./agent/provider.js";
+import { bootBridge, ensureBridgeKeybinds } from "./bridge/handler.js";
+import { syncModelConfig } from "./panel/config.js";
+import { completeSimple } from "./provider.js";
+import type { Api, Model, ThinkingLevel } from "./provider.js";
 import { registerGrandFleet } from "./grand-fleet/index.js";
-import { getKeybindAPI } from "./shell/keybinds/bridge.js";
-import { detachAgentPanelUi, refreshAgentPanel } from "./agent/ui/panel-lifecycle.js";
-import { requestHudRender } from "./shell/hud/editor.js";
+import { getKeybindAPI } from "./keybinds.js";
+import { detachAgentPanelUi, refreshAgentPanel } from "./panel/ui.js";
+import { requestHudRender } from "./hud/editor.js";
 import { setDeliverAs, getDeliverAs } from "./settings.js";
 import {
   getRegisteredCarrierConfig,
@@ -52,9 +52,9 @@ import {
   setSortieDisabledCarriers,
   setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
-} from "./tool-registry.js";
-import { setEditorBorderColor, setEditorRightLabel, setEditorTopRightLabel } from "./shell/hud/border-bridge.js";
-import { setCarrierJobsVerbose, toggleCarrierJobsVerbose } from "./job.js";
+} from "./tools.js";
+import { setEditorBorderColor, setEditorRightLabel, setEditorTopRightLabel } from "./hud/border-bridge.js";
+import { setCarrierJobsVerbose, toggleCarrierJobsVerbose } from "./jobs.js";
 
 export interface FleetLifecycleRuntime {
   fleetEnabled: boolean;

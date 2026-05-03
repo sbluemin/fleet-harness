@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildBridgeCommand } from "../../src/agent/ui/acp-shell/command.js";
+import { buildBridgeCommand } from "../../src/bridge/command.js";
 
 describe("acp-shell command", () => {
   it("Codex resume 전에 archived rollout을 sessions 경로로 복원한다", () => {

@@ -4,7 +4,7 @@ import {
   bindCarrierJobStreamPi,
   handleCarrierJobStreamEvent,
   resetPanelStateForTest,
-} from "../../../src/agent/ui/panel/state.js";
+} from "../../../src/panel/state.js";
 
 beforeEach(() => {
   resetPanelStateForTest();

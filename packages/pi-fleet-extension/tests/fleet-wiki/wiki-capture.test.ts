@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { collectCaptureSession } from "../../src/fleet-wiki/capture.js";
-import { registerWikiCommands } from "../../src/fleet-wiki/index.js";
-import { runCapture } from "../../src/fleet-wiki/handlers.js";
+import { collectCaptureSession } from "../../src/wiki/capture.js";
+import { registerWikiCommands } from "../../src/wiki/ui.js";
+import { runCapture } from "../../src/wiki/handlers.js";
 import { buildWikiCaptureDirective } from "@sbluemin/fleet-wiki";
 
 describe("wiki capture session", () => {

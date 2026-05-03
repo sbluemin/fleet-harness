@@ -3,20 +3,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../src/shell/welcome/welcome.js", () => ({
-  WelcomeHeader: class {
-    invalidate() {}
-    render() {
-      return [];
-    }
-  },
-  checkGitUpdateStatus: () => null,
-  discoverLoadedCounts: () => ({}),
-  getRecentSessions: () => [],
-}));
+vi.mock("../../src/welcome.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/welcome.js")>();
+  return {
+    ...actual,
+    WelcomeHeader: class {
+      invalidate() {}
+      render() {
+        return [];
+      }
+    },
+    checkGitUpdateStatus: () => null,
+    discoverLoadedCounts: () => ({}),
+    getRecentSessions: () => [],
+  };
+});
 
-import registerWelcome from "../../src/shell/welcome/register.js";
-import { getWelcomeBridge, setWelcomeBridge } from "../../src/shell/welcome/types.js";
+import registerWelcome from "../../src/welcome.js";
+import { getWelcomeBridge, setWelcomeBridge } from "../../src/welcome.js";
 
 type Handler = (event: any, ctx: any) => unknown;
 

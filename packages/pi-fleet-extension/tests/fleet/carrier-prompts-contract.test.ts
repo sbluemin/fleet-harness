@@ -8,7 +8,7 @@ import { SORTIE_MANIFEST, buildSortieToolSchema } from "@sbluemin/fleet-core/adm
 import { CARRIER_JOBS_MANIFEST, buildCarrierJobsSchema } from "@sbluemin/fleet-core/carrier-jobs";
 import { SQUADRON_MANIFEST, buildSquadronSchema } from "@sbluemin/fleet-core/admiral/squadron";
 import { TASKFORCE_MANIFEST, buildTaskForceSchema } from "@sbluemin/fleet-core/admiral/taskforce";
-import { CARRIER_RESULT_CUSTOM_TYPE } from "../../src/job.js";
+import { CARRIER_RESULT_CUSTOM_TYPE } from "../../src/jobs.js";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 
