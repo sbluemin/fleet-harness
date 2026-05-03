@@ -2,6 +2,7 @@ packages:
   - "packages/unified-agent"
   - "packages/fleet-core"
   - "packages/fleet-wiki"
+  - "packages/fleet-wiki-web"
   - "packages/pi-fleet-extension"
 allowBuilds:
   '@google/genai': true

@@ -11,7 +11,7 @@
 |------|-------------|
 | `docs/pi-development-reference.md` | **Main Developer Guide** — Comprehensive reference for PI SDK, extensions, TUI, themes, and RPC |
 | `docs/admiral-workflow-reference.md` | **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
-| `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `pi-fleet-extension` |
+| `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `fleet-wiki-web`, `pi-fleet-extension` |
 | `packages/fleet-core/` | Pi-agnostic Fleet product core — Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, **Admiral orchestration runtime**, and public APIs |
 | `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (carrier-job-events SSOT stream events, cli-tool-types, MCP server singleton), **`agent/`** (the canonical agent domain — `session/lifecycle/connections/models/events/serviceStatus/tools/bridge/executor` + `internal/{state,session-runtime,session-engine,event-normalizer,mcp-router,executor-engine,post-connect}`), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog and `fleet-store.ts` unified persistence), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
 | `packages/fleet-core/src/infra/` | Shared pure infrastructure modules. Includes `auth/`, `data-dir/`, `job/`, `log/`, `settings/`, and **tool-registry**. |
@@ -23,6 +23,7 @@
 | `packages/pi-fleet-extension/src/boot.ts` | Entry point — assembles the Fleet runtime by composing domain modules |
 | `packages/pi-fleet-extension/src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation. `bootstrapFleetState()` is the single entry point for both boot-time and `session_start` fleet state restoration, carrier registration, and deferred reconciliation. |
 | `packages/pi-fleet-extension/src/{grand-fleet,wiki}/` | Domain-internal homes. Each owns its commands, keybinds, tools, and UI. |
+| `packages/fleet-wiki-web/` | Standalone web surface for Fleet Wiki workspaces — `fleet-wiki` CLI, detached local HTTP server, Vite SPA client |
 | `packages/pi-fleet-extension/src/{fleet,metaphor,job,settings,logs,tools}.ts` | Domain entrypoints mapping 1:1 to fleet-core services |
 | `packages/pi-fleet-extension/src/{commands,keybinds,tools,tui,provider,session}/` | Removed legacy capability buckets. Do not reintroduce; all features are now organized by domain. |
 

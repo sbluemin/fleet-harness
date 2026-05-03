@@ -109,6 +109,7 @@ After `pnpm link --global` (see [SETUP.md](SETUP.md)), five global commands are 
 | `gfleet` | Launch Grand Fleet mode |
 | `fleet-dev` | Standard Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/pi-fleet-extension/src/index.ts` from the current checkout |
 | `gfleet-dev` | Grand Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/pi-fleet-extension/src/index.ts` from the current checkout |
+| `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
 
 ## Setup
 

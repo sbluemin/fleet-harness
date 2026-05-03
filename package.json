@@ -10,6 +10,7 @@
   "bin": {
     "fleet": "bin/fleet.js",
     "fleet-exp": "bin/fleet-exp.js",
+    "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs",
     "gfleet": "bin/gfleet.js",
     "fleet-dev": "bin/fleet-dev.js",
     "gfleet-dev": "bin/gfleet-dev.js"

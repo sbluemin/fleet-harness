@@ -5,6 +5,12 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- **`@sbluemin/fleet-wiki-web` workspace package**: New standalone web surface for Fleet Wiki workspaces. Provides the `fleet-wiki` CLI command, a detached local HTTP server, and a Vite-built vanilla TypeScript SPA client with dark theme, 3-column layout, ⌘K command palette, and backlink panel.
+- **`fleet-wiki` CLI command**: Registered at the monorepo root via `bin.fleet-wiki`. Serves the Fleet Wiki web UI from the current working directory's `.fleet/knowledge` store, automatically opens the system browser, and manages a per-user PID/port lock file.
+- **Fleet Wiki Web APIs**: Four read-only endpoints (`/api/index`, `/api/entry/:id`, `/api/search`, `/api/backlinks/:id`) plus a health-check (`GET /health`), all served by the detached Node.js HTTP server.
+- **Fleet Wiki Web security hardening**: Client-side DOMPurify sanitization, server-side safe-ID validation (`SAFE_ID_RE`), exclusive PID/port lock with `O_NOFOLLOW | O_NONBLOCK` and `lstat` pre-checks (lock file mode `0600`, directory `0700`), and malformed-URL request guards.
+
 ## [0.10.2] - 2026-05-03
 
 Release v0.10.2

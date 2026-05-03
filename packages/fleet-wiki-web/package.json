@@ -1,0 +1,39 @@
+{
+  "name": "@sbluemin/fleet-wiki-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fleet-wiki": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "AGENTS.md"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "tsup && vite build --config client/vite.config.ts",
+    "dev:client": "vite --config client/vite.config.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
+  },
+  "dependencies": {
+    "@sbluemin/fleet-wiki": "workspace:*",
+    "dompurify": "^3.4.2",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.4.1"
+  },
+  "devDependencies": {
+    "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@types/node": "^24.9.1",
+    "jsdom": "^29.1.1",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vite": "^7.2.7",
+    "vitest": "^3.2.4"
+  }
+}
