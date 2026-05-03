@@ -49,11 +49,6 @@ export const SQUADRON_MANIFEST: ToolPromptManifest = {
       ` Maximum ${SQUADRON_MAX_INSTANCES} subtasks allowed.`,
     `Each subtask request must still follow the selected carrier's request-tag contract.` +
       ` Preserve ordinary direct request composition when no optional planning artifact is available.`,
-    `If Kirov has already produced a plan file for Ohio, pass that path via Ohio's optional \`<plan_file>\` tag inside the relevant subtask request instead of re-describing the full plan inline.` +
-      ` That path must stay repo-relative and must point only to a Markdown plan under .fleet/plans/*.md.` +
-      ` If no such file exists, preserve ordinary Genesis subtask request composition by sending only the normal objective/scope/constraints context.`,
-    `Do not pass absolute paths, general repo-relative files, or non-Markdown files via Ohio's \`<plan_file>\` tag in carrier_squadron subtasks.` +
-      ` If a provided \`<plan_file>\` is missing, unreadable, or invalid, Ohio must report the issue and request re-direction rather than guessing or silently re-planning.`,
     `PI splits the task into subtasks — the tool only fans out execution.` +
       ` The launch response is { job_id, accepted, error? } and never includes synchronous result content.` +
       ` Final interpretation is PI's responsibility after [carrier:result] push; carrier_jobs is fallback/explicit lookup only.`,

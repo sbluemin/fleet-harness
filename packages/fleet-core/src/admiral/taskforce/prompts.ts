@@ -26,10 +26,6 @@ const TASKFORCE_BACKEND_LABELS = TASKFORCE_CLI_TYPES
   .map((cliType) => CLI_DISPLAY_NAMES[cliType] ?? cliType)
   .join(", ");
 
-const TASKFORCE_BACKEND_EXAMPLES = TASKFORCE_CLI_TYPES
-  .map((cliType) => `[${CLI_DISPLAY_NAMES[cliType] ?? cliType}]`)
-  .join(", ");
-
 const TASKFORCE_CONFIGURE_HINT =
   `open Carrier Status (Alt+O) and press T to configure at least two CLI backends (${TASKFORCE_BACKEND_LABELS})`;
 
@@ -56,7 +52,7 @@ export const TASKFORCE_MANIFEST: ToolPromptManifest = {
     `The carrier parameter selects which carrier's role and prompt context to apply.` +
       ` Each carrier's configured backends (≥2) will execute the same request under that persona.`,
     `The launch response is { job_id, accepted, error? } and never includes synchronous result content.` +
-      ` Results arrive by [carrier:result] push, labelled by backend name (e.g., ${TASKFORCE_BACKEND_EXAMPLES}); carrier_jobs is fallback/explicit lookup only.` +
+      ` Results arrive by [carrier:result] push, labelled by backend name; carrier_jobs is fallback/explicit lookup only.` +
       ` Each backend runs independently — a failure in one does not abort the others.`,
     `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
       ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,

@@ -75,11 +75,6 @@ export const SORTIE_MANIFEST: ToolPromptManifest = {
     `When composing a carrier request, provide only background, context, objective, and constraints.` +
       ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
       ` Use the Tags listed for each carrier to structure your request.`,
-    `If Kirov has already produced a plan file for Ohio, pass that path via Ohio's optional \`<plan_file>\` tag instead of re-describing the full plan inline.` +
-      ` That path must stay repo-relative and must point only to a Markdown plan under .fleet/plans/*.md.` +
-      ` If no such file exists, preserve direct Admiral->Genesis execution by sending only the normal objective/scope/constraints context.`,
-    `Do not pass absolute paths, general repo-relative files, or non-Markdown files via Ohio's \`<plan_file>\` tag.` +
-      ` If a provided \`<plan_file>\` is missing, unreadable, or invalid, Ohio must report the issue and request re-direction rather than guessing or silently re-planning.`,
     `Each carrier ID may appear at most once per carriers_sortie call.` +
       ` Duplicate carrier IDs in the same call are rejected by the system and cause the entire sortie to fail.` +
       ` If you need two different workloads handled by carriers of the same type, assign each to a different carrier ID within the same call's carriers array.`,
