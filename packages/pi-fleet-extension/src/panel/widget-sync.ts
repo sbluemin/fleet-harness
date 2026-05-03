@@ -18,13 +18,28 @@ import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
 
 import {
   renderPanelFull,
-} from "../../../shell/render/panel-renderer.js";
-import { renderJobBar } from "../../../shell/render/job-bar-renderer.js";
-import { renderCarrierStatus } from "../carrier-ui/status-renderer.js";
-import { isStaleExtensionContextError } from "../../../shell/context-errors.js";
+} from "./panel-render.js";
+import { renderJobBar } from "./job-bar-render.js";
+import { renderCarrierStatus } from "../carrier-status/renderer.js";
 import { getActiveJobs, getPanelRuns, getState, makeFooterCols, WIDGET_KEY } from "./state.js";
 
 const FLEET_CARRIER_STATUS_WIDGET_KEY = "fleet-carrier-status";
+
+function isStaleExtensionContextError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  if (message.includes("agent listener invoked outside active run")) return true;
+  const mentionsExtensionCtx =
+    message.includes("extensioncontext") ||
+    message.includes("extension ctx") ||
+    message.includes("extension context");
+  const mentionsStaleSession =
+    message.includes("stale") ||
+    message.includes("session") ||
+    message.includes("replacement") ||
+    message.includes("reload");
+  return mentionsExtensionCtx && mentionsStaleSession;
+}
 
 let currentWidgetCtx: ExtensionContext | null = null;
 let currentWidgetSessionId: string | null = null;
