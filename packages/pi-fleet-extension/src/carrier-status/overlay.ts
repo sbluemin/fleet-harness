@@ -630,12 +630,19 @@ export class CarrierStatusOverlay implements Component, Focusable {
       const previous = this.captureEntrySnapshot(entry);
       const nextCliType = selected.value;
       this.applyResolvedSelection(entry, nextCliType, this.getDefaultResolvedCliSelection(nextCliType));
+      this.state = { kind: "saving" };
+      this.feedbackMessage = `${entry.displayName} → ${nextCliType} 전환 중...`;
+      this.tui.requestRender();
       void this.callbacks.changeCliType(entry.carrierId, nextCliType).then((resolved) => {
         this.applyResolvedSelection(entry, nextCliType, resolved);
+        this.feedbackMessage = `${entry.displayName} → ${nextCliType} 전환 완료`;
       }).catch(() => {
         this.restoreEntrySnapshot(entry, previous);
+        this.feedbackMessage = `${entry.displayName} CLI 전환 실패, 이전 상태로 복원됨`;
+      }).finally(() => {
+        this.state = { kind: "browse" };
+        this.tui.requestRender();
       });
-      this.done();
       return;
     }
 
@@ -793,43 +800,100 @@ export class CarrierStatusOverlay implements Component, Focusable {
       changedNames.push(entry.displayName);
     }
 
-    this.state = { kind: "browse" };
+    this.state = { kind: "saving" };
     this.feedbackMessage = changedNames.length > 0
-      ? `${changedNames.join(", ")} → ${selected.cliType} 전환 완료`
+      ? `${changedNames.join(", ")} → ${selected.cliType} 전환 중...`
       : `${fromCli} 캐리어가 없어 변경되지 않았습니다.`;
     this.tui.requestRender();
 
     void this.callbacks.changeCliTypes(updates).then((results) => {
-      for (const result of results) {
-        const changedEntry = this.getEntryById(result.carrierId);
-        if (!changedEntry) continue;
-        this.applyResolvedSelection(changedEntry, result.newCliType, result.selection);
+      const succeeded: string[] = [];
+      const failed: string[] = [];
+
+      for (const outcome of results) {
+        if (outcome.status === "fulfilled" && outcome.result) {
+          const entry = this.getEntryById(outcome.carrierId);
+          if (entry) {
+            this.applyResolvedSelection(entry, outcome.result.newCliType, outcome.result.selection);
+          }
+          succeeded.push(outcome.carrierId);
+        } else {
+          const entry = this.getEntryById(outcome.carrierId);
+          const previous = previousByCarrierId.get(outcome.carrierId);
+          if (entry && previous) {
+            this.restoreEntrySnapshot(entry, previous);
+          }
+          failed.push(outcome.carrierId);
+        }
       }
-      this.tui.requestRender();
-    }).catch((error) => {
+
+      if (failed.length === 0) {
+        this.feedbackMessage = `${changedNames.join(", ")} → ${selected.cliType} 전환 완료`;
+      } else if (succeeded.length === 0) {
+        this.feedbackMessage = `전체 전환 실패: ${failed.join(", ")}`;
+      } else {
+        this.feedbackMessage = `부분 전환 성공 (${succeeded.length}개) / 실패 (${failed.length}개): ${failed.join(", ")}`;
+      }
+    }).catch(() => {
       for (const entry of this.getEntries()) {
         const previous = previousByCarrierId.get(entry.carrierId);
         if (!previous) continue;
         this.restoreEntrySnapshot(entry, previous);
       }
-      const message = error instanceof Error ? error.message : String(error);
-      this.feedbackMessage = `저장 실패: ${message}`;
+      this.feedbackMessage = "저장 실패: 예상치 못한 오류가 발생했습니다.";
+    }).finally(() => {
+      this.state = { kind: "browse" };
       this.tui.requestRender();
     });
   }
 
   private resetCliTypesToDefault(): void {
+    const previousByCarrierId = new Map<string, EntrySnapshot>();
+    for (const entry of this.getEntries()) {
+      previousByCarrierId.set(entry.carrierId, this.captureEntrySnapshot(entry));
+    }
+
+    this.state = { kind: "saving" };
+    this.feedbackMessage = "기본 CLI 복원 중...";
+    this.tui.requestRender();
+
     void this.callbacks.resetCliTypesToDefault().then((results) => {
-      for (const result of results) {
-        const changedEntry = this.getEntryById(result.carrierId);
-        if (!changedEntry) continue;
-        this.applyResolvedSelection(changedEntry, result.newCliType, result.selection);
+      const succeeded: string[] = [];
+      const failed: string[] = [];
+
+      for (const outcome of results) {
+        if (outcome.status === "fulfilled" && outcome.result) {
+          const entry = this.getEntryById(outcome.carrierId);
+          if (entry) {
+            this.applyResolvedSelection(entry, outcome.result.newCliType, outcome.result.selection);
+          }
+          succeeded.push(outcome.carrierId);
+        } else {
+          const entry = this.getEntryById(outcome.carrierId);
+          const previous = previousByCarrierId.get(outcome.carrierId);
+          if (entry && previous) {
+            this.restoreEntrySnapshot(entry, previous);
+          }
+          failed.push(outcome.carrierId);
+        }
       }
-      this.feedbackMessage = `전체 캐리어 기본 CLI 복원 완료 (${results.length}개)`;
-      this.tui.requestRender();
-    }).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      this.feedbackMessage = `저장 실패: ${message}`;
+
+      if (failed.length === 0) {
+        this.feedbackMessage = `전체 캐리어 기본 CLI 복원 완료 (${succeeded.length}개)`;
+      } else if (succeeded.length === 0) {
+        this.feedbackMessage = `전체 복원 실패: ${failed.join(", ")}`;
+      } else {
+        this.feedbackMessage = `부분 복원 성공 (${succeeded.length}개) / 실패 (${failed.length}개): ${failed.join(", ")}`;
+      }
+    }).catch(() => {
+      for (const entry of this.getEntries()) {
+        const previous = previousByCarrierId.get(entry.carrierId);
+        if (!previous) continue;
+        this.restoreEntrySnapshot(entry, previous);
+      }
+      this.feedbackMessage = "저장 실패: 예상치 못한 오류가 발생했습니다.";
+    }).finally(() => {
+      this.state = { kind: "browse" };
       this.tui.requestRender();
     });
   }

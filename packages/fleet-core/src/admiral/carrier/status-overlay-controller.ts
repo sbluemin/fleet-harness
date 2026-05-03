@@ -5,6 +5,7 @@ import type {
   CarrierStatusEntry,
   CliModelInfo,
   CliTypeChangeResult,
+  CliTypeChangeSettledResult,
   ModelSelection,
   ResolvedCliSelection,
 } from "./overlay-types.js";
@@ -58,14 +59,25 @@ export class StatusOverlayController implements Pick<
 
   async changeCliTypes(
     updates: Array<{ carrierId: string; newCliType: CarrierCliType }>,
-  ): Promise<CliTypeChangeResult[]> {
+  ): Promise<CliTypeChangeSettledResult[]> {
     const normalized = this.normalizeCliUpdates(updates);
-    return Promise.all(
+    const settled = await Promise.allSettled(
       normalized.map(({ carrierId, newCliType }) => this.applyCliTypeChange(carrierId, newCliType)),
     );
+    return settled.map((outcome, index) => {
+      const { carrierId } = normalized[index]!;
+      if (outcome.status === "fulfilled") {
+        return { status: "fulfilled", carrierId, result: outcome.value };
+      }
+      return {
+        status: "rejected",
+        carrierId,
+        error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+      };
+    });
   }
 
-  async resetCliTypesToDefault(): Promise<CliTypeChangeResult[]> {
+  async resetCliTypesToDefault(): Promise<CliTypeChangeSettledResult[]> {
     const updates = this.deps.getRegisteredOrder()
       .map((carrierId) => {
         const config = this.deps.getRegisteredCarrierConfig(carrierId);

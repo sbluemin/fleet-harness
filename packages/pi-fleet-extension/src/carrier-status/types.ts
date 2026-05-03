@@ -4,6 +4,7 @@ export type {
   CarrierOverlayCallbacks,
   CarrierStatusEntry,
   CliModelInfo,
+  CliTypeChangeSettledResult,
   CliServiceSnapshot,
   CliTypeChangeResult,
   CliTypeChoice,

@@ -34,6 +34,13 @@ export interface CliTypeChangeResult {
   selection: ResolvedCliSelection;
 }
 
+export interface CliTypeChangeSettledResult {
+  status: "fulfilled" | "rejected";
+  carrierId: string;
+  result?: CliTypeChangeResult;
+  error?: string;
+}
+
 export interface CarrierStatusEntry {
   carrierId: string;
   slot: number;
@@ -82,8 +89,8 @@ export type OverlayState =
 export interface CarrierOverlayCallbacks {
   getEntries(): CarrierStatusEntry[];
   changeCliType(carrierId: string, newCliType: CarrierCliType): Promise<ResolvedCliSelection>;
-  changeCliTypes(updates: Array<{ carrierId: string; newCliType: CarrierCliType }>): Promise<CliTypeChangeResult[]>;
-  resetCliTypesToDefault(): Promise<CliTypeChangeResult[]>;
+  changeCliTypes(updates: Array<{ carrierId: string; newCliType: CarrierCliType }>): Promise<CliTypeChangeSettledResult[]>;
+  resetCliTypesToDefault(): Promise<CliTypeChangeSettledResult[]>;
   saveModelSelection(carrierId: string, selection: ModelSelection): Promise<void>;
   toggleSortieEnabled(carrierId: string): void;
   toggleSquadronEnabled(carrierId: string): void;

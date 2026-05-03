@@ -260,21 +260,29 @@ describe("StatusOverlayController", () => {
 
     expect(results).toEqual([
       {
+        status: "fulfilled",
         carrierId: "alpha",
-        newCliType: "gemini",
-        selection: {
-          model: "gemini-saved",
-          effort: null,
-          isDefault: false,
+        result: {
+          carrierId: "alpha",
+          newCliType: "gemini",
+          selection: {
+            model: "gemini-saved",
+            effort: null,
+            isDefault: false,
+          },
         },
       },
       {
+        status: "fulfilled",
         carrierId: "beta",
-        newCliType: "claude",
-        selection: {
-          model: "claude-default",
-          effort: "low",
-          isDefault: true,
+        result: {
+          carrierId: "beta",
+          newCliType: "claude",
+          selection: {
+            model: "claude-default",
+            effort: "low",
+            isDefault: true,
+          },
         },
       },
     ]);
@@ -293,12 +301,16 @@ describe("StatusOverlayController", () => {
 
     expect(results).toEqual([
       {
+        status: "fulfilled",
         carrierId: "gamma",
-        newCliType: "claude",
-        selection: {
-          model: "claude-saved",
-          effort: "high",
-          isDefault: false,
+        result: {
+          carrierId: "gamma",
+          newCliType: "claude",
+          selection: {
+            model: "claude-saved",
+            effort: "high",
+            isDefault: false,
+          },
         },
       },
     ]);
