@@ -64,18 +64,14 @@ jobs:
           fi
 
           bump="patch"
-          if printf '%s\n' "$log_output" | grep -Eq '(^|[[:space:]])BREAKING CHANGE:'; then
-            bump="major"
-          elif printf '%s\n' "$log_output" | grep -Eq '^[[:space:]]*[[:alnum:]_-]+(\([^)]+\))?!:'; then
-            bump="major"
-          elif printf '%s\n' "$log_output" | grep -Eq '^[[:space:]]*feat(\([^)]+\))?:'; then
+          if printf '%s\n' "$log_output" | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
             bump="minor"
           fi
 
           next_version=$(node -e "
             const [major, minor, patch] = process.argv[1].split('.').map(Number);
             const bump = process.argv[2];
-            const next = { major: [major + 1, 0, 0], minor: [major, minor + 1, 0], patch: [major, minor, patch + 1] }[bump];
+            const next = { minor: [major, minor + 1, 0], patch: [major, minor, patch + 1] }[bump];
             console.log(next.join('.'));
           " "$version_source" "$bump")
 
