@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-03
+
 ### Breaking Changes
 - **`CarrierMetadata` now requires `category`**: The `CarrierMetadata` interface (exported from `@sbluemin/fleet-core/admiral/carrier/types`) now includes a mandatory `category: CarrierCategory` field. Any custom carrier persona definitions outside the built-in set must be updated to include `category: "strategy" | "planning" | "operations"`.
 - **`streamingSink` removed from `FleetServicesPorts`**: The public `streamingSink` API signature has been removed from `FleetServicesPorts`. Consumers must migrate to `jobServices.streaming.register(handler)` for SSOT carrier job stream event consumption.
