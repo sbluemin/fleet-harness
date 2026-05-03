@@ -20,16 +20,6 @@ import type { AgentCol } from "../../src/agent/ui/panel/types.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
-vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
-  getSessionStore: vi.fn(() => ({
-    get: vi.fn(),
-    set: vi.fn(),
-    clear: vi.fn(),
-    getAll: vi.fn(() => ({})),
-    restore: vi.fn(),
-  })),
-}));
-
 beforeEach(() => {
   vi.useFakeTimers();
   resetJobConcurrencyForTest();

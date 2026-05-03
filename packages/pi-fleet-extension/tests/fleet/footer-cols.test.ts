@@ -3,16 +3,6 @@ import { CARRIER_FRAMEWORK_KEY } from "@sbluemin/fleet-core/admiral/carrier";
 import type { AgentCol } from "../../src/agent/ui/panel/types.js";
 import { getState, makeFooterCols, resetPanelStateForTest } from "../../src/agent/ui/panel/state.js";
 
-vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
-  getSessionStore: vi.fn(() => ({
-    get: vi.fn(),
-    set: vi.fn(),
-    clear: vi.fn(),
-    getAll: vi.fn(() => ({ vanguard: "vanguard-last-session" })),
-    restore: vi.fn(),
-  })),
-}));
-
 function makeCol(cli: string, status: AgentCol["status"]): AgentCol {
   return {
     cli,
@@ -50,6 +40,6 @@ describe("makeFooterCols", () => {
     expect(footerCols[0]?.status).toBe("stream");
     expect(footerCols[1]?.status).toBe("done");
     expect(footerCols[2]?.status).toBe("wait");
-    expect(footerCols[2]?.sessionId).toBe("vanguard-last-session");
+    expect(footerCols[2]?.sessionId).toBeUndefined();
   });
 });

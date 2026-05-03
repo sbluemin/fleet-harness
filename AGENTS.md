@@ -13,7 +13,7 @@
 | `docs/admiral-workflow-reference.md` | **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
 | `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `pi-fleet-extension` |
 | `packages/fleet-core/` | Pi-agnostic Fleet product core — Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, **Admiral orchestration runtime**, and public APIs |
-| `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (agent-runtime, carrier-job-events, stream-reducers, view-model), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
+| `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (carrier-job-events SSOT stream events, cli-tool-types, MCP server singleton), **`agent/`** (the canonical agent domain — `session/lifecycle/connections/models/events/serviceStatus/tools/bridge/executor` + `internal/{state,session-runtime,session-engine,event-normalizer,mcp-router,executor-engine,post-connect}`), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog and `fleet-store.ts` unified persistence), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
 | `packages/fleet-core/src/services/` | Shared pure service modules. Includes `job/`, `log/`, `settings/`, and **tool-registry**. |
 | `packages/fleet-core/src/admiralty/` | Grand Fleet domain home inside `fleet-core` (renamed from `gfleet`). Exposed via `@sbluemin/fleet-core/admiralty`. |
 | `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus domain service modules only (`fleet-services`, `grand-fleet-services`, `metaphor-services`, `job-services`, `log-services`, `settings-services`). Note that `agent-services`, `tool-registry-services`, and `agent-request` have been removed from the public surface. `job-services` exposes `streaming.register(handler)` for SSOT carrier job stream event consumption. |
@@ -162,12 +162,58 @@ System Prompt
 | **Alt+2~9** | Switch to dynamically assigned protocols |
 | **Alt+/** | Open Settings (to configure Admiral parameters) |
 
-## Fleet Architecture (Metaphor)
+## Architecture Philosophy
 
+The Fleet codebase is built on **four core principles**. Every contribution and review must align with these — they take precedence over micro-optimizations or local convenience.
+
+### 1. Domain Boundary as Law
+
+The split between `fleet-core` (Pi-agnostic Fleet domain) and `pi-fleet-extension` (Pi host adapter) is **not a guideline; it is enforced by build/grep gates**:
+
+- `fleet-core` MUST NOT import any `@mariozechner/pi-*` or `@anthropic-ai/*` package. The single Pi-AI gateway lives in `pi-fleet-extension/src/agent/provider.ts`.
+- `pi-fleet-extension` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
+- Pi UI, host event hooks (`pi.on/registerTool/registerProvider/...`), and any `ExtensionContext`/`ExtensionAPI` dependency belong exclusively to the Pi side.
+- When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the Pi adapter half stays in `pi-fleet-extension`.
+
+### 2. Two Execution Patterns, Strictly Separated
+
+The Admiral agent domain exposes **two distinct execution patterns** that must never be merged:
+
+| Pattern | Surface | Lifetime | Use Case |
+|---------|---------|----------|----------|
+| **Streaming** | `admiral.session.{ensure, sendMessage, deliverToolResults}` + `admiral.events` (module emit/register channel) | Long-lived ACP session, multiplexed per `sessionId` | Pi `streamAcp` host adapter; host `Map<sessionId, push>` routing |
+| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `CarrierExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` | Single carrier turn, returns `CarrierExecResult` synchronously | `carriers_sortie` / `carrier_squadron` / `carrier_taskforce` tool execution |
+
+**Why the separation matters**: streaming routes events through a global module channel keyed by `sessionId`, while executor callbacks are owner-specific and finite. Forcing one pattern through the other path causes either listener leaks (callback as event) or routing collisions (event as callback).
+
+### 3. Single Source of Truth (SSoT)
+
+Several invariants are guarded by a **single owner** — duplication or shadowing is treated as a regression:
+
+| Concept | Owner | Rationale |
+|---------|-------|-----------|
+| Session persistence (`<piSessionId>.json` carrier→ACP map) | `admiral/agent/internal/session-runtime.ts` | Resume/restore semantics depend on a single in-memory cache backed by one file. |
+| Track status enum | `admiral/_shared/carrier-job-events.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; legacy `AgentStatus`/`ColStatus` are removed. |
+| MCP server URL + token routing | `admiral/_shared/mcp.ts` lazy singleton | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
+| CLI provider catalog | `@sbluemin/unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
+| Fleet tool catalog | `admiral.agent.tools.list()` (default specs auto-registered, host extras via `registerExtraTools`) | Host queries metadata + invokes — never re-implements specs. |
+
+### 4. Public Surface Discipline
+
+Decision 28 (codified through the admiral.agent migration): the **only consumer-facing entry point** is the package root barrel of `@sbluemin/fleet-core`. There is no `./admiral/agent` subpath; consumers reach `executeWithPool`, `executeOneShot`, `bindHostSession`, `cleanIdle`, `disconnect`, `disconnectAll`, `getSessionIdFor`, and `shutdownAllSessions` exclusively through that barrel. Internal helpers under `admiral/agent/internal/` are never re-exported.
+
+### Forbidden Patterns
+
+- `globalThis.<anything>` for shared state — use module-level singletons instead. Legacy `__pi_unified_agent_client_pool__` and `__pi_unified_agent_launch_config__` keys are removed.
+- Push-style "ports" passed into tool execution (`AgentToolPorts` is removed). Tools depend on `fleet-core` services directly.
+- `on*` callback parameters threaded through `fleet-core` public APIs — events flow through `admiral.events` module-level register/emit only.
+- Builder functions injected by hosts (e.g., legacy `setCliRuntimeContext`). Prompt assembly (`buildInitialPrompt`, `buildRuntimeContextPrompt`) is fleet-core's responsibility; host adapters pass raw `userRequest` + optional `history`.
+
+## Fleet Architecture (Sub-agent Workflow)
 
 - **Sub-agents are fully independent** — PI provides only background, objectives, and constraints. Never prescribe implementation details.
 - **Sub-agents are unaware of each other** — Cross-analysis is performed solely by PI after all responses are collected.
-- **Communication layer**: pi consumers call `executeWithPool()` / `executeOneShot()` from `@sbluemin/fleet-core/admiral/agent-runtime` directly → ACP stdio (all CLIs use the same protocol).
+- **Communication layer**: Pi consumers invoke `executeWithPool()` / `executeOneShot()` from the `@sbluemin/fleet-core` root barrel (callback-pattern executor); the streaming `streamAcp` adapter consumes `admiral.session.*` + `admiral.events.*`. Both paths terminate at ACP stdio (all CLIs share the protocol).
 
 ## PI TUI Layout & Terminology
 

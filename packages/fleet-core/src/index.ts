@@ -84,6 +84,11 @@ export {
   clearAllDefaultTools,
   clearAllExtraTools,
   getSessionIdFor,
+  disconnect,
+  disconnectAll,
+  cleanIdle,
+  executeWithPool,
+  executeOneShot,
 } from "./admiral/agent/index.js";
 export type {
   AgentStreamEvent,
@@ -102,4 +107,6 @@ export type {
   LaunchCommandData,
   BridgeOptions,
   AgentSessionLaunchConfig,
+  CarrierExecuteOptions,
+  CarrierExecResult,
 } from "./admiral/agent/index.js";

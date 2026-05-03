@@ -10,7 +10,6 @@
 
 import {
   UnifiedAgent,
-  getReasoningEffortLevels,
   type CliType,
   type IUnifiedAgentClient,
   type McpServerConfig,
@@ -31,6 +30,7 @@ import {
   classifyResumeFailure,
   isDeadSessionError,
 } from "./session-runtime.js";
+import { applyPostConnectConfig } from "./post-connect.js";
 import {
   installToolCallRouter,
   detachToolCallRouter,
@@ -616,20 +616,6 @@ async function buildConnectOptions(
   }
 
   return connectOptions;
-}
-
-async function applyPostConnectConfig(
-  client: Pick<IUnifiedAgentClient, "setConfigOption">,
-  cli: CliType,
-  overrides?: { effort?: string },
-): Promise<void> {
-  if (overrides?.effort && getReasoningEffortLevels(cli)) {
-    try {
-      await client.setConfigOption("reasoning_effort", overrides.effort);
-    } catch (err) {
-      console.warn(`[acp] setConfigOption 실패 (cli=${cli}, option=reasoning_effort)`, err);
-    }
-  }
 }
 
 function formatSessionPrefix(sessionId: string): string {

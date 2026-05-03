@@ -15,9 +15,9 @@ import {
   setActiveProtocol,
 } from "@sbluemin/fleet-core/admiral";
 import {
-  cleanIdleClients,
-  onHostSessionChange,
-} from "@sbluemin/fleet-core/admiral/agent-runtime";
+  bindHostSession,
+  cleanIdle,
+} from "@sbluemin/fleet-core";
 import {
   composeOperationNameRequest,
   loadSettings as loadOperationNameSettings,
@@ -410,9 +410,9 @@ function persistDirectChatIfEmpty(ctx: ExtensionContext): void {
 
 function bindFleetHostSession(ctx: ExtensionContext): void {
   const sessionId = ctx.sessionManager.getSessionId();
-  onHostSessionChange(sessionId);
+  bindHostSession(sessionId);
   syncOperationNameSession(sessionId);
-  cleanIdleClients();
+  cleanIdle();
   refreshAgentPanel(ctx);
   attachStatusContext(toServiceStatusContext(ctx));
 }

@@ -15,8 +15,8 @@ import {
 	SYM_INDICATOR,
 	CLI_DISPLAY_NAMES,
 } from "@sbluemin/fleet-core/constants";
-import { buildPanelViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
-import type { PanelJobViewModel, PanelTrackViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
+import { buildPanelViewModel } from "../../agent/ui/panel/view-model.js";
+import type { PanelJobViewModel, PanelTrackViewModel } from "../../agent/ui/panel/view-model.js";
 import { resolveCarrierColor, resolveCarrierRgb } from "../../tool-registry.js";
 import { getActiveJobs, getPanelRuns, getState } from "../../agent/ui/panel/state.js";
 import { renderBlockLines } from "./block-renderer.js";

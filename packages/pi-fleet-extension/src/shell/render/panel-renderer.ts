@@ -15,8 +15,8 @@ import {
   SPINNER_FRAMES,
   SYM_INDICATOR,
 } from "@sbluemin/fleet-core/constants";
-import { buildPanelViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
-import type { PanelJobViewModel, PanelTrackViewModel } from "@sbluemin/fleet-core/admiral/_shared/view-model";
+import { buildPanelViewModel } from "../../agent/ui/panel/view-model.js";
+import type { PanelJobViewModel, PanelTrackViewModel } from "../../agent/ui/panel/view-model.js";
 
 import {
   resolveCarrierBgColor,

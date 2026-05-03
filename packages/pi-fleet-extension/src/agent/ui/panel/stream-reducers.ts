@@ -1,4 +1,4 @@
-import type { ColBlock } from "./agent-runtime.js";
+import type { ColBlock } from "./types.js";
 
 export function coalesceTextBlock(blocks: ColBlock[], text: string): void {
   const last = blocks[blocks.length - 1];

@@ -9,7 +9,7 @@ import type { CliType } from "@sbluemin/unified-agent";
 import type { AgentToolSpec } from "../../services/tool-registry/index.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../services/job/index.js";
 import type { LogOptions } from "../../services/log/index.js";
-import type { ExecuteResult, AgentStatus } from "../_shared/agent-runtime.js";
+import type { CarrierExecResult } from "../agent/executor.js";
 
 import {
   appendBlock,
@@ -24,7 +24,7 @@ import {
 } from "../../services/job/index.js";
 import { getLogAPI } from "../../services/log/store.js";
 import { registerToolPromptManifest } from "../../services/tool-registry/index.js";
-import { executeOneShot } from "../_shared/agent-runtime.js";
+import { executeOneShot } from "../agent/executor.js";
 import {
   emitStreamEvent,
   type CarrierJobStatus,
@@ -405,7 +405,7 @@ function assertSubtaskLimit(count: number): void {
 function buildSquadronResult(
   index: number,
   title: string,
-  result: ExecuteResult,
+  result: CarrierExecResult,
 ): SquadronResult {
   return {
     index,
@@ -445,11 +445,11 @@ function buildSquadronErrorResult(index: number, title: string, reason: unknown)
   };
 }
 
-function emitTrackStatus(jobId: string, trackId: string, status: AgentStatus): void {
-  emitStreamEvent({ type: "track:status", jobId, trackId, status: toTrackStatus(status) });
+function emitTrackStatus(jobId: string, trackId: string, status: TrackStatus): void {
+  emitStreamEvent({ type: "track:status", jobId, trackId, status });
 }
 
-function emitTrackFinalized(jobId: string, trackId: string, result: ExecuteResult): void {
+function emitTrackFinalized(jobId: string, trackId: string, result: CarrierExecResult): void {
   const status = toCarrierJobStatus(result.status);
   emitStreamEvent({
     type: "track:finalized",
@@ -462,18 +462,10 @@ function emitTrackFinalized(jobId: string, trackId: string, result: ExecuteResul
   });
 }
 
-function toCarrierJobStatus(status: AgentStatus): CarrierJobStatus {
+function toCarrierJobStatus(status: TrackStatus): CarrierJobStatus {
   if (status === "done") return "done";
   if (status === "aborted") return "aborted";
   return "error";
-}
-
-function toTrackStatus(status: AgentStatus): TrackStatus {
-  if (status === "connecting") return "conn";
-  if (status === "running") return "stream";
-  if (status === "done") return "done";
-  if (status === "aborted") return "aborted";
-  return "err";
 }
 
 function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {

@@ -18,7 +18,8 @@ import {
   getReasoningEffortLevels,
   type CliType,
 } from "@sbluemin/unified-agent";
-import { disconnectClient, getSessionStore } from "../_shared/agent-runtime.js";
+import { disconnect } from "../agent/connections.js";
+import { getSessionStore } from "../agent/internal/session-runtime.js";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../taskforce/types.js";
 
 // ─── 타입 정의 ──────────────────────────────────────────
@@ -138,7 +139,7 @@ export async function updateModelSelection(
     states.models = { ...states.models, [carrierId]: merged };
   });
   getSessionStore().clear(carrierId);
-  await disconnectClient(carrierId);
+  await disconnect(carrierId);
 }
 
 /**
@@ -154,7 +155,7 @@ export async function updateAllModelSelections(
   for (const key of keys) {
     sessionStore.clear(key);
   }
-  await Promise.allSettled(keys.map((key) => disconnectClient(key)));
+  await Promise.allSettled(keys.map((key) => disconnect(key)));
 }
 
 /**

@@ -63,25 +63,10 @@
       "import": "./dist/admiral/store.js",
       "require": "./dist/admiral/store.cjs"
     },
-    "./admiral/agent-runtime": {
-      "types": "./dist/admiral/agent-runtime.d.ts",
-      "import": "./dist/admiral/agent-runtime.js",
-      "require": "./dist/admiral/agent-runtime.cjs"
-    },
     "./admiral/_shared/carrier-job-events": {
       "types": "./dist/admiral/_shared/carrier-job-events.d.ts",
       "import": "./dist/admiral/_shared/carrier-job-events.js",
       "require": "./dist/admiral/_shared/carrier-job-events.cjs"
-    },
-    "./admiral/_shared/stream-reducers": {
-      "types": "./dist/admiral/_shared/stream-reducers.d.ts",
-      "import": "./dist/admiral/_shared/stream-reducers.js",
-      "require": "./dist/admiral/_shared/stream-reducers.cjs"
-    },
-    "./admiral/_shared/view-model": {
-      "types": "./dist/admiral/_shared/view-model.d.ts",
-      "import": "./dist/admiral/_shared/view-model.js",
-      "require": "./dist/admiral/_shared/view-model.cjs"
     },
     "./carrier-jobs": {
       "types": "./dist/carrier-jobs.d.ts",

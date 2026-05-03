@@ -17,17 +17,6 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@sbluemin/fleet-core/admiral/agent-runtime", () => ({
-  executeWithPool: mocks.executeWithPool,
-  getSessionStore: vi.fn(() => ({
-    get: vi.fn(),
-    set: vi.fn(),
-    clear: vi.fn(),
-    getAll: vi.fn(() => ({})),
-    restore: vi.fn(),
-  })),
-}));
-
 import {
   getState,
   handleCarrierJobStreamEvent,

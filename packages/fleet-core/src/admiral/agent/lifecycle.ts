@@ -7,6 +7,7 @@
 import { getOrInitState, resetState } from "./internal/state.js";
 import { clearSessionsAndPreSpawn } from "./internal/session-engine.js";
 import { onHostSessionChange } from "./internal/session-runtime.js";
+import { engineDisconnectAll } from "./internal/executor-engine.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions
@@ -21,5 +22,6 @@ export function bindHostSession(piSessionId: string): void {
 export async function shutdownAllSessions(): Promise<void> {
   const state = getOrInitState();
   await clearSessionsAndPreSpawn(state);
+  await engineDisconnectAll();
   resetState();
 }

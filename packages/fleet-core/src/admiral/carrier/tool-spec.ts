@@ -33,7 +33,7 @@ import {
   type TrackMeta,
   type TrackStatus,
 } from "../_shared/carrier-job-events.js";
-import { executeWithPool, type AgentStatus } from "../_shared/agent-runtime.js";
+import { executeWithPool, type CarrierExecResult } from "../agent/executor.js";
 import {
   buildCarrierSystemPrompt,
   FLEET_SORTIE_DESCRIPTION,
@@ -336,7 +336,7 @@ async function runSortieAssignment(
       sessionId,
       error: result.error,
       thinking: result.thoughtText,
-      toolCalls: result.toolCalls,
+      toolCalls: result.toolCalls.map((tc) => ({ title: tc.title, status: tc.status })),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -377,27 +377,19 @@ function emitJobRegistered(
   });
 }
 
-function emitTrackStatus(jobId: string, trackId: string, status: AgentStatus): void {
+function emitTrackStatus(jobId: string, trackId: string, status: TrackStatus): void {
   emitStreamEvent({
     type: "track:status",
     jobId,
     trackId,
-    status: toTrackStatus(status),
+    status,
   });
 }
 
-function toCarrierJobStatus(status: AgentStatus): CarrierJobStatus {
+function toCarrierJobStatus(status: TrackStatus): CarrierJobStatus {
   if (status === "done") return "done";
   if (status === "aborted") return "aborted";
   return "error";
-}
-
-function toTrackStatus(status: AgentStatus): TrackStatus {
-  if (status === "connecting") return "conn";
-  if (status === "running") return "stream";
-  if (status === "done") return "done";
-  if (status === "aborted") return "aborted";
-  return "err";
 }
 
 function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {

@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DEFAULT_BODY_H, formatPanelMultiColHint, ANIM_INTERVAL_MS } from "@sbluemin/fleet-core/constants";
 import { getActiveBackgroundJobCount } from "@sbluemin/fleet-core/job";
-import { getSessionStore } from "@sbluemin/fleet-core/admiral/agent-runtime";
+import { getSessionIdFor } from "@sbluemin/fleet-core";
 import type { ServiceSnapshot } from "@sbluemin/unified-agent";
 import type {
   CarrierJobStreamEvent,
@@ -20,7 +20,7 @@ import {
   coalesceTextBlock,
   coalesceThoughtBlock,
   upsertToolBlock,
-} from "@sbluemin/fleet-core/admiral/_shared/stream-reducers";
+} from "./stream-reducers.js";
 import { CARRIER_RESULT_CUSTOM_TYPE, type CarrierResultMessageDetails } from "../../../job.js";
 import { getDeliverAs } from "../../../settings.js";
 import { getRegisteredCarrierConfig, getRegisteredOrder, isSquadronCarrierEnabled } from "../../../tool-registry.js";
@@ -164,12 +164,11 @@ export function resetPanelStateForTest(): void {
 }
 
 export function makeCols(clis?: readonly string[]): AgentCol[] {
-  const sessionMap = getAgentSessionStore().getAll() as Readonly<Record<string, string | undefined>>;
   const targets = clis ?? getDefaultClis();
 
   return targets.map((cli) => ({
     cli,
-    sessionId: sessionMap[cli],
+    sessionId: getSessionIdFor(cli),
     text: "",
     blocks: [],
     thinking: "",
@@ -208,7 +207,6 @@ export function findColIndex(carrierId: string): number {
 
 export function syncColsWithRegisteredOrder(): void {
   const s = getState();
-  const sessionMap = getAgentSessionStore().getAll() as Readonly<Record<string, string | undefined>>;
   const existing = new Map(s.cols.map((col) => [col.cli, col] as const));
   const orderedIds = getDefaultClis();
   const selectedCarrierId = s.cursorColumn >= 0 && s.cursorColumn < s.cols.length
@@ -217,7 +215,7 @@ export function syncColsWithRegisteredOrder(): void {
 
   s.cols = orderedIds.map((cli) => {
     const col = existing.get(cli);
-    const sessionId = sessionMap[cli];
+    const sessionId = getSessionIdFor(cli);
     if (col) {
       col.sessionId = sessionId ?? col.sessionId;
       return col;
@@ -260,7 +258,6 @@ export function getFocusedCarrierId(): string | null {
 export function makeFooterCols(): AgentCol[] {
   const s = getState();
   const activeCols = new Map(s.cols.map((col) => [col.cli, col] as const));
-  const sessionMap = getAgentSessionStore().getAll() as Readonly<Record<string, string | undefined>>;
 
   return sortByCategory(getRegisteredOrder()).map((cli) => {
     const activeCol = activeCols.get(cli);
@@ -268,7 +265,7 @@ export function makeFooterCols(): AgentCol[] {
 
     return {
       cli,
-      sessionId: sessionMap[cli],
+      sessionId: getSessionIdFor(cli),
       text: "",
       blocks: [],
       thinking: "",
@@ -400,7 +397,7 @@ function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:re
   for (const track of job.tracks) {
     const runId = track.runId ?? track.streamKey;
     const run = ensureRun(runId, track.displayCli, "wait");
-    run.sessionId = getAgentSessionStore().getAll()[track.displayCli] ?? run.sessionId;
+    run.sessionId = getSessionIdFor(track.displayCli) ?? run.sessionId;
     s.runs.set(track.streamKey, run);
   }
   s.streaming = true;
@@ -626,10 +623,3 @@ function stopPanelAnimTimerIfIdle(): void {
   s.animTimer = null;
 }
 
-function getAgentSessionStore(): { getAll(): Record<string, string | undefined> } {
-  try {
-    return getSessionStore() as { getAll(): Record<string, string | undefined> };
-  } catch {
-    return { getAll: () => ({}) };
-  }
-}

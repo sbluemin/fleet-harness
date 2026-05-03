@@ -25,6 +25,10 @@ export type {
 export type { ServiceStatusEvent, ServiceSnapshot } from "./service-status.js";
 export type { LaunchCommandData, BridgeOptions } from "./bridge.js";
 export type { AgentSessionLaunchConfig } from "./internal/state.js";
+export type {
+  CarrierExecuteOptions,
+  CarrierExecResult,
+} from "./executor.js";
 
 export {
   clearStreamHandlers,
@@ -53,6 +57,9 @@ export {
 } from "./lifecycle.js";
 export {
   getSessionIdFor,
+  disconnect,
+  disconnectAll,
+  cleanIdle,
 } from "./connections.js";
 export {
   parseModelId,
@@ -74,6 +81,10 @@ export {
 export {
   buildLaunchCommand,
 } from "./bridge.js";
+export {
+  executeWithPool,
+  executeOneShot,
+} from "./executor.js";
 
 // Decision 28: nested object barrel — agent 제거
 import * as tools from "./tools.js";

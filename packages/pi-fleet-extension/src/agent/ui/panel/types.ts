@@ -7,17 +7,29 @@
  */
 
 import type {
-  ColBlock,
-  CollectedStreamData,
-} from "@sbluemin/fleet-core/admiral/agent-runtime";
-import type {
   CarrierJobKind,
   CarrierJobStatus,
 } from "@sbluemin/fleet-core/admiral/_shared/carrier-job-events";
 
 export type ColStatus = "wait" | "conn" | "stream" | "done" | "err";
 
-export type { ColBlock, CollectedStreamData };
+/**
+ * 순서가 보존된 정규화 스트림 블록.
+ * 도구 호출과 응답 텍스트를 발생 순서대로 기록합니다.
+ */
+export type ColBlock =
+  | { type: "thought"; text: string }
+  | { type: "text"; text: string }
+  | { type: "tool"; title: string; status: string; toolCallId?: string };
+
+/** 수집된 정규화 스트리밍 데이터 */
+export interface CollectedStreamData {
+  text: string;
+  thinking: string;
+  toolCalls: { title: string; status: string }[];
+  blocks: ColBlock[];
+  lastStatus: string;
+}
 
 /** 에이전트 패널 칼럼 데이터 */
 export interface AgentCol {

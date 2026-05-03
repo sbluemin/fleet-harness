@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ColBlock } from "@sbluemin/fleet-core/admiral/agent-runtime";
+import type { ColBlock } from "../../src/agent/ui/panel/types.js";
 import type { PanelRun } from "../../src/agent/ui/panel/state.js";
 import type { PanelJob } from "../../src/agent/ui/panel/types.js";
 import { renderPanelFull } from "../../src/shell/render/panel-renderer.js";
