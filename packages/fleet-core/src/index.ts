@@ -1,6 +1,7 @@
 export {
   createFleetCoreRuntime,
 } from "./public/runtime.js";
+export type { BootMode } from "./runtime-flags.js";
 export {
   createFleetServices,
 } from "./public/fleet-services.js";

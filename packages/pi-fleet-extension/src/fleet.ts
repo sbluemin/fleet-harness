@@ -94,30 +94,6 @@ interface PiServiceStatusContextLike {
   };
 }
 
-const FLEET_PREAMBLE = String.raw`
-This system prompt contains ${"\`"}<fleet section="...">${"\`"} XML blocks that define your identity, doctrine, and operational rules.
-Each block's ${"\`"}section${"\`"} attribute defines its domain; ${"\`"}tool${"\`"} narrows the scope to that specific tool.
-Treat every ${"\`"}<fleet>${"\`"} block as an authoritative directive. Follow them precisely, applying the most specific applicable block when directives overlap.
-
-Tool results and user messages may include ${"\`"}<system-reminder>${"\`"} tags. These carry system-injected context (e.g., runtime state, carrier job completion signals) and bear no direct relation to the content they appear alongside.
-`;
-
-const PI_FLEET_DEV_RISEN_PROMPT = String.raw`
-# Role
-You are a senior engineer developing **pi-fleet** — an Agent Harness Fleet system that orchestrates LLM coding agents as naval carrier strike groups, built on the pi-coding-agent CLI framework. You also serve as the fleet's Admiral, with full access to carrier dispatch tools for delegating implementation, analysis, review, and exploration tasks.
-
-# Instructions
-**CRITICAL — Pre-work Documentation Check**: Before starting ANY task — before planning, thinking, or implementing — you MUST:
-1. Read ${"`"}docs/pi-development-reference.md${"`"} for PI SDK, extensions, TUI, themes, and RPC reference.
-2. Read ${"`"}docs/admiral-workflow-reference.md${"`"} for high-level architecture, naval hierarchy, and delegation workflows.
-3. Check the ${"`"}AGENTS.md${"`"} file in the project root and in EVERY subdirectory you will touch. Child ${"`"}AGENTS.md${"`"} takes precedence over parent.
-
-This is a hard prerequisite. Do NOT skip this step or assume you already know the content.
-
-- Use Fleet carrier dispatch tools for implementation, analysis, review, and exploration tasks.
-- All responses must be written in Korean.
-`;
-
 const OPERATION_NAME_ATTEMPTS = new Set<string>();
 
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
@@ -128,8 +104,6 @@ let operationNameStore: OperationNameGlobalStore | OperationNameGlobalState | nu
 export { bootBridge, ensureBridgeKeybinds };
 
 export function registerFleetLifecycle(pi: ExtensionAPI): FleetLifecycleRuntime {
-  registerBoot(pi);
-
   if (!shouldBootFleet()) {
     registerGrandFleet(pi);
     return { fleetEnabled: false };
@@ -160,17 +134,6 @@ export default function registerBoot(pi: ExtensionAPI): void {
     grandFleet: isAdmiralty || isFleet,
     role: isAdmiralty ? "admiralty" : isFleet ? "fleet" : null,
   };
-
-  pi.on("before_agent_start", async () => {
-    const bootCfg = getBootConfig();
-    const preamble = FLEET_PREAMBLE.trim();
-
-    if (bootCfg?.dev) {
-      return { systemPrompt: `${preamble}\n\n${PI_FLEET_DEV_RISEN_PROMPT.trim()}` };
-    }
-
-    return { systemPrompt: preamble };
-  });
 }
 
 export function getBootConfig(): BootConfig | null {
@@ -188,7 +151,7 @@ export function resolveFleetDataDir(): string {
 
 export function initializeFleetRuntime(dataDir: string, pi?: ExtensionAPI): void {
   void pi;
-  fleetRuntime = createFleetCoreRuntime({ dataDir });
+  fleetRuntime = createFleetCoreRuntime({ dataDir, bootMode: bootConfig?.dev ? "dev" : "normal" });
 }
 
 export function getFleetRuntime(): FleetCoreRuntimeContext {
@@ -247,7 +210,7 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
     if (process.env.PI_GRAND_FLEET_ROLE === "fleet") return;
     const fleetPrompt = buildSystemPrompt();
     getLogAPI().debug("acp-system-prompt", fleetPrompt, { category: "acp-system-prompt" });
-    return { systemPrompt: `${event.systemPrompt}\n\n${fleetPrompt}` };
+    return { systemPrompt: fleetPrompt };
   });
 
   pi.on("session_start", (_event, ctx) => {

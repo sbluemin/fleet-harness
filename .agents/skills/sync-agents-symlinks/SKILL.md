@@ -1,3 +1,8 @@
+---
+name: sync-agents-symlinks
+description: AGENTS.md 파일이 있는 모든 디렉토리에 CLAUDE.md 심볼릭 링크를 생성하는 절차를 정의합니다.
+---
+
 # Sync AGENTS.md Symlinks
 
 Use this prompt to ensure every directory that contains an `AGENTS.md` file also has a `CLAUDE.md` symlink pointing to it. This keeps Claude Code and pi-coding-agent reading the same doctrinal file without duplication.

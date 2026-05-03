@@ -1,3 +1,8 @@
+---
+name: pr-review-fixes
+description: PR 리뷰 지적 사항을 반영하고 재검토를 요청하는 절차를 정의합니다.
+---
+
 # PR Review Fixes
 
 Use this prompt when applying fixes that were requested by a PR review (e.g., Codex automated review, human reviewer comments) and following through to commit, push, and a `@codex` re-review request.

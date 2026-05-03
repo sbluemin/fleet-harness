@@ -8,6 +8,7 @@ import {
   resetSettingsService,
 } from "../services/settings/runtime.js";
 import { SettingsService } from "../services/settings/service.js";
+import { setFleetCoreBootMode } from "../runtime-flags.js";
 import {
   createFleetServices,
   shutdownFleetMcp,
@@ -43,6 +44,7 @@ export type { FleetSettingsServices } from "./settings-services.js";
 
 export interface FleetCoreRuntimeOptions {
   readonly dataDir: string;
+  readonly bootMode?: "dev" | "normal";
 }
 
 export interface FleetCoreRuntimeContext {
@@ -58,6 +60,7 @@ export interface FleetCoreRuntimeContext {
 export function createFleetCoreRuntime(
   options: FleetCoreRuntimeOptions,
 ): FleetCoreRuntimeContext {
+  setFleetCoreBootMode(options.bootMode ?? "normal");
   initAgentSessionRuntime(options.dataDir);
   initStore(options.dataDir);
   const settings = new SettingsService();

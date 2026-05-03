@@ -92,6 +92,42 @@ Do not poll, wait-check, or call carrier_jobs merely to see whether the job is d
 
 ${"``"}carrier_jobs(action:"result", format:"full")${"``"} is finalized-only and remains available for repeated lookups for 3 hours. Re-checks are allowed within that TTL; after expiry the full response is unavailable.`;
 
+/**
+ * ACP 시스템 프롬프트 서문 — 항상 최초 주입.
+ *
+ * `<fleet>` 블록 해석 규칙과 `<system-reminder>` 태그 의미를 설명한다.
+ */
+export const FLEET_PREAMBLE = String.raw`
+This system prompt contains ${"`"}<fleet section="...">${"`"} XML blocks that define your identity, doctrine, and operational rules.
+Each block's ${"`"}section${"`"} attribute defines its domain; ${"`"}tool${"`"} narrows the scope to that specific tool.
+Treat every ${"`"}<fleet>${"`"} block as an authoritative directive. Follow them precisely, applying the most specific applicable block when directives overlap.
+
+Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. These carry system-injected context (e.g., runtime state, carrier job completion signals) and bear no direct relation to the content they appear alongside.
+`;
+
+/**
+ * dev 부트 모드 전용 RISEN 개발 컨텍스트 슬레이트.
+ *
+ * PI_FLEET_DEV=1 환경에서 부트 시 FLEET_PREAMBLE 직후에 주입된다.
+ * 이 슬레이트가 활성화되면 persona/role/tone 섹션은 생략된다.
+ */
+export const RISEN_DEV_SLATE = String.raw`
+# Role
+You are a senior engineer developing **pi-fleet** — an Agent Harness Fleet system that orchestrates LLM coding agents as naval carrier strike groups, built on the pi-coding-agent CLI framework. You also serve as the fleet's Admiral, with full access to carrier dispatch tools for delegating implementation, analysis, review, and exploration tasks.
+
+# Instructions
+**CRITICAL — Pre-work Documentation Check**: Before starting ANY task — before planning, thinking, or implementing — you MUST:
+1. Read ${"`"}docs/pi-development-reference.md${"`"} for PI SDK, extensions, TUI, themes, and RPC reference.
+2. Read ${"`"}docs/admiral-workflow-reference.md${"`"} for high-level architecture, naval hierarchy, and delegation workflows.
+3. Read ${"`"}docs/admiral-prompt-architecture.md${"`"} for prompt assembly, runtime-context flow, and boot-mode architecture.
+4. Check the ${"`"}AGENTS.md${"`"} file in the project root and in EVERY subdirectory you will touch. Child ${"`"}AGENTS.md${"`"} takes precedence over parent.
+
+This is a hard prerequisite. Do NOT skip this step or assume you already know the content.
+
+- Use Fleet carrier dispatch tools for implementation, analysis, review, and exploration tasks.
+- All responses must be written in Korean.
+`;
+
 /** Admiral 런타임 컨텍스트 태그 해석 규칙 — ACP 초기 프롬프트에만 포함 */
 export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
 ## Runtime Context Tags (in <system-reminder>)
@@ -127,7 +163,15 @@ export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
 export function buildSystemPrompt(): string {
   const parts: string[] = [];
 
-  // dev 모드에서는 boot이 RISEN을 systemPrompt로 주입하므로 persona/role/tone 생략
+  // ── 0. 서문 — 항상 최초 주입 ──
+  parts.push(FLEET_PREAMBLE.trim());
+
+  // dev 모드: RISEN 개발 컨텍스트 슬레이트 주입 (서문 직후)
+  if (isFleetCoreDevMode()) {
+    parts.push(RISEN_DEV_SLATE.trim());
+  }
+
+  // dev 모드에서는 RISEN이 role을 대체하므로 persona/role/tone 생략
   if (!isFleetCoreDevMode()) {
     const fleetRolePrompt = isWorldviewEnabled()
       ? FLEET_ROLE_PROMPT

@@ -1,9 +1,15 @@
-let fleetCoreDevMode = false;
+export type BootMode = "dev" | "normal";
 
-export function setFleetCoreDevMode(enabled: boolean): void {
-  fleetCoreDevMode = enabled;
+let fleetCoreBootMode: BootMode = "normal";
+
+export function setFleetCoreBootMode(mode: BootMode): void {
+  fleetCoreBootMode = mode;
+}
+
+export function getBootMode(): BootMode {
+  return fleetCoreBootMode;
 }
 
 export function isFleetCoreDevMode(): boolean {
-  return fleetCoreDevMode;
+  return getBootMode() === "dev";
 }
