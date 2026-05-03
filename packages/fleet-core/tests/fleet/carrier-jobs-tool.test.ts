@@ -58,7 +58,7 @@ describe("carrier_jobs tool", () => {
     createJobArchive("sortie:active", 1000);
     putJobSummary({
       jobId: "sortie:active",
-      tool: "carriers_sortie",
+      tool: "carrier_genesis",
       status: "active",
       summary: "running",
       startedAt: 1000,
@@ -154,17 +154,17 @@ describe("carrier_jobs tool", () => {
   });
 
   it("rejects invalid job ID prefixes", () => {
-    const response = dispatchCarrierJobsAction({ action: "status", job_id: "carrier:bad" });
+    const response = dispatchCarrierJobsAction({ action: "status", job_id: "invalid:bad" });
 
     expect(response.ok).toBe(false);
-    expect(response.error).toMatch(/sortie/);
+    expect(response.error).toMatch(/must start with/);
   });
 });
 
 function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
   return {
     jobId,
-    tool: "carriers_sortie",
+    tool: "carrier_genesis",
     status: "done",
     summary: "completed",
     startedAt,
@@ -176,7 +176,7 @@ function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
 function buildRecord(jobId: string, carriers: string[]): CarrierJobRecord {
   return {
     jobId,
-    tool: "carriers_sortie",
+    tool: "carrier_genesis",
     status: "active",
     startedAt: 1000,
     carriers,

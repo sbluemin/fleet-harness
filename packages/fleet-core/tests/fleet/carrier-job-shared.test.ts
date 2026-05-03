@@ -61,7 +61,7 @@ describe("carrier job id", () => {
   });
 
   it("rejects invalid prefixes and empty base IDs", () => {
-    expect(parseCarrierJobId("carrier:abc")).toBeNull();
+    expect(parseCarrierJobId("invalid:abc")).toBeNull();
     expect(parseCarrierJobId("sortie:")).toBeNull();
     expect(() => buildCarrierJobId("sortie", "")).toThrow(/toolCallId/);
   });
@@ -370,7 +370,7 @@ describe("cancel registry", () => {
 function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
   return {
     jobId,
-    tool: "carriers_sortie",
+    tool: "carrier_genesis",
     status: "done",
     summary: "done",
     startedAt,
@@ -382,7 +382,7 @@ function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
 function buildRecord(jobId: string, carriers: string[]): CarrierJobRecord {
   return {
     jobId,
-    tool: "carriers_sortie",
+    tool: "carrier_genesis",
     status: "active",
     startedAt: 1000,
     carriers,

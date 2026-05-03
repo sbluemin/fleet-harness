@@ -3,7 +3,7 @@
  *
  * 모든 fleet 영속 상태를 `states.json` 단일 파일로 일원화합니다.
  * - 모델 선택 (기존 model-config.ts)
- * - Sortie 비활성 상태 (기존 sortie-store.ts)
+ * - Offline carrier 상태 (기존 sortie-store.ts)
  * - cliType 오버라이드 (기존 sortie-store.ts)
  *
  * 단일 게이트 I/O 패턴으로 race condition을 방지합니다.
@@ -55,8 +55,8 @@ type TaskForceConfig = Partial<Record<TaskForceCliType, TaskForceSelection>>;
 interface FleetStates {
   /** 모델 선택 설정 */
   models?: SelectedModelsConfig;
-  /** sortie 비활성 carrier ID 목록 */
-  sortieDisabled?: string[];
+  /** offline carrier ID 목록 */
+  offline?: string[];
   /** squadron 활성화된 carrier ID 목록 */
   squadronEnabled?: string[];
   /** carrier별 cliType 오버라이드 (defaultCliType과 다를 때만 저장) */
@@ -326,15 +326,15 @@ export function getConfiguredTaskForceCarrierIds(registeredIds: string[]): strin
   return registeredIds.filter((id) => isTaskForceFormableInConfig(config, id));
 }
 
-// ─── Sortie 상태 ───────────────────────────────────────
+// ─── Offline 상태 ───────────────────────────────────────
 
 /**
- * 디스크에서 sortie 비활성 carrier ID 목록을 로드합니다.
+ * 디스크에서 offline carrier ID 목록을 로드합니다.
  * 유효한 carrier ID만 필터링하여 반환합니다.
  */
-export function loadSortieDisabled(validIds?: Set<string>): string[] {
+export function loadOfflineCarriers(validIds?: Set<string>): string[] {
   const states = readStates();
-  const ids = states.sortieDisabled;
+  const ids = states.offline;
   if (!Array.isArray(ids)) return [];
   return ids.filter((id): id is string =>
     typeof id === "string" && (!validIds || validIds.has(id)),
@@ -342,11 +342,11 @@ export function loadSortieDisabled(validIds?: Set<string>): string[] {
 }
 
 /**
- * sortie 비활성 carrier ID 목록을 디스크에 저장합니다.
+ * offline carrier ID 목록을 디스크에 저장합니다.
  */
-export function saveSortieDisabled(ids: string[]): void {
+export function saveOfflineCarriers(ids: string[]): void {
   updateStates((states) => {
-    states.sortieDisabled = ids;
+    states.offline = ids;
   });
 }
 

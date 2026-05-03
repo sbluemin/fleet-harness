@@ -125,7 +125,7 @@ function resetPanelGlobals(): void {
     modes: new Map(),
     registeredOrder: ["genesis"],
     statusUpdateCallbacks: [],
-    sortieDisabledCarriers: new Set(),
+    offlineCarriers: new Set(),
     taskforceConfiguredCarriers: new Set(),
     squadronEnabledCarriers: new Set(),
   };

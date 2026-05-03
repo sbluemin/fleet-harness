@@ -21,7 +21,7 @@ import type {
 import { putJobSummary } from "./lru-cache.js";
 import { combineAbortSignals } from "./abort-signals.js";
 
-export type DetachedJobKind = "sortie" | "squadron" | "taskforce";
+export type DetachedJobKind = "carrier" | "sortie" | "squadron" | "taskforce";
 
 export type DetachedJobFinalStatus = "done" | "error" | "aborted";
 
@@ -41,7 +41,7 @@ export type DetachedJobLaunch = DetachedJobAccepted | DetachedJobRejected;
 
 export interface StartDetachedJobOptions {
   jobKind: DetachedJobKind;
-  toolName: "carriers_sortie" | "carrier_squadron" | "carrier_taskforce";
+  toolName: "carrier_squadron" | "carrier_taskforce" | `carrier_${string}`;
   toolCallId: string | undefined;
   startedAt: number;
   carrierIds: string[];

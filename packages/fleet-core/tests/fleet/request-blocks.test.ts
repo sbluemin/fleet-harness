@@ -117,6 +117,38 @@ describe("validateRequiredRequestBlocks", () => {
     const result = validateRequiredRequestBlocks(meta, "anything", "test-carrier");
     expect(result.ok).toBe(true);
   });
+
+  it("closing tag 누락 시 실패", () => {
+    const meta = makeMeta({
+      requestBlocks: [{ tag: "objective", hint: "what to do", required: true }],
+    });
+    const result = validateRequiredRequestBlocks(
+      meta,
+      "<objective>build a thing",
+      "test-carrier",
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.missing).toEqual(["objective"]);
+      expect(result.error).toContain("missing closing tag");
+    }
+  });
+
+  it("empty body 시 실패", () => {
+    const meta = makeMeta({
+      requestBlocks: [{ tag: "objective", hint: "what to do", required: true }],
+    });
+    const result = validateRequiredRequestBlocks(
+      meta,
+      "<objective>  </objective>",
+      "test-carrier",
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.missing).toEqual(["objective"]);
+      expect(result.error).toContain("empty body");
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────

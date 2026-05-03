@@ -36,7 +36,7 @@ import {
   getActiveSquadronIds,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  isSortieCarrierEnabled,
+  isCarrierOnline,
   isSquadronCarrierEnabled,
   resolveCarrierDisplayName,
 } from "../carrier/framework.js";
@@ -391,8 +391,8 @@ function assertRegisteredCarrier(carrierId: string): void {
 }
 
 function assertSortieEnabled(carrierId: string): void {
-  if (isSortieCarrierEnabled(carrierId)) return;
-  logDebug(SQUADRON_LOG_CATEGORY_ERROR, `carrier=${carrierId} sortieEnabled=false reason=manually disabled`);
+  if (isCarrierOnline(carrierId)) return;
+  logDebug(SQUADRON_LOG_CATEGORY_ERROR, `carrier=${carrierId} online=false reason=manually disabled`);
   throw new Error(`Carrier ${formatCarrierIdForMessage(carrierId)} is not available for squadron: manually disabled.`);
 }
 

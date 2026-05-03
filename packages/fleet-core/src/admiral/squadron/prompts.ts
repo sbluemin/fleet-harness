@@ -38,7 +38,7 @@ export const SQUADRON_MANIFEST: ToolPromptManifest = {
     "Use it for analyzing multiple files independently, running the same check across different modules, or batch-processing items.",
   ],
   whenNotToUse: [
-    "Do NOT use carrier_squadron for tasks requiring sequential or dependent execution — use carriers_sortie for serial delegation.",
+    "Do NOT use carrier_squadron for tasks requiring sequential or dependent execution — use the carrier's individual tool (`carrier_<id>`) for direct delegation.",
     "Do not use for cross-model comparison — use carrier_taskforce instead.",
     "Do not use when subtasks have data dependencies on each other.",
   ],

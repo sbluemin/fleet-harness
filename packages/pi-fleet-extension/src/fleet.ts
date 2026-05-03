@@ -26,7 +26,7 @@ import {
 import { registerDefaultCarrierPersonas } from "@sbluemin/fleet-core/admiral/carrier/personas";
 import {
   getConfiguredTaskForceCarrierIds,
-  loadSortieDisabled,
+  loadOfflineCarriers,
   loadSquadronEnabled,
   reconcileActiveModelSelections,
   saveSquadronEnabled,
@@ -49,7 +49,7 @@ import {
   notifyStatusUpdate,
   registerRequestDirective,
   registerSingleCarrier,
-  setSortieDisabledCarriers,
+  setOfflineCarriers,
   setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
 } from "./tools.js";
@@ -168,8 +168,8 @@ export async function shutdownFleetRuntime(): Promise<void> {
 }
 
 export function restoreFleetPreRegistrationState(): void {
-  const restoredDisabled = loadSortieDisabled();
-  setSortieDisabledCarriers(restoredDisabled);
+  const restoredDisabled = loadOfflineCarriers();
+  setOfflineCarriers(restoredDisabled);
 
   const restoredSquadron = loadSquadronEnabled();
   setSquadronEnabledCarriers(restoredSquadron);

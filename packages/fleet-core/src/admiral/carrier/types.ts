@@ -70,6 +70,16 @@ export interface CarrierMetadata {
 
 // ─── 공개 타입 ───────────────────────────────────────────
 
+// ─── Carrier ID 검증 상수 ─────────────────────────────────
+
+/** 도구 네임스페이스 충돌 방지를 위한 예약 ID */
+export const RESERVED_CARRIER_IDS = new Set(["jobs", "squadron", "taskforce"]);
+
+/** Carrier ID 허용 형식: 소문자 시작, 소문자/숫자/밑줄만 허용 */
+export const CARRIER_ID_FORMAT_REGEX = /^[a-z][a-z0-9_]*$/;
+
+// ─── 공개 타입 ───────────────────────────────────────────
+
 /** Carrier 프레임워크 globalThis 공유 키 */
 export const CARRIER_FRAMEWORK_KEY = "__pi_bridge_framework__";
 
@@ -109,8 +119,8 @@ export interface CarrierFrameworkState {
   registeredOrder: string[];
   /** 상태바 갱신 콜백 */
   statusUpdateCallbacks: Array<() => void>;
-  /** sortie 비활성화된 carrier ID 집합 */
-  sortieDisabledCarriers: Set<string>;
+  /** offline 상태인 carrier ID 집합 */
+  offlineCarriers: Set<string>;
   /** Task Force 설정이 완료된 carrier ID 집합 */
   taskforceConfiguredCarriers: Set<string>;
   /** squadron 활성화된 carrier ID 집합 */

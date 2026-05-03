@@ -32,7 +32,7 @@ import {
   loadModels as getModelConfig,
   resetTaskForceModelSelection,
   savePerCliSettings,
-  saveSortieDisabled,
+  saveOfflineCarriers,
   saveSquadronEnabled,
   updateCliTypeOverride,
   updateModelSelection,
@@ -44,15 +44,15 @@ import { getKeybindAPI } from "../keybinds.js";
 import { refreshAgentPanel } from "../panel/ui.js";
 import { syncModelConfig } from "../panel/config.js";
 import {
-  disableSortieCarrier,
+  setCarrierOffline,
   disableSquadronCarrier,
-  enableSortieCarrier,
+  setCarrierOnline,
   enableSquadronCarrier,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  getSortieDisabledIds,
+  getOfflineCarrierIds,
   getSquadronEnabledIds,
-  isSortieCarrierEnabled,
+  isCarrierOnline,
   isSquadronCarrierEnabled,
   notifyStatusUpdate,
   resolveCarrierDisplayName,
@@ -1184,7 +1184,7 @@ function buildStatusEntries(): CarrierStatusEntry[] {
       effort: selection?.effort ?? null,
       role: meta?.title ?? null,
       roleDescription: meta ? `${meta.title} — ${meta.summary}` : null,
-      isSortieEnabled: isSortieCarrierEnabled(id),
+      isSortieEnabled: isCarrierOnline(id),
       isSquadronEnabled: isSquadronCarrierEnabled(id),
       taskForceBackendCount: getConfiguredTaskForceBackends(id).length,
       category: meta?.category,
@@ -1233,12 +1233,12 @@ function handleModelUpdated(): void {
 }
 
 function toggleSortieEnabled(carrierId: string): void {
-  if (isSortieCarrierEnabled(carrierId)) {
-    disableSortieCarrier(carrierId);
+  if (isCarrierOnline(carrierId)) {
+    setCarrierOffline(carrierId);
   } else {
-    enableSortieCarrier(carrierId);
+    setCarrierOnline(carrierId);
   }
-  saveSortieDisabled(getSortieDisabledIds());
+  saveOfflineCarriers(getOfflineCarrierIds());
   notifyStatusUpdate();
 }
 

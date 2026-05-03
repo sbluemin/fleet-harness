@@ -29,7 +29,7 @@ export interface JobArchive {
 
 export interface CarrierJobBase {
   jobId: string;
-  tool: "carriers_sortie" | "carrier_squadron" | "carrier_taskforce";
+  tool: "carrier_squadron" | "carrier_taskforce" | `carrier_${string}`;
   status: CarrierJobStatus;
   startedAt: number;
   finishedAt?: number;

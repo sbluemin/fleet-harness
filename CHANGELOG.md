@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Breaking Changes
+- **`carriers_sortie` tool removed**: The single multi-carrier dispatch tool `carriers_sortie` is replaced by per-carrier tools named `carrier_<id>` (e.g., `carrier_genesis`, `carrier_vanguard`). Each registered carrier is now exposed as an explicit MCP tool with a single `request` parameter, allowing the host LLM to select carriers directly without indirection through a shared dispatcher.
+- **`sortieDisabled` renamed to `offline`**: The fleet-store key and all related framework APIs (`isSortieCarrierEnabled` → `isCarrierOnline`, `setSortieDisabled` → `setOffline`, etc.) have been renamed. No on-demand migration is performed; existing `sortieDisabled` keys are ignored.
+
+### Changed
+- **Per-carrier tool spec via `CarrierMetadata`**: Tool spec construction is now a shared helper that consumes `CarrierMetadata` directly, eliminating the per-carrier `buildSortieToolSpec` indirection.
+- **Runtime context tags**: `<available_sortie_carriers>` is removed from the runtime context block. Each `carrier_<id>` tool's availability is reflected by its presence in the registered tool list.
+
 ## [0.10.0] - 2026-05-03
 
 ### Breaking Changes

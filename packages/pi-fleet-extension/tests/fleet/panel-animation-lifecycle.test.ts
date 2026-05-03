@@ -27,7 +27,8 @@ beforeEach(() => {
   (globalThis as any)[CARRIER_FRAMEWORK_KEY] = {
     modes: new Map([["genesis", { config: { id: "genesis", displayName: "Genesis", cliType: "codex", slot: 1, color: "" } }]]),
     registeredOrder: ["genesis"],
-    sortieDisabledCarriers: new Set(),
+    offlineCarriers: new Set(),
+    taskforceConfiguredCarriers: new Set(),
     squadronEnabledCarriers: new Set(),
     statusUpdateCallbacks: [],
   };
@@ -197,7 +198,7 @@ function stripAnsi(text: string): string {
 function buildRecord(
   jobId: string,
   carriers: string[],
-  tool: CarrierJobRecord["tool"] = "carriers_sortie",
+  tool: CarrierJobRecord["tool"] = "carrier_genesis",
 ): CarrierJobRecord {
   return {
     jobId,

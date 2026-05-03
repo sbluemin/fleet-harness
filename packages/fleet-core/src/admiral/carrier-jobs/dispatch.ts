@@ -154,7 +154,7 @@ function getAvailability(jobId: string, summary: CarrierJobSummary | null, now: 
 
 function validateJobId(jobId: string | undefined): string | null {
   if (!jobId) return "job_id is required";
-  if (!isCarrierJobId(jobId)) return "job_id must start with sortie:, squadron:, or taskforce:";
+  if (!isCarrierJobId(jobId)) return "job_id must start with carrier:, squadron:, or taskforce:";
   return null;
 }
 

@@ -11,7 +11,7 @@
  *  - Carrier 상태 관리 (globalThis 공유 Map)
  *  - 등록 순서/메타데이터 보관
  *  - 렌더러 등록 (커스텀 or 기본)
- *  - sortie off는 전역 kill-switch이며, squadron/taskforce active view도 이 Set을 차감해 구성
+ *  - offline carrier는 전역 kill-switch이며, squadron/taskforce active view도 이 Set을 차감해 구성
  */
 
 import type { CliType } from "@sbluemin/unified-agent";
@@ -28,7 +28,11 @@ import type {
   CarrierConfig,
   CarrierFrameworkState,
 } from "./types.js";
-import { CARRIER_FRAMEWORK_KEY } from "./types.js";
+import {
+  CARRIER_FRAMEWORK_KEY,
+  CARRIER_ID_FORMAT_REGEX,
+  RESERVED_CARRIER_IDS,
+} from "./types.js";
 
 // 공개 타입 re-export — consumer가 fleet/index.ts를 통해 접근
 export type { CarrierConfig };
@@ -49,6 +53,18 @@ const DEFAULT_CARRIER_RGB: [number, number, number] = [180, 160, 220];
 export function registerCarrier(
   config: CarrierConfig,
 ): void {
+  // carrier ID 형식 및 예약어 검증 (상태 변경 전 fail-fast)
+  if (!CARRIER_ID_FORMAT_REGEX.test(config.id)) {
+    throw new Error(
+      `Invalid carrier ID "${config.id}": must match ${CARRIER_ID_FORMAT_REGEX.source}`,
+    );
+  }
+  if (RESERVED_CARRIER_IDS.has(config.id)) {
+    throw new Error(
+      `Reserved carrier ID "${config.id}" is not allowed.`,
+    );
+  }
+
   const gs = getState();
   const existingState = gs.modes.get(config.id);
   const resolvedCliType = resolveCarrierCliType(config.id, config.defaultCliType);
@@ -119,57 +135,56 @@ export function getRegisteredOrder(): string[] {
   return [...getState().registeredOrder];
 }
 
-// ─── Sortie 가용 상태 관리 ─────────────────────────────
+// ─── Offline 상태 관리 ─────────────────────────────
 
 /**
- * 지정 carrier를 sortie에서 비활성화합니다.
+ * 지정 carrier를 offline 상태로 전환합니다.
  */
-export function disableSortieCarrier(id: string): void {
+export function setCarrierOffline(id: string): void {
   const gs = getState();
   if (!gs.modes.has(id)) return;
-  if (gs.sortieDisabledCarriers.has(id)) return;
-  gs.sortieDisabledCarriers.add(id);
+  if (gs.offlineCarriers.has(id)) return;
+  gs.offlineCarriers.add(id);
 }
 
 /**
- * 지정 carrier를 sortie에서 다시 활성화합니다.
+ * 지정 carrier를 online 상태로 복원합니다.
  */
-export function enableSortieCarrier(id: string): void {
+export function setCarrierOnline(id: string): void {
   const gs = getState();
-  if (!gs.sortieDisabledCarriers.has(id)) return;
-  gs.sortieDisabledCarriers.delete(id);
+  if (!gs.offlineCarriers.has(id)) return;
+  gs.offlineCarriers.delete(id);
 }
 
 /**
- * 지정 carrier가 sortie에서 활성 상태인지 반환합니다.
+ * 지정 carrier가 online 상태인지 반환합니다.
  */
-export function isSortieCarrierEnabled(id: string): boolean {
-  return !getState().sortieDisabledCarriers.has(id);
+export function isCarrierOnline(id: string): boolean {
+  return !getState().offlineCarriers.has(id);
 }
 
 /**
- * sortie 가용한 carrier ID만 registeredOrder 순서로 반환합니다.
+ * online 상태인 carrier ID만 registeredOrder 순서로 반환합니다.
+ * (offline 캐리어 제외)
  */
-export function getSortieEnabledIds(): string[] {
+export function getOnlineCarrierIds(): string[] {
   const gs = getState();
-  return gs.registeredOrder.filter(
-    (id) => !gs.sortieDisabledCarriers.has(id) && !gs.squadronEnabledCarriers.has(id),
-  );
+  return gs.registeredOrder.filter((id) => !gs.offlineCarriers.has(id));
 }
 
 /**
- * 현재 sortie 비활성화된 carrier ID 목록을 반환합니다.
+ * 현재 offline 상태인 carrier ID 목록을 반환합니다.
  */
-export function getSortieDisabledIds(): string[] {
-  return [...getState().sortieDisabledCarriers];
+export function getOfflineCarrierIds(): string[] {
+  return [...getState().offlineCarriers];
 }
 
 /**
- * sortie 비활성화 목록을 일괄 설정합니다.
+ * offline carrier 목록을 일괄 설정합니다.
  */
-export function setSortieDisabledCarriers(ids: string[]): void {
+export function setOfflineCarriers(ids: string[]): void {
   const gs = getState();
-  gs.sortieDisabledCarriers = new Set(ids);
+  gs.offlineCarriers = new Set(ids);
 }
 
 // ─── Squadron 가용 상태 관리 ─────────────────────────────
@@ -208,12 +223,12 @@ export function getSquadronEnabledIds(): string[] {
 }
 
 /**
- * sortie off를 제외한 squadron 활성 carrier ID 목록을 반환합니다.
+ * offline을 제외한 squadron 활성 carrier ID 목록을 반환합니다.
  */
 export function getActiveSquadronIds(): string[] {
   const gs = getState();
   return gs.registeredOrder.filter(
-    (id) => gs.squadronEnabledCarriers.has(id) && !gs.sortieDisabledCarriers.has(id),
+    (id) => gs.squadronEnabledCarriers.has(id) && !gs.offlineCarriers.has(id),
   );
 }
 
@@ -235,12 +250,12 @@ export function getTaskForceConfiguredIds(): string[] {
 }
 
 /**
- * sortie off를 제외한 Task Force 설정 carrier ID 목록을 반환합니다.
+ * offline을 제외한 Task Force 설정 carrier ID 목록을 반환합니다.
  */
 export function getActiveTaskForceIds(): string[] {
   const gs = getState();
   return gs.registeredOrder.filter(
-    (id) => gs.taskforceConfiguredCarriers.has(id) && !gs.sortieDisabledCarriers.has(id),
+    (id) => gs.taskforceConfiguredCarriers.has(id) && !gs.offlineCarriers.has(id),
   );
 }
 
@@ -351,7 +366,7 @@ function getState(): CarrierFrameworkState {
       modes: new Map(),
       registeredOrder: [],
       statusUpdateCallbacks: [],
-      sortieDisabledCarriers: new Set(),
+      offlineCarriers: new Set(),
       taskforceConfiguredCarriers: new Set(),
       squadronEnabledCarriers: new Set(),
     };

@@ -52,7 +52,7 @@ This document is **for the Admiral**. It is not a public spec, not a contributor
 and not a Chronicle-managed asset. Treat it as a self-model the Admiral consults at
 the start of any task that involves:
 
-- delegating to a carrier (`carriers_sortie` / `carrier_squadron` / `carrier_taskforce`)
+- delegating to a carrier (`carrier_<id>` / `carrier_squadron` / `carrier_taskforce`)
 - reasoning about why a particular tag is or is not visible to a sub-agent
 - proposing changes to prompt assembly or runtime context
 - explaining boot-preamble behavior or the `fleet-dev` CLI mode to the Admiral of the Navy
@@ -245,10 +245,10 @@ Every call recomputes all values from live state — there is no cache.
 │        ← Alt+1..9 changes settings; the new value lands in the  │
 │          NEXT user turn. In-flight responses are not affected.  │
 │                                                                 │
-│    <available_sortie_carriers>nimitz,kirov,sentinel</...>       │
-│        ← getSortieEnabledIds()                                  │
+│    <available_carriers>nimitz,kirov,sentinel</...>              │
+│        ← getOnlineCarrierIds()                                  │
 │          (admiral/carrier/framework.ts:153)                     │
-│        ← registeredOrder \ sortieDisabled \ squadronEnabled     │
+│        ← registeredOrder \ offlineCarriers \ squadronEnabled    │
 │                                                                 │
 │    <available_squadron_carriers>genesis,ohio,...</...>          │
 │        ← getActiveSquadronIds()  (framework.ts:213)             │
@@ -316,7 +316,7 @@ ultimately call `client.sendMessage(...)` on an ACP client, but they differ in
 
 ┌────────────────────────── EXECUTOR PATH ───────────────────────────┐
 │                                                                    │
-│  Used by: carriers_sortie / carrier_squadron / carrier_taskforce   │
+│  Used by: carrier_<id> (individual) / carrier_squadron / carrier_taskforce │
 │           (closed-loop callback executor)                          │
 │                                                                    │
 │  Per turn: buildRuntimeContextPrompt() does NOT run.               │
@@ -379,7 +379,7 @@ The Admiral's own decision flow at the start of every task:
 │   the carrier's id appears in the correct <available_*> tag.      │
 │                                                                   │
 │  Step 3.  Match dispatch tool to the tag the carrier is in.       │
-│   ├─ id ∈ <available_sortie_carriers>    → carriers_sortie        │
+│   ├─ id ∈ <available_carriers>           → carrier_<id> (individual) │
 │   ├─ id ∈ <available_squadron_carriers>  → carrier_squadron       │
 │   └─ id ∈ <available_taskforce_carriers> → carrier_taskforce      │
 │   Each carrier is registered in exactly one tool's pool. If the   │
@@ -438,7 +438,7 @@ The pattern is always: **static frame tells me how, runtime prefix tells me whom
 | System prompt is frozen at boot | Carriers registered after boot have no Tier-1 metadata in `<fleet section="roster">`. They appear in `<available_*>` tags but their use-cases / NOT-fors / request blocks are absent. | `prompts.ts:147-150` |
 | Protocol catalog is fully embedded | The active protocol's *body* is read statically from the catalog — there is no per-turn injection of the active protocol's body, only its id. | `prompts.ts:127-187` |
 | Protocol switching is lazy | Alt+1..9 only persists `activeProtocol` in settings and updates the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. | `pi-fleet-extension/src/fleet.ts:364-385` |
-| Executor path has no runtime context | `carriers_sortie` / `carrier_squadron` / `carrier_taskforce` send the request verbatim; sub-agents do not see `<current_protocol>` or `<available_*>` tags. By design — Tier-2 context is composed into the request body instead. | `executor-engine.ts:298, 411` |
+| Executor path has no runtime context | `carrier_<id>` / `carrier_squadron` / `carrier_taskforce` send the request verbatim; sub-agents do not see `<current_protocol>` or `<available_*>` tags. By design — Tier-2 context is composed into the request body instead. | `executor-engine.ts:298, 411` |
 | `setSystemPrompt()` does not exist | The unified-agent client cannot mutate the system prompt mid-session. Drift forces session destruction and reconnect. | `unified-agent/src/client/IUnifiedAgentClient.ts:215-239` |
 | `bootMode` drives dev-mode branch | `bootMode` (`"dev" \| "normal"`) is set via `createFleetCoreRuntime()` (`public/runtime.ts`) and stored in `runtime-flags.ts` via `setFleetCoreBootMode()`. `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. When true, `buildSystemPrompt()` omits persona/role/tone and prepends the RISEN dev context instead of the naval fleet persona. | `runtime-flags.ts:1-15`, `prompts.ts:127-144` |
 | `injectStandingOrders` is advisory only | `injectStandingOrders=false` does NOT remove the text from the prompt. The standing-orders section is always present; the flag only adds "suspended" to the protocol catalog metadata. The model is expected to self-suppress. | `protocols/types.ts:30`, `prompts.ts:175-179` |
@@ -472,8 +472,8 @@ the following code changes ship:
 - Either entry point is moved or renamed.
 - The streaming-vs-executor split changes (e.g., a new `executeWithPool` callsite,
   or runtime context becoming injected into executor requests).
-- A new dispatch tool is registered (a fourth peer to `carriers_sortie`,
-  `carrier_squadron`, `carrier_taskforce`) or one of them is removed.
+- A new dispatch tool is registered (a new individual `carrier_<id>` tool,
+  or a peer to `carrier_squadron`, `carrier_taskforce`) or one of them is removed.
 - The `buildCarrierSystemPrompt()` policy at `admiral/carrier/prompts.ts:179-181`
   changes (currently it returns `SYSTEM_REMINDER_HINT.trim()` only).
 - A `setSystemPrompt()`-equivalent API is introduced on the unified-agent client.
@@ -501,10 +501,10 @@ The Admiral must consult this document at the **start of any task** that touches
   `admiral/carrier/prompts.ts`)
 - session lifecycle (`admiral/agent/internal/session-engine.ts`,
   `admiral/agent/internal/executor-engine.ts`)
-- the dispatch tools (`carriers_sortie`, `carrier_squadron`, `carrier_taskforce`,
+- the dispatch tools (`carrier_<id>`, `carrier_squadron`, `carrier_taskforce`,
   `carrier_jobs`)
 - runtime tag generation
-- carrier registration / sortie / squadron / task-force enablement state
+- carrier registration / online state / squadron / task-force enablement state
 - the `fleet-dev` CLI mode, boot preamble, or RISEN dev slate
 
 If the task is unrelated to those surfaces, this document is not required reading.

@@ -33,7 +33,7 @@ Match Carrier count and review depth to actual task complexity:
 - **Medium feature** (cross-module, new API surface): Genesis + Sentinel + Chronicle. Full Phase 1-7.
 - **Large initiative** (multi-Carrier coordination, architectural change): Full fleet engagement justified.
 
-Do NOT deploy Task Force (up to 3× cost) or Squadron (up to 10× cost) for tasks where a single Carrier sortie suffices.
+Do NOT deploy Task Force (up to 3× cost) or Squadron (up to 10× cost) for tasks where a single carrier tool call suffices.
 
 ### Nimitz → Kirov → Ohio 3-Step Strike Pipeline
 When the task involves both **judgment** and **planning**, apply this sequence:
@@ -53,16 +53,16 @@ Task arrives
 ${"```"}
 
 - Nimitz decides the path — Kirov structures the plan — Ohio executes the plan.
-- Never sortie Nimitz and Kirov simultaneously for the same question.
+- Never dispatch Nimitz and Kirov simultaneously for the same question.
 - Ohio is the sole recipient of <plan_file>; Genesis never accepts plan_file input anymore.
-- If Nimitz's recommendation reveals planning complexity, sortie Kirov as a follow-up.
+- If Nimitz's recommendation reveals planning complexity, dispatch Kirov as a follow-up.
 
 ### Tool Selection Matrix
 Choose the correct dispatch tool based on intent:
 
 | Intent | Tool | When |
 |--------|------|------|
-| Delegate to 1+ Carriers | ${"``"}carriers_sortie${"``"} | Default for all task delegation |
+| Delegate to a Carrier | ${"``"}carrier_<id>${"``"} | Individual carrier tool for task delegation |
 | Same Carrier, parallel subtasks | ${"``"}carrier_squadron${"``"} | Independent subtasks on one Carrier (e.g., review 5 files independently) |
 | Cross-model validation | ${"``"}carrier_taskforce${"``"} | Need consensus, blind-spot detection, or multi-backend comparison |
 | Lookup/control detached carrier jobs | ${"``"}carrier_jobs${"``"} | Check status/results, read full output once, cancel, or list jobs; never for new delegation |
@@ -82,5 +82,5 @@ Before every delegation call, verify the target Carrier's availability across **
 - Silently substituting a different Carrier when the intended one is unavailable.
 - Falling back to direct work (read/bash/edit) when delegation is clearly appropriate.
 - Deploying Task Force or Squadron for routine single-backend tasks.
-- Reading 3+ files directly to gather context instead of sortieing Vanguard/Tempest.`,
+- Reading 3+ files directly to gather context instead of dispatching Vanguard/Tempest.`,
 };

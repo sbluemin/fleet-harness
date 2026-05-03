@@ -44,9 +44,9 @@ export const TASKFORCE_MANIFEST: ToolPromptManifest = {
     "Pick the carrier whose role or persona best fits the task.",
   ],
   whenNotToUse: [
-    "Do NOT use carrier_taskforce for routine single-backend tasks — use carriers_sortie instead.",
+    "Do NOT use carrier_taskforce for routine single-backend tasks — use the carrier's individual tool (`carrier_<id>`) instead.",
     "Avoid it when only one backend is needed or when execution speed is critical.",
-    "Do not use as a substitute for carriers_sortie with multiple carriers.",
+    "Do not use as a substitute for individual carrier tools when a single carrier suffices.",
   ],
   usageGuidelines: [
     `The carrier parameter selects which carrier's role and prompt context to apply.` +

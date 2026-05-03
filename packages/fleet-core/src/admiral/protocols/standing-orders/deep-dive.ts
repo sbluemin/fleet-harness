@@ -25,11 +25,11 @@ Any phase produces output (from a Carrier, from the Admiral's own analysis, or f
 1. **Surface scan** — Look for obvious speculation markers (e.g., "likely", "probably", "I think", "may be", "not sure but…").
 2. **Speculation audit** — If the result is lengthy, complex, or touches unfamiliar territory, skip your own scan and delegate the audit:
    - **Task Force available**: If a Carrier whose role fits the audit task is configured for Task Force, use ${"``"}carrier_taskforce${"``"} to cross-validate across that carrier's configured backends. Consensus among backends strengthens confidence; divergence pinpoints what needs further investigation.
-   - **Fallback**: Otherwise, sortie an appropriate Carrier via ${"``"}carriers_sortie${"``"}.
+   - **Fallback**: Otherwise, dispatch an appropriate Carrier via its individual tool (${"``"}carrier_<id>${"``"}).
    - In either case, provide explicit instructions: *"Review the following analysis for speculative, assumed, or unverified claims. Flag each with evidence of why it is speculative and what verification is needed."*
 3. **Follow-up verification** — For each identified speculative element:
    - **Task Force available**: Use ${"``"}carrier_taskforce${"``"} to seek independent confirmation or refutation from that carrier's configured backends.
-   - **Fallback**: Sortie an appropriate Carrier via ${"``"}carriers_sortie${"``"}.
+   - **Fallback**: Dispatch an appropriate Carrier via its individual tool (${"``"}carrier_<id>${"``"}).
 4. **Repeat** until all speculative elements are either **confirmed with evidence** or explicitly flagged as **unresolvable unknowns**.
 
 ### Depth limit

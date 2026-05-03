@@ -21,7 +21,7 @@ import {
   resolveCarrierColor,
   resolveCarrierDisplayName,
   resolveCarrierRgb,
-  isSortieCarrierEnabled,
+  isCarrierOnline,
   isSquadronCarrierEnabled,
 } from "../tools.js";
 import type { AssistantMessage } from "../provider.js";
@@ -54,7 +54,7 @@ export function renderCarrierStatus(input: CarrierStatusRenderInput): string | u
   const segments = input.cols.map((col) => {
     const hasActiveJob = hasActiveJobForCarrier(activeJobs, col.cli);
     const footerCol = toFooterCol(col, input.streaming, hasActiveJob);
-    const disabled = !isSortieCarrierEnabled(col.cli);
+    const disabled = !isCarrierOnline(col.cli);
     const name = resolveCarrierDisplayName(col.cli);
     const taskForceBackendCount = getConfiguredTaskForceBackends(col.cli).length;
     const tfBadgeColor = disabled ? DISABLED_COLOR : TASKFORCE_BADGE_COLOR;

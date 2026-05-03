@@ -44,7 +44,7 @@ describe("carrier launch contract", () => {
   });
 
   it("uses aborted wording without completed wording for detached summaries", () => {
-    for (const tool of ["carriers_sortie", "carrier_squadron", "carrier_taskforce"]) {
+    for (const tool of ["carrier_genesis", "carrier_squadron", "carrier_taskforce"]) {
       const summary = buildSummaryText(tool, "aborted", 1, 1);
       expect(summary).toContain("aborted");
       expect(summary).not.toContain("completed");
@@ -102,7 +102,7 @@ function launchDetachedWithoutOnUpdate(_onUpdate: () => void): CarrierJobLaunchR
 function buildRecord(jobId: string, carriers: string[]): CarrierJobRecord {
   return {
     jobId,
-    tool: "carriers_sortie",
+    tool: "carrier_genesis",
     status: "active",
     startedAt: 1000,
     carriers,

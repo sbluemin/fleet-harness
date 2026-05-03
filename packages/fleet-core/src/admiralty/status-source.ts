@@ -30,7 +30,7 @@ export interface FleetFrameworkLikeMode {
 export interface FleetFrameworkLikeState {
   modes?: Map<string, FleetFrameworkLikeMode>;
   registeredOrder?: string[];
-  sortieDisabledCarriers?: Set<string>;
+  offlineCarriers?: Set<string>;
   squadronEnabledCarriers?: Set<string>;
   taskforceConfiguredCarriers?: Set<string>;
 }
@@ -80,7 +80,7 @@ export function collectCarrierMap(
   for (const carrierId of order) {
     const mode = framework.modes?.get(carrierId);
     const cli = normalizeCliBackend(mode?.config?.cliType);
-    const isUnavailable = framework.sortieDisabledCarriers?.has(carrierId) ?? false;
+    const isUnavailable = framework.offlineCarriers?.has(carrierId) ?? false;
     const isStandby = framework.squadronEnabledCarriers?.has(carrierId) ?? false;
     const status = deriveCarrierStatus(undefined, isUnavailable, isStandby);
     const info: CarrierInfo = {

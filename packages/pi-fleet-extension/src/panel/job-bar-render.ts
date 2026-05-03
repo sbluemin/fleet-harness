@@ -36,7 +36,7 @@ const FOCUS_BG_FACTOR = 0.12;
 const FOCUS_BG_BASE = 12;
 
 const KIND_LABELS: Record<string, string> = {
-	sortie: "Sortie",
+	carrier: "Carrier",
 	squadron: "Squadron",
 	taskforce: "Taskforce",
 };
@@ -202,13 +202,19 @@ function formatJobTile(
 		return `${bg}${content}${ANSI_RESET}`;
 	}
 
+	if (job.status === "active") {
+		const rgb = resolveCarrierRgb(job.ownerCarrierId) ?? PANEL_RGB;
+		const activeLabel = waveText(label, rgb, frame);
+		return `${icon} ${activeLabel}${ANSI_RESET}`;
+	}
+
 	return `${icon} ${carrierColor}${label}${ANSI_RESET}`;
 }
 
-function jobIcon(status: PanelJobViewModel["status"], frame: number, color?: string): string {
+function jobIcon(status: PanelJobViewModel["status"], _frame: number, color?: string): string {
 	if (status === "active") {
-		const spinner = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
-		return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
+		const marker = "●";
+		return color ? `${color}${marker}${ANSI_RESET}` : marker;
 	}
 	if (status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
 	if (status === "error" || status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;

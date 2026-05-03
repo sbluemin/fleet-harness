@@ -23,8 +23,7 @@ import {
   getActiveSquadronIds,
   getActiveTaskForceIds,
   getRegisteredOrder,
-  getSortieEnabledIds,
-  getSortieDisabledIds,
+  getOfflineCarrierIds,
 } from "./carrier/framework.js";
 import { buildCarrierRoster } from "./carrier/prompts.js";
 import { isFleetCoreDevMode } from "../runtime-flags.js";
@@ -55,7 +54,7 @@ You are the Admiral (제독) commanding the Agent Harness Fleet on behalf of the
 The user issuing orders to you is the Admiral of the Navy (대원수), the supreme commander of the entire fleet.
 
 # Action Guidelines
-- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}pi-tools${"`"} surface. Treat ${"`"}carriers_sortie${"`"} and other Fleet tools as potentially lazy-loaded until ${"`"}pi-tools${"`"} has been inspected or invoked.
+- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}pi-tools${"`"} surface. Treat carrier tools (carrier_*) and other Fleet tools as potentially lazy-loaded until ${"`"}pi-tools${"`"} has been inspected or invoked.
 - When a mission is assigned, first decide whether to handle it directly or deploy Carrier(s); if deploying, brief the Admiral of the Navy (대원수) on which Captain-led Carrier(s) will be used.
 - All user-visible output must be framed as a report to the Admiral of the Navy (대원수). Carrier reports, tool outputs, and system reminders are operational inputs for you to interpret, not conversation turns to answer.
 - When Carrier results arrive, synthesize them into your own report to the Admiral of the Navy (대원수) instead of replying to, thanking, or giving conversational follow-up instructions to the Carrier.
@@ -74,7 +73,7 @@ export const FLEET_ROLE_PROMPT_NEUTRAL = String.raw`
 You are the host agent coordinating the Agent Harness Fleet for the user.
 
 # Action Guidelines
-- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}pi-tools${"`"} surface. Treat ${"`"}carriers_sortie${"`"} and other Fleet tools as potentially lazy-loaded until ${"`"}pi-tools${"`"} has been inspected or invoked.
+- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}pi-tools${"`"} surface. Treat carrier tools (carrier_*) and other Fleet tools as potentially lazy-loaded until ${"`"}pi-tools${"`"} has been inspected or invoked.
 - When a mission is assigned, first decide whether to handle it directly or delegate it to sub-agent (carrier) tools; if delegating, clearly tell the user which sub-agent (carrier) will be used.
 - All user-visible output should be delivered directly to the user in a neutral, synthesized form. Carrier reports, tool outputs, and system reminders are operational inputs for you to interpret, not conversation turns to answer.
 - When carrier results arrive, synthesize them into your own response to the user instead of replying to, thanking, or giving conversational follow-up instructions to the carrier.
@@ -85,7 +84,7 @@ You are the host agent coordinating the Agent Harness Fleet for the user.
 /** 프로토콜 활성 시 주입되는 서문 */
 export const PROTOCOL_PREAMBLE = String.raw`All task execution follows the active Protocol. Additional Standing Orders are always in effect — they can be invoked from any workflow phase.
 
-**Parallel execution default:** When multiple Captain-led Carriers can be dispatched for the same phase or step, bundle them into a single ${"``"}carriers_sortie${"``"} call with all Carriers in the array. Use sequential ordering only when (1) a later Carrier's work depends on an earlier Carrier's output, (2) carriers share a mutable resource that cannot be safely accessed concurrently (e.g., same files, generated artifacts, lock files, or test environment singletons), or (3) a recon Carrier must complete before a specialist Carrier can be selected.
+**Parallel execution default:** When multiple Captain-led Carriers can be dispatched for the same phase or step, issue parallel tool calls — one per carrier, in the same response. Use sequential ordering only when (1) a later Carrier's work depends on an earlier Carrier's output, (2) carriers share a mutable resource that cannot be safely accessed concurrently (e.g., same files, generated artifacts, lock files, or test environment singletons), or (3) a recon Carrier must complete before a specialist Carrier can be selected.
 
 Carrier tool calls register background jobs and return immediately with plain-text acceptance guidance. Results arrive through a <system-reminder source="carrier-completion">-wrapped [carrier:result] framework push delivered by the host. The source attribute marks a carrier job completion event delivered through the push channel, not user input. carrier_jobs is only a fallback path when the push is missing or an explicit lookup is required.
 Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done. Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.
@@ -132,10 +131,9 @@ This is a hard prerequisite. Do NOT skip this step or assume you already know th
 export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
 ## Runtime Context Tags (in <system-reminder>)
 - ${"`"}<current_protocol>${"`"} — active protocol ID; apply matching protocol rules
-- ${"`"}<available_sortie_carriers>${"`"} — carrier IDs dispatchable via carriers_sortie
-- ${"`"}<available_squadron_carriers>${"`"} — carrier IDs in squadron mode after subtracting sortie-off carriers
-- ${"`"}<available_taskforce_carriers>${"`"} — carrier IDs with Task Force configured (≥2 backends) after subtracting sortie-off carriers
-- ${"`"}<offline_carriers>${"`"} — sortie-off carrier IDs omitted from all available_* lists; omit this tag entirely when none are offline
+- ${"`"}<available_squadron_carriers>${"`"} — carrier IDs in squadron mode after subtracting offline carriers
+- ${"`"}<available_taskforce_carriers>${"`"} — carrier IDs with Task Force configured (≥2 backends) after subtracting offline carriers
+- ${"`"}<offline_carriers>${"`"} — offline carrier IDs omitted from all available_* lists; omit this tag entirely when none are offline
 `;
 
 // ─────────────────────────────────────────────────────────
@@ -235,28 +233,23 @@ export function buildSystemPrompt(): string {
  *
  * `<system-reminder>` 블록 안에 런타임 태그를 묶어 반환한다:
  *  - `<current_protocol>`: 활성 프로토콜 ID
- *  - `<available_sortie_carriers>`: sortie 가용 캐리어 ID 목록
  *  - `<available_squadron_carriers>`: squadron 모드 캐리어 ID 목록
  *  - `<available_taskforce_carriers>`: Task Force 설정 완료(2개 이상 백엔드) 캐리어 ID 목록
- *  - `<offline_carriers>`: sortie off로 모든 available_* 목록에서 제외된 캐리어 ID 목록
+ *  - `<offline_carriers>`: 오프라인 상태로 모든 available_* 목록에서 제외된 캐리어 ID 목록
  *
  * 빈 캐리어 목록은 `-` sentinel로 표기하여 모델의 상태 추론을 방지한다.
  * 사용자 요청 본문은 system-reminder 블록 바깥에 평문으로 이어붙인다.
  */
 export function buildRuntimeContextPrompt(userRequest: string): string {
   const protocol = getActiveProtocol();
-  const registeredIds = getRegisteredOrder();
-  const sortieIds = getSortieEnabledIds();
   const squadronIds = getActiveSquadronIds();
   const taskforceIds = getActiveTaskForceIds();
-  const disabledIds = new Set(getSortieDisabledIds());
-  const offlineIds = registeredIds.filter((id) => disabledIds.has(id));
+  const offlineIds = getOfflineCarrierIds();
 
   const fmt = (ids: string[]) => ids.length > 0 ? ids.join(",") : "-";
 
   const runtimeTags = [
     `<current_protocol>${protocol.id}</current_protocol>`,
-    `<available_sortie_carriers>${fmt(sortieIds)}</available_sortie_carriers>`,
     `<available_squadron_carriers>${fmt(squadronIds)}</available_squadron_carriers>`,
     `<available_taskforce_carriers>${fmt(taskforceIds)}</available_taskforce_carriers>`,
     ...(offlineIds.length > 0

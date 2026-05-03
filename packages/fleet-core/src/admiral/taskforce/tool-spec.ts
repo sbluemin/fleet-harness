@@ -39,7 +39,7 @@ import {
   getActiveTaskForceIds,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  isSortieCarrierEnabled,
+  isCarrierOnline,
   resolveCarrierDisplayName,
 } from "../carrier/framework.js";
 import { buildCarrierSystemPrompt, composeTier2Request } from "../carrier/prompts.js";
@@ -256,8 +256,8 @@ function assertRegisteredCarrier(carrierId: string): void {
 }
 
 function assertSortieEnabled(carrierId: string): void {
-  if (isSortieCarrierEnabled(carrierId)) return;
-  logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `carrier=${carrierId} sortieEnabled=false reason=manually disabled`);
+  if (isCarrierOnline(carrierId)) return;
+  logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `carrier=${carrierId} online=false reason=manually disabled`);
   throw new Error(`Carrier ${formatCarrierIdForMessage(carrierId)} is not available for task force: manually disabled.`);
 }
 

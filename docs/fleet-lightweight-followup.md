@@ -61,7 +61,7 @@ The Pi extension should increasingly read like host wiring. If a module requires
 
 ## Worked Example
 
-- Fleet tool specs for carrier sortie, squadron, taskforce, and carrier job lookup now live behind the `fleet-core` public registry surface.
+- Fleet tool specs for individual carrier tools, squadron, taskforce, and carrier job lookup now live behind the `fleet-core` public registry surface.
 - `pi-fleet-extension/src/tools.ts` acts as a Pi adapter loop: it iterates the core registry and calls `pi.registerTool(...)`.
 - Pi-only surfaces such as custom message rendering and modal/request UI remain in the Pi extension.
 - `createFleetCoreRuntime` (in `fleet-core`) centralizes the initialization of agent runtime, domain stores, settings singletons, and optional service status; the Pi extension (via `src/boot.ts`) acts as the host that triggers this composition and manages its shutdown lifecycle.

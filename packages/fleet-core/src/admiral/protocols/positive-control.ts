@@ -61,7 +61,7 @@ You MAY only:
 \`\`\`
 Admiral of the Navy: Genesis에게 전달 — src/utils.ts의 parseConfig 함수를 리팩터링하라.
 Admiral:       명령 수령. Genesis로 전달합니다.
-               → [carriers_sortie → Genesis, verbatim message]
+               → [carrier_genesis, verbatim message]
 Admiral:       Genesis 보고:
                [raw Genesis output, unmodified]
 \`\`\`

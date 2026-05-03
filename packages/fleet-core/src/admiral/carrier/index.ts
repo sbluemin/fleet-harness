@@ -6,4 +6,4 @@ export * from "./sortie-execute.js";
 export * from "./status-overlay-controller.js";
 export * from "./types.js";
 
-export { buildSortieToolSpec } from "./tool-spec.js";
+export { buildCarrierToolSpecs } from "./tool-spec.js";

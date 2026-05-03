@@ -1,34 +1,28 @@
 /**
- * fleet/carrier/prompts.ts — carriers_sortie 프롬프트 / 스키마 관리 (Tier 1 · Tier 2)
+ * fleet/carrier/prompts.ts — 개별 캐리어 도구 프롬프트 / Tier 1 · Tier 2
  *
- * Tier 1: carriers_sortie 도구 등록에 필요한 프롬프트 메타데이터와 TypeBox 파라미터 스키마.
+ * Tier 1: 개별 캐리어 도구(carrier_<id>) 등록에 필요한 프롬프트 메타데이터와 TypeBox 파라미터 스키마.
  * Tier 2: carrier 메타데이터(permissions, principles, outputFormat)를 원본 request에
  *         주입하여 최종 request를 조립하는 유틸리티.
  *
  * 구조:
- *  Tier 1 — 상수 프롬프트 / build 함수 / 내부 헬퍼
+ *  Tier 1 — buildCarrierToolManifest / buildCarrierRoster / 내부 헬퍼
  *  Tier 2 — composeTier2Request / buildDirectiveSection
  */
 
-import { Type, type TObject } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import { SYSTEM_REMINDER_HINT } from "./constants.js";
 import type { ToolPromptManifest } from "../../services/tool-registry/index.js";
 import { getRegisteredCarrierConfig } from "./framework.js";
 import type { CarrierMetadata } from "./types.js";
 
 // ═════════════════════════════════════════════════════════
-// Tier 1 — carriers_sortie 도구 프롬프트 / 스키마
+// Tier 1 — 개별 캐리어 도구 프롬프트 / 스키마
 // ═════════════════════════════════════════════════════════
 
 // ─────────────────────────────────────────────────────────
 // 공유 타입
 // ─────────────────────────────────────────────────────────
-
-/** carriers_sortie 도구의 단일 carrier 배정 항목 */
-export interface CarrierAssignment {
-  carrier: string;
-  request: string;
-}
 
 /** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
 export interface CarrierRosterOptions {
@@ -41,130 +35,52 @@ export interface CarrierRosterOptions {
 }
 
 // ─────────────────────────────────────────────────────────
-// 1. 상수 프롬프트
+// 1. 개별 캐리어 도구 Manifest 빌더
 // ─────────────────────────────────────────────────────────
 
 /**
- * carriers_sortie 도구 설명 (Tool Schema — LLM이 도구 선택 시 참조).
- * registerTool의 `description` 필드에 전달됩니다.
+ * CarrierMetadata에서 개별 캐리어 도구의 ToolPromptManifest를 생성합니다.
+ * metadata의 Tier 1 필드를 사용하여 manifest의 description, whenToUse, whenNotToUse,
+ * usageGuidelines, guardrails를 생성합니다.
  */
-export const SORTIE_MANIFEST: ToolPromptManifest = {
-  id: "carriers_sortie",
-  tag: "carriers_sortie",
-  title: "carriers_sortie Tool Guidelines",
-  description:
-    `Register fire-and-forget carrier jobs for task execution — single or multiple(parallel).` +
-    ` This is the only tool for delegating tasks to carrier agents.` +
-    ` It returns a job_id immediately; results arrive through [carrier:result] push; carrier_jobs is fallback/explicit lookup only.` +
-    ` Use it whenever you want to delegate implementation, analysis, exploration, or any coding task to one or more carriers.` +
-    ` Always bundle all intended carriers into one call — never split a parallel batch into multiple sequential calls.`,
-  promptSnippet:
-    `carriers_sortie — Register 1+ carrier jobs for task delegation. Results arrive later via [carrier:result]; carrier_jobs is fallback/explicit lookup only.`,
-  whenToUse: [
-    `carriers_sortie is the only way to delegate tasks to carrier agents.` +
-      ` Always use this tool — never attempt to invoke carriers directly.`,
-    `You can launch a single carrier or multiple carriers in parallel — when launching multiple carriers, you MUST include all of them in a single carriers_sortie call.` +
-      ` This tool provides unified progress tracking and registers detached work; carrier_jobs is fallback/explicit lookup only.`,
-  ],
-  whenNotToUse: [],
-  usageGuidelines: [
-    `carriers_sortie requires an expected_carrier_count field that MUST be set BEFORE filling the carriers array.` +
-      ` Decide the total number of carriers you plan to launch first, write that number into expected_carrier_count, then fill the carriers array to match.` +
-      ` The system will immediately hard-error if expected_carrier_count does not equal the actual carriers array length — the call will be rejected and you must resubmit with the correct count and all intended carriers.` +
-      ` If a previous carriers_sortie call failed, retry with ALL originally intended carriers if the cause was a validation error or transient issue; if an inactive or unregistered carrier caused the failure, review alternatives or ask for clarification before retrying.`,
-    `When composing a carrier request, provide only background, context, objective, and constraints.` +
-      ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
-      ` Use the Tags listed for each carrier to structure your request.`,
-    `Each carrier ID may appear at most once per carriers_sortie call.` +
-      ` Duplicate carrier IDs in the same call are rejected by the system and cause the entire sortie to fail.` +
-      ` If you need two different workloads handled by carriers of the same type, assign each to a different carrier ID within the same call's carriers array.`,
-    `Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
-      ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 3h.`,
-    `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
-      ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
-    `Structure each carrier request using that carrier's required tags listed in <fleet section="roster">; missing required tags cause hard-error rejection by the dispatcher.`,
-  ],
-  guardrails: [
-    `Multiple agents may be working on this codebase at the same time on a single filesystem and branch.` +
-      ` Only touch changes you made — never revert or overwrite modifications made by others.` +
-      ` Prefer precise edits (edit) over full-file writes (write).` +
-      ` Always re-read a file before modifying it, as it may have changed since your last read.`,
-  ],
-};
-
-export const FLEET_SORTIE_DESCRIPTION = SORTIE_MANIFEST.description;
-
-// ─────────────────────────────────────────────────────────
-// 2. Build 함수
-// ─────────────────────────────────────────────────────────
-
-/**
- * carriers_sortie의 `promptSnippet` 값을 반환합니다.
- * 시스템 프롬프트 "Available tools" 섹션에 한 줄로 표시됩니다.
- */
-export function buildSortieToolPromptSnippet(): string {
-  return SORTIE_MANIFEST.promptSnippet;
-}
-
-/**
- * carriers_sortie의 `promptGuidelines` 배열을 반환합니다.
- *
- * 고정 3개 항목 + 등록된 carrier별 설명을 동적으로 합산하여
- * 시스템 프롬프트 "Guidelines" 섹션에 주입될 최종 배열을 구성합니다.
- *
- * @param carrierIds sortie 가능한 carrier ID 목록
- */
-export function buildSortieToolPromptGuidelines(): string[] {
-  return [
-    ...SORTIE_MANIFEST.whenToUse,
-    ...SORTIE_MANIFEST.whenNotToUse,
-    ...SORTIE_MANIFEST.usageGuidelines,
-    ...(SORTIE_MANIFEST.guardrails ?? []),
-  ];
-}
-
-/**
- * carriers_sortie의 TypeBox `parameters` 스키마를 반환합니다.
- *
- * enabledIds를 기반으로 `carrier` 파라미터의 description을 동적으로 조합하여
- * LLM이 가용한 carrier ID를 정확히 파악할 수 있도록 합니다.
- *
- * @param enabledIds sortie 가능한 carrier ID 목록
- */
-export function buildSortieToolSchema(enabledIds: string[]): TObject {
-  const availableDesc =
-    enabledIds.length > 0
-      ? `Carrier ID to sortie. Available: ${enabledIds.join(", ")}`
-      : `Carrier ID to sortie. (No carriers currently available)`;
-
-  return Type.Object({
-    expected_carrier_count: Type.Integer({
-      minimum: 1,
-      description:
-        "Number of carriers you intend to launch in this call. " +
-        "Set this FIRST before composing the carriers array. " +
-        "Must exactly equal the length of the carriers array — a mismatch is a hard error and the call will be rejected.",
-    }),
-    carriers: Type.Array(
-      Type.Object({
-        carrier: Type.String({
-          description: availableDesc,
-        }),
-        request: Type.String({
-          description: "The task/prompt to send to this carrier",
-        }),
-      }),
-      {
-        minItems: 1,
-        description:
-          "Array of carrier assignments. Length must equal expected_carrier_count. " +
-          "When launching multiple carriers in parallel, ALL intended carriers MUST be listed together here in a SINGLE fire-and-forget job registration call — never split a parallel batch into multiple sequential calls. " +
-          "Example (single): [{\"carrier\": \"genesis\", \"request\": \"...\"}] " +
-          "Example (parallel): [{\"carrier\": \"sentinel\", \"request\": \"...\"}, {\"carrier\": \"genesis\", \"request\": \"...\"}] " +
-          "MUST be a native JSON array [...], NOT a stringified JSON string.",
-      },
+export function buildCarrierToolManifest(
+  carrierId: string,
+  displayName: string,
+  metadata: CarrierMetadata,
+): ToolPromptManifest {
+  return {
+    id: `carrier_${carrierId}`,
+    tag: `carrier_${carrierId}`,
+    title: `${displayName} Tool Guidelines`,
+    description:
+      `Register a fire-and-forget carrier job for ${displayName} (${metadata.title}).` +
+      ` Returns a job_id immediately; results arrive through [carrier:result] push; carrier_jobs is fallback/explicit lookup only.`,
+    promptSnippet:
+      `carrier_${carrierId} — Register a ${displayName} carrier job for task delegation.` +
+      ` Results arrive later via [carrier:result]; carrier_jobs is fallback/explicit lookup only.`,
+    whenToUse: [
+      `carrier_${carrierId} is the tool for delegating tasks to ${displayName} (${metadata.title}).` +
+        ` Use it when: ${metadata.whenToUse.join(", ")}.`,
+    ],
+    whenNotToUse: metadata.whenNotToUse.map((item) =>
+      `Do NOT use carrier_${carrierId} when: ${item}.`,
     ),
-  });
+    usageGuidelines: [
+      `When composing a request for ${displayName}, provide only background, context, objective, and constraints.` +
+        ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.`,
+      `Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
+        ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 3h.`,
+      `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
+        ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
+      ...buildRequestBlockGuidelines(carrierId, metadata),
+    ],
+    guardrails: [
+      `Multiple agents may be working on this codebase at the same time on a single filesystem and branch.` +
+        ` Only touch changes you made — never revert or overwrite modifications made by others.` +
+        ` Prefer precise edits (edit) over full-file writes (write).` +
+        ` Always re-read a file before modifying it, as it may have changed since your last read.`,
+    ],
+  };
 }
 
 /**
@@ -173,6 +89,17 @@ export function buildSortieToolSchema(enabledIds: string[]): TObject {
  */
 export function buildCarrierSystemPrompt(): string {
   return SYSTEM_REMINDER_HINT.trim();
+}
+
+/**
+ * 개별 캐리어 도구의 TypeBox `parameters` 스키마를 반환합니다.
+ */
+export function buildCarrierToolSchema() {
+  return Type.Object({
+    request: Type.String({
+      description: "The task/prompt to send to this carrier",
+    }),
+  });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -199,7 +126,7 @@ export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
  * compact roster 문자열을 생성합니다.
  *
  * 이 함수가 모든 carrier 로스터 렌더링의 SSoT입니다.
- * Admiral 시스템 프롬프트, sortie/squadron/taskforce promptGuidelines
+ * Admiral 시스템 프롬프트, squadron/taskforce promptGuidelines
  * 모두 이 함수를 통해 로스터를 생성합니다.
  *
  * @param carrierIds 렌더링할 carrier ID 목록
@@ -253,6 +180,24 @@ export function buildCarrierRoster(
   }
 
   return lines.join("\n");
+}
+
+/**
+ * 개별 캐리어 도구의 usageGuidelines에 포함할 request-block 가이드라인을 생성합니다.
+ */
+function buildRequestBlockGuidelines(
+  carrierId: string,
+  metadata: CarrierMetadata,
+): string[] {
+  if (metadata.requestBlocks.length === 0) return [];
+  const requiredBlocks = metadata.requestBlocks.filter((b) => b.required);
+  if (requiredBlocks.length === 0) return [];
+
+  const tags = requiredBlocks.map((b) => `<${b.tag}>`).join(", ");
+  return [
+    `Structure your request using required tags: ${tags}.` +
+      ` Missing required tags cause hard-error rejection by the dispatcher.`,
+  ];
 }
 
 // ═════════════════════════════════════════════════════════

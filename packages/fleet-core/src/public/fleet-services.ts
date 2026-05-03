@@ -4,7 +4,7 @@ import * as SquadronServiceFacade from "../admiral/squadron/index.js";
 import * as TaskForceServiceFacade from "../admiral/taskforce/index.js";
 import * as AgentFacade from "../admiral/agent/index.js";
 import { buildCarrierJobsToolSpec } from "../admiral/carrier-jobs/tool-spec.js";
-import { buildSortieToolSpec } from "../admiral/carrier/tool-spec.js";
+import { buildCarrierToolSpecs } from "../admiral/carrier/tool-spec.js";
 import { buildSquadronToolSpec } from "../admiral/squadron/tool-spec.js";
 import { buildTaskForceToolSpec } from "../admiral/taskforce/tool-spec.js";
 import {
@@ -113,11 +113,10 @@ function computeMcpToolHash(tools: readonly Tool[]): string {
 
 function buildFleetToolSpecs(): readonly AgentToolSpec[] {
   const specs: AgentToolSpec[] = [];
-  const sortie = buildSortieToolSpec();
+  specs.push(...buildCarrierToolSpecs());
   const squadron = buildSquadronToolSpec();
   const taskForce = buildTaskForceToolSpec();
 
-  if (sortie) specs.push(sortie);
   if (squadron) specs.push(squadron);
   if (taskForce) specs.push(taskForce);
   specs.push(buildCarrierJobsToolSpec());

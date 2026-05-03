@@ -4,7 +4,7 @@ import { buildCarrierResultSystemReminder, type CarrierJobSummary } from "../../
 
 const BASE_SUMMARY: CarrierJobSummary = {
   jobId: "sortie:1",
-  tool: "carriers_sortie",
+  tool: "carrier_genesis",
   status: "done",
   startedAt: 1,
   finishedAt: 2,
