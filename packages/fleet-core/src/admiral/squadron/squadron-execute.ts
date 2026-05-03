@@ -1,4 +1,6 @@
 import type { CarrierJobStatus, CarrierJobSummary } from "../../services/job/index.js";
+import type { CarrierMetadata } from "../carrier/types.js";
+import { validateRequiredRequestBlocks } from "../carrier/request-blocks.js";
 import { SQUADRON_MAX_INSTANCES, type SquadronResult } from "./types.js";
 
 export interface SquadronSubtaskInput {
@@ -93,4 +95,23 @@ export function buildSquadronJobSummary(
     carriers: [carrierId],
     error,
   };
+}
+
+/**
+ * squadron 서브태스크 request들에 대해 필수 request-block 검증을 수행합니다.
+ *
+ * @returns 첫 번째 검증 실패 결과, 모두 통과하면 null
+ */
+export function validateSquadronRequestBlocks(
+  carrierId: string,
+  meta: CarrierMetadata,
+  subtasks: readonly { request: string }[],
+): { error: string; subtaskIndex: number; missing: string[] } | null {
+  for (let i = 0; i < subtasks.length; i++) {
+    const result = validateRequiredRequestBlocks(meta, subtasks[i]!.request, carrierId);
+    if (!result.ok) {
+      return { error: result.error, subtaskIndex: i, missing: result.missing };
+    }
+  }
+  return null;
 }

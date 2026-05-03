@@ -13,8 +13,6 @@ import {
   deriveToolPromptGuidelines,
   deriveToolPromptSnippet,
 } from "../../services/tool-registry/index.js";
-import { getRegisteredCarrierConfig } from "../carrier/framework.js";
-import { getConfiguredTaskForceBackends } from "../store/index.js";
 import { TASKFORCE_CLI_TYPES } from "./types.js";
 
 // ─────────────────────────────────────────────────────────
@@ -62,6 +60,7 @@ export const TASKFORCE_MANIFEST: ToolPromptManifest = {
       ` Each backend runs independently — a failure in one does not abort the others.`,
     `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
       ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
+    `Structure each carrier request using that carrier's required tags listed in <fleet section="roster">; missing required tags cause hard-error rejection by the dispatcher.`,
   ],
 };
 
@@ -82,7 +81,13 @@ export function buildTaskForcePromptSnippet(): string {
  * @param configuredCarrierIds TF 편성이 가능한 carrier ID 목록
  */
 export function buildTaskForcePromptGuidelines(configuredCarrierIds: string[]): string[] {
-  return deriveToolPromptGuidelines(TASKFORCE_MANIFEST, buildCarrierRoster(configuredCarrierIds));
+  if (configuredCarrierIds.length === 0) {
+    return deriveToolPromptGuidelines(TASKFORCE_MANIFEST, [
+      `## Task Force Carriers\nNo carriers currently meet the Task Force ≥2 backend requirement.` +
+      ` To configure, ${TASKFORCE_CONFIGURE_HINT}.`,
+    ]);
+  }
+  return deriveToolPromptGuidelines(TASKFORCE_MANIFEST, []);
 }
 
 /**
@@ -102,44 +107,4 @@ export function buildTaskForceSchema(configuredCarrierIds: string[]): TObject {
       description: "The task/prompt to cross-validate across the carrier's configured CLI backends",
     }),
   });
-}
-
-// ─────────────────────────────────────────────────────────
-// 내부 헬퍼
-// ─────────────────────────────────────────────────────────
-
-/** 구성 완료된 carrier 로스터 생성 */
-function buildCarrierRoster(carrierIds: string[]): string[] {
-  if (carrierIds.length === 0) {
-    return [
-      `## Task Force Carriers\nNo carriers currently meet the Task Force ≥2 backend requirement.` +
-      ` To configure, ${TASKFORCE_CONFIGURE_HINT}.`,
-    ];
-  }
-
-  const lines: string[] = [];
-  lines.push(`## Available Carriers for Task Force`);
-  lines.push(`All backend comparison reports return to the Admiral (제독); they do not report directly to the Admiral of the Navy (대원수).`);
-
-  for (const carrierId of carrierIds) {
-    const config = getRegisteredCarrierConfig(carrierId);
-    if (!config) continue;
-    const configuredBackends = getConfiguredTaskForceBackends(carrierId);
-    const backendList = configuredBackends
-      .map((cliType) => CLI_DISPLAY_NAMES[cliType] ?? cliType)
-      .join(", ");
-
-    const meta = config.carrierMetadata;
-    if (!meta) {
-      lines.push(`- **${carrierId}** (${config.displayName}): Uses ${config.displayName}'s role.`);
-      lines.push(`  Configured backends: ${backendList}`);
-      continue;
-    }
-
-    lines.push(`- **${carrierId}** (${config.displayName} · ${meta.title}): ${meta.summary}`);
-    lines.push(`  Configured backends: ${backendList}`);
-    lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
-  }
-
-  return [lines.join("\n")];
 }

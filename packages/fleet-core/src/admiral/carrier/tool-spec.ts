@@ -109,7 +109,7 @@ export function buildSortieToolSpec(): AgentToolSpec | null {
   registerToolPromptManifest(SORTIE_MANIFEST);
 
   const enabledIds = getSortieEnabledIds();
-  const mergedGuidelines = buildSortieToolPromptGuidelines(enabledIds);
+  const mergedGuidelines = buildSortieToolPromptGuidelines();
 
   return {
     name: "carriers_sortie",

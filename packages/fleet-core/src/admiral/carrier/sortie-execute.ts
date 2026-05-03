@@ -1,5 +1,7 @@
 import type { CarrierJobLaunchResponse, CarrierJobStatus, CarrierJobSummary } from "../../services/job/index.js";
+import { getRegisteredCarrierConfig } from "./framework.js";
 import type { CarrierAssignment } from "./prompts.js";
+import { validateRequiredRequestBlocks } from "./request-blocks.js";
 
 export interface CarrierSortieOutcome {
   readonly carrierId: string;
@@ -59,6 +61,27 @@ export function validateSortieAssignments(options: ValidateSortieAssignmentsOpti
       throw new Error(`Duplicate carrier: "${assignment.carrier}". Each carrier can only be assigned once.`);
     }
     seen.add(assignment.carrier);
+  }
+
+  // 필수 request-block 검증 — detached job 시작 전
+  for (const assignment of assignments) {
+    const config = getRegisteredCarrierConfig(assignment.carrier);
+    if (!config?.carrierMetadata) continue;
+    const validation = validateRequiredRequestBlocks(
+      config.carrierMetadata,
+      assignment.request,
+      assignment.carrier,
+    );
+    if (!validation.ok) {
+      return {
+        assignments,
+        rejection: {
+          job_id: options.jobId,
+          accepted: false,
+          error: validation.error,
+        },
+      };
+    }
   }
 
   return { assignments };

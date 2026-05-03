@@ -1,5 +1,7 @@
 import { CLI_DISPLAY_NAMES } from "../../constants.js";
 import type { CarrierJobStatus, CarrierJobSummary } from "../../services/job/index.js";
+import type { CarrierMetadata } from "../carrier/types.js";
+import { validateRequiredRequestBlocks } from "../carrier/request-blocks.js";
 import type { TaskForceCliType, TaskForceResult } from "./types.js";
 
 export function assertTaskForceBackendCount(carrierId: string, backends: readonly TaskForceCliType[]): readonly TaskForceCliType[] {
@@ -90,4 +92,19 @@ export function sanitizeTaskForceToolLabel(text: string): string {
 
 function formatCarrierIdForMessage(carrierId: string): string {
   return JSON.stringify(carrierId);
+}
+
+/**
+ * taskforce request에 대해 필수 request-block 검증을 수행합니다.
+ *
+ * @returns 검증 실패 결과, 통과하면 null
+ */
+export function validateTaskForceRequestBlocks(
+  carrierId: string,
+  meta: CarrierMetadata,
+  request: string,
+): { error: string; missing: string[] } | null {
+  const result = validateRequiredRequestBlocks(meta, request, carrierId);
+  if (!result.ok) return { error: result.error, missing: result.missing };
+  return null;
 }

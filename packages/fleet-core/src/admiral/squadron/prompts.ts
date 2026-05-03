@@ -12,7 +12,6 @@ import {
   deriveToolPromptGuidelines,
   deriveToolPromptSnippet,
 } from "../../services/tool-registry/index.js";
-import { getRegisteredCarrierConfig } from "../carrier/framework.js";
 import { SQUADRON_MAX_INSTANCES } from "./types.js";
 
 // ─────────────────────────────────────────────────────────
@@ -60,6 +59,7 @@ export const SQUADRON_MANIFEST: ToolPromptManifest = {
       ` Final interpretation is PI's responsibility after [carrier:result] push; carrier_jobs is fallback/explicit lookup only.`,
     `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
       ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
+    `Structure each carrier request using that carrier's required tags listed in <fleet section="roster">; missing required tags cause hard-error rejection by the dispatcher.`,
   ],
 };
 
@@ -80,7 +80,13 @@ export function buildSquadronPromptSnippet(): string {
  * @param enabledCarrierIds squadron 활성 carrier ID 목록
  */
 export function buildSquadronPromptGuidelines(enabledCarrierIds: string[]): string[] {
-  return deriveToolPromptGuidelines(SQUADRON_MANIFEST, buildCarrierRoster(enabledCarrierIds));
+  if (enabledCarrierIds.length === 0) {
+    return deriveToolPromptGuidelines(SQUADRON_MANIFEST, [
+      `## Squadron Carriers\nNo carriers are currently enabled for Squadron.` +
+      ` To enable, ${SQUADRON_CONFIGURE_HINT}.`,
+    ]);
+  }
+  return deriveToolPromptGuidelines(SQUADRON_MANIFEST, []);
 }
 
 /**
@@ -109,38 +115,4 @@ export function buildSquadronSchema(enabledCarrierIds: string[]): TObject {
       { minItems: 1, maxItems: SQUADRON_MAX_INSTANCES },
     ),
   });
-}
-
-// ─────────────────────────────────────────────────────────
-// 내부 헬퍼
-// ─────────────────────────────────────────────────────────
-
-/** squadron 활성 carrier 로스터 생성 */
-function buildCarrierRoster(carrierIds: string[]): string[] {
-  if (carrierIds.length === 0) {
-    return [
-      `## Squadron Carriers\nNo carriers are currently enabled for Squadron.` +
-      ` To enable, ${SQUADRON_CONFIGURE_HINT}.`,
-    ];
-  }
-
-  const lines: string[] = [];
-  lines.push(`## Available Carriers for Squadron`);
-  lines.push(`All Squadron instance reports return to the Admiral (제독); they do not report directly to the Admiral of the Navy (대원수).`);
-
-  for (const carrierId of carrierIds) {
-    const config = getRegisteredCarrierConfig(carrierId);
-    if (!config) continue;
-
-    const meta = config.carrierMetadata;
-    if (!meta) {
-      lines.push(`- **${carrierId}** (${config.displayName}): Uses ${config.displayName}'s role.`);
-      continue;
-    }
-
-    lines.push(`- **${carrierId}** (${config.displayName} · ${meta.title}): ${meta.summary}`);
-    lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
-  }
-
-  return [lines.join("\n")];
 }

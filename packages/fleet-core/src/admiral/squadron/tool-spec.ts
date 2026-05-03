@@ -13,6 +13,7 @@ import type { CarrierExecResult } from "../agent/executor.js";
 
 import {
   appendBlock,
+  buildCarrierJobId,
   buildCarrierResultSystemReminder,
   finalizeDetachedJob,
   launchResponseResult,
@@ -54,6 +55,7 @@ import {
   buildSquadronRunId,
   computeSquadronFinalStatus,
   sanitizeSquadronSubtasks,
+  validateSquadronRequestBlocks,
   validateSquadronSubtaskCount,
   validateSquadronSubtaskLimit,
 } from "./squadron-execute.js";
@@ -132,6 +134,28 @@ export function buildSquadronToolSpec(): AgentToolSpec | null {
 
       const sanitizedSubtasks = sanitizeSquadronSubtasks(subtasks);
       const carrierConfig = getRegisteredCarrierConfig(carrierId);
+
+      // 필수 request-block 검증 — detached job 시작 전
+      if (carrierConfig?.carrierMetadata) {
+        const blockValidation = validateSquadronRequestBlocks(
+          carrierId,
+          carrierConfig.carrierMetadata,
+          sanitizedSubtasks,
+        );
+        if (blockValidation) {
+          logDebug(
+            SQUADRON_LOG_CATEGORY_ERROR,
+            `request-block validation failed carrier=${carrierId} subtask=${blockValidation.subtaskIndex} missing=${blockValidation.missing.join(",")}`,
+          );
+          const jobId = buildCarrierJobId("squadron", ctx.toolCallId ?? "");
+          return launchResponseResult({
+            job_id: jobId,
+            accepted: false,
+            error: blockValidation.error,
+          });
+        }
+      }
+
       const composedSubtasks = sanitizedSubtasks.map((subtask) =>
         carrierConfig?.carrierMetadata
           ? composeTier2Request(carrierConfig.carrierMetadata, subtask.request)

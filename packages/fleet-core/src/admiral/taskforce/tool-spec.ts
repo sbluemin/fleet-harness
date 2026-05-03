@@ -16,6 +16,7 @@ import {
 } from "../../constants.js";
 import {
   appendBlock,
+  buildCarrierJobId,
   buildCarrierResultSystemReminder,
   finalizeDetachedJob,
   launchResponseResult,
@@ -58,6 +59,7 @@ import {
   buildTaskForceJobSummary,
   buildTaskForceRequestKey,
   computeTaskForceFinalStatus,
+  validateTaskForceRequestBlocks,
 } from "./taskforce-execute.js";
 import {
   type TaskForceCliType,
@@ -130,6 +132,29 @@ export function buildTaskForceToolSpec(): AgentToolSpec | null {
         TASKFORCE_LOG_CATEGORY_VALIDATE,
         `validated carrier=${carrierId} backends=${activeBackends.length} ids=${activeBackends.join(", ")}`,
       );
+
+      // 필수 request-block 검증 — detached job 시작 전
+      const carrierConfig = getRegisteredCarrierConfig(carrierId);
+      if (carrierConfig?.carrierMetadata) {
+        const blockValidation = validateTaskForceRequestBlocks(
+          carrierId,
+          carrierConfig.carrierMetadata,
+          request,
+        );
+        if (blockValidation) {
+          logDebug(
+            TASKFORCE_LOG_CATEGORY_ERROR,
+            `request-block validation failed carrier=${carrierId} missing=${blockValidation.missing.join(",")}`,
+          );
+          const jobId = buildCarrierJobId("taskforce", ctx.toolCallId ?? "");
+          return launchResponseResult({
+            job_id: jobId,
+            accepted: false,
+            error: blockValidation.error,
+          });
+        }
+      }
+
       const composedRequest = buildComposedTaskForceRequest(carrierId, request);
 
       const launch = startDetachedJob({

@@ -22,11 +22,11 @@ import { getAllToolPromptManifests, renderToolPromptManifestTagBlock } from "../
 import {
   getActiveSquadronIds,
   getActiveTaskForceIds,
-  getRegisteredCarrierConfig,
   getRegisteredOrder,
   getSortieEnabledIds,
   getSortieDisabledIds,
 } from "./carrier/framework.js";
+import { buildCarrierRoster } from "./carrier/prompts.js";
 import { isFleetCoreDevMode } from "../runtime-flags.js";
 
 // ─────────────────────────────────────────────────────────
@@ -92,12 +92,6 @@ Do not poll, wait-check, or call carrier_jobs merely to see whether the job is d
 
 ${"``"}carrier_jobs(action:"result", format:"full")${"``"} is finalized-only and remains available for repeated lookups for 3 hours. Re-checks are allowed within that TTL; after expiry the full response is unavailable.`;
 
-/** 시스템 태그 힌트 — carrier 시스템 프롬프트 전용 (admiral은 boot 프리앰블에서 처리) */
-export const SYSTEM_REMINDER_HINT = String.raw`
-Tool results and user messages may include <system-reminder> or other tags. Tags contain information from the system and bear no direct relation to the specific tool results or user messages in which they appear.
-<system-reminder source="carrier-completion">: carrier job completion event delivered through the host push channel. This is an automated framework signal carrying [carrier:result].
-`;
-
 /** Admiral 런타임 컨텍스트 태그 해석 규칙 — ACP 초기 프롬프트에만 포함 */
 export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
 ## Runtime Context Tags (in <system-reminder>)
@@ -152,7 +146,7 @@ export function buildSystemPrompt(): string {
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
   const carrierIds = getRegisteredOrder();
   if (carrierIds.length > 0) {
-    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds)}\n</fleet>`);
+    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
   }
 
   // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 + 런타임 전환 메타 지시 ──
@@ -227,46 +221,4 @@ export function buildRuntimeContextPrompt(userRequest: string): string {
   ].join("\n");
 
   return `<system-reminder>\n${runtimeTags}\n</system-reminder>\n\n${userRequest}`;
-}
-
-/**
- * 등록 캐리어의 Tier 1 메타데이터로 compact roster 문자열을 조립한다.
- *
- * ACP 시스템 프롬프트의 `section="roster"` 섹션 전용. Admiral이 직접
- * 조립 주체를 맡아 shipyard의 sortie 로스터 합성과 독립적으로 운영한다
- * (squadron/taskforce가 각자 자체 로스터를 조립하는 패턴과 동일).
- */
-function buildCarrierRoster(carrierIds: string[]): string {
-  const lines: string[] = [];
-  lines.push(`# Available Carriers`);
-
-  for (const carrierId of carrierIds) {
-    const config = getRegisteredCarrierConfig(carrierId);
-    if (!config) continue;
-
-    const meta = config.carrierMetadata;
-    if (!meta) {
-      // 메타데이터 없는 carrier는 기본 1줄 표시
-      lines.push(`- **${carrierId}** (${config.displayName}): Delegate tasks to ${config.displayName}.`);
-      continue;
-    }
-
-    const name = config.displayName;
-    lines.push(`- **${carrierId}** (${name} · ${meta.title}): ${meta.summary}`);
-    lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
-    if (meta.whenNotToUse.length > 0) {
-      lines.push(`  NOT for:`);
-      for (const item of meta.whenNotToUse) {
-        lines.push(`    - ${item}`);
-      }
-    }
-    if (meta.requestBlocks.length > 0) {
-      const tags = meta.requestBlocks
-        .map((b) => b.required ? `<${b.tag}>` : `<${b.tag}?>`)
-        .join(" ");
-      lines.push(`  Required request blocks — wrap content in these (? = optional): ${tags}`);
-    }
-  }
-
-  return lines.join("\n");
 }

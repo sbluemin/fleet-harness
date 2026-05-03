@@ -11,7 +11,7 @@
  */
 
 import { Type, type TObject } from "@sinclair/typebox";
-import { SYSTEM_REMINDER_HINT } from "../prompts.js";
+import { SYSTEM_REMINDER_HINT } from "./constants.js";
 import type { ToolPromptManifest } from "../../services/tool-registry/index.js";
 import { getRegisteredCarrierConfig } from "./framework.js";
 import type { CarrierMetadata } from "./types.js";
@@ -28,6 +28,16 @@ import type { CarrierMetadata } from "./types.js";
 export interface CarrierAssignment {
   carrier: string;
   request: string;
+}
+
+/** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
+export interface CarrierRosterOptions {
+  /** 로스터 섹션 제목 (기본: "## Available Carriers") */
+  heading?: string;
+  /** 로스터 본문 앞에 추가할 안내 라인들 */
+  preambleLines?: string[];
+  /** 특정 carrierId에 대해 로스터 엔트리 뒤에 추가할 라인 생성기 */
+  extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
 }
 
 // ─────────────────────────────────────────────────────────
@@ -77,6 +87,7 @@ export const SORTIE_MANIFEST: ToolPromptManifest = {
       ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 3h.`,
     `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
       ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
+    `Structure each carrier request using that carrier's required tags listed in <fleet section="roster">; missing required tags cause hard-error rejection by the dispatcher.`,
   ],
   guardrails: [
     `Multiple agents may be working on this codebase at the same time on a single filesystem and branch.` +
@@ -108,13 +119,12 @@ export function buildSortieToolPromptSnippet(): string {
  *
  * @param carrierIds sortie 가능한 carrier ID 목록
  */
-export function buildSortieToolPromptGuidelines(carrierIds: string[]): string[] {
+export function buildSortieToolPromptGuidelines(): string[] {
   return [
     ...SORTIE_MANIFEST.whenToUse,
     ...SORTIE_MANIFEST.whenNotToUse,
     ...SORTIE_MANIFEST.usageGuidelines,
     ...(SORTIE_MANIFEST.guardrails ?? []),
-    ...buildCarrierGuidelines(carrierIds),
   ];
 }
 
@@ -175,20 +185,42 @@ export function buildCarrierSystemPrompt(): string {
 // ─────────────────────────────────────────────────────────
 
 /**
- * 등록된 carrier들의 CarrierMetadata Tier 1 정보를 읽어
- * "## Available Carriers" compact roster 문자열을 생성합니다.
- * Captain (함장) 페르소나는 title 필드에 반영된 값을 그대로 사용합니다.
+ * requestBlock 메타데이터를 compact multiline 가이드로 렌더링합니다.
+ * Tier 1 routing 프롬프트 전용 — Tier 2 composition과는 독립적입니다.
  *
- * carrier당 ~4줄로 압축하여 시스템 프롬프트 토큰을 절약합니다.
- *
- * carriers_sortie promptGuidelines 합성 전용. Admiral(ACP 시스템 프롬프트)과
- * squadron/taskforce는 각자 자체 로스터를 조립하므로 이 함수와는 독립적입니다.
+ * @returns 빈 배열 (requestBlocks가 없거나 모두 빈 태그인 경우)
  */
-function buildCarrierRoster(carrierIds: string[]): string {
+export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
+  if (meta.requestBlocks.length === 0) return [];
+  return meta.requestBlocks.map((b) => {
+    const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
+    const label = b.required ? "required" : "optional";
+    return `  - ${sig} ${label}: ${b.hint}`;
+  });
+}
+
+/**
+ * 등록된 carrier들의 CarrierMetadata Tier 1 정보를 읽어
+ * compact roster 문자열을 생성합니다.
+ *
+ * 이 함수가 모든 carrier 로스터 렌더링의 SSoT입니다.
+ * Admiral 시스템 프롬프트, sortie/squadron/taskforce promptGuidelines
+ * 모두 이 함수를 통해 로스터를 생성합니다.
+ *
+ * @param carrierIds 렌더링할 carrier ID 목록
+ * @param options heading, preambleLines, extraLines로 caller별 차이를 조정
+ */
+export function buildCarrierRoster(
+  carrierIds: string[],
+  options?: CarrierRosterOptions,
+): string {
+  const { heading, preambleLines, extraLines } = options ?? {};
   const lines: string[] = [];
-  lines.push(`## Available Carriers`);
-  lines.push(`Captain (함장) persona is encoded in each carrier title; Carrier remains the system entity name.`);
-  lines.push(`All Carrier reports return to the Admiral (제독); only the Admiral reports onward to the Admiral of the Navy (대원수).`);
+
+  lines.push(heading ?? `## Available Carriers`);
+  if (preambleLines) {
+    for (const p of preambleLines) lines.push(p);
+  }
 
   for (const carrierId of carrierIds) {
     const config = getRegisteredCarrierConfig(carrierId);
@@ -196,38 +228,36 @@ function buildCarrierRoster(carrierIds: string[]): string {
 
     const meta = config.carrierMetadata;
     if (!meta) {
-      // 메타데이터 없는 carrier는 기본 1줄 표시
       lines.push(`- **${carrierId}** (${config.displayName}): Delegate tasks to ${config.displayName}.`);
+      if (extraLines) {
+        const extras = extraLines(carrierId, undefined);
+        for (const e of extras) lines.push(e);
+      }
       continue;
     }
 
     const name = config.displayName;
-    // 1줄: carrier ID, 표시명, Captain 직함, 요약
     lines.push(`- **${carrierId}** (${name} · ${meta.title}): ${meta.summary}`);
-    // 2줄: 긍정 호출 조건
     lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
-    // 3줄이하: 부정 호출 조건 (멀티라인 불릿)
     if (meta.whenNotToUse.length > 0) {
       lines.push(`  NOT for:`);
       for (const item of meta.whenNotToUse) {
         lines.push(`    - ${item}`);
       }
     }
-    // 4줄: 필수 요청 블록 — CLI가 반드시 준수해야 할 구조 (?는 optional)
-    if (meta.requestBlocks.length > 0) {
-      const tags = meta.requestBlocks
-        .map((b) => b.required ? `<${b.tag}>` : `<${b.tag}?>`)
-        .join(" ");
-      lines.push(`  Required request blocks — wrap content in these (? = optional): ${tags}`);
+    // request-block 가이드 — 태그 서명 + hint 텍스트
+    const blockLines = formatRequestBlocksGuide(meta);
+    if (blockLines.length > 0) {
+      lines.push(`  Request blocks — wrap content in these (? = optional):`);
+      lines.push(...blockLines);
+    }
+    if (extraLines) {
+      const extras = extraLines(carrierId, meta);
+      for (const e of extras) lines.push(e);
     }
   }
 
   return lines.join("\n");
-}
-
-/** carriers_sortie promptGuidelines용 래퍼 — 배열 형태로 반환 */
-function buildCarrierGuidelines(carrierIds: string[]): string[] {
-  return [buildCarrierRoster(carrierIds)];
 }
 
 // ═════════════════════════════════════════════════════════

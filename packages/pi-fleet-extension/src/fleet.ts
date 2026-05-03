@@ -245,7 +245,9 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
     scheduleOperationNameGeneration(ctx, event.prompt);
     if (process.env.PI_GRAND_FLEET_ROLE === "fleet") return;
-    return { systemPrompt: `${event.systemPrompt}\n\n${buildSystemPrompt()}` };
+    const fleetPrompt = buildSystemPrompt();
+    getLogAPI().debug("acp-system-prompt", fleetPrompt, { category: "acp-system-prompt" });
+    return { systemPrompt: `${event.systemPrompt}\n\n${fleetPrompt}` };
   });
 
   pi.on("session_start", (_event, ctx) => {
