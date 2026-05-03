@@ -9,9 +9,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`carriers_sortie` tool removed**: The single multi-carrier dispatch tool `carriers_sortie` is replaced by per-carrier tools named `carrier_<id>` (e.g., `carrier_genesis`, `carrier_vanguard`). Each registered carrier is now exposed as an explicit MCP tool with a single `request` parameter, allowing the host LLM to select carriers directly without indirection through a shared dispatcher.
 - **`sortieDisabled` renamed to `offline`**: The fleet-store key and all related framework APIs (`isSortieCarrierEnabled` → `isCarrierOnline`, `setSortieDisabled` → `setOffline`, etc.) have been renamed. No on-demand migration is performed; existing `sortieDisabled` keys are ignored.
 
+### Added
+- **Automatic fleet data directory migration**: On startup, `pi-fleet-extension/src/fleet.ts` resolves the canonical fleet data directory via `resolveFleetDataDir()`, which detects a legacy `~/.pi/fleet/` tree and migrates it on demand to `~/.fleet/`. The migration deep-merges JSON files (`settings.json`, `states.json` — objects merge recursively, arrays dedupe-and-concat, primitives prefer the current `~/.fleet/` value), recursively moves directories, and backs up clashing non-mergeable files as `<file>.legacy-backup-<ISO timestamp>` rather than overwriting current state.
+- **Atomic migration lock**: Concurrent boots coordinate through `~/.fleet.migration.lock/` (atomic `mkdir`) with a PID/host owner record (`owner.json`), 25 ms retry cadence, 5 s timeout, and 30 s stale-lock recovery, ensuring exactly-once migration even when multiple Pi sessions cold-start simultaneously.
+
 ### Changed
 - **Per-carrier tool spec via `CarrierMetadata`**: Tool spec construction is now a shared helper that consumes `CarrierMetadata` directly, eliminating the per-carrier `buildSortieToolSpec` indirection.
 - **Runtime context tags**: `<available_sortie_carriers>` is removed from the runtime context block. Each `carrier_<id>` tool's availability is reflected by its presence in the registered tool list.
+- **Fleet data directory relocated**: Runtime data and configuration moved from `~/.pi/fleet/` to `~/.fleet/`. The path is now `os.homedir()`-anchored and decoupled from the `PI_CODING_AGENT_DIR` environment variable, so Fleet state remains stable regardless of how the underlying Pi runtime is reconfigured. Existing `~/.pi/fleet/` installations are migrated automatically on next launch (see Added).
+
+### Security
+- **Hardened fleet data directory I/O**: All filesystem operations on `~/.fleet/` and the migration lock open files with `O_NOFOLLOW | O_NONBLOCK` and use `lstat`-based pre-checks. Directories are forced to mode `0o700` and files to `0o600`. Symlinked entries inside the legacy `~/.pi/fleet/` tree are skipped during migration, and a symlinked `~/.fleet.migration.lock` path aborts startup fail-closed instead of following the link.
 
 ## [0.10.0] - 2026-05-03
 

@@ -1,12 +1,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { attachStatusContext, detachStatusContext, refreshStatusNow } from "@sbluemin/unified-agent";
 import type { CliType, ServiceStatusContextPort } from "@sbluemin/unified-agent";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import * as os from "node:os";
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
+import { getFleetDataDir } from "@sbluemin/fleet-core/services/data-dir";
 import { createFleetCoreRuntime, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 import {
   buildSystemPrompt,
@@ -146,7 +146,7 @@ export function shouldBootFleet(): boolean {
 }
 
 export function resolveFleetDataDir(): string {
-  return path.join(os.homedir(), ".pi", "fleet");
+  return getFleetDataDir();
 }
 
 export function initializeFleetRuntime(dataDir: string, pi?: ExtensionAPI): void {
@@ -364,13 +364,13 @@ function persistDirectChatIfEmpty(ctx: ExtensionContext): void {
   if (!header) return;
 
   const dir = path.dirname(sessionFile);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   let content = JSON.stringify(header) + "\n";
   for (const entry of entries) {
     content += JSON.stringify(entry) + "\n";
   }
-  writeFileSync(sessionFile, content);
+  fs.writeFileSync(sessionFile, content);
 }
 
 function bindFleetHostSession(ctx: ExtensionContext): void {

@@ -113,6 +113,11 @@
       "import": "./dist/services/log.js",
       "require": "./dist/services/log.cjs"
     },
+    "./services/data-dir": {
+      "types": "./dist/services/data-dir.d.ts",
+      "import": "./dist/services/data-dir.js",
+      "require": "./dist/services/data-dir.cjs"
+    },
     "./admiralty": {
       "types": "./dist/admiralty.d.ts",
       "import": "./dist/admiralty.js",

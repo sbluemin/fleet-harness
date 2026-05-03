@@ -6,12 +6,11 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 
-// Fleet 전역 데이터 디렉토리: ~/.pi/fleet/
-// os.homedir() 직접 사용으로 PI_CODING_AGENT_DIR 환경변수 override와 무관하게 경로를 고정한다.
-const FLEET_DATA_DIR = path.join(os.homedir(), ".pi", "fleet");
-const GLOBAL_SETTINGS_PATH = path.join(FLEET_DATA_DIR, "settings.json");
+import { getFleetDataDir } from "../data-dir/paths.js";
+const NOFOLLOW_FLAG = fs.constants.O_NOFOLLOW ?? 0;
+const NONBLOCK_FLAG = fs.constants.O_NONBLOCK ?? 0;
+const SECURE_DIR_MODE = 0o700;
 
 /** 특정 섹션 로드 */
 export function loadSection<T = Record<string, unknown>>(key: string): T {
@@ -30,9 +29,12 @@ export function saveSection(key: string, data: unknown): void {
 
 /** 전체 JSON 객체 읽기 */
 function readGlobalJson(): Record<string, unknown> {
+  const settingsPath = path.join(getFleetDataDir(), "settings.json");
   try {
-    if (!fs.existsSync(GLOBAL_SETTINGS_PATH)) return {};
-    const raw = JSON.parse(fs.readFileSync(GLOBAL_SETTINGS_PATH, "utf-8"));
+    const stat = safeLstat(settingsPath);
+    if (!stat) return {};
+    if (!stat.isFile() || stat.isSymbolicLink()) return {};
+    const raw = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     if (typeof raw !== "object" || raw === null) return {};
     return raw as Record<string, unknown>;
   } catch {
@@ -42,9 +44,51 @@ function readGlobalJson(): Record<string, unknown> {
 
 /** 전체 JSON 객체 쓰기 */
 function writeGlobalJson(data: Record<string, unknown>): void {
-  // 디렉토리가 없으면 생성 (~/.pi/fleet/ 첫 실행 시)
-  if (!fs.existsSync(FLEET_DATA_DIR)) {
-    fs.mkdirSync(FLEET_DATA_DIR, { recursive: true });
+  const fleetDataDir = getFleetDataDir();
+  // 디렉토리가 없으면 생성 (~/.fleet/ 첫 실행 시)
+  ensureSafeDirectory(fleetDataDir);
+  const settingsPath = path.join(fleetDataDir, "settings.json");
+  const stat = safeLstat(settingsPath);
+  if (stat?.isSymbolicLink()) return;
+
+  const flags =
+    fs.constants.O_WRONLY |
+    fs.constants.O_CREAT |
+    fs.constants.O_TRUNC |
+    NOFOLLOW_FLAG |
+    NONBLOCK_FLAG;
+  const fd = fs.openSync(settingsPath, flags, 0o600);
+  try {
+    if (!fs.fstatSync(fd).isFile()) return;
+    fs.writeSync(fd, JSON.stringify(data, null, 2), undefined, "utf-8");
+  } finally {
+    fs.closeSync(fd);
   }
-  fs.writeFileSync(GLOBAL_SETTINGS_PATH, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function ensureSafeDirectory(dirPath: string): void {
+  const stat = safeLstat(dirPath);
+  if (stat) {
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`Unsafe Fleet settings directory: ${dirPath}`);
+    }
+    fs.chmodSync(dirPath, SECURE_DIR_MODE);
+    return;
+  }
+  fs.mkdirSync(dirPath, { mode: SECURE_DIR_MODE, recursive: true });
+  const created = safeLstat(dirPath);
+  if (!created?.isDirectory() || created.isSymbolicLink()) {
+    throw new Error(`Unsafe Fleet settings directory: ${dirPath}`);
+  }
+  fs.chmodSync(dirPath, SECURE_DIR_MODE);
+}
+
+function safeLstat(targetPath: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(targetPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    throw error;
+  }
 }

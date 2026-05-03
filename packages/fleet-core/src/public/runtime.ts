@@ -3,6 +3,8 @@ import {
 } from "@sbluemin/unified-agent";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
+import { getFleetDataDir } from "../services/data-dir/paths.js";
+import { migrateLegacyFleetDataDir } from "../services/data-dir/migrate.js";
 import {
   initSettingsService,
   resetSettingsService,
@@ -61,6 +63,9 @@ export function createFleetCoreRuntime(
   options: FleetCoreRuntimeOptions,
 ): FleetCoreRuntimeContext {
   setFleetCoreBootMode(options.bootMode ?? "normal");
+  if (options.dataDir === getFleetDataDir()) {
+    migrateLegacyFleetDataDir(options.dataDir);
+  }
   initAgentSessionRuntime(options.dataDir);
   initStore(options.dataDir);
   const settings = new SettingsService();

@@ -15,9 +15,6 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import * as os from "node:os";
-import * as path from "node:path";
-
 import {
   AgentSession,
   type ExtensionAPI,
@@ -776,9 +773,6 @@ export function registerProviderGuardCommand(pi: ExtensionAPI): void {
 // ═══════════════════════════════════════════════════════════════════════════
 
 type ProviderModels = NonNullable<Parameters<ExtensionAPI["registerProvider"]>[1]["models"]>;
-
-const FLEET_DATA_DIR = path.join(os.homedir(), ".pi", "fleet");
-void FLEET_DATA_DIR;
 
 const PROVIDER_REGISTRATIONS = Object.entries(getModelsRegistry().providers)
   .flatMap(([cliKey, provider]) => {

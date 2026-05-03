@@ -1,7 +1,7 @@
 /**
  * directive-refinement/settings.ts — 설정 파일 관리
  *
- * core-settings API를 통해 ~/.pi/fleet/settings.json의 "metaphor-directive-refinement" 섹션에서 읽고 쓴다.
+ * core-settings API를 통해 ~/.fleet/settings.json의 "metaphor-directive-refinement" 섹션에서 읽고 쓴다.
  */
 
 import type { ReasoningLevel } from "./constants.js";

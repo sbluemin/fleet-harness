@@ -22,7 +22,8 @@ export default defineConfig({
     "metaphor/operation-name": "src/metaphor/operation-name/index.ts",
     "metaphor/directive-refinement": "src/metaphor/directive-refinement/index.ts",
     "services/settings": "src/services/settings/index.ts",
-    "services/log": "src/services/log/index.ts"
+    "services/log": "src/services/log/index.ts",
+    "services/data-dir": "src/services/data-dir/index.ts"
   },
   format: ["esm", "cjs"],
   dts: true,

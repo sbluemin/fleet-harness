@@ -104,6 +104,42 @@ describe("core log settings store", () => {
     expect(fs.existsSync(safeFallbackLogFile)).toBe(true);
     expect(safeFallbackLogFile.startsWith(testHomeDir)).toBe(true);
   });
+
+  it("does not append file logs through symlinked log files", async () => {
+    const { store } = await loadLogStoreModules();
+    const { logsDir, safeFallbackLogFile } = getFileLogTestPaths();
+    const outsideFile = path.join(testHomeDir, "outside.log");
+    fs.mkdirSync(logsDir, { recursive: true });
+    fs.writeFileSync(outsideFile, "outside");
+    fs.symlinkSync(outsideFile, safeFallbackLogFile);
+
+    store.appendLog({
+      timestamp: "invalid",
+      level: "info",
+      category: DEFAULT_LOG_CATEGORY,
+      source: "test",
+      message: "should not follow",
+    }, FILE_LOG_SETTINGS);
+
+    expect(fs.readFileSync(outsideFile, "utf-8")).toBe("outside");
+    expect(fs.lstatSync(safeFallbackLogFile).isSymbolicLink()).toBe(true);
+  });
+
+  it("keeps Fleet log directories owner-only", async () => {
+    const { store } = await loadLogStoreModules();
+    const { logsDir } = getFileLogTestPaths();
+
+    store.appendLog({
+      timestamp: "invalid",
+      level: "info",
+      category: DEFAULT_LOG_CATEGORY,
+      source: "test",
+      message: "secure mode",
+    }, FILE_LOG_SETTINGS);
+
+    expect(fs.statSync(path.dirname(logsDir)).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(logsDir).mode & 0o777).toBe(0o700);
+  });
 });
 
 async function loadLogStoreModules(): Promise<{
@@ -155,12 +191,14 @@ function cleanupFileLogTestArtifacts(): void {
 }
 
 function getFileLogTestPaths(): {
+  logsDir: string;
   outsideLogFile: string;
   safeFallbackLogFile: string;
 } {
-  const fleetDataDir = path.join(testHomeDir, ".pi", "fleet");
+  const fleetDataDir = path.join(testHomeDir, ".fleet");
   const logsDir = path.join(fleetDataDir, "logs");
   return {
+    logsDir,
     outsideLogFile: path.join(fleetDataDir, "aa.log"),
     safeFallbackLogFile: path.join(logsDir, "general-unknown-date.log"),
   };

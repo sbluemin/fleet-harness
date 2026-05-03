@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
+import { getFleetDataDir } from "../data-dir/paths.js";
 import { getSettingsService } from "../settings/runtime.js";
 import type { CoreLogAPI, LogCategoryMeta, LogEntry, LogLevel, LogSettings } from "./types.js";
 import { CORE_LOG_KEY, DEFAULT_LOG_CATEGORY, LOG_LEVEL_PRIORITY } from "./types.js";
@@ -13,8 +13,9 @@ export interface CoreLogSettingsPort {
 
 const SECTION_KEY = "core-log";
 const LEGACY_SECTION_KEY = "core-debug-log";
-const FLEET_DATA_DIR = path.join(os.homedir(), ".pi", "fleet");
-const LOGS_DIR = path.join(FLEET_DATA_DIR, "logs");
+const NOFOLLOW_FLAG = fs.constants.O_NOFOLLOW ?? 0;
+const NONBLOCK_FLAG = fs.constants.O_NONBLOCK ?? 0;
+const SECURE_DIR_MODE = 0o700;
 const RING_BUFFER_SIZE = 100;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:T|$)/;
 const UNKNOWN_LOG_DATE = "unknown-date";
@@ -147,11 +148,15 @@ export function clearLogs(): void {
 
 export function clearFileLogs(): void {
   try {
-    if (!fs.existsSync(LOGS_DIR)) return;
-    const files = fs.readdirSync(LOGS_DIR);
+    if (!isSafeDirectory(getLogsDir())) return;
+    const files = fs.readdirSync(getLogsDir());
     for (const file of files) {
       if (file.endsWith(".log")) {
-        fs.unlinkSync(path.join(LOGS_DIR, file));
+        const filePath = path.join(getLogsDir(), file);
+        const stat = safeLstat(filePath);
+        if (stat?.isFile() && !stat.isSymbolicLink()) {
+          fs.unlinkSync(filePath);
+        }
       }
     }
   } catch {
@@ -180,22 +185,26 @@ function ensureMigrated(): void {
 
 function writeToFile(entry: LogEntry): void {
   try {
-    if (!fs.existsSync(LOGS_DIR)) {
-      fs.mkdirSync(LOGS_DIR, { recursive: true });
-    }
+    const fleetDataDir = getFleetDataDir();
+    ensureSafeDirectory(fleetDataDir);
+    ensureSafeDirectory(path.join(fleetDataDir, "logs"));
 
     const date = getSafeLogDate(entry.timestamp);
     const category = sanitizeCategory(entry.category);
-    const filePath = path.join(LOGS_DIR, `${category}-${date}.log`);
+    const filePath = path.join(fleetDataDir, "logs", `${category}-${date}.log`);
+    const stat = safeLstat(filePath);
+    if (stat?.isSymbolicLink() || (stat && !stat.isFile())) return;
     const time = entry.timestamp.slice(11, 23);
     const line = `[${time}] [${entry.level.toUpperCase().padEnd(5)}] [${entry.source}] ${entry.message}\n`;
     const flags =
       fs.constants.O_WRONLY |
       fs.constants.O_CREAT |
       fs.constants.O_APPEND |
-      fs.constants.O_NOFOLLOW;
+      NOFOLLOW_FLAG |
+      NONBLOCK_FLAG;
     const fd = fs.openSync(filePath, flags, 0o600);
     try {
+      if (!fs.fstatSync(fd).isFile()) return;
       fs.writeSync(fd, line);
     } finally {
       fs.closeSync(fd);
@@ -217,6 +226,38 @@ function sanitizeCategory(raw: string): string {
   return sanitized;
 }
 
+function ensureSafeDirectory(dirPath: string): void {
+  const stat = safeLstat(dirPath);
+  if (stat) {
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`Unsafe Fleet log directory: ${dirPath}`);
+    }
+    fs.chmodSync(dirPath, SECURE_DIR_MODE);
+    return;
+  }
+  fs.mkdirSync(dirPath, { mode: SECURE_DIR_MODE, recursive: true });
+  const created = safeLstat(dirPath);
+  if (!created?.isDirectory() || created.isSymbolicLink()) {
+    throw new Error(`Unsafe Fleet log directory: ${dirPath}`);
+  }
+  fs.chmodSync(dirPath, SECURE_DIR_MODE);
+}
+
+function isSafeDirectory(dirPath: string): boolean {
+  const stat = safeLstat(dirPath);
+  return Boolean(stat?.isDirectory() && !stat.isSymbolicLink());
+}
+
+function safeLstat(targetPath: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(targetPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 function getSafeLogDate(timestamp: string): string {
   const match = ISO_DATE_PATTERN.exec(timestamp);
   return match ? match[0].slice(0, 10) : UNKNOWN_LOG_DATE;
@@ -226,4 +267,8 @@ function getSettingsPort(): CoreLogSettingsPort {
   const api = settingsPort ?? getSettingsService();
   if (!api) throw new Error("Settings API not available");
   return api;
+}
+
+function getLogsDir(): string {
+  return path.join(getFleetDataDir(), "logs");
 }
