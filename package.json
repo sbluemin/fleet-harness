@@ -1,6 +1,6 @@
 {
   "name": "fleet-harness",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "scripts": {
