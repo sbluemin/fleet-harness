@@ -5,7 +5,7 @@ interface ArchiveState {
   archives: Map<string, JobArchive>;
 }
 
-const ARCHIVE_STATE_KEY = "__pi_fleet_job_stream_archive__";
+const ARCHIVE_STATE_KEY = "__fleet_harness_job_stream_archive__";
 const MAX_BLOCKS = 2000;
 const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const PRESERVE_HEAD_BLOCKS = 20;

@@ -6,7 +6,7 @@ interface SummaryCacheState {
   onEvict?: (jobId: string) => void;
 }
 
-const SUMMARY_CACHE_KEY = "__pi_fleet_job_summary_cache__";
+const SUMMARY_CACHE_KEY = "__fleet_harness_job_summary_cache__";
 const DEFAULT_MAX_ENTRIES = 50;
 
 export function putJobSummary(summary: CarrierJobSummary, now = Date.now()): void {

@@ -24,8 +24,8 @@ Before cloning, ask the user whether it is okay to clone the repository under th
 > The example below assumes the current directory has been approved by the user.
 
 ```bash
-git clone https://github.com/sbluemin/pi-fleet.git
-cd pi-fleet
+git clone https://github.com/sbluemin/fleet-harness.git
+cd fleet-harness
 ```
 
 ## 2. Install dependencies and register global commands
@@ -42,7 +42,7 @@ pnpm setup
 
 # Install all workspace dependencies. The root postinstall hook runs `pnpm -r build`,
 # which builds packages/unified-agent, packages/fleet-core, packages/fleet-wiki,
-# packages/fleet-wiki-web, and packages/pi-fleet-extension in topological order.
+# packages/fleet-wiki-web, and packages/fleet-harness-extension in topological order.
 pnpm install
 
 # Approve native build scripts (one-time per machine).
@@ -65,13 +65,13 @@ pnpm --filter @sbluemin/unified-agent link --global
 > - `fleet` — launches `pi` with the standard Fleet mode.
 > - `fleet-exp` — launches standard Fleet mode with `PI_EXPERIMENTAL=1` enabled for the child process.
 > - `gfleet` — launches `pi` with Grand Fleet mode enabled for the child process.
-> - `fleet-dev` — launches standard Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/pi-fleet-extension/src/index.ts` directly from this checkout.
-> - `gfleet-dev` — launches Grand Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/pi-fleet-extension/src/index.ts` directly from this checkout.
+> - `fleet-dev` — launches standard Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/fleet-harness-extension/src/index.ts` directly from this checkout.
+> - `gfleet-dev` — launches Grand Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/fleet-harness-extension/src/index.ts` directly from this checkout.
 > - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of the `pi` runtime — does not require pi-coding-agent to be installed or pi extensions to be configured.
 >
 > `pnpm --filter @sbluemin/unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
 >
-> Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/pi-fleet-extension/src/`; they do not require separate `pnpm install` commands.
+> Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/fleet-harness-extension/src/`; they do not require separate `pnpm install` commands.
 
 ### Install troubleshooting
 
@@ -89,26 +89,27 @@ Add or update the `extensions` field in your pi settings file so it points to th
 ```json
 {
   "extensions": [
-    "<path-to-pi-fleet>/packages/pi-fleet-extension/src/index.ts"
+    "<path-to-fleet-harness>/packages/fleet-harness-extension/src/index.ts"
   ]
 }
 ```
 
-> Replace `<path-to-pi-fleet>` with the actual path where you cloned the repository.
+> Replace `<path-to-fleet-harness>` with the actual path where you cloned the repository.
 >
 > **Update rules (for AI one-shot setup):**
 >
 > - **File or directory missing**: create `~/.pi/agent/` if needed, then write the JSON above.
 > - **File exists without an `extensions` field**: add the field, preserving every other top-level field.
-> - **`extensions` already contains a pi-fleet entry** (e.g. legacy `<path-to-pi-fleet>/extensions` from older checkouts, or any path under `<path-to-pi-fleet>/`): replace that entry with the path above. Do not append a duplicate.
-> - **`extensions` references unrelated extensions**: keep them; only add or update the pi-fleet entry.
+> - **`extensions` already contains a fleet-harness entry** (e.g. legacy `<path-to-fleet-harness>/extensions` from older checkouts, or any path under `<path-to-fleet-harness>/`): replace that entry with the path above. Do not append a duplicate.
+> - **`extensions` contains a pi-fleet-extension entry** (e.g. `<path-to-fleet-harness>/packages/pi-fleet-extension/src/index.ts` from older checkouts): replace that entry with the path above. Do not append a duplicate.
+> - **`extensions` references unrelated extensions**: keep them; only add or update the fleet-harness entry.
 >
 > **Entry options:**
 >
-> - Development entry: `packages/pi-fleet-extension/src/index.ts`
-> - Built entry after `pnpm --filter @sbluemin/pi-fleet-extension build`: `packages/pi-fleet-extension/dist/index.js`
+> - Development entry: `packages/fleet-harness-extension/src/index.ts`
+> - Built entry after `pnpm --filter @sbluemin/fleet-harness-extension build`: `packages/fleet-harness-extension/dist/index.js`
 > - Product core: `packages/fleet-core/` contains Pi-agnostic runtime, public APIs, MCP/tool registry, job infrastructure, prompt policy, and metaphor logic.
-> - PI extension adapter: `packages/pi-fleet-extension/src/` wires keybind, settings, log, welcome, HUD, shell, thinking-timer, provider guard, ACP provider modules, metaphor UI, carriers, Admiral/Bridge libraries, Agent Panel, and unified pipeline.
+> - PI extension adapter: `packages/fleet-harness-extension/src/` wires keybind, settings, log, welcome, HUD, shell, thinking-timer, provider guard, ACP provider modules, metaphor UI, carriers, Admiral/Bridge libraries, Agent Panel, and unified pipeline.
 > - Fleet Wiki web surface: `packages/fleet-wiki-web/` provides the `fleet-wiki` CLI, a detached Node.js HTTP server, and a vanilla TypeScript SPA built with Vite. Reads `.fleet/knowledge/` from the current working directory and ships independently of the Pi runtime.
 >
 > PI settings accept TypeScript or JavaScript extension entries. Use the TypeScript entry for local development, or the built JavaScript entry after building the workspace package.

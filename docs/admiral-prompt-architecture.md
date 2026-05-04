@@ -4,7 +4,7 @@ chronicle_access: forbidden
 edit_policy: |
   DO NOT MODIFY VIA CHRONICLE.
   This document is the Admiral persona's self-model — its operational reference
-  for how the system prompt and runtime context flow through pi-fleet. Chronicle
+  for how the system prompt and runtime context flow through fleet-harness. Chronicle
   (the chronicle carrier) is FORBIDDEN from editing this file under any tool path,
   including documentation sweeps, change-impact audits, .md cascade synchronization,
   PR summary generation, release-note compilation, or AGENTS.md doctrine alignment.
@@ -31,7 +31,7 @@ edit_policy: |
 > invariants. Updates must come **only from the Admiral**, in response to **verified**
 > changes in `admiral/prompts.ts`, `admiral/agent/internal/session-engine.ts`,
 > `admiral/protocols/`, `admiral/carrier/prompts.ts`,
-> `pi-fleet-extension/src/fleet.ts` (boot preamble / RISEN),
+> `fleet-harness-extension/src/fleet.ts` (boot preamble / RISEN),
 > `packages/fleet-core/src/runtime-flags.ts` (boot-mode type and setter), or
 > `packages/fleet-core/src/public/runtime.ts` (runtime composition entry point).
 >
@@ -71,16 +71,16 @@ unless this document is suspected of drift.
 │  ① BOOT — one before_agent_start handler                            │
 │                                                                     │
 │    registerBoot()                                                   │
-│      pi-fleet-extension/src/fleet.ts:149-174                        │
-│      → reads env vars (PI_GRAND_FLEET_ROLE, PI_FLEET_DEV, etc.)     │
+│      fleet-harness-extension/src/fleet.ts:149-174                        │
+│      → reads env vars (PI_GRAND_FLEET_ROLE, FLEET_HARNESS_DEV, etc.)     │
 │      → sets module-level bootConfig (dev, role, fleet, grandFleet)  │
 │      → does NOT inject a system prompt                              │
 │                                                                     │
 │    Handler: wireFleetPiEvents()                                     │
-│      pi-fleet-extension/src/fleet.ts:207-214                        │
+│      fleet-harness-extension/src/fleet.ts:207-214                        │
 │      → appends { systemPrompt: buildSystemPrompt() }                │
 │        buildSystemPrompt() internally prepends FLEET_PREAMBLE       │
-│        + PI_FLEET_DEV_RISEN_PROMPT when bootMode === "dev"           │
+│        + FLEET_HARNESS_DEV_RISEN_PROMPT when bootMode === "dev"           │
 │                                                                     │
 │    Pi calls one handler. The ACP layer sees:                        │
 │      PREAMBLE + [RISEN if bootMode==="dev"] + fleet sections        │
@@ -124,24 +124,24 @@ including the preamble prefix and optional dev slate that precede the fleet sect
 
 ### 3.1 Boot Preamble (buildSystemPrompt-managed, always present)
 
-`registerBoot()` (`pi-fleet-extension/src/fleet.ts:149-174`) reads environment
+`registerBoot()` (`fleet-harness-extension/src/fleet.ts:149-174`) reads environment
 variables and writes the module-level `bootConfig`. It no longer injects a system
 prompt — prompt injection is fully owned by `buildSystemPrompt()`.
 
 `buildSystemPrompt()` unconditionally prepends `FLEET_PREAMBLE`, then conditionally
-prepends `PI_FLEET_DEV_RISEN_PROMPT` when `bootMode === "dev"`:
+prepends `FLEET_HARNESS_DEV_RISEN_PROMPT` when `bootMode === "dev"`:
 
 | Segment | Condition | Source |
 |---------|-----------|--------|
 | `FLEET_PREAMBLE` | Always | `fleet.ts:97-103` — XML block parsing guide + `<system-reminder>` usage hint |
-| `PI_FLEET_DEV_RISEN_PROMPT` | `bootMode === "dev"` | `fleet.ts:105-119` — RISEN development context (≈15 lines). Contains the 3-step pre-work documentation check, Fleet carrier dispatch rule, and "All responses must be written in Korean." |
+| `FLEET_HARNESS_DEV_RISEN_PROMPT` | `bootMode === "dev"` | `fleet.ts:105-119` — RISEN development context (≈15 lines). Contains the 3-step pre-work documentation check, Fleet carrier dispatch rule, and "All responses must be written in Korean." |
 
 `bootMode` is set via `createFleetCoreRuntime()` (`packages/fleet-core/src/public/runtime.ts`)
 and stored in `packages/fleet-core/src/runtime-flags.ts` via `setFleetCoreBootMode()`.
 `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. In dev mode, the RISEN
 context replaces persona/role/tone; see Section 3.2 for how the conditional works.
 
-The `fleet-dev` CLI (`bin/fleet-dev.js:4`) sets `PI_FLEET_DEV=1` via `_launcher.js:14`;
+The `fleet-dev` CLI (`bin/fleet-dev.js:4`) sets `FLEET_HARNESS_DEV=1` via `_launcher.js:14`;
 the extension maps this env var to `bootMode: "dev"` when composing the runtime.
 
 ### 3.2 `buildSystemPrompt()` (fleet-core, always present)
@@ -156,13 +156,13 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │  0. FLEET_PREAMBLE  (plain text prefix, not a <fleet> block)        │
 │     Condition: Always                                               │
 │     Content:  <fleet> XML parsing guide + <system-reminder> hint    │
-│     Source:   pi-fleet-extension/src/fleet.ts:97-103                │
+│     Source:   fleet-harness-extension/src/fleet.ts:97-103                │
 │                                                                     │
-│  0b. PI_FLEET_DEV_RISEN_PROMPT  (plain text prefix)                 │
+│  0b. FLEET_HARNESS_DEV_RISEN_PROMPT  (plain text prefix)                 │
 │     Condition: bootMode === "dev"  (isFleetCoreDevMode() true)      │
 │     Content:  RISEN dev context: 3-step pre-work docs check,        │
 │               carrier dispatch rules, Korean response requirement   │
-│     Source:   pi-fleet-extension/src/fleet.ts:105-119               │
+│     Source:   fleet-harness-extension/src/fleet.ts:105-119               │
 │     ★ When this is prepended, sections 1–3 below are OMITTED.       │
 │       Dev mode provides its own role/tone via the RISEN context.    │
 │                                                                     │
@@ -363,7 +363,7 @@ The Admiral's own decision flow at the start of every task:
 ┌──────────────────────── DECISION FLOW ────────────────────────────┐
 │                                                                   │
 │  Step 0.  Pre-work documentation check (dev-mode rule from RISEN).
-   When bootMode === "dev" is active (PI_FLEET_DEV=1 at launch), the Admiral must verify:
+   When bootMode === "dev" is active (FLEET_HARNESS_DEV=1 at launch), the Admiral must verify:
     1. docs/pi-development-reference.md is read for PI SDK / extension context
     2. docs/admiral-workflow-reference.md is read for architecture / delegation
     3. AGENTS.md is checked in the project root AND every touched subdirectory
@@ -437,7 +437,7 @@ The pattern is always: **static frame tells me how, runtime prefix tells me whom
 |-------|--------|--------|
 | System prompt is frozen at boot | Carriers registered after boot have no Tier-1 metadata in `<fleet section="roster">`. They appear in `<available_*>` tags but their use-cases / NOT-fors / request blocks are absent. | `prompts.ts:147-150` |
 | Protocol catalog is fully embedded | The active protocol's *body* is read statically from the catalog — there is no per-turn injection of the active protocol's body, only its id. | `prompts.ts:127-187` |
-| Protocol switching is lazy | Alt+1..9 only persists `activeProtocol` in settings and updates the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. | `pi-fleet-extension/src/fleet.ts:364-385` |
+| Protocol switching is lazy | Alt+1..9 only persists `activeProtocol` in settings and updates the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. | `fleet-harness-extension/src/fleet.ts:364-385` |
 | Executor path has no runtime context | `carrier_<id>` / `carrier_squadron` / `carrier_taskforce` send the request verbatim; sub-agents do not see `<current_protocol>` or `<available_*>` tags. By design — Tier-2 context is composed into the request body instead. | `executor-engine.ts:298, 411` |
 | `setSystemPrompt()` does not exist | The unified-agent client cannot mutate the system prompt mid-session. Drift forces session destruction and reconnect. | `unified-agent/src/client/IUnifiedAgentClient.ts:215-239` |
 | `bootMode` drives dev-mode branch | `bootMode` (`"dev" \| "normal"`) is set via `createFleetCoreRuntime()` (`public/runtime.ts`) and stored in `runtime-flags.ts` via `setFleetCoreBootMode()`. `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. When true, `buildSystemPrompt()` omits persona/role/tone and prepends the RISEN dev context instead of the naval fleet persona. | `runtime-flags.ts:1-15`, `prompts.ts:127-144` |
@@ -450,8 +450,8 @@ mid-session system-prompt mutation, or expecting the executor path to surface
 `<current_protocol>` to sub-agents).
 
 One additional self-check the Admiral must perform: when operating in `fleet-dev`
-mode (`bootMode === "dev"`, launched via `PI_FLEET_DEV=1`), the RISEN dev context
-(`PI_FLEET_DEV_RISEN_PROMPT`) contains a mandatory 3-step documentation check. The
+mode (`bootMode === "dev"`, launched via `FLEET_HARNESS_DEV=1`), the RISEN dev context
+(`FLEET_HARNESS_DEV_RISEN_PROMPT`) contains a mandatory 3-step documentation check. The
 Admiral must **actually perform** those checks, not just claim they were performed.
 They are: (1) read `docs/pi-development-reference.md`,
 (2) read `docs/admiral-workflow-reference.md`, (3) check root + touched `AGENTS.md`
@@ -478,8 +478,8 @@ the following code changes ship:
   changes (currently it returns `SYSTEM_REMINDER_HINT.trim()` only).
 - A `setSystemPrompt()`-equivalent API is introduced on the unified-agent client.
 - A new protocol is added or the protocol-switching mechanism stops being lazy.
-- `FLEET_PREAMBLE` or `PI_FLEET_DEV_RISEN_PROMPT` content changes
-  (`pi-fleet-extension/src/fleet.ts:97-119`).
+- `FLEET_PREAMBLE` or `FLEET_HARNESS_DEV_RISEN_PROMPT` content changes
+  (`fleet-harness-extension/src/fleet.ts:97-119`).
 - `BootMode` type, `setFleetCoreBootMode()`, `getBootMode()`, or `isFleetCoreDevMode()`
   changes (`packages/fleet-core/src/runtime-flags.ts`).
 - `createFleetCoreRuntime()` signature or `bootMode` wiring changes

@@ -3,7 +3,7 @@ packages:
   - "packages/fleet-core"
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"
-  - "packages/pi-fleet-extension"
+  - "packages/fleet-harness-extension"
 allowBuilds:
   '@google/genai': true
   esbuild: true

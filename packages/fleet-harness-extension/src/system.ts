@@ -11,7 +11,7 @@ export function registerSystemSettingsCommand(ctx: ExtensionAPI): void {
       const guardEnabled = getGuardState().enabled;
       const options = [
         `Provider Guard: ${guardEnabled ? "ON" : "OFF"}`,
-        "pi-fleet 업데이트 실행",
+        "fleet-harness 업데이트 실행",
       ];
 
       const choice = await commandCtx.ui.select("시스템 설정:", options);
@@ -19,9 +19,9 @@ export function registerSystemSettingsCommand(ctx: ExtensionAPI): void {
 
       if (choice.startsWith("Provider Guard")) {
         toggleProviderGuardForCommand(ctx, commandCtx);
-      } else if (choice.startsWith("pi-fleet")) {
+      } else if (choice.startsWith("fleet-harness")) {
         ctx.sendUserMessage(createFleetUpdatePrompt(FLEET_ROOT));
-        commandCtx.ui.notify("pi-fleet 업데이트 작업을 AI에게 전달했습니다.", "info");
+        commandCtx.ui.notify("fleet-harness 업데이트 작업을 AI에게 전달했습니다.", "info");
       }
     },
   });

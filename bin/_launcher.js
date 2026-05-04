@@ -11,7 +11,7 @@ function launch({ mode, dev, experimental }) {
   const env = { ...process.env };
 
   if (dev) {
-    env.PI_FLEET_DEV = "1";
+    env.FLEET_HARNESS_DEV = "1";
   }
 
   if (mode === "grand") {
@@ -49,7 +49,7 @@ function launch({ mode, dev, experimental }) {
 }
 
 function getDevExtensionArgs() {
-  const extensionEntryPath = path.join(repoRoot, "packages", "pi-fleet-extension", "src", "index.ts");
+  const extensionEntryPath = path.join(repoRoot, "packages", "fleet-harness-extension", "src", "index.ts");
 
   return ["-ne", "-e", extensionEntryPath];
 }
@@ -57,7 +57,7 @@ function getDevExtensionArgs() {
 function getExtensionArgs(dev) {
   if (dev) return getDevExtensionArgs();
 
-  const extensionEntryPath = path.join(repoRoot, "packages", "pi-fleet-extension", "dist", "index.js");
+  const extensionEntryPath = path.join(repoRoot, "packages", "fleet-harness-extension", "dist", "index.js");
 
   return ["-ne", "-e", extensionEntryPath];
 }

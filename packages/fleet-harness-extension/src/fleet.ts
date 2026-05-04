@@ -126,7 +126,7 @@ export function registerFleetLifecycle(pi: ExtensionAPI): FleetLifecycleRuntime 
 
 export default function registerBoot(pi: ExtensionAPI): void {
   const role = process.env.PI_GRAND_FLEET_ROLE;
-  const dev = process.env.PI_FLEET_DEV === "1";
+  const dev = process.env.FLEET_HARNESS_DEV === "1";
   const experimental = process.env.PI_EXPERIMENTAL === "1";
   const isAdmiralty = role === "admiralty";
   const isFleet = role === "fleet";

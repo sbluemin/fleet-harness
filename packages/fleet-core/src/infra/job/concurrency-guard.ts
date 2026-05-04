@@ -20,7 +20,7 @@ export interface JobPermitRejected {
 
 export type JobPermit = JobPermitAccepted | JobPermitRejected;
 
-const GUARD_STATE_KEY = "__pi_fleet_job_concurrency_guard__";
+const GUARD_STATE_KEY = "__fleet_harness_job_concurrency_guard__";
 const DEFAULT_MAX_DETACHED_JOBS = 5;
 
 export function acquireJobPermit(record: CarrierJobRecord): JobPermit {

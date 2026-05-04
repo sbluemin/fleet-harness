@@ -1,6 +1,6 @@
 <div align="center">
-    <h1>pi-fleet</h1>
-    <img src=".github/logo.png" alt="pi-fleet" width="640" />
+    <h1>Fleet Harness</h1>
+    <img src=".github/logo.png" alt="fleet-harness" width="640" />
     <h3><em>One Fleet. All LLMs.</em></h3>
 </div>
 
@@ -16,7 +16,7 @@
 ---
 
 <div align="center">
-  <img src=".github/pi-fleet.gif" alt="pi-fleet demo" width="640" />
+  <img src=".github/fleet-harness.gif" alt="fleet-harness demo" width="640" />
 </div>
 
 ## 동기
@@ -25,7 +25,7 @@ Claude Code, Codex, Gemini, OpenCode와 같은 모든 프론티어 CLI는 각자
 
 문제는 이 모든 도구가 별도의 터미널에 존재한다는 점입니다. 하나의 작업에 여러 CLI의 강점을 조합하려면 창 사이로 컨텍스트를 복사하고, 상태를 수동으로 동기화하며, 각기 다른 상호작용 패턴 사이를 오가야 합니다. 다중 도구 조율의 마찰은 결국 단일 CLI에 만족하게 만들고, 나머지 도구의 고유한 능력은 활용하지 못한 채 남겨두게 됩니다.
 
-pi-fleet는 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하지 않기 위해 만들어졌습니다. 모든 네이티브 에이전트 런타임을 해군 **함대(Fleet)** 내의 **항공모함(Carrier)**으로 대우하고, 중앙의 Admiral이 공식 프로토콜을 통해 여러 Carrier를 병렬로 지휘합니다. 각 모델의 네이티브 루프는 설계 그대로 실행되되, 단일 명령 아래 조율됩니다. 한 번의 명령으로 함대 전체가 함께 실행되며, 각 Carrier가 자신만의 강점을 기여합니다.
+Fleet Harness는 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하지 않기 위해 만들어졌습니다. 모든 네이티브 에이전트 런타임을 해군 **함대(Fleet)** 내의 **항공모함(Carrier)**으로 대우하고, 중앙의 Admiral이 공식 프로토콜을 통해 여러 Carrier를 병렬로 지휘합니다. 각 모델의 네이티브 루프는 설계 그대로 실행되되, 단일 명령 아래 조율됩니다. 한 번의 명령으로 함대 전체가 함께 실행되며, 각 Carrier가 자신만의 강점을 기여합니다.
 
 ## 해군 함대 계층 구조
 
@@ -57,7 +57,7 @@ pi-fleet는 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하�
 
 ### 멀티 LLM 오케스트레이션
 
-pi-fleet는 API를 래핑하거나 프록시를 운용하지 않습니다 — **프론티어 CLI 도구를 네이티브로 직접 오케스트레이션**합니다. 각 Carrier는 실제 CLI 바이너리를 실행하고 공식 프로토콜(ACP 또는 App Server)을 통해 통신하므로, 각 도구의 완전한 네이티브 기능을 통합된 명령 구조 안에서 그대로 사용할 수 있습니다.
+Fleet Harness는 API를 래핑하거나 프록시를 운용하지 않습니다 — **프론티어 CLI 도구를 네이티브로 직접 오케스트레이션**합니다. 각 Carrier는 실제 CLI 바이너리를 실행하고 공식 프로토콜(ACP 또는 App Server)을 통해 통신하므로, 각 도구의 완전한 네이티브 기능을 통합된 명령 구조 안에서 그대로 사용할 수 있습니다.
 
 <img src=".github/handoff.png" alt="멀티 LLM 오케스트레이션" width="100%" />
 
@@ -115,7 +115,7 @@ Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한
 
 > **AI 에이전트로 빠른 시작** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
 >
-> Install and configure pi-fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/pi-fleet/main/SETUP.md`
+> Install and configure fleet-harness by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
 
 ## 문서
 

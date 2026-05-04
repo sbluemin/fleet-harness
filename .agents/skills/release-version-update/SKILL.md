@@ -5,11 +5,11 @@ description: 릴리스 버전을 업데이트하고 CHANGELOG.md를 정리하는
 
 # Release Version Update
 
-Use this prompt when preparing a pi-fleet release version update and release notes.
+Use this prompt when preparing a fleet-harness release version update and release notes.
 
 ## Goal
 
-Update the root `pi-fleet` version and document the changes since `main` in `CHANGELOG.md`.
+Update the root `fleet-harness` version and document the changes since `main` in `CHANGELOG.md`.
 
 ## Required Workflow
 

@@ -77,7 +77,7 @@
     "title": "Tool snapshot store SSoT — packages/fleet-core/src/infra/tool-registry/tool-snapshot.ts (path updated 2026-05)",
     "tags": [
       "fleet-core",
-      "pi-fleet-extension",
+      "fleet-harness-extension",
       "tool-snapshot",
       "mcp",
       "invariant",

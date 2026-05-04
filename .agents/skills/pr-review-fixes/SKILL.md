@@ -82,7 +82,7 @@ Resolve the actionable feedback raised on PR `<pr_number>`, validate the changes
    - `git status --short` and `git diff --stat` — confirm only the intended files changed.
    - `git diff` — final pass to confirm the diff still matches the self-verification outcome from step 8.
    - Run the workspace's available checks for the touched packages. Common entry points:
-     - `pnpm --filter <workspace-name> typecheck` (e.g., `--filter @sbluemin/pi-fleet-extension`)
+     - `pnpm --filter <workspace-name> typecheck` (e.g., `--filter @sbluemin/fleet-harness-extension`)
      - `pnpm --filter <workspace-name> build` if a build script exists
      - `pnpm --filter <workspace-name> test` if a test script exists and is relevant
    - If a script does not exist for the touched workspace, state that explicitly in the report.

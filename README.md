@@ -1,6 +1,6 @@
 <div align="center">
-    <h1>pi-fleet</h1>
-    <img src=".github/logo.png" alt="pi-fleet" width="640" />
+    <h1>Fleet Harness</h1>
+    <img src=".github/logo.png" alt="fleet-harness" width="640" />
     <h3><em>One Fleet. All LLMs.</em></h3>
 </div>
 
@@ -16,7 +16,7 @@
 ---
 
 <div align="center">
-  <img src=".github/pi-fleet.gif" alt="pi-fleet demo" width="640" />
+  <img src=".github/fleet-harness.gif" alt="fleet-harness demo" width="640" />
 </div>
 
 ## Motivation
@@ -25,7 +25,7 @@ Every frontier CLI — Claude Code, Codex, Gemini, OpenCode — ships with an ag
 
 The problem is that they all live in separate terminals. To combine their strengths on a single task, you must copy context between windows, manually sync state, and context-switch across different interaction patterns. The friction of multi-tool coordination often forces you to settle for a single CLI, leaving the unique capabilities of the others on the table.
 
-pi-fleet was built to remove that friction without sacrificing what makes each CLI special. It treats every native agent runtime as a **Carrier** within a naval **Fleet**. A central Admiral orchestrates multiple Carriers in parallel through their official protocols, so each model's native loop runs exactly as designed — just coordinated under one command. You give the order once; the fleet executes together, with every Carrier contributing its distinct strengths.
+Fleet Harness was built to remove that friction without sacrificing what makes each CLI special. It treats every native agent runtime as a **Carrier** within a naval **Fleet**. A central Admiral orchestrates multiple Carriers in parallel through their official protocols, so each model's native loop runs exactly as designed — just coordinated under one command. You give the order once; the fleet executes together, with every Carrier contributing its distinct strengths.
 
 ## Naval Fleet Hierarchy
 
@@ -57,7 +57,7 @@ Eight built-in Carriers, each with a distinct operational role:
 
 ### Multi-LLM Orchestration
 
-pi-fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
+Fleet Harness does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
 
 <img src=".github/handoff.png" alt="Multi-LLM Orchestration" width="100%" />
 
@@ -107,8 +107,8 @@ After `pnpm link --global` (see [SETUP.md](SETUP.md)), five global commands are 
 | `fleet` | Launch standard Fleet mode |
 | `fleet-exp` | Launch standard Fleet mode with `PI_EXPERIMENTAL=1` enabled |
 | `gfleet` | Launch Grand Fleet mode |
-| `fleet-dev` | Standard Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/pi-fleet-extension/src/index.ts` from the current checkout |
-| `gfleet-dev` | Grand Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/pi-fleet-extension/src/index.ts` from the current checkout |
+| `fleet-dev` | Standard Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/fleet-harness-extension/src/index.ts` from the current checkout |
+| `gfleet-dev` | Grand Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/fleet-harness-extension/src/index.ts` from the current checkout |
 | `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
 
 ## Setup
@@ -117,7 +117,7 @@ See [SETUP.md](SETUP.md) for step-by-step instructions.
 
 > **Quick Start with AI Agent** — Copy and paste into your LLM agent:
 >
-> Install and configure pi-fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/pi-fleet/main/SETUP.md`
+> Install and configure fleet-harness by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
 
 ## Documentation
 

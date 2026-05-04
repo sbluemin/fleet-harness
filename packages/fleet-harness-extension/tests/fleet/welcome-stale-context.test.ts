@@ -28,7 +28,7 @@ describe("welcome stale context handling", () => {
   let tempHome: string;
 
   beforeEach(() => {
-    tempHome = mkdtempSync(join(tmpdir(), "pi-fleet-welcome-"));
+    tempHome = mkdtempSync(join(tmpdir(), "fleet-harness-welcome-"));
     vi.stubEnv("HOME", tempHome);
     setWelcomeBridge(null);
   });

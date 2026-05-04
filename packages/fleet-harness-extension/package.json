@@ -1,5 +1,5 @@
 {
-  "name": "@sbluemin/pi-fleet-extension",
+  "name": "@sbluemin/fleet-harness-extension",
   "version": "0.0.0",
   "private": true,
   "type": "module",

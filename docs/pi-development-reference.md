@@ -8,7 +8,7 @@ Fleet development now follows a hard split:
 
 - `packages/fleet-core` — Pi-agnostic Fleet product core
 - `packages/fleet-core/src/admiralty` — internalized Grand Fleet domain (formerly `gfleet`)
-- `packages/pi-fleet-extension` — Pi capability package
+- `packages/fleet-harness-extension` — Pi capability package
 
 Use this split as the first decision point for every change.
 
@@ -17,8 +17,8 @@ Use this split as the first decision point for every change.
 The codebase is in a capability-flattening stage:
 
 - logical ownership already follows the final direction
-- `packages/pi-fleet-extension/src/` remains the active physical home for Pi capability buckets
-- capability buckets currently live under `packages/pi-fleet-extension/src/<bucket>/`
+- `packages/fleet-harness-extension/src/` remains the active physical home for Pi capability buckets
+- capability buckets currently live under `packages/fleet-harness-extension/src/<bucket>/`
 
 Do not document or implement relocation of these buckets out of `src/`.
 
@@ -47,7 +47,7 @@ Put code here when it is:
 
 Keep dependencies one-way: `fleet-core`.
 
-### 3.3 `packages/pi-fleet-extension`
+### 3.3 `packages/fleet-harness-extension`
 
 Put code here when it requires:
 
@@ -62,7 +62,7 @@ Put code here when it requires:
 
 ## 4. Domain Layout Map
 
-Current Flat Domain Architecture in `pi-fleet-extension`:
+Current Flat Domain Architecture in `fleet-harness-extension`:
 
 | Home / Entrypoint | Responsibility |
 |-------------------|----------------|
@@ -80,7 +80,7 @@ Current Flat Domain Architecture in `pi-fleet-extension`:
 
 ## 5. Removed Legacy Directory Guidance
 
-The following legacy directories under `packages/pi-fleet-extension/src/` are already removed and must not be reintroduced:
+The following legacy directories under `packages/fleet-harness-extension/src/` are already removed and must not be reintroduced:
 
 - `src/commands/`
 - `src/keybinds/`
@@ -101,15 +101,15 @@ When migrating or restoring behavior that once lived under those paths:
 
 ## 6. Import Rules
 
-- `pi-fleet-extension` must consume `fleet-core` through public exports only.
+- `fleet-harness-extension` must consume `fleet-core` through public exports only.
 - For runtime composition, use `@sbluemin/fleet-core` and consume domain APIs through `FleetCoreRuntimeContext`. Direct shared-service subpaths are migration compatibility surfaces only; new public API should be modeled as a domain service. Keybind is not a Fleet Core public service.
-- `pi-fleet-extension` must consume Grand Fleet surfaces through `@sbluemin/fleet-core/admiralty` or `@sbluemin/fleet-core/admiralty/ipc`.
-- `pi-fleet-extension` may consume `@sbluemin/fleet-wiki` for Fleet Wiki adapters that live in `src/wiki/`.
+- `fleet-harness-extension` must consume Grand Fleet surfaces through `@sbluemin/fleet-core/admiralty` or `@sbluemin/fleet-core/admiralty/ipc`.
+- `fleet-harness-extension` may consume `@sbluemin/fleet-wiki` for Fleet Wiki adapters that live in `src/wiki/`.
 - Do not deep-import `@sbluemin/fleet-core/src/**` or `@sbluemin/fleet-core/internal/**`.
 - Do not import Grand Fleet surfaces from the deprecated Fleet Core location.
 - `fleet-core` must not import Pi packages.
 - `fleet-core` must not split internal admiralty ownership back out into a separate package.
-- `@mariozechner/pi-ai` imports stay confined to `packages/pi-fleet-extension/src/provider.ts`.
+- `@mariozechner/pi-ai` imports stay confined to `packages/fleet-harness-extension/src/provider.ts`.
 
 ## 7. PI Runtime Rules
 
@@ -119,4 +119,4 @@ When migrating or restoring behavior that once lived under those paths:
 
 ## 8. Physical Layout Reminder
 
-`packages/pi-fleet-extension/src/` is the active physical home for Pi capability buckets. Any documentation or review must keep that layout explicit and avoid implying that these buckets are scheduled to move.
+`packages/fleet-harness-extension/src/` is the active physical home for Pi capability buckets. Any documentation or review must keep that layout explicit and avoid implying that these buckets are scheduled to move.

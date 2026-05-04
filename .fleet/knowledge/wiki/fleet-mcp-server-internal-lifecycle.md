@@ -29,7 +29,7 @@ After the 4-domain unification, MCP-related consumer-facing surface is grouped u
 
 ## Why
 
-Multi-process MCP server start in pi-fleet-extension would break token isolation and FIFO order. MCP must be a single in-process singleton owned by fleet-core composition root.
+Multi-process MCP server start in fleet-harness-extension would break token isolation and FIFO order. MCP must be a single in-process singleton owned by fleet-core composition root.
 
 ## Re-grouping rule
 

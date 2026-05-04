@@ -8,15 +8,15 @@ The migration target is already fixed:
 
 - `packages/fleet-core` owns Fleet **domain logic**
 - `packages/fleet-core/src/admiralty` owns the internalized **Grand Fleet domain**
-- `packages/pi-fleet-extension` owns Pi **host domains** (Flat Domain Architecture)
+- `packages/fleet-harness-extension` owns Pi **host domains** (Flat Domain Architecture)
 
 The repository uses this **current physical state**:
 
 - `packages/fleet-core` remains under `packages/fleet-core/src/`
 - `packages/fleet-core/src/admiralty` is an internalized domain within `fleet-core` with public subpaths `./admiralty` and `./admiralty/ipc`
-- `packages/pi-fleet-extension/src/` is the active physical home for the Flat Domain Architecture mirroring fleet-core public services.
+- `packages/fleet-harness-extension/src/` is the active physical home for the Flat Domain Architecture mirroring fleet-core public services.
 
-Agents must not confuse logical ownership with physical domain layout. `packages/pi-fleet-extension/src/` remains the active physical home, and the old legacy capability buckets have been removed and absorbed into domain homes.
+Agents must not confuse logical ownership with physical domain layout. `packages/fleet-harness-extension/src/` remains the active physical home, and the old legacy capability buckets have been removed and absorbed into domain homes.
 
 ## 2. Ownership Model
 
@@ -62,9 +62,9 @@ Runtime composition is exposed only through the package root (`@sbluemin/fleet-c
 - any reverse dependency from `fleet-core`
 - formation/tmux process management (removed)
 
-### 2.3 `pi-fleet-extension`
+### 2.3 `fleet-harness-extension`
 
-`pi-fleet-extension` owns:
+`fleet-harness-extension` owns:
 
 - Pi lifecycle registration
 - command registration
@@ -75,7 +75,7 @@ Runtime composition is exposed only through the package root (`@sbluemin/fleet-c
 - Pi overlays, widgets, editor/footer rendering
 - compatibility adapters and push delivery seams
 
-`pi-fleet-extension` must not become a new home for Fleet domain business logic.
+`fleet-harness-extension` must not become a new home for Fleet domain business logic.
 
 ## 3. Domain Layout
 
@@ -99,14 +99,14 @@ These are the **current doctrinal homes** even though the package still physical
 
 The former legacy capability buckets below are already removed:
 
-- `packages/pi-fleet-extension/src/commands/`
-- `packages/pi-fleet-extension/src/keybinds/`
-- `packages/pi-fleet-extension/src/tools/`
-- `packages/pi-fleet-extension/src/tui/`
-- `packages/pi-fleet-extension/src/provider/`
-- `packages/pi-fleet-extension/src/session/`
+- `packages/fleet-harness-extension/src/commands/`
+- `packages/fleet-harness-extension/src/keybinds/`
+- `packages/fleet-harness-extension/src/tools/`
+- `packages/fleet-harness-extension/src/tui/`
+- `packages/fleet-harness-extension/src/provider/`
+- `packages/fleet-harness-extension/src/session/`
 
-Agents must not use those historical paths as permission to reintroduce capability-first architecture inside `pi-fleet-extension`.
+Agents must not use those historical paths as permission to reintroduce capability-first architecture inside `fleet-harness-extension`.
 
 ## 5. Allowed Dependency Direction
 
@@ -119,7 +119,7 @@ fleet-wiki
 fleet-core
   -> admiralty public subpaths
 
-pi-fleet-extension domains
+fleet-harness-extension domains
   -> fleet-core public APIs
   -> fleet-core admiralty public APIs
   -> fleet-wiki
@@ -130,9 +130,9 @@ Forbidden patterns:
 
 - `fleet-core` importing Pi packages
 - `fleet-core` duplicating internal admiralty ownership via a separate package
-- `pi-fleet-extension` deep-importing `fleet-core/src/**`
-- `pi-fleet-extension` importing Grand Fleet surfaces from the deprecated Fleet Core location
-- new pure domain logic landing under `pi-fleet-extension/src/fleet/**`
+- `fleet-harness-extension` deep-importing `fleet-core/src/**`
+- `fleet-harness-extension` importing Grand Fleet surfaces from the deprecated Fleet Core location
+- new pure domain logic landing under `fleet-harness-extension/src/fleet/**`
 - new Pi registration code landing inside `fleet-core`
 
 ## 6. Operational Guidance For Agents
@@ -143,7 +143,7 @@ When editing or reviewing this repo:
 2. Put pure logic in `fleet-core`.
 3. Put Pi lifecycle/registration/rendering in the appropriate domain home or entrypoint.
 4. If a legacy module mixes both, split by ownership instead of preserving the old directory boundary.
-5. Keep documentation and code organization aligned with the active `packages/pi-fleet-extension/src/` layout.
+5. Keep documentation and code organization aligned with the active `packages/fleet-harness-extension/src/` layout.
 
 ## 7. Compatibility Invariants
 
@@ -162,4 +162,4 @@ When updating docs during this migration:
 - describe the **current observable state**
 - separate **logical ownership** from **physical bucket placement**
 - mention that legacy domain folders have been removed when that context matters
-- avoid stating or implying that Pi capability buckets are scheduled to move out of `packages/pi-fleet-extension/src/`
+- avoid stating or implying that Pi capability buckets are scheduled to move out of `packages/fleet-harness-extension/src/`

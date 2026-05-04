@@ -1,6 +1,6 @@
-# @sbluemin/pi-fleet-extension
+# @sbluemin/fleet-harness-extension
 
-`@sbluemin/pi-fleet-extension` is the Pi adapter package for Fleet. It owns Pi runtime wiring, TUI surfaces, host shell integration, and domain-specific adapters while consuming `@sbluemin/fleet-core` through public exports.
+`@sbluemin/fleet-harness-extension` is the Pi adapter package for Fleet. It owns Pi runtime wiring, TUI surfaces, host shell integration, and domain-specific adapters while consuming `@sbluemin/fleet-core` through public exports.
 
 ## Domain Adapters
 

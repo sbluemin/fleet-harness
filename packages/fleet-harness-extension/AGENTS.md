@@ -1,6 +1,6 @@
-# pi-fleet-extension Doctrine
+# fleet-harness-extension Doctrine
 
-`packages/pi-fleet-extension` is the Pi capability package for Fleet. It owns Pi runtime wiring, host shell surfaces, and domain-specific adapters while consuming `@sbluemin/fleet-core` public exports, `@sbluemin/fleet-core/admiralty*` (Grand Fleet domain), and `@sbluemin/fleet-wiki`.
+`packages/fleet-harness-extension` is the Pi capability package for Fleet. It owns Pi runtime wiring, host shell surfaces, and domain-specific adapters while consuming `@sbluemin/fleet-core` public exports, `@sbluemin/fleet-core/admiralty*` (Grand Fleet domain), and `@sbluemin/fleet-wiki`.
 
 ## Core Philosophy
 
@@ -20,7 +20,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Domain Mirror Layout (1:1 Service Mapping)
 
-| pi-fleet-extension (Adapter) | fleet-core (Public Service) | Description |
+| fleet-harness-extension (Adapter) | fleet-core (Public Service) | Description |
 | :--- | :--- | :--- |
 | `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Pi gateway (#region structure: pi-ai gateway / streamAcp adapter / thinking-level patch / provider-guard registry patch / provider-guard toggle helper / provider runtime registration). Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
 | `src/grand-fleet/` | `admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
@@ -57,8 +57,8 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Dependency Direction
 
-- `pi-fleet-extension -> fleet-core`
-- `pi-fleet-extension -> fleet-wiki`
+- `fleet-harness-extension -> fleet-core`
+- `fleet-harness-extension -> fleet-wiki`
 
 ## Migration Guardrails
 

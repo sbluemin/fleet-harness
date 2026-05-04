@@ -552,7 +552,7 @@ function ensureQuietStartup(): void {
 
 export function createFleetUpdatePrompt(fleetRoot: string): string {
   return [
-    "Please update the pi-fleet repository.",
+    "Please update the fleet-harness repository.",
     "",
     `1. Move to the local repository at the absolute path \`${fleetRoot}\`.`,
     "2. Identify the current active branch and synchronize it with the remote latest state. Run fetch followed by pull as needed.",

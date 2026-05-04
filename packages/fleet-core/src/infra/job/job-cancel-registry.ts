@@ -7,7 +7,7 @@ export interface CancelResult {
   status: "cancelled" | "not_found";
 }
 
-const CANCEL_STATE_KEY = "__pi_fleet_job_cancel_registry__";
+const CANCEL_STATE_KEY = "__fleet_harness_job_cancel_registry__";
 
 export function registerJobAbortController(jobId: string, controller: AbortController): void {
   const state = getCancelState();

@@ -11,31 +11,31 @@
 |------|-------------|
 | `docs/pi-development-reference.md` | **Main Developer Guide** — Comprehensive reference for PI SDK, extensions, TUI, themes, and RPC |
 | `docs/admiral-workflow-reference.md` | **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
-| `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `fleet-wiki-web`, `pi-fleet-extension` |
+| `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `fleet-wiki-web`, `fleet-harness-extension` |
 | `packages/fleet-core/` | Pi-agnostic Fleet product core — Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, **Admiral orchestration runtime**, and public APIs |
 | `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (carrier-job-events SSOT stream events, cli-tool-types, MCP server singleton), **`agent/`** (the canonical agent domain — `session/lifecycle/connections/models/events/serviceStatus/tools/bridge/executor` + `internal/{state,session-runtime,session-engine,event-normalizer,mcp-router,executor-engine,post-connect}`), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog and `fleet-store.ts` unified persistence), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
 | `packages/fleet-core/src/infra/` | Shared pure infrastructure modules. Includes `auth/`, `data-dir/`, `job/`, `log/`, and `settings/`. The former `tool-registry/` directory is removed; all tool registry / formatter responsibilities now live in `admiral/agent/tools.ts` (single SSoT) with `tool-snapshot` relocated to `admiral/agent/internal/`. |
 | `packages/fleet-core/src/admiralty/` | Grand Fleet domain home inside `fleet-core` (renamed from `gfleet`). Exposed via `@sbluemin/fleet-core/admiralty`. |
 | `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus four assembly-only service modules: `admiral-services`, `admiralty-services`, `metaphor-services`, and `infra-services`. |
-| `packages/pi-fleet-extension/` | Pi capability package — Flat Domain Architecture mirroring fleet-core public services |
+| `packages/fleet-harness-extension/` | Pi capability package — Flat Domain Architecture mirroring fleet-core public services |
 | `packages/unified-agent/` | Minimal-dependency SDK for multi-CLI integration (Gemini, Claude, Codex). Now includes `service-status/` for unified health tracking. |
-| `packages/pi-fleet-extension/src/` | Root of pi-facing domains |
-| `packages/pi-fleet-extension/src/boot.ts` | Entry point — assembles the Fleet runtime by composing domain modules |
-| `packages/pi-fleet-extension/src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation. `bootstrapFleetState()` is the single entry point for both boot-time and `session_start` fleet state restoration, carrier registration, and deferred reconciliation. |
-| `packages/pi-fleet-extension/src/{grand-fleet,wiki}/` | Domain-internal homes. Each owns its commands, keybinds, tools, and UI. |
+| `packages/fleet-harness-extension/src/` | Root of pi-facing domains |
+| `packages/fleet-harness-extension/src/boot.ts` | Entry point — assembles the Fleet runtime by composing domain modules |
+| `packages/fleet-harness-extension/src/fleet.ts` | Fleet lifecycle, runtime initialization, and Pi host port implementation. `bootstrapFleetState()` is the single entry point for both boot-time and `session_start` fleet state restoration, carrier registration, and deferred reconciliation. |
+| `packages/fleet-harness-extension/src/{grand-fleet,wiki}/` | Domain-internal homes. Each owns its commands, keybinds, tools, and UI. |
 | `packages/fleet-wiki-web/` | Standalone web surface for Fleet Wiki workspaces — `fleet-wiki` CLI, detached local HTTP server, Vite SPA client |
-| `packages/pi-fleet-extension/src/{fleet,metaphor,job,settings,logs,tools}.ts` | Domain entrypoints mapping 1:1 to fleet-core services |
-| `packages/pi-fleet-extension/src/{commands,keybinds,tools,tui,provider,session}/` | Removed legacy capability buckets. Do not reintroduce; all features are now organized by domain. |
+| `packages/fleet-harness-extension/src/{fleet,metaphor,job,settings,logs,tools}.ts` | Domain entrypoints mapping 1:1 to fleet-core services |
+| `packages/fleet-harness-extension/src/{commands,keybinds,tools,tui,provider,session}/` | Removed legacy capability buckets. Do not reintroduce; all features are now organized by domain. |
 
 > Currently, there is no `pi/` directory — symlink setup is not required.
 >
-> Migration note: the **logical split is already final** (`fleet-core` owns Fleet domain logic including the internalized `admiralty` domain, and `pi-fleet-extension` owns Pi host domains), and `packages/pi-fleet-extension/src/` remains the active physical home for the Flat Domain Architecture.
+> Migration note: the **logical split is already final** (`fleet-core` owns Fleet domain logic including the internalized `admiralty` domain, and `fleet-harness-extension` owns Pi host domains), and `packages/fleet-harness-extension/src/` remains the active physical home for the Flat Domain Architecture.
 
 ### Domain Mirror Layout
 
-The `pi-fleet-extension` architecture mirrors the public services of `fleet-core` 1:1. Each core service is mapped to a corresponding domain in the extension.
+The `fleet-harness-extension` architecture mirrors the public services of `fleet-core` 1:1. Each core service is mapped to a corresponding domain in the extension.
 
-| fleet-core Public Service | pi-fleet-extension Domain | Description |
+| fleet-core Public Service | fleet-harness-extension Domain | Description |
 |---------------------------|---------------------------|-------------|
 | `admiral`                 | `src/provider.ts`, `src/fleet.ts`, `src/tools.ts`, `src/jobs.ts` | Agent orchestration, providers, carrier jobs, protocols, carrier status |
 | `admiralty`               | `src/grand-fleet/`        | Multi-instance Grand Fleet orchestration |
@@ -60,7 +60,7 @@ Beyond simple parallel API calls, the system adopts a **naval fleet metaphor** t
 | 3 | **Admiral** | 제독 (Host PI) | A single **workspace PI instance**. Plans operations and dispatches Carriers within its operational zone. |
 | 4 | **Captain** | 함장 (Carrier Persona) | The **persona of a Carrier agent**. While a Carrier is the system entity, the Captain is its personified commander. |
 
-> **Note on Persona & Tone**: The naming conventions, personified personas, and linguistic tone for all tiers are centrally managed by `packages/fleet-core/src/metaphor/`. The former `packages/pi-fleet-extension/src/metaphor/` legacy directory has been removed and must not be recreated as a Pi-side domain home.
+> **Note on Persona & Tone**: The naming conventions, personified personas, and linguistic tone for all tiers are centrally managed by `packages/fleet-core/src/metaphor/`. The former `packages/fleet-harness-extension/src/metaphor/` legacy directory has been removed and must not be recreated as a Pi-side domain home.
 
 #### Carrier vs Captain Separation
 - **Carrier**: The **system entity** (ID: `genesis`, `sentinel`, etc.). Represents the execution instance, process, and configuration.
@@ -146,7 +146,7 @@ The Admiral extension implements a modular prompt policy system that governs how
 
 ```text
 System Prompt
-  + [Boot] Initial Slate (PI_FLEET_DEV=1 시 RISEN 개발 컨텍스트, 그 외 빈 문자열)
+  + [Boot] Initial Slate (FLEET_HARNESS_DEV=1 시 RISEN 개발 컨텍스트, 그 외 빈 문자열)
   + [Toggle] Worldview (via fleet:metaphor:settings)
   + [Always] Standing Orders (Delegation Policy + Deep Dive + ...)
   + [Always] Active Protocol (Fleet Action Protocol, etc.)
@@ -174,12 +174,12 @@ The Fleet codebase is built on **four core principles**. Every contribution and 
 
 ### 1. Domain Boundary as Law
 
-The split between `fleet-core` (Pi-agnostic Fleet domain) and `pi-fleet-extension` (Pi host adapter) is **not a guideline; it is enforced by build/grep gates**:
+The split between `fleet-core` (Pi-agnostic Fleet domain) and `fleet-harness-extension` (Pi host adapter) is **not a guideline; it is enforced by build/grep gates**:
 
-- `fleet-core` MUST NOT import any `@mariozechner/pi-*` or `@anthropic-ai/*` package. The single Pi-AI gateway lives in `pi-fleet-extension/src/provider.ts`.
-- `pi-fleet-extension` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
+- `fleet-core` MUST NOT import any `@mariozechner/pi-*` or `@anthropic-ai/*` package. The single Pi-AI gateway lives in `fleet-harness-extension/src/provider.ts`.
+- `fleet-harness-extension` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
 - Pi UI, host event hooks (`pi.on/registerTool/registerProvider/...`), and any `ExtensionContext`/`ExtensionAPI` dependency belong exclusively to the Pi side.
-- When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the Pi adapter half stays in `pi-fleet-extension`.
+- When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the Pi adapter half stays in `fleet-harness-extension`.
 
 ### 2. Two Execution Patterns, Strictly Separated
 

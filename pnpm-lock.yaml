@@ -41,6 +41,52 @@ importers:
         specifier: ^4.0.13
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1)(vite@7.3.2(@types/node@24.12.2)(yaml@2.8.3))
 
+  packages/fleet-harness-extension:
+    dependencies:
+      '@mariozechner/pi-ai':
+        specifier: ^0.69.0
+        version: 0.69.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+      '@mariozechner/pi-coding-agent':
+        specifier: ^0.69.0
+        version: 0.69.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+      '@mariozechner/pi-tui':
+        specifier: ^0.69.0
+        version: 0.69.0
+      '@sbluemin/fleet-core':
+        specifier: workspace:*
+        version: link:../fleet-core
+      '@sbluemin/fleet-wiki':
+        specifier: workspace:*
+        version: link:../fleet-wiki
+      '@sbluemin/unified-agent':
+        specifier: workspace:*
+        version: link:../unified-agent
+      '@sinclair/typebox':
+        specifier: ^0.34.41
+        version: 0.34.49
+      '@xterm/addon-serialize':
+        specifier: ^0.13.0
+        version: 0.13.0(@xterm/xterm@5.5.0)
+      '@xterm/headless':
+        specifier: ^5.5.0
+        version: 5.5.0
+      node-pty:
+        specifier: ^1.1.0
+        version: 1.1.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(postcss@8.5.12)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1)(vite@7.3.2(@types/node@24.12.2)(yaml@2.8.3))
+
   packages/fleet-wiki:
     dependencies:
       '@sinclair/typebox':
@@ -102,52 +148,6 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.12.2)(jsdom@29.1.1)(yaml@2.8.3)
-
-  packages/pi-fleet-extension:
-    dependencies:
-      '@mariozechner/pi-ai':
-        specifier: ^0.69.0
-        version: 0.69.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
-      '@mariozechner/pi-coding-agent':
-        specifier: ^0.69.0
-        version: 0.69.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
-      '@mariozechner/pi-tui':
-        specifier: ^0.69.0
-        version: 0.69.0
-      '@sbluemin/fleet-core':
-        specifier: workspace:*
-        version: link:../fleet-core
-      '@sbluemin/fleet-wiki':
-        specifier: workspace:*
-        version: link:../fleet-wiki
-      '@sbluemin/unified-agent':
-        specifier: workspace:*
-        version: link:../unified-agent
-      '@sinclair/typebox':
-        specifier: ^0.34.41
-        version: 0.34.49
-      '@xterm/addon-serialize':
-        specifier: ^0.13.0
-        version: 0.13.0(@xterm/xterm@5.5.0)
-      '@xterm/headless':
-        specifier: ^5.5.0
-        version: 5.5.0
-      node-pty:
-        specifier: ^1.1.0
-        version: 1.1.0
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(postcss@8.5.12)(typescript@6.0.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1)(vite@7.3.2(@types/node@24.12.2)(yaml@2.8.3))
 
   packages/unified-agent:
     dependencies:
@@ -1105,6 +1105,7 @@ packages:
   '@smithy/util-retry@4.3.6':
     resolution: {integrity: sha512-p6/FO1n2KxMeQyna067i0uJ6TSbb165ZhnRtCpWh4Foxqbfc6oW+XITaL8QkFJj3KFnDe2URt4gOhgU06EP9ew==}
     engines: {node: '>=18.0.0'}
+    deprecated: '@smithy/util-retry v4.3.6 contains a bug in Adaptive Retry, see https://github.com/smithy-lang/smithy-typescript/issues/1993. Upgrade to 4.3.7+'
 
   '@smithy/util-stream@4.5.25':
     resolution: {integrity: sha512-/PFpG4k8Ze8Ei+mMKj3oiPICYekthuzePZMgZbCqMiXIHHf4n2aZ4Ps0aSRShycFTGuj/J6XldmC0x0DwednIA==}

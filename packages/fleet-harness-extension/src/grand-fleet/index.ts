@@ -30,7 +30,7 @@ export function registerGrandFleet(ctx: ExtensionAPI | ExtensionContext): void {
     return;
   }
 
-  log.info("grand-fleet", `Fleet 모드 초기화 — fleetId=${process.env.PI_FLEET_ID}`);
+  log.info("grand-fleet", `Fleet 모드 초기화 — fleetId=${process.env.FLEET_HARNESS_ID}`);
   registerFleet(pi);
 }
 
