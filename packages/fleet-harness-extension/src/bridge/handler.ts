@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getShellPopupBridge } from "../pty/overlay.js";
+import { isShellPopupOpen, openShellPopup } from "../pty/shell.js";
 import { admiral } from "@sbluemin/fleet-core";
 import { buildBridgeCommand } from "./command.js";
 import {
@@ -17,11 +17,7 @@ export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
     throw new Error("Bridge popup is only available in interactive TUI mode.");
   }
 
-  const shellBridge = getShellPopupBridge();
-  if (!shellBridge) {
-    throw new Error("Interactive shell bridge is not available.");
-  }
-  if (shellBridge.isOpen()) {
+  if (isShellPopupOpen()) {
     ctx.ui.notify("브릿지 쉘이 이미 열려 있습니다.", "warning");
     return;
   }
@@ -39,7 +35,7 @@ export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
     effort: launchData.effort,
   });
 
-  await shellBridge.open({ ...command, env: launchData.env });
+  await openShellPopup({ ...command, env: launchData.env });
 }
 
 export function getActiveBridgeSession(): ActiveBridgeSession {
