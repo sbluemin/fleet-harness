@@ -42,7 +42,7 @@ pnpm setup
 
 # Install all workspace dependencies. The root postinstall hook runs `pnpm -r build`,
 # which builds packages/unified-agent, packages/fleet-core, packages/fleet-wiki,
-# and packages/pi-fleet-extension in topological order.
+# packages/fleet-wiki-web, and packages/pi-fleet-extension in topological order.
 pnpm install
 
 # Approve native build scripts (one-time per machine).
@@ -67,6 +67,7 @@ pnpm --filter @sbluemin/unified-agent link --global
 > - `gfleet` — launches `pi` with Grand Fleet mode enabled for the child process.
 > - `fleet-dev` — launches standard Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/pi-fleet-extension/src/index.ts` directly from this checkout.
 > - `gfleet-dev` — launches Grand Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/pi-fleet-extension/src/index.ts` directly from this checkout.
+> - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of the `pi` runtime — does not require pi-coding-agent to be installed or pi extensions to be configured.
 >
 > `pnpm --filter @sbluemin/unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
 >
@@ -108,6 +109,7 @@ Add or update the `extensions` field in your pi settings file so it points to th
 > - Built entry after `pnpm --filter @sbluemin/pi-fleet-extension build`: `packages/pi-fleet-extension/dist/index.js`
 > - Product core: `packages/fleet-core/` contains Pi-agnostic runtime, public APIs, MCP/tool registry, job infrastructure, prompt policy, and metaphor logic.
 > - PI extension adapter: `packages/pi-fleet-extension/src/` wires keybind, settings, log, welcome, HUD, shell, thinking-timer, provider guard, ACP provider modules, metaphor UI, carriers, Admiral/Bridge libraries, Agent Panel, and unified pipeline.
+> - Fleet Wiki web surface: `packages/fleet-wiki-web/` provides the `fleet-wiki` CLI, a detached Node.js HTTP server, and a vanilla TypeScript SPA built with Vite. Reads `.fleet/knowledge/` from the current working directory and ships independently of the Pi runtime.
 >
 > PI settings accept TypeScript or JavaScript extension entries. Use the TypeScript entry for local development, or the built JavaScript entry after building the workspace package.
 
@@ -120,6 +122,9 @@ pnpm build
 fleet --help
 ait --help
 ait --list-models
+
+# Confirm the Fleet Wiki CLI is on PATH (registered by `pnpm link --global`)
+which fleet-wiki
 ```
 
 Then launch `pi` and run `/reload`, then check:
@@ -129,3 +134,14 @@ Then launch `pi` and run `/reload`, then check:
 - `Ctrl+Enter` to activate the carrier at cursor (exclusive mode)
 - `Alt+P` to toggle the Agent Panel
 - Claude Code, Codex CLI, Gemini CLI are each authenticated
+
+Optionally verify the Fleet Wiki web UI from a workspace that has a `.fleet/knowledge/` store:
+
+```bash
+cd <workspace-with-fleet-knowledge>
+fleet-wiki   # opens http://127.0.0.1:<port> in the system browser
+```
+
+> If the directory has no `.fleet/knowledge/`, the CLI exits with a Korean message:
+> `.fleet/knowledge 디렉토리를 찾을 수 없습니다.` Run from a workspace that has been
+> initialized with the wiki store, or create the directory before retrying.
