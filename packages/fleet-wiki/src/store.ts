@@ -23,7 +23,7 @@ export async function readWikiEntry(id: string, paths: MemoryPaths): Promise<Wik
 export async function writeWikiEntry(entry: WikiEntry, paths: MemoryPaths): Promise<string> {
   await ensureMemoryRoot(paths);
   assertSafeEntryId(entry.id);
-  const relativePath = path.join("wiki", `${entry.id}.md`);
+  const relativePath = `wiki/${entry.id}.md`;
   await writeMarkdownAtomic(path.join(paths.root, relativePath), serializeWikiEntry(entry), paths);
   return relativePath;
 }
@@ -32,7 +32,7 @@ export async function writeRawSourceEntry(entry: RawSourceEntry, paths: MemoryPa
   await ensureMemoryRoot(paths);
   assertSafeEntryId(entry.id);
   const datePrefix = entry.created.slice(0, 10);
-  const relativePath = path.join("raw", `${datePrefix}-${entry.id}.md`);
+  const relativePath = `raw/${datePrefix}-${entry.id}.md`;
   const content = serializeMarkdown(
     {
       id: entry.id,
@@ -66,7 +66,7 @@ export async function rebuildIndex(paths: MemoryPaths): Promise<Record<string, W
   const nextIndex: Record<string, WikiIndexEntry> = {};
   for (const entry of entries) {
     nextIndex[entry.id] = {
-      path: path.join("wiki", `${entry.id}.md`),
+      path: `wiki/${entry.id}.md`,
       title: entry.title,
       tags: entry.tags,
       updated: entry.updated,
@@ -183,7 +183,7 @@ async function readMarkdownFile<T>(filePath: string): Promise<T> {
 }
 
 function parseMarkdown(content: string): { frontmatter: FrontmatterShape; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) throw new Error("missing frontmatter");
   const [, rawFrontmatter, body] = match;
   const frontmatter: FrontmatterShape = {};
