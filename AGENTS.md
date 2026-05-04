@@ -140,7 +140,7 @@ The Admiral extension implements a modular prompt policy system that governs how
 ```text
 System Prompt
   + [Boot] Initial Slate (PI_FLEET_DEV=1 시 RISEN 개발 컨텍스트, 그 외 빈 문자열)
-  + [Toggle] Worldview (via metaphor:worldview)
+  + [Toggle] Worldview (via fleet:metaphor:settings)
   + [Always] Standing Orders (Delegation Policy + Deep Dive + ...)
   + [Always] Active Protocol (Fleet Action Protocol, etc.)
   + [Always] request_directive guide

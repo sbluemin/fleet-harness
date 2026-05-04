@@ -1,11 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { attachStatusContext, detachStatusContext, refreshStatusNow } from "@sbluemin/unified-agent";
+import { attachStatusContext, detachStatusContext } from "@sbluemin/unified-agent";
 import type { CliType, ServiceStatusContextPort } from "@sbluemin/unified-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import {
   admiral,
   createFleetCoreRuntime,
@@ -34,7 +32,7 @@ import {
   setTaskForceConfiguredCarriers,
 } from "./tools.js";
 import { setEditorBorderColor, setEditorRightLabel, setEditorTopRightLabel } from "./hud/border-bridge.js";
-import { setCarrierJobsVerbose, toggleCarrierJobsVerbose } from "./jobs.js";
+import { getCarrierJobsVerbose, setCarrierJobsVerbose, toggleCarrierJobsVerbose } from "./jobs.js";
 
 export interface FleetLifecycleRuntime {
   fleetEnabled: boolean;
@@ -244,81 +242,35 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
 }
 
 export function registerFleetPiCommands(pi: ExtensionAPI): void {
-  pi.registerCommand("fleet:agent:status", {
-    description: "지원 CLI 서비스 상태를 즉시 새로고침",
+  pi.registerCommand("fleet:jobs:settings", {
+    description: "Carrier Jobs 설정 (verbose, delivery mode)",
     handler: async (_args, ctx) => {
-      await refreshStatusNow(toServiceStatusContext(ctx));
-    },
-  });
-
-  pi.registerCommand("fleet:jobs:verbose", {
-    description: "carrier_jobs 렌더링 상세 모드 토글",
-    handler: async (args, ctx) => {
-      const value = args.trim().toLowerCase();
-      const enabled = value === "on"
-        ? (setCarrierJobsVerbose(true), true)
-        : value === "off"
-          ? (setCarrierJobsVerbose(false), false)
-          : toggleCarrierJobsVerbose();
-      ctx.ui.notify(`Carrier Jobs verbose: ${enabled ? "ON" : "OFF"}`, "info");
-    },
-  });
-
-  pi.registerCommand("fleet:jobs:mode", {
-    description: "carrier-result push delivery mode selector (follow-up | steer)",
-    handler: async (_args, ctx) => {
+      const verboseEnabled = getCarrierJobsVerbose();
       const current = getDeliverAs();
-      const items: SelectItem[] = [
-        {
-          value: "followUp",
-          label: current === "followUp" ? "Follow-up (recommended, default) (active)" : "Follow-up (recommended, default)",
-          description: "Carrier result is pushed once per finalized job after the current turn ends. doctrinal default.",
-        },
-        {
-          value: "steer",
-          label: current === "steer" ? "Steer (advanced) (active)" : "Steer (advanced)",
-          description: "Carrier result is pushed once per finalized job and may interrupt an ongoing response. Use only when latency truly matters.",
-        },
+      const options = [
+        `Verbose 렌더링: ${verboseEnabled ? "ON" : "OFF"}`,
+        `Push delivery mode: ${current === "followUp" ? "Follow-up (recommended, default)" : "Steer (advanced)"}`,
       ];
 
-      const result = await ctx.ui.custom<"followUp" | "steer" | null>((tui, theme, _kb, done) => {
-        const container = new Container();
-        container.addChild(new DynamicBorder((str) => theme.fg("accent", str)));
-        container.addChild(new Text(theme.fg("accent", theme.bold("Select Push Delivery Mode"))));
+      const choice = await ctx.ui.select("Carrier Jobs 설정:", options);
+      if (choice === undefined) return;
 
-        const selectList = new SelectList(items, Math.min(items.length, 10), {
-          selectedPrefix: (text) => theme.fg("accent", text),
-          selectedText: (text) => theme.fg("accent", text),
-          description: (text) => theme.fg("muted", text),
-          scrollInfo: (text) => theme.fg("dim", text),
-          noMatch: (text) => theme.fg("warning", text),
-        });
-
-        selectList.onSelect = (item) => done(item.value as "followUp" | "steer");
-        selectList.onCancel = () => done(null);
-
-        container.addChild(selectList);
-        container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel")));
-        container.addChild(new DynamicBorder((str) => theme.fg("accent", str)));
-
-        return {
-          render(width: number) {
-            return container.render(width);
-          },
-          invalidate() {
-            container.invalidate();
-          },
-          handleInput(data: string) {
-            selectList.handleInput(data);
-            tui.requestRender();
-          },
-        };
-      });
-
-      if (!result) return;
-      await setDeliverAs(result);
-      const label = result === "followUp" ? "Follow-up (recommended, default)" : "Steer (advanced)";
-      ctx.ui.notify(`Push delivery mode: ${label}`, "info");
+      if (choice.startsWith("Verbose")) {
+        const enabled = toggleCarrierJobsVerbose();
+        ctx.ui.notify(`Carrier Jobs verbose: ${enabled ? "ON" : "OFF"}`, "info");
+      } else if (choice.startsWith("Push delivery")) {
+        const modeChoice = await ctx.ui.select(
+          "Push delivery mode:",
+          [
+            "Follow-up (recommended, default)",
+            "Steer (advanced)",
+          ],
+        );
+        if (modeChoice === undefined) return;
+        const result = modeChoice.startsWith("Follow") ? "followUp" : "steer";
+        await setDeliverAs(result);
+        ctx.ui.notify(`Push delivery mode: ${result === "followUp" ? "Follow-up (recommended, default)" : "Steer (advanced)"}`, "info");
+      }
     },
   });
 }

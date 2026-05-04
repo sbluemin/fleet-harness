@@ -138,33 +138,18 @@ function registerLogLifecycle(ctx: ExtensionAPI): void {
 }
 
 function registerLogCommands(ctx: ExtensionAPI): void {
-  ctx.registerCommand("fleet:log:toggle", {
-    description: "로그 on/off 토글",
-    handler: async (_args, commandCtx) => {
-      const settings = loadSettings();
-      const newEnabled = !settings.enabled;
-      saveSettings({ enabled: newEnabled });
-
-      if (newEnabled && settings.footerDisplay) {
-        updateFooterBridge();
-      } else if (!newEnabled) {
-        clearFooterBridge();
-      }
-
-      commandCtx.ui.notify(`로그: ${newEnabled ? "ON" : "OFF"}`, "info");
-    },
-  });
-
   ctx.registerCommand("fleet:log:settings", {
     description: "로그 상세 설정",
     handler: async (_args, commandCtx) => {
       const current = loadSettings();
       const options = [
+        `로그: ${current.enabled ? "ON" : "OFF"}`,
         `파일 로그: ${current.fileLog ? "ON" : "OFF"}`,
         `Footer 표시: ${current.footerDisplay ? "ON" : "OFF"}`,
         `최소 레벨: ${current.minLevel}`,
         "카테고리 관리",
         "화면 로그 초기화 (파일 로그 유지)",
+        "모든 로그 삭제 (메모리 + 파일)",
       ];
 
       const choice = await commandCtx.ui.select("로그 설정:", options);
@@ -173,7 +158,16 @@ function registerLogCommands(ctx: ExtensionAPI): void {
         return;
       }
 
-      if (choice.startsWith("파일 로그")) {
+      if (choice.startsWith("로그:")) {
+        const newEnabled = !current.enabled;
+        saveSettings({ enabled: newEnabled });
+        if (newEnabled && current.footerDisplay) {
+          updateFooterBridge();
+        } else if (!newEnabled) {
+          clearFooterBridge();
+        }
+        commandCtx.ui.notify(`로그: ${newEnabled ? "ON" : "OFF"}`, "info");
+      } else if (choice.startsWith("파일 로그")) {
         saveSettings({ fileLog: !current.fileLog });
         commandCtx.ui.notify(`파일 로그: ${!current.fileLog ? "ON" : "OFF"}`, "info");
       } else if (choice.startsWith("Footer 표시")) {
@@ -207,24 +201,12 @@ function registerLogCommands(ctx: ExtensionAPI): void {
         clearLogs();
         clearFooterBridge();
         commandCtx.ui.notify("화면 로그가 초기화되었습니다 (파일 로그는 유지).", "info");
+      } else if (choice.startsWith("모든 로그 삭제")) {
+        clearLogs();
+        clearFileLogs();
+        clearFooterBridge();
+        commandCtx.ui.notify("모든 로그가 삭제되었습니다 (메모리 + 파일).", "info");
       }
-    },
-  });
-
-  ctx.registerCommand("fleet:log:clear", {
-    description: "로그 전체 삭제 (메모리 + 파일)",
-    handler: async (_args, commandCtx) => {
-      clearLogs();
-      clearFileLogs();
-      clearFooterBridge();
-      commandCtx.ui.notify("모든 로그가 삭제되었습니다 (메모리 + 파일).", "info");
-    },
-  });
-
-  ctx.registerCommand("fleet:log:category", {
-    description: "로그 카테고리 활성/비활성 토글",
-    handler: async (_args, commandCtx) => {
-      await toggleLogCategory(commandCtx);
     },
   });
 }

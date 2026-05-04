@@ -88,14 +88,13 @@ describe("carrier_jobs rendering", () => {
     expect(renderVerboseResult(result).render().join("\n")).toContain('"cancelled": true');
   });
 
-  it("registers the verbose slash command in fleet boot", () => {
+  it("registers the jobs settings slash command in fleet boot", () => {
     const indexPath = join(testDir, "..", "..", "src", "fleet.ts");
     const source = readFileSync(indexPath, "utf8");
 
     expect(existsSync(indexPath)).toBe(true);
-    expect(source).toContain('pi.registerCommand("fleet:jobs:verbose"');
+    expect(source).toContain('pi.registerCommand("fleet:jobs:settings"');
     expect(source).toContain("toggleCarrierJobsVerbose");
-    expect(source).toContain("Carrier Jobs verbose:");
   });
 });
 

@@ -16,7 +16,6 @@ export interface BridgeCommandSpec {
 
 export type ActiveBridgeSession = BridgeLaunchContext;
 
-export const BRIDGE_COMMAND_ID = "fleet:bridge:launch";
 export const BRIDGE_DEFAULT_KEY = "alt+t";
 export const BRIDGE_EXTENSION_ID = "bridge";
 export const BRIDGE_ACTION_ID = "launch";

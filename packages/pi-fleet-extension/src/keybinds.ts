@@ -343,12 +343,6 @@ export default function registerCoreKeybinds(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("fleet:keybind:popup", {
-    description: "키바인딩 오버레이 팝업 표시",
-    handler: async (_args, ctx) => {
-      await openKeybindPopup(ctx);
-    },
-  });
 }
 
 export function reregisterCoreKeybinds(pi: ExtensionAPI): void {

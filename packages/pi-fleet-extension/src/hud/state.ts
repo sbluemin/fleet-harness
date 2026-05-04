@@ -9,8 +9,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { setupCustomEditor, setupHudRenderRequestBridge, setupStatusBar } from "./editor.js";
 import { invalidateGitBranch, invalidateGitStatus } from "./git-status.js";
-import { PRESETS } from "./theme.js";
-import type { HudEditorState, StatusLinePreset } from "./types.js";
+import type { HudEditorState } from "./types.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 상태 생성
@@ -81,53 +80,6 @@ export function registerHudLifecycle(pi: ExtensionAPI, state: HudEditorState) {
       setTimeout(() => state.tuiRef?.requestRender(), 300);
       setTimeout(() => state.tuiRef?.requestRender(), 500);
     }
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 커맨드
-// ═══════════════════════════════════════════════════════════════════════════
-
-export function registerHudCommand(pi: ExtensionAPI, state: HudEditorState) {
-  pi.registerCommand("fleet:hud:editor", {
-    description: "Configure hud-editor status (toggle, preset)",
-    handler: async (args, ctx) => {
-      state.currentCtx = ctx;
-      state.selectedModel = ctx.model;
-
-      if (!args) {
-        state.enabled = !state.enabled;
-        if (state.enabled) {
-          setupStatusBar(ctx, state);
-          setupCustomEditor(ctx, state);
-          ctx.ui.notify("hud-editor enabled", "info");
-        } else {
-          ctx.ui.setEditorComponent(undefined);
-          ctx.ui.setFooter(undefined);
-          ctx.ui.setWidget("hud-notification", undefined);
-          state.footerDataRef = null;
-          state.tuiRef = null;
-          state.currentEditor = null;
-          state.layoutCache.result = null;
-          ctx.ui.notify("Defaults restored", "info");
-        }
-        return;
-      }
-
-      const preset = args.trim().toLowerCase() as StatusLinePreset;
-      if (preset in PRESETS) {
-        state.config.preset = preset;
-        state.layoutCache.result = null;
-        if (state.enabled) {
-          setupCustomEditor(ctx, state);
-        }
-        ctx.ui.notify(`Preset set to: ${preset}`, "info");
-        return;
-      }
-
-      const presetList = Object.keys(PRESETS).join(", ");
-      ctx.ui.notify(`Available presets: ${presetList}`, "info");
-    },
   });
 }
 

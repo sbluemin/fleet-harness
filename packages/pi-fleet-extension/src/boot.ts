@@ -4,7 +4,7 @@ import registerBoot from "./fleet.js";
 import registerFleetWiki from "./wiki/ui.js";
 import registerGrandFleet from "./grand-fleet/index.js";
 import { registerJob } from "./jobs.js";
-import { registerProviderGuardCommand } from "./provider.js";
+import { registerSystemSettingsCommand } from "./system.js";
 import { syncModelConfig } from "./panel/config.js";
 import { bootBridge } from "./bridge/handler.js";
 import { registerFleetPiCommands } from "./fleet.js";
@@ -25,7 +25,7 @@ import { registerMetaphor } from "./metaphor.js";
 import { registerSettings } from "./settings.js";
 import { registerToolRegistry } from "./tools.js";
 import { prepareKeybindBridgeForExtensionLoad } from "./keybinds.js";
-import { createHudEditorState, registerHudLifecycle, registerHudCommand } from "./hud/state.js";
+import { createHudEditorState, registerHudLifecycle } from "./hud/state.js";
 import registerCoreKeybinds, { reregisterCoreKeybinds } from "./keybinds.js";
 import registerShellLifecycle from "./pty/register.js";
 import registerWelcome from "./welcome.js";
@@ -52,7 +52,6 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerShellLifecycle(ctx);
   registerCoreKeybinds(ctx);
   registerWelcome(ctx);
-  registerHudCommand(ctx, hudState);
 
   registerAgentPanelShortcut();
   registerCarrierStatusKeybind(ctx);
@@ -69,7 +68,7 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerSettings(ctx);
   registerLog(ctx, fleetEnabled);
   registerToolRegistry(ctx, fleetEnabled);
-  registerProviderGuardCommand(ctx);
+  registerSystemSettingsCommand(ctx);
 }
 
 function registerStreamingHandler(pi: ExtensionAPI): void {

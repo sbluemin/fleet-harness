@@ -91,7 +91,7 @@ class FleetStatusOverlay implements Component, Focusable {
       lines.push(frame.row(`    Objective       ${stripControlChars(runtime.activeMissionObjective ?? "(idle)")}`));
       lines.push(frame.row(`    Mission ID      ${stripControlChars(runtime.activeMissionId ?? "-")}`));
     } else {
-      lines.push(frame.row(`    ${ANSI_DIM}PI_GRAND_FLEET_SOCK 설정 또는 /fleet:grand-fleet:connect 로 Admiralty에 연결하세요.${ANSI_RESET}`));
+      lines.push(frame.row(`    ${ANSI_DIM}PI_GRAND_FLEET_SOCK 설정 또는 /fleet:grand-fleet:settings 로 Admiralty에 연결하세요.${ANSI_RESET}`));
     }
 
     lines.push(frame.emptyRow());

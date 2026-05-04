@@ -114,7 +114,7 @@ interface WelcomeState {
   currentCtx: any | null;
 }
 
-const FLEET_ROOT = join(__dirname, "..", "..", "..");
+export const FLEET_ROOT = join(__dirname, "..", "..", "..");
 
 let welcomeBridge: WelcomeBridge | null = null;
 
@@ -416,7 +416,6 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
 
 export default function registerWelcome(pi: ExtensionAPI) {
   ensureQuietStartup();
-  registerWelcomeUpdateCommand(pi);
 
   const state: WelcomeState = {
     dismissFn: null,
@@ -551,17 +550,7 @@ function ensureQuietStartup(): void {
   writeFileSync(quietMarker, JSON.stringify({ quietStartup: true }, null, 2));
 }
 
-function registerWelcomeUpdateCommand(pi: ExtensionAPI): void {
-  pi.registerCommand("fleet:update", {
-    description: "pi-fleet 저장소를 원격 최신 상태로 업데이트",
-    handler: async (_args, ctx) => {
-      pi.sendUserMessage(createFleetUpdatePrompt(FLEET_ROOT));
-      ctx.ui.notify("pi-fleet 업데이트 작업을 AI에게 전달했습니다.", "info");
-    },
-  });
-}
-
-function createFleetUpdatePrompt(fleetRoot: string): string {
+export function createFleetUpdatePrompt(fleetRoot: string): string {
   return [
     "Please update the pi-fleet repository.",
     "",
@@ -699,7 +688,7 @@ function renderUpdateAlertBanner(gitUpdate: GitUpdateStatus | undefined, termWid
     fgOnly("warn", `${gitUpdate.behind} commits behind ${remoteBranch}`),
   ];
   if (currentVersion) {
-    contentLines.push(fgOnly("accent", `Current ${currentVersion} · Run /fleet:update to sync`));
+    contentLines.push(fgOnly("accent", `Current ${currentVersion} · Run /fleet:system:settings to sync`));
   }
 
   const lines = [

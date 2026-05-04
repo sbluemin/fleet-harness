@@ -7,7 +7,7 @@
 This package is a **thin, opinionated adapter** between fleet-core's domain surfaces and the Pi runtime. Three principles direct every module here:
 
 1. **Adapter, not domain** — fleet-core owns Fleet behavior; this package owns the wiring. When a feature contains both pure logic and Pi-specific glue, the pure half migrates to fleet-core and only the glue stays here.
-2. **One Pi-AI gateway** — `src/provider.ts` is the **sole** module that imports `@mariozechner/pi-ai`. Every other adapter in the package consumes that gateway through exported bridge functions. The same file consolidates the `streamAcp` adapter, Pi `ModelRegistry`/`AgentSession` monkeypatches, and the `fleet:guard:toggle` slash command via labelled `#region` sections — they live together because each represents a different facet of the single Pi-provider gateway.
+2. **One Pi-AI gateway** — `src/provider.ts` is the **sole** module that imports `@mariozechner/pi-ai`. Every other adapter in the package consumes that gateway through exported bridge functions. The same file consolidates the `streamAcp` adapter, Pi `ModelRegistry`/`AgentSession` monkeypatches, and the provider guard toggle helper (called from `fleet:system:settings`) via labelled `#region` sections — they live together because each represents a different facet of the single Pi-provider gateway.
 3. **Public surface only** — fleet-core is consumed exclusively through the `@sbluemin/fleet-core` root barrel and documented subpaths. Reaching into `@sbluemin/fleet-core/src/**` is a build break, not a style preference.
 
 ## Current Architecture Status: Flat Domain Architecture
@@ -22,7 +22,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 | pi-fleet-extension (Adapter) | fleet-core (Public Service) | Description |
 | :--- | :--- | :--- |
-| `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Pi gateway (#region structure: pi-ai gateway / streamAcp adapter / thinking-level patch / provider-guard registry patch / `fleet:guard:toggle` command / provider runtime registration). Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
+| `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Pi gateway (#region structure: pi-ai gateway / streamAcp adapter / thinking-level patch / provider-guard registry patch / provider-guard toggle helper / provider runtime registration). Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
 | `src/grand-fleet/` | `admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
 | `src/wiki/` | `@sbluemin/fleet-wiki` | Fleet Wiki tool/command registration and overlays |
 | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | (Host Surfaces) | HUD, Welcome UI, shared TUI overlays, and shortcuts |

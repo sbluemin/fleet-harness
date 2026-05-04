@@ -9,7 +9,7 @@
  *   #region streamAcp adapter    — admiral.agent 공개 API → Pi AssistantMessageEventStream 매핑
  *   #region thinking-level patch — Pi AgentSession prototype monkeypatch
  *   #region provider-guard       — Pi ModelRegistry monkeypatch (허용 provider만 노출)
- *   #region provider-guard cmd   — `fleet:guard:toggle` 슬래시 커맨드
+ *   #region provider-guard cmd   — Provider Guard toggle helper (called from fleet:system:settings)
  *   #region provider-runtime     — Provider 등록 + 세션 라이프사이클 hook
  *
  * imports → types/interfaces → constants → functions 순서 준수.
@@ -749,30 +749,25 @@ function patchModelRegistry(pi: ExtensionAPI, ctx: ExtensionContext): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// #region provider-guard command — `fleet:guard:toggle`
+// #region provider-guard command helper — toggle from fleet:system:settings
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function registerProviderGuardCommand(pi: ExtensionAPI): void {
-  pi.registerCommand("fleet:guard:toggle", {
-    description: "프로바이더 가드 on/off 토글",
-    handler: async (_args, ctx) => {
-      const state = getGuardState();
-      state.enabled = !state.enabled;
+export function toggleProviderGuardForCommand(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  const state = getGuardState();
+  state.enabled = !state.enabled;
 
-      saveProviderGuardSettings({ enabled: state.enabled });
+  saveProviderGuardSettings({ enabled: state.enabled });
 
-      const registry = ctx.modelRegistry as any;
+  const registry = ctx.modelRegistry as any;
 
-      if (state.enabled) {
-        filterProviderGuardModels(registry);
-        enforceProviderGuardAllowedModel(pi, ctx);
-      } else {
-        registry.refresh();
-      }
+  if (state.enabled) {
+    filterProviderGuardModels(registry);
+    enforceProviderGuardAllowedModel(pi, ctx);
+  } else {
+    registry.refresh();
+  }
 
-      ctx.ui.notify(`Provider Guard: ${state.enabled ? "ON" : "OFF"}`, "info");
-    },
-  });
+  ctx.ui.notify(`Provider Guard: ${state.enabled ? "ON" : "OFF"}`, "info");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

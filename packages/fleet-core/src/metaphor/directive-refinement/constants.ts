@@ -21,6 +21,9 @@ export const REASONING_COLORS: Record<ReasoningLevel, string> = {
   high: "error",
 };
 
+/**
+ * @deprecated 이 커맨드는 더 이상 등록되지 않습니다. 대신 `fleet:metaphor:settings`를 사용하세요.
+ */
 export const REFINE_DIRECTIVE_COMMAND = "fleet:metaphor:directive";
 
 export function isValidReasoning(val: string): val is ReasoningLevel {
