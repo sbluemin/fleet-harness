@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-04
+
 ### Breaking Changes
 - **`DirectiveRefinementSettings` format change**: The settings shape under `metaphor-directive-refinement` changed from `{ provider, model, reasoning }` to `{ cliType, model, effort }`. Existing settings using the old keys are not migrated; users must reconfigure via `/fleet:metaphor:settings`.
 - **Legacy settings fallback keys removed**: The fallback chain for legacy keys `metaphor-refine-directive` and `core-improve-prompt` is removed.
