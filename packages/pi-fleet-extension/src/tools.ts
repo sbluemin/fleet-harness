@@ -20,6 +20,7 @@ import {
   SubtaskProgress,
   TaskForceResult,
   TaskForceState,
+  formatAnswerResult,
 } from "@sbluemin/fleet-core";
 
 import { syncModelConfig } from "./panel/config.js";
@@ -57,8 +58,6 @@ export const {
 export const { SQUADRON_MAX_INSTANCES } = admiral.squadron;
 
 const {
-  REQUEST_DIRECTIVE_MANIFEST,
-  RequestDirectiveParams,
   clampHeader,
   errorResult,
   hasPreview,
@@ -74,7 +73,6 @@ const {
   SQUADRON_BADGE_COLOR,
   TASKFORCE_BADGE_COLOR,
 } = admiral.constants;
-const { deriveToolDescription, registerToolPromptManifest } = infra.toolRegistry;
 const carrierCore = admiral.carrier;
 
 interface PiRenderContext {
@@ -119,92 +117,14 @@ export function registerFleetPiTools(pi: ExtensionAPI): void {
   const specs = getFleetRuntime().admiral.agent.tools.listSpecs();
 
   for (const spec of specs) {
+    if (spec.name === "request_directive") {
+      pi.registerTool(toRequestDirectivePiTool(spec) as any);
+      continue;
+    }
     pi.registerTool(toPiToolConfig(spec) as any);
   }
 }
 
-export function registerRequestDirective(pi: ExtensionAPI): void {
-  registerToolPromptManifest(REQUEST_DIRECTIVE_MANIFEST);
-
-  pi.registerTool({
-    name: "request_directive",
-    label: "Request Directive",
-    description: deriveToolDescription(REQUEST_DIRECTIVE_MANIFEST),
-    parameters: RequestDirectiveParams,
-
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!ctx.hasUI) {
-        return errorResult("Error: UI 미지원 (비대화형 모드에서 실행 중)");
-      }
-      if (params.questions.length === 0) {
-        return errorResult("Error: 질문이 제공되지 않았습니다");
-      }
-
-      const questions: DirectiveQuestion[] = params.questions.map((q: DirectiveQuestion) => ({
-        ...q,
-        header: clampHeader(q.header),
-        multiSelect: q.multiSelect === true,
-      }));
-      const validationError = validateQuestions(questions);
-      if (validationError) {
-        return errorResult(validationError, questions);
-      }
-
-      const result = await requestDirectiveWithUi(ctx, questions);
-
-      if (result.cancelled) {
-        return {
-          content: [{ type: "text", text: "대원수(Admiral of the Navy)가 지시 요청을 취소했습니다." }],
-          details: result,
-        };
-      }
-
-      const answerLines = result.answers.map((a) => {
-        if (a.wasCustom) {
-          return `${a.header}: Admiral of the Navy (대원수)'s directive: ${a.values[0]}`;
-        }
-        const valStr = a.values.join(", ");
-        return `${a.header}: Admiral of the Navy (대원수) selected: ${valStr}`;
-      });
-
-      return {
-        content: [{ type: "text", text: answerLines.join("\n") }],
-        details: result,
-      };
-    },
-
-    renderCall(args: { questions: DirectiveQuestion[] }, theme: any) {
-      const qs = (args.questions as DirectiveQuestion[]) || [];
-      const count = qs.length;
-      const headers = qs.map((q) => q.header || "?").join(", ");
-      let text = theme.fg("toolTitle", theme.bold("Request Directive "));
-      text += theme.fg("muted", `${count}개 질문`);
-      if (headers) {
-        text += theme.fg("dim", ` (${truncateToWidth(headers, 40)})`);
-      }
-      return new Text(text, 0, 0);
-    },
-
-    renderResult(result: { content: Array<{ type: string; text?: string }>; details?: unknown }, _options: { expanded: boolean; isPartial: boolean }, theme: any) {
-      const details = result.details as DirectiveResult | undefined;
-      if (!details) {
-        const text = result.content[0];
-        return new Text(text?.type === "text" ? text.text : "", 0, 0);
-      }
-      if (details.cancelled) {
-        return new Text(theme.fg("warning", "⚓ Directive cancelled"), 0, 0);
-      }
-      const lines = details.answers.map((a) => {
-        const valStr = a.values.join(", ");
-        if (a.wasCustom) {
-          return `${theme.fg("success", "⚓ ")}${theme.fg("accent", a.header)}: ${theme.fg("muted", "(직접 작성) ")}${valStr}`;
-        }
-        return `${theme.fg("success", "⚓ ")}${theme.fg("accent", a.header)}: ${valStr}`;
-      });
-      return new Text(lines.join("\n"), 0, 0);
-    },
-  });
-}
 
 export function registerCarrier(pi: ExtensionAPI, config: CarrierConfig): void {
   carrierCore.registerCarrier(config);
@@ -270,6 +190,84 @@ function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
       return runtime.admiral.agent.tools.invoke(spec.name, params, { cwd: ctx.cwd, toolCallId: id, signal });
     },
   } as any;
+}
+
+function toRequestDirectivePiTool(spec: AgentToolSpec): Record<string, unknown> {
+  return {
+    name: spec.name,
+    label: spec.label,
+    description: spec.description,
+    promptSnippet: spec.promptSnippet,
+    promptGuidelines: spec.promptGuidelines,
+    parameters: spec.parameters,
+
+    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+      if (!ctx.hasUI) {
+        return errorResult("Error: UI 미지원 (비대화형 모드에서 실행 중)");
+      }
+      const raw = params as { questions?: DirectiveQuestion[] };
+      if (!raw.questions || raw.questions.length === 0) {
+        return errorResult("Error: 질문이 제공되지 않았습니다");
+      }
+
+      const questions: DirectiveQuestion[] = raw.questions.map((q: DirectiveQuestion) => ({
+        ...q,
+        header: clampHeader(q.header),
+        multiSelect: q.multiSelect === true,
+      }));
+      const validationError = validateQuestions(questions);
+      if (validationError) {
+        return errorResult(validationError, questions);
+      }
+
+      const result = await requestDirectiveWithUi(ctx, questions);
+
+      if (result.cancelled) {
+        return {
+          content: [{ type: "text", text: "대원수(Admiral of the Navy)가 지시 요청을 취소했습니다." }],
+          details: result,
+        };
+      }
+
+      return {
+        content: [{ type: "text", text: formatAnswerResult(result.answers) }],
+        details: result,
+      };
+    },
+
+    renderCall(args: unknown, theme: Theme) {
+      const raw = args as { questions?: DirectiveQuestion[] };
+      const qs = raw.questions || [];
+      const count = qs.length;
+      const headers = qs.map((q) => q.header || "?").join(", ");
+      let text = theme.fg("toolTitle", theme.bold("Request Directive "));
+      text += theme.fg("muted", `${count}개 질문`);
+      if (headers) {
+        text += theme.fg("dim", ` (${truncateToWidth(headers, 40)})`);
+      }
+      return new Text(text, 0, 0);
+    },
+
+    renderResult(result: unknown, _options: { expanded: boolean; isPartial: boolean }, theme: Theme) {
+      const typed = result as { content: Array<{ type: string; text?: string }>; details?: unknown };
+      const details = typed.details as DirectiveResult | undefined;
+      if (!details) {
+        const text = typed.content[0];
+        return new Text(text?.type === "text" ? text.text : "", 0, 0);
+      }
+      if (details.cancelled) {
+        return new Text(theme.fg("warning", "⚓ Directive cancelled"), 0, 0);
+      }
+      const lines = details.answers.map((a) => {
+        const valStr = a.values.join(", ");
+        if (a.wasCustom) {
+          return `${theme.fg("success", "⚓ ")}${theme.fg("accent", a.header)}: ${theme.fg("muted", "(직접 작성) ")}${valStr}`;
+        }
+        return `${theme.fg("success", "⚓ ")}${theme.fg("accent", a.header)}: ${valStr}`;
+      });
+      return new Text(lines.join("\n"), 0, 0);
+    },
+  };
 }
 
 function buildAgentToolCtx(toolCallId: string, signal: AbortSignal | undefined, ctx: ExtensionContext): AgentToolCtx {

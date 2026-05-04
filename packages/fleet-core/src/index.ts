@@ -99,7 +99,14 @@ export type {
   DirectiveQuestion,
   DirectiveResult,
   RenderOption,
-} from "./admiral/request-directive.js";
+} from "./admiral/request-directive/index.js";
+export {
+  clampHeader,
+  errorResult,
+  formatAnswerResult,
+  hasPreview,
+  validateQuestions,
+} from "./admiral/request-directive/index.js";
 export type * from "./admiral/carrier/overlay-types.js";
 export type {
   AgentStreamEvent,

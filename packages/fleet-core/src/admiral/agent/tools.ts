@@ -1,6 +1,7 @@
 import type { AgentToolCtx, AgentToolSpec, McpCallToolResult, ToolMetadata } from "./types.js";
 import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
 import { buildCarrierToolSpecs } from "../carrier/tool-spec.js";
+import { buildRequestDirectiveToolSpec } from "../request-directive/tool-spec.js";
 import { buildSquadronToolSpec } from "../squadron/tool-spec.js";
 import { buildTaskForceToolSpec } from "../taskforce/tool-spec.js";
 
@@ -104,6 +105,7 @@ function buildDefaultToolSpecs(): readonly AgentToolSpec[] {
   if (squadron) specs.push(squadron);
   if (taskForce) specs.push(taskForce);
   specs.push(buildCarrierJobsToolSpec());
+  specs.push(buildRequestDirectiveToolSpec());
 
   return specs;
 }

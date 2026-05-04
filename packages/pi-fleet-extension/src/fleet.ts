@@ -25,7 +25,6 @@ import {
   getRegisteredOrder,
   getSquadronEnabledIds,
   notifyStatusUpdate,
-  registerRequestDirective,
   registerSingleCarrier,
   setOfflineCarriers,
   setSquadronEnabledCarriers,
@@ -279,7 +278,6 @@ function bootAdmiral(pi: ExtensionAPI): void {
   const bootProtocol = getActiveProtocol();
   syncProtocolToHud(bootProtocol);
   registerAdmiralSettingsSection();
-  registerRequestDirective(pi);
   registerProtocolKeybinds();
 }
 

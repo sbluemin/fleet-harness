@@ -1,38 +1,8 @@
-/**
- * request_directive — pure manifest and parameter schema.
- */
-
 import { Type } from "@sinclair/typebox";
 
-import type { ToolPromptManifest } from "../infra/tool-registry/index.js";
+import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
 
-export interface DirectiveOption {
-  label: string;
-  description: string;
-  preview?: string;
-}
-
-export interface DirectiveQuestion {
-  question: string;
-  header: string;
-  options: DirectiveOption[];
-  multiSelect?: boolean;
-}
-
-export interface DirectiveAnswer {
-  question: string;
-  header: string;
-  values: string[];
-  wasCustom: boolean;
-}
-
-export interface DirectiveResult {
-  questions: DirectiveQuestion[];
-  answers: DirectiveAnswer[];
-  cancelled: boolean;
-}
-
-export type RenderOption = DirectiveOption & { isOther?: boolean; selected?: boolean };
+import type { DirectiveOption, DirectiveQuestion } from "./types.js";
 
 export const HEADER_MAX_LENGTH = 12;
 
@@ -117,65 +87,3 @@ export const REQUEST_DIRECTIVE_MANIFEST: ToolPromptManifest = {
     `In plan mode, use \`request_directive\` to clarify requirements or choose between approaches **before** finalizing a plan. Do **not** use it to ask "Is the plan ready?" or "Should I execute?" — that is what plan approval is for.`,
   ],
 };
-
-export function errorResult(
-  message: string,
-  questions: DirectiveQuestion[] = [],
-): { content: { type: "text"; text: string }[]; details: DirectiveResult } {
-  return {
-    content: [{ type: "text", text: message }],
-    details: { questions, answers: [], cancelled: true },
-  };
-}
-
-export function clampHeader(header: string): string {
-  if (header.length <= HEADER_MAX_LENGTH) return header;
-  return header.slice(0, HEADER_MAX_LENGTH - 1) + "…";
-}
-
-export function hasPreview(q: DirectiveQuestion): boolean {
-  return !q.multiSelect && q.options.some((o) => o.preview);
-}
-
-export function validateQuestions(questions: DirectiveQuestion[]): string | null {
-  const seenQuestions = new Set<string>();
-
-  for (const q of questions) {
-    const normalizedQuestion = q.question.trim();
-    if (!normalizedQuestion) {
-      return "Error: 빈 질문은 허용되지 않습니다";
-    }
-
-    if (seenQuestions.has(normalizedQuestion)) {
-      return `Error: 중복 질문이 있습니다: "${normalizedQuestion}"`;
-    }
-    seenQuestions.add(normalizedQuestion);
-
-    const normalizedHeader = q.header.trim();
-    if (!normalizedHeader) {
-      return "Error: 빈 header는 허용되지 않습니다";
-    }
-
-    if (q.options.length < 2 || q.options.length > 4) {
-      return `Error: "${normalizedHeader}" 질문의 선택지는 2-4개여야 합니다`;
-    }
-
-    const seenLabels = new Set<string>();
-    for (const option of q.options) {
-      const normalizedLabel = option.label.trim();
-      if (!normalizedLabel) {
-        return `Error: "${normalizedHeader}" 질문에 빈 선택지 라벨이 있습니다`;
-      }
-      if (seenLabels.has(normalizedLabel)) {
-        return `Error: "${normalizedHeader}" 질문에 중복 선택지 라벨이 있습니다: "${normalizedLabel}"`;
-      }
-      seenLabels.add(normalizedLabel);
-    }
-
-    if (q.multiSelect && q.options.some((option) => option.preview)) {
-      return `Error: "${normalizedHeader}" 질문은 multiSelect=true 이므로 preview를 사용할 수 없습니다`;
-    }
-  }
-
-  return null;
-}
