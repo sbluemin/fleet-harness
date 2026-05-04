@@ -294,8 +294,8 @@ const PHASES = [
 
 const ORDERS = [
   {
-    name: "Delegation Policy",
-    kr: tr("위임 정책", "Delegation Policy"),
+    name: "Carrier Operations Policy",
+    kr: tr("캐리어 운용 정책", "Carrier Operations Policy"),
     desc: tr(
       "제독은 결정한다. 함장은 실행한다. 호스트는 판단을 유지하고 행동은 가장 적합한 CLI 백엔드에 위임한다.",
       "The Admiral decides. Captains execute. The host retains judgment and delegates action to the most suitable CLI backend."

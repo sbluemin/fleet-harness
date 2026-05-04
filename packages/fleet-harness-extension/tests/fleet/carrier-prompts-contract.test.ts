@@ -7,7 +7,7 @@ import { CARRIER_RESULT_CUSTOM_TYPE } from "../../src/jobs.js";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const { PROTOCOL_PREAMBLE } = admiral.prompts;
-const { DELEGATION_POLICY } = admiral.protocols.standingOrders;
+const { CARRIER_OPERATIONS_POLICY } = admiral.protocols.standingOrders;
 const { buildCarrierDispatchToolSpec } = admiral.carrier;
 const { CARRIER_JOBS_DOCTRINE, buildCarrierJobsSchema } = admiral.carrierJobs;
 const { SQUADRON_DOCTRINE, buildSquadronSchema } = admiral.squadron;
@@ -21,7 +21,7 @@ describe("carrier prompt doctrine", () => {
     expect(PROTOCOL_PREAMBLE).toContain("Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done");
     expect(PROTOCOL_PREAMBLE).toContain("stop tool use and wait passively for the [carrier:result] follow-up push");
     expect(PROTOCOL_PREAMBLE).toContain("carrier_jobs is only a fallback path when the push is missing or an explicit lookup is required");
-    expect(DELEGATION_POLICY.prompt).toContain("Lookup/control detached carrier jobs");
+    expect(CARRIER_OPERATIONS_POLICY.prompt).toContain("Lookup/control detached carrier jobs");
   });
 
   it("carrier_dispatch tool unifies all carriers under a single spec", () => {

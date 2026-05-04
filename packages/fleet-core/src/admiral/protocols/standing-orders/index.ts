@@ -7,12 +7,12 @@
 
 import type { StandingOrder } from "./types.js";
 
-import { DELEGATION_POLICY } from "./delegation-policy.js";
+import { CARRIER_OPERATIONS_POLICY } from "./carrier-operations-policy.js";
 import { DEEP_DIVE } from "./deep-dive.js";
 import { RESULT_INTEGRITY } from "./result-integrity.js";
 
 export * from "./deep-dive.js";
-export * from "./delegation-policy.js";
+export * from "./carrier-operations-policy.js";
 export * from "./result-integrity.js";
 export * from "./types.js";
 
@@ -22,7 +22,7 @@ export * from "./types.js";
 
 /** 등록된 Standing Orders — 주입 순서대로 나열 */
 const STANDING_ORDERS: readonly StandingOrder[] = [
-  DELEGATION_POLICY,
+  CARRIER_OPERATIONS_POLICY,
   DEEP_DIVE,
   RESULT_INTEGRITY,
 ];

@@ -319,7 +319,7 @@ const FLEET_ACP_REQUEST_DIRECTIVE_PROMPT = String.raw`
 `;
 
 const FLEET_ACP_TOOL_POLICY_PROMPT = String.raw`
-# Tool And Delegation Policy
+# Tool And Carrier Operations Policy
 - Use tools deliberately and report meaningful command outcomes.
 - Prefer repository-local helpers and existing extension APIs over new abstractions.
 - Do not use Grand Fleet Admiralty tools from Fleet mode unless explicitly provided by the role.

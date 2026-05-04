@@ -130,15 +130,15 @@ The Admiral extension implements a modular prompt policy system that governs how
 
 ### Standing Orders
 
-- **Delegation Policy**: Defines how and when PI should delegate tasks to carriers.
+- **Carrier Operations Policy**: Defines how and when PI should delegate tasks to carriers.
 - **Deep Dive**: Strategy for recursive investigation and root-cause analysis.
 - **Always Active**: These are injected into every agent start sequence regardless of the selected protocol.
 
 ### Protocols
 
 - **Fleet Action Protocol (Alt+1)**: The default, high-performance workflow for standard operations.
-- **Modular Expansion**: Additional protocols (e.g., specific research or refactoring modes) can be assigned to `Alt+2` through `Alt+9`.
-- **Switching**: Protocols are switched via dedicated hotkeys. Only one protocol can be active at a time; deactivation is not possible (switching only).
+- **Fleet Action Only**: Fleet Action is the only registered protocol. Additional protocols can be introduced later, but no alternate protocol is active today.
+- **Switching**: The active protocol is surfaced through protocol state and HUD labels. With the current single-protocol catalog, `Alt+1` restores Fleet Action.
 
 ### Prompt Structure
 
@@ -148,7 +148,7 @@ The Admiral extension implements a modular prompt policy system that governs how
 System Prompt
   + [Boot] Initial Slate (FLEET_HARNESS_DEV=1 시 RISEN 개발 컨텍스트, 그 외 빈 문자열)
   + [Toggle] Worldview (via fleet:metaphor:settings)
-  + [Always] Standing Orders (Delegation Policy + Deep Dive + ...)
+  + [Always] Standing Orders (Carrier Operations Policy + Deep Dive + ...)
   + [Always] Active Protocol (Fleet Action Protocol, etc.)
   + [Always] request_directive guide
 ```
@@ -158,14 +158,14 @@ System Prompt
 - **Editor Border Color**: The editor's border color changes based on the active protocol through the `core-hud/border-bridge` module-level set/get API.
 - **Editor Top Border (Center Label)**: The active protocol short label (e.g., `⚓ Fleet Action`) is rendered at the center of the editor's top border via the `core-hud/border-bridge` `setEditorRightLabel` API.
 - **Editor Bottom Border (Right Label)**: The current session's operation name (managed by the `metaphor:operation` domain) is rendered at the right end of the editor's bottom border via the `core-hud/border-bridge` `setEditorBottomRightLabel` API. Distinct domain from protocol UI but shares the editor border surface.
-- **Settings Popup (Alt+/)**: The "Admiral" section allows manual selection of the `activeProtocol` and toggling of the `worldview`.
+- **Settings Popup (Alt+/)**: The "Admiral" section displays the current protocol and worldview state; protocol switching currently resolves to Fleet Action via `Alt+1`.
 
 ### Key Bindings
 
 | Key | Protocol / Action |
 |-----|-------------------|
 | **Alt+1** | Switch to Fleet Action Protocol |
-| **Alt+2~9** | Switch to dynamically assigned protocols |
+| **Alt+2~9** | Unassigned protocol expansion slots |
 | **Alt+/** | Open Settings (to configure Admiral parameters) |
 
 ## Architecture Philosophy

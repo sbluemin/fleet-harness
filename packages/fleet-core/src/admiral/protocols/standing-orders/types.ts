@@ -11,9 +11,9 @@
 
 /** Standing Order — 프로토콜 전환과 무관하게 항상 시스템 프롬프트에 포함되는 지침 */
 export interface StandingOrder {
-  /** 고유 식별자 (예: "delegation-policy", "deep-dive") */
+  /** 고유 식별자 (예: "carrier-operations-policy", "deep-dive") */
   id: string;
-  /** 표시 이름 (예: "Delegation Policy", "Deep Dive") */
+  /** 표시 이름 (예: "Carrier Operations Policy", "Deep Dive") */
   name: string;
   /** 프롬프트 본문 */
   prompt: string;
