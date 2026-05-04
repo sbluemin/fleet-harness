@@ -62,7 +62,7 @@ Resolve the actionable feedback raised on PR `<pr_number>`, validate the changes
 
 7. Apply the changes:
    - Apply directly for low-risk, narrow edits (≤ 3 dependent steps, single file or tightly coupled set).
-   - Delegate to Genesis via the per-carrier tool `carrier_genesis` for multi-file or non-trivial implementation work. Provide `<objective>`, `<scope>`, `<constraints>`, and `<references>` blocks; do not prescribe step-by-step instructions.
+   - Delegate to Genesis via `carrier_dispatch` with `carrier_id: "genesis"` for multi-file or non-trivial implementation work. Provide `<objective>`, `<scope>`, `<constraints>`, and `<references>` blocks; do not prescribe step-by-step instructions.
    - Korean is required for all new code comments per the user's global instruction.
 
 8. Self-verification (do this before any external check is run):

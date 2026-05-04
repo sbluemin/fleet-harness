@@ -6,7 +6,7 @@ import * as prompts from "./prompts.js";
 import * as sortieExecute from "./sortie-execute.js";
 import * as statusOverlayController from "./status-overlay-controller.js";
 import * as types from "./types.js";
-import { buildCarrierToolSpecs } from "./tool-spec.js";
+import { buildCarrierDispatchToolSpec } from "./tool-spec.js";
 
 export * from "./framework.js";
 export * from "./framework-access.js";
@@ -17,7 +17,7 @@ export * from "./sortie-execute.js";
 export * from "./status-overlay-controller.js";
 export * from "./types.js";
 
-export { buildCarrierToolSpecs } from "./tool-spec.js";
+export { buildCarrierDispatchToolSpec } from "./tool-spec.js";
 export { personas };
 
 export const carrier = {
@@ -29,5 +29,5 @@ export const carrier = {
   sortieExecute,
   statusOverlayController,
   types,
-  buildToolSpecs: buildCarrierToolSpecs,
+  buildToolSpecs: buildCarrierDispatchToolSpec,
 };

@@ -1,5 +1,6 @@
 import { Type, type TObject } from "@sinclair/typebox";
 import { CLI_DISPLAY_NAMES } from "../../constants.js";
+import { CARRIER_REQUEST_BREVITY_GUIDELINE } from "../carrier/prompts.js";
 import { TASKFORCE_CLI_TYPES } from "./types.js";
 
 // ═════════════════════════════════════════════════════════
@@ -41,6 +42,7 @@ export const TASKFORCE_DOCTRINE = {
     `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
       ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
     `Structure each carrier request using that carrier's required tags listed in <fleet section="roster">; missing required tags cause hard-error rejection by the dispatcher.`,
+    CARRIER_REQUEST_BREVITY_GUIDELINE,
   ],
 };
 

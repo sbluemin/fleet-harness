@@ -188,7 +188,7 @@ The Admiral agent domain exposes **two distinct execution patterns** that must n
 | Pattern | Surface | Lifetime | Use Case |
 |---------|---------|----------|----------|
 | **Streaming** | `admiral.session.{ensure, sendMessage, deliverToolResults}` + `admiral.events` (module emit/register channel) | Long-lived ACP session, multiplexed per `sessionId` | Pi `streamAcp` host adapter; host `Map<sessionId, push>` routing |
-| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_<id>` uses `carrierId`, `carrier_squadron` / `carrier_taskforce` use a synthetic id) | Single carrier turn, returns `ExecResult` synchronously | `carrier_<id>` (individual carrier tools) / `carrier_squadron` / `carrier_taskforce` tool execution |
+| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument, `carrier_squadron` / `carrier_taskforce` use a synthetic id) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (unified per-carrier dispatcher with `carrier_id` enum) / `carrier_squadron` / `carrier_taskforce` tool execution |
 
 **Why the separation matters**: streaming routes events through a global module channel keyed by `sessionId`, while executor callbacks are owner-specific and finite. Forcing one pattern through the other path causes either listener leaks (callback as event) or routing collisions (event as callback).
 

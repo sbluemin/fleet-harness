@@ -292,11 +292,10 @@ function renderToolCall(spec: AgentToolSpec, args: unknown, _theme: Theme, conte
     const typedArgs = args as { carrier?: string };
     return oneLine(`  ⚓ ${TASKFORCE_BADGE_COLOR}Taskforce${ANSI_RESET}: ${TASKFORCE_BADGE_COLOR}${typedArgs.carrier ?? "..."}${ANSI_RESET}`);
   }
-  if (spec.id.startsWith("carrier_") && spec.id !== "carrier_jobs" && spec.id !== "carrier_squadron" && spec.id !== "carrier_taskforce") {
-    // 개별 캐리어 도구 렌더링
-    const carrierId = spec.id.replace("carrier_", "");
+  if (spec.id === "carrier_dispatch") {
+    const carrierId = isRecord(args) && typeof args.carrier_id === "string" ? args.carrier_id : "";
     const carrierColor = CARRIER_COLORS[carrierId] ?? SORTIE_SUMMARY_COLOR;
-    const carrierName = CLI_DISPLAY_NAMES[carrierId] ?? carrierId;
+    const carrierName = resolveCarrierDisplayName(carrierId) || carrierId;
     return oneLine(`  ⚓ ${carrierColor}${carrierName}${ANSI_RESET}`);
   }
   return undefined;
@@ -317,7 +316,9 @@ function renderToolResult(
     ? SQUADRON_BADGE_COLOR
     : spec.id === "carrier_taskforce"
       ? TASKFORCE_BADGE_COLOR
-      : resolveToolCarrierColor(spec.id);
+      : spec.id === "carrier_dispatch"
+        ? (CARRIER_COLORS[(context.args as { carrier_id?: string })?.carrier_id ?? ""] ?? SORTIE_SUMMARY_COLOR)
+        : resolveToolCarrierColor(spec.id);
   return {
     render(width: number) {
       return renderRequestPreview(entries, options.expanded, color, width);
@@ -336,15 +337,10 @@ function oneLine(line: string): { render(): string[]; invalidate(): void } {
 function buildPreviewEntries(toolName: string, args: unknown): RenderEntry[] {
   if (!isRecord(args)) return [];
 
-  // 개별 캐리어 도구: 파라미터 구조 { request: string }
-  const isIndividualCarrierTool = toolName.startsWith("carrier_")
-    && toolName !== "carrier_jobs"
-    && toolName !== "carrier_squadron"
-    && toolName !== "carrier_taskforce";
-  if (isIndividualCarrierTool && typeof args.request === "string") {
-    const carrierId = toolName.replace("carrier_", "");
-    const carrierName = CLI_DISPLAY_NAMES[carrierId] ?? carrierId;
-    return [{ label: carrierName, text: String(args.request ?? "") }];
+  if (toolName === "carrier_dispatch" && typeof args.carrier_id === "string" && typeof args.request === "string") {
+    const carrierId = args.carrier_id;
+    const carrierName = resolveCarrierDisplayName(carrierId) || carrierId;
+    return [{ label: carrierName, text: String(args.request) }];
   }
 
   if (toolName === "carrier_squadron" && Array.isArray(args.subtasks)) {
@@ -360,7 +356,6 @@ function buildPreviewEntries(toolName: string, args: unknown): RenderEntry[] {
   return [];
 }
 
-/** 개별 캐리어 도구의 캐리어 ID에서 색상을 해석 */
 function resolveToolCarrierColor(toolName: string): string {
   const carrierId = toolName.replace("carrier_", "");
   return CARRIER_COLORS[carrierId] ?? SORTIE_SUMMARY_COLOR;

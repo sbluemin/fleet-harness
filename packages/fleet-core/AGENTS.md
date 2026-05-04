@@ -26,9 +26,9 @@
 | `session.ts` | `ensure` / `sendMessage` / `deliverToolResults` / `resolveSession` | Streaming — events flow through `events.ts` module channel |
 | `events.ts` | `register` / `unregister` / `emit` / `clear` for `AgentStreamEvent` | Module-level emit/register, `carrier-job-events.ts` doppelgänger |
 | `tools.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` | Default fleet tool specs auto-registered; host extras scoped by `scopeKey`. **Single SSoT** for tool specs (registry + doctrine formatter). |
-| `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (carrier tools use `carrierId`; `carrier_squadron` / `carrier_taskforce` use a synthetic id) |
+| `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (`carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_squadron` / `carrier_taskforce` use a synthetic id) |
 | `lifecycle.ts` | `bindHostSession` / `shutdownAllSessions` | Pi `session_start`/`session_shutdown` integration point |
-| `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations (carrier callers pass `carrierId`; squadron/taskforce pass synthetic ids) |
+| `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations (`carrier_dispatch` passes the resolved `carrierId`; squadron/taskforce pass synthetic ids) |
 | `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getThinkingLevels` | CLI/model codec |
 | `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
 | `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |

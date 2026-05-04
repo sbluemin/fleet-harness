@@ -8,7 +8,7 @@ import { CARRIER_RESULT_CUSTOM_TYPE } from "../../src/jobs.js";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const { PROTOCOL_PREAMBLE } = admiral.prompts;
 const { DELEGATION_POLICY } = admiral.protocols.standingOrders;
-const { buildCarrierToolDoctrine, buildCarrierToolSchema } = admiral.carrier;
+const { buildCarrierDispatchToolSpec } = admiral.carrier;
 const { CARRIER_JOBS_DOCTRINE, buildCarrierJobsSchema } = admiral.carrierJobs;
 const { SQUADRON_DOCTRINE, buildSquadronSchema } = admiral.squadron;
 const { TASKFORCE_DOCTRINE, buildTaskForceSchema } = admiral.taskforce;
@@ -24,19 +24,10 @@ describe("carrier prompt doctrine", () => {
     expect(DELEGATION_POLICY.prompt).toContain("Lookup/control detached carrier jobs");
   });
 
-  it("keeps one manifest per carrier tool and carrier_jobs has no roster", () => {
-    // 개별 캐리어 도구 매니페스트 검증 — 샘플 캐리어 "genesis"로 확인
-    const genesisManifest = buildCarrierToolDoctrine("genesis", "Genesis", {
-      title: "Chief Engineer",
-      summary: "Implementation specialist",
-      category: "operations",
-      whenToUse: ["implementation tasks"],
-      whenNotToUse: ["strategic decisions"],
-      permissions: [],
-      requestBlocks: [],
-      outputFormat: "",
-    });
-    expect(genesisManifest.id).toBe("carrier_genesis");
+  it("carrier_dispatch tool unifies all carriers under a single spec", () => {
+    const dispatchSpec = buildCarrierDispatchToolSpec();
+    expect(dispatchSpec.id).toBe("carrier_dispatch");
+    expect(dispatchSpec.tag).toBe("carrier_dispatch");
     expect(SQUADRON_DOCTRINE.id).toBe("carrier_squadron");
     expect(TASKFORCE_DOCTRINE.id).toBe("carrier_taskforce");
     expect(CARRIER_JOBS_DOCTRINE.id).toBe("carrier_jobs");
@@ -47,18 +38,8 @@ describe("carrier prompt doctrine", () => {
   });
 
   it("keeps carrier_jobs as fallback or explicit lookup only across async carrier tools", () => {
-    const sampleMetadata = {
-      title: "Chief Engineer",
-      summary: "Implementation specialist",
-      category: "operations" as const,
-      whenToUse: ["implementation tasks"],
-      whenNotToUse: ["strategic decisions"],
-      permissions: [] as string[],
-      requestBlocks: [] as Array<{ tag: string; hint: string; required: boolean }>,
-      outputFormat: "",
-    };
-    const genesisManifest = buildCarrierToolDoctrine("genesis", "Genesis", sampleMetadata);
-    const dispatchManifests = [genesisManifest, SQUADRON_DOCTRINE, TASKFORCE_DOCTRINE];
+    const dispatchSpec = buildCarrierDispatchToolSpec();
+    const dispatchManifests = [dispatchSpec, SQUADRON_DOCTRINE, TASKFORCE_DOCTRINE];
 
     for (const manifest of dispatchManifests) {
       const text = JSON.stringify(manifest);
@@ -81,25 +62,15 @@ describe("carrier prompt doctrine", () => {
   });
 
   it("does not expose wait/mode/fallback queue schema knobs", () => {
+    const dispatchSpec = buildCarrierDispatchToolSpec();
     const schemaKeys = [
-      Object.keys((buildCarrierToolSchema() as any).properties),
+      Object.keys((dispatchSpec.parameters as any).properties),
       Object.keys((buildSquadronSchema(["genesis"]) as any).properties),
       Object.keys((buildTaskForceSchema(["genesis"]) as any).properties),
       Object.keys((buildCarrierJobsSchema() as any).properties),
     ].flat();
-    const sampleMetadata = {
-      title: "Chief Engineer",
-      summary: "Implementation specialist",
-      category: "operations" as const,
-      whenToUse: ["implementation tasks"],
-      whenNotToUse: ["strategic decisions"],
-      permissions: [] as string[],
-      requestBlocks: [] as Array<{ tag: string; hint: string; required: boolean }>,
-      outputFormat: "",
-    };
-    const genesisManifest = buildCarrierToolDoctrine("genesis", "Genesis", sampleMetadata);
     const manifestText = [
-      JSON.stringify(genesisManifest),
+      JSON.stringify(dispatchSpec),
       JSON.stringify(SQUADRON_DOCTRINE),
       JSON.stringify(TASKFORCE_DOCTRINE),
       JSON.stringify(CARRIER_JOBS_DOCTRINE),

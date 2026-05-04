@@ -1,6 +1,6 @@
 import type { AgentToolCtx, AgentToolSpec, McpCallToolResult } from "./types.js";
 import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
-import { buildCarrierToolSpecs } from "../carrier/tool-spec.js";
+import { buildCarrierDispatchToolSpec } from "../carrier/tool-spec.js";
 import { buildRequestDirectiveToolSpec } from "../request-directive/tool-spec.js";
 import { buildSquadronToolSpec } from "../squadron/tool-spec.js";
 import { buildTaskForceToolSpec } from "../taskforce/tool-spec.js";
@@ -163,7 +163,7 @@ function ensureDefaultToolsRegistered(): void {
 
 function buildDefaultToolSpecs(): readonly AgentToolSpec[] {
   const specs: AgentToolSpec[] = [];
-  specs.push(...buildCarrierToolSpecs());
+  specs.push(buildCarrierDispatchToolSpec());
   const squadron = buildSquadronToolSpec();
   const taskForce = buildTaskForceToolSpec();
 

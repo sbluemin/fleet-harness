@@ -1,12 +1,11 @@
 /**
- * carrier/tool-spec.ts — 개별 캐리어 도구 스펙
+ * carrier/tool-spec.ts — carrier_dispatch 단일 도구 스펙
  *
- * 등록된 모든 캐리어에 대해 개별 AgentToolSpec(carrier_<id>)을 생성합니다.
- * offline/squadron 상태는 도구 등록 여부에 영향을 주지 않으며,
- * 런타임 컨텍스트 태그(`<offline_carriers>`, `<available_squadron_carriers>`)로 모델에 안내됩니다.
- * offline 호출만 execute() 진입점에서 안전장치로 거부합니다.
+ * 모든 캐리어를 단일 carrier_dispatch 도구로 통합합니다.
+ * offline 호출은 execute() 진입점에서 안전장치로 거부합니다.
  */
 
+import { type TSchema, Type } from "@sinclair/typebox";
 import type { CliType } from "@sbluemin/unified-agent";
 
 import type { AgentToolSpec } from "../agent/types.js";
@@ -35,8 +34,7 @@ import {
 import { executeWithPool } from "../agent/executor.js";
 import {
   buildCarrierSystemPrompt,
-  buildCarrierToolDoctrine,
-  buildCarrierToolSchema,
+  CARRIER_REQUEST_BREVITY_GUIDELINE,
 } from "./prompts.js";
 import {
   getRegisteredCarrierConfig,
@@ -47,8 +45,11 @@ import {
 import { validateRequiredRequestBlocks } from "./request-blocks.js";
 import {
   buildSortieJobSummary,
-  computeSortieFinalStatus,
 } from "./sortie-execute.js";
+
+// ═════════════════════════════════════════════════════════
+// Types / Interfaces
+// ═════════════════════════════════════════════════════════
 
 interface CarrierSingleResult {
   carrierId: string;
@@ -72,6 +73,10 @@ interface CarrierBackgroundOptions {
   toolName: `carrier_${string}`;
 }
 
+// ═════════════════════════════════════════════════════════
+// Constants
+// ═════════════════════════════════════════════════════════
+
 const CARRIER_LOG_CATEGORY_INVOKE = "fleet-carrier:invoke";
 const CARRIER_LOG_CATEGORY_DISPATCH = "fleet-carrier:dispatch";
 const CARRIER_LOG_CATEGORY_STREAM = "fleet-carrier:stream";
@@ -79,56 +84,105 @@ const CARRIER_LOG_CATEGORY_EXEC = "fleet-carrier:exec";
 const CARRIER_LOG_CATEGORY_RESULT = "fleet-carrier:result";
 const CARRIER_LOG_CATEGORY_ERROR = "fleet-carrier:error";
 
+// ═════════════════════════════════════════════════════════
+// 공개 빌더
+// ═════════════════════════════════════════════════════════
+
 /**
- * 등록된 모든 캐리어에 대해 개별 AgentToolSpec을 생성합니다.
- * offline/squadron 상태와 무관하게 등록된 캐리어는 모두 도구로 노출됩니다.
+ * 모든 캐리어를 단일 carrier_dispatch 도구로 통합한 AgentToolSpec을 반환합니다.
  */
-export function buildCarrierToolSpecs(): AgentToolSpec[] {
-  const carrierIds = getRegisteredOrder();
-  if (carrierIds.length < 1) return [];
-
-  const specs: AgentToolSpec[] = [];
-
-  for (const carrierId of carrierIds) {
-    const config = getRegisteredCarrierConfig(carrierId);
-    if (!config) continue;
-
-    const displayName = config.displayName;
-    const metadata = config.carrierMetadata;
-
-    // 메타데이터가 없는 캐리어는 스펙을 생성하지 않음
-    if (!metadata) continue;
-
-    specs.push(buildSingleCarrierSpec(carrierId, displayName, metadata));
-  }
-
-  return specs;
-}
-
-function buildSingleCarrierSpec(
-  carrierId: string,
-  displayName: string,
-  metadata: import("./types.js").CarrierMetadata,
-): AgentToolSpec {
-  const toolName: `carrier_${string}` = `carrier_${carrierId}`;
-  const doctrine = buildCarrierToolDoctrine(carrierId, displayName, metadata);
-
+export function buildCarrierDispatchToolSpec(): AgentToolSpec {
   return {
-    ...doctrine,
-    parameters: buildCarrierToolSchema(),
+    id: "carrier_dispatch",
+    tag: "carrier_dispatch",
+    title: "Carrier Dispatch Tool Guidelines",
+    description:
+      `Register a fire-and-forget carrier job for the specified carrier.` +
+      ` Returns a job_id immediately; results arrive through [carrier:result] push; carrier_jobs is fallback/explicit lookup only.`,
+    promptSnippet:
+      `carrier_dispatch — Register a carrier job for task delegation to a named carrier.` +
+      ` Results arrive later via [carrier:result]; carrier_jobs is fallback/explicit lookup only.`,
+    whenToUse: [
+      `See <fleet section="roster"> for carrier selection and routing guidance.`,
+    ],
+    whenNotToUse: [],
+    usageGuidelines: [
+      `When composing a request, provide only background, context, objective, and constraints.` +
+        ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
+        ` Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
+        ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 3h.`,
+      `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
+        ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
+      `Some carriers require structured request blocks (e.g., <objective>, <context>).` +
+        ` See <fleet section="roster"> for each carrier's required and optional tags.` +
+        ` Missing required tags cause hard-error rejection by the dispatcher.`,
+      CARRIER_REQUEST_BREVITY_GUIDELINE,
+    ],
+    guardrails: [
+      `Multiple agents may be working on this codebase at the same time on a single filesystem and branch.` +
+        ` Only touch changes you made — never revert or overwrite modifications made by others.` +
+        ` Prefer precise edits (edit) over full-file writes (write).` +
+        ` Always re-read a file before modifying it, as it may have changed since your last read.`,
+    ],
+    get parameters() {
+      const carrierIds = getRegisteredOrder();
+      if (carrierIds.length === 0) {
+        return Type.Object({
+          carrier_id: Type.String({ description: `Target carrier ID. See <fleet section="roster"> for available carriers.` }),
+          request: Type.String({ description: "The task/prompt to send to the carrier." }),
+        });
+      }
+      const variants = carrierIds.map((carrierId) => {
+        const config = getRegisteredCarrierConfig(carrierId);
+        const required = config?.carrierMetadata?.requestBlocks.filter((b) => b.required) ?? [];
+        const requiredHint = required.length > 0
+          ? ` Required blocks: ${required.map((b) => `<${b.tag}>`).join(", ")}.`
+          : "";
+        return Type.Object({
+          carrier_id: Type.Literal(carrierId),
+          request: Type.String({
+            description: `Task/prompt for ${resolveCarrierDisplayName(carrierId)}.${requiredHint}`,
+          }),
+        });
+      });
+      if (variants.length === 1) return variants[0]!;
+      return Type.Union(variants as unknown as [TSchema, ...TSchema[]]);
+    },
 
     async execute(args: unknown, ctx) {
       const t0 = Date.now();
       const cwd = ctx.cwd;
-      const params = args as { request: string };
-      const request = params.request;
       const toolCallId = ctx.toolCallId ?? "";
       const jobId = buildCarrierJobId("carrier", toolCallId);
+      const toolName: `carrier_${string}` = "carrier_dispatch";
+
+      if (!isDispatchArgs(args)) {
+        return launchResponseResult({
+          job_id: jobId,
+          accepted: false,
+          error: "Invalid arguments: carrier_id and request must be non-empty strings.",
+        });
+      }
+
+      const carrierId = args.carrier_id;
+      const request = args.request;
 
       logDebug(
         CARRIER_LOG_CATEGORY_INVOKE,
         `execute start carrier=${carrierId}`,
       );
+
+      const config = getRegisteredCarrierConfig(carrierId);
+      if (!config) {
+        logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier not registered carrier=${carrierId}`);
+        return launchResponseResult({
+          job_id: jobId,
+          accepted: false,
+          error: `Carrier "${carrierId}" is not registered.`,
+        });
+      }
+
+      const metadata = config.carrierMetadata;
 
       // 캐리어 online 상태 확인
       if (!isCarrierOnline(carrierId)) {
@@ -141,14 +195,16 @@ function buildSingleCarrierSpec(
       }
 
       // 필수 request-block 검증
-      const blockValidation = validateRequiredRequestBlocks(metadata, request, carrierId);
-      if (!blockValidation.ok) {
-        logDebug(CARRIER_LOG_CATEGORY_ERROR, `request-block validation failed carrier=${carrierId}`);
-        return launchResponseResult({
-          job_id: jobId,
-          accepted: false,
-          error: blockValidation.error,
-        });
+      if (metadata) {
+        const blockValidation = validateRequiredRequestBlocks(metadata, request, carrierId);
+        if (!blockValidation.ok) {
+          logDebug(CARRIER_LOG_CATEGORY_ERROR, `request-block validation failed carrier=${carrierId}`);
+          return launchResponseResult({
+            job_id: jobId,
+            accepted: false,
+            error: blockValidation.error,
+          });
+        }
       }
 
       const launch = startDetachedJob({
@@ -179,6 +235,10 @@ function buildSingleCarrierSpec(
     },
   };
 }
+
+// ═════════════════════════════════════════════════════════
+// 내부 헬퍼
+// ═════════════════════════════════════════════════════════
 
 async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promise<void> {
   let finalStatus: CarrierJobStatus = "done";
@@ -358,6 +418,17 @@ function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
   if (status === "done") return "done";
   if (status === "aborted") return "aborted";
   return "err";
+}
+
+function isDispatchArgs(v: unknown): v is { carrier_id: string; request: string } {
+  if (typeof v !== "object" || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  return (
+    typeof obj.carrier_id === "string" &&
+    obj.carrier_id.length > 0 &&
+    typeof obj.request === "string" &&
+    obj.request.trim().length > 0
+  );
 }
 
 function logDebug(category: string, message: string, options?: unknown): void {

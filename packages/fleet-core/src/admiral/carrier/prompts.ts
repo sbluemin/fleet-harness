@@ -1,21 +1,20 @@
 /**
- * fleet/carrier/prompts.ts — 개별 캐리어 도구 프롬프트 / Tier 1 · Tier 2
+ * carrier/prompts.ts — 캐리어 프롬프트 빌더
  *
- * Tier 1: 개별 캐리어 도구(carrier_<id>) 등록에 필요한 프롬프트 메타데이터와 TypeBox 파라미터 스키마.
- * Tier 2: carrier 메타데이터(carrier identity · permissions · principles · outputFormat)를
- *         carrier 세션의 systemPrompt 본문에 주입한다. 매 sendMessage 마다 반복 전송하지 않고,
- *         systemPrompt 영역에서 한 번만 전송 + provider prompt caching 활용.
- *
- * 구조:
- *  Tier 1 — buildCarrierToolDoctrine / buildCarrierRoster / 내부 헬퍼
- *  Tier 2 — buildCarrierSystemPrompt(metadata)
+ * buildCarrierRoster() — roster 섹션 렌더링
+ * buildCarrierSystemPrompt() — 캐리어 세션 systemPrompt 본문 주입
  */
 
-import { Type } from "@sinclair/typebox";
 import { getRegisteredCarrierConfig } from "./framework.js";
 import type { CarrierMetadata } from "./types.js";
 
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
+
+/** carrier_dispatch / carrier_squadron / carrier_taskforce의 공용 brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
+export const CARRIER_REQUEST_BREVITY_GUIDELINE =
+  `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
+  ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request` +
+  ` — reference prior carrier results by job_id or summarize in one sentence, and trust the carrier to proceed.`;
 
 // ═════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -32,48 +31,8 @@ export interface CarrierRosterOptions {
 }
 
 // ═════════════════════════════════════════════════════════
-// Tier 1 — 개별 캐리어 도구 프롬프트 / 스키마
+// 캐리어 시스템 프롬프트 (Tier 2)
 // ═════════════════════════════════════════════════════════
-
-export function buildCarrierToolDoctrine(
-  carrierId: string,
-  displayName: string,
-  metadata: CarrierMetadata,
-) {
-  return {
-    id: `carrier_${carrierId}`,
-    tag: `carrier_${carrierId}`,
-    title: `${displayName} Tool Guidelines`,
-    description:
-      `Register a fire-and-forget carrier job for ${displayName} (${metadata.title}).` +
-      ` Returns a job_id immediately; results arrive through [carrier:result] push; carrier_jobs is fallback/explicit lookup only.`,
-    promptSnippet:
-      `carrier_${carrierId} — Register a ${displayName} carrier job for task delegation.` +
-      ` Results arrive later via [carrier:result]; carrier_jobs is fallback/explicit lookup only.`,
-    whenToUse: [
-      `carrier_${carrierId} is the tool for delegating tasks to ${displayName} (${metadata.title}).` +
-        ` Use it when: ${metadata.whenToUse.join(", ")}.`,
-    ],
-    whenNotToUse: metadata.whenNotToUse.map((item) =>
-      `Do NOT use carrier_${carrierId} when: ${item}.`,
-    ),
-    usageGuidelines: [
-      `When composing a request for ${displayName}, provide only background, context, objective, and constraints.` +
-        ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.`,
-      `Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
-        ` Full output is available only through carrier_jobs(action:"result", format:"full"), is finalized-only, and remains read-many for 3h.`,
-      `Do not poll, wait-check, or call carrier_jobs merely to see whether the job is done.` +
-        ` Continue independent work if available; otherwise stop tool use and wait passively for the [carrier:result] follow-up push.`,
-      ...buildRequestBlockGuidelines(carrierId, metadata),
-    ],
-    guardrails: [
-      `Multiple agents may be working on this codebase at the same time on a single filesystem and branch.` +
-        ` Only touch changes you made — never revert or overwrite modifications made by others.` +
-        ` Prefer precise edits (edit) over full-file writes (write).` +
-        ` Always re-read a file before modifying it, as it may have changed since your last read.`,
-    ],
-  };
-}
 
 export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
   const parts: string[] = [CARRIER_FLEET_BACKGROUND];
@@ -100,26 +59,9 @@ export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
   return parts.join("\n\n");
 }
 
-export function buildCarrierToolSchema() {
-  return Type.Object({
-    request: Type.String({
-      description: "The task/prompt to send to this carrier",
-    }),
-  });
-}
-
 // ═════════════════════════════════════════════════════════
-// 내부 헬퍼
+// 로스터 렌더링
 // ═════════════════════════════════════════════════════════
-
-export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
-  if (meta.requestBlocks.length === 0) return [];
-  return meta.requestBlocks.map((b) => {
-    const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
-    const label = b.required ? "required" : "optional";
-    return `  - ${sig} ${label}: ${b.hint}`;
-  });
-}
 
 export function buildCarrierRoster(
   carrierIds: string[],
@@ -140,6 +82,7 @@ export function buildCarrierRoster(
     const meta = config.carrierMetadata;
     if (!meta) {
       lines.push(`- **${carrierId}** (${config.displayName}): Delegate tasks to ${config.displayName}.`);
+      lines.push(`  carrier_id: "${carrierId}"`);
       if (extraLines) {
         const extras = extraLines(carrierId, undefined);
         for (const e of extras) lines.push(e);
@@ -149,6 +92,7 @@ export function buildCarrierRoster(
 
     const name = config.displayName;
     lines.push(`- **${carrierId}** (${name} · ${meta.title}): ${meta.summary}`);
+    lines.push(`  carrier_id: "${carrierId}"`);
     lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
     if (meta.whenNotToUse.length > 0) {
       lines.push(`  NOT for:`);
@@ -170,18 +114,11 @@ export function buildCarrierRoster(
   return lines.join("\n");
 }
 
-function buildRequestBlockGuidelines(
-  carrierId: string,
-  metadata: CarrierMetadata,
-): string[] {
-  if (metadata.requestBlocks.length === 0) return [];
-  const requiredBlocks = metadata.requestBlocks.filter((b) => b.required);
-  if (requiredBlocks.length === 0) return [];
-
-  const tags = requiredBlocks.map((b) => `<${b.tag}>`).join(", ");
-  return [
-    `Structure your request using required tags: ${tags}.` +
-      ` Missing required tags cause hard-error rejection by the dispatcher.`,
-  ];
+export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
+  if (meta.requestBlocks.length === 0) return [];
+  return meta.requestBlocks.map((b) => {
+    const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
+    const label = b.required ? "required" : "optional";
+    return `  - ${sig} ${label}: ${b.hint}`;
+  });
 }
-
