@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-04
+
 ### Added
 - **`@sbluemin/fleet-wiki-web` workspace package**: New standalone web surface for Fleet Wiki workspaces. Provides the `fleet-wiki` CLI command, a detached local HTTP server, and a Vite-built vanilla TypeScript SPA client with dark theme, 3-column layout, ⌘K command palette, and backlink panel.
 - **`fleet-wiki` CLI command**: Registered at the monorepo root via `bin.fleet-wiki`. Serves the Fleet Wiki web UI from the current working directory's `.fleet/knowledge` store, automatically opens the system browser, and manages a per-user PID/port lock file.
