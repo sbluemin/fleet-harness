@@ -2,6 +2,7 @@ import { approveQueuePatch, fetchPatchDetail, fetchQueueList, rejectQueuePatch }
 import type { PatchDetailResponse, QueueListItem } from "./api";
 import { navigate, queuePath } from "./router";
 import { setPendingPatchCount } from "./state";
+import { t } from "./i18n/t";
 
 export interface QueueState {
   tab: "pending" | "archived";
@@ -91,7 +92,7 @@ export async function rejectCurrentPatch(reason: string): Promise<void> {
   if (!patchId) return;
   const trimmed = reason.trim();
   if (!trimmed || trimmed.length > 256) {
-    setQueueState({ actionError: trimmed ? "거절 사유는 256자 이하여야 합니다." : "거절 사유를 입력해 주세요." });
+    setQueueState({ actionError: trimmed ? t("queue.rejectErrorLength") : t("queue.rejectErrorRequired") });
     return;
   }
   setQueueState({ actionPending: true, actionError: null });

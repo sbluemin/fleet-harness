@@ -1,10 +1,11 @@
 import type { TocItem } from "../markdown/renderer";
+import { t } from "../i18n/t";
 
 export function renderToc(items: TocItem[]): string {
   if (items.length === 0) return "";
   return `
-    <nav class="toc-panel" aria-label="문서 목차">
-      <h2>목차</h2>
+    <nav class="toc-panel" aria-label="${t("toc.ariaLabel")}">
+      <h2>${t("toc.heading")}</h2>
       ${items.map((item) => `
         <a class="toc-level-${item.level}" href="#${escapeAttribute(item.id)}" data-toc-id="${escapeAttribute(item.id)}">
           ${escapeHtml(item.text)}

@@ -1,8 +1,8 @@
 .app-shell {
   display: grid;
-  grid-template-columns: 288px minmax(0, 1fr) 332px;
+  grid-template-columns: 256px minmax(0, 1fr) 272px;
   grid-template-areas: "compass main rail";
-  gap: var(--space-8);
+  gap: var(--space-6);
   align-items: start;
   justify-content: stretch;
   min-height: 100vh;
@@ -84,6 +84,21 @@
 
 .app-shell > .rail {
   animation-delay: 200ms;
+}
+
+.is-revealed .app-shell > .sidebar,
+.is-revealed .app-shell > .content,
+.is-revealed .app-shell > .rail {
+  animation: none;
+}
+
+.app-shell--wide {
+  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-areas: "compass main";
+}
+
+.app-shell--wide > .rail {
+  display: none;
 }
 
 @media (max-width: 1280px) {

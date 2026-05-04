@@ -104,9 +104,10 @@ The palette is defined in `theme.css` using `oklch()` to keep perceptual uniform
 
 ## Spatial Composition
 
-- Desktop grid: `288px | minmax(0, 760px) | 332px`, gap `32px`, top-aligned, centered.
+- Desktop grid: `256px | minmax(0, 1fr) | 272px`, gap `24px`, top-aligned, centered.
 - Tablet (≤ 1280px): collapses to `264px | 1fr`, with the right rail moving below the document.
 - Mobile (≤ 960px): the sidebar becomes an off-canvas drawer; a fixed glass hamburger button appears at the top-left.
+- Drydock routes (`/queue`, `/queue/:patchId`) add `.app-shell--wide` modifier, collapsing the desktop grid to `256px | 1fr` with the global right rail hidden; the Drydock detail view has its own inline rail via `.queue-detail-layout`.
 - Sticky rails (`.sidebar`, `.backlinks-panel`, `.toc-panel`) are required at desktop; this is what produces the "constellation while you read" effect.
 - Document max-width and grid offsets must remain stable; `client/src/styles/layout.css` is the single owner of these numbers.
 
@@ -133,6 +134,7 @@ Specific, non-negotiable details that define the surface — change them only wi
 - **Drydock Actions card (`/queue/:patchId`).** Second right-rail card rendered **only when `meta.status === "pending" && source === "queue"`** — archived/accepted/rejected patches omit it. Contains an Approve button (brass fill) and a Reject toggle button (coral outline). Clicking Reject reveals an inline form with a required reason textarea (1–256 chars) and a coral-fill submit button. Approve requires a browser `confirm()` dialog; Reject requires a non-empty reason. The `confirm` and form-required checks are the user-intent gates before the irreversible fleet-wiki call. **Coral is permitted on surfaces that communicate destructive intent**: the reject submit button (fill), the reject toggle hover tint, and the `rejected` status dot. Coral fill is forbidden on non-destructive surfaces — Approve is brass, neutral chrome uses `surface-glass/surface-rim` tokens. Brass-led primary surfaces must never use coral fill.
 - **Op-badge invariant.** Both `create_wiki` and `update_wiki` ops use **brass tone only** (background `--brass / 12%`, border `--brass / 35%`, text `--brass-bright`). They are distinguished exclusively by glyph (+ for CREATE, ↻ for UPDATE) and label text — never by color alone. The `op-badge--update` variant adds only a 1px aurora inset shadow as a micro-texture, not a primary fill. Aurora must not become the primary visual signal for either op.
 - **Command palette.** Spring-pop entrance via `codex-pop`, glass card with stronger blur, search-icon prefix, `esc` kbd suffix, brass-dot active indicator on the result list.
+- **Language toggle.** A `KO` / `EN` segmented control in the sidebar header upper-right, beside the brand compass-rose (wrapped together in `.sidebar-header-actions`). Both segments share one `.lang-toggle` container (`var(--radius-xs)` outer radius, `--surface-glass` fill, `--surface-rim` border). The active segment uses brass-led styling (`--brass-bright` text, `color-mix(in oklch, var(--brass) 12%, transparent)` fill, `--brass-glow` text-shadow). The toggle must not use aurora for any state, must not replace or obscure the compass-rose brand mark, and must use only existing `--surface-*`, `--brass*`, and `--radius-*` design tokens — no new colors, radii, or font families. On click it calls `setLanguage()` which persists to `localStorage["fleet-wiki-lang"]`, updates `<html lang>`, and triggers a full shell re-render without page reload. Owned by `client/src/components/lang-toggle.ts`; styles in `components.css` under the `sidebar-header-actions` and `lang-toggle` selectors.
 
 ## Hard Bans Summary (Review Gate)
 
@@ -150,6 +152,7 @@ A change in `client/` should be flagged by reviewers if it does any of the follo
 
 10. Add a POST handler outside the `/api/queue/:id/approve|reject` whitelist.
 11. Bypass or weaken the `Origin` header guard on POST handlers — same-origin `http://127.0.0.1:${port}` check is the CSRF defense; removing it is a security regression.
+12. Translate branded Maritime Codex vocabulary in any locale dictionary or component — the following must remain identical in both `ko` and `en` dictionaries and must not be localized as user-visible prose: `Constellation`, `MANIFEST`, `Drydock`, `Codex`, `Maritime Codex`, `Manifest · Raw Source`, `MANIFEST · CODEX`, `MANIFEST · PATCH`, `MANIFEST · DRYDOCK`, `Fleet · Codex`.
 
 Items 1–11 are doctrine; reviewers should request a fix or an explicit doctrine update in this file before approval.
 

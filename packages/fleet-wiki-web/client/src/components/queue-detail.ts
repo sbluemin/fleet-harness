@@ -4,6 +4,7 @@ import type { QueueState } from "../queue-state";
 import { renderOpBadge } from "./op-badge";
 import { renderMarkdown } from "../markdown/renderer";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
+import { t } from "../i18n/t";
 
 const BACK_ICON = `
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -21,20 +22,20 @@ export function renderQueueDetail(state: QueueState): string {
   const { current, loading, error } = state;
 
   if (loading) {
-    return `<div class="queue-detail-view"><p class="loading">패치를 불러오는 중</p></div>`;
+    return `<div class="queue-detail-view"><p class="loading">${t("drydock.loadingPatch")}</p></div>`;
   }
   if (error) {
-    return `<div class="queue-detail-view"><p class="error-box">패치를 불러오지 못했습니다 — ${escapeHtml(error)}</p></div>`;
+    return `<div class="queue-detail-view"><p class="error-box">${t("drydock.errorLoadPatch")} — ${escapeHtml(error)}</p></div>`;
   }
   if (!current) {
-    return `<div class="queue-detail-view"><p class="empty-state">패치를 찾을 수 없습니다.</p></div>`;
+    return `<div class="queue-detail-view"><p class="empty-state">${t("drydock.notFound")}</p></div>`;
   }
 
   return renderPatchDetail(current, state);
 }
 
 function renderPatchDetail(detail: PatchDetailResponse, state: QueueState): string {
-  const { patch, meta, wikiEntry, targetExists, source } = detail;
+  const { patch, meta, wikiEntry, targetExists } = detail;
   const { frontmatter } = patch;
   const rendered = renderMarkdown(wikiEntry.body);
   const opBadge = renderOpBadge(frontmatter.op, targetExists);
@@ -44,7 +45,7 @@ function renderPatchDetail(detail: PatchDetailResponse, state: QueueState): stri
     <div class="queue-detail-view">
       <div class="queue-detail-layout">
         <div class="queue-detail-main">
-          <a class="raw-back queue-back" href="${escapeAttribute(queuePath())}" aria-label="Drydock으로 돌아가기">
+          <a class="raw-back queue-back" href="${escapeAttribute(queuePath())}" aria-label="${t("drydock.ariaBackToDrydock")}">
             ${BACK_ICON}
             <span>Drydock</span>
           </a>
@@ -83,10 +84,10 @@ function renderPatchManifestCard(detail: PatchDetailResponse, rawRef: string | u
           <span class="manifest-arrow">${ARROW_ICON}</span>
         </a>
       </dd>`
-    : `<dd class="queue-dl-value queue-dl-muted">없음</dd>`;
+    : `<dd class="queue-dl-value queue-dl-muted">${t("common.none")}</dd>`;
 
   const warningsHtml = warnings.length > 0
-    ? `<dt class="queue-dl-key">경고</dt>
+    ? `<dt class="queue-dl-key">${t("drydock.warnings")}</dt>
        <dd class="queue-dl-value">
          <div class="queue-card-chips">
            ${warnings.map((w) => `<span class="chip chip-muted">${escapeHtml(w)}</span>`).join("")}
@@ -98,25 +99,25 @@ function renderPatchManifestCard(detail: PatchDetailResponse, rawRef: string | u
     <div class="queue-rail-card">
       <div class="queue-rail-header">
         <p class="drydock-eyebrow">MANIFEST · PATCH</p>
-        <p class="queue-rail-subtitle">패치 매니페스트</p>
+        <p class="queue-rail-subtitle">${t("drydock.patchManifestSubtitle")}</p>
       </div>
       <dl class="queue-dl">
-        <dt class="queue-dl-key">OP</dt>
+        <dt class="queue-dl-key">${t("drydock.op")}</dt>
         <dd class="queue-dl-value">${opBadge}</dd>
-        <dt class="queue-dl-key">대상</dt>
+        <dt class="queue-dl-key">${t("drydock.target")}</dt>
         <dd class="queue-dl-value queue-dl-mono">${escapeHtml(frontmatter.target)}</dd>
-        <dt class="queue-dl-key">제안자</dt>
+        <dt class="queue-dl-key">${t("drydock.proposer")}</dt>
         <dd class="queue-dl-value">${escapeHtml(frontmatter.proposer)}</dd>
-        <dt class="queue-dl-key">생성일</dt>
+        <dt class="queue-dl-key">${t("drydock.createdAt")}</dt>
         <dd class="queue-dl-value queue-dl-time">
           <time datetime="${escapeAttribute(meta.createdAt)}" title="${escapeAttribute(absoluteDate)}">
             ${escapeHtml(absoluteDate)}
             <span class="queue-dl-relative">(${escapeHtml(relDate)})</span>
           </time>
         </dd>
-        <dt class="queue-dl-key">상태</dt>
+        <dt class="queue-dl-key">${t("drydock.status")}</dt>
         <dd class="queue-dl-value queue-dl-status">${statusDot}<span>${escapeHtml(meta.status)}</span></dd>
-        <dt class="queue-dl-key">원본</dt>
+        <dt class="queue-dl-key">${t("drydock.rawSource")}</dt>
         ${rawRefHtml}
         ${warningsHtml}
       </dl>
@@ -137,35 +138,35 @@ function renderQueueActionsCard(detail: PatchDetailResponse, state: QueueState):
     : "";
 
   const spinnerHtml = actionPending
-    ? `<span class="queue-action-spinner" aria-label="처리 중"></span>`
+    ? `<span class="queue-action-spinner" aria-label="${t("queue.ariaProcessing")}"></span>`
     : "";
 
   return `
     <div class="queue-rail-card queue-actions-card">
       <div class="queue-rail-header">
-        <p class="drydock-eyebrow">ACTIONS</p>
-        <p class="queue-rail-subtitle">결정</p>
+        <p class="drydock-eyebrow">${t("queue.actionsTitle")}</p>
+        <p class="queue-rail-subtitle">${t("queue.actionsSubtitle")}</p>
       </div>
       ${spinnerHtml}
       <div class="queue-action-buttons">
         <button class="queue-action-btn queue-action-btn--approve" type="button"
           data-action="queue-approve" data-patch-id="${safePatchId}"${disabledAttr}
-          aria-label="이 패치 승인">
+          aria-label="${t("queue.ariaApprove")}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          승인
+          ${t("queue.approve")}
         </button>
         <button class="queue-action-btn queue-action-btn--reject" type="button"
           data-action="queue-reject-toggle"${disabledAttr}
-          aria-label="이 패치 거절">
+          aria-label="${t("queue.ariaReject")}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          거절
+          ${t("queue.reject")}
         </button>
       </div>
       <form class="queue-reject-form" hidden data-action="queue-reject-submit" data-patch-id="${safePatchId}">
-        <textarea class="queue-reject-textarea" name="reason" minlength="1" maxlength="256" required placeholder="거절 사유를 입력하세요 (최대 256자)"></textarea>
+        <textarea class="queue-reject-textarea" name="reason" minlength="1" maxlength="256" required placeholder="${t("queue.rejectPlaceholder")}"></textarea>
         <div class="queue-action-buttons">
-          <button class="queue-action-btn queue-action-btn--reject-submit" type="submit"${disabledAttr}>확인</button>
-          <button class="queue-action-btn queue-action-btn--cancel" type="button" data-action="queue-reject-cancel"${disabledAttr}>취소</button>
+          <button class="queue-action-btn queue-action-btn--reject-submit" type="submit"${disabledAttr}>${t("common.confirm")}</button>
+          <button class="queue-action-btn queue-action-btn--cancel" type="button" data-action="queue-reject-cancel"${disabledAttr}>${t("common.cancel")}</button>
         </div>
       </form>
       ${errorHtml}

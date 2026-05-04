@@ -1,5 +1,8 @@
 import { entryPath, queuePath } from "../router";
 import type { WikiIndexEntry } from "../api";
+import { t } from "../i18n/t";
+import { getLanguage, languageLocale } from "../i18n/store";
+import { renderLangToggle } from "./lang-toggle";
 
 export type NavMode = "tags" | "entries";
 
@@ -55,19 +58,18 @@ export function renderNavTree(
   const total = entries.length;
   const tagGroupCount = countTags(entries);
   const body = total === 0
-    ? `<p class="empty-state">아직 위키 문서가 없습니다.</p>`
+    ? `<p class="empty-state">${t("nav.emptyEntries")}</p>`
     : navMode === "tags"
       ? renderTagsView(entries, currentId)
       : renderEntriesView(entries, currentId);
 
   const sectionLabel = navMode === "tags"
-    ? `Tags · ${tagGroupCount}`
-    : `Entries · ${total}`;
+    ? t("nav.sectionTags", { n: tagGroupCount })
+    : t("nav.sectionEntries", { n: total });
 
   const navClass = navMode === "tags" ? "tag-tree" : "entry-list";
-  const navAriaLabel = navMode === "tags" ? "태그별 문서" : "전체 문서 목록";
+  const navAriaLabel = navMode === "tags" ? t("nav.ariaTaggedDocs") : t("nav.ariaAllDocs");
 
-  // Drydock 섹션 활성 여부 (pathname이 /queue로 시작하면 활성)
   const pathname = currentPathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
   const isDrydockActive = pathname.startsWith("/queue");
 
@@ -78,17 +80,20 @@ export function renderNavTree(
   return `
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <a class="brand" href="/" data-action="navigate-home" aria-label="홈으로 이동">
+        <a class="brand" href="/" data-action="navigate-home" aria-label="${t("nav.ariaHome")}">
           <span class="brand-mark">${COMPASS_MARK}</span>
           <div class="brand-text">
             <p class="eyebrow">Fleet · Codex</p>
-            <h1>Knowledge</h1>
+            <h1>${t("nav.sidebarTitle")}</h1>
           </div>
         </a>
-        <button class="icon-button mobile-close" type="button" data-action="toggle-nav" aria-label="닫기">${CLOSE_ICON}</button>
+        <div class="sidebar-header-actions">
+          ${renderLangToggle(getLanguage())}
+          <button class="icon-button mobile-close" type="button" data-action="toggle-nav" aria-label="${t("nav.ariaClose")}">${CLOSE_ICON}</button>
+        </div>
       </div>
       <button class="command-entry" type="button" data-action="open-command">
-        <span class="command-entry-label">${SEARCH_ICON}<span>문서 검색</span></span>
+        <span class="command-entry-label">${SEARCH_ICON}<span>${t("nav.searchLabel")}</span></span>
         <kbd>⌘K</kbd>
       </button>
       <div class="nav-drydock-section">
@@ -98,12 +103,12 @@ export function renderNavTree(
           ${pendingBadge}
         </a>
       </div>
-      <div class="nav-tabs" role="tablist" aria-label="탐색 모드">
+      <div class="nav-tabs" role="tablist" aria-label="${t("nav.ariaNavMode")}">
         <button class="nav-tab${navMode === "entries" ? " active" : ""}" type="button" role="tab" aria-selected="${navMode === "entries"}" data-action="set-nav-mode" data-mode="entries">
-          Entries
+          ${t("nav.tabEntries")}
         </button>
         <button class="nav-tab${navMode === "tags" ? " active" : ""}" type="button" role="tab" aria-selected="${navMode === "tags"}" data-action="set-nav-mode" data-mode="tags">
-          Tags
+          ${t("nav.tabTags")}
         </button>
       </div>
       <p class="nav-section-label">${sectionLabel}</p>
@@ -148,11 +153,15 @@ function renderTagsView(entries: WikiIndexEntry[], currentId: string | null): st
 }
 
 function renderEntriesView(entries: WikiIndexEntry[], currentId: string | null): string {
-  const sorted = [...entries].sort((left, right) => left.title.localeCompare(right.title));
+  const locale = languageLocale();
+  const sorted = [...entries].sort((left, right) =>
+    left.title.localeCompare(right.title, locale, { sensitivity: "base", numeric: true }),
+  );
   return sorted.map((entry) => renderEntry(entry, currentId)).join("");
 }
 
 function buildTagGroups(entries: WikiIndexEntry[]): TagGroup[] {
+  const locale = languageLocale();
   const byTag = new Map<string, WikiIndexEntry[]>();
   for (const entry of entries) {
     const tags = entry.tags.length > 0 ? entry.tags : ["untagged"];
@@ -165,9 +174,13 @@ function buildTagGroups(entries: WikiIndexEntry[]): TagGroup[] {
   return [...byTag.entries()]
     .map(([tag, groupEntries]) => ({
       tag,
-      entries: groupEntries.sort((left, right) => left.title.localeCompare(right.title)),
+      entries: groupEntries.sort((left, right) =>
+        left.title.localeCompare(right.title, locale, { sensitivity: "base", numeric: true }),
+      ),
     }))
-    .sort((left, right) => left.tag.localeCompare(right.tag));
+    .sort((left, right) =>
+      left.tag.localeCompare(right.tag, locale, { sensitivity: "base", numeric: true }),
+    );
 }
 
 function renderGroup(group: TagGroup, currentId: string | null): string {
@@ -179,7 +192,7 @@ function renderGroup(group: TagGroup, currentId: string | null): string {
     <section class="tag-group" data-collapsed="${collapsed ? "true" : "false"}">
       <button class="tag-group-button" type="button" data-action="toggle-tag" data-tag="${escapeAttribute(group.tag)}">
         ${CARET}
-        <span>${escapeHtml(group.tag)}</span>
+        <span>${group.tag === "untagged" ? t("nav.untagged") : escapeHtml(group.tag)}</span>
         <span class="count">${group.entries.length}</span>
       </button>
       <div class="tag-group-list">${entries}</div>

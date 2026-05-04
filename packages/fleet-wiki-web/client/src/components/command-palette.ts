@@ -1,6 +1,7 @@
 import { fetchSearch } from "../api";
 import { entryPath, navigate } from "../router";
 import type { BriefingHit, WikiIndexEntry } from "../api";
+import { t } from "../i18n/t";
 
 interface CommandPaletteState {
   open: boolean;
@@ -173,7 +174,7 @@ function updatePaletteResults(): void {
   const list = document.querySelector<HTMLElement>("#command-results-list");
   if (!list) return;
   list.innerHTML = state.results.length === 0
-    ? `<p class="empty-state">검색 결과가 없습니다.</p>`
+    ? `<p class="empty-state">${t("command.emptyResults")}</p>`
     : state.results.map(renderResult).join("");
 }
 
@@ -189,13 +190,13 @@ function syncPaletteHighlight(): void {
 function paletteShellHtml(): string {
   return `
     <div class="command-overlay">
-      <section class="command-card" role="dialog" aria-modal="true" aria-label="명령 팔레트">
+      <section class="command-card" role="dialog" aria-modal="true" aria-label="${t("command.ariaLabel")}">
         <div class="command-search">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="6.5" />
             <path d="m20 20-3.5-3.5" />
           </svg>
-          <input id="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="제목 · 태그 · 본문 검색" />
+          <input id="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="${t("command.placeholder")}" />
           <kbd>esc</kbd>
         </div>
         <div class="command-results" id="command-results-list"></div>

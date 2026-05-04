@@ -1,5 +1,6 @@
 import { renderMarkdown } from "../markdown/renderer";
 import type { RawSourceState } from "../raw-state";
+import { t } from "../i18n/t";
 
 const BACK_ICON = `
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -18,11 +19,11 @@ export function renderRawView(state: RawSourceState): string {
   const ref = state.ref ?? "";
   let body: string;
   if (state.loading) {
-    body = `<p class="loading">원본을 불러오는 중</p>`;
+    body = `<p class="loading">${t("raw.loading")}</p>`;
   } else if (state.error) {
-    body = `<p class="error-box">원본을 불러오지 못했습니다 — ${escapeHtml(state.error)}</p>`;
+    body = `<p class="error-box">${t("raw.errorLoad")} — ${escapeHtml(state.error)}</p>`;
   } else if (!state.content) {
-    body = `<p class="empty-state">원본이 비어 있습니다.</p>`;
+    body = `<p class="empty-state">${t("raw.emptyContent")}</p>`;
   } else {
     const rendered = renderMarkdown(state.content);
     body = `<div class="markdown-body">${rendered.html}</div>`;
@@ -30,7 +31,7 @@ export function renderRawView(state: RawSourceState): string {
   return `
     <div class="raw-shell">
       <header class="raw-header">
-        <a class="raw-back" href="/" data-action="navigate-home" aria-label="Codex로 돌아가기">
+        <a class="raw-back" href="/" data-action="navigate-home" aria-label="${t("raw.ariaBackToCodex")}">
           ${BACK_ICON}
           <span>Codex</span>
         </a>

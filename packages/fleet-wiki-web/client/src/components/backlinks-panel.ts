@@ -1,15 +1,16 @@
 import { entryPath } from "../router";
 import type { BacklinkEntry } from "../api";
+import { t } from "../i18n/t";
 
 export function renderBacklinksPanel(backlinks: BacklinkEntry[], currentId: string | null): string {
   const content = currentId
     ? renderBacklinks(backlinks)
-    : `<p class="empty-state">문서를 선택하면 이 자리에 백링크가 표시됩니다.</p>`;
+    : `<p class="empty-state">${t("backlinks.emptyNoEntry")}</p>`;
   return `
     <aside class="backlinks-panel">
       <div>
         <h2>Constellation</h2>
-        <p class="backlinks-subtitle">이 문서를 참조하는 항목</p>
+        <p class="backlinks-subtitle">${t("backlinks.subtitle")}</p>
       </div>
       ${content}
     </aside>
@@ -18,7 +19,7 @@ export function renderBacklinksPanel(backlinks: BacklinkEntry[], currentId: stri
 
 function renderBacklinks(backlinks: BacklinkEntry[]): string {
   if (backlinks.length === 0) {
-    return `<p class="empty-state">아직 이 문서를 참조하는 다른 문서가 없습니다.</p>`;
+    return `<p class="empty-state">${t("backlinks.emptyNone")}</p>`;
   }
   return `
     <ul class="backlink-list">

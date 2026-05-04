@@ -2,15 +2,16 @@ import { queueDetailPath, queuePath } from "../router";
 import type { QueueListItem } from "../api";
 import type { QueueState } from "../queue-state";
 import { renderOpBadge } from "./op-badge";
+import { t } from "../i18n/t";
 
 export function renderQueueList(state: QueueState): string {
   const { tab, items, pendingCount, archivedCount, loading, error } = state;
 
   if (loading && items.length === 0) {
-    return `<div class="queue-view"><p class="loading">패치 큐를 불러오는 중</p></div>`;
+    return `<div class="queue-view"><p class="loading">${t("drydock.loadingQueue")}</p></div>`;
   }
   if (error) {
-    return `<div class="queue-view"><p class="error-box">큐를 불러오지 못했습니다 — ${escapeHtml(error)}</p></div>`;
+    return `<div class="queue-view"><p class="error-box">${t("drydock.errorLoadQueue")} — ${escapeHtml(error)}</p></div>`;
   }
 
   const body = items.length === 0
@@ -28,20 +29,20 @@ export function renderQueueList(state: QueueState): string {
     <div class="queue-view">
       <div class="queue-header">
         <p class="drydock-eyebrow">MANIFEST · DRYDOCK</p>
-        <h1 class="queue-title">패치 큐 정렬소</h1>
+        <h1 class="queue-title">${t("drydock.queueTitle")}</h1>
       </div>
-      <div class="queue-tabs" role="tablist" aria-label="큐 탭">
+      <div class="queue-tabs" role="tablist" aria-label="${t("drydock.ariaQueueTabs")}">
         <a class="queue-tab${tab === "pending" ? " active" : ""}"
            href="${escapeAttribute(queuePath("pending"))}"
            role="tab"
            aria-selected="${tab === "pending"}">
-          Pending${pendingBadge}
+          ${t("drydock.tabPending")}${pendingBadge}
         </a>
         <a class="queue-tab${tab === "archived" ? " active" : ""}"
            href="${escapeAttribute(queuePath("archived"))}"
            role="tab"
            aria-selected="${tab === "archived"}">
-          Archived${archivedBadge}
+          ${t("drydock.tabArchived")}${archivedBadge}
         </a>
       </div>
       <div class="queue-list">
@@ -52,15 +53,12 @@ export function renderQueueList(state: QueueState): string {
 }
 
 function renderQueueEmpty(tab: "pending" | "archived"): string {
-  const label = tab === "pending" ? "대기 중인 패치가 없습니다." : "아카이브된 패치가 없습니다.";
+  const label = tab === "pending" ? t("drydock.emptyPending") : t("drydock.emptyArchived");
   return `<p class="queue-empty">${label}</p>`;
 }
 
 function renderQueueCard(item: QueueListItem): string {
   const { id, meta, source } = item;
-  const op = meta as { status: string; createdAt: string; warnings?: string[] } & typeof meta;
-  // patch frontmatter는 meta에 없으므로 summary/target은 meta 외부에서 올 수 없음
-  // → 카드에는 id(patchId), status, createdAt, warnings만 표시
   const statusDot = renderStatusDot(meta.status);
   const relative = relativeTime(meta.createdAt);
   const warnings = meta.warnings ?? [];
@@ -103,14 +101,14 @@ function renderStatusDot(status: string): string {
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "방금 전";
-  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 1) return t("time.justNow");
+  if (minutes < 60) return t("time.minutesAgo", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
+  if (hours < 24) return t("time.hoursAgo", { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}일 전`;
+  if (days < 30) return t("time.daysAgo", { n: days });
   const months = Math.floor(days / 30);
-  return `${months}개월 전`;
+  return t("time.monthsAgo", { n: months });
 }
 
 function escapeHtml(value: string): string {

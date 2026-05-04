@@ -7,8 +7,9 @@
 
 .brand {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
   min-width: 0;
   text-decoration: none;
   color: inherit;
@@ -82,6 +83,61 @@
   font-variation-settings: "opsz" 16;
   color: var(--ink-pearl);
   line-height: 1.1;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--surface-rim);
+  background: var(--surface-glass);
+  overflow: hidden;
+}
+
+.lang-toggle-btn {
+  padding: 4px 9px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+  line-height: 1;
+}
+
+.lang-toggle-btn + .lang-toggle-btn {
+  border-left: 1px solid var(--surface-rim);
+}
+
+.lang-toggle-btn:hover:not(.active) {
+  color: var(--ink-spectral);
+  background: var(--surface-glass-strong);
+}
+
+.lang-toggle-btn.active {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  text-shadow: 0 0 8px var(--brass-glow);
+}
+
+.lang-toggle-btn:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+  z-index: 1;
+  position: relative;
 }
 
 .command-entry {

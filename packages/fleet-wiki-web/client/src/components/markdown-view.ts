@@ -3,6 +3,7 @@ import { renderRelatedList } from "./related-list";
 import { renderToc } from "./toc";
 import { renderMarkdown } from "../markdown/renderer";
 import type { WikiEntryResponse, WikiIndexEntry } from "../api";
+import { t } from "../i18n/t";
 
 const ARROW_ICON = `
   <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16">
@@ -21,17 +22,17 @@ export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null): st
         <h1>The <em>Codex</em></h1>
       </header>
       <div class="welcome-divider"></div>
-      <p class="lead">현재 워크스페이스의 Fleet Wiki를 항해합니다. 좌측 나침반에서 태그별로 문서를 펼치거나 <kbd>⌘K</kbd> 명령 팔레트로 즉시 도착하세요.</p>
+      <p class="lead">${t("markdown.welcomeLead")}</p>
       <div class="workspace-meta">
-        <span class="chip chip-aurora">${total} entries</span>
+        <span class="chip chip-aurora">${t("markdown.entriesCount", { n: total })}</span>
         ${cwd ? `<span class="workspace-path">${escapeHtml(cwd)}</span>` : ""}
       </div>
       ${firstEntry ? `
         <a class="primary-link" href="/entry/${encodeURIComponent(firstEntry.id)}" data-entry-id="${escapeAttribute(firstEntry.id)}">
-          <span>첫 문서 열기 — ${escapeHtml(firstEntry.title)}</span>
+          <span>${t("markdown.openFirstPrefix")} ${escapeHtml(firstEntry.title)}</span>
           ${ARROW_ICON}
         </a>
-      ` : `<p class="empty-state">아직 위키 문서가 없습니다. <code>wiki_ingest</code>로 문서를 추가해 주세요.</p>`}
+      ` : `<p class="empty-state">${t("markdown.emptyWiki")}</p>`}
       ${featured.length > 0 ? `
         <div class="welcome-grid">
           ${featured.map((entry) => `
@@ -51,7 +52,7 @@ export function renderMarkdownView(entry: WikiEntryResponse, index: WikiIndexEnt
   return `
     <article class="document">
       <header class="document-header">
-        <p class="eyebrow">Wiki Entry</p>
+        <p class="eyebrow">${t("markdown.wikiEntry")}</p>
         <h1>${escapeHtml(entry.frontmatter.title)}</h1>
         ${renderMetaChips(entry.frontmatter)}
       </header>
@@ -69,7 +70,7 @@ export function renderMarkdownView(entry: WikiEntryResponse, index: WikiIndexEnt
 export function renderLoading(): string {
   return `
     <article class="document">
-      <p class="loading">문서를 불러오는 중</p>
+      <p class="loading">${t("markdown.loadingEntry")}</p>
     </article>
   `;
 }

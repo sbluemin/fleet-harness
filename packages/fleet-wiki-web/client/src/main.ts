@@ -26,6 +26,9 @@ import {
   rejectCurrentPatch,
   subscribeQueueState,
 } from "./queue-state";
+import { initLanguage, setLanguage, subscribeLanguage } from "./i18n/store";
+import type { SupportedLanguage } from "./i18n/types";
+import { t } from "./i18n/t";
 
 const appRoot = document.querySelector<HTMLElement>("#app");
 
@@ -34,9 +37,12 @@ if (!appRoot) {
 }
 
 const app = appRoot;
+let shellPainted = false;
 
+initLanguage();
 initRouter();
 initCommandPalette();
+subscribeLanguage(() => render());
 subscribeState(() => render());
 subscribeRawState(() => render());
 subscribeQueueState(() => render());
@@ -106,10 +112,11 @@ function renderRawShell(): void {
 
 function renderAppShell(state: AppState, route: Route): void {
   const currentId = route.name === "entry" ? route.id : null;
+  const isQueueRoute = route.name === "queue" || route.name === "queue-detail";
   configureCommandPalette(state.index, state.recentIds);
   app.innerHTML = `
-    <div class="app-shell">
-      <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="메뉴 열기">
+    <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}">
+      <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="${t("nav.ariaMenuOpen")}">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
@@ -124,6 +131,11 @@ function renderAppShell(state: AppState, route: Route): void {
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
   `;
+  if (shellPainted) {
+    app.classList.add("is-revealed");
+  } else {
+    shellPainted = true;
+  }
 }
 
 function renderMainContent(state: AppState, route: Route): string {
@@ -177,13 +189,20 @@ function handleDocumentClick(event: MouseEvent): void {
     render();
     return;
   }
+  if (actionElement?.dataset.action === "set-language") {
+    const lang = actionElement.dataset.lang as SupportedLanguage | undefined;
+    if (lang === "ko" || lang === "en") {
+      setLanguage(lang);
+    }
+    return;
+  }
   if (actionElement?.dataset.action === "copy-code") {
     void copyCode(actionElement);
     return;
   }
   if (actionElement?.dataset.action === "queue-approve") {
     if (getQueueState().actionPending) return;
-    if (!confirm("이 패치를 승인하시겠습니까?")) return;
+    if (!confirm(t("queue.confirmApprove"))) return;
     actionElement.setAttribute("disabled", "");
     void approveCurrentPatch();
     return;
@@ -238,7 +257,7 @@ async function copyCode(button: HTMLElement): Promise<void> {
   const code = block?.dataset.code ?? "";
   if (!code) return;
   await navigator.clipboard.writeText(code);
-  showToast("코드블록을 복사했습니다.");
+  showToast(t("common.codeCopied"));
 }
 
 function showToast(message: string): void {
