@@ -108,20 +108,17 @@ let operationNameStore: OperationNameGlobalStore | OperationNameGlobalState | nu
 export { bootBridge, ensureBridgeKeybinds };
 
 export function registerFleetLifecycle(pi: ExtensionAPI): FleetLifecycleRuntime {
-  if (!shouldBootFleet()) {
-    registerGrandFleet(pi);
-    return { fleetEnabled: false };
+  const enabled = shouldBootFleet();
+  if (enabled) {
+    bootAdmiral(pi);
+    bootstrapFleetState(pi);
+    syncModelConfig();
+    wireFleetPiEvents(pi);
+    bootBridge(pi);
+    registerFleetPiCommands(pi);
   }
-
-  const dataDir = resolveFleetDataDir();
-  initializeFleetRuntime(dataDir, pi);
-
-  bootAdmiral(pi);
-  bootstrapFleetState(pi);
-  wireFleetPiEvents(pi);
   registerGrandFleet(pi);
-
-  return { fleetEnabled: true };
+  return { fleetEnabled: enabled };
 }
 
 export default function registerBoot(pi: ExtensionAPI): void {

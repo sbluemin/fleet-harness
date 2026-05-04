@@ -2,19 +2,14 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import registerBoot from "./fleet.js";
 import registerFleetWiki from "./wiki/ui.js";
-import registerGrandFleet from "./grand-fleet/index.js";
 import { registerJob } from "./jobs.js";
 import { registerSystemSettingsCommand } from "./system.js";
-import { syncModelConfig } from "./panel/config.js";
-import { bootBridge } from "./bridge/handler.js";
-import { registerFleetPiCommands } from "./fleet.js";
 import {
   getFleetRuntime,
-  bootstrapFleetState,
   initializeFleetRuntime,
+  registerFleetLifecycle,
   resolveFleetDataDir,
   shouldBootFleet,
-  wireFleetPiEvents,
 } from "./fleet.js";
 import { initStreamEventHandler, registerProviderRuntime, streamAcp } from "./provider.js";
 import { registerAgentPanelShortcut, bindPanelBackgroundJobAnimation } from "./panel/ui.js";
@@ -60,14 +55,13 @@ export function bootFleet(ctx: ExtensionAPI): void {
   const fleetServices = getFleetRuntime().admiral;
   initStreamEventHandler();
   registerProviderRuntime(ctx, fleetServices, streamAcp);
-  registerFleet(ctx, fleetEnabled);
-  registerGrandFleet(ctx);
+  const { fleetEnabled: activeFleet } = registerFleetLifecycle(ctx);
   registerFleetWiki(ctx as any);
-  registerMetaphorDomain(ctx, fleetEnabled);
-  if (fleetEnabled) registerJob(ctx);
+  registerMetaphorDomain(ctx, activeFleet);
+  if (activeFleet) registerJob(ctx);
   registerSettings(ctx);
-  registerLog(ctx, fleetEnabled);
-  registerToolRegistry(ctx, fleetEnabled);
+  registerLog(ctx, activeFleet);
+  registerToolRegistry(ctx, activeFleet);
   registerSystemSettingsCommand(ctx);
 }
 
@@ -80,16 +74,6 @@ function registerStreamingHandler(pi: ExtensionAPI): void {
     unregisterStreamingHandler = null;
     bindCarrierJobStreamPi(null);
   });
-}
-
-function registerFleet(pi: ExtensionAPI, fleetEnabled: boolean): void {
-  if (!fleetEnabled) return;
-
-  bootstrapFleetState(pi);
-  syncModelConfig();
-  wireFleetPiEvents(pi);
-  bootBridge(pi);
-  registerFleetPiCommands(pi);
 }
 
 function registerMetaphorDomain(pi: ExtensionAPI, fleetEnabled: boolean): void {
