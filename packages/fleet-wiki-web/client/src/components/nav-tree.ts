@@ -1,4 +1,4 @@
-import { entryPath } from "../router";
+import { entryPath, queuePath } from "../router";
 import type { WikiIndexEntry } from "../api";
 
 export type NavMode = "tags" | "entries";
@@ -39,7 +39,19 @@ const CLOSE_ICON = `
   </svg>
 `;
 
-export function renderNavTree(entries: WikiIndexEntry[], currentId: string | null): string {
+const ANCHOR_ICON = `
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="5" r="2" />
+    <path d="M12 7v14M8 11H4a8 8 0 0 0 16 0h-4" />
+  </svg>
+`;
+
+export function renderNavTree(
+  entries: WikiIndexEntry[],
+  currentId: string | null,
+  pendingPatchCount: number,
+  currentPathname?: string,
+): string {
   const total = entries.length;
   const tagGroupCount = countTags(entries);
   const body = total === 0
@@ -54,6 +66,14 @@ export function renderNavTree(entries: WikiIndexEntry[], currentId: string | nul
 
   const navClass = navMode === "tags" ? "tag-tree" : "entry-list";
   const navAriaLabel = navMode === "tags" ? "태그별 문서" : "전체 문서 목록";
+
+  // Drydock 섹션 활성 여부 (pathname이 /queue로 시작하면 활성)
+  const pathname = currentPathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
+  const isDrydockActive = pathname.startsWith("/queue");
+
+  const pendingBadge = pendingPatchCount > 0
+    ? `<span class="nav-drydock-badge">${pendingPatchCount}</span>`
+    : "";
 
   return `
     <aside class="sidebar" id="sidebar">
@@ -71,6 +91,13 @@ export function renderNavTree(entries: WikiIndexEntry[], currentId: string | nul
         <span class="command-entry-label">${SEARCH_ICON}<span>문서 검색</span></span>
         <kbd>⌘K</kbd>
       </button>
+      <div class="nav-drydock-section">
+        <a class="nav-drydock-link${isDrydockActive ? " active" : ""}" href="${escapeAttribute(queuePath())}">
+          <span class="nav-drydock-icon">${ANCHOR_ICON}</span>
+          <span class="nav-drydock-label">Drydock</span>
+          ${pendingBadge}
+        </a>
+      </div>
       <div class="nav-tabs" role="tablist" aria-label="탐색 모드">
         <button class="nav-tab${navMode === "entries" ? " active" : ""}" type="button" role="tab" aria-selected="${navMode === "entries"}" data-action="set-nav-mode" data-mode="entries">
           Entries

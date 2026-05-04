@@ -18,7 +18,7 @@ interface ServerArgs {
 const VERSION = "0.0.0";
 const HOST = "127.0.0.1";
 const CLIENT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "client");
-const ALLOWED_METHODS = new Set(["GET", "HEAD"]);
+const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST"]);
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -30,18 +30,23 @@ const MIME_TYPES: Record<string, string> = {
 export async function startFleetWikiServer(args: ServerArgs): Promise<Server> {
   const cwd = path.resolve(args.cwd);
   const paths = resolveWorkspaceMemoryPaths(cwd);
-  const context = {
-    cwd,
-    knowledgeRoot: paths.root,
-    paths,
-    version: VERSION,
-  };
   const server = createServer(async (request, response) => {
     try {
       if (!ALLOWED_METHODS.has(request.method ?? "")) {
         sendMethodNotAllowed(response);
         return;
       }
+      // port는 listen 이후에 확정되므로 클로저로 지연 접근
+      const context = {
+        cwd,
+        knowledgeRoot: paths.root,
+        paths,
+        version: VERSION,
+        get port(): number {
+          const address = server.address();
+          return typeof address === "object" && address ? address.port : 0;
+        },
+      };
       if (await handleApiRequest(request, response, context)) return;
       await serveStatic(request.url ?? "/", response);
     } catch {
@@ -142,7 +147,7 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
 
 function sendMethodNotAllowed(response: ServerResponse): void {
   response.writeHead(405, {
-    allow: "GET, HEAD",
+    allow: "GET, HEAD, POST",
     "content-type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify({ error: "method_not_allowed" }));

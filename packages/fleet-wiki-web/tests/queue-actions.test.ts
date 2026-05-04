@@ -1,0 +1,249 @@
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Server } from "node:http";
+
+import { startFleetWikiServer } from "../src/server.js";
+
+let server: Server | null = null;
+let baseUrl = "";
+let serverPort = 0;
+let tempDir = "";
+
+const PENDING_PATCH_ID = "2026-05-04T10-00-00-000Z-aabbccdd";
+const ARCHIVE_PATCH_ID = "2026-05-04T09-00-00-000Z-11223344";
+
+describe("queue POST actions", () => {
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-web-actions-"));
+    const wikiDir = path.join(tempDir, ".fleet", "knowledge", "wiki");
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    const archiveDir = path.join(tempDir, ".fleet", "knowledge", "archive");
+    await mkdir(wikiDir, { recursive: true });
+    await mkdir(path.join(queueDir, PENDING_PATCH_ID), { recursive: true });
+    await mkdir(path.join(archiveDir, ARCHIVE_PATCH_ID), { recursive: true });
+    await writeEntry(wikiDir, "test-entry", "테스트 문서", "본문");
+    await writePatch(queueDir, PENDING_PATCH_ID, "test-entry", "테스트 패치", "pending");
+    await writePatch(archiveDir, ARCHIVE_PATCH_ID, "test-entry", "아카이브 패치", "accepted");
+    const lockPath = path.join(tempDir, "server.lock");
+    server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0 });
+    const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
+    serverPort = lock.port;
+    baseUrl = `http://127.0.0.1:${serverPort}`;
+  });
+
+  afterEach(async () => {
+    if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
+    server = null;
+    if (tempDir) await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("rejects POST to non-whitelisted path with 405 and Allow: GET, HEAD", async () => {
+    const response = await fetch(`${baseUrl}/api/index`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toMatch(/GET.*HEAD/);
+  });
+
+  it("rejects approve with missing Origin header → 403", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: "origin_mismatch" });
+  });
+
+  it("rejects approve with wrong Origin header → 403", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://evil.example.com" },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: "origin_mismatch" });
+  });
+
+  it("approves a valid pending patch → 200 and moves to archive", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(200);
+    const data = await response.json() as { ok: boolean; meta: { status: string } };
+    expect(data.ok).toBe(true);
+    expect(data.meta.status).toBe("accepted");
+    // patch should now be in archive
+    const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
+    await expect(access(archivePath)).resolves.not.toThrow();
+  });
+
+  it("returns 409 when approving a queued patch whose meta already has non-pending status", async () => {
+    // fleet-wiki throws "patch is not pending" only when patch is still in queueDir
+    // but meta.json status != "pending". Simulate by writing a non-pending fixture in queue.
+    const nonPendingId = "2026-05-04T11-00-00-000Z-deadbeef";
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    await writePatch(queueDir, nonPendingId, "test-entry", "비활성 패치", "accepted");
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(nonPendingId)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: "patch_not_pending" });
+  });
+
+  it("rejects reject request with missing reason → 400", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "reason_required" });
+  });
+
+  it("rejects reject request with empty reason after trim → 400", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ reason: "   " }),
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "reason_required" });
+  });
+
+  it("rejects a valid pending patch with reason → 200 and moves to archive", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ reason: "테스트 거절 사유" }),
+    });
+    expect(response.status).toBe(200);
+    const data = await response.json() as { ok: boolean; meta: { status: string } };
+    expect(data.ok).toBe(true);
+    expect(data.meta.status).toBe("rejected");
+    const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
+    await expect(access(archivePath)).resolves.not.toThrow();
+  });
+
+  it("rejects invalid patch ID format → 400", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent("../etc/passwd")}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "invalid_patch_id" });
+  });
+
+  it("rejects POST without content-type → 415", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+      method: "POST",
+      headers: { origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(415);
+    await expect(response.json()).resolves.toMatchObject({ error: "unsupported_media_type" });
+  });
+
+  it("rejects POST with wrong content-type → 415", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: baseUrl },
+      body: "{}",
+    });
+    expect(response.status).toBe(415);
+    await expect(response.json()).resolves.toMatchObject({ error: "unsupported_media_type" });
+  });
+
+  it("rejects POST with oversized body → 413", async () => {
+    const hugeBody = JSON.stringify({ reason: "a".repeat(1500) });
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/reject`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: hugeBody,
+    });
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ error: "payload_too_large" });
+  });
+
+  it("concurrent approve and approve — exactly one succeeds, one gets 409 patch_busy", async () => {
+    // 같은 patchId에 대해 두 요청을 동시에 발사
+    const makeRequest = () => fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    const [r1, r2] = await Promise.all([makeRequest(), makeRequest()]);
+    const statuses = [r1.status, r2.status].sort();
+    // 하나는 200, 하나는 409 (patch_busy 또는 patch_not_pending)
+    expect(statuses[0]).toBe(200);
+    expect(statuses[1]).toBe(409);
+    // archive에 정확히 한 개만 이동
+    const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
+    await expect(access(archivePath)).resolves.not.toThrow();
+  });
+});
+
+async function writeEntry(wikiDir: string, id: string, title: string, body: string): Promise<void> {
+  await writeFile(
+    path.join(wikiDir, `${id}.md`),
+    [
+      "---",
+      `id: "${id}"`,
+      `title: "${title}"`,
+      "tags: []",
+      "created: \"2026-05-04T00:00:00.000Z\"",
+      "updated: \"2026-05-04T00:00:00.000Z\"",
+      "version: 1",
+      "---",
+      body,
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writePatch(
+  baseDir: string,
+  patchId: string,
+  targetId: string,
+  summary: string,
+  status: "pending" | "accepted" | "rejected",
+): Promise<void> {
+  const dir = path.join(baseDir, patchId);
+  await mkdir(dir, { recursive: true });
+  const wikiEntry = JSON.stringify({
+    id: targetId,
+    title: summary,
+    tags: [],
+    created: "2026-05-04T00:00:00.000Z",
+    updated: "2026-05-04T00:00:00.000Z",
+    version: 1,
+    body: "테스트 본문",
+  });
+  const patchMd = [
+    "---",
+    `op: "create_wiki"`,
+    `target: "wiki/${targetId}.md"`,
+    `summary: "${summary}"`,
+    `proposer: "test"`,
+    `created: "2026-05-04T00:00:00.000Z"`,
+    "---",
+    wikiEntry,
+  ].join("\n");
+  const metaJson = JSON.stringify({
+    id: patchId,
+    status,
+    createdAt: "2026-05-04T00:00:00.000Z",
+  });
+  await writeFile(path.join(dir, "patch.md"), patchMd, "utf8");
+  await writeFile(path.join(dir, "meta.json"), metaJson, "utf8");
+}

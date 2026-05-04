@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,7 @@ import { openBrowser } from "./browser.js";
 import { acquireLockFile, isProcessAlive, LockExistsError, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
 import type { FleetWikiLock } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";
+import { isLockTrustworthyForRestart, isStaleLock } from "./stale.js";
 
 const DEFAULT_PORT = 3737;
 const HEALTH_TIMEOUT_MS = 5000;
@@ -45,6 +47,7 @@ async function directoryExists(dirPath: string): Promise<boolean> {
 }
 
 async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLock> {
+  const distMtime = getDistMtime();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await acquireLockFile(lockPath, {
@@ -59,7 +62,26 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
       if (!(error instanceof LockExistsError)) throw error;
       const existing = await readLockFile(lockPath);
       if (existing && isProcessAlive(existing.pid)) {
-        if (existing.port > 0 && await healthCheck(existing)) return existing;
+        if (existing.port > 0) {
+          const health = await healthCheck(existing);
+          if (health.ok) {
+            if (!process.env.FLEET_WIKI_NO_AUTO_RESTART && isStaleLock(existing, distMtime)) {
+              const trust = isLockTrustworthyForRestart(existing, cwd, health.cwd);
+              if (!trust.trusted) {
+                process.stderr.write(
+                  `기존 lock의 신뢰 검증 실패(${trust.reason}) — 자동 재기동을 중단합니다. ` +
+                  `FLEET_WIKI_NO_AUTO_RESTART=1로 우회하거나 lock 파일을 직접 정리하세요.\n`,
+                );
+              } else {
+                process.stderr.write(`기존 서버(pid=${existing.pid})는 새 빌드 이전 시점이라 종료 후 재기동합니다.\n`);
+                await killServer(existing.pid);
+                await removeLockFile(lockPath);
+                continue;
+              }
+            }
+            return existing;
+          }
+        }
         return waitForHealthyLock(lockPath);
       }
       await removeLockFile(lockPath);
@@ -83,7 +105,7 @@ async function waitForHealthyLock(lockPath: string): Promise<FleetWikiLock> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < HEALTH_TIMEOUT_MS) {
     const lock = await readLockFile(lockPath);
-    if (lock && isProcessAlive(lock.pid) && await healthCheck(lock)) {
+    if (lock && isProcessAlive(lock.pid) && (await healthCheck(lock)).ok) {
       return lock;
     }
     await sleep(HEALTH_INTERVAL_MS);
@@ -91,12 +113,14 @@ async function waitForHealthyLock(lockPath: string): Promise<FleetWikiLock> {
   throw new Error("Fleet Wiki 서버 헬스체크가 5초 안에 통과하지 못했습니다.");
 }
 
-async function healthCheck(lock: FleetWikiLock): Promise<boolean> {
+async function healthCheck(lock: FleetWikiLock): Promise<{ ok: boolean; cwd: string | null }> {
   try {
     const response = await fetch(`${serverUrl(lock.port)}/api/health`);
-    return response.status === 200;
+    if (response.status !== 200) return { ok: false, cwd: null };
+    const body = await response.json() as { ok?: boolean; cwd?: string };
+    return { ok: body.ok === true, cwd: typeof body.cwd === "string" ? body.cwd : null };
   } catch {
-    return false;
+    return { ok: false, cwd: null };
   }
 }
 
@@ -112,6 +136,22 @@ function configuredPort(): number {
 
 function serverUrl(port: number): string {
   return `http://${HOST}:${port}`;
+}
+
+function getDistMtime(): number {
+  try {
+    return statSync(fileURLToPath(new URL("./server.mjs", import.meta.url))).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+async function killServer(pid: number): Promise<void> {
+  try { process.kill(pid, "SIGTERM"); } catch { return; }
+  await sleep(200);
+  if (isProcessAlive(pid)) {
+    try { process.kill(pid, "SIGKILL"); } catch { /* 이미 종료됨 */ }
+  }
 }
 
 async function sleep(ms: number): Promise<void> {

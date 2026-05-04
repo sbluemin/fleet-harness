@@ -5,6 +5,28 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- **Fleet Wiki Drydock page** — `/queue` (Pending/Archived tabs), `/queue/:patchId` (detail with op-badge, body markdown, right-rail Patch Manifest, action card). Sidebar gains a brass-badged `Drydock` entry between search and Entries|Tags.
+- **Drydock REST API** — `GET /api/queue?status=pending|archived|all` (always returns both `pendingCount` and `archivedCount`), `GET /api/queue/:patchId` (queue→archive fallback, includes `targetExists`).
+- **Web-based approve/reject** — `POST /api/queue/:patchId/approve|reject`, invoking fleet-wiki's `approvePatch`/`rejectPatch` public API directly. The Drydock detail ACTIONS card is replaced with Approve (brass) / Reject (coral outline + inline reason form) buttons; archived/accepted/rejected patches omit the card.
+- **CLI auto-restart on stale dist** — When `fleet-wiki` re-runs, compares dist/server.mjs mtime against lock startedAt; if stale, kills the old detached server and respawns. Disable with `FLEET_WIKI_NO_AUTO_RESTART=1`. Trust gate: `pid>1`, lock cwd exact match, health.cwd exact match — all three must pass before SIGTERM is sent.
+
+### Changed
+- **Manifest panel expanded to a frontmatter `<dl>`** — The entry right-rail manifest is now a full `<dl>` showing created/updated/version/tags (chips)/rawSourceRef (brass link). Shares the `.queue-dl` visual primitive with the Drydock Patch Manifest.
+- **Server method whitelist** — `ALLOWED_METHODS` expanded from `GET, HEAD` to `GET, HEAD, POST`. POST is routed only to the handler whitelist (`/api/queue/:id/approve|reject`); all other paths return `405` with `Allow: GET, HEAD`. A lazy `port` getter is added to `RouteContext`.
+- **Sidebar Drydock placement** — Moved from the bottom of the sidebar to between the search box and the Entries|Tags nav-tabs, preserving visibility as the entry list grows.
+
+### Fixed
+- **Concurrent approve/reject race** — Added a process-local `patchActionLocks` Map in `routes.ts`. When two requests target the same patchId simultaneously, the second receives an immediate `409 patch_busy`. Previously, fleet-wiki's archive move could race and lose the archive directory.
+- **fleet-wiki validation throws now map to 4xx** — `PATCH_ERROR_MAP` covers 12 thrown strings (e.g., `"patch is not pending"` → 409, `"Unknown patch ID"` → 404, `"invalid patch op"` → 400, `"update_wiki target does not exist"` → 409). Unmapped throws still yield 500, but the `message` field is stripped from the response body (logged to stderr only).
+- **UI duplicate-click guard** — `main.ts` event-handler entry and `queue-state.ts` entry both short-circuit on `actionPending`, and the invoking button is synchronously disabled.
+
+### Security
+- **POST handler whitelist** — Only `/api/queue/:patchId/approve|reject` accept POST. Any other path returns `405`.
+- **Strict Origin equality for POST** — `request.headers.origin === \`http://127.0.0.1:${port}\`` enforced exactly; missing or mismatched origins are rejected with `403`. Combined with `127.0.0.1` binding, this forms this package's CSRF defense.
+- **Body-size and content-type enforcement** — POST bodies must carry `Content-Type: application/json` (charset allowed); others receive `415`. Bodies exceeding 1024 bytes receive `413` (drain-then-respond to preserve the response channel).
+- **Stale-lock takeover hardening** — `cli.ts` auto-restart only sends SIGTERM after `pid > 1`, `lock.cwd === currentCwd`, and `/api/health.cwd === lock.cwd` all pass. On failure it prints to stderr and aborts restart. The pure `isLockTrustworthyForRestart` helper lives in `src/stale.ts` and is covered by 7 unit-test cases (pid=1/-1/NaN, cwd mismatch, health null/mismatch, all-pass).
+
 ## [0.11.1] - 2026-05-04
 
 Release v0.11.1

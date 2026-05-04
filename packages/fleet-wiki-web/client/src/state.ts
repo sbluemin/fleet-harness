@@ -1,4 +1,4 @@
-import { fetchBacklinks, fetchEntry, fetchHealth, fetchIndex } from "./api";
+import { fetchBacklinks, fetchEntry, fetchHealth, fetchIndex, fetchQueueList } from "./api";
 import type { BacklinkEntry, HealthResponse, WikiEntryResponse, WikiIndexEntry } from "./api";
 
 export interface AppState {
@@ -9,6 +9,7 @@ export interface AppState {
   loading: boolean;
   error: string | null;
   recentIds: string[];
+  pendingPatchCount: number;
 }
 
 type StateListener = (state: AppState) => void;
@@ -23,6 +24,7 @@ const state: AppState = {
   loading: false,
   error: null,
   recentIds: readRecentIds(),
+  pendingPatchCount: 0,
 };
 
 export function getState(): AppState {
@@ -37,8 +39,17 @@ export function subscribeState(listener: StateListener): () => void {
 export async function loadInitialData(): Promise<void> {
   setState({ loading: true, error: null });
   try {
-    const [health, index] = await Promise.all([fetchHealth(), fetchIndex()]);
-    setState({ health, index, loading: false });
+    const [health, index, queueList] = await Promise.all([
+      fetchHealth(),
+      fetchIndex(),
+      fetchQueueList("pending").catch(() => null),
+    ]);
+    setState({
+      health,
+      index,
+      pendingPatchCount: queueList?.pendingCount ?? 0,
+      loading: false,
+    });
   } catch (error) {
     setState({ loading: false, error: errorMessage(error) });
   }
@@ -65,6 +76,10 @@ export async function loadEntry(id: string): Promise<void> {
 
 export function clearCurrentEntry(): void {
   setState({ currentEntry: null, backlinks: [], error: null, loading: false });
+}
+
+export function setPendingPatchCount(count: number): void {
+  setState({ pendingPatchCount: count });
 }
 
 export function findIndexEntry(id: string): WikiIndexEntry | null {

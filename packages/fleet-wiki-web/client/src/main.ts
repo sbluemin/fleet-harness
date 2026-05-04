@@ -10,11 +10,22 @@ import { renderError, renderLoading, renderMarkdownView, renderWelcome } from ".
 import { renderNavTree, setNavMode, toggleTag } from "./components/nav-tree";
 import type { NavMode } from "./components/nav-tree";
 import { renderRawView } from "./components/raw-view";
+import { renderQueueList } from "./components/queue-list";
+import { renderQueueDetail } from "./components/queue-detail";
 import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
 import { currentRoute, entryPath, initRouter, navigate, subscribeRoute } from "./router";
 import type { Route } from "./router";
 import { clearCurrentEntry, getState, loadEntry, loadInitialData, subscribeState } from "./state";
 import type { AppState } from "./state";
+import {
+  approveCurrentPatch,
+  clearQueueState,
+  getQueueState,
+  loadPatchDetail,
+  loadQueueList,
+  rejectCurrentPatch,
+  subscribeQueueState,
+} from "./queue-state";
 
 const appRoot = document.querySelector<HTMLElement>("#app");
 
@@ -28,6 +39,7 @@ initRouter();
 initCommandPalette();
 subscribeState(() => render());
 subscribeRawState(() => render());
+subscribeQueueState(() => render());
 subscribeRoute((route) => {
   if (route.name === "entry") {
     void loadEntry(route.id);
@@ -37,12 +49,26 @@ subscribeRoute((route) => {
     void loadRawSource(route.ref);
     return;
   }
+  if (route.name === "queue") {
+    clearCurrentEntry();
+    clearRawState();
+    void loadQueueList(route.tab);
+    return;
+  }
+  if (route.name === "queue-detail") {
+    clearCurrentEntry();
+    clearRawState();
+    void loadPatchDetail(route.patchId);
+    return;
+  }
   clearCurrentEntry();
   clearRawState();
+  clearQueueState();
   render();
 });
 
 document.addEventListener("click", handleDocumentClick);
+document.addEventListener("submit", handleDocumentSubmit);
 void boot();
 
 async function boot(): Promise<void> {
@@ -53,6 +79,10 @@ async function boot(): Promise<void> {
     await loadEntry(route.id);
   } else if (route.name === "raw") {
     await loadRawSource(route.ref);
+  } else if (route.name === "queue") {
+    await loadQueueList(route.tab);
+  } else if (route.name === "queue-detail") {
+    await loadPatchDetail(route.patchId);
   } else {
     clearCurrentEntry();
   }
@@ -84,24 +114,38 @@ function renderAppShell(state: AppState, route: Route): void {
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
       </button>
-      ${renderNavTree(state.index, currentId)}
+      ${renderNavTree(state.index, currentId, state.pendingPatchCount, window.location.pathname)}
       <main class="content">
-        ${renderMainContent(state)}
+        ${renderMainContent(state, route)}
       </main>
       <div class="rail">
-        ${renderManifestPanel(state.currentEntry)}
-        ${renderBacklinksPanel(state.backlinks, currentId)}
+        ${renderRailContent(state, route)}
       </div>
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
   `;
 }
 
-function renderMainContent(state: AppState): string {
+function renderMainContent(state: AppState, route: Route): string {
+  if (route.name === "queue") {
+    return renderQueueList(getQueueState());
+  }
+  if (route.name === "queue-detail") {
+    return renderQueueDetail(getQueueState());
+  }
   if (state.error) return renderError(state.error);
   if (state.loading && !state.currentEntry) return renderLoading();
   if (state.currentEntry) return renderMarkdownView(state.currentEntry, state.index);
   return renderWelcome(state.index, state.health?.cwd ?? null);
+}
+
+function renderRailContent(state: AppState, route: Route): string {
+  // queue 라우트에서는 기본 rail 컨텐츠 숨김 (queue-detail의 rail은 인라인)
+  if (route.name === "queue" || route.name === "queue-detail") return "";
+  return `
+    ${renderManifestPanel(state.currentEntry)}
+    ${renderBacklinksPanel(state.backlinks, route.name === "entry" ? route.id : null)}
+  `;
 }
 
 function handleDocumentClick(event: MouseEvent): void {
@@ -137,6 +181,28 @@ function handleDocumentClick(event: MouseEvent): void {
     void copyCode(actionElement);
     return;
   }
+  if (actionElement?.dataset.action === "queue-approve") {
+    if (getQueueState().actionPending) return;
+    if (!confirm("이 패치를 승인하시겠습니까?")) return;
+    actionElement.setAttribute("disabled", "");
+    void approveCurrentPatch();
+    return;
+  }
+  if (actionElement?.dataset.action === "queue-reject-toggle") {
+    const card = actionElement.closest<HTMLElement>(".queue-actions-card");
+    const form = card?.querySelector<HTMLElement>(".queue-reject-form");
+    if (form) {
+      form.hidden = !form.hidden;
+      if (!form.hidden) form.querySelector<HTMLElement>("textarea")?.focus();
+    }
+    return;
+  }
+  if (actionElement?.dataset.action === "queue-reject-cancel") {
+    const card = actionElement.closest<HTMLElement>(".queue-actions-card");
+    const form = card?.querySelector<HTMLElement>(".queue-reject-form");
+    if (form) form.hidden = true;
+    return;
+  }
 
   const tocLink = target.closest<HTMLAnchorElement>("[data-toc-id]");
   if (tocLink) {
@@ -152,6 +218,19 @@ function handleDocumentClick(event: MouseEvent): void {
   event.preventDefault();
   document.body.classList.remove("nav-open");
   navigate(internalPath);
+}
+
+function handleDocumentSubmit(event: SubmitEvent): void {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.dataset.action === "queue-reject-submit") {
+    event.preventDefault();
+    if (getQueueState().actionPending) return;
+    const submitBtn = form.querySelector<HTMLButtonElement>("button[type='submit']");
+    if (submitBtn) submitBtn.disabled = true;
+    const textarea = form.querySelector<HTMLTextAreaElement>("textarea[name='reason']");
+    void rejectCurrentPatch(textarea?.value ?? "");
+  }
 }
 
 async function copyCode(button: HTMLElement): Promise<void> {
@@ -184,6 +263,7 @@ function internalSpaPath(anchor: HTMLAnchorElement): string | null {
   if (url.pathname === "/") return "/";
   if (url.pathname.startsWith("/entry/")) return url.pathname;
   if (url.pathname.startsWith("/raw/")) return url.pathname;
+  if (url.pathname.startsWith("/queue")) return url.pathname + url.search;
   if (!url.pathname.endsWith(".md")) return null;
   const fileName = url.pathname.split("/").pop() ?? "";
   const id = decodeURIComponent(fileName.replace(/\.md$/, ""));
