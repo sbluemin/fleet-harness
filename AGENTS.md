@@ -203,6 +203,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | MCP server URL + token routing | `admiral/_shared/mcp.ts` lazy singleton | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
 | CLI provider catalog | `@sbluemin/unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
 | Fleet tool catalog | `admiral.agent.tools.list()` (default specs auto-registered, host extras via `registerExtraTools`) | Host queries metadata + invokes — never re-implements specs. |
+| Executor MCP whitelist | `admiral/agent/tools.ts:EXECUTOR_MCP_TOOL_IDS` + `getExecutorMcpTools()` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`; initial allowlist is `["carrier_jobs"]`. Adding a tool requires editing only this constant. |
 
 > **Unified `AgentToolSpec` Shape**: One interface combines doctrine and execution — `{ id, tag, title, description, promptSnippet, whenToUse[], whenNotToUse[], usageGuidelines[], guardrails?[], parameters, execute }`. The same spec produces both the `<fleet section="tool-guide" tool="${tag}">` doctrine block (via `renderAgentToolDoctrineTag()`) and the executable handler. Legacy `ToolPromptManifest`, `AgentToolRenderDescriptor` / `AgentToolPiDescriptor` / `AgentToolMcpDescriptor`, and the deprecated `name` / `label` / `promptGuidelines` / `render` / `pi` / `mcp` fields are removed. The former `infra/tool-registry/` directory (6 files) no longer exists; the registry/formatter functions live in `admiral/agent/tools.ts` exclusively, exported as `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag`.
 
@@ -294,7 +295,7 @@ Each feature area maps to exactly one command domain. Use the domain below regar
 | Carrier registration surfaces | `carrier` | Individual carrier registration and configuration |
 | HUD display surfaces | `hud` | HUD / editor display features |
 | Operation naming surfaces | `metaphor:operation` | Session operation naming settings |
-| Directive refinement surfaces | `metaphor:directive` | Directive refinement (3-section) settings |
+| Directive refinement surfaces | `metaphor:directive` | Directive refinement settings — surfaced inside `fleet:metaphor:settings` (no standalone command) |
 When adding a **new extension**, assign a domain that reflects the **feature category**, not the directory prefix (`core-`, etc.).
 
 ### Feature Naming

@@ -5,6 +5,7 @@
  * Tempest carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -35,6 +36,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "Tempest decides whether API-level exploration suffices or local clone is needed for deeper analysis.",
     "If the request fails (timeout/rate limit), retry up to 3 times before reporting failure.",
   ],
+  principles: [CARRIER_JOBS_SELF_CALL_HINT],
   outputFormat:
     `Report findings as a structured intelligence briefing.\n` +
     `[Required] always include:\n` +

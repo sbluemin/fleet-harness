@@ -14,6 +14,7 @@ import {
   type CliType,
   type ConnectResult,
   type IUnifiedAgentClient,
+  type McpServerConfig,
   type UnifiedAgentBuildOptions,
   type UnifiedClientOptions,
 } from "@sbluemin/unified-agent";
@@ -22,6 +23,13 @@ import { resolveAuthEnv } from "../../../infra/auth/index.js";
 import { getLogAPI } from "../../../infra/log/store.js";
 import { getSessionStore, classifyResumeFailure } from "./session-runtime.js";
 import { applyPostConnectConfig } from "./post-connect.js";
+import {
+  installExecutorToolCallRouter,
+  cleanupExecutorSession,
+  detachExecutorMcpForReuse,
+  registerExecutorSessionTools,
+} from "./mcp-router.js";
+import { getExecutorMcpTools } from "../tools.js";
 import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -58,6 +66,7 @@ interface PooledClient {
   client: IUnifiedAgentClient;
   busy: boolean;
   sessionId?: string;
+  mcpSessionToken?: string;
 }
 
 type ToolCallLike = (AcpToolCall | AcpToolCallUpdate) & {
@@ -96,6 +105,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   let aborted = false;
   let isLivePrompt = false;
   let sessionId: string | undefined;
+  let activeMcpToken: string | undefined;
 
   opts.onStatusChange?.("conn");
 
@@ -107,6 +117,10 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       poolEntry = undefined;
       isTemporary = true;
     } else if (!isClientAlive(poolEntry.client)) {
+      if (poolEntry.mcpSessionToken) {
+        cleanupExecutorSession(poolEntry.mcpSessionToken);
+        poolEntry.mcpSessionToken = undefined;
+      }
       clientPool.delete(poolKey);
       poolEntry = undefined;
     }
@@ -125,7 +139,13 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       poolEntry = newEntry;
       client.on("exit", () => {
         const current = clientPool.get(poolKey);
-        if (current?.client === client) clientPool.delete(poolKey);
+        if (current?.client === client) {
+          if (current.mcpSessionToken) {
+            cleanupExecutorSession(current.mcpSessionToken);
+            current.mcpSessionToken = undefined;
+          }
+          clientPool.delete(poolKey);
+        }
       });
     }
   }
@@ -134,6 +154,10 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
   const cleanupTemporary = async () => {
     if (!isTemporary) return;
+    if (activeMcpToken) {
+      cleanupExecutorSession(activeMcpToken);
+      activeMcpToken = undefined;
+    }
     try { await client.disconnect(); } catch { /* 정리 실패 무시 */ }
     client.removeAllListeners();
   };
@@ -215,16 +239,25 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     if (!needsConnect && hasSystemPromptDrift(client, opts.connectSystemPrompt ?? null)) {
       debugSystemPromptDrift("executeWithPool", poolKey, cliType);
       store.clear(poolKey);
-      if (poolEntry) delete poolEntry.sessionId;
+      if (poolEntry) {
+        if (poolEntry.mcpSessionToken) {
+          cleanupExecutorSession(poolEntry.mcpSessionToken);
+          poolEntry.mcpSessionToken = undefined;
+        }
+        delete poolEntry.sessionId;
+      }
       await client.disconnect();
       needsConnect = true;
     }
 
     if (needsConnect) {
+      const mcpSetup = await setupExecutorMcp(cwd, signal);
+      if (mcpSetup) activeMcpToken = mcpSetup.token;
+
       const connectOpts = await buildConnectOptions(cliType, cwd, {
         model: opts.model,
         promptIdleTimeout: opts.promptIdleTimeout,
-      }, opts.connectSystemPrompt ?? null);
+      }, opts.connectSystemPrompt ?? null, mcpSetup?.mcpServers);
 
       const savedSessionId = store.get(poolKey) ?? poolEntry?.sessionId;
       if (savedSessionId) connectOpts.sessionId = savedSessionId;
@@ -246,6 +279,12 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         if (poolEntry) delete poolEntry.sessionId;
         delete connectOpts.sessionId;
 
+        // dead-session MCP 토큰 rotate — 구 토큰 정리 후 재발급
+        if (activeMcpToken) {
+          cleanupExecutorSession(activeMcpToken);
+          activeMcpToken = undefined;
+        }
+
         try { await client.disconnect(); } catch {}
         detachListeners();
         detachStderr();
@@ -256,10 +295,25 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
           clientPool.set(poolKey, poolEntry);
           client.on("exit", () => {
             const current = clientPool.get(poolKey);
-            if (current?.client === client) clientPool.delete(poolKey);
+            if (current?.client === client) {
+              if (current.mcpSessionToken) {
+                cleanupExecutorSession(current.mcpSessionToken);
+                current.mcpSessionToken = undefined;
+              }
+              clientPool.delete(poolKey);
+            }
           });
         }
         attachListeners();
+
+        const retryMcpSetup = await setupExecutorMcp(cwd, signal);
+        if (retryMcpSetup) {
+          activeMcpToken = retryMcpSetup.token;
+          connectOpts.mcpServers = retryMcpSetup.mcpServers;
+        } else {
+          delete connectOpts.mcpServers;
+        }
+
         connectResult = await raceAbort(client.connect(connectOpts), signal);
       }
 
@@ -267,6 +321,11 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (poolEntry && sessionId) poolEntry.sessionId = sessionId;
       if (sessionId) store.set(poolKey, sessionId);
+
+      if (activeMcpToken) {
+        if (poolEntry) poolEntry.mcpSessionToken = activeMcpToken;
+        installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+      }
 
       const effort = resolveEffort(poolKey, opts.effort);
       await applyPostConnectConfig(client, cliType, effort ? { effort } : undefined);
@@ -279,6 +338,11 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (opts.effort) {
         await applyPostConnectConfig(client, cliType, { effort: opts.effort });
+      }
+
+      if (poolEntry?.mcpSessionToken) {
+        activeMcpToken = poolEntry.mcpSessionToken;
+        installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
       }
     }
 
@@ -322,6 +386,14 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     detachStderr();
     if (poolEntry) poolEntry.busy = false;
 
+    if (!isTemporary && activeMcpToken) {
+      if (poolEntry?.mcpSessionToken === activeMcpToken) {
+        detachExecutorMcpForReuse(activeMcpToken);
+      } else {
+        cleanupExecutorSession(activeMcpToken);
+      }
+    }
+
     if (isTemporary && sessionId) {
       const existingEntry = clientPool.get(poolKey);
       if (existingEntry) existingEntry.sessionId = sessionId;
@@ -347,6 +419,7 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
   const client = await buildProviderClient({ cli: cliType });
   const detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
   let aborted = false;
+  let activeMcpToken: string | undefined;
 
   const onAbort = () => {
     if (aborted) return;
@@ -363,13 +436,20 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
 
     if (signal) signal.addEventListener("abort", onAbort, { once: true });
 
+    const mcpSetup = await setupExecutorMcp(cwd, signal);
+    if (mcpSetup) activeMcpToken = mcpSetup.token;
+
     const connectOpts = await buildConnectOptions(cliType, cwd, {
       model: opts.model,
       promptIdleTimeout: opts.promptIdleTimeout,
-    }, opts.connectSystemPrompt ?? null);
+    }, opts.connectSystemPrompt ?? null, mcpSetup?.mcpServers);
 
     const connectResult = await raceAbort(client.connect(connectOpts), signal);
     await applyPostConnectConfig(client, cliType, { effort: opts.effort });
+
+    if (activeMcpToken) {
+      installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+    }
 
     if (aborted) {
       return { responseText, thoughtText, toolCalls, status, error, sessionId };
@@ -425,6 +505,10 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
   } finally {
     if (signal) signal.removeEventListener("abort", onAbort);
     detachStderr();
+    if (activeMcpToken) {
+      cleanupExecutorSession(activeMcpToken);
+      activeMcpToken = undefined;
+    }
     try { await client.disconnect(); } catch { /* 정리 실패 무시 */ }
     client.removeAllListeners();
   }
@@ -438,6 +522,10 @@ export async function engineDisconnect(poolKey: string): Promise<boolean> {
   if (!entry) return false;
   clientPool.delete(poolKey);
   entry.busy = false;
+  if (entry.mcpSessionToken) {
+    cleanupExecutorSession(entry.mcpSessionToken);
+    entry.mcpSessionToken = undefined;
+  }
   try { await entry.client.disconnect(); } catch { /* 강제 정리 경로 */ }
   entry.client.removeAllListeners();
   return true;
@@ -447,6 +535,10 @@ export async function engineDisconnect(poolKey: string): Promise<boolean> {
 export async function engineDisconnectAll(): Promise<void> {
   const promises: Promise<void>[] = [];
   for (const [, entry] of clientPool) {
+    if (entry.mcpSessionToken) {
+      cleanupExecutorSession(entry.mcpSessionToken);
+      entry.mcpSessionToken = undefined;
+    }
     promises.push(entry.client.disconnect().catch(() => {}));
   }
   await Promise.allSettled(promises);
@@ -458,6 +550,10 @@ export async function engineDisconnectAll(): Promise<void> {
 export function engineCleanIdle(): void {
   for (const [key, entry] of clientPool) {
     if (!entry.busy) {
+      if (entry.mcpSessionToken) {
+        cleanupExecutorSession(entry.mcpSessionToken);
+        entry.mcpSessionToken = undefined;
+      }
       entry.client.disconnect().catch(() => {});
       clientPool.delete(key);
     }
@@ -477,6 +573,10 @@ async function disconnectFromPool(poolKey: string, client: IUnifiedAgentClient):
   if (!entry || entry.client !== client) return false;
   clientPool.delete(poolKey);
   entry.busy = false;
+  if (entry.mcpSessionToken) {
+    cleanupExecutorSession(entry.mcpSessionToken);
+    entry.mcpSessionToken = undefined;
+  }
   try { await entry.client.disconnect(); } catch { /* 정리 실패 무시 */ }
   entry.client.removeAllListeners();
   return true;
@@ -503,6 +603,7 @@ async function buildConnectOptions(
   cwd: string,
   overrides: { model?: string; promptIdleTimeout?: number } | undefined,
   systemPrompt: string | null | undefined,
+  mcpServers?: McpServerConfig[],
 ): Promise<UnifiedClientOptions> {
   const opts: UnifiedClientOptions = {
     cwd,
@@ -514,6 +615,7 @@ async function buildConnectOptions(
   if (overrides?.model) opts.model = overrides.model;
   if (overrides?.promptIdleTimeout !== undefined) opts.promptIdleTimeout = overrides.promptIdleTimeout;
   if (systemPrompt) opts.systemPrompt = systemPrompt;
+  if (mcpServers) opts.mcpServers = mcpServers;
   const env = await resolveAuthEnv(cli);
   if (Object.keys(env).length > 0) opts.env = env;
   return opts;
@@ -596,4 +698,29 @@ function extractContentText(content: unknown): string | undefined {
 
 async function buildProviderClient(options: UnifiedAgentBuildOptions): Promise<IUnifiedAgentClient> {
   return UnifiedAgent.build(options);
+}
+
+async function setupExecutorMcp(
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<{ token: string; mcpServers: McpServerConfig[] } | null> {
+  if (signal?.aborted) return null;
+  const specs = getExecutorMcpTools();
+  if (specs.length === 0) return null;
+  try {
+    const { startMcpServer } = await import("../../_shared/mcp.js");
+    const mcpUrl = await startMcpServer();
+    const token = crypto.randomUUID();
+    registerExecutorSessionTools(token, specs);
+    const mcpServers: McpServerConfig[] = [{
+      type: "http",
+      url: mcpUrl,
+      headers: [{ name: "Authorization", value: `Bearer ${token}` }],
+      name: "pi-tools",
+      toolTimeout: 1800,
+    }];
+    return { token, mcpServers };
+  } catch {
+    return null;
+  }
 }

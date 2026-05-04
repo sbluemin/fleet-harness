@@ -54,9 +54,6 @@ export const {
   onActiveJobCountChange,
 } = infra.job;
 
-export const composeDirectiveRefinementRequest: any = metaphor.directiveRefinement.composeDirectiveRefinementRequest;
-export const loadDirectiveRefinementSettings: any = metaphor.directiveRefinement.loadSettings;
-
 export const composeOperationNameRequest: any = metaphor.operationName.composeOperationNameRequest;
 export const loadOperationNameSettings: any = metaphor.operationName.loadSettings;
 export const sanitizeOperationNameDisplay: any = metaphor.operationName.sanitizeOperationNameDisplay;

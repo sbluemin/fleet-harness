@@ -146,6 +146,18 @@ export function getThinkingLevels(modelId: string, providerId?: string): Thinkin
   return ["off", ...levels];
 }
 
+/** CLI 타입에 속한 모델 목록 반환 */
+export function getCliModels(cli: CliType): readonly { id: string; name: string }[] {
+  const provider = getProviderModels(cli);
+  return provider.models.map((m) => ({ id: m.modelId, name: m.name }));
+}
+
+/** CLI 타입의 effort 레벨 목록 반환 (미지원 시 null) */
+export function getCliEffortLevels(cli: CliType): readonly string[] | null {
+  const provider = getProviderModels(cli);
+  return provider.reasoningEffort.supported ? provider.reasoningEffort.levels : null;
+}
+
 /** systemPrompt 해시 — drift 감지용 */
 export function hashSystemPrompt(prompt: string | undefined): string {
   if (!prompt) return "";

@@ -25,11 +25,11 @@
 |---------------|---------|---------|
 | `session.ts` | `ensure` / `sendMessage` / `deliverToolResults` / `resolveSession` | Streaming — events flow through `events.ts` module channel |
 | `events.ts` | `register` / `unregister` / `emit` / `clear` for `AgentStreamEvent` | Module-level emit/register, `carrier-job-events.ts` doppelgänger |
-| `tools.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` | Default fleet tool specs auto-registered; host extras scoped by `scopeKey`. **Single SSoT** for tool specs (registry + doctrine formatter). |
-| `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (`carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_squadron` / `carrier_taskforce` use a synthetic id) |
+| `tools.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` / `getExecutorMcpTools` | Default fleet tool specs auto-registered; host extras scoped by `scopeKey`. **Single SSoT** for tool specs (registry + doctrine formatter). `EXECUTOR_MCP_TOOL_IDS` is the **single SSoT** for the executor MCP whitelist — initial allowlist is `["carrier_jobs"]`; `getExecutorMcpTools()` resolves that list against the registry and fails loudly on a missing spec. |
+| `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (`carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_squadron` / `carrier_taskforce` use a synthetic id). **Connect-time MCP**: every executor session receives a whitelist-scoped MCP server (via `EXECUTOR_MCP_TOOL_IDS`) so carriers can self-call `carrier_jobs`. No runtime-context tags are injected into executor requests. |
 | `lifecycle.ts` | `bindHostSession` / `shutdownAllSessions` | Pi `session_start`/`session_shutdown` integration point |
 | `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations (`carrier_dispatch` passes the resolved `carrierId`; squadron/taskforce pass synthetic ids) |
-| `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getThinkingLevels` | CLI/model codec |
+| `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getCliModels` / `getCliEffortLevels` / `getThinkingLevels` | CLI/model codec |
 | `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
 | `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |
 

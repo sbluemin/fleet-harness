@@ -14,6 +14,7 @@ import {
   resolveNextToolCall,
   type McpCallToolResult,
 } from "../../_shared/mcp.js";
+import { invoke } from "../tools.js";
 import {
   registerToolsForSession,
   removeToolsForSession,
@@ -199,4 +200,49 @@ export function resolveToolResult(
 ): void {
   if (!session.mcpSessionToken) return;
   resolveNextToolCall(session.mcpSessionToken, toolCallId, result);
+}
+
+/** executor-only MCP tool call router — AgentProviderState 없이 async self-invoke 처리 */
+export function installExecutorToolCallRouter(
+  sessionToken: string,
+  ctx: { cwd: string; signal?: AbortSignal },
+): void {
+  setOnToolCallArrived(sessionToken, (toolName, args) => {
+    const toolCallId = crypto.randomUUID();
+    void invoke(toolName, args, { cwd: ctx.cwd, toolCallId, signal: ctx.signal })
+      .then((result) => resolveNextToolCall(sessionToken, toolCallId, result))
+      .catch((err) => {
+        resolveNextToolCall(sessionToken, toolCallId, {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+          isError: true,
+        });
+      });
+    return toolCallId;
+  });
+}
+
+/** executor MCP router 분리 */
+export function detachExecutorToolCallRouter(sessionToken: string): void {
+  setOnToolCallArrived(sessionToken, null);
+}
+
+/** executor 세션 MCP tools 등록 (token 직접 전달 — specs를 McpTool로 변환) */
+export function registerExecutorSessionTools(
+  sessionToken: string,
+  specs: AgentToolSpec[],
+): void {
+  registerToolsForSession(sessionToken, specs.map(specToMcpTool));
+}
+
+/** executor 세션 MCP 전체 정리 — router 분리 + tools 제거 + pending 정리 */
+export function cleanupExecutorSession(sessionToken: string): void {
+  detachExecutorToolCallRouter(sessionToken);
+  removeToolsForSession(sessionToken);
+  clearPendingForSession(sessionToken);
+}
+
+/** pooled executor 세션 turn 완료 시 MCP 경량 정리 — router/pending만, tools/token 유지 */
+export function detachExecutorMcpForReuse(sessionToken: string): void {
+  detachExecutorToolCallRouter(sessionToken);
+  clearPendingForSession(sessionToken);
 }

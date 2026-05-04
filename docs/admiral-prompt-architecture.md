@@ -327,15 +327,29 @@ ultimately call `client.sendMessage(...)` on an ACP client, but they differ in
 │            synchronously, callbacks via ExecuteOptions             │
 │            (onMessageChunk / onThoughtChunk / onToolCall / ...)    │
 │                                                                    │
-│  Carrier system prompt: buildCarrierSystemPrompt() at              │
-│            admiral/carrier/prompts.ts:179-181 returns only         │
-│            SYSTEM_REMINDER_HINT.trim(), injected at ACP connect    │
-│            time and then frozen for the carrier's session.         │
+│  Carrier system prompt: buildCarrierSystemPrompt(metadata) at      │
+│            admiral/carrier/prompts.ts assembles five sections:     │
+│            (1) CARRIER_FLEET_BACKGROUND prose, (2) <your_identity> │
+│            title+summary, (3) <your_permissions> bullets,          │
+│            (4) <your_principles> bullets — first item is           │
+│            CARRIER_JOBS_SELF_CALL_HINT, a shared constant           │
+│            referenced directly by all 8 built-in personas as a     │
+│            principle entry (no string duplication; not always a    │
+│            spread literal — sentinel/tempest declare it as a       │
+│            single-element array), (5) <output_format>.             │
+│            Injected at ACP connect time; frozen for the session.   │
 │                                                                    │
-│  Tier-2 context: composeTier2Request() embeds permissions,         │
-│            principles, and output format DIRECTLY into the         │
-│            request string. Sub-agents receive Fleet context        │
-│            through this composition, not through runtime tags.     │
+│  Tier-2 context: the five-section carrier system prompt IS the     │
+│            Tier-2 context. Sub-agents receive Fleet context        │
+│            through this system prompt, not through runtime tags    │
+│            (runtime tags are streaming-path only).                 │
+│                                                                    │
+│  Connect-time MCP: executor sessions receive a whitelist-scoped    │
+│            MCP server (`EXECUTOR_MCP_TOOL_IDS` in tools.ts,        │
+│            currently `["carrier_jobs"]`). Carriers may self-call   │
+│            allowed tools; no runtime-context tags are injected.    │
+│            Source: executor-engine.ts setupExecutorMcp()           │
+│            Whitelist SSoT: admiral/agent/tools.ts                  │
 │                                                                    │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -473,8 +487,10 @@ the following code changes ship:
   or runtime context becoming injected into executor requests).
 - A new dispatch tool is registered (`carrier_dispatch` is replaced or a peer to
   `carrier_squadron`, `carrier_taskforce` is added or removed).
-- The `buildCarrierSystemPrompt()` policy at `admiral/carrier/prompts.ts:179-181`
-  changes (currently it returns `SYSTEM_REMINDER_HINT.trim()` only).
+- The `buildCarrierSystemPrompt()` composition at `admiral/carrier/prompts.ts`
+  changes (five-section structure: background, identity, permissions, principles, outputFormat;
+  `CARRIER_JOBS_SELF_CALL_HINT` referenced as a shared principle entry by all built-in
+  personas — directly, not always through spread syntax).
 - A `setSystemPrompt()`-equivalent API is introduced on the unified-agent client.
 - A new protocol is added or the protocol-switching mechanism stops being lazy.
 - `FLEET_PREAMBLE` or `RISEN_DEV_SLATE` content changes

@@ -15,6 +15,8 @@ const doctrineEntries = new Map<string, AgentToolSpec>();
 const extraTools = new Map<string, Map<string, AgentToolSpec>>();
 let defaultToolsBuilt = false;
 
+export const EXECUTOR_MCP_TOOL_IDS = ["carrier_jobs"] as const;
+
 export function registerAgentTool(spec: AgentToolSpec): void {
   assertToolId(spec.id, "id");
   assertToolId(spec.tag, "tag");
@@ -32,6 +34,17 @@ export function getAllAgentTools(): AgentToolSpec[] {
   return doctrineOrder
     .map((id) => doctrineEntries.get(id))
     .filter((s): s is AgentToolSpec => s != null);
+}
+
+export function getExecutorMcpTools(): AgentToolSpec[] {
+  ensureDefaultToolsRegistered();
+  return EXECUTOR_MCP_TOOL_IDS.map((id) => {
+    const spec = doctrineEntries.get(id);
+    if (!spec) {
+      throw new Error(`Executor MCP whitelist references unknown tool id: "${id}"`);
+    }
+    return spec;
+  });
 }
 
 // ═════════════════════════════════════════════════════════

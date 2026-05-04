@@ -58,6 +58,8 @@ export interface CarrierMetadata {
   whenNotToUse: string[];
   /** 구조화 요청 블록 — 로스터 및 도구 가이드라인에 노출 */
   requestBlocks: RequestBlock[];
+  /** 공용 요청 블록 — 모든 carrier에 공통으로 주입되는 선택적 블록 (e.g., prior_jobs) */
+  commonRequestBlocks?: RequestBlock[];
 
   // ── Tier 2: Composition (→ 실행 시 request에 자동 주입) ──
   /** 권한/제약 (여러 줄) */

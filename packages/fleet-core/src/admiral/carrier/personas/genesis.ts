@@ -5,6 +5,7 @@
  * Genesis carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -43,6 +44,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "MUST NOT silently absorb Kirov's planning role or Nimitz's architecture arbitration role when those inputs are clearly missing.",
   ],
   principles: [
+    CARRIER_JOBS_SELF_CALL_HINT,
     "MUST treat the Admiral's <objective>, <scope>, <constraints>, and <references> as binding design contracts. Specific design decisions stated in the instructions MUST be implemented as-instructed, not as 'cleaner' or 'better' substitutions.",
     "If an alternative design seems superior, MUST complete the assigned work AS-INSTRUCTED first, then report the alternative ONLY as a follow-up suggestion. NEVER substitute the alternative silently.",
     "On ambiguity or apparent conflict in the instructions, MUST report back and request clarification instead of choosing autonomously.",

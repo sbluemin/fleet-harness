@@ -5,7 +5,13 @@
 import { describe, it, expect } from "vitest";
 import type { CarrierMetadata } from "../../src/admiral/carrier/types.js";
 import { validateRequiredRequestBlocks } from "../../src/admiral/carrier/request-blocks.js";
-import { formatRequestBlocksGuide } from "../../src/admiral/carrier/prompts.js";
+import {
+  buildCarrierSystemPrompt,
+  formatRequestBlocksGuide,
+  CARRIER_JOBS_SELF_CALL_HINT,
+  CARRIER_REQUEST_BREVITY_GUIDELINE,
+  PRIOR_JOBS_REQUEST_BLOCK,
+} from "../../src/admiral/carrier/prompts.js";
 import { CARRIER_METADATA as CHRONICLE } from "../../src/admiral/carrier/personas/chronicle.js";
 import { CARRIER_METADATA as GENESIS } from "../../src/admiral/carrier/personas/genesis.js";
 import { CARRIER_METADATA as KIROV } from "../../src/admiral/carrier/personas/kirov.js";
@@ -189,4 +195,124 @@ describe("빌트인 페르소나 requestBlocks 구조", () => {
       });
     });
   }
+});
+
+// ─────────────────────────────────────────────────────────
+// CARRIER_JOBS_SELF_CALL_HINT — 전체 persona Tier-2 주입 검증
+// ─────────────────────────────────────────────────────────
+
+describe("CARRIER_JOBS_SELF_CALL_HINT — 전체 persona Tier-2 주입", () => {
+  for (const { name, meta } of ALL_PERSONAS) {
+    it(`${name}: buildCarrierSystemPrompt에 self-call hint 포함`, () => {
+      const prompt = buildCarrierSystemPrompt(meta);
+      expect(prompt).toContain(CARRIER_JOBS_SELF_CALL_HINT);
+    });
+  }
+
+  it("CARRIER_JOBS_SELF_CALL_HINT에 carrier_jobs format:\"full\" 서명 포함", () => {
+    expect(CARRIER_JOBS_SELF_CALL_HINT).toContain('format:"full"');
+  });
+
+  it("CARRIER_JOBS_SELF_CALL_HINT에 format:\"summary\" fallback 포함", () => {
+    expect(CARRIER_JOBS_SELF_CALL_HINT).toContain('format:"summary"');
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// commonRequestBlocks 병합 렌더링 검증
+// ─────────────────────────────────────────────────────────
+
+describe("commonRequestBlocks 병합 렌더링", () => {
+  it("<prior_jobs?> 블록이 모든 persona 가이드에 optional로 렌더링됨", () => {
+    for (const { name, meta } of ALL_PERSONAS) {
+      const guide = formatRequestBlocksGuide(meta);
+      const found = guide.some((line) => line.includes("<prior_jobs?>"));
+      expect(found, `${name}: <prior_jobs?> missing from guide`).toBe(true);
+    }
+  });
+
+  it("<prior_jobs?> 블록이 required로 렌더링되지 않음", () => {
+    for (const { name, meta } of ALL_PERSONAS) {
+      const guide = formatRequestBlocksGuide(meta);
+      const wrongRequired = guide.some(
+        (line) => line.includes("<prior_jobs>") && !line.includes("<prior_jobs?>"),
+      );
+      expect(wrongRequired, `${name}: <prior_jobs> rendered as required`).toBe(false);
+    }
+  });
+
+  it("commonRequestBlocks가 persona-specific blocks와 중복 없이 병합됨", () => {
+    const meta = makeMeta({
+      requestBlocks: [
+        { tag: "objective", hint: "objective hint", required: true },
+      ],
+      commonRequestBlocks: [
+        { tag: "extra_ctx", hint: "extra context", required: false },
+      ],
+    });
+    const guide = formatRequestBlocksGuide(meta);
+    const objLine = guide.filter((l) => l.includes("<objective>"));
+    const extraLine = guide.filter((l) => l.includes("<extra_ctx?>"));
+    const priorLine = guide.filter((l) => l.includes("<prior_jobs?>"));
+    expect(objLine).toHaveLength(1);
+    expect(extraLine).toHaveLength(1);
+    expect(priorLine).toHaveLength(1);
+  });
+
+  it("PRIOR_JOBS_REQUEST_BLOCK은 optional이고 tag가 'prior_jobs'", () => {
+    expect(PRIOR_JOBS_REQUEST_BLOCK.required).toBe(false);
+    expect(PRIOR_JOBS_REQUEST_BLOCK.tag).toBe("prior_jobs");
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// prior_jobs 누락이 validateRequiredRequestBlocks를 실패시키지 않음
+// ─────────────────────────────────────────────────────────
+
+describe("prior_jobs 누락 no-regression", () => {
+  it("prior_jobs 누락 시 validateRequiredRequestBlocks가 ok: true 반환", () => {
+    const meta = makeMeta({
+      requestBlocks: [
+        { tag: "target", hint: "target hint", required: true },
+      ],
+    });
+    const result = validateRequiredRequestBlocks(
+      meta,
+      "<target>some target</target>",
+      "test-carrier",
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("persona-specific required tag는 여전히 강제됨", () => {
+    const meta = makeMeta({
+      requestBlocks: [
+        { tag: "target", hint: "target hint", required: true },
+      ],
+    });
+    const result = validateRequiredRequestBlocks(meta, "", "test-carrier");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.missing).toContain("target");
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// CARRIER_REQUEST_BREVITY_GUIDELINE — job_id 핸드오프 계약 검증
+// ─────────────────────────────────────────────────────────
+
+describe("CARRIER_REQUEST_BREVITY_GUIDELINE — job_id 핸드오프 계약", () => {
+  it('format:"full" 서명 포함', () => {
+    expect(CARRIER_REQUEST_BREVITY_GUIDELINE).toContain('format:"full"');
+  });
+
+  it('format:"summary" fallback 포함', () => {
+    expect(CARRIER_REQUEST_BREVITY_GUIDELINE).toContain('format:"summary"');
+  });
+
+  it("job_id via <prior_jobs> 지시 포함", () => {
+    expect(CARRIER_REQUEST_BREVITY_GUIDELINE).toContain("prior_jobs");
+    expect(CARRIER_REQUEST_BREVITY_GUIDELINE).toContain("job_id");
+  });
 });

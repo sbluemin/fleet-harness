@@ -5,6 +5,7 @@
  * Kirov carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -50,6 +51,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `  **Admiral Direction Needed** — Architecture, trade-off, or path choices needing confirmation.\n` +
     `Keep the summary concise — bullets and short lines only. No narrative paragraphs.`,
   principles: [
+    CARRIER_JOBS_SELF_CALL_HINT,
     "Clarify only to unlock planning — ask the minimum questions needed to produce a reliable execution plan.",
     "Pre-plan gap analysis is mandatory internal input, never a substitute final output. May launch background explore/librarian sub-agents for context gathering. Use incremental write protocol: Write() skeleton first, then Edit() in 2-4 task batches.",
     "The .fleet/plans/*.md file MUST contain this exact default Markdown template unless the Admiral provides a different template: " +

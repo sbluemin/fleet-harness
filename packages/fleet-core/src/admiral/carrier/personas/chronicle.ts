@@ -5,6 +5,7 @@
  * Chronicle carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -47,6 +48,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `  **Spotted issues** — Code issues noticed during documentation that should be reported to other carriers.\n` +
     `Keep the completion report concise — the documentation itself is the primary deliverable.`,
   principles: [
+    CARRIER_JOBS_SELF_CALL_HINT,
     "If additional documentation scope seems needed, MUST report it as a follow-up suggestion in the completion report. NEVER silently expand the audit/update scope.",
     "Every sortie must include a cascade .md audit — identify all .md files within the change scope, verify they reflect current state, and cross-reference parent/child AGENTS.md to prevent doctrinal conflicts.",
     "CRITICAL: README.md files must ONLY be updated where they already exist — NEVER create new README.md files. If a directory lacks a README.md, leave it as-is and note the absence in the audit report.",

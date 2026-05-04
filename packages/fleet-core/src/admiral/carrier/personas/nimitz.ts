@@ -5,6 +5,7 @@
  * Nimitz carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -52,6 +53,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `  **Escalation triggers** — Conditions that justify a more complex solution.\n` +
     `  **Alternative sketch** — High-level outline of the backup path only.`,
   principles: [
+    CARRIER_JOBS_SELF_CALL_HINT,
     "Delivers exactly ONE best-path recommendation — not a menu of options.",
     "Always favors the simplest viable solution. Complexity only when simplicity provably fails constraints.",
     "Decide the technical path — do not orchestrate execution waves, task matrices, or delivery backlogs.",

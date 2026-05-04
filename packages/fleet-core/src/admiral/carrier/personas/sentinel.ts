@@ -6,6 +6,7 @@
  * Raven(CVN-05) 역할을 흡수하여 QA와 보안을 통합 수행합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -37,6 +38,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "MUST report findings with explicit severity (Critical/High/Medium/Low) and verdict (PASS/FAIL).",
     "Full access to the codebase — read, write (only when fix_mode='fix'), and execute commands.",
   ],
+  principles: [CARRIER_JOBS_SELF_CALL_HINT],
   outputFormat:
     `Report findings as a structured defect/security manifest.\n` +
     `[Required] always include:\n` +

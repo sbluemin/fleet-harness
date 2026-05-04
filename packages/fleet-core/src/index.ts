@@ -81,8 +81,13 @@ export type {
   DirectiveRefinementSettings,
 } from "./metaphor/directive-refinement/settings.js";
 export type {
-  ReasoningLevel as DirectiveReasoningLevel,
-} from "./metaphor/directive-refinement/constants.js";
+  DirectiveRefinementRequest,
+  DirectiveRefinementResult,
+  DirectiveRefinementStatus,
+} from "./metaphor/directive-refinement/execute.js";
+export {
+  executeDirectiveRefinement,
+} from "./metaphor/directive-refinement/execute.js";
 export type {
   OperationNameSettings,
 } from "./metaphor/operation-name/settings.js";

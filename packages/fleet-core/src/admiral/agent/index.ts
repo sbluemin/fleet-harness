@@ -80,6 +80,8 @@ export {
   isFleetProviderId,
   parseProviderId,
   listProviders,
+  getCliModels,
+  getCliEffortLevels,
   getThinkingLevels,
   hashSystemPrompt,
   CLI_CAPABILITIES,

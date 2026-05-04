@@ -6,15 +6,39 @@
  */
 
 import { getRegisteredCarrierConfig } from "./framework.js";
-import type { CarrierMetadata } from "./types.js";
+import type { CarrierMetadata, RequestBlock } from "./types.js";
 
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
 
 /** carrier_dispatch / carrier_squadron / carrier_taskforce의 공용 brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
 export const CARRIER_REQUEST_BREVITY_GUIDELINE =
   `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
-  ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request` +
-  ` — reference prior carrier results by job_id or summarize in one sentence, and trust the carrier to proceed.`;
+  ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request.` +
+  ` When referencing prior carrier work, pass the job_id(s) via <prior_jobs> instead of paraphrasing their output` +
+  ` — the carrier will self-fetch full results using carrier_jobs(action:"result", format:"full", job_id:...).` +
+  ` If archive content has expired (full_invalidated true / TTL exceeded), the carrier falls back to` +
+  ` carrier_jobs(action:"result", format:"summary", job_id:...) to retrieve the summary.`;
+
+/**
+ * Tier-2 carrier 원칙 SSoT — 모든 persona가 spread 패턴으로 재사용하는 carrier_jobs 자기호출 교리.
+ * 이 상수를 복사하지 말 것; persona의 principles 배열에 `[CARRIER_JOBS_SELF_CALL_HINT, ...existing]`으로 참조할 것.
+ */
+export const CARRIER_JOBS_SELF_CALL_HINT =
+  `When the Admiral passes prior \`job_id\` references in <prior_jobs>, use the \`carrier_jobs\` tool` +
+  ` (available via your MCP server) to self-fetch results.` +
+  ` Full lookup: \`carrier_jobs(action:"result", format:"full", job_id:"<id>")\`.` +
+  ` If archive content has expired (\`full_invalidated\` is true), fall back to` +
+  ` \`carrier_jobs(action:"result", format:"summary", job_id:"<id>")\`.`;
+
+/** <prior_jobs> 공용 요청 블록 — 로스터 렌더링 시 모든 carrier에 자동 합산되는 SSoT 선택 블록 */
+export const PRIOR_JOBS_REQUEST_BLOCK: RequestBlock = {
+  tag: "prior_jobs",
+  hint: `Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.`,
+  required: false,
+};
+
+/** 로스터 렌더링 시 모든 carrier에 공통 주입되는 기본 블록 목록 */
+const CARRIER_COMMON_REQUEST_BLOCKS: RequestBlock[] = [PRIOR_JOBS_REQUEST_BLOCK];
 
 // ═════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -115,8 +139,13 @@ export function buildCarrierRoster(
 }
 
 export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
-  if (meta.requestBlocks.length === 0) return [];
-  return meta.requestBlocks.map((b) => {
+  const allBlocks: RequestBlock[] = [
+    ...meta.requestBlocks,
+    ...(meta.commonRequestBlocks ?? []),
+    ...CARRIER_COMMON_REQUEST_BLOCKS,
+  ];
+  if (allBlocks.length === 0) return [];
+  return allBlocks.map((b) => {
     const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
     const label = b.required ? "required" : "optional";
     return `  - ${sig} ${label}: ${b.hint}`;

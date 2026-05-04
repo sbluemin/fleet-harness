@@ -1,4 +1,18 @@
 {
+  "carrier-handoff-by-id": {
+    "path": "wiki/carrier-handoff-by-id.md",
+    "title": "Carrier 결과 핸드오프 — paraphrase 대신 job_id 참조",
+    "tags": [
+      "carrier",
+      "dispatch",
+      "prompt-economy",
+      "handoff",
+      "antipattern",
+      "carrier-jobs",
+      "brevity"
+    ],
+    "updated": "2026-05-04T18:08:56.485Z"
+  },
   "fleet-core-aggressive-public-surface-cleaning-2026-05": {
     "path": "wiki/fleet-core-aggressive-public-surface-cleaning-2026-05.md",
     "title": "fleet-core 2026-05 destructive public-surface cleansing: 20+ subpaths to 5",

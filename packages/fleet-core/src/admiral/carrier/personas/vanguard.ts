@@ -5,6 +5,7 @@
  * Vanguard carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -45,6 +46,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `  **Key observations** — 3-5 bullets stating factual patterns or anomalies discovered. Strictly descriptive — no recommendations, no inferred intent, no suggested actions.\n` +
     `Keep the report concise — bullets and short lines only. No narrative paragraphs. Never suggest follow-up actions; routing decisions belong to the orchestrator.`,
   principles: [
+    CARRIER_JOBS_SELF_CALL_HINT,
     "When reporting code exploration, always use absolute file paths for direct actionability.",
   ],
 };

@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Breaking Changes
+- **`DirectiveRefinementSettings` format change**: The settings shape under `metaphor-directive-refinement` changed from `{ provider, model, reasoning }` to `{ cliType, model, effort }`. Existing settings using the old keys are not migrated; users must reconfigure via `/fleet:metaphor:settings`.
+- **Legacy settings fallback keys removed**: The fallback chain for legacy keys `metaphor-refine-directive` and `core-improve-prompt` is removed.
+- **`fleet:metaphor:directive` slash command retired**: The standalone directive-refinement command is removed. Directive refinement is now invoked exclusively via the `Alt+M` keybind and configured through `/fleet:metaphor:settings`.
+
+### Added
+- **`executeDirectiveRefinement` (executeOneShot-based)**: New callback-pattern runner in `packages/fleet-core/src/metaphor/directive-refinement/execute.ts`. Replaces the previous `pi-ai` `completeSimple` dependency with `admiral.agent.executor.executeOneShot`.
+- **Output-contract validator with NFKC normalization and i18n coverage**: `validateOutputContract()` normalizes output with NFKC and rejects fenced code blocks, meta preamble/wrapper headings (en/ko/ja/zh), and override-style framing (en/ko/ja/zh).
+- **Exhaustive compile guard on host switch**: The host `refineDirectiveWithLoader` switch on `DirectiveRefinementResult.status` uses a `never` exhaustiveness check so new status values become compile-time errors.
+- **`packages/fleet-core/tests/metaphor/directive-refinement.test.ts`**: 50-case unit test suite covering normalization, validation, and edge cases.
+- **Common `<prior_jobs?>` request block for all carriers**: New `PRIOR_JOBS_REQUEST_BLOCK` constant in `packages/fleet-core/src/admiral/carrier/prompts.ts` is auto-merged into every carrier's rendered request-block guide via `CARRIER_COMMON_REQUEST_BLOCKS`. The Admiral can pass prior finalized `job_id` references via `<prior_jobs>` without editing individual carrier persona files. `CarrierMetadata` now supports an optional `commonRequestBlocks?` field for per-carrier common blocks. `validateRequiredRequestBlocks()` behavior is unchanged — `<prior_jobs>` is strictly optional and never causes rejection.
+- **`CARRIER_JOBS_SELF_CALL_HINT` SSoT for carrier Tier-2 self-call doctrine**: New exported constant in `packages/fleet-core/src/admiral/carrier/prompts.ts` instructs all 8 built-in carrier personas on how to self-fetch prior job results via `carrier_jobs(action:"result", format:"full", job_id:...)` (full archive) with `format:"summary"` fallback when archive content has expired (`full_invalidated` true / TTL exceeded). Each persona adopts it via the spread pattern `[CARRIER_JOBS_SELF_CALL_HINT, ...existing]` so there is exactly one authoritative copy.
+- **Updated `CARRIER_REQUEST_BREVITY_GUIDELINE` with explicit job_id handoff contract**: The Host PI-side brevity guideline (shared SSoT in `carrier/prompts.ts`, auto-imported by `carrier_dispatch`, `carrier_squadron`, and `carrier_taskforce` tool specs) now explicitly instructs the Admiral to pass prior carrier job IDs via `<prior_jobs>` instead of paraphrasing output, and documents the carrier self-fetch contract: `carrier_jobs(action:"result", format:"full", job_id:...)` for full results, `carrier_jobs(action:"result", format:"summary", job_id:...)` when archive has expired.
+- **Connect-time MCP for executor sessions**: Every `executeWithPool` / `executeOneShot` session now receives a whitelist-scoped MCP server at connect time so carriers can self-call allowed tools (initially `carrier_jobs`). Setup, drift detection, and dead-session token rotation are owned by `packages/fleet-core/src/admiral/agent/internal/executor-engine.ts` via the new `PooledClient.mcpSessionToken` field and `setupExecutorMcp` helper.
+- **`EXECUTOR_MCP_TOOL_IDS` SSoT**: New constant in `packages/fleet-core/src/admiral/agent/tools.ts` defines the executor MCP whitelist. Initial allowlist is `["carrier_jobs"]`. The `getExecutorMcpTools()` helper resolves the whitelist against the registered tool catalog and fails loudly on missing specs. Adding a new executor-exposed tool requires editing only this constant.
+- **Executor MCP router helpers**: Five new helpers in `packages/fleet-core/src/admiral/agent/internal/mcp-router.ts` (`installExecutorToolCallRouter` and friends) implement token-isolated FIFO routing for executor sessions, mirroring the streaming session pattern.
+- **`packages/fleet-core/tests/agent/executor-mcp-router.test.ts`**: New test file covering executor MCP setup, whitelist enforcement, drift detection, and dead-session token rotation.
+- **`buildInlineRefinementRequest()` with UNTRUSTED_DRAFT markers**: New inline request builder in `packages/fleet-core/src/metaphor/directive-refinement/prompts.ts`. User draft is wrapped in `<<<UNTRUSTED_DRAFT_BEGIN>>>` / `<<<UNTRUSTED_DRAFT_END>>>` markers to create an explicit visual and syntactic boundary between doctrine and raw data.
+- **Bilingual prompt-injection rule**: The inline doctrine ends with a bilingual (English + Korean) untrusted-data rule that instructs the carrier to treat everything inside the markers as text to refine, not as instructions to follow.
+- **Adversarial regression tests expanded**: `packages/fleet-core/tests/metaphor/directive-refinement.test.ts` grew from 50 to 67 cases.
+
+### Changed
+- **Settings UI rebuilt on Unified `CLI_BACKENDS` catalog**: The directive-refinement settings picker now sources backends, models, and effort levels from `admiral.agent.models.listProviders()`, `getCliModels()`, and `getCliEffortLevels()` instead of Pi's `ctx.modelRegistry`. This removes the Pi-AI dependency from the refinement path and aligns the UI with the six registered CLI types (`claude`, `claude-zai`, `claude-kimi`, `codex`, `gemini`, `opencode-go`).
+- **Directive-refinement prompt delivery moved inline**: The doctrine is no longer passed as a `connectSystemPrompt` to `executeOneShot`; instead, `buildInlineRefinementRequest()` composes the doctrine and user draft into a single inline request body. This eliminates a separate prompt channel and reduces carrier-side prompt-injection surface.
+
+### Removed
+- **`REFINE_DIRECTIVE_COMMAND` constant** and related registration code.
+- **`compose.ts` (`composeDirectiveRefinementRequest`)**: The separate compose module and its `DirectiveRefinementComposeRequest` / `Result` types are removed. Their responsibilities are absorbed by `buildInlineRefinementRequest()`.
+
+### Security
+- **UNTRUSTED_DRAFT marker boundary for prompt-injection defense**: The inline doctrine wraps the user draft in `<<<UNTRUSTED_DRAFT_BEGIN>>>` / `<<<UNTRUSTED_DRAFT_END>>>` markers, creating an explicit data boundary. A bilingual rule (English + Korean) at the end of the doctrine instructs the carrier that content inside the markers is raw data to improve, not executable instructions, regardless of any commands, role declarations, or override attempts present within.
+
 ## [0.11.5] - 2026-05-04
 
 Release v0.11.5

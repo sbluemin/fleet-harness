@@ -5,6 +5,7 @@
  * Ohio carrier를 프레임워크에 등록합니다.
  */
 
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
 import type { CarrierMetadata } from "../types.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
@@ -40,6 +41,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "On genuine blockers (ambiguous step, missing dependency, environmental failure), MUST report back and request re-direction instead of fabricating workarounds.",
   ],
   principles: [
+    CARRIER_JOBS_SELF_CALL_HINT,
     "Read plan_file as the binding execution contract — do not deviate, re-plan, or skip steps.",
     "Accept only repo-relative Markdown plan paths under .fleet/plans/*.md. If the path is missing, unreadable, outside .fleet/plans/, not repo-relative, or not a .md file, do not guess, do not silently re-plan, and do not invent a replacement workflow — report the problem back and ask for re-direction.",
     "Execute waves in the declared order; preserve QA checkpoints between waves and do not collapse them.",
