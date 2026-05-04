@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-05-04
+
 ### Added
 - **Fleet Wiki Drydock page** — `/queue` (Pending/Archived tabs), `/queue/:patchId` (detail with op-badge, body markdown, right-rail Patch Manifest, action card). Sidebar gains a brass-badged `Drydock` entry between search and Entries|Tags.
 - **Drydock REST API** — `GET /api/queue?status=pending|archived|all` (always returns both `pendingCount` and `archivedCount`), `GET /api/queue/:patchId` (queue→archive fallback, includes `targetExists`).
