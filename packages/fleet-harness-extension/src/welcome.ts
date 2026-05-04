@@ -8,7 +8,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { readdirSync, existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -415,8 +415,6 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function registerWelcome(pi: ExtensionAPI) {
-  ensureQuietStartup();
-
   const state: WelcomeState = {
     dismissFn: null,
     headerActive: false,
@@ -528,26 +526,6 @@ function setupWelcomeHeader(ctx: any, state: WelcomeState): void {
       },
     };
   });
-}
-
-function ensureQuietStartup(): void {
-  const quietMarker = join(FLEET_ROOT, ".pi", "quiet-startup.json");
-  if (!existsSync(dirname(quietMarker))) {
-    mkdirSync(dirname(quietMarker), { recursive: true });
-  }
-
-  let shouldWrite = true;
-  if (existsSync(quietMarker)) {
-    try {
-      const current = JSON.parse(readFileSync(quietMarker, "utf8"));
-      shouldWrite = current?.quietStartup !== true;
-    } catch {
-      shouldWrite = true;
-    }
-  }
-
-  if (!shouldWrite) return;
-  writeFileSync(quietMarker, JSON.stringify({ quietStartup: true }, null, 2));
 }
 
 export function createFleetUpdatePrompt(fleetRoot: string): string {
