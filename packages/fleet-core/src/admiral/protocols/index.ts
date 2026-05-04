@@ -9,7 +9,6 @@ import type { AdmiralProtocol } from "./types.js";
 
 import { getSettingsService } from "../../infra/settings/runtime.js";
 import { FLEET_ACTION } from "./fleet-action.js";
-import { POSITIVE_CONTROL } from "./positive-control.js";
 import * as standingOrders from "./standing-orders/index.js";
 export { standingOrders };
 
@@ -30,7 +29,6 @@ interface ProtocolSettings {
 /** 등록된 Protocols — slot 순서대로 나열 */
 const PROTOCOLS: readonly AdmiralProtocol[] = [
   FLEET_ACTION,
-  POSITIVE_CONTROL,
 ];
 
 /** 초기 부팅 시 기본 활성 프로토콜 ID */

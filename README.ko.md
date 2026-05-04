@@ -70,7 +70,7 @@ Fleet Harness는 API를 래핑하거나 프록시를 운용하지 않습니다 �
 | **Gemini CLI** | Google | ACP | 대용량 컨텍스트 분석, 리서치 |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
 
-모든 Carrier가 단일 명령 구조 아래 병렬로 실행되며, 통합된 진행 상황 추적을 통해 전체 함대의 상태를 한눈에 파악할 수 있습니다. Carrier별로 모델 선택과 추론 레벨을 독립적으로 세밀하게 조정할 수 있으며, 작업의 특성에 따라 Fleet Action의 자율 실행 모드와 Positive Control의 수동 관리 모드를 전환할 수 있습니다.
+모든 Carrier가 단일 명령 구조 아래 병렬로 실행되며, 통합된 진행 상황 추적을 통해 전체 함대의 상태를 한눈에 파악할 수 있습니다. Carrier별로 모델 선택과 추론 레벨을 독립적으로 세밀하게 조정할 수 있으며, Fleet Action은 라우팅, 위임, 리뷰, 문서화를 위한 자율 운영 프레임워크를 제공합니다.
 
 ### Fleet Bridge
 

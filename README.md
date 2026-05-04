@@ -70,7 +70,7 @@ Fleet Harness does not wrap APIs or run proxies — it orchestrates **native fro
 | **Gemini CLI** | Google | ACP | Large-context analysis, research |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
 
-Every carrier runs in parallel under a single command structure, with unified progress tracking so you always know the status of the entire fleet. Fine-tune each carrier independently — select models, set reasoning levels, and adjust parameters without leaving the fleet interface. Switch between operational modes like Fleet Action for autonomous execution or Positive Control for manual oversight, adapting the fleet's behavior to the task at hand.
+Every carrier runs in parallel under a single command structure, with unified progress tracking so you always know the status of the entire fleet. Fine-tune each carrier independently — select models, set reasoning levels, and adjust parameters without leaving the fleet interface. Fleet Action provides the autonomous operating framework for routing, delegation, review, and documentation.
 
 ### Fleet Bridge
 

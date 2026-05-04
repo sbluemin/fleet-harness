@@ -5,7 +5,7 @@
  * offline 호출은 execute() 진입점에서 안전장치로 거부합니다.
  */
 
-import { type TSchema, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import type { CliType } from "@sbluemin/unified-agent";
 
 import type { AgentToolSpec } from "../agent/types.js";
@@ -126,27 +126,24 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
     ],
     get parameters() {
       const carrierIds = getRegisteredOrder();
-      if (carrierIds.length === 0) {
-        return Type.Object({
-          carrier_id: Type.String({ description: `Target carrier ID. See <fleet section="roster"> for available carriers.` }),
-          request: Type.String({ description: "The task/prompt to send to the carrier." }),
-        });
-      }
-      const variants = carrierIds.map((carrierId) => {
-        const config = getRegisteredCarrierConfig(carrierId);
-        const required = config?.carrierMetadata?.requestBlocks.filter((b) => b.required) ?? [];
-        const requiredHint = required.length > 0
-          ? ` Required blocks: ${required.map((b) => `<${b.tag}>`).join(", ")}.`
-          : "";
-        return Type.Object({
-          carrier_id: Type.Literal(carrierId),
-          request: Type.String({
-            description: `Task/prompt for ${resolveCarrierDisplayName(carrierId)}.${requiredHint}`,
-          }),
-        });
+      const blockLines = carrierIds
+        .map((carrierId) => {
+          const config = getRegisteredCarrierConfig(carrierId);
+          const required = config?.carrierMetadata?.requestBlocks.filter((b) => b.required) ?? [];
+          if (required.length === 0) return null;
+          return `${carrierId}: ${required.map((b) => `<${b.tag}>`).join(", ")}`;
+        })
+        .filter((line): line is string => line !== null);
+      const requestDesc = blockLines.length > 0
+        ? `The task/prompt to send to the carrier. Per-carrier required blocks — ${blockLines.join("; ")}. Missing blocks cause hard-error rejection.`
+        : "The task/prompt to send to the carrier.";
+      return Type.Object({
+        carrier_id: Type.String({
+          enum: carrierIds,
+          description: `The target carrier ID to dispatch the job to. See <fleet section="roster"> for available carriers.`,
+        }),
+        request: Type.String({ description: requestDesc }),
       });
-      if (variants.length === 1) return variants[0]!;
-      return Type.Union(variants as unknown as [TSchema, ...TSchema[]]);
     },
 
     async execute(args: unknown, ctx) {

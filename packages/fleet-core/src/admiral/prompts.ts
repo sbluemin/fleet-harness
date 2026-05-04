@@ -150,7 +150,7 @@ export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
  *  3. `section="tone"` — Fleet 톤/스타일 오버레이 (worldview 토글 시에만)
  *  4. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
  *  5. `section="protocols"` — 프로토콜 카탈로그 + 런타임 컨텍스트 태그 해석 규칙
- *  6. `section="standing-orders"` — Standing Orders (프로토콜별 활성/비활성은 런타임 결정)
+ *  6. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
  *  7. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
  *
  * ACP에서는 시스템 프롬프트가 최초 1회만 전달되므로 모든 프로토콜 정의를
@@ -198,14 +198,8 @@ export function buildSystemPrompt(): string {
   catalogSections.push(`# Protocols\n\n${PROTOCOL_PREAMBLE.trim()}`);
 
   const catalogEntries = protocols.map((p) => {
-    const meta = [
-      `- **ID**: \`${p.id}\``,
-      `- **Control Mode**: ${p.controlMode}`,
-      `- **Standing Orders**: ${p.injectStandingOrders ? "active" : "suspended"}`,
-    ].join("\n");
-
-    const preamble = p.preamble ? `\n\n${p.preamble.trim()}` : "";
-    return `### ${p.name}\n\n${meta}${preamble}\n\n${p.prompt.trim()}`;
+    const meta = `- **ID**: \`${p.id}\``;
+    return `### ${p.name}\n\n${meta}\n\n${p.prompt.trim()}`;
   });
 
   catalogSections.push(`## Available Protocols\n\n${catalogEntries.join("\n\n---\n\n")}`);
@@ -213,7 +207,7 @@ export function buildSystemPrompt(): string {
 
   parts.push(`<fleet section="protocols">\n${catalogSections.join("\n\n")}\n</fleet>`);
 
-  // ── 4. Standing Orders — 항상 포함 (런타임에 프로토콜별로 활성/비활성 전환) ──
+  // ── 4. Standing Orders — 항상 포함 ──
   const orders = getAllStandingOrders();
   if (orders.length > 0) {
     const ordersBody = orders.map((o) => o.prompt.trim()).join("\n\n---\n\n");

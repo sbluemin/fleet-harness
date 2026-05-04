@@ -80,7 +80,7 @@ unless this document is suspected of drift.
 │      fleet-harness-extension/src/fleet.ts:207-214                        │
 │      → appends { systemPrompt: buildSystemPrompt() }                │
 │        buildSystemPrompt() internally prepends FLEET_PREAMBLE       │
-│        + FLEET_HARNESS_DEV_RISEN_PROMPT when bootMode === "dev"           │
+│        + RISEN_DEV_SLATE when bootMode === "dev"                    │
 │                                                                     │
 │    Pi calls one handler. The ACP layer sees:                        │
 │      PREAMBLE + [RISEN if bootMode==="dev"] + fleet sections        │
@@ -129,12 +129,12 @@ variables and writes the module-level `bootConfig`. It no longer injects a syste
 prompt — prompt injection is fully owned by `buildSystemPrompt()`.
 
 `buildSystemPrompt()` unconditionally prepends `FLEET_PREAMBLE`, then conditionally
-prepends `FLEET_HARNESS_DEV_RISEN_PROMPT` when `bootMode === "dev"`:
+prepends `RISEN_DEV_SLATE` when `bootMode === "dev"`:
 
 | Segment | Condition | Source |
 |---------|-----------|--------|
-| `FLEET_PREAMBLE` | Always | `fleet.ts:97-103` — XML block parsing guide + `<system-reminder>` usage hint |
-| `FLEET_HARNESS_DEV_RISEN_PROMPT` | `bootMode === "dev"` | `fleet.ts:105-119` — RISEN development context (≈15 lines). Contains the 3-step pre-work documentation check, Fleet carrier dispatch rule, and "All responses must be written in Korean." |
+| `FLEET_PREAMBLE` | Always | `admiral/prompts.ts:99-105` — XML block parsing guide + `<system-reminder>` usage hint |
+| `RISEN_DEV_SLATE` | `bootMode === "dev"` | `admiral/prompts.ts:113-128` — RISEN development context. Contains the 4-step pre-work documentation check, Fleet carrier dispatch rule, and "All responses must be written in Korean." |
 
 `bootMode` is set via `createFleetCoreRuntime()` (`packages/fleet-core/src/public/runtime.ts`)
 and stored in `packages/fleet-core/src/runtime-flags.ts` via `setFleetCoreBootMode()`.
@@ -158,11 +158,11 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │     Content:  <fleet> XML parsing guide + <system-reminder> hint    │
 │     Source:   fleet-harness-extension/src/fleet.ts:97-103                │
 │                                                                     │
-│  0b. FLEET_HARNESS_DEV_RISEN_PROMPT  (plain text prefix)                 │
+│  0b. RISEN_DEV_SLATE  (plain text prefix)                           │
 │     Condition: bootMode === "dev"  (isFleetCoreDevMode() true)      │
-│     Content:  RISEN dev context: 3-step pre-work docs check,        │
+│     Content:  RISEN dev context: 4-step pre-work docs check,        │
 │               carrier dispatch rules, Korean response requirement   │
-│     Source:   fleet-harness-extension/src/fleet.ts:105-119               │
+│     Source:   admiral/prompts.ts:113-128                            │
 │     ★ When this is prepended, sections 1–3 below are OMITTED.       │
 │       Dev mode provides its own role/tone via the RISEN context.    │
 │                                                                     │
@@ -195,22 +195,21 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │     Condition: always (≥1 protocol)                                 │
 │     Content:  PROTOCOL_PREAMBLE + catalogSections[]                 │
 │               + RUNTIME_CONTEXT_TAGS_PROMPT                         │
-│     Source:   protocols/index.ts:47-54                              │
+│     Source:   admiral/prompts.ts:194-208                            │
 │     ★ Full catalog embedded. Active protocol chosen by runtime tag. │
 │                                                                     │
 │  6. <fleet section="standing-orders">                               │
 │     Condition: always (≥1 order)                                    │
 │     Content:  getAllStandingOrders() — 3 items always present       │
 │     Source:   protocols/standing-orders/index.ts:24-28              │
-│     ★ injectStandingOrders=false only marks "suspended" in catalog  │
-│       metadata; the text is still present. The model must read      │
-│       the flag and ignore the orders itself.                        │
+│     ★ Standing Orders are always embedded and apply under the       │
+│       current Fleet Action protocol.                                │
 │                                                                     │
 │  7. <fleet section="tool-guide" tool="{id}">                        │
-│     Condition: one block per registered manifest                    │
-│     Content:  each manifest's promptGuidelines                      │
-│     Source:   tool-registry/formatter.ts:33-35                      │
-│     ★ request_directive lives here (request-directive.ts:87-119)    │
+│     Condition: one block per registered AgentToolSpec               │
+│     Content:  renderAgentToolDoctrineTag(spec)                      │
+│     Source:   admiral/agent/tools.ts:52-72                          │
+│     ★ request_directive lives here (request-directive/tool-spec.ts) │
 │       rendered at position 7 — the LAST static segment.             │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -366,13 +365,12 @@ The Admiral's own decision flow at the start of every task:
    When bootMode === "dev" is active (FLEET_HARNESS_DEV=1 at launch), the Admiral must verify:
     1. docs/pi-development-reference.md is read for PI SDK / extension context
     2. docs/admiral-workflow-reference.md is read for architecture / delegation
-    3. AGENTS.md is checked in the project root AND every touched subdirectory
+    3. docs/admiral-prompt-architecture.md is read for prompt assembly and runtime-context flow
+    4. AGENTS.md is checked in the project root AND every touched subdirectory
    Only then may the Admiral proceed to planning or implementation.
 
   Step 1.  Read <current_protocol>.                                │
-│   ├─ "fleet-action"     → 7-phase workflow applies                │
-│   ├─ "positive-control" → autonomy suspended, relay only          │
-│   └─ Decide whether Standing Orders are active for this protocol  │
+│   └─ "fleet-action"     → 7-phase workflow applies                │
 │                                                                   │
 │  Step 2.  Classify the task (Phase 1 reconnaissance).             │
 │   Match work type to the carrier whose role fits, then verify     │
@@ -438,11 +436,10 @@ The pattern is always: **static frame tells me how, runtime prefix tells me whom
 |-------|--------|--------|
 | System prompt is frozen at boot | Carriers registered after boot have no Tier-1 metadata in `<fleet section="roster">`. They appear in `<available_*>` tags but their use-cases / NOT-fors / request blocks are absent. | `prompts.ts:147-150` |
 | Protocol catalog is fully embedded | The active protocol's *body* is read statically from the catalog — there is no per-turn injection of the active protocol's body, only its id. | `prompts.ts:127-187` |
-| Protocol switching is lazy | Alt+1..9 only persists `activeProtocol` in settings and updates the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. | `fleet-harness-extension/src/fleet.ts:364-385` |
+| Protocol switching is lazy | Protocol keybinds persist `activeProtocol` in settings and update the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. With the current catalog, only Fleet Action is registered. | `fleet-harness-extension/src/fleet.ts:281-302` |
 | Executor path has no runtime context | `carrier_dispatch` / `carrier_squadron` / `carrier_taskforce` send the request verbatim; sub-agents do not see `<current_protocol>` or `<available_*>` tags. By design — Tier-2 context is composed into the request body instead. | `executor-engine.ts:298, 411` |
 | `setSystemPrompt()` does not exist | The unified-agent client cannot mutate the system prompt mid-session. Drift forces session destruction and reconnect. | `unified-agent/src/client/IUnifiedAgentClient.ts:215-239` |
 | `bootMode` drives dev-mode branch | `bootMode` (`"dev" \| "normal"`) is set via `createFleetCoreRuntime()` (`public/runtime.ts`) and stored in `runtime-flags.ts` via `setFleetCoreBootMode()`. `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. When true, `buildSystemPrompt()` omits persona/role/tone and prepends the RISEN dev context instead of the naval fleet persona. | `runtime-flags.ts:1-15`, `prompts.ts:127-144` |
-| `injectStandingOrders` is advisory only | `injectStandingOrders=false` does NOT remove the text from the prompt. The standing-orders section is always present; the flag only adds "suspended" to the protocol catalog metadata. The model is expected to self-suppress. | `protocols/types.ts:30`, `prompts.ts:175-179` |
 
 These limits are not bugs. They are design choices the Admiral must reason about
 when planning changes to prompt assembly. Misreading any of them leads to
@@ -452,10 +449,11 @@ mid-session system-prompt mutation, or expecting the executor path to surface
 
 One additional self-check the Admiral must perform: when operating in `fleet-dev`
 mode (`bootMode === "dev"`, launched via `FLEET_HARNESS_DEV=1`), the RISEN dev context
-(`FLEET_HARNESS_DEV_RISEN_PROMPT`) contains a mandatory 3-step documentation check. The
+(`RISEN_DEV_SLATE`) contains a mandatory 4-step documentation check. The
 Admiral must **actually perform** those checks, not just claim they were performed.
 They are: (1) read `docs/pi-development-reference.md`,
-(2) read `docs/admiral-workflow-reference.md`, (3) check root + touched `AGENTS.md`
+(2) read `docs/admiral-workflow-reference.md`, (3) read
+`docs/admiral-prompt-architecture.md`, and (4) check root + touched `AGENTS.md`
 files. This is enforced by the Admiral's own system prompt, not by any external
 validator.
 
@@ -479,8 +477,8 @@ the following code changes ship:
   changes (currently it returns `SYSTEM_REMINDER_HINT.trim()` only).
 - A `setSystemPrompt()`-equivalent API is introduced on the unified-agent client.
 - A new protocol is added or the protocol-switching mechanism stops being lazy.
-- `FLEET_PREAMBLE` or `FLEET_HARNESS_DEV_RISEN_PROMPT` content changes
-  (`fleet-harness-extension/src/fleet.ts:97-119`).
+- `FLEET_PREAMBLE` or `RISEN_DEV_SLATE` content changes
+  (`packages/fleet-core/src/admiral/prompts.ts:99-128`).
 - `BootMode` type, `setFleetCoreBootMode()`, `getBootMode()`, or `isFleetCoreDevMode()`
   changes (`packages/fleet-core/src/runtime-flags.ts`).
 - `createFleetCoreRuntime()` signature or `bootMode` wiring changes
