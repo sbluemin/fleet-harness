@@ -64,7 +64,7 @@ function buildClaudeCommand(context: BridgeLaunchContext): string {
 }
 
 function buildCodexCommand(context: BridgeLaunchContext): string {
-  const args = ["codex", "--full-auto"];
+  const args = ["codex", "--dangerously-bypass-approvals-and-sandbox"];
   if (context.sessionId) {
     args.push("resume", shellQuote(context.sessionId));
   }
