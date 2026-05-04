@@ -14,6 +14,15 @@ const HEALTH_INTERVAL_MS = 150;
 const HOST = "127.0.0.1";
 
 export async function main(): Promise<void> {
+  const isTTY = process.stdout.isTTY;
+  const yellow = isTTY ? "\x1b[33m" : "";
+  const bold = isTTY ? "\x1b[1m" : "";
+  const reset = isTTY ? "\x1b[0m" : "";
+  console.log(
+    `${bold}${yellow}⚠ Fleet Wiki는 실험적(Experimental) 기능입니다.${reset} ` +
+    `지식 적재가 필요하다면 ${bold}fleet-exp${reset} 명령어로 fleet을 실행하세요. (fleet-wiki-web은 웹사이트입니다.)`,
+  );
+
   const cwd = path.resolve(process.cwd());
   const paths = resolveWorkspaceMemoryPaths(cwd);
   if (!(await directoryExists(paths.root))) {
