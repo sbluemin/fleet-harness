@@ -2,27 +2,24 @@
  * fleet/carrier/prompts.ts — 개별 캐리어 도구 프롬프트 / Tier 1 · Tier 2
  *
  * Tier 1: 개별 캐리어 도구(carrier_<id>) 등록에 필요한 프롬프트 메타데이터와 TypeBox 파라미터 스키마.
- * Tier 2: carrier 메타데이터(permissions, principles, outputFormat)를 원본 request에
- *         주입하여 최종 request를 조립하는 유틸리티.
+ * Tier 2: carrier 메타데이터(carrier identity · permissions · principles · outputFormat)를
+ *         carrier 세션의 systemPrompt 본문에 주입한다. 매 sendMessage 마다 반복 전송하지 않고,
+ *         systemPrompt 영역에서 한 번만 전송 + provider prompt caching 활용.
  *
  * 구조:
- *  Tier 1 — buildCarrierToolManifest / buildCarrierRoster / 내부 헬퍼
- *  Tier 2 — composeTier2Request / buildDirectiveSection
+ *  Tier 1 — buildCarrierToolDoctrine / buildCarrierRoster / 내부 헬퍼
+ *  Tier 2 — buildCarrierSystemPrompt(metadata)
  */
 
 import { Type } from "@sinclair/typebox";
-import { SYSTEM_REMINDER_HINT } from "./constants.js";
-import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
 import { getRegisteredCarrierConfig } from "./framework.js";
 import type { CarrierMetadata } from "./types.js";
 
-// ═════════════════════════════════════════════════════════
-// Tier 1 — 개별 캐리어 도구 프롬프트 / 스키마
-// ═════════════════════════════════════════════════════════
+const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
 
-// ─────────────────────────────────────────────────────────
-// 공유 타입
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Types / Interfaces
+// ═════════════════════════════════════════════════════════
 
 /** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
 export interface CarrierRosterOptions {
@@ -34,20 +31,15 @@ export interface CarrierRosterOptions {
   extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
 }
 
-// ─────────────────────────────────────────────────────────
-// 1. 개별 캐리어 도구 Manifest 빌더
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Tier 1 — 개별 캐리어 도구 프롬프트 / 스키마
+// ═════════════════════════════════════════════════════════
 
-/**
- * CarrierMetadata에서 개별 캐리어 도구의 ToolPromptManifest를 생성합니다.
- * metadata의 Tier 1 필드를 사용하여 manifest의 description, whenToUse, whenNotToUse,
- * usageGuidelines, guardrails를 생성합니다.
- */
-export function buildCarrierToolManifest(
+export function buildCarrierToolDoctrine(
   carrierId: string,
   displayName: string,
   metadata: CarrierMetadata,
-): ToolPromptManifest {
+) {
   return {
     id: `carrier_${carrierId}`,
     tag: `carrier_${carrierId}`,
@@ -83,17 +75,31 @@ export function buildCarrierToolManifest(
   };
 }
 
-/**
- * 캐리어 출격 시 시스템 프롬프트로 1회 주입되는 컨텍스트.
- * <system-reminder> 태그의 의미를 캐리어에게 알린다.
- */
-export function buildCarrierSystemPrompt(): string {
-  return SYSTEM_REMINDER_HINT.trim();
+export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
+  const parts: string[] = [CARRIER_FLEET_BACKGROUND];
+
+  if (metadata) {
+    parts.push(`<your_identity>\n${metadata.title}\n${metadata.summary}\n</your_identity>`);
+
+    if (metadata.permissions.length > 0) {
+      const body = metadata.permissions.map((item) => `- ${item}`).join("\n");
+      parts.push(`<your_permissions>\n${body}\n</your_permissions>`);
+    }
+
+    const principles = metadata.principles ?? [];
+    if (principles.length > 0) {
+      const body = principles.map((item) => `- ${item}`).join("\n");
+      parts.push(`<your_principles>\n${body}\n</your_principles>`);
+    }
+
+    if (metadata.outputFormat) {
+      parts.push(`<output_format>\n${metadata.outputFormat.trim()}\n</output_format>`);
+    }
+  }
+
+  return parts.join("\n\n");
 }
 
-/**
- * 개별 캐리어 도구의 TypeBox `parameters` 스키마를 반환합니다.
- */
 export function buildCarrierToolSchema() {
   return Type.Object({
     request: Type.String({
@@ -102,16 +108,10 @@ export function buildCarrierToolSchema() {
   });
 }
 
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
 // 내부 헬퍼
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
 
-/**
- * requestBlock 메타데이터를 compact multiline 가이드로 렌더링합니다.
- * Tier 1 routing 프롬프트 전용 — Tier 2 composition과는 독립적입니다.
- *
- * @returns 빈 배열 (requestBlocks가 없거나 모두 빈 태그인 경우)
- */
 export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
   if (meta.requestBlocks.length === 0) return [];
   return meta.requestBlocks.map((b) => {
@@ -121,17 +121,6 @@ export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
   });
 }
 
-/**
- * 등록된 carrier들의 CarrierMetadata Tier 1 정보를 읽어
- * compact roster 문자열을 생성합니다.
- *
- * 이 함수가 모든 carrier 로스터 렌더링의 SSoT입니다.
- * Admiral 시스템 프롬프트, squadron/taskforce promptGuidelines
- * 모두 이 함수를 통해 로스터를 생성합니다.
- *
- * @param carrierIds 렌더링할 carrier ID 목록
- * @param options heading, preambleLines, extraLines로 caller별 차이를 조정
- */
 export function buildCarrierRoster(
   carrierIds: string[],
   options?: CarrierRosterOptions,
@@ -167,7 +156,6 @@ export function buildCarrierRoster(
         lines.push(`    - ${item}`);
       }
     }
-    // request-block 가이드 — 태그 서명 + hint 텍스트
     const blockLines = formatRequestBlocksGuide(meta);
     if (blockLines.length > 0) {
       lines.push(`  Request blocks — wrap content in these (? = optional):`);
@@ -182,9 +170,6 @@ export function buildCarrierRoster(
   return lines.join("\n");
 }
 
-/**
- * 개별 캐리어 도구의 usageGuidelines에 포함할 request-block 가이드라인을 생성합니다.
- */
 function buildRequestBlockGuidelines(
   carrierId: string,
   metadata: CarrierMetadata,
@@ -200,46 +185,3 @@ function buildRequestBlockGuidelines(
   ];
 }
 
-// ═════════════════════════════════════════════════════════
-// Tier 2 — request 조립 (permissions · principles · outputFormat 주입)
-// ═════════════════════════════════════════════════════════
-
-/**
- * Tier 2 자동 주입: 각 섹션을 묶어 단일 텍스트로 합친 후, 최종적으로
- * 전체 내용을 `<system-reminder>` 태그로 감싸서 반환합니다.
- * XML 래핑 책임은 이 함수가 일원적으로 보유하므로
- * carrier metadata의 `outputFormat`은 순수 내용만 담고 태그 래핑은 여기서 수행합니다.
- *
- * 주입 순서 (LLM의 primacy bias 활용):
- *  1. 원본 요청 (최상단, 가장 중요, 태그 없이 배치)
- *  2. `<permissions>` — 운영 권한/제약
- *  3. `<principles>` — 핵심 원칙
- *  4. `<output_format>` — 출력 형식 가이드 (최하단)
- */
-export function composeTier2Request(metadata: CarrierMetadata, originalRequest: string): string {
-  const parts: string[] = [];
-
-  // 1. 원본 요청 — 최상단
-  parts.push(originalRequest);
-
-  // 2. 운영 권한/제약
-  if (metadata.permissions.length > 0) {
-    const body = metadata.permissions.map((item) => `- ${item}`).join("\n");
-    parts.push(`<permissions>\n${body}\n</permissions>`);
-  }
-
-  // 3. 핵심 원칙
-  const principles = metadata.principles ?? [];
-  if (principles.length > 0) {
-    const body = principles.map((item) => `- ${item}`).join("\n");
-    parts.push(`<principles>\n${body}\n</principles>`);
-  }
-
-  // 4. 출력 형식 — 최하단
-  if (metadata.outputFormat) {
-    parts.push(`<output_format>\n${metadata.outputFormat.trim()}\n</output_format>`);
-  }
-
-  const composedContent = parts.join("\n\n");
-  return `<system-reminder>\n${composedContent}\n</system-reminder>`;
-}

@@ -13,16 +13,19 @@ export const CARRIER_METADATA: CarrierMetadata = {
   summary: "Fast reconnaissance — codebase exploration, symbol tracing, web research. As the Captain (함장) of this Carrier, Vanguard leads forward scouting and fast intelligence gathering before heavier operations begin.",
   category: "operations",
   whenToUse: [
-    "codebase exploration",
-    "symbol tracing",
-    "web research",
-    "fast file scanning",
-    "multi-file reading tasks",
+    "codebase reconnaissance — exploration, multi-file scanning, symbol tracing",
+    "web research and external knowledge gathering",
+    "preparation for heavier operations (Nimitz, Genesis, Kirov) requiring local intelligence first",
   ],
   whenNotToUse: [
     "ANY code modification or file editing (→genesis)",
-    "design decisions (→nimitz)",
     "GitHub repo deep-dives (→tempest)",
+  ],
+  requestBlocks: [
+    { tag: "objective", hint: "What intelligence is needed — question to answer or target to locate.", required: true },
+    { tag: "search_space", hint: "Directories, files, URLs, or domains to focus the search on.", required: false },
+    { tag: "hints", hint: "Known symbols, keywords, file patterns, or prior findings to narrow the scan.", required: false },
+    { tag: "depth", hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'.", required: false },
   ],
 
   // ── Tier 2: Composition ──
@@ -30,12 +33,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "CRITICAL: Strictly read-only. NEVER modify files, write code, or execute mutating commands under any circumstances.",
     "Full access to read the codebase and execute read-only commands for exploration.",
     "If the request fails (timeout/connection error), retry up to 3 times before reporting failure.",
-  ],
-  requestBlocks: [
-    { tag: "objective", hint: "What intelligence is needed — question to answer or target to locate.", required: true },
-    { tag: "search_space", hint: "Directories, files, URLs, or domains to focus the search on.", required: false },
-    { tag: "hints", hint: "Known symbols, keywords, file patterns, or prior findings to narrow the scan.", required: false },
-    { tag: "depth", hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'.", required: false },
   ],
   outputFormat:
     `Report findings as a structured reconnaissance report.\n` +

@@ -1,13 +1,6 @@
 import { Type, type TObject } from "@sinclair/typebox";
 
-import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
-import {
-  deriveToolDescription,
-  deriveToolPromptGuidelines,
-  deriveToolPromptSnippet,
-} from "../../infra/tool-registry/index.js";
-
-export const CARRIER_JOBS_MANIFEST: ToolPromptManifest = {
+export const CARRIER_JOBS_DOCTRINE = {
   id: "carrier_jobs",
   tag: "carrier_jobs",
   title: "carrier_jobs Tool Guidelines",
@@ -33,16 +26,6 @@ export const CARRIER_JOBS_MANIFEST: ToolPromptManifest = {
     `carrier_jobs reads the process-memory summary cache and JobStreamArchive only. It never reads the Agent Panel stream-store.`,
   ],
 };
-
-export const CARRIER_JOBS_DESCRIPTION = deriveToolDescription(CARRIER_JOBS_MANIFEST);
-
-export function buildCarrierJobsPromptSnippet(): string {
-  return deriveToolPromptSnippet(CARRIER_JOBS_MANIFEST);
-}
-
-export function buildCarrierJobsPromptGuidelines(): string[] {
-  return deriveToolPromptGuidelines(CARRIER_JOBS_MANIFEST);
-}
 
 export function buildCarrierJobsSchema(): TObject {
   return Type.Object({

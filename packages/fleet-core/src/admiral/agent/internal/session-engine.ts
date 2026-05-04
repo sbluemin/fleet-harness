@@ -43,7 +43,7 @@ import {
   emitNextPendingToolCall,
   resolveToolResult,
   getSessionToolNames,
-  metadataToMcpTool,
+  specToMcpTool,
 } from "./mcp-router.js";
 import { wireStreamEmitter } from "./event-normalizer.js";
 import { list } from "../tools.js";
@@ -624,7 +624,7 @@ function formatSessionPrefix(sessionId: string): string {
 }
 
 function buildAllMcpTools(): McpTool[] {
-  return list().map(metadataToMcpTool);
+  return list().map(specToMcpTool);
 }
 
 /**

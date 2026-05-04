@@ -18,8 +18,8 @@ import {
   registerToolsForSession,
   removeToolsForSession,
   getToolNamesForSession,
-} from "../../../infra/tool-registry/tool-snapshot.js";
-import type { ToolMetadata } from "../types.js";
+} from "./tool-snapshot.js";
+import type { AgentToolSpec } from "../types.js";
 
 import type { AgentSessionState, AgentProviderState, PendingToolCallState } from "./state.js";
 
@@ -75,12 +75,12 @@ export function getSessionToolNames(session: AgentSessionState): Set<string> {
   return getToolNamesForSession(session.mcpSessionToken);
 }
 
-/** ToolMetadata → MCP Tool 포맷 변환 */
-export function metadataToMcpTool(meta: ToolMetadata): McpTool {
+/** AgentToolSpec → MCP Tool 포맷 변환 */
+export function specToMcpTool(spec: AgentToolSpec): McpTool {
   return {
-    name: meta.name,
-    description: meta.description,
-    parameters: meta.parameters,
+    name: spec.id,
+    description: spec.description,
+    parameters: spec.parameters,
   };
 }
 

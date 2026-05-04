@@ -17,7 +17,7 @@ import crypto from "crypto";
 import { getLogAPI } from "../../infra/log/store.js";
 import {
   getToolsForSession,
-} from "../../infra/tool-registry/tool-snapshot.js";
+} from "../agent/internal/tool-snapshot.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

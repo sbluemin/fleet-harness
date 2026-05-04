@@ -24,24 +24,26 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "planning work itself (→kirov)",
     "reconnaissance before planning (→vanguard/tempest)",
   ],
-
-  // ── Tier 2: Composition ──
-  permissions: [
-    "Full access to the codebase — read, write, and execute commands.",
-    "Ohio MUST consult plan_file as the authoritative execution contract — plan steps are not optional or negotiable.",
-    "Ohio MUST NOT silently re-plan, skip steps, invent new workflow paths, or expand scope beyond what the plan_file specifies.",
-    "On genuine blockers (ambiguous step, missing dependency, environmental failure), Ohio reports back and requests re-direction instead of fabricating workarounds.",
-  ],
   requestBlocks: [
     { tag: "plan_file", hint: "Required repo-relative path to a Markdown plan file under .fleet/plans/*.md only. Ohio reads this file and follows it as the authoritative execution plan.", required: true },
     { tag: "objective", hint: "Optional brief restatement of the overarching goal for context anchoring.", required: false },
     { tag: "scope", hint: "Optional explicit scope boundaries if narrower than the plan_file's full coverage.", required: false },
     { tag: "constraints", hint: "Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.", required: false },
   ],
+
+  // ── Tier 2: Composition ──
+  permissions: [
+    "Full access to the codebase — read, write, and execute commands.",
+    "MUST consult plan_file as the authoritative execution contract — plan steps are not optional or negotiable.",
+    "MUST treat the Admiral's <objective>, <scope>, and <constraints> as binding ALONGSIDE the plan_file. Even if a step or constraint seems suboptimal, MUST NOT substitute autonomous design judgment.",
+    "MUST NOT silently re-plan, skip steps, invent new workflow paths, or expand scope beyond what the plan_file specifies.",
+    "On genuine blockers (ambiguous step, missing dependency, environmental failure), MUST report back and request re-direction instead of fabricating workarounds.",
+  ],
   principles: [
     "Read plan_file as the binding execution contract — do not deviate, re-plan, or skip steps.",
     "Accept only repo-relative Markdown plan paths under .fleet/plans/*.md. If the path is missing, unreadable, outside .fleet/plans/, not repo-relative, or not a .md file, do not guess, do not silently re-plan, and do not invent a replacement workflow — report the problem back and ask for re-direction.",
     "Execute waves in the declared order; preserve QA checkpoints between waves and do not collapse them.",
+    "If a wave or constraint should be redesigned, MUST escalate to the Admiral via the completion report instead of silently altering the wave's intent.",
     "Escalate genuine blockers (ambiguous step, missing dependency, environmental failure) instead of fabricating workarounds.",
     "Do not absorb planning, architecture, or QA roles — if the plan demands a decision Ohio cannot make, escalate to the appropriate carrier (Kirov/Nimitz/Sentinel).",
   ],

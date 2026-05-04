@@ -1,30 +1,14 @@
-/**
- * fleet/shipyard/squadron/prompts.ts — carrier_squadron 도구 프롬프트 / 스키마 관리
- *
- * carrier_squadron 도구 등록에 필요한 모든 프롬프트 메타데이터와
- * TypeBox 파라미터 스키마를 한 곳에서 조립합니다.
- */
-
 import { Type, type TObject } from "@sinclair/typebox";
-import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
-import {
-  deriveToolDescription,
-  deriveToolPromptGuidelines,
-  deriveToolPromptSnippet,
-} from "../../infra/tool-registry/index.js";
 import { SQUADRON_MAX_INSTANCES } from "./types.js";
 
-// ─────────────────────────────────────────────────────────
-// 1. 상수 프롬프트
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// 상수
+// ═════════════════════════════════════════════════════════
 
-/**
- * carrier_squadron 도구 설명 (Tool Schema — LLM이 도구 선택 시 참조).
- */
 const SQUADRON_CONFIGURE_HINT =
   `open Carrier Status (Alt+O) and press S to enable squadron mode for a carrier`;
 
-export const SQUADRON_MANIFEST: ToolPromptManifest = {
+export const SQUADRON_DOCTRINE = {
   id: "carrier_squadron",
   tag: "carrier_squadron",
   title: "carrier_squadron Tool Guidelines",
@@ -58,37 +42,10 @@ export const SQUADRON_MANIFEST: ToolPromptManifest = {
   ],
 };
 
-export const FLEET_SQUADRON_DESCRIPTION = deriveToolDescription(SQUADRON_MANIFEST);
+// ═════════════════════════════════════════════════════════
+// 함수
+// ═════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────────────────
-// 2. Build 함수
-// ─────────────────────────────────────────────────────────
-
-/** carrier_squadron의 `promptSnippet` 값을 반환합니다. */
-export function buildSquadronPromptSnippet(): string {
-  return deriveToolPromptSnippet(SQUADRON_MANIFEST);
-}
-
-/**
- * carrier_squadron의 `promptGuidelines` 배열을 반환합니다.
- *
- * @param enabledCarrierIds squadron 활성 carrier ID 목록
- */
-export function buildSquadronPromptGuidelines(enabledCarrierIds: string[]): string[] {
-  if (enabledCarrierIds.length === 0) {
-    return deriveToolPromptGuidelines(SQUADRON_MANIFEST, [
-      `## Squadron Carriers\nNo carriers are currently enabled for Squadron.` +
-      ` To enable, ${SQUADRON_CONFIGURE_HINT}.`,
-    ]);
-  }
-  return deriveToolPromptGuidelines(SQUADRON_MANIFEST, []);
-}
-
-/**
- * carrier_squadron의 TypeBox `parameters` 스키마를 반환합니다.
- *
- * @param enabledCarrierIds squadron 활성 carrier ID 목록
- */
 export function buildSquadronSchema(enabledCarrierIds: string[]): TObject {
   const availableDesc =
     enabledCarrierIds.length > 0

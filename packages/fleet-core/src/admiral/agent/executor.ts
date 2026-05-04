@@ -1,5 +1,5 @@
 /**
- * admiral/agent/executor — carrier executor 공개 facade.
+ * admiral/agent/executor — carrier-agnostic executor 공개 facade.
  *
  * 풀 기반 executeWithPool과 일회성 executeOneShot을 export.
  * 내부 구현은 internal/executor-engine.ts에 위임.
@@ -10,16 +10,16 @@
 import {
   engineExecuteWithPool,
   engineExecuteOneShot,
-  type CarrierExecuteOptions,
-  type CarrierExecResult,
+  type ExecuteOptions,
+  type ExecResult,
 } from "./internal/executor-engine.js";
 
-export type { CarrierExecuteOptions, CarrierExecResult };
+export type { ExecuteOptions, ExecResult };
 
-export async function executeWithPool(opts: CarrierExecuteOptions): Promise<CarrierExecResult> {
+export async function executeWithPool(opts: ExecuteOptions): Promise<ExecResult> {
   return engineExecuteWithPool(opts);
 }
 
-export async function executeOneShot(opts: CarrierExecuteOptions): Promise<CarrierExecResult> {
+export async function executeOneShot(opts: ExecuteOptions): Promise<ExecResult> {
   return engineExecuteOneShot(opts);
 }

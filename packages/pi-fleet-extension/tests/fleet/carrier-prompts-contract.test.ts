@@ -8,10 +8,10 @@ import { CARRIER_RESULT_CUSTOM_TYPE } from "../../src/jobs.js";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const { PROTOCOL_PREAMBLE } = admiral.prompts;
 const { DELEGATION_POLICY } = admiral.protocols.standingOrders;
-const { buildCarrierToolManifest, buildCarrierToolSchema } = admiral.carrier;
-const { CARRIER_JOBS_MANIFEST, buildCarrierJobsSchema } = admiral.carrierJobs;
-const { SQUADRON_MANIFEST, buildSquadronSchema } = admiral.squadron;
-const { TASKFORCE_MANIFEST, buildTaskForceSchema } = admiral.taskforce;
+const { buildCarrierToolDoctrine, buildCarrierToolSchema } = admiral.carrier;
+const { CARRIER_JOBS_DOCTRINE, buildCarrierJobsSchema } = admiral.carrierJobs;
+const { SQUADRON_DOCTRINE, buildSquadronSchema } = admiral.squadron;
+const { TASKFORCE_DOCTRINE, buildTaskForceSchema } = admiral.taskforce;
 
 describe("carrier prompt doctrine", () => {
   it("contains fire-and-forget doctrine and carrier_jobs TTL-based read-many guidance", () => {
@@ -26,7 +26,7 @@ describe("carrier prompt doctrine", () => {
 
   it("keeps one manifest per carrier tool and carrier_jobs has no roster", () => {
     // 개별 캐리어 도구 매니페스트 검증 — 샘플 캐리어 "genesis"로 확인
-    const genesisManifest = buildCarrierToolManifest("genesis", "Genesis", {
+    const genesisManifest = buildCarrierToolDoctrine("genesis", "Genesis", {
       title: "Chief Engineer",
       summary: "Implementation specialist",
       category: "operations",
@@ -37,13 +37,13 @@ describe("carrier prompt doctrine", () => {
       outputFormat: "",
     });
     expect(genesisManifest.id).toBe("carrier_genesis");
-    expect(SQUADRON_MANIFEST.id).toBe("carrier_squadron");
-    expect(TASKFORCE_MANIFEST.id).toBe("carrier_taskforce");
-    expect(CARRIER_JOBS_MANIFEST.id).toBe("carrier_jobs");
-    expect(CARRIER_JOBS_MANIFEST.usageGuidelines.join("\n")).not.toContain("Available Carriers");
-    expect(CARRIER_JOBS_MANIFEST.usageGuidelines.join("\n")).toContain("finalized-only");
-    expect(CARRIER_JOBS_MANIFEST.whenNotToUse.join("\n")).toContain("Do not poll, wait-check, or call carrier_jobs merely to see whether a launched job is done");
-    expect(CARRIER_JOBS_MANIFEST.usageGuidelines.join("\n")).toContain("follow-up push");
+    expect(SQUADRON_DOCTRINE.id).toBe("carrier_squadron");
+    expect(TASKFORCE_DOCTRINE.id).toBe("carrier_taskforce");
+    expect(CARRIER_JOBS_DOCTRINE.id).toBe("carrier_jobs");
+    expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).not.toContain("Available Carriers");
+    expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).toContain("finalized-only");
+    expect(CARRIER_JOBS_DOCTRINE.whenNotToUse.join("\n")).toContain("Do not poll, wait-check, or call carrier_jobs merely to see whether a launched job is done");
+    expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).toContain("follow-up push");
   });
 
   it("keeps carrier_jobs as fallback or explicit lookup only across async carrier tools", () => {
@@ -57,8 +57,8 @@ describe("carrier prompt doctrine", () => {
       requestBlocks: [] as Array<{ tag: string; hint: string; required: boolean }>,
       outputFormat: "",
     };
-    const genesisManifest = buildCarrierToolManifest("genesis", "Genesis", sampleMetadata);
-    const dispatchManifests = [genesisManifest, SQUADRON_MANIFEST, TASKFORCE_MANIFEST];
+    const genesisManifest = buildCarrierToolDoctrine("genesis", "Genesis", sampleMetadata);
+    const dispatchManifests = [genesisManifest, SQUADRON_DOCTRINE, TASKFORCE_DOCTRINE];
 
     for (const manifest of dispatchManifests) {
       const text = JSON.stringify(manifest);
@@ -67,7 +67,7 @@ describe("carrier prompt doctrine", () => {
       expect(text).toContain("stop tool use and wait passively");
     }
 
-    const jobsText = JSON.stringify(CARRIER_JOBS_MANIFEST);
+    const jobsText = JSON.stringify(CARRIER_JOBS_DOCTRINE);
     expect(jobsText).toContain("not a polling tool");
     expect(jobsText).toContain("fallback channel for missing pushes or explicit lookups");
     expect(jobsText).toContain("stop tool use and wait passively");
@@ -97,12 +97,12 @@ describe("carrier prompt doctrine", () => {
       requestBlocks: [] as Array<{ tag: string; hint: string; required: boolean }>,
       outputFormat: "",
     };
-    const genesisManifest = buildCarrierToolManifest("genesis", "Genesis", sampleMetadata);
+    const genesisManifest = buildCarrierToolDoctrine("genesis", "Genesis", sampleMetadata);
     const manifestText = [
       JSON.stringify(genesisManifest),
-      JSON.stringify(SQUADRON_MANIFEST),
-      JSON.stringify(TASKFORCE_MANIFEST),
-      JSON.stringify(CARRIER_JOBS_MANIFEST),
+      JSON.stringify(SQUADRON_DOCTRINE),
+      JSON.stringify(TASKFORCE_DOCTRINE),
+      JSON.stringify(CARRIER_JOBS_DOCTRINE),
     ].join("\n");
 
     expect(schemaKeys).not.toEqual(expect.arrayContaining(["max_wait_ms", "wait", "mode"]));

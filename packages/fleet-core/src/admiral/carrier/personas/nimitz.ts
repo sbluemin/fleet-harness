@@ -20,24 +20,22 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "deep technical analysis and trade-off evaluation",
   ],
   whenNotToUse: [
-    "CRITICAL — NEVER sortie nimitz without prior reconnaissance: if recon is needed, sortie vanguard/tempest FIRST. Treat this as a hard prerequisite, not a suggestion.",
-    "any code modification or file editing",
-    "PRD/task decomposition or delivery planning (→kirov)",
-    "markdown work-plan generation (→kirov)",
-    "strictly read-only — no implementation, no file writes",
-  ],
-
-  // ── Tier 2: Composition ──
-  permissions: [
-    "CRITICAL: Strictly read-only. NEVER delegate code modification or file editing to this carrier.",
-    "Full access to read the codebase and execute read-only commands for analysis.",
-    "Must NOT decompose work into task waves, delivery schedules, or implementation checklists — that handoff belongs to Kirov.",
+    "any code modification or file editing (Nimitz is strictly read-only)",
+    "PRD/task decomposition, delivery planning, or markdown work-plan generation (→kirov)",
   ],
   requestBlocks: [
     { tag: "context", hint: "Background situation, current state, and relevant history.", required: true },
     { tag: "problem", hint: "The specific question, decision point, or challenge to analyze.", required: true },
     { tag: "constraints", hint: "Hard constraints, deadlines, compatibility requirements.", required: false },
     { tag: "artifacts", hint: "Relevant code snippets, file paths, error logs to examine.", required: false },
+  ],
+
+  // ── Tier 2: Composition ──
+  permissions: [
+    "CRITICAL: Strictly read-only. NEVER delegate code modification or file editing to this carrier.",
+    "CRITICAL: NEVER sortie Nimitz without prior reconnaissance — if recon is needed, sortie vanguard/tempest FIRST. Hard prerequisite, not a suggestion.",
+    "Full access to read the codebase and execute read-only commands for analysis.",
+    "MUST NOT decompose work into task waves, delivery schedules, or implementation checklists — handoff belongs to Kirov.",
   ],
   outputFormat:
     `Verbosity constraints: bottom line max 3 sentences, action plan max 7 steps (2 sentences each), no preamble, no question restatement, no conversational filler. Prefer compact bullets.\n` +

@@ -9,11 +9,10 @@
 
 import type { CliType } from "@sbluemin/unified-agent";
 
-import type { AgentToolSpec } from "../../infra/tool-registry/index.js";
+import type { AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
 
-import { ANSI_RESET, SORTIE_SUMMARY_COLOR } from "../../constants.js";
 import {
   appendBlock,
   buildCarrierResultSystemReminder,
@@ -27,7 +26,6 @@ import {
   toThoughtArchiveBlock,
 } from "../../infra/job/index.js";
 import { getLogAPI } from "../../infra/log/store.js";
-import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
 import {
   emitStreamEvent,
   type CarrierJobStatus,
@@ -37,9 +35,8 @@ import {
 import { executeWithPool } from "../agent/executor.js";
 import {
   buildCarrierSystemPrompt,
-  buildCarrierToolManifest,
+  buildCarrierToolDoctrine,
   buildCarrierToolSchema,
-  composeTier2Request,
 } from "./prompts.js";
 import {
   getRegisteredCarrierConfig,
@@ -102,10 +99,7 @@ export function buildCarrierToolSpecs(): AgentToolSpec[] {
     // 메타데이터가 없는 캐리어는 스펙을 생성하지 않음
     if (!metadata) continue;
 
-    const manifest = buildCarrierToolManifest(carrierId, displayName, metadata);
-    registerToolPromptManifest(manifest);
-
-    specs.push(buildSingleCarrierSpec(carrierId, displayName, metadata, manifest));
+    specs.push(buildSingleCarrierSpec(carrierId, displayName, metadata));
   }
 
   return specs;
@@ -115,28 +109,13 @@ function buildSingleCarrierSpec(
   carrierId: string,
   displayName: string,
   metadata: import("./types.js").CarrierMetadata,
-  manifest: import("../../infra/tool-registry/types.js").ToolPromptManifest,
 ): AgentToolSpec {
   const toolName: `carrier_${string}` = `carrier_${carrierId}`;
+  const doctrine = buildCarrierToolDoctrine(carrierId, displayName, metadata);
 
   return {
-    name: toolName,
-    label: `${displayName} Carrier`,
-    description: manifest.description,
-    promptSnippet: manifest.promptSnippet,
-    promptGuidelines: [
-      ...manifest.whenToUse,
-      ...manifest.whenNotToUse,
-      ...manifest.usageGuidelines,
-      ...(manifest.guardrails ?? []),
-    ],
+    ...doctrine,
     parameters: buildCarrierToolSchema(),
-
-    render: {
-      call() {
-        return `${SORTIE_SUMMARY_COLOR}${carrierId}${ANSI_RESET}`;
-      },
-    },
 
     async execute(args: unknown, ctx) {
       const t0 = Date.now();
@@ -172,9 +151,6 @@ function buildSingleCarrierSpec(
         });
       }
 
-      // Tier 2 request 조립
-      const composedRequest = composeTier2Request(metadata, request);
-
       const launch = startDetachedJob({
         jobKind: "carrier",
         toolName,
@@ -190,7 +166,7 @@ function buildSingleCarrierSpec(
       void runCarrierJobInBackground({
         jobId,
         carrierId,
-        request: composedRequest,
+        request,
         signal: launch.signal,
         cwd,
         permit: launch.permit,
@@ -282,11 +258,11 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
 
   try {
     const execResult = await executeWithPool({
+      poolKey: opts.carrierId,
       cliType,
-      carrierId: opts.carrierId,
       request: opts.request,
       cwd: opts.cwd,
-      connectSystemPrompt: buildCarrierSystemPrompt(),
+      connectSystemPrompt: buildCarrierSystemPrompt(carrierConfig?.carrierMetadata),
       signal: opts.signal,
       onConnected: (info) => {
         sessionId = info.sessionId;

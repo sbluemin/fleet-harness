@@ -1,6 +1,7 @@
 import {
   resetServiceStatus,
 } from "@sbluemin/unified-agent";
+import { stopMcpServer } from "../admiral/_shared/mcp.js";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
@@ -60,7 +61,7 @@ export function createFleetCoreRuntime(
     metaphor: createFleetMetaphorServices(),
     infra,
     async shutdown() {
-      await infra.toolRegistry.mcp.stopMcpServer();
+      await stopMcpServer();
       infra.settings.resetSettingsService(settings);
       resetServiceStatus();
     },

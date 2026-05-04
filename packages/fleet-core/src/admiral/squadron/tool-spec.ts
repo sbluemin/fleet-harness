@@ -6,10 +6,10 @@
 
 import type { CliType } from "@sbluemin/unified-agent";
 
-import type { AgentToolSpec } from "../../infra/tool-registry/index.js";
+import type { AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
-import type { CarrierExecResult } from "../agent/executor.js";
+import type { ExecResult } from "../agent/executor.js";
 
 import {
   appendBlock,
@@ -24,7 +24,6 @@ import {
   toThoughtArchiveBlock,
 } from "../../infra/job/index.js";
 import { getLogAPI } from "../../infra/log/store.js";
-import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
 import { executeOneShot } from "../agent/executor.js";
 import {
   emitStreamEvent,
@@ -40,13 +39,11 @@ import {
   isSquadronCarrierEnabled,
   resolveCarrierDisplayName,
 } from "../carrier/framework.js";
-import { buildCarrierSystemPrompt, composeTier2Request } from "../carrier/prompts.js";
+import { buildCarrierSystemPrompt } from "../carrier/prompts.js";
+import type { CarrierMetadata } from "../carrier/types.js";
 import { loadModels } from "../store/index.js";
 import {
-  FLEET_SQUADRON_DESCRIPTION,
-  SQUADRON_MANIFEST,
-  buildSquadronPromptGuidelines,
-  buildSquadronPromptSnippet,
+  SQUADRON_DOCTRINE,
   buildSquadronSchema,
 } from "./prompts.js";
 import {
@@ -70,7 +67,6 @@ interface SquadronBackgroundOptions {
   carrierId: string;
   requestKey: string;
   sanitizedSubtasks: Array<{ title: string; request: string }>;
-  composedSubtasks: string[];
   state: SquadronState;
   signal: AbortSignal | undefined;
   cwd: string;
@@ -92,25 +88,11 @@ export function buildSquadronToolSpec(): AgentToolSpec | null {
   const allCarriers = getRegisteredOrder();
   if (allCarriers.length < 1) return null;
 
-  registerToolPromptManifest(SQUADRON_MANIFEST);
-
   const enabledCarriers = getActiveSquadronIds();
-  const guidelines = buildSquadronPromptGuidelines(enabledCarriers);
 
   return {
-    name: "carrier_squadron",
-    label: "Carrier Squadron",
-    description: FLEET_SQUADRON_DESCRIPTION,
-    promptSnippet: buildSquadronPromptSnippet(),
-    promptGuidelines: guidelines,
+    ...SQUADRON_DOCTRINE,
     parameters: buildSquadronSchema(enabledCarriers),
-
-    render: {
-      call(args: unknown) {
-        const typedArgs = args as { carrier?: string; subtasks?: Array<{ title: string; request: string }> };
-        return { carrier: typedArgs.carrier ?? "...", count: typedArgs.subtasks?.length ?? 0 };
-      },
-    },
 
     async execute(args: unknown, ctx) {
       const t0 = Date.now();
@@ -156,12 +138,6 @@ export function buildSquadronToolSpec(): AgentToolSpec | null {
         }
       }
 
-      const composedSubtasks = sanitizedSubtasks.map((subtask) =>
-        carrierConfig?.carrierMetadata
-          ? composeTier2Request(carrierConfig.carrierMetadata, subtask.request)
-          : subtask.request,
-      );
-
       const launch = startDetachedJob({
         jobKind: "squadron",
         toolName: "carrier_squadron",
@@ -181,7 +157,6 @@ export function buildSquadronToolSpec(): AgentToolSpec | null {
         carrierId,
         requestKey,
         sanitizedSubtasks,
-        composedSubtasks,
         state,
         signal: launch.signal,
         cwd,
@@ -205,10 +180,11 @@ async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Prom
     const cliType = (opts.carrierConfig?.cliType ?? "claude") as CliType;
     const settledResults = await Promise.allSettled(
       opts.sanitizedSubtasks.map((subtask, index) =>
-        runSquadronInstance(index, subtask.title, opts.composedSubtasks[index]!, {
+        runSquadronInstance(index, subtask.title, subtask.request, {
           carrierId: opts.carrierId,
           cliType,
           modelConfig,
+          carrierMetadata: opts.carrierConfig?.carrierMetadata,
           state: opts.state,
           signal: opts.signal,
           cwd: opts.cwd,
@@ -267,6 +243,7 @@ async function runSquadronInstance(
     carrierId: string;
     cliType: CliType;
     modelConfig: { model?: string; effort?: string } | undefined;
+    carrierMetadata: CarrierMetadata | undefined;
     state: SquadronState;
     signal: AbortSignal | undefined;
     cwd: string;
@@ -300,13 +277,13 @@ async function runSquadronInstance(
 
   try {
     const result = await executeOneShot({
-      carrierId: syntheticId,
+      poolKey: syntheticId,
       cliType: opts.cliType,
       request,
       cwd: opts.cwd,
       model: opts.modelConfig?.model,
       effort: opts.modelConfig?.effort,
-      connectSystemPrompt: buildCarrierSystemPrompt(),
+      connectSystemPrompt: buildCarrierSystemPrompt(opts.carrierMetadata),
       signal: opts.signal,
       onStatusChange: (status) => {
         emitTrackStatus(opts.jobId, trackId, status);
@@ -429,7 +406,7 @@ function assertSubtaskLimit(count: number): void {
 function buildSquadronResult(
   index: number,
   title: string,
-  result: CarrierExecResult,
+  result: ExecResult,
 ): SquadronResult {
   return {
     index,
@@ -473,7 +450,7 @@ function emitTrackStatus(jobId: string, trackId: string, status: TrackStatus): v
   emitStreamEvent({ type: "track:status", jobId, trackId, status });
 }
 
-function emitTrackFinalized(jobId: string, trackId: string, result: CarrierExecResult): void {
+function emitTrackFinalized(jobId: string, trackId: string, result: ExecResult): void {
   const status = toCarrierJobStatus(result.status);
   emitStreamEvent({
     type: "track:finalized",

@@ -10,7 +10,7 @@ import {
   clearAllTools,
   registerToolsForSession,
   removeToolsForSession,
-} from "../../src/infra/tool-registry/tool-snapshot.js";
+} from "../../src/admiral/agent/internal/tool-snapshot.js";
 
 describe("provider-mcp", () => {
   beforeEach(() => {

@@ -7,7 +7,7 @@ import { toMessageArchiveBlock } from "../../src/infra/job/archive-block-convert
 import type { CarrierJobRecord, CarrierJobSummary } from "../../src/infra/job/job-types.js";
 import { putJobSummary, resetJobSummaryCacheForTest } from "../../src/infra/job/lru-cache.js";
 import { dispatchCarrierJobsAction } from "../../src/admiral/carrier-jobs/index.js";
-import { buildCarrierJobsSchema, CARRIER_JOBS_MANIFEST } from "../../src/admiral/carrier-jobs/prompts.js";
+import { buildCarrierJobsSchema, CARRIER_JOBS_DOCTRINE } from "../../src/admiral/carrier-jobs/prompts.js";
 
 beforeEach(() => {
   resetJobArchivesForTest();
@@ -23,8 +23,8 @@ describe("carrier_jobs tool", () => {
 
     expect(action.enum).toEqual(["status", "result", "cancel", "list"]);
     expect(JSON.stringify(schema)).not.toContain("carrier_squadron");
-    expect(CARRIER_JOBS_MANIFEST.id).toBe("carrier_jobs");
-    expect(CARRIER_JOBS_MANIFEST.usageGuidelines.join("\n")).toContain("never reads the Agent Panel stream-store");
+    expect(CARRIER_JOBS_DOCTRINE.id).toBe("carrier_jobs");
+    expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).toContain("never reads the Agent Panel stream-store");
   });
 
   it("lists active and recent jobs without full archive content", () => {

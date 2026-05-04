@@ -1,25 +1,12 @@
-import type { AgentToolSpec } from "../../infra/tool-registry/index.js";
-import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
+import type { AgentToolSpec } from "../agent/types.js";
 
-import { REQUEST_DIRECTIVE_MANIFEST, RequestDirectiveParams } from "./prompts.js";
+import { REQUEST_DIRECTIVE_DOCTRINE, RequestDirectiveParams } from "./prompts.js";
 import type { DirectiveQuestion } from "./types.js";
 import { clampHeader, validateQuestions } from "./request-directive-execute.js";
 
 export function buildRequestDirectiveToolSpec(): AgentToolSpec {
-  registerToolPromptManifest(REQUEST_DIRECTIVE_MANIFEST);
-
   return {
-    name: "request_directive",
-    label: "Request Directive",
-    description: REQUEST_DIRECTIVE_MANIFEST.description,
-    promptSnippet: REQUEST_DIRECTIVE_MANIFEST.promptSnippet,
-    promptGuidelines: [
-      ...REQUEST_DIRECTIVE_MANIFEST.whenToUse,
-      ...REQUEST_DIRECTIVE_MANIFEST.whenNotToUse.map((line) => `NOT: ${line}`),
-      ...REQUEST_DIRECTIVE_MANIFEST.usageGuidelines,
-      ...(REQUEST_DIRECTIVE_MANIFEST.guardrails ?? []),
-    ],
-
+    ...REQUEST_DIRECTIVE_DOCTRINE,
     parameters: RequestDirectiveParams,
 
     async execute(args: unknown) {

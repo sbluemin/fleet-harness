@@ -2,7 +2,7 @@ import { describe, it, beforeEach, expect } from "vitest";
 import {
   list,
   invoke,
-  registerDefaultTool,
+  registerAgentTool,
   registerExtraTools,
   unregisterExtraTools,
   clearAllDefaultTools,
@@ -11,9 +11,14 @@ import {
 import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
 
 const testSpec: AgentToolSpec = {
-  name: "test_tool",
-  label: "Test Tool",
+  id: "test_tool",
+  tag: "test_tool",
+  title: "Test Tool",
   description: "A test tool",
+  promptSnippet: "test_tool — A test tool",
+  whenToUse: [],
+  whenNotToUse: [],
+  usageGuidelines: [],
   parameters: {},
   async execute(args, _ctx) {
     return { content: [{ type: "text", text: `executed: ${JSON.stringify(args)}` }], isError: false };
@@ -21,7 +26,8 @@ const testSpec: AgentToolSpec = {
 };
 
 function listTestTools() {
-  return list().filter((meta) => meta.name !== "carrier_jobs");
+  const BUILTIN_IDS = new Set(["carrier_jobs", "request_directive"]);
+  return list().filter((spec) => !BUILTIN_IDS.has(spec.id));
 }
 
 describe("admiral.agent.tools", () => {
@@ -32,23 +38,23 @@ describe("admiral.agent.tools", () => {
 
   describe("list()", () => {
     it("빈 상태에서 기본 Fleet tool catalog만 반환한다", () => {
-      expect(list().map((meta) => meta.name)).toContain("carrier_jobs");
+      expect(list().map((spec) => spec.id)).toContain("carrier_jobs");
       expect(listTestTools()).toHaveLength(0);
     });
 
-    it("등록된 기본 도구의 메타데이터를 반환한다", () => {
-      registerDefaultTool(testSpec);
-      const metas = listTestTools();
-      expect(metas).toHaveLength(1);
-      expect(metas[0]!.name).toBe("test_tool");
-      expect(metas[0]!.label).toBe("Test Tool");
-      expect(metas[0]!.description).toBe("A test tool");
+    it("등록된 기본 도구의 스펙을 반환한다", () => {
+      registerAgentTool(testSpec);
+      const specs = listTestTools();
+      expect(specs).toHaveLength(1);
+      expect(specs[0]!.id).toBe("test_tool");
+      expect(specs[0]!.title).toBe("Test Tool");
+      expect(specs[0]!.description).toBe("A test tool");
     });
   });
 
   describe("invoke()", () => {
     it("기본 도구를 실행하고 McpCallToolResult를 반환한다", async () => {
-      registerDefaultTool(testSpec);
+      registerAgentTool(testSpec);
       const result = await invoke("test_tool", { key: "value" });
       expect(result.isError).toBe(false);
       expect(result.content).toHaveLength(1);
@@ -64,15 +70,21 @@ describe("admiral.agent.tools", () => {
     it("기본 ctx가 cwd를 포함한다", async () => {
       let receivedCwd: string | undefined;
       const cwdSpec: AgentToolSpec = {
-        name: "cwd_tool",
+        id: "cwd_tool",
+        tag: "cwd_tool",
+        title: "CWD Checker",
         description: "cwd checker",
+        promptSnippet: "cwd_tool — cwd checker",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute(_args, ctx) {
           receivedCwd = ctx.cwd;
           return { content: [{ type: "text", text: "ok" }], isError: false };
         },
       };
-      registerDefaultTool(cwdSpec);
+      registerAgentTool(cwdSpec);
       await invoke("cwd_tool", {});
       expect(receivedCwd).toBe(process.cwd());
     });
@@ -81,8 +93,14 @@ describe("admiral.agent.tools", () => {
   describe("registerExtraTools / unregisterExtraTools", () => {
     it("스코프별 추가 도구를 등록하고 list에 포함된다", () => {
       const extraSpec: AgentToolSpec = {
-        name: "extra_tool",
+        id: "extra_tool",
+        tag: "extra_tool",
+        title: "Extra Tool",
         description: "extra",
+        promptSnippet: "extra_tool — extra",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute() {
           return { content: [{ type: "text", text: "extra" }], isError: false };
@@ -90,13 +108,19 @@ describe("admiral.agent.tools", () => {
       };
       registerExtraTools("scope1", [extraSpec]);
       expect(listTestTools()).toHaveLength(1);
-      expect(listTestTools()[0]!.name).toBe("extra_tool");
+      expect(listTestTools()[0]!.id).toBe("extra_tool");
     });
 
     it("추가 도구를 invoke로 실행할 수 있다", async () => {
       const extraSpec: AgentToolSpec = {
-        name: "extra_invoke",
+        id: "extra_invoke",
+        tag: "extra_invoke",
+        title: "Extra Invoke",
         description: "extra invoke",
+        promptSnippet: "extra_invoke — extra invoke",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute() {
           return { content: [{ type: "text", text: "invoked extra" }], isError: false };
@@ -109,16 +133,28 @@ describe("admiral.agent.tools", () => {
 
     it("unregisterExtraTools로 특정 스코프 도구를 제거한다", () => {
       const spec1: AgentToolSpec = {
-        name: "extra_a",
+        id: "extra_a",
+        tag: "extra_a",
+        title: "Extra A",
         description: "a",
+        promptSnippet: "extra_a — a",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute() {
           return { content: [{ type: "text", text: "a" }], isError: false };
         },
       };
       const spec2: AgentToolSpec = {
-        name: "extra_b",
+        id: "extra_b",
+        tag: "extra_b",
+        title: "Extra B",
         description: "b",
+        promptSnippet: "extra_b — b",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute() {
           return { content: [{ type: "text", text: "b" }], isError: false };
@@ -129,13 +165,19 @@ describe("admiral.agent.tools", () => {
 
       unregisterExtraTools("scope1", ["extra_a"]);
       expect(listTestTools()).toHaveLength(1);
-      expect(listTestTools()[0]!.name).toBe("extra_b");
+      expect(listTestTools()[0]!.id).toBe("extra_b");
     });
 
     it("모든 도구를 unregister하면 스코프가 자동 제거된다", () => {
       const spec: AgentToolSpec = {
-        name: "auto_clean",
+        id: "auto_clean",
+        tag: "auto_clean",
+        title: "Auto Clean",
         description: "auto clean",
+        promptSnippet: "auto_clean — auto clean",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute() {
           return { content: [{ type: "text", text: "ok" }], isError: false };
@@ -154,14 +196,20 @@ describe("admiral.agent.tools", () => {
   describe("toMcpCallToolResult 변환", () => {
     it("문자열 결과를 McpCallToolResult로 변환한다", async () => {
       const strSpec: AgentToolSpec = {
-        name: "str_tool",
+        id: "str_tool",
+        tag: "str_tool",
+        title: "String Tool",
         description: "string returner",
+        promptSnippet: "str_tool — string returner",
+        whenToUse: [],
+        whenNotToUse: [],
+        usageGuidelines: [],
         parameters: {},
         async execute() {
           return "plain string result";
         },
       };
-      registerDefaultTool(strSpec);
+      registerAgentTool(strSpec);
       const result = await invoke("str_tool", {});
       expect(result.isError).toBe(false);
       expect(result.content[0]!.text).toBe("plain string result");

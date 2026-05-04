@@ -10,7 +10,6 @@ import {
   type DirectiveQuestion,
   type DirectiveResult,
   type RenderOption,
-  AgentToolCtx,
   AgentToolSpec,
   BackendProgress,
   CarrierConfig,
@@ -117,7 +116,7 @@ export function registerFleetPiTools(pi: ExtensionAPI): void {
   const specs = getFleetRuntime().admiral.agent.tools.listSpecs();
 
   for (const spec of specs) {
-    if (spec.name === "request_directive") {
+    if (spec.id === "request_directive") {
       pi.registerTool(toRequestDirectivePiTool(spec) as any);
       continue;
     }
@@ -173,11 +172,16 @@ export function ensureShipyardLogCategories(): void {
 
 function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
   return {
-    name: spec.name,
-    label: spec.label,
+    name: spec.id,
+    label: spec.title,
     description: spec.description,
     promptSnippet: spec.promptSnippet,
-    promptGuidelines: spec.promptGuidelines,
+    promptGuidelines: [
+      ...spec.whenToUse,
+      ...spec.whenNotToUse,
+      ...spec.usageGuidelines,
+      ...(spec.guardrails ?? []),
+    ],
     parameters: spec.parameters,
     renderCall(args: unknown, theme: Theme, context: PiRenderContext) {
       return renderToolCall(spec, args, theme, context);
@@ -187,18 +191,23 @@ function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
     },
     execute(id: string, params: unknown, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
       const runtime = getFleetRuntime();
-      return runtime.admiral.agent.tools.invoke(spec.name, params, { cwd: ctx.cwd, toolCallId: id, signal });
+      return runtime.admiral.agent.tools.invoke(spec.id, params, { cwd: ctx.cwd, toolCallId: id, signal });
     },
   } as any;
 }
 
 function toRequestDirectivePiTool(spec: AgentToolSpec): Record<string, unknown> {
   return {
-    name: spec.name,
-    label: spec.label,
+    name: spec.id,
+    label: spec.title,
     description: spec.description,
     promptSnippet: spec.promptSnippet,
-    promptGuidelines: spec.promptGuidelines,
+    promptGuidelines: [
+      ...spec.whenToUse,
+      ...spec.whenNotToUse.map((line) => `NOT: ${line}`),
+      ...spec.usageGuidelines,
+      ...(spec.guardrails ?? []),
+    ],
     parameters: spec.parameters,
 
     async execute(_toolCallId: string, params: unknown, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
@@ -270,30 +279,22 @@ function toRequestDirectivePiTool(spec: AgentToolSpec): Record<string, unknown> 
   };
 }
 
-function buildAgentToolCtx(toolCallId: string, signal: AbortSignal | undefined, ctx: ExtensionContext): AgentToolCtx {
-  return {
-    cwd: ctx.cwd,
-    toolCallId,
-    signal,
-  };
-}
-
 
 function renderToolCall(spec: AgentToolSpec, args: unknown, _theme: Theme, context: PiRenderContext): unknown {
-  if (spec.name === "carrier_jobs") {
+  if (spec.id === "carrier_jobs") {
     return renderCarrierJobsCall(args, context);
   }
-  if (spec.name === "carrier_squadron") {
-    const rendered = spec.render?.call?.(args, buildAgentToolCtx("", undefined, { cwd: "" } as ExtensionContext)) as { carrier: string; count: number };
-    return oneLine(`  ⚓ ${SQUADRON_BADGE_COLOR}Squadron${ANSI_RESET}: ${SQUADRON_BADGE_COLOR}${rendered.carrier} ×${rendered.count} subtasks${ANSI_RESET}`);
+  if (spec.id === "carrier_squadron") {
+    const typedArgs = args as { carrier?: string; subtasks?: Array<{ title: string; request: string }> };
+    return oneLine(`  ⚓ ${SQUADRON_BADGE_COLOR}Squadron${ANSI_RESET}: ${SQUADRON_BADGE_COLOR}${typedArgs.carrier ?? "..."} ×${typedArgs.subtasks?.length ?? 0} subtasks${ANSI_RESET}`);
   }
-  if (spec.name === "carrier_taskforce") {
-    const carrier = spec.render?.call?.(args, buildAgentToolCtx("", undefined, { cwd: "" } as ExtensionContext)) as string;
-    return oneLine(`  ⚓ ${TASKFORCE_BADGE_COLOR}Taskforce${ANSI_RESET}: ${TASKFORCE_BADGE_COLOR}${carrier}${ANSI_RESET}`);
+  if (spec.id === "carrier_taskforce") {
+    const typedArgs = args as { carrier?: string };
+    return oneLine(`  ⚓ ${TASKFORCE_BADGE_COLOR}Taskforce${ANSI_RESET}: ${TASKFORCE_BADGE_COLOR}${typedArgs.carrier ?? "..."}${ANSI_RESET}`);
   }
-  if (spec.name.startsWith("carrier_") && spec.name !== "carrier_jobs" && spec.name !== "carrier_squadron" && spec.name !== "carrier_taskforce") {
+  if (spec.id.startsWith("carrier_") && spec.id !== "carrier_jobs" && spec.id !== "carrier_squadron" && spec.id !== "carrier_taskforce") {
     // 개별 캐리어 도구 렌더링
-    const carrierId = spec.name.replace("carrier_", "");
+    const carrierId = spec.id.replace("carrier_", "");
     const carrierColor = CARRIER_COLORS[carrierId] ?? SORTIE_SUMMARY_COLOR;
     const carrierName = CLI_DISPLAY_NAMES[carrierId] ?? carrierId;
     return oneLine(`  ⚓ ${carrierColor}${carrierName}${ANSI_RESET}`);
@@ -308,15 +309,15 @@ function renderToolResult(
   _theme: Theme,
   context: PiRenderContext,
 ): unknown {
-  if (spec.name === "carrier_jobs") {
+  if (spec.id === "carrier_jobs") {
     return renderCarrierJobsResult(result as CarrierJobsToolResult);
   }
-  const entries = buildPreviewEntries(spec.name, context.args);
-  const color = spec.name === "carrier_squadron"
+  const entries = buildPreviewEntries(spec.id, context.args);
+  const color = spec.id === "carrier_squadron"
     ? SQUADRON_BADGE_COLOR
-    : spec.name === "carrier_taskforce"
+    : spec.id === "carrier_taskforce"
       ? TASKFORCE_BADGE_COLOR
-      : resolveToolCarrierColor(spec.name);
+      : resolveToolCarrierColor(spec.id);
   return {
     render(width: number) {
       return renderRequestPreview(entries, options.expanded, color, width);

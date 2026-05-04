@@ -34,12 +34,8 @@ export type {
 } from "./infra/auth/index.js";
 export type {
   AgentToolCtx,
-  AgentToolMcpDescriptor,
-  AgentToolPiDescriptor,
-  AgentToolRenderDescriptor,
   AgentToolSpec,
-  TypeBoxSchema,
-} from "./infra/tool-registry/types.js";
+} from "./admiral/agent/types.js";
 export type {
   CarrierCategory,
   CarrierConfig,
@@ -114,8 +110,6 @@ export type {
   ConversationHistoryEntry,
   SendMessageRequest,
   SessionHandle,
-  ToolMetadata,
-  RenderEntry,
   EnsureOptions,
   ToolResultEnvelope,
   ParsedModelId,
@@ -125,6 +119,10 @@ export type {
   LaunchCommandData,
   BridgeOptions,
   AgentSessionLaunchConfig,
-  CarrierExecuteOptions,
-  CarrierExecResult,
+  ExecuteOptions,
+  ExecResult,
+} from "./admiral/agent/index.js";
+export {
+  executeWithPool,
+  executeOneShot,
 } from "./admiral/agent/index.js";

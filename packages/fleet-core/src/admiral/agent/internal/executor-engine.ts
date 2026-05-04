@@ -1,7 +1,7 @@
 /**
- * admiral/agent/internal/executor-engine — 풀 기반 carrier executor 구현체.
+ * admiral/agent/internal/executor-engine — 풀 기반 executor 구현체.
  *
- * executeWithPool / executeOneShot의 내부 엔진.
+ * carrier-agnostic 일반 executor. poolKey로 식별자를 일반화.
  * globalThis 대신 모듈 레벨 Map 사용.
  *
  * imports → types/interfaces → constants → functions 순서 준수.
@@ -28,8 +28,8 @@ import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 // Types / Interfaces
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface CarrierExecuteOptions {
-  carrierId: string;
+export interface ExecuteOptions {
+  poolKey: string;
   cliType: CliType;
   request: string;
   cwd: string;
@@ -45,14 +45,14 @@ export interface CarrierExecuteOptions {
   onStatusChange?: (status: TrackStatus) => void;
 }
 
-export interface CarrierExecResult {
+export type ExecResult = {
   responseText: string;
   thoughtText: string;
   toolCalls: { title: string; status: string; rawOutput?: string; toolCallId?: string }[];
   status: TrackStatus;
   error?: string;
   sessionId?: string;
-}
+};
 
 interface PooledClient {
   client: IUnifiedAgentClient;
@@ -84,13 +84,13 @@ const launchConfigs = new Map<string, { effort?: string }>();
 // Functions (공개 — executor.ts facade에서 호출)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promise<CarrierExecResult> {
-  const { carrierId, cliType, request, cwd, signal } = opts;
+export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
+  const { poolKey, cliType, request, cwd, signal } = opts;
   const store = getSessionStore();
 
   let responseText = "";
   let thoughtText = "";
-  const toolCalls: CarrierExecResult["toolCalls"] = [];
+  const toolCalls: ExecResult["toolCalls"] = [];
   let status: TrackStatus = "conn";
   let error: string | undefined;
   let aborted = false;
@@ -99,7 +99,7 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
 
   opts.onStatusChange?.("conn");
 
-  let poolEntry = clientPool.get(carrierId);
+  let poolEntry = clientPool.get(poolKey);
   let isTemporary = false;
 
   if (poolEntry) {
@@ -107,7 +107,7 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
       poolEntry = undefined;
       isTemporary = true;
     } else if (!isClientAlive(poolEntry.client)) {
-      clientPool.delete(carrierId);
+      clientPool.delete(poolKey);
       poolEntry = undefined;
     }
   }
@@ -121,16 +121,16 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
     client = await buildProviderClient({ cli: cliType });
     if (!isTemporary) {
       const newEntry: PooledClient = { client, busy: true };
-      clientPool.set(carrierId, newEntry);
+      clientPool.set(poolKey, newEntry);
       poolEntry = newEntry;
       client.on("exit", () => {
-        const current = clientPool.get(carrierId);
-        if (current?.client === client) clientPool.delete(carrierId);
+        const current = clientPool.get(poolKey);
+        if (current?.client === client) clientPool.delete(poolKey);
       });
     }
   }
 
-  let detachStderr = attachStderrLogging(client, `acp-exec:${carrierId}`);
+  let detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
 
   const cleanupTemporary = async () => {
     if (!isTemporary) return;
@@ -145,7 +145,7 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
     opts.onStatusChange?.("aborted");
     void Promise.allSettled([
       client.cancelPrompt(),
-      isTemporary ? cleanupTemporary() : disconnectFromPool(carrierId, client),
+      isTemporary ? cleanupTemporary() : disconnectFromPool(poolKey, client),
     ]);
   };
 
@@ -213,8 +213,8 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
     let needsConnect = !isClientAlive(client);
 
     if (!needsConnect && hasSystemPromptDrift(client, opts.connectSystemPrompt ?? null)) {
-      debugSystemPromptDrift("executeWithPool", carrierId, cliType);
-      store.clear(carrierId);
+      debugSystemPromptDrift("executeWithPool", poolKey, cliType);
+      store.clear(poolKey);
       if (poolEntry) delete poolEntry.sessionId;
       await client.disconnect();
       needsConnect = true;
@@ -226,7 +226,7 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
         promptIdleTimeout: opts.promptIdleTimeout,
       }, opts.connectSystemPrompt ?? null);
 
-      const savedSessionId = store.get(carrierId) ?? poolEntry?.sessionId;
+      const savedSessionId = store.get(poolKey) ?? poolEntry?.sessionId;
       if (savedSessionId) connectOpts.sessionId = savedSessionId;
 
       let connectResult: ConnectResult;
@@ -238,11 +238,11 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
         if (classifyResumeFailure(connectError) !== "dead-session") throw connectError;
 
         console.error(
-          `[unified-agent] session/load 실패 (carrierId=${carrierId}, sessionId=${savedSessionId}):`,
+          `[unified-agent] session/load 실패 (key=${poolKey}, sessionId=${savedSessionId}):`,
           connectError instanceof Error ? connectError.message : connectError,
         );
 
-        store.clear(carrierId);
+        store.clear(poolKey);
         if (poolEntry) delete poolEntry.sessionId;
         delete connectOpts.sessionId;
 
@@ -250,13 +250,13 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
         detachListeners();
         detachStderr();
         client = await buildProviderClient({ cli: cliType });
-        detachStderr = attachStderrLogging(client, `acp-exec:${carrierId}`);
+        detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
         if (!isTemporary) {
           poolEntry = { client, busy: true };
-          clientPool.set(carrierId, poolEntry);
+          clientPool.set(poolKey, poolEntry);
           client.on("exit", () => {
-            const current = clientPool.get(carrierId);
-            if (current?.client === client) clientPool.delete(carrierId);
+            const current = clientPool.get(poolKey);
+            if (current?.client === client) clientPool.delete(poolKey);
           });
         }
         attachListeners();
@@ -266,16 +266,16 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
       sessionId = connectResult.session?.sessionId ?? undefined;
 
       if (poolEntry && sessionId) poolEntry.sessionId = sessionId;
-      if (sessionId) store.set(carrierId, sessionId);
+      if (sessionId) store.set(poolKey, sessionId);
 
-      const effort = resolveEffort(carrierId, opts.effort);
+      const effort = resolveEffort(poolKey, opts.effort);
       await applyPostConnectConfig(client, cliType, effort ? { effort } : undefined);
     } else {
       const info = client.getConnectionInfo();
       sessionId = info.sessionId ?? undefined;
 
       if (poolEntry && sessionId) poolEntry.sessionId = sessionId;
-      if (sessionId) store.set(carrierId, sessionId);
+      if (sessionId) store.set(poolKey, sessionId);
 
       if (opts.effort) {
         await applyPostConnectConfig(client, cliType, { effort: opts.effort });
@@ -301,7 +301,7 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
     if (postSendInfo.sessionId && postSendInfo.sessionId !== sessionId) {
       sessionId = postSendInfo.sessionId;
       if (poolEntry) poolEntry.sessionId = sessionId;
-      store.set(carrierId, sessionId);
+      store.set(poolKey, sessionId);
     }
 
     if (!aborted) {
@@ -323,7 +323,7 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
     if (poolEntry) poolEntry.busy = false;
 
     if (isTemporary && sessionId) {
-      const existingEntry = clientPool.get(carrierId);
+      const existingEntry = clientPool.get(poolKey);
       if (existingEntry) existingEntry.sessionId = sessionId;
     }
     await cleanupTemporary();
@@ -332,12 +332,12 @@ export async function engineExecuteWithPool(opts: CarrierExecuteOptions): Promis
   return { responseText, thoughtText, toolCalls, status, error, sessionId };
 }
 
-export async function engineExecuteOneShot(opts: CarrierExecuteOptions): Promise<CarrierExecResult> {
-  const { cliType, request, cwd, signal } = opts;
+export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecResult> {
+  const { poolKey, cliType, request, cwd, signal } = opts;
 
   let responseText = "";
   let thoughtText = "";
-  const toolCalls: CarrierExecResult["toolCalls"] = [];
+  const toolCalls: ExecResult["toolCalls"] = [];
   let status: TrackStatus = "conn";
   let error: string | undefined;
   let sessionId: string | undefined;
@@ -345,7 +345,7 @@ export async function engineExecuteOneShot(opts: CarrierExecuteOptions): Promise
   opts.onStatusChange?.("conn");
 
   const client = await buildProviderClient({ cli: cliType });
-  const detachStderr = attachStderrLogging(client, `acp-exec:${opts.carrierId}`);
+  const detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
   let aborted = false;
 
   const onAbort = () => {
@@ -432,11 +432,11 @@ export async function engineExecuteOneShot(opts: CarrierExecuteOptions): Promise
   return { responseText, thoughtText, toolCalls, status, error, sessionId };
 }
 
-/** connections.ts에서 호출 — 특정 carrier 풀 엔트리 종료 */
-export async function engineDisconnect(carrierId: string): Promise<boolean> {
-  const entry = clientPool.get(carrierId);
+/** connections.ts에서 호출 — 특정 풀 엔트리 종료 */
+export async function engineDisconnect(poolKey: string): Promise<boolean> {
+  const entry = clientPool.get(poolKey);
   if (!entry) return false;
-  clientPool.delete(carrierId);
+  clientPool.delete(poolKey);
   entry.busy = false;
   try { await entry.client.disconnect(); } catch { /* 강제 정리 경로 */ }
   entry.client.removeAllListeners();
@@ -468,14 +468,14 @@ export function engineCleanIdle(): void {
 // Internal helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-function resolveEffort(carrierId: string, override?: string): string | undefined {
-  return override ?? launchConfigs.get(carrierId)?.effort;
+function resolveEffort(poolKey: string, override?: string): string | undefined {
+  return override ?? launchConfigs.get(poolKey)?.effort;
 }
 
-async function disconnectFromPool(carrierId: string, client: IUnifiedAgentClient): Promise<boolean> {
-  const entry = clientPool.get(carrierId);
+async function disconnectFromPool(poolKey: string, client: IUnifiedAgentClient): Promise<boolean> {
+  const entry = clientPool.get(poolKey);
   if (!entry || entry.client !== client) return false;
-  clientPool.delete(carrierId);
+  clientPool.delete(poolKey);
   entry.busy = false;
   try { await entry.client.disconnect(); } catch { /* 정리 실패 무시 */ }
   entry.client.removeAllListeners();
@@ -523,8 +523,8 @@ function hasSystemPromptDrift(client: IUnifiedAgentClient, expected: string | nu
   return (client.getCurrentSystemPrompt()?.trim() ?? "") !== (expected?.trim() ?? "");
 }
 
-function debugSystemPromptDrift(scope: string, key: string, cliType: CliType): void {
-  console.warn(`[unified-agent] systemPrompt drift 감지 (${scope}, key=${key}, cli=${cliType})`);
+function debugSystemPromptDrift(scope: string, poolKey: string, cliType: CliType): void {
+  console.warn(`[unified-agent] systemPrompt drift 감지 (${scope}, key=${poolKey}, cli=${cliType})`);
 }
 
 function attachStderrLogging(client: IUnifiedAgentClient, source: string): () => void {

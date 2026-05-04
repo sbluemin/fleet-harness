@@ -1,5 +1,5 @@
 /**
- * agent/tool-snapshot — ACP provider 도구 스냅샷 + 스키마 변환
+ * admiral/agent/internal/tool-snapshot — ACP provider 도구 스냅샷 + 스키마 변환
  *
  * 세션별 MCP 도구 스냅샷을 관리하고, TypeBox 기반 Tool.parameters를
  * MCP inputSchema 호환 JSON Schema로 정제한다.
@@ -7,7 +7,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import { getLogAPI } from "../log/store.js";
+import { getLogAPI } from "../../../infra/log/store.js";
 
 export type Tool = { name: string; description?: string; parameters?: unknown; [key: string]: unknown };
 

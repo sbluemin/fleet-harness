@@ -14,10 +14,8 @@ export type {
   AgentToolSpec,
   ConversationHistoryEntry,
   McpCallToolResult,
-  RenderEntry,
   SendMessageRequest,
   SessionHandle,
-  ToolMetadata,
 } from "./types.js";
 export type { AgentStreamHandler } from "./events.js";
 export type {
@@ -36,8 +34,8 @@ export type { ServiceStatusEvent, ServiceSnapshot } from "./service-status.js";
 export type { LaunchCommandData, BridgeOptions } from "./bridge.js";
 export type { AgentSessionLaunchConfig } from "./internal/state.js";
 export type {
-  CarrierExecuteOptions,
-  CarrierExecResult,
+  ExecuteOptions,
+  ExecResult,
 } from "./executor.js";
 
 export {
@@ -49,11 +47,13 @@ export {
 export {
   clearAllDefaultTools,
   clearAllExtraTools,
+  getAllAgentTools,
   invoke,
   list,
   listSpecs,
-  registerDefaultTool,
+  registerAgentTool,
   registerExtraTools,
+  renderAgentToolDoctrineTag,
   unregisterExtraTools,
 } from "./tools.js";
 export {

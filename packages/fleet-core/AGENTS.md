@@ -25,17 +25,39 @@
 |---------------|---------|---------|
 | `session.ts` | `ensure` / `sendMessage` / `deliverToolResults` / `resolveSession` | Streaming — events flow through `events.ts` module channel |
 | `events.ts` | `register` / `unregister` / `emit` / `clear` for `AgentStreamEvent` | Module-level emit/register, `carrier-job-events.ts` doppelgänger |
-| `tools.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` | Default fleet tool specs auto-registered; host extras scoped by `scopeKey` |
-| `executor.ts` | `executeWithPool` / `executeOneShot` (returns `CarrierExecResult`) | Callback pattern — closed-loop, carrier-tier consumers only |
+| `tools.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` | Default fleet tool specs auto-registered; host extras scoped by `scopeKey`. **Single SSoT** for tool specs (registry + doctrine formatter). |
+| `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (carrier tools use `carrierId`; `carrier_squadron` / `carrier_taskforce` use a synthetic id) |
 | `lifecycle.ts` | `bindHostSession` / `shutdownAllSessions` | Pi `session_start`/`session_shutdown` integration point |
-| `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | Carrier-id-keyed pool operations |
+| `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations (carrier callers pass `carrierId`; squadron/taskforce pass synthetic ids) |
 | `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getThinkingLevels` | CLI/model codec |
 | `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
 | `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |
 
-`admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `state.ts` (session/launch/bridge maps), `session-runtime.ts` (the **single** persistence store + `ResumeFailureKind` classifier), `session-engine.ts` (ensure/sendMessage/deliverToolResults engine), `event-normalizer.ts` (unified-agent → `AgentStreamEvent`), `mcp-router.ts` (MCP token routing + FIFO + tool registration), `executor-engine.ts` (pool + drift detection for the callback path; module-level Maps replace legacy `globalThis`), and `post-connect.ts` (single `applyPostConnectConfig` shared by session-engine and executor-engine).
+`admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `state.ts` (session/launch/bridge maps), `session-runtime.ts` (the **single** persistence store + `ResumeFailureKind` classifier), `session-engine.ts` (ensure/sendMessage/deliverToolResults engine), `event-normalizer.ts` (unified-agent → `AgentStreamEvent`), `mcp-router.ts` (MCP token routing + FIFO + tool registration), `executor-engine.ts` (pool + drift detection for the callback path; module-level Maps replace legacy `globalThis`), `post-connect.ts` (single `applyPostConnectConfig` shared by session-engine and executor-engine), and `tool-snapshot.ts` (relocated from the former `infra/tool-registry/`).
 
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.
+
+### Unified `AgentToolSpec` shape
+
+The agent tool registry uses a single doctrine + execution interface. There is no longer a separate `ToolPromptManifest` / `AgentToolMcpDescriptor` / `AgentToolPiDescriptor` / `AgentToolRenderDescriptor` split:
+
+```ts
+interface AgentToolSpec {
+  readonly id: string;            // dispatch id (a-z, 0-9, _) — also the MCP tool name
+  readonly tag: string;           // `<fleet section="tool-guide" tool="${tag}">` block id
+  readonly title: string;
+  readonly description: string;
+  readonly promptSnippet: string;
+  readonly whenToUse: readonly string[];     // binding — no emphasis markers
+  readonly whenNotToUse: readonly string[];  // binding — no emphasis markers
+  readonly usageGuidelines: readonly string[];
+  readonly guardrails?: readonly string[];
+  readonly parameters: Record<string, unknown>; // JSON Schema
+  execute(args: unknown, ctx: AgentToolCtx): Promise<unknown>;
+}
+```
+
+Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines `AgentToolCtx` + `AgentToolSpec`; `admiral/agent/tools.ts` exposes `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` alongside `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools`. The deprecated `name` / `label` / `promptGuidelines` / `render` / `pi` / `mcp` fields and the entire `infra/tool-registry/` directory (six files: `derive.ts`, `formatter.ts`, `registry.ts`, `tool-snapshot.ts`, `types.ts`, `index.ts`) are removed; `tool-snapshot.ts` now lives at `admiral/agent/internal/tool-snapshot.ts`.
 
 ## Owns
 
@@ -45,7 +67,7 @@
   - `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/` — fleet tool specs and execution doctrine.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
-- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log/tool-registry infra, and `metaphor/`.
+- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log infra, and `metaphor/`. The former `infra/tool-registry/` directory has been removed; tool registry, doctrine formatter, and tool-snapshot now live in `admiral/agent/tools.ts` (registry + `renderAgentToolDoctrineTag()`) and `admiral/agent/internal/tool-snapshot.ts`.
 - Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly. Note that `agent-services.ts` and `tool-registry-services.ts` have been removed from the public surface.
 - `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes runtime-owned state and returns `FleetCoreRuntimeContext` containing exactly `admiral`, `admiralty`, `metaphor`, `infra`, and `shutdown`.
 - Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Session lifecycle is owned by `admiral.agent.session` and `admiral.agent.lifecycle`; internal persistence remains in `admiral/agent/internal/session-runtime.ts`.

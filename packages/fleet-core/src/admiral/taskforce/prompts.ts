@@ -1,27 +1,11 @@
-/**
- * fleet/shipyard/taskforce/prompts.ts — carrier_taskforce 도구 프롬프트 / 스키마 관리
- *
- * carrier_taskforce 도구 등록에 필요한 모든 프롬프트 메타데이터와
- * TypeBox 파라미터 스키마를 한 곳에서 조립합니다.
- */
-
 import { Type, type TObject } from "@sinclair/typebox";
 import { CLI_DISPLAY_NAMES } from "../../constants.js";
-import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
-import {
-  deriveToolDescription,
-  deriveToolPromptGuidelines,
-  deriveToolPromptSnippet,
-} from "../../infra/tool-registry/index.js";
 import { TASKFORCE_CLI_TYPES } from "./types.js";
 
-// ─────────────────────────────────────────────────────────
-// 1. 상수 프롬프트
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// 상수
+// ═════════════════════════════════════════════════════════
 
-/**
- * carrier_taskforce 도구 설명 (Tool Schema — LLM이 도구 선택 시 참조).
- */
 const TASKFORCE_BACKEND_LABELS = TASKFORCE_CLI_TYPES
   .map((cliType) => CLI_DISPLAY_NAMES[cliType] ?? cliType)
   .join(", ");
@@ -29,7 +13,7 @@ const TASKFORCE_BACKEND_LABELS = TASKFORCE_CLI_TYPES
 const TASKFORCE_CONFIGURE_HINT =
   `open Carrier Status (Alt+O) and press T to configure at least two CLI backends (${TASKFORCE_BACKEND_LABELS})`;
 
-export const TASKFORCE_MANIFEST: ToolPromptManifest = {
+export const TASKFORCE_DOCTRINE = {
   id: "carrier_taskforce",
   tag: "carrier_taskforce",
   title: "carrier_taskforce Tool Guidelines",
@@ -60,37 +44,10 @@ export const TASKFORCE_MANIFEST: ToolPromptManifest = {
   ],
 };
 
-export const FLEET_TASKFORCE_DESCRIPTION = deriveToolDescription(TASKFORCE_MANIFEST);
+// ═════════════════════════════════════════════════════════
+// 함수
+// ═════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────────────────
-// 2. Build 함수
-// ─────────────────────────────────────────────────────────
-
-/** carrier_taskforce의 `promptSnippet` 값을 반환합니다. */
-export function buildTaskForcePromptSnippet(): string {
-  return deriveToolPromptSnippet(TASKFORCE_MANIFEST);
-}
-
-/**
- * carrier_taskforce의 `promptGuidelines` 배열을 반환합니다.
- *
- * @param configuredCarrierIds TF 편성이 가능한 carrier ID 목록
- */
-export function buildTaskForcePromptGuidelines(configuredCarrierIds: string[]): string[] {
-  if (configuredCarrierIds.length === 0) {
-    return deriveToolPromptGuidelines(TASKFORCE_MANIFEST, [
-      `## Task Force Carriers\nNo carriers currently meet the Task Force ≥2 backend requirement.` +
-      ` To configure, ${TASKFORCE_CONFIGURE_HINT}.`,
-    ]);
-  }
-  return deriveToolPromptGuidelines(TASKFORCE_MANIFEST, []);
-}
-
-/**
- * carrier_taskforce의 TypeBox `parameters` 스키마를 반환합니다.
- *
- * @param configuredCarrierIds TF 편성이 가능한 carrier ID 목록
- */
 export function buildTaskForceSchema(configuredCarrierIds: string[]): TObject {
   const availableDesc =
     configuredCarrierIds.length > 0

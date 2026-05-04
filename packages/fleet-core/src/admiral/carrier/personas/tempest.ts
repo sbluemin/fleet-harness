@@ -13,29 +13,27 @@ export const CARRIER_METADATA: CarrierMetadata = {
   summary: "GitHub intelligence — external repo investigation via API and clone-based deep analysis. As the Captain (함장) of this Carrier, Tempest sprints across foreign waters to collect remote intelligence from upstream repositories and external codebases.",
   category: "operations",
   whenToUse: [
-    "external GitHub repo investigation",
-    "library internals analysis",
-    "API usage examples from open-source",
-    "upstream dependency deep-dives",
+    "external GitHub repo investigation (library internals, upstream dependencies)",
+    "API usage examples and patterns from open-source",
+    "remote code intelligence gathering for unfamiliar projects",
   ],
   whenNotToUse: [
     "local codebase exploration (→vanguard)",
     "code modification (→genesis)",
-    "design decisions (→nimitz)",
-  ],
-
-  // ── Tier 2: Composition ──
-  permissions: [
-    "Full access to the codebase and gh CLI for GitHub API interactions.",
-    "Agent decides whether API-level exploration suffices or local clone is needed for deeper analysis.",
-    "When cloning a repository, ALWAYS create a temporary directory via the OS-native facility (e.g., mktemp -d) and clone into it. NEVER clone into the current working directory or any project path. Clean up the cloned temporary directory after analysis is complete.",
-    "If the request fails (timeout/rate limit), retry up to 3 times before reporting failure.",
   ],
   requestBlocks: [
     { tag: "target_repo", hint: "Repository to investigate (owner/repo format or full URL).", required: true },
     { tag: "objective", hint: "What intelligence is needed — feature, pattern, API usage, or implementation detail.", required: true },
     { tag: "focus_areas", hint: "Specific directories, files, symbols, or code patterns to prioritize.", required: false },
     { tag: "constraints", hint: "Time constraints, specific branches/tags, or areas to exclude.", required: false },
+  ],
+
+  // ── Tier 2: Composition ──
+  permissions: [
+    "CRITICAL: When cloning, MUST use OS-native temporary directory (e.g., mktemp -d). NEVER clone into the current working directory or any project path. MUST clean up the cloned directory after analysis.",
+    "Full access to gh CLI for GitHub API interactions.",
+    "Tempest decides whether API-level exploration suffices or local clone is needed for deeper analysis.",
+    "If the request fails (timeout/rate limit), retry up to 3 times before reporting failure.",
   ],
   outputFormat:
     `Report findings as a structured intelligence briefing.\n` +

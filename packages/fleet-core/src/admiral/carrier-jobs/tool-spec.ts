@@ -1,24 +1,14 @@
-import type { AgentToolSpec } from "../../infra/tool-registry/types.js";
-import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
+import type { AgentToolSpec } from "../agent/types.js";
 import { dispatchCarrierJobsAction } from "./dispatch.js";
 import {
-  CARRIER_JOBS_DESCRIPTION,
-  CARRIER_JOBS_MANIFEST,
-  buildCarrierJobsPromptGuidelines,
-  buildCarrierJobsPromptSnippet,
+  CARRIER_JOBS_DOCTRINE,
   buildCarrierJobsSchema,
 } from "./prompts.js";
 import type { CarrierJobsParams } from "./types.js";
 
 export function buildCarrierJobsToolSpec(): AgentToolSpec {
-  registerToolPromptManifest(CARRIER_JOBS_MANIFEST);
-
   return {
-    name: "carrier_jobs",
-    label: "Carrier Jobs",
-    description: CARRIER_JOBS_DESCRIPTION,
-    promptSnippet: buildCarrierJobsPromptSnippet(),
-    promptGuidelines: buildCarrierJobsPromptGuidelines(),
+    ...CARRIER_JOBS_DOCTRINE,
     parameters: buildCarrierJobsSchema(),
     async execute(args: unknown) {
       const result = dispatchCarrierJobsAction(args as CarrierJobsParams);

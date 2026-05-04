@@ -18,7 +18,7 @@ import { FLEET_PI_PERSONA_PROMPT, FLEET_TONE_PROMPT } from "../metaphor/prompts.
 import { isWorldviewEnabled } from "../metaphor/worldview.js";
 import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
-import { getAllToolPromptManifests, renderToolPromptManifestTagBlock } from "../infra/tool-registry/index.js";
+import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
 import {
   getActiveSquadronIds,
   getActiveTaskForceIds,
@@ -221,8 +221,8 @@ export function buildSystemPrompt(): string {
   }
 
   // ── 5. 등록된 도구 가이드라인 manifest ──
-  for (const manifest of getAllToolPromptManifests()) {
-    parts.push(renderToolPromptManifestTagBlock(manifest));
+  for (const spec of getAllAgentTools()) {
+    parts.push(renderAgentToolDoctrineTag(spec));
   }
 
   return parts.join("\n\n");

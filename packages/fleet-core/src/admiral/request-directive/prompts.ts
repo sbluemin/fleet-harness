@@ -1,7 +1,5 @@
 import { Type } from "@sinclair/typebox";
 
-import type { ToolPromptManifest } from "../../infra/tool-registry/index.js";
-
 import type { DirectiveOption, DirectiveQuestion } from "./types.js";
 
 export const HEADER_MAX_LENGTH = 12;
@@ -54,7 +52,7 @@ export const RequestDirectiveParams = Type.Object({
   }),
 });
 
-export const REQUEST_DIRECTIVE_MANIFEST: ToolPromptManifest = {
+export const REQUEST_DIRECTIVE_DOCTRINE = {
   id: "request_directive",
   tag: "request_directive",
   title: "request_directive Tool Guidelines",

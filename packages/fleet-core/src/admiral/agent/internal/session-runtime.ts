@@ -17,9 +17,9 @@ type SessionMap = Record<string, string>;
 
 export interface SessionMapStore {
   restore(piSessionId: string): void;
-  get(carrierId: string): string | undefined;
-  set(carrierId: string, sessionId: string): void;
-  clear(carrierId: string): void;
+  get(key: string): string | undefined;
+  set(key: string, sessionId: string): void;
+  clear(key: string): void;
   getAll(): Readonly<SessionMap>;
 }
 
@@ -81,8 +81,8 @@ export function getSessionStore(): SessionMapStore {
   return sessionStore ?? noopStore;
 }
 
-export function getSessionId(carrierId: string): string | undefined {
-  return sessionStore?.get(carrierId);
+export function getSessionId(key: string): string | undefined {
+  return sessionStore?.get(key);
 }
 
 export function getDataDir(): string | null {
@@ -122,17 +122,17 @@ export function createSessionMapStore(sessionDir: string): SessionMapStore {
         currentMap = {};
       }
     },
-    get(carrierId: string): string | undefined {
-      return currentMap[carrierId];
+    get(key: string): string | undefined {
+      return currentMap[key];
     },
-    set(carrierId: string, sessionId: string): void {
-      if (currentMap[carrierId] === sessionId) return;
-      currentMap[carrierId] = sessionId;
+    set(key: string, sessionId: string): void {
+      if (currentMap[key] === sessionId) return;
+      currentMap[key] = sessionId;
       persist();
     },
-    clear(carrierId: string): void {
-      if (!(carrierId in currentMap)) return;
-      delete currentMap[carrierId];
+    clear(key: string): void {
+      if (!(key in currentMap)) return;
+      delete currentMap[key];
       persist();
     },
     getAll(): Readonly<SessionMap> {

@@ -6,10 +6,10 @@
 
 import type { CliType } from "@sbluemin/unified-agent";
 
-import type { AgentToolSpec } from "../../infra/tool-registry/index.js";
+import type { AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
-import type { CarrierExecResult } from "../agent/executor.js";
+import type { ExecResult } from "../agent/executor.js";
 
 import {
   CLI_DISPLAY_NAMES,
@@ -27,7 +27,6 @@ import {
   toThoughtArchiveBlock,
 } from "../../infra/job/index.js";
 import { getLogAPI } from "../../infra/log/store.js";
-import { registerToolPromptManifest } from "../../infra/tool-registry/index.js";
 import { executeOneShot } from "../agent/executor.js";
 import {
   emitStreamEvent,
@@ -42,16 +41,13 @@ import {
   isCarrierOnline,
   resolveCarrierDisplayName,
 } from "../carrier/framework.js";
-import { buildCarrierSystemPrompt, composeTier2Request } from "../carrier/prompts.js";
+import { buildCarrierSystemPrompt } from "../carrier/prompts.js";
 import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
 } from "../store/index.js";
 import {
-  FLEET_TASKFORCE_DESCRIPTION,
-  TASKFORCE_MANIFEST,
-  buildTaskForcePromptGuidelines,
-  buildTaskForcePromptSnippet,
+  TASKFORCE_DOCTRINE,
   buildTaskForceSchema,
 } from "./prompts.js";
 import {
@@ -72,7 +68,7 @@ interface TaskForceBackgroundOptions {
   carrierId: string;
   requestKey: string;
   activeBackends: TaskForceCliType[];
-  composedRequest: string;
+  request: string;
   state: TaskForceState;
   signal: AbortSignal | undefined;
   cwd: string;
@@ -93,25 +89,11 @@ export function buildTaskForceToolSpec(): AgentToolSpec | null {
   const allCarriers = getRegisteredOrder();
   if (allCarriers.length < 1) return null;
 
-  registerToolPromptManifest(TASKFORCE_MANIFEST);
-
   const configuredCarriers = getActiveTaskForceIds();
-  const guidelines = buildTaskForcePromptGuidelines(configuredCarriers);
 
   return {
-    name: "carrier_taskforce",
-    label: "Carrier Task Force",
-    description: FLEET_TASKFORCE_DESCRIPTION,
-    promptSnippet: buildTaskForcePromptSnippet(),
-    promptGuidelines: guidelines,
+    ...TASKFORCE_DOCTRINE,
     parameters: buildTaskForceSchema(configuredCarriers),
-
-    render: {
-      call(args: unknown) {
-        const typedArgs = args as { carrier?: string };
-        return typedArgs.carrier ?? "...";
-      },
-    },
 
     async execute(args: unknown, ctx) {
       const t0 = Date.now();
@@ -155,8 +137,6 @@ export function buildTaskForceToolSpec(): AgentToolSpec | null {
         }
       }
 
-      const composedRequest = buildComposedTaskForceRequest(carrierId, request);
-
       const launch = startDetachedJob({
         jobKind: "taskforce",
         toolName: "carrier_taskforce",
@@ -175,7 +155,7 @@ export function buildTaskForceToolSpec(): AgentToolSpec | null {
         carrierId,
         requestKey,
         activeBackends,
-        composedRequest,
+        request,
         state,
         signal: launch.signal,
         cwd,
@@ -196,7 +176,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
   try {
     const settledResults = await Promise.allSettled(
       opts.activeBackends.map((cliType) =>
-        runTaskForceBackend(cliType, opts.carrierId, opts.requestKey, opts.composedRequest, opts.state, opts.signal, opts.cwd, opts.jobId),
+        runTaskForceBackend(cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId),
       ),
     );
     opts.state.finishedAt = Date.now();
@@ -271,13 +251,6 @@ function assertTaskForceFormable(carrierId: string): TaskForceCliType[] {
   }
 }
 
-function buildComposedTaskForceRequest(carrierId: string, request: string): string {
-  const carrierConfig = getRegisteredCarrierConfig(carrierId);
-  return carrierConfig?.carrierMetadata
-    ? composeTier2Request(carrierConfig.carrierMetadata, request)
-    : request;
-}
-
 function getRequiredTaskForceModelConfig(
   carrierId: string,
   cliType: TaskForceCliType,
@@ -323,13 +296,13 @@ async function runTaskForceBackend(
 
   try {
     const result = await executeOneShot({
-      carrierId: syntheticId,
+      poolKey: syntheticId,
       cliType: cliType as CliType,
       request,
       cwd,
       model: modelConfig.model,
       effort: modelConfig.effort,
-      connectSystemPrompt: buildCarrierSystemPrompt(),
+      connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(carrierId)?.carrierMetadata),
       signal,
       onStatusChange: (status) => {
         emitTrackStatus(jobId, trackId, status);
@@ -403,7 +376,7 @@ function emitTaskForceJobRegistered(
 
 function buildTaskForceResult(
   cliType: TaskForceCliType,
-  result: CarrierExecResult,
+  result: ExecResult,
 ): TaskForceResult {
   return {
     cliType,
@@ -450,7 +423,7 @@ function emitTrackStatus(jobId: string, trackId: string, status: TrackStatus): v
   emitStreamEvent({ type: "track:status", jobId, trackId, status });
 }
 
-function emitTrackFinalized(jobId: string, trackId: string, result: CarrierExecResult): void {
+function emitTrackFinalized(jobId: string, trackId: string, result: ExecResult): void {
   const status = toCarrierJobStatus(result.status);
   emitStreamEvent({
     type: "track:finalized",

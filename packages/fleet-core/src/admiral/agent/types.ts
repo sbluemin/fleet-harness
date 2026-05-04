@@ -1,5 +1,32 @@
-import type { TypeBoxSchema } from "../../infra/tool-registry/types.js";
 import type { McpCallToolResult } from "../_shared/mcp.js";
+
+// ═════════════════════════════════════════════════════════
+// Types / Interfaces
+// ═════════════════════════════════════════════════════════
+
+export interface AgentToolCtx {
+  readonly cwd: string;
+  readonly toolCallId?: string;
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * doctrine(프롬프트 가이드) + execution(파라미터/실행)을 통합한 단일 도구 스펙.
+ * doctrine 필드는 `renderAgentToolDoctrineTag()`로 `<fleet>` 태그 블록으로 렌더링된다.
+ */
+export interface AgentToolSpec {
+  readonly id: string;
+  readonly tag: string;
+  readonly title: string;
+  readonly description: string;
+  readonly promptSnippet: string;
+  readonly whenToUse: readonly string[];
+  readonly whenNotToUse: readonly string[];
+  readonly usageGuidelines: readonly string[];
+  readonly guardrails?: readonly string[];
+  readonly parameters: Record<string, unknown>;
+  execute(args: unknown, ctx: AgentToolCtx): Promise<unknown>;
+}
 
 export interface SessionHandle {
   readonly sessionId: string;
@@ -14,41 +41,6 @@ export interface ConversationHistoryEntry {
 export interface SendMessageRequest {
   readonly userRequest: string;
   readonly history?: readonly ConversationHistoryEntry[];
-}
-
-export interface AgentToolCtx {
-  readonly cwd: string;
-  readonly toolCallId?: string;
-  readonly signal?: AbortSignal;
-}
-
-export interface RenderEntry {
-  label: string;
-  text: string;
-}
-
-export interface ToolMetadata {
-  readonly name: string;
-  readonly label?: string;
-  readonly description: string;
-  readonly parameters: TypeBoxSchema;
-  readonly promptSnippet?: string;
-  readonly promptGuidelines?: readonly string[];
-  readonly displayHints?: {
-    readonly icon?: string;
-    readonly badgeColor?: string;
-    previewExtractor?(args: unknown): readonly RenderEntry[];
-  };
-}
-
-export interface AgentToolSpec {
-  readonly name: string;
-  readonly label?: string;
-  readonly description: string;
-  readonly promptSnippet?: string;
-  readonly promptGuidelines?: readonly string[];
-  readonly parameters: TypeBoxSchema;
-  execute(args: unknown, ctx: AgentToolCtx): Promise<unknown>;
 }
 
 export type { McpCallToolResult };

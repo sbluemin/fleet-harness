@@ -504,11 +504,14 @@ function extractAllToolResults(context: Context): ToolResultEnvelope[] {
 
 function piToolToAgentSpec(tool: PiTool): AgentToolSpec {
   return {
-    name: tool.name,
-    label: undefined,
+    id: tool.name,
+    tag: tool.name,
+    title: tool.name,
     description: tool.description,
-    promptSnippet: undefined,
-    promptGuidelines: undefined,
+    promptSnippet: `${tool.name} — ${tool.description}`,
+    whenToUse: [],
+    whenNotToUse: [],
+    usageGuidelines: [],
     parameters: tool.parameters as AgentToolSpec["parameters"],
     execute: async () => ({ content: [{ type: "text", text: "(host tool)" }] }),
   };

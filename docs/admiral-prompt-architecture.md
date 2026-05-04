@@ -324,8 +324,8 @@ ultimately call `client.sendMessage(...)` on an ACP client, but they differ in
 │      executor-engine.ts:298  client.sendMessage(request)           │
 │      executor-engine.ts:411  client.sendMessage(request)           │
 │                                                                    │
-│  Lifetime: single carrier turn, returns CarrierExecResult          │
-│            synchronously, callbacks via CarrierExecuteOptions      │
+│  Lifetime: single carrier turn, returns ExecResult                 │
+│            synchronously, callbacks via ExecuteOptions             │
 │            (onMessageChunk / onThoughtChunk / onToolCall / ...)    │
 │                                                                    │
 │  Carrier system prompt: buildCarrierSystemPrompt() at              │

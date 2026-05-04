@@ -14,7 +14,7 @@
 | `packages/` | First-party workspace packages: `unified-agent`, `fleet-core`, `fleet-wiki`, `fleet-wiki-web`, `pi-fleet-extension` |
 | `packages/fleet-core/` | Pi-agnostic Fleet product core — Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, **Admiral orchestration runtime**, and public APIs |
 | `packages/fleet-core/src/admiral/` | Admiral-owned Fleet orchestration/runtime modules: `_shared/` (carrier-job-events SSOT stream events, cli-tool-types, MCP server singleton), **`agent/`** (the canonical agent domain — `session/lifecycle/connections/models/events/serviceStatus/tools/bridge/executor` + `internal/{state,session-runtime,session-engine,event-normalizer,mcp-router,executor-engine,post-connect}`), `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/`, `store/` (provider-catalog and `fleet-store.ts` unified persistence), and `protocols/`. **Standing orders** are integrated under `protocols/standing-orders/`. |
-| `packages/fleet-core/src/infra/` | Shared pure infrastructure modules. Includes `auth/`, `data-dir/`, `job/`, `log/`, `settings/`, and **tool-registry**. |
+| `packages/fleet-core/src/infra/` | Shared pure infrastructure modules. Includes `auth/`, `data-dir/`, `job/`, `log/`, and `settings/`. The former `tool-registry/` directory is removed; all tool registry / formatter responsibilities now live in `admiral/agent/tools.ts` (single SSoT) with `tool-snapshot` relocated to `admiral/agent/internal/`. |
 | `packages/fleet-core/src/admiralty/` | Grand Fleet domain home inside `fleet-core` (renamed from `gfleet`). Exposed via `@sbluemin/fleet-core/admiralty`. |
 | `packages/fleet-core/src/public/` | Public composition surface. Keep `runtime.ts` plus four assembly-only service modules: `admiral-services`, `admiralty-services`, `metaphor-services`, and `infra-services`. |
 | `packages/pi-fleet-extension/` | Pi capability package — Flat Domain Architecture mirroring fleet-core public services |
@@ -40,7 +40,7 @@ The `pi-fleet-extension` architecture mirrors the public services of `fleet-core
 | `admiral`                 | `src/provider.ts`, `src/fleet.ts`, `src/tools.ts`, `src/jobs.ts` | Agent orchestration, providers, carrier jobs, protocols, carrier status |
 | `admiralty`               | `src/grand-fleet/`        | Multi-instance Grand Fleet orchestration |
 | `metaphor`                | `src/metaphor.ts`         | Persona, worldview, operation naming, directive refinement |
-| `infra`                   | `src/settings.ts`, `src/logs.ts`, `src/panel/`, host helpers | Settings, logs, job archive/lifecycle utilities, tool registry, shared constants via facades |
+| `infra`                   | `src/settings.ts`, `src/logs.ts`, `src/panel/`, host helpers | Settings, logs, job archive/lifecycle utilities, shared constants via facades. (Tool registry responsibilities moved to `admiral.agent.tools` — see "Fleet tool catalog" SSoT row below.) |
 | `@sbluemin/fleet-wiki`    | `src/wiki/`               | Fleet knowledge base and ingest |
 | (Host specific)           | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | Host shell integration and terminal features |
 
@@ -83,6 +83,13 @@ PI is the **host agent** (orchestrator). Registered Carriers are **sub-agents** 
 | **Vanguard** (sub) | CVN-06 Scout Specialist (Codex CLI via ACP) |
 | **Tempest** (sub) | CVN-07 Forward External Intelligence Strike (Gemini CLI via ACP) |
 | **Chronicle** (sub) | CVN-08 Chief Knowledge Officer — documentation, change-impact summaries, and release communication (Gemini CLI via ACP) |
+
+> **Persona Metadata Emphasis Ladder**: All 8 carrier personas share a three-tier emphasis ladder applied uniformly across `description` / `usageGuidelines` / `guardrails`:
+> - **L1 `CRITICAL: ...`** — safety invariants
+> - **L2 `MUST ... / MUST NOT ...`** — binding obligations
+> - **L3** — plain prose for guidance
+>
+> Self-name repetition has been removed (e.g., `Genesis MUST` → `MUST`). `whenToUse` / `whenNotToUse` entries are binding contracts at the spec level and **cannot** use emphasis markers.
 
 ### Execution Modes
 
@@ -181,7 +188,7 @@ The Admiral agent domain exposes **two distinct execution patterns** that must n
 | Pattern | Surface | Lifetime | Use Case |
 |---------|---------|----------|----------|
 | **Streaming** | `admiral.session.{ensure, sendMessage, deliverToolResults}` + `admiral.events` (module emit/register channel) | Long-lived ACP session, multiplexed per `sessionId` | Pi `streamAcp` host adapter; host `Map<sessionId, push>` routing |
-| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `CarrierExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` | Single carrier turn, returns `CarrierExecResult` synchronously | `carrier_<id>` (individual carrier tools) / `carrier_squadron` / `carrier_taskforce` tool execution |
+| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_<id>` uses `carrierId`, `carrier_squadron` / `carrier_taskforce` use a synthetic id) | Single carrier turn, returns `ExecResult` synchronously | `carrier_<id>` (individual carrier tools) / `carrier_squadron` / `carrier_taskforce` tool execution |
 
 **Why the separation matters**: streaming routes events through a global module channel keyed by `sessionId`, while executor callbacks are owner-specific and finite. Forcing one pattern through the other path causes either listener leaks (callback as event) or routing collisions (event as callback).
 
@@ -196,6 +203,8 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | MCP server URL + token routing | `admiral/_shared/mcp.ts` lazy singleton | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
 | CLI provider catalog | `@sbluemin/unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
 | Fleet tool catalog | `admiral.agent.tools.list()` (default specs auto-registered, host extras via `registerExtraTools`) | Host queries metadata + invokes — never re-implements specs. |
+
+> **Unified `AgentToolSpec` Shape**: One interface combines doctrine and execution — `{ id, tag, title, description, promptSnippet, whenToUse[], whenNotToUse[], usageGuidelines[], guardrails?[], parameters, execute }`. The same spec produces both the `<fleet section="tool-guide" tool="${tag}">` doctrine block (via `renderAgentToolDoctrineTag()`) and the executable handler. Legacy `ToolPromptManifest`, `AgentToolRenderDescriptor` / `AgentToolPiDescriptor` / `AgentToolMcpDescriptor`, and the deprecated `name` / `label` / `promptGuidelines` / `render` / `pi` / `mcp` fields are removed. The former `infra/tool-registry/` directory (6 files) no longer exists; the registry/formatter functions live in `admiral/agent/tools.ts` exclusively, exported as `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag`.
 
 ### 4. Public Surface Discipline
 

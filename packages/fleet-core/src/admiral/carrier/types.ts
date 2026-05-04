@@ -56,12 +56,12 @@ export interface CarrierMetadata {
   whenToUse: string[];
   /** 부정 호출 조건 (N개, 짧은 구문) */
   whenNotToUse: string[];
+  /** 구조화 요청 블록 — 로스터 및 도구 가이드라인에 노출 */
+  requestBlocks: RequestBlock[];
 
   // ── Tier 2: Composition (→ 실행 시 request에 자동 주입) ──
   /** 권한/제약 (여러 줄) */
   permissions: string[];
-  /** 구조화 요청 블록 */
-  requestBlocks: RequestBlock[];
   /** <output_format> 전체 블록 — framework가 request 끝에 자동 append */
   outputFormat: string;
   /** 일반 원칙 (carrier 고유 행동 지침, 2-3줄) */

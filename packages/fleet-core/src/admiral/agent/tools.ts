@@ -1,35 +1,95 @@
-import type { AgentToolCtx, AgentToolSpec, McpCallToolResult, ToolMetadata } from "./types.js";
+import type { AgentToolCtx, AgentToolSpec, McpCallToolResult } from "./types.js";
 import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
 import { buildCarrierToolSpecs } from "../carrier/tool-spec.js";
 import { buildRequestDirectiveToolSpec } from "../request-directive/tool-spec.js";
 import { buildSquadronToolSpec } from "../squadron/tool-spec.js";
 import { buildTaskForceToolSpec } from "../taskforce/tool-spec.js";
 
-const defaultTools = new Map<string, AgentToolSpec>();
+// ═════════════════════════════════════════════════════════
+// Agent Tool Registry — doctrine + 실행 통합 저장소 (SSoT)
+// ═════════════════════════════════════════════════════════
+
+const TOOL_ID_PATTERN = /^[a-z0-9_]+$/;
+const doctrineOrder: string[] = [];
+const doctrineEntries = new Map<string, AgentToolSpec>();
 const extraTools = new Map<string, Map<string, AgentToolSpec>>();
 let defaultToolsBuilt = false;
 
-export function registerDefaultTool(spec: AgentToolSpec): void {
-  defaultTools.set(spec.name, spec);
+export function registerAgentTool(spec: AgentToolSpec): void {
+  assertToolId(spec.id, "id");
+  assertToolId(spec.tag, "tag");
+  assertUniqueTag(spec);
+
+  if (!doctrineEntries.has(spec.id)) {
+    doctrineOrder.push(spec.id);
+  }
+
+  doctrineEntries.set(spec.id, spec);
 }
 
-export function list(): readonly ToolMetadata[] {
+export function getAllAgentTools(): AgentToolSpec[] {
   ensureDefaultToolsRegistered();
-  const metas: ToolMetadata[] = [];
-  for (const spec of defaultTools.values()) {
-    metas.push(specToMetadata(spec));
+  return doctrineOrder
+    .map((id) => doctrineEntries.get(id))
+    .filter((s): s is AgentToolSpec => s != null);
+}
+
+// ═════════════════════════════════════════════════════════
+// Doctrine Formatter — spec → `<fleet>` 태그 블록
+// ═════════════════════════════════════════════════════════
+
+function renderList(items: readonly string[]): string {
+  return items
+    .map((item) => {
+      if (/^\s*(?:\d+\.\s|- )/.test(item)) {
+        return item;
+      }
+      return `- ${item}`;
+    })
+    .join("\n");
+}
+
+function renderDoctrineMarkdown(spec: AgentToolSpec): string {
+  const sections = [
+    `# ${spec.title}`,
+    spec.description,
+    `## When to use\n${renderList(spec.whenToUse)}`,
+    `## Usage guidelines\n${renderList(spec.usageGuidelines)}`,
+  ];
+
+  if (spec.whenNotToUse.length > 0) {
+    sections.splice(3, 0, `## When NOT to use\n${renderList(spec.whenNotToUse)}`);
   }
+
+  if (spec.guardrails && spec.guardrails.length > 0) {
+    sections.push(`## Guardrails\n${renderList(spec.guardrails)}`);
+  }
+
+  return sections.join("\n\n");
+}
+
+export function renderAgentToolDoctrineTag(spec: AgentToolSpec): string {
+  return `<fleet section="tool-guide" tool="${spec.tag}">\n${renderDoctrineMarkdown(spec)}\n</fleet>`;
+}
+
+// ═════════════════════════════════════════════════════════
+// Tool Registry — 도구 등록/조회/실행
+// ═════════════════════════════════════════════════════════
+
+export function list(): readonly AgentToolSpec[] {
+  ensureDefaultToolsRegistered();
+  const specs: AgentToolSpec[] = [...getAllAgentTools()];
   for (const scoped of extraTools.values()) {
     for (const spec of scoped.values()) {
-      metas.push(specToMetadata(spec));
+      specs.push(spec);
     }
   }
-  return metas;
+  return specs;
 }
 
 export function listSpecs(): readonly AgentToolSpec[] {
   ensureDefaultToolsRegistered();
-  return [...defaultTools.values()];
+  return getAllAgentTools();
 }
 
 export async function invoke(name: string, args: unknown, ctx?: Partial<AgentToolCtx>): Promise<McpCallToolResult> {
@@ -40,7 +100,7 @@ export async function invoke(name: string, args: unknown, ctx?: Partial<AgentToo
     signal: ctx?.signal,
   };
 
-  const spec = defaultTools.get(name) ?? findExtraTool(name);
+  const spec = doctrineEntries.get(name) ?? findExtraTool(name);
   if (!spec) {
     return {
       content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -55,7 +115,7 @@ export async function invoke(name: string, args: unknown, ctx?: Partial<AgentToo
 export function registerExtraTools(scopeKey: string, tools: readonly AgentToolSpec[]): void {
   const scoped = extraTools.get(scopeKey) ?? new Map();
   for (const spec of tools) {
-    scoped.set(spec.name, spec);
+    scoped.set(spec.id, spec);
   }
   extraTools.set(scopeKey, scoped);
 }
@@ -72,13 +132,18 @@ export function unregisterExtraTools(scopeKey: string, names: readonly string[])
 }
 
 export function clearAllDefaultTools(): void {
-  defaultTools.clear();
+  doctrineOrder.length = 0;
+  doctrineEntries.clear();
   defaultToolsBuilt = false;
 }
 
 export function clearAllExtraTools(): void {
   extraTools.clear();
 }
+
+// ═════════════════════════════════════════════════════════
+// 내부 헬퍼
+// ═════════════════════════════════════════════════════════
 
 function findExtraTool(name: string): AgentToolSpec | undefined {
   for (const scoped of extraTools.values()) {
@@ -92,7 +157,7 @@ function ensureDefaultToolsRegistered(): void {
   if (defaultToolsBuilt) return;
   defaultToolsBuilt = true;
   for (const spec of buildDefaultToolSpecs()) {
-    registerDefaultTool(spec);
+    registerAgentTool(spec);
   }
 }
 
@@ -110,15 +175,21 @@ function buildDefaultToolSpecs(): readonly AgentToolSpec[] {
   return specs;
 }
 
-function specToMetadata(spec: AgentToolSpec): ToolMetadata {
-  return {
-    name: spec.name,
-    label: spec.label,
-    description: spec.description,
-    parameters: spec.parameters,
-    promptSnippet: spec.promptSnippet,
-    promptGuidelines: spec.promptGuidelines,
-  };
+function assertToolId(value: string, field: "id" | "tag"): void {
+  if (!TOOL_ID_PATTERN.test(value)) {
+    throw new Error(`Invalid agent tool spec ${field}: "${value}"`);
+  }
+}
+
+function assertUniqueTag(spec: AgentToolSpec): void {
+  for (const existing of doctrineEntries.values()) {
+    if (existing.id === spec.id) continue;
+    if (existing.tag === spec.tag) {
+      throw new Error(
+        `Agent tool tag "${spec.tag}" is already registered by "${existing.id}"`,
+      );
+    }
+  }
 }
 
 function toMcpCallToolResult(value: unknown): McpCallToolResult {
