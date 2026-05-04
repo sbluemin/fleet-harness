@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-05-04
+
 ### Changed
 - **Carrier-agnostic executor surface**: `executeWithPool` / `executeOneShot` in `@sbluemin/fleet-core` are now carrier-agnostic and accept the renamed `ExecuteOptions` (with a `poolKey` field), returning `ExecResult`. Callers map `poolKey` themselves: `carrier_<id>` tools pass `poolKey: carrierId`; `carrier_squadron` / `carrier_taskforce` pass synthetic ids. The `connections.{disconnect, disconnectAll, cleanIdle, getSessionIdFor}` parameter is renamed `carrierId` → `poolKey`; the internal `SessionMapStore` parameter is renamed `carrierId` → `key`. No behavioral change.
 
