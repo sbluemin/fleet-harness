@@ -37,6 +37,9 @@
 
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.
 
+### Facade-First Export Rule
+All new domain features MUST be exposed through their respective domain facade (`admiral`, `admiralty`, `metaphor`, `infra`) and consumed via the facade namespace (e.g., `admiral.protocols.xxx`). Direct named exports to the root barrel for new domain functionality are prohibited. The root barrel may only re-export the facade objects and frozen legacy symbols.
+
 ### Unified `AgentToolSpec` shape
 
 The agent tool registry uses a single doctrine + execution interface. There is no longer a separate `ToolPromptManifest` / `AgentToolMcpDescriptor` / `AgentToolPiDescriptor` / `AgentToolRenderDescriptor` split:

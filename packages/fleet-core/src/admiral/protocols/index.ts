@@ -11,6 +11,10 @@ import { getSettingsService } from "../../infra/settings/runtime.js";
 import { FLEET_ACTION } from "./fleet-action.js";
 import * as standingOrders from "./standing-orders/index.js";
 export { standingOrders };
+export {
+  buildCompletionReportRequestPrompt,
+  COMPLETION_REPORT_REQUEST_PROMPT,
+} from "./completion-report.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입

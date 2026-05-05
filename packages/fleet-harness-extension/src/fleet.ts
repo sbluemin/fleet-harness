@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { attachStatusContext, detachStatusContext } from "@sbluemin/unified-agent";
 import type { CliType, ServiceStatusContextPort } from "@sbluemin/unified-agent";
 import * as fs from "node:fs";
@@ -238,6 +238,17 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
 }
 
 export function registerFleetPiCommands(pi: ExtensionAPI): void {
+  pi.registerCommand("fleet:admiral:report", {
+    description: "Admiral Completion Report 요청",
+    handler: async (_args, ctx) => {
+      if (typeof pi.sendUserMessage !== "function") {
+        throw new Error("fleet:admiral:report requires PI sendUserMessage support");
+      }
+      pi.sendUserMessage(admiral.protocols.buildCompletionReportRequestPrompt(), { deliverAs: "followUp" });
+      ctx.ui.notify("Completion Report 요청을 Admiral 후속 턴에 전달했습니다.", "info");
+    },
+  });
+
   pi.registerCommand("fleet:jobs:settings", {
     description: "Carrier Jobs 설정 (verbose, delivery mode)",
     handler: async (_args, ctx) => {

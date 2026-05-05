@@ -51,6 +51,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 ## Import Boundaries
 
 - Consume `@sbluemin/fleet-core` only through the root barrel or the four documented subpaths: `admiral`, `admiralty`, `metaphor`, `infra`.
+- When accessing domain functionality, prefer the facade namespace (e.g., `admiral.protocols.xxx`) over root barrel named imports. Root barrel direct imports are reserved for runtime assembly (`createFleetCoreRuntime`) and frozen legacy symbols.
 - Consume Grand Fleet domain APIs through `@sbluemin/fleet-core/admiralty` or the root `admiralty` facade.
 - Large domain adapters (`grand-fleet/`) may export specialized hooks or components for host UI modules to consume.
 - Tool definitions must come from `fleet-core` registries; Pi adapters only handle host registration and rendering.
