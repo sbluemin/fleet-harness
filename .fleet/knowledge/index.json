@@ -1,0 +1,35 @@
+{
+  "fleet-wiki-9-tools": {
+    "path": "wiki/fleet-wiki-9-tools.md",
+    "title": "Fleet Wiki 9-Tool Suite Overview",
+    "tags": [
+      "fleet-wiki",
+      "tools",
+      "architecture",
+      "current"
+    ],
+    "updated": "2026-05-05T09:58:48.249Z"
+  },
+  "fleet-wiki-read-flow": {
+    "path": "wiki/fleet-wiki-read-flow.md",
+    "title": "Fleet Wiki Read Flow (orient, briefing, resolve, read)",
+    "tags": [
+      "fleet-wiki",
+      "read-flow",
+      "retrieval",
+      "current"
+    ],
+    "updated": "2026-05-05T09:59:00.098Z"
+  },
+  "fleet-wiki-write-flow": {
+    "path": "wiki/fleet-wiki-write-flow.md",
+    "title": "Fleet Wiki Write Flow (ingest, patch_queue, compile_source)",
+    "tags": [
+      "fleet-wiki",
+      "write-flow",
+      "approval-gate",
+      "current"
+    ],
+    "updated": "2026-05-05T09:59:12.767Z"
+  }
+}
