@@ -182,3 +182,21 @@
 - target: `wiki/fleet-wiki-future-improvements.md`
 - warning_count: `0`
 
+## 2026-05-05T10:23:39.259Z — raw source added
+
+- id: `fleet-wiki-development-playbook-source`
+- raw_source_ref: `raw/2026-05-05-fleet-wiki-development-playbook-source-97972a6d.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Admiral session log — P0+P1+P2+Wave15 dogfood 결산 인사이트`
+
+## 2026-05-05T10:23:39.260Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-05T10-23-39-182Z-913284ca`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-05-fleet-wiki-development-playbook-source-97972a6d.md`
+- target: `wiki/fleet-wiki-development-playbook.md`
+- warning_count: `0`
+
