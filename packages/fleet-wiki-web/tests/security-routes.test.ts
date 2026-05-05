@@ -151,6 +151,124 @@ describe("security routes", () => {
     expect(data.meta.status).toBe("pending");
   });
 
+  it("returns patch detail with raw body preview when patch body is not JSON", async () => {
+    const malformedBodyPatchId = "2026-05-04T04-00-00-000Z-bad0cafe";
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    const patchDir = path.join(queueDir, malformedBodyPatchId);
+    await mkdir(patchDir, { recursive: true });
+    await writeFile(path.join(patchDir, "patch.md"), [
+      "---",
+      `op: "update_wiki"`,
+      `target: "wiki/valid-id.md"`,
+      `summary: "Raw body patch"`,
+      `proposer: "test"`,
+      `created: "2026-05-04T04:00:00.000Z"`,
+      "---",
+      "This is not a JSON WikiEntry body.",
+    ].join("\n"), "utf8");
+    await writeFile(path.join(patchDir, "meta.json"), JSON.stringify({
+      id: malformedBodyPatchId,
+      status: "pending",
+      createdAt: "2026-05-04T04:00:00.000Z",
+    }), "utf8");
+
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(malformedBodyPatchId)}`);
+
+    expect(response.status).toBe(200);
+    const data = await response.json() as { wikiEntry: { id: string; body: string }; targetExists: boolean };
+    expect(data.wikiEntry.id).toBe("valid-id");
+    expect(data.wikiEntry.body).toBe("This is not a JSON WikiEntry body.");
+    expect(data.targetExists).toBe(true);
+  });
+
+  it("returns raw body preview when patch body is valid JSON but not WikiEntry-shaped", async () => {
+    const malformedJsonPatchId = "2026-05-04T05-00-00-000Z-bad1face";
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    const patchDir = path.join(queueDir, malformedJsonPatchId);
+    await mkdir(patchDir, { recursive: true });
+    await writeFile(path.join(patchDir, "patch.md"), [
+      "---",
+      `op: "update_wiki"`,
+      `target: "wiki/valid-id.md"`,
+      `summary: "JSON-shaped patch"`,
+      `proposer: "test"`,
+      `created: "2026-05-04T05:00:00.000Z"`,
+      "---",
+      `[1, 2, 3]`,
+    ].join("\n"), "utf8");
+    await writeFile(path.join(patchDir, "meta.json"), JSON.stringify({
+      id: malformedJsonPatchId,
+      status: "pending",
+      createdAt: "2026-05-04T05:00:00.000Z",
+    }), "utf8");
+
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(malformedJsonPatchId)}`);
+
+    expect(response.status).toBe(200);
+    const data = await response.json() as { wikiEntry: { id: string; body: string }; targetExists: boolean };
+    expect(data.wikiEntry.id).toBe("valid-id");
+    expect(data.wikiEntry.body).toBe("[1, 2, 3]");
+    expect(data.targetExists).toBe(true);
+  });
+
+  it("returns raw body preview when patch body is a JSON null", async () => {
+    const nullBodyPatchId = "2026-05-04T06-00-00-000Z-bad2face";
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    const patchDir = path.join(queueDir, nullBodyPatchId);
+    await mkdir(patchDir, { recursive: true });
+    await writeFile(path.join(patchDir, "patch.md"), [
+      "---",
+      `op: "update_wiki"`,
+      `target: "wiki/valid-id.md"`,
+      `summary: "Null JSON patch"`,
+      `proposer: "test"`,
+      `created: "2026-05-04T06:00:00.000Z"`,
+      "---",
+      `null`,
+    ].join("\n"), "utf8");
+    await writeFile(path.join(patchDir, "meta.json"), JSON.stringify({
+      id: nullBodyPatchId,
+      status: "pending",
+      createdAt: "2026-05-04T06:00:00.000Z",
+    }), "utf8");
+
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(nullBodyPatchId)}`);
+
+    expect(response.status).toBe(200);
+    const data = await response.json() as { wikiEntry: { id: string; body: string } };
+    expect(data.wikiEntry.id).toBe("valid-id");
+    expect(data.wikiEntry.body).toBe("null");
+  });
+
+  it("returns raw body preview when patch body is a JSON object missing id and body", async () => {
+    const partialBodyPatchId = "2026-05-04T07-00-00-000Z-bad3face";
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    const patchDir = path.join(queueDir, partialBodyPatchId);
+    await mkdir(patchDir, { recursive: true });
+    await writeFile(path.join(patchDir, "patch.md"), [
+      "---",
+      `op: "update_wiki"`,
+      `target: "wiki/valid-id.md"`,
+      `summary: "Partial JSON patch"`,
+      `proposer: "test"`,
+      `created: "2026-05-04T07:00:00.000Z"`,
+      "---",
+      `{"title": "no id or body"}`,
+    ].join("\n"), "utf8");
+    await writeFile(path.join(patchDir, "meta.json"), JSON.stringify({
+      id: partialBodyPatchId,
+      status: "pending",
+      createdAt: "2026-05-04T07:00:00.000Z",
+    }), "utf8");
+
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(partialBodyPatchId)}`);
+
+    expect(response.status).toBe(200);
+    const data = await response.json() as { wikiEntry: { id: string; body: string } };
+    expect(data.wikiEntry.id).toBe("valid-id");
+    expect(data.wikiEntry.body).toBe(`{"title": "no id or body"}`);
+  });
+
   it("returns queue list with correct pendingCount", async () => {
     const response = await fetch(`${baseUrl}/api/queue?status=pending`);
     expect(response.status).toBe(200);

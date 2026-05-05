@@ -325,8 +325,8 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
         patch = await parsePatch(await readFile(join(entryDir, PATCH_FILENAME), "utf8"));
         meta = JSON.parse(await readFile(join(entryDir, PATCH_META_FILENAME), "utf8")) as PatchMeta;
       }
-      const wikiEntry = JSON.parse(patch.body) as WikiEntry;
-      const targetPath = join(context.paths.wikiDir, `${wikiEntry.id}.md`);
+      const wikiEntry = parsePatchWikiEntry(patch);
+      const targetPath = resolvePatchTargetPath(patch.frontmatter.target, context.paths);
       const targetExists = await fileExists(targetPath);
       const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
       sendJson(response, 200, { source, patch, meta, wikiEntry, targetExists, patchSet });
@@ -822,6 +822,46 @@ async function readPatchSetMemberFromDir(
   } catch {
     return { id: patchId, source };
   }
+}
+
+function parsePatchWikiEntry(patch: Awaited<ReturnType<typeof parsePatch>>): WikiEntry {
+  try {
+    const parsed = JSON.parse(patch.body);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      && typeof parsed.id === "string" && typeof parsed.body === "string") {
+      return parsed as WikiEntry;
+    }
+  } catch {
+    // not valid JSON — fall through to raw preview
+  }
+  const id = derivePatchTargetId(patch.frontmatter.target);
+  return {
+    id,
+    title: patch.frontmatter.summary || id,
+    tags: [],
+    created: patch.frontmatter.created,
+    updated: patch.frontmatter.created,
+    version: 0,
+    body: patch.body,
+  };
+}
+
+function derivePatchTargetId(target: string): string {
+  const fileName = target.split(/[\\/]/).pop() ?? "patch";
+  const id = fileName.replace(/\.md$/i, "");
+  return id || "patch";
+}
+
+function resolvePatchTargetPath(target: string, paths: MemoryPaths): string {
+  const absolute = resolvePath(paths.root, target);
+  const relative = relativePath(paths.wikiDir, absolute);
+  if (relative === "" || relative.startsWith("..") || relative.includes("\0")) {
+    return join(paths.wikiDir, "__invalid_patch_target__.md");
+  }
+  if (relative.startsWith("/") || /^[A-Za-z]:/.test(relative)) {
+    return join(paths.wikiDir, "__invalid_patch_target__.md");
+  }
+  return absolute;
 }
 
 async function readOptionalFile(filePath: string): Promise<string | null> {

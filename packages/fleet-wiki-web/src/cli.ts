@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,12 +7,59 @@ import { openBrowser } from "./browser.js";
 import { acquireLockFile, isProcessAlive, LockExistsError, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
 import type { FleetWikiLock } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";
-import { isLockTrustworthyForRestart, isStaleLock } from "./stale.js";
+import { isLockTrustworthyForRestart } from "./stale.js";
+
+export type RestartMode = "restart" | "reuse" | "abort";
+
+export interface RestartDecision {
+  mode: RestartMode;
+  reason?: string;
+}
+
+export type HealthyLockWaitOptions =
+  | { trust: "owned" }
+  | { trust: "existing"; cwd: string };
+
+export interface HealthyLockTrustDecision {
+  trusted: boolean;
+  reason?: string;
+}
 
 const DEFAULT_PORT = 3737;
 const HEALTH_TIMEOUT_MS = 5000;
 const HEALTH_INTERVAL_MS = 150;
 const HOST = "127.0.0.1";
+
+export function evaluateRestartDecision(
+  existing: FleetWikiLock,
+  cwd: string,
+  health: { ok: boolean; cwd: string | null },
+  noAutoRestart: boolean,
+): RestartDecision {
+  const trust = isLockTrustworthyForRestart(existing, cwd, health.cwd);
+  if (!trust.trusted) {
+    return { mode: "abort", reason: trust.reason };
+  }
+  if (noAutoRestart) {
+    return { mode: "reuse" };
+  }
+  return { mode: "restart" };
+}
+
+export function evaluateHealthyLockTrust(
+  lock: FleetWikiLock,
+  health: { ok: boolean; cwd: string | null },
+  options: HealthyLockWaitOptions,
+): HealthyLockTrustDecision {
+  if (!health.ok) {
+    return { trusted: false, reason: "health check failed" };
+  }
+  if (options.trust === "owned") {
+    return { trusted: true };
+  }
+  const trust = isLockTrustworthyForRestart(lock, options.cwd, health.cwd);
+  return trust.trusted ? { trusted: true } : { trusted: false, reason: trust.reason };
+}
 
 export async function main(): Promise<void> {
   const isTTY = process.stdout.isTTY;
@@ -47,7 +93,6 @@ async function directoryExists(dirPath: string): Promise<boolean> {
 }
 
 async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLock> {
-  const distMtime = getDistMtime();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await acquireLockFile(lockPath, {
@@ -57,7 +102,7 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
         startedAt: new Date().toISOString(),
       });
       spawnDetachedServer(cwd, lockPath, configuredPort());
-      return waitForHealthyLock(lockPath);
+      return waitForHealthyLock(lockPath, { trust: "owned" });
     } catch (error) {
       if (!(error instanceof LockExistsError)) throw error;
       const existing = await readLockFile(lockPath);
@@ -65,24 +110,26 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
         if (existing.port > 0) {
           const health = await healthCheck(existing);
           if (health.ok) {
-            if (!process.env.FLEET_WIKI_NO_AUTO_RESTART && isStaleLock(existing, distMtime)) {
-              const trust = isLockTrustworthyForRestart(existing, cwd, health.cwd);
-              if (!trust.trusted) {
-                process.stderr.write(
-                  `기존 lock의 신뢰 검증 실패(${trust.reason}) — 자동 재기동을 중단합니다. ` +
-                  `FLEET_WIKI_NO_AUTO_RESTART=1로 우회하거나 lock 파일을 직접 정리하세요.\n`,
-                );
-              } else {
-                process.stderr.write(`기존 서버(pid=${existing.pid})는 새 빌드 이전 시점이라 종료 후 재기동합니다.\n`);
-                await killServer(existing.pid);
-                await removeLockFile(lockPath);
-                continue;
-              }
+            const decision = evaluateRestartDecision(
+              existing, cwd, health,
+              Boolean(process.env.FLEET_WIKI_NO_AUTO_RESTART),
+            );
+            if (decision.mode === "reuse") {
+              return existing;
             }
-            return existing;
+            if (decision.mode === "abort") {
+              throw new Error(
+                `기존 lock의 신뢰 검증 실패(${decision.reason}) — 재기동할 수 없습니다. ` +
+                `lock 파일을 수동으로 삭제한 후 다시 실행하세요.`,
+              );
+            }
+            process.stderr.write(`기존 서버(pid=${existing.pid})를 종료 후 재기동합니다.\n`);
+            await killServer(existing.pid);
+            await removeLockFile(lockPath);
+            continue;
           }
         }
-        return waitForHealthyLock(lockPath);
+        return waitForHealthyLock(lockPath, { trust: "existing", cwd });
       }
       await removeLockFile(lockPath);
     }
@@ -101,12 +148,22 @@ function spawnDetachedServer(cwd: string, lockPath: string, port: number): void 
   child.unref();
 }
 
-async function waitForHealthyLock(lockPath: string): Promise<FleetWikiLock> {
+async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOptions): Promise<FleetWikiLock> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < HEALTH_TIMEOUT_MS) {
     const lock = await readLockFile(lockPath);
-    if (lock && isProcessAlive(lock.pid) && (await healthCheck(lock)).ok) {
-      return lock;
+    if (lock && isProcessAlive(lock.pid)) {
+      const health = await healthCheck(lock);
+      if (health.ok) {
+        const trust = evaluateHealthyLockTrust(lock, health, options);
+        if (!trust.trusted) {
+          throw new Error(
+            `기존 lock의 신뢰 검증 실패(${trust.reason}) — 재사용할 수 없습니다. ` +
+            `lock 파일을 수동으로 삭제한 후 다시 실행하세요.`,
+          );
+        }
+        return lock;
+      }
     }
     await sleep(HEALTH_INTERVAL_MS);
   }
@@ -138,14 +195,6 @@ function serverUrl(port: number): string {
   return `http://${HOST}:${port}`;
 }
 
-function getDistMtime(): number {
-  try {
-    return statSync(fileURLToPath(new URL("./server.mjs", import.meta.url))).mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
 async function killServer(pid: number): Promise<void> {
   try { process.kill(pid, "SIGTERM"); } catch { return; }
   await sleep(200);
@@ -158,7 +207,10 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-await main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isDirectRun) {
+  await main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}
