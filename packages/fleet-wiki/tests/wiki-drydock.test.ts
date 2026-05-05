@@ -3,8 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 
+import { createConflict } from "../src/conflicts.js";
+import { buildPatchSetId, writePatchSet } from "../src/patch-set.js";
 import { runDryDock } from "../src/drydock.js";
 import { PATCH_FILENAME } from "../src/constants.js";
+import { enqueuePatch, parsePatch } from "../src/patch.js";
 import { ensureMemoryRoot, getIndexMarkdownFile, getLogFile, resolveMemoryPaths } from "../src/paths.js";
 import { WORKSPACE_SCHEMA_AGENTS_FILENAME, WORKSPACE_SCHEMA_FILENAME } from "../src/schema.js";
 import { rebuildIndex, writeRawSourceEntry, writeWikiEntry } from "../src/store.js";
@@ -224,11 +227,136 @@ describe("wiki drydock", () => {
       body: "clean",
     }, paths);
     await rebuildIndex(paths);
-
     const report = await runDryDock(paths);
 
     expect(report.issues.some((issue) => issue.code === "missing_index_md" || issue.code === "malformed_index_md")).toBe(false);
     expect(report.issues.some((issue) => issue.code === "missing_log_md" || issue.code === "malformed_log_md")).toBe(false);
+  });
+
+  it("warns about unresolved conflicts and malformed conflict entries", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const created = await createConflict({
+      reason: "duplicate_title",
+      target: "wiki/alpha.md",
+      wikiId: "alpha",
+      proposed: "---\nid: \"alpha\"\n---\nbody",
+      now: new Date("2026-05-05T00:00:00.000Z"),
+    }, paths);
+    await mkdir(path.join(paths.conflictsDir, "broken"), { recursive: true });
+    await writeFile(path.join(paths.conflictsDir, "broken", "meta.json"), "{broken", "utf8");
+
+    const report = await runDryDock(paths);
+
+    expect(report.issues.some((issue) => issue.code === "conflict_unresolved" && issue.path.endsWith(`${created.meta.id}/meta.json`))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "unresolved_conflict" && issue.path.endsWith("broken/meta.json"))).toBe(true);
+  });
+
+  it("emits semantic warning and info codes without failing ok when no error exists", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "alpha",
+      title: "Alpha Guide",
+      tags: ["ops"],
+      created: "2026-04-20T00:00:00.000Z",
+      updated: "2026-04-20T00:00:00.000Z",
+      version: 1,
+      status: "deprecated",
+      body: "alpha body",
+    }, paths);
+    await writeWikiEntry({
+      id: "beta",
+      title: "Beta Notes",
+      tags: ["ops"],
+      created: "2026-04-20T00:00:00.000Z",
+      updated: "2026-04-20T00:00:00.000Z",
+      version: 1,
+      status: "current",
+      confidence: "high",
+      revalidateAfter: "2020-01-01T00:00:00.000Z",
+      body: "Alpha Guide should be linked explicitly but is not linked here.",
+    }, paths);
+    await rebuildIndex(paths);
+    const report = await runDryDock(paths);
+
+    expect(report.ok).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "orphan_page" && issue.severity === "info")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "cross_reference_suggestion" && issue.path.endsWith("beta.md"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "stale_entry" && issue.path.endsWith("beta.md"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "deprecated_in_index")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "missing_raw_source_for_current" && issue.path.endsWith("beta.md"))).toBe(true);
+  });
+
+  it("reports duplicate_alias, schema_violation, and contradiction markers deterministically", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(
+      path.join(paths.wikiDir, "alpha.md"),
+      [
+        "---",
+        'id: "alpha"',
+        'title: "Alpha"',
+        'tags: ["ops"]',
+        'created: "2026-04-20T00:00:00.000Z"',
+        'updated: "2026-04-20T00:00:00.000Z"',
+        'version: "1"',
+        'aliases: ["shared alias"]',
+        'status: "current"',
+        'supersedes: ["beta"]',
+        "---",
+        "alpha body",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      path.join(paths.wikiDir, "beta.md"),
+      [
+        "---",
+        'id: "beta"',
+        'title: "Alpha"',
+        'tags: ["ops"]',
+        'created: "2026-04-20T00:00:00.000Z"',
+        'updated: "2026-04-21T00:00:00.000Z"',
+        'version: "1"',
+        'aliases: ["shared alias"]',
+        'status: "deprecated"',
+        'supersedes: ["alpha"]',
+        "---",
+        "beta body is different",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      path.join(paths.wikiDir, "invalid.md"),
+      [
+        "---",
+        'id: "invalid"',
+        'title: "Invalid"',
+        'tags: "ops"',
+        'created: "not-a-date"',
+        'updated: "2026-99-99T00:00:00.000Z"',
+        'version: "1"',
+        'aliases: "solo"',
+        'type: "mystery"',
+        'status: "retired"',
+        'related: ["ghost"]',
+        'supersedes: ["ghost"]',
+        'revalidateAfter: "bad-date"',
+        'rawSourceRefs: "not-json"',
+        "---",
+        "Invalid body",
+      ].join("\n"),
+      "utf8",
+    );
+    const report = await runDryDock(paths);
+
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "duplicate_alias" && issue.path.endsWith("beta.md"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "schema_violation" && issue.path.endsWith("invalid.md"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "contradiction_marker" && issue.message.includes("shared alias"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "contradiction_marker" && issue.message.includes("supersedes cycle"))).toBe(true);
   });
 
   it("warns when schema/wiki-schema.md is missing", async () => {
@@ -279,6 +407,25 @@ describe("wiki drydock", () => {
     const report = await runDryDock(paths);
 
     expect(report.issues.some((issue) => issue.code === "prompt_injection" && issue.path === schemaPath)).toBe(true);
+  });
+
+  it("reports orphan_patch_set_member when a patch set references a missing member", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const createdAt = "2026-05-05T00:00:00.000Z";
+    const patchSetId = buildPatchSetId(createdAt, "raw/2026-05-05-source-a1b2c3d4.md");
+    const patch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/alpha.md"\nsummary: "Alpha"\nproposer: "test"\ncreated: "${createdAt}"\n---\n{"id":"alpha","title":"Alpha","tags":[],"created":"${createdAt}","updated":"${createdAt}","version":1,"body":"alpha body"}`);
+    const patchId = await enqueuePatch(patch, paths, { patch_set_id: patchSetId });
+    await writePatchSet(paths, {
+      id: patchSetId,
+      sourceRef: "raw/2026-05-05-source-a1b2c3d4.md",
+      createdAt,
+      patchIds: [patchId, "missing-member"],
+    });
+
+    const report = await runDryDock(paths);
+
+    expect(report.issues.some((issue) => issue.code === "orphan_patch_set_member" && issue.message.includes("missing-member"))).toBe(true);
   });
 });
 

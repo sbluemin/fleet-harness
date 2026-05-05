@@ -61,6 +61,7 @@ function renderPatchDetail(detail: PatchDetailResponse, state: QueueState): stri
         </div>
         <aside class="queue-rail">
           ${renderPatchManifestCard(detail, rawRef)}
+          ${renderPatchSetCard(detail)}
           ${renderQueueActionsCard(detail, state)}
         </aside>
       </div>
@@ -170,6 +171,31 @@ function renderQueueActionsCard(detail: PatchDetailResponse, state: QueueState):
         </div>
       </form>
       ${errorHtml}
+    </div>
+  `;
+}
+
+function renderPatchSetCard(detail: PatchDetailResponse): string {
+  const patchSet = detail.patchSet;
+  if (!patchSet || patchSet.members.length === 0) return "";
+  return `
+    <div class="queue-rail-card">
+      <div class="queue-rail-header">
+        <p class="drydock-eyebrow">MANIFEST · DRYDOCK</p>
+        <p class="queue-rail-subtitle">${t("queue.patchSetSubtitle")}</p>
+      </div>
+      <p class="queue-patch-id">${escapeHtml(patchSet.id)}</p>
+      <ul class="patch-set-list">
+        ${patchSet.members.map((member) => `
+          <li class="patch-set-item">
+            <span class="patch-set-item-copy">
+              <strong>${escapeHtml(member.summary ?? member.id)}</strong>
+              <small>${escapeHtml(member.target ?? member.id)}</small>
+            </span>
+            <span class="chip ${member.status === "rejected" ? "chip-coral" : ""}">${escapeHtml(member.status ?? member.source)}</span>
+          </li>
+        `).join("")}
+      </ul>
     </div>
   `;
 }

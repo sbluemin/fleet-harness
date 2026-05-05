@@ -10,6 +10,10 @@ const LOG_EVENTS: WikiLogEvent[] = [
   "patch enqueued",
   "patch approved",
   "patch rejected",
+  "patch set staged",
+  "patch set approved",
+  "patch set partially approved",
+  "conflict detected",
   "drydock run",
   "index rebuilt",
 ];

@@ -57,6 +57,7 @@ export interface I18nMessages {
   queue: {
     actionsTitle: string;
     actionsSubtitle: string;
+    patchSetSubtitle: string;
     approve: string;
     reject: string;
     rejectPlaceholder: string;
@@ -89,6 +90,33 @@ export interface I18nMessages {
     subtitle: string;
     emptyNoEntry: string;
     emptyNone: string;
+    outgoingHeading: string;
+  };
+  entry: {
+    contextActionsSubtitle: string;
+    copyCompactContext: string;
+    copyCompactContextDone: string;
+    copyWithProvenance: string;
+    copyWithProvenanceDone: string;
+    copyRelatedContextPack: string;
+    copyRelatedContextDone: string;
+    openRawSource: string;
+    showWhyMatched: string;
+    copyFailed: string;
+  };
+  conflicts: {
+    title: string;
+    empty: string;
+    current: string;
+    proposed: string;
+    rawSource: string;
+  };
+  indexMd: {
+    title: string;
+  };
+  log: {
+    title: string;
+    summary: string;
   };
   meta: {
     updatedPrefix: string;

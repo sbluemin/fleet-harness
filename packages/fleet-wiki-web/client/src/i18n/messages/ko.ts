@@ -57,6 +57,7 @@ export const ko: I18nMessages = {
   queue: {
     actionsTitle: "작업",
     actionsSubtitle: "결정",
+    patchSetSubtitle: "패치 세트",
     approve: "승인",
     reject: "거절",
     rejectPlaceholder: "거절 사유를 입력하세요 (최대 256자)",
@@ -89,6 +90,33 @@ export const ko: I18nMessages = {
     subtitle: "이 문서를 참조하는 항목",
     emptyNoEntry: "문서를 선택하면 이 자리에 백링크가 표시됩니다.",
     emptyNone: "아직 이 문서를 참조하는 다른 문서가 없습니다.",
+    outgoingHeading: "Outgoing",
+  },
+  entry: {
+    contextActionsSubtitle: "Context Actions",
+    copyCompactContext: "Copy compact context",
+    copyCompactContextDone: "compact context를 복사했습니다.",
+    copyWithProvenance: "Copy with provenance",
+    copyWithProvenanceDone: "provenance context를 복사했습니다.",
+    copyRelatedContextPack: "Copy related context pack",
+    copyRelatedContextDone: "related context pack을 복사했습니다.",
+    openRawSource: "Open raw source",
+    showWhyMatched: "Show why matched",
+    copyFailed: "클립보드 복사에 실패했습니다.",
+  },
+  conflicts: {
+    title: "Conflicts",
+    empty: "표시할 conflict가 없습니다.",
+    current: "Current",
+    proposed: "Proposed",
+    rawSource: "Raw Source",
+  },
+  indexMd: {
+    title: "Index",
+  },
+  log: {
+    title: "Log",
+    summary: "최근 {limit}개 / 전체 {total}개 항목",
   },
   meta: {
     updatedPrefix: "갱신",

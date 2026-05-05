@@ -21,12 +21,22 @@ describe("security routes", () => {
     const rawDir = path.join(tempDir, ".fleet", "knowledge", "raw");
     const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
     const archiveDir = path.join(tempDir, ".fleet", "knowledge", "archive");
+    const conflictsDir = path.join(tempDir, ".fleet", "knowledge", "conflicts");
     await mkdir(wikiDir, { recursive: true });
     await mkdir(rawDir, { recursive: true });
     await mkdir(path.join(queueDir, VALID_PATCH_ID), { recursive: true });
     await mkdir(path.join(archiveDir, VALID_PATCH_ID), { recursive: true });
+    await mkdir(path.join(conflictsDir, "conflict-alpha"), { recursive: true });
     await writeEntry(wikiDir, "valid-id", "Valid Entry", "Body");
     await writeFile(path.join(rawDir, "sample.md"), "raw content body", "utf8");
+    await writeFile(path.join(conflictsDir, "conflict-alpha", "meta.json"), JSON.stringify({
+      id: "conflict-alpha",
+      status: "unresolved",
+      createdAt: "2026-05-05T00:00:00.000Z",
+      wikiId: "valid-id",
+      target: "wiki/valid-id.md",
+    }), "utf8");
+    await writeFile(path.join(conflictsDir, "conflict-alpha", "proposed.md"), "# proposed", "utf8");
     // pending 패치 픽스처
     await writePatch(queueDir, VALID_PATCH_ID, "valid-id", "테스트 요약", "pending");
     // archive 패치 픽스처
@@ -163,6 +173,44 @@ describe("security routes", () => {
     const data = await response.json() as { items: unknown[]; pendingCount: number; archivedCount: number };
     expect(data.archivedCount).toBeGreaterThanOrEqual(1);
     expect(data.pendingCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("serves index.md and log routes safely", async () => {
+    const indexPath = path.join(tempDir, ".fleet", "knowledge", "wiki", "index.md");
+    const logPath = path.join(tempDir, ".fleet", "knowledge", "log.md");
+    await writeFile(indexPath, "# Fleet Wiki Index\n", "utf8");
+    await writeFile(logPath, "## 2026-05-05T00:00:00.000Z — drydock run\n- ok: `true`\n", "utf8");
+
+    const indexResponse = await fetch(`${baseUrl}/api/index-md`);
+    const logResponse = await fetch(`${baseUrl}/api/log?limit=1`);
+
+    expect(indexResponse.status).toBe(200);
+    expect(await indexResponse.text()).toContain("# Fleet Wiki Index");
+    expect(logResponse.status).toBe(200);
+    await expect(logResponse.json()).resolves.toMatchObject({ limit: 1, totalEntries: 1, truncated: false });
+  });
+
+  it("rejects traversal-like conflict ids and returns detail for valid ids", async () => {
+    const bad = await fetch(`${baseUrl}/api/conflicts/${encodeURIComponent("../etc/passwd")}`);
+    const encodedSlash = await fetch(`${baseUrl}/api/conflicts/${encodeURIComponent("alpha/beta")}`);
+    const good = await fetch(`${baseUrl}/api/conflicts/conflict-alpha`);
+
+    expect(bad.status).toBe(400);
+    expect(encodedSlash.status).toBe(400);
+    expect(good.status).toBe(200);
+    await expect(good.json()).resolves.toMatchObject({ id: "conflict-alpha" });
+  });
+
+  it("lists conflicts and returns empty log when missing", async () => {
+    const conflictsResponse = await fetch(`${baseUrl}/api/conflicts`);
+    const logResponse = await fetch(`${baseUrl}/api/log?limit=200`);
+
+    expect(conflictsResponse.status).toBe(200);
+    await expect(conflictsResponse.json()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "conflict-alpha", status: "open" }),
+    ]));
+    expect(logResponse.status).toBe(200);
+    await expect(logResponse.json()).resolves.toMatchObject({ limit: 100 });
   });
 });
 

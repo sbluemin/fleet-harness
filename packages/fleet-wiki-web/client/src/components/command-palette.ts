@@ -1,5 +1,6 @@
 import { fetchSearch } from "../api";
 import { entryPath, navigate } from "../router";
+import { rememberMatchHint } from "../state";
 import type { BriefingHit, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
 
@@ -93,6 +94,7 @@ function handleDocumentKeydown(event: KeyboardEvent): void {
     event.preventDefault();
     const result = state.results[state.selectedIndex];
     if (!result) return;
+    rememberMatchHint(result);
     navigate(entryPath(result.id));
     closeCommandPalette();
   }
@@ -123,6 +125,8 @@ function handleDocumentClick(event: MouseEvent): void {
   }
   const item = target.closest<HTMLElement>("[data-command-entry-id]");
   if (item) {
+    const hit = state.results.find((result) => result.id === (item.dataset.commandEntryId ?? ""));
+    rememberMatchHint(hit ?? null);
     navigate(entryPath(item.dataset.commandEntryId ?? ""));
     closeCommandPalette();
   }

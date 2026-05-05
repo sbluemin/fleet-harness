@@ -1,10 +1,10 @@
 import { entryPath } from "../router";
-import type { BacklinkEntry } from "../api";
+import type { BacklinkEntry, OutgoingLinkEntry } from "../api";
 import { t } from "../i18n/t";
 
-export function renderBacklinksPanel(backlinks: BacklinkEntry[], currentId: string | null): string {
+export function renderBacklinksPanel(backlinks: BacklinkEntry[], outgoing: OutgoingLinkEntry[], currentId: string | null): string {
   const content = currentId
-    ? renderBacklinks(backlinks)
+    ? `${renderBacklinks(backlinks)}${renderOutgoing(outgoing)}`
     : `<p class="empty-state">${t("backlinks.emptyNoEntry")}</p>`;
   return `
     <aside class="backlinks-panel">
@@ -32,6 +32,27 @@ function renderBacklinks(backlinks: BacklinkEntry[]): string {
         </li>
       `).join("")}
     </ul>
+  `;
+}
+
+function renderOutgoing(outgoing: OutgoingLinkEntry[]): string {
+  if (outgoing.length === 0) {
+    return "";
+  }
+  return `
+    <div class="outgoing-section">
+      <p class="eyebrow">${t("backlinks.outgoingHeading")}</p>
+      <ul class="backlink-list outgoing-list">
+        ${outgoing.map((link) => `
+          <li>
+            <a href="${entryPath(link.id)}" data-entry-id="${escapeAttribute(link.id)}" title="${escapeAttribute(link.title)}">
+              <span class="backlink-title">${escapeHtml(link.title)}</span>
+              <span class="occurrences">${link.occurrences}</span>
+            </a>
+          </li>
+        `).join("")}
+      </ul>
+    </div>
   `;
 }
 

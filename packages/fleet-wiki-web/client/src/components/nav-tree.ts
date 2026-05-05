@@ -1,4 +1,4 @@
-import { entryPath, queuePath } from "../router";
+import { conflictsPath, entryPath, indexMdPath, logPath, queuePath } from "../router";
 import type { WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
 import { getLanguage, languageLocale } from "../i18n/store";
@@ -72,6 +72,9 @@ export function renderNavTree(
 
   const pathname = currentPathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
   const isDrydockActive = pathname.startsWith("/queue");
+  const isIndexActive = pathname === "/index";
+  const isLogActive = pathname === "/log";
+  const isConflictsActive = pathname.startsWith("/conflicts");
 
   const pendingBadge = pendingPatchCount > 0
     ? `<span class="nav-drydock-badge">${pendingPatchCount}</span>`
@@ -101,6 +104,15 @@ export function renderNavTree(
           <span class="nav-drydock-icon">${ANCHOR_ICON}</span>
           <span class="nav-drydock-label">Drydock</span>
           ${pendingBadge}
+        </a>
+        <a class="nav-drydock-link${isIndexActive ? " active" : ""}" href="${escapeAttribute(indexMdPath())}">
+          <span class="nav-drydock-label">Index</span>
+        </a>
+        <a class="nav-drydock-link${isLogActive ? " active" : ""}" href="${escapeAttribute(logPath())}">
+          <span class="nav-drydock-label">Log</span>
+        </a>
+        <a class="nav-drydock-link${isConflictsActive ? " active" : ""}" href="${escapeAttribute(conflictsPath())}">
+          <span class="nav-drydock-label">Conflicts</span>
         </a>
       </div>
       <div class="nav-tabs" role="tablist" aria-label="${t("nav.ariaNavMode")}">

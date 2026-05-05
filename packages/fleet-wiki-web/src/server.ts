@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { Server, ServerResponse } from "node:http";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { writeLockFile } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";
 import { handleApiRequest } from "./routes.js";
+import { withSecurityHeaders } from "./security-headers.js";
 
 interface ServerArgs {
   cwd: string;
@@ -17,7 +18,8 @@ interface ServerArgs {
 
 const VERSION = "0.0.0";
 const HOST = "127.0.0.1";
-const CLIENT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "client");
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CLIENT_ROOT = resolveClientRoot(MODULE_DIR);
 const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST"]);
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -25,7 +27,22 @@ const MIME_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
 };
+
+function resolveClientRoot(moduleDir: string): string {
+  const candidates = [
+    path.join(moduleDir, "client"),
+    path.join(moduleDir, "..", "dist", "client"),
+    path.join(moduleDir, "..", "client"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, "index.html"))) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+}
 
 export async function startFleetWikiServer(args: ServerArgs): Promise<Server> {
   const cwd = path.resolve(args.cwd);
@@ -79,9 +96,9 @@ async function serveStatic(requestUrl: string, response: ServerResponse): Promis
   try {
     const fileStat = await stat(filePath);
     if (!fileStat.isFile()) throw new Error("not a file");
-    response.writeHead(200, {
+    response.writeHead(200, withSecurityHeaders({
       "content-type": MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream",
-    });
+    }));
     createReadStream(filePath).pipe(response);
   } catch {
     if (shouldFallbackToSpa(url.pathname)) {
@@ -104,7 +121,7 @@ async function serveSpaIndex(response: ServerResponse): Promise<void> {
   try {
     const indexStat = await stat(indexPath);
     if (!indexStat.isFile()) throw new Error("not a file");
-    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.writeHead(200, withSecurityHeaders({ "content-type": "text/html; charset=utf-8" }));
     createReadStream(indexPath).pipe(response);
   } catch {
     sendJson(response, 404, { error: "not_found" });
@@ -141,15 +158,15 @@ async function tryListen(server: Server, port: number): Promise<number | null> {
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
-  response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+  response.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json; charset=utf-8" }));
   response.end(JSON.stringify(body));
 }
 
 function sendMethodNotAllowed(response: ServerResponse): void {
-  response.writeHead(405, {
+  response.writeHead(405, withSecurityHeaders({
     allow: "GET, HEAD, POST",
     "content-type": "application/json; charset=utf-8",
-  });
+  }));
   response.end(JSON.stringify({ error: "method_not_allowed" }));
 }
 

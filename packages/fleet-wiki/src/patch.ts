@@ -1,11 +1,15 @@
+import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import { createConflict } from "./conflicts.js";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "./constants.js";
 import { appendLog } from "./log.js";
+import { readPatchSet } from "./patch-set.js";
 import { ensureMemoryRoot } from "./paths.js";
 import {
   assertSafeEntryId,
+  computeContentHash,
   listDirectoryNames,
   movePath,
   pathExists,
@@ -15,9 +19,9 @@ import {
   removePath,
   writeJsonFile,
   writePatchFile,
-  writeWikiEntry,
+  writeWikiEntryAtTarget,
 } from "./store.js";
-import type { MemoryPaths, Patch, PatchMeta, WikiEntry } from "./types.js";
+import type { ConflictReason, MemoryPaths, Patch, PatchMeta, WikiEntry } from "./types.js";
 
 export interface QueueSelection {
   id: string;
@@ -26,6 +30,14 @@ export interface QueueSelection {
 }
 
 const INLINE_RAW_SOURCE_REF_PATTERN = /(?:\n+)raw_source_ref:\s*(\S+)\s*$/i;
+
+export interface PatchSetApprovalResult {
+  patch_set_id: string;
+  status: "accepted" | "partial";
+  accepted: PatchMeta[];
+  failed: Array<{ patch_id: string; error: string }>;
+  missing: string[];
+}
 
 export async function parsePatch(markdown: string): Promise<Patch> {
   const match = markdown.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -74,15 +86,18 @@ export async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<stri
   await validatePatch(patch, paths);
 
   const entry = normalizeWikiEntryPatch(JSON.parse(patch.body) as WikiEntry, patch.frontmatter.target, paths);
-  const relativePath = await writeWikiEntry(entry, paths);
+  const relativePath = await writeWikiEntryAtTarget(entry, patch.frontmatter.target, paths);
   await rebuildIndex(paths);
   return relativePath;
 }
 
 export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrides?: Partial<PatchMeta>): Promise<string> {
   await ensureMemoryRoot(paths);
-  const patchId = buildPatchId(patch.frontmatter.created, patch.frontmatter.summary);
+  const patchId = buildPatchId(patch.frontmatter.created, patch.frontmatter.summary, patch.frontmatter.target, patch.body);
   const queueDir = path.join(paths.queueDir, patchId);
+  if (await pathExists(queueDir)) {
+    throw new Error(`[fleet-wiki] patch id collision: ${patchId} - this should never happen with target+body hashing`);
+  }
   await mkdir(queueDir, { recursive: true });
   await writePatchFile(path.join(queueDir, PATCH_FILENAME), serializePatch(patch), paths);
   const meta: PatchMeta = {
@@ -94,6 +109,7 @@ export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrid
   await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), meta satisfies PatchMeta, paths);
   await appendLog(paths, "patch enqueued", {
     patch_id: patchId,
+    patch_set_id: meta.patch_set_id ?? null,
     op: patch.frontmatter.op,
     proposer: patch.frontmatter.proposer,
     raw_source_ref: meta.rawSourceRef ?? null,
@@ -107,6 +123,7 @@ export async function listQueue(paths: MemoryPaths): Promise<Array<{ id: string;
   const ids = await listDirectoryNames(paths.queueDir);
   const results: Array<{ id: string; meta: PatchMeta }> = [];
   for (const id of ids) {
+    if (id === "_sets") continue;
     const meta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, id, PATCH_META_FILENAME));
     results.push({ id, meta });
   }
@@ -143,7 +160,24 @@ export async function showQueue(id: string, paths: MemoryPaths): Promise<{ patch
 export async function approvePatch(id: string, paths: MemoryPaths): Promise<PatchMeta> {
   const { patch, meta } = await showQueue(id, paths);
   if (meta.status !== "pending") throw new Error("patch is not pending");
-  await applyPatch(patch, paths);
+  try {
+    await applyPatch(patch, paths);
+  } catch (error) {
+    const reason = classifyPatchConflict(error);
+    if (reason) {
+      const conflictId = await recordPatchConflict(patch, paths, reason, {
+        patchId: id,
+        rawSourceRef: meta.rawSourceRef,
+        warnings: meta.warnings,
+      });
+      const queueDir = path.join(paths.queueDir, id);
+      await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), {
+        ...meta,
+        conflictId,
+      } satisfies PatchMeta, paths);
+    }
+    throw error;
+  }
   const nextMeta: PatchMeta = {
     ...meta,
     status: "accepted",
@@ -153,12 +187,53 @@ export async function approvePatch(id: string, paths: MemoryPaths): Promise<Patc
   await appendLog(paths, "patch approved", {
     op: patch.frontmatter.op,
     patch_id: id,
+    patch_set_id: nextMeta.patch_set_id ?? null,
     proposer: patch.frontmatter.proposer,
     raw_source_ref: nextMeta.rawSourceRef ?? null,
     result: "accepted",
     target: patch.frontmatter.target,
   });
   return nextMeta;
+}
+
+export async function approvePatchSet(patchSetId: string, paths: MemoryPaths): Promise<PatchSetApprovalResult> {
+  const patchSet = await readPatchSet(paths, patchSetId);
+  const accepted: PatchMeta[] = [];
+  const failed: Array<{ patch_id: string; error: string }> = [];
+  const missing: string[] = [];
+
+  for (const patchId of patchSet.patchIds) {
+    const queueDir = path.join(paths.queueDir, patchId);
+    if (!(await pathExists(queueDir))) {
+      missing.push(patchId);
+      continue;
+    }
+    try {
+      accepted.push(await approvePatch(patchId, paths));
+    } catch (error) {
+      failed.push({
+        patch_id: patchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const status = failed.length === 0 && missing.length === 0 ? "accepted" : "partial";
+  await appendLog(paths, status === "accepted" ? "patch set approved" : "patch set partially approved", {
+    accepted_count: accepted.length,
+    failed_count: failed.length,
+    missing_count: missing.length,
+    patch_set_id: patchSetId,
+    source_ref: patchSet.sourceRef,
+  });
+
+  return {
+    patch_set_id: patchSetId,
+    status,
+    accepted,
+    failed,
+    missing,
+  };
 }
 
 export async function rejectPatch(id: string, reason: string, paths: MemoryPaths): Promise<PatchMeta> {
@@ -173,6 +248,7 @@ export async function rejectPatch(id: string, reason: string, paths: MemoryPaths
   await archiveQueueEntry(id, paths, nextMeta);
   await appendLog(paths, "patch rejected", {
     patch_id: id,
+    patch_set_id: nextMeta.patch_set_id ?? null,
     reason,
     result: "rejected",
   });
@@ -219,9 +295,14 @@ function extractInlineRawSourceRef(body: string): { body: string; rawSourceRef: 
   };
 }
 
-function buildPatchId(createdAt: string, summary: string): string {
+function buildPatchId(createdAt: string, summary: string, target: string, body: string): string {
   const compact = createdAt.replace(/[:.]/g, "-");
-  const hash = Buffer.from(summary).toString("hex").slice(0, 8) || "00000000";
+  // Hash includes target + body (not just summary) so that compile_source-style
+  // batches sharing a single timestamp + summary still produce distinct queue dirs.
+  const hash = createHash("sha256")
+    .update(`${summary}\u0001${target}\u0001${body}`, "utf8")
+    .digest("hex")
+    .slice(0, 8);
   return `${compact}-${hash}`;
 }
 
@@ -233,6 +314,130 @@ function assertSafeRawSourceRef(rawSourceRef: string, paths: MemoryPaths): void 
   if (!absoluteRef.startsWith(`${paths.rawDir}${path.sep}`)) {
     throw new Error("raw source provenance must point into raw/");
   }
+}
+
+function classifyPatchConflict(error: unknown): ConflictReason | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("create_wiki target already exists")) return "create_target_exists";
+  if (message.includes("update_wiki target does not exist")) return "update_target_missing";
+  if (message.includes("wiki patch body id must match target filename")) return "patch_body_target_mismatch";
+  if (message.includes("conflicting raw source provenance in wiki patch")) return "source_provenance_conflict";
+  return null;
+}
+
+async function recordPatchConflict(
+  patch: Patch,
+  paths: MemoryPaths,
+  reason: ConflictReason,
+  options?: { patchId?: string; rawSourceRef?: string; warnings?: string[] },
+): Promise<string> {
+  const now = new Date();
+  const targetPath = path.join(paths.root, patch.frontmatter.target);
+  const current = await pathExists(targetPath) ? await readPatchFile(targetPath) : undefined;
+  const currentEntry = current ? parseStoredWikiEntry(current) : undefined;
+  const proposedEntry = parsePatchBodyEntry(patch.body);
+  const record = await createConflict({
+    reason,
+    target: patch.frontmatter.target,
+    wikiId: proposedEntry?.id ?? path.basename(patch.frontmatter.target, ".md"),
+    title: proposedEntry?.title,
+    proposer: patch.frontmatter.proposer,
+    rawSourceRef: options?.rawSourceRef,
+    current,
+    proposed: serializeConflictProposed(proposedEntry, patch.body),
+    patchId: options?.patchId,
+    currentVersion: currentEntry?.version,
+    proposedVersion: proposedEntry?.version,
+    currentHash: current ? computeContentHash(current) : undefined,
+    warnings: options?.warnings,
+    now,
+  }, paths);
+  await appendLog(paths, "conflict detected", {
+    conflict_id: record.meta.id,
+    patch_id: options?.patchId ?? null,
+    raw_source_ref: options?.rawSourceRef ?? null,
+    reason,
+    target: patch.frontmatter.target,
+    wiki_id: record.meta.wikiId,
+  }, now);
+  return record.meta.id;
+}
+
+function parsePatchBodyEntry(content: string): WikiEntry | undefined {
+  try {
+    return JSON.parse(content) as WikiEntry;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseStoredWikiEntry(content: string): WikiEntry | undefined {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return undefined;
+  const [, rawFrontmatter, body] = match;
+  const frontmatter = new Map<string, string>();
+  for (const line of rawFrontmatter.split("\n")) {
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    frontmatter.set(
+      line.slice(0, separator).trim(),
+      line.slice(separator + 1).trim().replace(/^"(.*)"$/, "$1"),
+    );
+  }
+  const id = frontmatter.get("id");
+  const title = frontmatter.get("title");
+  const created = frontmatter.get("created");
+  const updated = frontmatter.get("updated");
+  const version = frontmatter.get("version");
+  const tags = frontmatter.get("tags");
+  if (!id || !title || !created || !updated || !version || !tags) return undefined;
+  return {
+    id,
+    title,
+    tags: parseInlineArray(tags),
+    created,
+    updated,
+    version: Number(version),
+    rawSourceRef: frontmatter.get("rawSourceRef"),
+    body,
+  };
+}
+
+function serializeConflictProposed(entry: WikiEntry | undefined, fallback: string): string {
+  if (!entry) return fallback;
+  const lines = [
+    `id: ${serializeFrontmatterValue(entry.id)}`,
+    `title: ${serializeFrontmatterValue(entry.title)}`,
+    `tags: ${serializeFrontmatterValue(entry.tags)}`,
+    `created: ${serializeFrontmatterValue(entry.created)}`,
+    `updated: ${serializeFrontmatterValue(entry.updated)}`,
+    `version: ${entry.version}`,
+  ];
+  if (entry.rawSourceRef) lines.push(`rawSourceRef: ${serializeFrontmatterValue(entry.rawSourceRef)}`);
+  return `---\n${lines.join("\n")}\n---\n${entry.body}`;
+}
+
+function serializeFrontmatterValue(value: string | string[]): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => `"${escapeFrontmatter(item)}"`).join(", ")}]`;
+  }
+  return `"${escapeFrontmatter(value)}"`;
+}
+
+function escapeFrontmatter(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/"/g, "\\\"");
+}
+
+function parseInlineArray(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
+  const inner = trimmed.slice(1, -1).trim();
+  if (!inner) return [];
+  return inner.split(",").map((item) => item.trim().replace(/^"(.*)"$/, "$1"));
 }
 
 async function archiveQueueEntry(id: string, paths: MemoryPaths, meta: PatchMeta): Promise<void> {

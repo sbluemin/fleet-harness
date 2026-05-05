@@ -1,4 +1,5 @@
-import { approvePatch, listQueue, rejectPatch, resolveQueueSelection, showQueue } from "../patch.js";
+import { listConflicts } from "../conflicts.js";
+import { approvePatch, approvePatchSet, listQueue, rejectPatch, resolveQueueSelection, showQueue } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
   WIKI_PATCH_QUEUE_DESCRIPTION,
@@ -27,16 +28,31 @@ export function buildPatchQueueToolConfig() {
 
       if (action === "list") {
         const items = await listQueue(paths);
+        const unresolvedConflicts = (await listConflicts(paths)).filter((conflict) => conflict.status === "unresolved");
         return textResult({
           ok: true,
           action,
           items,
+          unresolved_conflicts: unresolvedConflicts,
           next_action: items.length > 0 ? `Use patch_id from: ${items.map((item) => item.id).join(", ")}` : "Queue is empty.",
         });
       }
       if (action === "show") {
         const selection = await resolveQueueSelection(String(params.patch_id ?? ""), paths);
-        return textResult({ ok: true, action, item: await showQueue(selection.id, paths), auto_selected: selection.autoSelected });
+        const item = await showQueue(selection.id, paths);
+        const relatedConflicts = (await listConflicts(paths)).filter((conflict) => {
+          const patchWikiId = extractPatchWikiId(item.patch.body);
+          return conflict.patchId === selection.id
+            || conflict.target === item.patch.frontmatter.target
+            || (patchWikiId !== null && conflict.wikiId === patchWikiId);
+        });
+        return textResult({
+          ok: true,
+          action,
+          item,
+          related_conflicts: relatedConflicts,
+          auto_selected: selection.autoSelected,
+        });
       }
       if (action === "approve") {
         const patchId = String(params.patch_id ?? "").trim();
@@ -56,6 +72,18 @@ export function buildPatchQueueToolConfig() {
           meta: await rejectPatch(patchId, String(params.reason ?? "rejected"), paths),
         });
       }
+      if (action === "approve_set") {
+        const patchSetId = String(params.patch_set_id ?? "").trim();
+        if (!patchSetId) {
+          throw new Error("wiki_patch_queue approve_set requires patch_set_id.");
+        }
+        const result = await approvePatchSet(patchSetId, paths);
+        return textResult({
+          ok: true,
+          action,
+          ...result,
+        });
+      }
       return textResult({ ok: false, action, error: "unsupported action" });
     },
   };
@@ -73,4 +101,13 @@ function buildMissingPatchIdError(action: "approve" | "reject", items: Array<{ i
     return `wiki_patch_queue ${action} requires patch_id. Queue is empty.`;
   }
   return `wiki_patch_queue ${action} requires patch_id. Available patch IDs: ${items.map((item) => item.id).join(", ")}`;
+}
+
+function extractPatchWikiId(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { id?: unknown };
+    return typeof parsed.id === "string" ? parsed.id : null;
+  } catch {
+    return null;
+  }
 }

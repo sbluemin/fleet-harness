@@ -1,3 +1,4 @@
+import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "../boundaries.js";
 import { briefingQuery } from "../briefing.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
@@ -26,8 +27,13 @@ export function buildBriefingToolConfig() {
         topic: typeof params.topic === "string" ? params.topic : undefined,
         tags: Array.isArray(params.tags) ? params.tags.map(String) : undefined,
         limit: typeof params.limit === "number" ? params.limit : undefined,
+        enhanced: typeof params.enhanced === "boolean" ? params.enhanced : undefined,
       });
-      const text = JSON.stringify({ ok: true, hits }, null, 2).slice(0, 50_000);
+      const text = JSON.stringify({
+        ok: true,
+        trust_boundary: FLEET_WIKI_BOUNDARY_GUIDELINES,
+        hits,
+      }, null, 2).slice(0, 50_000);
       return {
         content: [{ type: "text" as const, text }],
         details: {},

@@ -6,7 +6,11 @@ export type Route =
   | { name: "entry"; id: string }
   | { name: "raw"; ref: string }
   | { name: "queue"; tab: "pending" | "archived" }
-  | { name: "queue-detail"; patchId: string };
+  | { name: "queue-detail"; patchId: string }
+  | { name: "conflicts" }
+  | { name: "conflict-detail"; id: string }
+  | { name: "index-md" }
+  | { name: "log"; limit: number };
 
 type RouteListener = (route: Route) => void;
 
@@ -58,7 +62,39 @@ export function queueDetailPath(patchId: string): string {
   return `/queue/${encodeURIComponent(patchId)}`;
 }
 
+export function conflictsPath(): string {
+  return "/conflicts";
+}
+
+export function conflictDetailPath(id: string): string {
+  return `/conflicts/${encodeURIComponent(id)}`;
+}
+
+export function indexMdPath(): string {
+  return "/index";
+}
+
+export function logPath(limit?: number): string {
+  if (typeof limit !== "number") return "/log";
+  return `/log?limit=${encodeURIComponent(String(limit))}`;
+}
+
 function parseRoute(pathname: string): Route {
+  if (pathname === "/index") {
+    return { name: "index-md" };
+  }
+  if (pathname === "/log") {
+    const limit = new URLSearchParams(window.location.search).get("limit");
+    const parsed = Number(limit ?? 20);
+    return { name: "log", limit: Number.isInteger(parsed) ? parsed : 20 };
+  }
+  if (pathname === "/conflicts") {
+    return { name: "conflicts" };
+  }
+  const conflictDetailMatch = pathname.match(/^\/conflicts\/([^/]+)$/);
+  if (conflictDetailMatch) {
+    return { name: "conflict-detail", id: decodeURIComponent(conflictDetailMatch[1] ?? "") };
+  }
   const entryMatch = pathname.match(/^\/entry\/([^/]+)$/);
   if (entryMatch) {
     return { name: "entry", id: decodeURIComponent(entryMatch[1] ?? "") };

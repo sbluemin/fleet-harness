@@ -57,6 +57,7 @@ export const en: I18nMessages = {
   queue: {
     actionsTitle: "ACTIONS",
     actionsSubtitle: "Decision",
+    patchSetSubtitle: "Patch Set",
     approve: "Approve",
     reject: "Reject",
     rejectPlaceholder: "Enter rejection reason (max 256 chars)",
@@ -89,6 +90,33 @@ export const en: I18nMessages = {
     subtitle: "Entries referencing this document",
     emptyNoEntry: "Select an entry to view backlinks.",
     emptyNone: "No other entries reference this document yet.",
+    outgoingHeading: "Outgoing",
+  },
+  entry: {
+    contextActionsSubtitle: "Context Actions",
+    copyCompactContext: "Copy compact context",
+    copyCompactContextDone: "Copied compact context.",
+    copyWithProvenance: "Copy with provenance",
+    copyWithProvenanceDone: "Copied provenance context.",
+    copyRelatedContextPack: "Copy related context pack",
+    copyRelatedContextDone: "Copied related context pack.",
+    openRawSource: "Open raw source",
+    showWhyMatched: "Show why matched",
+    copyFailed: "Failed to copy to clipboard.",
+  },
+  conflicts: {
+    title: "Conflicts",
+    empty: "No conflicts to display.",
+    current: "Current",
+    proposed: "Proposed",
+    rawSource: "Raw Source",
+  },
+  indexMd: {
+    title: "Index",
+  },
+  log: {
+    title: "Log",
+    summary: "Latest {limit} of {total} entries",
   },
   meta: {
     updatedPrefix: "Updated",

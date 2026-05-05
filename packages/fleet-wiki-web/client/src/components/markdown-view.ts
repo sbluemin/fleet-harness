@@ -2,7 +2,8 @@ import { renderMetaChips, renderTagChips } from "./meta-chips";
 import { renderRelatedList } from "./related-list";
 import { renderToc } from "./toc";
 import { renderMarkdown } from "../markdown/renderer";
-import type { WikiEntryResponse, WikiIndexEntry } from "../api";
+import { renderCopyContextActions } from "./copy-context-actions";
+import type { BacklinkEntry, BriefingHit, OutgoingLinkEntry, WikiEntryResponse, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
 
 const ARROW_ICON = `
@@ -47,7 +48,13 @@ export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null): st
   `;
 }
 
-export function renderMarkdownView(entry: WikiEntryResponse, index: WikiIndexEntry[]): string {
+export function renderMarkdownView(
+  entry: WikiEntryResponse,
+  index: WikiIndexEntry[],
+  backlinks: BacklinkEntry[],
+  outgoing: OutgoingLinkEntry[],
+  hint: BriefingHit | null,
+): string {
   const rendered = renderMarkdown(entry.body);
   return `
     <article class="document">
@@ -56,6 +63,7 @@ export function renderMarkdownView(entry: WikiEntryResponse, index: WikiIndexEnt
         <h1>${escapeHtml(entry.frontmatter.title)}</h1>
         ${renderMetaChips(entry.frontmatter)}
       </header>
+      ${renderCopyContextActions(entry, backlinks, outgoing, index, hint)}
       <div class="document-with-toc">
         <div class="markdown-body" id="markdown-body">
           ${rendered.html}

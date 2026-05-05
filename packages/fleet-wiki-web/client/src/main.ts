@@ -3,8 +3,15 @@ import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";
 
+import {
+  buildCompactContext,
+  buildProvenanceContext,
+  buildRelatedContextPack,
+} from "./components/copy-context-actions";
 import { renderBacklinksPanel } from "./components/backlinks-panel";
 import { configureCommandPalette, initCommandPalette } from "./components/command-palette";
+import { renderConflictsList, renderConflictDetail } from "./components/conflicts-view";
+import { renderIndexMarkdownView } from "./components/index-md-view";
 import { renderManifestPanel } from "./components/manifest-panel";
 import { renderError, renderLoading, renderMarkdownView, renderWelcome } from "./components/markdown-view";
 import { renderNavTree, setNavMode, toggleTag } from "./components/nav-tree";
@@ -12,23 +19,34 @@ import type { NavMode } from "./components/nav-tree";
 import { renderRawView } from "./components/raw-view";
 import { renderQueueList } from "./components/queue-list";
 import { renderQueueDetail } from "./components/queue-detail";
-import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
-import { currentRoute, entryPath, initRouter, navigate, subscribeRoute } from "./router";
-import type { Route } from "./router";
-import { clearCurrentEntry, getState, loadEntry, loadInitialData, subscribeState } from "./state";
-import type { AppState } from "./state";
-import {
-  approveCurrentPatch,
-  clearQueueState,
-  getQueueState,
-  loadPatchDetail,
-  loadQueueList,
-  rejectCurrentPatch,
-  subscribeQueueState,
-} from "./queue-state";
+import { renderLogView } from "./components/log-view";
 import { initLanguage, setLanguage, subscribeLanguage } from "./i18n/store";
 import type { SupportedLanguage } from "./i18n/types";
 import { t } from "./i18n/t";
+import { clearQueueState, getQueueState, loadPatchDetail, loadQueueList, rejectCurrentPatch, subscribeQueueState, approveCurrentPatch } from "./queue-state";
+import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
+import {
+  conflictDetailPath,
+  currentRoute,
+  entryPath,
+  initRouter,
+  logPath,
+  navigate,
+  subscribeRoute,
+} from "./router";
+import type { Route } from "./router";
+import {
+  clearCurrentEntry,
+  getState,
+  loadConflictDetailView,
+  loadConflictsView,
+  loadEntry,
+  loadIndexMarkdownView,
+  loadInitialData,
+  loadLogView,
+  subscribeState,
+} from "./state";
+import type { AppState } from "./state";
 
 const appRoot = document.querySelector<HTMLElement>("#app");
 
@@ -47,30 +65,7 @@ subscribeState(() => render());
 subscribeRawState(() => render());
 subscribeQueueState(() => render());
 subscribeRoute((route) => {
-  if (route.name === "entry") {
-    void loadEntry(route.id);
-    return;
-  }
-  if (route.name === "raw") {
-    void loadRawSource(route.ref);
-    return;
-  }
-  if (route.name === "queue") {
-    clearCurrentEntry();
-    clearRawState();
-    void loadQueueList(route.tab);
-    return;
-  }
-  if (route.name === "queue-detail") {
-    clearCurrentEntry();
-    clearRawState();
-    void loadPatchDetail(route.patchId);
-    return;
-  }
-  clearCurrentEntry();
-  clearRawState();
-  clearQueueState();
-  render();
+  void handleRouteChange(route);
 });
 
 document.addEventListener("click", handleDocumentClick);
@@ -80,18 +75,61 @@ void boot();
 async function boot(): Promise<void> {
   render();
   await loadInitialData();
-  const route = currentRoute();
+  await handleRouteChange(currentRoute());
+}
+
+async function handleRouteChange(route: Route): Promise<void> {
   if (route.name === "entry") {
+    clearQueueState();
+    clearRawState();
     await loadEntry(route.id);
-  } else if (route.name === "raw") {
-    await loadRawSource(route.ref);
-  } else if (route.name === "queue") {
-    await loadQueueList(route.tab);
-  } else if (route.name === "queue-detail") {
-    await loadPatchDetail(route.patchId);
-  } else {
-    clearCurrentEntry();
+    return;
   }
+  if (route.name === "raw") {
+    clearQueueState();
+    await loadRawSource(route.ref);
+    return;
+  }
+  if (route.name === "queue") {
+    clearCurrentEntry();
+    clearRawState();
+    await loadQueueList(route.tab);
+    return;
+  }
+  if (route.name === "queue-detail") {
+    clearCurrentEntry();
+    clearRawState();
+    await loadPatchDetail(route.patchId);
+    return;
+  }
+  if (route.name === "index-md") {
+    clearQueueState();
+    clearRawState();
+    await loadIndexMarkdownView();
+    return;
+  }
+  if (route.name === "log") {
+    clearQueueState();
+    clearRawState();
+    await loadLogView(route.limit);
+    return;
+  }
+  if (route.name === "conflicts") {
+    clearQueueState();
+    clearRawState();
+    await loadConflictsView();
+    return;
+  }
+  if (route.name === "conflict-detail") {
+    clearQueueState();
+    clearRawState();
+    await loadConflictDetailView(route.id);
+    return;
+  }
+  clearCurrentEntry();
+  clearRawState();
+  clearQueueState();
+  render();
 }
 
 function render(): void {
@@ -146,17 +184,22 @@ function renderMainContent(state: AppState, route: Route): string {
     return renderQueueDetail(getQueueState());
   }
   if (state.error) return renderError(state.error);
-  if (state.loading && !state.currentEntry) return renderLoading();
-  if (state.currentEntry) return renderMarkdownView(state.currentEntry, state.index);
+  if (state.loading && !state.currentEntry && !state.indexMarkdown && !state.log && !state.currentConflict) return renderLoading();
+  if (route.name === "index-md" && state.indexMarkdown) return renderIndexMarkdownView(state.indexMarkdown);
+  if (route.name === "log" && state.log) return renderLogView(state.log);
+  if (route.name === "conflicts") return renderConflictsList(state.conflicts);
+  if (route.name === "conflict-detail" && state.currentConflict) return renderConflictDetail(state.currentConflict);
+  if (state.currentEntry) {
+    return renderMarkdownView(state.currentEntry, state.index, state.backlinks, state.outgoing, state.currentMatchHint);
+  }
   return renderWelcome(state.index, state.health?.cwd ?? null);
 }
 
 function renderRailContent(state: AppState, route: Route): string {
-  // queue 라우트에서는 기본 rail 컨텐츠 숨김 (queue-detail의 rail은 인라인)
   if (route.name === "queue" || route.name === "queue-detail") return "";
   return `
     ${renderManifestPanel(state.currentEntry)}
-    ${renderBacklinksPanel(state.backlinks, route.name === "entry" ? route.id : null)}
+    ${renderBacklinksPanel(state.backlinks, state.outgoing, route.name === "entry" ? route.id : null)}
   `;
 }
 
@@ -198,6 +241,34 @@ function handleDocumentClick(event: MouseEvent): void {
   }
   if (actionElement?.dataset.action === "copy-code") {
     void copyCode(actionElement);
+    return;
+  }
+  if (actionElement?.dataset.action === "copy-compact-context") {
+    const state = getState();
+    if (state.currentEntry) {
+      void copyText(buildCompactContext(state.currentEntry, state.backlinks, state.outgoing), t("entry.copyCompactContextDone"));
+    }
+    return;
+  }
+  if (actionElement?.dataset.action === "copy-provenance-context") {
+    const state = getState();
+    if (state.currentEntry) {
+      void copyText(buildProvenanceContext(state.currentEntry, state.backlinks, state.outgoing), t("entry.copyWithProvenanceDone"));
+    }
+    return;
+  }
+  if (actionElement?.dataset.action === "copy-related-context") {
+    const state = getState();
+    if (state.currentEntry) {
+      void copyText(buildRelatedContextPack(state.currentEntry, state.backlinks, state.outgoing, state.index), t("entry.copyRelatedContextDone"));
+    }
+    return;
+  }
+  if (actionElement?.dataset.action === "toggle-why-matched") {
+    const panel = actionElement.parentElement?.querySelector<HTMLElement>(".context-why-matched");
+    if (panel) {
+      panel.hidden = !panel.hidden;
+    }
     return;
   }
   if (actionElement?.dataset.action === "queue-approve") {
@@ -256,8 +327,16 @@ async function copyCode(button: HTMLElement): Promise<void> {
   const block = button.closest<HTMLElement>(".code-block");
   const code = block?.dataset.code ?? "";
   if (!code) return;
-  await navigator.clipboard.writeText(code);
-  showToast(t("common.codeCopied"));
+  await copyText(code, t("common.codeCopied"));
+}
+
+async function copyText(text: string, successMessage: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(successMessage);
+  } catch {
+    showToast(t("entry.copyFailed"));
+  }
 }
 
 function showToast(message: string): void {
@@ -283,6 +362,8 @@ function internalSpaPath(anchor: HTMLAnchorElement): string | null {
   if (url.pathname.startsWith("/entry/")) return url.pathname;
   if (url.pathname.startsWith("/raw/")) return url.pathname;
   if (url.pathname.startsWith("/queue")) return url.pathname + url.search;
+  if (url.pathname.startsWith("/conflicts")) return url.pathname + url.search;
+  if (url.pathname === "/index" || url.pathname === "/log") return url.pathname + url.search;
   if (!url.pathname.endsWith(".md")) return null;
   const fileName = url.pathname.split("/").pop() ?? "";
   const id = decodeURIComponent(fileName.replace(/\.md$/, ""));

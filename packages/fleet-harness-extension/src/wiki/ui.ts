@@ -3,10 +3,14 @@ import { DynamicBorder, type ExtensionCommandContext, type Theme } from "@marioz
 import { Container, Key, matchesKey, SelectList, Spacer, Text, visibleWidth, type SelectItem, type TUI } from "@mariozechner/pi-tui";
 
 import { buildBriefingToolConfig } from "@sbluemin/fleet-wiki";
+import { buildCompileSourceToolConfig } from "@sbluemin/fleet-wiki";
 import { buildDryDockToolConfig } from "@sbluemin/fleet-wiki";
 import { buildIngestToolConfig } from "@sbluemin/fleet-wiki";
 import { buildOrientToolConfig } from "@sbluemin/fleet-wiki";
 import { buildPatchQueueToolConfig } from "@sbluemin/fleet-wiki";
+import { buildQueryToolConfig } from "@sbluemin/fleet-wiki";
+import { buildReadToolConfig } from "@sbluemin/fleet-wiki";
+import { buildResolveToolConfig } from "@sbluemin/fleet-wiki";
 
 import {
   approveAndNotify,
@@ -44,6 +48,10 @@ export function registerFleetWiki(ctx: ExtensionAPI | ExtensionContext): void {
   pi.registerTool(buildDryDockToolConfig());
   pi.registerTool(buildPatchQueueToolConfig());
   pi.registerTool(buildOrientToolConfig());
+  pi.registerTool(buildReadToolConfig());
+  pi.registerTool(buildResolveToolConfig());
+  pi.registerTool(buildCompileSourceToolConfig());
+  pi.registerTool(buildQueryToolConfig());
   registerWikiCommands(pi);
 }
 

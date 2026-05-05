@@ -1,12 +1,21 @@
 import crypto from "node:crypto";
-import { readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { INDEX_FILENAME, INDEX_MD_FILENAME, REQUIRED_WIKI_FRONTMATTER_KEYS } from "./constants.js";
 import { appendLog } from "./log.js";
 import { ensureMemoryRoot, getIndexMarkdownFile } from "./paths.js";
-import type { WikiIndexEntry, MemoryPaths, RawSourceEntry, WikiEntry } from "./types.js";
+import {
+  WIKI_ENTRY_CONFIDENCES,
+  WIKI_ENTRY_STATUSES,
+  WIKI_ENTRY_TYPES,
+  type WikiIndexEntry,
+  type MemoryPaths,
+  type RawSourceEntry,
+  type WikiEntry,
+  type WikiRawSourceRef,
+} from "./types.js";
 
 type FrontmatterShape = Record<string, unknown>;
 
@@ -20,8 +29,14 @@ export async function readWikiEntry(id: string, paths: MemoryPaths): Promise<Wik
     return readMarkdownFile<WikiEntry>(path.join(paths.root, indexed.path));
   }
   const fallbackPath = path.join(paths.wikiDir, `${id}.md`);
-  if (!(await pathExists(fallbackPath))) return null;
-  return readMarkdownFile<WikiEntry>(fallbackPath);
+  if (await pathExists(fallbackPath)) {
+    return readMarkdownFile<WikiEntry>(fallbackPath);
+  }
+  // index.json drift / nested-namespace fallback: recursive scan finds entries under
+  // wiki/queries/, wiki/sources/, wiki/synthesis/ even when index.json is stale or missing.
+  const records = await listWikiRecords(paths);
+  const match = records.find((record) => record.entry.id === id);
+  return match ? match.entry : null;
 }
 
 export async function writeWikiEntry(entry: WikiEntry, paths: MemoryPaths): Promise<string> {
@@ -30,6 +45,25 @@ export async function writeWikiEntry(entry: WikiEntry, paths: MemoryPaths): Prom
   const relativePath = `wiki/${entry.id}.md`;
   await writeMarkdownAtomic(path.join(paths.root, relativePath), serializeWikiEntry(entry), paths);
   return relativePath;
+}
+
+export async function writeWikiEntryAtTarget(entry: WikiEntry, target: string, paths: MemoryPaths): Promise<string> {
+  await ensureMemoryRoot(paths);
+  assertSafeEntryId(entry.id);
+  const absoluteTarget = path.resolve(paths.root, target);
+  const relativeTarget = path.relative(paths.wikiDir, absoluteTarget);
+  if (!relativeTarget || relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget)) {
+    throw new Error(`[fleet-wiki] wiki target escapes wiki/: ${target}`);
+  }
+  if (!absoluteTarget.endsWith(".md")) {
+    throw new Error(`[fleet-wiki] wiki target must end with .md: ${target}`);
+  }
+  if (path.basename(absoluteTarget, ".md") !== entry.id) {
+    throw new Error("wiki patch body id must match target filename");
+  }
+  await mkdir(path.dirname(absoluteTarget), { recursive: true });
+  await writeMarkdownAtomic(absoluteTarget, serializeWikiEntry(entry), paths);
+  return path.join("wiki", relativeTarget).replaceAll(path.sep, "/");
 }
 
 export async function writeRawSourceEntry(entry: RawSourceEntry, paths: MemoryPaths): Promise<string> {
@@ -69,7 +103,8 @@ export async function readRawSourceEntry(rawSourceRef: string, paths: MemoryPath
 }
 
 export async function listWiki(paths: MemoryPaths): Promise<WikiEntry[]> {
-  return listMarkdownEntries(paths.wikiDir, (content) => parseWikiEntry(content));
+  const entries = await listWikiRecords(paths);
+  return entries.map((entry) => entry.entry);
 }
 
 export async function loadIndex(paths: MemoryPaths): Promise<Record<string, WikiIndexEntry>> {
@@ -83,23 +118,29 @@ export async function loadIndex(paths: MemoryPaths): Promise<Record<string, Wiki
 
 export async function rebuildIndex(paths: MemoryPaths): Promise<Record<string, WikiIndexEntry>> {
   await ensureMemoryRoot(paths);
-  const entries = await listWiki(paths);
+  const entries = await listWikiRecords(paths);
   const nextIndex: Record<string, WikiIndexEntry> = {};
-  for (const entry of entries) {
-    nextIndex[entry.id] = {
-      path: `wiki/${entry.id}.md`,
-      title: entry.title,
-      tags: entry.tags,
-      updated: entry.updated,
+  const entryPathMap: Record<string, string> = {};
+  for (const item of entries) {
+    nextIndex[item.entry.id] = {
+      path: item.path,
+      title: item.entry.title,
+      tags: item.entry.tags,
+      updated: item.entry.updated,
+      type: item.entry.type,
+      status: item.entry.status,
+      confidence: item.entry.confidence,
+      aliases: item.entry.aliases,
     };
+    entryPathMap[item.entry.id] = item.path;
   }
   await writeJsonAtomic(paths.indexFile, nextIndex, paths);
-  await writeMarkdownAtomic(getIndexMarkdownFile(paths), renderIndexMarkdown(entries), paths);
+  await writeMarkdownAtomic(getIndexMarkdownFile(paths), renderIndexMarkdown(entries.map((item) => item.entry), entryPathMap), paths);
   await appendLog(paths, "index rebuilt", { entry_count: entries.length });
   return nextIndex;
 }
 
-export function renderIndexMarkdown(entries: WikiEntry[]): string {
+export function renderIndexMarkdown(entries: WikiEntry[], entryPaths: Record<string, string> = {}): string {
   const sortedEntries = [...entries].sort((left, right) => left.id.localeCompare(right.id));
   const tagGroups = new Map<string, WikiEntry[]>();
   for (const entry of sortedEntries) {
@@ -133,15 +174,30 @@ export function renderIndexMarkdown(entries: WikiEntry[]): string {
     lines.push(`### ${entry.id}`);
     lines.push("");
     lines.push(`- title: \`${escapeInlineCode(entry.title)}\``);
-    lines.push(`- path: \`wiki/${escapeInlineCode(entry.id)}.md\``);
+    lines.push(`- path: \`${escapeInlineCode(entryPaths[entry.id] ?? `wiki/${entry.id}.md`)}\``);
     lines.push(`- tags: \`${escapeInlineCode(entry.tags.length > 0 ? entry.tags.join(", ") : "(none)")}\``);
     lines.push(`- updated: \`${escapeInlineCode(entry.updated)}\``);
+    if (entry.type) {
+      lines.push(`- type: \`${escapeInlineCode(entry.type)}\``);
+    }
+    if (entry.status) {
+      lines.push(`- status: \`${escapeInlineCode(entry.status)}\``);
+    }
+    if (entry.confidence) {
+      lines.push(`- confidence: \`${escapeInlineCode(entry.confidence)}\``);
+    }
+    if (entry.aliases?.length) {
+      lines.push(`- aliases: \`${escapeInlineCode(entry.aliases.join(", "))}\``);
+    }
     const summary = summarizeWikiEntry(entry.body);
     if (summary) {
       lines.push(`- summary: \`${escapeInlineCode(summary)}\``);
     }
     if (entry.rawSourceRef) {
       lines.push(`- raw_source_ref: \`${escapeInlineCode(entry.rawSourceRef)}\``);
+    }
+    if (entry.rawSourceRefs?.length) {
+      lines.push(`- raw_source_refs: \`${escapeInlineCode(entry.rawSourceRefs.map((item) => item.ref).join(", "))}\``);
     }
     lines.push("");
   }
@@ -247,6 +303,16 @@ function serializeWikiEntry(entry: WikiEntry): string {
     version: entry.version,
   };
   if (entry.rawSourceRef) frontmatter.rawSourceRef = entry.rawSourceRef;
+  if (entry.aliases?.length) frontmatter.aliases = entry.aliases;
+  if (entry.type) frontmatter.type = entry.type;
+  if (entry.status) frontmatter.status = entry.status;
+  if (entry.confidence) frontmatter.confidence = entry.confidence;
+  if (entry.owner) frontmatter.owner = entry.owner;
+  if (entry.language) frontmatter.language = entry.language;
+  if (entry.revalidateAfter) frontmatter.revalidateAfter = entry.revalidateAfter;
+  if (entry.supersedes?.length) frontmatter.supersedes = entry.supersedes;
+  if (entry.related?.length) frontmatter.related = entry.related;
+  if (entry.rawSourceRefs?.length) frontmatter.rawSourceRefs = JSON.stringify(entry.rawSourceRefs);
   assertRequiredKeys(frontmatter, REQUIRED_WIKI_FRONTMATTER_KEYS);
   return serializeMarkdown(frontmatter, entry.body);
 }
@@ -262,18 +328,51 @@ function parseWikiEntry(content: string): WikiEntry {
     updated: String(parsed.frontmatter.updated),
     version: Number(parsed.frontmatter.version),
     rawSourceRef: parsed.frontmatter.rawSourceRef ? String(parsed.frontmatter.rawSourceRef) : undefined,
+    aliases: optionalStringArray(parsed.frontmatter.aliases),
+    type: optionalEnum(parsed.frontmatter.type, WIKI_ENTRY_TYPES),
+    status: optionalEnum(parsed.frontmatter.status, WIKI_ENTRY_STATUSES),
+    confidence: optionalEnum(parsed.frontmatter.confidence, WIKI_ENTRY_CONFIDENCES),
+    owner: optionalString(parsed.frontmatter.owner),
+    language: optionalString(parsed.frontmatter.language),
+    revalidateAfter: optionalString(parsed.frontmatter.revalidateAfter),
+    supersedes: optionalStringArray(parsed.frontmatter.supersedes),
+    related: optionalStringArray(parsed.frontmatter.related),
+    rawSourceRefs: optionalRawSourceRefs(parsed.frontmatter.rawSourceRefs),
     body: parsed.body,
   };
 }
 
-async function listMarkdownEntries<T>(dirPath: string, parser: (content: string) => T): Promise<T[]> {
-  const names = await listFileNames(dirPath);
+async function listWikiRecords(paths: MemoryPaths): Promise<Array<{ entry: WikiEntry; path: string }>> {
+  return listMarkdownEntriesRecursive(paths.wikiDir, paths, (content, filePath) => ({
+    entry: parseWikiEntry(content),
+    path: path.relative(paths.root, filePath).replaceAll(path.sep, "/"),
+  }));
+}
+
+async function listMarkdownEntriesRecursive<T>(
+  dirPath: string,
+  paths: MemoryPaths,
+  parser: (content: string, filePath: string) => T,
+): Promise<T[]> {
   const items: T[] = [];
-  for (const name of names) {
-    if (!name.endsWith(".md")) continue;
-    if (name === INDEX_MD_FILENAME) continue;
-    const content = await readFile(path.join(dirPath, name), "utf8");
-    items.push(parser(content));
+  let entries;
+  try {
+    entries = await readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return items;
+  }
+  const sortedEntries = entries.sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of sortedEntries) {
+    const filePath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      items.push(...await listMarkdownEntriesRecursive(filePath, paths, parser));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (!entry.name.endsWith(".md")) continue;
+    if (filePath === getIndexMarkdownFile(paths)) continue;
+    const content = await readFile(filePath, "utf8");
+    items.push(parser(content, filePath));
   }
   return items;
 }
@@ -331,6 +430,44 @@ function serializeFrontmatterValue(value: unknown): string {
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) throw new Error("expected string array");
   return value.map((item) => String(item));
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function optionalStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.map((item) => String(item)) : undefined;
+}
+
+function optionalEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  if (typeof value !== "string") return undefined;
+  return allowed.includes(value as T) ? (value as T) : undefined;
+}
+
+function optionalRawSourceRefs(value: unknown): WikiRawSourceRef[] | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const refs = parsed
+      .map((item) => normalizeRawSourceRef(item))
+      .filter((item): item is WikiRawSourceRef => item !== undefined);
+    return refs.length > 0 ? refs : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeRawSourceRef(value: unknown): WikiRawSourceRef | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.ref !== "string") return undefined;
+  return {
+    ref: candidate.ref,
+    title: typeof candidate.title === "string" ? candidate.title : undefined,
+    hash: typeof candidate.hash === "string" ? candidate.hash : undefined,
+  };
 }
 
 function escapeFrontmatterString(value: unknown): string {

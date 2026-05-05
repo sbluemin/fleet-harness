@@ -28,9 +28,41 @@
 ## Link Syntax Standard
 
 - Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard defined in `@sbluemin/fleet-wiki/src/links.ts`).
-- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to `/entry/foo` SPA links with `data-entry-id` attributes.
+- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to `/entry/foo` SPA links with `data-entry-id` attributes. The pattern is **inlined** with an SSoT comment — the client must never `import` from `@sbluemin/fleet-wiki` because that package's Node-only modules (`fs`/`path`/`crypto`) would break the Vite browser bundle.
 - Backlink extraction in `src/backlinks.ts` combines canonical `[[wiki:id]]` and legacy `.md` links for complete reference tracking.
 - Legacy markdown links `[title](entry.md)` remain readable but trigger `legacy_markdown_wiki_link` warning in `wiki_drydock`.
+
+## SPA Routes
+
+- `/` — Welcome / index landing.
+- `/entry/:id` — Entry markdown view with backlinks/related/manifest panels and copy-context actions.
+- `/raw/:ref` — Raw source viewer (untrusted boundary indicator).
+- `/queue` — Drydock pending list. `/queue/:patchId` — patch detail with patch-set membership and approve/reject.
+- `/conflicts` — Conflict list (read from `.fleet/knowledge/conflicts/`). `/conflicts/:id` — conflict detail showing `current.md` vs `proposed.md` plus raw source.
+- `/index-md` — `wiki/index.md` rendered as a deterministic catalog.
+- `/log?limit=N` — Tail of `log.md` ingest/patch/drydock/rebuild events.
+
+## Copy-Context Actions
+
+`client/src/components/copy-context-actions.ts` exposes four clipboard actions on entry view:
+- **Copy compact context** — entry frontmatter + body summary as compact JSON.
+- **Copy with provenance** — adds `rawSourceRefs[]` blocks.
+- **Copy related context pack** — calls `wiki_resolve` (markdown_pack format) and copies the result.
+- **Open raw source** — navigates to `/raw/:ref`.
+
+## Status Badges
+
+`markdown-view.ts` renders a status badge (current / deprecated / superseded) and a stale badge (when `revalidateAfter` has passed) on the entry header. Colors honor the Maritime Codex palette (brass for current, amber for stale, coral for deprecated/superseded).
+
+## Security Headers
+
+Server response (static + API) attaches:
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: no-referrer`
+- `Cache-Control: no-store`
+
+POST Origin guard, DOMPurify XSS sanitization (`javascript:`/`data:` blocked), `O_EXCL` lockfile creation, and path-traversal containment all remain unchanged.
 
 ## Build Output
 

@@ -1,11 +1,38 @@
-import { fetchBacklinks, fetchEntry, fetchHealth, fetchIndex, fetchQueueList } from "./api";
-import type { BacklinkEntry, HealthResponse, WikiEntryResponse, WikiIndexEntry } from "./api";
+import {
+  fetchBacklinks,
+  fetchConflictDetail,
+  fetchConflicts,
+  fetchEntry,
+  fetchHealth,
+  fetchIndex,
+  fetchIndexMarkdown,
+  fetchLog,
+  fetchQueueList,
+} from "./api";
+import type {
+  BacklinkEntry,
+  BacklinksResponse,
+  BriefingHit,
+  ConflictDetailResponse,
+  ConflictListItem,
+  HealthResponse,
+  LogResponse,
+  OutgoingLinkEntry,
+  WikiEntryResponse,
+  WikiIndexEntry,
+} from "./api";
 
 export interface AppState {
   health: HealthResponse | null;
   index: WikiIndexEntry[];
   currentEntry: WikiEntryResponse | null;
+  currentMatchHint: BriefingHit | null;
   backlinks: BacklinkEntry[];
+  outgoing: OutgoingLinkEntry[];
+  conflicts: ConflictListItem[];
+  currentConflict: ConflictDetailResponse | null;
+  indexMarkdown: string | null;
+  log: LogResponse | null;
   loading: boolean;
   error: string | null;
   recentIds: string[];
@@ -20,7 +47,13 @@ const state: AppState = {
   health: null,
   index: [],
   currentEntry: null,
+  currentMatchHint: null,
   backlinks: [],
+  outgoing: [],
+  conflicts: [],
+  currentConflict: null,
+  indexMarkdown: null,
+  log: null,
   loading: false,
   error: null,
   recentIds: readRecentIds(),
@@ -56,7 +89,17 @@ export async function loadInitialData(): Promise<void> {
 }
 
 export async function loadEntry(id: string): Promise<void> {
-  setState({ loading: true, error: null, currentEntry: null, backlinks: [] });
+  setState({
+    loading: true,
+    error: null,
+    currentEntry: null,
+    currentMatchHint: state.currentMatchHint?.id === id ? state.currentMatchHint : null,
+    backlinks: [],
+    outgoing: [],
+    currentConflict: null,
+    indexMarkdown: null,
+    log: null,
+  });
   try {
     const [currentEntry, backlinksResponse] = await Promise.all([
       fetchEntry(id),
@@ -66,6 +109,10 @@ export async function loadEntry(id: string): Promise<void> {
     setState({
       currentEntry,
       backlinks: backlinksResponse.backlinks,
+      outgoing: backlinksResponse.outgoing,
+      currentConflict: null,
+      indexMarkdown: null,
+      log: null,
       recentIds,
       loading: false,
     });
@@ -74,8 +121,75 @@ export async function loadEntry(id: string): Promise<void> {
   }
 }
 
+export async function loadIndexMarkdownView(): Promise<void> {
+  setState({ loading: true, error: null, currentEntry: null, currentConflict: null, log: null, backlinks: [], outgoing: [] });
+  try {
+    setState({
+      indexMarkdown: await fetchIndexMarkdown(),
+      loading: false,
+    });
+  } catch (error) {
+    setState({ loading: false, error: errorMessage(error) });
+  }
+}
+
+export async function loadLogView(limit: number): Promise<void> {
+  setState({ loading: true, error: null, currentEntry: null, currentConflict: null, indexMarkdown: null, backlinks: [], outgoing: [] });
+  try {
+    setState({
+      log: await fetchLog(limit),
+      loading: false,
+    });
+  } catch (error) {
+    setState({ loading: false, error: errorMessage(error) });
+  }
+}
+
+export async function loadConflictsView(): Promise<void> {
+  setState({ loading: true, error: null, currentEntry: null, currentConflict: null, indexMarkdown: null, log: null, backlinks: [], outgoing: [] });
+  try {
+    setState({
+      conflicts: await fetchConflicts(),
+      loading: false,
+    });
+  } catch (error) {
+    setState({ loading: false, error: errorMessage(error) });
+  }
+}
+
+export async function loadConflictDetailView(id: string): Promise<void> {
+  setState({ loading: true, error: null, currentEntry: null, indexMarkdown: null, log: null, backlinks: [], outgoing: [] });
+  try {
+    const [currentConflict, conflicts] = await Promise.all([
+      fetchConflictDetail(id),
+      fetchConflicts().catch(() => state.conflicts),
+    ]);
+    setState({
+      currentConflict,
+      conflicts,
+      loading: false,
+    });
+  } catch (error) {
+    setState({ loading: false, error: errorMessage(error) });
+  }
+}
+
 export function clearCurrentEntry(): void {
-  setState({ currentEntry: null, backlinks: [], error: null, loading: false });
+  setState({
+    currentEntry: null,
+    currentMatchHint: null,
+    backlinks: [],
+    outgoing: [],
+    currentConflict: null,
+    indexMarkdown: null,
+    log: null,
+    error: null,
+    loading: false,
+  });
+}
+
+export function rememberMatchHint(hit: BriefingHit | null): void {
+  setState({ currentMatchHint: hit });
 }
 
 export function setPendingPatchCount(count: number): void {

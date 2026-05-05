@@ -21,12 +21,26 @@ describe("queue POST actions", () => {
     const wikiDir = path.join(tempDir, ".fleet", "knowledge", "wiki");
     const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
     const archiveDir = path.join(tempDir, ".fleet", "knowledge", "archive");
+    const patchSetsDir = path.join(queueDir, "_sets");
     await mkdir(wikiDir, { recursive: true });
     await mkdir(path.join(queueDir, PENDING_PATCH_ID), { recursive: true });
     await mkdir(path.join(archiveDir, ARCHIVE_PATCH_ID), { recursive: true });
+    await mkdir(path.join(patchSetsDir, "set-alpha"), { recursive: true });
     await writeEntry(wikiDir, "test-entry", "테스트 문서", "본문");
     await writePatch(queueDir, PENDING_PATCH_ID, "test-entry", "테스트 패치", "pending", "update_wiki");
     await writePatch(archiveDir, ARCHIVE_PATCH_ID, "test-entry", "아카이브 패치", "accepted", "update_wiki");
+    await writeFile(path.join(queueDir, PENDING_PATCH_ID, "meta.json"), JSON.stringify({
+      id: PENDING_PATCH_ID,
+      status: "pending",
+      createdAt: "2026-05-04T00:00:00.000Z",
+      patch_set_id: "set-alpha",
+    }), "utf8");
+    await writeFile(path.join(patchSetsDir, "set-alpha", "meta.json"), JSON.stringify({
+      id: "set-alpha",
+      sourceRef: "raw/2026-05-04-sample-aabbccdd.md",
+      createdAt: "2026-05-04T00:00:00.000Z",
+      patchIds: [PENDING_PATCH_ID],
+    }), "utf8");
     const lockPath = path.join(tempDir, "server.lock");
     server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0 });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
@@ -203,6 +217,14 @@ describe("queue POST actions", () => {
     // archive에 정확히 한 개만 이동
     const archivePath = path.join(tempDir, ".fleet", "knowledge", "archive", PENDING_PATCH_ID, "meta.json");
     await expect(access(archivePath)).resolves.not.toThrow();
+  });
+
+  it("includes patch set membership in queue detail when metadata exists", async () => {
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(PENDING_PATCH_ID)}`);
+    expect(response.status).toBe(200);
+    const data = await response.json() as { patchSet: { id: string; members: Array<{ id: string }> } | null };
+    expect(data.patchSet?.id).toBe("set-alpha");
+    expect(data.patchSet?.members[0]?.id).toBe(PENDING_PATCH_ID);
   });
 });
 
