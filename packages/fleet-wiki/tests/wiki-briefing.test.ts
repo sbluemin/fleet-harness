@@ -218,6 +218,71 @@ describe("wiki briefing", () => {
     expect(hits[0]?.whyThisMatched).toContain("BM25:");
   });
 
+  it("matches multi-word and hyphenated queries without breaking deterministic order", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry({
+      id: "fleet-wiki-tools",
+      title: "Fleet Wiki operator guide",
+      tags: ["docs"],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:03.000Z",
+      version: 1,
+      body: "This page explains fleet wiki workflows and tools usage across resolve, query, and briefing.",
+    }, paths);
+    await writeWikiEntry({
+      id: "flow-citations",
+      title: "Read flow and write flow",
+      tags: ["docs"],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:02.000Z",
+      version: 1,
+      body: "Citation flow is covered here for query, resolve, and provenance handling.",
+    }, paths);
+    await writeWikiEntry({
+      id: "nine-tool-suite",
+      title: "The 9 tool suite",
+      tags: ["docs"],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:01.000Z",
+      version: 1,
+      body: "Tool suite overview for the Fleet Wiki package.",
+    }, paths);
+    await writeWikiEntry({
+      id: "approval-gate",
+      title: "Human approval gate",
+      tags: ["policy"],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:04.000Z",
+      version: 1,
+      body: "Queue approval remains mandatory.",
+    }, paths);
+    await writeWikiEntry({
+      id: "approval-background",
+      title: "Human workflow notes",
+      tags: ["policy"],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:05.000Z",
+      version: 1,
+      body: "Approval discussion exists here, but the exact phrase is not present together.",
+    }, paths);
+
+    const multiWord = await briefingQuery(paths, { topic: "fleet-wiki tools", limit: 5 });
+    const longOrQuery = await briefingQuery(paths, { topic: "read flow write flow citation flow", limit: 5 });
+    const hyphenated = await briefingQuery(paths, { topic: "9-tool-suite", limit: 5 });
+    const exactPhrase = await briefingQuery(paths, { topic: "human approval gate", limit: 5 });
+
+    expect(multiWord[0]?.id).toBe("fleet-wiki-tools");
+    expect(multiWord[0]?.reason).toBe("title");
+    expect(multiWord[0]?.matchedSnippets?.[0]?.snippet).toContain("fleet");
+    expect(longOrQuery[0]?.id).toBe("flow-citations");
+    expect(hyphenated[0]?.id).toBe("nine-tool-suite");
+    expect(exactPhrase[0]?.id).toBe("approval-gate");
+    expect(exactPhrase[0]?.matchedFields).toEqual(expect.arrayContaining(["title"]));
+    expect(exactPhrase[0]?.whyThisMatched).toContain("Matched fields: title, body.");
+  });
+
   it("keeps prompt-injection-like text inside curated boundaries", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

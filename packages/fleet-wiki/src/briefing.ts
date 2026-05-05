@@ -3,7 +3,7 @@ import path from "node:path";
 import { wrapWikiEntryBoundary } from "./boundaries.js";
 import { extractWikiLinks } from "./links.js";
 import { enhancedSearch } from "./search.js";
-import { loadIndex, listWiki, readWikiEntry } from "./store.js";
+import { listWiki } from "./store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry } from "./types.js";
 
 interface BriefingQueryOptions {
@@ -17,6 +17,7 @@ interface BriefingQueryOptions {
 interface RankedHit {
   hit: BriefingHit;
   basePriority: number;
+  matchTypePriority: number;
   statusPriority: number;
   updatedPriority: number;
 }
@@ -25,6 +26,15 @@ interface MatchDetail {
   field: string;
   snippet?: string;
   tagBoost?: number;
+  matchTypePriority: number;
+}
+
+export interface RetrievalLexicalMatch {
+  reason: BriefingHit["reason"];
+  field: "id" | "alias" | "tag" | "title" | "body";
+  snippet: string;
+  matchType: "exact_phrase" | "token_or";
+  matchedTerms?: string[];
 }
 
 const BRIEFING_LIMIT_MIN = 1;
@@ -41,6 +51,8 @@ const CURRENT_STATUS_BOOST = 2;
 const DEFAULT_STATUS_BOOST = 1;
 const DEPRECATED_STATUS_BOOST = 0;
 const EXPLICIT_TAG_FILTER_BOOST = 5;
+const EXACT_PHRASE_PRIORITY = 2;
+const TOKEN_OR_PRIORITY = 1;
 
 export async function briefingQuery(paths: MemoryPaths, options: BriefingQueryOptions): Promise<BriefingHit[]> {
   if (options.enhanced === true) {
@@ -51,35 +63,9 @@ export async function briefingQuery(paths: MemoryPaths, options: BriefingQueryOp
   const tags = (options.tags ?? []).map((tag) => tag.toLowerCase().trim()).filter((tag) => tag.length > 0);
   const limit = normalizeLimit(options.limit);
   const wikiEntries = await listWiki(paths);
-  const index = await loadIndex(paths);
   const backlinksById = buildBacklinksIndex(wikiEntries);
   const graphBoost = options.graphBoost === true;
   const hits: RankedHit[] = [];
-
-  for (const entry of wikiEntries) {
-    if (!index[entry.id]) {
-      index[entry.id] = {
-        path: path.join("wiki", `${entry.id}.md`),
-        title: entry.title,
-        tags: entry.tags,
-        updated: entry.updated,
-        type: entry.type,
-        status: entry.status,
-        confidence: entry.confidence,
-        aliases: entry.aliases,
-      };
-    }
-  }
-
-  if (topic && index[topic]) {
-    const entry = await readWikiEntry(topic, paths);
-    if (entry) {
-      hits.push(toRankedHit(entry, "id", {
-        field: "id",
-        snippet: topic,
-      }, graphBoost, backlinksById));
-    }
-  }
 
   for (const entry of wikiEntries) {
     const matches = findMatches(entry, topic, tags);
@@ -100,6 +86,63 @@ function normalizeTopic(topic: string | undefined): string {
     throw new Error("[fleet-wiki] wiki_briefing query exceeds 256 characters");
   }
   return normalized;
+}
+
+export function tokenizeRetrievalTopic(topic: string): string[] {
+  const tokens = topic
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 || /^[0-9]+$/.test(token));
+  return dedupeStrings(tokens);
+}
+
+export function collectRetrievalLexicalMatches(
+  entry: WikiEntry,
+  topic: string,
+  tags: string[],
+): RetrievalLexicalMatch[] {
+  const matches: RetrievalLexicalMatch[] = [];
+  const topicTokens = tokenizeRetrievalTopic(topic);
+  const lowerTags = entry.tags.map((tag) => tag.toLowerCase());
+
+  if (topic && entry.id.toLowerCase() === topic) {
+    matches.push({
+      reason: "id",
+      field: "id",
+      snippet: entry.id,
+      matchType: "exact_phrase",
+      matchedTerms: [topic],
+    });
+  }
+
+  if (tags.some((tag) => lowerTags.includes(tag))) {
+    const matchedTag = tags.find((tag) => lowerTags.includes(tag)) ?? entry.tags[0] ?? "";
+    matches.push({
+      reason: "tag",
+      field: "tag",
+      snippet: matchedTag,
+      matchType: "exact_phrase",
+      matchedTerms: [matchedTag.toLowerCase()],
+    });
+  }
+
+  const aliasMatch = findLexicalFieldMatch(entry.aliases ?? [], topic, topicTokens, "alias", "alias");
+  if (aliasMatch) {
+    matches.push(aliasMatch);
+  }
+
+  const titleMatch = findLexicalFieldMatch([entry.title], topic, topicTokens, "title", "title");
+  if (titleMatch) {
+    matches.push(titleMatch);
+  }
+
+  const bodyMatch = findLexicalFieldMatch([entry.body], topic, topicTokens, "body", "body");
+  if (bodyMatch) {
+    matches.push(bodyMatch);
+  }
+
+  return matches;
 }
 
 function normalizeLimit(limit: number | undefined): number {
@@ -132,39 +175,19 @@ function findMatches(
   topic: string,
   tags: string[],
 ): Array<{ reason: BriefingHit["reason"]; detail: MatchDetail }> {
-  const lowerTitle = entry.title.toLowerCase();
-  const lowerBody = entry.body.toLowerCase();
-  const lowerTags = entry.tags.map((tag) => tag.toLowerCase());
-  const aliasMatch = findAliasMatch(entry.aliases ?? [], topic);
   const matches: Array<{ reason: BriefingHit["reason"]; detail: MatchDetail }> = [];
-
-  if (topic && entry.id.toLowerCase() === topic) {
-    matches.push({ reason: "id", detail: { field: "id", snippet: entry.id } });
-  }
-  if (aliasMatch) {
-    matches.push({ reason: "alias", detail: { field: "alias", snippet: aliasMatch } });
-  }
-  if (tags.some((tag) => lowerTags.includes(tag))) {
-    const matchedTag = tags.find((tag) => lowerTags.includes(tag)) ?? entry.tags[0] ?? "";
-    matches.push({ reason: "tag", detail: { field: "tag", snippet: matchedTag, tagBoost: EXPLICIT_TAG_FILTER_BOOST } });
-  }
-  if (topic && lowerTitle.includes(topic)) {
-    matches.push({ reason: "title", detail: { field: "title", snippet: buildMatchSnippet(entry.title, topic) } });
-  }
-  if (topic && lowerBody.includes(topic)) {
-    matches.push({ reason: "body", detail: { field: "body", snippet: buildMatchSnippet(entry.body, topic) } });
+  for (const match of collectRetrievalLexicalMatches(entry, topic, tags)) {
+    matches.push({
+      reason: match.reason,
+      detail: {
+        field: match.field,
+        snippet: match.snippet,
+        tagBoost: match.reason === "tag" ? EXPLICIT_TAG_FILTER_BOOST : undefined,
+        matchTypePriority: getMatchTypePriority(match.matchType),
+      },
+    });
   }
   return matches;
-}
-
-function findAliasMatch(aliases: string[], topic: string): string | null {
-  if (!topic) return null;
-  for (const alias of aliases) {
-    if (alias.toLowerCase().includes(topic)) {
-      return alias;
-    }
-  }
-  return null;
 }
 
 function toRankedHit(
@@ -223,6 +246,7 @@ function toRankedHit(
   return {
     hit,
     basePriority,
+    matchTypePriority: detail.matchTypePriority,
     statusPriority,
     updatedPriority: Date.parse(entry.updated) || 0,
   };
@@ -259,11 +283,55 @@ function mergeRankedHitMetadata(target: RankedHit, source: RankedHit): void {
 function compareRankedHits(left: RankedHit, right: RankedHit): number {
   return (
     right.basePriority - left.basePriority
+    || right.matchTypePriority - left.matchTypePriority
     || right.statusPriority - left.statusPriority
     || right.hit.score - left.hit.score
     || right.updatedPriority - left.updatedPriority
     || left.hit.id.localeCompare(right.hit.id)
   );
+}
+
+function findLexicalFieldMatch(
+  values: string[],
+  topic: string,
+  topicTokens: string[],
+  reason: BriefingHit["reason"],
+  field: RetrievalLexicalMatch["field"],
+): RetrievalLexicalMatch | null {
+  if (!topic) return null;
+
+  for (const value of values) {
+    const lowerValue = value.toLowerCase();
+    if (lowerValue.includes(topic)) {
+      return {
+        reason,
+        field,
+        snippet: field === "title" || field === "body" ? buildMatchSnippet(value, topic) : value,
+        matchType: "exact_phrase",
+        matchedTerms: [topic],
+      };
+    }
+  }
+
+  if (topicTokens.length <= 1) {
+    return null;
+  }
+
+  for (const token of topicTokens) {
+    for (const value of values) {
+      const valueTokens = tokenizeRetrievalTopic(value);
+      if (!valueTokens.includes(token)) continue;
+      return {
+        reason,
+        field,
+        snippet: field === "title" || field === "body" ? buildMatchSnippet(value, token) : value,
+        matchType: "token_or",
+        matchedTerms: [token],
+      };
+    }
+  }
+
+  return null;
 }
 
 function getBasePriority(reason: BriefingHit["reason"]): number {
@@ -278,6 +346,11 @@ function getStatusPriority(status: WikiEntry["status"]): number {
   if (status === "current") return CURRENT_STATUS_BOOST;
   if (status === "deprecated") return DEPRECATED_STATUS_BOOST;
   return DEFAULT_STATUS_BOOST;
+}
+
+function getMatchTypePriority(matchType: RetrievalLexicalMatch["matchType"]): number {
+  if (matchType === "exact_phrase") return EXACT_PHRASE_PRIORITY;
+  return TOKEN_OR_PRIORITY;
 }
 
 function buildMatchSnippet(text: string, query: string): string {

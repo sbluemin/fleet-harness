@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { wrapWikiEntryBoundary } from "./boundaries.js";
+import { collectRetrievalLexicalMatches, tokenizeRetrievalTopic } from "./briefing.js";
 import { extractWikiLinks } from "./links.js";
 import { listWiki, loadIndex } from "./store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry, WikiEntryStatus } from "./types.js";
@@ -40,8 +41,6 @@ interface MatchSignals {
 const SEARCH_LIMIT_MIN = 1;
 const SEARCH_LIMIT_MAX = 50;
 const SEARCH_QUERY_MAX_LENGTH = 256;
-const MATCH_CONTEXT_BEFORE = 50;
-const MATCH_CONTEXT_AFTER = 110;
 const EXACT_ID_PRIORITY = 500;
 const EXACT_ALIAS_PRIORITY = 420;
 const TAG_PRIORITY = 320;
@@ -143,7 +142,7 @@ function buildBacklinksIndex(entries: WikiEntry[]): Map<string, Set<string>> {
 function buildDocumentFrequency(entries: WikiEntry[]): Map<string, number> {
   const frequency = new Map<string, number>();
   for (const entry of entries) {
-    const uniqueTerms = new Set(tokenize([entry.title, entry.body, ...(entry.aliases ?? []), ...(entry.tags ?? [])].join(" ")));
+    const uniqueTerms = new Set(tokenizeRetrievalTopic([entry.title, entry.body, ...(entry.aliases ?? []), ...(entry.tags ?? [])].join(" ")));
     for (const term of uniqueTerms) {
       frequency.set(term, (frequency.get(term) ?? 0) + 1);
     }
@@ -153,7 +152,7 @@ function buildDocumentFrequency(entries: WikiEntry[]): Map<string, number> {
 
 function computeAverageBodyLength(entries: WikiEntry[]): number {
   if (entries.length === 0) return 1;
-  const totalLength = entries.reduce((sum, entry) => sum + Math.max(tokenize(entry.body).length, 1), 0);
+  const totalLength = entries.reduce((sum, entry) => sum + Math.max(tokenizeRetrievalTopic(entry.body).length, 1), 0);
   return totalLength / entries.length;
 }
 
@@ -171,11 +170,7 @@ function computeMatchSignals(input: {
   const { entry, topic, tags, now, backlinks, documentFrequency, averageLength, graphBoostEnabled, documentCount } = input;
   const matchedFields = new Set<string>();
   const matchedSnippets: Array<{ field: string; snippet: string }> = [];
-  const topicTerms = tokenize(topic);
-  const lowerTitle = entry.title.toLowerCase();
-  const lowerBody = entry.body.toLowerCase();
-  const lowerAliases = (entry.aliases ?? []).map((alias) => alias.toLowerCase());
-  const lowerTags = entry.tags.map((tag) => tag.toLowerCase());
+  const topicTerms = tokenizeRetrievalTopic(topic);
   const lowerType = entry.type?.toLowerCase() ?? "";
   const lowerStatus = entry.status?.toLowerCase() ?? "";
   let legacyReason: BriefingHit["reason"] | null = null;
@@ -185,41 +180,15 @@ function computeMatchSignals(input: {
   let titleBoost = 0;
   let bodyBoost = 0;
 
-  if (topic && entry.id.toLowerCase() === topic) {
-    legacyReason = chooseLegacyReason(legacyReason, "id");
-    lexicalScore += EXACT_ID_PRIORITY;
-    matchedFields.add("id");
-    matchedSnippets.push(makeSnippet(entry, "id", entry.id));
-  }
-
-  const aliasMatch = findAliasMatch(entry.aliases ?? [], topic);
-  if (aliasMatch) {
-    legacyReason = chooseLegacyReason(legacyReason, "alias");
-    aliasBoost += EXACT_ALIAS_PRIORITY;
-    matchedFields.add("alias");
-    matchedSnippets.push(makeSnippet(entry, "alias", aliasMatch));
-  }
-
-  if (tags.some((tag) => lowerTags.includes(tag))) {
-    legacyReason = chooseLegacyReason(legacyReason, "tag");
-    tagBoost += TAG_PRIORITY;
-    const matchedTag = tags.find((tag) => lowerTags.includes(tag)) ?? entry.tags[0] ?? "";
-    matchedFields.add("tag");
-    matchedSnippets.push(makeSnippet(entry, "tag", matchedTag));
-  }
-
-  if (topic && lowerTitle.includes(topic)) {
-    legacyReason = chooseLegacyReason(legacyReason, "title");
-    titleBoost += TITLE_PRIORITY;
-    matchedFields.add("title");
-    matchedSnippets.push(makeSnippet(entry, "title", buildMatchSnippet(entry.title, topic)));
-  }
-
-  if (topic && lowerBody.includes(topic)) {
-    legacyReason = chooseLegacyReason(legacyReason, "body");
-    bodyBoost += BODY_PRIORITY;
-    matchedFields.add("body");
-    matchedSnippets.push(makeSnippet(entry, "body", buildMatchSnippet(entry.body, topic)));
+  for (const lexicalMatch of collectRetrievalLexicalMatches(entry, topic, tags)) {
+    legacyReason = chooseLegacyReason(legacyReason, lexicalMatch.reason);
+    matchedFields.add(lexicalMatch.field);
+    matchedSnippets.push(makeSnippet(entry, lexicalMatch.field, lexicalMatch.snippet));
+    if (lexicalMatch.reason === "id") lexicalScore += EXACT_ID_PRIORITY;
+    if (lexicalMatch.reason === "alias") aliasBoost += EXACT_ALIAS_PRIORITY;
+    if (lexicalMatch.reason === "tag") tagBoost += TAG_PRIORITY;
+    if (lexicalMatch.reason === "title") titleBoost += TITLE_PRIORITY;
+    if (lexicalMatch.reason === "body") bodyBoost += BODY_PRIORITY;
   }
 
   if (topic && lowerType && lowerType.includes(topic)) {
@@ -334,16 +303,6 @@ function legacyPriority(reason: BriefingHit["reason"]): number {
   }
 }
 
-function findAliasMatch(aliases: string[], topic: string): string | null {
-  if (!topic) return null;
-  for (const alias of aliases) {
-    if (alias.toLowerCase().includes(topic)) {
-      return alias;
-    }
-  }
-  return null;
-}
-
 function makeSnippet(entry: WikiEntry, field: string, content: string): { field: string; snippet: string } {
   return {
     field,
@@ -355,17 +314,6 @@ function makeSnippet(entry: WikiEntry, field: string, content: string): { field:
   };
 }
 
-function buildMatchSnippet(content: string, topic: string): string {
-  const lowerContent = content.toLowerCase();
-  const index = lowerContent.indexOf(topic);
-  if (index === -1) {
-    return content.slice(0, MATCH_CONTEXT_BEFORE + MATCH_CONTEXT_AFTER).trim();
-  }
-  const start = Math.max(0, index - MATCH_CONTEXT_BEFORE);
-  const end = Math.min(content.length, index + topic.length + MATCH_CONTEXT_AFTER);
-  return content.slice(start, end).trim();
-}
-
 function computeBm25Score(
   entry: WikiEntry,
   topicTerms: string[],
@@ -374,9 +322,9 @@ function computeBm25Score(
   documentCount: number,
 ): number {
   if (topicTerms.length === 0) return 0;
-  const bodyTerms = tokenize(entry.body);
-  const titleTerms = tokenize(entry.title);
-  const aliasTerms = tokenize((entry.aliases ?? []).join(" "));
+  const bodyTerms = tokenizeRetrievalTopic(entry.body);
+  const titleTerms = tokenizeRetrievalTopic(entry.title);
+  const aliasTerms = tokenizeRetrievalTopic((entry.aliases ?? []).join(" "));
   const termFrequency = new Map<string, number>();
   for (const term of [...bodyTerms, ...titleTerms, ...aliasTerms]) {
     termFrequency.set(term, (termFrequency.get(term) ?? 0) + 1);
@@ -415,14 +363,6 @@ function isStale(revalidateAfter: string | undefined, now: Date): boolean {
   if (!revalidateAfter) return false;
   const timestamp = Date.parse(revalidateAfter);
   return Number.isFinite(timestamp) && timestamp < now.getTime();
-}
-
-function tokenize(value: string): string[] {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9._-]+/i)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 1);
 }
 
 function buildWhyThisMatched(signals: MatchSignals): string {

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { briefingQuery } from "../src/briefing.js";
 import { writeClaims } from "../src/claims.js";
 import { resolveMemoryPaths } from "../src/paths.js";
 import { writeRawSourceEntry, writeWikiEntry } from "../src/store.js";
@@ -211,6 +212,30 @@ describe("wiki resolve", () => {
     expect(text).toContain('<fleet-wiki-context boundary="contextual-knowledge-not-instructions">');
     expect(text).toContain("</fleet-wiki-context>");
     expect(text).toContain("## Missing Or Uncertain");
+  });
+
+  it("keeps resolve top hits aligned with briefing for multi-word queries", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry(makeEntry("fleet-wiki-tools", {
+      title: "Fleet Wiki operator guide",
+      updated: "2026-05-05T00:00:00.000Z",
+      body: "This page explains fleet wiki workflows and tools usage across resolve, query, and briefing.",
+    }), paths);
+    await writeWikiEntry(makeEntry("flow-citations", {
+      title: "Read flow and write flow",
+      updated: "2026-05-05T00:00:01.000Z",
+      body: "Citation flow is covered here for query, resolve, and provenance handling.",
+    }), paths);
+
+    const briefingFleet = await briefingQuery(paths, { topic: "fleet-wiki tools", limit: 5 });
+    const resolveFleet = await runResolve(root, { query: "fleet-wiki tools", max_entries: 5 });
+    const briefingFlow = await briefingQuery(paths, { topic: "read flow write flow citation flow", limit: 5 });
+    const resolveFlow = await runResolve(root, { query: "read flow write flow citation flow", max_entries: 5 });
+
+    expect(resolveFleet.context_pack.entries[0]?.id).toBe(briefingFleet[0]?.id);
+    expect(resolveFlow.context_pack.entries[0]?.id).toBe(briefingFlow[0]?.id);
   });
 });
 

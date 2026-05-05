@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { briefingQuery } from "../src/briefing.js";
 import { showQueue } from "../src/patch.js";
 import { getClaimsFile, writeClaims } from "../src/claims.js";
 import { resolveMemoryPaths } from "../src/paths.js";
@@ -128,6 +129,39 @@ describe("wiki query", () => {
       mode: "stage_answer_page",
       answer: "answer",
     }, undefined, undefined, { cwd: root } as any)).rejects.toThrow(/requires citations/);
+  });
+
+  it("keeps answer-mode top hit aligned with briefing and resolve for multi-word queries", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const tool = buildQueryToolConfig();
+
+    await writeWikiEntry({
+      id: "fleet-wiki-tools",
+      title: "Fleet Wiki operator guide",
+      tags: ["fleet"],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:00.000Z",
+      version: 1,
+      body: "This page explains fleet wiki workflows and tools usage across resolve, query, and briefing.",
+      rawSourceRef: "raw/fleet-wiki-tools.md",
+    }, paths);
+
+    const briefing = await briefingQuery(paths, { topic: "fleet-wiki tools", limit: 5 });
+    const result = await tool.execute("tool-call", {
+      question: "fleet-wiki tools",
+      mode: "answer",
+    }, undefined, undefined, { cwd: root } as any);
+    const payload = JSON.parse(result.content[0]!.text) as {
+      context_pack: { entries: Array<{ id: string }> };
+      citations: Array<{ entry_id: string; raw_source_refs: string[] }>;
+    };
+
+    expect(payload.context_pack.entries[0]?.id).toBe(briefing[0]?.id);
+    expect(payload.citations[0]).toEqual({
+      entry_id: "fleet-wiki-tools",
+      raw_source_refs: ["raw/fleet-wiki-tools.md"],
+    });
   });
 });
 
