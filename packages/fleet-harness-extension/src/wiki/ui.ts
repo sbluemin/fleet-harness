@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, type ExtensionCommandContext, type Theme } from "@mariozechner/pi-coding-agent";
-import { Container, Key, matchesKey, SelectList, Spacer, Text, visibleWidth, type SelectItem, type TUI } from "@mariozechner/pi-tui";
+import { Container, Key, matchesKey, SelectList, Spacer, Text, truncateToWidth, visibleWidth, type SelectItem, type TUI } from "@mariozechner/pi-tui";
 
 import { buildBriefingToolConfig } from "@sbluemin/fleet-wiki";
 import { buildCompileSourceToolConfig } from "@sbluemin/fleet-wiki";
@@ -39,19 +39,44 @@ export type {
 } from "@sbluemin/fleet-wiki";
 
 type FleetWikiRegistrationContext = ExtensionContext & Pick<ExtensionAPI, "registerCommand" | "registerTool">;
+type CompactRenderOptions = { expanded: boolean; isPartial: boolean };
+
+interface CompactRenderableResult {
+  render(width: number): string[];
+}
+
+interface FleetWikiToolConfig {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet: string;
+  promptGuidelines: string[];
+  parameters: unknown;
+  execute: (
+    id: string,
+    params: Record<string, unknown>,
+    signal: AbortSignal | undefined,
+    onUpdate: unknown,
+    ctx: { cwd: string },
+  ) => Promise<unknown>;
+  renderCall?: (args: unknown, theme: Theme) => Text;
+  renderResult?: (result: unknown, options: CompactRenderOptions, theme: Theme) => CompactRenderableResult;
+}
+
+const COMPACT_CALL_WIDTH = 60;
 
 export function registerFleetWiki(ctx: ExtensionAPI | ExtensionContext): void {
   const pi = ctx as FleetWikiRegistrationContext;
 
-  pi.registerTool(buildIngestToolConfig());
-  pi.registerTool(buildBriefingToolConfig());
-  pi.registerTool(buildDryDockToolConfig());
-  pi.registerTool(buildPatchQueueToolConfig());
-  pi.registerTool(buildOrientToolConfig());
-  pi.registerTool(buildReadToolConfig());
-  pi.registerTool(buildResolveToolConfig());
-  pi.registerTool(buildCompileSourceToolConfig());
-  pi.registerTool(buildQueryToolConfig());
+  pi.registerTool(withCompactRender(buildIngestToolConfig()));
+  pi.registerTool(withCompactRender(buildBriefingToolConfig()));
+  pi.registerTool(withCompactRender(buildDryDockToolConfig()));
+  pi.registerTool(withCompactRender(buildPatchQueueToolConfig()));
+  pi.registerTool(withCompactRender(buildOrientToolConfig()));
+  pi.registerTool(withCompactRender(buildReadToolConfig()));
+  pi.registerTool(withCompactRender(buildResolveToolConfig()));
+  pi.registerTool(withCompactRender(buildCompileSourceToolConfig()));
+  pi.registerTool(withCompactRender(buildQueryToolConfig()));
   registerWikiCommands(pi);
 }
 
@@ -111,6 +136,72 @@ const DETAIL_MENU_ITEMS: SelectItem[] = [
 ];
 
 const BODY_PREVIEW_MAX_LINES = 20;
+
+function withCompactRender<T extends FleetWikiToolConfig>(tool: T): T {
+  return {
+    ...tool,
+    renderCall(args: unknown, theme: Theme) {
+      const action = getWikiActionName(tool.name);
+      const header = theme.fg("toolTitle", theme.bold(`⚓ Wiki: ${action}`));
+      const summary = theme.fg("muted", `   ▸ ${formatCompactSummary(args)}`);
+      const line = truncateToWidth(`${header} ${summary}`, COMPACT_CALL_WIDTH, "...");
+      return new Text(line, 0, 0);
+    },
+    renderResult(result: unknown, options: CompactRenderOptions, theme: Theme): CompactRenderableResult {
+      return {
+        render(width: number) {
+          const safeWidth = Math.max(1, width);
+          const action = getWikiActionName(tool.name);
+          const status = options.isPartial ? "running" : "done";
+          const header = options.isPartial
+            ? theme.fg("warning", `⚓ Wiki: ${action} (${status})`)
+            : theme.fg("success", `⚓ Wiki: ${action} (${status})`);
+          const summary = theme.fg("muted", `   ▸ ${options.isPartial ? "실행 중..." : formatCompactSummary(extractCompactResultPayload(result))}`);
+          return [truncateToWidth(`${header} ${summary}`, safeWidth, "...")];
+        },
+      };
+    },
+  };
+}
+
+function getWikiActionName(toolName: string): string {
+  return toolName.startsWith("wiki_") ? toolName.slice("wiki_".length) : toolName;
+}
+
+function formatCompactSummary(value: unknown): string {
+  return toSingleLineJson(value);
+}
+
+function extractCompactResultPayload(result: unknown): unknown {
+  const content = Array.isArray((result as { content?: unknown[] } | undefined)?.content)
+    ? (result as { content: Array<{ type?: string; text?: string }> }).content
+    : [];
+  const first = content[0];
+  if (first?.type === "text" && typeof first.text === "string" && first.text.trim().length > 0) {
+    return tryParseJson(first.text);
+  }
+  return result;
+}
+
+function tryParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function toSingleLineJson(value: unknown): string {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized !== undefined) {
+      return serialized.replace(/\s+/g, " ").trim();
+    }
+  } catch {
+    // JSON 직렬화에 실패하면 문자열 표현으로 축약한다.
+  }
+  return String(value).replace(/\s+/g, " ").trim();
+}
 
 export async function openWikiHub(
   pi: ExtensionAPI,
