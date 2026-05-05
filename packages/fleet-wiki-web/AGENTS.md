@@ -25,6 +25,13 @@
 - Client routing is owned by `client/src/router.ts` and must use the History API.
 - Web fonts must be self-hosted via `@fontsource-variable/*` packages. External font CDNs (Google Fonts CDN, jsDelivr fonts, Adobe Fonts, etc.) are forbidden — every asset that ships to the browser must originate from a workspace dependency and end up in `dist/client/assets/`.
 
+## Link Syntax Standard
+
+- Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard defined in `@sbluemin/fleet-wiki/src/links.ts`).
+- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to `/entry/foo` SPA links with `data-entry-id` attributes.
+- Backlink extraction in `src/backlinks.ts` combines canonical `[[wiki:id]]` and legacy `.md` links for complete reference tracking.
+- Legacy markdown links `[title](entry.md)` remain readable but trigger `legacy_markdown_wiki_link` warning in `wiki_drydock`.
+
 ## Build Output
 
 - `dist/cli.mjs` is the package binary.

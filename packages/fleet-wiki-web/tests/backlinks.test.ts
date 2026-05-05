@@ -32,6 +32,18 @@ describe("backlinks", () => {
       { id: "beta", title: "Beta", occurrences: 2 },
     ]);
   });
+
+  it("counts canonical wiki backlinks and legacy links together", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-web-"));
+    const paths = resolveWorkspaceMemoryPaths(cwd);
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeEntry(paths.wikiDir, "alpha", "Alpha", "Alpha body");
+    await writeEntry(paths.wikiDir, "beta", "Beta", "See [[wiki:alpha]] and [Alpha](alpha.md).");
+
+    await expect(getBacklinks("alpha", paths)).resolves.toEqual([
+      { id: "beta", title: "Beta", occurrences: 2 },
+    ]);
+  });
 });
 
 async function writeEntry(wikiDir: string, id: string, title: string, body: string): Promise<void> {

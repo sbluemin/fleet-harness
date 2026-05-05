@@ -1,3 +1,4 @@
+import { appendLog } from "../log.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
@@ -48,6 +49,13 @@ export function buildIngestToolConfig() {
         content: sourceContent,
       };
       const rawSourceRef = await writeRawSourceEntry(rawSource, paths);
+      await appendLog(paths, "raw source added", {
+        id: rawSource.id,
+        raw_source_ref: rawSourceRef,
+        source_type: rawSource.sourceType,
+        tag_count: rawSource.tags.length,
+        title: rawSource.title ?? null,
+      });
 
       const entry: WikiEntry = {
         id: entryId,

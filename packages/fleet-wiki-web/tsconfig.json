@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@sbluemin/fleet-wiki": ["../fleet-wiki/src/index.ts"]
+    },
     "strict": true,
     "declaration": true,
     "declarationMap": true,

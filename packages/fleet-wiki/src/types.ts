@@ -18,6 +18,7 @@ export interface RawSourceEntry {
   sourceType: "inline" | "file";
   title?: string;
   tags: string[];
+  contentHash?: string;
   content: string;
 }
 
@@ -58,6 +59,31 @@ export interface MemoryPaths {
   indexFile: string;
 }
 
+export interface WorkspaceSchema {
+  agentsPath: string;
+  wikiSchemaPath: string;
+  exists: boolean;
+  summary: string;
+  requiredSections: readonly string[];
+  missingRequiredSections: string[];
+}
+
+export type WikiLogEvent =
+  | "raw source added"
+  | "patch enqueued"
+  | "patch approved"
+  | "patch rejected"
+  | "drydock run"
+  | "index rebuilt";
+
+export type WikiLogPayload = Record<string, string | number | boolean | null | undefined | string[]>;
+
+export interface WikiLogEntry {
+  timestamp: string;
+  event: WikiLogEvent;
+  payload: WikiLogPayload;
+}
+
 export interface WikiIndexEntry {
   path: string;
   title: string;
@@ -83,9 +109,17 @@ export interface DryDockIssue {
     | "duplicate_id"
     | "malformed_queue"
     | "inline_raw_source_ref"
+    | "legacy_markdown_wiki_link"
+    | "missing_index_md"
+    | "malformed_index_md"
+    | "missing_log_md"
+    | "malformed_log_md"
+    | "schema_missing"
+    | "schema_required_section_missing"
+    | "schema_agents_missing"
     | "unsafe_secret"
     | "prompt_injection";
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "info";
   message: string;
   path: string;
 }

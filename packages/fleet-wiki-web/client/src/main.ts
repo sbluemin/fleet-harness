@@ -275,7 +275,7 @@ function shouldUseBrowserDefault(event: MouseEvent): boolean {
 function internalSpaPath(anchor: HTMLAnchorElement): string | null {
   const rawHref = anchor.getAttribute("href") ?? "";
   const explicitId = anchor.dataset.entryId;
-  if (explicitId) return entryPath(explicitId);
+  if (explicitId) return entryPath(decodeURIComponent(explicitId));
   if (/^[a-z][a-z0-9+.-]*:/i.test(rawHref) && !rawHref.startsWith(window.location.origin)) return null;
   const url = new URL(rawHref, window.location.origin);
   if (url.origin !== window.location.origin) return null;

@@ -7,6 +7,10 @@ import json from "highlight.js/lib/languages/json";
 import markdown from "highlight.js/lib/languages/markdown";
 import python from "highlight.js/lib/languages/python";
 import typescript from "highlight.js/lib/languages/typescript";
+// SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
+// Inlined here because the client (Vite SPA) bundle cannot transitively pull
+// fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
+const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
 
 export interface TocItem {
   id: string;
@@ -25,12 +29,13 @@ const marked = new Marked({
 });
 const sanitizeConfig = {
   ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[#/]|\.{0,2}\/|[^:]+$)/i,
-  ADD_ATTR: ["target", "rel"],
+  ADD_ATTR: ["target", "rel", "data-entry-id"],
 };
 const highlighter = configureHighlighter();
 
 export function renderMarkdown(body: string): RenderedMarkdown {
-  const rawHtml = marked.parse(body, { async: false }) as string;
+  const bodyWithWikiLinks = renderWikiLinks(body);
+  const rawHtml = marked.parse(bodyWithWikiLinks, { async: false }) as string;
   const safeHtml = DOMPurify.sanitize(rawHtml, sanitizeConfig);
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
   decorateHeadings(document);
@@ -41,6 +46,17 @@ export function renderMarkdown(body: string): RenderedMarkdown {
     html,
     toc: extractToc(document),
   };
+}
+
+function renderWikiLinks(body: string): string {
+  return body.replace(WIKI_LINK_PATTERN, (_match, rawId: string) => {
+    const id = rawId.trim();
+    if (!id) return "";
+    const label = escapeHtml(id);
+    const encodedId = encodeURIComponent(id);
+    const href = `/entry/${encodedId}`;
+    return `<a href="${href}" data-entry-id="${encodedId}">${label}</a>`;
+  });
 }
 
 function decorateHeadings(document: Document): void {
@@ -146,4 +162,11 @@ function slugify(value: string): string {
     .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "section";
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

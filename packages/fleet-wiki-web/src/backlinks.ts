@@ -1,7 +1,12 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { listWiki } from "@sbluemin/fleet-wiki";
+import {
+  extractLegacyMarkdownWikiLinks,
+  extractMarkdownLinkTargets,
+  extractWikiLinks,
+  listWiki,
+} from "@sbluemin/fleet-wiki";
 import type { MemoryPaths } from "@sbluemin/fleet-wiki";
 
 export interface Backlink {
@@ -23,9 +28,9 @@ interface WikiFileSnapshot {
   mtimeMs: number;
 }
 
-const MARKDOWN_LINK_PATTERN = /\[[^\]]*]\(([^)]+)\)/g;
-
 let cache: BacklinkCache | null = null;
+
+export { extractMarkdownLinkTargets };
 
 export async function getBacklinks(id: string, paths: MemoryPaths): Promise<Backlink[]> {
   const snapshots = await readWikiSnapshots(paths);
@@ -37,15 +42,6 @@ export async function getBacklinks(id: string, paths: MemoryPaths): Promise<Back
     };
   }
   return cache.byTargetId.get(id) ?? [];
-}
-
-export function extractMarkdownLinkTargets(body: string): string[] {
-  const targets: string[] = [];
-  for (const match of body.matchAll(MARKDOWN_LINK_PATTERN)) {
-    const target = match[1]?.trim();
-    if (target) targets.push(target);
-  }
-  return targets;
 }
 
 async function readWikiSnapshots(paths: MemoryPaths): Promise<WikiFileSnapshot[]> {
@@ -89,8 +85,11 @@ function buildBacklinkMap(snapshots: WikiFileSnapshot[], paths: MemoryPaths): Ma
   const counts = new Map<string, Map<string, number>>();
 
   for (const source of snapshots) {
-    for (const rawTarget of extractMarkdownLinkTargets(source.body)) {
-      const targetId = targetToWikiId(rawTarget, source.filePath, paths);
+    const targetIds = [
+      ...extractWikiLinks(source.body),
+      ...extractLegacyMarkdownWikiLinks(source.body, paths.wikiDir, source.filePath).map((link) => link.entryId),
+    ];
+    for (const targetId of targetIds) {
       if (!targetId || targetId === source.id) continue;
       const sourceCounts = counts.get(targetId) ?? new Map<string, number>();
       sourceCounts.set(source.id, (sourceCounts.get(source.id) ?? 0) + 1);
@@ -112,15 +111,4 @@ function buildBacklinkMap(snapshots: WikiFileSnapshot[], paths: MemoryPaths): Ma
     );
   }
   return backlinks;
-}
-
-function targetToWikiId(rawTarget: string, sourceFilePath: string, paths: MemoryPaths): string | null {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(rawTarget) || rawTarget.startsWith("#")) return null;
-  const withoutFragment = rawTarget.split("#", 1)[0]?.split("?", 1)[0] ?? "";
-  if (!withoutFragment.endsWith(".md")) return null;
-  const decoded = decodeURIComponent(withoutFragment);
-  const resolved = path.resolve(path.dirname(sourceFilePath), decoded);
-  const relative = path.relative(paths.wikiDir, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
-  return path.basename(decoded, ".md");
 }

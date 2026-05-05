@@ -3,13 +3,17 @@ import { readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises
 import os from "node:os";
 import path from "node:path";
 
-import { INDEX_FILENAME, REQUIRED_WIKI_FRONTMATTER_KEYS } from "./constants.js";
-import { ensureMemoryRoot } from "./paths.js";
+import { INDEX_FILENAME, INDEX_MD_FILENAME, REQUIRED_WIKI_FRONTMATTER_KEYS } from "./constants.js";
+import { appendLog } from "./log.js";
+import { ensureMemoryRoot, getIndexMarkdownFile } from "./paths.js";
 import type { WikiIndexEntry, MemoryPaths, RawSourceEntry, WikiEntry } from "./types.js";
 
 type FrontmatterShape = Record<string, unknown>;
 
 export async function readWikiEntry(id: string, paths: MemoryPaths): Promise<WikiEntry | null> {
+  if (id === "index") {
+    return null;
+  }
   const index = await loadIndex(paths);
   const indexed = index[id];
   if (indexed) {
@@ -32,7 +36,8 @@ export async function writeRawSourceEntry(entry: RawSourceEntry, paths: MemoryPa
   await ensureMemoryRoot(paths);
   assertSafeEntryId(entry.id);
   const datePrefix = entry.created.slice(0, 10);
-  const relativePath = `raw/${datePrefix}-${entry.id}.md`;
+  const contentHash = computeContentHash(entry.content);
+  const relativePath = `raw/${datePrefix}-${entry.id}-${contentHash}.md`;
   const content = serializeMarkdown(
     {
       id: entry.id,
@@ -40,11 +45,27 @@ export async function writeRawSourceEntry(entry: RawSourceEntry, paths: MemoryPa
       sourceType: entry.sourceType,
       title: entry.title ?? "",
       tags: entry.tags,
+      contentHash,
     },
     entry.content,
   );
   await writeMarkdownAtomic(path.join(paths.root, relativePath), content, paths);
   return relativePath;
+}
+
+export async function readRawSourceEntry(rawSourceRef: string, paths: MemoryPaths): Promise<RawSourceEntry> {
+  const absolutePath = path.resolve(paths.root, rawSourceRef);
+  assertWithinRawDir(absolutePath, paths);
+  const parsed = parseMarkdown(await readFile(absolutePath, "utf8"));
+  return {
+    id: String(parsed.frontmatter.id),
+    created: String(parsed.frontmatter.created),
+    sourceType: parsed.frontmatter.sourceType === "file" ? "file" : "inline",
+    title: parsed.frontmatter.title ? String(parsed.frontmatter.title) : undefined,
+    tags: normalizeStringArray(parsed.frontmatter.tags),
+    contentHash: parsed.frontmatter.contentHash ? String(parsed.frontmatter.contentHash) : undefined,
+    content: parsed.body,
+  };
 }
 
 export async function listWiki(paths: MemoryPaths): Promise<WikiEntry[]> {
@@ -73,7 +94,71 @@ export async function rebuildIndex(paths: MemoryPaths): Promise<Record<string, W
     };
   }
   await writeJsonAtomic(paths.indexFile, nextIndex, paths);
+  await writeMarkdownAtomic(getIndexMarkdownFile(paths), renderIndexMarkdown(entries), paths);
+  await appendLog(paths, "index rebuilt", { entry_count: entries.length });
   return nextIndex;
+}
+
+export function renderIndexMarkdown(entries: WikiEntry[]): string {
+  const sortedEntries = [...entries].sort((left, right) => left.id.localeCompare(right.id));
+  const tagGroups = new Map<string, WikiEntry[]>();
+  for (const entry of sortedEntries) {
+    const tags = entry.tags.length > 0 ? entry.tags : ["(untagged)"];
+    for (const tag of tags) {
+      const group = tagGroups.get(tag) ?? [];
+      group.push(entry);
+      tagGroups.set(tag, group);
+    }
+  }
+  const sortedTags = [...tagGroups.keys()].sort((left, right) => {
+    if (left === "(untagged)") return 1;
+    if (right === "(untagged)") return -1;
+    return left.localeCompare(right);
+  });
+
+  const lines = [
+    "# Fleet Wiki Index",
+    "",
+    "## Summary",
+    "",
+    `- total_entries: \`${sortedEntries.length}\``,
+    "- generated_from: `index.json`",
+    "- ordering: `id ascending`",
+    "",
+    "## Entries",
+    "",
+  ];
+
+  for (const entry of sortedEntries) {
+    lines.push(`### ${entry.id}`);
+    lines.push("");
+    lines.push(`- title: \`${escapeInlineCode(entry.title)}\``);
+    lines.push(`- path: \`wiki/${escapeInlineCode(entry.id)}.md\``);
+    lines.push(`- tags: \`${escapeInlineCode(entry.tags.length > 0 ? entry.tags.join(", ") : "(none)")}\``);
+    lines.push(`- updated: \`${escapeInlineCode(entry.updated)}\``);
+    const summary = summarizeWikiEntry(entry.body);
+    if (summary) {
+      lines.push(`- summary: \`${escapeInlineCode(summary)}\``);
+    }
+    if (entry.rawSourceRef) {
+      lines.push(`- raw_source_ref: \`${escapeInlineCode(entry.rawSourceRef)}\``);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Tags");
+  lines.push("");
+  for (const tag of sortedTags) {
+    lines.push(`### ${tag}`);
+    lines.push("");
+    const group = [...(tagGroups.get(tag) ?? [])].sort((left, right) => left.id.localeCompare(right.id));
+    for (const entry of group) {
+      lines.push(`- [[wiki:${entry.id}]] — ${entry.title}`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n").trimEnd() + "\n";
 }
 
 export async function readPatchFile(filePath: string): Promise<string> {
@@ -132,6 +217,24 @@ export function assertSafeEntryId(id: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) {
     throw new Error(`unsafe wiki id: ${id}`);
   }
+  if (RESERVED_WIKI_ENTRY_IDS.has(id)) {
+    throw new Error(
+      `[fleet-wiki] reserved wiki id: ${id} - this id collides with a generated catalog file (e.g., wiki/index.md)`,
+    );
+  }
+}
+
+const RESERVED_WIKI_ENTRY_IDS = new Set<string>(["index"]);
+
+function assertWithinRawDir(absolutePath: string, paths: MemoryPaths): void {
+  const relative = path.relative(paths.rawDir, absolutePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`[fleet-wiki] raw source ref escapes raw/: ${absolutePath}`);
+  }
+}
+
+export function computeContentHash(content: string): string {
+  return crypto.createHash("sha256").update(content, "utf8").digest("hex").slice(0, 8);
 }
 
 function serializeWikiEntry(entry: WikiEntry): string {
@@ -168,6 +271,7 @@ async function listMarkdownEntries<T>(dirPath: string, parser: (content: string)
   const items: T[] = [];
   for (const name of names) {
     if (!name.endsWith(".md")) continue;
+    if (name === INDEX_MD_FILENAME) continue;
     const content = await readFile(path.join(dirPath, name), "utf8");
     items.push(parser(content));
   }
@@ -274,4 +378,21 @@ async function writeAtomic(filePath: string, content: string, paths: MemoryPaths
   );
   await writeFile(tempPath, content, "utf8");
   await rename(tempPath, filePath);
+}
+
+function summarizeWikiEntry(body: string): string {
+  const firstLine = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) return "";
+  return normalizeSummaryWhitespace(firstLine).slice(0, 160);
+}
+
+function normalizeSummaryWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function escapeInlineCode(value: string): string {
+  return value.replace(/`/g, "\\`");
 }

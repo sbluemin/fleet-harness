@@ -4,6 +4,7 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "ignoreDeprecations": "6.0",
     "strict": true,
     "isolatedModules": true,
     "skipLibCheck": true,

@@ -46,6 +46,31 @@ describe("wiki patch queue", () => {
     await expect(validatePatch(patch, paths)).rejects.toThrow(/does not exist/);
   });
 
+  it("rejects create_wiki when the target already exists but still allows update_wiki", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry({
+      id: "alpha",
+      title: "Alpha",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+
+    const createPatch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/alpha.md"\nsummary: "Alpha overwrite"\nproposer: "test"\ncreated: "2026-04-26T00:00:00.000Z"\n---\n{"id":"alpha","title":"Alpha","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:00:00.000Z","version":1,"body":"overwrite"}`);
+    const updatePatch = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/alpha.md"\nsummary: "Alpha update"\nproposer: "test"\ncreated: "2026-04-26T00:01:00.000Z"\n---\n{"id":"alpha","title":"Alpha","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:01:00.000Z","version":2,"body":"updated body"}`);
+
+    const createPatchId = await enqueuePatch(createPatch, paths);
+    const updatePatchId = await enqueuePatch(updatePatch, paths);
+
+    await expect(approvePatch(createPatchId, paths)).rejects.toThrow(/create_wiki target already exists/);
+    await expect(approvePatch(updatePatchId, paths)).resolves.toMatchObject({ status: "accepted" });
+    expect(await readPatchFile(path.join(paths.wikiDir, "alpha.md"))).toContain("updated body");
+  });
+
   it("rejects a safe target whose body tries to escape through entry id", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

@@ -25,8 +25,8 @@ describe("queue POST actions", () => {
     await mkdir(path.join(queueDir, PENDING_PATCH_ID), { recursive: true });
     await mkdir(path.join(archiveDir, ARCHIVE_PATCH_ID), { recursive: true });
     await writeEntry(wikiDir, "test-entry", "테스트 문서", "본문");
-    await writePatch(queueDir, PENDING_PATCH_ID, "test-entry", "테스트 패치", "pending");
-    await writePatch(archiveDir, ARCHIVE_PATCH_ID, "test-entry", "아카이브 패치", "accepted");
+    await writePatch(queueDir, PENDING_PATCH_ID, "test-entry", "테스트 패치", "pending", "update_wiki");
+    await writePatch(archiveDir, ARCHIVE_PATCH_ID, "test-entry", "아카이브 패치", "accepted", "update_wiki");
     const lockPath = path.join(tempDir, "server.lock");
     server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0 });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
@@ -85,12 +85,25 @@ describe("queue POST actions", () => {
     await expect(access(archivePath)).resolves.not.toThrow();
   });
 
+  it("returns 409 create_target_exists when approving a create_wiki patch whose target already exists", async () => {
+    const overwriteId = "2026-05-05T08-00-00-000Z-cafebabe";
+    const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
+    await writePatch(queueDir, overwriteId, "test-entry", "이미 존재하는 entry overwrite 시도", "pending", "create_wiki");
+    const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(overwriteId)}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: "create_target_exists" });
+  });
+
   it("returns 409 when approving a queued patch whose meta already has non-pending status", async () => {
     // fleet-wiki throws "patch is not pending" only when patch is still in queueDir
     // but meta.json status != "pending". Simulate by writing a non-pending fixture in queue.
     const nonPendingId = "2026-05-04T11-00-00-000Z-deadbeef";
     const queueDir = path.join(tempDir, ".fleet", "knowledge", "queue");
-    await writePatch(queueDir, nonPendingId, "test-entry", "비활성 패치", "accepted");
+    await writePatch(queueDir, nonPendingId, "test-entry", "비활성 패치", "accepted", "update_wiki");
     const response = await fetch(`${baseUrl}/api/queue/${encodeURIComponent(nonPendingId)}/approve`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: baseUrl },
@@ -217,6 +230,7 @@ async function writePatch(
   targetId: string,
   summary: string,
   status: "pending" | "accepted" | "rejected",
+  op: "create_wiki" | "update_wiki" = "create_wiki",
 ): Promise<void> {
   const dir = path.join(baseDir, patchId);
   await mkdir(dir, { recursive: true });
@@ -231,7 +245,7 @@ async function writePatch(
   });
   const patchMd = [
     "---",
-    `op: "create_wiki"`,
+    `op: "${op}"`,
     `target: "wiki/${targetId}.md"`,
     `summary: "${summary}"`,
     `proposer: "test"`,

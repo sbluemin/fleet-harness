@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "./constants.js";
+import { appendLog } from "./log.js";
 import { ensureMemoryRoot } from "./paths.js";
 import {
   assertSafeEntryId,
@@ -61,6 +62,11 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
   }
 
   if (!absoluteTarget.startsWith(`${paths.wikiDir}${path.sep}`)) throw new Error("wiki patch must target wiki/");
+  if (op === "create_wiki" && (await pathExists(absoluteTarget))) {
+    throw new Error(
+      `[fleet-wiki] create_wiki target already exists: ${target} - use update_wiki to modify existing entries`,
+    );
+  }
   if (op === "update_wiki" && !(await pathExists(absoluteTarget))) throw new Error("update_wiki target does not exist");
 }
 
@@ -79,12 +85,21 @@ export async function enqueuePatch(patch: Patch, paths: MemoryPaths, metaOverrid
   const queueDir = path.join(paths.queueDir, patchId);
   await mkdir(queueDir, { recursive: true });
   await writePatchFile(path.join(queueDir, PATCH_FILENAME), serializePatch(patch), paths);
-  await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), {
+  const meta: PatchMeta = {
     id: patchId,
     status: "pending",
     createdAt: patch.frontmatter.created,
     ...metaOverrides,
-  } satisfies PatchMeta, paths);
+  };
+  await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), meta satisfies PatchMeta, paths);
+  await appendLog(paths, "patch enqueued", {
+    patch_id: patchId,
+    op: patch.frontmatter.op,
+    proposer: patch.frontmatter.proposer,
+    raw_source_ref: meta.rawSourceRef ?? null,
+    target: patch.frontmatter.target,
+    warning_count: meta.warnings?.length ?? 0,
+  });
   return patchId;
 }
 
@@ -135,6 +150,14 @@ export async function approvePatch(id: string, paths: MemoryPaths): Promise<Patc
     decidedAt: new Date().toISOString(),
   };
   await archiveQueueEntry(id, paths, nextMeta);
+  await appendLog(paths, "patch approved", {
+    op: patch.frontmatter.op,
+    patch_id: id,
+    proposer: patch.frontmatter.proposer,
+    raw_source_ref: nextMeta.rawSourceRef ?? null,
+    result: "accepted",
+    target: patch.frontmatter.target,
+  });
   return nextMeta;
 }
 
@@ -148,6 +171,11 @@ export async function rejectPatch(id: string, reason: string, paths: MemoryPaths
     reason,
   };
   await archiveQueueEntry(id, paths, nextMeta);
+  await appendLog(paths, "patch rejected", {
+    patch_id: id,
+    reason,
+    result: "rejected",
+  });
   return nextMeta;
 }
 

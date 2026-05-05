@@ -1,10 +1,19 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { resolveMemoryPaths } from "../src/paths.js";
-import { loadIndex, readPatchFile, readWikiEntry, rebuildIndex, writeRawSourceEntry, writeWikiEntry } from "../src/store.js";
+import {
+  computeContentHash,
+  loadIndex,
+  readPatchFile,
+  readRawSourceEntry,
+  readWikiEntry,
+  rebuildIndex,
+  writeRawSourceEntry,
+  writeWikiEntry,
+} from "../src/store.js";
 
 const cleanupPaths: string[] = [];
 
@@ -41,6 +50,8 @@ describe("wiki store", () => {
   it("creates the expanded local layout and stores raw source material", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
+    const content = "immutable source";
+    const expectedHash = computeContentHash(content);
 
     const rawRef = await writeRawSourceEntry({
       id: "alpha-source",
@@ -48,15 +59,20 @@ describe("wiki store", () => {
       sourceType: "inline",
       title: "Alpha Source",
       tags: ["one"],
-      content: "immutable source",
+      content,
     }, paths);
 
     const rawContent = await readPatchFile(path.join(paths.root, rawRef));
+    const rawEntry = await readRawSourceEntry(rawRef, paths);
 
     expect(paths.rawDir.endsWith(path.join(".fleet/knowledge", "raw"))).toBe(true);
     expect(paths.schemaDir.endsWith(path.join(".fleet/knowledge", "schema"))).toBe(true);
     expect(paths.conflictsDir.endsWith(path.join(".fleet/knowledge", "conflicts"))).toBe(true);
+    expect(rawRef).toBe(`raw/2026-04-26-alpha-source-${expectedHash}.md`);
     expect(rawContent).toContain("immutable source");
+    expect(rawContent).toContain(`contentHash: "${expectedHash}"`);
+    expect(rawEntry.contentHash).toBe(expectedHash);
+    expect(rawEntry.content).toBe(content);
   });
 
   it("rejects unsafe IDs before writing workspace-local files", async () => {
@@ -156,6 +172,91 @@ describe("wiki store", () => {
 
     expect(wiki?.title).toBe(title);
     expect(wiki?.tags).toEqual([tag]);
+  });
+
+  it("dedupes raw source paths for identical content on the same day", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const entry = {
+      id: "dedupe-source",
+      created: "2026-04-26T00:00:00.000Z",
+      sourceType: "inline" as const,
+      title: "Dedupe",
+      tags: ["one"],
+      content: "same content",
+    };
+
+    const firstRef = await writeRawSourceEntry(entry, paths);
+    const secondRef = await writeRawSourceEntry(entry, paths);
+
+    expect(firstRef).toBe(secondRef);
+  });
+
+  it("writes distinct raw source files for different content on the same day", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    const firstRef = await writeRawSourceEntry({
+      id: "collision-source",
+      created: "2026-04-26T00:00:00.000Z",
+      sourceType: "inline",
+      title: "Collision",
+      tags: [],
+      content: "first content",
+    }, paths);
+    const secondRef = await writeRawSourceEntry({
+      id: "collision-source",
+      created: "2026-04-26T12:34:56.000Z",
+      sourceType: "inline",
+      title: "Collision",
+      tags: [],
+      content: "second content",
+    }, paths);
+
+    expect(firstRef).not.toBe(secondRef);
+    expect(await readPatchFile(path.join(paths.root, firstRef))).toContain("first content");
+    expect(await readPatchFile(path.join(paths.root, secondRef))).toContain("second content");
+  });
+
+  it("parses legacy raw source files without hash suffix or contentHash frontmatter", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const legacyRef = "raw/2026-04-26-legacy-source.md";
+
+    await mkdir(paths.rawDir, { recursive: true });
+    await writeFile(path.join(paths.root, legacyRef), `---\nid: "legacy-source"\ncreated: "2026-04-26T00:00:00.000Z"\nsourceType: "inline"\ntitle: "Legacy"\ntags: ["one"]\n---\nlegacy body`, "utf8");
+
+    const legacyEntry = await readRawSourceEntry(legacyRef, paths);
+
+    expect(legacyEntry.id).toBe("legacy-source");
+    expect(legacyEntry.contentHash).toBeUndefined();
+    expect(legacyEntry.content).toBe("legacy body");
+  });
+  it("rejects reserved wiki id 'index' to protect generated catalog", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await expect(
+      writeWikiEntry({
+        id: "index",
+        title: "Index",
+        tags: [],
+        created: "2026-04-26T00:00:00.000Z",
+        updated: "2026-04-26T00:00:00.000Z",
+        version: 1,
+        body: "should be rejected",
+      }, paths),
+    ).rejects.toThrow(/reserved wiki id: index/);
+  });
+
+  it("rejects raw source refs that escape raw/", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(paths.rawDir, { recursive: true });
+    await writeFile(path.join(paths.root, "outside.md"), "---\nid: x\n---\noutside", "utf8");
+
+    await expect(readRawSourceEntry("../outside.md", paths)).rejects.toThrow(/raw source ref escapes raw\//);
+    await expect(readRawSourceEntry("/etc/passwd", paths)).rejects.toThrow(/raw source ref escapes raw\//);
   });
 });
 

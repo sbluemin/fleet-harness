@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- **`wiki_orient` tool** — New MCP tool for workspace orientation that provides schema summary, index snapshot, recent log entries, pending queue count, and drydock status in a single call. Enables LLM agents to understand workspace terrain before starting wiki tasks.
+- **Canonical wiki link syntax `[[wiki:id]]`** — Fleet Wiki now uses `[[wiki:entry-id]]` as the cross-layer standard for wiki-to-wiki links. Link extractors in both leaf package and web surface share the same SSoT in `packages/fleet-wiki/src/links.ts`.
+- **`index.md` markdown catalog** — `rebuildIndex()` now generates `.fleet/knowledge/wiki/index.md` alongside `index.json`, providing a human-readable entry catalog with deterministic id ordering and tag grouping.
+- **Append-only `log.md`** — New operational log at `.fleet/knowledge/log.md` that records ingest, patch lifecycle, drydock runs, and index rebuilds as chronological entries for auditability.
+- **Workspace schema bootstrap** — `ensureWorkspaceSchema()` auto-generates `schema/AGENTS.md` and `schema/wiki-schema.md` in new workspaces, defining canonical link syntax, frontmatter rules, body conventions, and provenance policies.
+- **`links.ts` module** — Public helper in `@sbluemin/fleet-wiki` exposing `extractWikiLinks()`, `extractLegacyMarkdownWikiLinks()`, and `replaceWikiLinksWithMarkdown()` for unified link handling across leaf and web packages.
+- **`log.ts` module** — Public helpers `appendLog()`, `parseLog()`, `formatLogEntry()` for structured operational logging with deterministic payload ordering.
+- **`schema.ts` module** — Public helpers `ensureWorkspaceSchema()` and `readWorkspaceSchemaSummary()` for workspace convention management, with idempotent file creation that preserves user edits.
+- **Legacy markdown wiki link warning** — `wiki_drydock` now reports `legacy_markdown_wiki_link` warning when `[title](entry.md)` style links are detected, guiding users toward canonical `[[wiki:id]]` syntax.
+- **Web renderer canonical link support** — `packages/fleet-wiki-web` now renders `[[wiki:foo]]` as `/entry/foo` SPA links with `data-entry-id` attributes, while preserving DOMPurify security policies.
+- **Web backlink union** — Backlink extraction now combines canonical `[[wiki:id]]` and legacy `.md` links for complete reference tracking.
+- **New test suites** — `wiki-orient.test.ts`, `wiki-links.test.ts`, `wiki-log.test.ts`, `wiki-index-md.test.ts`, `wiki-schema.test.ts` covering orientation tool, link extraction, operational logging, index generation, and schema bootstrap.
+
+### Changed
+- **`wiki_drydock` prompt snippets** — All four tool prompts now reference `.fleet/knowledge/schema/wiki-schema.md` as the authoritative guide for workspace conventions.
+- **DryDock schema lint** — Added `schema_missing`, `schema_required_section_missing`, `schema_agents_missing` issue codes with severity levels (warning/info) to diagnose workspace schema health.
+- **`DryDockIssue.severity`** — Extended union to include `"info"` for non-critical diagnostic issues like missing `schema/AGENTS.md`.
+- **`rebuildIndex()` workflow** — Now writes `index.json`, `wiki/index.md`, and appends `index rebuilt` log entry atomically, failing loudly if log append fails.
+- **`ensureMemoryRoot()`** — Now bootstraps workspace schema files via `ensureWorkspaceSchema()` during initialization.
+
+### Fixed
+- **`create_wiki` overwrite prevention** — `validatePatch()` now rejects patches targeting existing wiki entries, forcing use of `update_wiki` for modifications.
+- **Raw source filename collisions** — Ingested source files now include SHA-256 content hash suffix (`raw/{date}-{id}-{hash}.md`) to prevent overwrite when ingesting same-day updates with different content.
+- **`wiki/index.md` exclusion** — Index catalog and `readWikiEntry("index")` now properly exclude the catalog file from entry listings and direct reads.
+- **Reserved wiki id `index`** — `assertSafeEntryId()` rejects `id: "index"` to prevent user entries from colliding with the generated `wiki/index.md` catalog and being silently overwritten by `rebuildIndex()`.
+- **`log.md` multiline self-corruption** — `formatLogEntry()` now escapes newlines, carriage returns, and backslashes inside payload values so user-supplied strings (e.g., entry titles with embedded newlines) cannot break the single-bullet log line invariant.
+- **`readRawSourceEntry()` path traversal** — Public helper enforces `paths.rawDir` containment via `path.relative()` and rejects refs that escape the raw directory.
+- **Web approve `409 create_target_exists`** — `PATCH_ERROR_MAP` now maps the `create_wiki target already exists` error to a `409 create_target_exists` response so the browser surface no longer reports overwrite conflicts as `500 internal_error`.
+- **DryDock `ok` semantics** — `runDryDock().ok` now reflects `errorCount === 0` instead of `issues.length === 0`. Warning-level issues (e.g., missing `index.md`/`log.md` on a fresh workspace) no longer cause healthy stores to display as failed; status counts remain available via `error_count` / `warning_count` in the appended log entry.
+- **Client bundle build** — Removed `@sbluemin/fleet-wiki` import from the Vite SPA renderer. The client now keeps an inlined copy of `WIKI_LINK_PATTERN` (with explicit SSoT comment) instead of transitively pulling fleet-wiki's Node-only modules into the browser bundle.
+
 ## [0.12.0] - 2026-05-04
 
 ### Breaking Changes

@@ -5,6 +5,7 @@ import { Container, Key, matchesKey, SelectList, Spacer, Text, visibleWidth, typ
 import { buildBriefingToolConfig } from "@sbluemin/fleet-wiki";
 import { buildDryDockToolConfig } from "@sbluemin/fleet-wiki";
 import { buildIngestToolConfig } from "@sbluemin/fleet-wiki";
+import { buildOrientToolConfig } from "@sbluemin/fleet-wiki";
 import { buildPatchQueueToolConfig } from "@sbluemin/fleet-wiki";
 
 import {
@@ -42,6 +43,7 @@ export function registerFleetWiki(ctx: ExtensionAPI | ExtensionContext): void {
   pi.registerTool(buildBriefingToolConfig());
   pi.registerTool(buildDryDockToolConfig());
   pi.registerTool(buildPatchQueueToolConfig());
+  pi.registerTool(buildOrientToolConfig());
   registerWikiCommands(pi);
 }
 

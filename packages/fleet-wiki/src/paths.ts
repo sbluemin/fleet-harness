@@ -5,12 +5,15 @@ import {
   ARCHIVE_DIRNAME,
   CONFLICTS_DIRNAME,
   INDEX_FILENAME,
+  INDEX_MD_FILENAME,
   KNOWLEDGE_ROOT_DIRNAME,
+  LOG_MD_FILENAME,
   QUEUE_DIRNAME,
   RAW_DIRNAME,
   SCHEMA_DIRNAME,
   WIKI_DIRNAME,
 } from "./constants.js";
+import { ensureWorkspaceSchema } from "./schema.js";
 import type { MemoryPaths } from "./types.js";
 
 export function resolveMemoryPaths(cwd: string): MemoryPaths {
@@ -35,4 +38,13 @@ export async function ensureMemoryRoot(paths: MemoryPaths): Promise<void> {
   await mkdir(paths.queueDir, { recursive: true });
   await mkdir(paths.archiveDir, { recursive: true });
   await mkdir(paths.conflictsDir, { recursive: true });
+  await ensureWorkspaceSchema(paths);
+}
+
+export function getIndexMarkdownFile(paths: MemoryPaths): string {
+  return path.join(paths.wikiDir, INDEX_MD_FILENAME);
+}
+
+export function getLogFile(paths: MemoryPaths): string {
+  return path.join(paths.root, LOG_MD_FILENAME);
 }
