@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-05-05
+
 ### Added
 - **`wiki_orient` tool** — New MCP tool for workspace orientation that provides schema summary, index snapshot, recent log entries, pending queue count, and drydock status in a single call. Enables LLM agents to understand workspace terrain before starting wiki tasks.
 - **Canonical wiki link syntax `[[wiki:id]]`** — Fleet Wiki now uses `[[wiki:entry-id]]` as the cross-layer standard for wiki-to-wiki links. Link extractors in both leaf package and web surface share the same SSoT in `packages/fleet-wiki/src/links.ts`.
