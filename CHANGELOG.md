@@ -52,6 +52,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Client bundle build** — Removed `@sbluemin/fleet-wiki` import from the Vite SPA renderer. The client now keeps an inlined copy of `WIKI_LINK_PATTERN` (with explicit SSoT comment) instead of transitively pulling fleet-wiki's Node-only modules into the browser bundle.
 - **Nested wiki entry resolution** — `readWikiEntry()` now falls back to a recursive scan when `index.json` is stale or missing, so entries under `wiki/queries/`, `wiki/sources/`, `wiki/synthesis/` (introduced by `wiki_compile_source` and `wiki_query`) remain readable through `wiki_read` and approve flows even after index drift.
 - **Patch ID collision** — `buildPatchId()` now hashes `target` + `body` (in addition to timestamp + summary) so `wiki_compile_source` patch sets touching multiple pages with identical summaries no longer produce colliding queue directories. `enqueuePatch()` raises a hard error if a patch directory unexpectedly already exists.
+- **Drydock list resilience** — `listQueue()` now silently skips corrupted queue entries (missing/malformed `meta.json`) instead of throwing, so the web Drydock view no longer surfaces `500 internal_error` for legacy empty directories left behind by the pre-fix `buildPatchId()` collision regression. `wiki_drydock` continues to flag those directories as `malformed_queue`.
 
 ## [0.12.0] - 2026-05-04
 

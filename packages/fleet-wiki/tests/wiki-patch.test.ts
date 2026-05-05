@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { listConflicts, readConflict } from "../src/conflicts.js";
 import { buildPatchSetId, writePatchSet } from "../src/patch-set.js";
-import { approvePatch, approvePatchSet, enqueuePatch, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../src/patch.js";
+import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
 import { pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../src/store.js";
 import { buildPatchQueueToolConfig } from "../src/tools/patch-queue.js";
@@ -274,6 +274,24 @@ describe("wiki patch queue", () => {
     expect(payload.accepted).toHaveLength(1);
     expect(await pathExists(path.join(paths.archiveDir, patchId))).toBe(true);
     expect(await readPatchFile(path.join(paths.root, "log.md"))).toContain("— patch set partially approved");
+  });
+
+  it("listQueue silently skips corrupted entries (missing meta.json) instead of throwing", async () => {
+    // 회귀: 옛 buildPatchId 충돌 시기에 빈 queue 디렉터리가 남았던 워크스페이스에서
+    // listQueue/web Drydock 메뉴가 ENOENT 로 500 internal_error 를 던지지 않아야 한다.
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const goodPatch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/good.md"\nsummary: "good"\nproposer: "test"\ncreated: "2026-05-05T00:00:00.000Z"\n---\n{"id":"good","title":"G","tags":[],"created":"2026-05-05T00:00:00.000Z","updated":"2026-05-05T00:00:00.000Z","version":1,"body":"good body"}`);
+    const goodId = await enqueuePatch(goodPatch, paths);
+
+    // 빈 디렉터리 인위 생성 — 옛 충돌 잔재 시뮬레이션
+    const emptyId = "2026-05-05T05-10-13-611Z-deadbeef";
+    await mkdir(path.join(paths.queueDir, emptyId), { recursive: true });
+
+    const items = await listQueue(paths);
+
+    expect(items.map((item) => item.id)).toEqual([goodId]);
+    expect(items.some((item) => item.id === emptyId)).toBe(false);
   });
 
   it("buildPatchId disambiguates patches sharing timestamp+summary by hashing target+body", async () => {

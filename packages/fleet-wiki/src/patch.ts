@@ -124,8 +124,14 @@ export async function listQueue(paths: MemoryPaths): Promise<Array<{ id: string;
   const results: Array<{ id: string; meta: PatchMeta }> = [];
   for (const id of ids) {
     if (id === "_sets") continue;
-    const meta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, id, PATCH_META_FILENAME));
-    results.push({ id, meta });
+    try {
+      const meta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, id, PATCH_META_FILENAME));
+      results.push({ id, meta });
+    } catch {
+      // Corrupted queue entry (missing/malformed meta.json). Skip silently here so
+      // listing surfaces stay useful; wiki_drydock reports it as malformed_queue.
+      continue;
+    }
   }
   return results;
 }
