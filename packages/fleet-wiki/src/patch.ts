@@ -40,7 +40,7 @@ export interface PatchSetApprovalResult {
 }
 
 export async function parsePatch(markdown: string): Promise<Patch> {
-  const match = markdown.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const match = markdown.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) throw new Error("missing patch frontmatter");
   const [, rawFrontmatter, body] = match;
   const frontmatter: Record<string, string> = {};
@@ -378,7 +378,7 @@ function parsePatchBodyEntry(content: string): WikiEntry | undefined {
 }
 
 function parseStoredWikiEntry(content: string): WikiEntry | undefined {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return undefined;
   const [, rawFrontmatter, body] = match;
   const frontmatter = new Map<string, string>();

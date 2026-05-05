@@ -87,6 +87,27 @@ describe("wiki drydock", () => {
     expect(codes).toContain("malformed_queue");
   });
 
+  it("parses wiki frontmatter with CRLF line endings", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(path.join(paths.wikiDir, "crlf.md"), [
+      "---",
+      `id: "crlf"`,
+      `title: "CRLF"`,
+      "tags: []",
+      `created: "2026-04-26T00:00:00.000Z"`,
+      `updated: "2026-04-26T00:00:00.000Z"`,
+      "version: 1",
+      "---",
+      "body",
+    ].join("\r\n"), "utf8");
+
+    const report = await runDryDock(paths);
+
+    expect(report.issues.some((issue) => issue.code === "missing_frontmatter")).toBe(false);
+  });
+
   it("flags prompt-injection-like wiki content", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

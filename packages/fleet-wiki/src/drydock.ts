@@ -296,7 +296,7 @@ function safetyIssues(content: string, filePath: string): DryDockIssue[] {
 }
 
 function parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } | null {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return null;
   const [, rawFrontmatter, body] = match;
   const frontmatter: Record<string, unknown> = {};

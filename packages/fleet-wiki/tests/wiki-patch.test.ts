@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -18,6 +18,22 @@ afterEach(async () => {
 });
 
 describe("wiki patch queue", () => {
+  it("parses patch frontmatter with CRLF line endings", async () => {
+    const patch = await parsePatch([
+      "---",
+      `op: "create_wiki"`,
+      `target: "wiki/crlf.md"`,
+      `summary: "CRLF"`,
+      `proposer: "test"`,
+      `created: "2026-04-26T00:00:00.000Z"`,
+      "---",
+      `{"id":"crlf","title":"CRLF","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:00:00.000Z","version":1,"body":"hello"}`,
+    ].join("\r\n"));
+
+    expect(patch.frontmatter.target).toBe("wiki/crlf.md");
+    expect(JSON.parse(patch.body)).toMatchObject({ id: "crlf" });
+  });
+
   it("supports enqueue, show, approve, and archive", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
@@ -199,6 +215,32 @@ describe("wiki patch queue", () => {
     expect(record.meta.patchId).toBe(patchId);
     expect(meta.conflictId).toBe(record.meta.id);
     expect(await readPatchFile(path.join(paths.root, "log.md"))).toContain("— conflict detected");
+  });
+
+  it("records current metadata from CRLF wiki entries when creating patch conflicts", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(path.join(paths.wikiDir, "safe.md"), [
+      "---",
+      `id: "safe"`,
+      `title: "Safe"`,
+      "tags: []",
+      `created: "2026-04-26T00:00:00.000Z"`,
+      `updated: "2026-04-26T00:00:01.000Z"`,
+      "version: 3",
+      "---",
+      "current body",
+    ].join("\r\n"), "utf8");
+    const patch = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/safe.md"\nsummary: "Mismatch"\nproposer: "test"\ncreated: "2026-04-26T00:02:00.000Z"\n---\n{"id":"other","title":"Other","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:02:00.000Z","version":4,"body":"body text that is long enough for storage"}`);
+    const patchId = await enqueuePatch(patch, paths);
+
+    await expect(approvePatch(patchId, paths)).rejects.toThrow(/body id must match target filename/);
+    const [conflict] = await listConflicts(paths);
+    const record = await readConflict(conflict!.id, paths);
+
+    expect(record.meta.currentVersion).toBe(3);
+    expect(record.current).toContain("current body");
   });
 
   it("creates a conflict record when approval hits a source provenance conflict", async () => {
