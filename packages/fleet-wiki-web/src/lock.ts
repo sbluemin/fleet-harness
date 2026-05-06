@@ -9,6 +9,7 @@ export interface FleetWikiLock {
   port: number;
   cwd: string;
   startedAt: string;
+  host?: string;
 }
 
 export class LockExistsError extends Error {

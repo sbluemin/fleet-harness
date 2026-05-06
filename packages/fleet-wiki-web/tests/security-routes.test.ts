@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -42,7 +43,7 @@ describe("security routes", () => {
     // archive 패치 픽스처
     await writePatch(archiveDir, VALID_PATCH_ID, "valid-id", "테스트 요약", "accepted");
     const lockPath = path.join(tempDir, "server.lock");
-    server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0 });
+    server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0, host: "127.0.0.1" });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
     baseUrl = `http://127.0.0.1:${lock.port}`;
   });
@@ -329,6 +330,93 @@ describe("security routes", () => {
     ]));
     expect(logResponse.status).toBe(200);
     await expect(logResponse.json()).resolves.toMatchObject({ limit: 100 });
+  });
+});
+
+describe("wildcard host origin check", () => {
+  let wildcardServer: Server | null = null;
+  let wildcardTempDir = "";
+  let wildcardPort = 0;
+
+  function postWithOrigin(origin: string | undefined, patchId: string): Promise<{ statusCode: number }> {
+    return new Promise((resolve, reject) => {
+      const headers: Record<string, string> = { "Content-Type": "application/json", "Content-Length": "2" };
+      if (origin !== undefined) headers["Origin"] = origin;
+      const req = http.request(
+        { hostname: "127.0.0.1", port: wildcardPort, path: `/api/queue/${patchId}/approve`, method: "POST", headers },
+        (res) => {
+          let body = "";
+          res.on("data", (chunk) => { body += chunk; });
+          res.on("end", () => resolve({ statusCode: res.statusCode ?? 0 }));
+          res.on("error", reject);
+        },
+      );
+      req.on("error", reject);
+      req.write("{}");
+      req.end();
+    });
+  }
+
+  beforeEach(async () => {
+    wildcardTempDir = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-web-wildcard-"));
+    const wikiDir = path.join(wildcardTempDir, ".fleet", "knowledge", "wiki");
+    await mkdir(wikiDir, { recursive: true });
+    await writeEntry(wikiDir, "wc-entry", "Wildcard Entry", "Body");
+    const lockPath = path.join(wildcardTempDir, "server.lock");
+    wildcardServer = await startFleetWikiServer({ cwd: wildcardTempDir, lockPath, port: 0, host: "0.0.0.0" });
+    const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
+    wildcardPort = lock.port;
+  });
+
+  afterEach(async () => {
+    if (wildcardServer) await new Promise<void>((resolve) => wildcardServer?.close(() => resolve()));
+    wildcardServer = null;
+    if (wildcardTempDir) await rm(wildcardTempDir, { recursive: true, force: true });
+  });
+
+  it("allows POST with LAN IP origin when bound to 0.0.0.0", async () => {
+    const queueDir = path.join(wildcardTempDir, ".fleet", "knowledge", "queue");
+    const pid = "2026-05-06T10-00-00-000Z-00cafe01";
+    await mkdir(path.join(queueDir, pid), { recursive: true });
+    await writePatch(queueDir, pid, "wc-entry", "패치", "pending");
+    const { statusCode } = await postWithOrigin(`http://192.168.1.100:${wildcardPort}`, pid);
+    expect(statusCode).not.toBe(403);
+  });
+
+  it("allows POST with localhost origin when bound to 0.0.0.0", async () => {
+    const queueDir = path.join(wildcardTempDir, ".fleet", "knowledge", "queue");
+    const pid = "2026-05-06T10-01-00-000Z-00cafe02";
+    await mkdir(path.join(queueDir, pid), { recursive: true });
+    await writePatch(queueDir, pid, "wc-entry", "패치", "pending");
+    const { statusCode } = await postWithOrigin(`http://localhost:${wildcardPort}`, pid);
+    expect(statusCode).not.toBe(403);
+  });
+
+  it("rejects POST with wrong port origin when bound to 0.0.0.0", async () => {
+    const queueDir = path.join(wildcardTempDir, ".fleet", "knowledge", "queue");
+    const pid = "2026-05-06T10-02-00-000Z-00cafe03";
+    await mkdir(path.join(queueDir, pid), { recursive: true });
+    await writePatch(queueDir, pid, "wc-entry", "패치", "pending");
+    const { statusCode } = await postWithOrigin(`http://192.168.1.100:${wildcardPort + 1}`, pid);
+    expect(statusCode).toBe(403);
+  });
+
+  it("rejects POST with https origin when bound to 0.0.0.0", async () => {
+    const queueDir = path.join(wildcardTempDir, ".fleet", "knowledge", "queue");
+    const pid = "2026-05-06T10-03-00-000Z-00cafe04";
+    await mkdir(path.join(queueDir, pid), { recursive: true });
+    await writePatch(queueDir, pid, "wc-entry", "패치", "pending");
+    const { statusCode } = await postWithOrigin(`https://192.168.1.100:${wildcardPort}`, pid);
+    expect(statusCode).toBe(403);
+  });
+
+  it("rejects POST with no Origin header when bound to 0.0.0.0", async () => {
+    const queueDir = path.join(wildcardTempDir, ".fleet", "knowledge", "queue");
+    const pid = "2026-05-06T10-04-00-000Z-00cafe05";
+    await mkdir(path.join(queueDir, pid), { recursive: true });
+    await writePatch(queueDir, pid, "wc-entry", "패치", "pending");
+    const { statusCode } = await postWithOrigin(undefined, pid);
+    expect(statusCode).toBe(403);
   });
 });
 

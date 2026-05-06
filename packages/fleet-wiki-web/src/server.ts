@@ -14,10 +14,10 @@ interface ServerArgs {
   cwd: string;
   lockPath: string;
   port: number;
+  host: string;
 }
 
 const VERSION = "0.0.0";
-const HOST = "127.0.0.1";
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_ROOT = resolveClientRoot(MODULE_DIR);
 const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST"]);
@@ -46,6 +46,8 @@ function resolveClientRoot(moduleDir: string): string {
 
 export async function startFleetWikiServer(args: ServerArgs): Promise<Server> {
   const cwd = path.resolve(args.cwd);
+  process.chdir(cwd);
+  const host = args.host;
   const paths = resolveWorkspaceMemoryPaths(cwd);
   const server = createServer(async (request, response) => {
     try {
@@ -53,12 +55,12 @@ export async function startFleetWikiServer(args: ServerArgs): Promise<Server> {
         sendMethodNotAllowed(response);
         return;
       }
-      // port는 listen 이후에 확정되므로 클로저로 지연 접근
       const context = {
         cwd,
         knowledgeRoot: paths.root,
         paths,
         version: VERSION,
+        host,
         get port(): number {
           const address = server.address();
           return typeof address === "object" && address ? address.port : 0;
@@ -70,19 +72,22 @@ export async function startFleetWikiServer(args: ServerArgs): Promise<Server> {
       sendJson(response, 400, { error: "bad request" });
     }
   });
-  const port = await listenOnAvailablePort(server, args.port);
+  const port = await listenOnAvailablePort(server, args.port, host);
+
+  process.stderr.write(`[fleet-wiki-web] listening cwd=${cwd} host=${host} port=${port}\n`);
 
   await writeLockFile(args.lockPath, {
     pid: process.pid,
     port,
     cwd,
     startedAt: new Date().toISOString(),
+    host,
   });
   return server;
 }
 
 async function serveStatic(requestUrl: string, response: ServerResponse): Promise<void> {
-  const url = new URL(requestUrl, `http://${HOST}`);
+  const url = new URL(requestUrl, "http://127.0.0.1");
   const requestPath = url.pathname === "/" ? "/index.html" : url.pathname;
   const relativePath = decodeURIComponent(requestPath).replace(/^\/+/, "");
   const filePath = path.resolve(CLIENT_ROOT, relativePath);
@@ -128,15 +133,15 @@ async function serveSpaIndex(response: ServerResponse): Promise<void> {
   }
 }
 
-async function listenOnAvailablePort(server: Server, startPort: number): Promise<number> {
+async function listenOnAvailablePort(server: Server, startPort: number, host: string): Promise<number> {
   for (let port = startPort; port < startPort + 100; port += 1) {
-    const actualPort = await tryListen(server, port);
+    const actualPort = await tryListen(server, port, host);
     if (actualPort !== null) return actualPort;
   }
   throw new Error(`사용 가능한 포트를 찾을 수 없습니다: ${startPort}-${startPort + 99}`);
 }
 
-async function tryListen(server: Server, port: number): Promise<number | null> {
+async function tryListen(server: Server, port: number, host: string): Promise<number | null> {
   return new Promise((resolve, reject) => {
     const onError = (error: Error & { code?: string }) => {
       server.off("listening", onListening);
@@ -153,7 +158,7 @@ async function tryListen(server: Server, port: number): Promise<number | null> {
     };
     server.once("error", onError);
     server.once("listening", onListening);
-    server.listen(port, HOST);
+    server.listen(port, host);
   });
 }
 
@@ -178,10 +183,11 @@ function parseServerArgs(argv: string[]): ServerArgs {
   const cwd = readFlag(argv, "--cwd");
   const lockPath = readFlag(argv, "--lock");
   const port = Number(readFlag(argv, "--port"));
+  const host = readFlag(argv, "--host") ?? "127.0.0.1";
   if (!cwd || !lockPath || !Number.isInteger(port)) {
     throw new Error("server requires --cwd, --lock, and --port");
   }
-  return { cwd, lockPath, port };
+  return { cwd, lockPath, port, host };
 }
 
 function readFlag(argv: string[], flag: string): string | null {

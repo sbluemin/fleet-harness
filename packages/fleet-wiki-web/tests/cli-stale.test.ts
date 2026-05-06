@@ -84,4 +84,39 @@ describe("isLockTrustworthyForRestart", () => {
     const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/different-path");
     expect(result.trusted).toBe(false);
   });
+
+  it("returns trusted=false when lock.host differs from currentHost", () => {
+    const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
+    const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", "127.0.0.1");
+    expect(result.trusted).toBe(false);
+    expect(result.reason).toMatch(/host/);
+  });
+
+  it("returns trusted=true when lock.host matches currentHost", () => {
+    const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
+    const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", "0.0.0.0");
+    expect(result.trusted).toBe(true);
+  });
+
+  it("allows legacy lock (no host field) when currentHost is default", () => {
+    const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/workspace", "127.0.0.1");
+    expect(result.trusted).toBe(true);
+  });
+
+  it("rejects legacy lock (no host field) when currentHost is explicit non-default", () => {
+    const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/workspace", "0.0.0.0");
+    expect(result.trusted).toBe(false);
+    expect(result.reason).toMatch(/legacy/);
+  });
+
+  it("allows legacy lock (no host field) when currentHost is undefined", () => {
+    const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/workspace", undefined);
+    expect(result.trusted).toBe(true);
+  });
+
+  it("ignores host comparison when currentHost is undefined", () => {
+    const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
+    const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", undefined);
+    expect(result.trusted).toBe(true);
+  });
 });

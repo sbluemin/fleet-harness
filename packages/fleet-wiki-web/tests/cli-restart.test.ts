@@ -67,6 +67,26 @@ describe("evaluateRestartDecision", () => {
     expect(result.mode).toBe("abort");
     expect(result.reason).toMatch(/pid/);
   });
+
+  it("returns mode=abort when lock host differs from requested host", () => {
+    const lockWithHost: FleetWikiLock = { ...TRUSTED_LOCK, host: "0.0.0.0" };
+    const result = evaluateRestartDecision(lockWithHost, "/workspace", HEALTH_OK, false, "127.0.0.1");
+    expect(result.mode).toBe("abort");
+    expect(result.reason).toMatch(/host/);
+  });
+
+  it("returns mode=restart when lock host matches requested host", () => {
+    const lockWithHost: FleetWikiLock = { ...TRUSTED_LOCK, host: "0.0.0.0" };
+    const result = evaluateRestartDecision(lockWithHost, "/workspace", HEALTH_OK, false, "0.0.0.0");
+    expect(result.mode).toBe("restart");
+    expect(result.reason).toBeUndefined();
+  });
+
+  it("returns mode=abort when legacy lock has no host but currentHost is non-default", () => {
+    const result = evaluateRestartDecision(TRUSTED_LOCK, "/workspace", HEALTH_OK, false, "0.0.0.0");
+    expect(result.mode).toBe("abort");
+    expect(result.reason).toMatch(/legacy/);
+  });
 });
 
 describe("evaluateHealthyLockTrust", () => {
@@ -98,5 +118,17 @@ describe("evaluateHealthyLockTrust", () => {
     );
     expect(result.trusted).toBe(false);
     expect(result.reason).toMatch(/cwd/);
+  });
+
+  it("rejects existing lock waits when lock host differs from requested host", () => {
+    const lockWithHost: FleetWikiLock = { ...TRUSTED_LOCK, host: "0.0.0.0" };
+    const result = evaluateHealthyLockTrust(
+      lockWithHost,
+      HEALTH_OK,
+      { trust: "existing", cwd: "/workspace" },
+      "127.0.0.1",
+    );
+    expect(result.trusted).toBe(false);
+    expect(result.reason).toMatch(/host/);
   });
 });

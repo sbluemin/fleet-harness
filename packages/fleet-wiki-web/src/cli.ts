@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,17 +27,84 @@ export interface HealthyLockTrustDecision {
 }
 
 const DEFAULT_PORT = 3737;
+const DEFAULT_HOST = "127.0.0.1";
 const HEALTH_TIMEOUT_MS = 5000;
 const HEALTH_INTERVAL_MS = 150;
-const HOST = "127.0.0.1";
+
+const INVALID_HOST_PATTERN = /[\x00-\x1f\x7f\s]/;
+
+interface CliArgs {
+  host?: string;
+  port?: number;
+}
+
+export function parseCliArgs(argv: string[]): CliArgs {
+  const result: CliArgs = {};
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--host") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) {
+        process.stderr.write("--host requires a value\n");
+        process.exit(1);
+        return result;
+      }
+      i += 1;
+      if (INVALID_HOST_PATTERN.test(value) || value.length === 0) {
+        process.stderr.write(`--host 값이 올바르지 않습니다: ${JSON.stringify(value)}\n`);
+        process.exit(1);
+        return result;
+      }
+      result.host = value;
+    } else if (arg.startsWith("--host=")) {
+      const value = arg.slice("--host=".length);
+      if (INVALID_HOST_PATTERN.test(value) || value.length === 0) {
+        process.stderr.write(`--host 값이 올바르지 않습니다: ${JSON.stringify(value)}\n`);
+        process.exit(1);
+        return result;
+      }
+      result.host = value;
+    } else if (arg === "--port") {
+      const raw = argv[i + 1];
+      if (!raw || raw.startsWith("--")) {
+        process.stderr.write("--port requires a value\n");
+        process.exit(1);
+        return result;
+      }
+      i += 1;
+      const port = Number(raw);
+      if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+        process.stderr.write(`--port 값이 올바르지 않습니다: ${raw}\n`);
+        process.exit(1);
+        return result;
+      }
+      result.port = port;
+    } else if (arg.startsWith("--port=")) {
+      const raw = arg.slice("--port=".length);
+      const port = Number(raw);
+      if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+        process.stderr.write(`--port 값이 올바르지 않습니다: ${raw}\n`);
+        process.exit(1);
+        return result;
+      }
+      result.port = port;
+    } else if (arg.startsWith("--")) {
+      process.stderr.write(`알 수 없는 옵션: ${arg}\n`);
+      process.exit(1);
+      return result;
+    }
+  }
+  return result;
+}
 
 export function evaluateRestartDecision(
   existing: FleetWikiLock,
   cwd: string,
   health: { ok: boolean; cwd: string | null },
   noAutoRestart: boolean,
+  host?: string,
 ): RestartDecision {
-  const trust = isLockTrustworthyForRestart(existing, cwd, health.cwd);
+  const trust = isLockTrustworthyForRestart(existing, cwd, health.cwd, host);
   if (!trust.trusted) {
     return { mode: "abort", reason: trust.reason };
   }
@@ -50,6 +118,7 @@ export function evaluateHealthyLockTrust(
   lock: FleetWikiLock,
   health: { ok: boolean; cwd: string | null },
   options: HealthyLockWaitOptions,
+  host?: string,
 ): HealthyLockTrustDecision {
   if (!health.ok) {
     return { trusted: false, reason: "health check failed" };
@@ -57,7 +126,7 @@ export function evaluateHealthyLockTrust(
   if (options.trust === "owned") {
     return { trusted: true };
   }
-  const trust = isLockTrustworthyForRestart(lock, options.cwd, health.cwd);
+  const trust = isLockTrustworthyForRestart(lock, options.cwd, health.cwd, host);
   return trust.trusted ? { trusted: true } : { trusted: false, reason: trust.reason };
 }
 
@@ -79,9 +148,12 @@ export async function main(): Promise<void> {
     return;
   }
 
+  const cliArgs = parseCliArgs(process.argv.slice(2));
+  const host = cliArgs.host ?? configuredHost();
+  const port = cliArgs.port ?? configuredPort();
   const lockPath = lockFilePath(cwd);
-  const lock = await ensureServer(cwd, lockPath);
-  await openBrowser(serverUrl(lock.port));
+  const lock = await ensureServer(cwd, lockPath, host, port);
+  await openBrowser(serverUrl(lock.host ?? DEFAULT_HOST, lock.port));
 }
 
 async function directoryExists(dirPath: string): Promise<boolean> {
@@ -92,7 +164,7 @@ async function directoryExists(dirPath: string): Promise<boolean> {
   }
 }
 
-async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLock> {
+async function ensureServer(cwd: string, lockPath: string, host: string, port: number): Promise<FleetWikiLock> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await acquireLockFile(lockPath, {
@@ -100,9 +172,10 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
         port: 0,
         cwd,
         startedAt: new Date().toISOString(),
+        host,
       });
-      spawnDetachedServer(cwd, lockPath, configuredPort());
-      return waitForHealthyLock(lockPath, { trust: "owned" });
+      spawnDetachedServer(cwd, lockPath, port, host);
+      return waitForHealthyLock(lockPath, { trust: "owned" }, host);
     } catch (error) {
       if (!(error instanceof LockExistsError)) throw error;
       const existing = await readLockFile(lockPath);
@@ -113,6 +186,7 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
             const decision = evaluateRestartDecision(
               existing, cwd, health,
               Boolean(process.env.FLEET_WIKI_NO_AUTO_RESTART),
+              host,
             );
             if (decision.mode === "reuse") {
               return existing;
@@ -129,7 +203,7 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
             continue;
           }
         }
-        return waitForHealthyLock(lockPath, { trust: "existing", cwd });
+        return waitForHealthyLock(lockPath, { trust: "existing", cwd }, host);
       }
       await removeLockFile(lockPath);
     }
@@ -137,9 +211,9 @@ async function ensureServer(cwd: string, lockPath: string): Promise<FleetWikiLoc
   throw new Error("Fleet Wiki 서버 락을 획득하지 못했습니다.");
 }
 
-function spawnDetachedServer(cwd: string, lockPath: string, port: number): void {
+function spawnDetachedServer(cwd: string, lockPath: string, port: number, host: string): void {
   const serverPath = fileURLToPath(new URL("./server.mjs", import.meta.url));
-  const child = spawn(process.execPath, [serverPath, "--cwd", cwd, "--lock", lockPath, "--port", String(port)], {
+  const child = spawn(process.execPath, [serverPath, "--cwd", cwd, "--lock", lockPath, "--port", String(port), "--host", host], {
     cwd,
     detached: true,
     stdio: "ignore",
@@ -148,14 +222,14 @@ function spawnDetachedServer(cwd: string, lockPath: string, port: number): void 
   child.unref();
 }
 
-async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOptions): Promise<FleetWikiLock> {
+async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOptions, host?: string): Promise<FleetWikiLock> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < HEALTH_TIMEOUT_MS) {
     const lock = await readLockFile(lockPath);
     if (lock && isProcessAlive(lock.pid)) {
       const health = await healthCheck(lock);
       if (health.ok) {
-        const trust = evaluateHealthyLockTrust(lock, health, options);
+        const trust = evaluateHealthyLockTrust(lock, health, options, host);
         if (!trust.trusted) {
           throw new Error(
             `기존 lock의 신뢰 검증 실패(${trust.reason}) — 재사용할 수 없습니다. ` +
@@ -172,7 +246,7 @@ async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOpti
 
 async function healthCheck(lock: FleetWikiLock): Promise<{ ok: boolean; cwd: string | null }> {
   try {
-    const response = await fetch(`${serverUrl(lock.port)}/api/health`);
+    const response = await fetch(`${serverUrl(lock.host ?? DEFAULT_HOST, lock.port)}/api/health`);
     if (response.status !== 200) return { ok: false, cwd: null };
     const body = await response.json() as { ok?: boolean; cwd?: string };
     return { ok: body.ok === true, cwd: typeof body.cwd === "string" ? body.cwd : null };
@@ -191,8 +265,22 @@ function configuredPort(): number {
   return port;
 }
 
-function serverUrl(port: number): string {
-  return `http://${HOST}:${port}`;
+export function configuredHost(): string {
+  const rawHost = process.env.FLEET_WIKI_HOST;
+  if (!rawHost) return DEFAULT_HOST;
+  if (INVALID_HOST_PATTERN.test(rawHost) || rawHost.length === 0) {
+    process.stderr.write(`FLEET_WIKI_HOST 값이 올바르지 않습니다: ${JSON.stringify(rawHost)}\n`);
+    process.exit(1);
+  }
+  return rawHost;
+}
+
+export function formatHostForUrl(host: string): string {
+  return net.isIPv6(host) ? `[${host}]` : host;
+}
+
+function serverUrl(host: string, port: number): string {
+  return `http://${formatHostForUrl(host)}:${port}`;
 }
 
 async function killServer(pid: number): Promise<void> {

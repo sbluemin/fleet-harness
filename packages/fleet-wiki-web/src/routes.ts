@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
+import net from "node:net";
 import { join, relative as relativePath, resolve as resolvePath } from "node:path";
 
 import {
@@ -29,6 +30,7 @@ interface RouteContext {
   paths: MemoryPaths;
   version: string;
   port: number;
+  host: string;
 }
 
 interface ConflictListItem {
@@ -396,8 +398,8 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
-  const expectedOrigin = `http://127.0.0.1:${context.port}`;
-  if (request.headers.origin !== expectedOrigin) {
+  const originHeader = request.headers.origin;
+  if (!originHeader || !isOriginAllowed(originHeader, context.host, context.port)) {
     sendJson(response, 403, { error: "origin_mismatch" });
     return;
   }
@@ -573,6 +575,26 @@ function getOutgoingLinks(
       occurrences,
     }))
     .sort((left, right) => right.occurrences - left.occurrences || left.id.localeCompare(right.id));
+}
+
+const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
+
+function isWildcardHost(host: string): boolean {
+  return WILDCARD_HOSTS.has(host);
+}
+
+function isOriginAllowed(origin: string, serverHost: string, serverPort: number): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:") return false;
+  if (Number(parsed.port) !== serverPort) return false;
+  if (isWildcardHost(serverHost)) return true;
+  const hostForCompare = net.isIPv6(serverHost) ? `[${serverHost}]` : serverHost;
+  return parsed.hostname === hostForCompare || parsed.host === hostForCompare;
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

@@ -36,7 +36,7 @@ describe("security headers", () => {
       "utf8",
     );
     const lockPath = path.join(tempDir, "server.lock");
-    server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0 });
+    server = await startFleetWikiServer({ cwd: tempDir, lockPath, port: 0, host: "127.0.0.1" });
     const lock = JSON.parse(await readFile(lockPath, "utf8")) as { port: number };
     baseUrl = `http://127.0.0.1:${lock.port}`;
   });
