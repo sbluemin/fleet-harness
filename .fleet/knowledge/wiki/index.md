@@ -2,120 +2,83 @@
 
 ## Summary
 
-- total_entries: `4`
+- total_entries: `3`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
 ## Entries
 
-### fleet-wiki-9-tools
+### guide-001-fleet-harness-overview
 
-- title: `Fleet Wiki 9-Tool Suite Overview`
-- path: `wiki/fleet-wiki-9-tools.md`
-- tags: `fleet-wiki, tools, architecture, current`
-- updated: `2026-05-05T09:58:48.249Z`
-- summary: `## Summary`
-- raw_source_ref: `raw/2026-05-05-fleet-wiki-9-tools-source-a2473e9d.md`
+- title: `Guide - 001 fleet-harness 소개`
+- path: `wiki/guide-001-fleet-harness-overview.md`
+- tags: `guide, fleet-harness, overview, onboarding, current`
+- updated: `2026-05-07T15:57:26.922Z`
+- summary: `# fleet-harness 소개`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md`
 
-### fleet-wiki-cli-onboarding
+### guide-002-carrier-status
 
-- title: `fleet-wiki CLI Onboarding (--host, --port, --stop, --help)`
-- path: `wiki/fleet-wiki-cli-onboarding.md`
-- tags: `fleet-wiki-web, cli, onboarding, current`
-- updated: `2026-05-07T14:06:54.866Z`
-- summary: `## Summary`
-- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-5a58e05e.md`
+- title: `Guide - 002 Carrier Status 사용법`
+- path: `wiki/guide-002-carrier-status.md`
+- tags: `guide, carrier-status, keybind, onboarding, current`
+- updated: `2026-05-07T15:45:04.197Z`
+- summary: `# Carrier Status 사용법`
+- raw_source_ref: `raw/2026-05-07-guide-002-carrier-status-source-cb364687.md`
 
-### fleet-wiki-read-flow
+### guide-003-fleet-wiki
 
-- title: `Fleet Wiki Read Flow (orient, briefing, resolve, read)`
-- path: `wiki/fleet-wiki-read-flow.md`
-- tags: `fleet-wiki, read-flow, retrieval, current`
-- updated: `2026-05-05T09:59:00.098Z`
-- summary: `## Summary`
-- raw_source_ref: `raw/2026-05-05-fleet-wiki-read-flow-source-8a55c287.md`
-
-### fleet-wiki-write-flow
-
-- title: `Fleet Wiki Write Flow (ingest, patch_queue, compile_source)`
-- path: `wiki/fleet-wiki-write-flow.md`
-- tags: `fleet-wiki, write-flow, approval-gate, current`
-- updated: `2026-05-05T09:59:12.767Z`
-- summary: `## Summary`
-- raw_source_ref: `raw/2026-05-05-fleet-wiki-write-flow-source-fa2105a8.md`
-
-### mermaid-render-test
-
-- title: `Mermaid 렌더 회귀 테스트`
-- path: `wiki/mermaid-render-test.md`
-- tags: `test, visual-regression, mermaid, diagram`
-- updated: `2026-05-07T13:30:21.403Z`
-- summary: `# Mermaid 렌더 회귀 테스트`
-- raw_source_ref: `raw/2026-05-07-mermaid-render-test-source-03c9b2d3.md`
+- title: `Guide - 003 fleet-wiki 사용법`
+- path: `wiki/guide-003-fleet-wiki.md`
+- tags: `guide, fleet-wiki, fleet-wiki-web, workflow, onboarding, current`
+- updated: `2026-05-07T16:06:18.121Z`
+- summary: `# fleet-wiki 사용법`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
 
 ## Tags
 
-### approval-gate
+### carrier-status
 
-- [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
-
-### architecture
-
-- [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
-
-### cli
-
-- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
+- [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 
 ### current
 
-- [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
-- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
-- [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
-- [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
+- [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+- [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+- [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
-### diagram
+### fleet-harness
 
-- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
+- [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 
 ### fleet-wiki
 
-- [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
-- [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
-- [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
+- [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
 ### fleet-wiki-web
 
-- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
+- [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
-### mermaid
+### guide
 
-- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
+- [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+- [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+- [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### keybind
+
+- [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 
 ### onboarding
 
-- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
+- [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+- [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+- [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
-### read-flow
+### overview
 
-- [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
+- [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 
-### retrieval
+### workflow
 
-- [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
-
-### test
-
-- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
-
-### tools
-
-- [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
-
-### visual-regression
-
-- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
-
-### write-flow
-
-- [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
+- [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법

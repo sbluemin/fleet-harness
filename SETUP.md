@@ -146,3 +146,20 @@ fleet-wiki   # opens http://127.0.0.1:<port> in the system browser
 > If the directory has no `.fleet/knowledge/`, the CLI exits with a Korean message:
 > `.fleet/knowledge 디렉토리를 찾을 수 없습니다.` Run from a workspace that has been
 > initialized with the wiki store, or create the directory before retrying.
+
+## 5. Read the Guide
+
+fleet-harness ships built-in guide documents inside its own `.fleet/knowledge/` store. Run `fleet-wiki` from the repository root to browse them:
+
+```bash
+cd <path-to-fleet-harness>
+fleet-wiki
+```
+
+The browser opens at `http://127.0.0.1:<port>`. Navigate to **Index** or use the search bar to find the guides:
+
+| Guide | Description |
+|---|---|
+| Guide - 001 fleet-harness 소개 | Overview, key differentiators, provided CLIs, 8 carriers, and key bindings |
+| Guide - 002 Carrier Status 사용법 | How to use the Carrier Status overlay (`Alt+O`) to configure CLI backends, models, Sortie, Squadron, and Task Force |
+| Guide - 003 fleet-wiki 사용법 | How to capture, stage, review, approve, and query fleet-wiki knowledge entries |

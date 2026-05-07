@@ -1,57 +1,39 @@
 {
-  "fleet-wiki-9-tools": {
-    "path": "wiki/fleet-wiki-9-tools.md",
-    "title": "Fleet Wiki 9-Tool Suite Overview",
+  "guide-001-fleet-harness-overview": {
+    "path": "wiki/guide-001-fleet-harness-overview.md",
+    "title": "Guide - 001 fleet-harness 소개",
     "tags": [
-      "fleet-wiki",
-      "tools",
-      "architecture",
-      "current"
-    ],
-    "updated": "2026-05-05T09:58:48.249Z"
-  },
-  "fleet-wiki-cli-onboarding": {
-    "path": "wiki/fleet-wiki-cli-onboarding.md",
-    "title": "fleet-wiki CLI Onboarding (--host, --port, --stop, --help)",
-    "tags": [
-      "fleet-wiki-web",
-      "cli",
+      "guide",
+      "fleet-harness",
+      "overview",
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-07T14:06:54.866Z"
+    "updated": "2026-05-07T15:57:26.922Z"
   },
-  "fleet-wiki-read-flow": {
-    "path": "wiki/fleet-wiki-read-flow.md",
-    "title": "Fleet Wiki Read Flow (orient, briefing, resolve, read)",
+  "guide-002-carrier-status": {
+    "path": "wiki/guide-002-carrier-status.md",
+    "title": "Guide - 002 Carrier Status 사용법",
     "tags": [
-      "fleet-wiki",
-      "read-flow",
-      "retrieval",
+      "guide",
+      "carrier-status",
+      "keybind",
+      "onboarding",
       "current"
     ],
-    "updated": "2026-05-05T09:59:00.098Z"
+    "updated": "2026-05-07T15:45:04.197Z"
   },
-  "fleet-wiki-write-flow": {
-    "path": "wiki/fleet-wiki-write-flow.md",
-    "title": "Fleet Wiki Write Flow (ingest, patch_queue, compile_source)",
+  "guide-003-fleet-wiki": {
+    "path": "wiki/guide-003-fleet-wiki.md",
+    "title": "Guide - 003 fleet-wiki 사용법",
     "tags": [
+      "guide",
       "fleet-wiki",
-      "write-flow",
-      "approval-gate",
+      "fleet-wiki-web",
+      "workflow",
+      "onboarding",
       "current"
     ],
-    "updated": "2026-05-05T09:59:12.767Z"
-  },
-  "mermaid-render-test": {
-    "path": "wiki/mermaid-render-test.md",
-    "title": "Mermaid 렌더 회귀 테스트",
-    "tags": [
-      "test",
-      "visual-regression",
-      "mermaid",
-      "diagram"
-    ],
-    "updated": "2026-05-07T13:30:21.403Z"
+    "updated": "2026-05-07T16:06:18.121Z"
   }
 }

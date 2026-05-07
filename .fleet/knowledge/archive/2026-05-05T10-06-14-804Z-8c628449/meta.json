@@ -1,7 +1,9 @@
 {
   "id": "2026-05-05T10-06-14-804Z-8c628449",
-  "status": "pending",
+  "status": "rejected",
   "createdAt": "2026-05-05T10:06:14.804Z",
   "rawSourceRef": "raw/2026-05-05-fleet-wiki-user-operations-source-a7828852.md",
-  "warnings": []
+  "warnings": [],
+  "decidedAt": "2026-05-07T15:58:41.486Z",
+  "reason": "ㅂ"
 }

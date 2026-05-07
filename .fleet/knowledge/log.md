@@ -288,3 +288,398 @@
 - result: `accepted`
 - target: `wiki/fleet-wiki-cli-onboarding.md`
 
+## 2026-05-07T15:43:45.158Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `2`
+- ok: `true`
+- warning_count: `0`
+
+## 2026-05-07T15:44:30.635Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-8b0c8fae.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `fleet-harness 소개 가이드 원본`
+
+## 2026-05-07T15:44:30.637Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T15-44-30-628Z-3a11895e`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-8b0c8fae.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-07T15:45:04.203Z — raw source added
+
+- id: `guide-002-carrier-status-source`
+- raw_source_ref: `raw/2026-05-07-guide-002-carrier-status-source-cb364687.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Carrier Status 사용법 가이드 원본`
+
+## 2026-05-07T15:45:04.206Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T15-45-04-197Z-d1748944`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-002-carrier-status-source-cb364687.md`
+- target: `wiki/guide-002-carrier-status.md`
+- warning_count: `0`
+
+## 2026-05-07T15:45:43.585Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-e1eb2856.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `fleet-wiki 사용법 가이드 원본`
+
+## 2026-05-07T15:45:43.587Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T15-45-43-577Z-2fde7399`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-e1eb2856.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-07T15:45:48.789Z — index rebuilt
+
+- entry_count: `6`
+
+## 2026-05-07T15:45:48.791Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T15-44-30-628Z-3a11895e`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-8b0c8fae.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-07T15:45:49.106Z — index rebuilt
+
+- entry_count: `7`
+
+## 2026-05-07T15:45:49.108Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T15-45-04-197Z-d1748944`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-002-carrier-status-source-cb364687.md`
+- result: `accepted`
+- target: `wiki/guide-002-carrier-status.md`
+
+## 2026-05-07T15:45:49.389Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-07T15:45:49.390Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T15-45-43-577Z-2fde7399`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-e1eb2856.md`
+- result: `accepted`
+- target: `wiki/guide-003-fleet-wiki.md`
+
+## 2026-05-07T15:49:31.580Z — raw source added
+
+- id: `fleet-wiki-cli-onboarding-source`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-0c7219c0.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - 004 fleet-wiki 웹 서버 CLI 사용법 (제목 변경 패치)`
+
+## 2026-05-07T15:49:31.582Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-49-31-573Z-b1bdd822`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-0c7219c0.md`
+- target: `wiki/fleet-wiki-cli-onboarding.md`
+- warning_count: `0`
+
+## 2026-05-07T15:49:34.185Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-07T15:49:34.186Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-49-31-573Z-b1bdd822`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-0c7219c0.md`
+- result: `accepted`
+- target: `wiki/fleet-wiki-cli-onboarding.md`
+
+## 2026-05-07T15:52:40.000Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-e6028d98.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-001 CLI 섹션 추가 패치`
+
+## 2026-05-07T15:52:40.002Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-52-39-993Z-2a438130`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-e6028d98.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-07T15:52:42.679Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-07T15:52:42.680Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-52-39-993Z-2a438130`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-e6028d98.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-07T15:54:01.708Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-4278860d.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-001 ait·gfleet CLI 제거 패치`
+
+## 2026-05-07T15:54:01.711Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-54-01-699Z-58acdef6`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-4278860d.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-07T15:54:04.297Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-07T15:54:04.299Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-54-01-699Z-58acdef6`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-4278860d.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-07T15:55:37.844Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-5070c425.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-001 CLI 테이블 셀 텍스트 축약 패치`
+
+## 2026-05-07T15:55:37.846Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-55-37-835Z-20acef28`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-5070c425.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-07T15:55:40.964Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-07T15:55:40.965Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-55-37-835Z-20acef28`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-5070c425.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-07T15:57:26.928Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-001 CLI 테이블 backtick 제거 및 설명 복원 패치`
+
+## 2026-05-07T15:57:26.930Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-57-26-922Z-c4c8c83d`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-07T15:57:29.717Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-07T15:57:29.718Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T15-57-26-922Z-c4c8c83d`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-07T15:58:41.492Z — patch rejected
+
+- patch_id: `2026-05-05T10-06-14-804Z-8c628449`
+- patch_set_id: `null`
+- reason: `ㅂ`
+- result: `rejected`
+
+## 2026-05-07T15:58:53.966Z — patch rejected
+
+- patch_id: `2026-05-05T10-06-46-639Z-b58dcc1a`
+- patch_set_id: `null`
+- reason: `ㅂ`
+- result: `rejected`
+
+## 2026-05-07T15:58:57.057Z — patch rejected
+
+- patch_id: `2026-05-05T10-07-08-936Z-5437bf25`
+- patch_set_id: `null`
+- reason: `ㅂ`
+- result: `rejected`
+
+## 2026-05-07T15:58:59.854Z — patch rejected
+
+- patch_id: `2026-05-05T10-14-17-366Z-6bc24b31`
+- patch_set_id: `null`
+- reason: `ㅂ`
+- result: `rejected`
+
+## 2026-05-07T15:59:02.330Z — patch rejected
+
+- patch_id: `2026-05-05T10-23-39-182Z-913284ca`
+- patch_set_id: `null`
+- reason: `ㅂ`
+- result: `rejected`
+
+## 2026-05-07T16:02:18.216Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-b34a7b4a.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-003 PI→fleet 용어 변경 패치`
+
+## 2026-05-07T16:02:18.218Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T16-02-18-209Z-dcaa2ab8`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-b34a7b4a.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-07T16:02:21.397Z — index rebuilt
+
+- entry_count: `4`
+
+## 2026-05-07T16:02:21.399Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T16-02-18-209Z-dcaa2ab8`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-b34a7b4a.md`
+- result: `accepted`
+- target: `wiki/guide-003-fleet-wiki.md`
+
+## 2026-05-07T16:03:40.274Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-1be3a7d6.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `guide-003 + guide-004 통합 패치`
+
+## 2026-05-07T16:03:40.276Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T16-03-40-263Z-50757261`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-1be3a7d6.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-07T16:03:43.258Z — index rebuilt
+
+- entry_count: `4`
+
+## 2026-05-07T16:03:43.260Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T16-03-40-263Z-50757261`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-1be3a7d6.md`
+- result: `accepted`
+- target: `wiki/guide-003-fleet-wiki.md`
+
+## 2026-05-07T16:06:18.123Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `guide-003 5단계 조회 Admiral 직접 요청 추가 패치`
+
+## 2026-05-07T16:06:18.125Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T16-06-18-121Z-bbdde13e`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-07T16:06:20.987Z — index rebuilt
+
+- entry_count: `3`
+
+## 2026-05-07T16:06:20.988Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-07T16-06-18-121Z-bbdde13e`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
+- result: `accepted`
+- target: `wiki/guide-003-fleet-wiki.md`
+
