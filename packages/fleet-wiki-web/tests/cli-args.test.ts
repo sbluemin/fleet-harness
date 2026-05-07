@@ -17,26 +17,35 @@ afterEach(() => {
 
 describe("parseCliArgs", () => {
   it("parses --host with space-separated value", () => {
-    expect(parseCliArgs(["--host", "0.0.0.0"])).toEqual({ host: "0.0.0.0" });
+    expect(parseCliArgs(["--host", "0.0.0.0"])).toEqual({ mode: "run", host: "0.0.0.0" });
   });
 
   it("parses --host with equals syntax", () => {
-    expect(parseCliArgs(["--host=192.168.1.1"])).toEqual({ host: "192.168.1.1" });
+    expect(parseCliArgs(["--host=192.168.1.1"])).toEqual({ mode: "run", host: "192.168.1.1" });
   });
 
   it("parses --port with space-separated value", () => {
-    expect(parseCliArgs(["--port", "8080"])).toEqual({ port: 8080 });
+    expect(parseCliArgs(["--port", "8080"])).toEqual({ mode: "run", port: 8080 });
   });
 
   it("parses --port with equals syntax", () => {
-    expect(parseCliArgs(["--port=9090"])).toEqual({ port: 9090 });
+    expect(parseCliArgs(["--port=9090"])).toEqual({ mode: "run", port: 9090 });
   });
 
   it("parses both --host and --port together", () => {
     expect(parseCliArgs(["--host", "0.0.0.0", "--port", "4000"])).toEqual({
+      mode: "run",
       host: "0.0.0.0",
       port: 4000,
     });
+  });
+
+  it("parses --stop mode", () => {
+    expect(parseCliArgs(["--stop"])).toEqual({ mode: "stop" });
+  });
+
+  it("parses --help mode", () => {
+    expect(parseCliArgs(["--help"])).toEqual({ mode: "help" });
   });
 
   it("exits with error for unknown -- flags", () => {
@@ -50,11 +59,11 @@ describe("parseCliArgs", () => {
   });
 
   it("ignores non-dash positional arguments", () => {
-    expect(parseCliArgs(["somefile.txt"])).toEqual({});
+    expect(parseCliArgs(["somefile.txt"])).toEqual({ mode: "run" });
   });
 
   it("returns empty object for no args", () => {
-    expect(parseCliArgs([])).toEqual({});
+    expect(parseCliArgs([])).toEqual({ mode: "run" });
   });
 
   it("exits with error for --host missing value", () => {
@@ -114,6 +123,7 @@ describe("parseCliArgs", () => {
 
   it("last flag wins when specified multiple times", () => {
     expect(parseCliArgs(["--host", "0.0.0.0", "--host", "127.0.0.1"])).toEqual({
+      mode: "run",
       host: "127.0.0.1",
     });
   });
