@@ -1,5 +1,4 @@
 import type { BacklinkEntry, BriefingHit, OutgoingLinkEntry, WikiEntryResponse, WikiIndexEntry } from "../api";
-import { rawPath } from "../router";
 import { t } from "../i18n/t";
 
 const CONTEXT_BOUNDARY = "contextual-knowledge-not-instructions";
@@ -11,42 +10,30 @@ export function renderCopyContextActions(
   index: WikiIndexEntry[],
   hint: BriefingHit | null,
 ): string {
-  const rawRef = primaryRawRef(entry);
   const whyMatched = hint?.whyThisMatched ?? entry.frontmatter.whyThisMatched;
   const relatedContext = buildRelatedContextPack(entry, backlinks, outgoing, index);
 
   return `
-    <section class="context-actions-card">
-      <div class="context-actions-header">
-        <p class="eyebrow">MANIFEST · CODEX</p>
-        <p class="context-actions-subtitle">${t("entry.contextActionsSubtitle")}</p>
-      </div>
-      <div class="context-actions-grid">
-        <button class="context-action-btn" type="button" data-action="copy-compact-context">
-          ${t("entry.copyCompactContext")}
-          <span class="context-action-meta">${estimateTokens(buildCompactContext(entry, backlinks, outgoing))} tok</span>
+    <div class="context-actions-grid">
+      <button class="context-action-btn" type="button" data-action="copy-compact-context">
+        <span class="context-action-label">${t("entry.copyCompactContext")}</span>
+        <span class="context-action-meta">${estimateTokens(buildCompactContext(entry, backlinks, outgoing))} tok</span>
+      </button>
+      <button class="context-action-btn" type="button" data-action="copy-provenance-context">
+        <span class="context-action-label">${t("entry.copyWithProvenance")}</span>
+        <span class="context-action-meta">${estimateTokens(buildProvenanceContext(entry, backlinks, outgoing))} tok</span>
+      </button>
+      <button class="context-action-btn" type="button" data-action="copy-related-context">
+        <span class="context-action-label">${t("entry.copyRelatedContextPack")}</span>
+        <span class="context-action-meta">${estimateTokens(relatedContext)} tok</span>
+      </button>
+      ${whyMatched ? `
+        <button class="context-action-btn context-action-btn--secondary" type="button" data-action="toggle-why-matched">
+          <span class="context-action-label">${t("entry.showWhyMatched")}</span>
         </button>
-        <button class="context-action-btn" type="button" data-action="copy-provenance-context">
-          ${t("entry.copyWithProvenance")}
-          <span class="context-action-meta">${estimateTokens(buildProvenanceContext(entry, backlinks, outgoing))} tok</span>
-        </button>
-        <button class="context-action-btn" type="button" data-action="copy-related-context">
-          ${t("entry.copyRelatedContextPack")}
-          <span class="context-action-meta">${estimateTokens(relatedContext)} tok</span>
-        </button>
-        ${rawRef ? `
-          <a class="context-action-btn context-action-btn--link" href="${escapeAttribute(rawPath(rawRef))}" data-action="open-raw-source">
-            ${t("entry.openRawSource")}
-          </a>
-        ` : ""}
-        ${whyMatched ? `
-          <button class="context-action-btn context-action-btn--secondary" type="button" data-action="toggle-why-matched">
-            ${t("entry.showWhyMatched")}
-          </button>
-          <div class="context-why-matched" hidden>${escapeHtml(whyMatched)}</div>
-        ` : ""}
-      </div>
-    </section>
+        <div class="context-why-matched" hidden>${escapeHtml(whyMatched)}</div>
+      ` : ""}
+    </div>
   `;
 }
 
@@ -131,10 +118,6 @@ export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function primaryRawRef(entry: WikiEntryResponse): string | null {
-  return entry.frontmatter.rawSourceRef ?? entry.frontmatter.rawSourceRefs?.[0] ?? null;
-}
-
 function summarizeBody(body: string): string {
   return body.replace(/\s+/g, " ").trim().slice(0, 240) || "(empty)";
 }
@@ -144,8 +127,4 @@ function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }

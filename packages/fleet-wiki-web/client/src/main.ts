@@ -192,7 +192,7 @@ function renderMainContent(state: AppState, route: Route): string {
   if (route.name === "conflicts") return renderConflictsList(state.conflicts);
   if (route.name === "conflict-detail" && state.currentConflict) return renderConflictDetail(state.currentConflict);
   if (state.currentEntry) {
-    return renderMarkdownView(state.currentEntry, state.index, state.backlinks, state.outgoing, state.currentMatchHint);
+    return renderMarkdownView(state.currentEntry, state.index);
   }
   return renderWelcome(state.index, state.health?.cwd ?? null);
 }
@@ -200,7 +200,7 @@ function renderMainContent(state: AppState, route: Route): string {
 function renderRailContent(state: AppState, route: Route): string {
   if (route.name === "queue" || route.name === "queue-detail") return "";
   return `
-    ${renderManifestPanel(state.currentEntry)}
+    ${renderManifestPanel(state.currentEntry, state.backlinks, state.outgoing, state.index, state.currentMatchHint)}
     ${renderBacklinksPanel(state.backlinks, state.outgoing, route.name === "entry" ? route.id : null)}
   `;
 }
@@ -267,7 +267,7 @@ function handleDocumentClick(event: MouseEvent): void {
     return;
   }
   if (actionElement?.dataset.action === "toggle-why-matched") {
-    const panel = actionElement.parentElement?.querySelector<HTMLElement>(".context-why-matched");
+    const panel = actionElement.closest<HTMLElement>(".context-actions-grid")?.querySelector<HTMLElement>(".context-why-matched");
     if (panel) {
       panel.hidden = !panel.hidden;
     }

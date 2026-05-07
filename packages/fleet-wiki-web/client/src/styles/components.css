@@ -971,6 +971,49 @@ kbd {
   stroke: var(--aurora-deep);
 }
 
+.diagram-block svg .pieCircle {
+  opacity: 0.97;
+  filter: drop-shadow(0 0 1.5px oklch(15% 0.04 250 / 34%));
+}
+
+.diagram-block svg .pieOuterCircle {
+  opacity: 0.7;
+}
+
+.diagram-block svg .pieTitleText,
+.diagram-block svg .slice,
+.diagram-block svg .legend text {
+  font-family: var(--font-body);
+  text-rendering: geometricPrecision;
+}
+
+.diagram-block svg .slice {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-style: italic;
+}
+
+.diagram-block svg .pieTitleText {
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  font-style: italic;
+}
+
+.diagram-block svg .legend text {
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.diagram-block svg .legend rect {
+  rx: 999px;
+  ry: 999px;
+  opacity: 0.9;
+  stroke: var(--ink-abyss);
+  stroke-width: 1.5px;
+  paint-order: stroke;
+  filter: saturate(0.78) brightness(0.92) drop-shadow(0 0 0.55px var(--brass-bright));
+}
+
 .diagram-block svg a {
   color: var(--aurora);
   cursor: pointer;
@@ -1126,6 +1169,10 @@ kbd {
   box-shadow: var(--shadow-soft);
 }
 
+.backlinks-panel {
+  overflow-x: hidden;
+}
+
 .backlinks-panel h2 {
   margin: 0;
   color: var(--brass-bright);
@@ -1140,6 +1187,11 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.manifest-actions {
+  padding-top: var(--space-2);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 88%, transparent);
 }
 
 .manifest-header {
@@ -1249,6 +1301,7 @@ kbd {
 .backlink-list {
   display: grid;
   gap: 4px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2351,7 +2404,6 @@ kbd {
   color: var(--brass-bright);
 }
 
-.context-actions-card,
 .conflict-meta-card,
 .conflict-section {
   margin-top: var(--space-5);
@@ -2362,23 +2414,15 @@ kbd {
   box-shadow: var(--shadow-soft);
 }
 
-.context-actions-header,
 .outgoing-section {
   display: grid;
   gap: var(--space-2);
 }
 
-.context-actions-subtitle {
-  margin: 0;
-  color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-size: 16px;
-}
-
 .context-actions-grid {
   display: grid;
   gap: var(--space-3);
-  margin-top: var(--space-4);
+  min-width: 0;
 }
 
 .context-action-btn {
@@ -2387,6 +2431,7 @@ kbd {
   justify-content: space-between;
   gap: var(--space-3);
   width: 100%;
+  min-width: 0;
   padding: 11px 14px;
   border-radius: var(--radius-md);
   border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim));
@@ -2394,10 +2439,20 @@ kbd {
   color: var(--ink-pearl);
   text-decoration: none;
   cursor: pointer;
+  overflow: hidden;
   transition:
     transform var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring);
+}
+
+.context-action-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .context-action-btn:hover {
@@ -2412,10 +2467,14 @@ kbd {
 }
 
 .context-action-meta {
+  margin-left: auto;
+  flex: 0 0 auto;
   color: var(--brass-bright);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .context-why-matched {

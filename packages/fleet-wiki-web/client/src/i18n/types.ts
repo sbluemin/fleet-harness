@@ -93,14 +93,12 @@ export interface I18nMessages {
     outgoingHeading: string;
   };
   entry: {
-    contextActionsSubtitle: string;
     copyCompactContext: string;
     copyCompactContextDone: string;
     copyWithProvenance: string;
     copyWithProvenanceDone: string;
     copyRelatedContextPack: string;
     copyRelatedContextDone: string;
-    openRawSource: string;
     showWhyMatched: string;
     copyFailed: string;
   };

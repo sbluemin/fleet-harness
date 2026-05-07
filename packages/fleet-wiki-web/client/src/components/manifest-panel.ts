@@ -1,5 +1,12 @@
+import type {
+  BacklinkEntry,
+  BriefingHit,
+  OutgoingLinkEntry,
+  WikiEntryResponse,
+  WikiIndexEntry,
+} from "../api";
+import { renderCopyContextActions } from "./copy-context-actions";
 import { rawPath } from "../router";
-import type { WikiEntryResponse } from "../api";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
 import { t } from "../i18n/t";
 
@@ -9,13 +16,20 @@ const ARROW_ICON = `
   </svg>
 `;
 
-export function renderManifestPanel(entry: WikiEntryResponse | null): string {
+export function renderManifestPanel(
+  entry: WikiEntryResponse | null,
+  backlinks: BacklinkEntry[],
+  outgoing: OutgoingLinkEntry[],
+  index: WikiIndexEntry[],
+  hint: BriefingHit | null,
+): string {
   if (!entry) return "";
   const { frontmatter } = entry;
   const absoluteCreated = formatAbsoluteDate(frontmatter.created);
   const relCreated = relativeTime(frontmatter.created);
   const absoluteUpdated = formatAbsoluteDate(frontmatter.updated);
   const relUpdated = relativeTime(frontmatter.updated);
+  const actionsHtml = renderCopyContextActions(entry, backlinks, outgoing, index, hint);
 
   const tagsHtml = frontmatter.tags.length > 0
     ? `<div class="queue-card-chips">${frontmatter.tags.map((t_) => `<span class="chip chip-muted">${escapeHtml(t_)}</span>`).join("")}</div>`
@@ -58,6 +72,7 @@ export function renderManifestPanel(entry: WikiEntryResponse | null): string {
         <dt class="queue-dl-key">${t("manifest.rawSource")}</dt>
         <dd class="queue-dl-value">${rawRefHtml}</dd>
       </dl>
+      ${actionsHtml ? `<div class="manifest-actions">${actionsHtml}</div>` : ""}
     </aside>
   `;
 }

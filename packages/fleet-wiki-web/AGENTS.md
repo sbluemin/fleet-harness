@@ -44,11 +44,11 @@
 
 ## Copy-Context Actions
 
-`client/src/components/copy-context-actions.ts` exposes four clipboard actions on entry view:
-- **Copy compact context** — entry frontmatter + body summary as compact JSON.
-- **Copy with provenance** — adds `rawSourceRefs[]` blocks.
-- **Copy related context pack** — calls `wiki_resolve` (markdown_pack format) and copies the result.
-- **Open raw source** — navigates to `/raw/:ref`.
+`client/src/components/copy-context-actions.ts` exposes three clipboard actions plus one disclosure toggle inside the entry Manifest card:
+- **Compact context** — entry frontmatter + body summary as compact JSON.
+- **With provenance** — adds `rawSourceRefs[]` blocks.
+- **Related context pack** — calls `wiki_resolve` (markdown_pack format) and copies the result.
+- **Why this matched** — toggles the current briefing-match rationale inline when present.
 
 ## Status Badges
 
