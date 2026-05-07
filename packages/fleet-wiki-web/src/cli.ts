@@ -153,7 +153,7 @@ export async function main(): Promise<void> {
   const port = cliArgs.port ?? configuredPort();
   const lockPath = lockFilePath(cwd);
   const lock = await ensureServer(cwd, lockPath, host, port);
-  await openBrowser(serverUrl(lock.host ?? DEFAULT_HOST, lock.port));
+  await openBrowser(serverUrl(resolveClientHost(lock.host ?? DEFAULT_HOST), lock.port));
 }
 
 async function directoryExists(dirPath: string): Promise<boolean> {
@@ -246,7 +246,7 @@ async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOpti
 
 async function healthCheck(lock: FleetWikiLock): Promise<{ ok: boolean; cwd: string | null }> {
   try {
-    const response = await fetch(`${serverUrl(lock.host ?? DEFAULT_HOST, lock.port)}/api/health`);
+    const response = await fetch(`${serverUrl(resolveClientHost(lock.host ?? DEFAULT_HOST), lock.port)}/api/health`);
     if (response.status !== 200) return { ok: false, cwd: null };
     const body = await response.json() as { ok?: boolean; cwd?: string };
     return { ok: body.ok === true, cwd: typeof body.cwd === "string" ? body.cwd : null };
@@ -275,11 +275,19 @@ export function configuredHost(): string {
   return rawHost;
 }
 
+const WILDCARD_BIND_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
+
+export function resolveClientHost(bindHost: string): string {
+  if (bindHost === "0.0.0.0") return "127.0.0.1";
+  if (bindHost === "::" || bindHost === "0:0:0:0:0:0:0:0") return "::1";
+  return bindHost;
+}
+
 export function formatHostForUrl(host: string): string {
   return net.isIPv6(host) ? `[${host}]` : host;
 }
 
-function serverUrl(host: string, port: number): string {
+export function serverUrl(host: string, port: number): string {
   return `http://${formatHostForUrl(host)}:${port}`;
 }
 

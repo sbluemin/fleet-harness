@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { formatHostForUrl, parseCliArgs } from "../src/cli.js";
+import { formatHostForUrl, parseCliArgs, resolveClientHost, serverUrl } from "../src/cli.js";
 
 const originalExit = process.exit;
 const originalStderrWrite = process.stderr.write;
@@ -142,5 +142,41 @@ describe("formatHostForUrl", () => {
 
   it("wraps IPv6 full expanded address in brackets", () => {
     expect(formatHostForUrl("0:0:0:0:0:0:0:0")).toBe("[0:0:0:0:0:0:0:0]");
+  });
+});
+
+describe("resolveClientHost", () => {
+  it("maps 0.0.0.0 to 127.0.0.1", () => {
+    expect(resolveClientHost("0.0.0.0")).toBe("127.0.0.1");
+  });
+
+  it("maps :: to ::1", () => {
+    expect(resolveClientHost("::")).toBe("::1");
+  });
+
+  it("maps 0:0:0:0:0:0:0:0 to ::1", () => {
+    expect(resolveClientHost("0:0:0:0:0:0:0:0")).toBe("::1");
+  });
+
+  it("passes through 127.0.0.1 unchanged", () => {
+    expect(resolveClientHost("127.0.0.1")).toBe("127.0.0.1");
+  });
+
+  it("passes through LAN IP unchanged", () => {
+    expect(resolveClientHost("192.168.1.10")).toBe("192.168.1.10");
+  });
+
+  it("passes through ::1 unchanged", () => {
+    expect(resolveClientHost("::1")).toBe("::1");
+  });
+});
+
+describe("serverUrl with resolveClientHost integration", () => {
+  it("produces http://127.0.0.1:3737 for 0.0.0.0 wildcard", () => {
+    expect(serverUrl(resolveClientHost("0.0.0.0"), 3737)).toBe("http://127.0.0.1:3737");
+  });
+
+  it("produces http://[::1]:3737 for :: wildcard", () => {
+    expect(serverUrl(resolveClientHost("::"), 3737)).toBe("http://[::1]:3737");
   });
 });
