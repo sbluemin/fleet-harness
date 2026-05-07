@@ -17,7 +17,7 @@ import {
 } from "../fleet-core-facades.js";
 import { buildPanelViewModel } from "./view-model.js";
 import type { PanelJobViewModel, PanelTrackViewModel } from "./view-model.js";
-import { resolveCarrierColor, resolveCarrierRgb } from "../tools.js";
+import { resolveCarrierColor, resolveCarrierDisplayName, resolveCarrierRgb } from "../tools.js";
 import { getActiveJobs, getPanelRuns, getState } from "./state.js";
 import { renderBlockLines } from "./message-render.js";
 import { waveText } from "./panel-render.js";
@@ -157,7 +157,7 @@ function computeTileOffsets(tiles: string[]): number[] {
 // ─── 포맷팅 헬퍼 ─────────────────────────────────────────
 
 function carrierDisplayName(carrierId: string): string {
-	return CLI_DISPLAY_NAMES[carrierId] ?? capitalize(carrierId);
+	return resolveCarrierDisplayName(carrierId);
 }
 
 function kindDisplayName(kind: string): string {

@@ -22,7 +22,7 @@ import {
   CLI_DISPLAY_NAMES,
   CLI_TYPE_DISPLAY_ORDER,
 } from "../../constants.js";
-import { resolveCarrierCliType } from "../store/fleet-store.js";
+import { loadCarrierDisplayNames, resolveCarrierCliType } from "../store/fleet-store.js";
 
 import type {
   CarrierConfig,
@@ -338,9 +338,17 @@ export function resolveCarrierRgb(carrierId: string): [number, number, number] {
 
 /** carrierId 기준으로 carrier 표시 이름을 반환합니다. */
 export function resolveCarrierDisplayName(carrierId: string): string {
+  const persistedDisplayName = loadCarrierDisplayNames()[carrierId];
+  if (persistedDisplayName) return persistedDisplayName;
+  return getCarrierSourceDisplayName(carrierId);
+}
+
+/** carrierId 기준으로 persisted override를 제외한 source-default 표시 이름을 반환합니다. */
+export function getCarrierSourceDisplayName(carrierId: string): string {
   const carrierConfig = getRegisteredCarrierConfig(carrierId);
-  if (carrierConfig?.displayName) return carrierConfig.displayName;
-  return CLI_DISPLAY_NAMES[carrierId] ?? carrierId;
+  return carrierConfig?.displayName
+    ?? CLI_DISPLAY_NAMES[carrierId]
+    ?? carrierId;
 }
 
 /** carrierId 기준으로 실제 CLI 표시 이름을 반환합니다. */

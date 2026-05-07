@@ -18,6 +18,7 @@ import {
   getReasoningEffortLevels,
   type CliType,
 } from "@sbluemin/unified-agent";
+import { CLI_DISPLAY_NAMES } from "../../constants.js";
 import { disconnect } from "../agent/connections.js";
 import { getSessionStore } from "../agent/internal/session-runtime.js";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../taskforce/types.js";
@@ -61,6 +62,8 @@ interface FleetStates {
   squadronEnabled?: string[];
   /** carrier별 cliType 오버라이드 (defaultCliType과 다를 때만 저장) */
   cliTypeOverrides?: Record<string, string>;
+  /** carrier별 사용자 지정 표시 이름 오버라이드 */
+  carrierDisplayNames?: Record<string, string>;
 }
 
 interface StoreLockOwner {
@@ -79,6 +82,9 @@ const LOCK_DIRNAME = "states.json.lock";
 const LOCK_OWNER_FILENAME = "owner.json";
 
 const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
+const DISPLAY_NAME_BIDI_CONTROL_PATTERN = /[\u202A-\u202E\u2066-\u2069]/g;
+const DISPLAY_NAME_ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
+const DISPLAY_NAME_MAX_LENGTH = 50;
 
 const LOCK_RETRY_MS = 25;
 
@@ -422,6 +428,51 @@ export function updateCliTypeOverride(
   });
 }
 
+/**
+ * 디스크에서 carrier displayName 오버라이드 맵을 로드합니다.
+ * 유효한 carrier ID와 displayName 값만 필터링하여 반환합니다.
+ */
+export function loadCarrierDisplayNames(validIds?: Set<string>): Record<string, string> {
+  const states = readStates();
+  const displayNames = sanitizeCarrierDisplayNames(states.carrierDisplayNames);
+  if (!validIds) return displayNames;
+  return Object.fromEntries(
+    Object.entries(displayNames).filter(([id]) => validIds.has(id)),
+  );
+}
+
+/**
+ * 단일 carrier의 displayName 오버라이드를 저장하거나 기본값이면 제거합니다.
+ */
+export function updateCarrierDisplayName(
+  carrierId: string,
+  displayName: string,
+  sourceDefaultDisplayName: string,
+): void {
+  const sanitizedCarrierId = sanitizeConfigKey(carrierId);
+  if (!sanitizedCarrierId) return;
+
+  const sanitizedDisplayName = sanitizeCarrierDisplayName(displayName);
+  const sanitizedSourceDefault = sanitizeCarrierDisplayName(sourceDefaultDisplayName)
+    ?? CLI_DISPLAY_NAMES[sanitizedCarrierId]
+    ?? sanitizedCarrierId;
+
+  updateStates((states) => {
+    const displayNames = sanitizeCarrierDisplayNames(states.carrierDisplayNames);
+    if (!sanitizedDisplayName || sanitizedDisplayName === sanitizedSourceDefault) {
+      delete displayNames[sanitizedCarrierId];
+    } else {
+      displayNames[sanitizedCarrierId] = sanitizedDisplayName;
+    }
+
+    if (Object.keys(displayNames).length > 0) {
+      states.carrierDisplayNames = displayNames;
+    } else {
+      delete states.carrierDisplayNames;
+    }
+  });
+}
+
 // ─── 내부 헬퍼 ──────────────────────────────────────────
 
 function readStates(): FleetStates {
@@ -690,6 +741,18 @@ function sanitizeCliTypeOverrides(value: unknown): Record<string, string> {
   return result;
 }
 
+function sanitizeCarrierDisplayNames(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [id, displayName] of Object.entries(value)) {
+    const sanitizedId = sanitizeConfigKey(id);
+    const sanitizedDisplayName = sanitizeCarrierDisplayName(displayName);
+    if (!sanitizedId || !sanitizedDisplayName) continue;
+    result[sanitizedId] = sanitizedDisplayName;
+  }
+  return result;
+}
+
 function resolveSelectionForCliType(
   current: ModelSelection,
   cliType: CliType,
@@ -824,6 +887,27 @@ function sanitizeFreeformText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function normalizeCarrierDisplayNameInput(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (CONTROL_CHAR_PATTERN.test(value)) return null;
+
+  const normalized = value
+    .replace(DISPLAY_NAME_BIDI_CONTROL_PATTERN, "")
+    .replace(DISPLAY_NAME_ZERO_WIDTH_PATTERN, "")
+    .slice(0, DISPLAY_NAME_MAX_LENGTH);
+
+  return normalized;
+}
+
+export function sanitizeCarrierDisplayName(value: unknown): string | null {
+  const normalized = normalizeCarrierDisplayNameInput(value);
+  if (normalized == null) return null;
+
+  const trimmed = normalized.trim();
+  if (!trimmed) return null;
   return trimmed;
 }
 

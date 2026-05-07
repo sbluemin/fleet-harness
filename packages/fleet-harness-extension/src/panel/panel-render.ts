@@ -21,6 +21,7 @@ import type { PanelJobViewModel, PanelTrackViewModel } from "./view-model.js";
 import {
   resolveCarrierBgColor,
   resolveCarrierColor,
+  resolveCarrierDisplayName,
   resolveCarrierRgb,
 } from "../tools.js";
 import type { PanelRun } from "./state.js";
@@ -203,7 +204,10 @@ function renderEmptyPanel(
 
 function buildJobHeader(job: PanelJobViewModel, frame: number): string {
   const color = resolveCarrierColor(job.ownerCarrierId) || PANEL_COLOR;
-  const label = `${capitalize(job.kind)} · ${job.label} · ${formatElapsed((job.finishedAt ?? Date.now()) - job.startedAt)}`;
+  const jobLabel = job.kind === "carrier"
+    ? resolveCarrierDisplayName(job.ownerCarrierId)
+    : job.label;
+  const label = `${capitalize(job.kind)} · ${jobLabel} · ${formatElapsed((job.finishedAt ?? Date.now()) - job.startedAt)}`;
   if (job.status !== "active") {
     return `${color}◈ ${label}${ANSI_RESET}`;
   }
@@ -215,6 +219,9 @@ function buildJobColumnContent(job: PanelJobViewModel, width: number, bodyH: num
   const lines: string[] = [];
   for (let index = 0; index < job.tracks.length; index++) {
     const track = job.tracks[index];
+    const liveDisplayName = track.kind === "carrier"
+      ? resolveCarrierDisplayName(track.displayCli)
+      : track.displayName;
     const treePrefix = index === job.tracks.length - 1 ? "└─" : "├─";
     const connector = index === job.tracks.length - 1 ? "   " : "│  ";
     const liveStatus = track.status;
@@ -224,7 +231,7 @@ function buildJobColumnContent(job: PanelJobViewModel, width: number, bodyH: num
     const nameReset = nameColor ? ANSI_RESET : "";
     const doneSuffix = liveStatus === "done" ? ` ${PANEL_DIM_COLOR}✓ Done${ANSI_RESET}` : "";
     lines.push(truncateToWidth(
-      `${PANEL_DIM_COLOR}${treePrefix}${ANSI_RESET} ${icon} ${nameColor}${track.displayName}${nameReset}${stats ? ` ${PANEL_DIM_COLOR}[${stats}]${ANSI_RESET}` : ""}${doneSuffix}`,
+      `${PANEL_DIM_COLOR}${treePrefix}${ANSI_RESET} ${icon} ${nameColor}${liveDisplayName}${nameReset}${stats ? ` ${PANEL_DIM_COLOR}[${stats}]${ANSI_RESET}` : ""}${doneSuffix}`,
       contentWidth,
     ));
     lines.push(...getTrackStreamTail(track, connector, contentWidth, liveStatus));
@@ -235,8 +242,11 @@ function buildJobColumnContent(job: PanelJobViewModel, width: number, bodyH: num
 function buildTrackContent(track: PanelTrackViewModel, bodyH: number, frame: number): string[] {
   const liveStatus = track.status;
   const stats = buildTrackStats(track);
+  const liveDisplayName = track.kind === "carrier"
+    ? resolveCarrierDisplayName(track.displayCli)
+    : track.displayName;
   return [
-    `${trackIcon(liveStatus, frame, track.displayCli)} ${track.displayName}${stats ? ` ${PANEL_DIM_COLOR}[${stats}]${ANSI_RESET}` : ""}${liveStatus === "done" ? ` ${PANEL_DIM_COLOR}✓ Done${ANSI_RESET}` : ""}`,
+    `${trackIcon(liveStatus, frame, track.displayCli)} ${liveDisplayName}${stats ? ` ${PANEL_DIM_COLOR}[${stats}]${ANSI_RESET}` : ""}${liveStatus === "done" ? ` ${PANEL_DIM_COLOR}✓ Done${ANSI_RESET}` : ""}`,
     ...getTrackStreamTail(track, "   ", Number.MAX_SAFE_INTEGER, liveStatus),
   ].slice(-bodyH);
 }

@@ -128,10 +128,11 @@ export function registerFleetPiTools(pi: ExtensionAPI): void {
 export function registerCarrier(pi: ExtensionAPI, config: CarrierConfig): void {
   carrierCore.registerCarrier(config);
 
-  const userRenderer = config.renderUser ?? createDefaultUserRenderer(config);
+  const liveRenderConfig = createLiveRenderConfig(config);
+  const userRenderer = config.renderUser ?? createDefaultUserRenderer(liveRenderConfig);
   pi.registerMessageRenderer(`${config.id}-user`, userRenderer);
 
-  const responseRenderer = config.renderResponse ?? createDefaultResponseRenderer(config);
+  const responseRenderer = config.renderResponse ?? createDefaultResponseRenderer(liveRenderConfig);
   pi.registerMessageRenderer(`${config.id}-response`, responseRenderer);
 }
 
@@ -156,6 +157,18 @@ export function registerSingleCarrier(
   registerCarrier(pi, config);
 
   carrierCore.reorderRegisteredByCliType();
+}
+
+function createLiveRenderConfig(config: CarrierConfig): CarrierConfig {
+  const liveConfig = Object.create(config) as CarrierConfig;
+  Object.defineProperty(liveConfig, "displayName", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      return resolveCarrierDisplayName(config.id);
+    },
+  });
+  return liveConfig;
 }
 
 export function ensureShipyardLogCategories(): void {

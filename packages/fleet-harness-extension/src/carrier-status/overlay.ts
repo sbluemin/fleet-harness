@@ -22,7 +22,7 @@ import {
   refreshStatusQuiet,
 } from "@sbluemin/unified-agent";
 import type { CliType, ProviderModelInfo } from "@sbluemin/unified-agent";
-import type { CarrierCategory, TaskForceCliType } from "@sbluemin/fleet-core";
+import { admiral, type CarrierCategory, type TaskForceCliType } from "@sbluemin/fleet-core";
 import {
   getConfiguredTaskForceBackends,
   getConfiguredTaskForceCarrierIds,
@@ -75,6 +75,10 @@ import type {
   ResolvedCliSelection,
 } from "./types.js";
 
+interface CarrierStatusOverlayCallbacks extends CarrierOverlayCallbacks {
+  saveDisplayName?: (carrierId: string, displayName: string) => Promise<string>;
+}
+
 interface EntrySnapshot {
   cliType: CarrierCliType;
   effort: string | null;
@@ -123,11 +127,12 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private readonly tui: TUI;
   private readonly theme: Theme;
-  private readonly callbacks: CarrierOverlayCallbacks;
+  private readonly callbacks: CarrierStatusOverlayCallbacks;
   private readonly done: () => void;
 
   private expandedCarrierId: string | null = null;
   private feedbackMessage: string | null = null;
+  private renameState: { carrierId: string; draft: string } | null = null;
   private selectedCarrierId: string | null;
   private state: OverlayState;
 
@@ -148,6 +153,11 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   handleInput(data: string): void {
     if (this.state.kind === "saving") {
+      return;
+    }
+
+    if (this.renameState) {
+      this.handleRenameInput(data);
       return;
     }
 
@@ -190,6 +200,11 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
     if (this.state.kind === "browse" && data === "c") {
       this.startCliTypeEdit();
+      return;
+    }
+
+    if (this.state.kind === "browse" && data === "N") {
+      this.startRenameEdit();
       return;
     }
 
@@ -293,6 +308,12 @@ export class CarrierStatusOverlay implements Component, Focusable {
         if (isSelected && this.shouldRenderEntryEditor(entry.carrierId)) {
           for (const optionLine of this.buildEntryEditorLines(entry)) {
             lines.push(frame.row(optionLine));
+          }
+        }
+
+        if (isSelected && this.renameState?.carrierId === entry.carrierId) {
+          for (const renameLine of this.buildRenameEditorLines()) {
+            lines.push(frame.row(renameLine));
           }
         }
 
@@ -618,6 +639,17 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.feedbackMessage = null;
   }
 
+  private startRenameEdit(): void {
+    const entry = this.getSelectedEntry();
+    if (!entry) return;
+    this.renameState = {
+      carrierId: entry.carrierId,
+      draft: entry.displayName,
+    };
+    this.feedbackMessage = null;
+    this.tui.requestRender();
+  }
+
   private confirmCliTypeEdit(): void {
     if (this.state.kind !== "cliType") return;
     const entry = this.getEntryById(this.state.carrierId);
@@ -651,8 +683,10 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private cancelEdit(): void {
+    this.renameState = null;
     this.state = { kind: "browse" };
     this.feedbackMessage = null;
+    this.tui.requestRender();
   }
 
   private getDefaultEffort(cliType: CarrierCliType): string | null {
@@ -712,8 +746,11 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getFooterHint(): string {
+    if (this.renameState) {
+      return "이름 입력  Enter save  Esc cancel  Backspace delete  empty = reset";
+    }
     return this.state.kind === "browse"
-      ? "↑↓ select  Enter edit  c cli  C batch  R reset  t tf  S sq  d toggle  Tab  Esc"
+      ? "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  S sq  d toggle  Tab  Esc"
       : this.state.kind === "saving"
         ? "저장 중..."
         : "↑↓ select  Enter confirm  Esc cancel";
@@ -972,6 +1009,16 @@ export class CarrierStatusOverlay implements Component, Focusable {
     });
   }
 
+  private buildRenameEditorLines(): string[] {
+    if (!this.renameState) return [];
+    const draft = this.renameState.draft;
+    const visibleDraft = draft.length > 0 ? draft : this.theme.fg("dim", "(empty resets default)");
+    return [
+      this.theme.fg("accent", "      이름 변경"),
+      `      ▸ ${visibleDraft}`,
+    ];
+  }
+
   private getEntryEditorOptions(entry: CarrierStatusEntry): Array<{ value: string; label: string }> {
     switch (this.state.kind) {
       case "model":
@@ -1071,6 +1118,88 @@ export class CarrierStatusOverlay implements Component, Focusable {
   private getCliDisplayName(cliType: CarrierCliType): string {
     return CLI_DISPLAY_NAMES[cliType] ?? cliType;
   }
+
+  private handleRenameInput(data: string): void {
+    if (!this.renameState) return;
+
+    if (matchesKey(data, Key.escape) || matchesKey(data, Key.alt("o"))) {
+      this.cancelEdit();
+      return;
+    }
+
+    if (matchesKey(data, Key.enter)) {
+      this.confirmRenameEdit();
+      return;
+    }
+
+    if (matchesKey(data, Key.backspace) || data === "\x7f") {
+      this.renameState = {
+        ...this.renameState,
+        draft: this.renameState.draft.slice(0, -1),
+      };
+      this.feedbackMessage = null;
+      this.tui.requestRender();
+      return;
+    }
+
+    if (!isPrintableTextInput(data)) {
+      return;
+    }
+
+    const nextDraft = admiral.store.normalizeCarrierDisplayNameInput(this.renameState.draft + data);
+    if (nextDraft == null) {
+      return;
+    }
+
+    this.renameState = {
+      ...this.renameState,
+      draft: nextDraft,
+    };
+    this.feedbackMessage = null;
+    this.tui.requestRender();
+  }
+
+  private confirmRenameEdit(): void {
+    if (!this.renameState) return;
+    const entry = this.getEntryById(this.renameState.carrierId);
+    if (!entry) return;
+
+    const previousDisplayName = entry.displayName;
+    const draft = this.renameState.draft;
+    const sanitizedDraft = admiral.store.sanitizeCarrierDisplayName(draft);
+    const sourceDisplayName = admiral.carrier.getCarrierSourceDisplayName(entry.carrierId);
+    const isResetRequest = sanitizedDraft == null
+      || sanitizedDraft === admiral.store.sanitizeCarrierDisplayName(sourceDisplayName);
+
+    this.renameState = null;
+    this.state = { kind: "saving" };
+    this.feedbackMessage = isResetRequest
+      ? `${previousDisplayName} 이름을 기본값으로 복원 중...`
+      : `${previousDisplayName} 이름을 저장 중...`;
+    this.tui.requestRender();
+
+    const saveDisplayName = this.callbacks.saveDisplayName;
+    if (!saveDisplayName) {
+      this.state = { kind: "browse" };
+      this.feedbackMessage = "저장 실패: displayName 저장 콜백이 등록되지 않았습니다.";
+      this.tui.requestRender();
+      return;
+    }
+
+    void saveDisplayName(entry.carrierId, draft).then((resolvedDisplayName) => {
+      const nextDisplayName = resolvedDisplayName || resolveCarrierDisplayName(entry.carrierId);
+      entry.displayName = nextDisplayName;
+      this.feedbackMessage = isResetRequest
+        ? `${previousDisplayName} 이름을 기본값으로 복원했습니다. (${nextDisplayName})`
+        : `${previousDisplayName} 이름을 저장했습니다. (${nextDisplayName})`;
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.feedbackMessage = `저장 실패: ${message}`;
+    }).finally(() => {
+      this.state = { kind: "browse" };
+      this.tui.requestRender();
+    });
+  }
 }
 
 let activeStatusPopup: Promise<void> | null = null;
@@ -1121,6 +1250,13 @@ export function registerCarrierStatusKeybind(_pi: ExtensionAPI): void {
               toggleSquadronEnabled: (carrierId: string) => {
                 toggleSquadronEnabled(carrierId);
                 refreshAgentPanel(ctx);
+              },
+              saveDisplayName: async (carrierId: string, displayName: string) => {
+                const sourceDefaultDisplayName = admiral.carrier.getCarrierSourceDisplayName(carrierId);
+                admiral.store.updateCarrierDisplayName(carrierId, displayName, sourceDefaultDisplayName);
+                notifyStatusUpdate();
+                refreshAgentPanel(ctx);
+                return resolveCarrierDisplayName(carrierId);
               },
               getAvailableModels: getCliModelInfo,
               getServiceSnapshots: () =>
@@ -1261,7 +1397,7 @@ function openTaskForceOverlay(carrierId: string, ctx: Parameters<Parameters<Retu
     return;
   }
 
-  const carrierDisplayName = carrierConfig?.displayName ?? carrierId;
+  const effectiveCarrierDisplayName = resolveCarrierDisplayName(carrierId);
   const tfCallbacks = {
     getAvailableModels: (cliType: string) => getProviderModels(requireTaskForceCliType(cliType)),
     getEffortLevels: (cliType: string) => getReasoningEffortLevels(requireTaskForceCliType(cliType)),
@@ -1293,7 +1429,7 @@ function openTaskForceOverlay(carrierId: string, ctx: Parameters<Parameters<Retu
 
   void ctx.ui.custom(
     (tui2: any, theme2: any, _kb2: any, done2: () => void) =>
-      new TaskForceConfigOverlay(tui2, theme2, carrierId, carrierDisplayName, tfCallbacks, done2),
+      new TaskForceConfigOverlay(tui2, theme2, carrierId, effectiveCarrierDisplayName, tfCallbacks, done2),
     {
       overlay: true,
       overlayOptions: { width: "60%", maxHeight: "55%", anchor: "center", margin: 1 },
@@ -1313,4 +1449,10 @@ function syncConfiguredTaskForceCarriers(): void {
   const tfIds = getConfiguredTaskForceCarrierIds(getRegisteredOrder());
   setTaskForceConfiguredCarriers(tfIds);
   notifyStatusUpdate();
+}
+
+function isPrintableTextInput(value: string): boolean {
+  return value.length > 0
+    && !value.startsWith("\x1b")
+    && !/[\u0000-\u001f\u007f]/.test(value);
 }
