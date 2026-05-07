@@ -208,6 +208,14 @@
 - ok: `true`
 - warning_count: `0`
 
+## 2026-05-07T13:29:31.838Z — drydock run
+
+- error_count: `0`
+- info_count: `0`
+- issue_count: `0`
+- ok: `true`
+- warning_count: `0`
+
 ## 2026-05-07T14:05:24.213Z — drydock run
 
 - error_count: `0`
@@ -215,6 +223,38 @@
 - issue_count: `0`
 - ok: `true`
 - warning_count: `0`
+
+## 2026-05-07T13:30:21.415Z — raw source added
+
+- id: `mermaid-render-test-source`
+- raw_source_ref: `raw/2026-05-07-mermaid-render-test-source-03c9b2d3.md`
+- source_type: `inline`
+- tag_count: `4`
+- title: `mermaid-render-test.md`
+
+## 2026-05-07T13:30:21.417Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T13-30-21-403Z-6b3acfe2`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-07-mermaid-render-test-source-03c9b2d3.md`
+- target: `wiki/mermaid-render-test.md`
+- warning_count: `0`
+
+## 2026-05-07T14:06:52.005Z — index rebuilt
+
+- entry_count: `4`
+
+## 2026-05-07T14:06:52.008Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T13-30-21-403Z-6b3acfe2`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-07-mermaid-render-test-source-03c9b2d3.md`
+- result: `accepted`
+- target: `wiki/mermaid-render-test.md`
 
 ## 2026-05-07T14:06:54.872Z — raw source added
 

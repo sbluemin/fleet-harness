@@ -74,11 +74,22 @@ function decorateCodeBlocks(document: Document): void {
   for (const code of document.querySelectorAll("pre > code")) {
     const language = languageFromClass(code.className);
     const rawCode = code.textContent ?? "";
+    const pre = code.parentElement;
+    if (!pre) continue;
+    if (language === "mermaid") {
+      const placeholder = document.createElement("div");
+      placeholder.className = "diagram-block";
+      // Base64-encode so DOMPurify does not strip the attribute when the
+      // Mermaid source contains characters it treats as HTML-injection
+      // markers (e.g. "-->" in flowchart edges).
+      placeholder.setAttribute("data-mermaid-source", encodeMermaidSource(rawCode));
+      placeholder.setAttribute("data-diagram-state", "pending");
+      pre.replaceWith(placeholder);
+      continue;
+    }
     const highlighted = highlightCode(rawCode, language);
     code.innerHTML = highlighted;
     code.classList.add("hljs");
-    const pre = code.parentElement;
-    if (!pre) continue;
     pre.classList.add("code-block");
     pre.dataset.code = rawCode;
     pre.insertBefore(buildCodeToolbar(document, language || "text"), pre.firstChild);
@@ -169,4 +180,18 @@ function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+export function encodeMermaidSource(source: string): string {
+  const bytes = new TextEncoder().encode(source);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export function decodeMermaidSource(encoded: string): string {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new TextDecoder().decode(bytes);
 }

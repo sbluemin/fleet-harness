@@ -44,6 +44,15 @@
 - summary: `## Summary`
 - raw_source_ref: `raw/2026-05-05-fleet-wiki-write-flow-source-fa2105a8.md`
 
+### mermaid-render-test
+
+- title: `Mermaid 렌더 회귀 테스트`
+- path: `wiki/mermaid-render-test.md`
+- tags: `test, visual-regression, mermaid, diagram`
+- updated: `2026-05-07T13:30:21.403Z`
+- summary: `# Mermaid 렌더 회귀 테스트`
+- raw_source_ref: `raw/2026-05-07-mermaid-render-test-source-03c9b2d3.md`
+
 ## Tags
 
 ### approval-gate
@@ -65,6 +74,10 @@
 - [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
 - [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
 
+### diagram
+
+- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
+
 ### fleet-wiki
 
 - [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
@@ -74,6 +87,10 @@
 ### fleet-wiki-web
 
 - [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
+
+### mermaid
+
+- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
 
 ### onboarding
 
@@ -87,9 +104,17 @@
 
 - [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
 
+### test
+
+- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
+
 ### tools
 
 - [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
+
+### visual-regression
+
+- [[wiki:mermaid-render-test]] — Mermaid 렌더 회귀 테스트
 
 ### write-flow
 

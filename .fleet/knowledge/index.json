@@ -42,5 +42,16 @@
       "current"
     ],
     "updated": "2026-05-05T09:59:12.767Z"
+  },
+  "mermaid-render-test": {
+    "path": "wiki/mermaid-render-test.md",
+    "title": "Mermaid 렌더 회귀 테스트",
+    "tags": [
+      "test",
+      "visual-regression",
+      "mermaid",
+      "diagram"
+    ],
+    "updated": "2026-05-07T13:30:21.403Z"
   }
 }

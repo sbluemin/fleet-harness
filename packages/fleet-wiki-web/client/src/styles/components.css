@@ -896,6 +896,120 @@ kbd {
   line-height: 1.7;
 }
 
+/* ===== Diagram block (Mermaid placeholder + hydrated SVG) =====
+   Visually distinct from .code-block — brass-led glass surface with the
+   .document hairline. No macOS dots, no copy button. Eyebrow rendered as
+   a pseudo-element so the SVG slot stays uncluttered. Edge color comes
+   from Mermaid theme variables in client/src/markdown/diagrams.ts. */
+
+.diagram-block {
+  position: relative;
+  margin: var(--space-6) 0;
+  padding: clamp(40px, 5vw, 56px) clamp(20px, 3vw, 32px) clamp(20px, 3vw, 28px);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--surface-rim);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  min-height: 96px;
+}
+
+.diagram-block::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, oklch(78% 0.13 75 / 50%) 30%, oklch(82% 0.13 195 / 40%) 70%, transparent);
+}
+
+.diagram-block::after {
+  content: "MANIFEST · DIAGRAM";
+  position: absolute;
+  top: var(--space-4);
+  left: clamp(20px, 3vw, 32px);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.diagram-block svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.diagram-block svg .node rect,
+.diagram-block svg .node polygon,
+.diagram-block svg .node circle,
+.diagram-block svg .node ellipse,
+.diagram-block svg .node path {
+  stroke: var(--brass);
+}
+
+.diagram-block svg .node .label,
+.diagram-block svg text {
+  fill: var(--ink-pearl);
+}
+
+.diagram-block svg .edgeLabel {
+  background: transparent;
+  color: var(--ink-spectral);
+}
+
+.diagram-block svg .flowchart-link,
+.diagram-block svg .messageLine0,
+.diagram-block svg .messageLine1,
+.diagram-block svg path.path,
+.diagram-block svg .marker {
+  stroke: var(--aurora-deep);
+}
+
+.diagram-block svg a {
+  color: var(--aurora);
+  cursor: pointer;
+}
+
+.diagram-block[data-diagram-state="pending"]::before {
+  background: linear-gradient(90deg, transparent, oklch(78% 0.13 75 / 50%) 30%, oklch(82% 0.13 195 / 40%) 70%, transparent);
+}
+
+.diagram-block[data-diagram-state="pending"]:empty::after {
+  content: "MANIFEST · DIAGRAM · RENDERING";
+}
+
+.diagram-block[data-diagram-state="error"] {
+  border-color: color-mix(in oklch, var(--coral) 36%, var(--surface-rim));
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diagram-block[data-diagram-state="error"]::after {
+  content: "MANIFEST · DIAGRAM · ERROR";
+  color: var(--coral);
+}
+
+@media (max-width: 960px) {
+  .diagram-block {
+    padding: 44px var(--space-4) var(--space-4);
+  }
+
+  .diagram-block::after {
+    left: var(--space-4);
+  }
+}
+
 .toc-panel {
   position: sticky;
   top: var(--space-8);

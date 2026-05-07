@@ -13,6 +13,7 @@ import { configureCommandPalette, initCommandPalette } from "./components/comman
 import { renderConflictsList, renderConflictDetail } from "./components/conflicts-view";
 import { renderIndexMarkdownView } from "./components/index-md-view";
 import { renderManifestPanel } from "./components/manifest-panel";
+import { installDiagramHydrator } from "./markdown/diagrams";
 import { renderError, renderLoading, renderMarkdownView, renderWelcome } from "./components/markdown-view";
 import { renderNavTree, setNavMode, toggleTag } from "./components/nav-tree";
 import type { NavMode } from "./components/nav-tree";
@@ -70,6 +71,7 @@ subscribeRoute((route) => {
 
 document.addEventListener("click", handleDocumentClick);
 document.addEventListener("submit", handleDocumentSubmit);
+installDiagramHydrator(document.body);
 void boot();
 
 async function boot(): Promise<void> {
