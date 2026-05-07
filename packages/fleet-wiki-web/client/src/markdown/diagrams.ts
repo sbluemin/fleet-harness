@@ -148,6 +148,7 @@ async function loadMermaid(): Promise<MermaidApi> {
       api.initialize({
         securityLevel: "strict",
         htmlLabels: false,
+        suppressErrorRendering: true,
         startOnLoad: false,
         theme: "base",
         look: "handDrawn",
