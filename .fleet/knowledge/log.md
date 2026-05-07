@@ -208,3 +208,43 @@
 - ok: `true`
 - warning_count: `0`
 
+## 2026-05-07T14:05:24.213Z — drydock run
+
+- error_count: `0`
+- info_count: `0`
+- issue_count: `0`
+- ok: `true`
+- warning_count: `0`
+
+## 2026-05-07T14:06:54.872Z — raw source added
+
+- id: `fleet-wiki-cli-onboarding-source`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-5a58e05e.md`
+- source_type: `inline`
+- tag_count: `4`
+- title: `fleet-wiki CLI 사용법 온보딩 (cli.ts + --help 출력 + 안전장치 노트)`
+
+## 2026-05-07T14:06:54.874Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T14-06-54-866Z-06e941a0`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-5a58e05e.md`
+- target: `wiki/fleet-wiki-cli-onboarding.md`
+- warning_count: `0`
+
+## 2026-05-07T14:08:16.377Z — index rebuilt
+
+- entry_count: `4`
+
+## 2026-05-07T14:08:16.382Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-07T14-06-54-866Z-06e941a0`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-5a58e05e.md`
+- result: `accepted`
+- target: `wiki/fleet-wiki-cli-onboarding.md`
+

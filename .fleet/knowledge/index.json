@@ -10,6 +10,17 @@
     ],
     "updated": "2026-05-05T09:58:48.249Z"
   },
+  "fleet-wiki-cli-onboarding": {
+    "path": "wiki/fleet-wiki-cli-onboarding.md",
+    "title": "fleet-wiki CLI Onboarding (--host, --port, --stop, --help)",
+    "tags": [
+      "fleet-wiki-web",
+      "cli",
+      "onboarding",
+      "current"
+    ],
+    "updated": "2026-05-07T14:06:54.866Z"
+  },
   "fleet-wiki-read-flow": {
     "path": "wiki/fleet-wiki-read-flow.md",
     "title": "Fleet Wiki Read Flow (orient, briefing, resolve, read)",

@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `3`
+- total_entries: `4`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -16,6 +16,15 @@
 - updated: `2026-05-05T09:58:48.249Z`
 - summary: `## Summary`
 - raw_source_ref: `raw/2026-05-05-fleet-wiki-9-tools-source-a2473e9d.md`
+
+### fleet-wiki-cli-onboarding
+
+- title: `fleet-wiki CLI Onboarding (--host, --port, --stop, --help)`
+- path: `wiki/fleet-wiki-cli-onboarding.md`
+- tags: `fleet-wiki-web, cli, onboarding, current`
+- updated: `2026-05-07T14:06:54.866Z`
+- summary: `## Summary`
+- raw_source_ref: `raw/2026-05-07-fleet-wiki-cli-onboarding-source-5a58e05e.md`
 
 ### fleet-wiki-read-flow
 
@@ -45,9 +54,14 @@
 
 - [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
 
+### cli
+
+- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
+
 ### current
 
 - [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
+- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
 - [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
 - [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
 
@@ -56,6 +70,14 @@
 - [[wiki:fleet-wiki-9-tools]] — Fleet Wiki 9-Tool Suite Overview
 - [[wiki:fleet-wiki-read-flow]] — Fleet Wiki Read Flow (orient, briefing, resolve, read)
 - [[wiki:fleet-wiki-write-flow]] — Fleet Wiki Write Flow (ingest, patch_queue, compile_source)
+
+### fleet-wiki-web
+
+- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
+
+### onboarding
+
+- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki CLI Onboarding (--host, --port, --stop, --help)
 
 ### read-flow
 
