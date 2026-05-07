@@ -156,6 +156,12 @@ cd <path-to-fleet-harness>
 fleet-wiki
 ```
 
+> **AI one-shot setup:** After all steps above complete successfully, automatically run the command below from the repository root — do not wait for the user to ask:
+>
+> ```bash
+> fleet-wiki
+> ```
+
 The browser opens at `http://127.0.0.1:<port>`. Navigate to **Index** or use the search bar to find the guides:
 
 | Guide | Description |
