@@ -36,6 +36,20 @@ const ENTRY_PATH_PATTERN = /^\/entry\/[^/?#]+$/;
 const CLICK_HANDLER_FLAG = "diagramClickBound";
 const OKLCH_PATTERN = /^oklch\s*\(\s*([^)]+)\s*\)$/i;
 const ANGLE_PATTERN = /^(-?\d+(?:\.\d+)?)(deg)?$/i;
+const PIE_THEME_SLOT_NAMES = [
+  "pie1",
+  "pie2",
+  "pie3",
+  "pie4",
+  "pie5",
+  "pie6",
+  "pie7",
+  "pie8",
+  "pie9",
+  "pie10",
+  "pie11",
+  "pie12",
+] as const;
 
 let mermaidLoader: Promise<MermaidApi> | null = null;
 let observerInstalled = false;
@@ -155,9 +169,29 @@ function extractThemeVariables(): Record<string, string> {
   };
   const brass = read("--brass", "#c69a4a");
   const brassBright = read("--brass-bright", "#e6b86a");
+  const brassDeep = read("--brass-deep", "#a0782a");
+  const aurora = read("--aurora", "#8bd7e6");
   const auroraDeep = read("--aurora-deep", "#1f8aa8");
+  const coral = read("--coral", "#ef7c63");
+  const inkDeep = read("--ink-deep", "#1d2734");
+  const inkFog = read("--ink-fog", "#a6afbb");
   const inkPearl = read("--ink-pearl", "#e6e9ef");
   const inkSpectral = read("--ink-spectral", "#bcc4d0");
+  const piePalette = [
+    brassBright,
+    brass,
+    aurora,
+    coral,
+    cssColorToHex("oklch(70% 0.11 68)"),
+    auroraDeep,
+    cssColorToHex("oklch(76% 0.09 205)"),
+    brassDeep,
+    cssColorToHex("oklch(68% 0.14 30)"),
+    inkFog,
+    cssColorToHex("oklch(62% 0.08 228)"),
+    cssColorToHex("oklch(52% 0.05 248)"),
+  ];
+  const pieVariables = Object.fromEntries(PIE_THEME_SLOT_NAMES.map((slot, index) => [slot, piePalette[index] ?? inkDeep]));
   return {
     background: "transparent",
     primaryColor: "transparent",
@@ -177,6 +211,18 @@ function extractThemeVariables(): Record<string, string> {
     nodeBorder: brass,
     clusterBkg: "transparent",
     clusterBorder: brass,
+    pieTitleTextColor: brassBright,
+    pieTitleTextSize: "19px",
+    pieSectionTextColor: inkPearl,
+    pieSectionTextSize: "13px",
+    pieLegendTextColor: inkPearl,
+    pieLegendTextSize: "14px",
+    pieStrokeColor: brassDeep,
+    pieStrokeWidth: "1.35px",
+    pieOuterStrokeColor: brassBright,
+    pieOuterStrokeWidth: "2.5px",
+    pieOpacity: "0.96",
+    ...pieVariables,
   };
 }
 
@@ -187,7 +233,10 @@ function buildThemeCss(): string {
     return cssColorToHex(value || fallback);
   };
   const brassDeep = read("--brass-deep", "#a0782a");
+  const brassBright = read("--brass-bright", "#e6b86a");
   const auroraDeep = read("--aurora-deep", "#1f8aa8");
+  const inkAbyss = read("--ink-abyss", "#131920");
+  const inkAbyssSoft = cssColorToHex("oklch(15% 0.04 250 / 34%)");
   const surfaceGlass = read("--surface-glass", "#1d2734");
   const inkPearl = read("--ink-pearl", "#e6e9ef");
   return `
@@ -201,6 +250,47 @@ function buildThemeCss(): string {
     .nodeLabel, .edgeLabel, .actor text, .messageText {
       fill: ${inkPearl};
       font-family: "Manrope Variable", "Manrope", ui-sans-serif, sans-serif;
+    }
+    .pieCircle {
+      stroke: ${brassDeep};
+      stroke-width: 1.35px;
+      opacity: 0.96;
+      filter: drop-shadow(0 0 1.5px ${inkAbyssSoft});
+    }
+    .pieOuterCircle {
+      stroke: ${brassBright};
+      opacity: 0.7;
+    }
+    .slice, .legend text, .pieTitleText {
+      fill: ${inkPearl};
+      paint-order: stroke;
+      stroke: ${inkAbyss};
+      stroke-width: 3px;
+      stroke-linejoin: round;
+      font-family: "Manrope Variable", "Manrope", ui-sans-serif, sans-serif;
+    }
+    .slice {
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      font-style: italic;
+    }
+    .pieTitleText {
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      font-style: italic;
+    }
+    .legend text {
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+    .legend rect {
+      rx: 999px;
+      ry: 999px;
+      opacity: 0.9;
+      stroke: ${inkAbyss};
+      stroke-width: 1.5px;
+      paint-order: stroke;
+      filter: saturate(0.78) brightness(0.92) drop-shadow(0 0 0.55px ${brassBright});
     }
   `;
 }
