@@ -5,7 +5,7 @@ import { defineConfig } from "tsup";
 
 const ROOT_DIR = dirname(fileURLToPath(import.meta.url));
 const BRAND_THEME_SOURCE_DIR = join(ROOT_DIR, "src", "branding", "themes");
-const BRAND_THEME_DIST_DIR = join(ROOT_DIR, "dist", "branding", "themes");
+const BRAND_THEME_DIST_DIR = join(ROOT_DIR, "dist", "themes");
 
 export default defineConfig({
   entry: { index: "src/index.ts" },
