@@ -105,6 +105,14 @@ export class UnifiedOpenCodeAgentClient extends EventEmitter implements IUnified
     const spawnConfig = createSpawnConfig(this.providerId, options);
     const cleanEnv = cleanEnvironment(process.env, options.env);
 
+    // OpenCode 내장 에이전트 비활성화 설정 주입 (explore, plan)
+    cleanEnv.OPENCODE_CONFIG_CONTENT = JSON.stringify({
+      agent: {
+        explore: { disable: true },
+        plan: { disable: true },
+      },
+    });
+
     const connection = new AcpConnection({
       command: spawnConfig.command,
       args: spawnConfig.args,
