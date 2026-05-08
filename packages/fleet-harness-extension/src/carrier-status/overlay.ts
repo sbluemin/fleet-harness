@@ -140,7 +140,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     tui: TUI,
     theme: Theme,
     entries: CarrierStatusEntry[],
-    callbacks: CarrierOverlayCallbacks,
+    callbacks: CarrierStatusOverlayCallbacks,
     done: () => void,
   ) {
     this.tui = tui;

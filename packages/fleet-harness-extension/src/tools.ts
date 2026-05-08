@@ -189,6 +189,7 @@ function toPiToolConfig(spec: AgentToolSpec): Record<string, unknown> {
     label: spec.title,
     description: spec.description,
     promptSnippet: spec.promptSnippet,
+    renderShell: "self",
     promptGuidelines: [
       ...spec.whenToUse,
       ...spec.whenNotToUse,
@@ -215,6 +216,7 @@ function toRequestDirectivePiTool(spec: AgentToolSpec): Record<string, unknown> 
     label: spec.title,
     description: spec.description,
     promptSnippet: spec.promptSnippet,
+    renderShell: "self",
     promptGuidelines: [
       ...spec.whenToUse,
       ...spec.whenNotToUse.map((line) => `NOT: ${line}`),
