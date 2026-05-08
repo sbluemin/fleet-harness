@@ -186,6 +186,32 @@ describe.skipIf(!installed)('E2E: Claude ACP', () => {
   });
 
   // ═══════════════════════════════════════════════
+  // strictMcp
+  // ═══════════════════════════════════════════════
+
+  describe('strictMcp (--strict-mcp-config 인자 주입)', () => {
+    it('SDK: strictMcp=true → 연결 → 프롬프트 → 정상 응답', async () => {
+      const { client: c, sessionId } = await connectClient('claude', { strictMcp: true });
+      client = c;
+
+      expect(sessionId).toBeTruthy();
+
+      const { response } = await sendAndCollect(client, SIMPLE_PROMPT);
+      expect(response).toContain('2');
+    }, 180_000);
+
+    it('SDK: strictMcp=false → 연결 → 프롬프트 → 정상 응답 (디폴트 동등)', async () => {
+      const { client: c, sessionId } = await connectClient('claude', { strictMcp: false });
+      client = c;
+
+      expect(sessionId).toBeTruthy();
+
+      const { response } = await sendAndCollect(client, SIMPLE_PROMPT);
+      expect(response).toContain('2');
+    }, 180_000);
+  });
+
+  // ═══════════════════════════════════════════════
   // 세션 재개
   // ═══════════════════════════════════════════════
 

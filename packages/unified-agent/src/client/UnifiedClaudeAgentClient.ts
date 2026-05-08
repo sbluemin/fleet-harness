@@ -151,6 +151,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
         options.sessionId,
         acpMcpServers,
         options.systemPrompt,
+        options.strictMcp,
       );
     } catch (error) {
       const connectionError = this.buildConnectionError(error, recentLogs);
@@ -295,6 +296,7 @@ export class UnifiedClaudeAgentClient extends EventEmitter implements IUnifiedAg
           undefined,
           undefined,
           this.currentSystemPrompt,
+          undefined,
         )
       : await this.connection.reconnectSession(targetCwd);
 

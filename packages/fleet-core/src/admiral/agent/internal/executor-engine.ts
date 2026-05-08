@@ -616,6 +616,7 @@ async function buildConnectOptions(
   if (overrides?.promptIdleTimeout !== undefined) opts.promptIdleTimeout = overrides.promptIdleTimeout;
   if (systemPrompt) opts.systemPrompt = systemPrompt;
   if (mcpServers) opts.mcpServers = mcpServers;
+  opts.strictMcp = true;
   const env = await resolveAuthEnv(cli);
   if (Object.keys(env).length > 0) opts.env = env;
   return opts;

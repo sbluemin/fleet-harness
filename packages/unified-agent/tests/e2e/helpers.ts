@@ -59,7 +59,7 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 /** SDK로 연결 후 sessionId를 반환하는 헬퍼 */
 export async function connectClient(
   cli: CliType,
-  opts?: { model?: string; sessionId?: string },
+  opts?: { model?: string; sessionId?: string; strictMcp?: boolean },
 ): Promise<{ client: IUnifiedAgentClient; sessionId: string | null }> {
   const client = await UnifiedAgent.build({ cli, sessionId: opts?.sessionId });
 
@@ -73,6 +73,7 @@ export async function connectClient(
       autoApprove: true,
       model: opts?.model,
       sessionId: opts?.sessionId,
+      strictMcp: opts?.strictMcp,
       clientInfo: { name: 'E2E-Test', version: '1.0.0' },
     }),
     120_000,

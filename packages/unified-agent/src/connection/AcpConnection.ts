@@ -192,6 +192,7 @@ export class AcpConnection extends BaseConnection {
     sessionId?: string,
     mcpServers?: McpServer[],
     systemPrompt?: string,
+    strictMcp?: boolean,
   ): Promise<NewSessionResponse> {
     const agent = this.getAgent();
     const servers = mcpServers ?? [];
@@ -218,12 +219,24 @@ export class AcpConnection extends BaseConnection {
       };
 
       const claudeSystemPrompt = this.getClaudeSystemPrompt(systemPrompt);
-      if (claudeSystemPrompt) {
-        newSessionParams._meta = {
-          systemPrompt: {
+      const shouldInjectStrictMcp = this.isClaudeBackend() && strictMcp;
+      if (claudeSystemPrompt || shouldInjectStrictMcp) {
+        const meta: Record<string, unknown> = {};
+        if (claudeSystemPrompt) {
+          meta.systemPrompt = {
             append: claudeSystemPrompt,
-          },
-        };
+          };
+        }
+        if (shouldInjectStrictMcp) {
+          meta.claudeCode = {
+            options: {
+              extraArgs: {
+                'strict-mcp-config': null,
+              },
+            },
+          };
+        }
+        newSessionParams._meta = meta;
       }
 
       session = await this.withFixedTimeout(
@@ -250,10 +263,11 @@ export class AcpConnection extends BaseConnection {
     sessionId?: string,
     mcpServers?: McpServer[],
     systemPrompt?: string,
+    strictMcp?: boolean,
   ): Promise<NewSessionResponse> {
     await this.initializeConnection(workspace);
     try {
-      return await this.createSession(workspace, sessionId, mcpServers, systemPrompt);
+      return await this.createSession(workspace, sessionId, mcpServers, systemPrompt, strictMcp);
     } catch (error) {
       this.setState('error');
       try {
@@ -330,6 +344,7 @@ export class AcpConnection extends BaseConnection {
     sessionId?: string,
     mcpServers?: McpServer[],
     systemPrompt?: string,
+    strictMcp?: boolean,
   ): Promise<NewSessionResponse> {
     // close capability가 없는 CLI(Gemini 등)는 newSession 재호출 시 hang됩니다
     if (!sessionId && !this.canResetSession) {
@@ -342,16 +357,21 @@ export class AcpConnection extends BaseConnection {
       throw new Error(`[${this.command}] loadSession을 지원하지 않습니다 (E3)`);
     }
 
-    return this.createSession(workspace, sessionId, mcpServers, systemPrompt);
+    return this.createSession(workspace, sessionId, mcpServers, systemPrompt, strictMcp);
+  }
+
+  /** Claude 계열 브릿지인지 여부를 단일 판별 지점으로 유지합니다. */
+  private isClaudeBackend(): boolean {
+    return (
+      this.cliType === 'claude' ||
+      this.cliType === 'claude-zai' ||
+      this.cliType === 'claude-kimi'
+    );
   }
 
   /** Claude bridge만 native system prompt append를 지원하므로 이 경로만 사용합니다. */
   private getClaudeSystemPrompt(systemPrompt?: string): string | null {
-    if (
-      this.cliType !== 'claude' &&
-      this.cliType !== 'claude-zai' &&
-      this.cliType !== 'claude-kimi'
-    ) {
+    if (!this.isClaudeBackend()) {
       return null;
     }
 
