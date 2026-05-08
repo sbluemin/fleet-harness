@@ -56,7 +56,7 @@ const REQUIRED_THEME_TOKENS = [
 ] as const;
 
 describe("fleet branding theme json", () => {
-  it("fleet-dark와 fleet-light JSON이 51 토큰을 전수 정의하고 userMessageBg를 비운다", async () => {
+  it("fleet-dark와 fleet-light JSON이 51 토큰을 전수 정의하고 은은한 userMessageBg를 적용한다", async () => {
     const registerModule = await import("../../src/branding/register.js");
 
     const handlers = new Map<string, Function>();
@@ -73,6 +73,11 @@ describe("fleet branding theme json", () => {
 
     expect(themePaths).toHaveLength(2);
 
+    const expectedUserMessageBg: Record<string, string> = {
+      "fleet-dark": "#1c2030",
+      "fleet-light": "#eef2f8",
+    };
+
     for (const themePath of themePaths) {
       const parsed = JSON.parse(readFileSync(themePath, "utf-8")) as {
         name: string;
@@ -82,7 +87,7 @@ describe("fleet branding theme json", () => {
       expect(parsed.name === "fleet-dark" || parsed.name === "fleet-light").toBe(true);
       expect(Object.keys(parsed.colors)).toHaveLength(51);
       expect(Object.keys(parsed.colors).sort()).toEqual([...REQUIRED_THEME_TOKENS].sort());
-      expect(parsed.colors.userMessageBg).toBe("");
+      expect(parsed.colors.userMessageBg).toBe(expectedUserMessageBg[parsed.name]);
     }
   });
 });
