@@ -1,4 +1,11 @@
+import { cpSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
+
+const ROOT_DIR = dirname(fileURLToPath(import.meta.url));
+const BRAND_THEME_SOURCE_DIR = join(ROOT_DIR, "src", "branding", "themes");
+const BRAND_THEME_DIST_DIR = join(ROOT_DIR, "dist", "branding", "themes");
 
 export default defineConfig({
   entry: { index: "src/index.ts" },
@@ -14,5 +21,9 @@ export default defineConfig({
     "@xterm/addon-serialize",
     "@xterm/headless",
     "node-pty"
-  ]
+  ],
+  onSuccess: async () => {
+    mkdirSync(BRAND_THEME_DIST_DIR, { recursive: true });
+    cpSync(BRAND_THEME_SOURCE_DIR, BRAND_THEME_DIST_DIR, { recursive: true });
+  },
 });

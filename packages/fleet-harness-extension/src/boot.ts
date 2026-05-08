@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { registerFleetBrandingLifecycle } from "./branding/register.js";
 import registerBoot from "./fleet.js";
 import registerFleetWiki from "./wiki/ui.js";
 import { registerJob } from "./jobs.js";
@@ -47,6 +48,7 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerShellLifecycle(ctx);
   registerCoreKeybinds(ctx);
   registerWelcome(ctx);
+  registerFleetBrandingLifecycle(ctx);
 
   registerAgentPanelShortcut();
   registerCarrierStatusKeybind(ctx);
