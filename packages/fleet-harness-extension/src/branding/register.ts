@@ -41,7 +41,9 @@ function resolveConfiguredCustomThemeName(cwd: string): string | null {
     ?? readThemeSetting(join(getAgentDir(), "settings.json"));
 
   if (!configuredTheme) return null;
-  return BUILTIN_THEME_NAMES.has(configuredTheme) ? null : configuredTheme;
+  if (BUILTIN_THEME_NAMES.has(configuredTheme)) return null;
+  if (FLEET_THEME_NAMES.has(configuredTheme)) return null;
+  return configuredTheme;
 }
 
 function readThemeSetting(settingsPath: string): string | null {

@@ -114,6 +114,40 @@ describe("fleet branding register", () => {
     expect(setTheme).not.toHaveBeenCalled();
   });
 
+  it("settings.json에 fleet 테마가 박혀 있고 PI가 fallback한 경우 자동 복구한다", async () => {
+    process.env.PI_CODING_AGENT_DIR = createTempDir("fleet-branding-agent-");
+
+    const cwd = createTempDir("fleet-branding-cwd-");
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ theme: "fleet-dark" }));
+
+    const handlers = new Map<string, Function>();
+    const pi = {
+      on: vi.fn((event: string, handler: Function) => {
+        handlers.set(event, handler);
+      }),
+    };
+
+    registerFleetBrandingLifecycle(pi as any);
+
+    const setTheme = vi.fn();
+    await handlers.get("session_start")?.(
+      { reason: "launch" },
+      {
+        cwd,
+        hasUI: true,
+        ui: {
+          theme: { name: "dark" },
+          setTheme,
+        },
+      },
+    );
+
+    await vi.runAllTimersAsync();
+
+    expect(setTheme).toHaveBeenCalledWith("fleet-dark");
+  });
+
   it("현재 테마가 builtin이 아니면 자동 적용을 건너뛴다", async () => {
     process.env.PI_CODING_AGENT_DIR = createTempDir("fleet-branding-agent-");
 
