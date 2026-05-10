@@ -1,6 +1,6 @@
-import type { Component, Focusable } from "@mariozechner/pi-tui";
-import { visibleWidth } from "@mariozechner/pi-tui";
-import type { ExtensionAPI, ExtensionContext, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { Component, Focusable } from "@sbluemin/fleet-tui";
+import { visibleWidth } from "@sbluemin/fleet-tui";
+import type { ExtensionAPI, ExtensionContext, Theme, ThemeColor } from "@sbluemin/fleet-coding-agent";
 import type { FleetInfraServices, SectionDisplayConfig } from "@sbluemin/fleet-core";
 
 import { getKeybindAPI } from "./keybinds.js";
@@ -13,13 +13,14 @@ export interface FleetPushModeSettings {
 const SECTION_KEY = "fleet-push-mode";
 
 const LABEL_WIDTH = 11;
+const MIN_EDITOR_CARD_WIDTH = 40;
 const PANEL_COLOR = "\x1b[38;2;180;160;220m";
 const ANSI_RESET = "\x1b[0m";
 
 let activePopup: Promise<void> | null = null;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SettingsOverlay
+// Settings editor-replace
 // ═══════════════════════════════════════════════════════════════════════════
 
 class SettingsOverlay implements Component, Focusable {
@@ -44,11 +45,11 @@ class SettingsOverlay implements Component, Focusable {
   }
 
   render(width: number): string[] {
-    width = Math.max(30, width);
+    const frameWidth = resolveEditorCardWidth(width, MIN_EDITOR_CARD_WIDTH);
 
     const border = (s: string) => this.theme.fg("border", s);
     const dim = (s: string) => this.theme.fg("dim", s);
-    const innerWidth = width - 4;
+    const innerWidth = frameWidth - 4;
     const row = (content: string) => {
       const pad = Math.max(0, innerWidth - visibleWidth(content));
       return border("│ ") + content + " ".repeat(pad) + border(" │");
@@ -61,8 +62,8 @@ class SettingsOverlay implements Component, Focusable {
 
     const title = " Settings ";
     const titleLen = title.length;
-    const sideLen = Math.max(0, Math.floor((width - 2 - titleLen) / 2));
-    const rightLen = Math.max(0, width - 2 - sideLen - titleLen);
+    const sideLen = Math.max(0, Math.floor((frameWidth - 2 - titleLen) / 2));
+    const rightLen = Math.max(0, frameWidth - 2 - sideLen - titleLen);
     const topBorder = border("╭" + "─".repeat(sideLen) + title + "─".repeat(rightLen) + "╮");
     const lines: string[] = [];
     lines.push(topBorder);
@@ -82,9 +83,9 @@ class SettingsOverlay implements Component, Focusable {
       lines.push(emptyRow());
     }
 
-    lines.push(border("├" + "─".repeat(width - 2) + "┤"));
+    lines.push(border("├" + "─".repeat(frameWidth - 2) + "┤"));
     lines.push(row(dim("Esc close")));
-    lines.push(border("╰" + "─".repeat(width - 2) + "╯"));
+    lines.push(border("╰" + "─".repeat(frameWidth - 2) + "╯"));
 
     return lines;
   }
@@ -166,13 +167,7 @@ async function openSettingsPopup(ctx: ExtensionContext): Promise<void> {
     (_tui, theme, _keybindings, done) =>
       new SettingsOverlay(theme, sections, done),
     {
-      overlay: true,
-      overlayOptions: {
-        width: "50%",
-        maxHeight: "50%",
-        anchor: "center",
-        margin: 1,
-      },
+      overlay: false,
     },
   );
 
@@ -193,4 +188,8 @@ function getInfraSettingsFacadeOrNull(): FleetInfraServices["settings"] | null {
   } catch {
     return null;
   }
+}
+
+function resolveEditorCardWidth(width: number, minWidth: number): number {
+  return Math.max(minWidth, width);
 }

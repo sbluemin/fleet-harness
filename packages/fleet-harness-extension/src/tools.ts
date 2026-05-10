@@ -1,7 +1,7 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
-import { keyHint } from "@mariozechner/pi-coding-agent";
-import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import type { CliType } from "@sbluemin/unified-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@sbluemin/fleet-coding-agent";
+import { keyHint } from "@sbluemin/fleet-coding-agent";
+import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 import {
   admiral,
   infra,
@@ -95,6 +95,10 @@ export interface SingleCarrierOptions {
   color?: string;
   /** 배경색 오버라이드 (미지정 시 cliType 시그니처 색상 사용) */
   bgColor?: string;
+  /** 소스레벨 기본 모델 ID — states.json에 저장된 값이 없을 때 폴백 */
+  defaultModel?: string;
+  /** 소스레벨 기본 추론 강도 — 신규 모델 엔트리 시딩 시에만 사용 */
+  defaultEffort?: string;
 }
 
 const COLLAPSED_MAX_LINES = 5;
@@ -153,6 +157,8 @@ export function registerSingleCarrier(
     color: options.color ?? CARRIER_COLORS[cli] ?? "",
     bgColor: options.bgColor ?? CARRIER_BG_COLORS[cli],
     carrierMetadata: metadata,
+    defaultModel: options.defaultModel,
+    defaultEffort: options.defaultEffort,
   };
   registerCarrier(pi, config);
 

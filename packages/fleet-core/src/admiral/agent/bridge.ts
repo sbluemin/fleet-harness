@@ -7,7 +7,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import { CLI_BACKENDS } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS } from "@sbluemin/fleet-unified-agent";
 import { getOrInitState, getSessionLaunchConfig } from "./internal/state.js";
 
 // ═══════════════════════════════════════════════════════════════════════════

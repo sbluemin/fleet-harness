@@ -141,8 +141,10 @@ and stored in `packages/fleet-core/src/runtime-flags.ts` via `setFleetCoreBootMo
 `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. In dev mode, the RISEN
 context replaces persona/role/tone; see Section 3.2 for how the conditional works.
 
-The `fleet-dev` CLI (`bin/fleet-dev.js:4`) sets `FLEET_HARNESS_DEV=1` via `_launcher.js:14`;
-the extension maps this env var to `bootMode: "dev"` when composing the runtime.
+The `fleet-dev` CLI (`bin/fleet-dev.js:2`) sets `FLEET_HARNESS_DEV=1` and then dynamically
+imports `bin/fleet-main.mjs`, which invokes upstream `main()` in-process with
+`extensionFactories: [fleetExtension]`; the extension maps this env var to
+`bootMode: "dev"` when composing the runtime.
 
 ### 3.2 `buildSystemPrompt()` (fleet-core, always present)
 
@@ -168,7 +170,7 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │                                                                     │
 │  1. <fleet section="persona">                                       │
 │     Condition: !isFleetCoreDevMode()  &&  isWorldviewEnabled()      │
-│     Content:  FLEET_PI_PERSONA_PROMPT                               │
+│     Content:  FLEET_PERSONA_PROMPT                               │
 │     Source:   metaphor/prompts.ts:56-62                             │
 │     ★ OMITTED in dev mode — RISEN dev context replaces this.        │
 │                                                                     │
@@ -377,7 +379,7 @@ The Admiral's own decision flow at the start of every task:
 │                                                                   │
 │  Step 0.  Pre-work documentation check (dev-mode rule from RISEN).
    When bootMode === "dev" is active (FLEET_HARNESS_DEV=1 at launch), the Admiral must verify:
-    1. docs/pi-development-reference.md is read for PI SDK / extension context
+    1. docs/fleet-development-reference.md is read for Fleet SDK / extension context
     2. docs/admiral-workflow-reference.md is read for architecture / delegation
     3. docs/admiral-prompt-architecture.md is read for prompt assembly and runtime-context flow
     4. AGENTS.md is checked in the project root AND every touched subdirectory
@@ -465,7 +467,7 @@ One additional self-check the Admiral must perform: when operating in `fleet-dev
 mode (`bootMode === "dev"`, launched via `FLEET_HARNESS_DEV=1`), the RISEN dev context
 (`RISEN_DEV_SLATE`) contains a mandatory 4-step documentation check. The
 Admiral must **actually perform** those checks, not just claim they were performed.
-They are: (1) read `docs/pi-development-reference.md`,
+They are: (1) read `docs/fleet-development-reference.md`,
 (2) read `docs/admiral-workflow-reference.md`, (3) read
 `docs/admiral-prompt-architecture.md`, and (4) check root + touched `AGENTS.md`
 files. This is enforced by the Admiral's own system prompt, not by any external
@@ -499,8 +501,10 @@ the following code changes ship:
   changes (`packages/fleet-core/src/runtime-flags.ts`).
 - `createFleetCoreRuntime()` signature or `bootMode` wiring changes
   (`packages/fleet-core/src/public/runtime.ts`).
-- The `fleet-dev` / `gfleet-dev` launcher changes the environment variables it
-  injects (`bin/_launcher.js:6-48`, `bin/fleet-dev.js`, `bin/gfleet-dev.js`).
+- The `fleet-dev` launcher (`bin/fleet-dev.js`) or the in-process wrapper
+  (`bin/fleet-main.mjs`) changes the environment variables it injects, the
+  `extensionFactories` list passed to upstream `main()`, or the
+  `--no-extensions` discovery policy.
 
 Updates must cite `file_path:line_number` for every claim, mirror the existing
 section structure, and preserve the Chronicle-exclusion frontmatter and warning

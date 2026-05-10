@@ -166,32 +166,34 @@ const gitSegment: StatusLineSegment = {
 const thinkingSegment: StatusLineSegment = {
   id: "thinking",
   render(ctx) {
+    if (!ctx.model?.reasoning) return { content: "", visible: false };
+
     const level = ctx.thinkingLevel || "off";
     if (level === "off") return { content: "", visible: false };
 
     // 셰브론 스타일 라벨 (metaphor-directive-refinement / unified-agent-ext 일관)
     const CHEVRON_LABELS: Record<string, string> = {
-      minimal: "›  Minimal",
       low: "›  Low",
       medium: "»  Medium",
       high: "⋙  High",
       xhigh: "⋙  xHigh",
+      max: "⋙  MAX",
     };
 
     // 레벨별 색상 (success → warning → error 단계)
     const CHEVRON_COLORS: Record<string, ColorValue> = {
-      minimal: "success",
       low: "success",
       medium: "warning",
       high: "error",
       xhigh: "error",
+      max: "error",
     };
 
     const label = CHEVRON_LABELS[level] ?? level;
     const colorKey = CHEVRON_COLORS[level] ?? "dim";
 
-    // xhigh: 무지개 그라데이션 (문자별 ANSI 색상 순환)
-    if (level === "xhigh") {
+    // xhigh/max: 무지개 그라데이션 (문자별 ANSI 색상 순환)
+    if (level === "xhigh" || level === "max") {
       return { content: rainbow(label), visible: true };
     }
 

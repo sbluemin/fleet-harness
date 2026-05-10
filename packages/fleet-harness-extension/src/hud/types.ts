@@ -1,4 +1,4 @@
-import type { ReadonlyFooterDataProvider, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { ReadonlyFooterDataProvider, Theme, ThemeColor } from "@sbluemin/fleet-coding-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 색상 타입
@@ -151,7 +151,7 @@ export interface HudEditorState {
   /** footer 콜백에서 직접 수신한 TUI 인스턴스 */
   tuiRef: any;
   /** footer 콜백에서 수신한 전체 PI Theme (fg 메서드 포함) */
-  themeRef: import("@mariozechner/pi-coding-agent").Theme | null;
+  themeRef: import("@sbluemin/fleet-coding-agent").Theme | null;
   layoutCache: {
     width: number;
     result: { topContent: string; secondaryContent: string } | null;

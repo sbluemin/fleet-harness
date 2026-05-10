@@ -2,27 +2,27 @@
  * status-overlay.ts — 캐리어 함대 현황 오버레이 컴포넌트
  *
  * Alt+O로 호출되며, 등록된 모든 캐리어의 모델·추론 설정을 표시/편집합니다.
- * Component + Focusable 인터페이스를 구현하여 ctx.ui.custom() overlay로 렌더링합니다.
+ * Component + Focusable 인터페이스를 구현하여 ctx.ui.custom() editor-replace로 렌더링합니다.
  *
  * 그룹 헤더 우측에 service-status 결과를 표시합니다.
  * 매 render() 호출마다 최신 service snapshot을 반영합니다.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { Component, Focusable, TUI } from "@mariozechner/pi-tui";
-import { Key, matchesKey, visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
+import type { Component, Focusable, TUI } from "@sbluemin/fleet-tui";
+import { Key, matchesKey, visibleWidth } from "@sbluemin/fleet-tui";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 
-import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "../fleet-core-facades.js";
-import { CLI_BACKENDS, type HealthStatus } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS, type HealthStatus } from "@sbluemin/fleet-unified-agent";
 import {
+  getEffort,
   getProviderModels,
-  getReasoningEffortLevels,
   getServiceSnapshots,
   refreshStatusQuiet,
-} from "@sbluemin/unified-agent";
-import type { CliType, ProviderModelInfo } from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
+import type { CliType, ProviderModelInfo } from "@sbluemin/fleet-unified-agent";
 import { admiral, type CarrierCategory, type TaskForceCliType } from "@sbluemin/fleet-core";
+import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "../fleet-core-facades.js";
 import {
   getConfiguredTaskForceBackends,
   getConfiguredTaskForceCarrierIds,
@@ -104,6 +104,7 @@ const ANSI_RESET = "\x1b[0m";
 const ANSI_DIM = "\x1b[38;2;100;100;100m";
 const SLOT_WIDTH = 4;
 const NAME_WIDTH = 12;
+const MIN_EDITOR_CARD_WIDTH = 40;
 const ALL_CLI_TYPES = Object.keys(CLI_BACKENDS) as CarrierCliType[];
 
 const STATUS_TEXT: Record<HealthStatus, string> = {
@@ -253,11 +254,11 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   render(width: number): string[] {
-    width = Math.max(40, width);
+    const frameWidth = resolveEditorCardWidth(width, MIN_EDITOR_CARD_WIDTH);
 
     const dim = (s: string) => this.theme.fg("dim", s);
     const viewModel = this.buildViewModel();
-    const frame = createOverlayFrame(this.theme, width, " Carrier Status ", ANSI_RESET);
+    const frame = createOverlayFrame(this.theme, frameWidth, " Carrier Status ", ANSI_RESET);
     const innerWidth = frame.innerWidth;
 
     const lines: string[] = [];
@@ -288,7 +289,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
         const coloredName = `${nameColor}${entry.displayName}${ANSI_RESET}`;
         const modelName = this.callbacks.getAvailableModels(entry.cliType).models.find(m => m.modelId === entry.model)?.name ?? entry.model;
         const modelStr = (entry.isDefault || isDisabled) ? dim(modelName) : modelName;
-        const effortStr = entry.effort ? dim(" · ") + (isDisabled ? dim(entry.effort) : entry.effort) : "";
+        const effortSupported = getModelEffortLevels(entry.cliType, entry.model).length > 0;
+        const effortStr = effortSupported && entry.effort ? dim(" · ") + (isDisabled ? dim(entry.effort) : entry.effort) : "";
         const sortieTag = entry.isSquadronEnabled
           ? `  \x1b[38;2;180;140;255m→SQ${ANSI_RESET}`
           : isDisabled ? `  \x1b[38;2;255;80;80m✕ sortie off${ANSI_RESET}` : "";
@@ -550,8 +552,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
     const transition = buildModelEffortTransition({
       currentEffort: entry.effort,
-      effortChoices: this.callbacks.getAvailableModels(entry.cliType).reasoningEffort.levels ?? [],
-      fallbackEffort: this.getDefaultEffort(entry.cliType),
+      effortChoices: getModelEffortLevels(entry.cliType, selectedModel),
+      fallbackEffort: this.getDefaultEffort(entry.cliType, selectedModel),
       selectedModel,
     });
 
@@ -689,8 +691,10 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.tui.requestRender();
   }
 
-  private getDefaultEffort(cliType: CarrierCliType): string | null {
-    return this.callbacks.getAvailableModels(cliType).reasoningEffort.default ?? null;
+  private getDefaultEffort(cliType: CarrierCliType, modelId: string): string | null {
+    const reasoning = getModelEffort(cliType, modelId);
+    if (!reasoning.supported) return null;
+    return reasoning.default ?? reasoning.levels?.[0] ?? null;
   }
 
   private buildDetailRows(entry: CarrierStatusEntry, innerWidth: number): string[] {
@@ -1046,7 +1050,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       case "model":
         return entry.model;
       case "effort":
-        return entry.effort ?? this.getDefaultEffort(entry.cliType);
+        return entry.effort ?? this.getDefaultEffort(entry.cliType, this.state.pendingModel);
       case "cliType":
         return entry.cliType;
       case "browse":
@@ -1086,7 +1090,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const provider = this.callbacks.getAvailableModels(cliType);
     return {
       model: provider.defaultModel,
-      effort: provider.reasoningEffort.default ?? null,
+      effort: this.getDefaultEffort(cliType, provider.defaultModel),
       isDefault: true,
     };
   }
@@ -1275,13 +1279,7 @@ export function registerCarrierStatusKeybind(_pi: ExtensionAPI): void {
           );
         },
         {
-          overlay: true,
-          overlayOptions: {
-            width: "70%",
-            maxHeight: "60%",
-            anchor: "center",
-            margin: 1,
-          },
+          overlay: false,
         },
       );
 
@@ -1360,7 +1358,27 @@ function createStatusOverlayController(
 }
 
 function getCliModelInfo(cliType: CarrierCliType): CliModelInfo {
-  return getProviderModels(cliType as CliType) as ProviderModelInfo;
+  const provider = getProviderModels(cliType as CliType);
+  const modelEffort = getModelEffort(cliType, provider.defaultModel);
+  return {
+    ...provider,
+    effort: {
+      supported: modelEffort.supported,
+      ...(modelEffort.supported && {
+        levels: [...(modelEffort.levels ?? [])],
+        default: modelEffort.default,
+      }),
+    },
+  } as CliModelInfo;
+}
+
+function getModelEffortLevels(cliType: CarrierCliType, modelId: string): string[] {
+  const reasoning = getModelEffort(cliType, modelId);
+  return reasoning.supported ? [...(reasoning.levels ?? [])] : [];
+}
+
+function getModelEffort(cliType: CarrierCliType, modelId: string): ReturnType<typeof getEffort> {
+  return getEffort(cliType as CliType, modelId);
 }
 
 function handleModelUpdated(): void {
@@ -1400,7 +1418,7 @@ function openTaskForceOverlay(carrierId: string, ctx: Parameters<Parameters<Retu
   const effectiveCarrierDisplayName = resolveCarrierDisplayName(carrierId);
   const tfCallbacks = {
     getAvailableModels: (cliType: string) => getProviderModels(requireTaskForceCliType(cliType)),
-    getEffortLevels: (cliType: string) => getReasoningEffortLevels(requireTaskForceCliType(cliType)),
+    getEffort: (cliType: string, modelId: string) => getModelEffort(requireTaskForceCliType(cliType), modelId),
     getBackendConfig: (cliType: string) => {
       const resolvedCliType = requireTaskForceCliType(cliType);
       const tfConfig = getTaskForceModelConfig(carrierId, resolvedCliType);
@@ -1431,8 +1449,7 @@ function openTaskForceOverlay(carrierId: string, ctx: Parameters<Parameters<Retu
     (tui2: any, theme2: any, _kb2: any, done2: () => void) =>
       new TaskForceConfigOverlay(tui2, theme2, carrierId, effectiveCarrierDisplayName, tfCallbacks, done2),
     {
-      overlay: true,
-      overlayOptions: { width: "60%", maxHeight: "55%", anchor: "center", margin: 1 },
+      overlay: false,
     },
   );
 }
@@ -1455,4 +1472,8 @@ function isPrintableTextInput(value: string): boolean {
   return value.length > 0
     && !value.startsWith("\x1b")
     && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function resolveEditorCardWidth(width: number, minWidth: number): number {
+  return Math.max(minWidth, width);
 }

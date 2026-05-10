@@ -4,7 +4,7 @@
  * 세그먼트들을 터미널 너비에 맞게 top bar와 secondary row로 분배하는 순수 함수들.
  */
 
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { visibleWidth } from "@sbluemin/fleet-tui";
 
 import type { SegmentContext, StatusLineSegmentId } from "./types.js";
 import { getPreset, getSeparator, ansi, getFgAnsiCode } from "./theme.js";

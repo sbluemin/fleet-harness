@@ -5,7 +5,7 @@
  * 에디터 UI 로직은 editor.ts에 분리.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { setupCustomEditor, setupHudRenderRequestBridge, setupStatusBar } from "./editor.js";
 import { invalidateGitBranch, invalidateGitStatus } from "./git-status.js";

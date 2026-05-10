@@ -6,8 +6,8 @@
  * log footer bridge의 requestRender 콜백을 주입한다.
  */
 
-import type { ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ReadonlyFooterDataProvider, Theme } from "@sbluemin/fleet-coding-agent";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
 import { PANEL_DIM_COLOR } from "../fleet-core-facades.js";
 import {
   isJobBarMode,
@@ -16,7 +16,7 @@ import {
   navigateJobBar,
   toggleJobBarExpanded,
 } from "../panel/ui.js";
-import { getActiveJobs } from "../panel/state.js";
+import { getActiveJobs, makeFooterCols } from "../panel/state.js";
 
 import type { HudEditorState } from "./types.js";
 import type { SegmentStateProvider } from "./types.js";
@@ -31,7 +31,7 @@ import { getWelcomeBridge } from "../welcome.js";
 const MIN_LABEL_DASH_WIDTH = 2;
 const STATUS_BORDER_RESERVED_WIDTH = 7;
 const TOP_RIGHT_DASH_WIDTH = 2;
-const JOB_BAR_HINT = `${PANEL_DIM_COLOR}↑·↓ move job/editor`;
+const JOB_BAR_HINT = `${PANEL_DIM_COLOR}↑·↓ move carrier/editor`;
 
 function isStaleExtensionContextError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -120,7 +120,7 @@ export function requestHudRender(): void {
 
 /** 커스텀 에디터 팩토리 + HUD + 위젯 등록 */
 export function setupCustomEditor(ctx: any, state: HudEditorState): void {
-  import("@mariozechner/pi-coding-agent").then(({ CustomEditor }) => {
+  import("@sbluemin/fleet-coding-agent").then(({ CustomEditor }) => {
     try {
       let autocompleteFixed = false;
 
@@ -137,9 +137,9 @@ export function setupCustomEditor(ctx: any, state: HudEditorState): void {
             return;
           }
 
-          // ── Job Bar 가상 포커스 ──
+          // ── Carrier Job HUD 가상 포커스 ──
           if (isJobBarMode()) {
-            if (getActiveJobs().length === 0) {
+            if (makeFooterCols().length === 0) {
               exitJobBarMode();
               // fall through to normal flow
             } else {
@@ -151,9 +151,9 @@ export function setupCustomEditor(ctx: any, state: HudEditorState): void {
             }
           }
 
-          // ↓ 진입: 빈 에디터 + 활성 job 있을 때만
+          // ↓ 진입: 빈 에디터 + 등록된 캐리어가 있을 때만
           if (matchesKey(data, Key.down)) {
-            if (editor.getText().trim() === "" && getActiveJobs().length > 0) {
+            if (editor.getText().trim() === "" && makeFooterCols().length > 0) {
               enterJobBarMode();
               return;
             }
@@ -213,8 +213,8 @@ export function setupCustomEditor(ctx: any, state: HudEditorState): void {
             result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
           }
 
-          // 하단 테두리 — Status Bar 세그먼트를 중앙에 통합
-          result.push(renderStatusBorder(width, bc, state));
+          // 하단 테두리 — Status Bar 세그먼트를 화면 중앙에 유지
+          result.push(...renderStatusBorder(width, bc, state));
 
           // 자동완성 항목
           for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
@@ -385,20 +385,25 @@ function renderRightBorder(
     + colorizeBorder("─".repeat(TOP_RIGHT_DASH_WIDTH));
 }
 
-function renderBorderWithLeftAndCenter(
+function renderBorderWithLeftAndRight(
   width: number,
   colorizeBorder: (s: string) => string,
   leftLabel: string,
-  centerLabel: string,
+  rightLabel: string,
 ): string | null {
   const innerWidth = width - 2;
   const leftWidth = visibleWidth(leftLabel);
-  const centerWidth = visibleWidth(centerLabel);
-  const leftBlockWidth = leftWidth + 2;
-  const centerBlockWidth = centerWidth + 2;
   const leftDash = MIN_LABEL_DASH_WIDTH;
-  const rightDash = MIN_LABEL_DASH_WIDTH;
-  const middleDash = innerWidth - leftDash - leftBlockWidth - centerBlockWidth - rightDash;
+  const rightDash = TOP_RIGHT_DASH_WIDTH;
+  const maxRightWidth = innerWidth - leftDash - leftWidth - MIN_LABEL_DASH_WIDTH - rightDash - 4;
+
+  if (maxRightWidth < 1) return null;
+
+  const fittedRightLabel = visibleWidth(rightLabel) > maxRightWidth
+    ? truncateToWidth(rightLabel, maxRightWidth)
+    : rightLabel;
+  const rightWidth = visibleWidth(fittedRightLabel);
+  const middleDash = innerWidth - leftDash - leftWidth - rightWidth - rightDash - 4;
 
   if (middleDash < MIN_LABEL_DASH_WIDTH) return null;
 
@@ -410,7 +415,7 @@ function renderBorderWithLeftAndCenter(
     " ",
     colorizeBorder("─".repeat(middleDash)),
     " ",
-    centerLabel,
+    fittedRightLabel,
     " ",
     colorizeBorder("─".repeat(rightDash)),
   ].join("");
@@ -439,34 +444,34 @@ function renderStatusBorder(
   width: number,
   colorizeBorder: (s: string) => string,
   state: HudEditorState,
-): string {
-  if (!state.currentCtx) return renderSolidBorder(width, colorizeBorder);
-  if (!state.themeRef) return renderSolidBorder(width, colorizeBorder);
+): string[] {
+  if (!state.currentCtx) return [renderSolidBorder(width, colorizeBorder)];
+  if (!state.themeRef) return [renderSolidBorder(width, colorizeBorder)];
 
   try {
     const layout = getResponsiveLayout(Math.max(1, width - STATUS_BORDER_RESERVED_WIDTH), state);
     const hint = getActiveJobs().length > 0 ? JOB_BAR_HINT : null;
 
     if (hint && layout.topContent) {
-      const centerLabel = fitStatusBorderLabel(` ${layout.topContent}`, width);
-      const line = renderBorderWithLeftAndCenter(width, colorizeBorder, hint, centerLabel);
-      if (line) return line;
+      const label = fitStatusBorderLabel(` ${layout.topContent}`, width);
+      const line = renderBorderWithLeftAndRight(width, colorizeBorder, hint, label);
+      return [line ?? renderRightBorder(width, colorizeBorder, label) ?? renderSolidBorder(width, colorizeBorder)];
     }
 
     if (hint) {
       const line = renderLeftBorder(width, colorizeBorder, hint);
-      if (line) return line;
+      return [line ?? renderSolidBorder(width, colorizeBorder)];
     }
 
     if (layout.topContent) {
       const label = fitStatusBorderLabel(` ${layout.topContent}`, width);
       const line = renderCenteredBorder(width, colorizeBorder, label);
-      return line ?? renderSolidBorder(width, colorizeBorder);
+      return [line ?? renderSolidBorder(width, colorizeBorder)];
     }
 
-    return renderSolidBorder(width, colorizeBorder);
+    return [renderSolidBorder(width, colorizeBorder)];
   } catch {
-    return renderSolidBorder(width, colorizeBorder);
+    return [renderSolidBorder(width, colorizeBorder)];
   }
 }
 

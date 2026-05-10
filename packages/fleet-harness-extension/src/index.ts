@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { bootFleet } from "./boot.js";
 

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
 import type { GrandFleetRole } from "@sbluemin/fleet-core/admiralty";
 
 import { infra } from "@sbluemin/fleet-core";

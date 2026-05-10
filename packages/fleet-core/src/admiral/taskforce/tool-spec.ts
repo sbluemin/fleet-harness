@@ -4,12 +4,13 @@
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import type { AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
 import type { ExecResult } from "../agent/executor.js";
+import type { ModelEffort } from "../carrier/overlay-types.js";
 
 import {
   CLI_DISPLAY_NAMES,
@@ -274,6 +275,7 @@ async function runTaskForceBackend(
   const progress = state.backends.get(cliType)!;
   const syntheticId = buildTaskForceScopedRunId(requestKey, cliType);
   const modelConfig = getRequiredTaskForceModelConfig(carrierId, cliType);
+  const effort = resolveValidatedEffort(cliType as CliType, modelConfig.model, modelConfig.effort);
   const trackId = `${jobId}:${cliType}`;
 
   logDebug(
@@ -301,7 +303,7 @@ async function runTaskForceBackend(
       request,
       cwd,
       model: modelConfig.model,
-      effort: modelConfig.effort,
+      effort,
       connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(carrierId)?.carrierMetadata),
       signal,
       onStatusChange: (status) => {
@@ -417,6 +419,37 @@ function buildTaskForceErrorResult(cliType: TaskForceCliType, reason: unknown): 
 function buildTaskForceScopedRunId(requestKey: string, cliType: TaskForceCliType): string {
   const encodedRequestKey = Buffer.from(requestKey, "utf-8").toString("base64url");
   return `taskforce:${cliType}:${encodedRequestKey}`;
+}
+
+function resolveValidatedEffort(
+  cliType: CliType,
+  modelId: string | undefined,
+  effort: string | undefined,
+): string | undefined {
+  if (!modelId || !effort) return undefined;
+  const modelEffort = getModelEffort(cliType, modelId);
+  if (!modelEffort?.levels?.includes(effort)) return undefined;
+  return effort;
+}
+
+function getModelEffort(
+  cliType: CliType,
+  modelId: string,
+): ModelEffort | null {
+  return normalizeEffort(getEffort(cliType, modelId));
+}
+
+function normalizeEffort(
+  effort: ModelEffort,
+): ModelEffort | null {
+  if (!effort.supported) return null;
+  const levels = effort.levels ?? [];
+  if (levels.length === 0) return null;
+  return {
+    supported: true,
+    levels,
+    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
+  };
 }
 
 function emitTrackStatus(jobId: string, trackId: string, status: TrackStatus): void {

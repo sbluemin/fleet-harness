@@ -26,7 +26,7 @@ const testSpec: AgentToolSpec = {
 };
 
 function listTestTools() {
-  const BUILTIN_IDS = new Set(["carrier_jobs", "request_directive"]);
+  const BUILTIN_IDS = new Set(["carrier_dispatch", "carrier_jobs", "request_directive"]);
   return list().filter((spec) => !BUILTIN_IDS.has(spec.id));
 }
 

@@ -16,6 +16,9 @@ import { syncWidget } from "../../src/panel/widget-sync.js";
 import type { AgentCol } from "../../src/panel/types.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+const CARRIER_JOB_HUD_WIDGET_KEY = "fleet-carrier-job-hud";
+const LEGACY_CARRIER_STATUS_WIDGET_KEY = "fleet-carrier-status";
+const LEGACY_JOB_BAR_WIDGET_KEY = "fleet-job-bar";
 const { CARRIER_FRAMEWORK_KEY } = admiral.carrier;
 const { SPINNER_FRAMES } = admiral.constants;
 const {
@@ -94,24 +97,53 @@ describe("panel animation lifecycle", () => {
     expect(state.animTimer).toBeNull();
   });
 
-  it("renders carrier status as streaming while background jobs are active", async () => {
+  it("registers only the belowEditor carrier job HUD widget", async () => {
+    const ctx = buildCtx();
+
+    syncWidget(ctx);
+    await Promise.resolve();
+
+    expect(ctx.ui.setWidget).toHaveBeenCalledWith(
+      CARRIER_JOB_HUD_WIDGET_KEY,
+      expect.any(Function),
+      { placement: "belowEditor" },
+    );
+    expect(findWidgetFactory(ctx, LEGACY_CARRIER_STATUS_WIDGET_KEY)).toBeUndefined();
+    expect(findWidgetFactory(ctx, LEGACY_JOB_BAR_WIDGET_KEY)).toBeUndefined();
+  });
+
+  it("renders the carrier job HUD as streaming while background jobs are active", async () => {
     const state = getState();
     state.streaming = false;
     state.frame = 0;
     state.cols = [buildCol("stream")];
     const permit = acquireJobPermit(buildRecord("sortie:active", ["genesis"]));
     expect(permit.accepted).toBe(true);
+    handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "sortie:active",
+      kind: "sortie",
+      ownerCarrierId: "genesis",
+      label: "1 carrier",
+      startedAt: Date.now(),
+      tracks: [{
+        trackId: "sortie:active:genesis",
+        streamKey: "sortie:genesis",
+        displayCli: "genesis",
+        displayName: "Genesis",
+        kind: "carrier",
+      }],
+    });
     const ctx = buildCtx();
 
     syncWidget(ctx);
     await Promise.resolve();
-    const statusFactory = ctx.ui.setWidget.mock.calls.find((call: any[]) => call[0] === "fleet-carrier-status")?.[1];
-    const rendered = statusFactory({}, {}).render(80).join("\n");
+    const rendered = renderCarrierJobHudFromCtx(ctx, 80);
 
     expect(stripAnsi(rendered)).not.toContain("○ Genesis");
   });
 
-  it("renders carrier status as idle when neither streaming nor background jobs are active", async () => {
+  it("renders the carrier job HUD as idle when neither streaming nor background jobs are active", async () => {
     const state = getState();
     state.streaming = false;
     state.frame = 0;
@@ -120,13 +152,12 @@ describe("panel animation lifecycle", () => {
 
     syncWidget(ctx);
     await Promise.resolve();
-    const statusFactory = ctx.ui.setWidget.mock.calls.find((call: any[]) => call[0] === "fleet-carrier-status")?.[1];
-    const rendered = statusFactory({}, {}).render(80).join("\n");
+    const rendered = renderCarrierJobHudFromCtx(ctx, 80);
 
-    expect(stripAnsi(rendered)).toContain("○");
+    expect(stripAnsi(rendered)).toContain("○ Genesis");
   });
 
-  it("renders carrier status as animated for active squadron jobs even when the column is wait", async () => {
+  it("renders the carrier job HUD as animated for active squadron jobs even when the column is wait", async () => {
     const state = getState();
     state.streaming = false;
     state.frame = 1;
@@ -152,15 +183,14 @@ describe("panel animation lifecycle", () => {
 
     syncWidget(ctx);
     await Promise.resolve();
-    const statusFactory = ctx.ui.setWidget.mock.calls.find((call: any[]) => call[0] === "fleet-carrier-status")?.[1];
-    const rendered = statusFactory({}, {}).render(80).join("\n");
+    const rendered = renderCarrierJobHudFromCtx(ctx, 80);
     const plainText = stripAnsi(rendered);
 
     expect(plainText).toContain(`${SPINNER_FRAMES[1]} Genesis`);
     expect(plainText).not.toContain("○ Genesis");
   });
 
-  it("renders carrier status as animated for active taskforce jobs even when the column is wait", async () => {
+  it("renders the carrier job HUD as animated for active taskforce jobs even when the column is wait", async () => {
     const state = getState();
     state.streaming = false;
     state.frame = 2;
@@ -186,17 +216,42 @@ describe("panel animation lifecycle", () => {
 
     syncWidget(ctx);
     await Promise.resolve();
-    const statusFactory = ctx.ui.setWidget.mock.calls.find((call: any[]) => call[0] === "fleet-carrier-status")?.[1];
-    const rendered = statusFactory({}, {}).render(80).join("\n");
+    const rendered = renderCarrierJobHudFromCtx(ctx, 80);
     const plainText = stripAnsi(rendered);
 
     expect(plainText).toContain(`${SPINNER_FRAMES[2]} Genesis`);
     expect(plainText).not.toContain("○ Genesis");
   });
+
+  it("renders no belowEditor HUD lines when no carriers are registered", async () => {
+    (globalThis as any)[CARRIER_FRAMEWORK_KEY].registeredOrder = [];
+    (globalThis as any)[CARRIER_FRAMEWORK_KEY].modes = new Map();
+    const ctx = buildCtx();
+
+    syncWidget(ctx);
+    await Promise.resolve();
+    const rendered = renderCarrierJobHudLinesFromCtx(ctx, 80);
+
+    expect(rendered).toEqual([]);
+  });
 });
 
 function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
+}
+
+function findWidgetFactory(ctx: any, widgetKey: string): ((tui: unknown, theme: unknown) => { render(width: number): string[] }) | undefined {
+  return ctx.ui.setWidget.mock.calls.find((call: any[]) => call[0] === widgetKey)?.[1];
+}
+
+function renderCarrierJobHudFromCtx(ctx: any, width: number): string {
+  return renderCarrierJobHudLinesFromCtx(ctx, width).join("\n");
+}
+
+function renderCarrierJobHudLinesFromCtx(ctx: any, width: number): string[] {
+  const hudFactory = findWidgetFactory(ctx, CARRIER_JOB_HUD_WIDGET_KEY);
+  if (!hudFactory) throw new Error("expected carrier job HUD widget");
+  return hudFactory({}, undefined).render(width);
 }
 
 function buildRecord(

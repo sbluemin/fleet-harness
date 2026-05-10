@@ -1,0 +1,30 @@
+{
+	"name": "fleet-engines",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/sbluemin/fleet-harness.git"
+	},
+	"private": true,
+	"type": "module",
+	"author": "sbluemin",
+	"workspaces": [
+		"packages/tui",
+		"packages/ai",
+		"packages/agent",
+		"packages/coding-agent",
+		"engines/packages/unified\u002dagent"
+	],
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"version": "0.15.0",
+	"devDependencies": {
+		"typescript": "^5.9.2"
+	},
+	"overrides": {
+		"rimraf": "6.1.2",
+		"gaxios": {
+			"rimraf": "6.1.2"
+		}
+	}
+}

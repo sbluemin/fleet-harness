@@ -6,8 +6,8 @@
  */
 import * as os from "node:os";
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import { truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
 
 import { stripControlChars, type ConnectedFleet } from "@sbluemin/fleet-core/admiralty";
 import { getState } from "../state.js";

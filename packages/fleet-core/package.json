@@ -1,7 +1,13 @@
 {
   "name": "@sbluemin/fleet-core",
-  "version": "0.0.0",
+  "version": "0.15.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/fleet-core"
+  },
   "private": true,
+  "author": "sbluemin",
   "type": "module",
   "files": [
     "dist",
@@ -45,8 +51,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@sbluemin/unified-agent": "workspace:*",
-    "@sinclair/typebox": "^0.34.41"
+    "@sbluemin/fleet-unified-agent": "workspace:*",
+    "typebox": "^1.1.24"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

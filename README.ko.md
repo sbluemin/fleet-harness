@@ -100,18 +100,21 @@ Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한
 
 ## 명령어
 
-`pnpm link --global` 실행 후 ([SETUP.md](SETUP.md) 참조), 4가지 전역 명령어를 사용할 수 있습니다:
+`pnpm link --global` 실행 후 ([SETUP.md](SETUP.md) 참조), 전역 명령어를 사용할 수 있습니다:
 
 | 명령어 | 설명 |
 |--------|------|
 | `fleet` | 표준 Fleet 모드 실행 |
-| `gfleet` | Grand Fleet 모드 실행 |
-| `fleet-dev` | 현재 체크아웃의 extension을 직접 로드하여 표준 Fleet 모드 실행 |
-| `gfleet-dev` | 현재 체크아웃의 extension을 직접 로드하여 Grand Fleet 모드 실행 |
+| `fleet-wiki` | 현재 워크스페이스용 Fleet Wiki 웹 UI 실행 |
 
 ## 설치
 
 자세한 설치 방법은 [SETUP.md](SETUP.md)를 참조하세요.
+
+Provider 계약 메모:
+- `@sbluemin/fleet-ai`는 이제 추상 계층과 registration seam만 제공하며, built-in vendor provider와 built-in OAuth provider는 제거되었습니다.
+- `packages/fleet-harness-extension/src/provider.ts`가 host-owned registration gateway입니다.
+- 기존 registry-filter workaround는 제거되었으며, 후속 host wiring 이전의 provider-missing throw는 의도된 계약입니다.
 
 > **AI 에이전트로 빠른 시작** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
 >
@@ -119,7 +122,6 @@ Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한
 
 ## 문서
 
-- [PI 개발 레퍼런스](./docs/pi-development-reference.md) — PI 확장 개발 및 SDK 사용을 위한 종합 가이드.
 - [제독 워크플로우 레퍼런스](./docs/admiral-workflow-reference.md) — 해군 함대 아키텍처 및 운용 원칙에 대한 심층 분석.
 - [CHANGELOG](./CHANGELOG.md) — 프로젝트 변경 이력 및 릴리스 노트.
 

@@ -6,7 +6,7 @@ export interface ModelEffortTransitionInput {
 }
 
 export type ModelEffortTransition =
-  | { kind: "commit"; selection: { model: string } }
+  | { kind: "commit"; selection: { model: string; effort?: string } }
   | { kind: "effort"; choices: string[]; cursor: number; pendingModel: string };
 
 export function buildModelEffortTransition(
@@ -19,7 +19,9 @@ export function buildModelEffortTransition(
     };
   }
 
-  const currentEffort = input.currentEffort ?? input.fallbackEffort;
+  const currentEffort = input.currentEffort && input.effortChoices.includes(input.currentEffort)
+    ? input.currentEffort
+    : input.fallbackEffort;
   return {
     kind: "effort",
     choices: input.effortChoices,

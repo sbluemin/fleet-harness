@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { buildFleetAcpSystemPrompt, buildFleetContextPrompt } from "@sbluemin/fleet-core/admiralty";
 import { infra } from "@sbluemin/fleet-core";

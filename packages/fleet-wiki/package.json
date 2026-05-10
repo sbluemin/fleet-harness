@@ -1,7 +1,13 @@
 {
   "name": "@sbluemin/fleet-wiki",
-  "version": "0.0.0",
+  "version": "0.15.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/fleet-wiki"
+  },
   "private": true,
+  "author": "sbluemin",
   "type": "module",
   "files": ["dist", "AGENTS.md"],
   "engines": {
@@ -20,7 +26,7 @@
     }
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.41"
+    "typebox": "^1.1.24"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",

@@ -7,7 +7,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import type { CliType, IUnifiedAgentClient } from "@sbluemin/unified-agent";
+import type { CliType, IUnifiedAgentClient } from "@sbluemin/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -57,6 +57,10 @@ export interface AgentSessionLaunchConfig {
   readonly effort?: string;
   readonly env?: Record<string, string>;
 }
+
+export type AgentSessionLaunchConfigUpdate = Omit<AgentSessionLaunchConfig, "effort"> & {
+  readonly effort?: string | null;
+};
 
 export interface AgentProviderState {
   readonly sessions: Map<string, AgentSessionState>;
@@ -113,11 +117,25 @@ export function clearBridgeScopeSessionBySessionKey(sessionKey: string): void {
 
 export function setSessionLaunchConfig(
   sessionKey: string,
-  config: AgentSessionLaunchConfig,
+  config: AgentSessionLaunchConfigUpdate,
 ): void {
   const state = getOrInitState();
   const previous = state.sessionLaunchConfigs.get(sessionKey);
-  state.sessionLaunchConfigs.set(sessionKey, { ...previous, ...config });
+  const { effort, ...baseConfig } = config;
+  const next: {
+    cli: CliType;
+    backendModel: string;
+    sessionId: string;
+    cwd: string;
+    effort?: string;
+    env?: Record<string, string>;
+  } = { ...previous, ...baseConfig };
+  if (effort === null) {
+    delete next.effort;
+  } else if (effort !== undefined) {
+    next.effort = effort;
+  }
+  state.sessionLaunchConfigs.set(sessionKey, next);
 }
 
 export function getSessionLaunchConfig(sessionKey: string): AgentSessionLaunchConfig | undefined {

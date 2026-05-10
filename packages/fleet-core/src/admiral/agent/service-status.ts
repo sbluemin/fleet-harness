@@ -11,7 +11,7 @@ import {
   getServiceSnapshots,
   refreshStatusQuiet,
   type ServiceSnapshot,
-} from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

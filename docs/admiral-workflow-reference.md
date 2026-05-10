@@ -83,7 +83,7 @@ In the Flat Domain Architecture, Pi ownership is expressed through these domain-
 
 - `src/boot.ts` — Entry point — assembles the Fleet runtime by composing domain modules
 - `src/fleet.ts` — Fleet lifecycle, runtime initialization, and Pi host port implementation
-- `src/provider.ts` — Pi-AI gateway, streamAcp adapter, and provider runtime registration
+- `src/provider.ts` — Fleet-AI gateway, streamAcp adapter, and provider runtime registration
 - `src/grand-fleet/` — Multi-instance Grand Fleet orchestration
 - `src/wiki/` — Fleet knowledge base and ingest
 - `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` — Host shell integration and terminal features

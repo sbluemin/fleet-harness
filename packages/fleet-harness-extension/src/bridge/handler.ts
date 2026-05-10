@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
 import { isShellPopupOpen, openShellPopup } from "../pty/shell.js";
 import { admiral } from "@sbluemin/fleet-core";
 import { buildBridgeCommand } from "./command.js";
@@ -9,7 +9,7 @@ import {
   BRIDGE_KEYBIND_CATEGORY,
 } from "./types.js";
 import type { ActiveBridgeSession } from "./types.js";
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 import { getKeybindAPI } from "../keybinds.js";
 
 export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {

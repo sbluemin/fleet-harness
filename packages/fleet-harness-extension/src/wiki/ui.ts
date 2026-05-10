@@ -1,6 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder, type ExtensionCommandContext, type Theme } from "@mariozechner/pi-coding-agent";
-import { Container, Key, matchesKey, SelectList, Spacer, Text, truncateToWidth, visibleWidth, type SelectItem, type TUI } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import { DynamicBorder, type ExtensionCommandContext, type Theme } from "@sbluemin/fleet-coding-agent";
+import { Container, Key, matchesKey, SelectList, Spacer, Text, truncateToWidth, visibleWidth, type SelectItem, type TUI } from "@sbluemin/fleet-tui";
 
 import { buildBriefingToolConfig } from "@sbluemin/fleet-wiki";
 import { buildCompileSourceToolConfig } from "@sbluemin/fleet-wiki";

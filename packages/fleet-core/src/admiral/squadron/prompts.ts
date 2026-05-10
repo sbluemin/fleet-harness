@@ -1,4 +1,4 @@
-import { Type, type TObject } from "@sinclair/typebox";
+import { Type, type TObject } from "typebox";
 import { CARRIER_REQUEST_BREVITY_GUIDELINE } from "../carrier/prompts.js";
 import { SQUADRON_MAX_INSTANCES } from "./types.js";
 

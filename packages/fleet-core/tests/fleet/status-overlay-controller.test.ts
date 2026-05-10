@@ -62,7 +62,7 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
         { modelId: "claude-default", name: "Claude Default" },
         { modelId: "claude-saved", name: "Claude Saved" },
       ],
-      reasoningEffort: {
+      effort: {
         supported: true,
         levels: ["low", "high"],
         default: "low",
@@ -74,7 +74,7 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
         { modelId: "codex-default", name: "Codex Default" },
         { modelId: "codex-saved", name: "Codex Saved" },
       ],
-      reasoningEffort: {
+      effort: {
         supported: true,
         levels: ["medium", "high"],
         default: "medium",
@@ -86,7 +86,7 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
         { modelId: "gemini-default", name: "Gemini Default" },
         { modelId: "gemini-saved", name: "Gemini Saved" },
       ],
-      reasoningEffort: {
+      effort: {
         supported: false,
       },
     },
@@ -95,9 +95,9 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
       models: [
         { modelId: "opencode-go/glm-5.1", name: "GLM-5.1" },
       ],
-      reasoningEffort: {
+      effort: {
         supported: true,
-        levels: ["none", "low", "medium", "high", "max"],
+        levels: ["low", "medium", "high", "max"],
         default: "high",
       },
     },
@@ -106,9 +106,9 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
       models: [
         { modelId: "zai-coding-plan/glm-5.1", name: "GLM-5.1" },
       ],
-      reasoningEffort: {
+      effort: {
         supported: true,
-        levels: ["none", "low", "medium", "high", "max"],
+        levels: ["low", "medium", "high", "max"],
         default: "high",
       },
     },
@@ -117,9 +117,9 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
       models: [
         { modelId: "kimi-for-coding/k2p6", name: "Kimi K2P6" },
       ],
-      reasoningEffort: {
+      effort: {
         supported: true,
-        levels: ["none", "low", "medium", "high", "max"],
+        levels: ["low", "medium", "high", "max"],
         default: "high",
       },
     },

@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./boundaries.js";
 

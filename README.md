@@ -105,15 +105,16 @@ After `pnpm link --global` (see [SETUP.md](SETUP.md)), five global commands are 
 | Command | Description |
 |---------|-------------|
 | `fleet` | Launch standard Fleet mode |
-| `fleet-exp` | Launch standard Fleet mode with `PI_EXPERIMENTAL=1` enabled |
-| `gfleet` | Launch Grand Fleet mode |
-| `fleet-dev` | Standard Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/fleet-harness-extension/src/index.ts` from the current checkout |
-| `gfleet-dev` | Grand Fleet mode with `PI_EXPERIMENTAL=1`, loading `packages/fleet-harness-extension/src/index.ts` from the current checkout |
 | `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
 
 ## Setup
 
 See [SETUP.md](SETUP.md) for step-by-step instructions.
+
+Provider contract note:
+- `@sbluemin/fleet-ai` now provides abstractions and registration seams only; built-in vendor providers and built-in OAuth providers are removed.
+- `packages/fleet-harness-extension/src/provider.ts` is the host-owned registration gateway.
+- The old registry-filter workaround is removed; any pre-registration provider-missing throw is intentional until follow-up host wiring lands.
 
 > **Quick Start with AI Agent** — Copy and paste into your LLM agent:
 >
@@ -121,7 +122,7 @@ See [SETUP.md](SETUP.md) for step-by-step instructions.
 
 ## Documentation
 
-- [PI Development Reference](./docs/pi-development-reference.md) — The comprehensive guide for developing PI extensions and using the SDK.
+- [Fleet Development Reference](./docs/fleet-development-reference.md) — The comprehensive guide for developing Fleet host extensions and using the SDK.
 - [Admiral Workflow Reference](./docs/admiral-workflow-reference.md) — Deep dive into the naval fleet architecture and operational doctrine.
 - [CHANGELOG](./CHANGELOG.md) — Project history and release notes.
 

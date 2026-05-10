@@ -8,7 +8,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 
 import type { SendMessageRequest, SessionHandle } from "./types.js";
 import { hashSystemPrompt } from "./models.js";

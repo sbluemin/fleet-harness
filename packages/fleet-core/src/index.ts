@@ -119,7 +119,7 @@ export type {
   ToolResultEnvelope,
   ParsedModelId,
   ProviderInfo,
-  ThinkingLevel,
+  SelectableThinkingLevel,
   CliCapability,
   LaunchCommandData,
   BridgeOptions,

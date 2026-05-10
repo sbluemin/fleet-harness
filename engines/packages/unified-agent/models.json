@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-01T06:30:57Z",
+  "providers": {
+    "claude": {
+      "name": "Claude Code with Anthropic",
+      "defaultModel": "opus[1m]",
+      "models": [
+        { "modelId": "haiku", "name": "Claude Haiku", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "low" } },
+        { "modelId": "sonnet", "name": "Claude Sonnet", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
+        { "modelId": "opus", "name": "Claude Opus", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
+        { "modelId": "opus[1m]", "name": "Claude Opus [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
+        { "modelId": "claude-opus-4-6[1m]", "name": "Claude Opus 4.6 [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } }
+      ]
+    },
+    "claude-zai": {
+      "name": "Claude Code with Z.AI GLM",
+      "defaultModel": "opus",
+      "models": [
+        { "modelId": "haiku", "name": "GLM-4.5 Air (Haiku slot)", "effort": { "supported": false } },
+        { "modelId": "sonnet", "name": "GLM-5 Turbo (Sonnet slot)", "effort": { "supported": false } },
+        { "modelId": "opus", "name": "GLM-5.1 (Opus slot)", "effort": { "supported": false } }
+      ],
+      "modelsMapping": {
+        "haiku": "glm-4.5-air",
+        "sonnet": "glm-5-turbo",
+        "opus": "glm-5.1"
+      }
+    },
+    "claude-kimi": {
+      "name": "Claude Code with Moonshot Kimi",
+      "defaultModel": "opus",
+      "models": [
+        { "modelId": "haiku", "name": "Kimi K2.5 (Haiku slot)", "effort": { "supported": false } },
+        { "modelId": "sonnet", "name": "Kimi K2.5 (Sonnet slot)", "effort": { "supported": false } },
+        { "modelId": "opus", "name": "Kimi K2.6 (Opus slot)", "effort": { "supported": false } }
+      ],
+      "modelsMapping": {
+        "haiku": "kimi-k2",
+        "sonnet": "kimi-k2.5",
+        "opus": "kimi-k2.6"
+      }
+    },
+    "codex": {
+      "name": "OpenAI Codex CLI",
+      "defaultModel": "gpt-5.4",
+      "models": [
+        { "modelId": "gpt-5.4", "name": "GPT-5.4", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
+        { "modelId": "gpt-5.5", "name": "GPT-5.5", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } },
+        { "modelId": "gpt-5.4-mini", "name": "GPT-5.4 Mini", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
+      ]
+    },
+    "gemini": {
+      "name": "Google Gemini CLI",
+      "defaultModel": "gemini-3.1-flash-lite-preview",
+      "models": [
+        { "modelId": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "effort": { "supported": false } },
+        { "modelId": "gemini-3-flash-preview", "name": "Gemini 3 Flash Preview", "effort": { "supported": false } },
+        { "modelId": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview", "effort": { "supported": false } },
+        { "modelId": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview", "effort": { "supported": false } }
+      ]
+    },
+    "opencode-go": {
+      "name": "OpenCode Go",
+      "defaultModel": "opencode-go/glm-5.1",
+      "models": [
+        { "modelId": "opencode-go/deepseek-v4-flash", "name": "DeepSeek V4 Flash", "effort": { "supported": false } },
+        { "modelId": "opencode-go/deepseek-v4-pro", "name": "DeepSeek V4 Pro", "effort": { "supported": false } },
+        { "modelId": "opencode-go/glm-5", "name": "GLM-5", "effort": { "supported": false } },
+        { "modelId": "opencode-go/glm-5.1", "name": "GLM-5.1", "effort": { "supported": false } },
+        { "modelId": "opencode-go/kimi-k2.5", "name": "Kimi K2.5", "effort": { "supported": false } },
+        { "modelId": "opencode-go/kimi-k2.6", "name": "Kimi K2.6 (3x limits)", "effort": { "supported": false } },
+        { "modelId": "opencode-go/mimo-v2-omni", "name": "MiMo V2 Omni", "effort": { "supported": false } },
+        { "modelId": "opencode-go/mimo-v2-pro", "name": "MiMo V2 Pro", "effort": { "supported": false } },
+        { "modelId": "opencode-go/mimo-v2.5", "name": "MiMo V2.5", "effort": { "supported": false } },
+        { "modelId": "opencode-go/mimo-v2.5-pro", "name": "MiMo V2.5 Pro", "effort": { "supported": false } },
+        { "modelId": "opencode-go/minimax-m2.5", "name": "MiniMax M2.5", "effort": { "supported": false } },
+        { "modelId": "opencode-go/minimax-m2.7", "name": "MiniMax M2.7", "effort": { "supported": false } },
+        { "modelId": "opencode-go/qwen3.5-plus", "name": "Qwen3.5 Plus", "effort": { "supported": false } },
+        { "modelId": "opencode-go/qwen3.6-plus", "name": "Qwen3.6 Plus", "effort": { "supported": false } }
+      ]
+    }
+  }
+}

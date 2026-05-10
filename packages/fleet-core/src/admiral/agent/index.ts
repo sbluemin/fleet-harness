@@ -27,7 +27,7 @@ export type {
 export type {
   ParsedModelId,
   ProviderInfo,
-  ThinkingLevel,
+  SelectableThinkingLevel,
   CliCapability,
 } from "./models.js";
 export type { ServiceStatusEvent, ServiceSnapshot } from "./service-status.js";
@@ -82,7 +82,8 @@ export {
   listProviders,
   getCliModels,
   getCliEffortLevels,
-  getThinkingLevels,
+  getSelectableThinkingLevels,
+  SELECTABLE_THINKING_LEVELS,
   hashSystemPrompt,
   CLI_CAPABILITIES,
 } from "./models.js";

@@ -5,12 +5,13 @@
  * offline 호출은 execute() 진입점에서 안전장치로 거부합니다.
  */
 
-import { Type } from "@sinclair/typebox";
-import type { CliType } from "@sbluemin/unified-agent";
+import { Type } from "typebox";
+import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import type { AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
+import type { ModelEffort } from "./overlay-types.js";
 
 import {
   appendBlock,
@@ -32,6 +33,7 @@ import {
   type TrackStatus,
 } from "../_shared/carrier-job-events.js";
 import { executeWithPool } from "../agent/executor.js";
+import { loadModels } from "../store/index.js";
 import {
   buildCarrierSystemPrompt,
   CARRIER_REQUEST_BREVITY_GUIDELINE,
@@ -293,12 +295,15 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   const execStartedAt = Date.now();
   const carrierConfig = getRegisteredCarrierConfig(opts.carrierId);
   const cliType = (carrierConfig?.cliType ?? opts.carrierId) as CliType;
+  const modelConfig = loadModels()[opts.carrierId];
+  const model = modelConfig?.model;
+  const effort = resolveValidatedEffort(cliType, model, modelConfig?.effort);
   let sessionId: string | undefined;
 
   logDebug(
     CARRIER_LOG_CATEGORY_DISPATCH,
     [
-      `carrier=${opts.carrierId} model=${cliType} promptChars=${opts.request.length}`,
+      `carrier=${opts.carrierId} model=${model ?? cliType} effort=${effort ?? "(none)"} promptChars=${opts.request.length}`,
       "----- BEGIN REQUEST -----",
       opts.request,
       "----- END REQUEST -----",
@@ -319,6 +324,8 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       cliType,
       request: opts.request,
       cwd: opts.cwd,
+      model,
+      effort,
       connectSystemPrompt: buildCarrierSystemPrompt(carrierConfig?.carrierMetadata),
       signal: opts.signal,
       onConnected: (info) => {
@@ -426,6 +433,37 @@ function isDispatchArgs(v: unknown): v is { carrier_id: string; request: string 
     typeof obj.request === "string" &&
     obj.request.trim().length > 0
   );
+}
+
+function resolveValidatedEffort(
+  cliType: CliType,
+  modelId: string | undefined,
+  effort: string | undefined,
+): string | undefined {
+  if (!modelId || !effort) return undefined;
+  const modelEffort = getModelEffort(cliType, modelId);
+  if (!modelEffort?.levels?.includes(effort)) return undefined;
+  return effort;
+}
+
+function getModelEffort(
+  cliType: CliType,
+  modelId: string,
+): ModelEffort | null {
+  return normalizeEffort(getEffort(cliType, modelId));
+}
+
+function normalizeEffort(
+  effort: ModelEffort,
+): ModelEffort | null {
+  if (!effort.supported) return null;
+  const levels = effort.levels ?? [];
+  if (levels.length === 0) return null;
+  return {
+    supported: true,
+    levels,
+    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
+  };
 }
 
 function logDebug(category: string, message: string, options?: unknown): void {

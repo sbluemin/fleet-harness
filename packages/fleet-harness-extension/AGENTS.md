@@ -7,7 +7,7 @@
 This package is a **thin, opinionated adapter** between fleet-core's domain surfaces and the Pi runtime. Three principles direct every module here:
 
 1. **Adapter, not domain** — fleet-core owns Fleet behavior; this package owns the wiring. When a feature contains both pure logic and Pi-specific glue, the pure half migrates to fleet-core and only the glue stays here.
-2. **One Pi-AI gateway** — `src/provider.ts` is the **sole** module that imports `@mariozechner/pi-ai`. Every other adapter in the package consumes that gateway through exported bridge functions. The same file consolidates the `streamAcp` adapter, Pi `ModelRegistry`/`AgentSession` monkeypatches, and the provider guard toggle helper (called from `fleet:system:settings`) via labelled `#region` sections — they live together because each represents a different facet of the single Pi-provider gateway.
+2. **One Fleet-AI gateway** — `src/provider.ts` is the **sole** module that re-exports the Fleet-AI surface (`@sbluemin/fleet-ai`). The Fleet engine packages (`@sbluemin/fleet-ai`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-coding-agent`, `@sbluemin/fleet-unified-agent`) are consumed through `workspace:*` from `engines/packages/*`; do not replace them with published npm references. Every other adapter in the package consumes the gateway through exported bridge functions. The same file consolidates the `streamAcp` adapter, `AgentSession` thinking-level monkeypatch, and host-owned provider runtime registration via labelled `#region` sections.
 3. **Public surface only** — fleet-core is consumed exclusively through the `@sbluemin/fleet-core` root barrel and documented subpaths. Reaching into `@sbluemin/fleet-core/src/**` is a build break, not a style preference.
 
 ## Current Architecture Status: Flat Domain Architecture
@@ -22,7 +22,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 | fleet-harness-extension (Adapter) | fleet-core (Public Service) | Description |
 | :--- | :--- | :--- |
-| `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Pi gateway (#region structure: pi-ai gateway / streamAcp adapter / thinking-level patch / provider-guard registry patch / provider-guard toggle helper / provider runtime registration). Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
+| `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Fleet host gateway (#region structure: fleet-ai gateway / streamAcp adapter / thinking-level patch / provider runtime registration). Host-owned provider registration lives here; no legacy registry-filter workaround remains. Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
 | `src/grand-fleet/` | `admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
 | `src/wiki/` | `@sbluemin/fleet-wiki` | Fleet Wiki tool/command registration and overlays |
 | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | (Host Surfaces) | HUD, Welcome UI, shared TUI overlays, and shortcuts |
@@ -38,14 +38,15 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 - `ExtensionAPI`, `ExtensionContext`, `pi.on(...)`, `pi.registerTool(...)`, `pi.registerCommand(...)`, `pi.registerShortcut(...)`, `pi.registerProvider(...)`, and `pi.sendMessage(...)`
 - Pi widget/editor/footer/overlay rendering and TUI component mounting
 - Pi-specific lifecycle coordination (`src/boot.ts`, `src/fleet.ts`). `bootstrapFleetState(pi)` is the single entry point for both cold boot and warm `session_start`; it composes `restoreFleetPreRegistrationState()`, carrier registration, and deferred reconciliation. `scheduleFleetReconciliation()` (formerly `scheduleFleetBootReconciliation`) defers model reconciliation, squadron pruning, and Task Force sync into the next tick with a re-entrancy guard. `restoreFleetPreRegistrationState()` always applies stored sortie/squadron state, including empty lists, to reset stale in-memory Sets.
-- The sole `@mariozechner/pi-ai` gateway at `src/provider.ts`
+- The sole Fleet-AI (`@sbluemin/fleet-ai`) re-export gateway at `src/provider.ts`
+- Explicit host-owned provider registration at `src/provider.ts` only. Upstream built-in provider auto-registration and the old Fleet-side registry-filter remediation are removed.
 - `handleCarrierJobStreamEvent` as the canonical Pi adapter for forwarding `systemReminder` payloads to the host LLM via `pi.sendMessage`; `carrier-completion.ts` is removed.
 
 ## Must Not Own
 
 - Fleet domain business logic that belongs in `fleet-core` or `fleet-wiki`
 - Monolithic "Capability Buckets" that group unrelated domains by Pi API type
-- Additional `@mariozechner/pi-ai` imports outside `src/provider.ts`
+- Additional direct `@sbluemin/fleet-ai` imports outside `src/provider.ts` (consume the gateway re-exports instead)
 - Direct file imports from `@sbluemin/fleet-core/src/**` (use public exports only)
 
 ## Import Boundaries
@@ -60,12 +61,15 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 - `fleet-harness-extension -> fleet-core`
 - `fleet-harness-extension -> fleet-wiki`
+- `fleet-harness-extension -> @sbluemin/fleet-*` (active engine workspace via `workspace:*`)
+- `fleet-harness-extension -> @sbluemin/fleet-unified-agent`
 
 ## Migration Guardrails
 
 - Do not reintroduce Pi dependencies into `fleet-core`.
 - Do not create new code under removed capability bucket homes like `src/commands/`, `src/tools/`, or legacy `src/agent/provider-internal/`.
-- Do not split `src/provider.ts` back into `provider-stream.ts`, `provider-runtime.ts`, `provider-guard.ts`, `provider-guard-command.ts`, or `thinking-level-patch.ts`. The single-file + `#region` structure is the architecture, not a refactor target.
+- Do not split `src/provider.ts` back into legacy stream/runtime/guard fragments or `thinking-level-patch.ts`. The single-file + `#region` structure is the architecture, not a refactor target.
+- Do not reintroduce legacy registry-filter monkeypatches, persistence keys, toggle commands, or hidden upstream fallback assumptions. Pre-registration `piCompleteSimple` failure is the intended contract until follow-up host wiring lands.
 - Do not reintroduce a `runner.ts` / `exposeAgentApi`-style executor adapter. The carrier-tier executor is owned by `admiral.executor` in fleet-core; host code calls it through the root barrel.
 - All Pi registration code must reside within the specific domain adapter folder or file it serves.
 - The `src/hud/` module owns the aggregate host UI but delegates domain-specific rendering to its respective adapter.
@@ -82,3 +86,42 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 - Preserve slash command names while replacing compatibility state with module-level singleton state and explicit set/get APIs; follow the `hud/border-bridge.ts` precedent.
 - Preserve custom message delivery semantics for carrier completion pushes.
 - Compatibility bridges are integrated into their respective domain adapters; no separate `bindings/` directory is permitted.
+
+## PI TUI Layout & Terminology
+
+PI renders a vertical stack of **zones**. Extensions customize these zones via official TUI APIs.
+
+```
+┌──────────────────────────────────┐
+│  Header                          │  built-in
+├──────────────────────────────────┤
+│  Messages                        │  built-in · registerMessageRenderer()
+├──────────────────────────────────┤
+│  Widget:above                    │  setWidget()
+├──────────────────────────────────┤
+│  Editor                          │  setEditorComponent()
+├──────────────────────────────────┤
+│  Widget:below                    │  setWidget()
+├──────────────────────────────────┤
+│  Footer                          │  setFooter()
+└──────────────────────────────────┘
+  Overlay                            ctx.ui.custom() — floating or editor-replace
+```
+
+### Canonical Terms
+
+| Term | Zone | Owner | Notes |
+|------|------|-------|-------|
+| **Header** | Header | pi | Startup info, badges |
+| **Messages** | Messages | pi | Conversation, tool calls/results, custom messages |
+| **Editor** | Editor | `core/hud` | User input (HUD replaces default) |
+| **Footer** | Footer | `core/hud` | Bottom tokens — dir, session, cost, model (HUD replaces default) |
+| **Status Bar** | Widget:above | `core/hud` | Segment-based status line above Editor |
+| **Agent Panel** | Custom UI | `fleet` | Carrier streaming UI — exclusive / multi-column / compact view |
+| **Streaming Widget** | Widget | `fleet` | 1-line compact indicator when Agent Panel is collapsed |
+| **Overlay** | Overlay | various | keybind (Alt+.), settings (Alt+/), and carrier status (Alt+O) are editor-replace; welcome remains floating |
+
+### Rules
+
+- Use the **canonical terms** above in all code comments, docs, and AGENTS.md files.
+- When an extension contributes UI, note which **zone** and **API** it targets.

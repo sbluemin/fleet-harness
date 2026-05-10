@@ -1,4 +1,4 @@
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 
 import { createAuthService } from "./auth-storage.js";
 
@@ -16,7 +16,7 @@ export async function resolveAuthEnv(
   const token = await auth.getApiKey(providerId);
   if (!token) {
     throw new Error(
-      `auth.json에서 cli '${cli}'의 인증 토큰을 찾을 수 없습니다 (providerId: '${providerId}'). ~/.pi/agent/auth.json에 해당 항목이 등록되어 있는지 확인하세요.`,
+      `auth.json에서 cli '${cli}'의 인증 토큰을 찾을 수 없습니다 (providerId: '${providerId}'). ~/.fleet/agent/auth.json에 해당 항목이 등록되어 있는지 확인하세요.`,
     );
   }
   return { ANTHROPIC_AUTH_TOKEN: token };

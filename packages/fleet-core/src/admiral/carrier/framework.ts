@@ -14,7 +14,7 @@
  *  - offline carrier는 전역 kill-switch이며, squadron/taskforce active view도 이 Set을 차감해 구성
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,
@@ -78,6 +78,8 @@ export function registerCarrier(
     existing.renderResponse = config.renderResponse;
     existing.renderUser = config.renderUser;
     existing.carrierMetadata = config.carrierMetadata;
+    existing.defaultModel = config.defaultModel;
+    existing.defaultEffort = config.defaultEffort;
     existing.cliType = resolvedCliType;
     existing.color = config.color;
     existing.bgColor = config.bgColor;

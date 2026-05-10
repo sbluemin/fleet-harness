@@ -15,7 +15,7 @@ import {
   TASKFORCE_BADGE_COLOR,
 } from "../fleet-core-facades.js";
 import { getConfiguredTaskForceBackends } from "../fleet-core-facades.js";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 
 import {
   resolveCarrierColor,

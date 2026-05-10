@@ -1,6 +1,6 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { attachStatusContext, detachStatusContext } from "@sbluemin/unified-agent";
-import type { CliType, ServiceStatusContextPort } from "@sbluemin/unified-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import { attachStatusContext, detachStatusContext, getEffort } from "@sbluemin/fleet-unified-agent";
+import type { CliType, ServiceStatusContextPort } from "@sbluemin/fleet-unified-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -91,6 +91,7 @@ const {
   loadSquadronEnabled,
   reconcileActiveModelSelections,
   saveSquadronEnabled,
+  seedDefaultModels,
 } = admiral.store;
 const { registerDefaultCarrierPersonas } = admiral.carrier.personas;
 const {
@@ -399,6 +400,7 @@ async function generateOperationName(ctx: ExtensionContext, sessionId: string, p
     }
 
     const settings = loadOperationNameSettings();
+    const reasoning = resolveOperationNameReasoning(model, settings.reasoning);
     const composed = composeOperationNameRequest({ worldviewEnabled, preparedPrompt });
     const response = await completeSimple(
       model,
@@ -409,7 +411,7 @@ async function generateOperationName(ctx: ExtensionContext, sessionId: string, p
       {
         ...(auth.apiKey && { apiKey: auth.apiKey }),
         ...(auth.headers && { headers: auth.headers }),
-        ...(settings.reasoning && settings.reasoning !== "off" && { reasoning: settings.reasoning as ThinkingLevel }),
+        ...(reasoning && { reasoning }),
       },
     );
 
@@ -531,6 +533,24 @@ function toServiceStatusContext(ctx: PiServiceStatusContextLike): ServiceStatusC
   };
 }
 
+function resolveOperationNameReasoning(
+  model: Model<Api>,
+  reasoning: string | undefined,
+): ThinkingLevel | undefined {
+  if (!reasoning || reasoning === "off") return undefined;
+  const parsed = admiral.agent.models.parseModelId(model.id, model.provider)
+    ?? admiral.agent.models.parseModelId(model.id);
+  if (!parsed) return undefined;
+  const modelEffort = getModelEffort(parsed.cli, parsed.backendModel);
+  return modelEffort.supported && modelEffort.levels?.includes(reasoning)
+    ? reasoning as ThinkingLevel
+    : undefined;
+}
+
+function getModelEffort(cli: CliType, modelId: string): ReturnType<typeof getEffort> {
+  return getEffort(cli, modelId);
+}
+
 function reconcileRegisteredCarrierModels(): void {
   const cliTypesByCarrier = Object.fromEntries(
     getRegisteredOrder()
@@ -541,7 +561,23 @@ function reconcileRegisteredCarrierModels(): void {
       .filter((entry): entry is [string, CliType] => entry !== null),
   );
 
-  if (Object.keys(cliTypesByCarrier).length > 0 && reconcileActiveModelSelections(cliTypesByCarrier)) {
+  // states.json에 모델 엔트리가 없는 캐리어에 대해 소스레벨 defaultModel로 시딩
+  const defaultsByCarrier = Object.fromEntries(
+    getRegisteredOrder()
+      .map((carrierId) => {
+        const config = getRegisteredCarrierConfig(carrierId);
+        return config
+          ? [carrierId, { cliType: config.cliType, defaultModel: config.defaultModel, defaultEffort: config.defaultEffort }]
+          : null;
+      })
+      .filter((entry): entry is [string, { cliType: CliType; defaultModel: string | undefined; defaultEffort: string | undefined }] => entry !== null),
+  );
+  const seeded = seedDefaultModels(defaultsByCarrier);
+
+  const reconciled = Object.keys(cliTypesByCarrier).length > 0
+    && reconcileActiveModelSelections(cliTypesByCarrier);
+
+  if (seeded || reconciled) {
     syncModelConfig();
   }
 }

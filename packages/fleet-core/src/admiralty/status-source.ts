@@ -1,4 +1,4 @@
-import { CLI_BACKENDS, type CliType } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import type {
   CarrierInfo,

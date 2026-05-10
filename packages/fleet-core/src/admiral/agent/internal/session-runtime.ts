@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { CLI_BACKENDS } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS } from "@sbluemin/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

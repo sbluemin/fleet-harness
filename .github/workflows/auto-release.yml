@@ -100,15 +100,25 @@ jobs:
         env:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
         run: |
-          # Bump version in package.json without creating a git tag.
-          # Avoid running pnpm here so the workflow doesn't need a pnpm install step;
-          # update package.json directly with node.
-          node -e '
-            const fs = require("fs");
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            pkg.version = process.env.NEXT_VERSION;
-            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
-          '
+          # 루트 + 모든 워크스페이스 package.json의 version 필드를 동시에 갱신.
+          # 들여쓰기/포맷 보존을 위해 JSON.stringify 대신 정규식 치환을 사용한다.
+          node <<'NODE'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          const nextVersion = process.env.NEXT_VERSION;
+          const tracked = execSync('git ls-files', { encoding: 'utf8' })
+            .split('\n')
+            .filter(Boolean);
+          const files = tracked.filter((f) => f === 'package.json' || f.endsWith('/package.json'));
+          for (const file of files) {
+            const raw = fs.readFileSync(file, 'utf8');
+            // 루트 레벨의 첫 "version" 필드만 치환한다 (각 package.json에서 1회만 등장).
+            const updated = raw.replace(/("version":\s*")[^"]+(")/, `$1${nextVersion}$2`);
+            if (updated !== raw) {
+              fs.writeFileSync(file, updated);
+            }
+          }
+          NODE
 
           RELEASE_DATE=$(date -u +%F)
           export RELEASE_DATE
@@ -143,6 +153,49 @@ jobs:
           fs.writeFileSync(changelogPath, updated);
           NODE
 
+      - name: Verify workspace version sync
+        if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          # 모든 tracked package.json이 NEXT_VERSION으로 통일되었는지 JSON parse로 사후 검증.
+          # 정규식 치환이 누락한 비표준 포맷이나 새 패키지의 silent drift를 잡아낸다.
+          node <<'NODE'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          const expected = process.env.NEXT_VERSION;
+          const tracked = execSync('git ls-files', { encoding: 'utf8' })
+            .split('\n')
+            .filter(Boolean);
+          const files = tracked.filter((f) => f === 'package.json' || f.endsWith('/package.json'));
+          const offenders = [];
+          let checked = 0;
+          for (const file of files) {
+            let pkg;
+            try {
+              pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+            } catch (err) {
+              offenders.push(`${file} → parse error: ${err.message}`);
+              continue;
+            }
+            if (typeof pkg.version !== 'string') {
+              // version 필드가 없는 워크스페이스 root manifest 등은 sync 대상이 아니다.
+              console.log(`skipped ${file}: no version field`);
+              continue;
+            }
+            checked++;
+            if (pkg.version !== expected) {
+              offenders.push(`${file} → version=${pkg.version} (expected ${expected})`);
+            }
+          }
+          if (offenders.length > 0) {
+            console.error('Workspace version sync failed:');
+            for (const line of offenders) console.error(`  ${line}`);
+            process.exit(1);
+          }
+          console.log(`OK: ${checked} package.json file(s) synced to ${expected}`);
+          NODE
+
       - name: Commit release changes
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
@@ -150,7 +203,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json CHANGELOG.md
+          git add CHANGELOG.md
+          git ls-files | grep -E '(^|/)package\.json$' | xargs git add
           git commit -m "chore(release): $NEXT_TAG [skip ci]"
           git push origin HEAD:main
 

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
 
 export interface MemoryCaptureSession {
   branchId: string;

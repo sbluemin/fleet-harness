@@ -8,7 +8,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import type { IUnifiedAgentClient } from "@sbluemin/unified-agent";
+import type { IUnifiedAgentClient } from "@sbluemin/fleet-unified-agent";
 import type { CliToolCall, CliToolCallUpdate } from "../../_shared/cli-tool-types.js";
 
 import { emitStreamEvent } from "../events.js";
@@ -27,7 +27,7 @@ export interface StreamEmitter {
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const GENERIC_TITLES = new Set(["Read File", "Write File", "Edit File", "grep", "find", "ls", "bash"]);
+const GENERIC_TITLES = new Set<string>();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions
@@ -75,11 +75,16 @@ export function wireStreamEmitter(
 
     if (isMcpTool) return;
 
-    const callId = extractCallId(data?.rawInput);
+    // ACP 표준 toolCallId를 1순위 머지 키로 사용. rawInput.call_id는 Codex 등 비-ACP fallback.
+    const callId = data?.toolCallId || extractCallId(data?.rawInput);
     if (callId) {
       activeCliTools.set(callId, { toolName, title });
     }
     lastCliToolStart = { toolName, title };
+
+    // ACP 분할 도착 UX 개선: 1차 빈약 toolCall(status=pending)은 emit 보류.
+    // 풍부 title은 onToolCallUpdate에서 status=completed/error 도달 시 text delta로 한 번 emit됨.
+    if (status === "pending") return;
 
     emitStreamEvent({
       type: "toolCall",
@@ -106,15 +111,27 @@ export function wireStreamEmitter(
 
     if (isMcpTool) return;
 
+    // ACP 표준 toolCallId를 1순위 머지 키로 사용. rawOutput.call_id는 Codex 등 비-ACP fallback.
+    const callId = data?.toolCallId || extractCallId(data?.rawOutput);
+
     if (title && lastCliToolStart) {
       lastCliToolStart.title = title;
+    }
+    // 풍부 title이 도착했을 때 activeCliTools도 갱신 — 4차 status=completed에서 lookup 정확성 보장.
+    // 이 갱신이 없으면 1차 onToolCall에서 set된 빈약 title("Read File")이 그대로 fallback 사용됨.
+    if (callId && title) {
+      const tracked = activeCliTools.get(callId);
+      if (tracked) {
+        tracked.title = title;
+      } else {
+        activeCliTools.set(callId, { toolName, title });
+      }
     }
 
     let resolvedTitle = title;
     const isError = status === "error" || status === "failed";
 
     if (status === "completed" || isError) {
-      const callId = extractCallId(data?.rawOutput);
       const tracked = callId ? activeCliTools.get(callId) : null;
       const fallback = tracked ?? lastCliToolStart;
       resolvedTitle = title || fallback?.title || toolName;
@@ -135,7 +152,6 @@ export function wireStreamEmitter(
       lastCliToolStart = null;
     }
 
-    const callId = extractCallId(data?.rawOutput);
     emitStreamEvent({
       type: "toolCallUpdate",
       sessionId: sid,

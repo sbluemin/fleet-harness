@@ -1,4 +1,4 @@
-import type { HealthStatus, ProviderKey } from "@sbluemin/unified-agent";
+import type { HealthStatus, ProviderKey } from "@sbluemin/fleet-unified-agent";
 import type { CarrierCategory } from "./types.js";
 
 export type CarrierCliType = ProviderKey;
@@ -8,14 +8,22 @@ export interface ModelSelection {
   effort?: string;
 }
 
+export interface ModelEffort {
+  supported: boolean;
+  levels?: readonly string[];
+  default?: string;
+}
+
+export interface ModelInfo {
+  modelId: string;
+  name: string;
+  effort?: ModelEffort;
+}
+
 export interface CliModelInfo {
+  readonly [legacyField: string]: unknown;
   defaultModel: string;
-  models: Array<{ modelId: string; name: string }>;
-  reasoningEffort: {
-    supported: boolean;
-    levels?: string[];
-    default?: string;
-  };
+  models: ModelInfo[];
 }
 
 export interface CliServiceSnapshot {

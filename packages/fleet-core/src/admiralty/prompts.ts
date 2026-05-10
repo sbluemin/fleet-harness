@@ -23,7 +23,7 @@
 import {
   ADMIRALTY_PERSONA_PROMPT,
   ADMIRALTY_TONE_PROMPT,
-  FLEET_PI_PERSONA_PROMPT,
+  FLEET_PERSONA_PROMPT,
   FLEET_TONE_PROMPT,
 } from "../metaphor/prompts.js";
 import { isWorldviewEnabled } from "../metaphor/worldview.js";
@@ -413,7 +413,7 @@ export function buildFleetContextPrompt(
 
   // ── 1. Persona — worldview 토글 시에만 Fleet PI 계층 고정 ──
   if (isWorldviewEnabled()) {
-    parts.push(`<persona>\n${FLEET_PI_PERSONA_PROMPT.trim()}\n</persona>`);
+    parts.push(`<persona>\n${FLEET_PERSONA_PROMPT.trim()}\n</persona>`);
   }
 
   // ── 2. Role — 워크스페이스 자율 실행 규약 ──
@@ -468,7 +468,7 @@ export function buildFleetAcpSystemPrompt(
   ];
   // Grand Fleet Context를 append하지 않는 경로에서는 base가 persona/tone 책임까지 함께 진다.
   if (!options.includeGrandFleetContext && isWorldviewEnabled()) {
-    baseParts.unshift(`<persona>\n${FLEET_PI_PERSONA_PROMPT.trim()}\n</persona>`);
+    baseParts.unshift(`<persona>\n${FLEET_PERSONA_PROMPT.trim()}\n</persona>`);
     // append 경로에서는 buildFleetContextPrompt()가 persona/tone을 이미 주입하므로 중복 주입을 피한다.
     baseParts.splice(2, 0, `<tone>\n${FLEET_TONE_PROMPT.trim()}\n</tone>`);
   }

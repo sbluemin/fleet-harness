@@ -46,7 +46,7 @@ The Pi extension should increasingly read like host wiring. If a module requires
 
 ## Guardrails
 - Keep `fleet-core` Pi-agnostic. No `ExtensionContext`, `ExtensionAPI`, Pi TUI, `pi.register*`, or `pi.sendMessage` imports.
-- Keep Pi imports in `fleet-harness-extension`, with `@mariozechner/pi-ai` confined to the compatibility bridge (`src/bindings/compat/pi-ai-bridge.ts`).
+- Keep Fleet host imports in `fleet-harness-extension`, with the `@sbluemin/fleet-ai` re-export gateway confined to `src/provider.ts`.
 - Keep `fleet-harness-extension` imports on public `fleet-core` exports only.
 - Preserve slash command names, global compatibility keys, detached-job acceptance/completion-push semantics, and provider FIFO behavior.
 - Treat deleted legacy domain folders as deleted. Do not recreate them as shims.
@@ -57,7 +57,7 @@ The Pi extension should increasingly read like host wiring. If a module requires
 2. **Public API closure:** Compare every `fleet-harness-extension` integration need against `packages/fleet-core/api/PUBLIC_API.md`; add public contracts before adding adapter workarounds.
 3. **Runtime service cleanup:** Keep future non-Pi host behavior on public services and SSOT stream events instead of host port plumbing.
 4. **Boundary tests:** Add focused tests that fail on `fleet-core` Pi imports, `fleet-harness-extension` deep imports, and legacy directory reintroduction.
-5. **Documentation hygiene:** Keep `docs/pi-development-reference.md`, `docs/admiral-workflow-reference.md`, and package `AGENTS.md` aligned with the current state.
+5. **Documentation hygiene:** Keep `docs/fleet-development-reference.md`, `docs/admiral-workflow-reference.md`, and package `AGENTS.md` aligned with the current state.
 
 ## Worked Example
 

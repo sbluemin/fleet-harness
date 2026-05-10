@@ -14,10 +14,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   CLI_BACKENDS,
+  getEffort,
   getProviderModels,
-  getReasoningEffortLevels,
   type CliType,
-} from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
 import { CLI_DISPLAY_NAMES } from "../../constants.js";
 import { disconnect } from "../agent/connections.js";
 import { getSessionStore } from "../agent/internal/session-runtime.js";
@@ -38,7 +38,7 @@ export interface ModelSelection {
   model: string;
   /** Direct 모드 사용 여부 (codex 전용, ACP 우회) */
   direct?: boolean;
-  /** Reasoning effort (codex, claude — SDK의 reasoningEffort.levels 기반) */
+  /** Reasoning effort (codex, claude — SDK의 effort.levels 기반) */
   effort?: string;
   /** Task Force 백엔드별 커스텀 설정 (cliType → 모델 선택) */
   taskforce?: TaskForceConfig;
@@ -124,6 +124,38 @@ export function saveModels(config: SelectedModelsConfig): void {
   updateStates((states) => {
     states.models = sanitizeSelectedModelsConfig(config);
   });
+}
+
+/**
+ * states.json에 모델 엔트리가 없는 캐리어에 대해 defaultModel로 초기 시딩합니다.
+ * 세션 무효화는 수행하지 않습니다 (부팅 시 1회만 실행).
+ *
+ * @returns 실제로 states.json이 갱신되었는지 여부
+ */
+export function seedDefaultModels(
+  defaultsByCarrier: Record<string, { cliType: CliType; defaultModel?: string; defaultEffort?: string }>,
+): boolean {
+  const entries = Object.entries(defaultsByCarrier);
+  if (entries.length === 0) return false;
+
+  let changed = false;
+  updateStates((states) => {
+    const models = sanitizeSelectedModelsConfig(states.models);
+
+    for (const [carrierId, { cliType, defaultModel, defaultEffort }] of entries) {
+      const existing = models[carrierId];
+      if (existing && existing.model) continue;
+      const model = defaultModel ?? getProviderModels(cliType)?.defaultModel;
+      if (!model) continue;
+      const next: ModelSelection = { ...existing, model };
+      if (defaultEffort && !existing?.effort) next.effort = defaultEffort;
+      models[carrierId] = next;
+      changed = true;
+    }
+
+    if (changed) states.models = models;
+  });
+  return changed;
 }
 
 /**
@@ -761,28 +793,25 @@ function resolveSelectionForCliType(
   const allowedModels = new Set(provider.models.map((model) => model.modelId));
   const saved = sanitizePerCliSettings(current.perCliSettings?.[cliType]);
 
-  const model = allowedModels.has(current.model)
+  const currentModelIsValid = allowedModels.has(current.model);
+  const savedModelIsValid = !!saved?.model && allowedModels.has(saved.model);
+  const model = currentModelIsValid
     ? current.model
-    : saved?.model && allowedModels.has(saved.model)
-      ? saved.model
+    : savedModelIsValid
+      ? saved.model!
       : provider.defaultModel;
 
   const result: ModelSelection = { model };
-  const effortLevels = getReasoningEffortLevels(cliType) ?? [];
+  const modelEffort = getEffort(cliType, model);
 
-  if (effortLevels.length > 0) {
-    const defaultEffort = provider.reasoningEffort.supported
-      ? provider.reasoningEffort.default
-      : undefined;
-    const effort = current.effort && effortLevels.includes(current.effort)
+  if (modelEffort.supported) {
+    const effort = currentModelIsValid && current.effort && modelEffort.levels.includes(current.effort)
       ? current.effort
-      : saved?.effort && effortLevels.includes(saved.effort)
+      : !currentModelIsValid && savedModelIsValid && saved?.effort && modelEffort.levels.includes(saved.effort)
         ? saved.effort
-        : defaultEffort;
+        : modelEffort.default;
 
-    if (effort) {
-      result.effort = effort;
-    }
+    result.effort = effort;
   }
 
   if (current.direct !== undefined) {
@@ -835,11 +864,13 @@ function sanitizeTaskForceSelection(cliType: CliType, value: unknown): TaskForce
   if (!model || !allowedModels.has(model)) return null;
 
   const result: TaskForceSelection = { model };
-  const effortLevels = getReasoningEffortLevels(cliType);
+  const modelEffort = getEffort(cliType, model);
   const effort = sanitizeFreeformText(value.effort);
 
-  if (effortLevels && effort && effortLevels.includes(effort)) {
-    result.effort = effort;
+  if (modelEffort.supported) {
+    result.effort = effort && modelEffort.levels.includes(effort)
+      ? effort
+      : modelEffort.default;
   }
 
   return result;

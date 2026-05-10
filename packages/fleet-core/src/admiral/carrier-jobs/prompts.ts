@@ -1,4 +1,4 @@
-import { Type, type TObject } from "@sinclair/typebox";
+import { Type, type TObject } from "typebox";
 
 export const CARRIER_JOBS_DOCTRINE = {
   id: "carrier_jobs",

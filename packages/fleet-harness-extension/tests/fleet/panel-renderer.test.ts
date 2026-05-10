@@ -19,7 +19,6 @@ describe("renderPanelFull", () => {
       0,
       "",
       "",
-      null,
       10,
     ).join("\n");
 

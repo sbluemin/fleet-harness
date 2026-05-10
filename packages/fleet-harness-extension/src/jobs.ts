@@ -1,5 +1,5 @@
-import type { ExtensionAPI, MessageRenderer } from "@mariozechner/pi-coding-agent";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, MessageRenderer } from "@sbluemin/fleet-coding-agent";
+import { visibleWidth } from "@sbluemin/fleet-tui";
 
 import {
   infra,

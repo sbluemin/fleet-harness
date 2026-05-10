@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-const { launch } = require("./_launcher.js");
+process.env.FLEET_HARNESS_DEV = "1";
 
-launch({ mode: "standard", dev: true, experimental: true });
+import("./fleet-main.mjs");

@@ -35,14 +35,14 @@ describe("renderBlockLines", () => {
 
   it("실패한 tool 블록은 error 타입으로 렌더링한다", () => {
     const blocks: ColBlock[] = [
-      { type: "tool", title: "write", status: "failed" },
+      { type: "tool", title: "probe_tool", status: "failed" },
     ];
     const lines = renderBlockLines(blocks);
 
     expect(lines).toHaveLength(1);
     const line = lines[0];
     expect(line.type).toBe("tool-error");
-    expect(line.text).toBe(`${SYM_INDICATOR} write`);
+    expect(line.text).toBe(`${SYM_INDICATOR} probe_tool`);
     expect(line.suffix).toBe(" failed");
     expect(line.suffixType).toBe("tool-error");
   });
@@ -131,13 +131,13 @@ describe("blockLineToAnsi", () => {
   it("에러 tool은 타이틀/상태 모두 ERROR_COLOR를 적용한다", () => {
     const result = blockLineToAnsi({
       type: "tool-error",
-      text: `${SYM_INDICATOR} write`,
+      text: `${SYM_INDICATOR} probe_tool`,
       suffix: " failed",
       suffixType: "tool-error",
     });
 
     expect(result).toBe(
-      `${ERROR_COLOR}${SYM_INDICATOR} write${ANSI_RESET}${ERROR_COLOR} failed${ANSI_RESET}`,
+      `${ERROR_COLOR}${SYM_INDICATOR} probe_tool${ANSI_RESET}${ERROR_COLOR} failed${ANSI_RESET}`,
     );
   });
 

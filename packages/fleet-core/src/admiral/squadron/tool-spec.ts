@@ -4,12 +4,13 @@
  * 동일 캐리어 타입의 여러 인스턴스를 병렬로 출격하여 하나의 임무를 분할 처리합니다.
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import type { AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
 import type { ExecResult } from "../agent/executor.js";
+import type { ModelEffort } from "../carrier/overlay-types.js";
 
 import {
   appendBlock,
@@ -276,13 +277,18 @@ async function runSquadronInstance(
   });
 
   try {
+    const effort = resolveValidatedEffort(
+      opts.cliType,
+      opts.modelConfig?.model,
+      opts.modelConfig?.effort,
+    );
     const result = await executeOneShot({
       poolKey: syntheticId,
       cliType: opts.cliType,
       request,
       cwd: opts.cwd,
       model: opts.modelConfig?.model,
-      effort: opts.modelConfig?.effort,
+      effort,
       connectSystemPrompt: buildCarrierSystemPrompt(opts.carrierMetadata),
       signal: opts.signal,
       onStatusChange: (status) => {
@@ -380,6 +386,37 @@ function assertSquadronEnabled(carrierId: string): void {
     `Carrier ${formatCarrierIdForMessage(carrierId)} is not enabled for Squadron.\n` +
     `→ Open Carrier Status (Alt+O), select ${formatCarrierIdForMessage(carrierId)}, press S to enable.`,
   );
+}
+
+function resolveValidatedEffort(
+  cliType: CliType,
+  modelId: string | undefined,
+  effort: string | undefined,
+): string | undefined {
+  if (!modelId || !effort) return undefined;
+  const modelEffort = getModelEffort(cliType, modelId);
+  if (!modelEffort?.levels?.includes(effort)) return undefined;
+  return effort;
+}
+
+function getModelEffort(
+  cliType: CliType,
+  modelId: string,
+): ModelEffort | null {
+  return normalizeEffort(getEffort(cliType, modelId));
+}
+
+function normalizeEffort(
+  effort: ModelEffort,
+): ModelEffort | null {
+  if (!effort.supported) return null;
+  const levels = effort.levels ?? [];
+  if (levels.length === 0) return null;
+  return {
+    supported: true,
+    levels,
+    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
+  };
 }
 
 function assertSubtaskCount(expected: number, actual: number): void {

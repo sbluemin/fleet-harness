@@ -1,0 +1,45 @@
+{
+	"name": "@sbluemin/fleet-agent-core",
+	"version": "0.15.0",
+	"description": "General-purpose agent with transport abstraction, state management, and attachment support",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/sbluemin/fleet-harness.git",
+		"directory": "engines/packages/agent"
+	},
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "node -e \"const fs = require('node:fs'); const path = require('node:path'); fs.writeFileSync('.tsconfig.build.tsc.json', JSON.stringify({ extends: path.resolve('tsconfig.build.json'), compilerOptions: { paths: {} } }));\" && tsc -p .tsconfig.build.tsc.json --target ES2024 --lib ES2024 && node -e \"require('node:fs').rmSync('.tsconfig.build.tsc.json', { force: true })\"",
+		"dev": "node -e \"const fs = require('node:fs'); const path = require('node:path'); fs.writeFileSync('.tsconfig.build.tsc.json', JSON.stringify({ extends: path.resolve('tsconfig.build.json'), compilerOptions: { paths: {} } }));\" && tsc -p .tsconfig.build.tsc.json --target ES2024 --lib ES2024 --watch --preserveWatchOutput",
+		"test": "vitest --run",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"dependencies": {
+		"@sbluemin/fleet-ai": "workspace:*",
+		"typebox": "^1.1.24"
+	},
+	"keywords": [
+		"ai",
+		"agent",
+		"llm",
+		"transport",
+		"state-management"
+	],
+	"author": "sbluemin",
+	"license": "MIT",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.3.0",
+		"typescript": "^5.9.2",
+		"vitest": "^3.2.4"
+	}
+}

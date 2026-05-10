@@ -14,7 +14,7 @@
  * `setCliRuntimeContext()`에 함수 레퍼런스로 등록된다.
  */
 
-import { FLEET_PI_PERSONA_PROMPT, FLEET_TONE_PROMPT } from "../metaphor/prompts.js";
+import { FLEET_PERSONA_PROMPT, FLEET_TONE_PROMPT } from "../metaphor/prompts.js";
 import { isWorldviewEnabled } from "../metaphor/worldview.js";
 import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
@@ -116,7 +116,7 @@ You are a senior engineer developing **fleet-harness** — an Agent Harness Flee
 
 # Instructions
 **CRITICAL — Pre-work Documentation Check**: Before starting ANY task — before planning, thinking, or implementing — you MUST:
-1. Read ${"`"}docs/pi-development-reference.md${"`"} for PI SDK, extensions, TUI, themes, and RPC reference.
+1. Read ${"`"}docs/fleet-development-reference.md${"`"} for Fleet SDK, extensions, TUI, themes, and RPC reference.
 2. Read ${"`"}docs/admiral-workflow-reference.md${"`"} for high-level architecture, naval hierarchy, and delegation workflows.
 3. Read ${"`"}docs/admiral-prompt-architecture.md${"`"} for prompt assembly, runtime-context flow, and boot-mode architecture.
 4. Check the ${"`"}AGENTS.md${"`"} file in the project root and in EVERY subdirectory you will touch. Child ${"`"}AGENTS.md${"`"} takes precedence over parent.
@@ -177,7 +177,7 @@ export function buildSystemPrompt(): string {
 
     // ── 1. Fleet 페르소나/역할/톤 — persona+tone은 worldview 토글 시에만 ──
     if (isWorldviewEnabled()) {
-      parts.push(`<fleet section="persona">\n${FLEET_PI_PERSONA_PROMPT.trim()}\n</fleet>`);
+      parts.push(`<fleet section="persona">\n${FLEET_PERSONA_PROMPT.trim()}\n</fleet>`);
     }
     parts.push(`<fleet section="role">\n${fleetRolePrompt.trim()}\n</fleet>`);
     if (isWorldviewEnabled()) {

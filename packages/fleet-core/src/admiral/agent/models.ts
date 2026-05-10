@@ -6,10 +6,11 @@
 
 import {
   CLI_BACKENDS,
+  getEffort,
   getModelsRegistry,
   getProviderModels,
   type CliType,
-} from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -27,7 +28,7 @@ export interface ProviderInfo {
   readonly modelCount: number;
 }
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type SelectableThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface CliCapability {
   readonly supportsSessionClose: boolean;
@@ -43,7 +44,7 @@ export interface CliCapability {
 const LEGACY_PROVIDER_PREFIX = "Fleet ";
 const MODEL_ID_POSTFIX = " (Unified)";
 const LEGACY_MODEL_ID_POSTFIX = " (ACP)";
-const ACP_UI_LEVELS = new Set<ThinkingLevel>(["low", "medium", "high", "xhigh"]);
+export const SELECTABLE_THINKING_LEVELS = new Set<SelectableThinkingLevel>(["low", "medium", "high", "xhigh", "max"]);
 
 /** models.json 기반 model ID 조회 테이블 — 모듈 초기화 시 구축 */
 const MODEL_LOOKUP: {
@@ -129,18 +130,18 @@ export function listProviders(): ProviderInfo[] {
     });
 }
 
-/** model ID의 reasoning effort levels 조회 — fleet provider가 아니면 null */
-export function getThinkingLevels(modelId: string, providerId?: string): ThinkingLevel[] | null {
-  const parsed = parseModelId(modelId, providerId);
-  if (!parsed) return null;
-
-  const provider = getProviderModels(parsed.cli);
-  if (!provider?.reasoningEffort.supported) {
+/** model ID의 effort levels 조회 — fleet provider가 아니면 null */
+export function getSelectableThinkingLevels(
+  cli: CliType,
+  modelId: string,
+): SelectableThinkingLevel[] | null {
+  const modelEffort = getEffort(cli, modelId);
+  if (!modelEffort.supported) {
     return ["off"];
   }
 
-  const levels = provider.reasoningEffort.levels.filter(
-    (level): level is ThinkingLevel => ACP_UI_LEVELS.has(level as ThinkingLevel),
+  const levels = modelEffort.levels.filter(
+    (level): level is SelectableThinkingLevel => SELECTABLE_THINKING_LEVELS.has(level as SelectableThinkingLevel),
   );
 
   return ["off", ...levels];
@@ -152,10 +153,12 @@ export function getCliModels(cli: CliType): readonly { id: string; name: string 
   return provider.models.map((m) => ({ id: m.modelId, name: m.name }));
 }
 
-/** CLI 타입의 effort 레벨 목록 반환 (미지원 시 null) */
-export function getCliEffortLevels(cli: CliType): readonly string[] | null {
+/** CLI/model 기준 effort 레벨 목록 반환 (미지원 시 null) */
+export function getCliEffortLevels(cli: CliType, modelId?: string): readonly string[] | null {
   const provider = getProviderModels(cli);
-  return provider.reasoningEffort.supported ? provider.reasoningEffort.levels : null;
+  const resolvedModel = modelId ?? provider.defaultModel;
+  const modelEffort = getEffort(cli, resolvedModel);
+  return modelEffort.supported ? modelEffort.levels : null;
 }
 
 /** systemPrompt 해시 — drift 감지용 */

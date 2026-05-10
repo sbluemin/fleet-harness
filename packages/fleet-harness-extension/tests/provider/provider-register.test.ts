@@ -8,16 +8,21 @@ const mockFleetCore = vi.hoisted(() => ({
   bindHostSession: vi.fn(),
 }));
 
-vi.mock("@sbluemin/unified-agent", () => ({
+vi.mock("@sbluemin/fleet-unified-agent", () => ({
+  getEffort: () => ({
+    supported: true,
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "xhigh",
+  }),
   getModelsRegistry: () => ({
     providers: {
       codex: {
         name: "OpenAI Codex CLI",
         models: [{ modelId: "gpt-5.4", name: "GPT-5.4" }],
-        reasoningEffort: {
+        effort: {
           supported: true,
-          levels: ["none", "low", "medium", "high", "xhigh"],
-          default: "high",
+          levels: ["low", "medium", "high", "xhigh", "max"],
+          default: "xhigh",
         },
       },
     },
@@ -45,7 +50,7 @@ vi.mock("@sbluemin/fleet-core", () => ({
         buildProviderId: (_cli: string) => "OpenAI Codex CLI",
         getProviderIds: () => ["OpenAI Codex CLI"],
         parseModelId: (_id: string) => ({ cli: "codex", backendModel: "gpt-5.4" }),
-        getThinkingLevels: () => ["off", "low", "medium", "high", "xhigh"],
+        getSelectableThinkingLevels: () => ["off", "low", "medium", "high", "xhigh"],
       },
       events: { registerStreamHandler: vi.fn() },
       session: {},
@@ -93,6 +98,15 @@ describe("provider register", () => {
           expect.objectContaining({
             id: "gpt-5.4 (Unified)",
             name: "GPT-5.4",
+            reasoning: true,
+            defaultThinkingLevel: "xhigh",
+            thinkingLevelMap: {
+              low: "low",
+              medium: "medium",
+              high: "high",
+              xhigh: "xhigh",
+              max: "max",
+            },
           }),
         ],
       }),

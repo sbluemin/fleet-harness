@@ -1,6 +1,11 @@
 {
   "name": "@sbluemin/fleet-wiki-web",
-  "version": "0.0.0",
+  "version": "0.15.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/fleet-wiki-web"
+  },
   "private": true,
   "type": "module",
   "bin": {

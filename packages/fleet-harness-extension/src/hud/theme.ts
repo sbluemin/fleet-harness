@@ -7,7 +7,7 @@
  * 3. Default colors
  */
 
-import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { Theme, ThemeColor } from "@sbluemin/fleet-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -171,7 +171,7 @@ export function getGeekColors(): Required<ColorScheme> {
 
 function getThemePath(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  return join(homeDir, ".pi", "agent", "hud-theme.json");
+  return join(homeDir, ".fleet", "agent", "hud-theme.json");
 }
 
 function loadUserTheme(): ColorScheme {
@@ -259,19 +259,19 @@ export interface SeparatorChars {
 export const SEP_DOT = " · ";
 
 export const THINKING_TEXT_UNICODE: Record<string, string> = {
-  minimal: "[min]",
   low: "[low]",
   medium: "[med]",
   high: "[high]",
   xhigh: "[xhi]",
+  max: "[max]",
 };
 
 export const THINKING_TEXT_NERD: Record<string, string> = {
-  minimal: "\u{F0E7} min",
   low: "\u{F10C} low",
   medium: "\u{F192} med",
   high: "\u{F111} high",
   xhigh: "\u{F06D} xhi",
+  max: "\u{F06D} max",
 };
 
 export const NERD_ICONS: IconSet = {

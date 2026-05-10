@@ -21,8 +21,8 @@ import type { CarrierConfig } from "../../src/admiral/carrier/types.js";
 function makeConfig(id: string): CarrierConfig {
   return {
     id,
-    cliType: "codex" as import("@sbluemin/unified-agent").CliType,
-    defaultCliType: "codex" as import("@sbluemin/unified-agent").CliType,
+    cliType: "codex" as import("@sbluemin/fleet-unified-agent").CliType,
+    defaultCliType: "codex" as import("@sbluemin/fleet-unified-agent").CliType,
     slot: 1,
     displayName: id,
     color: "",

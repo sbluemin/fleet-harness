@@ -6,9 +6,9 @@
  * 단일 모듈로 통합합니다.
  */
 
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, Spacer, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { getMarkdownTheme } from "@sbluemin/fleet-coding-agent";
+import { Container, Markdown, Spacer, Text, truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 import {
   ANSI_RESET,
   PANEL_DIM_COLOR,

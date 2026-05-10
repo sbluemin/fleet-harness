@@ -5,37 +5,35 @@
  * fleet-core의 스트리밍 이벤트를 받아 Pi가 렌더링 상태를 직접 소유합니다.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { DEFAULT_BODY_H, formatPanelMultiColHint, ANIM_INTERVAL_MS } from "../fleet-core-facades.js";
-import { getActiveBackgroundJobCount } from "../fleet-core-facades.js";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 import { admiral } from "@sbluemin/fleet-core";
-import type { ServiceSnapshot } from "@sbluemin/unified-agent";
 import type {
   CarrierJobStreamEvent,
   CarrierCategory,
   TrackMeta,
   TrackStatus,
 } from "@sbluemin/fleet-core";
+import type { ServiceSnapshot } from "@sbluemin/fleet-unified-agent";
+import { DEFAULT_BODY_H, ANIM_INTERVAL_MS } from "../fleet-core-facades.js";
+import { getActiveBackgroundJobCount } from "../fleet-core-facades.js";
+import { CARRIER_RESULT_CUSTOM_TYPE, type CarrierResultMessageDetails } from "../jobs.js";
+import { getDeliverAs } from "../settings.js";
+import { getRegisteredCarrierConfig, getRegisteredOrder, isSquadronCarrierEnabled } from "../tools.js";
 import {
   coalesceTextBlock,
   coalesceThoughtBlock,
   upsertToolBlock,
 } from "./stream-reducers.js";
-import { CARRIER_RESULT_CUSTOM_TYPE, type CarrierResultMessageDetails } from "../jobs.js";
-import { getDeliverAs } from "../settings.js";
-import { getRegisteredCarrierConfig, getRegisteredOrder, isSquadronCarrierEnabled } from "../tools.js";
 import { syncCurrentWidget } from "./widget-sync.js";
 import type { AgentCol, ColBlock, ColStatus, ColumnTrack, PanelJob } from "./types.js";
 
 export type { AgentCol } from "./types.js";
-export type { ServiceSnapshot } from "@sbluemin/unified-agent";
+export type { ServiceSnapshot } from "@sbluemin/fleet-unified-agent";
 
 export interface FooterModelInfo {
   model: string;
   effort?: string;
 }
-
-const { getSessionIdFor } = admiral.agent.connections;
 
 export interface PanelRun {
   runId: string;
@@ -67,8 +65,6 @@ export interface AgentPanelState {
   streaming: boolean;
   frame: number;
   animTimer: ReturnType<typeof setInterval> | null;
-  /** 패널 로컬 상세 뷰 대상 ColumnTrack ID (null = N칼럼 뷰) */
-  detailTrackId: string | null;
   bottomHint: string;
   /** 캐리어별(carrierId) 모델 설정 */
   modelConfig: Record<string, FooterModelInfo>;
@@ -77,19 +73,18 @@ export interface AgentPanelState {
   serviceLoading: boolean;
   toggleCallbacks: Array<(expanded: boolean) => void>;
   bodyH: number;
-  /** 인라인 슬롯 내비게이션 커서 위치 (-1 = 비활성) */
-  cursorColumn: number;
-  /** Job Bar 가상 포커스 활성 여부 */
+  /** Carrier Job HUD 가상 포커스 활성 여부 */
   jobBarMode: boolean;
-  /** Job Bar 포커스된 타일 인덱스 (-1 = 비활성) */
+  /** Carrier Job HUD 포커스된 캐리어 인덱스 (-1 = 비활성) */
   jobBarCursor: number;
-  /** Job Bar 확장된 PanelJob ID */
+  /** Carrier Job HUD 확장된 carrierId */
   jobBarExpandedJobId: string | null;
 }
 
-export const WIDGET_KEY = "ua-panel";
 export const PANEL_JOB_RETENTION = 8;
+export const PANEL_BRIDGE_HINT = " alt+j/k · alt+p ";
 
+const { getSessionIdFor } = admiral.agent.connections;
 const CATEGORY_ORDER: CarrierCategory[] = ["strategy", "planning", "operations"];
 const CATEGORY_RANK = new Map<CarrierCategory | "uncategorized", number>(
   [...CATEGORY_ORDER.map((c, i) => [c, i] as const), ["uncategorized", CATEGORY_ORDER.length] as const],
@@ -135,15 +130,13 @@ export function getState(): AgentPanelState {
       streaming: false,
       frame: 0,
       animTimer: null,
-      detailTrackId: null,
-      bottomHint: formatPanelMultiColHint(),
+      bottomHint: PANEL_BRIDGE_HINT,
       modelConfig: {},
       serviceSnapshots: [],
       serviceLastUpdatedAt: null,
       serviceLoading: false,
       toggleCallbacks: [],
       bodyH: DEFAULT_BODY_H,
-      cursorColumn: -1,
       jobBarMode: false,
       jobBarCursor: -1,
       jobBarExpandedJobId: null,
@@ -211,9 +204,6 @@ export function syncColsWithRegisteredOrder(): void {
   const s = getState();
   const existing = new Map(s.cols.map((col) => [col.cli, col] as const));
   const orderedIds = getDefaultClis();
-  const selectedCarrierId = s.cursorColumn >= 0 && s.cursorColumn < s.cols.length
-    ? s.cols[s.cursorColumn]?.cli ?? null
-    : null;
 
   s.cols = orderedIds.map((cli) => {
     const col = existing.get(cli);
@@ -235,26 +225,6 @@ export function syncColsWithRegisteredOrder(): void {
       scroll: 0,
     };
   });
-
-  if (selectedCarrierId) {
-    s.cursorColumn = s.cols.findIndex((col) => col.cli === selectedCarrierId);
-  }
-  if (s.cursorColumn >= s.cols.length) {
-    s.cursorColumn = s.cols.length > 0 ? s.cols.length - 1 : -1;
-  }
-}
-
-/**
- * 현재 포커싱된 carrier ID를 반환합니다.
- * 상세 뷰 대상 → 멀티칼럼 커서 포커싱 순으로 우선순위를 적용합니다.
- * 아무 것도 선택되지 않으면 null.
- */
-export function getFocusedCarrierId(): string | null {
-  const s = getState();
-  if (s.expanded && s.cursorColumn >= 0 && s.cursorColumn < s.cols.length) {
-    return s.cols[s.cursorColumn]?.cli ?? null;
-  }
-  return null;
 }
 
 export function makeFooterCols(): AgentCol[] {

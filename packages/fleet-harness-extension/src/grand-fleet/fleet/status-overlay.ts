@@ -1,6 +1,6 @@
-import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
-import type { Component, Focusable, TUI } from "@mariozechner/pi-tui";
-import { Key, matchesKey } from "@mariozechner/pi-tui";
+import type { ExtensionContext, Theme } from "@sbluemin/fleet-coding-agent";
+import type { Component, Focusable, TUI } from "@sbluemin/fleet-tui";
+import { Key, matchesKey } from "@sbluemin/fleet-tui";
 
 import { stripControlChars } from "@sbluemin/fleet-core/admiralty";
 import { getState } from "../state.js";

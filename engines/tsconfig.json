@@ -1,0 +1,25 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"paths": {
+			"*": ["./*"],
+			"typebox": ["./node_modules/typebox"],
+			"@sbluemin/fleet-ai": ["./packages/ai/src/index.ts"],
+			"@sbluemin/fleet-ai/oauth": ["./packages/ai/src/oauth.ts"],
+			"@sbluemin/fleet-ai/*": ["./packages/ai/src/*.ts", "./packages/ai/src/providers/*.ts"],
+			"@sbluemin/fleet-ai/dist/*": ["./packages/ai/src/*"],
+			"@sbluemin/fleet-agent-core": ["./packages/agent/src/index.ts"],
+			"@sbluemin/fleet-agent-core/*": ["./packages/agent/src/*"],
+			"@sbluemin/fleet-coding-agent": ["./packages/coding-agent/src/index.ts"],
+			"@sbluemin/fleet-coding-agent/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
+			"@sbluemin/fleet-coding-agent/*": ["./packages/coding-agent/src/*"],
+			"@sbluemin/fleet-unified-agent": ["./packages/unified\u002dagent/src/index.ts"],
+			"@sbluemin/fleet-unified-agent/*": ["./packages/unified\u002dagent/src/*"],
+			"@sbluemin/fleet-tui": ["./packages/tui/src/index.ts"],
+			"@sbluemin/fleet-tui/*": ["./packages/tui/src/*"]
+		}
+	},
+	"include": ["packages/*/src/**/*", "packages/*/test/**/*", "packages/coding-agent/examples/**/*"],
+	"exclude": ["packages/web-ui/**/*", "**/dist/**"]
+}

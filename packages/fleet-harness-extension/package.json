@@ -1,7 +1,13 @@
 {
   "name": "@sbluemin/fleet-harness-extension",
-  "version": "0.0.0",
+  "version": "0.15.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/fleet-harness-extension"
+  },
   "private": true,
+  "author": "sbluemin",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,13 +17,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.69.0",
-    "@mariozechner/pi-coding-agent": "^0.69.0",
-    "@sinclair/typebox": "^0.34.41",
+    "@sbluemin/fleet-ai": "workspace:*",
+    "@sbluemin/fleet-coding-agent": "workspace:*",
+    "typebox": "^1.1.24",
     "@sbluemin/fleet-core": "workspace:*",
     "@sbluemin/fleet-wiki": "workspace:*",
-    "@sbluemin/unified-agent": "workspace:*",
-    "@mariozechner/pi-tui": "^0.69.0"
+    "@sbluemin/fleet-unified-agent": "workspace:*",
+    "@sbluemin/fleet-tui": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

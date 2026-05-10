@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@mariozechner/pi-ai", () => ({
+vi.mock("@sbluemin/fleet-ai", () => ({
   createAssistantMessageEventStream: () => ({
     push: vi.fn(),
     end: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock("@sbluemin/fleet-core", () => ({
         buildModelId: vi.fn((cli: string, modelId: string) => `${modelId} (${cli})`),
         buildProviderId: vi.fn((cli: string) => `provider-${cli}`),
         getProviderIds: vi.fn(() => []),
-        getThinkingLevels: vi.fn(() => null),
+        getSelectableThinkingLevels: vi.fn(() => null),
       },
       session: {
         ensure: ensureMock,
@@ -53,12 +53,17 @@ vi.mock("@sbluemin/fleet-core", () => ({
   },
 }));
 
-vi.mock("@sbluemin/unified-agent", () => ({
+vi.mock("@sbluemin/fleet-unified-agent", () => ({
   CLI_BACKENDS: {},
+  getEffort: vi.fn(() => ({
+    supported: true,
+    levels: ["low", "medium", "high", "xhigh"],
+    default: "high",
+  })),
   getModelsRegistry: vi.fn(() => ({ providers: {} })),
 }));
 
-vi.mock("@mariozechner/pi-coding-agent", () => ({
+vi.mock("@sbluemin/fleet-coding-agent", () => ({
   AgentSession: class { },
 }));
 

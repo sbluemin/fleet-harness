@@ -4,7 +4,7 @@
  * BackendProgress, TaskForceResult, TaskForceState를 정의합니다.
  */
 
-import { CLI_BACKENDS, type CliType } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
 
 export type TaskForceCliType = CliType;
 

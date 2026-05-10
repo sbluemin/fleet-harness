@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import {
   clearAdmiraltyRuntime,
@@ -16,7 +16,7 @@ import { AdmiraltyServer } from "./server.js";
 import { renderFleetEvent, renderReport } from "./report-renderer.js";
 import { FleetRegistry } from "./fleet-registry.js";
 
-const GRAND_FLEET_HOME = path.join(os.homedir(), ".pi", "grand-fleet");
+const GRAND_FLEET_HOME = path.join(os.homedir(), ".fleet", "grand-fleet");
 const DEFAULT_SOCKET_FILE = path.join(GRAND_FLEET_HOME, "admiralty.sock");
 
 export function ensureAdmiraltyRuntime(): AdmiraltyRuntimeState {

@@ -1,5 +1,5 @@
-import { visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { visibleWidth } from "@sbluemin/fleet-tui";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 
 export interface OverlayFrame {
   bottomBorder: string;

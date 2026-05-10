@@ -4,7 +4,7 @@
  * core-settings API를 통해 ~/.fleet/settings.json의 "metaphor-directive-refinement" 섹션에서 읽고 쓴다.
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 import type { CoreSettingsAPI } from "../../infra/settings/index.js";
 import { getSettingsService } from "../../infra/settings/runtime.js";
 

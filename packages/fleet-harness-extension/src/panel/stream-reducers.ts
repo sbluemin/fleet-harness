@@ -31,7 +31,10 @@ export function upsertToolBlock(
   );
 
   if (existing) {
-    existing.status = status;
+    // ACP 분할 도착: 후속 tool_call_update의 풍부한 title이 1차 빈약 title을 덮도록.
+    // 빈 문자열 update가 기존 값을 지우는 것은 방지.
+    if (title) existing.title = title;
+    if (status) existing.status = status;
     return;
   }
 

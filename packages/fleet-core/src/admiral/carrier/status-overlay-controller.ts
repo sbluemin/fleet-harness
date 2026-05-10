@@ -4,6 +4,7 @@ import type {
   CarrierOverlayCallbacks,
   CarrierStatusEntry,
   CliModelInfo,
+  ModelEffort,
   CliTypeChangeResult,
   CliTypeChangeSettledResult,
   ModelSelection,
@@ -22,6 +23,7 @@ interface StatusOverlayControllerDeps {
   getRegisteredCarrierConfig: (carrierId: string) => CarrierConfig | undefined;
   getCurrentModelSelection: (carrierId: string) => (ModelSelection & { direct?: boolean }) | undefined;
   getAvailableModels: (cliType: CarrierCliType) => CliModelInfo;
+  getEffort?: (cliType: CarrierCliType, modelId: string) => ModelEffort | null;
   getPerCliSettings: (carrierId: string, cliType: CarrierCliType) => StoredCliSelection | undefined;
   savePerCliSettings: (carrierId: string, cliType: CarrierCliType, selection: StoredCliSelection) => void;
   updateCarrierCliType: (carrierId: string, cliType: CarrierCliType) => void;
@@ -145,17 +147,32 @@ export class StatusOverlayController implements Pick<
     const saved = this.deps.getPerCliSettings(carrierId, cliType);
     const provider = this.deps.getAvailableModels(cliType);
     const hasSavedModel = !!(saved?.model && provider.models.some((model) => model.modelId === saved.model));
-    const effortLevels = provider.reasoningEffort.levels ?? [];
-    const defaultEffort = provider.reasoningEffort.default ?? null;
+    const resolvedModel = hasSavedModel ? saved!.model! : provider.defaultModel;
+    const effort = this.getModelEffort(cliType, resolvedModel, provider);
+    const effortLevels = effort?.levels ?? [];
+    const defaultEffort = effort?.default ?? null;
     const resolvedEffort = saved?.effort && effortLevels.includes(saved.effort)
       ? saved.effort
       : defaultEffort;
 
     return {
-      model: hasSavedModel ? saved!.model! : provider.defaultModel,
+      model: resolvedModel,
       effort: resolvedEffort,
       isDefault: !hasSavedModel,
     };
+  }
+
+  private getModelEffort(
+    cliType: CarrierCliType,
+    modelId: string,
+    provider: CliModelInfo,
+  ): ModelEffort | null {
+    const fromAgent = this.deps.getEffort?.(cliType, modelId);
+    if (fromAgent) return normalizeEffort(fromAgent);
+
+    const model = provider.models.find((item) => item.modelId === modelId);
+    if (model?.effort) return normalizeEffort(model.effort);
+    return null;
   }
 
   private persistCarrierCliOverride(
@@ -192,4 +209,17 @@ export class StatusOverlayController implements Pick<
     }
     return [...deduped.entries()].map(([carrierId, newCliType]) => ({ carrierId, newCliType }));
   }
+}
+
+function normalizeEffort(
+  effort: ModelEffort,
+): ModelEffort | null {
+  if (!effort.supported) return null;
+  const levels = effort.levels ?? [];
+  if (levels.length === 0) return null;
+  return {
+    supported: true,
+    levels,
+    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
+  };
 }

@@ -9,6 +9,8 @@
 
 import {
   UnifiedAgent,
+  getEffort,
+  getProviderModels,
   type AcpToolCall,
   type AcpToolCallUpdate,
   type CliType,
@@ -17,12 +19,11 @@ import {
   type McpServerConfig,
   type UnifiedAgentBuildOptions,
   type UnifiedClientOptions,
-} from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
 
 import { resolveAuthEnv } from "../../../infra/auth/index.js";
 import { getLogAPI } from "../../../infra/log/store.js";
 import { getSessionStore, classifyResumeFailure } from "./session-runtime.js";
-import { applyPostConnectConfig } from "./post-connect.js";
 import {
   installExecutorToolCallRouter,
   cleanupExecutorSession,
@@ -30,6 +31,7 @@ import {
   registerExecutorSessionTools,
 } from "./mcp-router.js";
 import { getExecutorMcpTools } from "../tools.js";
+import { applyPostConnectConfig } from "./post-connect.js";
 import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -69,11 +71,23 @@ interface PooledClient {
   mcpSessionToken?: string;
 }
 
+interface LaunchConfig {
+  readonly model?: string;
+  readonly effort?: string;
+}
+
 type ToolCallLike = (AcpToolCall | AcpToolCallUpdate) & {
   content?: unknown;
   rawOutput?: unknown;
   toolCallId?: string;
 };
+
+type EffortResolution =
+  | { readonly kind: "explicit"; readonly effort: string }
+  | { readonly kind: "default"; readonly effort: string }
+  | { readonly kind: "fallback"; readonly effort: string }
+  | { readonly kind: "clear"; readonly effort?: undefined }
+  | { readonly kind: "unspecified"; readonly effort?: undefined };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -87,7 +101,7 @@ const MAX_TOOL_CALLS_TO_KEEP = 30;
 // ═══════════════════════════════════════════════════════════════════════════
 
 const clientPool = new Map<string, PooledClient>();
-const launchConfigs = new Map<string, { effort?: string }>();
+const launchConfigs = new Map<string, LaunchConfig>();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions (공개 — executor.ts facade에서 호출)
@@ -197,20 +211,32 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     const existing = toolCalls.find((tc) =>
       toolCallId ? tc.toolCallId === toolCallId : tc.title === title,
     );
+    const isFirstPush = !existing;
     if (existing) {
-      existing.status = tcStatus;
+      // ACP 분할 도착: 후속 tool_call_update의 풍부한 title이 1차 빈약 title을 덮도록.
+      // 빈 값이 기존 값을 지우는 것은 방지.
+      if (title) existing.title = title;
+      if (tcStatus) existing.status = tcStatus;
       if (rawOutput !== undefined) existing.rawOutput = rawOutput;
     } else {
       toolCalls.push({ title, status: tcStatus, rawOutput, toolCallId });
     }
     if (toolCalls.length > MAX_TOOL_CALLS_TO_KEEP) toolCalls.splice(0, toolCalls.length - MAX_TOOL_CALLS_TO_KEEP);
-    opts.onToolCall?.(title, tcStatus, rawOutput, toolCallId);
+    // ACP 분할 도착 UX 개선: 1차 빈약 toolCall(status=pending)은 외부 callback emit 보류.
+    // 풍부 title이 도착하는 후속 update에서 첫 effective emit 발생 → panel/host UI 깜빡임 방지.
+    if (isFirstPush && tcStatus === "pending") return;
+    // 후속 update의 빈 title/status는 머지된 latest 값으로 복원해서 callback에 전달.
+    // 그러지 않으면 sanitizeToolLabel("")이 "(unnamed)"로 변환되어 풍부 title을 덮어쓰는 회귀 발생.
+    const merged = existing ?? toolCalls[toolCalls.length - 1];
+    const effectiveTitle = title || merged?.title || "";
+    const effectiveStatus = tcStatus || merged?.status || "";
+    opts.onToolCall?.(effectiveTitle, effectiveStatus, rawOutput, toolCallId);
   };
   const onToolCall = (title: string, tcStatus: string, _sid: string, data?: AcpToolCall) => {
-    upsertToolCall(title, tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
+    upsertToolCall(enrichToolTitle(title, data?.kind), tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
   };
   const onToolCallUpdate = (title: string, tcStatus: string, _sid: string, data?: AcpToolCallUpdate) => {
-    upsertToolCall(title, tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
+    upsertToolCall(enrichToolTitle(title, data?.kind ?? undefined), tcStatus, extractToolResultText(data as ToolCallLike | undefined), data?.toolCallId);
   };
   const onError = (err: Error) => {
     if (!aborted) error = err.message;
@@ -253,10 +279,13 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     if (needsConnect) {
       const mcpSetup = await setupExecutorMcp(cwd, signal);
       if (mcpSetup) activeMcpToken = mcpSetup.token;
+      const model = resolveModel(poolKey, cliType, opts.model);
+      const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
 
       const connectOpts = await buildConnectOptions(cliType, cwd, {
         model: opts.model,
         promptIdleTimeout: opts.promptIdleTimeout,
+        effort: effortResolution.effort,
       }, opts.connectSystemPrompt ?? null, mcpSetup?.mcpServers);
 
       const savedSessionId = store.get(poolKey) ?? poolEntry?.sessionId;
@@ -327,8 +356,8 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
       }
 
-      const effort = resolveEffort(poolKey, opts.effort);
-      await applyPostConnectConfig(client, cliType, effort ? { effort } : undefined);
+      const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
+      setLaunchConfig(poolKey, model, getStoredEffort(effortResolution, effortApplied));
     } else {
       const info = client.getConnectionInfo();
       sessionId = info.sessionId ?? undefined;
@@ -336,9 +365,10 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       if (poolEntry && sessionId) poolEntry.sessionId = sessionId;
       if (sessionId) store.set(poolKey, sessionId);
 
-      if (opts.effort) {
-        await applyPostConnectConfig(client, cliType, { effort: opts.effort });
-      }
+      const model = resolveModel(poolKey, cliType, opts.model);
+      const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
+      const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
+      setLaunchConfig(poolKey, model, getStoredEffort(effortResolution, effortApplied));
 
       if (poolEntry?.mcpSessionToken) {
         activeMcpToken = poolEntry.mcpSessionToken;
@@ -438,14 +468,17 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
 
     const mcpSetup = await setupExecutorMcp(cwd, signal);
     if (mcpSetup) activeMcpToken = mcpSetup.token;
+    const model = resolveModel(poolKey, cliType, opts.model);
+    const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
 
     const connectOpts = await buildConnectOptions(cliType, cwd, {
       model: opts.model,
       promptIdleTimeout: opts.promptIdleTimeout,
+      effort: effortResolution.effort,
     }, opts.connectSystemPrompt ?? null, mcpSetup?.mcpServers);
 
     const connectResult = await raceAbort(client.connect(connectOpts), signal);
-    await applyPostConnectConfig(client, cliType, { effort: opts.effort });
+    await applyResolvedEffort(client, cliType, model, effortResolution);
 
     if (activeMcpToken) {
       installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
@@ -564,8 +597,72 @@ export function engineCleanIdle(): void {
 // Internal helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-function resolveEffort(poolKey: string, override?: string): string | undefined {
-  return override ?? launchConfigs.get(poolKey)?.effort;
+function resolveEffort(
+  poolKey: string,
+  cliType: CliType,
+  model: string,
+  modelOverride: string | undefined,
+  effortOverride: string | undefined,
+): EffortResolution {
+  if (effortOverride) {
+    return { kind: "explicit", effort: effortOverride };
+  }
+
+  const launchConfig = launchConfigs.get(poolKey);
+  const modelChanged = modelOverride !== undefined &&
+    launchConfig?.model !== undefined &&
+    launchConfig.model !== model;
+
+  if (!modelChanged) {
+    return launchConfig?.effort
+      ? { kind: "fallback", effort: launchConfig.effort }
+      : { kind: "unspecified" };
+  }
+
+  const modelEffort = getEffort(cliType, model);
+  return modelEffort.supported
+    ? { kind: "default", effort: modelEffort.default }
+    : { kind: "clear" };
+}
+
+function resolveModel(poolKey: string, cliType: CliType, override?: string): string {
+  return override ?? launchConfigs.get(poolKey)?.model ?? getProviderModels(cliType).defaultModel;
+}
+
+async function applyResolvedEffort(
+  client: IUnifiedAgentClient,
+  cliType: CliType,
+  model: string,
+  resolution: EffortResolution,
+): Promise<boolean> {
+  if (resolution.kind === "clear" || resolution.kind === "unspecified") {
+    return false;
+  }
+  return applyPostConnectConfig(client, cliType, model, { effort: resolution.effort });
+}
+
+function getStoredEffort(
+  resolution: EffortResolution,
+  applied: boolean,
+): string | null | undefined {
+  if (resolution.kind === "clear") {
+    return null;
+  }
+  if (resolution.kind === "unspecified") {
+    return undefined;
+  }
+  return applied ? resolution.effort : null;
+}
+
+function setLaunchConfig(poolKey: string, model: string, effort: string | null | undefined): void {
+  const previous = launchConfigs.get(poolKey);
+  const next: { model: string; effort?: string } = { ...previous, model };
+  if (effort === null) {
+    delete next.effort;
+  } else if (effort !== undefined) {
+    next.effort = effort;
+  }
+  launchConfigs.set(poolKey, next);
 }
 
 async function disconnectFromPool(poolKey: string, client: IUnifiedAgentClient): Promise<boolean> {
@@ -601,7 +698,7 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 async function buildConnectOptions(
   cli: CliType,
   cwd: string,
-  overrides: { model?: string; promptIdleTimeout?: number } | undefined,
+  overrides: { model?: string; promptIdleTimeout?: number; effort?: string } | undefined,
   systemPrompt: string | null | undefined,
   mcpServers?: McpServerConfig[],
 ): Promise<UnifiedClientOptions> {
@@ -613,6 +710,7 @@ async function buildConnectOptions(
     timeout: 0,
   };
   if (overrides?.model) opts.model = overrides.model;
+  if (overrides?.effort) opts.effort = overrides.effort;
   if (overrides?.promptIdleTimeout !== undefined) opts.promptIdleTimeout = overrides.promptIdleTimeout;
   if (systemPrompt) opts.systemPrompt = systemPrompt;
   if (mcpServers) opts.mcpServers = mcpServers;
@@ -699,6 +797,44 @@ function extractContentText(content: unknown): string | undefined {
 
 async function buildProviderClient(options: UnifiedAgentBuildOptions): Promise<IUnifiedAgentClient> {
   return UnifiedAgent.build(options);
+}
+
+/**
+ * ACP `tool_call_update`의 title이 도구 종류 prefix 없이 파일 경로/인자만 도착하는 경우
+ * (예: `"engines/.../npx.ts"`), `data.kind`를 활용해 사람이 읽기 쉬운 prefix를 합성한다.
+ *
+ * - title이 비어있으면 그대로 빈 문자열 반환 (머지 가드 동작 유지)
+ * - title이 이미 kind 라벨로 시작하면 변형하지 않음 (예: "Read /tmp/x.txt")
+ * - 파일 경로 패턴(슬래시 또는 점으로 시작)이면 `{Label} {title}` 형태로 prefix 추가
+ * - 그 외(이미 의미있는 단어로 시작하는 일반 라벨)는 변형하지 않음
+ */
+function enrichToolTitle(title: string, kind?: string): string {
+  if (!title) return "";
+  if (!kind) return title;
+  const label = toolKindLabel(kind);
+  if (!label) return title;
+  if (title.toLowerCase().startsWith(label.toLowerCase())) return title;
+  // 파일 경로 패턴이면 prefix 합성
+  if (title.startsWith("/") || title.startsWith(".") || title.includes("/")) {
+    return `${label} ${title}`;
+  }
+  return title;
+}
+
+function toolKindLabel(kind: string): string {
+  switch (kind) {
+    case "read": return "Read";
+    case "edit": return "Edit";
+    case "delete": return "Delete";
+    case "move": return "Move";
+    case "search": return "Search";
+    case "execute": return "Execute";
+    case "think": return "Think";
+    case "fetch": return "Fetch";
+    case "switch_mode": return "Switch Mode";
+    case "other": return "";
+    default: return kind.charAt(0).toUpperCase() + kind.slice(1);
+  }
 }
 
 async function setupExecutorMcp(

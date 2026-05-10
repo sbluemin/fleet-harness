@@ -3,7 +3,7 @@
  *
  * 이벤트, 도구, 런타임, Status Bar/Overlay owner를 role별 모듈에 위임한다.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { getState } from "../state.js";
 import { FleetRegistry } from "./fleet-registry.js";

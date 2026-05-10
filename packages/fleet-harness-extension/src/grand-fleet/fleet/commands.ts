@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { infra } from "@sbluemin/fleet-core";
 import { getState } from "../state.js";
@@ -46,7 +46,7 @@ async function handleConnect(ctx: any): Promise<void> {
 
   const inputPath = await ctx.ui.input(
     "Admiralty 소켓 경로:",
-    "~/.pi/grand-fleet/admiralty.sock",
+    "~/.fleet/grand-fleet/admiralty.sock",
   );
   if (inputPath === undefined || !inputPath.trim()) {
     ctx.ui.notify("접속이 취소되었습니다.", "warning");

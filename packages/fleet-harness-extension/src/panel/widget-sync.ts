@@ -2,28 +2,23 @@
  * fleet/panel/widget-sync.ts — PI TUI 위젯 동기화
  *
  * 현재 상태에 맞게 위젯을 등록/제거합니다.
- * - fleet-carrier-status: carrier 상태 표시 (aboveEditor)
- * - ua-panel: 멀티칼럼/상세 뷰 패널 (aboveEditor, 패널 펼침 시)
+ * - fleet-carrier-job-hud: 캐리어별 active job HUD 표시 (belowEditor)
  *
  * lifecycle.ts에서 호출됩니다.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import {
-  PANEL_COLOR,
-  MIN_BODY_H,
-} from "../fleet-core-facades.js";
-import { getActiveBackgroundJobCount } from "../fleet-core-facades.js";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
 
-import {
-  renderPanelFull,
-} from "./panel-render.js";
-import { renderJobBar } from "./job-bar-render.js";
-import { renderCarrierStatus } from "../carrier-status/renderer.js";
-import { getActiveJobs, getPanelRuns, getState, makeFooterCols, WIDGET_KEY } from "./state.js";
+import { renderCarrierJobHud } from "./carrier-job-hud-render.js";
+import { requestEditorPanelRender } from "./editor-panel-bridge.js";
+import { getState } from "./state.js";
 
-const FLEET_CARRIER_STATUS_WIDGET_KEY = "fleet-carrier-status";
+const FLEET_CARRIER_JOB_HUD_WIDGET_KEY = "fleet-carrier-job-hud";
+
+let currentWidgetCtx: ExtensionContext | null = null;
+let currentWidgetSessionId: string | null = null;
+let isWidgetSyncScheduled = false;
+let widgetSyncGeneration = 0;
 
 function isStaleExtensionContextError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -41,21 +36,12 @@ function isStaleExtensionContextError(error: unknown): boolean {
   return mentionsExtensionCtx && mentionsStaleSession;
 }
 
-let currentWidgetCtx: ExtensionContext | null = null;
-let currentWidgetSessionId: string | null = null;
-let isWidgetSyncScheduled = false;
-let widgetSyncGeneration = 0;
-
 // ─── 위젯 동기화 ────────────────────────────────────────
 
 /**
  * 현재 상태에 맞게 위젯을 등록/제거합니다.
  *
- * 렌더링 분기:
- * - expanded → aboveEditor 위젯으로 renderPanelFull 표시 (터미널 높이 기반 클램핑)
- * - !expanded → 패널 위젯 제거
- *
- * carrier 상태 위젯(aboveEditor)은 항상 등록됩니다.
+ * 캐리어 Job HUD 위젯(belowEditor)을 등록합니다.
  */
 export function syncWidget(ctx: ExtensionContext): void {
   const sessionId = readSessionId(ctx);
@@ -77,6 +63,7 @@ export function syncCurrentWidget(): void {
     if (!nextCtx) return;
     try {
       applyWidgetSync(nextCtx);
+      requestEditorPanelRender();
     } catch (error) {
       if (!isStaleExtensionContextError(error)) throw error;
       detachWidgetSync();
@@ -101,58 +88,10 @@ function readSessionId(ctx: ExtensionContext): string | null {
 }
 
 function applyWidgetSync(ctx: ExtensionContext): void {
-  const s = getState();
-
-  // carrier 상태 위젯 (aboveEditor) — 항상 등록
   try {
-    ctx.ui.setWidget(FLEET_CARRIER_STATUS_WIDGET_KEY, (_tui, _theme) => ({
+    ctx.ui.setWidget(FLEET_CARRIER_JOB_HUD_WIDGET_KEY, (_tui, theme) => ({
       render(width: number): string[] {
-        const state = getState();
-        const content = renderCarrierStatus({
-          cols: makeFooterCols(),
-          streaming: state.streaming || getActiveBackgroundJobCount() > 0,
-          frame: state.frame,
-        });
-        if (!content) return [];
-        const pad = Math.max(0, Math.floor((width - visibleWidth(content)) / 2));
-        return [truncateToWidth(" ".repeat(pad) + content, width)];
-      },
-      invalidate() {},
-    }), { placement: "aboveEditor" });
-
-    // 멀티칼럼/상세 뷰 패널 (aboveEditor) — expanded 시만
-    if (!s.expanded) {
-      ctx.ui.setWidget(WIDGET_KEY, undefined);
-    } else {
-      ctx.ui.setWidget(WIDGET_KEY, (_tui, _theme) => ({
-        render(width: number): string[] {
-          const state = getState();
-          const activeJobs = getActiveJobs();
-          const frameColor = PANEL_COLOR;
-
-          // 터미널 높이 기반 bodyH 클램핑
-          // 에디터(30%) + footer(2) + spacer/status 여유(5) + job bar(below) 확보
-          const termH = process.stdout.rows ?? 24;
-          const hasJobs = activeJobs.length > 0;
-          const belowH = state.jobBarExpandedJobId ? 8 : (hasJobs && state.jobBarMode ? 2 : (hasJobs ? 1 : 0));
-          const reserved = Math.ceil(termH * 0.3) + 7 + belowH;
-          const maxBodyH = Math.max(MIN_BODY_H, termH - reserved);
-          const effectiveBodyH = Math.min(state.bodyH, maxBodyH);
-
-          return renderPanelFull(
-            width, activeJobs, getPanelRuns(), state.frame, frameColor,
-            state.bottomHint, state.detailTrackId, effectiveBodyH,
-            state.cursorColumn,
-          );
-        },
-        invalidate() {},
-      }));
-    }
-
-    // Job Bar (belowEditor) — 활성 job 표시
-    ctx.ui.setWidget("fleet-job-bar", (_tui, _theme) => ({
-      render(width: number): string[] {
-        return renderJobBar(width, getState().frame);
+        return renderCarrierJobHud(width, getState().frame, theme);
       },
       invalidate() {},
     }), { placement: "belowEditor" });

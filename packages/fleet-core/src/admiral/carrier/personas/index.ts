@@ -1,4 +1,4 @@
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 
 import { CARRIER_METADATA as CHRONICLE_METADATA } from "./chronicle.js";
 import { CARRIER_METADATA as GENESIS_METADATA } from "./genesis.js";
@@ -17,18 +17,20 @@ export interface DefaultCarrierPersona {
     readonly slot: number;
     readonly id: string;
     readonly displayName: string;
+    readonly defaultModel?: string;
+    readonly defaultEffort?: string;
   };
 }
 
 export const DEFAULT_CARRIER_PERSONAS: readonly DefaultCarrierPersona[] = [
-  { cli: "codex", metadata: GENESIS_METADATA, options: { slot: 3, id: "genesis", displayName: "Genesis" } },
-  { cli: "claude", metadata: KIROV_METADATA, options: { slot: 2, id: "kirov", displayName: "Kirov" } },
-  { cli: "claude", metadata: NIMITZ_METADATA, options: { slot: 1, id: "nimitz", displayName: "Nimitz" } },
-  { cli: "codex", metadata: SENTINEL_METADATA, options: { slot: 5, id: "sentinel", displayName: "Sentinel" } },
-  { cli: "codex", metadata: VANGUARD_METADATA, options: { slot: 6, id: "vanguard", displayName: "Vanguard" } },
-  { cli: "gemini", metadata: TEMPEST_METADATA, options: { slot: 7, id: "tempest", displayName: "Tempest" } },
-  { cli: "gemini", metadata: CHRONICLE_METADATA, options: { slot: 8, id: "chronicle", displayName: "Chronicle" } },
-  { cli: "codex", metadata: OHIO_METADATA, options: { slot: 4, id: "ohio", displayName: "Ohio" } },
+  { cli: "claude", metadata: GENESIS_METADATA, options: { slot: 3, id: "genesis", displayName: "Genesis", defaultModel: "sonnet", defaultEffort: "medium" } },
+  { cli: "claude", metadata: KIROV_METADATA, options: { slot: 2, id: "kirov", displayName: "Kirov", defaultModel: "opus[1m]", defaultEffort: "xhigh" } },
+  { cli: "claude", metadata: NIMITZ_METADATA, options: { slot: 1, id: "nimitz", displayName: "Nimitz", defaultModel: "opus[1m]", defaultEffort: "max" } },
+  { cli: "claude", metadata: SENTINEL_METADATA, options: { slot: 5, id: "sentinel", displayName: "Sentinel", defaultModel: "sonnet", defaultEffort: "max" } },
+  { cli: "claude", metadata: VANGUARD_METADATA, options: { slot: 6, id: "vanguard", displayName: "Vanguard", defaultModel: "haiku", defaultEffort: "low" } },
+  { cli: "claude", metadata: TEMPEST_METADATA, options: { slot: 7, id: "tempest", displayName: "Tempest", defaultModel: "haiku", defaultEffort: "medium" } },
+  { cli: "claude", metadata: CHRONICLE_METADATA, options: { slot: 8, id: "chronicle", displayName: "Chronicle", defaultModel: "sonnet", defaultEffort: "medium" } },
+  { cli: "claude", metadata: OHIO_METADATA, options: { slot: 4, id: "ohio", displayName: "Ohio", defaultModel: "sonnet", defaultEffort: "low" } },
 ];
 
 export interface CarrierPersonaRegistry {

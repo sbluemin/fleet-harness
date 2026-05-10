@@ -5,10 +5,10 @@
  * 패널 상태를 갱신하는 setter 함수를 제공합니다.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { MIN_BODY_H, MAX_BODY_H, formatPanelMultiColHint } from "../fleet-core-facades.js";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import { MIN_BODY_H, MAX_BODY_H } from "../fleet-core-facades.js";
 import { loadModels } from "../fleet-core-facades.js";
-import { getState } from "./state.js";
+import { getState, PANEL_BRIDGE_HINT } from "./state.js";
 import type { ServiceSnapshot } from "./state.js";
 import { syncCurrentWidget, syncWidget } from "./widget-sync.js";
 
@@ -67,11 +67,7 @@ export function adjustPanelHeight(ctx: ExtensionContext, delta: number): number 
   const s = getState();
   const prev = s.bodyH;
   s.bodyH = Math.max(MIN_BODY_H, Math.min(MAX_BODY_H, s.bodyH + delta));
-  // 높이 변경 시 bottomHint에 현재 높이 표시 (피드백용)
-  // 상세 뷰일 때는 상세 힌트를 유지
-  if (!s.detailTrackId) {
-    s.bottomHint = formatPanelMultiColHint(s.bodyH);
-  }
+  s.bottomHint = PANEL_BRIDGE_HINT;
   if (prev !== s.bodyH) {
     // setWidget(undefined) 없이 바로 교체 — 중간 상태 렌더링을 방지
     // (undefined 먼저 호출하면 clearOnShrink=false 환경에서 잔상이 남음)

@@ -4,8 +4,8 @@
  * Carrier 프레임워크 및 기본 구현에서 공유되는 상수입니다.
  */
 
-import { CLI_BACKENDS, getProviderModels } from "@sbluemin/unified-agent";
-import type { CliType } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS, getProviderModels } from "@sbluemin/fleet-unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 
 // ─── CLI 표시 이름 ───────────────────────────────────────
 
@@ -135,7 +135,7 @@ export const SYM_THINKING = "◇";
 // ─── 패널 높이 ──────────────────────────────────────────
 
 /** 패널 본문 높이 기본값 (줄 수) */
-export const DEFAULT_BODY_H = 10;
+export const DEFAULT_BODY_H = 6;
 
 /** 패널 본문 높이 최솟값 */
 export const MIN_BODY_H = 4;

@@ -16,7 +16,7 @@
 
 ## Dependency Rules
 
-- The only allowed runtime dependency is `@sinclair/typebox`.
+- The only allowed runtime dependency is `typebox`.
 - Workspace package imports are strictly forbidden.
 - Maintain leaf package doctrine and avoid circular dependencies.
 

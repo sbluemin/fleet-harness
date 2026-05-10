@@ -5,13 +5,13 @@
  * 각 칼럼 내부는 ColumnTrack 트리 + 최근 5줄 tail 스트리밍 콘텐츠를 표시합니다.
  */
 
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 import {
   ANSI_RESET,
   BORDER,
   PANEL_COLOR,
   PANEL_DIM_COLOR,
-  PANEL_RGB,
   SPINNER_FRAMES,
   SYM_INDICATOR,
 } from "../fleet-core-facades.js";
@@ -32,13 +32,6 @@ import { waveText } from "./wave-text.js";
 
 export { waveText } from "./wave-text.js";
 
-interface WaveConfig {
-  rgb: [number, number, number];
-  frame: number;
-  totalDiag: number;
-  bandWidth: number;
-}
-
 const MAX_TRACK_STREAM_LINES = 5;
 
 export function renderPanelFull(
@@ -48,66 +41,14 @@ export function renderPanelFull(
   frame: number,
   frameColor: string,
   bottomHint: string,
-  detailTrackId: string | null,
   bodyH: number,
   cursorColumn = -1,
+  theme?: Theme,
 ): string[] {
   const visibleJobs = buildPanelViewModel(jobs, runs, { maxTrackBlocks: MAX_TRACK_STREAM_LINES });
-  const detailTarget = detailTrackId ? findTrackById(visibleJobs, detailTrackId) : null;
-  const panelH = 3 + bodyH + 1;
-  const totalDiag = (w - 1) + (panelH - 1);
-  const isStreaming = visibleJobs.some((job) => job.status === "active");
-  const wave: WaveConfig | undefined = isStreaming
-    ? { rgb: PANEL_RGB, frame, totalDiag, bandWidth: 12 }
-    : undefined;
   const FC = frameColor || PANEL_COLOR;
 
-  if (detailTarget) {
-    return renderDetailView(w, detailTarget.job, detailTarget.track, frame, FC, bottomHint, bodyH, wave);
-  }
-
-  return renderMultiJobView(w, visibleJobs, frame, FC, bottomHint, bodyH, wave, cursorColumn);
-}
-
-function renderDetailView(
-  w: number,
-  job: PanelJobViewModel,
-  track: PanelTrackViewModel,
-  frame: number,
-  FC: string,
-  bottomHint: string,
-  bodyH: number,
-  wave: WaveConfig | undefined,
-): string[] {
-  const iw = Math.max(15, w - 2);
-  const rows: string[] = [];
-  let ri = 0;
-
-  rows.push(renderTopBorder(w, FC, wave));
-  ri++;
-
-  rows.push(
-    vBorder(FC, wave, ri) + ANSI_RESET +
-    centerText(buildJobHeader(job, frame), iw) +
-    vBorder(FC, wave, w - 1 + ri) + ANSI_RESET,
-  );
-  ri++;
-  rows.push(hBorder("├" + BORDER.horizontal.repeat(iw) + "┤", FC, wave, ri) + ANSI_RESET);
-  ri++;
-
-  const content = buildTrackContent(track, bodyH, frame);
-  for (let row = 0; row < bodyH; row++) {
-    const line = content[row] ?? "";
-    rows.push(
-      vBorder(FC, wave, ri) + ANSI_RESET +
-      " " + pad(line, iw - 1) +
-      vBorder(FC, wave, w - 1 + ri) + ANSI_RESET,
-    );
-    ri++;
-  }
-
-  rows.push(renderBottomBorder(w, FC, bottomHint, wave, ri));
-  return rows;
+  return renderMultiJobView(w, visibleJobs, frame, FC, bottomHint, bodyH, cursorColumn, theme);
 }
 
 function renderMultiJobView(
@@ -117,11 +58,11 @@ function renderMultiJobView(
   FC: string,
   bottomHint: string,
   bodyH: number,
-  wave: WaveConfig | undefined,
   cursorColumn: number,
+  theme: Theme | undefined,
 ): string[] {
   if (jobs.length === 0) {
-    return renderEmptyPanel(w, FC, bottomHint, bodyH, wave);
+    return renderEmptyPanel(w, FC, bottomHint, bodyH, theme);
   }
 
   const iw = Math.max(15, w - (jobs.length + 1));
@@ -129,13 +70,6 @@ function renderMultiJobView(
   const widths = Array.from({ length: jobs.length }, (_, index) =>
     index < jobs.length - 1 ? base : iw - base * (jobs.length - 1),
   );
-  const vx: number[] = [0];
-  let acc = 0;
-  for (let i = 0; i < jobs.length; i++) {
-    acc += widths[i] ?? 0;
-    vx.push(i + 1 + acc);
-  }
-
   const cursorBg = cursorColumn >= 0
     ? resolveCarrierBgColor(jobs[cursorColumn]?.ownerCarrierId ?? "")
     : "";
@@ -145,18 +79,18 @@ function renderMultiJobView(
   const rows: string[] = [];
   let ri = 0;
 
-  rows.push(renderTopBorder(w, FC, wave));
+  rows.push(renderTopBorder(w, FC, theme));
   ri++;
 
   const headerCells = jobs.map((job, index) => {
     const cell = centerText(buildJobHeader(job, frame), widths[index] ?? 0);
     return index === cursorColumn && cursorBg ? applyBg(cell, cursorBg) : cell;
   });
-  rows.push(joinCells(headerCells, widths, vx, FC, wave, ri));
+  rows.push(joinCells(headerCells, widths, FC, theme));
   ri++;
 
   const sep = "├" + widths.map((width) => BORDER.horizontal.repeat(width)).join("┼") + "┤";
-  rows.push(hBorder(sep, FC, wave, ri) + ANSI_RESET);
+  rows.push(hBorder(sep, FC, theme) + ANSI_RESET);
   ri++;
 
   const contents = jobs.map((job, index) =>
@@ -169,11 +103,11 @@ function renderMultiJobView(
       const cell = pad(line, widths[index] ?? 0);
       return index === cursorColumn && cursorBg ? applyBg(cell, cursorBg) : cell;
     });
-    rows.push(joinCells(cells, widths, vx, FC, wave, ri));
+    rows.push(joinCells(cells, widths, FC, theme));
     ri++;
   }
 
-  rows.push(renderBottomBorder(w, FC, bottomHint, wave, ri));
+  rows.push(renderBottomBorder(w, FC, bottomHint, theme));
   return rows;
 }
 
@@ -182,23 +116,23 @@ function renderEmptyPanel(
   FC: string,
   bottomHint: string,
   bodyH: number,
-  wave: WaveConfig | undefined,
+  theme: Theme | undefined,
 ): string[] {
   const rows: string[] = [];
   let ri = 0;
   const iw = Math.max(15, w - 2);
 
-  rows.push(renderTopBorder(w, FC, wave));
+  rows.push(renderTopBorder(w, FC, theme));
   ri++;
-  rows.push(vBorder(FC, wave, ri) + ANSI_RESET + pad("", iw) + vBorder(FC, wave, w - 1 + ri) + ANSI_RESET);
+  rows.push(vBorder(FC, theme) + ANSI_RESET + pad("", iw) + vBorder(FC, theme) + ANSI_RESET);
   ri++;
-  rows.push(hBorder("├" + BORDER.horizontal.repeat(iw) + "┤", FC, wave, ri) + ANSI_RESET);
+  rows.push(hBorder("├" + BORDER.horizontal.repeat(iw) + "┤", FC, theme) + ANSI_RESET);
   ri++;
   for (let row = 0; row < bodyH; row++) {
-    rows.push(vBorder(FC, wave, ri) + ANSI_RESET + pad("", iw) + vBorder(FC, wave, w - 1 + ri) + ANSI_RESET);
+    rows.push(vBorder(FC, theme) + ANSI_RESET + pad("", iw) + vBorder(FC, theme) + ANSI_RESET);
     ri++;
   }
-  rows.push(renderBottomBorder(w, FC, bottomHint, wave, ri));
+  rows.push(renderBottomBorder(w, FC, bottomHint, theme));
   return rows;
 }
 
@@ -239,18 +173,6 @@ function buildJobColumnContent(job: PanelJobViewModel, width: number, bodyH: num
   return lines.slice(-bodyH);
 }
 
-function buildTrackContent(track: PanelTrackViewModel, bodyH: number, frame: number): string[] {
-  const liveStatus = track.status;
-  const stats = buildTrackStats(track);
-  const liveDisplayName = track.kind === "carrier"
-    ? resolveCarrierDisplayName(track.displayCli)
-    : track.displayName;
-  return [
-    `${trackIcon(liveStatus, frame, track.displayCli)} ${liveDisplayName}${stats ? ` ${PANEL_DIM_COLOR}[${stats}]${ANSI_RESET}` : ""}${liveStatus === "done" ? ` ${PANEL_DIM_COLOR}✓ Done${ANSI_RESET}` : ""}`,
-    ...getTrackStreamTail(track, "   ", Number.MAX_SAFE_INTEGER, liveStatus),
-  ].slice(-bodyH);
-}
-
 function getTrackStreamTail(track: PanelTrackViewModel, connector: string, width: number, liveStatus?: ColStatus): string[] {
   const effectiveStatus = liveStatus ?? track.status;
   const prefix = `${PANEL_DIM_COLOR}${connector}${ANSI_RESET}   `;
@@ -278,21 +200,18 @@ function trackIcon(status: ColStatus, frame: number, carrierId: string): string 
   return `\x1b[38;2;255;80;80m${SYM_INDICATOR}${ANSI_RESET}`;
 }
 
-function joinCells(cells: string[], widths: number[], vx: number[], FC: string, wave: WaveConfig | undefined, row: number): string {
-  let line = vBorder(FC, wave, vx[0] + row) + ANSI_RESET;
+function joinCells(
+  cells: string[],
+  widths: number[],
+  FC: string,
+  theme: Theme | undefined,
+): string {
+  let line = vBorder(FC, theme) + ANSI_RESET;
   for (let index = 0; index < cells.length; index++) {
     line += cells[index] ?? pad("", widths[index] ?? 0);
-    line += vBorder(FC, wave, vx[index + 1] + row) + ANSI_RESET;
+    line += vBorder(FC, theme) + ANSI_RESET;
   }
   return line;
-}
-
-function findTrackById(jobs: PanelJobViewModel[], trackId: string): { job: PanelJobViewModel; track: PanelTrackViewModel } | null {
-  for (const job of jobs) {
-    const track = job.tracks.find((item) => item.trackId === trackId);
-    if (track) return { job, track };
-  }
-  return null;
 }
 
 function capitalize(text: string): string {
@@ -322,70 +241,39 @@ function centerText(text: string, width: number): string {
   return " ".repeat(left) + fitted + " ".repeat(right);
 }
 
-function vBorder(FC: string, wave: WaveConfig | undefined, diag: number): string {
-  if (wave) return sweepColorChar(BORDER.vertical, wave.rgb, sweepFactor(diag, wave));
-  return FC + BORDER.vertical;
+function vBorder(FC: string, theme?: Theme): string {
+  return theme?.fg("border", BORDER.vertical) ?? FC + BORDER.vertical;
 }
 
-function hBorder(text: string, FC: string, wave: WaveConfig | undefined, row: number, startX = 0): string {
-  if (wave) {
-    let result = "";
-    let x = startX;
-    for (const ch of text) {
-      result += sweepColorChar(ch, wave.rgb, sweepFactor(x + row, wave));
-      x++;
-    }
-    return result;
-  }
-  return FC + text;
+function hBorder(text: string, FC: string, theme?: Theme): string {
+  return theme?.fg("border", text) ?? FC + text;
 }
 
-function renderTopBorder(w: number, FC: string, wave?: WaveConfig): string {
+function renderTopBorder(w: number, FC: string, theme: Theme | undefined): string {
   const title = " ◈ Fleet Bridge ";
   const titleWidth = visibleWidth(title);
   const fill = Math.max(0, w - 2 - titleWidth);
   const left = Math.floor(fill / 2);
   const right = fill - left;
   const full = BORDER.topLeft + BORDER.horizontal.repeat(left) + title + BORDER.horizontal.repeat(right) + BORDER.topRight;
-  return hBorder(full, FC, wave, 0) + ANSI_RESET;
+  return hBorder(full, FC, theme) + ANSI_RESET;
 }
 
-function renderBottomBorder(w: number, FC: string, bottomHint: string, wave: WaveConfig | undefined, row: number): string {
+function renderBottomBorder(
+  w: number,
+  FC: string,
+  bottomHint: string,
+  theme: Theme | undefined,
+): string {
   const hintWidth = visibleWidth(bottomHint);
   const fill = Math.max(0, w - 2 - hintWidth);
   const left = Math.floor(fill / 2);
   const right = fill - left;
   const leftPart = BORDER.bottomLeft + BORDER.horizontal.repeat(left);
   const rightPart = BORDER.horizontal.repeat(right) + BORDER.bottomRight;
-  const rightStartX = visibleWidth(leftPart) + hintWidth;
   return (
-    hBorder(leftPart, FC, wave, row) + ANSI_RESET +
+    hBorder(leftPart, FC, theme) + ANSI_RESET +
     PANEL_DIM_COLOR + bottomHint + ANSI_RESET +
-    hBorder(rightPart, FC, wave, row, rightStartX) + ANSI_RESET
+    hBorder(rightPart, FC, theme) + ANSI_RESET
   );
-}
-
-function sweepFactor(diag: number, cfg: WaveConfig): number {
-  const cycle = cfg.totalDiag + cfg.bandWidth;
-  const sweepPos = (cfg.frame * 4.0) % cycle - cfg.bandWidth * 0.3;
-  const dist = diag - sweepPos;
-  if (dist >= 0 && dist <= cfg.bandWidth) {
-    const t = (dist / cfg.bandWidth - 0.5) * 3;
-    return Math.exp(-t * t) * 0.5;
-  }
-  return -0.2;
-}
-
-function sweepColorChar(ch: string, rgb: [number, number, number], factor: number): string {
-  const [r, g, b] = rgb;
-  const cr = Math.min(255, Math.max(0, Math.round(
-    factor >= 0 ? r + (255 - r) * factor : r + r * factor,
-  )));
-  const cg = Math.min(255, Math.max(0, Math.round(
-    factor >= 0 ? g + (255 - g) * factor : g + g * factor,
-  )));
-  const cb = Math.min(255, Math.max(0, Math.round(
-    factor >= 0 ? b + (255 - b) * factor : b + b * factor,
-  )));
-  return `\x1b[38;2;${cr};${cg};${cb}m${ch}`;
 }

@@ -6,10 +6,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import {
-  getReasoningEffortLevels,
-  type CliType,
-} from "@sbluemin/unified-agent";
+import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -23,20 +20,40 @@ interface ConfigClient {
 // Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 연결 후 reasoning effort 등을 세션에 적용 */
+/** 연결 후 effort 등을 세션에 적용 */
 export async function applyPostConnectConfig(
   client: ConfigClient,
   cli: CliType,
+  model: string,
   overrides?: { effort?: string },
-): Promise<void> {
+): Promise<boolean> {
   if (overrides?.effort) {
-    const levels = getReasoningEffortLevels(cli);
-    if (Array.isArray(levels) && levels.length > 0) {
+    const modelEffort = getEffort(cli, model);
+    if (modelEffort.supported && modelEffort.levels.includes(overrides.effort)) {
       try {
-        await client.setConfigOption("reasoning_effort", overrides.effort);
+        await client.setConfigOption("effort", overrides.effort);
+        return true;
       } catch (err) {
-        console.warn(`[acp] setConfigOption 실패 (cli=${cli}, option=reasoning_effort)`, err);
+        const errorObj = typeof err === "object" && err !== null
+          ? (err as {
+              code?: unknown;
+              message?: unknown;
+              data?: { details?: unknown };
+            })
+          : null;
+        console.warn("[acp] setConfigOption 실패", {
+          cli,
+          model,
+          option: "effort",
+          value: overrides.effort,
+          code: errorObj?.code,
+          details: errorObj?.data?.details,
+          message: typeof errorObj?.message === "string"
+            ? errorObj.message
+            : String(err),
+        });
       }
     }
   }
+  return false;
 }

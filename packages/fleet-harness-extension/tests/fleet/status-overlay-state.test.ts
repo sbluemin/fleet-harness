@@ -7,7 +7,22 @@ import type {
   CliModelInfo,
   OverlayState,
 } from "@sbluemin/fleet-core";
-import type { ProviderKey } from "@sbluemin/unified-agent";
+import type { ProviderKey } from "@sbluemin/fleet-unified-agent";
+
+vi.mock("@sbluemin/fleet-unified-agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sbluemin/fleet-unified-agent")>();
+  return {
+    ...actual,
+    getEffort: vi.fn((_cli: string, modelId: string) => {
+      if (modelId.includes("gemini")) return { supported: false };
+      return {
+        supported: true,
+        levels: ["low", "medium", "high"],
+        default: "high",
+      };
+    }),
+  };
+});
 
 interface DeferredPromise<T> {
   promise: Promise<T>;
@@ -50,7 +65,7 @@ function makeProvider(defaultModel: string, effortLevels?: string[], defaultEffo
       { modelId: defaultModel, name: `${defaultModel} name` },
       { modelId: `${defaultModel}-alt`, name: `${defaultModel} alt` },
     ],
-    reasoningEffort: effortLevels
+    effort: effortLevels
       ? {
         supported: true,
         levels: effortLevels,
@@ -72,9 +87,9 @@ function createOverlay(options?: {
     claude: makeProvider("claude-a", ["low", "high"], "low"),
     codex: makeProvider("codex-a", ["medium", "high"], "medium"),
     gemini: makeProvider("gemini-a"),
-    "opencode-go": makeProvider("opencode-go/glm-5.1", ["none", "low", "medium", "high"], "high"),
-    "claude-zai": makeProvider("zai-coding-plan/glm-5.1", ["none", "low", "medium", "high"], "high"),
-    "claude-kimi": makeProvider("kimi-for-coding/k2p6", ["none", "low", "medium", "high"], "high"),
+    "opencode-go": makeProvider("opencode-go/glm-5.1", ["low", "medium", "high"], "high"),
+    "claude-zai": makeProvider("zai-coding-plan/glm-5.1", ["low", "medium", "high"], "high"),
+    "claude-kimi": makeProvider("kimi-for-coding/k2p6", ["low", "medium", "high"], "high"),
     ...options?.providers,
   };
   const requestRender = vi.fn();

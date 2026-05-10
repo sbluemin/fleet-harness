@@ -5,8 +5,8 @@
  * 지령 재다듬기는 admiral.agent.executor.executeOneShot 기반으로 실행된다.
  */
 
-import { BorderedLoader } from "@mariozechner/pi-coding-agent";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { BorderedLoader } from "@sbluemin/fleet-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
 import {
   admiral,
   infra,
@@ -16,6 +16,7 @@ import {
   type OperationNameSettings,
   type OperationReasoningLevel,
 } from "@sbluemin/fleet-core";
+import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import { getKeybindAPI } from "./keybinds.js";
 import type { Api, Model } from "./provider.js";
@@ -231,6 +232,8 @@ function registerDirectiveRefinementKeybind(_pi: ExtensionAPI): void {
 
 async function handleOperationNameSettings(ctx: any): Promise<void> {
   const currentSettings = loadOperationSettings();
+  let selectedReasoningProvider: string | undefined;
+  let selectedReasoningModel: string | undefined;
   const sourceOptions = [
     `세션 모델 사용 (ctx.model)${!currentSettings.provider ? " [current]" : ""}`,
     `모델 직접 선택${currentSettings.provider ? " [current]" : ""}`,
@@ -301,10 +304,19 @@ async function handleOperationNameSettings(ctx: any): Promise<void> {
     const selectedModelId = modelChoice.split(" — ")[0]!.trim();
     newSettings.provider = selectedProvider;
     newSettings.model = selectedModelId;
+    selectedReasoningProvider = selectedProvider;
+    selectedReasoningModel = selectedModelId;
+  } else {
+    selectedReasoningProvider = ctx.model?.provider;
+    selectedReasoningModel = ctx.model?.id;
   }
 
-  const reasoningOptions = OPERATION_REASONING_LEVELS.map((level) => {
-    const marker = level === currentOperationReasoning ? " ✓" : "";
+  const availableReasoningLevels = getOperationReasoningLevels(selectedReasoningProvider, selectedReasoningModel);
+  const currentReasoning = availableReasoningLevels.includes(currentOperationReasoning)
+    ? currentOperationReasoning
+    : "off";
+  const reasoningOptions = availableReasoningLevels.map((level) => {
+    const marker = level === currentReasoning ? " ✓" : "";
     return `${OPERATION_REASONING_LABELS[level]}${marker}`;
   });
 
@@ -315,7 +327,7 @@ async function handleOperationNameSettings(ctx: any): Promise<void> {
   }
 
   const reasoningIdx = reasoningOptions.indexOf(reasoningChoice);
-  currentOperationReasoning = OPERATION_REASONING_LEVELS[reasoningIdx]!;
+  currentOperationReasoning = availableReasoningLevels[reasoningIdx]!;
   newSettings.reasoning = currentOperationReasoning;
 
   saveOperationSettings(newSettings);
@@ -369,10 +381,14 @@ async function handleDirectiveSettings(ctx: any): Promise<void> {
     ? undefined
     : modelChoice.split(" — ")[0]!.trim();
 
-  const effortLevels = admiral.agent.models.getCliEffortLevels(selectedCli);
+  const effortModel = selectedModel ?? cliModels[0]?.id;
+  const effortReasoning = effortModel
+    ? getModelEffort(selectedCli, effortModel)
+    : { supported: false };
+  const effortLevels = "levels" in effortReasoning ? [...effortReasoning.levels] : [];
   let selectedEffort: string | undefined;
 
-  if (effortLevels !== null && effortLevels.length > 0) {
+  if (effortLevels.length > 0) {
     const noEffortOption = `default${!currentSettings.effort || currentSettings.cliType !== selectedCli ? " [current]" : ""}`;
     const effortOptions = [
       noEffortOption,
@@ -415,4 +431,23 @@ function resolveCurrentOperationReasoning(): OperationReasoningLevel {
   return settings.reasoning && isValidOperationReasoning(settings.reasoning)
     ? settings.reasoning
     : "off";
+}
+
+function getOperationReasoningLevels(
+  providerId: string | undefined,
+  modelId: string | undefined,
+): OperationReasoningLevel[] {
+  if (!providerId || !modelId) return ["off"];
+  const parsed = admiral.agent.models.parseModelId(modelId, providerId)
+    ?? admiral.agent.models.parseModelId(modelId);
+  if (!parsed) return ["off"];
+  const reasoning = getModelEffort(parsed.cli, parsed.backendModel);
+  if (!reasoning.supported) return ["off"];
+  const availableEfforts = new Set(reasoning.levels ?? []);
+  const levels = OPERATION_REASONING_LEVELS.filter((level) => level === "off" || availableEfforts.has(level));
+  return levels.length > 0 ? levels : ["off"];
+}
+
+function getModelEffort(cli: CliType, modelId: string): ReturnType<typeof getEffort> {
+  return getEffort(cli, modelId);
 }

@@ -1,3 +1,4 @@
+import type { TSchema } from "typebox";
 import type { McpCallToolResult } from "../_shared/mcp.js";
 
 // ═════════════════════════════════════════════════════════
@@ -24,7 +25,7 @@ export interface AgentToolSpec {
   readonly whenNotToUse: readonly string[];
   readonly usageGuidelines: readonly string[];
   readonly guardrails?: readonly string[];
-  readonly parameters: Record<string, unknown>;
+  readonly parameters: TSchema;
   execute(args: unknown, ctx: AgentToolCtx): Promise<unknown>;
 }
 

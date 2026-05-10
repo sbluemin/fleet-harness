@@ -8,7 +8,7 @@
  * host는 result.status로만 분기하고 검증 로직을 재구현하지 않는다.
  */
 
-import { CLI_BACKENDS, type CliType } from "@sbluemin/unified-agent";
+import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
 import { getCliEffortLevels, getCliModels } from "../../admiral/agent/models.js";
 import { executeOneShot } from "../../admiral/agent/executor.js";
 import { getFleetDataDir } from "../../infra/data-dir/paths.js";

@@ -1,5 +1,5 @@
 packages:
-  - "packages/unified-agent"
+  - "engines/packages/*"
   - "packages/fleet-core"
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"

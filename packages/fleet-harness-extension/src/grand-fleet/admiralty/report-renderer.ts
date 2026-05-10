@@ -4,7 +4,7 @@
  * mission.report 수신 시 Admiralty LLM이
  * Admiral of the Navy (대원수)에게 후속 보고를 이어갈 수 있도록 보고서를 주입한다.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { infra } from "@sbluemin/fleet-core";
 import type { FleetId, MissionReportParams } from "@sbluemin/fleet-core/admiralty";

@@ -5,7 +5,7 @@
  * 공개 타입 및 내부 상태 타입을 정의합니다.
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 export type {
   BatchCliChoice,
   CarrierCliType,
@@ -106,6 +106,10 @@ export interface CarrierConfig {
   renderUser?: (...args: any[]) => any;
   /** carrier 메타데이터 (2-Tier: Routing + Composition) */
   carrierMetadata?: CarrierMetadata;
+  /** 소스레벨 기본 모델 ID — states.json에 저장된 값이 없을 때 폴백 */
+  defaultModel?: string;
+  /** 소스레벨 기본 추론 강도 — 신규 모델 엔트리 시딩 시에만 사용 */
+  defaultEffort?: string;
 }
 
 // ─── 내부 상태 타입 ──────────────────────────────────────

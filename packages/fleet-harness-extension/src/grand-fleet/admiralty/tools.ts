@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import type { Socket } from "node:net";
 import * as path from "node:path";
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 import {
   GRAND_FLEET_BROADCAST_DESCRIPTION,
   GRAND_FLEET_BROADCAST_LABEL,

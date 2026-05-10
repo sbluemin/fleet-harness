@@ -2,6 +2,8 @@
 
 `@sbluemin/fleet-harness-extension` is the Pi adapter package for Fleet. It owns Pi runtime wiring, TUI surfaces, host shell integration, and domain-specific adapters while consuming `@sbluemin/fleet-core` through public exports.
 
+This package consumes the active engine packages `@sbluemin/fleet-ai`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-coding-agent`, and `@sbluemin/fleet-unified-agent` from the workspace only. Do not replace those links with published npm references.
+
 ## Domain Adapters
 
 Pi-specific capabilities are organized into domain-mirroring adapters under `src/`:
@@ -25,3 +27,10 @@ Pi-specific capabilities are organized into domain-mirroring adapters under `src
 This package follows a **Flat Domain Architecture**. Instead of grouping code by Pi capability type (e.g., all commands in one folder), code is grouped by the Fleet domain it serves. This ensures that Pi registration logic lives alongside its corresponding domain adapter and UI.
 
 The package consumes `@sbluemin/fleet-core` public exports to bridge Fleet's domain logic into the Pi environment.
+
+Provider contract note:
+- `src/provider.ts` is the single Pi-side provider gateway and owns explicit host registration.
+- Upstream `@sbluemin/fleet-ai` built-in providers/OAuth providers are removed; no hidden bootstrap remains.
+- Legacy registry-filter monkeypatch/toggle flows are removed. Callers must preflight or ensure host registration before invoking provider-backed paths.
+
+Runtime settings and user resources are resolved from `.fleet/agent`, matching the active Fleet engine contract.

@@ -2,16 +2,16 @@
  * fleet/carrier/taskforce-config-overlay.ts — Task Force 백엔드별 모델 설정 오버레이
  *
  * 특정 캐리어의 Task Force 모델/effort 설정을 편집하는 인터랙티브 오버레이입니다.
- * Component + Focusable 인터페이스를 구현하여 ctx.ui.custom() overlay로 렌더링합니다.
+ * Component + Focusable 인터페이스를 구현하여 ctx.ui.custom() editor-replace로 렌더링합니다.
  *
  * 내비게이션: ↑↓ 백엔드 선택, Enter 모델 편집, R 리셋, Esc 닫기
  */
 
-import type { Component, Focusable, TUI } from "@mariozechner/pi-tui";
-import { Key, matchesKey } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Component, Focusable, TUI } from "@sbluemin/fleet-tui";
+import { Key, matchesKey } from "@sbluemin/fleet-tui";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "../fleet-core-facades.js";
-import type { ProviderModelInfo } from "@sbluemin/unified-agent";
+import type { ProviderModelInfo } from "@sbluemin/fleet-unified-agent";
 import {
   TASKFORCE_CLI_TYPES,
 } from "../fleet-core-facades.js";
@@ -35,7 +35,10 @@ interface BackendEntry {
 
 interface TaskForceOverlayProps {
   getAvailableModels: (cliType: string) => ProviderModelInfo;
-  getEffortLevels: (cliType: string) => string[] | null;
+  getEffort: (
+    cliType: string,
+    modelId: string,
+  ) => { supported: boolean; levels?: readonly string[]; default?: string };
   /** 백엔드별 현재 설정 반환 (origin 포함) */
   getBackendConfig: (cliType: string) => { model: string; effort: string | null; isCustom: boolean };
   /** 백엔드 설정 저장 */
@@ -54,6 +57,7 @@ type OverlayMode = "browse" | "model" | "effort" | "saving";
 const ANSI_RESET = "\x1b[0m";
 const ANSI_DIM = "\x1b[38;2;120;120;120m";
 const ANSI_ACCENT = "\x1b[38;2;100;180;255m";
+const MIN_EDITOR_CARD_WIDTH = 40;
 
 // ─── 컴포넌트 ────────────────────────────────────────────
 
@@ -135,10 +139,10 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   }
 
   render(width: number): string[] {
-    width = Math.max(40, width);
+    const frameWidth = resolveEditorCardWidth(width, MIN_EDITOR_CARD_WIDTH);
 
     const dim = (s: string) => this.theme.fg("dim", s);
-    const frame = createOverlayFrame(this.theme, width, ` Task Force Config — ${this.carrierDisplayName} `, ANSI_RESET);
+    const frame = createOverlayFrame(this.theme, frameWidth, ` Task Force Config — ${this.carrierDisplayName} `, ANSI_RESET);
 
     const lines: string[] = [];
     lines.push(frame.topBorder);
@@ -156,7 +160,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
         : " ";
 
       const modelStr = entry.isCustom ? entry.model : dim(entry.model);
-      const effortStr = entry.effort
+      const effortSupported = this.getEffortLevels(entry.cliType, entry.model).length > 0;
+      const effortStr = effortSupported && entry.effort
         ? ` ${dim("·")} ${entry.isCustom ? entry.effort : dim(entry.effort)}`
         : "";
       const configTag = entry.isCustom
@@ -179,7 +184,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
 
       // effort 드롭다운 (선택된 행, effort 편집 모드)
       if (isSelected && this.mode === "effort") {
-        const effortLevels = this.callbacks.getEffortLevels(entry.cliType) ?? [];
+        const effortLevels = this.getEffortLevels(entry.cliType, this.pendingModelId ?? entry.model);
         for (let j = 0; j < effortLevels.length; j++) {
           const level = effortLevels[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
@@ -253,7 +258,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
       return this.callbacks.getAvailableModels(entry.cliType).models.map((m) => ({ value: m.modelId }));
     }
     if (this.mode === "effort") {
-      return (this.callbacks.getEffortLevels(entry.cliType) ?? []).map((level) => ({ value: level }));
+      return this.getEffortLevels(entry.cliType, this.pendingModelId ?? entry.model).map((level) => ({ value: level }));
     }
     return [];
   }
@@ -284,8 +289,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
 
     const transition = buildModelEffortTransition({
       currentEffort: entry.effort,
-      effortChoices: this.callbacks.getEffortLevels(entry.cliType) ?? [],
-      fallbackEffort: this.callbacks.getEffortLevels(entry.cliType)?.[0] ?? null,
+      effortChoices: this.getEffortLevels(entry.cliType, selectedModel.modelId),
+      fallbackEffort: this.getDefaultEffort(entry.cliType, selectedModel.modelId),
       selectedModel: selectedModel.modelId,
     });
 
@@ -303,7 +308,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
     const entry = this.getSelectedEntry();
     if (!entry || !this.pendingModelId) return;
 
-    const effortLevels = this.callbacks.getEffortLevels(entry.cliType) ?? [];
+    const effortLevels = this.getEffortLevels(entry.cliType, this.pendingModelId);
     const selectedEffort = effortLevels[this.editCursor];
     if (!selectedEffort) return;
 
@@ -351,13 +356,13 @@ export class TaskForceConfigOverlay implements Component, Focusable {
       return;
     }
 
-    const effortLevels = this.callbacks.getEffortLevels(cliType);
-    if (effortLevels && selection.effort && !effortLevels.includes(selection.effort)) {
+    const effortLevels = this.getEffortLevels(cliType, selection.model);
+    if (selection.effort && !effortLevels.includes(selection.effort)) {
       this.failSelection(`${entry.displayName} effort 선택이 유효하지 않습니다.`);
       return;
     }
 
-    if (!effortLevels) {
+    if (effortLevels.length === 0) {
       delete selection.effort;
     }
 
@@ -382,6 +387,17 @@ export class TaskForceConfigOverlay implements Component, Focusable {
     this.tui.requestRender();
   }
 
+  private getEffortLevels(cliType: string, modelId: string): string[] {
+    const reasoning = this.callbacks.getEffort(cliType, modelId);
+    return reasoning.supported ? [...(reasoning.levels ?? [])] : [];
+  }
+
+  private getDefaultEffort(cliType: string, modelId: string): string | null {
+    const reasoning = this.callbacks.getEffort(cliType, modelId);
+    if (!reasoning.supported) return null;
+    return reasoning.default ?? reasoning.levels?.[0] ?? null;
+  }
+
   private getFooterHint(): string {
     if (this.mode === "saving") return "저장 중...";
     if (this.mode === "browse") return "↑↓ select  Enter edit  R reset  Esc close";
@@ -397,4 +413,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
 
 function toTaskForceCliType(value: string): TaskForceCliType | null {
   return (TASKFORCE_CLI_TYPES as readonly string[]).includes(value) ? value as TaskForceCliType : null;
+}
+
+function resolveEditorCardWidth(width: number, minWidth: number): number {
+  return Math.max(minWidth, width);
 }

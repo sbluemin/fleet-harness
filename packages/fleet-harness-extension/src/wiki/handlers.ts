@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@sbluemin/fleet-coding-agent";
 
 import { approvePatch, listQueue, rejectPatch, showQueue } from "@sbluemin/fleet-wiki";
 import { buildWikiCaptureDirective } from "@sbluemin/fleet-wiki";

@@ -24,9 +24,7 @@ const TYPEBOX_KEYS = new Set([
   "$schema",
 ]);
 
-const PI_BUILTIN_TOOLS = new Set([
-  "read", "bash", "edit", "write", "grep", "find", "ls",
-]);
+const PI_BUILTIN_TOOLS = new Set<string>();
 
 const sessionTools = new Map<string, RegisteredTool[]>();
 const sessionToolNames = new Map<string, Set<string>>();

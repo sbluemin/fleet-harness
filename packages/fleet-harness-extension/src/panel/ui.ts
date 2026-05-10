@@ -1,63 +1,106 @@
 /**
  * panel/ui.ts — 에이전트 패널 라이프사이클 API + 단축키 등록
  *
- * 패널 토글, 상세 뷰, 칼럼 업데이트, 단축키 등
+ * 패널 토글, 칼럼 업데이트, 단축키 등
  * 외부에서 호출하는 모든 패널 조작 API를 제공합니다.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { ANIM_INTERVAL_MS, BODY_H_STEP, formatPanelMultiColHint, PANEL_DETAIL_HINT } from "../fleet-core-facades.js";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import { ANIM_INTERVAL_MS, BODY_H_STEP } from "../fleet-core-facades.js";
 import { getActiveBackgroundJobCount, onActiveJobCountChange } from "../fleet-core-facades.js";
-import { getActiveJobs, getState, syncColsWithRegisteredOrder } from "./state.js";
+import { getActiveJobs, getState, makeFooterCols, PANEL_BRIDGE_HINT, syncColsWithRegisteredOrder } from "./state.js";
 import type { AgentCol } from "./types.js";
 import { detachWidgetSync, syncCurrentWidget, syncWidget } from "./widget-sync.js";
 import { getKeybindAPI } from "../keybinds.js";
 import { adjustPanelHeight } from "./config.js";
+import { setActiveEditorPanel } from "./editor-panel-bridge.js";
+import { AgentPanelEditor } from "./editor-panel.js";
 
 export type { AgentCol } from "./types.js";
 
 let unsubscribeActiveJobCount: (() => void) | null = null;
-
-// ─── 패널 상세 뷰 관리 ──────────────────────────────────
-
-/**
- * 패널 로컬 상세 뷰를 설정합니다.
- * trackId를 지정하면 해당 ColumnTrack의 1칼럼 상세 뷰로 전환합니다.
- * null이면 N칼럼 멀티 뷰로 복귀합니다.
- */
-export function setDetailView(
-  ctx: ExtensionContext,
-  trackId: string | null,
-): void {
-  const s = getState();
-  s.detailTrackId = trackId;
-
-  if (trackId === null) {
-    s.bottomHint = formatPanelMultiColHint();
-  } else {
-    s.bottomHint = PANEL_DETAIL_HINT;
-  }
-
-  syncWidget(ctx);
-}
+let activePanelDone: (() => void) | null = null;
+let activePanelPromise: Promise<void> | null = null;
 
 // ─── UI 토글 ─────────────────────────────────────────────
 
 /** 패널을 펼칩니다. */
 export function showAgentPanel(ctx: ExtensionContext): void {
-  const s = getState();
-  s.expanded = true;
-  syncWidget(ctx);
-  notifyToggle(true);
+  openAgentPanel(ctx);
 }
 
 /** 패널 표시를 토글합니다. 반환값은 토글 후의 expanded 상태. */
 export function toggleAgentPanel(ctx: ExtensionContext): boolean {
-  const s = getState();
-  s.expanded = !s.expanded;
+  if (activePanelDone || getState().expanded) {
+    dismissAgentPanel();
+    return false;
+  }
+
+  openAgentPanel(ctx);
+  return true;
+}
+
+function openAgentPanel(ctx: ExtensionContext): void {
+  if (!ctx.hasUI) return;
+  if (activePanelDone) return;
+
+  const state = getState();
+  state.expanded = true;
+  state.bottomHint = PANEL_BRIDGE_HINT;
   syncWidget(ctx);
-  notifyToggle(s.expanded);
-  return s.expanded;
+  notifyToggle(true);
+
+  try {
+    const panelPromise = ctx.ui.custom<void>(
+      (tui, theme, _keybindings, done) => {
+        activePanelDone = () => {
+          markAgentPanelClosed();
+          done();
+        };
+        const component = new AgentPanelEditor(tui, theme, {
+          close: () => {
+            activePanelDone?.();
+          },
+        });
+        setActiveEditorPanel(component);
+        return component;
+      },
+      {
+        overlay: false,
+      },
+    );
+
+    activePanelPromise = panelPromise;
+    void panelPromise.finally(() => {
+      if (activePanelPromise !== panelPromise) return;
+      markAgentPanelClosed();
+    });
+  } catch (error) {
+    markAgentPanelClosed();
+    throw error;
+  }
+}
+
+function dismissAgentPanel(): void {
+  const done = activePanelDone;
+  if (!done) {
+    markAgentPanelClosed();
+    return;
+  }
+  done();
+}
+
+function markAgentPanelClosed(): void {
+  const state = getState();
+  const wasExpanded = state.expanded;
+  state.expanded = false;
+  activePanelDone = null;
+  activePanelPromise = null;
+  setActiveEditorPanel(null);
+  syncCurrentWidget();
+  if (wasExpanded) {
+    notifyToggle(false);
+  }
 }
 
 // ─── 칼럼 업데이트 ───────────────────────────────────────
@@ -84,6 +127,7 @@ export function refreshAgentPanel(ctx: ExtensionContext): void {
 
 /** 세션 교체 시 패널 UI가 이전 ExtensionContext를 더 이상 사용하지 않도록 분리합니다. */
 export function detachAgentPanelUi(): void {
+  dismissAgentPanel();
   const s = getState();
   if (s.animTimer) {
     clearInterval(s.animTimer);
@@ -188,15 +232,20 @@ function notifyToggle(expanded: boolean): void {
   }
 }
 
-// ─── Job Bar 가상 포커스 ──────────────────────────────────
+// ─── Carrier Job HUD 가상 포커스 ──────────────────────────
 
-/** Job Bar 가상 포커스 활성 여부 */
+/** Carrier Job HUD 가상 포커스 활성 여부 */
 export function isJobBarMode(): boolean {
   return getState().jobBarMode;
 }
 
-/** Job Bar 가상 포커스 진입 */
+/** Carrier Job HUD 가상 포커스 진입 */
 export function enterJobBarMode(): void {
+  const carriers = makeFooterCols();
+  if (carriers.length === 0) {
+    exitJobBarMode();
+    return;
+  }
   const s = getState();
   s.jobBarMode = true;
   s.jobBarCursor = 0;
@@ -205,7 +254,7 @@ export function enterJobBarMode(): void {
   syncCurrentWidget();
 }
 
-/** Job Bar 가상 포커스 종료 */
+/** Carrier Job HUD 가상 포커스 종료 */
 export function exitJobBarMode(): void {
   const s = getState();
   s.jobBarMode = false;
@@ -214,30 +263,31 @@ export function exitJobBarMode(): void {
   syncCurrentWidget();
 }
 
-/** Job Bar 내 커서 이동 */
+/** Carrier Job HUD 내 커서 이동 */
 export function navigateJobBar(direction: "left" | "right"): void {
   const s = getState();
-  const jobs = getActiveJobs();
-  if (jobs.length === 0) { exitJobBarMode(); return; }
+  const carriers = makeFooterCols();
+  if (carriers.length === 0) { exitJobBarMode(); return; }
+  const currentCursor = s.jobBarCursor < 0 ? 0 : s.jobBarCursor;
   if (direction === "left") {
-    s.jobBarCursor = Math.max(0, s.jobBarCursor - 1);
+    s.jobBarCursor = Math.max(0, currentCursor - 1);
   } else {
-    s.jobBarCursor = Math.min(jobs.length - 1, s.jobBarCursor + 1);
+    s.jobBarCursor = Math.min(carriers.length - 1, currentCursor + 1);
   }
   syncCurrentWidget();
 }
 
-/** Job Bar 확장 상태 토글 */
+/** Carrier Job HUD 확장 상태 토글 */
 export function toggleJobBarExpanded(): void {
   const s = getState();
-  const jobs = getActiveJobs();
-  if (jobs.length === 0) { exitJobBarMode(); return; }
-  const cursor = Math.min(s.jobBarCursor, jobs.length - 1);
-  const job = jobs[cursor];
-  if (job) {
-    s.jobBarExpandedJobId = s.jobBarExpandedJobId === job.jobId
+  const carriers = makeFooterCols();
+  if (carriers.length === 0) { exitJobBarMode(); return; }
+  const cursor = Math.min(Math.max(0, s.jobBarCursor), carriers.length - 1);
+  const carrier = carriers[cursor];
+  if (carrier) {
+    s.jobBarExpandedJobId = s.jobBarExpandedJobId === carrier.cli
       ? null
-      : job.jobId;
+      : carrier.cli;
   }
   syncCurrentWidget();
 }
@@ -247,7 +297,7 @@ export function toggleJobBarExpanded(): void {
 export function registerAgentPanelShortcut(): void {
   const keybind = getKeybindAPI();
 
-  // ── Alt+P: 패널 토글 (기존 동작 유지 + 커서 초기화) ──
+  // ── Alt+P: 패널 editor-replace 진입/종료 토글 ──
   keybind.register({
     extension: "fleet",
     action: "panel-toggle",
@@ -255,41 +305,7 @@ export function registerAgentPanelShortcut(): void {
     description: "Fleet Bridge 표시/숨김 토글",
     category: "Fleet Bridge",
     handler: async (ctx) => {
-      const state = getState();
-      if (state.expanded) {
-        state.cursorColumn = -1;
-        if (state.detailTrackId) {
-          setDetailView(ctx, null);
-        }
-      }
       toggleAgentPanel(ctx);
-    },
-  });
-
-  // ── Ctrl+Enter: 커서 트랙 상세 뷰 토글 ──
-  keybind.register({
-    extension: "fleet",
-    action: "detail-toggle",
-    defaultKey: "ctrl+enter",
-    description: "첫 활성 트랙 상세 뷰 토글",
-    category: "Fleet Bridge",
-    handler: async (ctx) => {
-      const s = getState();
-      if (!s.expanded) return;
-
-      if (s.detailTrackId) {
-        setDetailView(ctx, null);
-        s.cursorColumn = -1;
-        syncWidget(ctx);
-        return;
-      }
-
-      const firstTrack = getActiveJobs()[0]?.tracks[0];
-      if (!firstTrack) return;
-
-      setDetailView(ctx, firstTrack.trackId);
-      s.cursorColumn = -1;
-      showAgentPanel(ctx);
     },
   });
 

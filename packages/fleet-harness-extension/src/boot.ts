@@ -1,6 +1,5 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
-import { registerFleetBrandingLifecycle } from "./branding/register.js";
 import registerBoot from "./fleet.js";
 import registerFleetWiki from "./wiki/ui.js";
 import { registerJob } from "./jobs.js";
@@ -44,11 +43,16 @@ export function bootFleet(ctx: ExtensionAPI): void {
     if (event.reason === "startup") return;
     reregisterCoreKeybinds(ctx);
   });
+  // fleet 첫 진입 시 이전 셸 출력과 scrollback을 비워 깨끗한 첫 화면을 보장한다.
+  ctx.on("session_start", (event, sessionCtx) => {
+    if (event.reason === "resume" || event.reason === "new") return;
+    if (!sessionCtx.hasUI) return;
+    process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+  });
   registerHudLifecycle(ctx, hudState);
   registerShellLifecycle(ctx);
   registerCoreKeybinds(ctx);
   registerWelcome(ctx);
-  registerFleetBrandingLifecycle(ctx);
 
   registerAgentPanelShortcut();
   registerCarrierStatusKeybind(ctx);

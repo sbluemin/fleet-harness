@@ -10,11 +10,12 @@
 
 import {
   UnifiedAgent,
+  getEffort,
   type CliType,
   type IUnifiedAgentClient,
   type McpServerConfig,
   type UnifiedClientOptions,
-} from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
 
 import { resolveAuthEnv } from "../../../infra/auth/index.js";
 import { getLogAPI } from "../../../infra/log/store.js";
@@ -23,6 +24,7 @@ import {
   type AgentSessionState,
   type AgentProviderState,
   getOrInitState,
+  getSessionLaunchConfig,
   setSessionLaunchConfig,
 } from "./state.js";
 import {
@@ -66,6 +68,12 @@ export interface EnsureResult {
   readonly session: AgentSessionState;
   readonly isNewSession: boolean;
 }
+
+type EffortResolution =
+  | { readonly kind: "explicit"; readonly effort: string }
+  | { readonly kind: "default"; readonly effort: string }
+  | { readonly kind: "clear"; readonly effort?: undefined }
+  | { readonly kind: "unspecified"; readonly effort?: string };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -142,6 +150,10 @@ export async function ensureSession(
 
   // 기존 세션 재사용 — 모델 변경 시 setModel
   if (session?.client && session.sessionId) {
+    const previousLaunchConfig = getSessionLaunchConfig(session.sessionKey);
+    const modelChangedAgainstLaunchConfig = previousLaunchConfig?.backendModel !== undefined
+      ? previousLaunchConfig.backendModel !== backendModel
+      : session.currentModel !== backendModel;
     if (session.currentModel !== backendModel) {
       debug(`모델 변경 감지: ${session.currentModel} → ${backendModel}`);
       try {
@@ -156,8 +168,22 @@ export async function ensureSession(
       }
     }
     if (session) {
-      if (effortOverrides?.effort) {
-        await applyPostConnectConfig(session.client!, session.cli, effortOverrides);
+      const effortResolution = resolveEffortForModelChange(
+        cli,
+        session.currentModel,
+        effortOverrides,
+        previousLaunchConfig?.effort,
+        modelChangedAgainstLaunchConfig,
+      );
+      const appliedEffort = await applyResolvedEffort(
+        session.client!,
+        session.cli,
+        session.currentModel,
+        effortResolution,
+      );
+      const storedEffort = getStoredEffort(effortResolution, appliedEffort);
+      if (modelChangedAgainstLaunchConfig && effortResolution.kind === "clear") {
+        debug(`모델 변경으로 effort fallback 제거: ${session.currentModel}`);
       }
       installToolCallRouter(state, session);
       session.needsRecovery = false;
@@ -168,7 +194,7 @@ export async function ensureSession(
         backendModel: session.currentModel,
         sessionId: session.sessionId ?? "",
         cwd: session.cwd,
-        ...(effortOverrides?.effort ? { effort: effortOverrides.effort } : {}),
+        effort: storedEffort,
         ...(Object.keys(reuseEnv).length > 0 ? { env: reuseEnv } : {}),
       });
       debug(`기존 세션 재사용: session=${formatSessionPrefix(session.sessionId!)}`);
@@ -228,10 +254,23 @@ export async function ensureSession(
   try {
     debug(savedSessionId ? `session/load 복원 시도: session=${formatSessionPrefix(savedSessionId)}` : `새 연결 시작: cli=${cli}`);
     client = await UnifiedAgent.build({ cli, sessionId: savedSessionId });
+    const connectEffortResolution = resolveEffortForModelChange(
+      cli,
+      backendModel,
+      effortOverrides,
+      savedSessionId ? getSessionLaunchConfig(key)?.effort : undefined,
+      false,
+    );
     let connectResult;
     try {
       connectResult = await client.connect(await buildConnectOptions(
-        cli, cwd, backendModel, systemPrompt, mcpServers, savedSessionId,
+        cli,
+        cwd,
+        backendModel,
+        systemPrompt,
+        mcpServers,
+        savedSessionId,
+        connectEffortResolution.effort,
       ));
       resumedFromSavedSession = !!savedSessionId;
     } catch (connectError) {
@@ -245,10 +284,28 @@ export async function ensureSession(
       client = await UnifiedAgent.build({ cli });
       resumedFromSavedSession = false;
       connectResult = await client.connect(await buildConnectOptions(
-        cli, cwd, backendModel, systemPrompt, mcpServers,
+        cli,
+        cwd,
+        backendModel,
+        systemPrompt,
+        mcpServers,
+        undefined,
+        connectEffortResolution.effort,
       ));
     }
-    await applyPostConnectConfig(client, cli, effortOverrides);
+    const newSessionEffortResolution = resolveEffortForModelChange(
+      cli,
+      backendModel,
+      effortOverrides,
+      undefined,
+      false,
+    );
+    const newSessionEffortApplied = await applyResolvedEffort(
+      client,
+      cli,
+      backendModel,
+      newSessionEffortResolution,
+    );
     newSession.client = client;
     newSession.sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? null;
     newSession.firstPromptSent = resumedFromSavedSession;
@@ -263,7 +320,7 @@ export async function ensureSession(
       backendModel,
       sessionId: newSession.sessionId ?? "",
       cwd: newSession.cwd,
-      ...(effortOverrides?.effort ? { effort: effortOverrides.effort } : {}),
+      effort: getStoredEffort(newSessionEffortResolution, newSessionEffortApplied),
       ...(Object.keys(launchEnv).length > 0 ? { env: launchEnv } : {}),
     });
     if (newSession.sessionId) {
@@ -501,6 +558,54 @@ export async function clearSessionsAndPreSpawn(state: AgentProviderState): Promi
 // Internal helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+function resolveEffortForModelChange(
+  cli: CliType,
+  model: string,
+  overrides: { effort?: string } | undefined,
+  fallbackEffort: string | undefined,
+  modelChanged: boolean,
+): EffortResolution {
+  if (overrides?.effort) {
+    return { kind: "explicit", effort: overrides.effort };
+  }
+
+  if (!modelChanged) {
+    return fallbackEffort
+      ? { kind: "unspecified", effort: fallbackEffort }
+      : { kind: "unspecified" };
+  }
+
+  const modelEffort = getEffort(cli, model);
+  return modelEffort.supported
+    ? { kind: "default", effort: modelEffort.default }
+    : { kind: "clear" };
+}
+
+async function applyResolvedEffort(
+  client: IUnifiedAgentClient,
+  cli: CliType,
+  model: string,
+  resolution: EffortResolution,
+): Promise<boolean> {
+  if (resolution.kind === "clear" || !resolution.effort) {
+    return false;
+  }
+  return applyPostConnectConfig(client, cli, model, { effort: resolution.effort });
+}
+
+function getStoredEffort(
+  resolution: EffortResolution,
+  applied: boolean,
+): string | null | undefined {
+  if (resolution.kind === "clear") {
+    return null;
+  }
+  if (resolution.kind === "unspecified" && !resolution.effort) {
+    return undefined;
+  }
+  return applied ? resolution.effort : null;
+}
+
 function debug(...args: unknown[]): void {
   const log = getLogAPI();
   log.debug("acp-provider", args.map(String).join(" "), { category: "acp" });
@@ -586,6 +691,7 @@ async function buildConnectOptions(
   systemPrompt?: string,
   mcpServers?: McpServerConfig[],
   sessionId?: string,
+  effort?: string,
 ): Promise<UnifiedClientOptions> {
   const connectOptions: UnifiedClientOptions = {
     cwd,
@@ -613,6 +719,10 @@ async function buildConnectOptions(
 
   if (sessionId) {
     connectOptions.sessionId = sessionId;
+  }
+
+  if (effort) {
+    connectOptions.effort = effort;
   }
 
   return connectOptions;

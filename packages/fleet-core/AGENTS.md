@@ -6,9 +6,9 @@
 
 `fleet-core` is **the** authoritative Fleet domain. Three principles direct every decision in this package:
 
-1. **Pi-agnostic by construction** — no Pi runtime, no Pi UI, no Pi-AI imports. The package compiles and runs without `fleet-harness-extension`.
+1. **Host-agnostic by construction** — no Fleet host runtime, no Fleet host UI, no Fleet-AI imports. The package compiles and runs without `fleet-harness-extension`.
 2. **Two execution patterns own two surfaces** — the streaming `admiral.session.*` + `admiral.events` module channel for long-lived ACP sessions (Pi `streamAcp`); the callback-pattern `admiral.executor.{executeWithPool, executeOneShot}` for closed-loop carrier turns. They share `internal/executor-engine.ts` pool/session-store wiring but never share their public surfaces.
-3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), MCP singleton (`_shared/mcp.ts`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/unified-agent` `CLI_BACKENDS`), and the fleet tool registry (`admiral.tools.list/invoke`) each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
+3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), MCP singleton (`_shared/mcp.ts`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), and the fleet tool registry (`admiral.tools.list/invoke`) each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
 
 ## Current Architecture Status
 
@@ -29,7 +29,7 @@
 | `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (`carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_squadron` / `carrier_taskforce` use a synthetic id). **Connect-time MCP**: every executor session receives a whitelist-scoped MCP server (via `EXECUTOR_MCP_TOOL_IDS`) so carriers can self-call `carrier_jobs`. No runtime-context tags are injected into executor requests. |
 | `lifecycle.ts` | `bindHostSession` / `shutdownAllSessions` | Pi `session_start`/`session_shutdown` integration point |
 | `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations (`carrier_dispatch` passes the resolved `carrierId`; squadron/taskforce pass synthetic ids) |
-| `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getCliModels` / `getCliEffortLevels` / `getThinkingLevels` | CLI/model codec |
+| `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getCliModels` / `getCliEffortLevels` / `getSelectableThinkingLevels` | CLI/model codec and selectable UI thinking-level policy |
 | `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
 | `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |
 
@@ -84,13 +84,13 @@ Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines
 ## Must Not Own
 
 - `ExtensionAPI`, `ExtensionContext`, `pi.on(...)`, `pi.registerTool(...)`, `pi.registerCommand(...)`, `pi.registerShortcut(...)`, `pi.registerProvider(...)`, or `pi.sendMessage(...)`
-- `@mariozechner/pi-coding-agent`, `@mariozechner/pi-tui`, or any Pi runtime wiring
-- Direct `@mariozechner/pi-ai` usage
-- TUI rendering that depends on Pi widgets, overlays, or editor components
+- `@sbluemin/fleet-coding-agent`, `@sbluemin/fleet-tui`, or any Fleet host runtime wiring
+- Direct `@sbluemin/fleet-ai` usage
+- TUI rendering that depends on Fleet host widgets, overlays, or editor components
 
 ## Import Boundaries
 
-- Do not import `@mariozechner/pi-coding-agent`, `@mariozechner/pi-tui`, `@mariozechner/pi-ai`, or `@anthropic-ai/*`.
+- Do not import `@sbluemin/fleet-*` or `@anthropic-ai/*`.
 - Public consumers must use the package root barrel or documented public subpaths only.
 - `fleet-core` may expose ports, adapters, and pure state machines, but Pi implementations live in `fleet-harness-extension`.
 - If a module needs Pi lifecycle hooks or UI registration, that code belongs in `fleet-harness-extension`, not here.
@@ -115,13 +115,13 @@ Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines
 
 ## CLI Provider Constants
 
-CLI provider constants are derived from `@sbluemin/unified-agent`'s `CLI_BACKENDS` SSoT:
+CLI provider constants are derived from `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` SSoT:
 
-- `CliType` (`keyof typeof CLI_BACKENDS`) is imported from `@sbluemin/unified-agent` — not a manual union.
+- `CliType` (`keyof typeof CLI_BACKENDS`) is imported from `@sbluemin/fleet-unified-agent` — not a manual union.
 - `CLI_PROVIDER_DISPLAY_NAMES` (auto-derived from `getProviderModels(cli).name`, i.e. `models.json` provider name, used as-is with no stripping) vs `CARRIER_DISPLAY_NAMES` (manual mapping for carrier personas: genesis, sentinel, vanguard).
 - `CLI_DISPLAY_NAMES` merges both maps for backward compatibility.
 - `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `CARRIER_RGBS` iterate `CLI_BACKENDS` using `colorRgb` / `bgColorRgb`.
 - `VALID_CLI_TYPES` and `CLI_TYPE_DISPLAY_ORDER` are computed from `Object.keys(CLI_BACKENDS)`.
 - `TASKFORCE_CLI_TYPES` (in `admiral/taskforce/types.ts`) is `Object.keys(CLI_BACKENDS) as CliType[]` — `carrier_taskforce` accepts every registered CLI provider, not a manual `claude/codex/gemini` whitelist. `TaskForceCliType` is an alias of `CliType`.
 - Task Force configuration hint (`TASKFORCE_CONFIGURE_HINT` in `admiral/taskforce/prompts.ts`) is built from `TASKFORCE_CLI_TYPES × CLI_DISPLAY_NAMES`, so adding a `CLI_BACKENDS` entry automatically expands the whitelist without editing prompts.
-- Model selection types (`ModelSelection`, `PerCliSettings`, `TaskForceSelection`) and runner `modelConfig` shapes carry only `model` / `effort` / `direct`. There is no `budgetTokens` field anywhere in the selection or runner contracts — providers without supported reasoning effort follow the Gemini pattern (`reasoningEffort.supported = false`) and surface no effort/budget controls.
+- Model selection types (`ModelSelection`, `PerCliSettings`, `TaskForceSelection`) and runner `modelConfig` shapes carry only `model` / `effort` / `direct`. There is no `budgetTokens` field anywhere in the selection or runner contracts — providers without supported reasoning effort follow the Gemini pattern (`effort.supported = false`) and surface no effort/budget controls.

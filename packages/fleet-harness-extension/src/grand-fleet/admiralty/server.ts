@@ -48,7 +48,7 @@ interface PendingRequest {
 const SOCKET_PERMISSION = 0o600;
 const REQUEST_TIMEOUT_MS = 30_000;
 const LOG_SOURCE = "grand-fleet-ipc";
-const GRAND_FLEET_SOCKET_DIR = path.join(os.homedir(), ".pi", "grand-fleet");
+const GRAND_FLEET_SOCKET_DIR = path.join(os.homedir(), ".fleet", "grand-fleet");
 
 export class AdmiraltyServer {
   private server: net.Server | null = null;

@@ -51,7 +51,7 @@ describe("normalizeSettings", () => {
   });
 
   it("strips effort for CLIs that do not support reasoning effort", () => {
-    // gemini는 현재 reasoningEffort.supported = false
+    // gemini는 현재 effort.supported = false
     const levels = getCliEffortLevels("gemini");
     if (levels !== null) return; // 지원하는 경우 skip
     const result = normalizeSettings({ cliType: "gemini", effort: "medium" });

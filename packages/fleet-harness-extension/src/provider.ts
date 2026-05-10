@@ -1,16 +1,20 @@
 /**
  * provider — Pi 호스트의 ACP/AI 어댑터 통합 모듈.
  *
- * 분할되어 있던 provider-stream / provider-runtime / provider-guard / provider-guard-command /
- * thinking-level-patch 파일들을 단일 모듈로 통합. 섹션 구분(═══)을 region 경계로 사용한다.
+ * 분할되어 있던 provider-stream / provider-runtime / thinking-level-patch 파일들을
+ * 단일 모듈로 통합. 섹션 구분(═══)을 region 경계로 사용한다.
  *
  * 책임 영역:
- *   #region pi-ai gateway        — @mariozechner/pi-ai re-export (유일한 게이트웨이)
+ *   #region fleet-ai gateway     — @sbluemin/fleet-ai re-export (유일한 게이트웨이)
  *   #region streamAcp adapter    — admiral.agent 공개 API → Pi AssistantMessageEventStream 매핑
  *   #region thinking-level patch — Pi AgentSession prototype monkeypatch
- *   #region provider-guard       — Pi ModelRegistry monkeypatch (허용 provider만 노출)
- *   #region provider-guard cmd   — Provider Guard toggle helper (called from fleet:system:settings)
- *   #region provider-runtime     — Provider 등록 + 세션 라이프사이클 hook
+ *   #region provider-runtime     — 호스트 주도 provider 등록 + 세션 라이프사이클 hook
+ *
+ * 주의:
+ *   - upstream built-in provider auto-registration은 제거되었다.
+ *   - 이 파일은 host-owned provider gateway만 담당한다.
+ *   - host registration 이전에 piCompleteSimple을 호출해 발생하는
+ *     "No API provider registered" 예외는 의도된 계약이다.
  *
  * imports → types/interfaces → constants → functions 순서 준수.
  */
@@ -18,12 +22,11 @@
 import {
   AgentSession,
   type ExtensionAPI,
-  type ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@sbluemin/fleet-coding-agent";
 import {
   completeSimple as piCompleteSimple,
   createAssistantMessageEventStream,
-} from "@mariozechner/pi-ai";
+} from "@sbluemin/fleet-ai";
 import type {
   Api,
   AssistantMessage,
@@ -34,16 +37,18 @@ import type {
   ThinkingBudgets,
   ThinkingLevel as PiThinkingLevel,
   Tool as PiTool,
-} from "@mariozechner/pi-ai";
+} from "@sbluemin/fleet-ai";
 import {
   CLI_BACKENDS,
+  getEffort,
   getModelsRegistry,
   type CliType,
-} from "@sbluemin/unified-agent";
+} from "@sbluemin/fleet-unified-agent";
 import type {
   AgentStreamEvent,
   ConversationHistoryEntry,
   FleetAdmiralServices,
+  SelectableThinkingLevel,
   ToolResultEnvelope,
 } from "@sbluemin/fleet-core";
 import {
@@ -53,7 +58,7 @@ import {
 } from "@sbluemin/fleet-core";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// #region pi-ai gateway (re-export)
+// #region fleet-ai gateway (re-export)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export { createAssistantMessageEventStream, piCompleteSimple as completeSimple };
@@ -88,7 +93,14 @@ interface StreamOptionsLike extends SimpleStreamOptions {
   conversationId?: string;
 }
 
+interface ModelEffort {
+  supported: boolean;
+  levels?: readonly string[];
+  default?: string;
+}
+
 const SESSION_SCOPE_PREFIX = "session";
+const MODEL_THINKING_LEVELS = new Set(["off", "low", "medium", "high", "xhigh", "max"]);
 
 /** sessionId → Pi turn event 핸들러 매핑 (host-local; fleet-core에 stream 객체 넣지 않음) */
 const activeStreams = new Map<string, (event: AgentStreamEvent) => void>();
@@ -101,8 +113,7 @@ let eventHandlerRegistered = false;
 const {
   buildModelId,
   buildProviderId,
-  getProviderIds,
-  getThinkingLevels,
+  getSelectableThinkingLevels,
   hashSystemPrompt,
   parseModelId,
 } = admiral.agent.models;
@@ -164,7 +175,11 @@ export function streamAcp(
   hashSystemPrompt(systemPrompt);
   const toolResults = extractAllToolResults(context);
   const isToolResultDelivery = toolResults.length > 0;
-  const effort = options?.reasoning === "minimal" ? "none" : options?.reasoning;
+  const requestedEffort = options?.reasoning;
+  const modelEffort = getModelEffort(cli, backendModel);
+  const effort = requestedEffort && modelEffort.supported && modelEffort.levels?.includes(requestedEffort)
+    ? requestedEffort
+    : undefined;
 
   const piStream = createAssistantMessageEventStream();
   const piOutput = createAssistantOutput(model);
@@ -306,16 +321,12 @@ function mapEventToPiStream(
       bt.ensureThinking(piStream, piOutput);
       bt.appendThinking(event.text, piStream, piOutput);
       break;
-    case "toolCall": {
-      const label = event.title || event.toolCallId;
-      if (label) {
-        bt.closeThinking(piStream, piOutput);
-        bt.ensureText(piStream, piOutput);
-        const isError = event.status === "error" || event.status === "failed";
-        const tag = isError ? "**✘**" : "**✔**";
-        const delta = `\n\n\`${label}\` ${tag}\n\n`;
-        bt.appendText(delta, piStream, piOutput);
-      }
+    case "toolCall":
+    case "toolCallUpdate": {
+      // ACP 분할 도착 UX: toolCall/toolCallUpdate 이벤트 자체는 출력하지 않는다.
+      // event-normalizer.ts가 status=completed/error 도달 시 풍부 title을 `text` 이벤트로
+      // 한 번 emit하므로, 1차 빈약 title("Read File", "grep" 등) 즉시 출력 + 4차 풍부 title
+      // 추가 출력으로 인한 두 줄 표시를 방지한다.
       break;
     }
     case "mcpToolCall":
@@ -549,12 +560,10 @@ function createErrorStream(message: string): AssistantMessageEventStream {
 // #region thinking-level patch — Pi AgentSession prototype monkeypatch
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type UiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
-
 type PatchableModel = Pick<Model<any>, "id" | "provider" | "reasoning">;
 
 type PatchableAgentSession = InstanceType<typeof AgentSession> & {
-  getAvailableThinkingLevels(): UiThinkingLevel[];
+  getAvailableThinkingLevels(): SelectableThinkingLevel[];
   supportsXhighThinking(): boolean;
   model?: PatchableModel;
 };
@@ -563,11 +572,8 @@ type PatchedThinkingLevelFn = (() => unknown) & {
   __fleetAcpThinkingLevelPatched?: boolean;
 };
 
-type OriginalGetAvailableThinkingLevels = (this: PatchableAgentSession) => UiThinkingLevel[];
+type OriginalGetAvailableThinkingLevels = (this: PatchableAgentSession) => SelectableThinkingLevel[];
 type OriginalSupportsXhighThinking = (this: PatchableAgentSession) => boolean;
-
-const THINKING_LEVEL_ORDER: UiThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-const ACP_UI_LEVELS = new Set<UiThinkingLevel>(["low", "medium", "high", "xhigh"]);
 
 let acpThinkingLevelPatchInstalled = false;
 
@@ -582,15 +588,15 @@ export function installAcpThinkingLevelPatch(): void {
     return;
   }
 
-  const getAvailableThinkingLevelsPatched: PatchedThinkingLevelFn = function getAvailableThinkingLevelsPatched(this: PatchableAgentSession): UiThinkingLevel[] {
-    const override = getAcpAvailableThinkingLevels(this.model);
-    return override ?? Reflect.apply(originalGetAvailableThinkingLevels, this, []) as UiThinkingLevel[];
+  const getAvailableThinkingLevelsPatched: PatchedThinkingLevelFn = function getAvailableThinkingLevelsPatched(this: PatchableAgentSession): SelectableThinkingLevel[] {
+    const override = getSelectableLevelsForModel(this.model);
+    return override ?? Reflect.apply(originalGetAvailableThinkingLevels, this, []) as SelectableThinkingLevel[];
   };
   getAvailableThinkingLevelsPatched.__fleetAcpThinkingLevelPatched = true;
   prototype.getAvailableThinkingLevels = getAvailableThinkingLevelsPatched as PatchableAgentSession["getAvailableThinkingLevels"];
 
   const supportsXhighThinkingPatched: PatchedThinkingLevelFn = function supportsXhighThinkingPatched(this: PatchableAgentSession): boolean {
-    const override = getAcpAvailableThinkingLevels(this.model);
+    const override = getSelectableLevelsForModel(this.model);
     if (override) return override.includes("xhigh");
     return Reflect.apply(originalSupportsXhighThinking, this, []) as boolean;
   };
@@ -600,177 +606,15 @@ export function installAcpThinkingLevelPatch(): void {
   acpThinkingLevelPatchInstalled = true;
 }
 
-export function reconcileAcpThinkingLevel(
-  pi: Pick<ExtensionAPI, "getThinkingLevel" | "setThinkingLevel">,
-  model: PatchableModel | undefined,
-): void {
-  const availableLevels = getAcpAvailableThinkingLevels(model);
-  if (!availableLevels) return;
-
-  const currentLevel = pi.getThinkingLevel() as UiThinkingLevel;
-  const nextLevel = availableLevels.includes(currentLevel)
-    ? currentLevel
-    : clampThinkingLevel(currentLevel, availableLevels);
-
-  if (nextLevel !== currentLevel) {
-    pi.setThinkingLevel(nextLevel);
-  }
-}
-
-function getAcpAvailableThinkingLevels(model: PatchableModel | undefined): UiThinkingLevel[] | null {
+function getSelectableLevelsForModel(model: PatchableModel | undefined): SelectableThinkingLevel[] | null {
   if (!model || !model.reasoning) return null;
-  const levels = getThinkingLevels(model.id, model.provider);
-  if (!levels) return null;
-  return levels.filter((level): level is UiThinkingLevel => ACP_UI_LEVELS.has(level as UiThinkingLevel));
-}
-
-function clampThinkingLevel(level: UiThinkingLevel, availableLevels: UiThinkingLevel[]): UiThinkingLevel {
-  const available = new Set(availableLevels);
-  const requestedIndex = THINKING_LEVEL_ORDER.indexOf(level);
-
-  if (requestedIndex === -1) return availableLevels[0] ?? "off";
-
-  for (let i = requestedIndex; i < THINKING_LEVEL_ORDER.length; i++) {
-    const candidate = THINKING_LEVEL_ORDER[i];
-    if (available.has(candidate)) return candidate;
-  }
-  for (let i = requestedIndex - 1; i >= 0; i--) {
-    const candidate = THINKING_LEVEL_ORDER[i];
-    if (available.has(candidate)) return candidate;
-  }
-  return availableLevels[0] ?? "off";
+  const parsed = parseModelId(model.id, model.provider) ?? parseModelId(model.id);
+  if (!parsed) return null;
+  return getSelectableThinkingLevels(parsed.cli, parsed.backendModel);
 }
 
 function isPatchedThinkingLevelFn(value: unknown): value is PatchedThinkingLevelFn {
   return typeof value === "function" && (value as PatchedThinkingLevelFn).__fleetAcpThinkingLevelPatched === true;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// #region provider-guard — Pi ModelRegistry monkeypatch
-// ═══════════════════════════════════════════════════════════════════════════
-
-export interface ProviderGuardSettings {
-  enabled?: boolean;
-}
-
-export interface ProviderGuardState {
-  enabled: boolean;
-}
-
-interface GuardedModel {
-  provider: string;
-}
-
-interface PatchableModelRegistry {
-  __providerGuardPatched?: boolean;
-  models: GuardedModel[];
-  refresh(): void;
-  getAvailable(): GuardedModel[];
-}
-
-const PROVIDER_GUARD_SECTION_KEY = "core-provider-guard";
-const DEFAULT_PROVIDER_GUARD_ENABLED = true;
-
-let guardState: ProviderGuardState | null = null;
-let guardedAllowedProviders: Set<string> | null = null;
-
-export function registerProviderGuard(pi: ExtensionAPI): void {
-  const fleetProviderIds = getProviderIds();
-  guardedAllowedProviders = new Set([...fleetProviderIds, "openai-codex"]);
-
-  pi.on("session_start", (_event, ctx) => {
-    patchModelRegistry(pi, ctx);
-  });
-}
-
-export function getGuardState(): ProviderGuardState {
-  if (!guardState) {
-    guardState = createProviderGuardState(loadProviderGuardSettings());
-  }
-  return guardState;
-}
-
-export function saveProviderGuardSettings(settings: ProviderGuardSettings): void {
-  const api = infra.settings.getSettingsService();
-  if (!api) throw new Error("Fleet-Core Settings API not available");
-  api.save(PROVIDER_GUARD_SECTION_KEY, settings);
-}
-
-export function filterProviderGuardModels(registry: PatchableModelRegistry): void {
-  if (!guardedAllowedProviders) return;
-  registry.models = registry.models.filter((model) => guardedAllowedProviders!.has(model.provider));
-}
-
-export function enforceProviderGuardAllowedModel(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  if (!guardedAllowedProviders) return;
-  const current = ctx.model;
-  if (!current || guardedAllowedProviders.has(current.provider)) return;
-
-  const fallback = ctx.modelRegistry
-    .getAvailable()
-    .find((model) => guardedAllowedProviders!.has(model.provider));
-
-  if (fallback) {
-    pi.setModel(fallback as Parameters<ExtensionAPI["setModel"]>[0]);
-  }
-}
-
-function loadProviderGuardSettings(): ProviderGuardSettings {
-  const api = infra.settings.getSettingsService();
-  if (!api) return {};
-  try {
-    return api.load<ProviderGuardSettings>(PROVIDER_GUARD_SECTION_KEY);
-  } catch {
-    return {};
-  }
-}
-
-function createProviderGuardState(settings: ProviderGuardSettings = {}): ProviderGuardState {
-  return { enabled: settings.enabled ?? DEFAULT_PROVIDER_GUARD_ENABLED };
-}
-
-function patchModelRegistry(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  const registry = ctx.modelRegistry as unknown as PatchableModelRegistry;
-
-  if (!registry.__providerGuardPatched) {
-    registry.__providerGuardPatched = true;
-
-    const originalRefresh = registry.refresh.bind(registry);
-    registry.refresh = () => {
-      originalRefresh();
-      if (getGuardState().enabled) {
-        filterProviderGuardModels(registry);
-        enforceProviderGuardAllowedModel(pi, ctx);
-      }
-    };
-  }
-
-  if (getGuardState().enabled) {
-    filterProviderGuardModels(registry);
-    enforceProviderGuardAllowedModel(pi, ctx);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// #region provider-guard command helper — toggle from fleet:system:settings
-// ═══════════════════════════════════════════════════════════════════════════
-
-export function toggleProviderGuardForCommand(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  const state = getGuardState();
-  state.enabled = !state.enabled;
-
-  saveProviderGuardSettings({ enabled: state.enabled });
-
-  const registry = ctx.modelRegistry as any;
-
-  if (state.enabled) {
-    filterProviderGuardModels(registry);
-    enforceProviderGuardAllowedModel(pi, ctx);
-  } else {
-    registry.refresh();
-  }
-
-  ctx.ui.notify(`Provider Guard: ${state.enabled ? "ON" : "OFF"}`, "info");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -815,10 +659,8 @@ export function registerProviderRuntime(
   log.registerCategory({ id: "acp-stderr", label: "ACP Stderr", description: "ACP CLI stderr 출력" });
 
   installAcpThinkingLevelPatch();
-  registerProviderGuard(pi);
 
   pi.on("session_start", (_event, ctx) => {
-    reconcileAcpThinkingLevel(pi, ctx.model);
     // reason 분기 제거 — 모든 session_start에서 bindHostSession 호출.
     // restore 호출 누락 시 sessionStore의 mapFilePath가 null로 남아 store.set이 no-op되고
     // 다음 /resume에서 saved sessionId를 찾지 못해 fresh 세션이 생긴다.
@@ -827,10 +669,6 @@ export function registerProviderRuntime(
 
   pi.on("session_tree", (_event, ctx) => {
     bindHostSession(ctx.sessionManager.getSessionId());
-  });
-
-  pi.on("model_select", (event) => {
-    reconcileAcpThinkingLevel(pi, event.model);
   });
 
   pi.on("session_shutdown", () => {
@@ -865,16 +703,36 @@ function buildProviderModels(
   const backend = CLI_BACKENDS[cli];
   if (!backend) return [] as ProviderModels;
 
-  const reasoning = provider.reasoningEffort.supported;
+  return provider.models.map((m) => {
+    const effort = getModelEffort(cli, m.modelId);
+    const defaultThinkingLevel = isModelThinkingLevel(effort.default) ? effort.default : undefined;
+    const thinkingLevelMap = buildThinkingLevelMap(effort);
 
-  return provider.models.map((m) => ({
-    id: buildModelId(cli, m.modelId),
-    name: m.name,
-    reasoning,
-    input: ["text", "image"] as ("text" | "image")[],
-    cost: { input: 0, output: 0 },
-    maxTokens: backend.defaultMaxTokens,
-  })) as unknown as ProviderModels;
+    return {
+      id: buildModelId(cli, m.modelId),
+      name: m.name,
+      reasoning: effort.supported,
+      defaultThinkingLevel,
+      thinkingLevelMap,
+      input: ["text", "image"] as ("text" | "image")[],
+      cost: { input: 0, output: 0 },
+      maxTokens: backend.defaultMaxTokens,
+    };
+  }) as unknown as ProviderModels;
+}
+
+function getModelEffort(cli: CliType, modelId: string): ModelEffort {
+  return getEffort(cli, modelId);
+}
+
+function buildThinkingLevelMap(effort: ModelEffort): NonNullable<Model<any>["thinkingLevelMap"]> | undefined {
+  const levels = effort.levels?.filter(isModelThinkingLevel);
+  if (!levels || levels.length === 0) return undefined;
+  return Object.fromEntries(levels.map((level) => [level, level])) as NonNullable<Model<any>["thinkingLevelMap"]>;
+}
+
+function isModelThinkingLevel(value: string | undefined): value is NonNullable<Model<any>["defaultThinkingLevel"]> {
+  return value !== undefined && MODEL_THINKING_LEVELS.has(value);
 }
 
 // 호환 별칭 — 이전 default export 사용처를 점진 정리하기 위해 유지

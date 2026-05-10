@@ -3,7 +3,7 @@
  *
  * Fleet 이벤트, 커맨드, 도구, 런타임, Status Overlay owner를 role별 모듈에 위임한다.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import type { CarrierMap, FleetStatus } from "@sbluemin/fleet-core/admiralty";
 import { infra } from "@sbluemin/fleet-core";

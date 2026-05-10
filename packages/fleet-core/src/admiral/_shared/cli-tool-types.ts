@@ -7,7 +7,7 @@
  * Cli 명칭만 사용합니다.
  */
 
-import type { AcpToolCall, AcpToolCallUpdate } from "@sbluemin/unified-agent";
+import type { AcpToolCall, AcpToolCallUpdate } from "@sbluemin/fleet-unified-agent";
 
 /** CLI tool call 이벤트 데이터 (ACP SDK re-alias) */
 export type { AcpToolCall as CliToolCall, AcpToolCallUpdate as CliToolCallUpdate };

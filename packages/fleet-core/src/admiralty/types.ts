@@ -6,7 +6,7 @@
  * 순서를 따른다.
  */
 
-import type { CliType } from "@sbluemin/unified-agent";
+import type { CliType } from "@sbluemin/fleet-unified-agent";
 
 export interface JsonRpcRequest {
   jsonrpc: "2.0";

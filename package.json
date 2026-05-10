@@ -1,25 +1,32 @@
 {
   "name": "fleet-harness",
   "version": "0.15.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git"
+  },
   "private": true,
+  "author": "sbluemin",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "pnpm -r build",
     "postinstall": "pnpm -r build"
   },
   "bin": {
-    "fleet": "bin/fleet.js",
-    "fleet-exp": "bin/fleet-exp.js",
+    "fleet": "./bin/fleet-main.mjs",
     "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs",
-    "gfleet": "bin/gfleet.js",
-    "fleet-dev": "bin/fleet-dev.js",
-    "gfleet-dev": "bin/gfleet-dev.js"
+    "fleet-dev": "bin/fleet-dev.js"
   },
   "devDependencies": {
-    "@sinclair/typebox": "^0.34.41",
-    "typescript": "^6.0.2"
+    "@types/node": "^24.3.0",
+    "typebox": "^1.1.24",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.119"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
+    "@sbluemin/fleet-coding-agent": "workspace:*",
+    "@sbluemin/fleet-harness-extension": "workspace:*",
+    "undici": "^7"
   }
 }

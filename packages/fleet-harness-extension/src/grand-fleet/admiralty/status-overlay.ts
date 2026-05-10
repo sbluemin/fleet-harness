@@ -3,10 +3,10 @@
  *
  * Admiral of the Navy (대원수)에게 상신할 연결 함대 현황을 상황판 형태로 표시한다.
  */
-import type { Theme } from "@mariozechner/pi-coding-agent";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { Component, Focusable, TUI } from "@mariozechner/pi-tui";
-import { Key, matchesKey } from "@mariozechner/pi-tui";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import type { Component, Focusable, TUI } from "@sbluemin/fleet-tui";
+import { Key, matchesKey } from "@sbluemin/fleet-tui";
 
 import { stripControlChars } from "@sbluemin/fleet-core/admiralty";
 import {

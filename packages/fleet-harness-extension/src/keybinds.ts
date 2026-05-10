@@ -3,13 +3,13 @@
  *
  * 배선(wiring)만 담당:
  *   - factory에서 실제 API 구현 주입 (큐 flush)
- *   - Alt+? 단축키로 키바인딩 오버레이 팝업 열기
+ *   - Alt+? 단축키로 키바인딩 editor-replace 팝업 열기
  */
 
-import type { Component, Focusable } from "@mariozechner/pi-tui";
-import { visibleWidth } from "@mariozechner/pi-tui";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Component, Focusable } from "@sbluemin/fleet-tui";
+import { visibleWidth } from "@sbluemin/fleet-tui";
+import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import type { Theme } from "@sbluemin/fleet-coding-agent";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fs from "node:fs";
@@ -216,10 +216,11 @@ function readKeybindingsFile(filePath: string): KeybindingsConfig | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Overlay (overlay.ts)
+// Editor Replace (editor-replace)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const KEY_WIDTH = 14;
+const MIN_EDITOR_CARD_WIDTH = 40;
 const PANEL_COLOR = "\x1b[38;2;180;160;220m";
 const ANSI_RESET = "\x1b[0m";
 
@@ -245,11 +246,11 @@ export class KeybindOverlay implements Component, Focusable {
   }
 
   render(width: number): string[] {
-    width = Math.max(30, width);
+    const frameWidth = resolveEditorCardWidth(width, MIN_EDITOR_CARD_WIDTH);
 
     const border = (s: string) => this.theme.fg("border", s);
     const dim = (s: string) => this.theme.fg("dim", s);
-    const innerWidth = width - 4;
+    const innerWidth = frameWidth - 4;
     const row = (content: string) => {
       const pad = Math.max(0, innerWidth - visibleWidth(content));
       return border("│ ") + content + " ".repeat(pad) + border(" │");
@@ -265,8 +266,8 @@ export class KeybindOverlay implements Component, Focusable {
 
     const title = " Keybindings ";
     const titleLen = title.length;
-    const sideLen = Math.max(0, Math.floor((width - 2 - titleLen) / 2));
-    const rightLen = Math.max(0, width - 2 - sideLen - titleLen);
+    const sideLen = Math.max(0, Math.floor((frameWidth - 2 - titleLen) / 2));
+    const rightLen = Math.max(0, frameWidth - 2 - sideLen - titleLen);
     const topBorder = border("╭" + "─".repeat(sideLen) + title + "─".repeat(rightLen) + "╮");
     const lines: string[] = [];
     lines.push(topBorder);
@@ -293,9 +294,9 @@ export class KeybindOverlay implements Component, Focusable {
       lines.push(emptyRow());
     }
 
-    lines.push(border("├" + "─".repeat(width - 2) + "┤"));
+    lines.push(border("├" + "─".repeat(frameWidth - 2) + "┤"));
     lines.push(row(dim("Esc close")));
-    lines.push(border("╰" + "─".repeat(width - 2) + "╯"));
+    lines.push(border("╰" + "─".repeat(frameWidth - 2) + "╯"));
 
     return lines;
   }
@@ -364,13 +365,7 @@ async function openKeybindPopup(ctx: ExtensionContext): Promise<void> {
     (_tui, theme, _keybindings, done) =>
       new KeybindOverlay(theme, bindings, done),
     {
-      overlay: true,
-      overlayOptions: {
-        width: "50%",
-        maxHeight: "70%",
-        anchor: "center",
-        margin: 1,
-      },
+      overlay: false,
     },
   );
 
@@ -379,4 +374,8 @@ async function openKeybindPopup(ctx: ExtensionContext): Promise<void> {
   } finally {
     activePopup = null;
   }
+}
+
+function resolveEditorCardWidth(width: number, minWidth: number): number {
+  return Math.max(minWidth, width);
 }

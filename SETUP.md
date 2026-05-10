@@ -5,15 +5,14 @@
 - [Node.js](https://nodejs.org/) (v18+)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed and authenticated
 
-## 0. Install pi-coding-agent and pnpm
+## 0. Install pnpm
 
 ```bash
-# pi-coding-agent provides the `pi` runtime.
-npm install -g @mariozechner/pi-coding-agent
-
 # pnpm is the package manager for this repository.
 npm install -g pnpm
 ```
+
+> The canonical `fleet` CLI lives in this repository under `engines/packages/coding-agent` and is linked globally from the workspace in Step 2.
 
 > The repository is pinned to a specific pnpm version via the `packageManager` field in `package.json`. If you have [Corepack](https://nodejs.org/api/corepack.html) enabled, run `corepack enable` once and Corepack will select that version automatically. Otherwise the globally installed pnpm is used as a fallback.
 
@@ -41,7 +40,7 @@ pnpm setup
 # and `export PATH="$PNPM_HOME:$PATH"` to use it without restarting the shell.)
 
 # Install all workspace dependencies. The root postinstall hook runs `pnpm -r build`,
-# which builds packages/unified-agent, packages/fleet-core, packages/fleet-wiki,
+# which builds the engine `unified-agent` package plus `fleet-core`, `fleet-wiki`,
 # packages/fleet-wiki-web, and packages/fleet-harness-extension in topological order.
 pnpm install
 
@@ -54,24 +53,32 @@ pnpm approve-builds --all
 # Register the Fleet wrapper commands globally.
 pnpm link --global
 
-# Register the unified-agent CLI used by Fleet provider diagnostics.
-pnpm --filter @sbluemin/unified-agent link --global
+# Register the Fleet unified-agent CLI used by provider diagnostics.
+pnpm --filter @sbluemin/fleet-unified-agent link --global
 ```
 
 > The repository uses pnpm workspaces (see `pnpm-workspace.yaml`); the root install is the single setup entry point. `pnpm install` writes a single `pnpm-lock.yaml` at the repo root and links each workspace package's local dependencies via symlinks. Cross-package deps are declared with the `workspace:*` protocol so pnpm orders builds topologically.
 >
-> `pnpm link --global` registers the global wrapper commands from this checkout:
+> Provider contract note:
 >
-> - `fleet` — launches `pi` with the standard Fleet mode.
-> - `fleet-exp` — launches standard Fleet mode with `PI_EXPERIMENTAL=1` enabled for the child process.
-> - `gfleet` — launches `pi` with Grand Fleet mode enabled for the child process.
-> - `fleet-dev` — launches standard Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/fleet-harness-extension/src/index.ts` directly from this checkout.
-> - `gfleet-dev` — launches Grand Fleet mode, enables `PI_EXPERIMENTAL=1`, and loads `packages/fleet-harness-extension/src/index.ts` directly from this checkout.
-> - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of the `pi` runtime — does not require pi-coding-agent to be installed or pi extensions to be configured.
+> - `@sbluemin/fleet-ai` no longer ships built-in vendor providers or built-in OAuth providers.
+> - Fleet host wiring owns provider registration explicitly through `packages/fleet-harness-extension/src/provider.ts`.
+> - No legacy registry-filter toggle or hidden upstream bootstrap remains; if host registration has not happened yet, provider-missing throws are the intended contract.
 >
-> `pnpm --filter @sbluemin/unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
+> `pnpm link --global` registers the global commands from this checkout:
+>
+> - `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness-extension` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `fleet-dev` (see below).
+> - `fleet-dev` — sets `FLEET_HARNESS_DEV=1` then delegates to `fleet-main.mjs`. Use for development with live source changes.
+> - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of any external runtime.
+>
+> > `pnpm --filter @sbluemin/fleet-unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
 >
 > Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/fleet-harness-extension/src/`; they do not require separate `pnpm install` commands.
+>
+> Fleet engine note:
+> - `engines/` contains the active Fleet engine package set (`tui`, `ai`, `agent`, `coding-agent`) rebranded to `@sbluemin/fleet-*`.
+> - All intra-repo links use `workspace:*`; do not replace them with published npm references.
+> - The engine `unified-agent` package is developed in-tree alongside the other Fleet engine packages and is linked globally as `ait` from this workspace.
 
 ### Install troubleshooting
 
@@ -80,41 +87,7 @@ pnpm --filter @sbluemin/unified-agent link --global
 - If CI reports `ERR_PNPM_OUTDATED_LOCKFILE`, the lockfile does not match a package manifest. Run `pnpm install --no-frozen-lockfile` locally, commit the updated `pnpm-lock.yaml`, then rerun CI.
 - If `pnpm build` cannot resolve a workspace package, confirm the consuming package lists it in `dependencies` with `workspace:*` and rerun `pnpm install`.
 
-## 3. Register extensions in pi settings
-
-Add or update the `extensions` field in your pi settings file so it points to the Fleet PI extension entry in this checkout.
-
-**Global** (`~/.pi/agent/settings.json`):
-
-```json
-{
-  "extensions": [
-    "<path-to-fleet-harness>/packages/fleet-harness-extension/src/index.ts"
-  ]
-}
-```
-
-> Replace `<path-to-fleet-harness>` with the actual path where you cloned the repository.
->
-> **Update rules (for AI one-shot setup):**
->
-> - **File or directory missing**: create `~/.pi/agent/` if needed, then write the JSON above.
-> - **File exists without an `extensions` field**: add the field, preserving every other top-level field.
-> - **`extensions` already contains a fleet-harness entry** (e.g. legacy `<path-to-fleet-harness>/extensions` from older checkouts, or any path under `<path-to-fleet-harness>/`): replace that entry with the path above. Do not append a duplicate.
-> - **`extensions` contains a pi-fleet-extension entry** (e.g. `<path-to-fleet-harness>/packages/pi-fleet-extension/src/index.ts` from older checkouts): replace that entry with the path above. Do not append a duplicate.
-> - **`extensions` references unrelated extensions**: keep them; only add or update the fleet-harness entry.
->
-> **Entry options:**
->
-> - Development entry: `packages/fleet-harness-extension/src/index.ts`
-> - Built entry after `pnpm --filter @sbluemin/fleet-harness-extension build`: `packages/fleet-harness-extension/dist/index.js`
-> - Product core: `packages/fleet-core/` contains Pi-agnostic runtime, public APIs, MCP/tool registry, job infrastructure, prompt policy, and metaphor logic.
-> - PI extension adapter: `packages/fleet-harness-extension/src/` wires keybind, settings, log, welcome, HUD, shell, thinking-timer, provider guard, ACP provider modules, metaphor UI, carriers, Admiral/Bridge libraries, Agent Panel, and unified pipeline.
-> - Fleet Wiki web surface: `packages/fleet-wiki-web/` provides the `fleet-wiki` CLI, a detached Node.js HTTP server, and a vanilla TypeScript SPA built with Vite. Reads `.fleet/knowledge/` from the current working directory and ships independently of the Pi runtime.
->
-> PI settings accept TypeScript or JavaScript extension entries. Use the TypeScript entry for local development, or the built JavaScript entry after building the workspace package.
-
-## 4. Verify
+## 3. Verify
 
 Run the build and CLI checks from the repository root:
 
@@ -128,7 +101,7 @@ ait --list-models
 which fleet-wiki
 ```
 
-Then launch `pi` and run `/reload`, then check:
+Then launch `fleet` and run `/reload`, then check:
 
 - No extension load errors in the output
 - `Alt+H` / `Alt+L` to move cursor between carrier slots
@@ -147,7 +120,7 @@ fleet-wiki   # opens http://127.0.0.1:<port> in the system browser
 > `.fleet/knowledge 디렉토리를 찾을 수 없습니다.` Run from a workspace that has been
 > initialized with the wiki store, or create the directory before retrying.
 
-## 5. Read the Guide
+## 4. Read the Guide
 
 fleet-harness ships built-in guide documents inside its own `.fleet/knowledge/` store. Run `fleet-wiki` from the repository root to browse them:
 

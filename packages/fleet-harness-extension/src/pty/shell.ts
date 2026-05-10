@@ -1,7 +1,7 @@
 // core-shell -- 네이티브 터미널 핸드오프 기반 쉘 팝업 실행기
 
 import { spawnSync } from "node:child_process";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 타입

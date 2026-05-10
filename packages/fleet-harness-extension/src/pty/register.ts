@@ -1,6 +1,6 @@
 // core-shell -- 확장 진입점
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
 import { setShellPopupContext } from "./shell.js";
 

@@ -1,3 +1,4 @@
+import { getEffort } from "@sbluemin/fleet-unified-agent";
 import type { BridgeCommandSpec, BridgeLaunchContext } from "./types.js";
 import { BRIDGE_TITLE_PREFIX } from "./types.js";
 
@@ -57,7 +58,7 @@ function buildClaudeCommand(context: BridgeLaunchContext): string {
   if (context.model) {
     args.push("--model", shellQuote(context.model));
   }
-  if (context.effort) {
+  if (shouldPassBridgeEffort(context)) {
     args.push("--effort", shellQuote(context.effort));
   }
   return args.join(" ");
@@ -71,7 +72,7 @@ function buildCodexCommand(context: BridgeLaunchContext): string {
   if (context.model) {
     args.push("-m", shellQuote(context.model));
   }
-  if (context.effort) {
+  if (shouldPassBridgeEffort(context)) {
     args.push("-c", shellQuote(`model_reasoning_effort="${context.effort}"`));
   }
   const command = args.join(" ");
@@ -124,4 +125,17 @@ function buildCodexArchivedSessionRestoreCommand(sessionId: string): string {
     "fi",
     "unset __fleet_codex_archived __fleet_codex_base __fleet_codex_date __fleet_codex_year __fleet_codex_month_day __fleet_codex_month __fleet_codex_day __fleet_codex_target",
   ].join("; ");
+}
+
+function shouldPassBridgeEffort(context: BridgeLaunchContext): context is BridgeLaunchContext & { effort: string } {
+  if (!context.effort) return false;
+  const modelEffort = getModelEffort(context.cli, context.model);
+  return modelEffort.supported && (modelEffort.levels?.includes(context.effort) ?? false);
+}
+
+function getModelEffort(
+  cli: BridgeLaunchContext["cli"],
+  modelId: string,
+): ReturnType<typeof getEffort> {
+  return getEffort(cli, modelId);
 }
