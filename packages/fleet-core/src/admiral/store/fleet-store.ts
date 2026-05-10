@@ -20,7 +20,7 @@ import {
 } from "@sbluemin/fleet-unified-agent";
 import { CLI_DISPLAY_NAMES } from "../../constants.js";
 import { disconnect } from "../agent/connections.js";
-import { getSessionStore } from "../agent/internal/session-runtime.js";
+import { flushSessionMappings, getCarrierSessionStore } from "../agent/internal/session-runtime.js";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../taskforce/types.js";
 
 // ─── 타입 정의 ──────────────────────────────────────────
@@ -176,7 +176,8 @@ export async function updateModelSelection(
     };
     states.models = { ...states.models, [carrierId]: merged };
   });
-  getSessionStore().clear(carrierId);
+  getCarrierSessionStore().clear(carrierId);
+  flushSessionMappings();
   await disconnect(carrierId);
 }
 
@@ -189,10 +190,11 @@ export async function updateAllModelSelections(
 ): Promise<void> {
   saveModels(config);
   const keys = Object.keys(config);
-  const sessionStore = getSessionStore();
+  const sessionStore = getCarrierSessionStore();
   for (const key of keys) {
     sessionStore.clear(key);
   }
+  flushSessionMappings();
   await Promise.allSettled(keys.map((key) => disconnect(key)));
 }
 

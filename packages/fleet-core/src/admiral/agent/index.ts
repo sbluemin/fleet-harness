@@ -33,6 +33,7 @@ export type {
 export type { ServiceStatusEvent, ServiceSnapshot } from "./service-status.js";
 export type { LaunchCommandData, BridgeOptions } from "./bridge.js";
 export type { AgentSessionLaunchConfig } from "./internal/state.js";
+export type { SessionPersistencePort } from "./internal/session-runtime.js";
 export type {
   ExecuteOptions,
   ExecResult,

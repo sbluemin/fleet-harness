@@ -7,21 +7,57 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { CLI_BACKENDS } from "@sbluemin/fleet-unified-agent";
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces
 // ═══════════════════════════════════════════════════════════════════════════
 
 type SessionMap = Record<string, string>;
 
-export interface SessionMapStore {
-  restore(piSessionId: string): void;
-  get(key: string): string | undefined;
-  set(key: string, sessionId: string): void;
-  clear(key: string): void;
+interface SessionPersistenceEntry {
+  readonly type: string;
+  readonly customType?: string;
+  readonly data?: unknown;
+}
+
+export interface SessionPersistencePort {
+  getSessionId(): string;
+  getEntries(): readonly SessionPersistenceEntry[];
+  appendCustomEntry(customType: string, data?: unknown): string;
+  flush(): void;
+}
+
+export interface HostSessionStore {
+  restore(entries: readonly SessionPersistenceEntry[]): void;
+  get(cli: string): string | undefined;
+  set(cli: string, sessionId: string): void;
+  clear(cli: string): void;
   getAll(): Readonly<SessionMap>;
 }
+
+export interface CarrierSessionStore {
+  /** Durable keys are raw executor poolKey values, including carrier IDs and synthetic squadron/taskforce keys. */
+  restore(entries: readonly SessionPersistenceEntry[]): void;
+  get(poolKey: string): string | undefined;
+  set(poolKey: string, sessionId: string): void;
+  clear(poolKey: string): void;
+  getAll(): Readonly<SessionMap>;
+}
+
+interface JsonlSessionStoreOptions {
+  customType: typeof HOST_SESSION_CUSTOM_TYPE | typeof CARRIER_SESSION_CUSTOM_TYPE;
+  appendEntry(customType: string, data: SessionMappingEntryData): void;
+}
+
+type SessionMappingEntryData =
+  | {
+  action: "set";
+  key: string;
+  sessionId: string;
+}
+  | {
+  action: "clear";
+  key: string;
+};
 
 export type ResumeFailureKind =
   | "dead-session"
@@ -37,7 +73,9 @@ export type ResumeFailureKind =
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const LEGACY_CLI_KEYS = new Set(Object.keys(CLI_BACKENDS));
+export const HOST_SESSION_CUSTOM_TYPE = "fleet/host-session";
+export const CARRIER_SESSION_CUSTOM_TYPE = "fleet/carrier-session";
+
 const DEAD_SESSION_PATTERNS = [
   /session not found/i,
   /unknown session/i,
@@ -53,7 +91,15 @@ const AUTH_PATTERNS = [
   /invalid api key/i,
 ];
 
-const noopStore: SessionMapStore = {
+const noopHostStore: HostSessionStore = {
+  restore() {},
+  get() { return undefined; },
+  set() {},
+  clear() {},
+  getAll() { return {}; },
+};
+
+const noopCarrierStore: CarrierSessionStore = {
   restore() {},
   get() { return undefined; },
   set() {},
@@ -70,75 +116,49 @@ export function initRuntime(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  sessionStore = createSessionMapStore(path.join(dir, "session-maps"));
+  deleteLegacySessionMaps(path.join(dir, "session-maps"));
+  const stores = createJsonlSessionStores();
+  hostSessionStore = stores.host;
+  carrierSessionStore = stores.carrier;
+  activeSessionPort = null;
 }
 
-export function onHostSessionChange(piSessionId: string): void {
-  sessionStore?.restore(piSessionId);
+export function onHostSessionChange(piSessionId: string, sessionPort?: SessionPersistencePort): void {
+  if (!sessionPort || sessionPort.getSessionId() !== piSessionId) {
+    activeSessionPort = null;
+    hostSessionStore?.restore([]);
+    carrierSessionStore?.restore([]);
+    return;
+  }
+  activeSessionPort = sessionPort;
+  const entries = sessionPort.getEntries();
+  hostSessionStore?.restore(entries);
+  carrierSessionStore?.restore(entries);
+  flushSessionMappings();
 }
 
-export function getSessionStore(): SessionMapStore {
-  return sessionStore ?? noopStore;
+export function getHostSessionStore(): HostSessionStore {
+  return hostSessionStore ?? noopHostStore;
 }
 
-export function getSessionId(key: string): string | undefined {
-  return sessionStore?.get(key);
+export function getCarrierSessionStore(): CarrierSessionStore {
+  return carrierSessionStore ?? noopCarrierStore;
+}
+
+export function getSessionId(poolKey: string): string | undefined {
+  return carrierSessionStore?.get(poolKey);
 }
 
 export function getDataDir(): string | null {
   return dataDir;
 }
 
-export function createSessionMapStore(sessionDir: string): SessionMapStore {
-  let currentMap: SessionMap = {};
-  let mapFilePath: string | null = null;
-
-  function persist(): void {
-    if (!mapFilePath) return;
-    try {
-      const dir = path.dirname(mapFilePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(mapFilePath, JSON.stringify(currentMap, null, 2));
-    } catch {
-      // 세션 맵 저장 실패는 ACP 요청 자체를 막지 않는다.
-    }
+export function flushSessionMappings(): void {
+  try {
+    activeSessionPort?.flush();
+  } catch {
+    // 세션 매핑 checkpoint 실패는 ACP 요청 자체를 막지 않는다.
   }
-
-  return {
-    restore(piSessionId: string): void {
-      currentMap = {};
-      mapFilePath = null;
-      if (!piSessionId || !sessionDir) return;
-
-      mapFilePath = path.join(sessionDir, `${piSessionId}.json`);
-      try {
-        if (fs.existsSync(mapFilePath)) {
-          currentMap = JSON.parse(fs.readFileSync(mapFilePath, "utf-8"));
-          if (migrateLegacyKeys(currentMap)) {
-            persist();
-          }
-        }
-      } catch {
-        currentMap = {};
-      }
-    },
-    get(key: string): string | undefined {
-      return currentMap[key];
-    },
-    set(key: string, sessionId: string): void {
-      if (currentMap[key] === sessionId) return;
-      currentMap[key] = sessionId;
-      persist();
-    },
-    clear(key: string): void {
-      if (!(key in currentMap)) return;
-      delete currentMap[key];
-      persist();
-    },
-    getAll(): Readonly<SessionMap> {
-      return { ...currentMap };
-    },
-  };
 }
 
 export function classifyResumeFailure(error: unknown): ResumeFailureKind {
@@ -167,17 +187,95 @@ export function isDeadSessionError(err: unknown): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let dataDir: string | null = null;
-let sessionStore: SessionMapStore | null = null;
+let activeSessionPort: SessionPersistencePort | null = null;
+let hostSessionStore: HostSessionStore | null = null;
+let carrierSessionStore: CarrierSessionStore | null = null;
 
-function migrateLegacyKeys(map: SessionMap): boolean {
-  let migrated = false;
-  for (const key of LEGACY_CLI_KEYS) {
-    if (key in map) {
-      delete map[key];
-      migrated = true;
+function createJsonlSessionStores(): { host: HostSessionStore; carrier: CarrierSessionStore } {
+  return {
+    host: createJsonlSessionStore({
+      customType: HOST_SESSION_CUSTOM_TYPE,
+      appendEntry,
+    }),
+    carrier: createJsonlSessionStore({
+      customType: CARRIER_SESSION_CUSTOM_TYPE,
+      appendEntry,
+    }),
+  };
+}
+
+function createJsonlSessionStore(options: JsonlSessionStoreOptions): HostSessionStore & CarrierSessionStore {
+  let currentMap: SessionMap = {};
+
+  return {
+    restore(entries: readonly SessionPersistenceEntry[]): void {
+      currentMap = replaySessionMappings(entries, options.customType);
+    },
+    get(key: string): string | undefined {
+      return currentMap[key];
+    },
+    set(key: string, sessionId: string): void {
+      if (!key || !sessionId || currentMap[key] === sessionId) return;
+      currentMap[key] = sessionId;
+      options.appendEntry(options.customType, { action: "set", key, sessionId });
+    },
+    clear(key: string): void {
+      if (!key || !(key in currentMap)) return;
+      delete currentMap[key];
+      options.appendEntry(options.customType, { action: "clear", key });
+    },
+    getAll(): Readonly<SessionMap> {
+      return { ...currentMap };
+    },
+  };
+}
+
+function appendEntry(customType: string, data: SessionMappingEntryData): void {
+  try {
+    activeSessionPort?.appendCustomEntry(customType, data);
+  } catch {
+    // 세션 매핑 append 실패는 ACP 요청 자체를 막지 않는다.
+  }
+}
+
+function replaySessionMappings(
+  entries: readonly SessionPersistenceEntry[],
+  customType: typeof HOST_SESSION_CUSTOM_TYPE | typeof CARRIER_SESSION_CUSTOM_TYPE,
+): SessionMap {
+  const map: SessionMap = {};
+  for (const entry of entries) {
+    if (entry.type !== "custom" || entry.customType !== customType) continue;
+    const data = parseMappingEntryData(entry.data);
+    if (!data) continue;
+    if (data.action === "set") {
+      map[data.key] = data.sessionId;
+    } else {
+      delete map[data.key];
     }
   }
-  return migrated;
+  return map;
+}
+
+function parseMappingEntryData(data: unknown): SessionMappingEntryData | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const action = record.action;
+  const key = record.key;
+  const sessionId = record.sessionId;
+  if ((action !== "set" && action !== "clear") || typeof key !== "string" || key.length === 0) return null;
+  if (action === "set") {
+    if (typeof sessionId !== "string" || sessionId.length === 0) return null;
+    return { action, key, sessionId };
+  }
+  return { action, key };
+}
+
+function deleteLegacySessionMaps(sessionDir: string): void {
+  try {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+  } catch {
+    // 레거시 session-maps 삭제 실패는 non-fatal이다.
+  }
 }
 
 function extractErrorMessage(error: unknown): string {

@@ -28,8 +28,8 @@ import {
   setSessionLaunchConfig,
 } from "./state.js";
 import {
-  getSessionStore,
   classifyResumeFailure,
+  getHostSessionStore,
   isDeadSessionError,
 } from "./session-runtime.js";
 import { applyPostConnectConfig } from "./post-connect.js";
@@ -245,9 +245,8 @@ export async function ensureSession(
     lastError: null,
   };
 
-  const store = getSessionStore();
-  const storeKey = getHostSessionStoreKey(cli, scopeKey);
-  const savedSessionId = store.get(storeKey) ?? undefined;
+  const store = getHostSessionStore();
+  const savedSessionId = store.get(cli) ?? undefined;
   let client: IUnifiedAgentClient | null = null;
   let resumedFromSavedSession = false;
 
@@ -278,7 +277,7 @@ export async function ensureSession(
       if (classifyResumeFailure(connectError) !== "dead-session") throw connectError;
 
       debug(`session/load 실패, fresh fallback: session=${formatSessionPrefix(savedSessionId)} ${errorMessage(connectError)}`);
-      store.clear(storeKey);
+      store.clear(cli);
       await client.disconnect().catch(() => {});
       client.removeAllListeners();
       client = await UnifiedAgent.build({ cli });
@@ -310,7 +309,7 @@ export async function ensureSession(
     newSession.sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? null;
     newSession.firstPromptSent = resumedFromSavedSession;
     if (newSession.sessionId) {
-      store.set(storeKey, newSession.sessionId);
+      store.set(cli, newSession.sessionId);
     }
     registerSession(state, newSession);
     installToolCallRouter(state, newSession);
@@ -635,10 +634,6 @@ function isProviderClientAlive(client: IUnifiedAgentClient): boolean {
 
 function getSessionKey(cli: CliType, scopeKey: string): string {
   return `${SESSION_KEY_PREFIX}:${cli}:${scopeKey}`;
-}
-
-function getHostSessionStoreKey(cli: CliType, _scopeKey: string): string {
-  return `host:${cli}`;
 }
 
 function getSessionByScope(

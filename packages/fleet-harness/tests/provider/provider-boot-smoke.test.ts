@@ -66,18 +66,20 @@ describe("provider boot smoke", () => {
     const sessionStart = mockState.handlers.get("session_start");
     expect(sessionStart).toBeTruthy();
 
+    const sessionManager = {
+      getSessionId: () => "pi-session-boot",
+    };
+
     expect(() =>
       sessionStart?.(
         { reason: "boot" },
         {
           model: undefined,
-          sessionManager: {
-            getSessionId: () => "pi-session-boot",
-          },
+          sessionManager,
         },
       ),
     ).not.toThrow();
 
-    expect(mockState.bindHostSessionMock).toHaveBeenCalledWith("pi-session-boot");
+    expect(mockState.bindHostSessionMock).toHaveBeenCalledWith("pi-session-boot", sessionManager);
   });
 });

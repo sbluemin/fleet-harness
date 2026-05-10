@@ -32,7 +32,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 
 | Concept | Owner | Rationale |
 |---------|-------|-----------|
-| Session persistence (`<piSessionId>.json` carrier→ACP map) | `admiral/agent/internal/session-runtime.ts` | Resume/restore semantics depend on a single in-memory cache backed by one file. |
+| Session persistence (host/carrier → ACP sessionId mappings as JSONL custom entries) | `admiral/agent/internal/session-runtime.ts` | Resume/restore semantics backed by the host JSONL session file with `fleet/host-session` and `fleet/carrier-session` customTypes. |
 | Track status enum | `admiral/_shared/carrier-job-events.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; legacy `AgentStatus`/`ColStatus` are removed. |
 | MCP server URL + token routing | `admiral/_shared/mcp.ts` lazy singleton | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
 | CLI provider catalog | `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |

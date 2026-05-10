@@ -129,16 +129,18 @@ describe("provider register", () => {
     const sessionStart = mockState.handlers.get("session_start");
     expect(sessionStart).toBeTruthy();
 
+    const sessionManager = {
+      getSessionId: () => "pi-session-resume",
+    };
+
     sessionStart?.(
       { reason: "resume" },
       {
         model: { id: "GPT-5.4 (Unified)" },
-        sessionManager: {
-          getSessionId: () => "pi-session-resume",
-        },
+        sessionManager,
       },
     );
 
-    expect(mockFleetCore.bindHostSession).toHaveBeenCalledWith("pi-session-resume");
+    expect(mockFleetCore.bindHostSession).toHaveBeenCalledWith("pi-session-resume", sessionManager);
   });
 });

@@ -664,11 +664,11 @@ export function registerProviderRuntime(
     // reason 분기 제거 — 모든 session_start에서 bindHostSession 호출.
     // restore 호출 누락 시 sessionStore의 mapFilePath가 null로 남아 store.set이 no-op되고
     // 다음 /resume에서 saved sessionId를 찾지 못해 fresh 세션이 생긴다.
-    bindHostSession(ctx.sessionManager.getSessionId());
+    bindHostSession(ctx.sessionManager.getSessionId(), ctx.sessionManager);
   });
 
   pi.on("session_tree", (_event, ctx) => {
-    bindHostSession(ctx.sessionManager.getSessionId());
+    bindHostSession(ctx.sessionManager.getSessionId(), ctx.sessionManager);
   });
 
   pi.on("session_shutdown", () => {

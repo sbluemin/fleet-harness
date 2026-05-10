@@ -65,6 +65,9 @@ interface PiServiceStatusContextLike {
   hasUI?: boolean;
   sessionManager?: {
     getSessionId?: () => string;
+    getEntries?: () => readonly { type: string; customType?: string; data?: unknown }[];
+    appendCustomEntry?: (customType: string, data?: unknown) => string;
+    flush?: () => void;
   };
   ui?: {
     notify?: (message: string, level: "info" | "warning") => void;
@@ -341,7 +344,7 @@ function persistDirectChatIfEmpty(ctx: ExtensionContext): void {
 
 function bindFleetHostSession(ctx: ExtensionContext): void {
   const sessionId = ctx.sessionManager.getSessionId();
-  bindHostSession(sessionId);
+  bindHostSession(sessionId, ctx.sessionManager);
   syncOperationNameSession(sessionId);
   cleanIdle();
   refreshAgentPanel(ctx);

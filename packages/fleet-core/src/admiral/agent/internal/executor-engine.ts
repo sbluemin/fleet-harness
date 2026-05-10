@@ -23,7 +23,7 @@ import {
 
 import { resolveAuthEnv } from "../../../infra/auth/index.js";
 import { getLogAPI } from "../../../infra/log/store.js";
-import { getSessionStore, classifyResumeFailure } from "./session-runtime.js";
+import { classifyResumeFailure, flushSessionMappings, getCarrierSessionStore } from "./session-runtime.js";
 import {
   installExecutorToolCallRouter,
   cleanupExecutorSession,
@@ -109,7 +109,7 @@ const launchConfigs = new Map<string, LaunchConfig>();
 
 export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
   const { poolKey, cliType, request, cwd, signal } = opts;
-  const store = getSessionStore();
+  const store = getCarrierSessionStore();
 
   let responseText = "";
   let thoughtText = "";
@@ -265,6 +265,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     if (!needsConnect && hasSystemPromptDrift(client, opts.connectSystemPrompt ?? null)) {
       debugSystemPromptDrift("executeWithPool", poolKey, cliType);
       store.clear(poolKey);
+      flushSessionMappings();
       if (poolEntry) {
         if (poolEntry.mcpSessionToken) {
           cleanupExecutorSession(poolEntry.mcpSessionToken);
@@ -305,6 +306,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         );
 
         store.clear(poolKey);
+        flushSessionMappings();
         if (poolEntry) delete poolEntry.sessionId;
         delete connectOpts.sessionId;
 
