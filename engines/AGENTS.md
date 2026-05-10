@@ -3,6 +3,20 @@
 > 이 디렉토리는 Fleet 핵심 엔진 패키지 모음입니다.
 > 각 패키지는 선언된 경계 안에서 직접 개발·수정할 수 있으며, 변경 후에는 해당 wave의 빌드/테스트 게이트를 통과해야 합니다.
 
+## Domain Agnosticism (최상위 규칙)
+
+> **Engines는 Fleet 도메인을 알지 않는다.**
+>
+> 이 규칙은 본 문서의 다른 모든 항목에 우선한다. `Scope Boundaries`·`Working Rules`와 충돌할 경우 이 규칙이 승리한다.
+
+- 이 디렉토리의 모든 패키지(`fleet-coding-agent`, `fleet-ai`, `fleet-agent-core`, `fleet-tui`)는 Fleet 도메인 식별자·로직·의미를 코드·타입·상수·문서에 포함하지 않는다.
+- **금지 대상**: carrier ID(`nimitz`, `kirov`, `genesis`, `ohio`, `sentinel`, `vanguard`, `tempest`, `chronicle` 등), `host:<cli>` 키 패턴, `admiral`/`fleet_*`/`carrier_*` 등 Fleet 페르소나·프로토콜·매핑을 직접 가리키는 메서드·필드·문자열·타입.
+- **Fleet 도메인 영속·확장이 필요할 때**: 엔진은 도메인 무지의 **generic 확장 지점**만 제공한다. 예: `SessionManager.appendCustomEntry(customType, data)`, `CustomEntry`/`CustomMessageEntry`의 `customType` 문자열, 제네릭 `details?: T`. `customType` 문자열의 의미는 호출자(`fleet-core`)에서만 정의·해석하며, 엔진 코드는 이 문자열을 해석하지 않는다.
+- **호환성 시험**: 엔진 API에 시그니처를 추가·변경할 때마다 "Fleet 외부의 임의 컨슈머가 동일 엔진을 그대로 사용할 수 있는가"를 자가 점검한다. 답이 "아니오"이면 그 시그니처는 도메인이 침투한 것이며 거절한다.
+- **위반 예**: `appendCarrierMapping()`·`getCarrierMapping()` 같은 Fleet-aware 메서드 추가, 엔진 내부에 `customType: "fleet_carrier_mapping"` 상수 박기, 엔진 타입에 `carrierId`·`hostCli` 필드 추가, 엔진 문서/주석에 carrier ID 예시를 박아 기본 사용처로 암시하기.
+- **준수 예**: fleet-core가 `sessionManager.appendCustomEntry("fleet/carrier-map", { op, key, sid })`로 호출하고, 엔진은 그 customType 문자열의 의미를 전혀 모름.
+- **운영 지점**: 신규 엔진 PR/wave에서는 도메인 무지 자가 점검 결과를 변경 노트에 1줄로 명시한다(예: "no fleet-domain identifiers introduced").
+
 ## Identity
 
 | 항목 | 값 |
