@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-05-10
+
 ### Changed
 - [core] Host and carrier ACP session mappings now persist as `fleet/host-session` and `fleet/carrier-session` custom entries inside the host JSONL session file instead of a separate `~/.fleet/session-maps/<pid>.json` sidecar; legacy `session-maps/` directory is auto-deleted once at boot with no data preserved
 - [harness] Package and workspace directory renamed from fleet-harness-extension to fleet-harness
