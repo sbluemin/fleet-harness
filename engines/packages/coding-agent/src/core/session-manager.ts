@@ -782,6 +782,13 @@ export class SessionManager {
 		return this.persist;
 	}
 
+	flush(): void {
+		if (!this.persist || !this.sessionFile) return;
+		if (this.flushed) return;
+		this._rewriteFile();
+		this.flushed = true;
+	}
+
 	getCwd(): string {
 		return this.cwd;
 	}
@@ -803,6 +810,10 @@ export class SessionManager {
 
 		const hasAssistant = this.fileEntries.some((e) => e.type === "message" && e.message.role === "assistant");
 		if (!hasAssistant) {
+			if (this.flushed) {
+				appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
+				return;
+			}
 			// Mark as not flushed so when assistant arrives, all entries get written
 			this.flushed = false;
 			return;

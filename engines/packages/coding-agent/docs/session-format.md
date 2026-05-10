@@ -377,6 +377,7 @@ Key methods for working with sessions programmatically.
 - `newSession(options?)` - Start a new session (options: `{ parentSession?: string }`)
 - `setSessionFile(path)` - Switch to a different session file
 - `createBranchedSession(leafId)` - Extract branch to new session file
+- `flush()` - Force current in-memory session entries to disk when persistence is enabled
 
 ### Instance Methods - Appending (all return entry ID)
 - `appendMessage(message)` - Add message
