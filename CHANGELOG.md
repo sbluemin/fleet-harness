@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-05-10
+
 ### Changed
 - [core] Carrier job archive serializer optimized to reduce token consumption by ~67% through compact JSON formatting, removal of header metadata and per-block ISO timestamps, and elimination of pretty-print indentation
 

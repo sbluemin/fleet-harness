@@ -1,6 +1,6 @@
 {
 	"name": "@sbluemin/fleet-coding-agent",
-	"version": "0.17.0",
+	"version": "0.17.1",
 	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
 	"repository": {
 		"type": "git",

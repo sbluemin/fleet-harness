@@ -1,6 +1,6 @@
 {
   "name": "@sbluemin/fleet-unified-agent",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Codex CLI, Claude Code, Gemini CLI를 통합하는 TypeScript 기반 SDK",
   "repository": {
     "type": "git",

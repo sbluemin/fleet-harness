@@ -1,6 +1,6 @@
 {
 	"name": "@sbluemin/fleet-ai",
-	"version": "0.17.0",
+	"version": "0.17.1",
 	"description": "Core LLM abstraction layer with explicit provider registration",
 	"repository": {
 		"type": "git",
