@@ -96,14 +96,8 @@ function buildTruncatedBlock(timestamp: number): ArchiveBlock {
 }
 
 function applyAppendPolicy(archive: JobArchive, block: ArchiveBlock): void {
-  if (block.kind === "tool_call" || block.kind === "thought") {
-    return;
-  }
-  if (block.kind === "text") {
-    mergeOrAppendTextBlock(archive, block);
-    return;
-  }
-  appendNewBlock(archive, redactBlock(block));
+  if (block.kind !== "text") return;
+  mergeOrAppendTextBlock(archive, block);
 }
 
 function mergeOrAppendTextBlock(archive: JobArchive, block: ArchiveBlock): void {

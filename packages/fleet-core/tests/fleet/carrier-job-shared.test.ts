@@ -272,15 +272,56 @@ describe("job stream archive", () => {
     expect(hasJobArchive("sortie:1", 1000 + CARRIER_JOB_TTL_MS)).toBe(false);
   });
 
-  it("serializes chronological markdown with block identities", () => {
+  it("serializes only text block content without headers or metadata", () => {
     const archive = createJobArchive("taskforce:1", 1000);
     appendBlock("taskforce:1", toMessageArchiveBlock("genesis", "message", "codex", 1002), 1002);
     appendBlock("taskforce:1", toThoughtArchiveBlock("genesis", "thinking", "claude", 1001), 1001);
 
     const markdown = serializeJobArchive(archive);
-    expect(markdown).toContain("Job ID: taskforce:1");
-    expect(markdown.indexOf("thought")).toBeLessThan(markdown.indexOf("text"));
-    expect(markdown).toContain("codex");
+    expect(markdown).toContain("message");
+    expect(markdown).not.toContain("thinking");
+    expect(markdown).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("does not include archive metadata header in serialized output", () => {
+    const archive = createJobArchive("sortie:no-header", 1000);
+    appendBlock("sortie:no-header", toMessageArchiveBlock("genesis", "payload", undefined, 1001), 1001);
+    finalizeJobArchive("sortie:no-header", "done", 1002);
+
+    const markdown = serializeJobArchive(getFinalized("sortie:no-header", 1003)!);
+    expect(markdown).not.toContain("Carrier Job Archive");
+    expect(markdown).not.toContain("Job ID:");
+    expect(markdown).not.toContain("Finalized:");
+    expect(markdown).toContain("payload");
+  });
+
+  it("caps serialized output to maxBytes with head/tail preservation", () => {
+    const archive = createJobArchive("sortie:capped", 1000);
+    for (let i = 0; i < 100; i++) {
+      appendBlock("sortie:capped", toMessageArchiveBlock("genesis", `block-${i}-${"x".repeat(60)}`, String(i), 1000 + i), 1000 + i);
+    }
+    finalizeJobArchive("sortie:capped", "done", 2000);
+
+    const full = serializeJobArchive(getFinalized("sortie:capped", 2001)!);
+    const capped = serializeJobArchive(getFinalized("sortie:capped", 2001)!, { maxBytes: 1000 });
+
+    expect(Buffer.byteLength(capped, "utf8")).toBeLessThanOrEqual(1000);
+    expect(Buffer.byteLength(full, "utf8")).toBeGreaterThan(1000);
+    expect(capped).toContain("block-0-");
+    expect(capped).toContain("block-99-");
+    expect(capped).toContain("[truncated");
+  });
+
+  it("returns full output when maxBytes cap is not exceeded", () => {
+    const archive = createJobArchive("sortie:small", 1000);
+    appendBlock("sortie:small", toMessageArchiveBlock("genesis", "short", undefined, 1001), 1001);
+    finalizeJobArchive("sortie:small", "done", 1002);
+
+    const full = serializeJobArchive(getFinalized("sortie:small", 1003)!);
+    const capped = serializeJobArchive(getFinalized("sortie:small", 1003)!, { maxBytes: 100_000 });
+
+    expect(capped).toBe(full);
+    expect(capped).not.toContain("[truncated");
   });
 });
 
