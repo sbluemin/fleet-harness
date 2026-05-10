@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (Pi-agnostic domain core), `fleet-harness-extension` (Pi host adapter), `fleet-wiki`, and `fleet-wiki-web`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (Pi-agnostic domain core), `fleet-harness` (Pi host adapter), `fleet-wiki`, and `fleet-wiki-web`.
 
 ## Architecture Philosophy
 
@@ -8,12 +8,12 @@ The Fleet codebase is built on **four core principles**. Every contribution and 
 
 ### 1. Domain Boundary as Law
 
-The split between `fleet-core` (Pi-agnostic Fleet domain) and `fleet-harness-extension` (Pi host adapter) is **not a guideline; it is enforced by build/grep gates**:
+The split between `fleet-core` (Pi-agnostic Fleet domain) and `fleet-harness` (Pi host adapter) is **not a guideline; it is enforced by build/grep gates**:
 
-- `fleet-core` MUST NOT import any `@sbluemin/fleet-*` engine package or `@anthropic-ai/*` package. The single Fleet-AI gateway lives in `fleet-harness-extension/src/provider.ts`, which re-exports the `@sbluemin/fleet-ai` surface for the rest of the host.
-- `fleet-harness-extension` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
+- `fleet-core` MUST NOT import any `@sbluemin/fleet-*` engine package or `@anthropic-ai/*` package. The single Fleet-AI gateway lives in `fleet-harness/src/provider.ts`, which re-exports the `@sbluemin/fleet-ai` surface for the rest of the host.
+- `fleet-harness` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
 - Pi UI, host event hooks (`pi.on/registerTool/registerProvider/...`), and any `ExtensionContext`/`ExtensionAPI` dependency belong exclusively to the Pi side.
-- When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the Pi adapter half stays in `fleet-harness-extension`.
+- When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the Pi adapter half stays in `fleet-harness`.
 
 ### 2. Two Execution Patterns, Strictly Separated
 

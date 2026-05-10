@@ -1,6 +1,6 @@
-# @sbluemin/fleet-harness-extension
+# @sbluemin/fleet-harness
 
-`@sbluemin/fleet-harness-extension` is the Pi adapter package for Fleet. It owns Pi runtime wiring, TUI surfaces, host shell integration, and domain-specific adapters while consuming `@sbluemin/fleet-core` through public exports.
+`@sbluemin/fleet-harness` is the Pi adapter package for Fleet. It owns Pi runtime wiring, TUI surfaces, host shell integration, and domain-specific adapters while consuming `@sbluemin/fleet-core` through public exports.
 
 This package consumes the active engine packages `@sbluemin/fleet-ai`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-coding-agent`, and `@sbluemin/fleet-unified-agent` from the workspace only. Do not replace those links with published npm references.
 

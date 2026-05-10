@@ -31,7 +31,7 @@ edit_policy: |
 > invariants. Updates must come **only from the Admiral**, in response to **verified**
 > changes in `admiral/prompts.ts`, `admiral/agent/internal/session-engine.ts`,
 > `admiral/protocols/`, `admiral/carrier/prompts.ts`,
-> `fleet-harness-extension/src/fleet.ts` (boot preamble / RISEN),
+> `fleet-harness/src/fleet.ts` (boot preamble / RISEN),
 > `packages/fleet-core/src/runtime-flags.ts` (boot-mode type and setter), or
 > `packages/fleet-core/src/public/runtime.ts` (runtime composition entry point).
 >
@@ -71,13 +71,13 @@ unless this document is suspected of drift.
 │  ① BOOT — one before_agent_start handler                            │
 │                                                                     │
 │    registerBoot()                                                   │
-│      fleet-harness-extension/src/fleet.ts:149-174                        │
+│      fleet-harness/src/fleet.ts:149-174                        │
 │      → reads env vars (PI_GRAND_FLEET_ROLE, FLEET_HARNESS_DEV, etc.)     │
 │      → sets module-level bootConfig (dev, role, fleet, grandFleet)  │
 │      → does NOT inject a system prompt                              │
 │                                                                     │
 │    Handler: wireFleetPiEvents()                                     │
-│      fleet-harness-extension/src/fleet.ts:207-214                        │
+│      fleet-harness/src/fleet.ts:207-214                        │
 │      → appends { systemPrompt: buildSystemPrompt() }                │
 │        buildSystemPrompt() internally prepends FLEET_PREAMBLE       │
 │        + RISEN_DEV_SLATE when bootMode === "dev"                    │
@@ -124,7 +124,7 @@ including the preamble prefix and optional dev slate that precede the fleet sect
 
 ### 3.1 Boot Preamble (buildSystemPrompt-managed, always present)
 
-`registerBoot()` (`fleet-harness-extension/src/fleet.ts:149-174`) reads environment
+`registerBoot()` (`fleet-harness/src/fleet.ts:149-174`) reads environment
 variables and writes the module-level `bootConfig`. It no longer injects a system
 prompt — prompt injection is fully owned by `buildSystemPrompt()`.
 
@@ -158,7 +158,7 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │  0. FLEET_PREAMBLE  (plain text prefix, not a <fleet> block)        │
 │     Condition: Always                                               │
 │     Content:  <fleet> XML parsing guide + <system-reminder> hint    │
-│     Source:   fleet-harness-extension/src/fleet.ts:97-103                │
+│     Source:   fleet-harness/src/fleet.ts:97-103                │
 │                                                                     │
 │  0b. RISEN_DEV_SLATE  (plain text prefix)                           │
 │     Condition: bootMode === "dev"  (isFleetCoreDevMode() true)      │
@@ -452,7 +452,7 @@ The pattern is always: **static frame tells me how, runtime prefix tells me whom
 |-------|--------|--------|
 | System prompt is frozen at boot | Carriers registered after boot have no Tier-1 metadata in `<fleet section="roster">`. They appear in `<available_*>` tags but their use-cases / NOT-fors / request blocks are absent. | `prompts.ts:147-150` |
 | Protocol catalog is fully embedded | The active protocol's *body* is read statically from the catalog — there is no per-turn injection of the active protocol's body, only its id. | `prompts.ts:127-187` |
-| Protocol switching is lazy | Protocol keybinds persist `activeProtocol` in settings and update the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. With the current catalog, only Fleet Action is registered. | `fleet-harness-extension/src/fleet.ts:281-302` |
+| Protocol switching is lazy | Protocol keybinds persist `activeProtocol` in settings and update the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. With the current catalog, only Fleet Action is registered. | `fleet-harness/src/fleet.ts:281-302` |
 | Executor path has no runtime context | `carrier_dispatch` / `carrier_squadron` / `carrier_taskforce` send the request verbatim; sub-agents do not see `<current_protocol>` or `<available_*>` tags. By design — Tier-2 context is composed into the request body instead. | `executor-engine.ts:298, 411` |
 | `setSystemPrompt()` does not exist | The unified-agent client cannot mutate the system prompt mid-session. Drift forces session destruction and reconnect. | `unified-agent/src/client/IUnifiedAgentClient.ts:215-239` |
 | `bootMode` drives dev-mode branch | `bootMode` (`"dev" \| "normal"`) is set via `createFleetCoreRuntime()` (`public/runtime.ts`) and stored in `runtime-flags.ts` via `setFleetCoreBootMode()`. `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. When true, `buildSystemPrompt()` omits persona/role/tone and prepends the RISEN dev context instead of the naval fleet persona. | `runtime-flags.ts:1-15`, `prompts.ts:127-144` |

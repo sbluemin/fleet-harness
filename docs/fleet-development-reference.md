@@ -8,7 +8,7 @@ Fleet development now follows a hard split:
 
 - `packages/fleet-core` — host-agnostic Fleet product core
 - `packages/fleet-core/src/admiralty` — internalized Grand Fleet domain (formerly `gfleet`)
-- `packages/fleet-harness-extension` — Fleet host capability package
+- `packages/fleet-harness` — Fleet host capability package
 
 Use this split as the first decision point for every change.
 
@@ -17,8 +17,8 @@ Use this split as the first decision point for every change.
 The codebase is in a capability-flattening stage:
 
 - logical ownership already follows the final direction
-- `packages/fleet-harness-extension/src/` remains the active physical home for Fleet host capability buckets
-- capability buckets currently live under `packages/fleet-harness-extension/src/<bucket>/`
+- `packages/fleet-harness/src/` remains the active physical home for Fleet host capability buckets
+- capability buckets currently live under `packages/fleet-harness/src/<bucket>/`
 
 Do not document or implement relocation of these buckets out of `src/`.
 
@@ -47,7 +47,7 @@ Put code here when it is:
 
 Keep dependencies one-way: `fleet-core`.
 
-### 3.3 `packages/fleet-harness-extension`
+### 3.3 `packages/fleet-harness`
 
 Put code here when it requires:
 
@@ -64,7 +64,7 @@ Put code here when it requires:
 
 ## 4. Domain Layout Map
 
-Current Flat Domain Architecture in `fleet-harness-extension`:
+Current Flat Domain Architecture in `fleet-harness`:
 
 | Home / Entrypoint | Responsibility |
 |-------------------|----------------|
@@ -82,7 +82,7 @@ Current Flat Domain Architecture in `fleet-harness-extension`:
 
 ## 5. Removed Legacy Directory Guidance
 
-The following legacy directories under `packages/fleet-harness-extension/src/` are already removed and must not be reintroduced:
+The following legacy directories under `packages/fleet-harness/src/` are already removed and must not be reintroduced:
 
 - `src/commands/`
 - `src/keybinds/`
@@ -103,15 +103,15 @@ When migrating or restoring behavior that once lived under those paths:
 
 ## 6. Import Rules
 
-- `fleet-harness-extension` must consume `fleet-core` through public exports only.
+- `fleet-harness` must consume `fleet-core` through public exports only.
 - For runtime composition, use `@sbluemin/fleet-core` and consume domain APIs through `FleetCoreRuntimeContext`. Direct shared-service subpaths are migration compatibility surfaces only; new public API should be modeled as a domain service. Keybind is not a Fleet Core public service.
-- `fleet-harness-extension` must consume Grand Fleet surfaces through `@sbluemin/fleet-core/admiralty` or `@sbluemin/fleet-core/admiralty/ipc`.
-- `fleet-harness-extension` may consume `@sbluemin/fleet-wiki` for Fleet Wiki adapters that live in `src/wiki/`.
+- `fleet-harness` must consume Grand Fleet surfaces through `@sbluemin/fleet-core/admiralty` or `@sbluemin/fleet-core/admiralty/ipc`.
+- `fleet-harness` may consume `@sbluemin/fleet-wiki` for Fleet Wiki adapters that live in `src/wiki/`.
 - Do not deep-import `@sbluemin/fleet-core/src/**` or `@sbluemin/fleet-core/internal/**`.
 - Do not import Grand Fleet surfaces from the deprecated Fleet Core location.
 - `fleet-core` must not import Fleet host runtime packages.
 - `fleet-core` must not split internal admiralty ownership back out into a separate package.
-- All upstream `@mariozechner/pi-*` engine packages have been fork-vendored as `@sbluemin/fleet-*` under `engines/packages/` and are consumed via `workspace:*` links. The Fleet-AI surface is re-exported from `packages/fleet-harness-extension/src/provider.ts` as the **single host gateway**; other adapters consume it through that gateway only.
+- All upstream `@mariozechner/pi-*` engine packages have been fork-vendored as `@sbluemin/fleet-*` under `engines/packages/` and are consumed via `workspace:*` links. The Fleet-AI surface is re-exported from `packages/fleet-harness/src/provider.ts` as the **single host gateway**; other adapters consume it through that gateway only.
 
 ## 7. Fleet Host Runtime Rules
 
@@ -121,4 +121,4 @@ When migrating or restoring behavior that once lived under those paths:
 
 ## 8. Physical Layout Reminder
 
-`packages/fleet-harness-extension/src/` is the active physical home for Fleet host capability buckets. Any documentation or review must keep that layout explicit and avoid implying that these buckets are scheduled to move.
+`packages/fleet-harness/src/` is the active physical home for Fleet host capability buckets. Any documentation or review must keep that layout explicit and avoid implying that these buckets are scheduled to move.

@@ -3,9 +3,10 @@ packages:
   - "packages/fleet-core"
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"
-  - "packages/fleet-harness-extension"
+  - "packages/fleet-harness"
 allowBuilds:
   '@google/genai': true
+  canvas: true
   esbuild: true
   koffi: true
   node-pty: true

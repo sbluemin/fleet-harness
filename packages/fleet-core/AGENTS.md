@@ -6,16 +6,16 @@
 
 `fleet-core` is **the** authoritative Fleet domain. Three principles direct every decision in this package:
 
-1. **Host-agnostic by construction** — no Fleet host runtime, no Fleet host UI, no Fleet-AI imports. The package compiles and runs without `fleet-harness-extension`.
+1. **Host-agnostic by construction** — no Fleet host runtime, no Fleet host UI, no Fleet-AI imports. The package compiles and runs without `fleet-harness`.
 2. **Two execution patterns own two surfaces** — the streaming `admiral.session.*` + `admiral.events` module channel for long-lived ACP sessions (Pi `streamAcp`); the callback-pattern `admiral.executor.{executeWithPool, executeOneShot}` for closed-loop carrier turns. They share `internal/executor-engine.ts` pool/session-store wiring but never share their public surfaces.
 3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), MCP singleton (`_shared/mcp.ts`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), and the fleet tool registry (`admiral.tools.list/invoke`) each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
 
 ## Current Architecture Status
 
-- The **ownership model is already final**: Fleet domain logic belongs in `fleet-core`; Pi runtime integration belongs in `fleet-harness-extension`.
+- The **ownership model is already final**: Fleet domain logic belongs in `fleet-core`; Pi runtime integration belongs in `fleet-harness`.
 - The current implementation still lives under `packages/fleet-core/src/`.
-- `packages/fleet-harness-extension` uses `src/` as the active Pi capability-bucket home.
-- Do not document or assume that Pi capability buckets have moved out of `packages/fleet-harness-extension/src/`.
+- `packages/fleet-harness` uses `src/` as the active Pi capability-bucket home.
+- Do not document or assume that Pi capability buckets have moved out of `packages/fleet-harness/src/`.
 
 ## The `admiral.agent` Domain
 
@@ -92,21 +92,21 @@ Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines
 
 - Do not import `@sbluemin/fleet-*` or `@anthropic-ai/*`.
 - Public consumers must use the package root barrel or documented public subpaths only.
-- `fleet-core` may expose ports, adapters, and pure state machines, but Pi implementations live in `fleet-harness-extension`.
-- If a module needs Pi lifecycle hooks or UI registration, that code belongs in `fleet-harness-extension`, not here.
+- `fleet-core` may expose ports, adapters, and pure state machines, but Pi implementations live in `fleet-harness`.
+- If a module needs Pi lifecycle hooks or UI registration, that code belongs in `fleet-harness`, not here.
 
 ## Migration Guardrails
 
-- Do not reintroduce Fleet domain folders back into `packages/fleet-harness-extension/src/fleet/**`, `src/grand-fleet/**`, `src/metaphor/**`, or similar legacy Pi-side domain homes.
-- Do not add new deep-import dependencies from `fleet-harness-extension` into `fleet-core/src/**`; use public exports.
-- When splitting mixed modules, move the pure/domain half into `fleet-core` and keep only the Pi adapter half in `fleet-harness-extension`.
+- Do not reintroduce Fleet domain folders back into `packages/fleet-harness/src/fleet/**`, `src/grand-fleet/**`, `src/metaphor/**`, or similar legacy Pi-side domain homes.
+- Do not add new deep-import dependencies from `fleet-harness` into `fleet-core/src/**`; use public exports.
+- When splitting mixed modules, move the pure/domain half into `fleet-core` and keep only the Pi adapter half in `fleet-harness`.
 - Intermediate re-export shims are a migration artifact only; do not treat them as long-term architecture.
 
 ## Invariants
 
 - `api/PUBLIC_API.md` is the frozen public API contract for the productization migration.
 - Provider MCP FIFO, token isolation, pre-queue, and HTTP-hold behavior are invariants.
-- `fleet-harness-extension` must not introduce or preserve `globalThis` usage patterns; compatibility state should flow through explicit public accessors or module-level singleton state. Legacy `globalThis.__pi_unified_agent_client_pool__` and `globalThis.__pi_unified_agent_launch_config__` have been removed.
+- `fleet-harness` must not introduce or preserve `globalThis` usage patterns; compatibility state should flow through explicit public accessors or module-level singleton state. Legacy `globalThis.__pi_unified_agent_client_pool__` and `globalThis.__pi_unified_agent_launch_config__` have been removed.
 - Background paths must accept plain runtime data and host ports, never Pi `ExtensionContext`.
 - Job archive behavior remains read-many within TTL.
 - Fleet Store (`admiral/store/fleet-store.ts`) writes are guarded by compare-then-write: `updateStates()` computes a pre-mutation snapshot via `structuredClone`, applies the mutator, and skips `writeStates()` when `JSON.stringify` comparison shows no delta. This prevents spurious disk I/O and reduces lock contention.

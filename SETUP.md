@@ -41,7 +41,7 @@ pnpm setup
 
 # Install all workspace dependencies. The root postinstall hook runs `pnpm -r build`,
 # which builds the engine `unified-agent` package plus `fleet-core`, `fleet-wiki`,
-# packages/fleet-wiki-web, and packages/fleet-harness-extension in topological order.
+# packages/fleet-wiki-web, and packages/fleet-harness in topological order.
 pnpm install
 
 # Approve native build scripts (one-time per machine).
@@ -62,18 +62,18 @@ pnpm --filter @sbluemin/fleet-unified-agent link --global
 > Provider contract note:
 >
 > - `@sbluemin/fleet-ai` no longer ships built-in vendor providers or built-in OAuth providers.
-> - Fleet host wiring owns provider registration explicitly through `packages/fleet-harness-extension/src/provider.ts`.
+> - Fleet host wiring owns provider registration explicitly through `packages/fleet-harness/src/provider.ts`.
 > - No legacy registry-filter toggle or hidden upstream bootstrap remains; if host registration has not happened yet, provider-missing throws are the intended contract.
 >
 > `pnpm link --global` registers the global commands from this checkout:
 >
-> - `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness-extension` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `fleet-dev` (see below).
+> - `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `fleet-dev` (see below).
 > - `fleet-dev` — sets `FLEET_HARNESS_DEV=1` then delegates to `fleet-main.mjs`. Use for development with live source changes.
 > - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of any external runtime.
 >
 > > `pnpm --filter @sbluemin/fleet-unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
 >
-> Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/fleet-harness-extension/src/`; they do not require separate `pnpm install` commands.
+> Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/fleet-harness/src/`; they do not require separate `pnpm install` commands.
 >
 > Fleet engine note:
 > - `engines/` contains the active Fleet engine package set (`tui`, `ai`, `agent`, `coding-agent`) rebranded to `@sbluemin/fleet-*`.

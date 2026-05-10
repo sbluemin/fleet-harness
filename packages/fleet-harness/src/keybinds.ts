@@ -34,7 +34,7 @@ export interface ResolvedBinding extends KeybindRegistration {
   conflicted?: boolean;
 }
 
-/** fleet-harness-extension이 제공하는 keybind API */
+/** fleet-harness가 제공하는 keybind API */
 export interface CoreKeybindAPI {
   register(binding: KeybindRegistration): void;
   getBindings(): ResolvedBinding[];

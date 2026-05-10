@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { main } from "@sbluemin/fleet-coding-agent";
-import fleetExtension from "@sbluemin/fleet-harness-extension";
+import fleetExtension from "@sbluemin/fleet-harness";
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
 process.title = "fleet";

@@ -24,7 +24,7 @@
 ## Scope Boundaries
 
 - `fleet-core`는 이 디렉토리를 직접 import하지 않습니다 — 오직 `workspace:*` 링크를 통해 종속성으로 참조합니다.
-- `fleet-harness-extension`은 `fleet-core`의 public API를 통해서만 이 런타임에 접근합니다.
+- `fleet-harness`은 `fleet-core`의 public API를 통해서만 이 런타임에 접근합니다.
 - 이 디렉토리 내에서 `@mariozechner/pi-*` 또는 `@anthropic-ai/*` 등 Pi 전용 패키지로의 직접 import는 허용되지 않습니다 (이미 업스트림에서 제거됨).
 
 ## Working Rules

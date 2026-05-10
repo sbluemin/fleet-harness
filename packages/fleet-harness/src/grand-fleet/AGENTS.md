@@ -1,6 +1,6 @@
 # grand-fleet
 
-Owns the Pi-side Grand Fleet domain integration for `fleet-harness-extension`. This domain mirrors the `admiralty` facade from `fleet-core`.
+Owns the Pi-side Grand Fleet domain integration for `fleet-harness`. This domain mirrors the `admiralty` facade from `fleet-core`.
 
 ## Scope
 

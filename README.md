@@ -113,7 +113,7 @@ See [SETUP.md](SETUP.md) for step-by-step instructions.
 
 Provider contract note:
 - `@sbluemin/fleet-ai` now provides abstractions and registration seams only; built-in vendor providers and built-in OAuth providers are removed.
-- `packages/fleet-harness-extension/src/provider.ts` is the host-owned registration gateway.
+- `packages/fleet-harness/src/provider.ts` is the host-owned registration gateway.
 - The old registry-filter workaround is removed; any pre-registration provider-missing throw is intentional until follow-up host wiring lands.
 
 > **Quick Start with AI Agent** — Copy and paste into your LLM agent:

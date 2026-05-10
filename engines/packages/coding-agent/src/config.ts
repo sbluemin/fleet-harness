@@ -42,7 +42,7 @@ const FLEET_ROOT_MARKERS = [
 	"CHANGELOG.md",
 	"pnpm-workspace.yaml",
 	join("engines", "packages", "coding-agent", "package.json"),
-	join("packages", "fleet-harness-extension", "package.json"),
+	join("packages", "fleet-harness", "package.json"),
 ] as const;
 
 function makeSelfUpdateCommand(

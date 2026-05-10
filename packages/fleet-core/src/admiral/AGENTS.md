@@ -17,7 +17,7 @@ Beyond simple parallel API calls, the system adopts a **naval fleet metaphor** t
 | 3 | **Admiral** | 제독 (Host PI) | A single **workspace PI instance**. Plans operations and dispatches Carriers within its operational zone. |
 | 4 | **Captain** | 함장 (Carrier Persona) | The **persona of a Carrier agent**. While a Carrier is the system entity, the Captain is its personified commander. |
 
-> **Note on Persona & Tone**: The naming conventions, personified personas, and linguistic tone for all tiers are centrally managed by `packages/fleet-core/src/metaphor/`. The former `packages/fleet-harness-extension/src/metaphor/` legacy directory has been removed and must not be recreated as a Pi-side domain home.
+> **Note on Persona & Tone**: The naming conventions, personified personas, and linguistic tone for all tiers are centrally managed by `packages/fleet-core/src/metaphor/`. The former `packages/fleet-harness/src/metaphor/` legacy directory has been removed and must not be recreated as a Pi-side domain home.
 
 #### Carrier vs Captain Separation
 - **Carrier**: The **system entity** (ID: `genesis`, `sentinel`, etc.). Represents the execution instance, process, and configuration.

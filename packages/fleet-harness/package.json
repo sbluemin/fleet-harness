@@ -1,10 +1,10 @@
 {
-  "name": "@sbluemin/fleet-harness-extension",
+  "name": "@sbluemin/fleet-harness",
   "version": "0.16.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
-    "directory": "packages/fleet-harness-extension"
+    "directory": "packages/fleet-harness"
   },
   "private": true,
   "author": "sbluemin",

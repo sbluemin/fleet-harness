@@ -26,7 +26,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.119",
     "@sbluemin/fleet-coding-agent": "workspace:*",
-    "@sbluemin/fleet-harness-extension": "workspace:*",
+    "@sbluemin/fleet-harness": "workspace:*",
     "undici": "^7"
   }
 }

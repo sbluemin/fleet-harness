@@ -113,7 +113,7 @@ Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한
 
 Provider 계약 메모:
 - `@sbluemin/fleet-ai`는 이제 추상 계층과 registration seam만 제공하며, built-in vendor provider와 built-in OAuth provider는 제거되었습니다.
-- `packages/fleet-harness-extension/src/provider.ts`가 host-owned registration gateway입니다.
+- `packages/fleet-harness/src/provider.ts`가 host-owned registration gateway입니다.
 - 기존 registry-filter workaround는 제거되었으며, 후속 host wiring 이전의 provider-missing throw는 의도된 계약입니다.
 
 > **AI 에이전트로 빠른 시작** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:

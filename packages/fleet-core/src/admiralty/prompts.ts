@@ -16,7 +16,7 @@
  * worldview 상태에 따라 세계관형/중립형 변종 중 하나가 선택된다.
  *
  * `buildFleetAcpSystemPrompt()`는 grand-fleet가 소유한 local composition seam이다.
- * `packages/fleet-harness-extension/src/fleet/**`를 import하지 않고 기본 Fleet ACP 의미와 Grand Fleet Context를
+ * `packages/fleet-harness/src/fleet/**`를 import하지 않고 기본 Fleet ACP 의미와 Grand Fleet Context를
  * 같은 파일 안에서 조립한다.
  */
 

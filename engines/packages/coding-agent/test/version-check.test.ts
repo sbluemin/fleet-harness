@@ -12,7 +12,7 @@ let tempDir: string | undefined;
 function setupFleetGitFixture(behind: number, hasRemote: boolean): string {
 	const root = mkdtempSync(join(tmpdir(), "fleet-version-check-"));
 	const packageDir = join(root, "engines", "packages", "coding-agent");
-	const extensionPackageDir = join(root, "packages", "fleet-harness-extension");
+	const extensionPackageDir = join(root, "packages", "fleet-harness");
 	const binDir = join(root, "bin");
 	const statePath = join(root, "fleet-update-state.json");
 	mkdirSync(packageDir, { recursive: true });

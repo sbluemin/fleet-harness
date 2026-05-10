@@ -1,6 +1,6 @@
-# fleet-harness-extension Doctrine
+# fleet-harness Doctrine
 
-`packages/fleet-harness-extension` is the Pi capability package for Fleet. It owns Pi runtime wiring, host shell surfaces, and domain-specific adapters while consuming `@sbluemin/fleet-core` public exports, `@sbluemin/fleet-core/admiralty*` (Grand Fleet domain), and `@sbluemin/fleet-wiki`.
+`packages/fleet-harness` is the Pi capability package for Fleet. It owns Pi runtime wiring, host shell surfaces, and domain-specific adapters while consuming `@sbluemin/fleet-core` public exports, `@sbluemin/fleet-core/admiralty*` (Grand Fleet domain), and `@sbluemin/fleet-wiki`.
 
 ## Core Philosophy
 
@@ -20,7 +20,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Domain Mirror Layout (1:1 Service Mapping)
 
-| fleet-harness-extension (Adapter) | fleet-core (Public Service) | Description |
+| fleet-harness (Adapter) | fleet-core (Public Service) | Description |
 | :--- | :--- | :--- |
 | `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Fleet host gateway (#region structure: fleet-ai gateway / streamAcp adapter / thinking-level patch / provider runtime registration). Host-owned provider registration lives here; no legacy registry-filter workaround remains. Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
 | `src/grand-fleet/` | `admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
@@ -59,10 +59,10 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Dependency Direction
 
-- `fleet-harness-extension -> fleet-core`
-- `fleet-harness-extension -> fleet-wiki`
-- `fleet-harness-extension -> @sbluemin/fleet-*` (active engine workspace via `workspace:*`)
-- `fleet-harness-extension -> @sbluemin/fleet-unified-agent`
+- `fleet-harness -> fleet-core`
+- `fleet-harness -> fleet-wiki`
+- `fleet-harness -> @sbluemin/fleet-*` (active engine workspace via `workspace:*`)
+- `fleet-harness -> @sbluemin/fleet-unified-agent`
 
 ## Migration Guardrails
 

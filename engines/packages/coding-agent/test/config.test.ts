@@ -119,7 +119,7 @@ function createBunGlobalInstall(): { packageDir: string } {
 function createFleetRepoInstall(withGit: boolean): { root: string; packageDir: string } {
 	const root = mkdtempSync(join(tmpdir(), "fleet-root-"));
 	const packageDir = join(root, "engines", "packages", "coding-agent");
-	const extensionPackageDir = join(root, "packages", "fleet-harness-extension");
+	const extensionPackageDir = join(root, "packages", "fleet-harness");
 	writeFixturePackage(packageDir);
 	mkdirSync(extensionPackageDir, { recursive: true });
 	writeFileSync(join(root, "CHANGELOG.md"), "# Changelog\n");
