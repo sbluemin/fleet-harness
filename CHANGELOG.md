@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-05-10
+
 ### Added
 - [unified-agent] Claude reasoning effort enabled across all Claude models via `_meta.claudeCode.options.effort` bridge channel
 - [ai][coding-agent] `defaultThinkingLevel` field added to model and provider model configurations for per-model default thinking level assignment
