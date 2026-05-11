@@ -50,6 +50,12 @@ export const {
   setTaskForceConfiguredCarriers,
   updateCarrierCliType,
 } = admiral.carrier;
+const admiralAny = admiral as any;
+const carrierFrameworkApi = admiralAny.carrier?.framework ?? admiralAny.carrier;
+export const resolveCarrierCliType = carrierFrameworkApi.resolveCarrierCliType as (
+  carrierId: string,
+  defaultCliType: CliType,
+) => CliType;
 export const {
   disableSquadronCarrier,
   enableSquadronCarrier,

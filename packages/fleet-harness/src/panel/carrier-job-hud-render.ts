@@ -16,7 +16,7 @@ import {
   SQUADRON_BADGE_COLOR,
   CLI_DISPLAY_NAMES,
 } from "../fleet-core-facades.js";
-import { getConfiguredTaskForceBackends } from "../fleet-core-facades.js";
+import { getConfiguredTaskForceBackendsFromSnapshot, readStatesSnapshot } from "../fleet-core-facades.js";
 import {
   isCarrierOnline,
   isSquadronCarrierEnabled,
@@ -174,6 +174,7 @@ function appendTrackTree(
 
 function buildCarrierTiles(): CarrierHudTile[] {
   const activeJobs = getActiveJobs();
+  const snapshot = readStatesSnapshot();
   return makeFooterCols().map((col) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === col.cli);
     return {
@@ -182,7 +183,7 @@ function buildCarrierTiles(): CarrierHudTile[] {
       activeJobCount: activeCarrierJobs.length,
       activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       online: isCarrierOnline(col.cli),
-      taskForceBackendCount: getConfiguredTaskForceBackends(col.cli).length,
+      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, col.cli).length,
       squadronEnabled: isSquadronCarrierEnabled(col.cli),
     };
   });

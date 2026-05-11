@@ -54,6 +54,8 @@ type TaskForceConfig = Partial<Record<TaskForceCliType, TaskForceSelection>>;
 
 /** states.json 통합 스키마 */
 interface FleetStates {
+  /** states.json write generation (watcher echo suppression용) */
+  _generation?: number;
   /** 모델 선택 설정 */
   models?: SelectedModelsConfig;
   /** offline carrier ID 목록 */
@@ -70,6 +72,22 @@ interface StoreLockOwner {
   pid: number;
   hostname: string;
   startedAt: number;
+}
+
+export interface FleetStoreSnapshot {
+  generation: number;
+  models: SelectedModelsConfig;
+  cliTypeOverrides: Record<string, string>;
+  carrierDisplayNames: Record<string, string>;
+  offline: string[];
+  squadronEnabled: string[];
+}
+
+/** 로컬 프로세스가 직전에 기록한 states.json 지문(watcher echo 판별용, mtime+size 병합) */
+export interface FleetStoreWriteFingerprint {
+  generation: number;
+  mtimeMs: number;
+  size: number;
 }
 
 // ─── 상수 ──────────────────────────────────────────────
@@ -99,6 +117,8 @@ const VALID_CLI_TYPES = new Set(Object.keys(CLI_BACKENDS));
 
 /** 스토어 데이터 디렉토리 */
 let storeDir: string | null = null;
+let lastLocalWriteGeneration = 0;
+let lastLocalWriteFingerprint: FleetStoreWriteFingerprint | null = null;
 
 // ─── 초기화 ─────────────────────────────────────────────
 
@@ -114,9 +134,51 @@ export function initStore(dir: string): void {
 // ─── 모델 설정 영속화 ──────────────────────────────────
 
 /** 현재 모델 설정을 로드합니다. */
-export function loadModels(): SelectedModelsConfig {
-  const states = readStates();
-  return sanitizeSelectedModelsConfig(states.models) ?? {};
+export function loadModels(cliTypesByCarrier?: Record<string, CliType>): SelectedModelsConfig {
+  if (!cliTypesByCarrier) {
+    return readStatesSnapshot().models;
+  }
+
+  const maxCasAttempts = 5;
+  for (let attempt = 0; attempt < maxCasAttempts; attempt++) {
+    const expectedGeneration = readStatesSnapshot().generation;
+    let abortedByConcurrentGeneration = false;
+
+    updateStates((states) => {
+      const diskGen = sanitizeGeneration(states._generation);
+      if (diskGen !== expectedGeneration) {
+        abortedByConcurrentGeneration = true;
+        return;
+      }
+
+      const currentModels = sanitizeSelectedModelsConfig(states.models);
+      const healedFull = buildHealedModels(currentModels, cliTypesByCarrier);
+      let next: SelectedModelsConfig = currentModels;
+      let changed = false;
+
+      for (const carrierId of Object.keys(cliTypesByCarrier)) {
+        const healed = healedFull[carrierId];
+        if (!healed) continue;
+        const cur = currentModels[carrierId];
+        if (JSON.stringify(cur) !== JSON.stringify(healed)) {
+          if (!changed) {
+            next = { ...currentModels };
+            changed = true;
+          }
+          next[carrierId] = healed;
+        }
+      }
+
+      if (!changed) return;
+      states.models = next;
+    });
+
+    if (!abortedByConcurrentGeneration) {
+      return readStatesSnapshot().models;
+    }
+  }
+
+  return readStatesSnapshot().models;
 }
 
 /** 모델 설정을 저장합니다. */
@@ -253,8 +315,9 @@ export function reconcileActiveModelSelections(
 export function getPerCliSettings(
   carrierId: string,
   cliType: string,
+  snapshot?: FleetStoreSnapshot,
 ): PerCliSettings | undefined {
-  const config = loadModels();
+  const config = snapshot?.models ?? loadModels();
   const perCli = config[carrierId]?.perCliSettings;
   if (!perCli) return undefined;
   return sanitizePerCliSettings(perCli[cliType]);
@@ -304,9 +367,10 @@ export function savePerCliSettings(
 export function getTaskForceModelConfig(
   carrierId: string,
   cliType: string,
+  snapshot?: FleetStoreSnapshot,
 ): TaskForceSelection | undefined {
   const resolvedCliType = toTaskForceCliType(cliType);
-  const config = loadModels();
+  const config = snapshot?.models ?? loadModels();
   const taskforceConfig = getSanitizedTaskForceConfig(config, carrierId);
   return taskforceConfig?.[resolvedCliType];
 }
@@ -358,12 +422,26 @@ export function getConfiguredTaskForceBackends(carrierId: string): TaskForceCliT
   return getConfiguredTaskForceBackendsInConfig(loadModels(), carrierId);
 }
 
+export function getConfiguredTaskForceBackendsFromSnapshot(
+  snapshot: FleetStoreSnapshot,
+  carrierId: string,
+): TaskForceCliType[] {
+  return getConfiguredTaskForceBackendsInConfig(snapshot.models, carrierId);
+}
+
 /**
  * 등록된 전체 캐리어 중 Task Force 편성이 가능한 캐리어 ID 목록을 반환합니다.
  */
 export function getConfiguredTaskForceCarrierIds(registeredIds: string[]): string[] {
   const config = loadModels();
   return registeredIds.filter((id) => isTaskForceFormableInConfig(config, id));
+}
+
+export function getConfiguredTaskForceCarrierIdsFromSnapshot(
+  snapshot: FleetStoreSnapshot,
+  registeredIds: string[],
+): string[] {
+  return registeredIds.filter((id) => isTaskForceFormableInConfig(snapshot.models, id));
 }
 
 // ─── Offline 상태 ───────────────────────────────────────
@@ -431,7 +509,7 @@ export function loadCliTypeOverrides(validIds?: Set<string>): Record<string, str
 
 /** 디스크의 carrier별 cliType override를 읽어 현재 등록에 사용할 CLI를 결정합니다. */
 export function resolveCarrierCliType(carrierId: string, defaultCliType: CliType): CliType {
-  const overrides = sanitizeCliTypeOverrides(readStates().cliTypeOverrides);
+  const overrides = readStatesSnapshot().cliTypeOverrides;
   return (overrides[carrierId] as CliType | undefined) ?? defaultCliType;
 }
 
@@ -460,6 +538,45 @@ export function updateCliTypeOverride(
       delete states.cliTypeOverrides;
     }
   });
+}
+
+export async function applyCliTypeModelSelectionUpdate(
+  carrierId: string,
+  nextCliType: CliType,
+  defaultCliType: CliType,
+  previousCliType: CliType | null,
+  previousSelection: PerCliSettings | undefined,
+  selection: ModelSelection,
+): Promise<void> {
+  updateStates((states) => {
+    const models = sanitizeSelectedModelsConfig(states.models);
+    const current = models[carrierId];
+    const perCliSettings = { ...(current?.perCliSettings ?? {}) };
+    if (previousCliType && previousSelection) {
+      perCliSettings[previousCliType] = previousSelection;
+    }
+    models[carrierId] = {
+      ...selection,
+      taskforce: current?.taskforce,
+      perCliSettings,
+    };
+    states.models = models;
+
+    const overrides = sanitizeCliTypeOverrides(states.cliTypeOverrides);
+    if (nextCliType === defaultCliType) {
+      delete overrides[carrierId];
+    } else {
+      overrides[carrierId] = nextCliType;
+    }
+    if (Object.keys(overrides).length > 0) {
+      states.cliTypeOverrides = overrides;
+    } else {
+      delete states.cliTypeOverrides;
+    }
+  });
+  getCarrierSessionStore().clear(carrierId);
+  flushSessionMappings();
+  await disconnect(carrierId);
 }
 
 /**
@@ -520,14 +637,56 @@ function readStates(): FleetStates {
   }
 }
 
+export function readStatesSnapshot(): FleetStoreSnapshot {
+  const states = readStates();
+  return {
+    generation: sanitizeGeneration(states._generation),
+    models: sanitizeSelectedModelsConfig(states.models),
+    cliTypeOverrides: sanitizeCliTypeOverrides(states.cliTypeOverrides),
+    carrierDisplayNames: sanitizeCarrierDisplayNames(states.carrierDisplayNames),
+    offline: sanitizeIdArray(states.offline),
+    squadronEnabled: sanitizeIdArray(states.squadronEnabled),
+  };
+}
+
+export function getLastLocalStatesGeneration(): number {
+  return lastLocalWriteGeneration;
+}
+
+/** `writeStates` 직후 동기 stat으로 기록된 최신 로컬 write 지문(없으면 null) */
+export function getLastLocalWriteFingerprint(): FleetStoreWriteFingerprint | null {
+  return lastLocalWriteFingerprint;
+}
+
+export function getStatesFilePath(): string | null {
+  if (!storeDir) return null;
+  return path.join(storeDir, FILENAME);
+}
+
+/**
+ * writeStates rename 직후 동기 stat으로 (generation, mtime, size) 지문을 기록합니다.
+ * mtime 정밀도 한계는 size와 함께 사용해 구분합니다.
+ */
+function recordLastLocalWriteFingerprint(filePath: string, generation: number): void {
+  try {
+    const st = fs.statSync(filePath);
+    lastLocalWriteFingerprint = { generation, mtimeMs: st.mtimeMs, size: st.size };
+  } catch {
+    lastLocalWriteFingerprint = { generation, mtimeMs: 0, size: 0 };
+  }
+}
+
 function writeStates(s: FleetStates): void {
   if (!storeDir) throw new Error("Fleet store is not initialized.");
   fs.mkdirSync(storeDir, { recursive: true });
   const filePath = path.join(storeDir, FILENAME);
   const tmpPath = buildTempPath(filePath);
+  const next: FleetStates = { ...s, _generation: sanitizeGeneration(s._generation) + 1 };
   try {
-    fs.writeFileSync(tmpPath, JSON.stringify(s, null, 2), "utf-8");
+    fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
     fs.renameSync(tmpPath, filePath);
+    lastLocalWriteGeneration = next._generation ?? 0;
+    recordLastLocalWriteFingerprint(filePath, lastLocalWriteGeneration);
   } catch (error) {
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
     throw error;
@@ -775,6 +934,19 @@ function sanitizeCliTypeOverrides(value: unknown): Record<string, string> {
   return result;
 }
 
+function sanitizeGeneration(value: unknown): number {
+  if (!Number.isInteger(value) || (value as number) < 0) return 0;
+  return value as number;
+}
+
+function sanitizeIdArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => sanitizeConfigKey(item))
+    .filter((item): item is string => item !== null);
+}
+
 function sanitizeCarrierDisplayNames(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
   const result: Record<string, string> = {};
@@ -823,6 +995,31 @@ function resolveSelectionForCliType(
   }
 
   return result;
+}
+
+function buildHealedModels(
+  config: SelectedModelsConfig,
+  cliTypesByCarrier: Record<string, CliType>,
+): SelectedModelsConfig {
+  const next = structuredClone(config);
+  for (const [carrierId, cliType] of Object.entries(cliTypesByCarrier)) {
+    const provider = getProviderModels(cliType);
+    const current = next[carrierId];
+    if (!current) {
+      next[carrierId] = { model: provider.defaultModel };
+      continue;
+    }
+    const resolved = resolveSelectionForCliType(current, cliType);
+    if (!resolved) continue;
+    next[carrierId] = {
+      model: resolved.model,
+      ...(resolved.effort ? { effort: resolved.effort } : {}),
+      ...(resolved.direct !== undefined ? { direct: resolved.direct } : {}),
+      ...(current.taskforce ? { taskforce: current.taskforce } : {}),
+      ...(current.perCliSettings ? { perCliSettings: current.perCliSettings } : {}),
+    };
+  }
+  return next;
 }
 
 function isSameResolvedSelection(

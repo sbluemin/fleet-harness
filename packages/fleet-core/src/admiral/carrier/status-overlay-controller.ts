@@ -21,24 +21,24 @@ interface StatusOverlayControllerDeps {
   getEntries: () => CarrierStatusEntry[];
   getRegisteredOrder: () => string[];
   getRegisteredCarrierConfig: (carrierId: string) => CarrierConfig | undefined;
+  getResolvedCliType: (carrierId: string) => CarrierCliType | undefined;
   getCurrentModelSelection: (carrierId: string) => (ModelSelection & { direct?: boolean }) | undefined;
   getAvailableModels: (cliType: CarrierCliType) => CliModelInfo;
   getEffort?: (cliType: CarrierCliType, modelId: string) => ModelEffort | null;
   getPerCliSettings: (carrierId: string, cliType: CarrierCliType) => StoredCliSelection | undefined;
   savePerCliSettings: (carrierId: string, cliType: CarrierCliType, selection: StoredCliSelection) => void;
   updateCarrierCliType: (carrierId: string, cliType: CarrierCliType) => void;
-  updateModelSelection: (
+  applyCliTypeModelSelectionUpdate: (
     carrierId: string,
+    newCliType: CarrierCliType,
+    defaultCliType: CarrierCliType,
+    previousCliType: CarrierCliType | null,
+    previousSelection: StoredCliSelection | undefined,
     selection: ModelSelection & { direct?: boolean },
   ) => Promise<void>;
   refreshAgentPanel: () => void;
   syncModelConfig: () => void;
   notifyStatusUpdate: () => void;
-  updateCliTypeOverride: (
-    carrierId: string,
-    cliType: CarrierCliType,
-    defaultCliType: CarrierCliType,
-  ) => void;
 }
 
 export class StatusOverlayController implements Pick<
@@ -83,7 +83,8 @@ export class StatusOverlayController implements Pick<
     const updates = this.deps.getRegisteredOrder()
       .map((carrierId) => {
         const config = this.deps.getRegisteredCarrierConfig(carrierId);
-        if (!config || config.cliType === config.defaultCliType) {
+        const resolvedCliType = this.deps.getResolvedCliType(carrierId);
+        if (!config || !resolvedCliType || resolvedCliType === config.defaultCliType) {
           return null;
         }
         return {
@@ -100,32 +101,37 @@ export class StatusOverlayController implements Pick<
     newCliType: CarrierCliType,
   ): Promise<CliTypeChangeResult> {
     const currentConfig = this.deps.getRegisteredCarrierConfig(carrierId);
-    const currentCliType = currentConfig?.cliType as CarrierCliType | undefined;
+    const currentCliType = this.deps.getResolvedCliType(carrierId);
     const defaultCliType = currentConfig?.defaultCliType as CarrierCliType | undefined;
     let cliTypeChanged = false;
     try {
-      if (currentCliType) {
-        const currentSelection = this.deps.getCurrentModelSelection(carrierId);
-        if (currentSelection) {
-          this.deps.savePerCliSettings(carrierId, currentCliType, {
-            model: currentSelection.model,
-            effort: currentSelection.effort,
-            direct: currentSelection.direct,
-          });
+      const previousTopLevelSelection = currentCliType
+        ? this.deps.getCurrentModelSelection(carrierId)
+        : undefined;
+      const previousSelectionForStore: StoredCliSelection | undefined = currentCliType && previousTopLevelSelection
+        ? {
+          model: previousTopLevelSelection.model,
+          effort: previousTopLevelSelection.effort,
+          direct: previousTopLevelSelection.direct,
         }
-      }
+        : undefined;
 
       this.deps.updateCarrierCliType(carrierId, newCliType);
       cliTypeChanged = true;
       this.deps.refreshAgentPanel();
-      this.persistCarrierCliOverride(carrierId, newCliType, defaultCliType);
-
       const resolved = this.resolveCliSelection(carrierId, newCliType);
-      await this.deps.updateModelSelection(carrierId, {
-        model: resolved.model,
-        effort: resolved.effort ?? undefined,
-        direct: this.deps.getPerCliSettings(carrierId, newCliType)?.direct,
-      });
+      await this.deps.applyCliTypeModelSelectionUpdate(
+        carrierId,
+        newCliType,
+        defaultCliType ?? newCliType,
+        currentCliType ?? null,
+        previousSelectionForStore,
+        {
+          model: resolved.model,
+          effort: resolved.effort ?? undefined,
+          direct: this.deps.getPerCliSettings(carrierId, newCliType)?.direct,
+        },
+      );
       return {
         carrierId,
         newCliType,
@@ -175,15 +181,6 @@ export class StatusOverlayController implements Pick<
     return null;
   }
 
-  private persistCarrierCliOverride(
-    carrierId: string,
-    cliType: CarrierCliType,
-    defaultCliType: CarrierCliType | undefined,
-  ): void {
-    if (!defaultCliType) return;
-    this.deps.updateCliTypeOverride(carrierId, cliType, defaultCliType);
-  }
-
   private rollbackCliTypeChange(
     carrierId: string,
     currentCliType: CarrierCliType | undefined,
@@ -194,7 +191,6 @@ export class StatusOverlayController implements Pick<
     try {
       this.deps.updateCarrierCliType(carrierId, currentCliType);
       this.deps.refreshAgentPanel();
-      this.persistCarrierCliOverride(carrierId, currentCliType, defaultCliType);
     } catch {
       // 원래 실패를 보존하기 위해 best-effort rollback 실패는 삼킵니다.
     }

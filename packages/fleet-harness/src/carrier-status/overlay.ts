@@ -21,19 +21,20 @@ import {
   refreshStatusQuiet,
 } from "@sbluemin/fleet-unified-agent";
 import type { CliType, ProviderModelInfo } from "@sbluemin/fleet-unified-agent";
-import { admiral, type CarrierCategory, type TaskForceCliType } from "@sbluemin/fleet-core";
+import { admiral, type CarrierCategory, type FleetStoreSnapshot, type TaskForceCliType } from "@sbluemin/fleet-core";
 import { CARRIER_BG_COLORS, CARRIER_COLORS, CLI_DISPLAY_NAMES } from "../fleet-core-facades.js";
 import {
-  getConfiguredTaskForceBackends,
+  applyCliTypeModelSelectionUpdate,
+  getConfiguredTaskForceBackendsFromSnapshot,
   getConfiguredTaskForceCarrierIds,
   getPerCliSettings,
   getTaskForceModelConfig,
   loadModels as getModelConfig,
+  readStatesSnapshot,
   resetTaskForceModelSelection,
   savePerCliSettings,
   saveOfflineCarriers,
   saveSquadronEnabled,
-  updateCliTypeOverride,
   updateModelSelection,
   updateTaskForceModelSelection,
   StatusOverlayController,
@@ -56,6 +57,7 @@ import {
   isSquadronCarrierEnabled,
   notifyStatusUpdate,
   resolveCarrierDisplayName,
+  resolveCarrierCliType,
   setTaskForceConfiguredCarriers,
   updateCarrierCliType,
 } from "../tools.js";
@@ -1294,16 +1296,46 @@ export function registerCarrierStatusKeybind(_pi: ExtensionAPI): void {
   });
 }
 
-function buildStatusEntries(): CarrierStatusEntry[] {
-  const modelConfig = getModelConfig();
+/**
+ * 단일 snapshot의 cliTypeOverrides + defaultCliType으로 CLI 타입을 해석합니다.
+ * entry 빌드 경로에서 추가 디스크 read 없이 일관성을 유지합니다.
+ */
+function cliTypeForCarrierFromSnapshot(
+  snapshot: FleetStoreSnapshot,
+  carrierId: string,
+  defaultCliType: CliType,
+): CliType {
+  const override = snapshot.cliTypeOverrides[carrierId];
+  return (override as CliType | undefined) ?? defaultCliType;
+}
+
+function buildCliTypesByCarrierFromSnapshot(
+  snapshot: FleetStoreSnapshot,
+): Record<string, CliType> {
+  return Object.fromEntries(
+    getRegisteredOrder()
+      .map((id) => {
+        const config = getRegisteredCarrierConfig(id);
+        if (!config) return null;
+        return [id, cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType)];
+      })
+      .filter((entry): entry is [string, CliType] => entry !== null),
+  );
+}
+
+/**
+ * 동일 `FleetStoreSnapshot`에서 model · cliType · Task Force 백엔드 개수를 일괄 derive 합니다.
+ * (추가 디스크 read 없이 단일 snapshot 불변식 유지)
+ */
+function buildStatusEntriesFromSnapshot(snapshot: FleetStoreSnapshot): CarrierStatusEntry[] {
   const entries: CarrierStatusEntry[] = [];
 
   for (const id of getRegisteredOrder()) {
     const config = getRegisteredCarrierConfig(id);
     if (!config) continue;
 
-    const cliType = config.cliType;
-    const selection = modelConfig[id];
+    const cliType = cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType);
+    const selection = snapshot.models[id];
     const provider = getProviderModels(cliType);
     const meta = config.carrierMetadata;
 
@@ -1320,12 +1352,20 @@ function buildStatusEntries(): CarrierStatusEntry[] {
       roleDescription: meta ? `${meta.title} — ${meta.summary}` : null,
       isSortieEnabled: isCarrierOnline(id),
       isSquadronEnabled: isSquadronCarrierEnabled(id),
-      taskForceBackendCount: getConfiguredTaskForceBackends(id).length,
+      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, id).length,
       category: meta?.category,
     });
   }
 
   return entries;
+}
+
+function buildStatusEntries(): CarrierStatusEntry[] {
+  const preHealSnapshot = readStatesSnapshot();
+  const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(preHealSnapshot);
+  getModelConfig(cliTypesByCarrier);
+  const postHealSnapshot = readStatesSnapshot();
+  return buildStatusEntriesFromSnapshot(postHealSnapshot);
 }
 
 function createStatusOverlayController(
@@ -1336,6 +1376,11 @@ function createStatusOverlayController(
     getEntries: () => entries,
     getRegisteredOrder,
     getRegisteredCarrierConfig: (carrierId: string) => getRegisteredCarrierConfig(carrierId),
+    getResolvedCliType: (carrierId: string) => {
+      const config = getRegisteredCarrierConfig(carrierId);
+      if (!config) return undefined;
+      return resolveCarrierCliType(carrierId, config.defaultCliType) as CarrierCliType;
+    },
     getCurrentModelSelection: (carrierId: string) => getModelConfig()[carrierId],
     getAvailableModels: getCliModelInfo,
     getPerCliSettings: (carrierId: string, cliType: CarrierCliType) => getPerCliSettings(carrierId, cliType),
@@ -1345,15 +1390,26 @@ function createStatusOverlayController(
     updateCarrierCliType: (carrierId: string, cliType: CarrierCliType) => {
       updateCarrierCliType(carrierId, cliType as CliType);
     },
-    updateModelSelection: async (carrierId: string, selection: unknown) => {
-      await updateModelSelection(carrierId, selection);
+    applyCliTypeModelSelectionUpdate: async (
+      carrierId: string,
+      newCliType: CarrierCliType,
+      defaultCliType: CarrierCliType,
+      previousCliType: CarrierCliType | null,
+      previousSelection: unknown,
+      selection: unknown,
+    ) => {
+      await applyCliTypeModelSelectionUpdate(
+        carrierId,
+        newCliType as CliType,
+        defaultCliType as CliType,
+        previousCliType as CliType | null,
+        previousSelection,
+        selection,
+      );
     },
     refreshAgentPanel: refreshPanel,
     syncModelConfig,
     notifyStatusUpdate,
-    updateCliTypeOverride: (carrierId: string, cliType: CarrierCliType, defaultCliType: CarrierCliType) => {
-      updateCliTypeOverride(carrierId, cliType, defaultCliType);
-    },
   });
 }
 
@@ -1421,8 +1477,9 @@ function openTaskForceOverlay(carrierId: string, ctx: Parameters<Parameters<Retu
     getEffort: (cliType: string, modelId: string) => getModelEffort(requireTaskForceCliType(cliType), modelId),
     getBackendConfig: (cliType: string) => {
       const resolvedCliType = requireTaskForceCliType(cliType);
-      const tfConfig = getTaskForceModelConfig(carrierId, resolvedCliType);
-      const modelConfigNow = getModelConfig();
+      const snapshot = readStatesSnapshot();
+      const tfConfig = getTaskForceModelConfig(carrierId, resolvedCliType, snapshot);
+      const modelConfigNow = snapshot.models;
       const isCustom = !!(modelConfigNow[carrierId]?.taskforce?.[resolvedCliType]);
       const provider = getProviderModels(resolvedCliType);
       return {

@@ -154,6 +154,7 @@ The migration does **not** authorize silent behavioral drift. Preserve:
 - carrier completion push semantics
 - detached-job acceptance vs completion-push distinction
 - MCP/provider FIFO and archive behavior
+- **Multi-Instance State Integrity**: Shared `states.json` must remain race-free through `_generation` token guarding and `fs.watch` synchronization. Self-healing during reads is a mandatory invariant.
 
 ## 8. Documentation Guidance
 

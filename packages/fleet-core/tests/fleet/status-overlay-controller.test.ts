@@ -123,6 +123,11 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
         default: "high",
       },
     },
+    cursor: {
+      defaultModel: "composer-2",
+      models: [{ modelId: "composer-2", name: "Composer 2" }],
+      effort: { supported: false },
+    },
   };
 }
 
@@ -147,22 +152,37 @@ function createController(state: TestState) {
   const refreshAgentPanel = vi.fn();
   const syncModelConfig = vi.fn();
   const notifyStatusUpdate = vi.fn();
-  const updateCliTypeOverride = vi.fn();
+  const applyCliTypeModelSelectionUpdate = vi.fn(async (
+    carrierId: string,
+    cliType: CarrierCliType,
+    _defaultCliType: CarrierCliType,
+    _previousCliType: CarrierCliType | null,
+    _previousSelection: unknown,
+    selection: ModelSelection & { direct?: boolean },
+  ) => {
+    updateCarrierCliType(carrierId, cliType);
+    await updateModelSelection(carrierId, selection);
+  });
 
   const controller = new StatusOverlayController({
     getEntries: () => state.entries,
     getRegisteredOrder: () => [...state.configs.keys()],
     getRegisteredCarrierConfig: (carrierId) => state.configs.get(carrierId),
+    getResolvedCliType: (carrierId) => state.configs.get(carrierId)?.cliType,
     getCurrentModelSelection: (carrierId) => state.currentSelections[carrierId],
     getAvailableModels: (cliType) => state.providers[cliType],
+    getEffort: (cliType, modelId) => {
+      const provider = state.providers[cliType];
+      const model = provider.models.find((entry) => entry.modelId === modelId);
+      return (model?.effort ?? provider.effort ?? { supported: false }) as any;
+    },
     getPerCliSettings: (carrierId, cliType) => state.perCliSettings.get(`${carrierId}:${cliType}`),
     savePerCliSettings,
     updateCarrierCliType,
-    updateModelSelection,
+    applyCliTypeModelSelectionUpdate,
     refreshAgentPanel,
     syncModelConfig,
     notifyStatusUpdate,
-    updateCliTypeOverride,
   });
 
   return {
@@ -172,9 +192,9 @@ function createController(state: TestState) {
       refreshAgentPanel,
       savePerCliSettings,
       syncModelConfig,
-      updateCliTypeOverride,
       updateCarrierCliType,
       updateModelSelection,
+      applyCliTypeModelSelectionUpdate,
     },
   };
 }
@@ -218,16 +238,16 @@ describe("StatusOverlayController", () => {
       effort: "high",
       isDefault: false,
     });
-    expect(spies.updateModelSelection).toHaveBeenCalledWith("alpha", {
+    expect(spies.applyCliTypeModelSelectionUpdate).toHaveBeenCalledWith("alpha", "codex", "claude", "claude", {
+      model: "claude-current",
+      effort: "high",
+      direct: true,
+    }, {
       model: "codex-saved",
       effort: "high",
       direct: undefined,
     });
-    expect(spies.savePerCliSettings).toHaveBeenCalledWith("alpha", "claude", {
-      model: "claude-current",
-      effort: "high",
-      direct: true,
-    });
+    expect(spies.savePerCliSettings).not.toHaveBeenCalled();
   });
 
   it("changeCliType는 saved 값이 없으면 defaultModel과 기본 effort를 반환한다", async () => {
@@ -240,7 +260,11 @@ describe("StatusOverlayController", () => {
       effort: "low",
       isDefault: true,
     });
-    expect(spies.updateModelSelection).toHaveBeenCalledWith("beta", {
+    expect(spies.applyCliTypeModelSelectionUpdate).toHaveBeenCalledWith("beta", "claude", "codex", "codex", {
+      model: "codex-current",
+      effort: "high",
+      direct: undefined,
+    }, {
       model: "claude-default",
       effort: "low",
       direct: undefined,
@@ -314,26 +338,25 @@ describe("StatusOverlayController", () => {
         },
       },
     ]);
-    expect(spies.updateCarrierCliType).toHaveBeenCalledTimes(1);
+    expect(spies.updateCarrierCliType).toHaveBeenCalledTimes(2);
     expect(state.configs.get("gamma")?.cliType).toBe("claude");
   });
 
   it("changeCliType 실패 시 framework cliType을 롤백하고 해당 carrier override만 복원한다", async () => {
     const { controller, spies } = createController(state);
-    spies.updateModelSelection.mockRejectedValueOnce(new Error("boom"));
+    spies.applyCliTypeModelSelectionUpdate.mockRejectedValueOnce(new Error("boom"));
 
     await expect(controller.changeCliType("alpha", "codex")).rejects.toThrow("boom");
 
     expect(state.configs.get("alpha")?.cliType).toBe("claude");
     expect(spies.updateCarrierCliType).toHaveBeenNthCalledWith(1, "alpha", "codex");
     expect(spies.updateCarrierCliType).toHaveBeenNthCalledWith(2, "alpha", "claude");
-    expect(spies.updateCliTypeOverride).toHaveBeenNthCalledWith(1, "alpha", "codex", "claude");
-    expect(spies.updateCliTypeOverride).toHaveBeenNthCalledWith(2, "alpha", "claude", "claude");
+    expect(spies.applyCliTypeModelSelectionUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("override 저장 실패 시 model 업데이트 전에 framework cliType과 override를 롤백한다", async () => {
     const { controller, spies } = createController(state);
-    spies.updateCliTypeOverride.mockImplementationOnce(() => {
+    spies.applyCliTypeModelSelectionUpdate.mockImplementationOnce(() => {
       throw new Error("lock timeout");
     });
 
@@ -341,10 +364,7 @@ describe("StatusOverlayController", () => {
 
     expect(state.configs.get("alpha")?.cliType).toBe("claude");
     expect(spies.updateCarrierCliType).toHaveBeenNthCalledWith(1, "alpha", "codex");
-    expect(spies.updateCarrierCliType).toHaveBeenNthCalledWith(2, "alpha", "claude");
-    expect(spies.updateCliTypeOverride).toHaveBeenNthCalledWith(1, "alpha", "codex", "claude");
-    expect(spies.updateCliTypeOverride).toHaveBeenNthCalledWith(2, "alpha", "claude", "claude");
-    expect(spies.updateModelSelection).not.toHaveBeenCalled();
+    expect(spies.applyCliTypeModelSelectionUpdate).toHaveBeenCalledTimes(1);
     expect(spies.syncModelConfig).toHaveBeenCalledTimes(1);
     expect(spies.notifyStatusUpdate).toHaveBeenCalledTimes(1);
   });
@@ -352,12 +372,11 @@ describe("StatusOverlayController", () => {
   it("이전 상태가 non-default인 실패도 이전 override intent로 복원한다", async () => {
     state.configs.get("gamma")!.cliType = "gemini";
     const { controller, spies } = createController(state);
-    spies.updateModelSelection.mockRejectedValueOnce(new Error("boom"));
+    spies.applyCliTypeModelSelectionUpdate.mockRejectedValueOnce(new Error("boom"));
 
     await expect(controller.changeCliType("gamma", "codex")).rejects.toThrow("boom");
 
     expect(state.configs.get("gamma")?.cliType).toBe("gemini");
-    expect(spies.updateCliTypeOverride).toHaveBeenNthCalledWith(1, "gamma", "codex", "claude");
-    expect(spies.updateCliTypeOverride).toHaveBeenNthCalledWith(2, "gamma", "gemini", "claude");
+    expect(spies.applyCliTypeModelSelectionUpdate).toHaveBeenCalledTimes(1);
   });
 });

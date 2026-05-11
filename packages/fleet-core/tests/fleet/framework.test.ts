@@ -3,11 +3,16 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   registerCarrier,
   clearRegisteredCarriers,
   getRegisteredOrder,
+  resolveCarrierCliDisplayName,
 } from "../../src/admiral/carrier/framework.js";
+import { initStore, updateCliTypeOverride } from "../../src/admiral/store/fleet-store.js";
 import {
   RESERVED_CARRIER_IDS,
   CARRIER_ID_FORMAT_REGEX,
@@ -36,6 +41,8 @@ function makeConfig(id: string): CarrierConfig {
 describe("registerCarrier ID 검증", () => {
   beforeEach(() => {
     clearRegisteredCarriers();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-framework-test-"));
+    initStore(dir);
   });
 
   it("예약 ID 등록 시 throw", () => {
@@ -73,6 +80,17 @@ describe("registerCarrier ID 검증", () => {
       registerCarrier(makeConfig(id));
       expect(getRegisteredOrder()).toContain(id);
     }
+  });
+});
+
+describe("framework cliType 동기화", () => {
+  it("외부 override 변경 후 resolveCarrierCliDisplayName은 최신 cliType을 반영한다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-framework-cli-"));
+    initStore(dir);
+    clearRegisteredCarriers();
+    registerCarrier(makeConfig("genesis"));
+    updateCliTypeOverride("genesis", "gemini", "codex");
+    expect(resolveCarrierCliDisplayName("genesis")).toBe("Google Gemini CLI");
   });
 });
 

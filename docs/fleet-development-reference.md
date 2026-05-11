@@ -111,8 +111,17 @@ When migrating or restoring behavior that once lived under those paths:
 - Do not import Grand Fleet surfaces from the deprecated Fleet Core location.
 - `fleet-core` must not import Fleet host runtime packages.
 - `fleet-core` must not split internal admiralty ownership back out into a separate package.
-- All upstream `@mariozechner/pi-*` engine packages have been fork-vendored as `@sbluemin/fleet-*` under `engines/packages/` and are consumed via `workspace:*` links. The Fleet-AI surface is re-exported from `packages/fleet-harness/src/provider.ts` as the **single host gateway**; other adapters consume it through that gateway only.
+- All upstream `@mariozechner/pi-*` engine packages have been fork-vendored as `@sbluemin/fleet-*` under `engines/packages/` and are consumed via `workspace:*` links. The Fleet-AI surface is re-exported from `packages/flee-harness/src/provider.ts` as the **single host gateway**; other adapters consume it through that gateway only.
 
+## 9. Multi-Instance State Synchronization
+
+Fleet supports multiple concurrent instances sharing the same `states.json` file. This is achieved through three core mechanisms:
+
+1. **`_generation` Token (Atomic Consistency)**: The state file contains a monotonic `_generation` counter. Every write increments this token. Instances use this to detect if the file has changed on disk since their last read, preventing lost-update races.
+2. **`fs.watch` & Echo Suppression (Real-time Sync)**: `fleet-harness` registers a file watcher on the fleet data directory. When another instance writes to `states.json`, the watcher triggers a state refresh. The writing instance suppresses its own "self-echo" by tracking its last written generation.
+3. **Snapshot-based Read & Self-Healing**: All internal lookups (e.g., CLI type, model selection) use a snapshot-based read strategy. If a read path encounters inconsistent or stale data (e.g., a missing `cliType` for a registered carrier), the store automatically triggers a healing cycle to reconcile the state against the active catalog.
+
+Developers must avoid adding in-memory caches for state-derived values. Always use the pull-based resolvers provided by `fleet-core`.
 ## 7. Fleet Host Runtime Rules
 
 - Background work must not capture stale Fleet host `ExtensionContext`.

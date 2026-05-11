@@ -21,6 +21,7 @@ export { buildCarrierDispatchToolSpec } from "./tool-spec.js";
 export { personas };
 
 export const carrier = {
+  ...framework,
   framework,
   frameworkAccess,
   overlayTypes,

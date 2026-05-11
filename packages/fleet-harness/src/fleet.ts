@@ -26,6 +26,7 @@ import {
   getSquadronEnabledIds,
   notifyStatusUpdate,
   registerSingleCarrier,
+  resolveCarrierCliType,
   setOfflineCarriers,
   setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
@@ -89,7 +90,12 @@ const {
 } = admiral.agent.lifecycle;
 const { cleanIdle } = admiral.agent.connections;
 const {
+  getLastLocalStatesGeneration,
+  getLastLocalWriteFingerprint,
+  getStatesFilePath,
+  readStatesSnapshot,
   getConfiguredTaskForceCarrierIds,
+  getConfiguredTaskForceCarrierIdsFromSnapshot,
   loadOfflineCarriers,
   loadSquadronEnabled,
   reconcileActiveModelSelections,
@@ -107,6 +113,9 @@ const { isWorldviewEnabled } = metaphor.worldview;
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
 let bootConfig: BootConfig | null = null;
 let reconciliationScheduled = false;
+let statesWatcher: fs.FSWatcher | null = null;
+let lastObservedGeneration = 0;
+let lastObservedStatesFileMeta: { mtimeMs: number; size: number } | null = null;
 let operationNameStore: OperationNameGlobalStore | OperationNameGlobalState | null = null;
 
 export { bootBridge, ensureBridgeKeybinds };
@@ -200,6 +209,7 @@ export function scheduleFleetReconciliation(): void {
   setTimeout(() => {
     try {
       reconcileRegisteredCarrierModels();
+      ensureStatesWatcher();
       pruneStaleSquadronIds();
       syncTaskForceConfiguredCarriers();
       notifyStatusUpdate();
@@ -234,6 +244,8 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
+    statesWatcher?.close();
+    statesWatcher = null;
     detachAgentPanelUi();
     detachStatusContext();
     persistDirectChatIfEmpty(ctx);
@@ -558,7 +570,7 @@ function reconcileRegisteredCarrierModels(): void {
     getRegisteredOrder()
       .map((carrierId) => {
         const config = getRegisteredCarrierConfig(carrierId);
-        return config ? [carrierId, config.cliType] : null;
+        return config ? [carrierId, resolveCarrierCliType(carrierId, config.defaultCliType)] : null;
       })
       .filter((entry): entry is [string, CliType] => entry !== null),
   );
@@ -569,7 +581,7 @@ function reconcileRegisteredCarrierModels(): void {
       .map((carrierId) => {
         const config = getRegisteredCarrierConfig(carrierId);
         return config
-          ? [carrierId, { cliType: config.cliType, defaultModel: config.defaultModel, defaultEffort: config.defaultEffort }]
+          ? [carrierId, { cliType: resolveCarrierCliType(carrierId, config.defaultCliType), defaultModel: config.defaultModel, defaultEffort: config.defaultEffort }]
           : null;
       })
       .filter((entry): entry is [string, { cliType: CliType; defaultModel: string | undefined; defaultEffort: string | undefined }] => entry !== null),
@@ -597,4 +609,95 @@ function pruneStaleSquadronIds(): void {
 function syncTaskForceConfiguredCarriers(): void {
   const tfIds = getConfiguredTaskForceCarrierIds(getRegisteredOrder());
   setTaskForceConfiguredCarriers(tfIds);
+}
+
+function ensureStatesWatcher(): void {
+  if (statesWatcher) return;
+  const filePath = getStatesFilePath();
+  if (!filePath) return;
+  const dirPath = path.dirname(filePath);
+  const filename = path.basename(filePath);
+  statesWatcher = fs.watch(dirPath, (_event, changed) => {
+    if (changed && changed !== filename) return;
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      return;
+    }
+    const fileMeta = { mtimeMs: stat.mtimeMs, size: stat.size };
+    const snapshot = readStatesSnapshot();
+    const generation = snapshot.generation;
+
+    if (generation > 0) {
+      const metaMatchesLastObserved =
+        lastObservedStatesFileMeta !== null
+        && lastObservedStatesFileMeta.mtimeMs === fileMeta.mtimeMs
+        && lastObservedStatesFileMeta.size === fileMeta.size;
+
+      // generation만 같고 mtime/size가 바뀐 경우(외부가 _generation 유지하며 내용만 변경) reload 누락 방지
+      if (generation === lastObservedGeneration && metaMatchesLastObserved) {
+        return;
+      }
+
+      const isOurWriteGeneration = generation === getLastLocalStatesGeneration();
+      const localFp = getLastLocalWriteFingerprint();
+      const eventMatchesLocalWriteFingerprint =
+        localFp !== null
+        && generation === localFp.generation
+        && fileMeta.mtimeMs === localFp.mtimeMs
+        && fileMeta.size === localFp.size;
+
+      // writeStates 직후 stat한 지문과 일치할 때만 최초 echo 억제(mtime 정밀도 한계는 size와 병합)
+      if (eventMatchesLocalWriteFingerprint && generation !== lastObservedGeneration) {
+        lastObservedGeneration = generation;
+        lastObservedStatesFileMeta = fileMeta;
+        return;
+      }
+
+      if (isOurWriteGeneration && metaMatchesLastObserved) {
+        // 동일 generation + 동일 파일 메타의 중복 이벤트 — echo 억제
+        return;
+      }
+
+      if (isOurWriteGeneration) {
+        // generation 번호는 우리 것과 같지만 파일 메타가 달라진 경우: 외부 편집 등으로 reload
+        lastObservedGeneration = generation;
+        lastObservedStatesFileMeta = fileMeta;
+        reconcileRegisteredCarrierModels();
+        setTaskForceConfiguredCarriers(
+          getConfiguredTaskForceCarrierIdsFromSnapshot(snapshot, getRegisteredOrder()),
+        );
+        syncModelConfig();
+        notifyStatusUpdate();
+        return;
+      }
+
+      lastObservedGeneration = generation;
+      lastObservedStatesFileMeta = fileMeta;
+      reconcileRegisteredCarrierModels();
+      setTaskForceConfiguredCarriers(
+        getConfiguredTaskForceCarrierIdsFromSnapshot(snapshot, getRegisteredOrder()),
+      );
+      syncModelConfig();
+      notifyStatusUpdate();
+      return;
+    }
+
+    if (
+      lastObservedStatesFileMeta
+      && lastObservedStatesFileMeta.mtimeMs === fileMeta.mtimeMs
+      && lastObservedStatesFileMeta.size === fileMeta.size
+    ) {
+      return;
+    }
+    lastObservedStatesFileMeta = fileMeta;
+    reconcileRegisteredCarrierModels();
+    const snap = readStatesSnapshot();
+    setTaskForceConfiguredCarriers(
+      getConfiguredTaskForceCarrierIdsFromSnapshot(snap, getRegisteredOrder()),
+    );
+    syncModelConfig();
+    notifyStatusUpdate();
+  });
 }

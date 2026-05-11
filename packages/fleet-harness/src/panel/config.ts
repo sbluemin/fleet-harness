@@ -7,7 +7,8 @@
 
 import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
 import { MIN_BODY_H, MAX_BODY_H } from "../fleet-core-facades.js";
-import { loadModels } from "../fleet-core-facades.js";
+import { loadModels, readStatesSnapshot } from "../fleet-core-facades.js";
+import { getRegisteredCarrierConfig, getRegisteredOrder, resolveCarrierCliType } from "../tools.js";
 import { getState, PANEL_BRIDGE_HINT } from "./state.js";
 import type { ServiceSnapshot } from "./state.js";
 import { syncCurrentWidget, syncWidget } from "./widget-sync.js";
@@ -28,7 +29,17 @@ export function setAgentPanelModelConfig(
 
 /** 모델 설정을 런타임에서 읽어 패널에 반영합니다. */
 export function syncModelConfig(): void {
-  setAgentPanelModelConfig(loadModels());
+  const cliTypesByCarrier = Object.fromEntries(
+    getRegisteredOrder()
+      .map((carrierId) => {
+        const config = getRegisteredCarrierConfig(carrierId);
+        if (!config) return null;
+        return [carrierId, resolveCarrierCliType(carrierId, config.defaultCliType)];
+      })
+      .filter((entry): entry is [string, string] => entry !== null),
+  );
+  const snapshot = readStatesSnapshot();
+  setAgentPanelModelConfig(loadModels(cliTypesByCarrier) ?? snapshot.models);
 }
 
 // ─── 서비스 상태 동기화 ────────────────────────────────────

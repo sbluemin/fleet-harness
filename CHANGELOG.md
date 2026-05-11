@@ -16,6 +16,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Removed
 - [unified-agent] Nine models removed from OpenCode Go catalog including Kimi K2.5, Mimo V2/V2.5 variants, Minimax M2.5/M2.7, and Qwen 3.5/3.6 Plus
 
+### Fixed
+- [core][harness] Concurrent Fleet instances now self-heal stale `cliType` and model selections from `states.json`, suppress watcher self-echo, and prevent Carrier Status overlay crashes caused by provider-mismatched model pairs
+
 ## [0.17.2] - 2026-05-11
 
 ### Fixed

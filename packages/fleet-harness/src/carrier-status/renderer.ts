@@ -14,7 +14,7 @@ import {
   SYM_INDICATOR,
   TASKFORCE_BADGE_COLOR,
 } from "../fleet-core-facades.js";
-import { getConfiguredTaskForceBackends } from "../fleet-core-facades.js";
+import { getConfiguredTaskForceBackendsFromSnapshot, readStatesSnapshot } from "../fleet-core-facades.js";
 import type { Theme } from "@sbluemin/fleet-coding-agent";
 
 import {
@@ -51,12 +51,13 @@ const DISABLED_COLOR = "\x1b[38;2;100;100;100m";
  */
 export function renderCarrierStatus(input: CarrierStatusRenderInput): string | undefined {
   const activeJobs = getActiveJobs();
+  const snapshot = readStatesSnapshot();
   const segments = input.cols.map((col) => {
     const hasActiveJob = hasActiveJobForCarrier(activeJobs, col.cli);
     const footerCol = toFooterCol(col, input.streaming, hasActiveJob);
     const disabled = !isCarrierOnline(col.cli);
     const name = resolveCarrierDisplayName(col.cli);
-    const taskForceBackendCount = getConfiguredTaskForceBackends(col.cli).length;
+    const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(snapshot, col.cli).length;
     const tfBadgeColor = disabled ? DISABLED_COLOR : TASKFORCE_BADGE_COLOR;
     const sqBadgeColor = disabled ? DISABLED_COLOR : SQUADRON_BADGE_COLOR;
     const tfBadge = taskForceBackendCount >= 2

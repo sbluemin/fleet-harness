@@ -95,6 +95,10 @@ export type {
   ReasoningLevel as OperationReasoningLevel,
 } from "./metaphor/operation-name/constants.js";
 export type {
+  FleetStoreSnapshot,
+  FleetStoreWriteFingerprint,
+} from "./admiral/store/fleet-store.js";
+export type {
   DirectiveAnswer,
   DirectiveOption,
   DirectiveQuestion,

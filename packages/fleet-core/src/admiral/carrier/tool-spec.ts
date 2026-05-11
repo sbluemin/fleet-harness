@@ -42,6 +42,7 @@ import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   isCarrierOnline,
+  resolveCarrierCliType,
   resolveCarrierDisplayName,
 } from "./framework.js";
 import { validateRequiredRequestBlocks } from "./request-blocks.js";
@@ -294,8 +295,10 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
 async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<CarrierSingleResult> {
   const execStartedAt = Date.now();
   const carrierConfig = getRegisteredCarrierConfig(opts.carrierId);
-  const cliType = (carrierConfig?.cliType ?? opts.carrierId) as CliType;
-  const modelConfig = loadModels()[opts.carrierId];
+  const cliType = carrierConfig
+    ? resolveCarrierCliType(opts.carrierId, carrierConfig.defaultCliType)
+    : (opts.carrierId as CliType);
+  const modelConfig = loadModels({ [opts.carrierId]: cliType })[opts.carrierId];
   const model = modelConfig?.model;
   const effort = resolveValidatedEffort(cliType, model, modelConfig?.effort);
   let sessionId: string | undefined;
