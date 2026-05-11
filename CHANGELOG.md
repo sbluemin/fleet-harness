@@ -16,6 +16,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - [core][harness] Model ID suffix (Unified) removed and model names are now used directly as IDs for consistency
+- [harness] Carrier Status overlay UX improved by replacing raw CLI keys and internal model IDs with user-friendly provider and model names across all selection panels and status displays
 
 ### Removed
 - [unified-agent] Nine models removed from OpenCode Go catalog including Kimi K2.5, Mimo V2/V2.5 variants, Minimax M2.5/M2.7, and Qwen 3.5/3.6 Plus

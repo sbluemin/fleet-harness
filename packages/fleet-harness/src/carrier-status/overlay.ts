@@ -632,7 +632,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
     const choices = ALL_CLI_TYPES.map((cli): CliTypeChoice => ({
       value: cli,
-      label: cli !== entry.defaultCliType ? `${cli} (default: ${entry.defaultCliType})` : cli,
+      label: CLI_DISPLAY_NAMES[cli] ?? cli,
     }));
     this.state = {
       kind: "cliType",
@@ -667,11 +667,11 @@ export class CarrierStatusOverlay implements Component, Focusable {
       const nextCliType = selected.value;
       this.applyResolvedSelection(entry, nextCliType, this.getDefaultResolvedCliSelection(nextCliType));
       this.state = { kind: "saving" };
-      this.feedbackMessage = `${entry.displayName} → ${nextCliType} 전환 중...`;
+      this.feedbackMessage = `${entry.displayName} → ${CLI_DISPLAY_NAMES[nextCliType] ?? nextCliType} 전환 중...`;
       this.tui.requestRender();
       void this.callbacks.changeCliType(entry.carrierId, nextCliType).then((resolved) => {
         this.applyResolvedSelection(entry, nextCliType, resolved);
-        this.feedbackMessage = `${entry.displayName} → ${nextCliType} 전환 완료`;
+        this.feedbackMessage = `${entry.displayName} → ${CLI_DISPLAY_NAMES[nextCliType] ?? nextCliType} 전환 완료`;
       }).catch(() => {
         this.restoreEntrySnapshot(entry, previous);
         this.feedbackMessage = `${entry.displayName} CLI 전환 실패, 이전 상태로 복원됨`;
@@ -712,8 +712,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
       lines.push(`      ${this.theme.fg("dim", paddedLabel)} ${value}`);
     };
 
-    detailLine("model", `${modelLabel} [${entry.model}]`);
-    detailLine("cli", `${this.getCliDisplayName(entry.cliType)} (${entry.cliType})`);
+    detailLine("model", modelLabel);
+    detailLine("cli", this.getCliDisplayName(entry.cliType));
     detailLine("role", entry.role ?? "-");
     const wrappedDescription = this.wrapText(description, valueWidth);
     for (let i = 0; i < wrappedDescription.length; i++) {
@@ -810,7 +810,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const selected = this.state.choices[this.state.cursor];
     if (!selected) return;
     if (selected.carrierCount === 0) {
-      this.feedbackMessage = `${selected.cliType} 캐리어가 없어 일괄 전환을 시작할 수 없습니다.`;
+      this.feedbackMessage = `${CLI_DISPLAY_NAMES[selected.cliType] ?? selected.cliType} 캐리어가 없어 일괄 전환을 시작할 수 없습니다.`;
       this.tui.requestRender();
       return;
     }
@@ -845,8 +845,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
     this.state = { kind: "saving" };
     this.feedbackMessage = changedNames.length > 0
-      ? `${changedNames.join(", ")} → ${selected.cliType} 전환 중...`
-      : `${fromCli} 캐리어가 없어 변경되지 않았습니다.`;
+      ? `${changedNames.join(", ")} → ${CLI_DISPLAY_NAMES[selected.cliType] ?? selected.cliType} 전환 중...`
+      : `${CLI_DISPLAY_NAMES[fromCli] ?? fromCli} 캐리어가 없어 변경되지 않았습니다.`;
     this.tui.requestRender();
 
     void this.callbacks.changeCliTypes(updates).then((results) => {
@@ -871,7 +871,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       }
 
       if (failed.length === 0) {
-        this.feedbackMessage = `${changedNames.join(", ")} → ${selected.cliType} 전환 완료`;
+        this.feedbackMessage = `${changedNames.join(", ")} → ${CLI_DISPLAY_NAMES[selected.cliType] ?? selected.cliType} 전환 완료`;
       } else if (succeeded.length === 0) {
         this.feedbackMessage = `전체 전환 실패: ${failed.join(", ")}`;
       } else {
@@ -953,7 +953,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     if (batchState.kind === "batchTo") {
       const fromChoice = this.getBatchCliChoices().find((choice) => choice.cliType === batchState.fromCli) ?? null;
       if (fromChoice) {
-        lines.push(`  FROM: ${fromChoice.cliType} (${fromChoice.carrierCount} carriers)`);
+        lines.push(`  FROM: ${CLI_DISPLAY_NAMES[fromChoice.cliType] ?? fromChoice.cliType} (${fromChoice.carrierCount} carriers)`);
       }
     }
 
@@ -976,7 +976,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       .filter((cliType) => cliType !== excludeCli)
       .map((cliType) => ({
         cliType,
-        label: `${cliType} (${this.getEntries().filter((entry) => entry.cliType === cliType).length} carriers)`,
+        label: `${CLI_DISPLAY_NAMES[cliType] ?? cliType} (${this.getEntries().filter((entry) => entry.cliType === cliType).length} carriers)`,
         carrierCount: this.getEntries().filter((entry) => entry.cliType === cliType).length,
         status: snapshots.get(cliType)?.status ?? "unknown",
       }));
@@ -1032,7 +1032,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
           const model = this.callbacks.getAvailableModels(entry.cliType).models.find((item) => item.modelId === modelId);
           return {
             value: modelId,
-            label: `${modelId} · ${model?.name ?? modelId}`,
+            label: model?.name ?? modelId,
           };
         });
       case "effort":
@@ -1514,7 +1514,7 @@ function openTaskForceOverlay(carrierId: string, ctx: Parameters<Parameters<Retu
 function requireTaskForceCliType(cliType: string): TaskForceCliType {
   const allowedTaskForceCliTypes = new Set<string>(TASKFORCE_CLI_TYPES);
   if (!allowedTaskForceCliTypes.has(cliType)) {
-    throw new Error(`Unsupported Task Force backend: ${cliType}`);
+    throw new Error(`Unsupported Task Force backend: ${CLI_DISPLAY_NAMES[cliType] ?? cliType}`);
   }
   return cliType as TaskForceCliType;
 }

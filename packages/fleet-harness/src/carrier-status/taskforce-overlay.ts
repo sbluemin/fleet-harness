@@ -159,7 +159,10 @@ export class TaskForceConfigOverlay implements Component, Focusable {
         ? `${entry.color}▸${ANSI_RESET}`
         : " ";
 
-      const modelStr = entry.isCustom ? entry.model : dim(entry.model);
+      const modelName =
+        this.callbacks.getAvailableModels(entry.cliType).models.find((m) => m.modelId === entry.model)?.name
+        ?? entry.model;
+      const modelStr = entry.isCustom ? modelName : dim(modelName);
       const effortSupported = this.getEffortLevels(entry.cliType, entry.model).length > 0;
       const effortStr = effortSupported && entry.effort
         ? ` ${dim("·")} ${entry.isCustom ? entry.effort : dim(entry.effort)}`
@@ -178,7 +181,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
           const model = models[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = model.modelId === entry.model ? "●" : "○";
-          lines.push(frame.row(`      ${cursor} ${marker} ${model.modelId}  ${dim(model.name)}`));
+          lines.push(frame.row(`      ${cursor} ${marker} ${model.name ?? model.modelId}`));
         }
       }
 
@@ -346,7 +349,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   ): Promise<void> {
     const cliType = toTaskForceCliType(entry.cliType);
     if (!cliType) {
-      this.failSelection(`지원하지 않는 backend입니다 (${entry.cliType}).`);
+      this.failSelection(`지원하지 않는 backend입니다 (${CLI_DISPLAY_NAMES[entry.cliType] ?? entry.cliType}).`);
       return;
     }
 

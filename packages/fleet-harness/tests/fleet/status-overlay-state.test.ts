@@ -236,31 +236,31 @@ describe("CarrierStatusOverlay state transitions", () => {
       choices: [
         {
           cliType: "gemini",
-          label: "gemini (0 carriers)",
+          label: "Google Gemini CLI (0 carriers)",
           carrierCount: 0,
           status: "operational",
         },
         {
           cliType: "claude-zai",
-          label: "claude-zai (0 carriers)",
+          label: "Claude Code with Z.AI GLM (0 carriers)",
           carrierCount: 0,
           status: "unknown",
         },
         {
           cliType: "claude-kimi",
-          label: "claude-kimi (0 carriers)",
+          label: "Claude Code with Moonshot Kimi (0 carriers)",
           carrierCount: 0,
           status: "unknown",
         },
         {
           cliType: "codex",
-          label: "codex (0 carriers)",
+          label: "OpenAI Codex CLI (0 carriers)",
           carrierCount: 0,
           status: "operational",
         },
         {
           cliType: "opencode-go",
-          label: "opencode-go (0 carriers)",
+          label: "OpenCode Go (0 carriers)",
           carrierCount: 0,
           status: "unknown",
         },
