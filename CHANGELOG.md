@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-11
+
 ### Added
 - [core] Added per-sub-operation byte caps (20KB each) and a global ceiling (60KB) for `carrier_jobs(action:"result", format:"full")` responses in Squadron and TaskForce jobs
 - [core] Implemented UTF-8 safe character-level slicing for job archives to prevent data corruption at multibyte character boundaries (e.g., CJK, emojis)
