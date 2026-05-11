@@ -26,6 +26,7 @@ export {
 
 export { UnifiedClaudeAgentClient } from './client/UnifiedClaudeAgentClient.js';
 export { UnifiedCodexAgentClient } from './client/UnifiedCodexAgentClient.js';
+export { UnifiedCursorAgentClient } from './client/UnifiedCursorAgentClient.js';
 export { UnifiedGeminiAgentClient } from './client/UnifiedGeminiAgentClient.js';
 export { UnifiedOpenCodeAgentClient } from './client/UnifiedOpenCodeAgentClient.js';
 

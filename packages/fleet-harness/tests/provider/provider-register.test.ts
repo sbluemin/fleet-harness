@@ -46,7 +46,7 @@ vi.mock("@sbluemin/fleet-core", () => ({
         shutdownAllSessions: vi.fn(async () => {}),
       },
       models: {
-        buildModelId: (_cli: string, model: string) => `${model} (Unified)`,
+        buildModelId: (_cli: string, model: string) => model,
         buildProviderId: (_cli: string) => "OpenAI Codex CLI",
         getProviderIds: () => ["OpenAI Codex CLI"],
         parseModelId: (_id: string) => ({ cli: "codex", backendModel: "gpt-5.4" }),
@@ -76,7 +76,7 @@ vi.mock("@sbluemin/fleet-core", () => ({
 import registerProviderRuntime from "../../src/provider.js";
 
 describe("provider register", () => {
-  it("provider/model 등록 라벨을 Unified 표기로 노출한다", () => {
+  it("provider/model 등록 라벨을 models.json model.name으로 노출한다", () => {
     const streamAcp = vi.fn();
 
     const fleetServices = {} as any;
@@ -96,7 +96,7 @@ describe("provider register", () => {
         api: "OpenAI Codex CLI",
         models: [
           expect.objectContaining({
-            id: "gpt-5.4 (Unified)",
+            id: "gpt-5.4",
             name: "GPT-5.4",
             reasoning: true,
             defaultThinkingLevel: "xhigh",
@@ -136,7 +136,7 @@ describe("provider register", () => {
     sessionStart?.(
       { reason: "resume" },
       {
-        model: { id: "GPT-5.4 (Unified)" },
+        model: { id: "GPT-5.4" },
         sessionManager,
       },
     );

@@ -541,8 +541,7 @@ function resolveOperationNameReasoning(
   reasoning: string | undefined,
 ): ThinkingLevel | undefined {
   if (!reasoning || reasoning === "off") return undefined;
-  const parsed = admiral.agent.models.parseModelId(model.id, model.provider)
-    ?? admiral.agent.models.parseModelId(model.id);
+  const parsed = admiral.agent.models.parseModelId(model.id, model.provider);
   if (!parsed) return undefined;
   const modelEffort = getModelEffort(parsed.cli, parsed.backendModel);
   return modelEffort.supported && modelEffort.levels?.includes(reasoning)

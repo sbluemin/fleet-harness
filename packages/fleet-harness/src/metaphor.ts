@@ -438,8 +438,7 @@ function getOperationReasoningLevels(
   modelId: string | undefined,
 ): OperationReasoningLevel[] {
   if (!providerId || !modelId) return ["off"];
-  const parsed = admiral.agent.models.parseModelId(modelId, providerId)
-    ?? admiral.agent.models.parseModelId(modelId);
+  const parsed = admiral.agent.models.parseModelId(modelId, providerId);
   if (!parsed) return ["off"];
   const reasoning = getModelEffort(parsed.cli, parsed.backendModel);
   if (!reasoning.supported) return ["off"];

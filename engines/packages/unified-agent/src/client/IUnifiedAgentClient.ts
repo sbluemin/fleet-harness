@@ -5,13 +5,14 @@
  * 이벤트 맵, 연결 결과, public 메서드 시그니처를 포함합니다.
  */
 
-import type { PromptResponse } from '@agentclientprotocol/sdk';
+import type { PromptResponse } from "@agentclientprotocol/sdk";
 
-import { UnifiedClaudeAgentClient } from './UnifiedClaudeAgentClient.js';
-import { UnifiedCodexAgentClient } from './UnifiedCodexAgentClient.js';
-import { UnifiedGeminiAgentClient } from './UnifiedGeminiAgentClient.js';
-import { UnifiedOpenCodeAgentClient } from './UnifiedOpenCodeAgentClient.js';
-import { CliDetector } from '../detector/CliDetector.js';
+import { UnifiedClaudeAgentClient } from "./UnifiedClaudeAgentClient.js";
+import { UnifiedCodexAgentClient } from "./UnifiedCodexAgentClient.js";
+import { UnifiedCursorAgentClient } from "./UnifiedCursorAgentClient.js";
+import { UnifiedGeminiAgentClient } from "./UnifiedGeminiAgentClient.js";
+import { UnifiedOpenCodeAgentClient } from "./UnifiedOpenCodeAgentClient.js";
+import { CliDetector } from "../detector/CliDetector.js";
 import type {
   CliType,
   ProtocolType,
@@ -19,7 +20,7 @@ import type {
   UnifiedClientOptions,
   CliDetectionResult,
   AgentMode,
-} from '../types/config.js';
+} from "../types/config.js";
 import type {
   AcpAvailableCommand,
   AcpSessionNewResult,
@@ -33,9 +34,9 @@ import type {
   AcpFileWriteResponse,
   AcpToolCall,
   AcpToolCallUpdate,
-} from '../types/acp.js';
-import type { ConnectionState, StructuredLogEntry } from '../types/common.js';
-import type { ProviderModelInfo } from '../models/schemas.js';
+} from "../types/acp.js";
+import type { ConnectionState, StructuredLogEntry } from "../types/common.js";
+import type { ProviderModelInfo } from "../models/schemas.js";
 
 // ─── 이벤트 맵 ────────────────────────────────────────────
 
@@ -50,9 +51,19 @@ export interface UnifiedClientEvents {
   /** AI 사고 과정 청크 */
   thoughtChunk: [text: string, sessionId: string];
   /** 도구 호출 */
-  toolCall: [title: string, status: string, sessionId: string, data?: AcpToolCall];
+  toolCall: [
+    title: string,
+    status: string,
+    sessionId: string,
+    data?: AcpToolCall,
+  ];
   /** 도구 호출 업데이트 */
-  toolCallUpdate: [title: string, status: string, sessionId: string, data?: AcpToolCallUpdate];
+  toolCallUpdate: [
+    title: string,
+    status: string,
+    sessionId: string,
+    data?: AcpToolCallUpdate,
+  ];
   /** 계획 업데이트 */
   plan: [plan: string, sessionId: string];
   /** 사용 가능한 커맨드 목록 업데이트 */
@@ -60,11 +71,20 @@ export interface UnifiedClientEvents {
   /** ACP 세션 업데이트 (원자적) */
   sessionUpdate: [update: AcpSessionUpdateParams];
   /** ACP 권한 요청 (콜백 기반 응답) */
-  permissionRequest: [params: AcpPermissionRequestParams, resolve: (response: AcpPermissionResponse) => void];
+  permissionRequest: [
+    params: AcpPermissionRequestParams,
+    resolve: (response: AcpPermissionResponse) => void,
+  ];
   /** 파일 읽기 요청 (콜백 기반 응답) */
-  fileRead: [params: AcpFileReadParams, resolve: (response: AcpFileReadResponse) => void];
+  fileRead: [
+    params: AcpFileReadParams,
+    resolve: (response: AcpFileReadResponse) => void,
+  ];
   /** 파일 쓰기 요청 (콜백 기반 응답) */
-  fileWrite: [params: AcpFileWriteParams, resolve: (response: AcpFileWriteResponse) => void];
+  fileWrite: [
+    params: AcpFileWriteParams,
+    resolve: (response: AcpFileWriteResponse) => void,
+  ];
   /** 프롬프트 완료 */
   promptComplete: [sessionId: string];
   /** 에러 */
@@ -283,22 +303,26 @@ export interface IUnifiedAgentClient {
 export const UnifiedAgent = {
   createClient(cli: CliType): IUnifiedAgentClient {
     switch (cli) {
-      case 'claude':
-      case 'claude-zai':
-      case 'claude-kimi':
+      case "claude":
+      case "claude-zai":
+      case "claude-kimi":
         return new UnifiedClaudeAgentClient(cli);
-      case 'codex':
+      case "codex":
         return new UnifiedCodexAgentClient();
-      case 'gemini':
+      case "gemini":
         return new UnifiedGeminiAgentClient();
-      case 'opencode-go':
-        return new UnifiedOpenCodeAgentClient('opencode-go');
+      case "opencode-go":
+        return new UnifiedOpenCodeAgentClient("opencode-go");
+      case "cursor":
+        return new UnifiedCursorAgentClient();
     }
   },
 
-  async build(options: UnifiedAgentBuildOptions = {}): Promise<IUnifiedAgentClient> {
+  async build(
+    options: UnifiedAgentBuildOptions = {},
+  ): Promise<IUnifiedAgentClient> {
     if (options.sessionId && !options.cli) {
-      throw new Error('세션 재개 시 cli 지정이 필요합니다.');
+      throw new Error("세션 재개 시 cli 지정이 필요합니다.");
     }
 
     if (options.cli) {
@@ -308,7 +332,7 @@ export const UnifiedAgent = {
     const preferred = await new CliDetector().getPreferred();
     if (!preferred) {
       throw new Error(
-        '사용 가능한 CLI가 없습니다. gemini, claude, claude-zai, claude-kimi, codex, opencode-go 중 하나를 설치해주세요.',
+        "사용 가능한 CLI가 없습니다. gemini, claude, claude-zai, claude-kimi, codex, opencode-go, cursor 중 하나를 설치해주세요.",
       );
     }
 

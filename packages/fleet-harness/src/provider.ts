@@ -155,7 +155,7 @@ export function streamAcp(
   context: Context,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
-  const parsed = parseModelId(model.id, model.provider) ?? parseModelId(model.id);
+  const parsed = parseModelId(model.id, model.provider);
   if (!parsed) {
     return createErrorStream(`잘못된 ACP model ID: ${model.id}`);
   }
@@ -608,7 +608,7 @@ export function installAcpThinkingLevelPatch(): void {
 
 function getSelectableLevelsForModel(model: PatchableModel | undefined): SelectableThinkingLevel[] | null {
   if (!model || !model.reasoning) return null;
-  const parsed = parseModelId(model.id, model.provider) ?? parseModelId(model.id);
+  const parsed = parseModelId(model.id, model.provider);
   if (!parsed) return null;
   return getSelectableThinkingLevels(parsed.cli, parsed.backendModel);
 }

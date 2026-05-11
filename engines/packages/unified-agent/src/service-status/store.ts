@@ -78,6 +78,12 @@ const OPENAI_COMPONENT_NAMES = [
   'Chat Completions',
 ];
 
+const CURSOR_COMPONENT_NAMES = [
+  'CLI',
+  'Cloud Agents',
+  'cursor.com',
+];
+
 const STORE_KEY = '__pi_unified_agent_status_store__';
 
 const PROVIDER_FETCHERS: Record<CliType, FetcherFn> = {
@@ -87,6 +93,7 @@ const PROVIDER_FETCHERS: Record<CliType, FetcherFn> = {
   codex: fetchOpenAiStatus,
   gemini: fetchGeminiStatus,
   'opencode-go': () => fetchOpenCodeStatus('opencode-go'),
+  cursor: () => fetchCursorStatus('cursor'),
 };
 const PROVIDER_ORDER = Object.keys(PROVIDER_FETCHERS) as CliType[];
 const PROVIDER_CONFIGS: ProviderFetchConfig[] = PROVIDER_ORDER.map((key) => ({
@@ -299,6 +306,8 @@ function getProviderFallbackTarget(provider: CliType): string {
       return 'API';
     case 'opencode-go':
       return 'Service';
+    case 'cursor':
+      return 'CLI';
   }
 }
 
@@ -314,6 +323,8 @@ function getProviderFallbackSourceUrl(provider: CliType): string {
       return 'https://aistudio.google.com/status';
     case 'opencode-go':
       return 'https://opencode.ai/';
+    case 'cursor':
+      return 'https://status.cursor.com/';
   }
 }
 
@@ -484,6 +495,22 @@ function fetchOpenCodeStatus(provider: Extract<CliType, 'opencode-go'>): Promise
     sourceUrl: 'https://opencode.ai/',
     checkedAt: Date.now(),
     note: 'OpenCode 서비스 상태 페이지가 존재하지 않아 상태를 확인할 수 없습니다',
+  });
+}
+
+function fetchCursorStatus(provider: Extract<CliType, 'cursor'>): Promise<ServiceSnapshot> {
+  const sourceUrl = 'https://status.cursor.com/api/v2/components.json';
+  return fetchJson<ComponentResponse>(sourceUrl).then((response) => {
+    const matched = findComponent(response, CURSOR_COMPONENT_NAMES);
+
+    return {
+      provider,
+      label: getProviderLabel(provider),
+      status: mapRawStatus(matched.status),
+      matchedTarget: matched.name,
+      sourceUrl,
+      checkedAt: matched.updatedAt ? Date.parse(matched.updatedAt) || Date.now() : Date.now(),
+    };
   });
 }
 

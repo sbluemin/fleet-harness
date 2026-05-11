@@ -68,16 +68,17 @@
         { "modelId": "opencode-go/deepseek-v4-pro", "name": "DeepSeek V4 Pro", "effort": { "supported": false } },
         { "modelId": "opencode-go/glm-5", "name": "GLM-5", "effort": { "supported": false } },
         { "modelId": "opencode-go/glm-5.1", "name": "GLM-5.1", "effort": { "supported": false } },
-        { "modelId": "opencode-go/kimi-k2.5", "name": "Kimi K2.5", "effort": { "supported": false } },
-        { "modelId": "opencode-go/kimi-k2.6", "name": "Kimi K2.6 (3x limits)", "effort": { "supported": false } },
-        { "modelId": "opencode-go/mimo-v2-omni", "name": "MiMo V2 Omni", "effort": { "supported": false } },
-        { "modelId": "opencode-go/mimo-v2-pro", "name": "MiMo V2 Pro", "effort": { "supported": false } },
-        { "modelId": "opencode-go/mimo-v2.5", "name": "MiMo V2.5", "effort": { "supported": false } },
-        { "modelId": "opencode-go/mimo-v2.5-pro", "name": "MiMo V2.5 Pro", "effort": { "supported": false } },
-        { "modelId": "opencode-go/minimax-m2.5", "name": "MiniMax M2.5", "effort": { "supported": false } },
-        { "modelId": "opencode-go/minimax-m2.7", "name": "MiniMax M2.7", "effort": { "supported": false } },
-        { "modelId": "opencode-go/qwen3.5-plus", "name": "Qwen3.5 Plus", "effort": { "supported": false } },
-        { "modelId": "opencode-go/qwen3.6-plus", "name": "Qwen3.6 Plus", "effort": { "supported": false } }
+        { "modelId": "opencode-go/kimi-k2.6", "name": "Kimi K2.6 (3x limits)", "effort": { "supported": false } }
+      ]
+    },
+    "cursor": {
+      "name": "Cursor Agent",
+      "defaultModel": "default[]",
+      "models": [
+        { "modelId": "default[]", "name": "Auto", "effort": { "supported": false } },
+        { "modelId": "composer-2[fast=true]", "name": "Composer 2 (fast)", "effort": { "supported": false } },
+        { "modelId": "gemini-3.1-pro[]", "name": "Gemini 3.1 Pro", "effort": { "supported": false } },
+        { "modelId": "gemini-3-flash[]", "name": "Gemini 3 Flash", "effort": { "supported": false } }
       ]
     }
   }

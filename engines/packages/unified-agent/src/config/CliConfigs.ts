@@ -141,6 +141,23 @@ export const CLI_BACKENDS = {
     colorRgb: [0, 200, 160],
     bgColorRgb: [8, 32, 28],
   },
+  cursor: {
+    id: 'cursor',
+    cliCommand: 'cursor-agent',
+    protocol: 'acp',
+    authRequired: true,
+    acpArgs: ['acp'],
+    modes: [
+      { id: 'agent', label: 'Agent' },
+    ],
+    supportsSessionClose: false,
+    supportsSessionLoad: true,
+    requiresModelAtSpawn: false,
+    usesNpxBridge: false,
+    defaultMaxTokens: 200_000,
+    colorRgb: [0, 122, 204],
+    bgColorRgb: [10, 25, 41],
+  },
 } as const satisfies Record<string, CliBackendConfig>;
 
 export type CliType = keyof typeof CLI_BACKENDS;
@@ -230,6 +247,8 @@ export function getYoloModeId(cli: CliType): string {
       return 'bypassPermissions';
     case 'opencode-go':
       return 'build';
+    case 'cursor':
+      return 'agent';
     case 'gemini':
     case 'codex':
       return 'yolo';

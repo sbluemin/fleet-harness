@@ -42,7 +42,6 @@ export interface CliCapability {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LEGACY_PROVIDER_PREFIX = "Fleet ";
-const MODEL_ID_POSTFIX = " (Unified)";
 const LEGACY_MODEL_ID_POSTFIX = " (ACP)";
 export const SELECTABLE_THINKING_LEVELS = new Set<SelectableThinkingLevel>(["low", "medium", "high", "xhigh", "max"]);
 
@@ -187,13 +186,13 @@ function buildModelLookup() {
     const providerIds = buildProviderIdAliases(cli);
     for (const model of provider.models) {
       const modelIds = buildModelIdAliases(model.name);
-      for (const modelId of [...modelIds, model.modelId]) {
+      for (const modelId of modelIds) {
         byRegisteredId.set(modelId, { cli, backendModel: model.modelId });
         for (const pid of providerIds) {
           byProviderAndRegisteredId.set(`${pid}\u0000${modelId}`, { cli, backendModel: model.modelId });
         }
       }
-      byCliModel.set(`${cli}\u0000${model.modelId}`, modelIds[0]!);
+      byCliModel.set(`${cli}\u0000${model.modelId}`, model.name);
     }
   }
 
@@ -210,5 +209,5 @@ function buildProviderIdAliases(cli: CliType): string[] {
 }
 
 function buildModelIdAliases(displayName: string): string[] {
-  return [`${displayName}${MODEL_ID_POSTFIX}`, `${displayName}${LEGACY_MODEL_ID_POSTFIX}`, displayName];
+  return [displayName, `${displayName}${LEGACY_MODEL_ID_POSTFIX}`];
 }

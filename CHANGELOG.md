@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [unified-agent] New Cursor Agent backend provider added with ACP protocol support, single agent mode, and first-prompt-pending system prompt pattern
+- [unified-agent] Cursor Agent model catalog introduced including Auto, Composer 2 (fast), Gemini 3.1 Pro, and Gemini 3 Flash
+- [unified-agent] Live Cursor service status monitoring integrated via Statuspage with primary matching for CLI, Cloud Agents, and cursor.com components
+
+### Changed
+- [core][harness] Model ID suffix (Unified) removed and model names are now used directly as IDs for consistency
+
+### Removed
+- [unified-agent] Nine models removed from OpenCode Go catalog including Kimi K2.5, Mimo V2/V2.5 variants, Minimax M2.5/M2.7, and Qwen 3.5/3.6 Plus
+
 ## [0.17.2] - 2026-05-11
 
 ### Fixed

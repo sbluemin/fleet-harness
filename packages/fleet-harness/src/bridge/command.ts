@@ -30,6 +30,8 @@ export function buildBridgeCommand(context: BridgeLaunchContext): BridgeCommandS
         cwd: context.cwd,
         title: `${BRIDGE_TITLE_PREFIX} · OpenCode Go`,
       };
+    case "cursor":
+      throw new Error("Cursor 백엔드는 Bridge(Alt+T) 셸 진입을 지원하지 않습니다.");
   }
 }
 
@@ -47,6 +49,8 @@ function getBridgeTitle(cli: BridgeLaunchContext["cli"]): string {
       return "Gemini";
     case "opencode-go":
       return "OpenCode Go";
+    case "cursor":
+      throw new Error("Cursor 백엔드는 Bridge(Alt+T) 셸 진입을 지원하지 않습니다.");
   }
 }
 

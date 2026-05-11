@@ -9,7 +9,7 @@ vi.mock("@sbluemin/fleet-ai", () => ({
 
 let capturedStreamHandler: Function | null = null;
 const parseModelIdMock = vi.fn((id: string, _provider?: string) => {
-  if (id === "gpt-5.4 (Unified)" || id === "gpt-5.4") return { cli: "codex", backendModel: "gpt-5.4" };
+  if (id === "gpt-5.4" || id === "gpt-5.4 (ACP)") return { cli: "codex", backendModel: "gpt-5.4" };
   return null;
 });
 const ensureMock = vi.fn(async () => ({ sessionId: "acp-session-1" }));
@@ -22,7 +22,7 @@ vi.mock("@sbluemin/fleet-core", () => ({
       models: {
         parseModelId: parseModelIdMock,
         hashSystemPrompt: vi.fn(() => "hash-123"),
-        buildModelId: vi.fn((cli: string, modelId: string) => `${modelId} (${cli})`),
+        buildModelId: vi.fn((_cli: string, modelId: string) => modelId),
         buildProviderId: vi.fn((cli: string) => `provider-${cli}`),
         getProviderIds: vi.fn(() => []),
         getSelectableThinkingLevels: vi.fn(() => null),
@@ -100,7 +100,7 @@ describe("provider-stream adapter", () => {
     vi.mocked(sendMessage).mockResolvedValueOnce(undefined);
 
     streamAcp(
-      { id: "gpt-5.4 (Unified)", provider: "OpenAI Codex CLI" } as any,
+      { id: "gpt-5.4", provider: "OpenAI Codex CLI" } as any,
       {
         systemPrompt: "system",
         messages: [{ role: "user", content: "hello" }],
@@ -141,7 +141,7 @@ describe("provider-stream adapter", () => {
     vi.mocked(sendMessage).mockResolvedValueOnce(undefined);
 
     streamAcp(
-      { id: "gpt-5.4 (Unified)", provider: "OpenAI Codex CLI" } as any,
+      { id: "gpt-5.4", provider: "OpenAI Codex CLI" } as any,
       {
         messages: [{ role: "user", content: "hello" }],
         tools: [{ name: "test-tool", description: "test", parameters: {} }],
@@ -165,7 +165,7 @@ describe("provider-stream adapter", () => {
     vi.mocked(deliverToolResults).mockResolvedValueOnce(undefined);
 
     streamAcp(
-      { id: "gpt-5.4 (Unified)", provider: "OpenAI Codex CLI" } as any,
+      { id: "gpt-5.4", provider: "OpenAI Codex CLI" } as any,
       {
         messages: [
           {
