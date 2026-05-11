@@ -38,6 +38,7 @@ import {
   getRegisteredOrder,
   isCarrierOnline,
   isSquadronCarrierEnabled,
+  resolveCarrierCliType,
   resolveCarrierDisplayName,
 } from "../carrier/framework.js";
 import { buildCarrierSystemPrompt } from "../carrier/prompts.js";
@@ -177,8 +178,10 @@ async function runSquadronJobInBackground(opts: SquadronBackgroundOptions): Prom
   let finalError: string | undefined;
   let results: SquadronResult[] = [];
   try {
-    const modelConfig = loadModels()[opts.carrierId];
-    const cliType = (opts.carrierConfig?.cliType ?? "claude") as CliType;
+    const cliType = opts.carrierConfig
+      ? resolveCarrierCliType(opts.carrierId, opts.carrierConfig.defaultCliType)
+      : (opts.carrierId as CliType);
+    const modelConfig = loadModels({ [opts.carrierId]: cliType })[opts.carrierId];
     const settledResults = await Promise.allSettled(
       opts.sanitizedSubtasks.map((subtask, index) =>
         runSquadronInstance(index, subtask.title, subtask.request, {
