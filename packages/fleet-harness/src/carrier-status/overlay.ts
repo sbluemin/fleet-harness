@@ -59,7 +59,7 @@ import {
   setTaskForceConfiguredCarriers,
   updateCarrierCliType,
 } from "../tools.js";
-import { createOverlayFrame } from "./frame.js";
+import { createOverlayFrame, resolveEditorCardWidth } from "./frame.js";
 import { buildModelEffortTransition } from "./model-flow.js";
 import { TaskForceConfigOverlay } from "./taskforce-overlay.js";
 import type {
@@ -1472,8 +1472,4 @@ function isPrintableTextInput(value: string): boolean {
   return value.length > 0
     && !value.startsWith("\x1b")
     && !/[\u0000-\u001f\u007f]/.test(value);
-}
-
-function resolveEditorCardWidth(width: number, minWidth: number): number {
-  return Math.max(minWidth, width);
 }

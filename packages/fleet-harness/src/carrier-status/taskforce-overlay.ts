@@ -17,7 +17,7 @@ import {
 } from "../fleet-core-facades.js";
 import type { TaskForceCliType } from "@sbluemin/fleet-core";
 
-import { createOverlayFrame } from "./frame.js";
+import { createOverlayFrame, resolveEditorCardWidth } from "./frame.js";
 import { buildModelEffortTransition } from "./model-flow.js";
 
 // ─── 타입 ────────────────────────────────────────────────
@@ -415,6 +415,3 @@ function toTaskForceCliType(value: string): TaskForceCliType | null {
   return (TASKFORCE_CLI_TYPES as readonly string[]).includes(value) ? value as TaskForceCliType : null;
 }
 
-function resolveEditorCardWidth(width: number, minWidth: number): number {
-  return Math.max(minWidth, width);
-}

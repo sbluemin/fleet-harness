@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+- [harness] Carrier Status (Alt+O) and Task Force config (`t`) overlays no longer crash on narrow terminals or when carrier names contain wide characters such as CJK glyphs
+
 ## [0.17.1] - 2026-05-10
 
 ### Changed
