@@ -4,7 +4,13 @@ import { getActiveJob, listActiveJobs } from "../../infra/job/concurrency-guard.
 import { isCarrierJobId } from "../../infra/job/job-id.js";
 import { serializeJobArchive } from "../../infra/job/archive-serializer.js";
 import { getJobSummary, listJobSummaries } from "../../infra/job/lru-cache.js";
-import { CARRIER_JOBS_FULL_RESULT_BYTE_CAP, type CarrierJobRecord, type CarrierJobSummary } from "../../infra/job/job-types.js";
+import {
+  CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
+  CARRIER_JOBS_GLOBAL_BYTE_CAP,
+  CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+  type CarrierJobRecord,
+  type CarrierJobSummary,
+} from "../../infra/job/job-types.js";
 import type { CarrierJobsAvailability, CarrierJobsFormat, CarrierJobsParams } from "./types.js";
 
 export interface CarrierJobsResponse {
@@ -113,6 +119,14 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
   }
 
   const archive = getFinalized(jobId, now);
+  const isSubOpJob =
+    summary?.tool === "carrier_squadron" ||
+    summary?.tool === "carrier_taskforce" ||
+    jobId.startsWith("squadron:") ||
+    jobId.startsWith("taskforce:");
+  const serializeOpts = isSubOpJob
+    ? { perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP, maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP }
+    : { maxBytes: CARRIER_JOBS_FULL_RESULT_BYTE_CAP };
   return {
     action: "result",
     format,
@@ -121,7 +135,7 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
     status: archive?.status ?? summary?.status ?? "not_found",
     summary: summary ?? undefined,
     ...availability,
-    full_result: archive ? serializeJobArchive(archive, { maxBytes: CARRIER_JOBS_FULL_RESULT_BYTE_CAP }) : undefined,
+    full_result: archive ? serializeJobArchive(archive, serializeOpts) : undefined,
     error: archive ? undefined : "full result unavailable or expired",
   };
 }

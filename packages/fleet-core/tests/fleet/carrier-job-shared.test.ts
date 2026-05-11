@@ -30,7 +30,12 @@ import {
   resetJobArchivesForTest,
 } from "../../src/infra/job/job-stream-archive.js";
 import type { CarrierJobRecord, CarrierJobSummary } from "../../src/infra/job/job-types.js";
-import { CARRIER_JOB_TTL_MS } from "../../src/infra/job/job-types.js";
+import {
+  CARRIER_JOB_TTL_MS,
+  CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
+  CARRIER_JOBS_GLOBAL_BYTE_CAP,
+  CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+} from "../../src/infra/job/job-types.js";
 import {
   configureJobSummaryCache,
   getJobSummary,
@@ -322,6 +327,114 @@ describe("job stream archive", () => {
 
     expect(capped).toBe(full);
     expect(capped).not.toContain("[truncated");
+  });
+
+  it("applies independent per-sub-op caps with section headers and grouped truncation markers", () => {
+    createJobArchive("squadron:cap", 1000);
+    appendBlock(
+      "squadron:cap",
+      toMessageArchiveBlock("genesis", `alpha-${"y".repeat(35_000)}`, "subtask 0: alpha", 1001),
+      1001,
+    );
+    appendBlock(
+      "squadron:cap",
+      toMessageArchiveBlock("genesis", `beta-${"y".repeat(35_000)}`, "subtask 1: beta", 1002),
+      1002,
+    );
+    finalizeJobArchive("squadron:cap", "done", 3000);
+
+    const archive = getFinalized("squadron:cap", 3001)!;
+    const capped = serializeJobArchive(archive, {
+      perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+      maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
+    });
+
+    expect(capped).toContain("── subtask 0: alpha ──");
+    expect(capped).toContain("── subtask 1: beta ──");
+    expect(capped).toMatch(/\[truncated \d+ chars in subtask 0: alpha]/);
+    expect(capped).toMatch(/\[truncated \d+ chars in subtask 1: beta]/);
+    expect(Buffer.byteLength(capped, "utf8")).toBeLessThanOrEqual(CARRIER_JOBS_GLOBAL_BYTE_CAP);
+  });
+
+  it("byte-slices a single merged oversized text block with UTF-8-safe head, char marker, and tail", () => {
+    const mid = `${"µ".repeat(9500)}${"a".repeat(4000)}`;
+    createJobArchive("squadron:utf8-slice", 1000);
+    appendBlock(
+      "squadron:utf8-slice",
+      toMessageArchiveBlock("genesis", `BEGIN-${mid}-END`, "subtask 0: slice", 1001),
+      1001,
+    );
+    finalizeJobArchive("squadron:utf8-slice", "done", 2000);
+
+    const archive = getFinalized("squadron:utf8-slice", 2001)!;
+    const capped = serializeJobArchive(archive, {
+      perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+      maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
+    });
+
+    expect(capped).toContain("── subtask 0: slice ──");
+    expect(capped).toMatch(/\[truncated \d+ chars in subtask 0: slice]/);
+    expect(capped).toContain("BEGIN-");
+    expect(capped).toContain("-END");
+    expect(Buffer.byteLength(capped, "utf8")).toBeLessThanOrEqual(CARRIER_JOBS_GLOBAL_BYTE_CAP);
+    expect(capped).not.toContain("\uFFFD");
+  });
+
+  it("keeps UTF-8 valid for per-sub-op slice when payload mixes µ, Hangul, and emoji", () => {
+    const core = `${"µ".repeat(6500)}${"가".repeat(1800)}${"😀".repeat(400)}`;
+    createJobArchive("squadron:unicode-mix", 1000);
+    appendBlock(
+      "squadron:unicode-mix",
+      toMessageArchiveBlock("genesis", `ST|${core}|ED`, "subtask 0: mix", 1001),
+      1001,
+    );
+    finalizeJobArchive("squadron:unicode-mix", "done", 2000);
+
+    const archive = getFinalized("squadron:unicode-mix", 2001)!;
+    const capped = serializeJobArchive(archive, {
+      perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+      maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
+    });
+
+    expect(capped).not.toContain("\uFFFD");
+    expect(capped).toContain("ST|");
+    expect(capped).toContain("|ED");
+    expect(capped).toMatch(/\[truncated \d+ chars in subtask 0: mix]/);
+  });
+
+  it("uses legacy block truncation marker for single-block sortie cap (no char slicing)", () => {
+    createJobArchive("sortie:large-single", 1000);
+    appendBlock(
+      "sortie:large-single",
+      toMessageArchiveBlock("genesis", `BEGIN-${"가".repeat(7800)}-END`, undefined, 1001),
+      1001,
+    );
+    finalizeJobArchive("sortie:large-single", "done", 2000);
+
+    const archive = getFinalized("sortie:large-single", 2001)!;
+    const capped = serializeJobArchive(archive, { maxBytes: CARRIER_JOBS_FULL_RESULT_BYTE_CAP });
+
+    expect(capped).toMatch(/\[truncated 1 blocks\]/);
+    expect(capped).not.toMatch(/\[truncated \d+ chars/);
+    expect(capped).not.toContain("\uFFFD");
+  });
+
+  it("shows empty-group placeholder for labeled channels with no text payload", () => {
+    createJobArchive("squadron:empty", 1000);
+    appendBlock("squadron:empty", toMessageArchiveBlock("genesis", "", "subtask 0: quiet", 1001), 1001);
+    appendBlock("squadron:empty", toMessageArchiveBlock("genesis", "hello", "subtask 1: loud", 1002), 1002);
+    finalizeJobArchive("squadron:empty", "done", 1003);
+
+    const archive = getFinalized("squadron:empty", 1004)!;
+    const text = serializeJobArchive(archive, {
+      perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+      maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
+    });
+
+    expect(text).toContain("── subtask 0: quiet ──");
+    expect(text).toContain("(no archived output for subtask 0: quiet)");
+    expect(text).toContain("── subtask 1: loud ──");
+    expect(text).toContain("hello");
   });
 });
 

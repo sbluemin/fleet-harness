@@ -6,6 +6,10 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- [core] Added per-sub-operation byte caps (20KB each) and a global ceiling (60KB) for `carrier_jobs(action:"result", format:"full")` responses in Squadron and TaskForce jobs
+- [core] Implemented UTF-8 safe character-level slicing for job archives to prevent data corruption at multibyte character boundaries (e.g., CJK, emojis)
+- [core] Preserved legacy 20KB single-cap behavior for `carrier_dispatch` while enabling precision char-slicing only for sub-operation paths via internal opt-in
+- [core] Guaranteed sub-operation cap policy enforcement through `jobId` prefix fallback (`squadron:` / `taskforce:`), ensuring consistency even after summary LRU eviction
 - [unified-agent] New Cursor Agent backend provider added with ACP protocol support, single agent mode, and first-prompt-pending system prompt pattern
 - [unified-agent] Cursor Agent model catalog introduced including Auto, Composer 2 (fast), Gemini 3.1 Pro, and Gemini 3 Flash
 - [unified-agent] Live Cursor service status monitoring integrated via Statuspage with primary matching for CLI, Cloud Agents, and cursor.com components

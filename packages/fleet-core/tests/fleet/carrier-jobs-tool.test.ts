@@ -2,9 +2,17 @@ import { describe, expect, beforeEach, it } from "vitest";
 
 import { registerJobAbortController, resetJobCancelRegistryForTest } from "../../src/infra/job/job-cancel-registry.js";
 import { acquireJobPermit, resetJobConcurrencyForTest } from "../../src/infra/job/concurrency-guard.js";
-import { appendBlock, createJobArchive, finalizeJobArchive, resetJobArchivesForTest } from "../../src/infra/job/job-stream-archive.js";
+import { serializeJobArchive } from "../../src/infra/job/archive-serializer.js";
+import {
+  appendBlock,
+  createJobArchive,
+  finalizeJobArchive,
+  getFinalized,
+  resetJobArchivesForTest,
+} from "../../src/infra/job/job-stream-archive.js";
 import { toMessageArchiveBlock } from "../../src/infra/job/archive-block-converter.js";
 import type { CarrierJobRecord, CarrierJobSummary } from "../../src/infra/job/job-types.js";
+import { CARRIER_JOBS_FULL_RESULT_BYTE_CAP } from "../../src/infra/job/job-types.js";
 import { putJobSummary, resetJobSummaryCacheForTest } from "../../src/infra/job/lru-cache.js";
 import { dispatchCarrierJobsAction } from "../../src/admiral/carrier-jobs/index.js";
 import { buildCarrierJobsSchema, CARRIER_JOBS_DOCTRINE } from "../../src/admiral/carrier-jobs/prompts.js";
@@ -133,6 +141,65 @@ describe("carrier_jobs tool", () => {
     expect(response.full_result).toContain("chronological output");
   });
 
+  it("keeps carrier_dispatch full_result serialization identical to the legacy single maxBytes cap", () => {
+    putJobSummary(buildSummary("sortie:legacy-cap", 1000), 1000);
+    createJobArchive("sortie:legacy-cap", 1000);
+    appendBlock(
+      "sortie:legacy-cap",
+      toMessageArchiveBlock("genesis", "payload line", undefined, 1001),
+      1001,
+    );
+    finalizeJobArchive("sortie:legacy-cap", "done", 1002);
+
+    const archive = getFinalized("sortie:legacy-cap", 1003)!;
+    const expected = serializeJobArchive(archive, { maxBytes: CARRIER_JOBS_FULL_RESULT_BYTE_CAP });
+    const response = dispatchCarrierJobsAction({ action: "result", job_id: "sortie:legacy-cap" }, 1003);
+
+    expect(response.full_result).toBe(expected);
+    expect(response.full_result).not.toMatch(/^── /m);
+  });
+
+  it("applies per-sub-op caps for squadron full result when summary was evicted (jobId prefix fallback)", () => {
+    createJobArchive("squadron:no-summary", 1000);
+    appendBlock(
+      "squadron:no-summary",
+      toMessageArchiveBlock("genesis", `solo-${"z".repeat(35_000)}`, "subtask 0: only", 1001),
+      1001,
+    );
+    finalizeJobArchive("squadron:no-summary", "done", 2000);
+
+    const response = dispatchCarrierJobsAction({ action: "result", job_id: "squadron:no-summary" }, 2001);
+
+    expect(response.ok).toBe(true);
+    expect(response.summary_available).toBe(false);
+    expect(response.full_result).toContain("── subtask 0: only ──");
+    expect(response.full_result).toMatch(/\[truncated \d+ chars in subtask 0: only]/);
+    expect(Buffer.byteLength(response.full_result!, "utf8")).toBeLessThanOrEqual(60_000);
+  });
+
+  it("uses per-sub-op plus global caps for squadron jobs in full result", () => {
+    putJobSummary(buildSquadronSummary("squadron:tf", 1000), 1000);
+    createJobArchive("squadron:tf", 1000);
+    appendBlock(
+      "squadron:tf",
+      toMessageArchiveBlock("genesis", `a-${"z".repeat(35_000)}`, "subtask 0: a", 1001),
+      1001,
+    );
+    appendBlock(
+      "squadron:tf",
+      toMessageArchiveBlock("genesis", `b-${"z".repeat(35_000)}`, "subtask 1: b", 1002),
+      1002,
+    );
+    finalizeJobArchive("squadron:tf", "done", 3000);
+
+    const response = dispatchCarrierJobsAction({ action: "result", job_id: "squadron:tf" }, 3001);
+
+    expect(response.ok).toBe(true);
+    expect(response.full_result).toContain("── subtask 0: a ──");
+    expect(response.full_result).toContain("── subtask 1: b ──");
+    expect(Buffer.byteLength(response.full_result!, "utf8")).toBeLessThanOrEqual(60_000);
+  });
+
   it("cancels by job ID without touching unrelated jobs", () => {
     const target = new AbortController();
     const other = new AbortController();
@@ -165,6 +232,18 @@ function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
   return {
     jobId,
     tool: "carrier_genesis",
+    status: "done",
+    summary: "completed",
+    startedAt,
+    finishedAt: startedAt + 100,
+    carriers: ["genesis"],
+  };
+}
+
+function buildSquadronSummary(jobId: string, startedAt: number): CarrierJobSummary {
+  return {
+    jobId,
+    tool: "carrier_squadron",
     status: "done",
     summary: "completed",
     startedAt,
