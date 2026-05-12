@@ -112,7 +112,7 @@ export class BaseConnection extends EventEmitter {
     });
 
     // 프로세스 종료 처리
-    child.on('exit', (code, signal) => {
+    child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
       this.flushStderrBuffer();
       this.setState('closed');
       this.emit('exit', code, signal);

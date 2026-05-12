@@ -3,6 +3,8 @@
  * Codex CLI를 native app-server 프로토콜로 연결하여 프롬프트, 모델, effort, 세션 재개를 검증합니다.
  */
 
+import { EventEmitter } from 'events';
+import type { ChildProcess } from 'child_process';
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   isCliInstalled,
@@ -15,7 +17,64 @@ import {
   SESSION_RECALL_PROMPT,
 } from './helpers.js';
 import { UnifiedAgent, type IUnifiedAgentClient } from '../../src/index.js';
+import { CodexAppServerConnection } from '../../src/connection/CodexAppServerConnection.js';
 import type { TestMcpServer, CliJsonResult } from './helpers.js';
+
+class MockCodexStream extends EventEmitter {
+  readonly writes: string[] = [];
+
+  write(chunk: string): boolean {
+    this.writes.push(chunk);
+    return true;
+  }
+}
+
+class MockCodexChildProcess extends EventEmitter {
+  stdout = new MockCodexStream();
+  stderr = new MockCodexStream();
+  stdin = new MockCodexStream();
+  pid = 2468;
+  killed = false;
+  exitCode: number | null = null;
+  signalCode: NodeJS.Signals | null = null;
+
+  kill(signal?: NodeJS.Signals | number): boolean {
+    this.killed = true;
+    this.signalCode = typeof signal === 'string' ? signal : null;
+    this.emit('exit', this.exitCode, this.signalCode);
+    return true;
+  }
+}
+
+class MockCodexAppServerConnection extends CodexAppServerConnection {
+  constructor(private readonly mockChild: MockCodexChildProcess) {
+    super({
+      command: 'codex',
+      args: ['app-server', '--listen', 'stdio://'],
+      cwd: process.cwd(),
+    });
+  }
+
+  protected spawnRawProcess(): ChildProcess {
+    this.setState('connecting');
+    this.child = this.mockChild as unknown as ChildProcess;
+    this.childExitPromise = Promise.resolve();
+    this.mockChild.stderr.on('data', (data: Buffer | string) => {
+      this.consumeStderrChunk(data.toString());
+    });
+    this.mockChild.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+      this.flushStderrBuffer();
+      this.setState('closed');
+      this.emit('exit', code, signal);
+    });
+    this.mockChild.on('error', (error: Error) => {
+      this.flushStderrBuffer();
+      this.setState('error');
+      this.emit('error', error);
+    });
+    return this.mockChild as unknown as ChildProcess;
+  }
+}
 
 const CLI = 'codex';
 const installed = isCliInstalled(CLI);
@@ -98,6 +157,59 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
 
       client = null;
     }, 180_000);
+  });
+
+  // ═══════════════════════════════════════════════
+  // AppServer exit 분류 회귀
+  // ═══════════════════════════════════════════════
+
+  describe('AppServer exit 분류 회귀', () => {
+    it('정상 exit(0)은 turn 완료 전 false crash로 reject하지 않는다', async () => {
+      const { child, connection } = await establishMockCodexSession();
+
+      const sendPromise = connection.sendMessage([mockTextInput('hi')]);
+      await flushMicrotask();
+      child.stdout.emit('data', `${jsonRpcResult(3, { turn: { id: 'turn-1' } })}\n`);
+      child.exitCode = 0;
+      child.emit('exit', 0, null);
+
+      await expect(sendPromise).resolves.toBeUndefined();
+    });
+
+    it('intentional disconnect는 active turn을 false crash로 reject하지 않는다', async () => {
+      const { child, connection } = await establishMockCodexSession();
+
+      const sendPromise = connection.sendMessage([mockTextInput('hi')]);
+      await flushMicrotask();
+      child.stdout.emit('data', `${jsonRpcResult(3, { turn: { id: 'turn-1' } })}\n`);
+
+      await expect(connection.disconnect()).resolves.toBeUndefined();
+      await expect(sendPromise).resolves.toBeUndefined();
+    });
+
+    it('비정상 signal kill은 진단 정보를 포함해 reject한다', async () => {
+      const { child, connection } = await establishMockCodexSession();
+
+      const sendPromise = connection.sendMessage([mockTextInput('hi')]);
+      await flushMicrotask();
+      child.stdout.emit(
+        'data',
+        `${jsonRpcNotification('turn/started', {
+          threadId: 'thread-1',
+          turn: { id: 'turn-1' },
+        })}\n`,
+      );
+      for (let index = 0; index < 25; index += 1) {
+        child.stderr.emit('data', `stderr-${index}\n`);
+      }
+      child.emit('exit', null, 'SIGTERM');
+
+      await expect(sendPromise).rejects.toThrow(/code=null, signal=SIGTERM/);
+      await expect(sendPromise).rejects.toThrow(/lastNotification=turn\/started/);
+      await expect(sendPromise).rejects.toThrow(/pendingRequests=3/);
+      await expect(sendPromise).rejects.toThrow(/stderr-24/);
+      await expect(sendPromise).rejects.not.toThrow(/stderr-0/);
+    });
   });
 
   // ═══════════════════════════════════════════════
@@ -318,3 +430,59 @@ describe.skipIf(!installed)('E2E: Codex native app-server', () => {
     }, 180_000);
   });
 });
+
+async function establishMockCodexSession(): Promise<{
+  child: MockCodexChildProcess;
+  connection: MockCodexAppServerConnection;
+}> {
+  const child = new MockCodexChildProcess();
+  const connection = new MockCodexAppServerConnection(child);
+  const connectPromise = connection.connect();
+
+  child.stdout.emit(
+    'data',
+    `${jsonRpcResult(1, {
+      userAgent: 'codex/test',
+      codexHome: '/tmp/codex',
+      platformFamily: 'unix',
+      platformOs: 'macos',
+    })}\n`,
+  );
+  await flushMicrotask();
+  child.stdout.emit('data', `${jsonRpcResult(2, { thread: { id: 'thread-1' } })}\n`);
+  await connectPromise;
+
+  return { child, connection };
+}
+
+function mockTextInput(text: string): {
+  type: 'text';
+  text: string;
+  text_elements: unknown[];
+} {
+  return {
+    type: 'text',
+    text,
+    text_elements: [],
+  };
+}
+
+function jsonRpcResult(id: number, result: unknown): string {
+  return JSON.stringify({
+    jsonrpc: '2.0',
+    id,
+    result,
+  });
+}
+
+function jsonRpcNotification(method: string, params: unknown): string {
+  return JSON.stringify({
+    jsonrpc: '2.0',
+    method,
+    params,
+  });
+}
+
+async function flushMicrotask(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
+}

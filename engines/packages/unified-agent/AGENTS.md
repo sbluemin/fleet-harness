@@ -155,7 +155,7 @@ ait (gemini) ❯ {input}           # Omitted if effort is not supported
 2. **ACP SDK used for ACP-based CLIs**: Claude, Gemini, and OpenCode Go use the ACP SDK via `AcpConnection`. Codex handles both `AcpConnection` (npx bridge path) and `CodexAppServerConnection` (legacy stdio JSON-RPC path) depending on the validation toggle.
 3. **Config-driven + provider seam**: Maintain common contracts while encapsulating CLI differences in `CliConfigs.ts` and internal connection seams.
 4. **Event-driven Streaming**: Real-time response processing based on `EventEmitter` (`messageChunk`, `toolCall`, etc.).
-5. **Graceful Process Management**: 2-stage termination (SIGTERM → SIGKILL), and environment sanitization to prevent child process interference.
+5. **Graceful Process Management**: 2-stage termination (SIGTERM → SIGKILL), environment sanitization to prevent child process interference, and Codex legacy AppServer exit classification that treats graceful/intentional exits separately from abnormal child death.
 6. **Service Status Management**: Provides a unified way to track and report the health and status of various services (Gemini, Claude, Codex) through `ServiceSnapshot` and `HealthStatus`. Managed via `ServiceStatusCallbacks` and `ServiceStatusContextPort`.
 7. **System Prompt Injection (Provider-aware)**:
    - **Claude**: `AcpConnection` appends to the native system prompt via `_meta.systemPrompt.append` when calling `session/new`. The `claude-agent-acp` bridge handles this.

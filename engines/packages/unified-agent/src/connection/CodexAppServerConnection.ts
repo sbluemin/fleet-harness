@@ -45,6 +45,7 @@ import {
   CODEX_NOTIFICATIONS,
   CODEX_SERVER_REQUESTS,
 } from '../types/codex-app-server.js';
+import { isIntentionalKillMarked } from '../utils/process.js';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -84,6 +85,14 @@ interface PendingMcpReadyWaiter {
   resolve: () => void;
   reject: (error: Error) => void;
   timer?: ReturnType<typeof setTimeout>;
+}
+
+interface CodexExitDiagnostics {
+  code: number | null;
+  signal: string | null;
+  stderrTail: string[];
+  lastNotificationKind: string | null;
+  pendingRequestIds: number[];
 }
 
 interface SyntheticPermissionOption {
@@ -157,6 +166,7 @@ type CodexAppServerEvents = BaseConnectionEventMap & CodexAppServerEventMap;
 const CODEX_MCP_READY_STATUS = 'ready';
 const CODEX_MCP_FAILED_STATUSES = new Set(['failed', 'error']);
 const DEFAULT_MCP_STARTUP_TIMEOUT = 60_000;
+const STDERR_TAIL_LIMIT = 20;
 
 /**
  * Codex app-server v2와 직접 JSON-RPC로 통신하는 연결 클래스입니다.
@@ -175,6 +185,9 @@ export class CodexAppServerConnection extends BaseConnection {
   private pendingModel: string | null = null;
   private pendingEffort: string | null = null;
   private codexHome: string | null = null;
+  private isDisconnecting = false;
+  private lastNotificationKind: string | null = null;
+  private readonly stderrTail: string[] = [];
   private agentMessagePhases = new Map<string, string>();
   private mcpServerStatuses = new Map<string, CodexMcpServerStartupStatusNotification>();
 
@@ -233,6 +246,7 @@ export class CodexAppServerConnection extends BaseConnection {
   async connect(
     options?: ConnectSessionOptions & { skipThreadStart?: boolean },
   ): Promise<CodexThreadStartResponse | null> {
+    this.isDisconnecting = false;
     const child = this.spawnRawProcess();
     this.setupStdoutReader(child);
     this.setState('initializing');
@@ -272,6 +286,7 @@ export class CodexAppServerConnection extends BaseConnection {
       return response;
     } catch (error) {
       this.setState('error');
+      this.isDisconnecting = true;
       await this.disconnect();
       throw error;
     }
@@ -311,20 +326,36 @@ export class CodexAppServerConnection extends BaseConnection {
       this.emit('userMessageChunk', echoed, sessionId);
     }
 
+    let cleanupTurnListeners = () => {};
     const turnCompleted = new Promise<void>((resolve, reject) => {
-      const onComplete = () => {
-        cleanup();
-        resolve();
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanupTurnListeners();
+        fn();
       };
-      const onError = (err: Error) => {
-        cleanup();
-        reject(err);
+      const onComplete = () => settle(resolve);
+      const onError = (err: Error) => settle(() => reject(err));
+      const onExit = (code: number | null, signal: string | null) => {
+        const exitError = this.createTurnExitError(code, signal);
+        const hadPendingRequests = this.pendingRequests.size > 0;
+        this.rejectPendingRequests(exitError);
+
+        if (this.shouldTreatExitAsGraceful(code)) {
+          setTimeout(() => settle(resolve), 0);
+          return;
+        }
+        if (hadPendingRequests) {
+          settle(resolve);
+          return;
+        }
+
+        settle(() => reject(exitError));
       };
-      const onExit = () => {
-        cleanup();
-        reject(new Error('프로세스가 turn 완료 전에 종료되었습니다.'));
-      };
-      const cleanup = () => {
+      cleanupTurnListeners = () => {
         this.off('promptComplete', onComplete);
         this.off('error', onError);
         this.off('exit', onExit);
@@ -334,20 +365,24 @@ export class CodexAppServerConnection extends BaseConnection {
       this.on('exit', onExit);
     });
 
-    const response = await this.sendRequest<CodexTurnStartResponse>(
-      CODEX_METHODS.TURN_START,
-      {
-        threadId: sessionId,
-        input,
-        model: options?.model ?? this.pendingModel ?? null,
-        effort: options?.effort ?? this.pendingEffort ?? null,
-      },
-    );
-    this.pendingModel = null;
-    this.pendingEffort = null;
-    this.turnId = response.turn.id;
+    try {
+      const response = await this.sendRequest<CodexTurnStartResponse>(
+        CODEX_METHODS.TURN_START,
+        {
+          threadId: sessionId,
+          input,
+          model: options?.model ?? this.pendingModel ?? null,
+          effort: options?.effort ?? this.pendingEffort ?? null,
+        },
+      );
+      this.pendingModel = null;
+      this.pendingEffort = null;
+      this.turnId = response.turn.id;
 
-    await turnCompleted;
+      await turnCompleted;
+    } finally {
+      cleanupTurnListeners();
+    }
   }
 
   async cancelPrompt(): Promise<void> {
@@ -411,16 +446,22 @@ export class CodexAppServerConnection extends BaseConnection {
   }
 
   async disconnect(): Promise<void> {
+    this.isDisconnecting = true;
     this.threadId = null;
     this.turnId = null;
     this.rejectPendingRequests(new Error('Codex 연결이 종료되었습니다.'));
     this.rejectPendingMcpReadyWaiters(new Error('Codex 연결이 종료되었습니다.'));
     this.stdoutBuffer = '';
     this.codexHome = null;
-    await super.disconnect();
+    try {
+      await super.disconnect();
+    } finally {
+      this.isDisconnecting = false;
+    }
   }
 
   protected processNotification(method: string, params: unknown): void {
+    this.lastNotificationKind = method;
     this.emit('sessionUpdate', { method, params });
 
     switch (method) {
@@ -970,6 +1011,14 @@ export class CodexAppServerConnection extends BaseConnection {
     if (!this.child?.stdin) {
       throw new Error('Codex app-server 프로세스가 준비되지 않았습니다.');
     }
+    if (this.child.exitCode != null || this.child.killed) {
+      throw new Error(
+        `Codex app-server 프로세스가 이미 종료되었습니다. ${this.formatExitStatus(
+          this.child.exitCode,
+          this.child.signalCode ?? null,
+        )}`,
+      );
+    }
 
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
   }
@@ -1023,6 +1072,48 @@ export class CodexAppServerConnection extends BaseConnection {
       pending.reject(error);
       this.pendingRequests.delete(id);
     }
+  }
+
+  protected override emitStderrLine(rawLine: string): void {
+    super.emitStderrLine(rawLine);
+    const message = rawLine.trim();
+    if (!message) {
+      return;
+    }
+    this.stderrTail.push(message);
+    if (this.stderrTail.length > STDERR_TAIL_LIMIT) {
+      this.stderrTail.shift();
+    }
+  }
+
+  private shouldTreatExitAsGraceful(code: number | null): boolean {
+    return code === 0 || this.isDisconnecting || isIntentionalKillMarked(this.child);
+  }
+
+  private createTurnExitError(code: number | null, signal: string | null): Error {
+    const diagnostics = this.collectExitDiagnostics(code, signal);
+    const error = new Error(
+      `Codex app-server exited before turn completion (${this.formatExitStatus(code, signal)}; lastNotification=${diagnostics.lastNotificationKind ?? 'none'}; pendingRequests=${diagnostics.pendingRequestIds.join(',') || 'none'}; stderrTail=${diagnostics.stderrTail.join(' | ') || 'empty'})`,
+    );
+    error.name = 'CodexAppServerTurnExitError';
+    return error;
+  }
+
+  private collectExitDiagnostics(
+    code: number | null,
+    signal: string | null,
+  ): CodexExitDiagnostics {
+    return {
+      code,
+      signal,
+      stderrTail: [...this.stderrTail],
+      lastNotificationKind: this.lastNotificationKind,
+      pendingRequestIds: [...this.pendingRequests.keys()],
+    };
+  }
+
+  private formatExitStatus(code: number | null, signal: string | null): string {
+    return `code=${code ?? 'null'}, signal=${signal ?? 'null'}`;
   }
 
   private requireThreadId(): string {

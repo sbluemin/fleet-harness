@@ -7,6 +7,10 @@ import { ChildProcess } from 'child_process';
 import { execSync } from 'child_process';
 import { isWindows } from './env.js';
 
+export interface IntentionalKillMarkedChildProcess extends ChildProcess {
+  __intentionalKill?: boolean;
+}
+
 /**
  * 자식 프로세스를 안전하게 종료합니다.
  *
@@ -20,6 +24,8 @@ export function killProcess(child: ChildProcess, forceTimeoutMs = 3000): void {
   if (!child.pid || child.killed) {
     return;
   }
+
+  markIntentionalKill(child);
 
   if (isWindows()) {
     try {
@@ -47,6 +53,14 @@ export function killProcess(child: ChildProcess, forceTimeoutMs = 3000): void {
   child.once('exit', () => {
     clearTimeout(forceKillTimer);
   });
+}
+
+export function markIntentionalKill(child: ChildProcess): void {
+  (child as IntentionalKillMarkedChildProcess).__intentionalKill = true;
+}
+
+export function isIntentionalKillMarked(child: ChildProcess | null | undefined): boolean {
+  return Boolean((child as IntentionalKillMarkedChildProcess | null | undefined)?.__intentionalKill);
 }
 
 /**
