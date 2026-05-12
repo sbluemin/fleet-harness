@@ -591,7 +591,6 @@ export class InteractiveMode {
 				rawKeyHint("/", "for commands"),
 				rawKeyHint("!", "to run bash"),
 				rawKeyHint("!!", "to run bash (no context)"),
-				hint("app.message.followUp", "to queue follow-up"),
 				hint("app.message.dequeue", "to edit all queued messages"),
 				hint("app.clipboard.pasteImage", "to paste image"),
 				rawKeyHint("drop files", "to attach"),
@@ -2367,7 +2366,6 @@ export class InteractiveMode {
 		this.defaultEditor.onAction("app.tools.expand", () => this.toggleToolOutputExpansion());
 		this.defaultEditor.onAction("app.thinking.toggle", () => this.toggleThinkingBlockVisibility());
 		this.defaultEditor.onAction("app.editor.external", () => this.openExternalEditor());
-		this.defaultEditor.onAction("app.message.followUp", () => this.handleFollowUp());
 		this.defaultEditor.onAction("app.message.dequeue", () => this.handleDequeue());
 		this.defaultEditor.onAction("app.session.new", () => this.handleClearCommand());
 		this.defaultEditor.onAction("app.session.tree", () => this.showTreeSelector());
@@ -2559,17 +2557,17 @@ export class InteractiveMode {
 					this.editor.setText("");
 					await this.session.prompt(text);
 				} else {
-					this.queueCompactionMessage(text, "steer");
+					this.queueCompactionMessage(text, this.settingsManager.getEnterStreamingBehavior());
 				}
 				return;
 			}
 
-			// If streaming, use prompt() with steer behavior
-			// This handles extension commands (execute immediately), prompt template expansion, and queueing
+			// 스트리밍 중 Enter는 설정된 동작으로 큐잉한다.
+			// 확장 명령 실행, 프롬프트 템플릿 확장, 큐잉 처리는 prompt()가 담당한다.
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
 				this.editor.setText("");
-				await this.session.prompt(text, { streamingBehavior: "steer" });
+				await this.session.prompt(text, { streamingBehavior: this.settingsManager.getEnterStreamingBehavior() });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
 				return;
@@ -3299,38 +3297,6 @@ export class InteractiveMode {
 		}
 	}
 
-	private async handleFollowUp(): Promise<void> {
-		const text = (this.editor.getExpandedText?.() ?? this.editor.getText()).trim();
-		if (!text) return;
-
-		// Queue input during compaction (extension commands execute immediately)
-		if (this.session.isCompacting) {
-			if (this.isExtensionCommand(text)) {
-				this.editor.addToHistory?.(text);
-				this.editor.setText("");
-				await this.session.prompt(text);
-			} else {
-				this.queueCompactionMessage(text, "followUp");
-			}
-			return;
-		}
-
-		// Alt+Enter queues a follow-up message (waits until agent finishes)
-		// This handles extension commands (execute immediately), prompt template expansion, and queueing
-		if (this.session.isStreaming) {
-			this.editor.addToHistory?.(text);
-			this.editor.setText("");
-			await this.session.prompt(text, { streamingBehavior: "followUp" });
-			this.updatePendingMessagesDisplay();
-			this.ui.requestRender();
-		}
-		// If not streaming, Alt+Enter acts like regular Enter (trigger onSubmit)
-		else if (this.editor.onSubmit) {
-			this.editor.setText("");
-			this.editor.onSubmit(text);
-		}
-	}
-
 	private handleDequeue(): void {
 		const restored = this.restoreQueuedMessagesToEditor();
 		if (restored === 0) {
@@ -3742,6 +3708,7 @@ export class InteractiveMode {
 					enableSkillCommands: this.settingsManager.getEnableSkillCommands(),
 					steeringMode: this.session.steeringMode,
 					followUpMode: this.session.followUpMode,
+					enterStreamingBehavior: this.settingsManager.getEnterStreamingBehavior(),
 					transport: this.settingsManager.getTransport(),
 					thinkingLevel: this.session.thinkingLevel,
 					availableThinkingLevels: this.session.getAvailableThinkingLevels(),
@@ -3795,6 +3762,9 @@ export class InteractiveMode {
 					},
 					onFollowUpModeChange: (mode) => {
 						this.session.setFollowUpMode(mode);
+					},
+					onEnterStreamingBehaviorChange: (mode) => {
+						this.settingsManager.setEnterStreamingBehavior(mode);
 					},
 					onTransportChange: (transport) => {
 						this.settingsManager.setTransport(transport);
@@ -5082,7 +5052,6 @@ export class InteractiveMode {
 		const toggleThinking = this.getAppKeyDisplay("app.thinking.toggle");
 		const externalEditor = this.getAppKeyDisplay("app.editor.external");
 		const cycleModelBackward = this.getAppKeyDisplay("app.model.cycleBackward");
-		const followUp = this.getAppKeyDisplay("app.message.followUp");
 		const dequeue = this.getAppKeyDisplay("app.message.dequeue");
 		const pasteImage = this.getAppKeyDisplay("app.clipboard.pasteImage");
 
@@ -5125,7 +5094,6 @@ export class InteractiveMode {
 | \`${expandTools}\` | Toggle tool output expansion |
 | \`${toggleThinking}\` | Toggle thinking block visibility |
 | \`${externalEditor}\` | Edit message in external editor |
-| \`${followUp}\` | Queue follow-up message |
 | \`${dequeue}\` | Restore queued messages |
 | \`${pasteImage}\` | Paste image from clipboard |
 | \`/\` | Slash commands |

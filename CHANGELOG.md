@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [coding-agent] Added `Settings.enterStreamingBehavior` ("steer" | "followUp", default "followUp") to control Enter submission behavior during active streaming
+- [coding-agent] Added a GUI toggle for "Enter behavior" in the `/settings` overlay
+
+### Changed
+- [coding-agent] Unified message queueing under the Enter key; behavior now branches based on `enterStreamingBehavior` setting instead of dedicated keybindings
+
+### Removed
+- [coding-agent] Removed Alt+Enter (`app.message.followUp`) keybinding and `handleFollowUp()` handler
+
 ## [0.18.0] - 2026-05-11
 
 ### Added

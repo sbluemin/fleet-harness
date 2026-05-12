@@ -38,6 +38,7 @@ export interface SettingsConfig {
 	enableSkillCommands: boolean;
 	steeringMode: "all" | "one-at-a-time";
 	followUpMode: "all" | "one-at-a-time";
+	enterStreamingBehavior: "steer" | "followUp";
 	transport: Transport;
 	thinkingLevel: ThinkingLevel;
 	availableThinkingLevels: ThinkingLevel[];
@@ -65,6 +66,7 @@ export interface SettingsCallbacks {
 	onEnableSkillCommandsChange: (enabled: boolean) => void;
 	onSteeringModeChange: (mode: "all" | "one-at-a-time") => void;
 	onFollowUpModeChange: (mode: "all" | "one-at-a-time") => void;
+	onEnterStreamingBehaviorChange: (mode: "steer" | "followUp") => void;
 	onTransportChange: (transport: Transport) => void;
 	onThinkingLevelChange: (level: ThinkingLevel) => void;
 	onThemeChange: (theme: string) => void;
@@ -216,7 +218,7 @@ export class SettingsSelectorComponent extends Container {
 				id: "steering-mode",
 				label: "Steering mode",
 				description:
-					"Enter while streaming queues steering messages. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.",
+					"Steering messages affect the current response. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.",
 				currentValue: config.steeringMode,
 				values: ["one-at-a-time", "all"],
 			},
@@ -224,9 +226,16 @@ export class SettingsSelectorComponent extends Container {
 				id: "follow-up-mode",
 				label: "Follow-up mode",
 				description:
-					"Alt+Enter queues follow-up messages until agent stops. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.",
+					"Follow-up messages wait until the agent stops. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.",
 				currentValue: config.followUpMode,
 				values: ["one-at-a-time", "all"],
+			},
+			{
+				id: "enter-streaming-behavior",
+				label: "Enter behavior",
+				description: "Behavior for Enter while the agent is busy. 'followUp': wait until done. 'steer': steer the current response.",
+				currentValue: config.enterStreamingBehavior,
+				values: ["followUp", "steer"],
 			},
 			{
 				id: "transport",
@@ -468,6 +477,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "follow-up-mode":
 						callbacks.onFollowUpModeChange(newValue as "all" | "one-at-a-time");
+						break;
+					case "enter-streaming-behavior":
+						callbacks.onEnterStreamingBehaviorChange(newValue as "steer" | "followUp");
 						break;
 					case "transport":
 						callbacks.onTransportChange(newValue as Transport);

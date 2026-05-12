@@ -80,6 +80,7 @@ export interface Settings {
 	transport?: TransportSetting; // default: "auto"
 	steeringMode?: "all" | "one-at-a-time";
 	followUpMode?: "all" | "one-at-a-time";
+	enterStreamingBehavior?: "steer" | "followUp";
 	theme?: string;
 	compaction?: CompactionSettings;
 	branchSummary?: BranchSummarySettings;
@@ -630,6 +631,16 @@ export class SettingsManager {
 	setFollowUpMode(mode: "all" | "one-at-a-time"): void {
 		this.globalSettings.followUpMode = mode;
 		this.markModified("followUpMode");
+		this.save();
+	}
+
+	getEnterStreamingBehavior(): "steer" | "followUp" {
+		return this.settings.enterStreamingBehavior ?? "followUp";
+	}
+
+	setEnterStreamingBehavior(mode: "steer" | "followUp"): void {
+		this.globalSettings.enterStreamingBehavior = mode;
+		this.markModified("enterStreamingBehavior");
 		this.save();
 	}
 
