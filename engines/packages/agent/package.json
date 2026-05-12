@@ -1,6 +1,6 @@
 {
 	"name": "@sbluemin/fleet-agent-core",
-	"version": "0.18.2",
+	"version": "0.18.3",
 	"description": "General-purpose agent with transport abstraction, state management, and attachment support",
 	"repository": {
 		"type": "git",
