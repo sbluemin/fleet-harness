@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
 import { isShellPopupOpen, openShellPopup } from "../pty/shell.js";
 import { admiral } from "@sbluemin/fleet-core";
-import { buildBridgeCommand } from "./command.js";
+import { buildBridgeCommand, restoreCodexArchivedSession } from "./command.js";
 import {
   BRIDGE_ACTION_ID,
   BRIDGE_DEFAULT_KEY,
@@ -25,6 +25,10 @@ export async function launchBridgeShell(ctx: ExtensionContext): Promise<void> {
   const launchData = admiral.agent.bridge.buildLaunchCommand({ scope: "default" });
   if (!launchData) {
     throw new Error("기본 bridge scope에 활성 ACP 세션이 없습니다.");
+  }
+
+  if (launchData.cli === "codex" && launchData.sessionId) {
+    restoreCodexArchivedSession(launchData.sessionId);
   }
 
   const command = buildBridgeCommand({

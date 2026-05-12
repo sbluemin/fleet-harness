@@ -1,6 +1,7 @@
 // core-shell -- 네이티브 터미널 핸드오프 기반 쉘 팝업 실행기
 
 import { spawnSync } from "node:child_process";
+import { getShellConfig } from "@sbluemin/fleet-coding-agent";
 import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -58,8 +59,8 @@ export async function openShellPopup(opts: ShellPopupOptions): Promise<ShellPopu
 
     process.stdout.write("\x1b[2J\x1b[H");
 
-    const shell = process.env.SHELL || "/bin/sh";
-    const result = spawnSync(shell, ["-c", launch.command], {
+    const { shell, args } = getShellConfig();
+    const result = spawnSync(shell, [...args, launch.command], {
       stdio: "inherit",
       cwd: launch.cwd,
       env: launch.env ? { ...process.env, ...launch.env } : undefined,

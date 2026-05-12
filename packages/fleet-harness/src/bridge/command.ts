@@ -1,3 +1,6 @@
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { getEffort } from "@sbluemin/fleet-unified-agent";
 import type { BridgeCommandSpec, BridgeLaunchContext } from "./types.js";
 import { BRIDGE_TITLE_PREFIX } from "./types.js";
@@ -79,11 +82,53 @@ function buildCodexCommand(context: BridgeLaunchContext): string {
   if (shouldPassBridgeEffort(context)) {
     args.push("-c", shellQuote(`model_reasoning_effort="${context.effort}"`));
   }
-  const command = args.join(" ");
-  if (!context.sessionId) {
-    return command;
+  return args.join(" ");
+}
+
+// codex resume이 archived_sessions 아래에 보관된 jsonl을 찾지 못하므로,
+// 실제 launch 직전에 active sessions 트리로 복원해 둔다.
+// 셸 스크립트로 처리하면 bash-only parameter expansion(`${var#pattern}`, `${var%%pattern}`)이
+// 환경에 따라 syntax error를 일으키므로 Node에서 직접 수행한다.
+export function restoreCodexArchivedSession(sessionId: string): void {
+  const home = homedir();
+  const archiveDir = join(home, ".codex", "archived_sessions");
+  if (!existsSync(archiveDir)) {
+    return;
   }
-  return `${buildCodexArchivedSessionRestoreCommand(context.sessionId)}; ${command}`;
+
+  const suffix = `-${sessionId}.jsonl`;
+  let archivedName: string | null = null;
+  try {
+    for (const entry of readdirSync(archiveDir)) {
+      if (entry.startsWith("rollout-") && entry.endsWith(suffix)) {
+        archivedName = entry;
+        break;
+      }
+    }
+  } catch {
+    return;
+  }
+  if (!archivedName) {
+    return;
+  }
+
+  const dateMatch = archivedName.match(/^rollout-(\d{4})-(\d{2})-(\d{2})T/);
+  if (!dateMatch) {
+    return;
+  }
+  const [, year, month, day] = dateMatch;
+
+  const target = join(home, ".codex", "sessions", year, month, day, archivedName);
+  if (existsSync(target)) {
+    return;
+  }
+
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(archiveDir, archivedName), target);
+  } catch {
+    // 복원 실패는 무시 — codex resume이 직접 보고하도록 위임
+  }
 }
 
 function buildGeminiCommand(context: BridgeLaunchContext): string {
@@ -110,25 +155,6 @@ function buildOpenCodeCommand(context: BridgeLaunchContext): string {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function buildCodexArchivedSessionRestoreCommand(sessionId: string): string {
-  const quotedPattern = shellQuote(`rollout-*-${sessionId}.jsonl`);
-  return [
-    "__fleet_codex_archived=$(find \"$HOME/.codex/archived_sessions\" -maxdepth 1 -name " + quotedPattern + " -print -quit 2>/dev/null)",
-    "if [ -n \"$__fleet_codex_archived\" ]; then",
-    "  __fleet_codex_base=$(basename \"$__fleet_codex_archived\")",
-    "  __fleet_codex_date=${__fleet_codex_base#rollout-}",
-    "  __fleet_codex_date=${__fleet_codex_date%%T*}",
-    "  __fleet_codex_year=${__fleet_codex_date%%-*}",
-    "  __fleet_codex_month_day=${__fleet_codex_date#*-}",
-    "  __fleet_codex_month=${__fleet_codex_month_day%%-*}",
-    "  __fleet_codex_day=${__fleet_codex_month_day#*-}",
-    "  __fleet_codex_target=\"$HOME/.codex/sessions/$__fleet_codex_year/$__fleet_codex_month/$__fleet_codex_day/$__fleet_codex_base\"",
-    "  [ -e \"$__fleet_codex_target\" ] || { mkdir -p \"$(dirname \"$__fleet_codex_target\")\" && cp \"$__fleet_codex_archived\" \"$__fleet_codex_target\"; }",
-    "fi",
-    "unset __fleet_codex_archived __fleet_codex_base __fleet_codex_date __fleet_codex_year __fleet_codex_month_day __fleet_codex_month __fleet_codex_day __fleet_codex_target",
-  ].join("; ");
 }
 
 function shouldPassBridgeEffort(context: BridgeLaunchContext): context is BridgeLaunchContext & { effort: string } {
