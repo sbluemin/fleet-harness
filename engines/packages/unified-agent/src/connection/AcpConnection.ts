@@ -736,12 +736,19 @@ export class AcpConnection extends BaseConnection {
       case 'tool_call': {
         // sessionUpdate 필드를 제외한 나머지를 ToolCall 데이터로 전달
         const { sessionUpdate: _tc, ...toolCallData } = update;
+        const rawTcTitle = toolCallData.title ?? '';
+        // TODO(codex-acp@>=0.15): remove — fixed upstream in file-tools branch
+        const cleanTcTitle = rawTcTitle.replace(/\s*\(\s*[\d.,\s-]*\b(?:NaN|undefined)\b[\d.,\s-]*\)/g, '');
+        if (cleanTcTitle !== rawTcTitle) {
+          console.debug('[AcpConnection] sanitized tool_call payload', { rawTitle: rawTcTitle, cleanTitle: cleanTcTitle });
+        }
+        const titleTcOverride = 'title' in toolCallData ? { title: cleanTcTitle } : {};
         this.emit(
           'toolCall',
-          update.title ?? '',
-          update.status ?? '',
+          cleanTcTitle,
+          toolCallData.status ?? '',
           sessionId,
-          toolCallData as AcpToolCall,
+          { ...toolCallData, ...titleTcOverride } as AcpToolCall,
         );
         break;
       }
@@ -749,12 +756,19 @@ export class AcpConnection extends BaseConnection {
       case 'tool_call_update': {
         // sessionUpdate 필드를 제외한 나머지를 ToolCallUpdate 데이터로 전달
         const { sessionUpdate: _tcu, ...toolCallUpdateData } = update;
+        const rawTitle = toolCallUpdateData.title ?? '';
+        // TODO(codex-acp@>=0.15): remove — fixed upstream in file-tools branch
+        const cleanTitle = rawTitle.replace(/\s*\(\s*[\d.,\s-]*\b(?:NaN|undefined)\b[\d.,\s-]*\)/g, '');
+        if (cleanTitle !== rawTitle) {
+          console.debug('[AcpConnection] sanitized tool_call_update payload', { rawTitle, cleanTitle });
+        }
+        const titleOverride = 'title' in toolCallUpdateData ? { title: cleanTitle } : {};
         this.emit(
           'toolCallUpdate',
-          toolCallUpdateData.title ?? '',
+          cleanTitle,
           toolCallUpdateData.status ?? '',
           sessionId,
-          toolCallUpdateData as AcpToolCallUpdate,
+          { ...toolCallUpdateData, ...titleOverride } as AcpToolCallUpdate,
         );
         break;
       }
