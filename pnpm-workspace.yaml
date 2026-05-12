@@ -6,7 +6,6 @@ packages:
   - "packages/fleet-harness"
 allowBuilds:
   '@google/genai': true
-  canvas: true
   esbuild: true
   koffi: true
   node-pty: true
