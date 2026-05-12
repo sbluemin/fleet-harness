@@ -400,9 +400,13 @@ export class AcpConnection extends BaseConnection {
     strictMcp?: boolean,
     effort?: string,
   ): Record<string, unknown> | undefined {
+    if (!this.isClaudeBackend()) {
+      return undefined;
+    }
+
     const claudeSystemPrompt = this.getClaudeSystemPrompt(systemPrompt);
-    const shouldInjectStrictMcp = this.isClaudeBackend() && strictMcp;
-    const shouldInjectEffort = this.isClaudeBackend() && !!effort;
+    const shouldInjectStrictMcp = strictMcp;
+    const shouldInjectEffort = !!effort;
 
     if (!claudeSystemPrompt && !shouldInjectStrictMcp && !shouldInjectEffort) {
       return undefined;

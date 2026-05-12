@@ -146,35 +146,39 @@ ait (gemini) ❯ {input}           # Omitted if effort is not supported
 | Claude | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` | ✅ | ✅ |
 | Claude (ZAI) | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp --cli` | ✅ | ✅ |
 | Claude (Kimi) | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp --cli` | ✅ | ✅ |
-| Codex | `codex-app-server` | `codex app-server --listen stdio://` | Reflected in next turn/thread via pending override | Interpreted pending mode as next thread policy |
+| Codex | `codex-acp` / `app-server` | (Toggle) `npx --yes --package=@zed-industries/codex-acp@0.14.0 codex-acp` / `codex app-server` | ✅ (ACP) / Pending (Legacy) | ✅ (ACP) / Pending (Legacy) |
 | opencode-go | ACP | `opencode acp` | ✅ | ✅ |
 
 ## Architecture Decisions
 
 1. **Specialized Clients per CLI**: The `UnifiedAgent` builder selects the provider client, and `UnifiedClaudeAgentClient` / `UnifiedGeminiAgentClient` / `UnifiedCodexAgentClient` / `UnifiedOpenCodeAgentClient` directly hold each CLI specialization.
-2. **ACP SDK used for ACP-based CLIs**: Claude, Gemini, and OpenCode Go use the ACP SDK via `AcpConnection`. Codex handles stdio JSON-RPC directly in `CodexAppServerConnection`.
+2. **ACP SDK used for ACP-based CLIs**: Claude, Gemini, and OpenCode Go use the ACP SDK via `AcpConnection`. Codex handles both `AcpConnection` (npx bridge path) and `CodexAppServerConnection` (legacy stdio JSON-RPC path) depending on the validation toggle.
 3. **Config-driven + provider seam**: Maintain common contracts while encapsulating CLI differences in `CliConfigs.ts` and internal connection seams.
 4. **Event-driven Streaming**: Real-time response processing based on `EventEmitter` (`messageChunk`, `toolCall`, etc.).
 5. **Graceful Process Management**: 2-stage termination (SIGTERM → SIGKILL), and environment sanitization to prevent child process interference.
 6. **Service Status Management**: Provides a unified way to track and report the health and status of various services (Gemini, Claude, Codex) through `ServiceSnapshot` and `HealthStatus`. Managed via `ServiceStatusCallbacks` and `ServiceStatusContextPort`.
 7. **System Prompt Injection (Provider-aware)**:
    - **Claude**: `AcpConnection` appends to the native system prompt via `_meta.systemPrompt.append` when calling `session/new`. The `claude-agent-acp` bridge handles this.
-   - **Codex**: Passes `systemPrompt` as `developerInstructions` when creating/resuming a thread. Does not use first user turn prefixing.
+   - **Codex (Dual-path)**: 
+     - **ACP path**: Passes `systemPrompt` via spawn args `-c developer_instructions="..."`.
+     - **AppServer path**: Passes `systemPrompt` as `developerInstructions` when creating/resuming a thread.
    - **Gemini**: `UnifiedGeminiAgentClient` manages `firstPromptPending` state and prefixes the first `sendMessage()` after a new session with the system text `ContentBlock`. This is not a true system-role guarantee.
    - **OpenCode Go**: `UnifiedOpenCodeAgentClient` also manages `firstPromptPending` state (same approach as Gemini) since `_meta.systemPrompt.append` is unsupported. Session reset is handled via disconnect + reconnect.
    - **Session Persistence Contract**: Re-armed for new sessions after `resetSession()`. Codex resume/load paths via `sessionId` re-pass the current client's `systemPrompt`, policies (`approvalPolicy`/`sandbox`), and thread config to `thread/resume`. Claude/Gemini session resume follows a best-effort policy prioritizing conversation continuity; if intentional drift cleanup is needed, the caller must invoke `resetSession()`.
 
 8. **CLI_BACKENDS Single Source of Truth**: `CLI_BACKENDS` in `src/config/CliConfigs.ts` is the sole configuration registry for all CLI providers. `CliType` is derived as `keyof typeof CLI_BACKENDS`. Each entry defines:
    - `id`, `cliCommand`, `protocol`, `authRequired`
-   - `acpArgs`, `appServerArgs`, `npxPackage` — spawn method configuration
+   - `acpArgs`, `appServerArgs`, `npxPackage`, `usesNpxBridge` — spawn method configuration
    - `modes` — available agent mode definitions
    - `supportsSessionClose`, `supportsSessionLoad` — session capability flags
-   - `requiresModelAtSpawn`, `usesNpxBridge` — spawn behavior flags
+   - `requiresModelAtSpawn` — spawn behavior flags
    - `defaultMaxTokens` — resource limits
    - `colorRgb`, `bgColorRgb` — ANSI display colors
     - Display names are sourced from `models.json` via `providers.<cli>.name`
 
 9. **Claude Effort via `_meta` Bridge Channel**: Claude reasoning effort is delivered through `_meta.claudeCode.options.effort` spread in `session/new` and `session/load` payloads (not via `session/set_config_option` RPC). This channel bypasses alias resolution issues on the bridge and ensures effort applies consistently across new sessions and session resumption.
+
+10. **Validation-mode Dual-Path for Codex**: Codex currently supports two transport paths (ACP npx bridge and legacy AppServer) controlled by a `CODEX_USE_ACP` toggle. This is a temporary validation wave for protocol transition; a permanent switch will occur in a future wave, deprecating the legacy AppServer path and associated types.
 
 ## Adding a New CLI Provider
 

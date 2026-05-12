@@ -109,6 +109,8 @@ export const CLI_BACKENDS = {
     cliCommand: 'codex',
     protocol: 'codex-app-server',
     authRequired: true,
+    npxPackage: '@zed-industries/codex-acp@0.14.0',
+    acpArgs: [],
     appServerArgs: ['app-server', '--listen', 'stdio://'],
     modes: [
       { id: 'default', label: 'Plan' },
@@ -118,7 +120,7 @@ export const CLI_BACKENDS = {
     supportsSessionClose: true,
     supportsSessionLoad: true,
     requiresModelAtSpawn: false,
-    usesNpxBridge: false,
+    usesNpxBridge: true,
     defaultMaxTokens: 100_000,
     colorRgb: [169, 169, 169],
     bgColorRgb: [35, 35, 35],
@@ -183,6 +185,9 @@ export function createSpawnConfig(
 
     if (backend.npxExtraArgs) {
       npxArgs.push(...backend.npxExtraArgs);
+    }
+    if (backend.acpArgs) {
+      npxArgs.push(...backend.acpArgs);
     }
 
     return {
@@ -262,6 +267,30 @@ export function getAllBackendConfigs(): CliBackendConfig[] {
   return Object.values(CLI_BACKENDS);
 }
 
+/**
+ * Codex developer instruction을 `-c` 오버라이드 값으로 변환합니다.
+ *
+ * @param systemPrompt - 세션 시작 시 주입할 시스템 지침
+ * @returns `developer_instructions="..."` 형태의 설정 배열
+ */
+export function buildCodexDeveloperInstructionConfig(systemPrompt?: string | null): string[] {
+  if (!systemPrompt) {
+    return [];
+  }
+
+  return [`developer_instructions="${escapeTomlBasicString(systemPrompt)}"`];
+}
+
+/**
+ * `-c key=value` CLI 오버라이드 인자로 변환합니다.
+ *
+ * @param overrides - 설정 오버라이드 값
+ * @returns spawn 인자 배열
+ */
+export function buildConfigOverrideArgs(overrides: string[]): string[] {
+  return overrides.flatMap((override) => ['-c', override]);
+}
+
 // ─── MCP 서버 설정 변환 ──────────────────────────────
 
 /**
@@ -305,4 +334,27 @@ export function mcpServerConfigsToAcp(servers: McpServerConfig[]): McpServer[] {
     url: server.url,
     headers: server.headers ?? [],
   })) as McpServer[];
+}
+
+function escapeTomlBasicString(value: string): string {
+  return value.replace(/[\b\t\n\f\r"\\]/g, (char) => {
+    switch (char) {
+      case '\b':
+        return '\\b';
+      case '\t':
+        return '\\t';
+      case '\n':
+        return '\\n';
+      case '\f':
+        return '\\f';
+      case '\r':
+        return '\\r';
+      case '"':
+        return '\\"';
+      case '\\':
+        return '\\\\';
+      default:
+        return char;
+    }
+  });
 }
