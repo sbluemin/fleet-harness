@@ -76,7 +76,7 @@ interface CodexThreadDefaultsForResume {
 
 const CODEX_TURN_LEVEL_CONFIG_KEYS = new Set(['effort', 'model']);
 const CODEX_THREAD_POLICY_CONFIG_KEYS = new Set(['approvalPolicy', 'sandbox']);
-const CODEX_USE_ACP = true;
+const CODEX_USE_ACP = false;
 
 type CodexConnection = CodexAppServerConnection | AcpConnection;
 
