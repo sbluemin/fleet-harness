@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-05-12
+
 ### Added
 - [coding-agent] Added `Settings.enterStreamingBehavior` ("steer" | "followUp", default "followUp") to control Enter submission behavior during active streaming
 - [coding-agent] Added a GUI toggle for "Enter behavior" in the `/settings` overlay
