@@ -7,6 +7,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - [harness] Enforce `canary` as the only allowed PR base; non-canary PRs, including from forks, are auto-closed with guidance.
+- [harness] Auto fast-forward `canary` to match `main` after each push to `main` so release commits propagate automatically.
 
 ## [0.19.0] - 2026-05-13
 

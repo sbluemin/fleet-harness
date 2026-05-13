@@ -1,0 +1,38 @@
+# main push 이후 canary를 자동 ff sync합니다. divergent 시 fail-fast로 운영자가 인지하게 합니다.
+name: Canary Sync
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: canary-sync-from-main
+  cancel-in-progress: false
+
+jobs:
+  sync-canary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout canary
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: canary
+
+      - name: Configure bot identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch main
+        run: git fetch origin main
+
+      - name: Fast-forward canary
+        run: git merge --ff-only origin/main
+
+      - name: Push canary
+        run: git push origin canary
