@@ -22,6 +22,8 @@ jobs:
         with:
           fetch-depth: 0
           ref: canary
+          # canary는 PR 필수 ruleset이 적용되므로 admin PAT로 인증해 bypass 한다.
+          token: ${{ secrets.CANARY_SYNC_PAT }}
 
       - name: Configure bot identity
         run: |
