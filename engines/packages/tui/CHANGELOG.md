@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Added `ctrl+j` as a default secondary binding for `tui.input.newLine` to support terminals (Warp + WSL + tmux) that drop the shift+enter modifier.
+
 ## [0.74.0] - 2026-05-07
 
 ## [0.73.1] - 2026-05-07
