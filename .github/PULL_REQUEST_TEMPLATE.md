@@ -1,3 +1,5 @@
+> **PR Target:** 이 PR의 base는 반드시 `canary`여야 하며, 다른 브랜치를 target하면 자동으로 close됩니다.
+
 ## PR Title
 
 <!-- Use Conventional Commits format: type(scope): summary, e.g. feat(fleet): add push mode settings. -->

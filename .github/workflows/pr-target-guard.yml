@@ -1,0 +1,63 @@
+# pull_request_target은 fork PR의 head 코드를 checkout하지 않고도 PR 메타데이터 처리와 close 권한을 확보하기 위해 사용합니다.
+name: PR Target Guard
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - reopened
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  enforce-canary-target:
+    name: Enforce canary PR target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close non-canary PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // 이미 닫힌 PR 이벤트는 중복 처리하지 않습니다.
+            if (pr.state !== "open") {
+              return;
+            }
+
+            // base 변경이 아닌 edited 이벤트는 코멘트/close를 반복하지 않습니다.
+            if (context.payload.action === "edited" && !context.payload.changes?.base) {
+              return;
+            }
+
+            if (pr.base.ref === "canary") {
+              return;
+            }
+
+            const isFork = pr.head.repo.full_name !== context.repo.owner + "/" + context.repo.repo;
+            const forkGuide = isFork
+              ? "\n\nfork에서 보낸 PR은 GitHub UI에서 base 변경이 제한될 수 있습니다. 이 경우 base를 `canary`로 지정해 새 PR을 제출해 주세요."
+              : "";
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: [
+                "안녕하세요! 이 저장소의 모든 PR은 반드시 `canary` 브랜치를 target해야 합니다.",
+                "",
+                `현재 PR의 base는 \`${pr.base.ref}\`라서 자동으로 닫습니다.`,
+                "base 브랜치를 `canary`로 바꾸어 다시 제출해 주세요.",
+                forkGuide,
+              ].join("\n"),
+            });
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              state: "closed",
+            });
