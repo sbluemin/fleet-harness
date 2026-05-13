@@ -59,6 +59,7 @@ interface FleetWikiToolConfig {
     onUpdate: unknown,
     ctx: { cwd: string },
   ) => Promise<unknown>;
+  renderShell?: "default" | "self";
   renderCall?: (args: unknown, theme: Theme) => Text;
   renderResult?: (result: unknown, options: CompactRenderOptions, theme: Theme) => CompactRenderableResult;
 }
@@ -140,6 +141,7 @@ const BODY_PREVIEW_MAX_LINES = 20;
 function withCompactRender<T extends FleetWikiToolConfig>(tool: T): T {
   return {
     ...tool,
+    renderShell: "self",
     renderCall(args: unknown, theme: Theme) {
       const action = getWikiActionName(tool.name);
       const header = theme.fg("toolTitle", theme.bold(`⚓ Wiki: ${action}`));
