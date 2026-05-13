@@ -433,7 +433,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   sbluemin: {
     leftSegments: ["pi", "model", "thinking", "path", "git"],
     rightSegments: ["cost", "time_spent"],
-    secondarySegments: ["extension_statuses"],
+    secondarySegments: [],
     separator: "chevron",
     colors: getGeekColors(),
     segmentOptions: {

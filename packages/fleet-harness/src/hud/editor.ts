@@ -7,16 +7,7 @@
  */
 
 import type { ReadonlyFooterDataProvider, Theme } from "@sbluemin/fleet-coding-agent";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
-import { PANEL_DIM_COLOR } from "../fleet-core-facades.js";
-import {
-  isJobBarMode,
-  enterJobBarMode,
-  exitJobBarMode,
-  navigateJobBar,
-  toggleJobBarExpanded,
-} from "../panel/ui.js";
-import { getActiveJobs, makeFooterCols } from "../panel/state.js";
+import { truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
 
 import type { HudEditorState } from "./types.js";
 import type { SegmentStateProvider } from "./types.js";
@@ -31,7 +22,7 @@ import { getWelcomeBridge } from "../welcome.js";
 const MIN_LABEL_DASH_WIDTH = 2;
 const STATUS_BORDER_RESERVED_WIDTH = 7;
 const TOP_RIGHT_DASH_WIDTH = 2;
-const JOB_BAR_HINT = `${PANEL_DIM_COLOR}↑·↓ move carrier/editor`;
+const HUD_NOTIFICATION_WIDGET_KEY = "hud-notification";
 
 function isStaleExtensionContextError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -137,28 +128,6 @@ export function setupCustomEditor(ctx: any, state: HudEditorState): void {
             return;
           }
 
-          // ── Carrier Job HUD 가상 포커스 ──
-          if (isJobBarMode()) {
-            if (makeFooterCols().length === 0) {
-              exitJobBarMode();
-              // fall through to normal flow
-            } else {
-              if (matchesKey(data, Key.left))  { navigateJobBar("left");  return; }
-              if (matchesKey(data, Key.right)) { navigateJobBar("right"); return; }
-              if (matchesKey(data, Key.enter)) { toggleJobBarExpanded();  return; }
-              if (matchesKey(data, Key.up) || matchesKey(data, Key.escape)) { exitJobBarMode(); return; }
-              return; // 모든 키 소비
-            }
-          }
-
-          // ↓ 진입: 빈 에디터 + 등록된 캐리어가 있을 때만
-          if (matchesKey(data, Key.down)) {
-            if (editor.getText().trim() === "" && makeFooterCols().length > 0) {
-              enterJobBarMode();
-              return;
-            }
-          }
-
           // 타이핑 시작 → welcome 디스미스
           setTimeout(() => dismissWelcomeViaBridge(), 0);
           originalHandleInput(data);
@@ -230,7 +199,7 @@ export function setupCustomEditor(ctx: any, state: HudEditorState): void {
       if (!setEditorComponent(ctx, editorFactory)) return;
 
       // 확장 상태 알림 위젯 (에디터 위)
-      ctx.ui.setWidget("hud-notification", () => {
+      ctx.ui.setWidget(HUD_NOTIFICATION_WIDGET_KEY, () => {
         return {
           dispose() {},
           invalidate() {},
@@ -259,6 +228,7 @@ export function setupCustomEditor(ctx: any, state: HudEditorState): void {
           },
         };
       }, { placement: "aboveEditor" });
+
     } catch (error) {
       if (!isStaleExtensionContextError(error)) throw error;
     }
@@ -385,61 +355,6 @@ function renderRightBorder(
     + colorizeBorder("─".repeat(TOP_RIGHT_DASH_WIDTH));
 }
 
-function renderBorderWithLeftAndRight(
-  width: number,
-  colorizeBorder: (s: string) => string,
-  leftLabel: string,
-  rightLabel: string,
-): string | null {
-  const innerWidth = width - 2;
-  const leftWidth = visibleWidth(leftLabel);
-  const leftDash = MIN_LABEL_DASH_WIDTH;
-  const rightDash = TOP_RIGHT_DASH_WIDTH;
-  const maxRightWidth = innerWidth - leftDash - leftWidth - MIN_LABEL_DASH_WIDTH - rightDash - 4;
-
-  if (maxRightWidth < 1) return null;
-
-  const fittedRightLabel = visibleWidth(rightLabel) > maxRightWidth
-    ? truncateToWidth(rightLabel, maxRightWidth)
-    : rightLabel;
-  const rightWidth = visibleWidth(fittedRightLabel);
-  const middleDash = innerWidth - leftDash - leftWidth - rightWidth - rightDash - 4;
-
-  if (middleDash < MIN_LABEL_DASH_WIDTH) return null;
-
-  return [
-    " ",
-    colorizeBorder("─".repeat(leftDash)),
-    " ",
-    leftLabel,
-    " ",
-    colorizeBorder("─".repeat(middleDash)),
-    " ",
-    fittedRightLabel,
-    " ",
-    colorizeBorder("─".repeat(rightDash)),
-  ].join("");
-}
-
-function renderLeftBorder(
-  width: number,
-  colorizeBorder: (s: string) => string,
-  label: string,
-): string | null {
-  const innerWidth = width - 2;
-  const labelWidth = visibleWidth(label);
-  const labelBlockWidth = labelWidth + 2;
-  const leftDash = MIN_LABEL_DASH_WIDTH;
-  const rightDash = innerWidth - leftDash - labelBlockWidth;
-
-  if (rightDash < MIN_LABEL_DASH_WIDTH) return null;
-
-  return " "
-    + colorizeBorder("─".repeat(leftDash))
-    + " " + label + " "
-    + colorizeBorder("─".repeat(rightDash));
-}
-
 function renderStatusBorder(
   width: number,
   colorizeBorder: (s: string) => string,
@@ -450,18 +365,6 @@ function renderStatusBorder(
 
   try {
     const layout = getResponsiveLayout(Math.max(1, width - STATUS_BORDER_RESERVED_WIDTH), state);
-    const hint = getActiveJobs().length > 0 ? JOB_BAR_HINT : null;
-
-    if (hint && layout.topContent) {
-      const label = fitStatusBorderLabel(` ${layout.topContent}`, width);
-      const line = renderBorderWithLeftAndRight(width, colorizeBorder, hint, label);
-      return [line ?? renderRightBorder(width, colorizeBorder, label) ?? renderSolidBorder(width, colorizeBorder)];
-    }
-
-    if (hint) {
-      const line = renderLeftBorder(width, colorizeBorder, hint);
-      return [line ?? renderSolidBorder(width, colorizeBorder)];
-    }
 
     if (layout.topContent) {
       const label = fitStatusBorderLabel(` ${layout.topContent}`, width);

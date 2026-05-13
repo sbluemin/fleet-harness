@@ -2,18 +2,20 @@
  * fleet/panel/widget-sync.ts — PI TUI 위젯 동기화
  *
  * 현재 상태에 맞게 위젯을 등록/제거합니다.
- * - fleet-carrier-job-hud: 캐리어별 active job HUD 표시 (belowEditor)
+ * - fleet-carrier-job-hud: 캐리어 명단 strip 표시 (aboveEditor)
+ * - fleet-carrier-bridge-expanded: 확장 작업 상세 표시 (belowEditor)
  *
  * lifecycle.ts에서 호출됩니다.
  */
 
-import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import type { ExtensionContext, Theme } from "@sbluemin/fleet-coding-agent";
 
-import { renderCarrierJobHud } from "./carrier-job-hud-render.js";
+import { renderCarrierJobHudExpanded, renderCarrierJobHudStrip } from "./carrier-job-hud-render.js";
 import { requestEditorPanelRender } from "./editor-panel-bridge.js";
 import { getState } from "./state.js";
 
 const FLEET_CARRIER_JOB_HUD_WIDGET_KEY = "fleet-carrier-job-hud";
+const FLEET_CARRIER_BRIDGE_EXPANDED_WIDGET_KEY = "fleet-carrier-bridge-expanded";
 
 let currentWidgetCtx: ExtensionContext | null = null;
 let currentWidgetSessionId: string | null = null;
@@ -41,7 +43,7 @@ function isStaleExtensionContextError(error: unknown): boolean {
 /**
  * 현재 상태에 맞게 위젯을 등록/제거합니다.
  *
- * 캐리어 Job HUD 위젯(belowEditor)을 등록합니다.
+ * 캐리어 명단은 위쪽에, 확장 작업 상세는 아래쪽에 분리 등록합니다.
  */
 export function syncWidget(ctx: ExtensionContext): void {
   const sessionId = readSessionId(ctx);
@@ -91,10 +93,21 @@ function applyWidgetSync(ctx: ExtensionContext): void {
   try {
     ctx.ui.setWidget(FLEET_CARRIER_JOB_HUD_WIDGET_KEY, (_tui, theme) => ({
       render(width: number): string[] {
-        return renderCarrierJobHud(width, getState().frame, theme);
+        return renderCarrierJobHudStrip(width, getState().frame, theme);
       },
       invalidate() {},
-    }), { placement: "belowEditor" });
+    }), { placement: "aboveEditor" });
+
+    const state = getState();
+    const expandedWidget = state.widgetMode === "expanded" && !state.expanded
+      ? (_tui: unknown, theme: Theme) => ({
+        render(width: number): string[] {
+          return renderCarrierJobHudExpanded(width, getState().frame, theme);
+        },
+        invalidate() {},
+      })
+      : undefined;
+    ctx.ui.setWidget(FLEET_CARRIER_BRIDGE_EXPANDED_WIDGET_KEY, expandedWidget, { placement: "belowEditor" });
   } catch (error) {
     if (!isStaleExtensionContextError(error)) throw error;
     detachWidgetSync();

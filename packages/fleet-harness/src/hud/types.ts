@@ -42,8 +42,7 @@ export type StatusLineSegmentId =
   | "time"
   | "session"
   | "hostname"
-  | "thinking"
-  | "extension_statuses";
+  | "thinking";
 
 export type StatusLineSeparatorStyle =
   | "arrow"

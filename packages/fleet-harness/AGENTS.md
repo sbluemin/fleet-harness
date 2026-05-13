@@ -120,7 +120,8 @@ PI renders a vertical stack of **zones**. Extensions customize these zones via o
 | **Footer** | Footer | `core/hud` | Bottom tokens — dir, session, cost, model (HUD replaces default) |
 | **Status Bar** | Widget:above | `core/hud` | Segment-based status line above Editor |
 | **Agent Panel** | Custom UI | `fleet` | Carrier streaming UI — exclusive / multi-column / compact view |
-| **Streaming Widget** | Widget | `fleet` | 1-line compact indicator when Agent Panel is collapsed |
+| **Streaming Widget** | Widget:below | `fleet` | belowEditor expanded carrier bridge widget (`fleet-carrier-bridge-expanded`); Alt+Shift+P toggles visibility (default off); auto-hides on Alt+P; 10-line cap |
+| **Carrier Roster** | Widget:above | `fleet` | Permanent aboveEditor carrier tile strip (`fleet-carrier-job-hud`) — 1-line status display (e.g., ○ Nimitz │ ○ Sentinel) driven by panel data |
 | **Overlay** | Overlay | various | keybind (Alt+.), settings (Alt+/), and carrier status (Alt+O) are editor-replace; welcome remains floating |
 
 ### Rules

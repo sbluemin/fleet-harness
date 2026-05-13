@@ -19,7 +19,6 @@ import { buildPanelViewModel } from "./view-model.js";
 import type { PanelJobViewModel, PanelTrackViewModel } from "./view-model.js";
 
 import {
-  resolveCarrierBgColor,
   resolveCarrierColor,
   resolveCarrierDisplayName,
   resolveCarrierRgb,
@@ -42,13 +41,12 @@ export function renderPanelFull(
   frameColor: string,
   bottomHint: string,
   bodyH: number,
-  cursorColumn = -1,
   theme?: Theme,
 ): string[] {
   const visibleJobs = buildPanelViewModel(jobs, runs, { maxTrackBlocks: MAX_TRACK_STREAM_LINES });
   const FC = frameColor || PANEL_COLOR;
 
-  return renderMultiJobView(w, visibleJobs, frame, FC, bottomHint, bodyH, cursorColumn, theme);
+  return renderMultiJobView(w, visibleJobs, frame, FC, bottomHint, bodyH, theme);
 }
 
 function renderMultiJobView(
@@ -58,7 +56,6 @@ function renderMultiJobView(
   FC: string,
   bottomHint: string,
   bodyH: number,
-  cursorColumn: number,
   theme: Theme | undefined,
 ): string[] {
   if (jobs.length === 0) {
@@ -70,22 +67,13 @@ function renderMultiJobView(
   const widths = Array.from({ length: jobs.length }, (_, index) =>
     index < jobs.length - 1 ? base : iw - base * (jobs.length - 1),
   );
-  const cursorBg = cursorColumn >= 0
-    ? resolveCarrierBgColor(jobs[cursorColumn]?.ownerCarrierId ?? "")
-    : "";
-  const applyBg = (text: string, bg: string) =>
-    bg + text.replaceAll(ANSI_RESET, ANSI_RESET + bg) + ANSI_RESET;
-
   const rows: string[] = [];
   let ri = 0;
 
   rows.push(renderTopBorder(w, FC, theme));
   ri++;
 
-  const headerCells = jobs.map((job, index) => {
-    const cell = centerText(buildJobHeader(job, frame), widths[index] ?? 0);
-    return index === cursorColumn && cursorBg ? applyBg(cell, cursorBg) : cell;
-  });
+  const headerCells = jobs.map((job, index) => centerText(buildJobHeader(job, frame), widths[index] ?? 0));
   rows.push(joinCells(headerCells, widths, FC, theme));
   ri++;
 
@@ -100,8 +88,7 @@ function renderMultiJobView(
   for (let row = 0; row < bodyH; row++) {
     const cells = contents.map((content, index) => {
       const line = content[row] ?? "";
-      const cell = pad(line, widths[index] ?? 0);
-      return index === cursorColumn && cursorBg ? applyBg(cell, cursorBg) : cell;
+      return pad(line, widths[index] ?? 0);
     });
     rows.push(joinCells(cells, widths, FC, theme));
     ri++;
