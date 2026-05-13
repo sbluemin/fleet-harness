@@ -53,6 +53,7 @@ export {
   list,
   listSpecs,
   registerAgentTool,
+  registerExecutorTool,
   registerExtraTools,
   renderAgentToolDoctrineTag,
   unregisterExtraTools,

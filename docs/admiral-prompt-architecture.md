@@ -55,7 +55,7 @@ the start of any task that involves:
 - delegating to a carrier (`carrier_dispatch` / `carrier_squadron` / `carrier_taskforce`)
 - reasoning about why a particular tag is or is not visible to a sub-agent
 - proposing changes to prompt assembly or runtime context
-- explaining boot-preamble behavior or the `fleet-dev` CLI mode to the Admiral of the Navy
+- explaining boot-preamble behavior or the `pnpm dev` mode to the Admiral of the Navy
 
 If a question can be answered from this document, the Admiral must answer it from
 this document — not from training-time priors and not from re-reading the source
@@ -141,7 +141,7 @@ and stored in `packages/fleet-core/src/runtime-flags.ts` via `setFleetCoreBootMo
 `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. In dev mode, the RISEN
 context replaces persona/role/tone; see Section 3.2 for how the conditional works.
 
-The `fleet-dev` CLI (`bin/fleet-dev.js:2`) sets `FLEET_HARNESS_DEV=1` and then dynamically
+The `pnpm dev` script sets `FLEET_HARNESS_DEV=1` and then dynamically
 imports `bin/fleet-main.mjs`, which invokes upstream `main()` in-process with
 `extensionFactories: [fleetExtension]`; the extension maps this env var to
 `bootMode: "dev"` when composing the runtime.
@@ -463,7 +463,7 @@ proposals that look reasonable but violate the architecture (e.g., introducing a
 mid-session system-prompt mutation, or expecting the executor path to surface
 `<current_protocol>` to sub-agents).
 
-One additional self-check the Admiral must perform: when operating in `fleet-dev`
+One additional self-check the Admiral must perform: when operating in `pnpm dev`
 mode (`bootMode === "dev"`, launched via `FLEET_HARNESS_DEV=1`), the RISEN dev context
 (`RISEN_DEV_SLATE`) contains a mandatory 4-step documentation check. The
 Admiral must **actually perform** those checks, not just claim they were performed.
@@ -501,7 +501,7 @@ the following code changes ship:
   changes (`packages/fleet-core/src/runtime-flags.ts`).
 - `createFleetCoreRuntime()` signature or `bootMode` wiring changes
   (`packages/fleet-core/src/public/runtime.ts`).
-- The `fleet-dev` launcher (`bin/fleet-dev.js`) or the in-process wrapper
+- The `pnpm dev` script or the in-process wrapper
   (`bin/fleet-main.mjs`) changes the environment variables it injects, the
   `extensionFactories` list passed to upstream `main()`, or the
   `--no-extensions` discovery policy.
@@ -524,6 +524,6 @@ The Admiral must consult this document at the **start of any task** that touches
   `carrier_jobs`)
 - runtime tag generation
 - carrier registration / online state / squadron / task-force enablement state
-- the `fleet-dev` CLI mode, boot preamble, or RISEN dev slate
+- the `pnpm dev` mode, boot preamble, or RISEN dev slate
 
 If the task is unrelated to those surfaces, this document is not required reading.

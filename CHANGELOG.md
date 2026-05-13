@@ -8,6 +8,11 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - [harness] Enforce `canary` as the only allowed PR base; non-canary PRs, including from forks, are auto-closed with guidance.
 - [harness] Auto fast-forward `canary` to match `main` after each push to `main` so release commits propagate automatically.
+- [harness] Removed the `fleet-dev` binary; use `pnpm dev` for CWD-routed development launches instead.
+- [wiki] Wiki tool rendering is now consistent with carrier tools, featuring a transparent background in the TUI for improved visual integration.
+
+### Fixed
+- [core][wiki] Carrier executor MCP tool whitelist decoupled from wiki module load order; domain packages self-register tools into the executor whitelist so fleet-core no longer throws when invoked without fleet-wiki imported
 
 ## [0.19.0] - 2026-05-13
 

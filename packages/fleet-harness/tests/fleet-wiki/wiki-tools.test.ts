@@ -149,10 +149,10 @@ describe("wiki tools", () => {
 
   it("registers nine wiki tools including wiki_query", async () => {
     const root = await makeTempRoot();
-    const tools: Array<{ name: string; execute: Function }> = [];
+    const tools: Array<{ name: string; execute: Function; renderShell?: string }> = [];
 
     registerFleetWiki({
-      registerTool: (tool: { name: string; execute: Function }) => tools.push(tool),
+      registerTool: (tool: { name: string; execute: Function; renderShell?: string }) => tools.push(tool),
       registerCommand: () => undefined,
     } as any);
 
@@ -169,6 +169,7 @@ describe("wiki tools", () => {
       "wiki_query",
     ]));
     expect(toolNames).toHaveLength(9);
+    expect(tools.every((tool) => tool.renderShell === "self")).toBe(true);
 
     const orientTool = tools.find((tool) => tool.name === "wiki_orient");
     const readTool = tools.find((tool) => tool.name === "wiki_read");

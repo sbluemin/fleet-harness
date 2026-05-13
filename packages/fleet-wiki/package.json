@@ -26,6 +26,7 @@
     }
   },
   "dependencies": {
+    "@sbluemin/fleet-core": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

@@ -67,8 +67,9 @@ pnpm --filter @sbluemin/fleet-unified-agent link --global
 >
 > `pnpm link --global` registers the global commands from this checkout:
 >
-> - `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `fleet-dev` (see below).
-> - `fleet-dev` — sets `FLEET_HARNESS_DEV=1` then delegates to `fleet-main.mjs`. Use for development with live source changes.
+- `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `pnpm dev` (see below).
+- `pnpm dev` — (Defined in `package.json`) sets `FLEET_HARNESS_DEV=1` then delegates to `fleet-main.mjs`. Use for development with live source changes.
+
 > - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of any external runtime.
 >
 > > `pnpm --filter @sbluemin/fleet-unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.

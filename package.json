@@ -10,12 +10,12 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "pnpm -r build",
+    "dev": "FLEET_HARNESS_DEV=1 node ./bin/fleet-main.mjs",
     "postinstall": "pnpm -r build"
   },
   "bin": {
     "fleet": "./bin/fleet-main.mjs",
-    "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs",
-    "fleet-dev": "bin/fleet-dev.js"
+    "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
