@@ -1,0 +1,99 @@
+# Admiral GitHub App의 installation token으로 PR을 생성한다.
+# 로컬 `pr-creates` 스킬이 `gh workflow run`으로 이 워크플로우를 dispatch한다.
+# Private Key가 로컬에 노출되지 않고, PR author는 Admiral[bot]으로 표시된다.
+name: Admiral · Create PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: "PR title (Conventional Commits)"
+        required: true
+        type: string
+      body:
+        description: "PR body (Markdown)"
+        required: true
+        type: string
+      base:
+        description: "Base branch"
+        required: false
+        type: string
+        default: canary
+      head:
+        description: "Head branch (must already be pushed to origin)"
+        required: true
+        type: string
+      draft:
+        description: "Create as draft"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  create-pr:
+    name: Create PR as Admiral
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint Admiral App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.ADMIRAL_APP_ID }}
+          private-key: ${{ secrets.ADMIRAL_PRIVATE_KEY }}
+
+      - name: Reject protected base branches
+        env:
+          BASE: ${{ inputs.base }}
+        run: |
+          set -euo pipefail
+          case "$BASE" in
+            main|master)
+              echo "::error::base branch '$BASE' is protected. Use canary or another feature base."
+              exit 1
+              ;;
+          esac
+
+      - name: Create PR
+        id: create
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ inputs.title }}
+          BODY: ${{ inputs.body }}
+          BASE: ${{ inputs.base }}
+          HEAD: ${{ inputs.head }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            --repo "$REPO"
+            --base "$BASE"
+            --head "$HEAD"
+            --title "$TITLE"
+            --body "$BODY"
+          )
+          if [ "$DRAFT" = "true" ]; then
+            ARGS+=(--draft)
+          fi
+          PR_URL=$(gh pr create "${ARGS[@]}")
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Admiral PR created::$PR_URL"
+
+      - name: Summary
+        env:
+          PR_URL: ${{ steps.create.outputs.url }}
+          HEAD: ${{ inputs.head }}
+          BASE: ${{ inputs.base }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          {
+            echo "## Admiral PR created"
+            echo ""
+            echo "- URL: $PR_URL"
+            echo "- Base: \`$BASE\`"
+            echo "- Head: \`$HEAD\`"
+            echo "- Draft: \`$DRAFT\`"
+          } >> "$GITHUB_STEP_SUMMARY"
