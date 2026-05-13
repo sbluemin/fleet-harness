@@ -21,6 +21,7 @@ import {
   TaskForceState,
   formatAnswerResult,
 } from "@sbluemin/fleet-core";
+import { FLEET_WIKI_AGENT_TOOL_IDS } from "@sbluemin/fleet-wiki";
 
 import { syncModelConfig } from "./panel/config.js";
 import { renderCarrierJobsCall, renderCarrierJobsResult, type CarrierJobsToolResult } from "./jobs.js";
@@ -111,6 +112,11 @@ const COLLAPSED_MAX_LINES = 5;
 const PREFIX = "╎";
 const DIM = "\x1b[2m";
 
+// fleet-wiki가 fleet-core registry에 self-register한 4종 read-only tool ID 집합.
+// `registerFleetWiki`가 host에 compact wiki UI(`withCompactRender`)와 함께 먼저 등록하므로,
+// `registerFleetPiTools`는 이 집합을 skip하여 generic core wrapper로 덮어쓰지 않는다.
+const WIKI_HOST_OWNED_TOOL_IDS: ReadonlySet<string> = new Set(FLEET_WIKI_AGENT_TOOL_IDS);
+
 let shipyardLogCategoriesRegistered = false;
 
 export function registerToolRegistry(ctx: ExtensionAPI, fleetEnabled: boolean): void {
@@ -126,6 +132,10 @@ export function registerFleetPiTools(pi: ExtensionAPI): void {
   const specs = getFleetRuntime().admiral.agent.tools.listSpecs();
 
   for (const spec of specs) {
+    if (WIKI_HOST_OWNED_TOOL_IDS.has(spec.id)) {
+      // host PI tool 등록은 `registerFleetWiki`가 소유한다. compact wiki UI 보존을 위해 skip.
+      continue;
+    }
     if (spec.id === "request_directive") {
       pi.registerTool(toRequestDirectivePiTool(spec) as any);
       continue;

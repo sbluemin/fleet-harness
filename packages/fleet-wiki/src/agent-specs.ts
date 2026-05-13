@@ -10,6 +10,16 @@ import { buildResolveToolConfig } from "./tools/resolve.js";
 // Constants — build specs (uses hoisted function declarations below)
 // ═══════════════════════════════════════
 
+// fleet-wiki가 fleet-core agent tool registry에 self-register하는 read-only tool ID의 SSoT.
+// fleet-harness `registerFleetPiTools`가 host PI tool 등록 시 이 집합을 skip하여
+// `registerFleetWiki`가 등록한 compact wiki UI가 generic core wrapper로 덮어쓰이지 않도록 한다.
+export const FLEET_WIKI_AGENT_TOOL_IDS = [
+  "wiki_briefing",
+  "wiki_drydock",
+  "wiki_read",
+  "wiki_resolve",
+] as const;
+
 const briefingSpec = buildWikiBriefingSpec();
 const dryDockSpec = buildWikiDryDockSpec();
 const readSpec = buildWikiReadSpec();
