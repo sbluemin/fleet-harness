@@ -8,6 +8,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - [harness] Enforce `canary` as the only allowed PR base; non-canary PRs, including from forks, are auto-closed with guidance.
 - [harness] Auto fast-forward `canary` to match `main` after each push to `main` so release commits propagate automatically.
+- [harness] Removed the `fleet-dev` binary; use `pnpm dev` for CWD-routed development launches instead.
 - [wiki] Wiki tool rendering is now consistent with carrier tools, featuring a transparent background in the TUI for improved visual integration.
 
 ### Fixed

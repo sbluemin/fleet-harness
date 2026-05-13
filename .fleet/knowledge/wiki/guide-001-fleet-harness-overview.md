@@ -29,14 +29,14 @@ fleet-harness는 [pi-coding-agent](https://github.com/badlogic/pi-mono) 기반�
 
 ## 제공 CLI
 
-fleet-harness는 용도에 따라 4개의 CLI 진입점을 제공한다. fleet, fleet-dev, fleet-exp는 내부적으로 pi CLI를 감싸는 얇은 래퍼이며, 환경변수 조합으로 동작 모드가 결정된다.
+fleet-harness는 용도에 따라 2개의 CLI 진입점과 개발용 스크립트를 제공한다. fleet은 내부적으로 pi CLI를 감싸는 얇은 래퍼이며, 환경변수 조합으로 동작 모드가 결정된다.
 
-### 주 CLI
+### 주 CLI 및 스크립트
 
-| CLI | 설명 |
+| 항목 | 설명 |
 |---|---|
 | fleet | **기본 운영 진입점.** 빌드된 프로덕션 익스텐션(dist/index.js)을 로드한다. 일상적인 작업에 사용한다. |
-| fleet-dev | **개발 모드.** 소스(src/index.ts)를 직접 로드하며 FLEET_HARNESS_DEV=1 + PI_EXPERIMENTAL=1을 설정한다. RISEN 개발 컨텍스트와 Admiral 7단계 프로토콜이 활성화된다. 익스텐션 개발 시 사용한다. |
+| pnpm dev | **개발 모드.** (스크립트) 소스(src/index.ts)를 직접 로드하며 FLEET_HARNESS_DEV=1 + PI_EXPERIMENTAL=1을 설정한다. RISEN 개발 컨텍스트와 Admiral 7단계 프로토콜이 활성화된다. 익스텐션 개발 시 사용한다. |
 | fleet-exp | **실험적 모드.** 프로덕션 dist를 로드하되 PI_EXPERIMENTAL=1만 설정한다. 개발 슬레이트 없이 실험적 PI 기능을 사용할 때 쓴다. |
 
 ### 웹 UI

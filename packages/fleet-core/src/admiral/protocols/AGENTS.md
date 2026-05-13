@@ -31,7 +31,7 @@ The Admiral extension implements a modular prompt policy system that governs how
 
 ```text
 System Prompt
-  + [Boot] Initial Slate (FLEET_HARNESS_DEV=1 시 RISEN 개발 컨텍스트, 그 외 빈 문자열)
+  + [Boot] Initial Slate (pnpm dev 사용 시 FLEET_HARNESS_DEV=1로 인해 RISEN 개발 컨텍스트 활성화, 그 외 빈 문자열)
   + [Toggle] Worldview (via fleet:metaphor:settings)
   + [Always] Standing Orders (Carrier Operations Policy + Deep Dive + ...)
   + [Always] Active Protocol (Fleet Action Protocol, etc.)
