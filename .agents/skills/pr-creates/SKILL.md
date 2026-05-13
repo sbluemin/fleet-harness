@@ -1,3 +1,8 @@
+---
+name: pr-creates
+description: Admiral GitHub App을 통해 PR을 생성하는 워크플로 절차를 정의합니다.
+---
+
 # PR Creates (as Admiral)
 
 Use this skill to publish a pull request on `sbluemin/fleet-harness` as the **Admiral GitHub App**, so the PR author shows as `Fleet Admiral[bot]` (or whatever slug the App was registered with). The skill itself only triggers the `Admiral · Create PR` workflow — the GitHub App private key never touches the local machine.
