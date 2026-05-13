@@ -2,7 +2,15 @@
 name: Canary Sync
 
 on:
+  # main 일반 푸시에는 push 이벤트로 즉시 sync.
   push:
+    branches:
+      - main
+  # auto-release 봇 커밋은 [skip ci]라 push 이벤트를 막으므로, Auto Release 완료를 별도로 감지해 sync한다.
+  workflow_run:
+    workflows: ["Auto Release"]
+    types:
+      - completed
     branches:
       - main
 
