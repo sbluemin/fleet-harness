@@ -15,7 +15,19 @@ const doctrineEntries = new Map<string, AgentToolSpec>();
 const extraTools = new Map<string, Map<string, AgentToolSpec>>();
 let defaultToolsBuilt = false;
 
-export const EXECUTOR_MCP_TOOL_IDS = ["carrier_jobs"] as const;
+// Runtime Set that drives getExecutorMcpTools(). carrier_jobs is the fleet-core-owned default.
+// Domain packages (e.g. fleet-wiki) extend this at module load time via registerExecutorTool().
+const executorWhitelist = new Set<string>(["carrier_jobs"]);
+
+// Superset enumeration of all possible executor tool IDs — kept for test compatibility and auditing.
+// The runtime source of truth is executorWhitelist, not this constant.
+export const EXECUTOR_MCP_TOOL_IDS = [
+  "carrier_jobs",
+  "wiki_briefing",
+  "wiki_drydock",
+  "wiki_read",
+  "wiki_resolve",
+] as const;
 
 export function registerAgentTool(spec: AgentToolSpec): void {
   assertToolId(spec.id, "id");
@@ -29,6 +41,11 @@ export function registerAgentTool(spec: AgentToolSpec): void {
   doctrineEntries.set(spec.id, spec);
 }
 
+export function registerExecutorTool(spec: AgentToolSpec): void {
+  registerAgentTool(spec);
+  executorWhitelist.add(spec.id);
+}
+
 export function getAllAgentTools(): AgentToolSpec[] {
   ensureDefaultToolsRegistered();
   return doctrineOrder
@@ -38,13 +55,12 @@ export function getAllAgentTools(): AgentToolSpec[] {
 
 export function getExecutorMcpTools(): AgentToolSpec[] {
   ensureDefaultToolsRegistered();
-  return EXECUTOR_MCP_TOOL_IDS.map((id) => {
+  const specs: AgentToolSpec[] = [];
+  for (const id of executorWhitelist) {
     const spec = doctrineEntries.get(id);
-    if (!spec) {
-      throw new Error(`Executor MCP whitelist references unknown tool id: "${id}"`);
-    }
-    return spec;
-  });
+    if (spec) specs.push(spec);
+  }
+  return specs;
 }
 
 // ═════════════════════════════════════════════════════════
@@ -94,7 +110,7 @@ export function list(): readonly AgentToolSpec[] {
   const specs: AgentToolSpec[] = [...getAllAgentTools()];
   for (const scoped of extraTools.values()) {
     for (const spec of scoped.values()) {
-      specs.push(spec);
+      if (!specs.some((s) => s.id === spec.id)) specs.push(spec);
     }
   }
   return specs;
@@ -148,6 +164,8 @@ export function clearAllDefaultTools(): void {
   doctrineOrder.length = 0;
   doctrineEntries.clear();
   defaultToolsBuilt = false;
+  executorWhitelist.clear();
+  executorWhitelist.add("carrier_jobs");
 }
 
 export function clearAllExtraTools(): void {

@@ -1,24 +1,25 @@
 # fleet-wiki Doctrine
 
-`packages/fleet-wiki` is a leaf workspace package dedicated to the LLM-Wiki domain. It owns the memory store, briefing, dry-dock, patch queue/ingest tool builder, safety policy, and path resolution.
+`packages/fleet-wiki` is a workspace package dedicated to the LLM-Wiki domain. It depends only on `@sbluemin/fleet-core` and owns the memory store, briefing, dry-dock, patch queue/ingest tool builder, safety policy, path resolution, and fleet-core agent registry self-registration for its read-only tools.
 
 ## Owns
 
 - Pure LLM-Wiki domain logic and types under `src/`
 - Single public subpath `./`
 - LLM-Wiki package-specific validation under `tests/`
+- fleet-core agent registry self-registration via `agent-specs.ts` (4종 read-only wiki 도구를 doctrine으로 노출)
 
 ## Must Not Own
 
-- Imports of `@sbluemin/fleet-core` or other workspace packages
+- Imports of other workspace packages (except `@sbluemin/fleet-core` as noted below)
 - Imports of `@mariozechner/pi-*` or `@anthropic-ai/*`
 - Pi runtime wiring, UI registration, or host-specific adapter code
 
 ## Dependency Rules
 
-- The only allowed runtime dependency is `typebox`.
-- Workspace package imports are strictly forbidden.
-- Maintain leaf package doctrine and avoid circular dependencies.
+- `@sbluemin/fleet-core`에 한해 정방향 의존이 허용됨.
+- 다른 워크스페이스 패키지(`@sbluemin/fleet-*` 엔진 포함) 및 `@anthropic-ai/*` / `@mariozechner/pi-*` 의존은 여전히 금지.
+- 순환 의존성은 금지.
 
 ## Tools
 

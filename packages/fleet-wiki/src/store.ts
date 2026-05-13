@@ -23,10 +23,20 @@ export async function readWikiEntry(id: string, paths: MemoryPaths): Promise<Wik
   if (id === "index") {
     return null;
   }
+  // Validate caller-supplied id to block path traversal attempts.
+  try {
+    assertSafeEntryId(id);
+  } catch {
+    return null;
+  }
   const index = await loadIndex(paths);
   const indexed = index[id];
   if (indexed) {
-    return readMarkdownFile<WikiEntry>(path.join(paths.root, indexed.path));
+    // Validate index.json-supplied path stays within wikiDir before trusting it.
+    const resolved = path.resolve(paths.root, indexed.path);
+    const rel = path.relative(paths.wikiDir, resolved);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+    return readMarkdownFile<WikiEntry>(resolved);
   }
   const fallbackPath = path.join(paths.wikiDir, `${id}.md`);
   if (await pathExists(fallbackPath)) {

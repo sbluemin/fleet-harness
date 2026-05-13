@@ -1,3 +1,5 @@
+import "./agent-specs.js";
+
 export * from "./boundaries.js";
 export * from "./briefing.js";
 export * from "./claims.js";
