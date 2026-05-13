@@ -62,6 +62,7 @@ export interface AgentPanelState {
   panelJobs: Map<string, PanelJob>;
   runs: Map<string, PanelRun>;
   expanded: boolean;
+  widgetMode: WidgetMode;
   streaming: boolean;
   frame: number;
   animTimer: ReturnType<typeof setInterval> | null;
@@ -73,13 +74,9 @@ export interface AgentPanelState {
   serviceLoading: boolean;
   toggleCallbacks: Array<(expanded: boolean) => void>;
   bodyH: number;
-  /** Carrier Job HUD 가상 포커스 활성 여부 */
-  jobBarMode: boolean;
-  /** Carrier Job HUD 포커스된 캐리어 인덱스 (-1 = 비활성) */
-  jobBarCursor: number;
-  /** Carrier Job HUD 확장된 carrierId */
-  jobBarExpandedJobId: string | null;
 }
+
+export type WidgetMode = "strip" | "expanded";
 
 export const PANEL_JOB_RETENTION = 8;
 export const PANEL_BRIDGE_HINT = " alt+j/k · alt+p ";
@@ -127,6 +124,7 @@ export function getState(): AgentPanelState {
       panelJobs: new Map(),
       runs: new Map(),
       expanded: false,
+      widgetMode: "strip",
       streaming: false,
       frame: 0,
       animTimer: null,
@@ -137,9 +135,6 @@ export function getState(): AgentPanelState {
       serviceLoading: false,
       toggleCallbacks: [],
       bodyH: DEFAULT_BODY_H,
-      jobBarMode: false,
-      jobBarCursor: -1,
-      jobBarExpandedJobId: null,
     };
     panelState = s;
   }

@@ -319,28 +319,6 @@ const hostnameSegment: StatusLineSegment = {
   },
 };
 
-const extensionStatusesSegment: StatusLineSegment = {
-  id: "extension_statuses",
-  render(ctx) {
-    const statuses = ctx.extensionStatuses;
-    if (!statuses || statuses.size === 0) return { content: "", visible: false };
-
-    // Map 전체를 순회하여 [ 로 시작하지 않는 항목을 표시
-    const parts: string[] = [];
-    for (const value of statuses.values()) {
-      if (value && !value.trimStart().startsWith('[')) {
-        parts.push(value);
-      }
-    }
-
-    if (parts.length === 0) return { content: "", visible: false };
-
-    // Statuses already have their own styling applied by the extensions
-    const content = parts.join(` ${SEP_DOT} `);
-    return { content, visible: true };
-  },
-};
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Segment Registry
 // ═══════════════════════════════════════════════════════════════════════════
@@ -359,7 +337,6 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   time: timeSegment,
   session: sessionSegment,
   hostname: hostnameSegment,
-  extension_statuses: extensionStatusesSegment,
 };
 
 export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): RenderedSegment {

@@ -1,7 +1,7 @@
 /**
  * fleet — Carrier Job HUD 렌더러
  *
- * Editor 하단(belowEditor)에 등록된 캐리어 strip과 캐리어별 active job 트리를 렌더링합니다.
+ * aboveEditor 캐리어 명단 strip과 belowEditor 확장 작업 상세를 렌더링합니다.
  */
 
 import type { Theme } from "@sbluemin/fleet-coding-agent";
@@ -9,7 +9,6 @@ import { truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
 import {
   ANSI_RESET,
   PANEL_DIM_COLOR,
-  PANEL_RGB,
   SPINNER_FRAMES,
   SYM_INDICATOR,
   TASKFORCE_BADGE_COLOR,
@@ -41,16 +40,12 @@ interface CarrierHudTile {
 }
 
 const MAX_EXPANDED_STREAM_LINES = 1;
-const MAX_EXPANDED_TOTAL_LINES = 8;
-const SEPARATOR_VIS_W = 3;
+export const MAX_WIDGET_LINES = 10;
 const COLOR_DONE = "\x1b[38;2;80;200;120m";
 const COLOR_ERROR = "\x1b[38;2;255;80;80m";
 const DISABLED_COLOR = "\x1b[38;2;100;100;100m";
 const STREAM_PREFIX = "  ";
 const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
-const FOCUS_BG_FACTOR = 0.12;
-const FOCUS_BG_BASE = 12;
-const JOB_NODE_PREFIX = " ";
 
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
@@ -60,115 +55,70 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export function renderCarrierJobHud(width: number, frame: number, theme?: Theme): string[] {
+  if (getState().widgetMode === "expanded" && !getState().expanded) {
+    return renderCarrierJobHudExpanded(width, frame, theme);
+  }
+  return renderCarrierJobHudStrip(width, frame, theme);
+}
+
+export function renderCarrierJobHudStrip(width: number, frame: number, theme?: Theme): string[] {
   const carriers = buildCarrierTiles();
   if (carriers.length === 0) return [];
+  return renderCarrierHudStrip(width, carriers, frame, theme);
+}
 
-  const state = getState();
-  const cursor = clampCursor(state.jobBarCursor, carriers.length);
-  const expandedCarrierId = carriers.some((carrier) => carrier.carrierId === state.jobBarExpandedJobId)
-    ? state.jobBarExpandedJobId
-    : null;
+export function renderCarrierJobHudExpanded(width: number, frame: number, theme?: Theme): string[] {
+  const lines: string[] = [];
+  const jobs = buildActiveJobViewModels();
 
-  if (expandedCarrierId) {
-    return renderCarrierHudExpanded(width, carriers, cursor, expandedCarrierId, frame, theme);
+  if (jobs.length === 0) {
+    lines.push(truncateToWidth(`${STREAM_PREFIX}${border(theme, "└─")} ${PANEL_DIM_COLOR}No active jobs${ANSI_RESET}`, width));
+    return lines.slice(0, MAX_WIDGET_LINES);
   }
 
-  return renderCarrierHudStrip(width, carriers, cursor, frame, theme);
+  appendWidgetJobSummary(lines, width, jobs, frame, theme);
+  return lines.slice(0, MAX_WIDGET_LINES).map((line) => truncateToWidth(line, width));
 }
 
 function renderCarrierHudStrip(
   width: number,
   carriers: CarrierHudTile[],
-  cursor: number,
   frame: number,
   theme: Theme | undefined,
 ): string[] {
-  const tiles = carriers.map((carrier, index) => formatCarrierTile(carrier, index === cursor, frame));
+  const tiles = carriers.map((carrier) => formatCarrierTile(carrier, frame));
   return [centerLine(tiles.join(tileSeparator(theme)), width)];
 }
 
-function renderCarrierHudExpanded(
-  width: number,
-  carriers: CarrierHudTile[],
-  cursor: number,
-  expandedCarrierId: string,
-  frame: number,
-  theme: Theme | undefined,
-): string[] {
-  const expandedIdx = carriers.findIndex((carrier) => carrier.carrierId === expandedCarrierId);
-  if (expandedIdx < 0) return renderCarrierHudStrip(width, carriers, cursor, frame, theme);
-
-  const tiles = carriers.map((carrier, index) => formatCarrierTile(carrier, index === cursor, frame));
-  const offsets = computeTileOffsets(tiles);
-  const stripLine = tiles.join(tileSeparator(theme));
-  const stripPadding = centerPadding(stripLine, width);
-  const indent = " ".repeat(stripPadding + (offsets[expandedIdx] ?? 0));
-  const lines = [" ".repeat(stripPadding) + stripLine];
-  appendCarrierJobTree(lines, width, expandedCarrierId, indent, frame, theme);
-  return lines.map((line) => truncateToWidth(line, width));
-}
-
-function appendCarrierJobTree(
+function appendWidgetJobSummary(
   lines: string[],
   width: number,
-  carrierId: string,
-  indent: string,
+  jobs: PanelJobViewModel[],
   frame: number,
   theme: Theme | undefined,
 ): void {
-  const jobs = buildCarrierJobViewModels(carrierId);
-  let remaining = MAX_EXPANDED_TOTAL_LINES - 1;
-
-  if (jobs.length === 0) {
-    lines.push(truncateToWidth(`${indent}${STREAM_PREFIX}${border(theme, "└─")} ${PANEL_DIM_COLOR}No active jobs${ANSI_RESET}`, width));
-    return;
-  }
-
-  for (let jobIndex = 0; jobIndex < jobs.length && remaining > 0; jobIndex++) {
+  for (let jobIndex = 0; jobIndex < jobs.length && lines.length < MAX_WIDGET_LINES; jobIndex++) {
     const job = jobs[jobIndex];
     if (!job) continue;
-    const isLastJob = jobIndex === jobs.length - 1;
-    const jobBranch = isLastJob ? "└─" : "├─";
     const jobColor = resolveCarrierColor(job.ownerCarrierId);
     const jobLabel = `${kindDisplayName(job.kind)} · ${job.label}`;
     lines.push(truncateToWidth(
-      `${indent}${JOB_NODE_PREFIX}${border(theme, jobBranch)} ${jobIcon(job, frame)} ${jobColor}${jobLabel}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${border(theme, "├─")} ${jobIcon(job, frame)} ${jobColor}${jobLabel}${ANSI_RESET}`,
       width,
     ));
-    remaining--;
-    appendTrackTree(lines, width, job, indent, isLastJob, frame, theme, remaining);
-    remaining = MAX_EXPANDED_TOTAL_LINES - lines.length;
-  }
-}
 
-function appendTrackTree(
-  lines: string[],
-  width: number,
-  job: PanelJobViewModel,
-  indent: string,
-  isLastJob: boolean,
-  frame: number,
-  theme: Theme | undefined,
-  budget: number,
-): void {
-  const fallbackColor = resolveCarrierColor(job.ownerCarrierId);
-  const childIndent = `${indent}${JOB_NODE_PREFIX}${isLastJob ? "  " : "│ "}`;
-  let remaining = budget;
-
-  for (let trackIndex = 0; trackIndex < job.tracks.length && remaining > 0; trackIndex++) {
-    const track = job.tracks[trackIndex];
-    if (!track) continue;
-    const isLastTrack = trackIndex === job.tracks.length - 1;
-    const branch = isLastTrack ? "└─" : "├─";
-    const trackColor = resolveCarrierColor(track.displayCli) ?? fallbackColor;
-    const icon = trackStatusIcon(track, frame, trackColor);
-    const name = `${trackColor}${trackDisplayName(track)}${ANSI_RESET}`;
-    const inline = !track.isComplete ? trackInlineBlock(track) : "";
-    lines.push(truncateToWidth(
-      `${childIndent}${border(theme, branch)} ${icon} ${name}${inline}`,
-      width,
-    ));
-    remaining--;
+    for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
+      const track = job.tracks[trackIndex];
+      if (!track) continue;
+      const trackColor = resolveCarrierColor(track.displayCli) ?? jobColor;
+      const icon = trackStatusIcon(track, frame, trackColor);
+      const stats = widgetTrackStats(track);
+      const inline = !track.isComplete ? trackInlineBlock(track) : "";
+      lines.push(truncateToWidth(
+        `${STREAM_PREFIX}  ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${stats}${inline}`,
+        width,
+      ));
+    }
   }
 }
 
@@ -189,15 +139,8 @@ function buildCarrierTiles(): CarrierHudTile[] {
   });
 }
 
-function buildCarrierJobViewModels(carrierId: string): PanelJobViewModel[] {
-  const jobs = getActiveJobs().filter((job) => job.ownerCarrierId === carrierId && job.status === "active");
-  return buildPanelViewModel(jobs, getPanelRuns(), { maxTrackBlocks: MAX_EXPANDED_STREAM_LINES });
-}
-
-function clampCursor(cursor: number, carrierCount: number): number {
-  if (carrierCount <= 0) return -1;
-  if (cursor < 0) return -1;
-  return Math.min(cursor, carrierCount - 1);
+function buildActiveJobViewModels(): PanelJobViewModel[] {
+  return buildPanelViewModel(getActiveJobs(), getPanelRuns(), { maxTrackBlocks: MAX_EXPANDED_STREAM_LINES });
 }
 
 function border(theme: Theme | undefined, text: string): string {
@@ -216,33 +159,12 @@ function centerPadding(line: string, width: number): number {
   return Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
 }
 
-function computeTileOffsets(tiles: string[]): number[] {
-  const offsets: number[] = [];
-  let pos = 0;
-  for (let i = 0; i < tiles.length; i++) {
-    offsets.push(pos);
-    pos += visibleWidth(tiles[i]);
-    if (i < tiles.length - 1) pos += SEPARATOR_VIS_W;
-  }
-  return offsets;
-}
-
-function formatCarrierTile(carrier: CarrierHudTile, focused: boolean, frame: number): string {
+function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
   const carrierColor = carrier.online ? resolveCarrierColor(carrier.carrierId) : DISABLED_COLOR;
   const icon = carrierStatusIcon(carrier, frame, carrierColor);
   const hasActiveJob = carrier.activeJobCount > 0;
   const suffix = `${carrierBadges(carrier)}${carrierActivityBadge(carrier)}`;
   const prefix = `${icon} `;
-
-  if (focused) {
-    const rgb = resolveCarrierRgb(carrier.carrierId) ?? PANEL_RGB;
-    const bg = carrierBgEscape(rgb);
-    const focusedName = hasActiveJob
-      ? waveText(carrier.displayName, rgb, frame)
-      : `${carrierColor}${carrier.displayName}${ANSI_RESET}`;
-    const focusedLabel = `${focusedName}${suffix}`;
-    return `${bg}${reapplyBg(prefix, bg)}${reapplyBg(focusedLabel, bg)} ${ANSI_RESET}`;
-  }
 
   if (hasActiveJob && carrier.online) {
     return `${prefix}${waveText(carrier.displayName, resolveCarrierRgb(carrier.carrierId), frame)}${suffix}${ANSI_RESET}`;
@@ -275,17 +197,6 @@ function carrierActivityBadge(carrier: CarrierHudTile): string {
   if (carrier.activeJobCount <= 0) return "";
   const trackSuffix = carrier.activeTrackCount > 0 ? `:${carrier.activeTrackCount}` : "";
   return ` ${PANEL_DIM_COLOR}[${carrier.activeJobCount}${trackSuffix}]${ANSI_RESET}`;
-}
-
-function carrierBgEscape(rgb: readonly [number, number, number]): string {
-  const r = Math.round(rgb[0] * FOCUS_BG_FACTOR + FOCUS_BG_BASE);
-  const g = Math.round(rgb[1] * FOCUS_BG_FACTOR + FOCUS_BG_BASE);
-  const b = Math.round(rgb[2] * FOCUS_BG_FACTOR + FOCUS_BG_BASE);
-  return `\x1b[48;2;${r};${g};${b}m`;
-}
-
-function reapplyBg(text: string, bg: string): string {
-  return text.replace(/\x1b\[0m/g, `\x1b[0m${bg}`);
 }
 
 function kindDisplayName(kind: string): string {
@@ -330,4 +241,11 @@ function trackInlineBlock(track: PanelTrackViewModel): string {
   const latest = rendered[rendered.length - 1];
   if (!latest) return "";
   return ` ${PANEL_DIM_COLOR}·${ANSI_RESET} ${STREAM_INLINE_COLOR}${latest.text.trim()}${ANSI_RESET}`;
+}
+
+function widgetTrackStats(track: PanelTrackViewModel): string {
+  const parts: string[] = [];
+  if (track.toolCallCount > 0) parts.push(`${track.toolCallCount}T`);
+  if (track.textLineCount > 0) parts.push(`${track.textLineCount}L`);
+  return parts.length > 0 ? ` ${PANEL_DIM_COLOR}[${parts.join("·")}]${ANSI_RESET}` : "";
 }

@@ -6,13 +6,12 @@
  */
 
 import type { ExtensionContext } from "@sbluemin/fleet-coding-agent";
-import { ANIM_INTERVAL_MS, BODY_H_STEP } from "../fleet-core-facades.js";
+import { ANIM_INTERVAL_MS } from "../fleet-core-facades.js";
 import { getActiveBackgroundJobCount, onActiveJobCountChange } from "../fleet-core-facades.js";
-import { getActiveJobs, getState, makeFooterCols, PANEL_BRIDGE_HINT, syncColsWithRegisteredOrder } from "./state.js";
+import { getActiveJobs, getState, PANEL_BRIDGE_HINT, syncColsWithRegisteredOrder } from "./state.js";
 import type { AgentCol } from "./types.js";
 import { detachWidgetSync, syncCurrentWidget, syncWidget } from "./widget-sync.js";
 import { getKeybindAPI } from "../keybinds.js";
-import { adjustPanelHeight } from "./config.js";
 import { setActiveEditorPanel } from "./editor-panel-bridge.js";
 import { AgentPanelEditor } from "./editor-panel.js";
 
@@ -46,6 +45,7 @@ function openAgentPanel(ctx: ExtensionContext): void {
 
   const state = getState();
   state.expanded = true;
+  state.widgetMode = "strip";
   state.bottomHint = PANEL_BRIDGE_HINT;
   syncWidget(ctx);
   notifyToggle(true);
@@ -232,64 +232,19 @@ function notifyToggle(expanded: boolean): void {
   }
 }
 
-// ─── Carrier Job HUD 가상 포커스 ──────────────────────────
+// ─── Streaming Widget expanded detail 표시 토글 ───────────
 
-/** Carrier Job HUD 가상 포커스 활성 여부 */
-export function isJobBarMode(): boolean {
-  return getState().jobBarMode;
-}
-
-/** Carrier Job HUD 가상 포커스 진입 */
-export function enterJobBarMode(): void {
-  const carriers = makeFooterCols();
-  if (carriers.length === 0) {
-    exitJobBarMode();
-    return;
+/** belowEditor expanded job detail 위젯 표시를 토글합니다. */
+export function toggleWidgetMode(): "strip" | "expanded" {
+  const s = getState();
+  if (s.expanded) {
+    s.widgetMode = "strip";
+    syncCurrentWidget();
+    return s.widgetMode;
   }
-  const s = getState();
-  s.jobBarMode = true;
-  s.jobBarCursor = 0;
-  s.jobBarExpandedJobId = null;
-  ensureAnimTimer();
+  s.widgetMode = s.widgetMode === "expanded" ? "strip" : "expanded";
   syncCurrentWidget();
-}
-
-/** Carrier Job HUD 가상 포커스 종료 */
-export function exitJobBarMode(): void {
-  const s = getState();
-  s.jobBarMode = false;
-  s.jobBarCursor = -1;
-  s.jobBarExpandedJobId = null;
-  syncCurrentWidget();
-}
-
-/** Carrier Job HUD 내 커서 이동 */
-export function navigateJobBar(direction: "left" | "right"): void {
-  const s = getState();
-  const carriers = makeFooterCols();
-  if (carriers.length === 0) { exitJobBarMode(); return; }
-  const currentCursor = s.jobBarCursor < 0 ? 0 : s.jobBarCursor;
-  if (direction === "left") {
-    s.jobBarCursor = Math.max(0, currentCursor - 1);
-  } else {
-    s.jobBarCursor = Math.min(carriers.length - 1, currentCursor + 1);
-  }
-  syncCurrentWidget();
-}
-
-/** Carrier Job HUD 확장 상태 토글 */
-export function toggleJobBarExpanded(): void {
-  const s = getState();
-  const carriers = makeFooterCols();
-  if (carriers.length === 0) { exitJobBarMode(); return; }
-  const cursor = Math.min(Math.max(0, s.jobBarCursor), carriers.length - 1);
-  const carrier = carriers[cursor];
-  if (carrier) {
-    s.jobBarExpandedJobId = s.jobBarExpandedJobId === carrier.cli
-      ? null
-      : carrier.cli;
-  }
-  syncCurrentWidget();
+  return s.widgetMode;
 }
 
 // ─── 패널 단축키 등록 ─────────────────────────────────────
@@ -309,26 +264,15 @@ export function registerAgentPanelShortcut(): void {
     },
   });
 
-  // ── Alt+J / Alt+K: 패널 높이 조절 ──
+  // ── Alt+Shift+P: belowEditor expanded job detail 표시 토글 ──
   keybind.register({
     extension: "fleet",
-    action: "panel-grow",
-    defaultKey: "alt+j",
-    description: "Fleet Bridge 높이 증가",
+    action: "panel-widget-toggle",
+    defaultKey: "alt+shift+p",
+    description: "Fleet Bridge 아래 상세 위젯 표시/숨김 토글",
     category: "Fleet Bridge",
-    handler: async (ctx) => {
-      adjustPanelHeight(ctx, BODY_H_STEP);
-    },
-  });
-
-  keybind.register({
-    extension: "fleet",
-    action: "panel-shrink",
-    defaultKey: "alt+k",
-    description: "Fleet Bridge 높이 감소",
-    category: "Fleet Bridge",
-    handler: async (ctx) => {
-      adjustPanelHeight(ctx, -BODY_H_STEP);
+    handler: async () => {
+      toggleWidgetMode();
     },
   });
 }
