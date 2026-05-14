@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@sbluemin/fleet-coding-agent";
 
+import { registerBtwCommand } from "./btw/index.js";
 import registerBoot from "./fleet.js";
 import registerFleetWiki from "./wiki/ui.js";
 import { registerJob } from "./jobs.js";
@@ -55,6 +56,7 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerWelcome(ctx);
 
   registerAgentPanelShortcut();
+  registerBtwCommand(ctx);
   registerCarrierStatusKeybind(ctx);
   bindPanelBackgroundJobAnimation();
 
