@@ -50,6 +50,7 @@ export class UnifiedCursorAgentClient extends EventEmitter implements IUnifiedAg
   private sessionCwd: string | null = null;
   private currentSystemPrompt: string | null = null;
   private firstPromptPending: string | null = null;
+  private currentModel: string | null = null;
   private detector = new CliDetector();
 
   on<K extends keyof UnifiedClientEvents>(
@@ -211,12 +212,42 @@ export class UnifiedCursorAgentClient extends EventEmitter implements IUnifiedAg
       throw new Error('연결되어 있지 않습니다');
     }
 
-    await this.connection.setConfigOption(this.sessionId, 'model', model);
+    this.currentModel = model;
+    await this.connection.setModel(this.sessionId, model);
   }
 
   async setConfigOption(configId: string, value: string): Promise<void> {
     if (!this.connection || !this.sessionId) {
       throw new Error('연결되어 있지 않습니다');
+    }
+
+    if (configId === 'effort' || configId === 'reasoning_effort') {
+      if (this.currentModel) {
+        let finalModel = this.currentModel;
+        const effortKey = finalModel.startsWith('gpt-') ? 'reasoning' : 'effort';
+        const openIdx = finalModel.indexOf('[');
+        const closeIdx = finalModel.lastIndexOf(']');
+        
+        if (openIdx !== -1 && closeIdx !== -1) {
+          const base = finalModel.substring(0, openIdx);
+          const params = finalModel.substring(openIdx + 1, closeIdx);
+          const paramParts = params.split(',').filter(p => !p.trim().startsWith(`${effortKey}=`));
+          paramParts.push(`${effortKey}=${value}`);
+          finalModel = `${base}[${paramParts.join(',')}]`;
+        } else {
+          finalModel = `${finalModel}[${effortKey}=${value}]`;
+        }
+        
+        this.currentModel = finalModel;
+        try {
+          await this.connection.setModel(this.sessionId, finalModel);
+        } catch {
+          // Cursor ACP 서버가 동적 파라미터 조합을 거부(Invalid model value)할 수 있습니다.
+          // 이 경우 예외를 상위(post-connect.ts)로 던지지 않고 조용히 무시하여 로그 경고를 방지합니다.
+        }
+        return;
+      }
+      return;
     }
 
     await this.connection.setConfigOption(this.sessionId, configId, value);
@@ -312,7 +343,23 @@ export class UnifiedCursorAgentClient extends EventEmitter implements IUnifiedAg
 
     if (options.model && session.sessionId) {
       try {
-        await this.connection!.setConfigOption(session.sessionId, 'model', options.model);
+        let finalModel = options.model;
+        if (options.effort) {
+          const effortKey = finalModel.startsWith('gpt-') ? 'reasoning' : 'effort';
+          const openIdx = finalModel.indexOf('[');
+          const closeIdx = finalModel.lastIndexOf(']');
+          if (openIdx !== -1 && closeIdx !== -1) {
+            const base = finalModel.substring(0, openIdx);
+            const params = finalModel.substring(openIdx + 1, closeIdx);
+            if (!params.includes(`${effortKey}=`)) {
+              finalModel = `${base}[${params},${effortKey}=${options.effort}]`;
+            }
+          } else {
+            finalModel = `${finalModel}[${effortKey}=${options.effort}]`;
+          }
+        }
+        this.currentModel = finalModel;
+        await this.connection!.setModel(session.sessionId, finalModel);
       } catch {
         // 모델 설정 미지원 상황은 연결 성공을 막지 않습니다.
       }
@@ -335,6 +382,7 @@ export class UnifiedCursorAgentClient extends EventEmitter implements IUnifiedAg
     this.sessionCwd = null;
     this.currentSystemPrompt = null;
     this.firstPromptPending = null;
+    this.currentModel = null;
   }
 
   private setupEventForwarding(): void {

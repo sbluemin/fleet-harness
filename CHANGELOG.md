@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [unified-agent] Added 1M context models to the Cursor provider catalog with robust effort/reasoning parameter combination via ACP
+
 ### Changed
 - [harness] Enforce `canary` as the only allowed PR base; non-canary PRs, including from forks, are auto-closed with guidance.
 - [harness] Auto fast-forward `canary` to match `main` after each push to `main` so release commits propagate automatically.
