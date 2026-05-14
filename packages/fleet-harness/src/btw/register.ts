@@ -5,7 +5,7 @@ import { BtwOverlay } from "./overlay.js";
 let activeBtwPopup: Promise<void> | null = null;
 
 export function registerBtwCommand(pi: ExtensionAPI): void {
-  pi.registerCommand("fleet:admiral:btw", {
+  pi.registerCommand("btw", {
     description: "일회성 멀티턴 질의 오버레이",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) return;
