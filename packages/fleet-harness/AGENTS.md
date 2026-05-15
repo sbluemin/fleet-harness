@@ -25,6 +25,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 | `src/provider.ts` | `admiral.agent` surfaces (`session`, `events`, `tools`, `executor`, `lifecycle`, `connections`, `models`, `bridge`) | Single consolidated Fleet host gateway (#region structure: fleet-ai gateway / streamAcp adapter / thinking-level patch / provider runtime registration). Host-owned provider registration lives here; no legacy registry-filter workaround remains. Agent Panel UI lives under `panel/`. ColBlock, stream reducers, and view-model builders are host-local in `panel/`. |
 | `src/grand-fleet/` | `admiralty` | Admiralty/Fleet roles, IPC, and GF session state |
 | `src/wiki/` | `@sbluemin/fleet-wiki` | Fleet Wiki tool/command registration and overlays |
+| `src/btw/` | `admiral.agent.models` + `admiral.agent.executor.executeOneShot` | Ephemeral multi-turn query overlay (/btw command, Editor-Replace, no host JSONL trace) |
 | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | (Host Surfaces) | HUD, Welcome UI, shared TUI overlays, and shortcuts |
 | `src/fleet.ts` | `admiral` + `metaphor` + `infra` | Core Fleet state, protocols, operation naming, event adapters |
 | `src/metaphor.ts` | `metaphor` | Worldview and directive refinement wiring |
@@ -122,6 +123,7 @@ PI renders a vertical stack of **zones**. Extensions customize these zones via o
 | **Agent Panel** | Custom UI | `fleet` | Carrier streaming UI — exclusive / multi-column / compact view |
 | **Streaming Widget** | Widget:below | `fleet` | belowEditor expanded carrier bridge widget (`fleet-carrier-bridge-expanded`); Alt+Shift+P toggles visibility (default off); auto-hides on Alt+P; 10-line cap |
 | **Carrier Roster** | Widget:above | `fleet` | Permanent aboveEditor carrier tile strip (`fleet-carrier-job-hud`) — 1-line status display (e.g., ○ Nimitz │ ○ Sentinel) driven by panel data |
+| **BTW Overlay** | Overlay (editor-replace) | `btw` | Context-pollution-free ephemeral AI query — Ctrl+L opens model selector, Enter submits, Esc closes; zero host session persistence |
 | **Overlay** | Overlay | various | keybind (Alt+.), settings (Alt+/), and carrier status (Alt+O) are editor-replace; welcome remains floating |
 
 ### Rules
