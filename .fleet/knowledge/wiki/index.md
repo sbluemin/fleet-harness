@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `3`
+- total_entries: `4`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -35,7 +35,20 @@
 - summary: `# fleet-wiki 사용법`
 - raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
 
+### prd-harness-btw-overlay
+
+- title: `Harness /btw Ephemeral Overlay`
+- path: `wiki/prd-harness-btw-overlay.md`
+- tags: `harness, btw, overlay, ephemeral, model-selector`
+- updated: `2026-05-16T03:03:47.224Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-3dbd5b5c.md`
+
 ## Tags
+
+### btw
+
+- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
 ### carrier-status
 
@@ -46,6 +59,10 @@
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### ephemeral
+
+- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
 ### fleet-harness
 
@@ -65,15 +82,27 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
+### harness
+
+- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
+
 ### keybind
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+
+### model-selector
+
+- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
 ### onboarding
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### overlay
+
+- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
 ### overview
 
