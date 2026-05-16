@@ -8,8 +8,14 @@ import { validateRequiredRequestBlocks } from "../../src/admiral/carrier/request
 import {
   formatRequestBlocksGuide,
   CARRIER_REQUEST_BREVITY_GUIDELINE,
-  PRIOR_JOBS_REQUEST_BLOCK,
 } from "../../src/admiral/carrier/prompts.js";
+import type { RequestBlock } from "../../src/admiral/carrier/types.js";
+
+const PRIOR_JOBS_REQUEST_BLOCK: RequestBlock = {
+  tag: "prior_jobs",
+  hint: "Prior finalized carrier job IDs for context lookup.",
+  required: false,
+};
 
 // ─────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -148,31 +154,34 @@ describe("validateRequiredRequestBlocks", () => {
 });
 
 // ─────────────────────────────────────────────────────────
-// commonRequestBlocks 병합 렌더링 검증
+// 명시 requestBlocks 렌더링 검증
 // ─────────────────────────────────────────────────────────
 
-describe("commonRequestBlocks 병합 렌더링", () => {
-  it("<prior_jobs?> 블록이 가이드에 optional로 렌더링됨", () => {
+describe("명시 requestBlocks 렌더링", () => {
+  it("빈 메타데이터에는 <prior_jobs?> 블록이 자동 렌더링되지 않음", () => {
     const guide = formatRequestBlocksGuide(makeMeta());
     const found = guide.some((line) => line.includes("<prior_jobs?>"));
-    expect(found).toBe(true);
+    expect(found).toBe(false);
   });
 
-  it("<prior_jobs?> 블록이 required로 렌더링되지 않음", () => {
-    const guide = formatRequestBlocksGuide(makeMeta());
+  it("PRIOR_JOBS_REQUEST_BLOCK을 명시 포함하면 optional로 렌더링됨", () => {
+    const guide = formatRequestBlocksGuide(makeMeta({
+      requestBlocks: [PRIOR_JOBS_REQUEST_BLOCK],
+    }));
+    const found = guide.some((line) => line.includes("<prior_jobs?>"));
     const wrongRequired = guide.some(
       (line) => line.includes("<prior_jobs>") && !line.includes("<prior_jobs?>"),
     );
+    expect(found).toBe(true);
     expect(wrongRequired).toBe(false);
   });
 
-  it("commonRequestBlocks가 persona-specific blocks와 중복 없이 병합됨", () => {
+  it("명시 requestBlocks가 중복 없이 렌더링됨", () => {
     const meta = makeMeta({
       requestBlocks: [
         { tag: "objective", hint: "objective hint", required: true },
-      ],
-      commonRequestBlocks: [
         { tag: "extra_ctx", hint: "extra context", required: false },
+        PRIOR_JOBS_REQUEST_BLOCK,
       ],
     });
     const guide = formatRequestBlocksGuide(meta);

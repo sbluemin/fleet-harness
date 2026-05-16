@@ -36,6 +36,19 @@
     ],
     "updated": "2026-05-07T16:06:18.121Z"
   },
+  "prd-carrier-persona-extraction": {
+    "path": "wiki/prd-carrier-persona-extraction.md",
+    "title": "캐리어 페르소나 외부화 및 선언적 도구 스코핑",
+    "tags": [
+      "carrier",
+      "fleet-carriers",
+      "fleet-core",
+      "persona",
+      "tool-scoping",
+      "shipped"
+    ],
+    "updated": "2026-05-16T07:34:09.878Z"
+  },
   "prd-coding-agent-scoped-models-removal": {
     "path": "wiki/prd-coding-agent-scoped-models-removal.md",
     "title": "코딩 에이전트 /scoped-models 제거",
@@ -46,20 +59,6 @@
       "model-cycling"
     ],
     "updated": "2026-05-16T03:59:46.982Z"
-  },
-  "prd-carrier-persona-extraction": {
-    "path": "wiki/prd-carrier-persona-extraction.md",
-    "title": "Architecture Decision — Carrier Persona Extraction to fleet-carriers",
-    "tags": [
-      "architecture",
-      "carrier",
-      "fleet-carriers",
-      "fleet-core",
-      "refactoring",
-      "decision"
-    ],
-    "updated": "2026-05-16T05:06:42.017Z"
-
   },
   "prd-harness-btw-overlay": {
     "path": "wiki/prd-harness-btw-overlay.md",

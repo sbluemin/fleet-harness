@@ -13,6 +13,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [unified-agent] Added 1M context models to the Cursor provider catalog with robust effort/reasoning parameter combination via ACP
 
 ### Changed
+- [core] Carrier prior-job access now requires explicit persona `carrier_jobs` tool and `<prior_jobs?>` request-block declarations instead of inherited defaults; `CarrierMetadata.commonRequestBlocks` removed.
+- [carriers] `PRIOR_JOBS_REQUEST_BLOCK` constant moved from fleet-core to fleet-carriers/constants.ts for better domain isolation.
+- [wiki] Five read-only wiki tools (`wiki_briefing`, `wiki_orient`, `wiki_query`, `wiki_read`, `wiki_resolve`) are now registered globally, making the wiki knowledge base available to all carriers by default.
 - [harness] Enforce `canary` as the only allowed PR base; non-canary PRs, including from forks, are auto-closed with guidance.
 - [harness] Auto fast-forward `canary` to match `main` after each push to `main` so release commits propagate automatically.
 - [harness] Removed the `fleet-dev` binary; use `pnpm dev` for CWD-routed development launches instead.
@@ -66,7 +69,7 @@ Release v0.18.3
 ## [0.18.0] - 2026-05-11
 
 ### Added
-- [core] Added per-sub-operation byte caps (20KB each) and a global ceiling (60KB) for `carrier_jobs(action:"result", format:"full")` responses in Squadron and TaskForce jobs
+- [core] Added per-sub-operation byte caps (20KB each) and an overall ceiling (60KB) for `carrier_jobs(action:"result", format:"full")` responses in Squadron and TaskForce jobs
 - [core] Implemented UTF-8 safe character-level slicing for job archives to prevent data corruption at multibyte character boundaries (e.g., CJK, emojis)
 - [core] Preserved legacy 20KB single-cap behavior for `carrier_dispatch` while enabling precision char-slicing only for sub-operation paths via internal opt-in
 - [core] Guaranteed sub-operation cap policy enforcement through `jobId` prefix fallback (`squadron:` / `taskforce:`), ensuring consistency even after summary LRU eviction

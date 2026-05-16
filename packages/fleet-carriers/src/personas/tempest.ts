@@ -5,8 +5,9 @@
  * Tempest carrier를 프레임워크에 등록합니다.
  */
 
-import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 import type { CarrierMetadata } from "@sbluemin/fleet-core";
+
+import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
@@ -27,7 +28,9 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "objective", hint: "What intelligence is needed — feature, pattern, API usage, or implementation detail.", required: true },
     { tag: "focus_areas", hint: "Specific directories, files, symbols, or code patterns to prioritize.", required: false },
     { tag: "constraints", hint: "Time constraints, specific branches/tags, or areas to exclude.", required: false },
+    PRIOR_JOBS_REQUEST_BLOCK,
   ],
+  allowedExecutorTools: ["carrier_jobs"],
 
   // ── Tier 2: Composition ──
   permissions: [

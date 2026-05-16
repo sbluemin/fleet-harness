@@ -1,85 +1,69 @@
 ---
 id: "prd-carrier-persona-extraction"
-title: "Architecture Decision — Carrier Persona Extraction to fleet-carriers"
-tags: ["architecture", "carrier", "fleet-carriers", "fleet-core", "refactoring", "decision"]
+title: "캐리어 페르소나 외부화 및 선언적 도구 스코핑"
+tags: ["carrier", "fleet-carriers", "fleet-core", "persona", "tool-scoping", "shipped"]
+feature_area: "carrier/persona"
+lifecycle: "shipped"
+summary: "캐리어 페르소나를 독립 리프 패키지로 분리하고, 각 페르소나에서 executor 도구 접근 권한을 선언적으로 지정하는 기능"
 created: "2026-05-16T05:06:42.017Z"
-updated: "2026-05-16T05:06:42.017Z"
-version: 1
-rawSourceRef: "raw/2026-05-16-prd-carrier-persona-extraction-source-7bec0c22.md"
+updated: "2026-05-16T07:34:09.878Z"
+version: 2
 ---
 ## Overview
 
-Carrier 페르소나 카탈로그를 `packages/fleet-core`에서 분리하여 `packages/fleet-carriers`로 독립 패키지화하는 아키텍처 결정 및 실행 계획.
+캐리어 페르소나(8종 캐리어의 메타데이터, 역할 정의, 권한, 출력 형식 등)를 코어 패키지에서 독립 리프 패키지로 분리하여, 새로운 캐리어 추가 시 코어 수정 없이 페르소나 정의만으로 확장 가능하게 만듭니다. 동시에 각 페르소나가 executor 세션에서 접근 가능한 도구를 선언적으로 지정할 수 있는 메커니즘을 도입하여, 도구 노출 권한이 페르소나 정의와 일체화되도록 합니다.
 
-## Background
+## Problem
 
-fleet-core의 `admiral/carrier/personas/`에 8개 캐리어 페르소나가 하드코딩되어 있음. 각 페르소나는 `CarrierMetadata` 객체(title, summary, category, whenToUse[], whenNotToUse[], requestBlocks[], permissions[], principles[], outputFormat)를 정의. fleet-wiki가 이미 leaf package로 추출되어 동일한 패턴 적용 가능.
+- **확장성 제약**: 캐리어 페르소나가 코어에 내장되어 있어 새로운 캐리어 추가 시 코어 패키지 수정이 필수적입니다.
+- **도구 권한 분산**: 캐리어가 executor 세션에서 사용할 수 있는 도구 목록이 도구 등록 측에서만 제어되어, 어느 캐리어가 어느 도구에 접근 가능한지 파악하려면 여러 패키지를 교차 확인해야 합니다.
+- **선례 불일치**: 지식 베이스 패키지가 이미 리프 패키지로 추출된 선례가 있음에도, 페르소나 카탈로그는 동일한 패턴을 따르지 않고 있습니다.
 
-## Architecture Decision
+## Goals
 
-**Approach B (Narrow Moderate)** — Nimitz Task Force 3백엔드 만장일치.
+- 페르소나 카탈로그를 독립 리프 패키지로 분리하여 코어와 페르소나의 관심사를 분리합니다.
+- 각 페르소나에서 executor 도구 접근 권한을 선언적으로 지정할 수 있게 합니다.
+- 기존 지식 베이스 패키지의 자가등록 패턴과 동일한 방식으로 페르소나를 등록합니다.
+- 코어는 도구 구현에 대한 어떠한 지식도 갖지 않으며, opaque 식별자만 처리합니다.
 
-### Extraction Scope
+## Non-Goals
 
-| 대상 | 출처 | 목적지 |
-|------|------|--------|
-| `personas/` 8개 파일 (genesis, kirov, nimitz, sentinel, vanguard, tempest, ohio, chronicle) | `fleet-core/src/admiral/carrier/personas/` | `fleet-carriers/src/personas/` |
-| `personas/index.ts` (DEFAULT_CARRIER_PERSONAS, registerDefaultCarrierPersonas) | 동일 | 동일 |
-| `CARRIER_JOBS_SELF_CALL_HINT` 상수 | `fleet-core/src/admiral/carrier/prompts.ts` | `fleet-carriers/src/constants.ts` |
+- 캐리어 프레임워크(등록, 상태 관리, 디스패치 엔진)의 코어 밖 이동.
+- 기존 도구 등록 패턴(도구 측에서 허용 캐리어를 지정하는 방식)의 제거 또는 대체.
+- 호스트 패키지의 도구 등록 방식 변경.
 
-### Fleet-core에 잔류하는 것들
+## User Stories
 
-- `framework.ts` (393L) — 등록/상태/오프라인/squadron/taskforce 관리
-- `tool-spec.ts` (475L) — carrier_dispatch AgentToolSpec + ACP 실행 엔진
-- `prompts.ts` 빌더 3개 — buildCarrierSystemPrompt, buildCarrierRoster, formatRequestBlocksGuide
-- `prompts.ts` 상수 3개 — CARRIER_FLEET_BACKGROUND, CARRIER_REQUEST_BREVITY_GUIDELINE, PRIOR_JOBS_REQUEST_BLOCK
-- `types.ts`, `overlay-types.ts`, `request-blocks.ts`, `sortie-execute.ts`, `status-overlay-controller.ts`, `framework-access.ts`
+- **As a** 함대 운영자, **when** 새로운 캐리어를 추가하고 싶을 때, **then** 코어 패키지를 수정하지 않고 페르소나 정의 파일만 작성하여 즉시 등록할 수 있습니다.
+- **As a** 함대 운영자, **when** 특정 캐리어가 전용 도구에만 접근해야 할 때, **then** 페르소나 정의에 도구 식별자를 나열하여 명시적으로 권한을 부여할 수 있습니다.
+- **As a** 개발자, **when** 캐리어의 도구 접근 권한을 확인하고 싶을 때, **then** 해당 캐르소나 정의 파일만 읽어 모든 권한을 파악할 수 있습니다.
+- **As a** 시스템, **when** 캐리어가 executor 세션을 시작할 때, **then** 글로벌 기본 도구는 모든 캐리어에 자동 상속되고, 페르소나에 선언된 추가 도구만 개별적으로 노출됩니다.
 
-## Dependency Graph
+## Functional Requirements
 
-```
-fleet-core (framework/dispatch 유지)
-    ↑
-    │  workspace:*
-    │
-fleet-carriers (personas + SELF_CALL_HINT)
-    ↑
-    │  workspace:* (import만으로 self-register 트리거)
-    │
-fleet-harness (host wiring)
-```
+- **페르소나 독립 패키지**: 8종 기본 캐리어 페르소나와 페르소나 전용 상수를 독립 리프 패키지로 제공합니다.
+- **자가등록**: 리프 패키지를 import하는 것만으로 모든 기본 페르소나가 코어 프레임워크에 자동 등록됩니다.
+- **선언적 도구 스코핑**: 각 페르소나 메타데이터에 executor 도구 식별자 목록을 선택적으로 선언할 수 있습니다.
+- **Lazy union 해석**: executor 세션 연결 시점에 글로벌 도구, 기존 화이트리스트, 페르소나 선언 도구를 통합하여 최종 노출 도구를 결정합니다.
+- **이중 벡터 공존**: 기존 도구 등록 시 허용 캐리어를 지정하는 방식과 페르소나에서 도구를 선언하는 방식이 동일한 화이트리스트에 통합되어 충돌 없이 공존합니다.
+- **글로벌 기본 도구**: 작업 상태 조회 도구는 모든 캐리어에 자동 상속되며, 페르소나에 명시적으로 열거하지 않습니다.
+- **도구 무지 원칙**: 코어는 도구 식별자를 opaque 문자열로만 처리하며, 도구의 물리적 존재나 구현에 의존하지 않습니다.
 
-## Registration Pattern
+## Acceptance Criteria
 
-fleet-wiki의 `agent-specs.ts` module-load-time side-effect 패턴을 답습:
+- [ ] 페르소나 리프 패키지가 워크스페이스에 등록되어 독립적으로 빌드 및 테스트되는가?
+- [ ] 리프 패키지 import만으로 8종 기본 캐리어가 프레임워크에 등록되는가?
+- [ ] 코어는 리프 패키지를 import하지 않으며 단방향 의존이 유지되는가?
+- [ ] 지식 관리 캐리어가 페르소나에 선언한 7종 위키 도구에 접근 가능한가?
+- [ ] 다른 7개 캐리어는 글로벌 기본 도구만 상속받는가?
+- [ ] 아직 등록되지 않은 도구 식별자가 선언된 경우, executor 세션이 오류 없이 해당 도구를 조용히 제외하는가?
+- [ ] 기존 도구 등록 패턴으로 등록된 도구의 접근 권한이 회귀 없이 유지되는가?
 
-1. `fleet-carriers/src/agent-specs.ts`에서 `admiral.carrier.registerCarrier()` 호출
-2. `fleet-carriers/src/index.ts`에서 `import "./agent-specs.js"` — import만으로 자가등록
-3. `fleet-harness/src/fleet.ts`에서 `import "@sbluemin/fleet-carriers"` 추가
+## Open Questions
 
-## Execution Plan (5 Waves)
-
-- **Wave 0**: AGENTS/현행 구조 preflight 검증
-- **Wave 1**: fleet-carriers 패키지 scaffold (package.json, tsconfig, tsup, AGENTS.md)
-- **Wave 2**: personas/ + CARRIER_JOBS_SELF_CALL_HINT 이동, agent-specs.ts 작성
-- **Wave 3**: fleet-core persona surface 정리 (personas/ 삭제, prompts.ts 상수 제거)
-- **Wave 4**: fleet-harness import wiring (package.json, fleet.ts)
-- **Wave 5**: package tests, workspace QA, docs
-
-## QA Gates
-
-- 역방향 의존: `rg "@sbluemin/fleet-carriers" packages/fleet-core` → 0건
-- Deep import: `rg "fleet-core/src" packages/fleet-carriers` → 0건
-- 페르소나 추출: `fleet-core/src/admiral/carrier/personas/` 존재하지 않음
-- 빌드/테스트: fleet-core, fleet-carriers, fleet-harness 각각 typecheck + test + build 통과
-
-## Why Not A or C
-
-- **A (Minimal)**: personas가 `CARRIER_JOBS_SELF_CALL_HINT`를 직접 import하므로 의존을 끊을 수 없음
-- **C (Maximal)**: tool-spec.ts/framework.ts가 executor/store/infra/job/log와 깊은 결합 → 이동 시 AGENTS.md Domain Boundary + Facade-First Export Rule 위반. "admiralty 분리 금지" 조항과 충돌
+- 없음. 아키텍처 방향은 다중 백엔드 교차 검증을 통해 확정되었으며, 구현이 완료되어 출하됨.
 
 ## Related
 
-- Kirov 실행 계획: `.fleet/plans/carrier-persona-extraction.md`
-- fleet-wiki 자가등록 선례: [[wiki:guide-003-fleet-wiki]]
-- Carrier Status 가이드: [[wiki:guide-002-carrier-status]]
+- [[wiki:guide-003-fleet-wiki]] — 지식 베이스 자가등록 선례
+- [[wiki:guide-002-carrier-status]] — 캐리어 상태 사용법 가이드

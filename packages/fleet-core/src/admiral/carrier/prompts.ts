@@ -19,16 +19,6 @@ export const CARRIER_REQUEST_BREVITY_GUIDELINE =
   ` If archive content has expired (full_invalidated true / TTL exceeded), the carrier falls back to` +
   ` carrier_jobs(action:"result", format:"summary", job_id:...) to retrieve the summary.`;
 
-/** <prior_jobs> 공용 요청 블록 — 로스터 렌더링 시 모든 carrier에 자동 합산되는 SSoT 선택 블록 */
-export const PRIOR_JOBS_REQUEST_BLOCK: RequestBlock = {
-  tag: "prior_jobs",
-  hint: `Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.`,
-  required: false,
-};
-
-/** 로스터 렌더링 시 모든 carrier에 공통 주입되는 기본 블록 목록 */
-const CARRIER_COMMON_REQUEST_BLOCKS: RequestBlock[] = [PRIOR_JOBS_REQUEST_BLOCK];
-
 // ═════════════════════════════════════════════════════════
 // Types / Interfaces
 // ═════════════════════════════════════════════════════════
@@ -128,11 +118,7 @@ export function buildCarrierRoster(
 }
 
 export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
-  const allBlocks: RequestBlock[] = [
-    ...meta.requestBlocks,
-    ...(meta.commonRequestBlocks ?? []),
-    ...CARRIER_COMMON_REQUEST_BLOCKS,
-  ];
+  const allBlocks: RequestBlock[] = [...meta.requestBlocks];
   if (allBlocks.length === 0) return [];
   return allBlocks.map((b) => {
     const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;

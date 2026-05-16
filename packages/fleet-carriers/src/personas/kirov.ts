@@ -5,8 +5,9 @@
  * Kirov carrier를 프레임워크에 등록합니다.
  */
 
-import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 import type { CarrierMetadata } from "@sbluemin/fleet-core";
+
+import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
@@ -29,7 +30,9 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "context", hint: "Relevant codebase context — files, modules, patterns, prior Admiral direction, or implementation realities the planner should respect.", required: false },
     { tag: "constraints", hint: "Business rules, tech stack requirements, scope boundaries, fixed decisions, or explicit exclusions the plan must respect.", required: false },
     { tag: "intent_type", hint: "If known: Refactoring | Build from Scratch | Mid-sized | Collaborative | Architecture Follow-through | Research-to-Plan.", required: false },
+    PRIOR_JOBS_REQUEST_BLOCK,
   ],
+  allowedExecutorTools: ["carrier_jobs"],
 
   // ── Tier 2: Composition ──
   permissions: [

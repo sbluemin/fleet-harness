@@ -48,6 +48,7 @@ const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
   "wiki_query",
   "wiki_read",
   "wiki_resolve",
+  "carrier_jobs",
 ] as const;
 
 const ALL_PERSONAS: readonly PersonaCase[] = [
@@ -75,15 +76,13 @@ describe("CARRIER_JOBS_SELF_CALL_HINT", () => {
 });
 
 describe("allowedExecutorTools", () => {
-  it("chronicle만 7개 wiki tool ID를 정확히 선언하고 carrier_jobs는 열거하지 않음", () => {
+  it("chronicle은 wiki 도구 7종과 carrier_jobs를 정확히 선언", () => {
     expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
-    expect(CHRONICLE_METADATA.allowedExecutorTools).not.toContain("carrier_jobs");
   });
 
-  it("chronicle 외 기본 persona는 allowedExecutorTools를 선언하지 않음", () => {
+  it("모든 기본 persona가 carrier_jobs를 명시 선언", () => {
     for (const persona of DEFAULT_CARRIER_PERSONAS) {
-      if (persona.options.id === "chronicle") continue;
-      expect(persona.metadata.allowedExecutorTools ?? null).toBeNull();
+      expect(persona.metadata.allowedExecutorTools).toContain("carrier_jobs");
     }
   });
 });
@@ -104,9 +103,10 @@ describe("DEFAULT_CARRIER_PERSONAS", () => {
   });
 
   for (const persona of DEFAULT_CARRIER_PERSONAS) {
-    it(`${persona.options.id} requestBlocks 구조가 유효`, () => {
+    it(`${persona.options.id} requestBlocks 구조가 유효하고 prior_jobs를 명시 포함`, () => {
       const tags = persona.metadata.requestBlocks.map((block) => block.tag);
       expect(new Set(tags).size).toBe(tags.length);
+      expect(tags).toContain("prior_jobs");
       for (const block of persona.metadata.requestBlocks) {
         expect(block.hint.trim().length).toBeGreaterThan(0);
       }

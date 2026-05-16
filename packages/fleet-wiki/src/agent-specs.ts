@@ -42,10 +42,15 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_resolve",
 ] as const;
 
+// 크로니클 전용: 위키 쓰기/린트 도구 (ingest, drydock)
 const CHRONICLE_ONLY_EXECUTOR_TOOL = { allowedCarriers: ["chronicle"] } as const;
+
 const registerChronicleExecutorTool = admiral.agent.tools.registerExecutorTool as (
   spec: AgentToolSpec,
   opts: { readonly allowedCarriers: readonly string[] },
+) => void;
+const registerGlobalExecutorTool = admiral.agent.tools.registerExecutorTool as (
+  spec: AgentToolSpec,
 ) => void;
 
 const briefingSpec = buildWikiBriefingSpec();
@@ -56,14 +61,16 @@ const querySpec = buildWikiQuerySpec();
 const readSpec = buildWikiReadSpec();
 const resolveSpec = buildWikiResolveSpec();
 
-// Self-register into fleet-core agent tool registry AND executor MCP whitelist at module load time
-registerChronicleExecutorTool(briefingSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
+// Self-register into fleet-core agent tool registry AND executor MCP whitelist at module load time.
+// 읽기 도구 5종: 모든 캐리어가 위키 지식기반에 접근 가능하도록 글로벌 등록.
+// 쓰기/린트 도구 2종: 크로니클 전용 (지식 무결성 보호).
+registerGlobalExecutorTool(briefingSpec);
 registerChronicleExecutorTool(dryDockSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerChronicleExecutorTool(ingestSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
-registerChronicleExecutorTool(orientSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
-registerChronicleExecutorTool(querySpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
-registerChronicleExecutorTool(readSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
-registerChronicleExecutorTool(resolveSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
+registerGlobalExecutorTool(orientSpec);
+registerGlobalExecutorTool(querySpec);
+registerGlobalExecutorTool(readSpec);
+registerGlobalExecutorTool(resolveSpec);
 
 // ═══════════════════════════════════════
 // Functions

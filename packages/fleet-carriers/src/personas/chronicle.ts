@@ -7,17 +7,7 @@
 
 import type { CarrierMetadata } from "@sbluemin/fleet-core";
 
-import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
-
-const CHRONICLE_ALLOWED_EXECUTOR_TOOLS = [
-  "wiki_briefing",
-  "wiki_drydock",
-  "wiki_ingest",
-  "wiki_orient",
-  "wiki_query",
-  "wiki_read",
-  "wiki_resolve",
-] as const;
+import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
@@ -58,8 +48,13 @@ export const CARRIER_METADATA: CarrierMetadata = {
       hint: "[Codebase Doc] include/exclude; for changelogs/change-impact/audits: commit range, PR, diff, feature slice, deployment scope. [Fleet Wiki] feature_area, target wiki id (for update), tags.",
       required: false,
     },
+    PRIOR_JOBS_REQUEST_BLOCK,
   ],
-  allowedExecutorTools: CHRONICLE_ALLOWED_EXECUTOR_TOOLS,
+  allowedExecutorTools: [
+    "wiki_briefing", "wiki_drydock", "wiki_ingest",
+    "wiki_orient", "wiki_query", "wiki_read", "wiki_resolve",
+    "carrier_jobs",
+  ],
 
   // ── Tier 2: Composition ──
   permissions: [

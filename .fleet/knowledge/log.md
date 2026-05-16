@@ -942,3 +942,61 @@
 - result: `accepted`
 - target: `wiki/prd-carrier-persona-extraction.md`
 
+## 2026-05-16T07:34:09.914Z — raw source added
+
+- id: `prd-carrier-persona-extraction-source`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-287214c2.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `carrier-persona-extraction-adr`
+
+## 2026-05-16T07:34:09.916Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-16T07-34-09-878Z-f93071d1`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-287214c2.md`
+- target: `wiki/prd-carrier-persona-extraction.md`
+- warning_count: `0`
+
+## 2026-05-16T07:34:39.515Z — index rebuilt
+
+- entry_count: `6`
+
+## 2026-05-16T07:34:39.517Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-16T07-34-09-878Z-f93071d1`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-287214c2.md`
+- result: `accepted`
+- target: `wiki/prd-carrier-persona-extraction.md`
+
+## 2026-05-16T08:29:39.043Z — raw source added
+
+- id: `prd-carrier-persona-extraction-source`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-90383528.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `캐리어 페르소나 외부화 및 선언적 도구 스코핑 (Updated)`
+
+## 2026-05-16T08:29:39.045Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-90383528.md`
+- target: `wiki/prd-carrier-persona-extraction.md`
+- warning_count: `0`
+
+## 2026-05-16T08:53:53.626Z — drydock run
+
+- error_count: `2`
+- info_count: `2`
+- issue_count: `4`
+- ok: `false`
+- warning_count: `0`
+

@@ -58,11 +58,9 @@ export interface CarrierMetadata {
   whenNotToUse: string[];
   /** 구조화 요청 블록 — 로스터 및 도구 가이드라인에 노출 */
   requestBlocks: RequestBlock[];
-  /** 공용 요청 블록 — 모든 carrier에 공통으로 주입되는 선택적 블록 (e.g., prior_jobs) */
-  commonRequestBlocks?: RequestBlock[];
   /**
    * 이 carrier의 executor MCP 세션에 추가 노출할 opaque agent tool ID 목록.
-   * `carrier_jobs` 같은 global tool은 `*` scope에서 상속되므로 여기에 열거하지 않는다.
+   * prior job self-fetch가 필요한 carrier는 `carrier_jobs`를 명시적으로 열거해야 한다.
    */
   allowedExecutorTools?: readonly string[];
 
