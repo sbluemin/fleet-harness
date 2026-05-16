@@ -280,10 +280,10 @@ export function loadPromptTemplates(options: LoadPromptTemplatesOptions): Prompt
  * Returns the expanded content or the original text if not a template.
  */
 export function expandPromptTemplate(text: string, templates: PromptTemplate[]): string {
-	if (!text.startsWith("/")) return text;
+	if (!text.startsWith("/prompt:")) return text;
 
 	const spaceIndex = text.indexOf(" ");
-	const templateName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
+	const templateName = spaceIndex === -1 ? text.slice(8) : text.slice(8, spaceIndex);
 	const argsString = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
 
 	const template = templates.find((t) => t.name === templateName);

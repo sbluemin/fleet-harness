@@ -10,6 +10,10 @@ keybindings.json
 .fleet/*
 !.fleet/knowledge/
 !.fleet/knowledge/**
+!.fleet/prompts/
+!.fleet/prompts/**
+!.fleet/skills/
+!.fleet/skills/**
 .grand-fleet/
 .claude/
 

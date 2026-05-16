@@ -40,7 +40,7 @@ await loader.reload();
 const discovered = loader.getPrompts().prompts;
 console.log("Discovered prompt templates:");
 for (const template of discovered) {
-	console.log(`  /${template.name}: ${template.description}`);
+	console.log(`  /prompt:${template.name}: ${template.description}`);
 }
 
 await createAgentSession({
