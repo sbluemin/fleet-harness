@@ -11,6 +11,7 @@ import {
   metaphor,
   type FleetCoreRuntimeContext,
 } from "@sbluemin/fleet-core";
+import { registerDefaultCarrierPersonas } from "@sbluemin/fleet-carriers";
 import { bootBridge, ensureBridgeKeybinds } from "./bridge/handler.js";
 import { syncModelConfig } from "./panel/config.js";
 import { completeSimple } from "./provider.js";
@@ -102,7 +103,6 @@ const {
   saveSquadronEnabled,
   seedDefaultModels,
 } = admiral.store;
-const { registerDefaultCarrierPersonas } = admiral.carrier.personas;
 const {
   composeOperationNameRequest,
   loadSettings: loadOperationNameSettings,

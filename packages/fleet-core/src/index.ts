@@ -89,6 +89,9 @@ export {
   executeDirectiveRefinement,
 } from "./metaphor/directive-refinement/execute.js";
 export type {
+  RequestBlock,
+} from "./admiral/carrier/types.js";
+export type {
   OperationNameSettings,
 } from "./metaphor/operation-name/settings.js";
 export type {

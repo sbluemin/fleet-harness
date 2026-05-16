@@ -5,8 +5,9 @@
  * Nimitz carrier를 프레임워크에 등록합니다.
  */
 
-import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
-import type { CarrierMetadata } from "../types.js";
+import type { CarrierMetadata } from "@sbluemin/fleet-core";
+
+import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
@@ -29,7 +30,9 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "problem", hint: "The specific question, decision point, or challenge to analyze.", required: true },
     { tag: "constraints", hint: "Hard constraints, deadlines, compatibility requirements.", required: false },
     { tag: "artifacts", hint: "Relevant code snippets, file paths, error logs to examine.", required: false },
+    PRIOR_JOBS_REQUEST_BLOCK,
   ],
+  allowedExecutorTools: ["carrier_jobs"],
 
   // ── Tier 2: Composition ──
   permissions: [

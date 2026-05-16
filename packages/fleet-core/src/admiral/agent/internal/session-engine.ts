@@ -215,7 +215,7 @@ export async function ensureSession(
         type: "http",
         url: mcpUrl,
         headers: [{ name: "Authorization", value: `Bearer ${sessionToken}` }],
-        name: "pi-tools",
+        name: "fleet-tools",
         toolTimeout: 1800,
       }];
       mcpActive = true;

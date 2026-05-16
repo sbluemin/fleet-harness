@@ -1,5 +1,6 @@
 import type { AgentToolCtx, AgentToolSpec, McpCallToolResult } from "./types.js";
 import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
+import { getRegisteredCarrierConfig } from "../carrier/framework.js";
 import { buildCarrierDispatchToolSpec } from "../carrier/tool-spec.js";
 import { buildRequestDirectiveToolSpec } from "../request-directive/tool-spec.js";
 import { buildSquadronToolSpec } from "../squadron/tool-spec.js";
@@ -23,7 +24,7 @@ interface RegisterExecutorToolOptions {
 // Domain packages (e.g. fleet-wiki) extend this at module load time via registerExecutorTool().
 const GLOBAL_EXECUTOR_SCOPE = "*";
 const executorWhitelist = new Map<string, Set<string>>([
-  [GLOBAL_EXECUTOR_SCOPE, new Set(["carrier_jobs"])],
+  [GLOBAL_EXECUTOR_SCOPE, new Set()],
 ]);
 
 // Superset enumeration of all possible executor tool IDs — kept for test compatibility and auditing.
@@ -72,6 +73,10 @@ export function getExecutorMcpTools(carrierId?: string): AgentToolSpec[] {
   const ids = new Set<string>(executorWhitelist.get(GLOBAL_EXECUTOR_SCOPE));
   if (carrierId) {
     for (const id of executorWhitelist.get(carrierId) ?? []) {
+      ids.add(id);
+    }
+    const config = getRegisteredCarrierConfig(carrierId);
+    for (const id of config?.carrierMetadata?.allowedExecutorTools ?? []) {
       ids.add(id);
     }
   }
@@ -184,7 +189,7 @@ export function clearAllDefaultTools(): void {
   doctrineEntries.clear();
   defaultToolsBuilt = false;
   executorWhitelist.clear();
-  executorWhitelist.set(GLOBAL_EXECUTOR_SCOPE, new Set(["carrier_jobs"]));
+  executorWhitelist.set(GLOBAL_EXECUTOR_SCOPE, new Set());
 }
 
 export function clearAllExtraTools(): void {

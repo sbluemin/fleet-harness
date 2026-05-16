@@ -7,7 +7,7 @@
 - Pure LLM-Wiki domain logic and types under `src/`
 - Single public subpath `./`
 - LLM-Wiki package-specific validation under `tests/`
-- fleet-core agent registry self-registration via `agent-specs.ts` (4종 read-only wiki 도구를 doctrine으로 노출)
+- fleet-core agent registry self-registration via `agent-specs.ts` (9종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 3종 `drydock` / `ingest` / `query`는 chronicle 전용으로 제한 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
 
 ## Must Not Own
 

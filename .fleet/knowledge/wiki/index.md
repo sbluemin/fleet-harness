@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `5`
+- total_entries: `6`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -35,6 +35,15 @@
 - summary: `# fleet-wiki 사용법`
 - raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
 
+### prd-carrier-persona-extraction
+
+- title: `캐리어 페르소나 외부화 및 선언적 도구 스코핑`
+- path: `wiki/prd-carrier-persona-extraction.md`
+- tags: `carrier, fleet-carriers, fleet-core, persona, tool-scoping, shipped`
+- updated: `2026-05-16T07:34:09.878Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-287214c2.md`
+
 ### prd-coding-agent-scoped-models-removal
 
 - title: `코딩 에이전트 /scoped-models 제거`
@@ -59,6 +68,10 @@
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
+### carrier
+
+- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
 ### carrier-status
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
@@ -76,6 +89,14 @@
 ### ephemeral
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
+
+### fleet-carriers
+
+- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### fleet-core
+
+- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### fleet-harness
 
@@ -125,6 +146,10 @@
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 
+### persona
+
+- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
 ### removal
 
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
@@ -132,6 +157,14 @@
 ### scoped-models
 
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
+
+### shipped
+
+- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### tool-scoping
+
+- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### workflow
 

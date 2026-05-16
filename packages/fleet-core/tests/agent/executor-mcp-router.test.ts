@@ -23,6 +23,11 @@ import {
   getExecutorMcpTools,
 } from "../../src/admiral/agent/tools.js";
 import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
+import {
+  clearRegisteredCarriers,
+  registerCarrier,
+} from "../../src/admiral/carrier/framework.js";
+import type { CarrierMetadata } from "../../src/admiral/carrier/types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -51,6 +56,32 @@ function makeToolSpec(id: string, execute: (args: unknown) => unknown): AgentToo
       return execute(args);
     },
   };
+}
+
+function makeCarrierMetadata(allowedExecutorTools?: readonly string[]): CarrierMetadata {
+  return {
+    title: "Test Carrier",
+    summary: "Test carrier metadata",
+    category: "operations",
+    whenToUse: [],
+    whenNotToUse: [],
+    requestBlocks: [],
+    allowedExecutorTools,
+    permissions: [],
+    outputFormat: "",
+  };
+}
+
+function registerTestCarrier(id: string, allowedExecutorTools?: readonly string[]): void {
+  registerCarrier({
+    id,
+    cliType: "claude",
+    defaultCliType: "claude",
+    slot: 99,
+    displayName: id,
+    color: "",
+    carrierMetadata: makeCarrierMetadata(allowedExecutorTools),
+  });
 }
 
 function registerChronicleWikiTools(): void {
@@ -87,19 +118,17 @@ describe("executor MCP whitelist (tools.ts)", () => {
   beforeEach(() => {
     clearAllDefaultTools();
     clearAllExtraTools();
+    clearRegisteredCarriers();
   });
 
   it("EXECUTOR_MCP_TOOL_IDS에 carrier_jobs가 포함된다", () => {
     expect(EXECUTOR_MCP_TOOL_IDS).toContain("carrier_jobs");
   });
 
-  it("getExecutorMcpTools()는 carrier_jobs 스펙만 반환한다", () => {
+  it("getExecutorMcpTools()는 기본 global scope에서 도구를 반환하지 않는다", () => {
     const specs = getExecutorMcpTools();
     const ids = specs.map((s) => s.id);
-    expect(ids).toEqual(["carrier_jobs"]);
-    for (const id of ids) {
-      expect(EXECUTOR_MCP_TOOL_IDS as readonly string[]).toContain(id);
-    }
+    expect(ids).toEqual([]);
   });
 
   it("getExecutorMcpTools()는 화이트리스트 외 도구(carrier_dispatch 등)를 반환하지 않는다", () => {
@@ -110,21 +139,24 @@ describe("executor MCP whitelist (tools.ts)", () => {
     expect(ids).not.toContain("carrier_taskforce");
   });
 
-  it("chronicle 호출 시 wiki 도구 7개와 전역 carrier_jobs를 반환한다", () => {
+  it("chronicle 호출 시 tool-centric wiki 도구 7개를 반환한다", () => {
     registerChronicleWikiTools();
 
     const ids = getExecutorMcpTools("chronicle").map((s) => s.id);
 
-    expect(ids).toContain("carrier_jobs");
     expect(WIKI_EXECUTOR_TOOL_IDS.every((id) => ids.includes(id))).toBe(true);
+    expect(ids).not.toContain("carrier_jobs");
   });
 
-  it("비-chronicle 호출 시 wiki 도구를 반환하지 않고 전역 carrier_jobs는 유지한다", () => {
+  it("비-chronicle 호출 시 명시 metadata가 없으면 도구를 반환하지 않는다", () => {
+    // 이 테스트는 tool-centric 패턴(allowedCarriers)을 검증.
+    // 실제 fleet-wiki는 순수 읽기 도구 4종(briefing/orient/read/resolve)을 글로벌 등록하여 비-chronicle도 접근 가능하고,
+    // 쓰기·stage 가능 도구 3종(drydock/ingest/query)은 chronicle 전용으로 제한함.
     registerChronicleWikiTools();
 
     const ids = getExecutorMcpTools("genesis").map((s) => s.id);
 
-    expect(ids).toEqual(["carrier_jobs"]);
+    expect(ids).toEqual([]);
     expect(WIKI_EXECUTOR_TOOL_IDS.some((id) => ids.includes(id))).toBe(false);
   });
 
@@ -133,7 +165,44 @@ describe("executor MCP whitelist (tools.ts)", () => {
 
     const ids = getExecutorMcpTools().map((s) => s.id);
 
-    expect(ids).toEqual(["carrier_jobs"]);
+    expect(ids).toEqual([]);
+  });
+
+  it("registerExecutorTool(spec)는 옵션 없이 global scope에 도구를 등록한다", () => {
+    registerExecutorTool(makeToolSpec("global_tool", () => "global-ok"));
+
+    const ids = getExecutorMcpTools().map((s) => s.id);
+
+    expect(ids).toEqual(["global_tool"]);
+  });
+
+  it("metadata-declared registered tools를 lazy union한다", () => {
+    registerTestCarrier("metadata_carrier", ["carrier_jobs", "metadata_tool"]);
+    registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
+
+    const ids = getExecutorMcpTools("metadata_carrier").map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs", "metadata_tool"]);
+  });
+
+  it("metadata-declared unknown tool IDs는 spec 등록 전까지 무시한다", () => {
+    registerTestCarrier("metadata_carrier", ["carrier_jobs", "metadata_tool", "missing_metadata_tool"]);
+    registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
+
+    const ids = getExecutorMcpTools("metadata_carrier").map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs", "metadata_tool"]);
+    expect(ids).not.toContain("missing_metadata_tool");
+  });
+
+  it("target carrier가 아니면 metadata-declared tools를 상속하지 않는다", () => {
+    registerTestCarrier("metadata_carrier", ["carrier_jobs", "metadata_tool"]);
+    registerTestCarrier("other_carrier");
+    registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
+
+    const ids = getExecutorMcpTools("other_carrier").map((s) => s.id);
+
+    expect(ids).toEqual([]);
   });
 });
 
@@ -142,6 +211,7 @@ describe("executor MCP router (mcp-router.ts)", () => {
     clearAllTools();
     clearAllDefaultTools();
     clearAllExtraTools();
+    clearRegisteredCarriers();
   });
 
   afterAll(async () => {

@@ -19,27 +19,6 @@ export const CARRIER_REQUEST_BREVITY_GUIDELINE =
   ` If archive content has expired (full_invalidated true / TTL exceeded), the carrier falls back to` +
   ` carrier_jobs(action:"result", format:"summary", job_id:...) to retrieve the summary.`;
 
-/**
- * Tier-2 carrier 원칙 SSoT — 모든 persona가 spread 패턴으로 재사용하는 carrier_jobs 자기호출 교리.
- * 이 상수를 복사하지 말 것; persona의 principles 배열에 `[CARRIER_JOBS_SELF_CALL_HINT, ...existing]`으로 참조할 것.
- */
-export const CARRIER_JOBS_SELF_CALL_HINT =
-  `When the Admiral passes prior \`job_id\` references in <prior_jobs>, use the \`carrier_jobs\` tool` +
-  ` (available via your MCP server) to self-fetch results.` +
-  ` Full lookup: \`carrier_jobs(action:"result", format:"full", job_id:"<id>")\`.` +
-  ` If archive content has expired (\`full_invalidated\` is true), fall back to` +
-  ` \`carrier_jobs(action:"result", format:"summary", job_id:"<id>")\`.`;
-
-/** <prior_jobs> 공용 요청 블록 — 로스터 렌더링 시 모든 carrier에 자동 합산되는 SSoT 선택 블록 */
-export const PRIOR_JOBS_REQUEST_BLOCK: RequestBlock = {
-  tag: "prior_jobs",
-  hint: `Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.`,
-  required: false,
-};
-
-/** 로스터 렌더링 시 모든 carrier에 공통 주입되는 기본 블록 목록 */
-const CARRIER_COMMON_REQUEST_BLOCKS: RequestBlock[] = [PRIOR_JOBS_REQUEST_BLOCK];
-
 // ═════════════════════════════════════════════════════════
 // Types / Interfaces
 // ═════════════════════════════════════════════════════════
@@ -139,11 +118,7 @@ export function buildCarrierRoster(
 }
 
 export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
-  const allBlocks: RequestBlock[] = [
-    ...meta.requestBlocks,
-    ...(meta.commonRequestBlocks ?? []),
-    ...CARRIER_COMMON_REQUEST_BLOCKS,
-  ];
+  const allBlocks: RequestBlock[] = [...meta.requestBlocks];
   if (allBlocks.length === 0) return [];
   return allBlocks.map((b) => {
     const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
