@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@sbluemin/fleet-ai": "workspace:*",
+    "@sbluemin/fleet-carriers": "workspace:*",
     "@sbluemin/fleet-coding-agent": "workspace:*",
     "typebox": "^1.1.24",
     "@sbluemin/fleet-core": "workspace:*",

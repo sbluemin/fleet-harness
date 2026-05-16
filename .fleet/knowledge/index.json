@@ -47,6 +47,20 @@
     ],
     "updated": "2026-05-16T03:59:46.982Z"
   },
+  "prd-carrier-persona-extraction": {
+    "path": "wiki/prd-carrier-persona-extraction.md",
+    "title": "Architecture Decision — Carrier Persona Extraction to fleet-carriers",
+    "tags": [
+      "architecture",
+      "carrier",
+      "fleet-carriers",
+      "fleet-core",
+      "refactoring",
+      "decision"
+    ],
+    "updated": "2026-05-16T05:06:42.017Z"
+
+  },
   "prd-harness-btw-overlay": {
     "path": "wiki/prd-harness-btw-overlay.md",
     "title": "Harness /btw Ephemeral Overlay",

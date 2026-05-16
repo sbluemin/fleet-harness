@@ -224,6 +224,25 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@22.19.17)(jiti@2.7.0)(jsdom@29.1.1(canvas@3.2.3))(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/fleet-carriers:
+    dependencies:
+      '@sbluemin/fleet-core':
+        specifier: workspace:*
+        version: link:../fleet-core
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+
   packages/fleet-core:
     dependencies:
       '@sbluemin/fleet-unified-agent':
@@ -251,6 +270,9 @@ importers:
       '@sbluemin/fleet-ai':
         specifier: workspace:*
         version: link:../../engines/packages/ai
+      '@sbluemin/fleet-carriers':
+        specifier: workspace:*
+        version: link:../fleet-carriers
       '@sbluemin/fleet-coding-agent':
         specifier: workspace:*
         version: link:../../engines/packages/coding-agent

@@ -67,7 +67,7 @@ Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines
 - Fleet domain modules under `admiral/`:
   - `_shared/` — SSOT carrier job stream events (`carrier-job-events.ts`), CLI tool type aliases (`cli-tool-types.ts`), and the lazy-singleton MCP HTTP server (`mcp.ts`). The former `bridge/` directory has been removed; streaming consumers use `jobs.streaming.register()` instead.
   - `agent/` — the canonical agent domain documented above.
-  - `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/` — fleet tool specs and execution doctrine.
+- `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/` — carrier framework, fleet tool specs, roster rendering, and execution doctrine. Default carrier persona data is owned by `packages/fleet-carriers`.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
 - `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log infra, and `metaphor/`. The former `infra/tool-registry/` directory has been removed; tool registry, doctrine formatter, and tool-snapshot now live in `admiral/agent/tools.ts` (registry + `renderAgentToolDoctrineTag()`) and `admiral/agent/internal/tool-snapshot.ts`.
@@ -80,6 +80,7 @@ Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines
 - Global runtime stores, **runtime-owned settings singletons (owned by `infra/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by Pi adapters
 - Pure prompt composition, domain-level orchestration logic, and **render-agnostic view-model builders** (view-model builders have moved to the Pi host `panel/` domain)
 - The Fleet Wiki domain extracted to the leaf `packages/fleet-wiki`
+- Default carrier persona metadata, default persona catalog registration helpers, and persona-only prompt constants extracted to the leaf `packages/fleet-carriers`
 
 ## Must Not Own
 

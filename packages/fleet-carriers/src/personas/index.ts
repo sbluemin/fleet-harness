@@ -1,4 +1,4 @@
-import type { CliType } from "@sbluemin/fleet-unified-agent";
+import type { CarrierConfig, CarrierMetadata } from "@sbluemin/fleet-core";
 
 import { CARRIER_METADATA as CHRONICLE_METADATA } from "./chronicle.js";
 import { CARRIER_METADATA as GENESIS_METADATA } from "./genesis.js";
@@ -8,10 +8,9 @@ import { CARRIER_METADATA as OHIO_METADATA } from "./ohio.js";
 import { CARRIER_METADATA as SENTINEL_METADATA } from "./sentinel.js";
 import { CARRIER_METADATA as TEMPEST_METADATA } from "./tempest.js";
 import { CARRIER_METADATA as VANGUARD_METADATA } from "./vanguard.js";
-import type { CarrierMetadata } from "../types.js";
 
 export interface DefaultCarrierPersona {
-  readonly cli: CliType;
+  readonly cli: CarrierConfig["cliType"];
   readonly metadata: CarrierMetadata;
   readonly options: {
     readonly slot: number;
@@ -34,7 +33,7 @@ export const DEFAULT_CARRIER_PERSONAS: readonly DefaultCarrierPersona[] = [
 ];
 
 export interface CarrierPersonaRegistry {
-  register(cli: CliType, metadata: CarrierMetadata, options: DefaultCarrierPersona["options"]): void;
+  register(cli: CarrierConfig["cliType"], metadata: CarrierMetadata, options: DefaultCarrierPersona["options"]): void;
 }
 
 export function registerDefaultCarrierPersonas(registry: CarrierPersonaRegistry): void {

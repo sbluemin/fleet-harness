@@ -44,6 +44,15 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
 
+### prd-carrier-persona-extraction
+
+- title: `Architecture Decision — Carrier Persona Extraction to fleet-carriers`
+- path: `wiki/prd-carrier-persona-extraction.md`
+- tags: `architecture, carrier, fleet-carriers, fleet-core, refactoring, decision`
+- updated: `2026-05-16T05:06:42.017Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-7bec0c22.md`
+
 ### prd-harness-btw-overlay
 
 - title: `Harness /btw Ephemeral Overlay`
@@ -55,9 +64,17 @@
 
 ## Tags
 
+### architecture
+
+- [[wiki:prd-carrier-persona-extraction]] — Architecture Decision — Carrier Persona Extraction to fleet-carriers
+
 ### btw
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
+
+### carrier
+
+- [[wiki:prd-carrier-persona-extraction]] — Architecture Decision — Carrier Persona Extraction to fleet-carriers
 
 ### carrier-status
 
@@ -73,9 +90,21 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
+### decision
+
+- [[wiki:prd-carrier-persona-extraction]] — Architecture Decision — Carrier Persona Extraction to fleet-carriers
+
 ### ephemeral
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
+
+### fleet-carriers
+
+- [[wiki:prd-carrier-persona-extraction]] — Architecture Decision — Carrier Persona Extraction to fleet-carriers
+
+### fleet-core
+
+- [[wiki:prd-carrier-persona-extraction]] — Architecture Decision — Carrier Persona Extraction to fleet-carriers
 
 ### fleet-harness
 
@@ -124,6 +153,10 @@
 ### overview
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+
+### refactoring
+
+- [[wiki:prd-carrier-persona-extraction]] — Architecture Decision — Carrier Persona Extraction to fleet-carriers
 
 ### removal
 

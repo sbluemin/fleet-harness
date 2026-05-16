@@ -902,3 +902,43 @@
 - result: `accepted`
 - target: `wiki/prd-coding-agent-scoped-models-removal.md`
 
+## 2026-05-16T05:05:58.694Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `3`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T05:06:42.028Z — raw source added
+
+- id: `prd-carrier-persona-extraction-source`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-7bec0c22.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Architecture Decision — Carrier Persona Extraction to fleet-carriers`
+
+## 2026-05-16T05:06:42.031Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T05-06-42-017Z-be901eec`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-7bec0c22.md`
+- target: `wiki/prd-carrier-persona-extraction.md`
+- warning_count: `0`
+
+## 2026-05-16T05:06:54.133Z — index rebuilt
+
+- entry_count: `5`
+
+## 2026-05-16T05:06:54.135Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T05-06-42-017Z-be901eec`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-7bec0c22.md`
+- result: `accepted`
+- target: `wiki/prd-carrier-persona-extraction.md`
+

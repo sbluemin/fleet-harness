@@ -6,8 +6,8 @@
  * Raven(CVN-05) 역할을 흡수하여 QA와 보안을 통합 수행합니다.
  */
 
-import { CARRIER_JOBS_SELF_CALL_HINT } from "../prompts.js";
-import type { CarrierMetadata } from "../types.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
+import type { CarrierMetadata } from "@sbluemin/fleet-core";
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──

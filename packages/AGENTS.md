@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (Pi-agnostic domain core), `fleet-harness` (Pi host adapter), `fleet-wiki`, and `fleet-wiki-web`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (Pi-agnostic domain core), `fleet-carriers` (carrier persona catalog and self-registration leaf package), `fleet-harness` (Pi host adapter), `fleet-wiki`, and `fleet-wiki-web`.
 
 ## Architecture Philosophy
 
@@ -38,6 +38,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | CLI provider catalog | `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
 | Fleet tool catalog | `admiral.agent.tools.list()` (default specs auto-registered, host extras via `registerExtraTools`) | Host queries metadata + invokes — never re-implements specs. |
 | Executor MCP whitelist | `admiral/agent/tools.ts:EXECUTOR_MCP_TOOL_IDS` + `getExecutorMcpTools()` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`; initial allowlist is `["carrier_jobs"]`. Adding a tool requires editing only this constant. When a domain package self-registers its specs (e.g., `fleet-wiki` via `agent-specs.ts`), the constant update and the package's self-registration must be kept in sync. |
+| Default carrier persona catalog | `packages/fleet-carriers` | Default carrier metadata, default slots/models/efforts, persona-only constants, and module-load carrier self-registration live in the leaf package. `fleet-core` owns the framework and must not import `fleet-carriers`. |
 
 > **Unified `AgentToolSpec` Shape**: One interface combines doctrine and execution — `{ id, tag, title, description, promptSnippet, whenToUse[], whenNotToUse[], usageGuidelines[], guardrails?[], parameters, execute }`. The same spec produces both the `<fleet section="tool-guide" tool="${tag}">` doctrine block (via `renderAgentToolDoctrineTag()`) and the executable handler. Legacy `ToolPromptManifest`, `AgentToolRenderDescriptor` / `AgentToolPiDescriptor` / `AgentToolMcpDescriptor`, and the deprecated `name` / `label` / `promptGuidelines` / `render` / `pi` / `mcp` fields are removed. The former `infra/tool-registry/` directory (6 files) no longer exists; the registry/formatter functions live in `admiral/agent/tools.ts` exclusively, exported as `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag`.
 
