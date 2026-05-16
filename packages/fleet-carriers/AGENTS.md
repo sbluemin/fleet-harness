@@ -10,7 +10,7 @@
 - Package-local tests for default persona data and self-registration behavior
 - Explicit default persona executor access: all 8 personas must explicitly list `carrier_jobs` in `allowedExecutorTools` for prior-job self-fetch; no inheritance from core.
 - Explicit default persona `<prior_jobs?>` request blocks: all 8 personas must explicitly append `PRIOR_JOBS_REQUEST_BLOCK` to `requestBlocks`.
-- Chronicle's opaque `allowedExecutorTools` metadata for chronicle-exclusive wiki write/lint tools (`wiki_ingest`, `wiki_drydock`). The physical wiki tool specs remain owned and registered by `packages/fleet-wiki`. Five read-only wiki tools (`wiki_briefing`, `wiki_orient`, `wiki_query`, `wiki_read`, `wiki_resolve`) are registered globally and available to all carriers without explicit declaration.
+- Chronicle's opaque `allowedExecutorTools` metadata for chronicle-exclusive wiki write/stage-capable tools (`wiki_drydock`, `wiki_ingest`, `wiki_query`). The physical wiki tool specs remain owned and registered by `packages/fleet-wiki`. Four pure read-only wiki tools (`wiki_briefing`, `wiki_orient`, `wiki_read`, `wiki_resolve`) are registered globally and available to all carriers without explicit declaration. Note that `wiki_query` is chronicle-only because `mode="stage_answer_page"` / `save_good_answer=true` enqueues wiki patches via `enqueuePatch()`.
 
 ## Must Not Own
 
