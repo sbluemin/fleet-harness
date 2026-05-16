@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-05-16
+
 ### Added
 - [unified-agent] Added 1M context models to the Cursor provider catalog with robust effort/reasoning parameter combination via ACP
 
