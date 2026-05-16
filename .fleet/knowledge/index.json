@@ -49,6 +49,19 @@
     ],
     "updated": "2026-05-16T07:34:09.878Z"
   },
+  "prd-coding-agent-prompt-slash-prefix": {
+    "path": "wiki/prd-coding-agent-prompt-slash-prefix.md",
+    "title": "PRD: Prompt Template 호출 접두사(/prompt:) 도입",
+    "tags": [
+      "coding-agent",
+      "prompts",
+      "slash-command",
+      "naming-convention",
+      "ux",
+      "shipped"
+    ],
+    "updated": "2026-05-16T15:53:01.036Z"
+  },
   "prd-coding-agent-scoped-models-removal": {
     "path": "wiki/prd-coding-agent-scoped-models-removal.md",
     "title": "코딩 에이전트 /scoped-models 제거",

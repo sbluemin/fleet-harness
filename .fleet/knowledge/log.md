@@ -1000,3 +1000,51 @@
 - ok: `false`
 - warning_count: `0`
 
+## 2026-05-16T15:51:57.951Z — drydock run
+
+- error_count: `2`
+- info_count: `2`
+- issue_count: `4`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T15:52:47.916Z — drydock run
+
+- error_count: `2`
+- info_count: `2`
+- issue_count: `4`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T15:53:01.045Z — raw source added
+
+- id: `prd-coding-agent-prompt-slash-prefix-source`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-prompt-slash-prefix-source-e708f533.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `prd-coding-agent-prompt-slash-prefix-source`
+
+## 2026-05-16T15:53:01.065Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T15-53-01-036Z-ba9ca67e`
+- patch_set_id: `null`
+- proposer: `Captain`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-prompt-slash-prefix-source-e708f533.md`
+- target: `wiki/prd-coding-agent-prompt-slash-prefix.md`
+- warning_count: `0`
+
+## 2026-05-16T16:01:41.113Z — index rebuilt
+
+- entry_count: `7`
+
+## 2026-05-16T16:01:41.121Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T15-53-01-036Z-ba9ca67e`
+- patch_set_id: `null`
+- proposer: `Captain`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-prompt-slash-prefix-source-e708f533.md`
+- result: `accepted`
+- target: `wiki/prd-coding-agent-prompt-slash-prefix.md`
+

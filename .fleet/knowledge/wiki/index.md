@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `6`
+- total_entries: `7`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -42,7 +42,15 @@
 - tags: `carrier, fleet-carriers, fleet-core, persona, tool-scoping, shipped`
 - updated: `2026-05-16T07:34:09.878Z`
 - summary: `## Overview`
-- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-287214c2.md`
+
+### prd-coding-agent-prompt-slash-prefix
+
+- title: `PRD: Prompt Template 호출 접두사(/prompt:) 도입`
+- path: `wiki/prd-coding-agent-prompt-slash-prefix.md`
+- tags: `coding-agent, prompts, slash-command, naming-convention, ux, shipped`
+- updated: `2026-05-16T15:53:01.036Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-prompt-slash-prefix-source-e708f533.md`
 
 ### prd-coding-agent-scoped-models-removal
 
@@ -78,6 +86,7 @@
 
 ### coding-agent
 
+- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
 
 ### current
@@ -132,6 +141,10 @@
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
+### naming-convention
+
+- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
+
 ### onboarding
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
@@ -150,6 +163,10 @@
 
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
+### prompts
+
+- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
+
 ### removal
 
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
@@ -161,10 +178,19 @@
 ### shipped
 
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
+
+### slash-command
+
+- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### ux
+
+- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 
 ### workflow
 
