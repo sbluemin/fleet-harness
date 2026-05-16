@@ -15,6 +15,7 @@ import {
 } from "../../src/admiral/agent/internal/mcp-router.js";
 import {
   registerAgentTool,
+  registerExecutorTool,
   clearAllDefaultTools,
   clearAllExtraTools,
   invoke,
@@ -24,6 +25,16 @@ import {
 import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+const WIKI_EXECUTOR_TOOL_IDS = [
+  "wiki_briefing",
+  "wiki_drydock",
+  "wiki_ingest",
+  "wiki_orient",
+  "wiki_query",
+  "wiki_read",
+  "wiki_resolve",
+] as const;
 
 function makeToolSpec(id: string, execute: (args: unknown) => unknown): AgentToolSpec {
   return {
@@ -40,6 +51,12 @@ function makeToolSpec(id: string, execute: (args: unknown) => unknown): AgentToo
       return execute(args);
     },
   };
+}
+
+function registerChronicleWikiTools(): void {
+  for (const id of WIKI_EXECUTOR_TOOL_IDS) {
+    registerExecutorTool(makeToolSpec(id, () => `${id}-ok`), { allowedCarriers: ["chronicle"] });
+  }
 }
 
 async function mcpToolsCall(
@@ -79,7 +96,7 @@ describe("executor MCP whitelist (tools.ts)", () => {
   it("getExecutorMcpTools()는 carrier_jobs 스펙만 반환한다", () => {
     const specs = getExecutorMcpTools();
     const ids = specs.map((s) => s.id);
-    expect(ids).toContain("carrier_jobs");
+    expect(ids).toEqual(["carrier_jobs"]);
     for (const id of ids) {
       expect(EXECUTOR_MCP_TOOL_IDS as readonly string[]).toContain(id);
     }
@@ -91,6 +108,32 @@ describe("executor MCP whitelist (tools.ts)", () => {
     expect(ids).not.toContain("carrier_dispatch");
     expect(ids).not.toContain("carrier_squadron");
     expect(ids).not.toContain("carrier_taskforce");
+  });
+
+  it("chronicle 호출 시 wiki 도구 7개와 전역 carrier_jobs를 반환한다", () => {
+    registerChronicleWikiTools();
+
+    const ids = getExecutorMcpTools("chronicle").map((s) => s.id);
+
+    expect(ids).toContain("carrier_jobs");
+    expect(WIKI_EXECUTOR_TOOL_IDS.every((id) => ids.includes(id))).toBe(true);
+  });
+
+  it("비-chronicle 호출 시 wiki 도구를 반환하지 않고 전역 carrier_jobs는 유지한다", () => {
+    registerChronicleWikiTools();
+
+    const ids = getExecutorMcpTools("genesis").map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs"]);
+    expect(WIKI_EXECUTOR_TOOL_IDS.some((id) => ids.includes(id))).toBe(false);
+  });
+
+  it("carrierId가 없으면 전역 도구만 반환한다", () => {
+    registerChronicleWikiTools();
+
+    const ids = getExecutorMcpTools().map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs"]);
   });
 });
 
