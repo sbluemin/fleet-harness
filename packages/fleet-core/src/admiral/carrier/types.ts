@@ -60,6 +60,11 @@ export interface CarrierMetadata {
   requestBlocks: RequestBlock[];
   /** 공용 요청 블록 — 모든 carrier에 공통으로 주입되는 선택적 블록 (e.g., prior_jobs) */
   commonRequestBlocks?: RequestBlock[];
+  /**
+   * 이 carrier의 executor MCP 세션에 추가 노출할 opaque agent tool ID 목록.
+   * `carrier_jobs` 같은 global tool은 `*` scope에서 상속되므로 여기에 열거하지 않는다.
+   */
+  allowedExecutorTools?: readonly string[];
 
   // ── Tier 2: Composition (→ 실행 시 request에 자동 주입) ──
   /** 권한/제약 (여러 줄) */

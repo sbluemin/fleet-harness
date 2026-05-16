@@ -40,6 +40,16 @@ const EXPECTED_DEFAULTS = {
   ohio: { slot: 4, defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
+const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
+  "wiki_briefing",
+  "wiki_drydock",
+  "wiki_ingest",
+  "wiki_orient",
+  "wiki_query",
+  "wiki_read",
+  "wiki_resolve",
+] as const;
+
 const ALL_PERSONAS: readonly PersonaCase[] = [
   { name: "chronicle", meta: CHRONICLE_METADATA },
   { name: "genesis", meta: GENESIS_METADATA },
@@ -62,6 +72,20 @@ describe("CARRIER_JOBS_SELF_CALL_HINT", () => {
       expect(meta.principles).toContain(CARRIER_JOBS_SELF_CALL_HINT);
     });
   }
+});
+
+describe("allowedExecutorTools", () => {
+  it("chronicle만 7개 wiki tool ID를 정확히 선언하고 carrier_jobs는 열거하지 않음", () => {
+    expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
+    expect(CHRONICLE_METADATA.allowedExecutorTools).not.toContain("carrier_jobs");
+  });
+
+  it("chronicle 외 기본 persona는 allowedExecutorTools를 선언하지 않음", () => {
+    for (const persona of DEFAULT_CARRIER_PERSONAS) {
+      if (persona.options.id === "chronicle") continue;
+      expect(persona.metadata.allowedExecutorTools ?? null).toBeNull();
+    }
+  });
 });
 
 describe("DEFAULT_CARRIER_PERSONAS", () => {

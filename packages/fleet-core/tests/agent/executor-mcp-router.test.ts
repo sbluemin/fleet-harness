@@ -23,6 +23,11 @@ import {
   getExecutorMcpTools,
 } from "../../src/admiral/agent/tools.js";
 import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
+import {
+  clearRegisteredCarriers,
+  registerCarrier,
+} from "../../src/admiral/carrier/framework.js";
+import type { CarrierMetadata } from "../../src/admiral/carrier/types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -51,6 +56,32 @@ function makeToolSpec(id: string, execute: (args: unknown) => unknown): AgentToo
       return execute(args);
     },
   };
+}
+
+function makeCarrierMetadata(allowedExecutorTools?: readonly string[]): CarrierMetadata {
+  return {
+    title: "Test Carrier",
+    summary: "Test carrier metadata",
+    category: "operations",
+    whenToUse: [],
+    whenNotToUse: [],
+    requestBlocks: [],
+    allowedExecutorTools,
+    permissions: [],
+    outputFormat: "",
+  };
+}
+
+function registerTestCarrier(id: string, allowedExecutorTools?: readonly string[]): void {
+  registerCarrier({
+    id,
+    cliType: "claude",
+    defaultCliType: "claude",
+    slot: 99,
+    displayName: id,
+    color: "",
+    carrierMetadata: makeCarrierMetadata(allowedExecutorTools),
+  });
 }
 
 function registerChronicleWikiTools(): void {
@@ -87,6 +118,7 @@ describe("executor MCP whitelist (tools.ts)", () => {
   beforeEach(() => {
     clearAllDefaultTools();
     clearAllExtraTools();
+    clearRegisteredCarriers();
   });
 
   it("EXECUTOR_MCP_TOOL_IDS에 carrier_jobs가 포함된다", () => {
@@ -135,6 +167,35 @@ describe("executor MCP whitelist (tools.ts)", () => {
 
     expect(ids).toEqual(["carrier_jobs"]);
   });
+
+  it("metadata-declared registered tools를 전역 carrier_jobs와 lazy union한다", () => {
+    registerTestCarrier("metadata_carrier", ["metadata_tool"]);
+    registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
+
+    const ids = getExecutorMcpTools("metadata_carrier").map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs", "metadata_tool"]);
+  });
+
+  it("metadata-declared unknown tool IDs는 spec 등록 전까지 무시한다", () => {
+    registerTestCarrier("metadata_carrier", ["metadata_tool", "missing_metadata_tool"]);
+    registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
+
+    const ids = getExecutorMcpTools("metadata_carrier").map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs", "metadata_tool"]);
+    expect(ids).not.toContain("missing_metadata_tool");
+  });
+
+  it("target carrier가 아니면 metadata-declared tools를 상속하지 않는다", () => {
+    registerTestCarrier("metadata_carrier", ["metadata_tool"]);
+    registerTestCarrier("other_carrier");
+    registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
+
+    const ids = getExecutorMcpTools("other_carrier").map((s) => s.id);
+
+    expect(ids).toEqual(["carrier_jobs"]);
+  });
 });
 
 describe("executor MCP router (mcp-router.ts)", () => {
@@ -142,6 +203,7 @@ describe("executor MCP router (mcp-router.ts)", () => {
     clearAllTools();
     clearAllDefaultTools();
     clearAllExtraTools();
+    clearRegisteredCarriers();
   });
 
   afterAll(async () => {

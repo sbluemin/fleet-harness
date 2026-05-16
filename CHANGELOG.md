@@ -9,6 +9,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - Added `@sbluemin/fleet-carriers` as the default carrier persona catalog and self-registration package.
+- [core] Added carrier metadata-based executor MCP tool scoping while preserving tool-centric registration.
 - [unified-agent] Added 1M context models to the Cursor provider catalog with robust effort/reasoning parameter combination via ACP
 
 ### Changed

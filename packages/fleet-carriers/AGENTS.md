@@ -8,6 +8,7 @@
 - Persona-only constants under `src/constants.ts`
 - Self-registration into the `@sbluemin/fleet-core` carrier facade via `src/agent-specs.ts`
 - Package-local tests for default persona data and self-registration behavior
+- Chronicle's opaque `allowedExecutorTools` metadata for wiki tool access. The physical wiki tool specs remain owned and registered by `packages/fleet-wiki`.
 
 ## Must Not Own
 
@@ -21,6 +22,7 @@
 - Deep imports such as `@sbluemin/fleet-core/src/**` are forbidden.
 - Reverse dependencies from `fleet-core` back to `fleet-carriers` are forbidden.
 - Module-load self-registration must stay side-effect-only and host-agnostic; Pi renderer registration belongs in `fleet-harness`.
+- Chronicle may declare wiki tool IDs as strings in `allowedExecutorTools`, but this package must not import `@sbluemin/fleet-wiki` or `FLEET_WIKI_AGENT_TOOL_IDS`.
 
 ## TypeScript File Structure
 

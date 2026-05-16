@@ -1,5 +1,6 @@
 import type { AgentToolCtx, AgentToolSpec, McpCallToolResult } from "./types.js";
 import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
+import { getRegisteredCarrierConfig } from "../carrier/framework.js";
 import { buildCarrierDispatchToolSpec } from "../carrier/tool-spec.js";
 import { buildRequestDirectiveToolSpec } from "../request-directive/tool-spec.js";
 import { buildSquadronToolSpec } from "../squadron/tool-spec.js";
@@ -72,6 +73,10 @@ export function getExecutorMcpTools(carrierId?: string): AgentToolSpec[] {
   const ids = new Set<string>(executorWhitelist.get(GLOBAL_EXECUTOR_SCOPE));
   if (carrierId) {
     for (const id of executorWhitelist.get(carrierId) ?? []) {
+      ids.add(id);
+    }
+    const config = getRegisteredCarrierConfig(carrierId);
+    for (const id of config?.carrierMetadata?.allowedExecutorTools ?? []) {
       ids.add(id);
     }
   }

@@ -5,8 +5,19 @@
  * Chronicle carrier를 프레임워크에 등록합니다.
  */
 
-import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 import type { CarrierMetadata } from "@sbluemin/fleet-core";
+
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
+
+const CHRONICLE_ALLOWED_EXECUTOR_TOOLS = [
+  "wiki_briefing",
+  "wiki_drydock",
+  "wiki_ingest",
+  "wiki_orient",
+  "wiki_query",
+  "wiki_read",
+  "wiki_resolve",
+] as const;
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──
@@ -48,6 +59,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
       required: false,
     },
   ],
+  allowedExecutorTools: CHRONICLE_ALLOWED_EXECUTOR_TOOLS,
 
   // ── Tier 2: Composition ──
   permissions: [
