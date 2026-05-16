@@ -62,13 +62,14 @@ const readSpec = buildWikiReadSpec();
 const resolveSpec = buildWikiResolveSpec();
 
 // Self-register into fleet-core agent tool registry AND executor MCP whitelist at module load time.
-// 읽기 도구 5종: 모든 캐리어가 위키 지식기반에 접근 가능하도록 글로벌 등록.
-// 쓰기/린트 도구 2종: 크로니클 전용 (지식 무결성 보호).
+// 순수 읽기 도구 4종 (briefing/orient/read/resolve): 모든 캐리어가 위키 지식기반에 접근 가능하도록 글로벌 등록.
+// 쓰기·stage 가능 도구 3종 (drydock/ingest/query): 크로니클 전용 (지식 무결성 보호).
+// 참고: wiki_query는 mode="stage_answer_page" / save_good_answer=true에서 패치 큐에 stage하므로 read-only가 아님.
 registerGlobalExecutorTool(briefingSpec);
 registerChronicleExecutorTool(dryDockSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerChronicleExecutorTool(ingestSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerGlobalExecutorTool(orientSpec);
-registerGlobalExecutorTool(querySpec);
+registerChronicleExecutorTool(querySpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerGlobalExecutorTool(readSpec);
 registerGlobalExecutorTool(resolveSpec);
 

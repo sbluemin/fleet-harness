@@ -150,7 +150,8 @@ describe("executor MCP whitelist (tools.ts)", () => {
 
   it("비-chronicle 호출 시 명시 metadata가 없으면 도구를 반환하지 않는다", () => {
     // 이 테스트는 tool-centric 패턴(allowedCarriers)을 검증.
-    // 실제 fleet-wiki는 읽기 도구 5종을 글로벌 등록하므로 비-chronicle도 접근 가능함.
+    // 실제 fleet-wiki는 순수 읽기 도구 4종(briefing/orient/read/resolve)을 글로벌 등록하여 비-chronicle도 접근 가능하고,
+    // 쓰기·stage 가능 도구 3종(drydock/ingest/query)은 chronicle 전용으로 제한함.
     registerChronicleWikiTools();
 
     const ids = getExecutorMcpTools("genesis").map((s) => s.id);
