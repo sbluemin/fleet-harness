@@ -18,6 +18,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core][wiki] Carrier executor MCP tool whitelist decoupled from wiki module load order; domain packages self-register tools into the executor whitelist so fleet-core no longer throws when invoked without fleet-wiki imported
 - [harness] Fixed missing frontmatter on the pr-creates skill that prevented it from loading.
 
+### Removed
+- [coding-agent] Removed the `/scoped-models` slash command and associated configuration UI, along with related keybindings (`Ctrl+S`, `Ctrl+A`, `Ctrl+X`, `Alt+Up/Down`) for customizing model cycling scope.
+
 ## [0.19.0] - 2026-05-13
 
 Release v0.19.0
