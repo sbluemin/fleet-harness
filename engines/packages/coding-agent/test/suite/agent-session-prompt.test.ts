@@ -218,7 +218,7 @@ describe("AgentSession prompt characterization", () => {
 			},
 		]);
 
-		await harness.session.prompt("/review src/index.ts");
+		await harness.session.prompt("/prompt:review src/index.ts");
 
 		expect(expandedPrompt).toBe("Review this code: src/index.ts");
 	});

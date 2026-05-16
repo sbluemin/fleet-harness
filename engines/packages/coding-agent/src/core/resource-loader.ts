@@ -797,7 +797,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 			if (existing) {
 				diagnostics.push({
 					type: "collision",
-					message: `name "/${prompt.name}" collision`,
+					message: `name "/prompt:${prompt.name}" collision`,
 					path: prompt.filePath,
 					collision: {
 						resourceType: "prompt",

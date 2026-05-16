@@ -624,7 +624,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 				for (const template of session.promptTemplates) {
 					commands.push({
-						name: template.name,
+						name: `prompt:${template.name}`,
 						description: template.description,
 						source: "prompt",
 						sourceInfo: template.sourceInfo,
