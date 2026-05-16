@@ -1,6 +1,6 @@
 ---
 name: pr-review-fixes
-description: PR 리뷰 지적 사항을 반영하고 재검토를 요청하는 절차를 정의합니다.
+description: Workflow for applying PR review fixes, validating them, and requesting @codex re-review.
 ---
 
 # PR Review Fixes
@@ -21,6 +21,35 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 ## Goal
 
 Resolve the actionable feedback raised on PR `<pr_number>`, validate the changes, commit and push them to the PR branch, then post a `@codex` follow-up comment requesting re-review.
+
+## Admiral Judgment Policy
+
+Review comments are not accepted unconditionally. Every item must pass an Admiral-of-the-Navy judgment gate before being applied.
+
+Classify an item as **decline-with-rationale** when any of the following hold:
+
+1. **Context-blind** — The comment was written without awareness of the PR's background, intent, prior decisions, persistent memory feedback, or an in-flight staged refactor. Example: a comment demanding "remove everything at once" against code that is deliberately mid-way through staged deprecation — or the reverse.
+2. **Overfitting** — Defensive changes that exceed the PR scope, overgeneralization from a single incident, or asks whose change cost is clearly disproportionate to the value delivered. Meta-suggestions targeting prompt / doctrine / `AGENTS.md` content carry the highest overfitting risk.
+3. **No user-visible value** — Items the Admiral judges to produce no behavioral change for users or operators. Pure stylistic preference, theatrical safety, or micro-optimization fall here.
+
+**Decline is not avoidance.** Every decline must cite at least one piece of evidence:
+
+- A PR context fact the comment missed (commit message, prior decision, or memory feedback — one line).
+- A stated mismatch between the PR's intent and the comment's ask.
+- A user-stated "right-approach" principle (e.g., "removing a feature should delete all related code at once, not in fragments").
+
+**Decline ≠ silence.** When an item is recorded as declined, also do the following:
+
+- List the item, the decline reason, and the cited evidence in the final report.
+- Post a short, courteous decline note in the `## Notes` section of the `@codex` follow-up comment (example: "intentional behavior — preserved by design. reason: …").
+
+**Decline is inappropriate** (the item must be classified as fix or defer instead) when:
+
+- The comment correctly identifies a real user-visible regression, consistency break, security flaw, or potential data loss.
+- The comment aligns with the PR's stated intent (commit message, CHANGELOG, related PRD).
+- The case is ambiguous but verification confirms the concern is real — in that case follow the last rule of step 5 and escalate to the user.
+
+This policy applies to both step 5 (classification / verification) and step 8 (self-verification's decline/defer audit).
 
 ## Required Workflow
 
@@ -52,7 +81,8 @@ Resolve the actionable feedback raised on PR `<pr_number>`, validate the changes
    - Filter to the `<scope_hint>` set.
    - For every item to be addressed, verify the underlying claim against the current code and docs before editing — review comments may be stale, speculative, or based on assumptions that the repo does not actually hold (Node engines, naming conventions, dependency versions, etc.).
    - For each item, decide one of: **fix**, **decline-with-rationale**, **defer**. Record the decision and the evidence used. Do not silently skip items.
-   - When uncertainty remains after verification, ask the user before applying a fix that changes user-visible behavior.
+   - Apply the **Admiral Judgment Policy** above. Specifically: do **not** default to fix. Default to **review-then-decide**. If the item meets any decline criterion (context-blind / overfitting / no user-visible value), classify as decline and capture the cited evidence required by that policy.
+   - When uncertainty remains after verification, ask the user before applying a fix that changes user-visible behavior. Borderline cases between "valid concern" and "decline" must always escalate to the user — do not auto-resolve.
 
 6. Plan the fix scope:
    - Restrict edits to the files and lines that the verified review items demand.
@@ -112,7 +142,7 @@ Resolve the actionable feedback raised on PR `<pr_number>`, validate the changes
     - Post a follow-up comment on the PR with `@codex` mentioned. Use `<comment_template>` if provided; otherwise use the default template below. Always send via HEREDOC to preserve formatting:
       ```
       gh pr comment <pr_number> --body "$(cat <<'EOF'
-      @codex 리뷰에서 지적해 주신 사항을 반영했습니다. 재확인 부탁드립니다.
+      @codex The review feedback has been addressed. Please re-review.
 
       ## Addressed
       - <item 1 — file:line — one-line summary of the fix>
