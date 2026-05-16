@@ -36,6 +36,17 @@
     ],
     "updated": "2026-05-07T16:06:18.121Z"
   },
+  "prd-coding-agent-scoped-models-removal": {
+    "path": "wiki/prd-coding-agent-scoped-models-removal.md",
+    "title": "코딩 에이전트 /scoped-models 제거",
+    "tags": [
+      "coding-agent",
+      "scoped-models",
+      "removal",
+      "model-cycling"
+    ],
+    "updated": "2026-05-16T03:59:46.982Z"
+  },
   "prd-harness-btw-overlay": {
     "path": "wiki/prd-harness-btw-overlay.md",
     "title": "Harness /btw Ephemeral Overlay",

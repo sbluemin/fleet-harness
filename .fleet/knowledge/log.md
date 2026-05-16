@@ -772,3 +772,133 @@
 - result: `accepted`
 - target: `wiki/prd-harness-btw-overlay.md`
 
+## 2026-05-16T03:36:59.367Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `3`
+
+## 2026-05-16T03:40:00.198Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `3`
+
+## 2026-05-16T03:40:15.960Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T03-40-15-960Z-8a7424fa`
+- patch_set_id: `null`
+- proposer: `carrier:chronicle`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-model-cycling-source-a783ba41.md`
+- target: `wiki/prd-coding-agent-model-cycling.md`
+- warning_count: `0`
+
+## 2026-05-16T03:40:18.262Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `4`
+
+## 2026-05-16T03:40:36.157Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `4`
+
+## 2026-05-16T03:40:58.936Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `4`
+
+## 2026-05-16T03:41:10.568Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `4`
+
+## 2026-05-16T03:41:21.263Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `3`
+
+## 2026-05-16T03:43:07.892Z — patch rejected
+
+- patch_id: `2026-05-16T03-40-15-960Z-8a7424fa`
+- patch_set_id: `null`
+- reason: `본문 언어가 영문 — 기존 위키 엔트리(guide-001/002/003 등)는 모두 한글로 작성되어 있어 일관성 미준수. 한글 본문 + frontmatter(feature_area, lifecycle) 보강 후 재이식.`
+- result: `rejected`
+
+
+## 2026-05-16T03:43:58.111Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T03-43-58-111Z-6c513aaa`
+- patch_set_id: `null`
+- proposer: `carrier:chronicle`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-model-cycling-source-7d1d5585.md`
+- target: `wiki/prd-coding-agent-model-cycling.md`
+- warning_count: `0`
+## 2026-05-16T03:44:00.104Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `3`
+
+## 2026-05-16T03:59:00.071Z — patch rejected
+
+- patch_id: `2026-05-16T03-43-58-111Z-6c513aaa`
+- patch_set_id: `null`
+- reason: `PRD 프레임 오정렬 — 본 문서의 주제는 "/scoped-models 제거" 자체이나, Functional Requirements/Acceptance Criteria가 살아남은 사이클링 기능을 명세하고 있어 제거 요구사항 PRD로 재프레이밍 필요. 동시에 섹션 헤더 한글화, User Stories 패턴 미준수, 체크리스트 형식 누락 등 prd-harness-btw-overlay 컨벤션 미일치도 함께 보강.`
+- result: `rejected`
+
+
+## 2026-05-16T03:59:46.982Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T03-59-46-982Z-77d161d1`
+- patch_set_id: `null`
+- proposer: `carrier:chronicle`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
+- target: `wiki/prd-coding-agent-scoped-models-removal.md`
+- warning_count: `0`
+## 2026-05-16T03:59:49.016Z — drydock run
+
+- error_count: `2`
+- info_count: `1`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `3`
+
+## 2026-05-16T04:01:12.571Z — index rebuilt
+
+- entry_count: `5`
+
+## 2026-05-16T04:01:12.572Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T03-59-46-982Z-77d161d1`
+- patch_set_id: `null`
+- proposer: `carrier:chronicle`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
+- result: `accepted`
+- target: `wiki/prd-coding-agent-scoped-models-removal.md`
+

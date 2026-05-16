@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `4`
+- total_entries: `5`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -35,6 +35,15 @@
 - summary: `# fleet-wiki 사용법`
 - raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
 
+### prd-coding-agent-scoped-models-removal
+
+- title: `코딩 에이전트 /scoped-models 제거`
+- path: `wiki/prd-coding-agent-scoped-models-removal.md`
+- tags: `coding-agent, scoped-models, removal, model-cycling`
+- updated: `2026-05-16T03:59:46.982Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
+
 ### prd-harness-btw-overlay
 
 - title: `Harness /btw Ephemeral Overlay`
@@ -53,6 +62,10 @@
 ### carrier-status
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+
+### coding-agent
+
+- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
 
 ### current
 
@@ -90,6 +103,10 @@
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 
+### model-cycling
+
+- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
+
 ### model-selector
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
@@ -107,6 +124,14 @@
 ### overview
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+
+### removal
+
+- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
+
+### scoped-models
+
+- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
 
 ### workflow
 
