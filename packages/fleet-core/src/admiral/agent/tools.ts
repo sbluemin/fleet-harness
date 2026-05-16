@@ -15,9 +15,16 @@ const doctrineEntries = new Map<string, AgentToolSpec>();
 const extraTools = new Map<string, Map<string, AgentToolSpec>>();
 let defaultToolsBuilt = false;
 
-// Runtime Set that drives getExecutorMcpTools(). carrier_jobs is the fleet-core-owned default.
+interface RegisterExecutorToolOptions {
+  readonly allowedCarriers?: readonly string[];
+}
+
+// Runtime Map that drives getExecutorMcpTools(). "*" is the global executor MCP scope.
 // Domain packages (e.g. fleet-wiki) extend this at module load time via registerExecutorTool().
-const executorWhitelist = new Set<string>(["carrier_jobs"]);
+const GLOBAL_EXECUTOR_SCOPE = "*";
+const executorWhitelist = new Map<string, Set<string>>([
+  [GLOBAL_EXECUTOR_SCOPE, new Set(["carrier_jobs"])],
+]);
 
 // Superset enumeration of all possible executor tool IDs — kept for test compatibility and auditing.
 // The runtime source of truth is executorWhitelist, not this constant.
@@ -25,6 +32,9 @@ export const EXECUTOR_MCP_TOOL_IDS = [
   "carrier_jobs",
   "wiki_briefing",
   "wiki_drydock",
+  "wiki_ingest",
+  "wiki_orient",
+  "wiki_query",
   "wiki_read",
   "wiki_resolve",
 ] as const;
@@ -41,9 +51,12 @@ export function registerAgentTool(spec: AgentToolSpec): void {
   doctrineEntries.set(spec.id, spec);
 }
 
-export function registerExecutorTool(spec: AgentToolSpec): void {
+export function registerExecutorTool(spec: AgentToolSpec, opts?: RegisterExecutorToolOptions): void {
   registerAgentTool(spec);
-  executorWhitelist.add(spec.id);
+  const scopes = opts?.allowedCarriers?.length ? opts.allowedCarriers : [GLOBAL_EXECUTOR_SCOPE];
+  for (const scope of scopes) {
+    addExecutorWhitelistEntry(scope, spec.id);
+  }
 }
 
 export function getAllAgentTools(): AgentToolSpec[] {
@@ -53,10 +66,16 @@ export function getAllAgentTools(): AgentToolSpec[] {
     .filter((s): s is AgentToolSpec => s != null);
 }
 
-export function getExecutorMcpTools(): AgentToolSpec[] {
+export function getExecutorMcpTools(carrierId?: string): AgentToolSpec[] {
   ensureDefaultToolsRegistered();
   const specs: AgentToolSpec[] = [];
-  for (const id of executorWhitelist) {
+  const ids = new Set<string>(executorWhitelist.get(GLOBAL_EXECUTOR_SCOPE));
+  if (carrierId) {
+    for (const id of executorWhitelist.get(carrierId) ?? []) {
+      ids.add(id);
+    }
+  }
+  for (const id of ids) {
     const spec = doctrineEntries.get(id);
     if (spec) specs.push(spec);
   }
@@ -165,7 +184,7 @@ export function clearAllDefaultTools(): void {
   doctrineEntries.clear();
   defaultToolsBuilt = false;
   executorWhitelist.clear();
-  executorWhitelist.add("carrier_jobs");
+  executorWhitelist.set(GLOBAL_EXECUTOR_SCOPE, new Set(["carrier_jobs"]));
 }
 
 export function clearAllExtraTools(): void {
@@ -182,6 +201,12 @@ function findExtraTool(name: string): AgentToolSpec | undefined {
     if (spec) return spec;
   }
   return undefined;
+}
+
+function addExecutorWhitelistEntry(scope: string, toolId: string): void {
+  const scoped = executorWhitelist.get(scope) ?? new Set<string>();
+  scoped.add(toolId);
+  executorWhitelist.set(scope, scoped);
 }
 
 function ensureDefaultToolsRegistered(): void {

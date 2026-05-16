@@ -683,3 +683,92 @@
 - result: `accepted`
 - target: `wiki/guide-003-fleet-wiki.md`
 
+## 2026-05-16T02:16:50.341Z — raw source added
+
+- id: `prd-harness-btw-overlay-source`
+- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-c8dc2003.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `BTW Overlay 정찰 + 모델 선택기 보강 검증 노트`
+
+## 2026-05-16T02:16:50.348Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T02-16-50-338Z-dbb0afb6`
+- patch_set_id: `null`
+- proposer: `tool:admiral`
+- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-c8dc2003.md`
+- target: `wiki/prd-harness-btw-overlay.md`
+- warning_count: `0`
+
+## 2026-05-16T02:16:59.377Z — drydock run
+
+- error_count: `2`
+- info_count: `0`
+- issue_count: `5`
+- ok: `false`
+- warning_count: `3`
+
+## 2026-05-16T03:02:54.555Z — patch rejected
+
+- patch_id: `2026-05-16T02-16-50-338Z-dbb0afb6`
+- patch_set_id: `null`
+- reason: `v3 doctrine 정착 후 새 워크플로우(chronicle 재출격)로 재이식하기 위한 절차상 reject. 본문 품질에 문제 없음.`
+- result: `rejected`
+
+## 2026-05-16T03:03:31.683Z — drydock run
+
+- error_count: `2`
+- info_count: `0`
+- issue_count: `2`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T03:03:47.228Z — raw source added
+
+- id: `prd-harness-btw-overlay-source`
+- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-3dbd5b5c.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `BTW Overlay 정찰 + 모델 선택기 보강 검증 노트`
+
+## 2026-05-16T03:03:47.230Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T03-03-47-224Z-a7493578`
+- patch_set_id: `null`
+- proposer: `carrier:chronicle`
+- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-3dbd5b5c.md`
+- target: `wiki/prd-harness-btw-overlay.md`
+- warning_count: `0`
+
+## 2026-05-16T03:03:47.241Z — drydock run
+
+- error_count: `2`
+- info_count: `0`
+- issue_count: `2`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T03:04:20.155Z — drydock run
+
+- error_count: `2`
+- info_count: `0`
+- issue_count: `2`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T03:08:02.373Z — index rebuilt
+
+- entry_count: `4`
+
+## 2026-05-16T03:08:02.374Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T03-03-47-224Z-a7493578`
+- patch_set_id: `null`
+- proposer: `carrier:chronicle`
+- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-3dbd5b5c.md`
+- result: `accepted`
+- target: `wiki/prd-harness-btw-overlay.md`
+

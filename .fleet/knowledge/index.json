@@ -35,5 +35,17 @@
       "current"
     ],
     "updated": "2026-05-07T16:06:18.121Z"
+  },
+  "prd-harness-btw-overlay": {
+    "path": "wiki/prd-harness-btw-overlay.md",
+    "title": "Harness /btw Ephemeral Overlay",
+    "tags": [
+      "harness",
+      "btw",
+      "overlay",
+      "ephemeral",
+      "model-selector"
+    ],
+    "updated": "2026-05-16T03:03:47.224Z"
   }
 }

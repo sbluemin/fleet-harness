@@ -287,6 +287,7 @@ async function runSquadronInstance(
     );
     const result = await executeOneShot({
       poolKey: syntheticId,
+      carrierId: opts.carrierId,
       cliType: opts.cliType,
       request,
       cwd: opts.cwd,

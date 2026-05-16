@@ -56,6 +56,8 @@ const STATUS_LABELS: Record<string, string> = {
   err: "error",
   aborted: "aborted",
 };
+const DROPDOWN_VIEWPORT_ROWS = 7;
+const DROPDOWN_INDICATOR_ROWS = 1;
 // 프레임 고정 라인 수: topBorder + title + separator + input + selection + separator + bottomBorder
 const FIXED_FRAME_LINES = 7;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -88,6 +90,8 @@ export class BtwOverlay implements Component, Focusable {
   private pendingProviderIndex = 0;
   private pendingModelIndex = 0;
   private pendingEffortIndex = 0;
+  private pendingQuery = "";
+  private pendingViewportStart = 0;
 
   private running = false;
   private spinnerIndex = 0;
@@ -113,7 +117,14 @@ export class BtwOverlay implements Component, Focusable {
   handleInput(data: string): void {
     if (matchesKey(data, Key.escape)) {
       if (this.isDropdownOpen) {
-        this.cancelDropdown();
+        if (this.pendingQuery.length > 0) {
+          this.pendingQuery = "";
+          this.pendingViewportStart = 0;
+          this.syncPendingSelectionWithMatches(false);
+          this.requestRender();
+        } else {
+          this.cancelDropdown();
+        }
       } else {
         this.close();
       }
@@ -150,6 +161,34 @@ export class BtwOverlay implements Component, Focusable {
       return;
     }
 
+    if (matchesKey(data, Key.pageUp)) {
+      if (this.isDropdownOpen) {
+        this.jumpPendingModel(-DROPDOWN_VIEWPORT_ROWS);
+      }
+      return;
+    }
+
+    if (matchesKey(data, Key.pageDown)) {
+      if (this.isDropdownOpen) {
+        this.jumpPendingModel(DROPDOWN_VIEWPORT_ROWS);
+      }
+      return;
+    }
+
+    if (matchesKey(data, Key.home)) {
+      if (this.isDropdownOpen) {
+        this.jumpPendingModel("start");
+      }
+      return;
+    }
+
+    if (matchesKey(data, Key.end)) {
+      if (this.isDropdownOpen) {
+        this.jumpPendingModel("end");
+      }
+      return;
+    }
+
     if (matchesKey(data, Key.left)) {
       if (this.isDropdownOpen) {
         this.movePendingEffort(-1);
@@ -165,6 +204,15 @@ export class BtwOverlay implements Component, Focusable {
     }
 
     if (matchesKey(data, Key.backspace) || data === "\x7f") {
+      if (this.isDropdownOpen) {
+        if (this.pendingQuery.length > 0) {
+          this.pendingQuery = this.pendingQuery.slice(0, -1);
+          this.pendingViewportStart = 0;
+          this.syncPendingSelectionWithMatches(false);
+          this.requestRender();
+        }
+        return;
+      }
       if (this.running || this.isDropdownOpen) return;
       this.draft = this.draft.slice(0, -1);
       this.errorMessage = null;
@@ -175,6 +223,14 @@ export class BtwOverlay implements Component, Focusable {
     if (!this.running && !this.isDropdownOpen && isPrintableTextInput(data)) {
       this.draft += data;
       this.errorMessage = null;
+      this.requestRender();
+      return;
+    }
+
+    if (this.isDropdownOpen && isPrintableTextInput(data)) {
+      this.pendingQuery += data;
+      this.pendingViewportStart = 0;
+      this.syncPendingSelectionWithMatches(true);
       this.requestRender();
     }
   }
@@ -192,7 +248,7 @@ export class BtwOverlay implements Component, Focusable {
     lines.push(frame.topBorder);
 
     if (this.isDropdownOpen) {
-      lines.push(frame.row(`${accent("/btw")} ${dim("↑↓ 탐색 · Enter 확정 · Esc 취소 · ←→ 추론 강도")}`));
+      lines.push(frame.row(`${accent("/btw")} ${dim("타이핑 검색 · Backspace 지움 · ↑↓/PgUp/PgDn/Home/End 탐색 · Enter 확정 · Esc 취소 · ←→ 추론 강도")}`));
     } else {
       lines.push(frame.row(`${accent("/btw")} ${dim("Ctrl+L 모델 선택 · Enter 전송 · Esc 닫기")}`));
     }
@@ -235,7 +291,7 @@ export class BtwOverlay implements Component, Focusable {
 
     // 터미널 높이에서 고정 라인 + 드롭다운 + 도구 호출을 제외한 나머지를 출력 영역으로 할당
     const terminalRows = this.tui.terminal.rows;
-    const dropdownLines = this.isDropdownOpen ? Math.min(this.buildSelectionOptions().length, 8) : 0;
+    const dropdownLines = this.isDropdownOpen ? this.getDropdownLineCount() : 0;
     const usedLines = FIXED_FRAME_LINES + dropdownLines + this.toolCalls.length + (this.errorMessage ? 1 : 0);
     const maxOutputLines = Math.max(3, terminalRows - usedLines);
 
@@ -376,20 +432,35 @@ export class BtwOverlay implements Component, Focusable {
     this.pendingProviderIndex = this.providerIndex;
     this.pendingModelIndex = this.modelIndex;
     this.pendingEffortIndex = this.effortIndex;
+    this.pendingQuery = "";
+    this.pendingViewportStart = 0;
+    this.syncPendingViewport();
     this.isDropdownOpen = true;
     this.requestRender();
   }
 
   private confirmDropdown(): void {
+    if (this.buildSelectionOptions().length === 0) {
+      this.isDropdownOpen = false;
+      this.pendingQuery = "";
+      this.pendingViewportStart = 0;
+      this.requestRender();
+      return;
+    }
+
     this.providerIndex = this.pendingProviderIndex;
     this.modelIndex = this.pendingModelIndex;
     this.effortIndex = this.pendingEffortIndex;
     this.isDropdownOpen = false;
+    this.pendingQuery = "";
+    this.pendingViewportStart = 0;
     this.requestRender();
   }
 
   private cancelDropdown(): void {
     this.isDropdownOpen = false;
+    this.pendingQuery = "";
+    this.pendingViewportStart = 0;
     this.requestRender();
   }
 
@@ -397,14 +468,35 @@ export class BtwOverlay implements Component, Focusable {
     const options = this.buildSelectionOptions();
     if (options.length === 0) return;
 
-    const currentIndex = options.findIndex(
-      (option) => option.providerIndex === this.pendingProviderIndex && option.modelIndex === this.pendingModelIndex,
-    );
-    const nextOption = options[wrapIndex((currentIndex < 0 ? 0 : currentIndex) + delta, options.length)]!;
+    const currentIndex = this.findPendingOptionIndex(options);
+    const nextIndex = wrapIndex((currentIndex < 0 ? 0 : currentIndex) + delta, options.length);
+    const nextOption = options[nextIndex]!;
 
     this.pendingProviderIndex = nextOption.providerIndex;
     this.pendingModelIndex = nextOption.modelIndex;
     this.pendingEffortIndex = 0;
+    if (currentIndex === options.length - 1 && nextIndex === 0) {
+      this.pendingViewportStart = 0;
+    } else {
+      this.syncPendingViewport(nextIndex, options.length);
+    }
+    this.requestRender();
+  }
+
+  private jumpPendingModel(target: number | "start" | "end"): void {
+    const options = this.buildSelectionOptions();
+    if (options.length === 0) return;
+
+    const currentIndex = Math.max(0, this.findPendingOptionIndex(options));
+    const nextIndex = target === "start" ? 0
+      : target === "end" ? options.length - 1
+        : clamp(currentIndex + target, 0, options.length - 1);
+    const nextOption = options[nextIndex]!;
+
+    this.pendingProviderIndex = nextOption.providerIndex;
+    this.pendingModelIndex = nextOption.modelIndex;
+    this.pendingEffortIndex = 0;
+    this.syncPendingViewport(nextIndex, options.length);
     this.requestRender();
   }
 
@@ -443,9 +535,21 @@ export class BtwOverlay implements Component, Focusable {
 
   private buildDropdownRows(): string[] {
     const dim = (s: string) => this.theme.fg("dim", s);
+    const query = this.pendingQuery.length > 0 ? this.pendingQuery : dim("검색…");
     const options = this.buildSelectionOptions();
+    const selectedIndex = Math.max(0, this.findPendingOptionIndex(options));
+    this.syncPendingViewport(selectedIndex, options.length);
+    const start = this.pendingViewportStart;
+    const visibleOptions = options.slice(start, start + DROPDOWN_VIEWPORT_ROWS);
 
-    return options.slice(0, 8).map((option) => {
+    const rows = [`  🔎 ${query}${this.pendingQuery.length > 0 ? "▌" : ""}`];
+
+    if (options.length === 0) {
+      rows.push(dim("  (no matches)"));
+      return rows;
+    }
+
+    rows.push(...visibleOptions.map((option) => {
       const isPending =
         option.providerIndex === this.pendingProviderIndex &&
         option.modelIndex === this.pendingModelIndex;
@@ -461,7 +565,21 @@ export class BtwOverlay implements Component, Focusable {
 
       const row = `  ${marker} ${option.provider.displayName} · ${option.model.name} ${dim(option.model.id)}${effortLabel}`;
       return isPending ? this.theme.bg("toolPendingBg", this.truncateToWidth(row, 80)) : this.truncateToWidth(row, 80);
-    });
+    }));
+
+    if (options.length > DROPDOWN_VIEWPORT_ROWS) {
+      const hasAbove = start > 0;
+      const hasBelow = start + DROPDOWN_VIEWPORT_ROWS < options.length;
+      const icon = hasAbove && hasBelow ? "↕" : hasAbove ? "↑" : "↓";
+      rows.push(dim(`  ${icon} (${selectedIndex + 1}/${options.length})`));
+    }
+
+    return rows;
+  }
+
+  private getDropdownLineCount(): number {
+    const optionCount = this.buildSelectionOptions().length;
+    return 1 + (optionCount === 0 ? 1 : Math.min(optionCount, DROPDOWN_VIEWPORT_ROWS) + (optionCount > DROPDOWN_VIEWPORT_ROWS ? DROPDOWN_INDICATOR_ROWS : 0));
   }
 
   private buildOutputLines(innerWidth: number, maxLines: number): string[] {
@@ -503,7 +621,8 @@ export class BtwOverlay implements Component, Focusable {
   }
 
   private buildSelectionOptions(): BtwSelectionOption[] {
-    return this.providers.flatMap((provider, providerIndex) =>
+    const query = this.pendingQuery.toLowerCase();
+    const options = this.providers.flatMap((provider, providerIndex) =>
       admiral.agent.models.getCliModels(provider.cli).map((model, modelIndex) => ({
         providerIndex,
         modelIndex,
@@ -511,6 +630,50 @@ export class BtwOverlay implements Component, Focusable {
         model,
       })),
     );
+    if (query.length === 0) return options;
+
+    return options.filter((option) =>
+      option.provider.displayName.toLowerCase().includes(query) ||
+      option.model.name.toLowerCase().includes(query) ||
+      option.model.id.toLowerCase().includes(query),
+    );
+  }
+
+  private syncPendingSelectionWithMatches(resetToFirst: boolean): void {
+    const options = this.buildSelectionOptions();
+    const firstOption = options[0];
+    if (!firstOption) return;
+
+    const currentIndex = this.findPendingOptionIndex(options);
+    if (resetToFirst || currentIndex < 0) {
+      this.pendingProviderIndex = firstOption.providerIndex;
+      this.pendingModelIndex = firstOption.modelIndex;
+      this.pendingEffortIndex = 0;
+      return;
+    }
+
+    this.syncPendingViewport(currentIndex, options.length);
+  }
+
+  private findPendingOptionIndex(options: BtwSelectionOption[]): number {
+    return options.findIndex(
+      (option) => option.providerIndex === this.pendingProviderIndex && option.modelIndex === this.pendingModelIndex,
+    );
+  }
+
+  private syncPendingViewport(selectedIndex?: number, optionCount?: number): void {
+    const options = optionCount === undefined ? this.buildSelectionOptions() : [];
+    const count = optionCount ?? options.length;
+    const selected = selectedIndex ?? this.findPendingOptionIndex(options);
+
+    if (count <= DROPDOWN_VIEWPORT_ROWS || selected < 0) {
+      this.pendingViewportStart = 0;
+    } else if (selected < this.pendingViewportStart) {
+      this.pendingViewportStart = selected;
+    } else if (selected >= this.pendingViewportStart + DROPDOWN_VIEWPORT_ROWS) {
+      this.pendingViewportStart = selected - DROPDOWN_VIEWPORT_ROWS + 1;
+    }
+    this.pendingViewportStart = clamp(this.pendingViewportStart, 0, Math.max(0, count - DROPDOWN_VIEWPORT_ROWS));
   }
 
   private resolveCwd(): string {
@@ -569,6 +732,10 @@ function resolveEditorCardWidth(width: number): number {
 
 function wrapIndex(index: number, length: number): number {
   return ((index % length) + length) % length;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function truncateToWidth(content: string, width: number): string {

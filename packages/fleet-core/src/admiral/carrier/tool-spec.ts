@@ -324,6 +324,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   try {
     const execResult = await executeWithPool({
       poolKey: opts.carrierId,
+      carrierId: opts.carrierId,
       cliType,
       request: opts.request,
       cwd: opts.cwd,

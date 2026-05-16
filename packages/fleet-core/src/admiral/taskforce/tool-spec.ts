@@ -299,6 +299,7 @@ async function runTaskForceBackend(
   try {
     const result = await executeOneShot({
       poolKey: syntheticId,
+      carrierId,
       cliType: cliType as CliType,
       request,
       cwd,

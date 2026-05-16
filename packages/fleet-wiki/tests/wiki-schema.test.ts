@@ -5,9 +5,12 @@ import path from "node:path";
 
 import { ensureMemoryRoot, resolveMemoryPaths } from "../src/paths.js";
 import {
+  DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS,
   REQUIRED_WORKSPACE_SCHEMA_SECTIONS,
+  WORKSPACE_KNOWLEDGE_AGENTS_FILENAME,
   WORKSPACE_SCHEMA_AGENTS_FILENAME,
   WORKSPACE_SCHEMA_FILENAME,
+  ensureWorkspaceDoctrine,
   ensureWorkspaceSchema,
   readWorkspaceSchemaSummary,
 } from "../src/schema.js";
@@ -26,8 +29,19 @@ describe("workspace schema", () => {
 
     await ensureMemoryRoot(paths);
 
+    expect(await pathExists(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME))).toBe(true);
     expect(await pathExists(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME))).toBe(true);
     expect(await pathExists(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME))).toBe(true);
+  });
+
+  it("creates the workspace doctrine AGENTS.md seed byte-for-byte", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await ensureWorkspaceDoctrine(paths);
+    const doctrine = await readFile(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME), "utf8");
+
+    expect(doctrine).toBe(DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS);
   });
 
   it("is idempotent across repeated ensureWorkspaceSchema calls", async () => {
@@ -46,6 +60,19 @@ describe("workspace schema", () => {
     expect(secondWikiSchema).toBe(firstWikiSchema);
   });
 
+  it("is idempotent across repeated ensureWorkspaceDoctrine calls", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await ensureWorkspaceDoctrine(paths);
+    const firstDoctrine = await readFile(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME), "utf8");
+
+    await ensureWorkspaceDoctrine(paths);
+    const secondDoctrine = await readFile(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME), "utf8");
+
+    expect(secondDoctrine).toBe(firstDoctrine);
+  });
+
   it("preserves user edits when ensureWorkspaceSchema runs again", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
@@ -59,6 +86,21 @@ describe("workspace schema", () => {
 
     expect(preserved).toContain("custom content");
     expect(preserved.startsWith("# User Schema")).toBe(true);
+  });
+
+  it("preserves user edits when ensureWorkspaceDoctrine runs again", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await ensureWorkspaceDoctrine(paths);
+    const doctrinePath = path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME);
+    await writeFile(doctrinePath, "# User Doctrine\n\ncustom doctrine\n", "utf8");
+
+    await ensureWorkspaceDoctrine(paths);
+    const preserved = await readFile(doctrinePath, "utf8");
+
+    expect(preserved).toContain("custom doctrine");
+    expect(preserved.startsWith("# User Doctrine")).toBe(true);
   });
 
   it("returns a complete summary for the default workspace schema", async () => {

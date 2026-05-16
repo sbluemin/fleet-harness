@@ -40,6 +40,7 @@ import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 
 export interface ExecuteOptions {
   poolKey: string;
+  carrierId?: string;
   cliType: CliType;
   request: string;
   cwd: string;
@@ -108,7 +109,7 @@ const launchConfigs = new Map<string, LaunchConfig>();
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
-  const { poolKey, cliType, request, cwd, signal } = opts;
+  const { poolKey, carrierId, cliType, request, cwd, signal } = opts;
   const store = getCarrierSessionStore();
 
   let responseText = "";
@@ -278,7 +279,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     }
 
     if (needsConnect) {
-      const mcpSetup = await setupExecutorMcp(cwd, signal);
+      const mcpSetup = await setupExecutorMcp(cwd, signal, carrierId);
       if (mcpSetup) activeMcpToken = mcpSetup.token;
       const model = resolveModel(poolKey, cliType, opts.model);
       const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
@@ -337,7 +338,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         }
         attachListeners();
 
-        const retryMcpSetup = await setupExecutorMcp(cwd, signal);
+        const retryMcpSetup = await setupExecutorMcp(cwd, signal, carrierId);
         if (retryMcpSetup) {
           activeMcpToken = retryMcpSetup.token;
           connectOpts.mcpServers = retryMcpSetup.mcpServers;
@@ -437,7 +438,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 }
 
 export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecResult> {
-  const { poolKey, cliType, request, cwd, signal } = opts;
+  const { poolKey, carrierId, cliType, request, cwd, signal } = opts;
 
   let responseText = "";
   let thoughtText = "";
@@ -468,7 +469,7 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
 
     if (signal) signal.addEventListener("abort", onAbort, { once: true });
 
-    const mcpSetup = await setupExecutorMcp(cwd, signal);
+    const mcpSetup = await setupExecutorMcp(cwd, signal, carrierId);
     if (mcpSetup) activeMcpToken = mcpSetup.token;
     const model = resolveModel(poolKey, cliType, opts.model);
     const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
@@ -842,9 +843,10 @@ function toolKindLabel(kind: string): string {
 async function setupExecutorMcp(
   cwd: string,
   signal?: AbortSignal,
+  carrierId?: string,
 ): Promise<{ token: string; mcpServers: McpServerConfig[] } | null> {
   if (signal?.aborted) return null;
-  const specs = getExecutorMcpTools();
+  const specs = getExecutorMcpTools(carrierId);
   if (specs.length === 0) return null;
   try {
     const { startMcpServer } = await import("../../_shared/mcp.js");
