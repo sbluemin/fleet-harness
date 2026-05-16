@@ -13,7 +13,7 @@ import {
   SCHEMA_DIRNAME,
   WIKI_DIRNAME,
 } from "./constants.js";
-import { ensureWorkspaceSchema } from "./schema.js";
+import { ensureWorkspaceDoctrine, ensureWorkspaceSchema } from "./schema.js";
 import type { MemoryPaths } from "./types.js";
 
 export function resolveMemoryPaths(cwd: string): MemoryPaths {
@@ -39,6 +39,7 @@ export async function ensureMemoryRoot(paths: MemoryPaths): Promise<void> {
   await mkdir(paths.archiveDir, { recursive: true });
   await mkdir(paths.conflictsDir, { recursive: true });
   await ensureWorkspaceSchema(paths);
+  await ensureWorkspaceDoctrine(paths);
 }
 
 export function getIndexMarkdownFile(paths: MemoryPaths): string {
