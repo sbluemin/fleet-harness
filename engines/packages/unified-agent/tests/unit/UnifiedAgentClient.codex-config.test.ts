@@ -136,13 +136,13 @@ describe('UnifiedCodexAgentClient config staging', () => {
       cwd: '/workspace',
       cli: 'codex',
       configOverrides: [
-        'mcp_servers.pi-tools.url="http://127.0.0.1:54300"',
+        'mcp_servers.fleet-tools.url="http://127.0.0.1:54300"',
         'model="gpt-5.4"',
       ],
     });
 
     expect(CodexAppServerConnection).toHaveBeenCalledWith(expect.objectContaining({
-      mcpServerNames: ['pi-tools'],
+      mcpServerNames: ['fleet-tools'],
     }));
   });
 

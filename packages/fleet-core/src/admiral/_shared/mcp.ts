@@ -354,7 +354,7 @@ async function processJsonRpc(
       return makeResult(id, {
         protocolVersion: "2025-03-26",
         capabilities: { tools: {} },
-        serverInfo: { name: "pi-tools", version: "1.0.0" },
+        serverInfo: { name: "fleet-tools", version: "1.0.0" },
       });
 
     case "notifications/initialized":

@@ -857,7 +857,7 @@ async function setupExecutorMcp(
       type: "http",
       url: mcpUrl,
       headers: [{ name: "Authorization", value: `Bearer ${token}` }],
-      name: "pi-tools",
+      name: "fleet-tools",
       toolTimeout: 1800,
     }];
     return { token, mcpServers };

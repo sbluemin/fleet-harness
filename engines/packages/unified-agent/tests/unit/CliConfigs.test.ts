@@ -53,7 +53,7 @@ describe('CliConfigs', () => {
     it('Codex configOverrides가 있어도 spawn 인자는 native app-server를 유지한다', () => {
       const config = createSpawnConfig('codex', {
         cwd: '/tmp/workspace',
-        configOverrides: ['mcp_servers.pi-tools.tool_timeout_sec=1800'],
+        configOverrides: ['mcp_servers.fleet-tools.tool_timeout_sec=1800'],
       });
 
       expect(config.command).toBe('codex');
