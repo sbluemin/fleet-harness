@@ -106,6 +106,8 @@ export interface ConnectionOptions {
   };
   /** 모델 지정 */
   model?: string;
+  /** spawn 시 모델 ID 조립에 필요한 reasoning effort */
+  effort?: string;
   /** CLI 설정 오버라이드 — Codex `-c key=value` 형태로 전달 */
   configOverrides?: string[];
 }
@@ -128,8 +130,6 @@ export interface CliDetectionResult {
 export interface UnifiedClientOptions extends ConnectionOptions {
   /** CLI 선택 (미지정 시 자동 감지) */
   cli?: CliType;
-  /** Claude 구현에서만 session/new 또는 session/load의 `_meta`로 전달되는 effort */
-  effort?: string;
   /** 자동 권한 승인 */
   autoApprove?: boolean;
   /** Claude 계열에서만 의미한다. true이면 자식 Claude Code 프로세스에

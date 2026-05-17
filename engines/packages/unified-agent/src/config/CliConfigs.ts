@@ -12,6 +12,7 @@ import type {
 } from '../types/config.js';
 import { resolveNpxPath, buildNpxArgs } from '../utils/npx.js';
 import { cleanEnvironment } from '../utils/env.js';
+import { resolveCursorSpawnModel } from '../models/ModelRegistry.js';
 
 /** ACP 기본 인자 */
 const DEFAULT_ACP_ARGS = ['--acp'];
@@ -154,7 +155,7 @@ export const CLI_BACKENDS = {
     ],
     supportsSessionClose: false,
     supportsSessionLoad: true,
-    requiresModelAtSpawn: false,
+    requiresModelAtSpawn: true,
     usesNpxBridge: false,
     defaultMaxTokens: 200_000,
     colorRgb: [0, 122, 204],
@@ -207,7 +208,7 @@ export function createSpawnConfig(
     };
   }
 
-  // CLI를 직접 spawn하는 경우 (Gemini, OpenCode 계열)
+  // CLI를 직접 spawn하는 경우 (Gemini, Cursor, OpenCode 계열)
   const command = options.cliPath ?? backend.cliCommand;
   const args = backend.acpArgs ? [...backend.acpArgs] : [];
 
@@ -219,6 +220,11 @@ export function createSpawnConfig(
   if (cli === 'gemini' && options.model) {
     // Gemini ACP는 세션 시작 후 모델 변경 지원이 제한적이어서 spawn 시점에 모델을 넘깁니다.
     args.push('--model', options.model);
+  }
+
+  if (cli === 'cursor' && options.model) {
+    // Cursor global option은 acp subcommand 앞에 와야 하므로 기존 acp 인자 앞에 삽입합니다.
+    args.unshift('--model', resolveCursorSpawnModel(options.model, options.effort));
   }
 
   return {
