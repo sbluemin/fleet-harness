@@ -1121,3 +1121,67 @@
 - result: `accepted`
 - target: `wiki/prd-coding-agent-empty-session-guard.md`
 
+## 2026-05-17T06:10:31.942Z — raw source added
+
+- id: `mermaid-test-suite-source`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-03fecba3.md`
+- source_type: `inline`
+- tag_count: `2`
+- title: `Mermaid Rendering Test Suite`
+
+## 2026-05-17T06:10:31.945Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-17T06-10-31-919Z-2c1a79c7`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-03fecba3.md`
+- target: `wiki/mermaid-test-suite.md`
+- warning_count: `0`
+
+## 2026-05-17T11:31:46.019Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-17T11:31:46.022Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-17T06-10-31-919Z-2c1a79c7`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-03fecba3.md`
+- result: `accepted`
+- target: `wiki/mermaid-test-suite.md`
+
+## 2026-05-17T12:03:19.200Z — raw source added
+
+- id: `mermaid-test-suite-source`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-bba4e643.md`
+- source_type: `inline`
+- tag_count: `2`
+- title: `2026-05-17-mermaid-test-suite-source-03fecba3.md`
+
+## 2026-05-17T12:03:19.209Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-17T12-03-19-194Z-b902bb85`
+- patch_set_id: `null`
+- proposer: `Captain`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-bba4e643.md`
+- target: `wiki/mermaid-test-suite.md`
+- warning_count: `0`
+
+## 2026-05-17T14:21:17.576Z — index rebuilt
+
+- entry_count: `8`
+
+## 2026-05-17T14:21:17.580Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-17T12-03-19-194Z-b902bb85`
+- patch_set_id: `null`
+- proposer: `Captain`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-bba4e643.md`
+- result: `accepted`
+- target: `wiki/mermaid-test-suite.md`
+

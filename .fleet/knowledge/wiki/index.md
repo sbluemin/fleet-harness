@@ -35,6 +35,15 @@
 - summary: `# fleet-wiki 사용법`
 - raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
 
+### mermaid-test-suite
+
+- title: `Mermaid Rendering Test Suite`
+- path: `wiki/mermaid-test-suite.md`
+- tags: `test, mermaid`
+- updated: `2026-05-17T12:03:19.194Z`
+- summary: `# Mermaid Rendering Test Suite`
+- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-bba4e643.md`
+
 ### prd-carrier-persona-extraction
 
 - title: `캐리어 페르소나 외부화 및 선언적 도구 스코핑`
@@ -147,6 +156,10 @@
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 
+### mermaid
+
+- [[wiki:mermaid-test-suite]] — Mermaid Rendering Test Suite
+
 ### model-cycling
 
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
@@ -206,6 +219,10 @@
 ### slash-command
 
 - [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
+
+### test
+
+- [[wiki:mermaid-test-suite]] — Mermaid Rendering Test Suite
 
 ### tool-scoping
 
