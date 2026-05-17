@@ -36,6 +36,8 @@ export const ModelEntrySchema = z.object({
   name: z.string(),
   /** 모델 설명 (선택) */
   description: z.string().optional(),
+  /** spawn 시 실제 CLI 모델 ID를 조립해야 하는 경우의 템플릿 */
+  spawnModelTemplate: z.string().optional(),
   /** 모델별 effort 설정 */
   effort: EffortSchema,
 }).check((ctx) => {
@@ -46,6 +48,14 @@ export const ModelEntrySchema = z.object({
       input: effort.default,
       message: `effort.default "${effort.default}"은(는) levels 목록에 존재해야 합니다`,
       path: ['effort', 'default'],
+    });
+  }
+  if (effort.supported && ctx.value.spawnModelTemplate && !ctx.value.spawnModelTemplate.includes('{effort}')) {
+    ctx.issues.push({
+      code: 'custom',
+      input: ctx.value.spawnModelTemplate,
+      message: 'effort 지원 모델의 spawnModelTemplate은 "{effort}" 플레이스홀더를 포함해야 합니다',
+      path: ['spawnModelTemplate'],
     });
   }
 });

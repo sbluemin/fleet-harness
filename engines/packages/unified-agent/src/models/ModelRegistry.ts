@@ -64,6 +64,57 @@ export function getEffort(cli: CliType, modelId: string): Effort {
 }
 
 /**
+ * Cursor 모델의 spawn-time effort 적용 가능 여부를 반환합니다.
+ *
+ * @param modelId - 카탈로그 모델 ID
+ * @returns spawn template과 effort 지원 정보
+ */
+export function getCursorSpawnEffortInfo(modelId: string): {
+  supported: boolean;
+  levels: string[];
+  default: string | null;
+} {
+  const model = findProviderModel('cursor', modelId);
+  if (!model.spawnModelTemplate || !model.effort.supported) {
+    return { supported: false, levels: [], default: null };
+  }
+
+  return {
+    supported: true,
+    levels: [...model.effort.levels],
+    default: model.effort.default,
+  };
+}
+
+/**
+ * Cursor 모델을 cursor-agent CLI에 전달할 실제 모델 ID로 변환합니다.
+ *
+ * @param modelId - 카탈로그 모델 ID
+ * @param effort - 요청된 effort (없으면 모델 기본값)
+ * @returns cursor-agent CLI 모델 ID
+ */
+export function resolveCursorSpawnModel(modelId: string, effort?: string): string {
+  const model = findProviderModel('cursor', modelId);
+  if (!model.spawnModelTemplate) {
+    return model.modelId;
+  }
+
+  if (!model.effort.supported) {
+    return model.spawnModelTemplate;
+  }
+
+  const level = effort ?? model.effort.default;
+  const resolvedLevel = model.effort.levels.includes(level) ? level : model.effort.default;
+  if (!model.effort.levels.includes(resolvedLevel)) {
+    throw new Error(
+      `cursor/${modelId} 모델은 effort "${level}"을(를) 지원하지 않습니다. 사용 가능: ${model.effort.levels.join(', ')}`,
+    );
+  }
+
+  return model.spawnModelTemplate.replace('{effort}', resolvedLevel);
+}
+
+/**
  * 특정 CLI/모델의 effort 레벨 목록을 반환합니다.
  *
  * @param cli - CLI 타입

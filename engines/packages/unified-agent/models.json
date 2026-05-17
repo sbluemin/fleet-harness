@@ -73,15 +73,13 @@
     },
     "cursor": {
       "name": "Cursor Agent",
-      "defaultModel": "default[]",
+      "defaultModel": "auto",
       "models": [
-        { "modelId": "default[]", "name": "Auto", "effort": { "supported": false } },
-        { "modelId": "composer-2[fast=true]", "name": "Composer 2 (fast)", "effort": { "supported": false } },
-        { "modelId": "gemini-3.1-pro[]", "name": "Gemini 3.1 Pro", "effort": { "supported": false } },
-        { "modelId": "gemini-3-flash[]", "name": "Gemini 3 Flash", "effort": { "supported": false } },
-        { "modelId": "claude-opus-4-7[context=1m]", "name": "Claude Opus 4.7 (1M)", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-sonnet-4-6[context=1m]", "name": "Claude Sonnet 4.6 (1M)", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
-        { "modelId": "gpt-5.5[context=1m,fast=false]", "name": "GPT-5.5 (1M)", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "xhigh" } }
+        { "modelId": "auto", "name": "Auto", "effort": { "supported": false } },
+        { "modelId": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "effort": { "supported": false } },
+        { "modelId": "gemini-3-flash", "name": "Gemini 3 Flash", "effort": { "supported": false } },
+        { "modelId": "claude-opus-4-7-thinking", "name": "Claude Opus 4.7 Thinking", "spawnModelTemplate": "claude-opus-4-7-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
+        { "modelId": "claude-4.6-sonnet-medium-thinking", "name": "Claude Sonnet 4.6 Medium Thinking", "effort": { "supported": false } }
       ]
     }
   }

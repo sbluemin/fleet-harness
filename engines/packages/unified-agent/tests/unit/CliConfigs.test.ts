@@ -59,6 +59,29 @@ describe('CliConfigs', () => {
       expect(config.command).toBe('codex');
       expect(config.args).toEqual(['app-server', '--listen', 'stdio://']);
     });
+
+    it('Cursor 모델은 acp subcommand 앞의 global --model 인자로 전달한다', () => {
+      const config = createSpawnConfig('cursor', {
+        cwd: '/tmp/workspace',
+        model: 'claude-4.6-sonnet-medium-thinking',
+      });
+
+      expect(config.command).toBe('cursor-agent');
+      expect(config.args).toEqual(['--model', 'claude-4.6-sonnet-medium-thinking', 'acp']);
+      expect(config.useNpx).toBe(false);
+    });
+
+    it('Cursor Opus thinking 모델은 effort를 반영한 CLI 모델 ID로 spawn한다', () => {
+      const config = createSpawnConfig('cursor', {
+        cwd: '/tmp/workspace',
+        model: 'claude-opus-4-7-thinking',
+        effort: 'high',
+      });
+
+      expect(config.command).toBe('cursor-agent');
+      expect(config.args).toEqual(['--model', 'claude-opus-4-7-thinking-high', 'acp']);
+      expect(config.useNpx).toBe(false);
+    });
   });
 
   describe('getYoloModeId', () => {
