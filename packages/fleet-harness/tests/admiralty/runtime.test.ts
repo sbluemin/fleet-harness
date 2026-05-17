@@ -452,6 +452,44 @@ describe("Fleet runtime bucket", () => {
     shutdownFleetRuntime("fleet-a");
   });
 
+  it("re-registers fleet when bound session ID changes after successful initial register", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+
+    // 최초 register: first-session 으로 성공 완료
+    setFleetSessionBindings(pi as any, makeCtx("first-session") as any);
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    expect(client.requests).toHaveLength(1);
+    expect(client.requests[0]?.params.sessionId).toBe("first-session");
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("first-session");
+    expect((getFleetRuntime() as any).pendingRegisterFleetId).toBeUndefined();
+
+    // 새 PI 세션으로 rebind되면 pending 플래그가 없어도 자동 재등록되어야 한다.
+    setFleetSessionBindings(pi as any, makeCtx("second-session") as any);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.params.sessionId).toBe("second-session");
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("second-session");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
   it("session handlers reuse the current bound session ID instead of synthetic IDs", async () => {
     (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
       role: "fleet",

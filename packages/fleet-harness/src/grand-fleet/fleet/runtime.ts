@@ -33,6 +33,7 @@ type FleetRuntimeSessionState = FleetRuntimeState & {
   currentSessionId?: string;
   inFlightRegister?: FleetRegisterInFlight;
   pendingRegisterFleetId?: FleetId;
+  registeredFleetId?: FleetId;
   registeredSessionId?: string;
 };
 
@@ -101,8 +102,11 @@ export function setFleetSessionBindings(
       },
     }
     : undefined;
-  if (runtime.client?.getState() === "connected" && runtime.pendingRegisterFleetId) {
-    void registerCurrentFleet(runtime.pendingRegisterFleetId);
+  // connected 상태에서 PI 세션이 rebind되면 pending 또는 already-registered fleetId를 사용해
+  // 자동 재등록한다. registerCurrentFleet은 sessionId가 동일하면 idempotent하게 early-return한다.
+  const rebindFleetId = runtime.pendingRegisterFleetId ?? runtime.registeredFleetId;
+  if (runtime.client?.getState() === "connected" && rebindFleetId) {
+    void registerCurrentFleet(rebindFleetId);
   }
 }
 
@@ -221,6 +225,7 @@ export function disconnectFromAdmiralty(
   runtime.lastStatusSignature = null;
   runtime.pendingRegisterFleetId = undefined;
   runtime.inFlightRegister = undefined;
+  runtime.registeredFleetId = undefined;
   runtime.registeredSessionId = undefined;
   options.resetPrompt?.();
   if (!options.resetPrompt) {
@@ -256,6 +261,7 @@ export function shutdownFleetRuntime(
   runtime.lastStatusSignature = null;
   runtime.pendingRegisterFleetId = undefined;
   runtime.inFlightRegister = undefined;
+  runtime.registeredFleetId = undefined;
   runtime.registeredSessionId = undefined;
   clearMissionBuffer();
   options.resetPrompt?.();
@@ -326,6 +332,7 @@ async function registerCurrentFleet(fleetId: FleetId): Promise<boolean> {
     log.info(LOG_SOURCE, "fleet.register 성공");
     runtime.inFlightRegister = undefined;
     runtime.pendingRegisterFleetId = undefined;
+    runtime.registeredFleetId = fleetId;
     runtime.registeredSessionId = sessionId;
     runtime.lastStatusSignature = null;
     syncConnectedPrompt(fleetId);
