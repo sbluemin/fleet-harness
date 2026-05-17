@@ -1,7 +1,6 @@
 import DOMPurify from "dompurify";
 
 import { decodeMermaidSource } from "./renderer";
-import { navigate } from "../router";
 
 interface MermaidApi {
   initialize(config: Record<string, unknown>): void;
@@ -19,7 +18,36 @@ interface OklchColor {
   alpha: number;
 }
 
+interface InertState {
+  element: HTMLElement;
+  ariaHidden: string | null;
+  inert: boolean;
+}
+
+interface ActiveLightbox {
+  dialog: HTMLElement;
+  trigger: HTMLElement;
+  inertStates: InertState[];
+  onClick: (event: Event) => void;
+  onKeyDown: (event: KeyboardEvent) => void;
+  cleanupPanZoom: () => void;
+  onCancel?: (event: Event) => void;
+}
+
+interface SvgSize {
+  width: number;
+  height: number;
+}
+
 const PENDING_SELECTOR = ".diagram-block[data-mermaid-source]:not([data-diagram-state='rendered']):not([data-diagram-state='error'])";
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
 // SVG sanitize config is isolated to this module — global markdown sanitizeConfig
 // in renderer.ts is unchanged. FORBID_ATTR uses strings only because DOMPurify's
 // runtime ignores non-string entries; on* event handlers are stripped by the SVG
@@ -31,11 +59,10 @@ const SVG_SANITIZE_CONFIG = {
   FORBID_TAGS: ["foreignObject", "script"],
   FORBID_ATTR: ["href", "xlink:href"],
 };
-const ENTRY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const ENTRY_PATH_PATTERN = /^\/entry\/[^/?#]+$/;
-const CLICK_HANDLER_FLAG = "diagramClickBound";
+const INTERACTION_HANDLER_FLAG = "diagramInteractionBound";
 const OKLCH_PATTERN = /^oklch\s*\(\s*([^)]+)\s*\)$/i;
 const ANGLE_PATTERN = /^(-?\d+(?:\.\d+)?)(deg)?$/i;
+const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400] as const;
 const PIE_THEME_SLOT_NAMES = [
   "pie1",
   "pie2",
@@ -54,6 +81,8 @@ const PIE_THEME_SLOT_NAMES = [
 let mermaidLoader: Promise<MermaidApi> | null = null;
 let observerInstalled = false;
 let renderCounter = 0;
+let lightboxCounter = 0;
+let activeLightbox: ActiveLightbox | null = null;
 
 export function cssColorToHex(value: string): string {
   const trimmed = value.trim();
@@ -72,6 +101,7 @@ export function installDiagramHydrator(root: ParentNode): void {
     let needsScan = false;
     for (const mutation of mutations) {
       if (mutation.type !== "childList") continue;
+      if (activeLightbox && !activeLightbox.trigger.isConnected) closeActiveLightbox(false);
       for (const node of mutation.addedNodes) {
         if (!(node instanceof Element)) continue;
         if (node.matches?.(".diagram-block[data-mermaid-source]") || node.querySelector?.(".diagram-block[data-mermaid-source]")) {
@@ -115,7 +145,7 @@ async function hydrate(placeholder: HTMLElement): Promise<void> {
     const { svg } = await mermaid.render(id, source);
     placeholder.innerHTML = sanitizeSvg(svg);
     reapplySpaLinks(placeholder, svg);
-    bindClickHandler(placeholder);
+    bindDiagramInteraction(placeholder);
     placeholder.dataset.diagramState = "rendered";
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -154,7 +184,7 @@ async function loadMermaid(): Promise<MermaidApi> {
         look: "handDrawn",
         themeVariables: extractThemeVariables(),
         themeCSS: buildThemeCss(),
-        flowchart: { htmlLabels: false },
+        flowchart: { htmlLabels: false, useMaxWidth: true },
       });
       return api;
     })();
@@ -312,6 +342,444 @@ function reapplySpaLinks(placeholder: HTMLElement, rawSvg: string): void {
   }
 }
 
+function bindDiagramInteraction(placeholder: HTMLElement): void {
+  placeholder.tabIndex = 0;
+  placeholder.setAttribute("aria-label", "Open diagram in expanded view");
+  updateDiagramRole(placeholder);
+  if (placeholder.dataset[INTERACTION_HANDLER_FLAG] === "true") return;
+  placeholder.dataset[INTERACTION_HANDLER_FLAG] = "true";
+  placeholder.addEventListener("click", handleDiagramOpenClick);
+  placeholder.addEventListener("keydown", handleDiagramOpenKeydown);
+}
+
+function handleDiagramOpenClick(event: MouseEvent): void {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  if (isNavigationAnchorActivation(event.target)) return;
+  const block = event.currentTarget;
+  if (!(block instanceof HTMLElement)) return;
+  event.preventDefault();
+  openDiagramLightbox(block);
+}
+
+function handleDiagramOpenKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  if (isNavigationAnchorActivation(event.target)) return;
+  const block = event.currentTarget;
+  if (!(block instanceof HTMLElement)) return;
+  event.preventDefault();
+  openDiagramLightbox(block);
+}
+
+function openDiagramLightbox(trigger: HTMLElement): void {
+  const sourceSvg = trigger.querySelector("svg");
+  if (!sourceSvg) return;
+  closeActiveLightbox(false);
+
+  const supportsNativeDialog = typeof HTMLDialogElement !== "undefined" && typeof HTMLDialogElement.prototype.showModal === "function";
+  const dialog = document.createElement(supportsNativeDialog ? "dialog" : "div");
+  const lightboxId = ++lightboxCounter;
+  const titleId = `diagram-lightbox-title-${lightboxId}`;
+  dialog.className = "diagram-lightbox";
+  dialog.setAttribute("aria-labelledby", titleId);
+  if (!supportsNativeDialog) {
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.tabIndex = -1;
+  }
+
+  const frame = document.createElement("div");
+  frame.className = "diagram-lightbox__frame";
+
+  const header = document.createElement("div");
+  header.className = "diagram-lightbox__header";
+
+  const title = document.createElement("h2");
+  title.id = titleId;
+  title.textContent = "MANIFEST · DIAGRAM";
+
+  const closeButton = document.createElement("button");
+  closeButton.className = "diagram-lightbox__close";
+  closeButton.type = "button";
+  closeButton.setAttribute("aria-label", "Close expanded diagram");
+  closeButton.textContent = "Close";
+
+  const controls = document.createElement("div");
+  controls.className = "diagram-lightbox__controls";
+  controls.setAttribute("aria-label", "Diagram zoom controls");
+  const zoomOutButton = createZoomButton("−", "Zoom out", "out");
+  const zoomReadout = document.createElement("span");
+  zoomReadout.className = "diagram-lightbox__zoom-readout";
+  zoomReadout.setAttribute("aria-live", "polite");
+  const zoomInButton = createZoomButton("+", "Zoom in", "in");
+  const fitButton = createZoomButton("Fit", "Fit diagram to viewport", "fit");
+  const resetButton = createZoomButton("Reset", "Reset diagram zoom", "reset");
+  controls.append(zoomOutButton, zoomReadout, zoomInButton, fitButton, resetButton);
+
+  const viewport = document.createElement("div");
+  viewport.className = "diagram-lightbox__viewport";
+  const inlineBaseSize = readInlineSvgSize(sourceSvg);
+  const clonedSvg = sourceSvg.cloneNode(true) as SVGElement;
+  clonedSvg.removeAttribute("style");
+  retargetClonedSvgStyleId(clonedSvg, `diagram-lightbox-svg-${lightboxId}`);
+  viewport.append(clonedSvg);
+
+  header.append(title, controls, closeButton);
+  frame.append(header, viewport);
+  dialog.append(frame);
+  document.body.append(dialog);
+  const panZoom = new PanZoomController(viewport, clonedSvg, zoomReadout, inlineBaseSize);
+  zoomOutButton.addEventListener("click", () => panZoom.zoomOut());
+  zoomInButton.addEventListener("click", () => panZoom.zoomIn());
+  fitButton.addEventListener("click", () => panZoom.fit());
+  resetButton.addEventListener("click", () => panZoom.reset());
+
+  const inertStates = applyBackgroundInert(dialog);
+  const onClick = (event: Event) => {
+    if (event.target === dialog || event.target === closeButton) closeActiveLightbox(true);
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeActiveLightbox(true);
+      return;
+    }
+    if (panZoom.handleKeyboard(event)) return;
+    if (event.key === "Tab") trapLightboxFocus(event, dialog);
+  };
+  const active: ActiveLightbox = { dialog, trigger, inertStates, onClick, onKeyDown, cleanupPanZoom: () => panZoom.destroy() };
+  if (supportsNativeDialog) {
+    active.onCancel = (event: Event) => {
+      event.preventDefault();
+      closeActiveLightbox(true);
+    };
+    dialog.addEventListener("cancel", active.onCancel);
+    (dialog as HTMLDialogElement).showModal();
+  }
+  dialog.addEventListener("click", onClick);
+  document.addEventListener("keydown", onKeyDown, true);
+  activeLightbox = active;
+  panZoom.fit();
+  closeButton.focus();
+}
+
+function createZoomButton(label: string, ariaLabel: string, action: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = "diagram-lightbox__zoom-button";
+  button.type = "button";
+  button.dataset.zoomAction = action;
+  button.setAttribute("aria-label", ariaLabel);
+  button.textContent = label;
+  return button;
+}
+
+class PanZoomController {
+  private readonly baseSize: SvgSize;
+  private zoomIndex = ZOOM_STEPS.indexOf(100);
+  private dragStart: { x: number; y: number; scrollLeft: number; scrollTop: number; pointerId: number } | null = null;
+  private pinchStart: { distance: number; zoomIndex: number } | null = null;
+  private readonly pointers = new Map<number, PointerEvent>();
+
+  constructor(
+    private readonly viewport: HTMLElement,
+    private readonly svg: SVGElement,
+    private readonly readout: HTMLElement,
+    baseSize: SvgSize,
+  ) {
+    this.baseSize = baseSize;
+    this.applyZoom(this.zoomIndex);
+    viewport.addEventListener("pointerdown", this.onPointerDown);
+    viewport.addEventListener("pointermove", this.onPointerMove);
+    viewport.addEventListener("pointerup", this.onPointerEnd);
+    viewport.addEventListener("pointercancel", this.onPointerEnd);
+    viewport.addEventListener("wheel", this.onWheel, { passive: false });
+    viewport.addEventListener("dblclick", this.onDoubleClick);
+    window.addEventListener("resize", this.onResize);
+  }
+
+  destroy(): void {
+    this.viewport.removeEventListener("pointerdown", this.onPointerDown);
+    this.viewport.removeEventListener("pointermove", this.onPointerMove);
+    this.viewport.removeEventListener("pointerup", this.onPointerEnd);
+    this.viewport.removeEventListener("pointercancel", this.onPointerEnd);
+    this.viewport.removeEventListener("wheel", this.onWheel);
+    this.viewport.removeEventListener("dblclick", this.onDoubleClick);
+    window.removeEventListener("resize", this.onResize);
+    this.pointers.clear();
+  }
+
+  zoomIn(): void {
+    this.zoomAroundViewportCenter(Math.min(this.zoomIndex + 1, ZOOM_STEPS.length - 1));
+  }
+
+  zoomOut(): void {
+    this.zoomAroundViewportCenter(Math.max(this.zoomIndex - 1, 0));
+  }
+
+  reset(): void {
+    this.zoomAroundViewportCenter(ZOOM_STEPS.indexOf(100));
+  }
+
+  fit(): void {
+    const viewportWidth = this.viewport.clientWidth || this.viewport.getBoundingClientRect().width || this.baseSize.width;
+    const viewportHeight = this.viewport.clientHeight || this.viewport.getBoundingClientRect().height || this.baseSize.height;
+    const fitRatio = Math.min(viewportWidth / this.baseSize.width, viewportHeight / this.baseSize.height);
+    const fitPercent = Math.floor(fitRatio * 100);
+    const firstTooLargeIndex = ZOOM_STEPS.findIndex((step) => step > fitPercent);
+    const fitIndex = firstTooLargeIndex === -1 ? ZOOM_STEPS.length - 1 : Math.max(0, firstTooLargeIndex - 1);
+    this.applyZoom(fitIndex);
+    this.viewport.scrollLeft = Math.max(0, (this.svgWidth - viewportWidth) / 2);
+    this.viewport.scrollTop = Math.max(0, (this.svgHeight - viewportHeight) / 2);
+  }
+
+  handleKeyboard(event: KeyboardEvent): boolean {
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      this.zoomIn();
+      return true;
+    }
+    if (event.key === "-" || event.key === "_") {
+      event.preventDefault();
+      this.zoomOut();
+      return true;
+    }
+    if (event.key === "0") {
+      event.preventDefault();
+      this.reset();
+      return true;
+    }
+    if (event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      this.fit();
+      return true;
+    }
+    return false;
+  }
+
+  private get svgWidth(): number {
+    return this.baseSize.width * (ZOOM_STEPS[this.zoomIndex] / 100);
+  }
+
+  private get svgHeight(): number {
+    return this.baseSize.height * (ZOOM_STEPS[this.zoomIndex] / 100);
+  }
+
+  private applyZoom(nextIndex: number): void {
+    this.zoomIndex = nextIndex;
+    const scale = ZOOM_STEPS[this.zoomIndex] / 100;
+    this.svg.setAttribute("width", formatSvgLength(this.baseSize.width * scale));
+    this.svg.setAttribute("height", formatSvgLength(this.baseSize.height * scale));
+    this.readout.textContent = `${ZOOM_STEPS[this.zoomIndex]}%`;
+  }
+
+  private zoomAroundViewportCenter(nextIndex: number): void {
+    const rect = this.viewport.getBoundingClientRect();
+    this.zoomAroundPoint(nextIndex, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  private zoomAroundPoint(nextIndex: number, clientX: number, clientY: number): void {
+    if (nextIndex === this.zoomIndex) return;
+    const oldWidth = this.svgWidth;
+    const oldHeight = this.svgHeight;
+    const rect = this.viewport.getBoundingClientRect();
+    const anchorX = this.viewport.scrollLeft + clientX - rect.left;
+    const anchorY = this.viewport.scrollTop + clientY - rect.top;
+    this.applyZoom(nextIndex);
+    this.viewport.scrollLeft = (anchorX / oldWidth) * this.svgWidth - (clientX - rect.left);
+    this.viewport.scrollTop = (anchorY / oldHeight) * this.svgHeight - (clientY - rect.top);
+  }
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || isNavigationAnchorActivation(event.target)) return;
+    const pointerId = event.pointerId ?? 1;
+    this.pointers.set(pointerId, event);
+    if (this.pointers.size === 2) {
+      this.pinchStart = { distance: this.pointerDistance(), zoomIndex: this.zoomIndex };
+      return;
+    }
+    this.dragStart = { x: event.clientX, y: event.clientY, scrollLeft: this.viewport.scrollLeft, scrollTop: this.viewport.scrollTop, pointerId };
+    this.viewport.setPointerCapture?.(pointerId);
+  };
+
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    const pointerId = event.pointerId ?? 1;
+    if (this.pointers.has(pointerId)) this.pointers.set(pointerId, event);
+    if (this.pinchStart && this.pointers.size >= 2) {
+      const ratio = this.pointerDistance() / this.pinchStart.distance;
+      const target = ZOOM_STEPS[this.pinchStart.zoomIndex] * ratio;
+      this.applyZoom(nearestZoomIndex(target));
+      return;
+    }
+    if (!this.dragStart || this.dragStart.pointerId !== pointerId) return;
+    event.preventDefault();
+    this.viewport.scrollLeft = this.dragStart.scrollLeft - (event.clientX - this.dragStart.x);
+    this.viewport.scrollTop = this.dragStart.scrollTop - (event.clientY - this.dragStart.y);
+  };
+
+  private readonly onPointerEnd = (event: PointerEvent): void => {
+    const pointerId = event.pointerId ?? 1;
+    this.pointers.delete(pointerId);
+    this.viewport.releasePointerCapture?.(pointerId);
+    if (this.dragStart?.pointerId === pointerId) this.dragStart = null;
+    if (this.pointers.size < 2) this.pinchStart = null;
+  };
+
+  private readonly onWheel = (event: WheelEvent): void => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const nextIndex = event.deltaY < 0 ? Math.min(this.zoomIndex + 1, ZOOM_STEPS.length - 1) : Math.max(this.zoomIndex - 1, 0);
+    this.zoomAroundPoint(nextIndex, event.clientX, event.clientY);
+  };
+
+  private readonly onDoubleClick = (event: MouseEvent): void => {
+    if (isNavigationAnchorActivation(event.target)) return;
+    event.preventDefault();
+    this.zoomAroundPoint(this.zoomIndex === ZOOM_STEPS.indexOf(200) ? ZOOM_STEPS.indexOf(100) : ZOOM_STEPS.indexOf(200), event.clientX, event.clientY);
+  };
+
+  private readonly onResize = (): void => {
+    this.fit();
+  };
+
+  private pointerDistance(): number {
+    const [first, second] = Array.from(this.pointers.values());
+    if (!first || !second) return 1;
+    return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+  }
+}
+
+function readSvgSize(svg: SVGElement): SvgSize {
+  const width = parseSvgLength(svg.getAttribute("width"));
+  const height = parseSvgLength(svg.getAttribute("height"));
+  if (width && height) return { width, height };
+  const viewBox = svg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
+  const viewBoxWidth = Number.isFinite(viewBox[2]) && viewBox[2] > 0 ? viewBox[2] : null;
+  const viewBoxHeight = Number.isFinite(viewBox[3]) && viewBox[3] > 0 ? viewBox[3] : null;
+  return {
+    width: width ?? viewBoxWidth ?? 800,
+    height: height ?? viewBoxHeight ?? 600,
+  };
+}
+
+function readInlineSvgSize(svg: SVGElement): SvgSize {
+  const rect = svg.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) return { width: rect.width, height: rect.height };
+  return readSvgSize(svg);
+}
+
+function parseSvgLength(value: string | null): number | null {
+  if (!value) return null;
+  const match = /^(\d+(?:\.\d+)?)/.exec(value.trim());
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatSvgLength(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function nearestZoomIndex(targetPercent: number): number {
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  ZOOM_STEPS.forEach((step, index) => {
+    const distance = Math.abs(step - targetPercent);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
+function retargetClonedSvgStyleId(clonedSvg: SVGElement, newId: string): void {
+  const oldId = clonedSvg.getAttribute("id") ?? "";
+  clonedSvg.setAttribute("id", newId);
+  const style = clonedSvg.querySelector("style");
+  if (!oldId || !style?.textContent) return;
+  style.textContent = style.textContent.split(`#${oldId}`).join(`#${newId}`);
+}
+
+function closeActiveLightbox(restoreFocus: boolean): void {
+  const active = activeLightbox;
+  if (!active) return;
+  active.dialog.removeEventListener("click", active.onClick);
+  document.removeEventListener("keydown", active.onKeyDown, true);
+  if (active.onCancel) active.dialog.removeEventListener("cancel", active.onCancel);
+  active.cleanupPanZoom();
+  restoreBackgroundInert(active.inertStates);
+  if (active.dialog instanceof HTMLDialogElement && active.dialog.open && typeof active.dialog.close === "function") active.dialog.close();
+  active.dialog.remove();
+  activeLightbox = null;
+  if (restoreFocus && active.trigger.isConnected) active.trigger.focus();
+}
+
+function applyBackgroundInert(dialog: HTMLElement): InertState[] {
+  const states: InertState[] = [];
+  for (const child of Array.from(document.body.children)) {
+    if (!(child instanceof HTMLElement) || child === dialog) continue;
+    states.push({ element: child, ariaHidden: child.getAttribute("aria-hidden"), inert: child.inert });
+    child.inert = true;
+    child.setAttribute("aria-hidden", "true");
+  }
+  return states;
+}
+
+function restoreBackgroundInert(states: InertState[]): void {
+  for (const state of states) {
+    state.element.inert = state.inert;
+    if (state.ariaHidden === null) {
+      state.element.removeAttribute("aria-hidden");
+    } else {
+      state.element.setAttribute("aria-hidden", state.ariaHidden);
+    }
+  }
+}
+
+function trapLightboxFocus(event: KeyboardEvent, dialog: HTMLElement): void {
+  const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(isFocusableElement);
+  if (focusable.length === 0) {
+    event.preventDefault();
+    dialog.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function updateDiagramRole(placeholder: HTMLElement): void {
+  if (placeholder.querySelector("a[href]")) {
+    placeholder.removeAttribute("role");
+  } else {
+    placeholder.setAttribute("role", "button");
+  }
+}
+
+function isNavigationAnchorActivation(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  const anchor = target.closest("a[href]");
+  if (!anchor) return false;
+  const href = anchor.getAttribute("href")?.trim() ?? "";
+  if (!href) return false;
+  return !wrapsRenderedSvg(anchor);
+}
+
+function wrapsRenderedSvg(anchor: Element): boolean {
+  return Array.from(anchor.children).some((child) => child.tagName.toLowerCase() === "svg");
+}
+
+function isFocusableElement(element: HTMLElement): boolean {
+  if (element.inert || element.hidden || element.getAttribute("aria-hidden") === "true") return false;
+  if ("disabled" in element && Boolean(element.disabled)) return false;
+  return true;
+}
+
 function normalizeSpaPath(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -327,7 +795,7 @@ function normalizeSpaPath(value: string): string | null {
     if (url.origin !== window.location.origin) return null;
     return normalizeSpaPath(url.pathname);
   }
-  const entryMatch = ENTRY_PATH_PATTERN.exec(trimmed);
+  const entryMatch = /^\/entry\/[^/?#]+$/.exec(trimmed);
   if (entryMatch) {
     const segment = trimmed.slice("/entry/".length);
     let decoded: string;
@@ -336,29 +804,11 @@ function normalizeSpaPath(value: string): string | null {
     } catch {
       return null;
     }
-    if (!ENTRY_ID_PATTERN.test(decoded)) return null;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(decoded)) return null;
     return `/entry/${encodeURIComponent(decoded)}`;
   }
-  if (ENTRY_ID_PATTERN.test(trimmed)) return `/entry/${encodeURIComponent(trimmed)}`;
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(trimmed)) return `/entry/${encodeURIComponent(trimmed)}`;
   return null;
-}
-
-function bindClickHandler(placeholder: HTMLElement): void {
-  if (placeholder.dataset[CLICK_HANDLER_FLAG] === "true") return;
-  placeholder.dataset[CLICK_HANDLER_FLAG] = "true";
-  placeholder.addEventListener("click", handleDiagramClick);
-}
-
-function handleDiagramClick(event: MouseEvent): void {
-  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  const anchor = target.closest("a");
-  if (!anchor) return;
-  const href = anchor.getAttribute("href");
-  if (!href || !href.startsWith("/entry/")) return;
-  event.preventDefault();
-  navigate(href);
 }
 
 function parseOklch(value: string): OklchColor | null {
