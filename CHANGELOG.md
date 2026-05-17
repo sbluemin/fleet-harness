@@ -8,7 +8,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Fixed
 - [core][harness] Prevented persistent JSONL session files from being written when an agent session is opened but never receives a user prompt, eliminating accumulated "(no messages)" entries in the session selector.
 - [core][harness] Hardened session commit integrity by enforcing cross-session token guards to prevent stale state updates.
-- [harness] Grand Fleet now re-registers with Admiralty when the bound ACP session ID changes after a successful initial registration, preventing stale `registeredSessionId` on session switches.
+- [harness] Grand Fleet now re-registers with Admiralty when the bound ACP session ID changes or the client auto-reconnects after a socket drop, preventing stale registration state on session switches and reconnects.
 - [harness] Fixed type-checking issues in status overlay tests by correcting state property access.
 
 ### Changed

@@ -154,6 +154,10 @@ export function connectToAdmiralty(
     notifyCurrentSession("[Grand Fleet] Admiralty 연결 끊김", "warning");
     stopHeartbeat();
     stopFleetStatusSync();
+    // Admiralty가 연결 단위로 register 상태를 보관하므로, auto-reconnect 이후의
+    // registerCurrentFleet이 idempotent early-return으로 skip되지 않도록 reset한다.
+    runtime.registeredFleetId = undefined;
+    runtime.registeredSessionId = undefined;
   });
 
   registerFleetHandlers(client, {

@@ -22,6 +22,7 @@ vi.mock("../../src/grand-fleet/fleet/client.js", () => {
     static instances: MockFleetClient[] = [];
     state: "disconnected" | "connecting" | "connected" = "disconnected";
     onConnected?: () => void;
+    onDisconnected?: () => void;
     requests: Array<{ method: string; params: Record<string, unknown> }> = [];
     notifications: Array<{ method: string; params: Record<string, unknown> }> = [];
     handlers = new Map<string, (params: Record<string, unknown>) => Promise<unknown>>();
@@ -34,7 +35,21 @@ vi.mock("../../src/grand-fleet/fleet/client.js", () => {
       this.onConnected = cb;
     }
 
-    onDisconnect(): void {}
+    onDisconnect(cb: () => void): void {
+      this.onDisconnected = cb;
+    }
+
+    // 테스트용: Admiralty 소켓 drop 시뮬레이션
+    simulateDisconnect(): void {
+      this.state = "disconnected";
+      this.onDisconnected?.();
+    }
+
+    // 테스트용: 클라이언트 auto-reconnect 시뮬레이션
+    simulateReconnect(): void {
+      this.state = "connected";
+      this.onConnected?.();
+    }
 
     onRequest(method: string, handler: (params: Record<string, unknown>) => Promise<unknown>): void {
       this.handlers.set(method, handler);
@@ -486,6 +501,49 @@ describe("Fleet runtime bucket", () => {
     expect(client.requests).toHaveLength(2);
     expect(client.requests[1]?.params.sessionId).toBe("second-session");
     expect((getFleetRuntime() as any).registeredSessionId).toBe("second-session");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("auto-reconnect after Admiralty disconnect re-sends fleet.register", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+
+    // 최초 register: session-1 으로 성공 완료
+    setFleetSessionBindings(pi as any, makeCtx("session-1") as any);
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    expect(client.requests).toHaveLength(1);
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredFleetId).toBe("fleet-a");
+
+    // Admiralty 소켓 drop → registeredSessionId / registeredFleetId 모두 reset 되어야 한다.
+    client.simulateDisconnect();
+    expect((getFleetRuntime() as any).registeredSessionId).toBeUndefined();
+    expect((getFleetRuntime() as any).registeredFleetId).toBeUndefined();
+
+    // auto-reconnect 시 동일한 sessionId라도 fleet.register가 재발송되어야 한다.
+    client.simulateReconnect();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.params.sessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredFleetId).toBe("fleet-a");
 
     shutdownFleetRuntime("fleet-a");
   });
