@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildFleetAcpSystemPrompt,
@@ -17,10 +17,84 @@ import {
   type FleetRuntimeState,
 } from "@sbluemin/fleet-core/admiralty";
 
+vi.mock("../../src/grand-fleet/fleet/client.js", () => {
+  class MockFleetClient {
+    static instances: MockFleetClient[] = [];
+    state: "disconnected" | "connecting" | "connected" = "disconnected";
+    onConnected?: () => void;
+    onDisconnected?: () => void;
+    requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+    notifications: Array<{ method: string; params: Record<string, unknown> }> = [];
+    handlers = new Map<string, (params: Record<string, unknown>) => Promise<unknown>>();
+
+    constructor(readonly socketPath: string) {
+      MockFleetClient.instances.push(this);
+    }
+
+    onConnect(cb: () => void): void {
+      this.onConnected = cb;
+    }
+
+    onDisconnect(cb: () => void): void {
+      this.onDisconnected = cb;
+    }
+
+    // 테스트용: Admiralty 소켓 drop 시뮬레이션
+    simulateDisconnect(): void {
+      this.state = "disconnected";
+      this.onDisconnected?.();
+    }
+
+    // 테스트용: 클라이언트 auto-reconnect 시뮬레이션
+    simulateReconnect(): void {
+      this.state = "connected";
+      this.onConnected?.();
+    }
+
+    onRequest(method: string, handler: (params: Record<string, unknown>) => Promise<unknown>): void {
+      this.handlers.set(method, handler);
+    }
+
+    connect(): void {
+      this.state = "connected";
+      this.onConnected?.();
+    }
+
+    async sendRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+      this.requests.push({ method, params });
+      return { ok: true };
+    }
+
+    sendNotification(method: string, params: Record<string, unknown>): void {
+      this.notifications.push({ method, params });
+    }
+
+    close(): void {
+      this.state = "disconnected";
+    }
+
+    getState(): "disconnected" | "connecting" | "connected" {
+      return this.state;
+    }
+  }
+
+  return { FleetClient: MockFleetClient };
+});
+
 afterEach(() => {
   delete (globalThis as any)[GRAND_FLEET_FLEET_RUNTIME_KEY];
   delete (globalThis as any)[GRAND_FLEET_STATE_KEY];
+  vi.clearAllTimers();
 });
+
+function makeCtx(sessionId = "pi_session_1"): any {
+  return {
+    sessionManager: {
+      getSessionId: () => sessionId,
+    },
+    ui: { notify: () => {} },
+  };
+}
 
 describe("Fleet runtime bucket", () => {
   it("module reload 이후에도 같은 globalThis-backed runtime을 재사용한다", () => {
@@ -74,7 +148,7 @@ describe("Fleet runtime bucket", () => {
     expect(promptReset).toBe(true);
   });
 
-  it("session-bound dispatcher는 generation guard로 stale callback을 무시한다", () => {
+  it("bound dispatcher는 generation guard로 stale callback을 무시한다", () => {
     const sent: string[] = [];
     const stalePi = {
       sendUserMessage: (text: string) => {
@@ -86,7 +160,7 @@ describe("Fleet runtime bucket", () => {
         sent.push(`fresh:${text}`);
       },
     };
-    const ctx = { ui: { notify: () => {} } };
+    const ctx = makeCtx();
 
     setFleetSessionBindings(stalePi as any, ctx as any);
     const staleDispatcher = getFleetRuntime().dispatcher;
@@ -99,7 +173,7 @@ describe("Fleet runtime bucket", () => {
   });
 
   it("session_shutdown 후 presenter/dispatcher를 비운다", () => {
-    const ctx = { ui: { notify: () => {} } };
+    const ctx = makeCtx();
     const pi = { sendUserMessage: () => {} };
 
     setFleetSessionBindings(pi as any, ctx as any);
@@ -136,7 +210,7 @@ describe("Fleet runtime bucket", () => {
 
   it("manual connect lifecycle can sync base-only then connected prompt", () => {
     const calls: string[] = [];
-    const ctx = { ui: { notify: () => {} } };
+    const ctx = makeCtx();
     const pi = { sendUserMessage: () => {} };
 
     setFleetSessionBindings(pi as any, ctx as any, {
@@ -154,7 +228,7 @@ describe("Fleet runtime bucket", () => {
 
   it("stale prompt sync callbacks are ignored after session rebinding", () => {
     const calls: string[] = [];
-    const ctx = { ui: { notify: () => {} } };
+    const ctx = makeCtx();
     const pi = { sendUserMessage: () => {} };
 
     setFleetSessionBindings(pi as any, ctx as any, {
@@ -192,7 +266,7 @@ describe("Fleet runtime bucket", () => {
       getState: () => "connected",
       sendNotification: () => {},
     };
-    const ctx = { ui: { notify: () => {} } };
+    const ctx = makeCtx();
     const pi = { sendUserMessage: () => {} };
 
     setFleetSessionBindings(pi as any, ctx as any, {
@@ -225,7 +299,7 @@ describe("Fleet runtime bucket", () => {
       getState: () => "connected",
       sendNotification: () => {},
     };
-    const ctx = { ui: { notify: () => {} } };
+    const ctx = makeCtx();
     const pi = { sendUserMessage: () => {} };
 
     setFleetSessionBindings(pi as any, ctx as any, {
@@ -246,5 +320,321 @@ describe("Fleet runtime bucket", () => {
       `fleet-a:Fleet A:${process.cwd()}`,
     ]);
     expect(calls).not.toContain("base");
+  });
+
+  it("fleet.register uses the bound ACP/Pi session ID", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const ctx = makeCtx("real-pi-session");
+    const pi = { sendUserMessage: () => {} };
+
+    setFleetSessionBindings(pi as any, ctx as any);
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    expect(client.requests[0]).toMatchObject({
+      method: "fleet.register",
+      params: { sessionId: "real-pi-session" },
+    });
+    expect(client.requests[0]?.params.sessionId).not.toMatch(new RegExp("^" + "session" + "-\\d+$"));
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("unbound connect defers fleet.register until a real session ID is bound", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    expect(client.requests).toEqual([]);
+
+    setFleetSessionBindings(pi as any, makeCtx("late-pi-session") as any);
+    await Promise.resolve();
+
+    expect(client.requests[0]).toMatchObject({
+      method: "fleet.register",
+      params: { sessionId: "late-pi-session" },
+    });
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("lazy fleet.register suppresses duplicate sends for the same pending session ID", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+    let releaseRegister!: () => void;
+
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    client.sendRequest = async (method: string, params: Record<string, unknown>) => {
+      client.requests.push({ method, params });
+      await new Promise<void>((release) => {
+        releaseRegister = release;
+      });
+      return { ok: true };
+    };
+
+    setFleetSessionBindings(pi as any, makeCtx("same-pending-session") as any);
+    setFleetSessionBindings(pi as any, makeCtx("same-pending-session") as any);
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(1);
+    releaseRegister();
+    await Promise.resolve();
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("lazy fleet.register ignores stale completion after session rebinding", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+    const releases: Array<() => void> = [];
+
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    client.sendRequest = async (method: string, params: Record<string, unknown>) => {
+      client.requests.push({ method, params });
+      await new Promise<void>((release) => {
+        releases.push(release);
+      });
+      return { ok: true };
+    };
+
+    setFleetSessionBindings(pi as any, makeCtx("old-session") as any);
+    await Promise.resolve();
+    setFleetSessionBindings(pi as any, makeCtx("new-session") as any);
+    await Promise.resolve();
+
+    expect(client.requests.map((request: { params: Record<string, unknown> }) => request.params.sessionId)).toEqual([
+      "old-session",
+      "new-session",
+    ]);
+
+    releases[1]?.();
+    await Promise.resolve();
+    releases[0]?.();
+    await Promise.resolve();
+
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("new-session");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("re-registers fleet when bound session ID changes after successful initial register", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+
+    // 최초 register: first-session 으로 성공 완료
+    setFleetSessionBindings(pi as any, makeCtx("first-session") as any);
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    expect(client.requests).toHaveLength(1);
+    expect(client.requests[0]?.params.sessionId).toBe("first-session");
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("first-session");
+    expect((getFleetRuntime() as any).pendingRegisterFleetId).toBeUndefined();
+
+    // 새 PI 세션으로 rebind되면 pending 플래그가 없어도 자동 재등록되어야 한다.
+    setFleetSessionBindings(pi as any, makeCtx("second-session") as any);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.params.sessionId).toBe("second-session");
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("second-session");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("auto-reconnect after Admiralty disconnect re-sends fleet.register", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+
+    // 최초 register: session-1 으로 성공 완료
+    setFleetSessionBindings(pi as any, makeCtx("session-1") as any);
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    expect(client.requests).toHaveLength(1);
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredFleetId).toBe("fleet-a");
+
+    // Admiralty 소켓 drop → registeredSessionId / registeredFleetId 모두 reset 되어야 한다.
+    client.simulateDisconnect();
+    expect((getFleetRuntime() as any).registeredSessionId).toBeUndefined();
+    expect((getFleetRuntime() as any).registeredFleetId).toBeUndefined();
+
+    // auto-reconnect 시 동일한 sessionId라도 fleet.register가 재발송되어야 한다.
+    client.simulateReconnect();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.params.sessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredFleetId).toBe("fleet-a");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("socket drop mid-register clears in-flight guard so auto-reconnect re-sends fleet.register", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+    const releases: Array<() => void> = [];
+
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    client.sendRequest = async (method: string, params: Record<string, unknown>) => {
+      client.requests.push({ method, params });
+      await new Promise<void>((release) => {
+        releases.push(release);
+      });
+      return { ok: true };
+    };
+
+    // bound session → register 발송 (pending in-flight)
+    setFleetSessionBindings(pi as any, makeCtx("session-1") as any);
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(1);
+    expect((getFleetRuntime() as any).inFlightRegister).toBeDefined();
+
+    // socket drop 발생 — inFlightRegister 도 함께 reset 되어야 한다.
+    client.simulateDisconnect();
+    expect((getFleetRuntime() as any).inFlightRegister).toBeUndefined();
+    expect((getFleetRuntime() as any).registeredSessionId).toBeUndefined();
+    expect((getFleetRuntime() as any).registeredFleetId).toBeUndefined();
+
+    // auto-reconnect → in-flight 가드가 사라졌으므로 새 register 가 즉시 발송된다.
+    client.simulateReconnect();
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.params.sessionId).toBe("session-1");
+
+    // 옛 promise 가 늦게 release 되어도 catch 분기는 새 inFlightRegister 와 일치하지 않으므로 무시된다.
+    releases[0]?.();
+    await new Promise<void>((r) => setImmediate(r));
+    expect((getFleetRuntime() as any).inFlightRegister).toBeDefined();
+
+    // 새 register success
+    releases[1]?.();
+    await new Promise<void>((r) => setImmediate(r));
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredFleetId).toBe("fleet-a");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
+  it("session handlers reuse the current bound session ID instead of synthetic IDs", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const ctx = makeCtx("handler-pi-session");
+    const pi = { sendUserMessage: () => {} };
+
+    setFleetSessionBindings(pi as any, ctx as any);
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    const sessionNew = await client.handlers.get("session.new")?.({});
+    const sessionSuspend = await client.handlers.get("session.suspend")?.({});
+
+    expect(sessionNew).toEqual({ sessionId: "handler-pi-session" });
+    expect(sessionSuspend).toEqual({ suspended: true, sessionId: "handler-pi-session" });
+
+    shutdownFleetRuntime("fleet-a");
   });
 });

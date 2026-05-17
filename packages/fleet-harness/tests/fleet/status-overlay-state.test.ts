@@ -107,7 +107,7 @@ function createOverlay(options?: {
     toggleSortieEnabled: vi.fn(),
     toggleSquadronEnabled: vi.fn(),
     openTaskForce: vi.fn(),
-    getAvailableModels: (cliType) => providers[cliType],
+    getAvailableModels: (cliType) => providers[cliType] ?? makeProvider(String(cliType)),
     getServiceSnapshots: () => new Map([
       ["claude", { status: "operational" }],
       ["codex", { status: "operational" }],
@@ -173,8 +173,8 @@ describe("CarrierStatusOverlay state transitions", () => {
       kind: "effort",
       carrierId: "alpha",
       pendingModel: "claude-a",
-      choices: ["low", "high"],
-      cursor: 1,
+      choices: ["low", "medium", "high"],
+      cursor: 2,
     });
   });
 
@@ -220,7 +220,7 @@ describe("CarrierStatusOverlay state transitions", () => {
     const state = getOverlayState(overlay);
     expect(state.kind).toBe("batchFrom");
     if (state.kind === "batchFrom") {
-      expect(state.choices.map((choice) => choice.cliType)).toEqual(["gemini", "claude", "claude-zai", "claude-kimi", "codex", "opencode-go"]);
+      expect(state.choices.map((choice) => choice.cliType)).toEqual(["gemini", "claude", "claude-zai", "claude-kimi", "codex", "opencode-go", "cursor"]);
     }
   });
 
@@ -261,6 +261,12 @@ describe("CarrierStatusOverlay state transitions", () => {
         {
           cliType: "opencode-go",
           label: "OpenCode Go (0 carriers)",
+          carrierCount: 0,
+          status: "unknown",
+        },
+        {
+          cliType: "cursor",
+          label: "Cursor Agent (0 carriers)",
           carrierCount: 0,
           status: "unknown",
         },

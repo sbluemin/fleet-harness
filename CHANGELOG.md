@@ -5,8 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+- [core][harness] Prevented persistent JSONL session files from being written when an agent session is opened but never receives a user prompt, eliminating accumulated "(no messages)" entries in the session selector.
+- [core][harness] Hardened session commit integrity by enforcing cross-session token guards to prevent stale state updates.
+- [harness] Grand Fleet now re-registers with Admiralty when the bound ACP session ID changes or the client auto-reconnects after a socket drop, preventing stale registration state on session switches and reconnects.
+- [harness] Fixed type-checking issues in status overlay tests by correcting state property access.
+
 ### Changed
 - [coding-agent] Prompt templates are now invoked with the `/prompt:{name}` prefix, aligning with the `/skill:{name}` convention for consistent slash-command naming and eliminating namespace collision risk with built-in commands.
+- [core] Enhanced session and executor engines to capture and validate origin tokens during state transitions and execution to ensure transactional integrity.
+- [harness] Improved Grand Fleet registration stability by utilizing in-flight guards for session identifiers and generations instead of synthetic IDs.
+- [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
 
 ## [0.20.0] - 2026-05-16
 

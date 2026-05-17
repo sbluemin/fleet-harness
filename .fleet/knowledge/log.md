@@ -1016,6 +1016,22 @@
 - ok: `false`
 - warning_count: `0`
 
+## 2026-05-16T16:31:15.130Z — drydock run
+
+- error_count: `2`
+- info_count: `2`
+- issue_count: `4`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-16T16:32:17.869Z — drydock run
+
+- error_count: `2`
+- info_count: `2`
+- issue_count: `4`
+- ok: `false`
+- warning_count: `0`
+
 ## 2026-05-16T15:53:01.045Z — raw source added
 
 - id: `prd-coding-agent-prompt-slash-prefix-source`
@@ -1047,4 +1063,61 @@
 - raw_source_ref: `raw/2026-05-16-prd-coding-agent-prompt-slash-prefix-source-e708f533.md`
 - result: `accepted`
 - target: `wiki/prd-coding-agent-prompt-slash-prefix.md`
+
+## 2026-05-16T16:32:17.891Z — raw source added
+
+- id: `prd-coding-agent-empty-session-guard-source`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-f923d608.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `fix-temporary-session decision record`
+
+## 2026-05-16T16:32:17.893Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T16-32-17-881Z-1939b631`
+- patch_set_id: `null`
+- proposer: `captain-cko`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-f923d608.md`
+- target: `wiki/prd-coding-agent-empty-session-guard.md`
+- warning_count: `0`
+
+## 2026-05-16T16:39:48.617Z — patch rejected
+
+- patch_id: `2026-05-16T16-32-17-881Z-1939b631`
+- patch_set_id: `null`
+- reason: `Hard rule violation: Functional Requirements 전체가 internal mechanism (in-memory state, JSONL disk write, status token validation, generation token) 위주로 작성됨 — PRD prompt 규칙상 "Only the call surface / UX / contract the user actually faces" 위반. Goals에 implementation-action 동사("Transition", "phasing out") 잔존. Acceptance Criteria의 "dirty state tracking"은 user-verifiable이 아닌 internal state 검증. 추가로 기존 prd-* entry들과 마크다운 템플릿/톤 일관성 부족. 재작성 시 기존 prd-coding-agent-scoped-models-removal / prd-harness-btw-overlay / prd-carrier-persona-extraction의 섹션 구조, 문장 스타일, FR/Acceptance 작성 톤을 verbatim 참고 기준으로 삼을 것.`
+- result: `rejected`
+
+## 2026-05-16T16:41:05.675Z — raw source added
+
+- id: `prd-coding-agent-empty-session-guard-source`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-aefd1f8d.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `fix-temporary-session decision record (revised)`
+
+## 2026-05-16T16:41:05.685Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T16-41-05-671Z-31a79314`
+- patch_set_id: `null`
+- proposer: `captain-cko`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-aefd1f8d.md`
+- target: `wiki/prd-coding-agent-empty-session-guard.md`
+- warning_count: `0`
+
+## 2026-05-17T05:39:44.186Z — index rebuilt
+
+- entry_count: `7`
+
+## 2026-05-17T05:39:44.187Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-16T16-41-05-671Z-31a79314`
+- patch_set_id: `null`
+- proposer: `captain-cko`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-aefd1f8d.md`
+- result: `accepted`
+- target: `wiki/prd-coding-agent-empty-session-guard.md`
 

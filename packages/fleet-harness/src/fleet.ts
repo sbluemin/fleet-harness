@@ -248,7 +248,6 @@ export function wireFleetPiEvents(pi: ExtensionAPI): void {
     statesWatcher = null;
     detachAgentPanelUi();
     detachStatusContext();
-    persistDirectChatIfEmpty(ctx);
     await shutdownFleetRuntime();
   });
 }
@@ -326,32 +325,6 @@ function registerProtocolKeybinds(): void {
       },
     });
   }
-}
-
-function persistDirectChatIfEmpty(ctx: ExtensionContext): void {
-  const sessionFile = ctx.sessionManager.getSessionFile();
-  if (!sessionFile) return;
-
-  const entries = ctx.sessionManager.getEntries();
-  const hasDirectChat = entries.some((entry) => entry.type === "custom_message");
-  if (!hasDirectChat) return;
-
-  const hasAssistant = entries.some(
-    (entry) => entry.type === "message" && (entry as any).message?.role === "assistant",
-  );
-  if (hasAssistant) return;
-
-  const header = ctx.sessionManager.getHeader();
-  if (!header) return;
-
-  const dir = path.dirname(sessionFile);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-  let content = JSON.stringify(header) + "\n";
-  for (const entry of entries) {
-    content += JSON.stringify(entry) + "\n";
-  }
-  fs.writeFileSync(sessionFile, content);
 }
 
 function bindFleetHostSession(ctx: ExtensionContext): void {
@@ -617,7 +590,7 @@ function ensureStatesWatcher(): void {
   if (!filePath) return;
   const dirPath = path.dirname(filePath);
   const filename = path.basename(filePath);
-  statesWatcher = fs.watch(dirPath, (_event, changed) => {
+  statesWatcher = fs.watch(dirPath, (_event: string, changed: string | null) => {
     if (changed && changed !== filename) return;
     let stat: fs.Stats;
     try {

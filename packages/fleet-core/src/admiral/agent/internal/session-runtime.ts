@@ -22,14 +22,20 @@ interface SessionPersistenceEntry {
 export interface SessionPersistencePort {
   getSessionId(): string;
   getEntries(): readonly SessionPersistenceEntry[];
-  appendCustomEntry(customType: string, data?: unknown): string;
-  flush(): void;
+  appendCustomEntry?: (customType: string, data?: unknown) => string;
+  flush?: () => void;
+}
+
+export interface SessionMappingCommitToken {
+  readonly sessionId: string;
+  readonly port: SessionPersistencePort;
 }
 
 export interface HostSessionStore {
   restore(entries: readonly SessionPersistenceEntry[]): void;
   get(cli: string): string | undefined;
-  set(cli: string, sessionId: string): void;
+  set(cli: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
+  commitSet(cli: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
   clear(cli: string): void;
   getAll(): Readonly<SessionMap>;
 }
@@ -38,7 +44,8 @@ export interface CarrierSessionStore {
   /** Durable keys are raw executor poolKey values, including carrier IDs and synthetic squadron/taskforce keys. */
   restore(entries: readonly SessionPersistenceEntry[]): void;
   get(poolKey: string): string | undefined;
-  set(poolKey: string, sessionId: string): void;
+  set(poolKey: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
+  commitSet(poolKey: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
   clear(poolKey: string): void;
   getAll(): Readonly<SessionMap>;
 }
@@ -94,7 +101,8 @@ const AUTH_PATTERNS = [
 const noopHostStore: HostSessionStore = {
   restore() {},
   get() { return undefined; },
-  set() {},
+  set() { return false; },
+  commitSet() { return false; },
   clear() {},
   getAll() { return {}; },
 };
@@ -102,7 +110,8 @@ const noopHostStore: HostSessionStore = {
 const noopCarrierStore: CarrierSessionStore = {
   restore() {},
   get() { return undefined; },
-  set() {},
+  set() { return false; },
+  commitSet() { return false; },
   clear() {},
   getAll() { return {}; },
 };
@@ -131,6 +140,7 @@ export function onHostSessionChange(piSessionId: string, sessionPort?: SessionPe
     return;
   }
   activeSessionPort = sessionPort;
+  durableAppendSinceBind = false;
   const entries = sessionPort.getEntries();
   hostSessionStore?.restore(entries);
   carrierSessionStore?.restore(entries);
@@ -153,9 +163,20 @@ export function getDataDir(): string | null {
   return dataDir;
 }
 
-export function flushSessionMappings(): void {
+export function captureSessionMappingCommitToken(): SessionMappingCommitToken | undefined {
+  if (!activeSessionPort) return undefined;
+  return {
+    sessionId: activeSessionPort.getSessionId(),
+    port: activeSessionPort,
+  };
+}
+
+export function flushSessionMappings(token?: SessionMappingCommitToken): void {
   try {
-    activeSessionPort?.flush();
+    const port = token ? getActivePortForToken(token) : activeSessionPort;
+    if (!port) return;
+    if (!durableAppendSinceBind && !hasDurableMappingEntries(port.getEntries())) return;
+    port.flush?.();
   } catch {
     // 세션 매핑 checkpoint 실패는 ACP 요청 자체를 막지 않는다.
   }
@@ -188,6 +209,7 @@ export function isDeadSessionError(err: unknown): boolean {
 
 let dataDir: string | null = null;
 let activeSessionPort: SessionPersistencePort | null = null;
+let durableAppendSinceBind = false;
 let hostSessionStore: HostSessionStore | null = null;
 let carrierSessionStore: CarrierSessionStore | null = null;
 
@@ -206,22 +228,38 @@ function createJsonlSessionStores(): { host: HostSessionStore; carrier: CarrierS
 
 function createJsonlSessionStore(options: JsonlSessionStoreOptions): HostSessionStore & CarrierSessionStore {
   let currentMap: SessionMap = {};
+  let durableMap: SessionMap = {};
 
   return {
     restore(entries: readonly SessionPersistenceEntry[]): void {
-      currentMap = replaySessionMappings(entries, options.customType);
+      durableMap = replaySessionMappings(entries, options.customType);
+      currentMap = { ...durableMap };
     },
     get(key: string): string | undefined {
       return currentMap[key];
     },
-    set(key: string, sessionId: string): void {
-      if (!key || !sessionId || currentMap[key] === sessionId) return;
+    set(key: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean {
+      if (!key || !sessionId) return false;
+      if (!token || !getActivePortForToken(token)) return false;
+      if (currentMap[key] === sessionId) return true;
       currentMap[key] = sessionId;
-      options.appendEntry(options.customType, { action: "set", key, sessionId });
+      return true;
+    },
+    commitSet(key: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean {
+      if (!key || !sessionId) return false;
+      if (durableMap[key] === sessionId) return true;
+      if (!token || !getActivePortForToken(token)) return false;
+      if (currentMap[key] !== sessionId) {
+        currentMap[key] = sessionId;
+      }
+      if (!appendEntry(options.customType, { action: "set", key, sessionId }, token)) return false;
+      durableMap[key] = sessionId;
+      return true;
     },
     clear(key: string): void {
       if (!key || !(key in currentMap)) return;
       delete currentMap[key];
+      delete durableMap[key];
       options.appendEntry(options.customType, { action: "clear", key });
     },
     getAll(): Readonly<SessionMap> {
@@ -230,12 +268,34 @@ function createJsonlSessionStore(options: JsonlSessionStoreOptions): HostSession
   };
 }
 
-function appendEntry(customType: string, data: SessionMappingEntryData): void {
+function appendEntry(
+  customType: string,
+  data: SessionMappingEntryData,
+  token?: SessionMappingCommitToken,
+): boolean {
   try {
-    activeSessionPort?.appendCustomEntry(customType, data);
+    const port = token ? getActivePortForToken(token) : activeSessionPort;
+    const entryId = port?.appendCustomEntry?.(customType, data);
+    if (entryId) durableAppendSinceBind = true;
+    return !!entryId;
   } catch {
     // 세션 매핑 append 실패는 ACP 요청 자체를 막지 않는다.
+    return false;
   }
+}
+
+function getActivePortForToken(token: SessionMappingCommitToken): SessionPersistencePort | null {
+  if (!activeSessionPort) return null;
+  if (activeSessionPort !== token.port) return null;
+  if (activeSessionPort.getSessionId() !== token.sessionId) return null;
+  return activeSessionPort;
+}
+
+function hasDurableMappingEntries(entries: readonly SessionPersistenceEntry[]): boolean {
+  return entries.some((entry) =>
+    entry.type === "custom" &&
+    (entry.customType === HOST_SESSION_CUSTOM_TYPE || entry.customType === CARRIER_SESSION_CUSTOM_TYPE)
+  );
 }
 
 function replaySessionMappings(
