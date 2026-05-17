@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (Pi-agnostic domain core), `fleet-carriers` (carrier persona catalog and self-registration leaf package), `fleet-harness` (Pi host adapter), `fleet-wiki`, and `fleet-wiki-web`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (Pi-agnostic domain core), `fleet-carriers` (carrier persona catalog and self-registration leaf package), `fleet-harness` (Pi host adapter), `fleet-dedicated-harness` (embedded CLI TUI PoC), `fleet-wiki`, and `fleet-wiki-web`.
 
 ## Architecture Philosophy
 

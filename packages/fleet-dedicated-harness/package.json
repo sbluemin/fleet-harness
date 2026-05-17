@@ -1,0 +1,25 @@
+{
+  "name": "@sbluemin/fleet-dedicated-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fleet-dedicated-harness": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@sbluemin/fleet-carriers": "workspace:*",
+    "@sbluemin/fleet-core": "workspace:*",
+    "@sbluemin/fleet-tui": "workspace:*",
+    "@xterm/headless": "^5.5.0",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.3",
+    "typescript": "^6.0.2"
+  }
+}

@@ -5,6 +5,7 @@ packages:
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"
   - "packages/fleet-harness"
+  - "packages/fleet-dedicated-harness"
 allowBuilds:
   '@google/genai': true
   esbuild: true
