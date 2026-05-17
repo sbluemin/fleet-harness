@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `7`
+- total_entries: `8`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -42,6 +42,15 @@
 - tags: `carrier, fleet-carriers, fleet-core, persona, tool-scoping, shipped`
 - updated: `2026-05-16T07:34:09.878Z`
 - summary: `## Overview`
+
+### prd-coding-agent-empty-session-guard
+
+- title: `PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드`
+- path: `wiki/prd-coding-agent-empty-session-guard.md`
+- tags: `coding-agent, session-selector, persistence, durable-commit, shipped`
+- updated: `2026-05-16T16:41:05.671Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-aefd1f8d.md`
 
 ### prd-coding-agent-prompt-slash-prefix
 
@@ -86,6 +95,7 @@
 
 ### coding-agent
 
+- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 - [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
 
@@ -94,6 +104,10 @@
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### durable-commit
+
+- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 
 ### ephemeral
 
@@ -159,6 +173,10 @@
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 
+### persistence
+
+- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
+
 ### persona
 
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
@@ -175,9 +193,14 @@
 
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
 
+### session-selector
+
+- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
+
 ### shipped
 
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 - [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 
 ### slash-command

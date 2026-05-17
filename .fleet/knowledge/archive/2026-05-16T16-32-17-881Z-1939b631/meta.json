@@ -1,0 +1,9 @@
+{
+  "id": "2026-05-16T16-32-17-881Z-1939b631",
+  "status": "rejected",
+  "createdAt": "2026-05-16T16:32:17.881Z",
+  "rawSourceRef": "raw/2026-05-16-prd-coding-agent-empty-session-guard-source-f923d608.md",
+  "warnings": [],
+  "decidedAt": "2026-05-16T16:39:48.615Z",
+  "reason": "Hard rule violation: Functional Requirements 전체가 internal mechanism (in-memory state, JSONL disk write, status token validation, generation token) 위주로 작성됨 — PRD prompt 규칙상 \"Only the call surface / UX / contract the user actually faces\" 위반. Goals에 implementation-action 동사(\"Transition\", \"phasing out\") 잔존. Acceptance Criteria의 \"dirty state tracking\"은 user-verifiable이 아닌 internal state 검증. 추가로 기존 prd-* entry들과 마크다운 템플릿/톤 일관성 부족. 재작성 시 기존 prd-coding-agent-scoped-models-removal / prd-harness-btw-overlay / prd-carrier-persona-extraction의 섹션 구조, 문장 스타일, FR/Acceptance 작성 톤을 verbatim 참고 기준으로 삼을 것."
+}

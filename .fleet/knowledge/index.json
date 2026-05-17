@@ -49,6 +49,18 @@
     ],
     "updated": "2026-05-16T07:34:09.878Z"
   },
+  "prd-coding-agent-empty-session-guard": {
+    "path": "wiki/prd-coding-agent-empty-session-guard.md",
+    "title": "PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드",
+    "tags": [
+      "coding-agent",
+      "session-selector",
+      "persistence",
+      "durable-commit",
+      "shipped"
+    ],
+    "updated": "2026-05-16T16:41:05.671Z"
+  },
   "prd-coding-agent-prompt-slash-prefix": {
     "path": "wiki/prd-coding-agent-prompt-slash-prefix.md",
     "title": "PRD: Prompt Template 호출 접두사(/prompt:) 도입",

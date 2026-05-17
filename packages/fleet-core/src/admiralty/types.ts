@@ -95,6 +95,7 @@ export interface FleetRuntimeState {
     getState(): "disconnected" | "connecting" | "connected";
     sendNotification(method: string, params: Record<string, unknown>): void;
   } | null;
+  currentSessionId?: string;
   dispatcher?: {
     generation: number;
     sendMission(objective: string): void;
@@ -112,6 +113,8 @@ export interface FleetRuntimeState {
     setBaseOnly(): void;
     setConnected(fleetId: FleetId, designation: string, operationalZone: string): void;
   };
+  pendingRegisterFleetId?: FleetId;
+  registeredSessionId?: string;
   sessionGeneration: number;
   statusSyncTimer: ReturnType<typeof setInterval> | null;
 }

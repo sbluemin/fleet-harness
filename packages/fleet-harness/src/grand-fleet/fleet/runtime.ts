@@ -14,9 +14,6 @@ import {
 } from "@sbluemin/fleet-core/admiralty";
 import { buildFleetPingPayload } from "./status-source.js";
 
-const LOG_SOURCE = "grand-fleet";
-const STATUS_SYNC_INTERVAL_MS = 1_000;
-
 interface FleetRegisterPayload {
   fleetId: FleetId;
   designation: string;
@@ -25,6 +22,22 @@ interface FleetRegisterPayload {
   protocolVersion: string;
   carriers: ReturnType<typeof buildFleetPingPayload>["carriers"];
 }
+
+interface FleetRegisterInFlight {
+  readonly fleetId: FleetId;
+  readonly sessionId: string;
+  readonly generation: number;
+}
+
+type FleetRuntimeSessionState = FleetRuntimeState & {
+  currentSessionId?: string;
+  inFlightRegister?: FleetRegisterInFlight;
+  pendingRegisterFleetId?: FleetId;
+  registeredSessionId?: string;
+};
+
+const LOG_SOURCE = "grand-fleet";
+const STATUS_SYNC_INTERVAL_MS = 1_000;
 
 export function getFleetRuntime(): FleetRuntimeState {
   const existing = getCoreFleetRuntime();
@@ -57,9 +70,10 @@ export function setFleetSessionBindings(
     setConnected(fleetId: FleetId, designation: string, operationalZone: string): void;
   },
 ): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   const generation = runtime.sessionGeneration + 1;
   runtime.sessionGeneration = generation;
+  runtime.currentSessionId = ctx.sessionManager.getSessionId();
   runtime.presenter = {
     generation,
     notify(message, level) {
@@ -87,11 +101,15 @@ export function setFleetSessionBindings(
       },
     }
     : undefined;
+  if (runtime.client?.getState() === "connected" && runtime.pendingRegisterFleetId) {
+    void registerCurrentFleet(runtime.pendingRegisterFleetId);
+  }
 }
 
 export function clearFleetSessionBindings(): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   runtime.sessionGeneration += 1;
+  runtime.currentSessionId = undefined;
   runtime.presenter = undefined;
   runtime.dispatcher = undefined;
   runtime.promptSync = undefined;
@@ -101,7 +119,7 @@ export function connectToAdmiralty(
   socketPath: string,
   fleetIdToUse: string,
 ): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   const state = getState();
   const log = infra.log.getLogAPI();
 
@@ -120,24 +138,11 @@ export function connectToAdmiralty(
     log.info(LOG_SOURCE, "Admiralty 접속 완료");
     notifyCurrentSession("[Grand Fleet] Admiralty 접속 완료", "info");
 
-    try {
-      log.debug(LOG_SOURCE, "fleet.register 전송");
-      await client.sendRequest(
-        "fleet.register",
-        buildFleetRegisterPayload(fleetIdToUse) as unknown as Record<string, unknown>,
-      );
-      log.info(LOG_SOURCE, "fleet.register 성공");
-      runtime.lastStatusSignature = null;
-      syncConnectedPrompt(fleetIdToUse);
-      flushFleetStatus(fleetIdToUse, true);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error(LOG_SOURCE, `fleet.register 실패: ${message}`);
-      notifyCurrentSession(`[Grand Fleet] 등록 실패: ${message}`, "error");
+    const registered = await registerCurrentFleet(fleetIdToUse);
+    if (registered) {
+      startHeartbeat(fleetIdToUse);
+      startFleetStatusSync(fleetIdToUse);
     }
-
-    startHeartbeat(fleetIdToUse);
-    startFleetStatusSync(fleetIdToUse);
   });
 
   client.onDisconnect(() => {
@@ -171,17 +176,20 @@ export function connectToAdmiralty(
       return { aborted: true, missionId: String(params.missionId ?? "") };
     },
     onSessionNew: async () => {
-      return { sessionId: `session-${Date.now()}` };
+      const sessionId = getCurrentBoundSessionId();
+      if (!sessionId) return { unavailable: true, reason: "session_not_bound" };
+      return { sessionId };
     },
     onSessionResume: async (params) => {
-      return { resumed: true, sessionId: String(params.sessionId ?? "") };
+      const sessionId = getCurrentBoundSessionId() ?? String(params.sessionId ?? "");
+      return { resumed: true, sessionId };
     },
     onSessionSuspend: async () => {
       state.activeMissionId = null;
       state.activeMissionObjective = null;
       clearMissionBuffer();
       flushFleetStatus(fleetIdToUse, true);
-      return { suspended: true, sessionId: "current" };
+      return { suspended: true, sessionId: getCurrentBoundSessionId() ?? "" };
     },
     onFleetPing: async () => {
       return buildFleetPingPayload(fleetIdToUse);
@@ -195,12 +203,13 @@ export function disconnectFromAdmiralty(
   fleetId: string,
   options: { resetPrompt?: () => void } = {},
 ): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   const state = getState();
   stopHeartbeat();
   stopFleetStatusSync();
   runtime.client?.sendNotification("fleet.deregister", {
     fleetId,
+    sessionId: runtime.currentSessionId ?? runtime.registeredSessionId ?? "",
     reason: "user_request",
   });
   runtime.client?.close();
@@ -210,6 +219,9 @@ export function disconnectFromAdmiralty(
   clearMissionBuffer();
   runtime.lastHeartbeatAt = null;
   runtime.lastStatusSignature = null;
+  runtime.pendingRegisterFleetId = undefined;
+  runtime.inFlightRegister = undefined;
+  runtime.registeredSessionId = undefined;
   options.resetPrompt?.();
   if (!options.resetPrompt) {
     syncBasePrompt();
@@ -220,7 +232,7 @@ export function shutdownFleetRuntime(
   fleetId: string,
   options: { resetPrompt?: () => void } = {},
 ): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   stopHeartbeat();
   stopFleetStatusSync();
   if (!runtime.client) {
@@ -235,12 +247,16 @@ export function shutdownFleetRuntime(
   infra.log.getLogAPI().info(LOG_SOURCE, "Fleet 종료: deregister 전송");
   runtime.client.sendNotification("fleet.deregister", {
     fleetId,
+    sessionId: runtime.currentSessionId ?? runtime.registeredSessionId ?? "",
     reason: "shutdown",
   });
   runtime.client.close();
   runtime.client = null;
   runtime.lastHeartbeatAt = null;
   runtime.lastStatusSignature = null;
+  runtime.pendingRegisterFleetId = undefined;
+  runtime.inFlightRegister = undefined;
+  runtime.registeredSessionId = undefined;
   clearMissionBuffer();
   options.resetPrompt?.();
   if (!options.resetPrompt) {
@@ -253,7 +269,7 @@ export function clearMissionBuffer(): void {
 }
 
 export function flushFleetStatus(fleetId: FleetId, force = false): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   if (!runtime.client || runtime.client.getState() !== "connected") {
     return;
   }
@@ -268,21 +284,87 @@ export function flushFleetStatus(fleetId: FleetId, force = false): void {
   runtime.client.sendNotification("fleet.status", payload as unknown as Record<string, unknown>);
 }
 
-function buildFleetRegisterPayload(fleetId: FleetId): FleetRegisterPayload {
+async function registerCurrentFleet(fleetId: FleetId): Promise<boolean> {
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
+  const client = runtime.client as FleetClient | null;
+  const sessionId = getCurrentBoundSessionId();
+  const log = infra.log.getLogAPI();
+  if (!client || client.getState() !== "connected") return false;
+  if (!sessionId) {
+    runtime.pendingRegisterFleetId = fleetId;
+    log.warn(LOG_SOURCE, "fleet.register 지연: 바인딩된 ACP 세션 ID가 없습니다");
+    return false;
+  }
+  if (runtime.registeredSessionId === sessionId) {
+    runtime.pendingRegisterFleetId = undefined;
+    syncConnectedPrompt(fleetId);
+    return true;
+  }
+  if (
+    runtime.inFlightRegister?.fleetId === fleetId &&
+    runtime.inFlightRegister.sessionId === sessionId
+  ) {
+    return false;
+  }
+
+  const registerGeneration = runtime.sessionGeneration;
+  const inFlight: FleetRegisterInFlight = { fleetId, sessionId, generation: registerGeneration };
+  runtime.inFlightRegister = inFlight;
+
+  try {
+    log.debug(LOG_SOURCE, "fleet.register 전송");
+    await client.sendRequest(
+      "fleet.register",
+      buildFleetRegisterPayload(fleetId, sessionId) as unknown as Record<string, unknown>,
+    );
+    if (runtime.inFlightRegister !== inFlight || runtime.sessionGeneration !== registerGeneration || getCurrentBoundSessionId() !== sessionId) {
+      if (runtime.inFlightRegister === inFlight) {
+        runtime.inFlightRegister = undefined;
+      }
+      return false;
+    }
+    log.info(LOG_SOURCE, "fleet.register 성공");
+    runtime.inFlightRegister = undefined;
+    runtime.pendingRegisterFleetId = undefined;
+    runtime.registeredSessionId = sessionId;
+    runtime.lastStatusSignature = null;
+    syncConnectedPrompt(fleetId);
+    flushFleetStatus(fleetId, true);
+    startHeartbeat(fleetId);
+    startFleetStatusSync(fleetId);
+    return true;
+  } catch (err) {
+    if (runtime.inFlightRegister !== inFlight) {
+      return false;
+    }
+    runtime.inFlightRegister = undefined;
+    const message = err instanceof Error ? err.message : String(err);
+    log.error(LOG_SOURCE, `fleet.register 실패: ${message}`);
+    notifyCurrentSession(`[Grand Fleet] 등록 실패: ${message}`, "error");
+    return false;
+  }
+}
+
+function buildFleetRegisterPayload(fleetId: FleetId, sessionId: string): FleetRegisterPayload {
   const state = getState();
   const ping = buildFleetPingPayload(fleetId);
   return {
     fleetId,
     designation: state.designation ?? fleetId,
     operationalZone: process.cwd(),
-    sessionId: `session-${Date.now()}`,
+    sessionId,
     protocolVersion: PROTOCOL_VERSION,
     carriers: ping.carriers,
   };
 }
 
+function getCurrentBoundSessionId(): string | undefined {
+  const sessionId = (getFleetRuntime() as FleetRuntimeSessionState).currentSessionId;
+  return sessionId && sessionId.trim() ? sessionId : undefined;
+}
+
 function startHeartbeat(fleetId: FleetId): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   stopHeartbeat();
   runtime.heartbeatTimer = setInterval(() => {
     runtime.lastHeartbeatAt = Date.now();
@@ -302,7 +384,7 @@ function startHeartbeat(fleetId: FleetId): void {
 }
 
 function stopHeartbeat(): void {
-  const runtime = getFleetRuntime();
+  const runtime = getFleetRuntime() as FleetRuntimeSessionState;
   if (!runtime.heartbeatTimer) {
     return;
   }

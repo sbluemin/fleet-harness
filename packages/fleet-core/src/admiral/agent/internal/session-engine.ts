@@ -28,7 +28,9 @@ import {
   setSessionLaunchConfig,
 } from "./state.js";
 import {
+  captureSessionMappingCommitToken,
   classifyResumeFailure,
+  flushSessionMappings,
   getHostSessionStore,
   isDeadSessionError,
 } from "./session-runtime.js";
@@ -246,6 +248,7 @@ export async function ensureSession(
   };
 
   const store = getHostSessionStore();
+  const commitToken = captureSessionMappingCommitToken();
   const savedSessionId = store.get(cli) ?? undefined;
   let client: IUnifiedAgentClient | null = null;
   let resumedFromSavedSession = false;
@@ -309,7 +312,10 @@ export async function ensureSession(
     newSession.sessionId = connectResult.session?.sessionId ?? client.getConnectionInfo().sessionId ?? null;
     newSession.firstPromptSent = resumedFromSavedSession;
     if (newSession.sessionId) {
-      store.set(cli, newSession.sessionId);
+      store.set(cli, newSession.sessionId, commitToken);
+      if (resumedFromSavedSession) {
+        store.commitSet(cli, newSession.sessionId, commitToken);
+      }
     }
     registerSession(state, newSession);
     installToolCallRouter(state, newSession);
@@ -435,7 +441,10 @@ export async function sendMessage(
 
   // sendMessage — promptComplete까지 resolve 대기
   debug(`sendMessage: promptLen=${prompt.length} firstPrompt=${!session.firstPromptSent}`);
+  const commitToken = captureSessionMappingCommitToken();
+  let promptHandedOff = false;
   try {
+    promptHandedOff = true;
     await session.client.sendMessage(prompt);
   } catch (err) {
     if (aborted) return;
@@ -452,6 +461,13 @@ export async function sendMessage(
     }
     if (session.activePrompt?.promptId === promptId) {
       session.firstPromptSent = true;
+    }
+    if (promptHandedOff && session.sessionId) {
+      const postSendSessionId = session.client?.getConnectionInfo().sessionId ?? session.sessionId;
+      session.sessionId = postSendSessionId;
+      if (getHostSessionStore().commitSet(session.cli, postSendSessionId, commitToken)) {
+        flushSessionMappings(commitToken);
+      }
     }
   }
 }
