@@ -156,6 +156,9 @@ export function connectToAdmiralty(
     stopFleetStatusSync();
     // Admiralty가 연결 단위로 register 상태를 보관하므로, auto-reconnect 이후의
     // registerCurrentFleet이 idempotent early-return으로 skip되지 않도록 reset한다.
+    // inFlightRegister도 함께 cleared되어야, register 발송 중 socket이 drop된 직후
+    // 옛 sendRequest의 timeout(30s)을 기다리지 않고 새 reconnect 경로에서 즉시 재발송된다.
+    runtime.inFlightRegister = undefined;
     runtime.registeredFleetId = undefined;
     runtime.registeredSessionId = undefined;
   });

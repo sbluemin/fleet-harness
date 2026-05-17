@@ -548,6 +548,67 @@ describe("Fleet runtime bucket", () => {
     shutdownFleetRuntime("fleet-a");
   });
 
+  it("socket drop mid-register clears in-flight guard so auto-reconnect re-sends fleet.register", async () => {
+    (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
+      role: "fleet",
+      fleetId: "fleet-a",
+      designation: "Fleet A",
+      socketPath: "/tmp/admiralty.sock",
+      connectedFleets: new Map(),
+      totalCost: 0,
+      activeMissionId: null,
+      activeMissionObjective: null,
+    };
+    const pi = { sendUserMessage: () => {} };
+    const releases: Array<() => void> = [];
+
+    connectToAdmiralty("/tmp/admiralty.sock", "fleet-a");
+    await Promise.resolve();
+
+    const { FleetClient } = await import("../../src/grand-fleet/fleet/client.js");
+    const client = (FleetClient as any).instances.at(-1);
+    client.sendRequest = async (method: string, params: Record<string, unknown>) => {
+      client.requests.push({ method, params });
+      await new Promise<void>((release) => {
+        releases.push(release);
+      });
+      return { ok: true };
+    };
+
+    // bound session → register 발송 (pending in-flight)
+    setFleetSessionBindings(pi as any, makeCtx("session-1") as any);
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(1);
+    expect((getFleetRuntime() as any).inFlightRegister).toBeDefined();
+
+    // socket drop 발생 — inFlightRegister 도 함께 reset 되어야 한다.
+    client.simulateDisconnect();
+    expect((getFleetRuntime() as any).inFlightRegister).toBeUndefined();
+    expect((getFleetRuntime() as any).registeredSessionId).toBeUndefined();
+    expect((getFleetRuntime() as any).registeredFleetId).toBeUndefined();
+
+    // auto-reconnect → in-flight 가드가 사라졌으므로 새 register 가 즉시 발송된다.
+    client.simulateReconnect();
+    await Promise.resolve();
+
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.params.sessionId).toBe("session-1");
+
+    // 옛 promise 가 늦게 release 되어도 catch 분기는 새 inFlightRegister 와 일치하지 않으므로 무시된다.
+    releases[0]?.();
+    await new Promise<void>((r) => setImmediate(r));
+    expect((getFleetRuntime() as any).inFlightRegister).toBeDefined();
+
+    // 새 register success
+    releases[1]?.();
+    await new Promise<void>((r) => setImmediate(r));
+    expect((getFleetRuntime() as any).registeredSessionId).toBe("session-1");
+    expect((getFleetRuntime() as any).registeredFleetId).toBe("fleet-a");
+
+    shutdownFleetRuntime("fleet-a");
+  });
+
   it("session handlers reuse the current bound session ID instead of synthetic IDs", async () => {
     (globalThis as any)[GRAND_FLEET_STATE_KEY] = {
       role: "fleet",
