@@ -8,6 +8,7 @@ const LOG_BULLET_PATTERN = /^- ([a-z0-9_]+): `([\s\S]*)`$/;
 const LOG_EVENTS: WikiLogEvent[] = [
   "raw source added",
   "patch enqueued",
+  "patch edited",
   "patch approved",
   "patch rejected",
   "patch set staged",

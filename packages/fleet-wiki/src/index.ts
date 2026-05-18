@@ -23,6 +23,7 @@ export * from "./tools/briefing.js";
 export * from "./tools/drydock.js";
 export * from "./tools/ingest.js";
 export * from "./tools/orient.js";
+export * from "./tools/patch-edit.js";
 export * from "./tools/patch-queue.js";
 export * from "./tools/compile-source.js";
 export * from "./tools/read.js";

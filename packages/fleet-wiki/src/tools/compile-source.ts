@@ -14,7 +14,7 @@ import {
   buildWikiCompileSourceSchema,
 } from "../prompts.js";
 import { assertNoUnsafeSecret } from "../safety.js";
-import { assertSafeEntryId, listWiki, pathExists, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
+import { assertSafeEntryId, computeContentHash, listWiki, pathExists, readPatchFile, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
 import type { Patch, RawSourceEntry, WikiEntry } from "../types.js";
 
 interface WikiCompileSourceInput {
@@ -76,6 +76,8 @@ interface CompileSourceProposal {
   target: string;
   summary: string;
   entry: WikiEntry;
+  baseHash?: string;
+  baseVersion?: number;
 }
 
 const DEFAULT_MAX_PAGES_TOUCHED = 5;
@@ -169,6 +171,9 @@ async function stageSourceCompile(
   for (const proposal of proposals) {
     const patch = buildProposalPatch(proposal, now);
     const patchId = await enqueuePatch(patch, paths, {
+      baseCheckedAt: proposal.baseHash || proposal.baseVersion !== undefined ? now : undefined,
+      baseHash: proposal.baseHash,
+      baseVersion: proposal.baseVersion,
       patch_set_id: patchSetId,
       rawSourceRef: resolvedSource.rawSourceRef,
     });
@@ -294,6 +299,7 @@ async function buildCompileProposals(
     type: "source",
     status: "current",
     rawSourceRef: resolvedSource.rawSourceRef,
+    rawSourceRefs: mergeRawSourceRefs(existingSourceEntry?.rawSourceRefs, existingSourceEntry?.rawSourceRef, { ref: resolvedSource.rawSourceRef }),
     body: buildSourcePageBody(sourcePageTitle, resolvedSource),
   };
   const proposals: CompileSourceProposal[] = [{
@@ -301,6 +307,8 @@ async function buildCompileProposals(
     target: sourceTarget,
     summary: truncateSummary(`Compile source page ${sourcePageTitle}`),
     entry: sourceEntry,
+    baseHash: sourceExists ? computeContentHash(await readPatchFile(path.join(paths.root, sourceTarget))) : undefined,
+    baseVersion: existingSourceEntry?.version,
   }];
 
   const relatedCandidates = await discoverRelatedEntryCandidates(paths, resolvedSource.sourceContent, resolvedSource.sourceTitle);
@@ -319,9 +327,12 @@ async function buildCompileProposals(
         ...existing,
         updated: now,
         version: existing.version + 1,
-        rawSourceRef: existing.rawSourceRef ?? resolvedSource.rawSourceRef,
+        rawSourceRef: resolvedSource.rawSourceRef,
+        rawSourceRefs: mergeRawSourceRefs(existing.rawSourceRefs, existing.rawSourceRef, { ref: resolvedSource.rawSourceRef }),
         body: appendSourceCompileNote(existing.body, resolvedSource.sourcePageId, resolvedSource.rawSourceRef),
       },
+      baseHash: computeContentHash(await readPatchFile(path.join(paths.wikiDir, `${existing.id}.md`))),
+      baseVersion: existing.version,
     });
   }
 
@@ -383,6 +394,19 @@ function buildProposalPatch(proposal: CompileSourceProposal, createdAt: string):
     },
     body: JSON.stringify(proposal.entry),
   };
+}
+
+function mergeRawSourceRefs(
+  refs: WikiEntry["rawSourceRefs"],
+  currentRef: string | undefined,
+  nextRef: NonNullable<WikiEntry["rawSourceRefs"]>[number],
+): WikiEntry["rawSourceRefs"] {
+  const existing = refs ? [...refs] : [];
+  if (currentRef && !existing.some((item) => item.ref === currentRef)) {
+    existing.push({ ref: currentRef });
+  }
+  if (existing.some((item) => item.ref === nextRef.ref)) return existing;
+  return [...existing, nextRef];
 }
 
 function buildCompileWarnings(input: NormalizedCompileSourceInput, mode: "preview" | "stage"): string[] {

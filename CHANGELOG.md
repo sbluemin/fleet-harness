@@ -5,7 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [wiki] Added `wiki_patch_edit` for approval-gated in-place edits to pending wiki patches.
+- [wiki] Implemented approve-time stale-base guard using content hash and version checks to prevent concurrent modification conflicts.
+- [wiki] Added automatic `rawSourceRefs` accumulation and deduplication to preserve complete provenance history across entry updates.
+- [wiki] Enforced POSIX target validation and `realpath`-based approval locks to prevent path traversal and symlink/case-alias attacks.
+- [wiki] Enhanced `wiki_compile_source` with improved update provenance and related entry tracking for batch operations.
+- [wiki] English localization of all tool prompts, schemas, and guidelines in `prompts.ts`.
+
 ### Fixed
+- [wiki] Unified patch hash calculation to cover the entire `patch.md` content, ensuring `summary` frontmatter changes are correctly reflected in `changed_fields`, `patch_hash`, and `base_patch_hash`.
+- [wiki] Introduced per-`patch_id` in-process mutex and snapshot atomicity to prevent race conditions during concurrent `wiki_patch_edit`, `approve`, and `reject` operations.
+- [wiki] Integrated `lastEditHash` as the single source of truth (SSoT) for the actual written patch hash to ensure consistent stale-base detection during interleaved edits.
 - [wiki-web] Large Mermaid diagrams are no longer clipped by the document container width.
 - [core][harness] Prevented persistent JSONL session files from being written when an agent session is opened but never receives a user prompt, eliminating accumulated "(no messages)" entries in the session selector.
 - [core][harness] Hardened session commit integrity by enforcing cross-session token guards to prevent stale state updates.

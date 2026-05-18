@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -7,7 +7,7 @@ import { listConflicts, readConflict } from "../src/conflicts.js";
 import { buildPatchSetId, writePatchSet } from "../src/patch-set.js";
 import { approvePatch, approvePatchSet, enqueuePatch, listQueue, parsePatch, rejectPatch, resolveQueueSelection, showQueue, validatePatch } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
-import { pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../src/store.js";
+import { computeContentHash, pathExists, readJsonFile, readPatchFile, writeWikiEntry } from "../src/store.js";
 import { buildPatchQueueToolConfig } from "../src/tools/patch-queue.js";
 import type { PatchMeta } from "../src/types.js";
 
@@ -55,6 +55,30 @@ describe("wiki patch queue", () => {
     const traversal = await parsePatch(`---\nop: "create_wiki"\ntarget: "../../../etc/passwd"\nsummary: "Bad"\nproposer: "test"\ncreated: "2026-04-26T00:00:00.000Z"\n---\n{}`);
 
     await expect(validatePatch(traversal, paths)).rejects.toThrow(/escapes wiki root/);
+  });
+
+  it("rejects dot-segment alias targets before approval", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const alias = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/sub/../race.md"\nsummary: "Alias"\nproposer: "test"\ncreated: "2026-04-26T00:00:00.000Z"\n---\n{}`);
+
+    await expect(validatePatch(alias, paths)).rejects.toThrow(/dot segments/);
+  });
+
+  it("rejects backslash, trailing slash, leading slash, and absolute targets", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const cases = [
+      { target: String.raw`wiki\foo.md`, error: /forward slashes/ },
+      { target: "wiki/foo.md/", error: /end with a slash/ },
+      { target: "/wiki/foo.md", error: /relative/ },
+      { target: path.join(paths.wikiDir, "foo.md"), error: /relative|forward slashes/ },
+    ];
+
+    for (const item of cases) {
+      const patch = await parsePatch(`---\nop: "create_wiki"\ntarget: "${item.target}"\nsummary: "Bad target"\nproposer: "test"\ncreated: "2026-04-26T00:00:00.000Z"\n---\n{}`);
+      await expect(validatePatch(patch, paths)).rejects.toThrow(item.error);
+    }
   });
 
   it("rejects update_wiki when the target is missing", async () => {
@@ -318,6 +342,23 @@ describe("wiki patch queue", () => {
     expect(await readPatchFile(path.join(paths.root, "log.md"))).toContain("— patch set partially approved");
   });
 
+  it("maps missing wiki root during damaged queue approval to validation errors", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const patchId = "2026-04-26T00-00-00-000Z-deadbeef";
+    await mkdir(path.join(paths.queueDir, patchId), { recursive: true });
+    await writeFile(path.join(paths.queueDir, patchId, "patch.md"), `---\nop: "update_wiki"\ntarget: "wiki/missing.md"\nsummary: "Missing"\nproposer: "test"\ncreated: "2026-04-26T00:00:00.000Z"\n---\n{"id":"missing","title":"Missing","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:01:00.000Z","version":2,"body":"missing update"}`, "utf8");
+    await writeFile(path.join(paths.queueDir, patchId, "meta.json"), JSON.stringify({
+      id: patchId,
+      status: "pending",
+      createdAt: "2026-04-26T00:00:00.000Z",
+      baseVersion: 1,
+    } satisfies PatchMeta), "utf8");
+
+    await expect(approvePatch(patchId, paths)).rejects.toThrow(/approve stale base_version|update_wiki target does not exist/);
+    await expect(approvePatch(patchId, paths)).rejects.not.toThrow(/ENOENT/);
+  });
+
   it("listQueue silently skips corrupted entries (missing meta.json) instead of throwing", async () => {
     // 회귀: 옛 buildPatchId 충돌 시기에 빈 queue 디렉터리가 남았던 워크스페이스에서
     // listQueue/web Drydock 메뉴가 ENOENT 로 500 internal_error 를 던지지 않아야 한다.
@@ -354,6 +395,187 @@ describe("wiki patch queue", () => {
     expect(await pathExists(path.join(paths.queueDir, idA))).toBe(true);
     expect(await pathExists(path.join(paths.queueDir, idB))).toBe(true);
     expect(await pathExists(path.join(paths.queueDir, idC))).toBe(true);
+  });
+
+  it("rejects stale update patches at approve time and leaves them pending with a conflict", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "stale",
+      title: "Stale",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    const baseMarkdown = await readPatchFile(path.join(paths.wikiDir, "stale.md"));
+    const baseHash = computeContentHash(baseMarkdown);
+    const first = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/stale.md"\nsummary: "First"\nproposer: "test"\ncreated: "2026-04-26T00:01:00.000Z"\n---\n{"id":"stale","title":"Stale","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:01:00.000Z","version":2,"body":"first"}`);
+    const second = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/stale.md"\nsummary: "Second"\nproposer: "test"\ncreated: "2026-04-26T00:02:00.000Z"\n---\n{"id":"stale","title":"Stale","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:02:00.000Z","version":2,"body":"second"}`);
+    const firstId = await enqueuePatch(first, paths, { baseVersion: 1, baseHash });
+    const secondId = await enqueuePatch(second, paths, { baseVersion: 1, baseHash });
+
+    await approvePatch(firstId, paths);
+    await expect(approvePatch(secondId, paths)).rejects.toThrow(/approve stale base_version/);
+    const meta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, secondId, "meta.json"));
+    const conflicts = await listConflicts(paths);
+
+    expect(meta.status).toBe("pending");
+    expect(meta.conflictId).toBeDefined();
+    expect(conflicts[0]?.reason).toBe("base_version_mismatch");
+    expect(await pathExists(path.join(paths.queueDir, secondId))).toBe(true);
+  });
+
+  it("serializes concurrent approvals for the same target so one stale update is rejected", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "race",
+      title: "Race",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    const baseMarkdown = await readPatchFile(path.join(paths.wikiDir, "race.md"));
+    const baseHash = computeContentHash(baseMarkdown);
+    const first = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/race.md"\nsummary: "Race first"\nproposer: "test"\ncreated: "2026-04-26T00:01:00.000Z"\n---\n{"id":"race","title":"Race","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:01:00.000Z","version":2,"body":"first concurrent"}`);
+    const second = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/race.md"\nsummary: "Race second"\nproposer: "test"\ncreated: "2026-04-26T00:02:00.000Z"\n---\n{"id":"race","title":"Race","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:02:00.000Z","version":2,"body":"second concurrent"}`);
+    const firstId = await enqueuePatch(first, paths, { baseVersion: 1, baseHash });
+    const secondId = await enqueuePatch(second, paths, { baseVersion: 1, baseHash });
+
+    const results = await Promise.allSettled([approvePatch(firstId, paths), approvePatch(secondId, paths)]);
+    const accepted = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(/approve stale base_version/);
+    expect((await listConflicts(paths))[0]?.reason).toBe("base_version_mismatch");
+    expect(await readPatchFile(path.join(paths.wikiDir, "race.md"))).toMatch(/first concurrent|second concurrent/);
+  });
+
+  it("does not double-approve canonical and dot-segment alias targets in a concurrent race", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "race",
+      title: "Race",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    const baseMarkdown = await readPatchFile(path.join(paths.wikiDir, "race.md"));
+    const baseHash = computeContentHash(baseMarkdown);
+    const canonical = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/race.md"\nsummary: "Canonical race"\nproposer: "test"\ncreated: "2026-04-26T00:03:00.000Z"\n---\n{"id":"race","title":"Race","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:03:00.000Z","version":2,"body":"canonical concurrent"}`);
+    const alias = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/sub/../race.md"\nsummary: "Alias race"\nproposer: "test"\ncreated: "2026-04-26T00:04:00.000Z"\n---\n{"id":"race","title":"Race","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:04:00.000Z","version":2,"body":"alias concurrent"}`);
+    const canonicalId = await enqueuePatch(canonical, paths, { baseVersion: 1, baseHash });
+    const aliasId = await enqueuePatch(alias, paths, { baseVersion: 1, baseHash });
+
+    const results = await Promise.allSettled([approvePatch(canonicalId, paths), approvePatch(aliasId, paths)]);
+    const accepted = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(/approve stale base_version|dot segments/);
+    expect(await readPatchFile(path.join(paths.wikiDir, "race.md"))).toContain("canonical concurrent");
+  });
+
+  it("rejects symlink path components before approval", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "race",
+      title: "Race",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    await symlink(paths.wikiDir, path.join(paths.wikiDir, "link"), "dir");
+    const alias = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/link/race.md"\nsummary: "Symlink race"\nproposer: "test"\ncreated: "2026-04-26T00:05:00.000Z"\n---\n{"id":"race","title":"Race","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:05:00.000Z","version":2,"body":"symlink concurrent"}`);
+
+    await expect(validatePatch(alias, paths)).rejects.toThrow(/symlink path components/);
+  });
+
+  it("approves normal wiki targets when the wiki root itself is a symlink", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(path.dirname(paths.wikiDir), { recursive: true });
+    const actualWikiDir = path.join(root, "actual-wiki");
+    await mkdir(actualWikiDir, { recursive: true });
+    await symlink(actualWikiDir, paths.wikiDir, "dir");
+    await writeWikiEntry({
+      id: "root-link",
+      title: "Root Link",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    const baseMarkdown = await readPatchFile(path.join(paths.wikiDir, "root-link.md"));
+    const patch = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/root-link.md"\nsummary: "Root link update"\nproposer: "test"\ncreated: "2026-04-26T00:01:00.000Z"\n---\n{"id":"root-link","title":"Root Link","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:01:00.000Z","version":2,"body":"updated through symlink root"}`);
+    const patchId = await enqueuePatch(patch, paths, {
+      baseHash: computeContentHash(baseMarkdown),
+      baseVersion: 1,
+    });
+
+    await expect(approvePatch(patchId, paths)).resolves.toMatchObject({ status: "accepted" });
+    expect(await readPatchFile(path.join(paths.wikiDir, "root-link.md"))).toContain("updated through symlink root");
+  });
+
+  it("serializes case aliases on case-insensitive filesystems", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "case",
+      title: "Case",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    if (!(await pathExists(path.join(paths.wikiDir, "CASE.md")))) return;
+    const baseMarkdown = await readPatchFile(path.join(paths.wikiDir, "case.md"));
+    const baseHash = computeContentHash(baseMarkdown);
+    const lower = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/case.md"\nsummary: "Lower case race"\nproposer: "test"\ncreated: "2026-04-26T00:06:00.000Z"\n---\n{"id":"case","title":"Case","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:06:00.000Z","version":2,"body":"lower concurrent"}`);
+    const upper = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/CASE.md"\nsummary: "Upper case race"\nproposer: "test"\ncreated: "2026-04-26T00:07:00.000Z"\n---\n{"id":"CASE","title":"Case","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:07:00.000Z","version":2,"body":"upper concurrent"}`);
+    const lowerId = await enqueuePatch(lower, paths, { baseVersion: 1, baseHash });
+    const upperId = await enqueuePatch(upper, paths, { baseVersion: 1, baseHash });
+
+    const results = await Promise.allSettled([approvePatch(lowerId, paths), approvePatch(upperId, paths)]);
+    const accepted = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(/approve stale base_version|body id must match target filename/);
+  });
+
+  it("keeps legacy update patches without base metadata approvable", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "legacy-base",
+      title: "Legacy Base",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "base",
+    }, paths);
+    const patch = await parsePatch(`---\nop: "update_wiki"\ntarget: "wiki/legacy-base.md"\nsummary: "Legacy"\nproposer: "test"\ncreated: "2026-04-26T00:01:00.000Z"\n---\n{"id":"legacy-base","title":"Legacy Base","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:01:00.000Z","version":2,"body":"legacy update"}`);
+    const patchId = await enqueuePatch(patch, paths);
+
+    await expect(approvePatch(patchId, paths)).resolves.toMatchObject({ status: "accepted" });
   });
 });
 

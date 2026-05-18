@@ -31,7 +31,8 @@ This directory defines the workspace-local operating conventions for \`.fleet/kn
 
 - Applies to \`.fleet/knowledge/wiki/\`, \`.fleet/knowledge/raw/\`, \`.fleet/knowledge/queue/\`, \`.fleet/knowledge/archive/\`, \`.fleet/knowledge/conflicts/\`, and \`.fleet/knowledge/index.json\`.
 - Oversee compliance with the filename convention (\`prd-<feature_area_slug>-<short-title>.md\`).
-- Restrict the use of deprecated keys (\`rawSourceRef\`, \`status\`, \`kind\`) in frontmatter.
+- Restrict the use of deprecated keys (\`kind\`) in frontmatter.
+- Treat \`rawSourceRef\` as current latest-provenance metadata.
 - Does not grant authority to bypass the human approval queue.
 
 ## Legacy Content Policy
@@ -66,11 +67,13 @@ Every wiki entry must include frontmatter in YAML format.
 
 ### Optional Keys
 - \`summary\`: A single-line summary of the document.
+- \`rawSourceRef\`: Latest immutable raw provenance ref written by Fleet Wiki tooling.
+- \`rawSourceRefs\`: Ordered provenance history entries, each with \`ref\` and optional \`title\`/\`hash\`.
 - \`supersedes\`: Previous wiki ID (or list) replaced by this document.
 - \`supersededBy\`: New wiki ID that replaces this document.
 
 ### Deprecated Keys (Prohibited)
-- \`rawSourceRef\`, \`status\`, \`kind\`
+- \`kind\`
 
 ## Body Sections (Required Order)
 
@@ -105,11 +108,12 @@ All PRD wiki files must follow this naming convention:
 ## Raw Source and Provenance Rules
 
 - Files in the \`raw/\` directory are immutable evidence.
+- \`rawSourceRef\` stores the latest raw evidence ref; \`rawSourceRefs\` preserves deduped provenance history.
 - Wiki entries must not copy raw sources verbatim; they must be meaningfully synthesized into the PRD format.
 
 ## Ingest, Patch, and Lint Workflow
 
-- The existing workflow using 9 tools (ingest, patch, etc.) remains unchanged.
+- The existing workflow uses 10 tools. \`wiki_patch_edit\` may revise already-pending queue proposals before approval.
 - \`wiki_drydock\` serves as the lint gate for verifying PRD format compliance and checking for prohibited content. (Strengthening PRD-specific linting is handled in a separate cycle.)
 `;
 
@@ -130,7 +134,7 @@ The active entry schema is defined in \`schema/wiki-schema.md\` and may be revis
 
 The following prohibitions are **absolute** for every carrier (including Chronicle) and any sub-agent operating in this directory:
 
-- **NEVER** edit any file under \`wiki/\` directly via filesystem tools (Read/Write/Edit). All entry creation and revision must go through \`wiki_ingest\`.
+- **NEVER** edit any file under \`wiki/\` directly via filesystem tools (Read/Write/Edit). Entry creation and new staged revisions must go through \`wiki_ingest\`; already-pending queue proposal revisions may use \`wiki_patch_edit\`.
 - **NEVER** edit \`index.json\`, \`wiki/index.md\`, or \`log.md\` by hand. These files are **system-managed** and rebuilt automatically when patches are approved.
 - **NEVER** edit files under \`raw/\` after creation — raw sources are immutable evidence and \`wiki_ingest\` writes them automatically.
 - **NEVER** touch \`queue/\`, \`archive/\`, or \`conflicts/\` — these are workflow-internal stores managed by the wiki tooling.
@@ -140,7 +144,7 @@ The following prohibitions are **absolute** for every carrier (including Chronic
 
 | Role | Capability | Gate |
 |------|-----------|------|
-| **Carriers** (Chronicle for entry proposals; any carrier for read-only consult) | Propose: \`wiki_ingest\` · Orient: \`wiki_orient\` · Lookup: \`wiki_briefing\` / \`wiki_read\` / \`wiki_resolve\` · Lint: \`wiki_drydock\` · Query: \`wiki_query\` | Cannot approve patches |
+| **Carriers** (Chronicle for entry proposals; any carrier for read-only consult) | Propose: \`wiki_ingest\` · Revise pending: \`wiki_patch_edit\` · Orient: \`wiki_orient\` · Lookup: \`wiki_briefing\` / \`wiki_read\` / \`wiki_resolve\` · Lint: \`wiki_drydock\` · Query: \`wiki_query\` | Cannot approve patches |
 | **Admiral (Host PI)** | All carrier capabilities + \`wiki_patch_queue\` (approve / reject) | Sole approval authority |
 
 Sub-agents **propose**; the Admiral **commits**. Every wiki write reaches disk only after \`wiki_patch_queue approve\` is invoked by the Admiral.
@@ -163,6 +167,10 @@ Sub-agents **propose**; the Admiral **commits**. Every wiki write reaches disk o
 ### 3.3 Update an Existing Entry
 
 Same as 3.2 but \`wiki_ingest\` runs in \`update\` mode with \`base_version\` for stale-base detection.
+
+### 3.4 Revise an Already-Pending Patch
+
+Use \`wiki_patch_edit\` with a pending \`patch_id\` for small exact body replacements or metadata corrections before Admiral approval. Do not create another ingest patch for a one-line correction to an existing pending proposal.
 
 ## 4. Schema Reference
 
