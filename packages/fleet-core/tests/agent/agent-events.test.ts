@@ -6,7 +6,7 @@ import {
   clearStreamHandlers,
   type AgentStreamHandler,
 } from "../../src/admiral/agent/events.js";
-import type { AgentStreamEvent } from "../../src/admiral/agent/types.js";
+import type { AgentStreamEvent } from "@sbluemin/fleet-core";
 
 describe("admiral.agent.events", () => {
   beforeEach(() => {

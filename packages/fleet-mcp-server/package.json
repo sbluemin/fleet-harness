@@ -1,10 +1,10 @@
 {
-  "name": "@sbluemin/fleet-wiki",
-  "version": "0.21.0",
+  "name": "@sbluemin/fleet-mcp-server",
+  "version": "0.19.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
-    "directory": "packages/fleet-wiki"
+    "directory": "packages/fleet-mcp-server"
   },
   "private": true,
   "author": "sbluemin",
@@ -25,14 +25,10 @@
       "require": "./dist/index.cjs"
     }
   },
-  "dependencies": {
-    "@sbluemin/fleet-mcp-server": "workspace:*",
-    "typebox": "^1.1.24"
-  },
   "devDependencies": {
-    "@types/node": "^24.9.1",
+    "@types/node": "^24.10.0",
     "tsup": "^8.5.0",
     "typescript": "^6.0.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.13"
   }
 }

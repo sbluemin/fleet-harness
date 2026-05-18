@@ -1,44 +1,29 @@
-/**
- * admiral/agent/internal/mcp-router — MCP 토큰 라우팅 및 FIFO 관리.
- *
- * setOnToolCallArrived 호출의 유일 소유자. MCP 토큰은 외부 노출 금지.
- *
- * imports → types/interfaces → constants → functions 순서 준수.
- */
-
 import crypto from "node:crypto";
 
 import {
-  setOnToolCallArrived,
   clearPendingForSession,
   resolveNextToolCall,
-  type McpCallToolResult,
-} from "../../_shared/mcp.js";
-import { invoke } from "../tools.js";
+  setOnToolCallArrived,
+} from "./server.js";
 import {
+  getToolNamesForSession,
   registerToolsForSession,
   removeToolsForSession,
-  getToolNamesForSession,
 } from "./tool-snapshot.js";
-import type { AgentToolSpec } from "../types.js";
+import type {
+  AgentToolCtx,
+  AgentToolSpec,
+  McpCallToolResult,
+  McpProviderRoutingState,
+  McpSessionRoutingState,
+  McpTool,
+  PendingToolCallState,
+} from "./types.js";
 
-import type { AgentSessionState, AgentProviderState, PendingToolCallState } from "./state.js";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Types / Interfaces
-// ═══════════════════════════════════════════════════════════════════════════
-
-type McpTool = { name: string; description?: string; parameters?: unknown; [key: string]: unknown };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Functions
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** 세션 수명 동안 MCP tool call router 설치 — setOnToolCallArrived의 유일 소유자 */
-export function installToolCallRouter(
-  state: AgentProviderState,
-  session: AgentSessionState,
-  onToolCallArrived?: (session: AgentSessionState, pending: PendingToolCallState) => void,
+export function installToolCallRouter<TSession extends McpSessionRoutingState>(
+  state: McpProviderRoutingState<TSession>,
+  session: TSession,
+  onToolCallArrived?: (session: TSession, pending: PendingToolCallState) => void,
 ): void {
   if (!session.mcpSessionToken) return;
   setOnToolCallArrived(session.mcpSessionToken, (toolName, args) => {
@@ -49,34 +34,29 @@ export function installToolCallRouter(
   });
 }
 
-/** 세션 MCP router 분리 */
-export function detachToolCallRouter(session: AgentSessionState): void {
+export function detachToolCallRouter(session: McpSessionRoutingState): void {
   if (!session.mcpSessionToken) return;
   setOnToolCallArrived(session.mcpSessionToken, null);
 }
 
-/** 세션에 MCP tools 등록 */
 export function registerSessionTools(
-  session: AgentSessionState,
+  session: McpSessionRoutingState,
   tools: McpTool[],
 ): void {
   if (!session.mcpSessionToken) return;
   registerToolsForSession(session.mcpSessionToken, tools);
 }
 
-/** 세션 MCP tools 제거 */
-export function removeSessionTools(session: AgentSessionState): void {
+export function removeSessionTools(session: McpSessionRoutingState): void {
   if (!session.mcpSessionToken) return;
   removeToolsForSession(session.mcpSessionToken);
 }
 
-/** 세션의 pi tool 이름 Set 조회 */
-export function getSessionToolNames(session: AgentSessionState): Set<string> {
+export function getSessionToolNames(session: McpSessionRoutingState): Set<string> {
   if (!session.mcpSessionToken) return new Set();
   return getToolNamesForSession(session.mcpSessionToken);
 }
 
-/** AgentToolSpec → MCP Tool 포맷 변환 */
 export function specToMcpTool(spec: AgentToolSpec): McpTool {
   return {
     name: spec.id,
@@ -85,10 +65,9 @@ export function specToMcpTool(spec: AgentToolSpec): McpTool {
   };
 }
 
-/** 논리적 프롬프트 종료 시 router + orphaned MCP 상태 정리 */
-export function closeLogicalPromptRouting(
-  state: AgentProviderState,
-  session: AgentSessionState,
+export function closeLogicalPromptRouting<TSession extends McpSessionRoutingState>(
+  state: McpProviderRoutingState<TSession>,
+  session: TSession,
 ): void {
   if (session.mcpSessionToken) {
     detachToolCallRouter(session);
@@ -97,10 +76,9 @@ export function closeLogicalPromptRouting(
   clearSessionRoutingState(state, session);
 }
 
-/** 세션 라우팅 상태 정리 */
-export function clearSessionRoutingState(
-  state: AgentProviderState,
-  session: AgentSessionState,
+export function clearSessionRoutingState<TSession extends McpSessionRoutingState>(
+  state: McpProviderRoutingState<TSession>,
+  session: TSession,
 ): void {
   for (const pending of session.pendingToolCalls) {
     state.toolCallToSessionKey.delete(pending.toolCallId);
@@ -109,10 +87,9 @@ export function clearSessionRoutingState(
   session.pendingToolCallNotifier = null;
 }
 
-/** MCP toolCallId를 세션 FIFO에 등록 */
-export function registerPendingToolCall(
-  state: AgentProviderState,
-  session: AgentSessionState,
+export function registerPendingToolCall<TSession extends McpSessionRoutingState>(
+  state: McpProviderRoutingState<TSession>,
+  session: TSession,
   toolName: string,
   args: Record<string, unknown>,
 ): PendingToolCallState {
@@ -128,10 +105,9 @@ export function registerPendingToolCall(
   return pending;
 }
 
-/** FIFO head 소비 */
-export function consumePendingToolCall(
-  state: AgentProviderState,
-  session: AgentSessionState,
+export function consumePendingToolCall<TSession extends McpSessionRoutingState>(
+  state: McpProviderRoutingState<TSession>,
+  session: TSession,
   toolCallId: string,
 ): void {
   const head = session.pendingToolCalls[0];
@@ -144,14 +120,14 @@ export function consumePendingToolCall(
   state.toolCallToSessionKey.delete(toolCallId);
 }
 
-/** 현재 세션의 pending FIFO head 조회 */
-export function getPendingToolCallHead(session: AgentSessionState): PendingToolCallState | undefined {
+export function getPendingToolCallHead(
+  session: McpSessionRoutingState,
+): PendingToolCallState | undefined {
   return session.pendingToolCalls[0];
 }
 
-/** 현재 turn에서 아직 emit되지 않은 head MCP call을 emit */
 export function emitNextPendingToolCall(
-  session: AgentSessionState,
+  session: McpSessionRoutingState,
   emitMcpToolCall: (toolName: string, args: Record<string, unknown>, toolCallId: string) => boolean,
 ): boolean {
   const head = getPendingToolCallHead(session);
@@ -163,12 +139,11 @@ export function emitNextPendingToolCall(
   return emitted;
 }
 
-/** toolResult가 가리키는 원본 ACP 세션 조회 */
-export function resolveToolResultSession(
-  state: AgentProviderState,
+export function resolveToolResultSession<TSession extends McpSessionRoutingState>(
+  state: McpProviderRoutingState<TSession>,
   toolResults: Array<{ toolCallId?: string }>,
-): AgentSessionState | null {
-  let resolvedSession: AgentSessionState | null = null;
+): TSession | null {
+  let resolvedSession: TSession | null = null;
   for (const result of toolResults) {
     if (!result.toolCallId) {
       return null;
@@ -192,9 +167,8 @@ export function resolveToolResultSession(
   return resolvedSession;
 }
 
-/** FIFO toolResult resolve — MCP HTTP 응답 반환 */
 export function resolveToolResult(
-  session: AgentSessionState,
+  session: McpSessionRoutingState,
   toolCallId: string,
   result: McpCallToolResult,
 ): void {
@@ -202,14 +176,18 @@ export function resolveToolResult(
   resolveNextToolCall(session.mcpSessionToken, toolCallId, result);
 }
 
-/** executor-only MCP tool call router — AgentProviderState 없이 async self-invoke 처리 */
 export function installExecutorToolCallRouter(
   sessionToken: string,
   ctx: { cwd: string; signal?: AbortSignal },
+  invokeTool: (
+    name: string,
+    args: unknown,
+    ctx?: Partial<AgentToolCtx>,
+  ) => Promise<McpCallToolResult>,
 ): void {
   setOnToolCallArrived(sessionToken, (toolName, args) => {
     const toolCallId = crypto.randomUUID();
-    void invoke(toolName, args, { cwd: ctx.cwd, toolCallId, signal: ctx.signal })
+    void invokeTool(toolName, args, { cwd: ctx.cwd, toolCallId, signal: ctx.signal })
       .then((result) => resolveNextToolCall(sessionToken, toolCallId, result))
       .catch((err) => {
         resolveNextToolCall(sessionToken, toolCallId, {
@@ -221,12 +199,10 @@ export function installExecutorToolCallRouter(
   });
 }
 
-/** executor MCP router 분리 */
 export function detachExecutorToolCallRouter(sessionToken: string): void {
   setOnToolCallArrived(sessionToken, null);
 }
 
-/** executor 세션 MCP tools 등록 (token 직접 전달 — specs를 McpTool로 변환) */
 export function registerExecutorSessionTools(
   sessionToken: string,
   specs: AgentToolSpec[],
@@ -234,14 +210,12 @@ export function registerExecutorSessionTools(
   registerToolsForSession(sessionToken, specs.map(specToMcpTool));
 }
 
-/** executor 세션 MCP 전체 정리 — router 분리 + tools 제거 + pending 정리 */
 export function cleanupExecutorSession(sessionToken: string): void {
   detachExecutorToolCallRouter(sessionToken);
   removeToolsForSession(sessionToken);
   clearPendingForSession(sessionToken);
 }
 
-/** pooled executor 세션 turn 완료 시 MCP 경량 정리 — router/pending만, tools/token 유지 */
 export function detachExecutorMcpForReuse(sessionToken: string): void {
   detachExecutorToolCallRouter(sessionToken);
   clearPendingForSession(sessionToken);

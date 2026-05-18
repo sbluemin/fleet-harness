@@ -51,6 +51,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@sbluemin/fleet-mcp-server": "workspace:*",
     "@sbluemin/fleet-unified-agent": "workspace:*",
     "typebox": "^1.1.24"
   },

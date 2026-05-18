@@ -200,6 +200,7 @@ export function registerFleetCarriers(pi: ExtensionAPI): void {
 export function bootstrapFleetState(pi: ExtensionAPI): void {
   restoreFleetPreRegistrationState();
   registerFleetCarriers(pi);
+  admiral.agent.registerFleetCoreDefaultAgentTools();
   scheduleFleetReconciliation();
 }
 

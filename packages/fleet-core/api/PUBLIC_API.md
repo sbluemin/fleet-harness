@@ -18,7 +18,7 @@ interface FleetCoreRuntimeContext {
 `createFleetCoreRuntime(options)` preserves boot side effects in this order:
 `setFleetCoreBootMode` -> `migrateLegacyFleetDataDir` -> `initAgentSessionRuntime` -> `initStore`.
 
-`shutdown()` stops `infra.toolRegistry.mcp`, resets settings runtime state, and clears unified service status.
+`shutdown()` stops the `@sbluemin/fleet-mcp-server` singleton, resets settings runtime state, and clears unified service status.
 
 ## Domain Services
 
@@ -42,7 +42,9 @@ export function createFleetNameServices(): FleetNameServices {
 - `admiral` owns agent/session/events/executor, carrier/squadron/taskforce, carrier job streaming, protocols, store, prompts, request directive, and Fleet constants.
 - `admiralty` owns Grand Fleet IPC, prompts, reporter, status-source, sanitization, tool specs, and runtime access.
 - `metaphor` owns prompts, worldview, operation-name, and directive-refinement.
-- `infra` owns auth, data-dir, job archive/lifecycle utilities, log, settings, tool-registry, and `infra.toolRegistry.mcp`.
+- `infra` owns auth, data-dir, job archive/lifecycle utilities, log, and settings.
+
+`admiral.agent.tools.*`, `AgentToolSpec`, and `AgentToolCtx` remain reachable through the fleet-core root/facade compatibility surface. The generic registry, MCP HTTP server, token routing, snapshots, and formatter primitives are implemented by `@sbluemin/fleet-mcp-server`; fleet-core owns the carrier metadata adapter, default Fleet tool bootstrap, prompt usage, and runtime composition.
 
 Streaming and executor surfaces remain separate: `admiral.agent.session` + `admiral.agent.events` are the long-lived streaming path, while `admiral.agent.executor` is the callback execution path.
 

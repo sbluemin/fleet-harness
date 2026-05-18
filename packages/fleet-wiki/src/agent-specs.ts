@@ -1,5 +1,8 @@
-import type { AgentToolCtx, AgentToolSpec } from "@sbluemin/fleet-core";
-import { admiral } from "@sbluemin/fleet-core";
+import {
+  registerExecutorTool,
+  type AgentToolCtx,
+  type AgentToolSpec,
+} from "@sbluemin/fleet-mcp-server";
 
 import { buildBriefingToolConfig } from "./tools/briefing.js";
 import { buildDryDockToolConfig } from "./tools/drydock.js";
@@ -47,11 +50,11 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
 // 크로니클 전용: 위키 쓰기/린트 도구 (ingest, drydock)
 const CHRONICLE_ONLY_EXECUTOR_TOOL = { allowedCarriers: ["chronicle"] } as const;
 
-const registerChronicleExecutorTool = admiral.agent.tools.registerExecutorTool as (
+const registerChronicleExecutorTool = registerExecutorTool as (
   spec: AgentToolSpec,
   opts: { readonly allowedCarriers: readonly string[] },
 ) => void;
-const registerGlobalExecutorTool = admiral.agent.tools.registerExecutorTool as (
+const registerGlobalExecutorTool = registerExecutorTool as (
   spec: AgentToolSpec,
 ) => void;
 

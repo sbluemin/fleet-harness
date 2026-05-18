@@ -3,12 +3,13 @@ import {
   list,
   invoke,
   registerAgentTool,
+  registerFleetCoreDefaultAgentTools,
   registerExtraTools,
   unregisterExtraTools,
   clearAllDefaultTools,
   clearAllExtraTools,
 } from "../../src/admiral/agent/tools.js";
-import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
+import type { AgentToolSpec } from "@sbluemin/fleet-core";
 
 const testSpec: AgentToolSpec = {
   id: "test_tool",
@@ -34,6 +35,7 @@ describe("admiral.agent.tools", () => {
   beforeEach(() => {
     clearAllDefaultTools();
     clearAllExtraTools();
+    registerFleetCoreDefaultAgentTools();
   });
 
   describe("list()", () => {

@@ -1,29 +1,9 @@
-/**
- * core/acp-provider/mcp-server — HTTP 기반 in-process MCP 서버 singleton
- *
- * Raw JSON-RPC 2.0 구현으로 MCP SDK 의존성 없이 동작.
- * loopback only (127.0.0.1:0), opaque path, per-session Bearer 토큰 인증.
- * pi의 native tool을 ACP CLI에 MCP 경로로 노출.
- *
- * FIFO 큐 방식: tools/call 핸들러는 직접 실행하지 않고 큐에서 대기.
- * pi agent-loop이 tool을 실행하고 결과를 resolveNextToolCall()로 전달.
- *
- * imports → types/interfaces → constants → functions 순서 준수.
- */
+import crypto from "node:crypto";
+import http from "node:http";
 
-import http from "http";
-import crypto from "crypto";
+import { clearAllTools, getToolsForSession } from "./tool-snapshot.js";
+import type { McpCallToolResult } from "./types.js";
 
-import { getLogAPI } from "../../infra/log/store.js";
-import {
-  getToolsForSession,
-} from "../agent/internal/tool-snapshot.js";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Types / Interfaces
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** JSON-RPC 2.0 요청 */
 interface JsonRpcRequest {
   jsonrpc: "2.0";
   id?: string | number | null;
@@ -31,7 +11,6 @@ interface JsonRpcRequest {
   params?: unknown;
 }
 
-/** JSON-RPC 2.0 응답 */
 interface JsonRpcResponse {
   jsonrpc: "2.0";
   id: string | number | null;
@@ -39,26 +18,20 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-/** MCP CallToolResult 형식 */
-export interface McpCallToolResult {
-  content: Array<{ type: string; text?: string }>;
-  isError: boolean;
-}
-
-/** FIFO 큐의 대기 중인 tool call */
 interface PendingToolCall {
   toolName: string;
   toolCallId: string;
   resolve: (result: JsonRpcResponse) => void;
+  timeout: ReturnType<typeof setTimeout>;
+  response?: http.ServerResponse;
+  onResponseClose?: () => void;
 }
 
-/** tools/call보다 먼저 도착한 결과 */
 interface PendingToolResult {
   toolCallId: string;
   result: McpCallToolResult;
 }
 
-/** MCP tool call 도착 콜백 — provider가 등록, tools/call 수신 시 호출 */
 export type ToolCallArrivedCallback = (
   toolName: string,
   args: Record<string, unknown>,
@@ -68,96 +41,74 @@ type JsonRpcPayload = JsonRpcResponse | JsonRpcResponse[] | null;
 
 interface ProcessJsonRpcOptions {
   immediateResponse?: http.ServerResponse;
+  response?: http.ServerResponse;
   stopKeepalive?: () => void;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Module state — singleton
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** HTTP 서버 인스턴스 */
 let server: http.Server | null = null;
-
-/** 서버 base URL */
 let serverUrl: string | null = null;
-
-/** opaque path — 외부 접근 차단용 */
 let opaquePath: string | null = null;
+let startPromise: Promise<string> | null = null;
+let stopPromise: Promise<void> | null = null;
 
-/** 세션별 FIFO 큐 — MCP가 먼저 도달한 tool call 대기열 */
 const pendingToolCalls = new Map<string, PendingToolCall[]>();
-
-/** 세션별 pre-queued 결과 — pi result가 먼저 도달한 경우 */
 const pendingResults = new Map<string, PendingToolResult[]>();
-
-/** 세션별 MCP tool call 도착 콜백 — token 기준으로 격리 */
 const toolCallArrivedCallbacks = new Map<string, ToolCallArrivedCallback>();
 
 const JSON_CONTENT_TYPE = { "Content-Type": "application/json" } as const;
+const MCP_MAX_BODY_BYTES = 1024 * 1024;
+const MCP_MAX_PENDING_CALLS_PER_TOKEN = 64;
+const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000;
 const MCP_KEEPALIVE_INTERVAL_MS = 60_000;
+const MCP_SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Functions — 서버 lifecycle
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * MCP 서버 기동.
- * 이미 실행 중이면 기존 URL 반환.
- *
- * @returns base URL (e.g., "http://127.0.0.1:12345/<opaque-path>")
- */
 export async function startMcpServer(): Promise<string> {
+  if (stopPromise) await stopPromise;
   if (server && serverUrl) return serverUrl;
+  if (startPromise) return startPromise;
 
   opaquePath = `/${crypto.randomUUID()}`;
-
-  return new Promise<string>((resolve, reject) => {
+  startPromise = new Promise<string>((resolve, reject) => {
     const srv = http.createServer(handleRequest);
-    // CLI의 MCP 타임아웃 방지 — carrier_sortie 등 장시간 도구를 위해 30분
-    const THIRTY_MIN = 30 * 60 * 1000;
-    srv.timeout = THIRTY_MIN;
-    srv.keepAliveTimeout = THIRTY_MIN;
-    srv.headersTimeout = THIRTY_MIN + 1000; // timeout보다 약간 높게
+    srv.timeout = MCP_SERVER_TIMEOUT_MS;
+    srv.keepAliveTimeout = MCP_SERVER_TIMEOUT_MS;
+    srv.headersTimeout = MCP_SERVER_TIMEOUT_MS + 1000;
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
       if (!addr || typeof addr === "string") {
-        reject(new Error("서버 바인딩 실패"));
+        startPromise = null;
+        reject(new Error("MCP server bind failed"));
         return;
       }
       server = srv;
       serverUrl = `http://127.0.0.1:${addr.port}${opaquePath}`;
-      getLogAPI().info("acp", `MCP 서버 기동: port=${addr.port}`, { category: "acp" });
+      startPromise = null;
       resolve(serverUrl);
     });
     srv.on("error", (err) => {
-      getLogAPI().error("acp", `MCP 서버 오류: ${err.message}`, { category: "acp" });
+      if (server === srv) {
+        server = null;
+        serverUrl = null;
+        opaquePath = null;
+      }
+      startPromise = null;
       reject(err);
     });
   });
+
+  return startPromise;
 }
 
-/** MCP 서버 종료 */
 export async function stopMcpServer(): Promise<void> {
-  if (!server) return;
-  // 모든 pending tool call 에러로 resolve
-  for (const [token] of pendingToolCalls) {
-    clearPendingForSession(token);
+  if (stopPromise) return stopPromise;
+  stopPromise = stopMcpServerOnce();
+  try {
+    await stopPromise;
+  } finally {
+    stopPromise = null;
   }
-
-  return new Promise<void>((resolve) => {
-    server!.close(() => {
-      getLogAPI().info("acp", "MCP 서버 종료", { category: "acp" });
-      server = null;
-      serverUrl = null;
-      opaquePath = null;
-      toolCallArrivedCallbacks.clear();
-      resolve();
-    });
-    server!.closeAllConnections?.();
-  });
 }
 
-/** MCP tool call 도착 콜백 등록/해제 — 세션 token 기준 격리 */
 export function setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void {
   if (cb) {
     toolCallArrivedCallbacks.set(token, cb);
@@ -166,14 +117,6 @@ export function setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback 
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Functions — FIFO 큐 관리
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * 세션의 다음 대기 중인 MCP tool call에 결과를 전달.
- * FIFO 순서로 resolve. 대기 중인 tool call이 없으면 pre-queue.
- */
 export function resolveNextToolCall(
   token: string,
   toolCallId: string,
@@ -190,33 +133,30 @@ export function resolveNextToolCall(
     }
     queue.shift();
     if (queue.length === 0) pendingToolCalls.delete(token);
-    getLogAPI().debug("acp", `FIFO resolve: ${pending.toolName} (${toolCallId})`, { category: "acp" });
+    cleanupPendingToolCall(pending);
     pending.resolve(makeResult(null, result));
   } else {
-    // MCP가 아직 도착하지 않음 — toolCallId와 함께 pre-queue
     let preQueue = pendingResults.get(token);
     if (!preQueue) {
       preQueue = [];
       pendingResults.set(token, preQueue);
     }
     preQueue.push({ toolCallId, result });
-    getLogAPI().debug("acp", `FIFO pre-queue result (${preQueue.length} pending, id=${toolCallId})`, { category: "acp" });
   }
 }
 
-/** 세션의 FIFO 큐에 대기 중인 tool call이 있는지 확인 */
 export function hasPendingToolCall(token: string): boolean {
   const queue = pendingToolCalls.get(token);
   return !!queue && queue.length > 0;
 }
 
-/** 세션의 모든 pending tool call 에러로 resolve + pre-queued 결과 정리 */
 export function clearPendingForSession(token: string): void {
   const queue = pendingToolCalls.get(token);
   if (queue) {
     for (const pending of queue) {
+      cleanupPendingToolCall(pending);
       pending.resolve(makeResult(null, {
-        content: [{ type: "text", text: "세션 종료됨" }],
+        content: [{ type: "text", text: "Session closed" }],
         isError: true,
       }));
     }
@@ -225,30 +165,92 @@ export function clearPendingForSession(token: string): void {
   pendingResults.delete(token);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HTTP 요청 처리
-// ═══════════════════════════════════════════════════════════════════════════
+function stopMcpServerOnce(): Promise<void> {
+  const startup = startPromise;
+  if (startup) {
+    return startup
+      .then(() => stopMcpServerOnce())
+      .catch(() => {
+        server = null;
+        serverUrl = null;
+        opaquePath = null;
+        startPromise = null;
+        clearAllMcpState();
+      });
+  }
 
-/** HTTP 요청 핸들러 */
+  const currentServer = server;
+  if (!currentServer) {
+    startPromise = null;
+    clearAllMcpState();
+    return Promise.resolve();
+  }
+
+  for (const [token] of pendingToolCalls) {
+    clearPendingForSession(token);
+  }
+
+  return new Promise<void>((resolve) => {
+    currentServer.close(() => {
+      if (server === currentServer) {
+        server = null;
+        serverUrl = null;
+        opaquePath = null;
+      }
+      startPromise = null;
+      clearAllMcpState();
+      resolve();
+    });
+    currentServer.closeAllConnections?.();
+  });
+}
+
+function removePendingToolCall(token: string, pending: PendingToolCall): void {
+  const queue = pendingToolCalls.get(token);
+  if (queue) {
+    const index = queue.indexOf(pending);
+    if (index >= 0) {
+      queue.splice(index, 1);
+    }
+    if (queue.length === 0) {
+      pendingToolCalls.delete(token);
+    }
+  }
+  cleanupPendingToolCall(pending);
+}
+
+function cleanupPendingToolCall(pending: PendingToolCall): void {
+  clearTimeout(pending.timeout);
+  if (pending.response && pending.onResponseClose) {
+    pending.response.off("close", pending.onResponseClose);
+  }
+}
+
+function clearAllMcpState(): void {
+  for (const token of Array.from(pendingToolCalls.keys())) {
+    clearPendingForSession(token);
+  }
+  pendingResults.clear();
+  toolCallArrivedCallbacks.clear();
+  clearAllTools();
+}
+
 function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): void {
-  // ── opaque path 검증 ──
   if (req.url !== opaquePath) {
     res.writeHead(404);
     res.end();
     return;
   }
 
-  // ── POST only ──
   if (req.method !== "POST") {
     res.writeHead(405);
     res.end();
     return;
   }
 
-  // ── Bearer 토큰 추출 ──
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) {
@@ -257,10 +259,23 @@ function handleRequest(
     return;
   }
 
-  // ── 요청 본문 읽기 ──
   const chunks: Buffer[] = [];
-  req.on("data", (chunk: Buffer) => chunks.push(chunk));
+  let bodyBytes = 0;
+  let bodyTooLarge = false;
+  req.on("data", (chunk: Buffer) => {
+    if (bodyTooLarge) return;
+    bodyBytes += chunk.length;
+    if (bodyBytes > MCP_MAX_BODY_BYTES) {
+      bodyTooLarge = true;
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Payload Too Large" }));
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
   req.on("end", () => {
+    if (bodyTooLarge) return;
     try {
       const body = Buffer.concat(chunks).toString("utf-8");
       const parsed = JSON.parse(body);
@@ -278,7 +293,11 @@ function handleRequest(
         const promises: Promise<void>[] = [];
         for (const item of parsed) {
           promises.push(
-            processJsonRpc(item, token).then((result) => {
+            processJsonRpc(
+              item,
+              token,
+              isToolsCallMethod(item) ? { response: res } : undefined,
+            ).then((result) => {
               results.push(result);
             }),
           );
@@ -293,8 +312,7 @@ function handleRequest(
               stopKeepalive,
             );
           })
-          .catch((err) => {
-            getLogAPI().error("acp", `MCP 배치 처리 실패: ${(err as Error).message}`, { category: "acp" });
+          .catch(() => {
             sendJsonRpcPayload(
               res,
               makeError(null, -32603, "Internal error"),
@@ -304,7 +322,7 @@ function handleRequest(
           });
       } else {
         const options = shouldFlushHeaders && isToolsCallMethod(parsed)
-          ? { immediateResponse: res, stopKeepalive }
+          ? { immediateResponse: res, response: res, stopKeepalive }
           : undefined;
 
         processJsonRpc(parsed, token, options)
@@ -312,8 +330,7 @@ function handleRequest(
             if (res.writableEnded) return;
             sendJsonRpcPayload(res, result, shouldFlushHeaders, stopKeepalive);
           })
-          .catch((err) => {
-            getLogAPI().error("acp", `MCP 요청 처리 실패: ${(err as Error).message}`, { category: "acp" });
+          .catch(() => {
             if (res.writableEnded) return;
             sendJsonRpcPayload(
               res,
@@ -323,8 +340,7 @@ function handleRequest(
             );
           });
       }
-    } catch (err) {
-      getLogAPI().error("acp", `MCP 요청 파싱 실패: ${(err as Error).message}`, { category: "acp" });
+    } catch {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         jsonrpc: "2.0",
@@ -335,11 +351,6 @@ function handleRequest(
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// JSON-RPC 2.0 메서드 디스패치
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** 개별 JSON-RPC 요청 처리 — notification이면 null 반환 */
 async function processJsonRpc(
   req: JsonRpcRequest,
   token: string,
@@ -373,32 +384,31 @@ async function processJsonRpc(
     case "tools/call": {
       const p = params as { name?: string; arguments?: Record<string, unknown> } | undefined;
       if (!p?.name) {
-        return makeError(id, -32602, "tool name 누락");
+        return makeError(id, -32602, "tool name missing");
       }
 
       const tools = getToolsForSession(token);
       const tool = tools.find((t) => t.name === p.name);
       if (!tool) {
-        return makeError(id, -32602, `tool을 찾을 수 없습니다: ${p.name}`);
+        return makeError(id, -32602, `tool not found: ${p.name}`);
       }
 
-      getLogAPI().debug("acp", `MCP tool call 수신 (FIFO 큐 대기): ${p.name}`, { category: "acp" });
-
-      // 콜백으로 event-mapper에 알림 — token 기준으로 올바른 세션에 전달
       const cb = toolCallArrivedCallbacks.get(token);
       if (!cb) {
-        return makeError(id, -32000, "tool call router가 정리되어 더 이상 요청을 받을 수 없습니다");
+        return makeError(id, -32000, "tool call router is detached");
+      }
+      const queue = pendingToolCalls.get(token);
+      if (queue && queue.length >= MCP_MAX_PENDING_CALLS_PER_TOKEN) {
+        return makeError(id, -32000, "too many pending tool calls");
       }
       const toolCallId = cb(p.name, p.arguments ?? {});
 
-      // pre-queued 결과가 현재 toolCallId와 일치하면 즉시 반환
       const preQueue = pendingResults.get(token);
       if (preQueue && preQueue.length > 0) {
         const pendingResult = preQueue[0]!;
         if (pendingResult.toolCallId === toolCallId) {
           preQueue.shift();
           if (preQueue.length === 0) pendingResults.delete(token);
-          getLogAPI().debug("acp", `FIFO pre-queued 결과 반환: ${p.name} (${toolCallId})`, { category: "acp" });
           return makeResult(id, pendingResult.result);
         }
         return makeError(
@@ -408,18 +418,29 @@ async function processJsonRpc(
         );
       }
 
-      // FIFO 큐에 넣고 대기 — pi agent-loop이 결과를 전달할 때까지 HTTP 응답 보류
       return new Promise<JsonRpcResponse>((resolve) => {
         let queue = pendingToolCalls.get(token);
         if (!queue) {
           queue = [];
           pendingToolCalls.set(token, queue);
         }
-        queue.push({
+        const pending: PendingToolCall = {
           toolName: p.name!,
           toolCallId,
+          timeout: setTimeout(() => {
+            removePendingToolCall(token, pending);
+            const payload = makeResult(id, {
+              content: [{ type: "text", text: "Tool call timed out" }],
+              isError: true,
+            });
+            if (options?.immediateResponse && !options.immediateResponse.writableEnded) {
+              options.stopKeepalive?.();
+              options.immediateResponse.end(JSON.stringify(payload));
+            }
+            resolve(payload);
+          }, MCP_TOOL_CALL_TIMEOUT_MS),
+          response: options?.response,
           resolve: (result) => {
-            // JSON-RPC id를 올바르게 설정
             const payload = { ...result, id: id ?? null };
             if (options?.immediateResponse && !options.immediateResponse.writableEnded) {
               options.stopKeepalive?.();
@@ -427,17 +448,28 @@ async function processJsonRpc(
             }
             resolve(payload);
           },
-        });
+        };
+        if (options?.response) {
+          pending.onResponseClose = () => {
+            removePendingToolCall(token, pending);
+            options.stopKeepalive?.();
+            resolve(makeResult(id, {
+              content: [{ type: "text", text: "Client disconnected" }],
+              isError: true,
+            }));
+          };
+          options.response.on("close", pending.onResponseClose);
+        }
+        queue.push(pending);
       });
     }
 
     default:
       if (isNotification) return null;
-      return makeError(id, -32601, `지원하지 않는 메서드: ${method}`);
+      return makeError(id, -32601, `Unsupported method: ${method}`);
   }
 }
 
-/** JSON-RPC 성공 응답 생성 */
 function makeResult(
   id: string | number | null | undefined,
   result: unknown,
@@ -445,7 +477,6 @@ function makeResult(
   return { jsonrpc: "2.0", id: id ?? null, result };
 }
 
-/** JSON-RPC 에러 응답 생성 */
 function makeError(
   id: string | number | null | undefined,
   code: number,

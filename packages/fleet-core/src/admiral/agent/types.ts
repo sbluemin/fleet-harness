@@ -1,33 +1,8 @@
-import type { TSchema } from "typebox";
-import type { McpCallToolResult } from "../_shared/mcp.js";
-
-// ═════════════════════════════════════════════════════════
-// Types / Interfaces
-// ═════════════════════════════════════════════════════════
-
-export interface AgentToolCtx {
-  readonly cwd: string;
-  readonly toolCallId?: string;
-  readonly signal?: AbortSignal;
-}
-
-/**
- * doctrine(프롬프트 가이드) + execution(파라미터/실행)을 통합한 단일 도구 스펙.
- * doctrine 필드는 `renderAgentToolDoctrineTag()`로 `<fleet>` 태그 블록으로 렌더링된다.
- */
-export interface AgentToolSpec {
-  readonly id: string;
-  readonly tag: string;
-  readonly title: string;
-  readonly description: string;
-  readonly promptSnippet: string;
-  readonly whenToUse: readonly string[];
-  readonly whenNotToUse: readonly string[];
-  readonly usageGuidelines: readonly string[];
-  readonly guardrails?: readonly string[];
-  readonly parameters: TSchema;
-  execute(args: unknown, ctx: AgentToolCtx): Promise<unknown>;
-}
+export type {
+  AgentToolCtx,
+  AgentToolSpec,
+  McpCallToolResult,
+} from "@sbluemin/fleet-mcp-server";
 
 export interface SessionHandle {
   readonly sessionId: string;
@@ -43,8 +18,6 @@ export interface SendMessageRequest {
   readonly userRequest: string;
   readonly history?: readonly ConversationHistoryEntry[];
 }
-
-export type { McpCallToolResult };
 
 export type AgentStreamEvent =
   | { type: "text"; sessionId: string; text: string }

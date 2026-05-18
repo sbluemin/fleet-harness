@@ -3,16 +3,16 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   startMcpServer,
   stopMcpServer,
-} from "../../src/admiral/_shared/mcp.js";
+} from "@sbluemin/fleet-mcp-server";
 import {
   clearAllTools,
   getToolsForSession,
-} from "../../src/admiral/agent/internal/tool-snapshot.js";
+} from "@sbluemin/fleet-mcp-server";
 import {
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
   cleanupExecutorSession,
-} from "../../src/admiral/agent/internal/mcp-router.js";
+} from "@sbluemin/fleet-mcp-server";
 import {
   registerAgentTool,
   registerExecutorTool,
@@ -21,8 +21,9 @@ import {
   invoke,
   EXECUTOR_MCP_TOOL_IDS,
   getExecutorMcpTools,
+  registerFleetCoreDefaultAgentTools,
 } from "../../src/admiral/agent/tools.js";
-import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
+import type { AgentToolSpec } from "@sbluemin/fleet-core";
 import {
   clearRegisteredCarriers,
   registerCarrier,
@@ -119,6 +120,7 @@ describe("executor MCP whitelist (tools.ts)", () => {
     clearAllDefaultTools();
     clearAllExtraTools();
     clearRegisteredCarriers();
+    registerFleetCoreDefaultAgentTools();
   });
 
   it("EXECUTOR_MCP_TOOL_IDS에 carrier_jobs가 포함된다", () => {
@@ -227,7 +229,7 @@ describe("executor MCP router (mcp-router.ts)", () => {
     }));
     registerAgentTool(spec);
     registerExecutorSessionTools(token, [spec]);
-    installExecutorToolCallRouter(token, { cwd: process.cwd() });
+    installExecutorToolCallRouter(token, { cwd: process.cwd() }, invoke);
 
     const body = await mcpToolsCall(url, token, "exec_ok");
 
@@ -246,7 +248,7 @@ describe("executor MCP router (mcp-router.ts)", () => {
     });
     registerAgentTool(spec);
     registerExecutorSessionTools(token, [spec]);
-    installExecutorToolCallRouter(token, { cwd: process.cwd() });
+    installExecutorToolCallRouter(token, { cwd: process.cwd() }, invoke);
 
     const body = await mcpToolsCall(url, token, "exec_throws");
 
@@ -281,7 +283,7 @@ describe("executor MCP router (mcp-router.ts)", () => {
     const spec = makeToolSpec("router_guard_tool", () => "ok");
     registerAgentTool(spec);
     registerExecutorSessionTools(token, [spec]);
-    installExecutorToolCallRouter(token, { cwd: process.cwd() });
+    installExecutorToolCallRouter(token, { cwd: process.cwd() }, invoke);
     cleanupExecutorSession(token);
 
     // tools는 제거됐으나 MCP 서버가 아직 이 token을 모르면 401이 나올 수 있음

@@ -1,6 +1,6 @@
 # fleet-core Doctrine
 
-`packages/fleet-core` is the Pi-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, tool contracts, MCP/runtime internals, job services, SSOT streaming event contracts, and adapter-facing public APIs.
+`packages/fleet-core` is the Pi-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, fleet-core tool builders/facades, runtime composition, job services, SSOT streaming event contracts, and adapter-facing public APIs.
 
 ## Core Philosophy
 
@@ -8,7 +8,7 @@
 
 1. **Host-agnostic by construction** — no Fleet host runtime, no Fleet host UI, no Fleet-AI imports. The package compiles and runs without `fleet-harness`.
 2. **Two execution patterns own two surfaces** — the streaming `admiral.session.*` + `admiral.events` module channel for long-lived ACP sessions (Pi `streamAcp`); the callback-pattern `admiral.executor.{executeWithPool, executeOneShot}` for closed-loop carrier turns. They share `internal/executor-engine.ts` pool/session-store wiring but never share their public surfaces.
-3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), MCP singleton (`_shared/mcp.ts`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), and the fleet tool registry (`admiral.tools.list/invoke`) each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
+3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), generic MCP server/registry (`packages/fleet-mcp-server`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), and the fleet-core tool facade/default builders (`admiral.agent.tools` + `admiral.agent.bootstrap`) each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
 
 ## Current Architecture Status
 
@@ -25,7 +25,7 @@
 |---------------|---------|---------|
 | `session.ts` | `ensure` / `sendMessage` / `deliverToolResults` / `resolveSession` | Streaming — events flow through `events.ts` module channel |
 | `events.ts` | `register` / `unregister` / `emit` / `clear` for `AgentStreamEvent` | Module-level emit/register, `carrier-job-events.ts` doppelgänger |
-| `tools.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` / `getExecutorMcpTools` | Default fleet tool specs auto-registered; host extras scoped by `scopeKey`. **Single SSoT** for tool specs (registry + doctrine formatter). Executor MCP exposure is resolved lazily at connect time from the possibly-empty global scope, tool-centric `registerExecutorTool(..., { allowedCarriers })`, and carrier-centric `CarrierMetadata.allowedExecutorTools`; missing metadata IDs are ignored until a spec is registered. No tools are inherited by default; even `carrier_jobs` must be explicitly listed in a persona's metadata. |
+| `tools.ts` / `bootstrap.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` / `getExecutorMcpTools` / `registerFleetCoreDefaultAgentTools` | fleet-core facade over the `packages/fleet-mcp-server` registry. Default fleet tool specs are explicitly bootstrapped by use sites, not module-load registered; host extras stay scoped by `scopeKey`. Executor MCP exposure is resolved lazily at connect time from the possibly-empty global scope, tool-centric `registerExecutorTool(..., { allowedCarriers })`, and carrier-centric `CarrierMetadata.allowedExecutorTools`; missing metadata IDs are ignored until a spec is registered. No tools are inherited by default; even `carrier_jobs` must be explicitly listed in a persona's metadata. |
 | `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey` (`carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_squadron` / `carrier_taskforce` use a synthetic id). **Connect-time MCP**: every executor session receives a whitelist-scoped MCP server resolved by `getExecutorMcpTools(carrierId)`; default personas must explicitly list `carrier_jobs` (and any other required tools) for access. No runtime-context tags are injected into executor requests. |
 | `lifecycle.ts` | `bindHostSession` / `shutdownAllSessions` | Pi `session_start`/`session_shutdown` integration point |
 | `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations (`carrier_dispatch` passes the resolved `carrierId`; squadron/taskforce pass synthetic ids) |
@@ -33,7 +33,7 @@
 | `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
 | `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |
 
-`admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `state.ts` (session/launch/bridge maps), `session-runtime.ts` (JSONL custom-entry backed session mapping persistence with `HostSessionStore`/`CarrierSessionStore` split, `ResumeFailureKind` classifier, and legacy sidecar cleanup), `session-engine.ts` (ensure/sendMessage/deliverToolResults engine), `event-normalizer.ts` (unified-agent → `AgentStreamEvent`), `mcp-router.ts` (MCP token routing + FIFO + tool registration), `executor-engine.ts` (pool + drift detection for the callback path; module-level Maps replace legacy `globalThis`), `post-connect.ts` (single `applyPostConnectConfig` shared by session-engine and executor-engine), and `tool-snapshot.ts` (relocated from the former `infra/tool-registry/`).
+`admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `state.ts` (session/launch/bridge maps), `session-runtime.ts` (JSONL custom-entry backed session mapping persistence with `HostSessionStore`/`CarrierSessionStore` split, `ResumeFailureKind` classifier, and legacy sidecar cleanup), `session-engine.ts` (ensure/sendMessage/deliverToolResults engine with FIFO fatal error handling for tool-call queues), `event-normalizer.ts` (unified-agent → `AgentStreamEvent`), `executor-engine.ts` (pool + drift detection for the callback path; module-level Maps replace legacy `globalThis`), and `post-connect.ts` (single `applyPostConnectConfig` shared by session-engine and executor-engine). Generic MCP router and tool snapshot logic live in `packages/fleet-mcp-server`.
 
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.
 
@@ -60,22 +60,22 @@ interface AgentToolSpec {
 }
 ```
 
-Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines `AgentToolCtx` + `AgentToolSpec`; `admiral/agent/tools.ts` exposes `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` alongside `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools`. The deprecated `name` / `label` / `promptGuidelines` / `render` / `pi` / `mcp` fields and the entire `infra/tool-registry/` directory (six files: `derive.ts`, `formatter.ts`, `registry.ts`, `tool-snapshot.ts`, `types.ts`, `index.ts`) are removed; `tool-snapshot.ts` now lives at `admiral/agent/internal/tool-snapshot.ts`.
+Single SSoT for the generic type and registry lives in `packages/fleet-mcp-server`; `admiral/agent/types.ts` re-exports `AgentToolCtx` + `AgentToolSpec`, and `admiral/agent/tools.ts` exposes the fleet-core facade plus carrier metadata adapter. The deprecated `name` / `label` / `promptGuidelines` / `render` / `pi` / `mcp` fields and the entire `infra/tool-registry/` directory (six files: `derive.ts`, `formatter.ts`, `registry.ts`, `tool-snapshot.ts`, `types.ts`, `index.ts`) are removed.
 
 ## Owns
 
 - Fleet domain modules under `admiral/`:
-  - `_shared/` — SSOT carrier job stream events (`carrier-job-events.ts`), CLI tool type aliases (`cli-tool-types.ts`), and the lazy-singleton MCP HTTP server (`mcp.ts`). The former `bridge/` directory has been removed; streaming consumers use `jobs.streaming.register()` instead.
+  - `_shared/` — SSOT carrier job stream events (`carrier-job-events.ts`) and CLI tool type aliases (`cli-tool-types.ts`). Generic MCP HTTP server internals are owned by `packages/fleet-mcp-server`. The former `bridge/` directory has been removed; streaming consumers use `jobs.streaming.register()` instead.
   - `agent/` — the canonical agent domain documented above.
 - `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/` — carrier framework, fleet tool specs, roster rendering, and execution doctrine. Default carrier persona data is owned by `packages/fleet-carriers`.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
-- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job/` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log infra, and `metaphor/`. The former `infra/tool-registry/` directory has been removed; tool registry, doctrine formatter, and tool-snapshot now live in `admiral/agent/tools.ts` (registry + `renderAgentToolDoctrineTag()`) and `admiral/agent/internal/tool-snapshot.ts`.
+- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log infra, and `metaphor/`. The former `infra/tool-registry/` directory has been removed; generic tool registry, doctrine formatter, and tool snapshot now live in `packages/fleet-mcp-server`, with `admiral/agent/tools.ts` retaining the fleet-core facade and carrier metadata adapter.
 - Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly. Note that `agent-services.ts` and `tool-registry-services.ts` have been removed from the public surface.
 - `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes runtime-owned state and returns `FleetCoreRuntimeContext` containing exactly `admiral`, `admiralty`, `metaphor`, `infra`, and `shutdown`.
 - Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Session lifecycle is owned by `admiral.agent.session` and `admiral.agent.lifecycle`; internal session mapping persistence lives in `admiral/agent/internal/session-runtime.ts` as JSONL custom entries.
 
-- Fleet tool specs and registry factories that are host-agnostic and registered by adapters through public APIs
+- Fleet tool spec builders, explicit default registration bootstrap, prompt usage, and registry facade functions that are host-agnostic and backed by `packages/fleet-mcp-server`
 - `[carrier:result]` system-reminder assembly via `infra/job/job-reminders.ts`; the `job:finalized` SSOT event carries the pre-assembled string for host adapters to forward.
 - Global runtime stores, **runtime-owned settings singletons (owned by `infra/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by Pi adapters
 - Pure prompt composition, domain-level orchestration logic, and **render-agnostic view-model builders** (view-model builders have moved to the Pi host `panel/` domain)
@@ -92,6 +92,7 @@ Single SSoT for both the type and the registry: `admiral/agent/types.ts` defines
 ## Import Boundaries
 
 - Do not import `@sbluemin/fleet-*` or `@anthropic-ai/*`.
+- `@sbluemin/fleet-mcp-server` is the sole allowed Fleet workspace dependency for generic MCP registry/server primitives; it must never import back into `fleet-core`.
 - Public consumers must use the package root barrel or documented public subpaths only.
 - `fleet-core` may expose ports, adapters, and pure state machines, but Pi implementations live in `fleet-harness`.
 - If a module needs Pi lifecycle hooks or UI registration, that code belongs in `fleet-harness`, not here.

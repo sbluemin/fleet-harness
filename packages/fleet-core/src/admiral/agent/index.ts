@@ -1,4 +1,5 @@
 import * as bridge from "./bridge.js";
+import { registerFleetCoreDefaultAgentTools } from "./bootstrap.js";
 import * as connections from "./connections.js";
 import * as events from "./events.js";
 import * as executor from "./executor.js";
@@ -59,6 +60,9 @@ export {
   unregisterExtraTools,
 } from "./tools.js";
 export {
+  registerFleetCoreDefaultAgentTools,
+} from "./bootstrap.js";
+export {
   ensure,
   sendMessage,
   deliverToolResults,
@@ -103,6 +107,7 @@ export {
 } from "./executor.js";
 
 export const agent = {
+  registerFleetCoreDefaultAgentTools,
   tools,
   session,
   events,

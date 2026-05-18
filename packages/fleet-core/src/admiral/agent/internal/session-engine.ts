@@ -36,6 +36,7 @@ import {
 } from "./session-runtime.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 import {
+  startMcpServer,
   installToolCallRouter,
   detachToolCallRouter,
   removeSessionTools,
@@ -48,7 +49,7 @@ import {
   resolveToolResult,
   getSessionToolNames,
   specToMcpTool,
-} from "./mcp-router.js";
+} from "@sbluemin/fleet-mcp-server";
 import { wireStreamEmitter } from "./event-normalizer.js";
 import { list } from "../tools.js";
 import { buildRuntimeContextPrompt } from "../../prompts.js";
@@ -498,7 +499,8 @@ export async function deliverToolResults(
   for (const result of toolResults) {
     const head = getPendingToolCallHead(session);
     if (!result.toolCallId || head?.toolCallId !== result.toolCallId) {
-      throw new Error("toolResult의 toolCallId가 현재 ACP 세션의 FIFO head와 일치하지 않습니다");
+      handleFatalToolResultMismatch(state, session, result.toolCallId, head?.toolCallId);
+      return;
     }
     const mcpResult = convertToMcpResult(result);
     resolveToolResult(session, result.toolCallId, mcpResult);
@@ -646,6 +648,29 @@ function isRecoverablePromptFailure(err: unknown): boolean {
 function isProviderClientAlive(client: IUnifiedAgentClient): boolean {
   const info = client.getConnectionInfo();
   return info.state === "ready" || info.state === "connected";
+}
+
+function handleFatalToolResultMismatch(
+  state: AgentProviderState,
+  session: AgentSessionState,
+  actualToolCallId: string | undefined,
+  expectedToolCallId: string | undefined,
+): void {
+  const message = `toolResult의 toolCallId가 현재 ACP 세션의 FIFO head와 일치하지 않습니다: expected=${expectedToolCallId ?? "none"} actual=${actualToolCallId ?? "none"}`;
+  session.needsRecovery = true;
+  session.lastError = message;
+  if (expectedToolCallId) {
+    try {
+      resolveToolResult(session, expectedToolCallId, {
+        content: [{ type: "text", text: message }],
+        isError: true,
+      });
+    } catch (err) {
+      debug(`FIFO mismatch error result 전달 실패: ${errorMessage(err)}`);
+    }
+  }
+  closeLogicalPromptRouting(state, session);
+  emitStreamEvent({ type: "error", sessionId: session.sessionId ?? "", error: message });
 }
 
 function getSessionKey(cli: CliType, scopeKey: string): string {
@@ -805,8 +830,5 @@ function convertToMcpResult(result: ToolResultEnvelope): { content: Array<{ type
 }
 
 async function getMcpUrl(): Promise<string> {
-  // MCP URL은 infra.toolRegistry.mcp singleton을 통해 확보
-  // 내부 모듈이므로 직접 mcp.ts의 startMcpServer를 호출
-  const { startMcpServer } = await import("../../_shared/mcp.js");
   return startMcpServer();
 }

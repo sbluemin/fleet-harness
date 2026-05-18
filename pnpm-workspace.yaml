@@ -1,6 +1,7 @@
 packages:
   - "engines/packages/*"
   - "packages/fleet-core"
+  - "packages/fleet-mcp-server"
   - "packages/fleet-carriers"
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"

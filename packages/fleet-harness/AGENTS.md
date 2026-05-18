@@ -32,7 +32,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 | `src/jobs.ts` | `admiral.carrierJobs` + `infra.job` | Fleet carrier job lifecycle and status tracking |
 | `src/settings.ts` | `infra.settings` | Fleet-to-Pi settings sync and persistence |
 | `src/logs.ts` | `infra.log` | Fleet log store and terminal output streaming |
-| `src/tools.ts` | `admiral.agent.tools` | Pi-side tool registration consuming core tool specs and invoke surface |
+| `src/tools.ts` | `admiral.agent.tools` | Pi-side tool registration consuming the fleet-core facade for tool specs and invoke surface |
 
 ## Must Own
 
@@ -55,6 +55,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 ## Import Boundaries
 
 - Consume `@sbluemin/fleet-core` only through the root barrel or the four documented subpaths: `admiral`, `admiralty`, `metaphor`, `infra`.
+- Direct `@sbluemin/fleet-mcp-server` imports are not the default harness path; consume tool registry behavior through the fleet-core facade.
 - When accessing domain functionality, prefer the facade namespace (e.g., `admiral.protocols.xxx`) over root barrel named imports. Root barrel direct imports are reserved for runtime assembly (`createFleetCoreRuntime`) and frozen legacy symbols.
 - Consume Grand Fleet domain APIs through `@sbluemin/fleet-core/admiralty` or the root `admiralty` facade.
 - Large domain adapters (`grand-fleet/`) may export specialized hooks or components for host UI modules to consume.
@@ -64,6 +65,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 - `fleet-harness -> fleet-core`
 - `fleet-harness -> fleet-wiki`
+- `fleet-harness` does not directly depend on `fleet-mcp-server` for registry operations; fleet-core owns that facade.
 - `fleet-harness -> @sbluemin/fleet-*` (active engine workspace via `workspace:*`)
 - `fleet-harness -> @sbluemin/fleet-unified-agent`
 

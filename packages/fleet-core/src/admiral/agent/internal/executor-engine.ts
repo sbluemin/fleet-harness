@@ -31,12 +31,13 @@ import {
   type SessionMappingCommitToken,
 } from "./session-runtime.js";
 import {
+  startMcpServer,
   installExecutorToolCallRouter,
   cleanupExecutorSession,
   detachExecutorMcpForReuse,
   registerExecutorSessionTools,
-} from "./mcp-router.js";
-import { getExecutorMcpTools } from "../tools.js";
+} from "@sbluemin/fleet-mcp-server";
+import { getExecutorMcpTools, invoke } from "../tools.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 
@@ -375,7 +376,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (activeMcpToken) {
         if (poolEntry) poolEntry.mcpSessionToken = activeMcpToken;
-        installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+        installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
       }
 
       const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
@@ -400,7 +401,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (poolEntry?.mcpSessionToken) {
         activeMcpToken = poolEntry.mcpSessionToken;
-        installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+        installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
       }
     }
 
@@ -530,7 +531,7 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
     await applyResolvedEffort(client, cliType, model, effortResolution);
 
     if (activeMcpToken) {
-      installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+      installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
     }
 
     if (aborted) {
@@ -939,7 +940,6 @@ async function setupExecutorMcp(
   const specs = getExecutorMcpTools(carrierId);
   if (specs.length === 0) return null;
   try {
-    const { startMcpServer } = await import("../../_shared/mcp.js");
     const mcpUrl = await startMcpServer();
     const token = crypto.randomUUID();
     registerExecutorSessionTools(token, specs);
