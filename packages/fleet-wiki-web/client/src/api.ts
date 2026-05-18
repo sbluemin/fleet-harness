@@ -61,24 +61,6 @@ export interface BriefingHit {
   graph_boost?: number;
 }
 
-export interface BacklinkEntry {
-  id: string;
-  title: string;
-  occurrences: number;
-}
-
-export interface OutgoingLinkEntry {
-  id: string;
-  title: string;
-  occurrences: number;
-}
-
-export interface BacklinksResponse {
-  id: string;
-  backlinks: BacklinkEntry[];
-  outgoing: OutgoingLinkEntry[];
-}
-
 export interface ConflictListItem {
   id: string;
   title: string;
@@ -199,10 +181,6 @@ export async function fetchSearch(query: string, tags: string[] = [], enhanced =
   if (enhanced) params.set("enhanced", "true");
   const suffix = params.toString();
   return fetchJson<BriefingHit[]>(`/api/search${suffix ? `?${suffix}` : ""}`);
-}
-
-export async function fetchBacklinks(id: string): Promise<BacklinksResponse> {
-  return fetchJson<BacklinksResponse>(`/api/backlinks/${encodeURIComponent(id)}`);
 }
 
 export async function fetchRaw(ref: string): Promise<string> {

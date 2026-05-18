@@ -22,7 +22,6 @@ describe("dictionary keyset parity", () => {
 
 describe("brand vocabulary invariant in dictionaries", () => {
   const brandTerms = [
-    "Constellation",
     "Drydock",
     "Codex",
     "Maritime Codex",

@@ -1,9 +1,14 @@
 import { renderMetaChips, renderTagChips } from "./meta-chips";
 import { renderRelatedList } from "./related-list";
-import { renderToc } from "./toc";
 import { renderMarkdown } from "../markdown/renderer";
+import type { TocItem } from "../markdown/renderer";
 import type { WikiEntryResponse, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
+
+export interface MarkdownViewRender {
+  html: string;
+  toc: TocItem[];
+}
 
 const ARROW_ICON = `
   <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16">
@@ -50,24 +55,24 @@ export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null): st
 export function renderMarkdownView(
   entry: WikiEntryResponse,
   index: WikiIndexEntry[],
-): string {
+): MarkdownViewRender {
   const rendered = renderMarkdown(entry.body);
-  return `
+  return {
+    toc: rendered.toc,
+    html: `
     <article class="document">
       <header class="document-header">
         <p class="eyebrow">${t("markdown.wikiEntry")}</p>
         <h1>${escapeHtml(entry.frontmatter.title)}</h1>
         ${renderMetaChips(entry.frontmatter)}
       </header>
-      <div class="document-with-toc">
-        <div class="markdown-body" id="markdown-body">
-          ${rendered.html}
-        </div>
-        ${renderToc(rendered.toc)}
+      <div class="markdown-body" id="markdown-body">
+        ${rendered.html}
       </div>
       ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
     </article>
-  `;
+  `,
+  };
 }
 
 export function renderLoading(): string {

@@ -370,8 +370,7 @@ kbd {
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.nav-entry-text,
-.backlink-title {
+.nav-entry-text {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -609,13 +608,6 @@ kbd {
   gap: var(--space-2);
 }
 
-.document-with-toc {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 192px;
-  gap: var(--space-8);
-  align-items: start;
-}
-
 .markdown-body {
   min-width: 0;
   max-width: 78ch;
@@ -623,6 +615,10 @@ kbd {
   font-size: 17px;
   line-height: 1.78;
   letter-spacing: -0.003em;
+}
+
+#markdown-body {
+  max-width: none;
 }
 
 .markdown-body > * + * {
@@ -1265,16 +1261,14 @@ kbd {
   position: sticky;
   top: var(--space-8);
   display: grid;
-  gap: 4px;
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--surface-rim);
+  gap: 5px;
 }
 
 .toc-panel h2 {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
   color: var(--brass-bright);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -1282,11 +1276,13 @@ kbd {
 
 .toc-panel a {
   display: block;
-  padding: 5px 0;
+  min-width: 0;
+  padding: 6px 0;
   color: var(--ink-fog);
   font-size: 13px;
   letter-spacing: -0.005em;
   line-height: 1.45;
+  overflow-wrap: anywhere;
   transition:
     color var(--duration-fast) var(--ease-spring),
     transform var(--duration-fast) var(--ease-spring);
@@ -1297,7 +1293,7 @@ kbd {
   transform: translateX(2px);
 }
 
-.toc-level-3 {
+.toc-panel .toc-level-3 {
   padding-left: var(--space-3);
   font-size: 12.5px;
   color: var(--ink-fog);
@@ -1366,8 +1362,8 @@ kbd {
   gap: 4px;
 }
 
-.backlinks-panel,
-.manifest-card {
+.manifest-card,
+.toc-panel {
   padding: var(--space-6);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
@@ -1375,20 +1371,6 @@ kbd {
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
-}
-
-.backlinks-panel {
-  overflow-x: hidden;
-}
-
-.backlinks-panel h2 {
-  margin: 0;
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
 }
 
 .manifest-card {
@@ -1495,63 +1477,6 @@ kbd {
 
 .manifest-link:hover .manifest-arrow {
   transform: translate(2px, -2px);
-}
-
-.backlinks-subtitle {
-  margin: 4px 0 0;
-  color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-}
-
-.backlink-list {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.backlink-list a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-width: 0;
-  padding: 11px 12px;
-  border-radius: var(--radius-md);
-  background: oklch(22% 0.05 248 / 50%);
-  border: 1px solid transparent;
-  color: var(--ink-spectral);
-  font-size: 14px;
-  letter-spacing: -0.005em;
-  position: relative;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.backlink-list a:hover {
-  transform: translateX(3px);
-  border-color: oklch(82% 0.13 195 / 40%);
-  background: oklch(82% 0.13 195 / 8%);
-  color: var(--ink-pearl);
-}
-
-.backlink-list a .occurrences {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--aurora);
-  background: oklch(82% 0.13 195 / 14%);
-  border: 1px solid oklch(82% 0.13 195 / 30%);
-  border-radius: 999px;
-  padding: 2px 8px;
-  flex-shrink: 0;
 }
 
 .empty-state,
@@ -2143,7 +2068,6 @@ kbd {
   letter-spacing: -0.005em;
 }
 
-/* queue-card: backlinks 패널 hover와 동형 (3px right + aurora rim) */
 .queue-card {
   display: grid;
   gap: var(--space-3);
@@ -2564,23 +2488,43 @@ kbd {
   }
 }
 
+@media (max-width: 1280px) {
+  .toc-panel {
+    position: static;
+  }
+}
+
 @media (max-width: 960px) {
   .mobile-close {
     display: inline-flex;
   }
 
-  .document-with-toc {
-    display: block;
+  .toc-panel {
+    padding: var(--space-5);
   }
 
-  .toc-panel {
-    position: static;
-    margin-bottom: var(--space-6);
-    padding: var(--space-3) var(--space-4);
-    border-left: 0;
-    border-radius: var(--radius-md);
-    background: oklch(22% 0.05 248 / 50%);
-    border: 1px solid var(--surface-rim);
+  .app-shell:has(.toc-panel) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-shell:has(.toc-panel) .rail {
+    display: contents;
+    margin-top: 0;
+  }
+
+  .app-shell:has(.toc-panel) .toc-panel {
+    order: 1;
+    margin-top: 64px;
+  }
+
+  .app-shell:has(.toc-panel) .content {
+    order: 2;
+    padding-top: 0;
+  }
+
+  .app-shell:has(.toc-panel) .manifest-card {
+    order: 3;
   }
 
   .document {
@@ -2620,11 +2564,6 @@ kbd {
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
-}
-
-.outgoing-section {
-  display: grid;
-  gap: var(--space-2);
 }
 
 .context-actions-grid {
@@ -2693,17 +2632,6 @@ kbd {
   color: var(--ink-spectral);
   font-size: 13px;
   line-height: 1.5;
-}
-
-.outgoing-section {
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid color-mix(in oklch, var(--aurora) 22%, var(--surface-rim));
-}
-
-.outgoing-list a:hover {
-  border-color: color-mix(in oklch, var(--aurora) 44%, var(--surface-rim));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 18%, transparent);
 }
 
 .conflict-list,

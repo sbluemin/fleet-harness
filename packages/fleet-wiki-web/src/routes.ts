@@ -6,8 +6,6 @@ import { join, relative as relativePath, resolve as resolvePath } from "node:pat
 import {
   approvePatch,
   briefingQuery,
-  extractLegacyMarkdownWikiLinks,
-  extractWikiLinks,
   getIndexMarkdownFile,
   getLogFile,
   listQueue,
@@ -54,12 +52,6 @@ interface LogResponse {
   entries: string[];
   totalEntries: number;
   truncated: boolean;
-}
-
-interface OutgoingLinkEntry {
-  id: string;
-  title: string;
-  occurrences: number;
 }
 
 interface QueuePatchSetMember {
@@ -363,21 +355,6 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
     return;
   }
 
-  const backlinksMatch = url.pathname.match(/^\/api\/backlinks\/([^/]+)$/);
-  if (backlinksMatch) {
-    const id = decodePathSegment(backlinksMatch[1] ?? "");
-    if (!isSafeEntryId(id)) {
-      sendJson(response, 400, { error: "invalid entry id" });
-      return;
-    }
-    sendJson(response, 200, await buildBacklinksResponse(id, context.paths));
-    return;
-  }
-  if (url.pathname.startsWith("/api/backlinks/")) {
-    sendJson(response, 400, { error: "invalid entry id" });
-    return;
-  }
-
   sendJson(response, 404, { error: "not_found" });
 }
 
@@ -502,79 +479,6 @@ async function readRequestBody(request: IncomingMessage): Promise<string | null 
     request.on("end", () => resolve(exceeded ? BODY_TOO_LARGE : Buffer.concat(chunks).toString("utf8")));
     request.on("error", () => resolve(null));
   });
-}
-
-async function buildBacklinksResponse(id: string, paths: MemoryPaths): Promise<{ id: string; backlinks: Array<{ id: string; title: string; occurrences: number }>; outgoing: OutgoingLinkEntry[] }> {
-  const [entries, index, entry] = await Promise.all([
-    listWiki(paths),
-    loadIndex(paths),
-    readWikiEntry(id, paths),
-  ]);
-  if (!entry) {
-    return { id, backlinks: [], outgoing: [] };
-  }
-
-  const backlinks = await getBacklinksLocal(id, entries, paths, index);
-  const outgoing = getOutgoingLinks(entry, entries, paths, index);
-  return { id, backlinks, outgoing };
-}
-
-async function getBacklinksLocal(
-  id: string,
-  entries: WikiEntry[],
-  paths: MemoryPaths,
-  index: Record<string, { title: string; path: string }>,
-): Promise<Array<{ id: string; title: string; occurrences: number }>> {
-  const counts = new Map<string, number>();
-  for (const source of entries) {
-    const sourcePath = index[source.id]?.path
-      ? join(paths.root, index[source.id].path)
-      : join(paths.wikiDir, `${source.id}.md`);
-    const targetIds = [
-      ...extractWikiLinks(source.body),
-      ...extractLegacyMarkdownWikiLinks(source.body, paths.wikiDir, sourcePath).map((link) => link.entryId),
-    ];
-    for (const targetId of targetIds) {
-      if (!targetId || targetId === source.id || targetId !== id) continue;
-      counts.set(source.id, (counts.get(source.id) ?? 0) + 1);
-    }
-  }
-
-  return [...counts.entries()]
-    .map(([sourceId, occurrences]) => ({
-      id: sourceId,
-      title: index[sourceId]?.title ?? sourceId,
-      occurrences,
-    }))
-    .sort((left, right) => right.occurrences - left.occurrences || left.id.localeCompare(right.id));
-}
-
-function getOutgoingLinks(
-  entry: WikiEntry,
-  entries: WikiEntry[],
-  paths: MemoryPaths,
-  index: Record<string, { title: string; path: string }>,
-): OutgoingLinkEntry[] {
-  const entryPath = index[entry.id]?.path
-    ? join(paths.root, index[entry.id].path)
-    : join(paths.wikiDir, `${entry.id}.md`);
-  const counts = new Map<string, number>();
-  const targetIds = [
-    ...extractWikiLinks(entry.body),
-    ...extractLegacyMarkdownWikiLinks(entry.body, paths.wikiDir, entryPath).map((link) => link.entryId),
-  ];
-  for (const targetId of targetIds) {
-    if (!targetId || targetId === entry.id) continue;
-    counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
-  }
-  const titles = new Map(entries.map((item) => [item.id, item.title]));
-  return [...counts.entries()]
-    .map(([targetId, occurrences]) => ({
-      id: targetId,
-      title: titles.get(targetId) ?? index[targetId]?.title ?? targetId,
-      occurrences,
-    }))
-    .sort((left, right) => right.occurrences - left.occurrences || left.id.localeCompare(right.id));
 }
 
 const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);

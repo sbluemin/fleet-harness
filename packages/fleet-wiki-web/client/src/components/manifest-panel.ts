@@ -1,7 +1,5 @@
 import type {
-  BacklinkEntry,
   BriefingHit,
-  OutgoingLinkEntry,
   WikiEntryResponse,
   WikiIndexEntry,
 } from "../api";
@@ -18,8 +16,6 @@ const ARROW_ICON = `
 
 export function renderManifestPanel(
   entry: WikiEntryResponse | null,
-  backlinks: BacklinkEntry[],
-  outgoing: OutgoingLinkEntry[],
   index: WikiIndexEntry[],
   hint: BriefingHit | null,
 ): string {
@@ -29,7 +25,7 @@ export function renderManifestPanel(
   const relCreated = relativeTime(frontmatter.created);
   const absoluteUpdated = formatAbsoluteDate(frontmatter.updated);
   const relUpdated = relativeTime(frontmatter.updated);
-  const actionsHtml = renderCopyContextActions(entry, backlinks, outgoing, index, hint);
+  const actionsHtml = renderCopyContextActions(entry, index, hint);
 
   const tagsHtml = frontmatter.tags.length > 0
     ? `<div class="queue-card-chips">${frontmatter.tags.map((t_) => `<span class="chip chip-muted">${escapeHtml(t_)}</span>`).join("")}</div>`
