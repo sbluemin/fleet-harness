@@ -262,7 +262,7 @@ describe("diagram hydrator security", () => {
     expect(src).toMatch(/htmlLabels:\s*false/);
     expect(src).toMatch(/startOnLoad:\s*false/);
     expect(src).toMatch(/look:\s*["']handDrawn["']/);
-    expect(src).toMatch(/useMaxWidth:\s*true/);
+    expect(src).toMatch(/useMaxWidth:\s*false/);
     expect(src).toMatch(/themeCSS:\s*buildThemeCss\(\)/);
   });
 

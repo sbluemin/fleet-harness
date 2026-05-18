@@ -957,13 +957,10 @@ kbd {
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg {
   display: block;
-  max-width: 100%;
+  max-width: none;
+  width: max-content;
   height: auto;
   margin: 0 auto;
-}
-
-.diagram-lightbox__viewport svg {
-  max-width: none;
 }
 
 :is(.diagram-block, .diagram-lightbox__viewport) svg .node rect,

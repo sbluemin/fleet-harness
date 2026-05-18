@@ -145,6 +145,7 @@ async function hydrate(placeholder: HTMLElement): Promise<void> {
     const { svg } = await mermaid.render(id, source);
     placeholder.innerHTML = sanitizeSvg(svg);
     reapplySpaLinks(placeholder, svg);
+    recalculateSvgViewBox(placeholder);
     bindDiagramInteraction(placeholder);
     placeholder.dataset.diagramState = "rendered";
   } catch (err) {
@@ -184,7 +185,7 @@ async function loadMermaid(): Promise<MermaidApi> {
         look: "handDrawn",
         themeVariables: extractThemeVariables(),
         themeCSS: buildThemeCss(),
-        flowchart: { htmlLabels: false, useMaxWidth: true },
+        flowchart: { htmlLabels: false, useMaxWidth: false },
       });
       return api;
     })();
@@ -340,6 +341,25 @@ function reapplySpaLinks(placeholder: HTMLElement, rawSvg: string): void {
     if (!safe) continue;
     sanitized.setAttribute("href", safe);
   }
+}
+
+function recalculateSvgViewBox(placeholder: HTMLElement): void {
+  const svg = placeholder.querySelector<SVGSVGElement>("svg");
+  if (!svg) return;
+  let bbox: DOMRect;
+  try {
+    bbox = svg.getBBox() as DOMRect;
+  } catch {
+    return;
+  }
+  const { x, y, width, height } = bbox;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return;
+  if (x < 0 || y < 0) return;
+  if (width <= 0 || height <= 0) return;
+  svg.setAttribute(
+    "viewBox",
+    `${formatSvgLength(x)} ${formatSvgLength(y)} ${formatSvgLength(width)} ${formatSvgLength(height)}`,
+  );
 }
 
 function bindDiagramInteraction(placeholder: HTMLElement): void {
