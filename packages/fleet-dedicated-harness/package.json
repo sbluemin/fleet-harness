@@ -7,14 +7,16 @@
     "fleetd": "./bin/fleetd.mjs"
   },
   "scripts": {
-    "build": "tsc",
+    "boundary:guard": "node ../../scripts/guard-dedicated-harness-boundary.mjs",
+    "build": "pnpm boundary:guard && tsc",
     "dev": "tsx src/index.ts",
     "fleetd": "tsx src/index.ts"
   },
   "dependencies": {
     "@sbluemin/fleet-carriers": "workspace:*",
     "@sbluemin/fleet-core": "workspace:*",
-    "@sbluemin/fleet-tui": "workspace:*",
+    "@sbluemin/fleet-wiki": "workspace:*",
+    "@sbluemin/fleet-wiki-web": "workspace:*",
     "@xterm/headless": "^5.5.0",
     "node-pty": "^1.0.0"
   },

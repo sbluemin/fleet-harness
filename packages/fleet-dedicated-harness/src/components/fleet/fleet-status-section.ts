@@ -1,5 +1,7 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
-import { truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui";
+
+import type { Component } from "../../tui/types.js";
+import { truncateToWidth, visibleWidth } from "../../tui/primitives/text.js";
 
 export interface FleetStatusSectionOptions {
 	readonly rt: FleetCoreRuntimeContext;
@@ -23,7 +25,7 @@ export class FleetStatusSection implements Component {
 
 function renderStatusLine(width: number, protocolColor: string): string {
 	if (width <= 0) return "";
-	const center = colorize("⚓ Fleet Action Protocol", protocolColor);
+	const center = colorize("Fleet Action Protocol", protocolColor);
 	const centerBlock = `${renderSeparator(protocolColor)}${center}${renderSeparator(protocolColor)}`;
 	const centerWidth = visibleWidth(centerBlock);
 	if (centerWidth >= width) return truncateToWidth(centerBlock, width);

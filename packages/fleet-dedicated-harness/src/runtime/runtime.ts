@@ -5,20 +5,15 @@ import path from "node:path";
 
 import { createFleetCoreRuntime, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 
+import { reconcileRuntimeState } from "./reconciliation.js";
+
 export type { FleetCoreRuntimeContext };
 
 export async function bootRuntime(): Promise<FleetCoreRuntimeContext> {
 	const dataDir = path.join(os.homedir(), ".fleet");
 	const rt = createFleetCoreRuntime({ dataDir, bootMode: "normal" });
 
-	rt.admiral.carrier.setOfflineCarriers(rt.admiral.store.loadOfflineCarriers());
-	rt.admiral.carrier.setSquadronEnabledCarriers(rt.admiral.store.loadSquadronEnabled());
-	rt.admiral.carrier.setTaskForceConfiguredCarriers(
-		rt.admiral.store.getConfiguredTaskForceCarrierIdsFromSnapshot(
-			rt.admiral.store.readStatesSnapshot(),
-			rt.admiral.carrier.getRegisteredOrder(),
-		),
-	);
+	reconcileRuntimeState(rt);
 
 	return rt;
 }

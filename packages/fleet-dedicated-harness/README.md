@@ -1,43 +1,63 @@
 # Fleet Dedicated Harness
 
-Dedicated Fleet harness PoC for embedding a local Claude CLI process inside the Fleet TUI shell.
+Standalone Tier-1 Dedicated Harness PoC for running one of five local CLIs inside a permanent vertical two-pane Fleet terminal.
 
 ## What This Package Owns
 
-- Boots the Fleet core runtime through `src/runtime.ts`.
-- Loads the Fleet TUI shell directly from `@sbluemin/fleet-tui`.
-- Hosts the Claude CLI through the `node-pty`-backed `PtyHost` adapter.
-- Renders the dedicated PoC layout with the Dedicated CLI PTY, single-line Fleet status bar, carrier roster, and jobs line.
+- Boots Fleet runtime state through the public `@sbluemin/fleet-core` root barrel.
+- Hosts `claude`, `codex`, `gemini`, `opencode`, or `cursor-agent` through a `node-pty` backed Dedicated CLI PTY.
+- Renders the upper Dedicated CLI PTY and lower Fleet PTY with local `tui/**` code.
+- Exposes `fleet-pty/api.ts` as the local lower-pane replacement for Pi `ctx.ui.custom`, `setHeader`, and coding-agent `EditorReplace` patterns.
 
 ## Boundary
 
-This package intentionally depends only on:
+Allowed runtime dependencies are:
 
-- `@sbluemin/fleet-tui`
 - `@sbluemin/fleet-core`
 - `@sbluemin/fleet-carriers`
+- `@sbluemin/fleet-wiki`
+- `@sbluemin/fleet-wiki-web`
 - `@xterm/headless`
 - `node-pty`
 
-It must not depend on Fleet Pi harness, Fleet coding-agent, Fleet AI, Fleet agent, or `@anthropic-ai/*` packages.
+`@sbluemin/fleet-tui`, `@sbluemin/fleet-harness`, `@sbluemin/fleet-ai`, `@sbluemin/fleet-agent`, `@sbluemin/fleet-coding-agent`, and `engines/*` are permanently forbidden dependencies.
+
+## CLI Selection
+
+Selection priority is:
+
+1. `--cli <id>` or `--cli=<id>`
+2. `FLEET_DEDICATED_CLI`
+3. `claude`
+
+Supported ids are `claude`, `codex`, `gemini`, `opencode`, and `cursor-agent`.
+
+Each CLI also supports an uppercase binary override: `CLAUDE_BIN`, `CODEX_BIN`, `GEMINI_BIN`, `OPENCODE_BIN`, and `CURSOR_AGENT_BIN`.
 
 ## Commands
 
 ```sh
 pnpm --filter @sbluemin/fleet-dedicated-harness build
-pnpm --filter @sbluemin/fleet-dedicated-harness dev
+pnpm fleetd
 ```
 
 The package is ESM-only and builds with TypeScript NodeNext.
 
+## Tier-2/3 Slots
+
+Tier-2/3 slots are README-only covers in this plan. No implementation code, imports, or exports may be added under those slots until a later plan opens them.
+
+`bridge/`, `carrier-status/`, and `grand-fleet/` are not valid Dedicated Harness slots.
+
 ## Security Assumptions
 
-- **PoC scope, trusted environment only.** This PoC hosts the local `claude` CLI through a PTY and renders its raw output (ANSI escape sequences included) directly into the TUI. There is no sanitization of OSC/CSI control sequences. Do not point `CLAUDE_BIN` at an untrusted binary and do not feed untrusted output into the PTY.
-- **`process.env` is forwarded to the PTY child as-is.** This is intentional so that the embedded `claude` CLI sees the same environment as the host shell.
+- PoC scope, trusted environment only. Raw ANSI output from the selected CLI is rendered directly.
+- Child PTY environments are built from a copy of `process.env` plus CLI overlays. The host `process.env` is not mutated.
 
 ## Known Operational Notes
 
-- **`node-pty` `spawn-helper` executable bit on macOS.** Some `pnpm install` paths drop the executable bit on `node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/<plat-arch>/spawn-helper`, causing `posix_spawnp failed.` at runtime. Fix once after install:
-  ```sh
-  chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/$(node -p "process.platform + '-' + process.arch")/spawn-helper
-  ```
+Some macOS `pnpm install` paths drop the executable bit on `node-pty`'s `spawn-helper`, causing `posix_spawnp failed.` at runtime. Fix once after install:
+
+```sh
+chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/$(node -p "process.platform + '-' + process.arch")/spawn-helper
+```

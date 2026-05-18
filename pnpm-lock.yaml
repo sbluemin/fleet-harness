@@ -273,9 +273,12 @@ importers:
       '@sbluemin/fleet-core':
         specifier: workspace:*
         version: link:../fleet-core
-      '@sbluemin/fleet-tui':
+      '@sbluemin/fleet-wiki':
         specifier: workspace:*
-        version: link:../../engines/packages/tui
+        version: link:../fleet-wiki
+      '@sbluemin/fleet-wiki-web':
+        specifier: workspace:*
+        version: link:../fleet-wiki-web
       '@xterm/headless':
         specifier: ^5.5.0
         version: 5.5.0

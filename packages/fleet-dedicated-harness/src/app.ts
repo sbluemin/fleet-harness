@@ -1,96 +1,55 @@
-import { isKeyRelease, matchesKey, ProcessTerminal, TUI } from "@sbluemin/fleet-tui";
+import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
+import { PtyView } from "./components/dedicated/pty-view.js";
+import { createFleetPtyApi } from "./fleet-pty/api.js";
+import { createDefaultFleetPtySections } from "./fleet-pty/sections.js";
+import { assertInputContract } from "./input/conflict.js";
+import { createInputRouter } from "./input/input-router.js";
+import { createPtyHost } from "./pty/pty-host.js";
+import type { PtyHost } from "./pty/types.js";
+import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
+import { attachInputStream } from "./tui/core/input-stream.js";
+import { LocalTui } from "./tui/core/renderer.js";
+import { getTerminalSize } from "./tui/core/terminal-size.js";
+import { computeVerticalSplit } from "./tui/layout/split-pane.js";
 
-import { resolveClaudeBin } from "./claude-bin.js";
-import { FleetStatusSection } from "./components/fleet-status-section.js";
-import { JobsLine } from "./components/jobs-line.js";
-import { PtyView } from "./components/pty-view.js";
-import { CarrierRosterLine } from "./components/carrier-roster-line.js";
-import { createPtyHost } from "./pty-host.js";
-import type { PtyHost } from "./pty-host.js";
-import { bootRuntime } from "./runtime.js";
-import type { FleetCoreRuntimeContext } from "./runtime.js";
-
-type TerminalWithOptionalCols = {
-  readonly columns?: number;
-  readonly cols?: number;
-  readonly rows?: number;
-};
-
-type ActivePty = "dedicated" | "fleet";
-
-const DEFAULT_COLUMNS = 80;
-const DEFAULT_ROWS = 24;
-const RESERVED_NON_PTY_ROWS = 3;
-const MIN_PTY_ROWS = 5;
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
-const HOST_EXIT_KEY = "\x11";
-const HOST_INTERRUPT_KEY = "ctrl+c";
-const FOCUS_TOGGLE_KEY = "ctrl+t";
 
 export async function runApp(): Promise<void> {
+  assertInputContract();
+
   const rt = await bootRuntime();
-  const ui = new TUI(new ProcessTerminal());
-  const ptyView = new PtyView(getTerminalColumns(ui), computePtyRows(ui));
-  let activePty: ActivePty = "fleet";
-  const fleetStatusSection = new FleetStatusSection({ rt });
-
-  ui.addChild(ptyView);
-  ui.addChild(fleetStatusSection);
-  ui.addChild(new CarrierRosterLine(rt));
-  ui.addChild(new JobsLine(rt));
-  ui.setFocus(null);
-
-  const ptyHost = createPtyHost(resolveClaudeBin(), [], process.cwd());
+  const ui = new LocalTui();
+  const split = computeVerticalSplit({ columns: ui.columns, rows: ui.rows });
+  const ptyView = new PtyView(ui.columns, split.dedicatedRows);
+  const sections = createDefaultFleetPtySections(rt);
+  const fleetPty = createFleetPtyApi({ component: sections[0].component, id: "default-fleet-region" }, sections);
+  const ptyHost = createPtyHost({
+    profile: resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd()),
+  });
+  const scheduleRender = createRenderScheduler(ui);
   let stopping = false;
-  let disposeInputListener = () => {};
-  const resize = () => resizePty(ui, ptyView, ptyHost);
+  let disposeInputStream = () => {};
+  const resize = () => resizePty(ui, ptyView, ptyHost, scheduleRender);
   const stop = () => {
     if (stopping) {
       process.exit(1);
       return;
     }
     stopping = true;
-    stopApp(rt, ui, ptyHost, resize, disposeInputListener);
+    stopApp(rt, ui, ptyHost, resize, disposeInputStream);
   };
-
-  ptyHost.start({ cols: getTerminalColumns(ui), rows: ptyView.maxRows });
-  let renderPending = false;
-  const scheduleRender = () => {
-    if (renderPending) return;
-    renderPending = true;
-    setTimeout(() => {
-      renderPending = false;
-      ui.requestRender();
-    }, RENDER_THROTTLE_MS);
-  };
-  ptyHost.onData((chunk: string) => {
-    ptyView.append(chunk, scheduleRender);
+  const router = createInputRouter({
+    onExit: stop,
+    onModeChange: () => scheduleRender(),
+    writeDedicated: (data) => ptyHost.write(data),
   });
 
-  disposeInputListener = ui.addInputListener((data: string) => {
-    if (data === HOST_EXIT_KEY || matchesKey(data, HOST_INTERRUPT_KEY)) {
-      stop();
-      return { consume: true };
-    }
-
-    if (isKeyRelease(data)) {
-      return { consume: true };
-    }
-
-    if (matchesKey(data, FOCUS_TOGGLE_KEY)) {
-      activePty = activePty === "dedicated" ? "fleet" : "dedicated";
-      ui.requestRender();
-      return { consume: true };
-    }
-
-    if (activePty === "dedicated") {
-      ptyHost.write(data);
-      return { consume: true };
-    }
-
-    mirrorFleetInputToDedicatedPty(data, ptyHost);
-    return { consume: true };
+  ui.setChildren([ptyView, ...fleetPty.getSections().map((section) => section.component)]);
+  ui.addInputListener((data) => router.route(data));
+  ptyHost.start({ cols: ui.columns, rows: ptyView.maxRows });
+  ptyHost.onData((chunk) => {
+    ptyView.append(chunk, scheduleRender);
   });
 
   process.stdout.on("resize", resize);
@@ -99,30 +58,43 @@ export async function runApp(): Promise<void> {
   process.on("SIGTERM", stop);
 
   ui.start();
+  disposeInputStream = attachInputStream(ui);
 }
 
-function mirrorFleetInputToDedicatedPty(data: string, ptyHost: PtyHost): void {
-  ptyHost.write(data);
+function resizePty(ui: LocalTui, ptyView: PtyView, ptyHost: PtyHost, scheduleRender: () => void): void {
+  const size = getTerminalSize();
+  ui.refreshSize(size);
+  const split = computeVerticalSplit(size);
+  ptyView.resize(size.columns, split.dedicatedRows);
+  ptyHost.resize(size.columns, split.dedicatedRows);
+  scheduleRender();
 }
 
-function resizePty(ui: TUI, ptyView: PtyView, ptyHost: PtyHost): void {
-  const rows = computePtyRows(ui);
-  const cols = getTerminalColumns(ui);
-  ptyView.resize(cols, rows);
-  ptyHost.resize(cols, rows);
-  ui.requestRender();
+function createRenderScheduler(ui: LocalTui): () => void {
+  let renderPending = false;
+  return () => {
+    if (renderPending) {
+      return;
+    }
+
+    renderPending = true;
+    setTimeout(() => {
+      renderPending = false;
+      ui.requestRender();
+    }, RENDER_THROTTLE_MS);
+  };
 }
 
 function stopApp(
   rt: FleetCoreRuntimeContext,
-  ui: TUI,
+  ui: LocalTui,
   ptyHost: PtyHost,
   resize: () => void,
-  disposeInputListener: () => void,
+  disposeInputStream: () => void,
 ): void {
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
-  disposeInputListener();
+  disposeInputStream();
   ptyHost.kill();
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);
@@ -131,18 +103,4 @@ function stopApp(
     clearTimeout(timer);
     process.exit(0);
   });
-}
-
-function computePtyRows(ui: TUI): number {
-  return Math.max(MIN_PTY_ROWS, getTerminalRows(ui) - RESERVED_NON_PTY_ROWS);
-}
-
-function getTerminalColumns(ui: TUI): number {
-  const terminal = ui.terminal as TerminalWithOptionalCols;
-  return terminal.columns ?? terminal.cols ?? DEFAULT_COLUMNS;
-}
-
-function getTerminalRows(ui: TUI): number {
-  const terminal = ui.terminal as TerminalWithOptionalCols;
-  return terminal.rows ?? DEFAULT_ROWS;
 }

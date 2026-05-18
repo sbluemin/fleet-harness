@@ -1,53 +1,53 @@
 # Fleet Dedicated Harness Doctrine
 
-`packages/fleet-dedicated-harness` is a specialized Fleet harness PoC designed to embed a dedicated local CLI process (currently Claude CLI, or any `node-pty`-backed process) directly within the Fleet TUI shell.
+`packages/fleet-dedicated-harness` is a standalone Fleet host PoC for embedding one first-class local CLI process inside a permanent vertical two-pane Fleet TUI.
 
 ## Package Identity & Boundary
 
-This package is a **standalone host implementation** for the Fleet TUI. It operates as a high-level assembly point for the engine and the terminal emulator.
+This package owns the local host assembly for the Dedicated CLI PTY and Fleet PTY lower pane.
 
-- **Must Own**: `PtyHost` adapter, layout composition, TUI mounting logic, and CLI process lifecycle.
-- **Must Not Own**: Fleet domain logic (belongs in `fleet-core`), carrier persona definitions (belongs in `fleet-carriers`), or Pi-specific extensions (belongs in `fleet-harness`).
-- **Dependencies**: Restricted to `@sbluemin/fleet-tui`, `@sbluemin/fleet-core`, `@sbluemin/fleet-carriers`, `@xterm/headless`, and `node-pty`.
+- **Must Own**: `PtyHost` adapter, local `tui/**`, layout composition, input routing, Fleet PTY region API, and CLI process lifecycle.
+- **Must Not Own**: Fleet domain logic, carrier persona definitions, Pi-specific extensions, or engine packages.
+- **Dependencies**: Restricted to `@sbluemin/fleet-core`, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-wiki`, `@sbluemin/fleet-wiki-web`, `@xterm/headless`, and `node-pty`.
 
-## Canonical Layout Terminology
+`@sbluemin/fleet-tui`, `@sbluemin/fleet-harness`, and `engines/*` are permanently forbidden dependencies.
 
-To ensure consistency across future feature requests and documentation, use these terms to refer to specific UI regions:
+## Canonical Layout
 
-| Term | Region | Component/Backing | Description |
-| :--- | :--- | :--- | :--- |
-| **Dedicated CLI PTY** | Upper | `PtyView` / `PtyHost` / `node-pty` | The primary external terminal area hosting the embedded dedicated CLI process. It currently runs Claude CLI, renders raw ANSI output, and receives direct keyboard input when PTY focus is active. |
-| **Fleet PTY** | Lower | `FleetStatusSection` + `CarrierRosterLine` + `JobsLine` | The Fleet control/status area below the Dedicated CLI PTY. It has no visible text input and operates in one of two modes: `MIRROR` (keystrokes forwarded to the upper PTY) or `DEDICATED` (exclusive CLI control). |
+Only the permanent vertical two-pane layout is allowed:
 
-### Fleet PTY Sub-regions
+- **Dedicated CLI PTY**: Upper pane, backed by `PtyView`, `PtyHost`, and `node-pty`.
+- **Fleet PTY**: Lower pane, backed by default Fleet sections and `fleet-pty/api.ts`.
 
-The **Fleet PTY** is further divided into the following functional areas:
+Horizontal layouts, tabs, multi-pane layouts, and layout engines are out of scope.
 
-- **Fleet Status Section**: A single-row separator and centered `Fleet Action Protocol` status line (`FleetStatusSection`). It MUST implement width-safe truncation for small terminal windows.
-- **Carrier Roster**: The status strip (`CarrierRosterLine`) displaying active carriers (e.g., Nimitz, Sentinel).
-- **Status/Jobs Controls**: The `JobsLine` area displaying detached job count/status.
+## Fleet PTY API
+
+`fleet-pty/api.ts` is the only external Fleet PTY API for overlays and region replacement.
+
+External domains must not import `fleet-pty/region-stack.ts`, `fleet-pty/overlay-manager.ts`, `fleet-pty/sections.ts`, or `fleet-pty/types.ts` directly.
 
 ## Input & Mode Logic
 
-- **Mirroring**: In `MIRROR` mode, the Fleet PTY captures keystrokes and forwards them to the Dedicated CLI PTY.
-- **Toggle**: `Ctrl+T` is the canonical key to toggle between `MIRROR` and `DEDICATED` modes.
-- **No Visible Input**: The Fleet orchestration layer does not own a dedicated text input area; all interaction flows through the PTY-bridge or detached job controls.
+- `MIRROR` mode forwards Fleet PTY keystrokes to the Dedicated CLI PTY.
+- `DEDICATED` mode gives exclusive control to the Dedicated CLI PTY.
+- `Ctrl+T` toggles between modes.
+- The Fleet PTY owns no visible text input.
 
-## Interpretation of Requests
+## Slot Rules
 
-When a request uses the canonical terms above, interpret the target scope as follows:
+Tier-2/3 slots are README-only until later plans open them.
 
-- **"Update the Dedicated CLI PTY..."**: Focus on `PtyHost`, `PtyView`, child CLI process lifecycle, raw terminal rendering, ANSI handling, PTY sizing, and keyboard forwarding into the embedded CLI.
-- **"Modify the Fleet PTY..."**: Target `FleetStatusSection`, `CarrierRosterLine`, `JobsLine`, Fleet PTY mode display, carrier roster badges, Fleet Action Protocol status rendering, status/job lines, or lower-section layout.
-- **"Bridge input between PTYs"**: Focus on `MIRROR`/`DEDICATED` mode behavior, `Ctrl+T` toggling, and keystroke routing between the lower Fleet PTY and upper Dedicated CLI PTY.
+Do not create `bridge/`, `carrier-status/`, or `grand-fleet/`. Future carrier status UI expands under `jobs/status.ts` or `jobs/status/` only when Tier-3 opens.
 
 ## Development & Execution
 
-- **Root Launcher**: The project provides a root-level `pnpm fleetd` script which **MUST** be used for development. It ensures `@sbluemin/fleet-unified-agent` is built before launching the dedicated harness dev session.
-- **Binary Entry**: Installed or linked `fleetd` commands enter through the shebang launcher `bin/fleetd.mjs`, which delegates to the compiled package entrypoint.
+- Use the root `pnpm fleetd` script for development.
+- Installed or linked `fleetd` commands enter through `bin/fleetd.mjs`.
 
 ## Operational Standards
 
-- **ESM-Only**: This package targets `NodeNext` and must remain pure ESM.
-- **Security**: As a PoC, it assumes a trusted environment. Do not introduce sanitization logic that breaks raw ANSI flow unless specifically requested for a "Safe Mode" feature.
-- **Environment**: `process.env` is forwarded by default to the child PTY to ensure seamless tool/config parity with the host shell.
+- ESM-only with TypeScript `NodeNext`.
+- Local imports use `.js` specifiers.
+- Do not mutate `process.env`; child process env overlays use copies.
+- Raw ANSI flow is allowed for this trusted PoC.

@@ -1,5 +1,7 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
-import { type Component, truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
+
+import type { Component } from "../../tui/types.js";
+import { centerLine, truncateToWidth, visibleWidth } from "../../tui/primitives/text.js";
 
 const ANSI_RESET = "\x1b[0m";
 const SEGMENT_SEPARATOR = " │ ";
@@ -54,10 +56,4 @@ function colorize(text: string, color: string | undefined): string {
 function fitLine(line: string, width: number): string {
 	if (width <= 0) return "";
 	return visibleWidth(line) > width ? truncateToWidth(line, width) : line;
-}
-
-function centerLine(line: string, width: number): string {
-	if (width <= 0) return "";
-	const padding = Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
-	return fitLine(`${" ".repeat(padding)}${line}`, width);
 }

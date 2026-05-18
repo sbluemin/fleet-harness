@@ -1,5 +1,7 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
-import { type Component, truncateToWidth, visibleWidth } from "@sbluemin/fleet-tui";
+
+import type { Component } from "../../tui/types.js";
+import { truncateToWidth, visibleWidth } from "../../tui/primitives/text.js";
 
 const UNAVAILABLE_LABEL = "└─ jobs status unavailable";
 
