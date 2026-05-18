@@ -4,7 +4,7 @@
 
 ## Owns
 
-- The `fleet-wiki` CLI entry point.
+- The `fleet-wiki` CLI entry point. 글로벌 `fleet-wiki` CLI 진입점은 `process.cwd()`에서 부모 방향으로 가장 가까운 `packages/fleet-wiki-web/dist/cli.mjs`를 탐색해 자기 자신과 다르면 그 경로로 재spawn(`spawnSync`, `stdio: inherit`)한다. 이를 통해 git worktree 안에서도 worktree-local dist가 자동 사용된다. 무한 재spawn은 경로 비교 + `FLEET_WIKI_TRAMPOLINED=1` 보조 가드로 방지.
 - The detached local HTTP server for Fleet Wiki browsing.
 - Web API routing, PID/port lock handling, browser launch helpers, and the standalone Vite client SPA.
 - The full visual identity of the Fleet Wiki reading experience — typography, color, spatial composition, motion, and atmosphere.
@@ -39,7 +39,7 @@
 - `/queue` — Drydock pending list. `/queue/:patchId` — patch detail with patch-set membership and approve/reject.
 - `/conflicts` — Conflict list (read from `.fleet/knowledge/conflicts/`). `/conflicts/:id` — conflict detail showing `current.md` vs `proposed.md` plus raw source.
 - `/index-md` — `wiki/index.md` rendered as a deterministic catalog.
-- `/log?limit=N` — Tail of `log.md` ingest/patch/drydock/rebuild entrepreneurs.
+- `/log?limit=N` — Tail of `log.md` ingest/patch/drydock/rebuild events.
 
 ## Copy-Context Actions
 
@@ -65,7 +65,7 @@ POST Origin guard, DOMPurify XSS sanitization (`javascript:`/`data:` blocked), `
 
 ## Build Output
 
-- `dist/cli.mjs` is the package binary.
+- `dist/cli.mjs` is the package binary and the worktree-aware trampoline entry point.
 - `dist/server.mjs` is the detached server entry.
 - `dist/client/` is produced by Vite and contains `index.html`, bundled `assets/*.js`, `assets/*.css`, and font `assets/*.woff2` shards.
 
@@ -92,7 +92,7 @@ The aesthetic intent is fixed and load-bearing — design changes that drift awa
 
 - **Atmospheric, not flat.** A document is presented over a layered field (multi-radial gradient + grain noise), never on a solid backdrop. Surfaces float on this field via glassmorphism; they do not sit on a void.
 - **Typeset, not formatted.** Headings use a variable serif (`Fraunces`) at large optical sizes; body uses a humanist grotesque (`Manrope`); code uses a contemporary mono (`JetBrains Mono`). The package is allowed to look like editorial product, not like a terminal log.
-- **Brass-led, aurora-supported.** Brass is the primary accent (active states, structural rules, code-block dots middle, hover gain); aurora cyan is the secondary accent reserved for **document-to-document linkage** (links in body copy, link emphasis). This separation is intentional — it tells the eye when it is moving *within* a document vs *between* documents.
+- **Brass-led, aurora-supported.** Brass is the primary accent (active states, structural rules, code-block dots middle, hover gain); aurora cyan is the secondary accent reserved for **document-to-document linkage** (links in body copy, backlink panel hover, link emphasis). This separation is intentional — it tells the eye when it is moving *within* a document vs *between* documents.
 - **Motion as orchestration.** A page paint produces one staggered reveal (`codex-rise` 720ms with 40/120/200ms delays across the three rails). Hover and focus states are restrained to 1–2px lift, brass-dot indicators that slide into place, and spring-eased fades. No micro-bouncing, no parallax, no infinite ambient motion.
 - **Distinct, not generic.** The surface should not converge on Linear/Vercel/Notion clones. Originality lives in the Fraunces italic display and the brass+aurora pairing.
 

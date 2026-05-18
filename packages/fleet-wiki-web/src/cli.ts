@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
@@ -37,6 +38,8 @@ const DEFAULT_PORT = 3737;
 const DEFAULT_HOST = "127.0.0.1";
 const HEALTH_TIMEOUT_MS = 5000;
 const HEALTH_INTERVAL_MS = 150;
+const TRAMPOLINE_ENV = "FLEET_WIKI_TRAMPOLINED";
+const SIGNAL_EXIT_FALLBACK_MS = 1000;
 
 const INVALID_HOST_PATTERN = /[\x00-\x1f\x7f\s]/;
 const WILDCARD_BIND_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
@@ -196,6 +199,21 @@ export async function main(): Promise<void> {
   const lockPath = lockFilePath(cwd);
   const lock = await ensureServer(cwd, lockPath, host, port);
   await openBrowser(serverUrl(resolveClientHost(lock.host ?? DEFAULT_HOST), lock.port));
+}
+
+export function findLocalCliMjs(cwd: string): string | null {
+  let currentDir = path.resolve(cwd);
+  while (true) {
+    const candidate = path.join(currentDir, "packages", "fleet-wiki-web", "dist", "cli.mjs");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
 }
 
 async function directoryExists(dirPath: string): Promise<boolean> {
@@ -378,8 +396,59 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function maybeTrampolineToLocalCli(): void {
+  if (process.env[TRAMPOLINE_ENV] === "1") return;
+  const localCli = findLocalCliMjs(process.cwd());
+  if (!localCli) return;
+
+  const currentCli = fileURLToPath(import.meta.url);
+  if (path.resolve(localCli) === path.resolve(currentCli)) return;
+  if (!isSameGitCommonDir(localCli, currentCli)) return;
+
+  const cyan = process.stderr.isTTY ? "\x1b[36m" : "";
+  const reset = process.stderr.isTTY ? "\x1b[0m" : "";
+  process.stderr.write(`${cyan}fleet-wiki: redirecting to ${localCli}${reset}\n`);
+
+  const result = spawnSync(process.execPath, [localCli, ...process.argv.slice(2)], {
+    stdio: "inherit",
+    env: { ...process.env, [TRAMPOLINE_ENV]: "1" },
+  });
+  if (result.error) {
+    process.stderr.write(`fleet-wiki: trampoline failed: ${result.error.message}\n`);
+    process.exit(1);
+  }
+  if (result.signal) {
+    process.kill(process.pid, result.signal);
+    setTimeout(() => process.exit(1), SIGNAL_EXIT_FALLBACK_MS);
+    return;
+  }
+  process.exit(result.status ?? 1);
+}
+
+function isSameGitCommonDir(candidateCli: string, currentCli: string): boolean {
+  const candidateCommonDir = gitCommonDir(path.dirname(candidateCli));
+  const currentCommonDir = gitCommonDir(path.dirname(currentCli));
+  return candidateCommonDir !== null && currentCommonDir !== null && candidateCommonDir === currentCommonDir;
+}
+
+function gitCommonDir(cwd: string): string | null {
+  const result = spawnSync("git", ["-C", cwd, "rev-parse", "--git-common-dir"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.error || result.status !== 0 || typeof result.stdout !== "string") {
+    return null;
+  }
+  const rawCommonDir = result.stdout.trim();
+  if (!rawCommonDir) {
+    return null;
+  }
+  return path.resolve(cwd, rawCommonDir);
+}
+
 const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isDirectRun) {
+  maybeTrampolineToLocalCli();
   await main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
