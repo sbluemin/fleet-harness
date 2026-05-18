@@ -4,6 +4,7 @@ import { createFleetPtyApi } from "./fleet-pty/api.js";
 import { createDefaultFleetPtySections } from "./fleet-pty/sections.js";
 import { assertInputContract } from "./input/conflict.js";
 import { createInputRouter } from "./input/input-router.js";
+import { createProgrammaticInput, type ProgrammaticInput } from "./input/programmatic.js";
 import { createPtyHost } from "./pty/pty-host.js";
 import type { PtyHost } from "./pty/types.js";
 import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
@@ -14,6 +15,7 @@ import { computeVerticalSplit } from "./tui/layout/split-pane.js";
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
+const PROGRAMMATIC_INPUT_SLOT: { current?: ProgrammaticInput } = {};
 
 export async function runApp(): Promise<void> {
   assertInputContract();
@@ -24,9 +26,11 @@ export async function runApp(): Promise<void> {
   const ptyView = new PtyView(ui.columns, split.dedicatedRows);
   const sections = createDefaultFleetPtySections(rt);
   const fleetPty = createFleetPtyApi({ component: sections[0].component, id: "default-fleet-region" }, sections);
+  const currentProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd());
   const ptyHost = createPtyHost({
-    profile: resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd()),
+    profile: currentProfile,
   });
+  retainProgrammaticInput(createProgrammaticInput(ptyHost, currentProfile));
   const scheduleRender = createRenderScheduler(ui);
   let stopping = false;
   let disposeInputStream = () => {};
@@ -85,6 +89,10 @@ function createRenderScheduler(ui: LocalTui): () => void {
   };
 }
 
+function retainProgrammaticInput(input: ProgrammaticInput): void {
+  PROGRAMMATIC_INPUT_SLOT.current = input;
+}
+
 function stopApp(
   rt: FleetCoreRuntimeContext,
   ui: LocalTui,
@@ -95,6 +103,7 @@ function stopApp(
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
   disposeInputStream();
+  PROGRAMMATIC_INPUT_SLOT.current = undefined;
   ptyHost.kill();
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);

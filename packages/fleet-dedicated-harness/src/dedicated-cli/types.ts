@@ -7,7 +7,14 @@ export interface DedicatedCliProfile {
   readonly args: readonly string[];
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
+  readonly messagePolicy?: CliMessagePolicy;
   readonly terminalName: string;
+}
+
+export interface CliMessagePolicy {
+  readonly bracketedPaste?: boolean;
+  readonly lineTerminator?: string;
+  readonly multilineStrategy?: "literal" | "paste-mode";
 }
 
 export interface DedicatedCliDefinition {
@@ -22,4 +29,3 @@ export interface DedicatedCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
 }
-
