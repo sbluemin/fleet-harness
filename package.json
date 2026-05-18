@@ -11,10 +11,12 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "FLEET_HARNESS_DEV=1 node ./bin/fleet-main.mjs",
+    "fleetd": "pnpm --filter @sbluemin/fleet-unified-agent build && pnpm --filter @sbluemin/fleet-dedicated-harness dev",
     "postinstall": "pnpm -r build"
   },
   "bin": {
     "fleet": "./bin/fleet-main.mjs",
+    "fleetd": "./packages/fleet-dedicated-harness/bin/fleetd.mjs",
     "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs"
   },
   "devDependencies": {

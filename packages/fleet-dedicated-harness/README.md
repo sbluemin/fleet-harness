@@ -5,9 +5,9 @@ Dedicated Fleet harness PoC for embedding a local Claude CLI process inside the 
 ## What This Package Owns
 
 - Boots the Fleet core runtime through `src/runtime.ts`.
-- Loads the Fleet TUI and editor shell directly from `@sbluemin/fleet-tui`.
+- Loads the Fleet TUI shell directly from `@sbluemin/fleet-tui`.
 - Hosts the Claude CLI through the `node-pty`-backed `PtyHost` adapter.
-- Renders the dedicated PoC layout with the Dedicated CLI PTY, active PTY divider, carrier roster, Fleet Action Protocol editor, and jobs line.
+- Renders the dedicated PoC layout with the Dedicated CLI PTY, single-line Fleet status bar, carrier roster, and jobs line.
 
 ## Boundary
 

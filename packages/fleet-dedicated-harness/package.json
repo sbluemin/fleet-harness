@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "bin": {
-    "fleet-dedicated-harness": "./dist/index.js"
+    "fleetd": "./bin/fleetd.mjs"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "fleetd": "tsx src/index.ts"
   },
   "dependencies": {
     "@sbluemin/fleet-carriers": "workspace:*",

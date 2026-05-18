@@ -17,23 +17,34 @@ To ensure consistency across future feature requests and documentation, use thes
 | Term | Region | Component/Backing | Description |
 | :--- | :--- | :--- | :--- |
 | **Dedicated CLI PTY** | Upper | `PtyView` / `PtyHost` / `node-pty` | The primary external terminal area hosting the embedded dedicated CLI process. It currently runs Claude CLI, renders raw ANSI output, and receives direct keyboard input when PTY focus is active. |
-| **Fleet PTY** | Lower | `CarrierRosterLine` + `EditorSection` + `JobsLine` | The Fleet control area below the Dedicated CLI PTY. This region manages the Fleet orchestration interface, input editor, carrier roster, and job/status controls. |
+| **Fleet PTY** | Lower | `FleetStatusSection` + `CarrierRosterLine` + `JobsLine` | The Fleet control/status area below the Dedicated CLI PTY. It has no visible text input and operates in one of two modes: `MIRROR` (keystrokes forwarded to the upper PTY) or `DEDICATED` (exclusive CLI control). |
 
 ### Fleet PTY Sub-regions
 
 The **Fleet PTY** is further divided into the following functional areas:
 
-- **Carrier Roster**: The status strip displaying active carriers (e.g., Nimitz, Sentinel).
-- **Fleet Action Protocol Editor**: The `EditorSection` input area for sending directives to the Fleet. It owns the Fleet Action Protocol border, prompt line, and status border.
-- **Status/Jobs Controls**: The `JobsLine` area below the editor, plus any Fleet status details integrated into the editor status border.
+- **Fleet Status Section**: A single-row separator and centered `Fleet Action Protocol` status line (`FleetStatusSection`). It MUST implement width-safe truncation for small terminal windows.
+- **Carrier Roster**: The status strip (`CarrierRosterLine`) displaying active carriers (e.g., Nimitz, Sentinel).
+- **Status/Jobs Controls**: The `JobsLine` area displaying detached job count/status.
+
+## Input & Mode Logic
+
+- **Mirroring**: In `MIRROR` mode, the Fleet PTY captures keystrokes and forwards them to the Dedicated CLI PTY.
+- **Toggle**: `Ctrl+T` is the canonical key to toggle between `MIRROR` and `DEDICATED` modes.
+- **No Visible Input**: The Fleet orchestration layer does not own a dedicated text input area; all interaction flows through the PTY-bridge or detached job controls.
 
 ## Interpretation of Requests
 
-When a request uses the canonical terms above, it should be interpreted as follows:
+When a request uses the canonical terms above, interpret the target scope as follows:
 
-- **"Update the Dedicated CLI PTY..."**: Focus on `PtyHost`, `PtyView`, child CLI process lifecycle, raw terminal rendering, ANSI handling, PTY sizing, or keyboard forwarding into the embedded CLI.
-- **"Modify the Fleet PTY..."**: Target `CarrierRosterLine`, `EditorSection`, `JobsLine`, Fleet input behavior, carrier roster badges, Fleet Action Protocol editor rendering, status/job lines, or lower-section layout.
-- **"Bridge input between PTYs"**: Refers to logic that routes or duplicates keystrokes/commands between the embedded CLI and the Fleet orchestration layer.
+- **"Update the Dedicated CLI PTY..."**: Focus on `PtyHost`, `PtyView`, child CLI process lifecycle, raw terminal rendering, ANSI handling, PTY sizing, and keyboard forwarding into the embedded CLI.
+- **"Modify the Fleet PTY..."**: Target `FleetStatusSection`, `CarrierRosterLine`, `JobsLine`, Fleet PTY mode display, carrier roster badges, Fleet Action Protocol status rendering, status/job lines, or lower-section layout.
+- **"Bridge input between PTYs"**: Focus on `MIRROR`/`DEDICATED` mode behavior, `Ctrl+T` toggling, and keystroke routing between the lower Fleet PTY and upper Dedicated CLI PTY.
+
+## Development & Execution
+
+- **Root Launcher**: The project provides a root-level `pnpm fleetd` script which **MUST** be used for development. It ensures `@sbluemin/fleet-unified-agent` is built before launching the dedicated harness dev session.
+- **Binary Entry**: Installed or linked `fleetd` commands enter through the shebang launcher `bin/fleetd.mjs`, which delegates to the compiled package entrypoint.
 
 ## Operational Standards
 
