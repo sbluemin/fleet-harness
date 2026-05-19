@@ -18,7 +18,7 @@ import { DEFAULT_BODY_H, ANIM_INTERVAL_MS } from "../fleet-core-facades.js";
 import { getActiveBackgroundJobCount } from "../fleet-core-facades.js";
 import { CARRIER_RESULT_CUSTOM_TYPE, type CarrierResultMessageDetails } from "../jobs.js";
 import { getDeliverAs } from "../settings.js";
-import { getRegisteredCarrierConfig, getRegisteredOrder, isSquadronCarrierEnabled } from "../tools.js";
+import { getRegisteredCarrierConfig, getRegisteredOrder } from "../tools.js";
 import {
   coalesceTextBlock,
   coalesceThoughtBlock,
@@ -113,7 +113,7 @@ export function bindCarrierJobStreamPi(pi: ExtensionAPI | null): void {
  * 기본 경로에서는 여기서 빈 registeredOrder를 보지 않습니다.
  */
 export function getDefaultClis(): readonly string[] {
-  return sortByCategory(getRegisteredOrder().filter((id: string) => !isSquadronCarrierEnabled(id)));
+  return sortByCategory(getRegisteredOrder());
 }
 
 export function getState(): AgentPanelState {

@@ -3,7 +3,6 @@ import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "@sbluemin/fle
 
 import {
   isCarrierOnline,
-  isSquadronCarrierEnabled,
   resolveCarrierColor,
   resolveCarrierDisplayName,
   resolveCarrierRgb,
@@ -15,7 +14,6 @@ import {
   PANEL_DIM_COLOR,
   readStatesSnapshot,
   SPINNER_FRAMES,
-  SQUADRON_BADGE_COLOR,
   SYM_INDICATOR,
   SYM_THINKING,
   TASKFORCE_BADGE_COLOR,
@@ -33,7 +31,6 @@ export interface CarrierHudTile {
   readonly displayName: string;
   readonly online: boolean;
   readonly rgb: [number, number, number];
-  readonly squadronEnabled: boolean;
   readonly taskForceBackendCount: number;
 }
 
@@ -72,7 +69,6 @@ const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
   sortie: "Sortie",
-  squadron: "Squadron",
   taskforce: "Taskforce",
 };
 
@@ -248,7 +244,6 @@ function buildCarrierTiles(rt: FleetCoreRuntimeContext, activeJobs: readonly Pan
       displayName: resolveCarrierDisplayName(rt, carrierId),
       online: isCarrierOnline(rt, carrierId),
       rgb: resolveCarrierRgb(rt, carrierId),
-      squadronEnabled: isSquadronCarrierEnabled(rt, carrierId),
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(rt, snapshot, carrierId).length,
     };
   });
@@ -311,12 +306,10 @@ function carrierStatusIcon(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile,
 function carrierBadges(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile): string {
   const disabledColor = carrier.online ? null : DISABLED_COLOR;
   const tfBadgeColor = disabledColor ?? TASKFORCE_BADGE_COLOR(rt);
-  const sqBadgeColor = disabledColor ?? SQUADRON_BADGE_COLOR(rt);
   const tfBadge = carrier.taskForceBackendCount >= 2
     ? ` ${tfBadgeColor}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  const sqBadge = carrier.squadronEnabled ? ` ${sqBadgeColor}[SQ]${ANSI_RESET}` : "";
-  return `${tfBadge}${sqBadge}`;
+  return tfBadge;
 }
 
 function carrierActivityBadge(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile): string {

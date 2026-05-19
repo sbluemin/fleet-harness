@@ -34,7 +34,6 @@ import {
   resetTaskForceModelSelection,
   savePerCliSettings,
   saveOfflineCarriers,
-  saveSquadronEnabled,
   updateModelSelection,
   updateTaskForceModelSelection,
   StatusOverlayController,
@@ -46,15 +45,11 @@ import { refreshAgentPanel } from "../panel/ui.js";
 import { syncModelConfig } from "../panel/config.js";
 import {
   setCarrierOffline,
-  disableSquadronCarrier,
   setCarrierOnline,
-  enableSquadronCarrier,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   getOfflineCarrierIds,
-  getSquadronEnabledIds,
   isCarrierOnline,
-  isSquadronCarrierEnabled,
   notifyStatusUpdate,
   resolveCarrierDisplayName,
   resolveCarrierCliType,
@@ -226,11 +221,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       return;
     }
 
-    if (this.state.kind === "browse" && data === "S") {
-      this.toggleSquadronState();
-      return;
-    }
-
     if (matchesKey(data, Key.enter)) {
       switch (this.state.kind) {
         case "browse":
@@ -293,20 +283,17 @@ export class CarrierStatusOverlay implements Component, Focusable {
         const modelStr = (entry.isDefault || isDisabled) ? dim(modelName) : modelName;
         const effortSupported = getModelEffortLevels(entry.cliType, entry.model).length > 0;
         const effortStr = effortSupported && entry.effort ? dim(" · ") + (isDisabled ? dim(entry.effort) : entry.effort) : "";
-        const sortieTag = entry.isSquadronEnabled
-          ? `  \x1b[38;2;180;140;255m→SQ${ANSI_RESET}`
-          : isDisabled ? `  \x1b[38;2;255;80;80m✕ sortie off${ANSI_RESET}` : "";
+        const sortieTag = isDisabled ? `  \x1b[38;2;255;80;80m✕ sortie off${ANSI_RESET}` : "";
         const tfTag = entry.taskForceBackendCount >= 2
           ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
           : "";
-        const sqTag = entry.isSquadronEnabled ? `  \x1b[38;2;180;140;255m[SQ]${ANSI_RESET}` : "";
         const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
         const selectedPrefix = isSelected
           ? `${isDisabled ? ANSI_DIM : this.getEntryColor(entry)}▸${ANSI_RESET}`
           : " ";
 
         const content =
-          `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag}${sqTag}`;
+          `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag}`;
         lines.push(frame.row(content, isSelected ? CARRIER_BG_COLORS[entry.cliType] : undefined));
 
         if (isSelected && this.shouldRenderEntryEditor(entry.carrierId)) {
@@ -599,30 +586,11 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const entry = this.getSelectedEntry();
     if (!entry) return;
 
-    // squadron 활성 캐리어는 sortie에서 자동 제외됨 — 사용자에게 안내
-    if (entry.isSquadronEnabled) {
-      this.feedbackMessage = `${entry.displayName}은(는) Squadron 모드 활성 중이므로 sortie에서 자동 제외됩니다. S키로 Squadron을 먼저 비활성화하세요.`;
-      this.tui.requestRender();
-      return;
-    }
-
     this.callbacks.toggleSortieEnabled(entry.carrierId);
     entry.isSortieEnabled = !entry.isSortieEnabled;
     this.feedbackMessage = entry.isSortieEnabled
       ? `${entry.displayName} sortie 활성화됨`
       : `${entry.displayName} sortie 비활성화됨`;
-    this.tui.requestRender();
-  }
-
-  private toggleSquadronState(): void {
-    const entry = this.getSelectedEntry();
-    if (!entry) return;
-
-    this.callbacks.toggleSquadronEnabled(entry.carrierId);
-    entry.isSquadronEnabled = !entry.isSquadronEnabled;
-    this.feedbackMessage = entry.isSquadronEnabled
-      ? `${entry.displayName} squadron 활성화됨`
-      : `${entry.displayName} squadron 비활성화됨`;
     this.tui.requestRender();
   }
 
@@ -1253,10 +1221,6 @@ export function registerCarrierStatusKeybind(_pi: ExtensionAPI): void {
                 handleModelUpdated();
               },
               toggleSortieEnabled,
-              toggleSquadronEnabled: (carrierId: string) => {
-                toggleSquadronEnabled(carrierId);
-                refreshAgentPanel(ctx);
-              },
               saveDisplayName: async (carrierId: string, displayName: string) => {
                 const sourceDefaultDisplayName = admiral.carrier.getCarrierSourceDisplayName(carrierId);
                 admiral.store.updateCarrierDisplayName(carrierId, displayName, sourceDefaultDisplayName);
@@ -1351,7 +1315,6 @@ function buildStatusEntriesFromSnapshot(snapshot: FleetStoreSnapshot): CarrierSt
       role: meta?.title ?? null,
       roleDescription: meta ? `${meta.title} — ${meta.summary}` : null,
       isSortieEnabled: isCarrierOnline(id),
-      isSquadronEnabled: isSquadronCarrierEnabled(id),
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, id).length,
       category: meta?.category,
     });
@@ -1449,17 +1412,6 @@ function toggleSortieEnabled(carrierId: string): void {
     setCarrierOnline(carrierId);
   }
   saveOfflineCarriers(getOfflineCarrierIds());
-  notifyStatusUpdate();
-}
-
-function toggleSquadronEnabled(carrierId: string): void {
-  if (isSquadronCarrierEnabled(carrierId)) {
-    disableSquadronCarrier(carrierId);
-  } else {
-    enableSquadronCarrier(carrierId);
-  }
-  const registeredSet = new Set(getRegisteredOrder());
-  saveSquadronEnabled(getSquadronEnabledIds().filter((id) => registeredSet.has(id)));
   notifyStatusUpdate();
 }
 

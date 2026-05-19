@@ -39,7 +39,7 @@ export async function runApp(): Promise<void> {
     requestRender: scheduleRender,
   });
   registerCarrierStatusKeybinding({ fleetPty, rt });
-  const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd());
+  const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
   const currentProfile = await injectDedicatedCliProfile(baseProfile, rt);
   const ptyHost = createPtyHost({
     profile: currentProfile,
@@ -108,6 +108,10 @@ function createFleetPtyViewport(fleetPty: ReturnType<typeof createFleetPtyApi>):
       return fleetPty.getCurrentRegion().component.render(width);
     },
   };
+}
+
+function resolveInvocationCwd(): string {
+  return process.env.INIT_CWD || process.cwd();
 }
 
 function createRenderScheduler(ui: LocalTui): () => void {

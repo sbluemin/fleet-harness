@@ -4,10 +4,6 @@ export function isCarrierOnline(rt: FleetCoreRuntimeContext, carrierId: string):
   return rt.admiral.carrier.isCarrierOnline(carrierId);
 }
 
-export function isSquadronCarrierEnabled(rt: FleetCoreRuntimeContext, carrierId: string): boolean {
-  return rt.admiral.carrier.isSquadronCarrierEnabled(carrierId);
-}
-
 export function resolveCarrierColor(rt: FleetCoreRuntimeContext, carrierId: string): string {
   return rt.admiral.carrier.resolveCarrierColor(carrierId);
 }

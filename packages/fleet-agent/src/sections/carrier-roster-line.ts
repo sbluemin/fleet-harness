@@ -21,9 +21,7 @@ export class CarrierRosterLine implements Component {
 			const name = carrier.resolveCarrierDisplayName(carrierId);
 			const taskForceBackendCount = store.getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
 			return `${colorize(`○ ${name}`, color)}${formatBadges(
-				this.rt,
 				taskForceBackendCount,
-				carrier.isSquadronCarrierEnabled(carrierId),
 				online,
 			)}`;
 		});
@@ -32,18 +30,14 @@ export class CarrierRosterLine implements Component {
 }
 
 function formatBadges(
-	rt: FleetCoreRuntimeContext,
 	taskForceBackendCount: number,
-	squadronEnabled: boolean,
 	online: boolean,
 ): string {
-	const tfBadgeColor = online ? rt.admiral.constants.TASKFORCE_BADGE_COLOR : DISABLED_COLOR;
-	const sqBadgeColor = online ? rt.admiral.constants.SQUADRON_BADGE_COLOR : DISABLED_COLOR;
+	const tfBadgeColor = online ? "\x1b[38;2;100;180;255m" : DISABLED_COLOR;
 	const tfBadge = taskForceBackendCount >= MIN_TASK_FORCE_BACKENDS
 		? ` ${tfBadgeColor}[TF:${taskForceBackendCount}]${ANSI_RESET}`
 		: "";
-	const sqBadge = squadronEnabled ? ` ${sqBadgeColor}[SQ]${ANSI_RESET}` : "";
-	return `${tfBadge}${sqBadge}`;
+	return tfBadge;
 }
 
 function colorize(text: string, color: string | undefined): string {

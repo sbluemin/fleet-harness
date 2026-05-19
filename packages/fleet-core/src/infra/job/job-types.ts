@@ -29,7 +29,7 @@ export interface JobArchive {
 
 export interface CarrierJobBase {
   jobId: string;
-  tool: "carrier_squadron" | "carrier_taskforce" | `carrier_${string}`;
+  tool: "carrier_taskforce" | `carrier_${string}`;
   status: CarrierJobStatus;
   startedAt: number;
   finishedAt?: number;
@@ -47,7 +47,6 @@ export interface CarrierJobLaunchResponse {
   job_id: string;
   accepted: boolean;
   error?: string;
-  current_job_id?: string;
 }
 
 export const CARRIER_JOB_TTL_MS = 3 * 60 * 60 * 1000;

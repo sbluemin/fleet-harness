@@ -60,8 +60,6 @@ interface FleetStates {
   models?: SelectedModelsConfig;
   /** offline carrier ID 목록 */
   offline?: string[];
-  /** squadron 활성화된 carrier ID 목록 */
-  squadronEnabled?: string[];
   /** carrier별 cliType 오버라이드 (defaultCliType과 다를 때만 저장) */
   cliTypeOverrides?: Record<string, string>;
   /** carrier별 사용자 지정 표시 이름 오버라이드 */
@@ -80,7 +78,6 @@ export interface FleetStoreSnapshot {
   cliTypeOverrides: Record<string, string>;
   carrierDisplayNames: Record<string, string>;
   offline: string[];
-  squadronEnabled: string[];
 }
 
 /** 로컬 프로세스가 직전에 기록한 states.json 지문(watcher echo 판별용, mtime+size 병합) */
@@ -468,30 +465,6 @@ export function saveOfflineCarriers(ids: string[]): void {
   });
 }
 
-// ─── Squadron 상태 ──────────────────────────────────────
-
-/**
- * 디스크에서 squadron 활성화된 carrier ID 목록을 로드합니다.
- * 유효한 carrier ID만 필터링하여 반환합니다.
- */
-export function loadSquadronEnabled(validIds?: Set<string>): string[] {
-  const states = readStates();
-  const ids = states.squadronEnabled;
-  if (!Array.isArray(ids)) return [];
-  return ids.filter((id): id is string =>
-    typeof id === "string" && (!validIds || validIds.has(id)),
-  );
-}
-
-/**
- * squadron 활성화 carrier ID 목록을 디스크에 저장합니다.
- */
-export function saveSquadronEnabled(ids: string[]): void {
-  updateStates((states) => {
-    states.squadronEnabled = ids;
-  });
-}
-
 // ─── cliType 오버라이드 ─────────────────────────────────
 
 /**
@@ -645,7 +618,6 @@ export function readStatesSnapshot(): FleetStoreSnapshot {
     cliTypeOverrides: sanitizeCliTypeOverrides(states.cliTypeOverrides),
     carrierDisplayNames: sanitizeCarrierDisplayNames(states.carrierDisplayNames),
     offline: sanitizeIdArray(states.offline),
-    squadronEnabled: sanitizeIdArray(states.squadronEnabled),
   };
 }
 

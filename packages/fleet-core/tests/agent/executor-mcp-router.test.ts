@@ -137,7 +137,6 @@ describe("executor MCP whitelist (tools.ts)", () => {
     const specs = getExecutorMcpTools();
     const ids = specs.map((s) => s.id);
     expect(ids).not.toContain("carrier_dispatch");
-    expect(ids).not.toContain("carrier_squadron");
     expect(ids).not.toContain("carrier_taskforce");
   });
 

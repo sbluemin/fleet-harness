@@ -29,7 +29,6 @@ export const {
   PANEL_RGB,
   SORTIE_SUMMARY_COLOR,
   SPINNER_FRAMES,
-  SQUADRON_BADGE_COLOR,
   STREAMING_PREVIEW_LINES,
   SYM_INDICATOR,
   SYM_THINKING,
@@ -63,7 +62,6 @@ export const resolveCarrierCliType: any = carrierApi.resolveCarrierCliType;
 export const resetTaskForceModelSelection: any = admiral.store.resetTaskForceModelSelection;
 export const saveOfflineCarriers: any = admiral.store.saveOfflineCarriers;
 export const savePerCliSettings: any = admiral.store.savePerCliSettings;
-export const saveSquadronEnabled: any = admiral.store.saveSquadronEnabled;
 export const updateCliTypeOverride: any = admiral.store.updateCliTypeOverride;
 export const updateModelSelection: any = admiral.store.updateModelSelection;
 export const updateTaskForceModelSelection: any = admiral.store.updateTaskForceModelSelection;

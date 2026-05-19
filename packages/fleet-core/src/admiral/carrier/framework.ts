@@ -4,14 +4,11 @@
  * 외부 확장(feature, experimentals 등)이 커스텀 Carrier를
  * 등록하는 데 사용하는 공개 SDK입니다.
  *
- * ⚠️ pi는 각 확장을 별도 번들로 로드하므로 모듈 레벨 변수는
- *    확장 간에 공유되지 않습니다. globalThis를 통해 상태를 공유합니다.
- *
  * 프레임워크가 자동 관리하는 것:
- *  - Carrier 상태 관리 (globalThis 공유 Map)
+ *  - Carrier 상태 관리
  *  - 등록 순서/메타데이터 보관
  *  - 렌더러 등록 (커스텀 or 기본)
- *  - offline carrier는 전역 kill-switch이며, squadron/taskforce active view도 이 Set을 차감해 구성
+ *  - offline carrier는 전역 kill-switch이며, taskforce active view도 이 Set을 차감해 구성
  */
 
 import type { CliType } from "@sbluemin/fleet-unified-agent";
@@ -183,59 +180,6 @@ export function setOfflineCarriers(ids: string[]): void {
   gs.offlineCarriers = new Set(ids);
 }
 
-// ─── Squadron 가용 상태 관리 ─────────────────────────────
-
-/**
- * 지정 carrier를 squadron 모드로 활성화합니다.
- */
-export function enableSquadronCarrier(id: string): void {
-  const gs = getState();
-  if (!gs.modes.has(id)) return;
-  if (gs.squadronEnabledCarriers.has(id)) return;
-  gs.squadronEnabledCarriers.add(id);
-}
-
-/**
- * 지정 carrier의 squadron 모드를 비활성화합니다.
- */
-export function disableSquadronCarrier(id: string): void {
-  const gs = getState();
-  if (!gs.squadronEnabledCarriers.has(id)) return;
-  gs.squadronEnabledCarriers.delete(id);
-}
-
-/**
- * 지정 carrier가 squadron 모드로 활성화되었는지 반환합니다.
- */
-export function isSquadronCarrierEnabled(id: string): boolean {
-  return getState().squadronEnabledCarriers.has(id);
-}
-
-/**
- * squadron 활성화된 carrier ID 목록을 반환합니다.
- */
-export function getSquadronEnabledIds(): string[] {
-  return [...getState().squadronEnabledCarriers];
-}
-
-/**
- * offline을 제외한 squadron 활성 carrier ID 목록을 반환합니다.
- */
-export function getActiveSquadronIds(): string[] {
-  const gs = getState();
-  return gs.registeredOrder.filter(
-    (id) => gs.squadronEnabledCarriers.has(id) && !gs.offlineCarriers.has(id),
-  );
-}
-
-/**
- * squadron 활성화 목록을 일괄 설정합니다.
- */
-export function setSquadronEnabledCarriers(ids: string[]): void {
-  const gs = getState();
-  gs.squadronEnabledCarriers = new Set(ids);
-}
-
 // ─── Task Force 설정 변경 관리 ──────────────────────────
 
 /**
@@ -382,12 +326,10 @@ function getState(): CarrierFrameworkState {
       statusUpdateCallbacks: [],
       offlineCarriers: new Set(),
       taskforceConfiguredCarriers: new Set(),
-      squadronEnabledCarriers: new Set(),
     };
     (globalThis as any)[CARRIER_FRAMEWORK_KEY] = s;
   }
   // 런타임 방어: 기존 상태에 필드가 없을 경우 초기화
-  if (!s.squadronEnabledCarriers) s.squadronEnabledCarriers = new Set();
   if (!s.taskforceConfiguredCarriers) s.taskforceConfiguredCarriers = new Set();
   return s;
 }

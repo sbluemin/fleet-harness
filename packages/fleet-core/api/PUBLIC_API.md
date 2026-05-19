@@ -37,7 +37,7 @@ export function createFleetNameServices(): FleetNameServices {
 
 ## Facades
 
-- `admiral` owns agent/session/events/executor, carrier/squadron/taskforce, carrier job streaming, protocols, store, prompts, and Fleet constants.
+- `admiral` owns agent/session/events/executor, carrier/taskforce, carrier job streaming, protocols, store, prompts, and Fleet constants.
 - `admiralty` owns Grand Fleet IPC, prompts, reporter, status-source, sanitization, tool specs, and runtime access.
 - `infra` owns auth, data-dir, job archive/lifecycle utilities, log, and settings.
 

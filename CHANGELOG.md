@@ -30,6 +30,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [harness] Fixed type-checking issues in status overlay tests by correcting state property access.
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [wiki-web] Fleet Wiki Web now runs as a single per-user daemon that can open multiple registered workspaces with workspace-scoped URLs.
 - [wiki-web] Made the `fleet-wiki` CLI entry point worktree-aware; it now automatically detects and executes the appropriate worktree-local distribution when running within a git worktree.
 - [wiki-web] Relocated Table of Contents to a sticky rail card for wider document readability. The card hides when empty and hoists above content on mobile.
@@ -41,6 +43,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [agent-core] Removed Gemini and Cursor Agent from dedicated CLI support.
 - [core][harness] Removed 'metaphor' domain (worldview, operation naming, directive refinement) and 'request_directive' tool.
 - [wiki-web] Removed the Constellation (backlinks) panel and Outgoing references along with the backend backlink indexer and associated API.
@@ -53,6 +56,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [unified-agent] Added 1M context models to the Cursor provider catalog with robust effort/reasoning parameter combination via ACP
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [core] Carrier prior-job access now requires explicit persona `carrier_jobs` tool and `<prior_jobs?>` request-block declarations instead of inherited defaults; `CarrierMetadata.commonRequestBlocks` removed.
 - [carriers] `PRIOR_JOBS_REQUEST_BLOCK` constant moved from fleet-core to fleet-carriers/constants.ts for better domain isolation.
 - [wiki] Five read-only wiki tools (`wiki_briefing`, `wiki_orient`, `wiki_query`, `wiki_read`, `wiki_resolve`) are now registered globally, making the wiki knowledge base available to all carriers by default.
@@ -66,6 +71,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [harness] Fixed missing frontmatter on the pr-creates skill that prevented it from loading.
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [coding-agent] Removed the `/scoped-models` slash command and associated configuration UI, along with related keybindings (`Ctrl+S`, `Ctrl+A`, `Ctrl+X`, `Alt+Up/Down`) for customizing model cycling scope.
 
 ## [0.19.0] - 2026-05-13
@@ -92,6 +98,8 @@ Release v0.18.3
 - [unified-agent] Added dual-transport support for Codex with a validation toggle (`CODEX_USE_ACP`), enabling both the new npx bridge (`codex-acp`) and legacy app-server connections
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [unified-agent] Default Codex transport reverted to the legacy app-server path pending a Windows compatibility fix for the ACP npx bridge route
 
 ## [0.18.1] - 2026-05-12
@@ -101,9 +109,12 @@ Release v0.18.3
 - [coding-agent] Added a GUI toggle for "Enter behavior" in the `/settings` overlay
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [coding-agent] Unified message queueing under the Enter key; behavior now branches based on `enterStreamingBehavior` setting instead of dedicated keybindings
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [coding-agent] Removed Alt+Enter (`app.message.followUp`) keybinding and `handleFollowUp()` handler
 
 ## [0.18.0] - 2026-05-11
@@ -118,10 +129,13 @@ Release v0.18.3
 - [unified-agent] Live Cursor service status monitoring integrated via Statuspage with primary matching for CLI, Cloud Agents, and cursor.com components
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [core][harness] Model ID suffix (Unified) removed and model names are now used directly as IDs for consistency
 - [harness] Carrier Status overlay UX improved by replacing raw CLI keys and internal model IDs with user-friendly provider and model names across all selection panels and status displays
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [unified-agent] Nine models removed from OpenCode Go catalog including Kimi K2.5, Mimo V2/V2.5 variants, Minimax M2.5/M2.7, and Qwen 3.5/3.6 Plus
 
 ### Fixed
@@ -135,11 +149,15 @@ Release v0.18.3
 ## [0.17.1] - 2026-05-10
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [core] Carrier job archive serializer optimized to reduce token consumption by ~67% through compact JSON formatting, removal of header metadata and per-block ISO timestamps, and elimination of pretty-print indentation
 
 ## [0.17.0] - 2026-05-10
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [core] Host and carrier ACP session mappings now persist as `fleet/host-session` and `fleet/carrier-session` custom entries inside the host JSONL session file instead of a separate `~/.fleet/session-maps/<pid>.json` sidecar; legacy `session-maps/` directory is auto-deleted once at boot with no data preserved
 - [harness] Package and workspace directory renamed from fleet-harness-extension to fleet-harness
 
@@ -151,6 +169,8 @@ Release v0.18.3
 - [harness] Per-carrier default model and reasoning effort assignments seeded on first Fleet boot
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [core][unified-agent] Unified raw thinking effort ownership under unified-agent and selectable UI thinking-level policy under fleet-core
 - [unified-agent] claude-agent-acp npx bridge upgraded from 0.29.2 to 0.33.1
 - [unified-agent] @agentclientprotocol/sdk dependency bumped from ^0.19.0 to ^0.21.0
@@ -162,6 +182,7 @@ Release v0.18.3
 - [harness] Editor Job bar and above-editor carrier status widget unified into a single below-editor carrier HUD with arrow-key carrier focus and Enter to expand each carrier's carrier/squadron/taskforce jobs
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [unified-agent] Claude `setConfigOption('effort')` no longer issues an ACP RPC (silently stored for next session)
 - [unified-agent] `setModel` fallback to `session/set_config_option('model')` removed
 - [coding-agent] Host-side thinking level reconciliation on session start and model select removed; thinking level now flows directly from model defaults
@@ -187,6 +208,8 @@ Release v0.18.3
 - [harness] Security headers (CSP, X-Content-Type-Options, Referrer-Policy, Cache-Control) on all web responses
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] All drydock prompts and lints now reference workspace schema as the authoritative convention guide
 - [harness] Index rebuild atomically writes JSON and markdown catalogs together with a log entry
 - [harness] Workspace initialization bootstraps schema files automatically
@@ -222,10 +245,13 @@ Release v0.18.3
 - [harness] Bilingual (English+Korean) prompt-injection rule for user-draft safety
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Directive refinement settings UI now sources backends from the unified CLI catalog instead of pi-ai model registry
 - [harness] Directive refinement doctrine delivered inline instead of as a separate connect system prompt
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Standalone directive refinement command and separate compose module
 
 ### Security
@@ -242,9 +268,12 @@ _(maintenance release)_
 ## [0.11.3] - 2026-05-04
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Executor surface made carrier-agnostic with generic poolKey field; callers map pool keys themselves
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] All carrier-bound executor types and helpers removed; consumers use generalized executeWithPool / executeOneShot
 
 ## [0.11.2] - 2026-05-04
@@ -255,6 +284,8 @@ _(maintenance release)_
 - [harness] CLI auto-restart on stale dist with safety trust gates
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Entry manifest panel rendered as frontmatter description list with metadata
 - [harness] Server method whitelist expanded to accept POST for approve/reject only
 - [harness] Sidebar Drydock placement moved between search and entry navigation
@@ -295,6 +326,8 @@ _(maintenance release)_
 - [harness] Atomic migration lock with PID owner record and stale-lock recovery for concurrent boots
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Per-carrier tool specs generated from carrier metadata directly; carrier availability reflected via tool registration
 - [harness] Fleet data directory relocated to `~/.fleet/`, decoupled from Pi runtime environment variable
 
@@ -317,11 +350,14 @@ _(maintenance release)_
 - [harness] Pure coalescing reducers and render-agnostic panel view-model builder
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Removed all globalThis usage; runtime state migrated to module-level singletons
 - [harness] Reload lifecycle resets ACP provider state and re-establishes carrier sessions on session_start
 - [harness] Service-status consumption switched to unified-agent public API
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Entire bridge directory, all provider-specific tool ports interfaces, streaming-sink module, and global bridge keys
 
 ## [0.9.0] - 2026-05-02
@@ -331,6 +367,7 @@ _(maintenance release)_
 - [harness] Task Force tool prompts and overlay colors auto-derived from CLI backend catalog
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] `budgetTokens` field removed from all model selection surfaces and runner contracts
 - [harness] Claude-specific reasoning budget UI removed; unsupported providers show no effort/budget controls
 - [harness] Local hardcoded CLI colors replaced by auto-derived catalog
@@ -347,22 +384,28 @@ _(maintenance release)_
 - [harness] Visual polish: bracket-wrapped focused tiles with wave animation and carrier-colored spinners
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Expanded tracks show latest streaming block inline instead of multi-line child blocks
 - [harness] All inline streaming uses a single color regardless of block type
 - [harness] Sortie jobs now use consistent tree depth with squadron and taskforce
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Tool-call statistics from track lines and various unused rendering utilities
 
 ## [0.7.1] - 2026-05-01
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] HUD status bar relocated from standalone widget into editor bottom border for compact layout
 - [harness] Operation name moved from status bar to editor top-right border
 - [harness] HUD state consolidated into a single shared singleton
 - [harness] Model change reactivity fixed to bypass stale context getter
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] globalThis HUD render bridge and border bridge replaced by module-level variables and direct imports
 - [harness] Dead code: unused operation segment definition and context fields
 
@@ -373,11 +416,14 @@ _(maintenance release)_
 - [harness] Auth service for managing per-provider API keys with automatic env resolution
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] CLI display names sourced from models.json as single source of truth
 - [harness] Build-connect-options made async to support per-CLI authentication
 - [harness] Fleet ACP provider split per CLI with unified provider labels
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] `name` field from CLI backend entries; local display name hardcodes; vendor/CLI suffix stripping
 - [harness] Provider catalog thin wrapper; direct unified-agent consumption
 - [harness] Automatic Claude budget token filling; budget flows only when explicitly set
@@ -399,10 +445,13 @@ _(maintenance release)_
 - [harness] Service status module for provider health tracking
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Runtime initialization signature and context structure revised
 - [harness] MCP server lifecycle internalized with auto-start and auto-terminate
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Entire agent service directory (23 files), legacy agent services, tool registry services, and their public exports
 - [harness] Duplicate definitions, wrapper types, and adapter classes
 
@@ -422,23 +471,29 @@ _(maintenance release)_
 - [harness] Provider catalog extracted from fleet-store for isolation
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Pi-Fleet extension restructured to flat domain architecture mirroring fleet-core services
 - [harness] Pi-AI gateway relocated to a single domain-internal location
 - [harness] Carrier prompts refactored for performance; service implementations consolidated
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Legacy capability buckets and bindings directory; all content absorbed into domain homes
 - [harness] Various dead public types, subpaths, files, and unused exports/symbols
 
 ## [0.6.2] - 2026-04-30
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Fleet Wiki AAR support, including capture mode, prompts, schemas, and MCP tool
 - [harness] Fleet Wiki append-log patch operation and related store directory
 
 ## [0.6.1] - 2026-04-30
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] All experimental-wiki directories, imports, and symbols renamed to fleet-wiki
 - [harness] Fleet Bridge panel auto-collapses completed track details into single-line summary
 
@@ -448,6 +503,8 @@ _(maintenance release)_
 - [harness] Experimental wiki domain extracted into standalone fleet-wiki package
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Core schemas, carrier mutators, and grand-fleet specs moved into fleet-core
 - [harness] Grand Fleet domain re-embedded under fleet-core
 
@@ -461,6 +518,7 @@ _(maintenance release)_
 ## [0.4.1] - 2026-04-28
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Codex `service_tier` configuration support
 
 ## [0.4.0] - 2026-04-28
@@ -474,6 +532,8 @@ _(maintenance release)_
 - [harness] Bridge doctrine file documenting UI/runtime boundary
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Fleet Action Protocol split into Scope Triage and Mandatory Vanguard Reconnaissance phases
 - [harness] Direct file handling threshold lowered; delegation threshold tightened
 - [harness] Job archive made read-many with 3-hour TTL (was read-once)
@@ -487,6 +547,7 @@ _(maintenance release)_
 - [harness] Verbose carrier_jobs output wrapped by terminal width
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Legacy Fleet Bridge switching UI and obsolete job navigation shortcuts
 - [harness] Old streaming components and dead code from carrier tool renderers
 
@@ -501,6 +562,8 @@ _(maintenance release)_
 - [harness] Full system prompt logged under dedicated category on each ACP request
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Dev mode injects RISEN prompt; Fleet persona sections skipped
 - [harness] System prompt registration uses pi's before_agent_start pattern instead of globalThis bridge
 - [harness] Prompt section tags unified into consistent format
@@ -508,6 +571,8 @@ _(maintenance release)_
 ## [0.3.0] - 2026-04-26
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] `<system-reminder>` wrapping restricted to carrier completion pushes only; synchronous responses return plain text
 - [harness] Completion pushes carry source identifier for framework identification
 
@@ -519,6 +584,8 @@ _(maintenance release)_
 - [harness] Persistent push mode setting in user configuration
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Retry guidance explicitly instructs against manual retries
 - [harness] Push delivery respects user-configured mode (followUp by default)
 
@@ -535,6 +602,8 @@ _(maintenance release)_
 - [harness] Pull request template and admiral workflow documentation
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] Worldview toggle switches between naval and neutral role prompts
 - [harness] Metaphor domain reorganized; directive refinement and settings updated
 - [harness] Carrier tools return job_id immediately instead of waiting for execution
@@ -548,6 +617,7 @@ _(maintenance release)_
 - [harness] Fleet state writes serialized to prevent race conditions
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Various keyboard shortcuts, obsolete carrier definitions, and root-level models.json
 
 ## [0.1.2] - 2026-04-24
@@ -559,6 +629,8 @@ _(maintenance release)_
 - [harness] Update alert banner in welcome screen
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] UnifiedAgentClient split into provider-specific implementations
 - [harness] ACP execution and stream handling reworked for new client contracts
 
@@ -569,6 +641,7 @@ _(maintenance release)_
 - [harness] Welcome extension renders branch info correctly without upstream configured
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Legacy ProcessPool implementation and related tests
 
 ### Security
@@ -583,6 +656,8 @@ _(maintenance release)_
 - [harness] Redesigned ACP↔MCP bridge with per-session FIFO tool-call queues and Bearer token isolation
 
 ### Changed
+- Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
+- Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [harness] pi-sdk upgraded; sub-package lock files consolidated into root
 
 ### Fixed
@@ -600,6 +675,7 @@ _(maintenance release)_
 - [harness] Boot extension for system bootstrap
 
 ### Removed
+- Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [harness] Legacy modules and HUD consolidation
 
 ### Breaking Changes

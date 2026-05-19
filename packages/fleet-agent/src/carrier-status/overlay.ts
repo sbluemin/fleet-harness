@@ -171,11 +171,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       return;
     }
 
-    if (this.state.kind === "browse" && data === "S") {
-      this.toggleSquadronState();
-      return;
-    }
-
     if (!matchesKey(data, "enter")) return;
     switch (this.state.kind) {
       case "browse":
@@ -375,15 +370,12 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const effortSupported = this.getModelEffortLevels(entry.cliType, entry.model).length > 0;
     const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${disabled ? dim(entry.effort) : entry.effort}` : "";
     const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
-    const sortieTag = entry.isSquadronEnabled
-      ? `  \x1b[38;2;180;140;255m→SQ${ANSI_RESET}`
-      : disabled ? `  \x1b[38;2;255;80;80m✕ sortie off${ANSI_RESET}` : "";
+    const sortieTag = disabled ? `  \x1b[38;2;255;80;80m✕ sortie off${ANSI_RESET}` : "";
     const tfTag = entry.taskForceBackendCount >= 2
       ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
       : "";
-    const sqTag = entry.isSquadronEnabled ? `  \x1b[38;2;180;140;255m[SQ]${ANSI_RESET}` : "";
     const health = this.renderHealth(entry.cliType);
-    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag}${sqTag} ${health}`;
+    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag} ${health}`;
   }
 
   private startModelEdit(): void {
@@ -690,11 +682,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
   private toggleSortieState(): void {
     const entry = this.getSelectedEntry();
     if (!entry) return;
-    if (entry.isSquadronEnabled) {
-      this.feedbackMessage = `${entry.displayName}은(는) Squadron 모드 활성 중이므로 sortie에서 자동 제외됩니다. S키로 Squadron을 먼저 비활성화하세요.`;
-      this.options.requestRender();
-      return;
-    }
     if (this.options.rt.admiral.carrier.isCarrierOnline(entry.carrierId)) {
       this.options.rt.admiral.carrier.setCarrierOffline(entry.carrierId);
     } else {
@@ -704,24 +691,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.options.rt.admiral.carrier.notifyStatusUpdate();
     entry.isSortieEnabled = !entry.isSortieEnabled;
     this.feedbackMessage = entry.isSortieEnabled ? `${entry.displayName} sortie 활성화됨` : `${entry.displayName} sortie 비활성화됨`;
-    this.options.requestRender();
-  }
-
-  private toggleSquadronState(): void {
-    const entry = this.getSelectedEntry();
-    if (!entry) return;
-    if (this.options.rt.admiral.carrier.isSquadronCarrierEnabled(entry.carrierId)) {
-      this.options.rt.admiral.carrier.disableSquadronCarrier(entry.carrierId);
-    } else {
-      this.options.rt.admiral.carrier.enableSquadronCarrier(entry.carrierId);
-    }
-    const registered = new Set(this.options.rt.admiral.carrier.getRegisteredOrder());
-    this.options.rt.admiral.store.saveSquadronEnabled(
-      this.options.rt.admiral.carrier.getSquadronEnabledIds().filter((id: string) => registered.has(id)),
-    );
-    this.options.rt.admiral.carrier.notifyStatusUpdate();
-    entry.isSquadronEnabled = !entry.isSquadronEnabled;
-    this.feedbackMessage = entry.isSquadronEnabled ? `${entry.displayName} squadron 활성화됨` : `${entry.displayName} squadron 비활성화됨`;
     this.options.requestRender();
   }
 
@@ -1094,7 +1063,6 @@ function buildStatusEntriesFromSnapshot(rt: FleetCoreRuntimeContext, snapshot: F
       effort: selection?.effort ?? null,
       isDefault: !selection?.model,
       isSortieEnabled: rt.admiral.carrier.isCarrierOnline(id),
-      isSquadronEnabled: rt.admiral.carrier.isSquadronCarrierEnabled(id),
       model: selection?.model || provider.defaultModel,
       role: meta?.title ?? null,
       roleDescription: meta ? `${meta.title} - ${meta.summary}` : null,

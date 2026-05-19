@@ -20,12 +20,10 @@ import { setDeliverAs, getDeliverAs } from "./settings.js";
 import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  getSquadronEnabledIds,
   notifyStatusUpdate,
   registerSingleCarrier,
   resolveCarrierCliType,
   setOfflineCarriers,
-  setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
 } from "./tools.js";
 import { setEditorBorderColor, setEditorRightLabel } from "./hud/border-bridge.js";
@@ -76,9 +74,7 @@ const {
   getConfiguredTaskForceCarrierIds,
   getConfiguredTaskForceCarrierIdsFromSnapshot,
   loadOfflineCarriers,
-  loadSquadronEnabled,
   reconcileActiveModelSelections,
-  saveSquadronEnabled,
   seedDefaultModels,
 } = admiral.store;
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
@@ -154,9 +150,6 @@ export async function shutdownFleetRuntime(): Promise<void> {
 export function restoreFleetPreRegistrationState(): void {
   const restoredDisabled = loadOfflineCarriers();
   setOfflineCarriers(restoredDisabled);
-
-  const restoredSquadron = loadSquadronEnabled();
-  setSquadronEnabledCarriers(restoredSquadron);
 }
 
 export function registerFleetCarriers(pi: ExtensionAPI): void {
@@ -181,7 +174,6 @@ export function scheduleFleetReconciliation(): void {
     try {
       reconcileRegisteredCarrierModels();
       ensureStatesWatcher();
-      pruneStaleSquadronIds();
       syncTaskForceConfiguredCarriers();
       notifyStatusUpdate();
     } finally {
@@ -364,16 +356,6 @@ function reconcileRegisteredCarrierModels(): void {
 
   if (seeded || reconciled) {
     syncModelConfig();
-  }
-}
-
-function pruneStaleSquadronIds(): void {
-  const registeredSet = new Set(getRegisteredOrder());
-  const squadronIds = getSquadronEnabledIds();
-  const validSquadronIds = squadronIds.filter((id) => registeredSet.has(id));
-  if (validSquadronIds.length !== squadronIds.length) {
-    setSquadronEnabledCarriers(validSquadronIds);
-    saveSquadronEnabled(validSquadronIds);
   }
 }
 

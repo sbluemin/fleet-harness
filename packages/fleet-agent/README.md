@@ -10,7 +10,7 @@ Standalone Tier-1 Dedicated Harness PoC for running one of two local CLIs inside
 - Keeps host control policy in `src/controls/**` and default Fleet PTY blue wireframe content in `src/sections/**`.
 - Manages Dedicated CLI launch and environment injection through `src/dedicated-cli/**` (capabilities, injection, and builders).
 - Uses `@sbluemin/fleet-tui/pty` as the generic lower-pane replacement for Pi `ctx.ui.custom`, `setHeader`, and coding-agent `EditorReplace` patterns.
-- Opens the full parity carrier-status overlay with `Alt+O`; it restores grouped carrier rendering, model/effort editing, CLI migration, rename, sortie, Squadron, reset, and TaskForce backend editing.
+- Opens the full parity carrier-status overlay with `Alt+O`; it restores grouped carrier rendering, model/effort editing, CLI migration, rename, sortie, reset, and TaskForce backend editing.
 
 ## Boundary
 

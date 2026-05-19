@@ -112,14 +112,11 @@ export const THINKING_COLOR = "\x1b[38;2;180;140;255m";
 /** Tools 블록 색상 (틸/청록) */
 export const TOOLS_COLOR = "\x1b[38;2;80;200;180m";
 
-/** Sortie 도구 요약 색상 (기존 Squadron renderCall 색상 계승) */
+/** Sortie 도구 요약 색상 */
 export const SORTIE_SUMMARY_COLOR = TOOLS_COLOR;
 
 /** Task Force 배지/도구 요약 색상 */
 export const TASKFORCE_BADGE_COLOR = "\x1b[38;2;100;180;255m";
-
-/** Squadron 배지/도구 요약 색상 */
-export const SQUADRON_BADGE_COLOR = "\x1b[38;2;180;140;255m";
 
 // ─── Claude Code 스타일 심볼 ─────────────────────────────
 

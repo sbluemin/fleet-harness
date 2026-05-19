@@ -84,8 +84,7 @@ You may ONLY use these tools:
 - \`grand_fleet_broadcast\` — Send a mission to all connected fleets
 - \`grand_fleet_status\` — Query current status of fleets
 
-Do NOT use any other tools. Tools like carrier_taskforce,
-carrier_squadron, and individual carrier tools (carrier_<id>) are NOT available to you.
+Do NOT use any other tools. Tools like carrier_taskforce and individual carrier tools (carrier_<id>) are NOT available to you.
 `;
 
 /**

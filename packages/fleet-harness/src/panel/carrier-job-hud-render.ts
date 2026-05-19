@@ -12,13 +12,11 @@ import {
   SPINNER_FRAMES,
   SYM_INDICATOR,
   TASKFORCE_BADGE_COLOR,
-  SQUADRON_BADGE_COLOR,
   CLI_DISPLAY_NAMES,
 } from "../fleet-core-facades.js";
 import { getConfiguredTaskForceBackendsFromSnapshot, readStatesSnapshot } from "../fleet-core-facades.js";
 import {
   isCarrierOnline,
-  isSquadronCarrierEnabled,
   resolveCarrierColor,
   resolveCarrierDisplayName,
   resolveCarrierRgb,
@@ -36,7 +34,6 @@ interface CarrierHudTile {
   activeTrackCount: number;
   online: boolean;
   taskForceBackendCount: number;
-  squadronEnabled: boolean;
 }
 
 const MAX_EXPANDED_STREAM_LINES = 1;
@@ -50,7 +47,6 @@ const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
   sortie: "Sortie",
-  squadron: "Squadron",
   taskforce: "Taskforce",
 };
 
@@ -134,7 +130,6 @@ function buildCarrierTiles(): CarrierHudTile[] {
       activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       online: isCarrierOnline(col.cli),
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, col.cli).length,
-      squadronEnabled: isSquadronCarrierEnabled(col.cli),
     };
   });
 }
@@ -185,12 +180,10 @@ function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: strin
 function carrierBadges(carrier: CarrierHudTile): string {
   const disabledColor = carrier.online ? null : DISABLED_COLOR;
   const tfBadgeColor = disabledColor ?? TASKFORCE_BADGE_COLOR;
-  const sqBadgeColor = disabledColor ?? SQUADRON_BADGE_COLOR;
   const tfBadge = carrier.taskForceBackendCount >= 2
     ? ` ${tfBadgeColor}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  const sqBadge = carrier.squadronEnabled ? ` ${sqBadgeColor}[SQ]${ANSI_RESET}` : "";
-  return `${tfBadge}${sqBadge}`;
+  return tfBadge;
 }
 
 function carrierActivityBadge(carrier: CarrierHudTile): string {

@@ -9,9 +9,6 @@ import {
   BackendProgress,
   CarrierConfig,
   CarrierMetadata,
-  SquadronResult,
-  SquadronState,
-  SubtaskProgress,
   TaskForceResult,
   TaskForceState,
 } from "@sbluemin/fleet-core";
@@ -25,14 +22,12 @@ import {
   createDefaultUserRenderer,
 } from "./panel/message-render.js";
 
-export type { BackendProgress, CarrierConfig, SquadronResult, SquadronState, SubtaskProgress, TaskForceResult, TaskForceState };
+export type { BackendProgress, CarrierConfig, TaskForceResult, TaskForceState };
 export const {
   getOfflineCarrierIds,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  getSquadronEnabledIds,
   isCarrierOnline,
-  isSquadronCarrierEnabled,
   notifyStatusUpdate,
   resolveCarrierBgColor,
   resolveCarrierColor,
@@ -41,7 +36,6 @@ export const {
   setCarrierOffline,
   setCarrierOnline,
   setOfflineCarriers,
-  setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
   updateCarrierCliType,
 } = admiral.carrier;
@@ -51,12 +45,6 @@ export const resolveCarrierCliType = carrierFrameworkApi.resolveCarrierCliType a
   carrierId: string,
   defaultCliType: CliType,
 ) => CliType;
-export const {
-  disableSquadronCarrier,
-  enableSquadronCarrier,
-} = admiral.carrier;
-export const { SQUADRON_MAX_INSTANCES } = admiral.squadron;
-
 const {
   ANSI_RESET,
   CARRIER_BG_COLORS,
@@ -64,7 +52,6 @@ const {
   CLI_DISPLAY_NAMES,
   PANEL_DIM_COLOR,
   SORTIE_SUMMARY_COLOR,
-  SQUADRON_BADGE_COLOR,
   TASKFORCE_BADGE_COLOR,
 } = admiral.constants;
 const carrierCore = admiral.carrier;
@@ -220,10 +207,6 @@ function renderToolCall(spec: AgentToolSpec, args: unknown, _theme: Theme, conte
   if (spec.id === "carrier_jobs") {
     return renderCarrierJobsCall(args, context);
   }
-  if (spec.id === "carrier_squadron") {
-    const typedArgs = args as { carrier?: string; subtasks?: Array<{ title: string; request: string }> };
-    return oneLine(`  ⚓ ${SQUADRON_BADGE_COLOR}Squadron${ANSI_RESET}: ${SQUADRON_BADGE_COLOR}${typedArgs.carrier ?? "..."} ×${typedArgs.subtasks?.length ?? 0} subtasks${ANSI_RESET}`);
-  }
   if (spec.id === "carrier_taskforce") {
     const typedArgs = args as { carrier?: string };
     return oneLine(`  ⚓ ${TASKFORCE_BADGE_COLOR}Taskforce${ANSI_RESET}: ${TASKFORCE_BADGE_COLOR}${typedArgs.carrier ?? "..."}${ANSI_RESET}`);
@@ -248,9 +231,7 @@ function renderToolResult(
     return renderCarrierJobsResult(result as CarrierJobsToolResult);
   }
   const entries = buildPreviewEntries(spec.id, context.args);
-  const color = spec.id === "carrier_squadron"
-    ? SQUADRON_BADGE_COLOR
-    : spec.id === "carrier_taskforce"
+  const color = spec.id === "carrier_taskforce"
       ? TASKFORCE_BADGE_COLOR
       : spec.id === "carrier_dispatch"
         ? (CARRIER_COLORS[(context.args as { carrier_id?: string })?.carrier_id ?? ""] ?? SORTIE_SUMMARY_COLOR)
@@ -277,12 +258,6 @@ function buildPreviewEntries(toolName: string, args: unknown): RenderEntry[] {
     const carrierId = args.carrier_id;
     const carrierName = resolveCarrierDisplayName(carrierId) || carrierId;
     return [{ label: carrierName, text: String(args.request) }];
-  }
-
-  if (toolName === "carrier_squadron" && Array.isArray(args.subtasks)) {
-    return args.subtasks
-      .filter(isRecord)
-      .map((subtask) => ({ label: `"${String(subtask.title ?? "")}"`, text: String(subtask.request ?? "") }));
   }
 
   if (toolName === "carrier_taskforce" && typeof args.request === "string") {

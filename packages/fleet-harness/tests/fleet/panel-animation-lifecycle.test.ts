@@ -43,7 +43,6 @@ beforeEach(() => {
     registeredOrder: ["genesis"],
     offlineCarriers: new Set(),
     taskforceConfiguredCarriers: new Set(),
-    squadronEnabledCarriers: new Set(),
     statusUpdateCallbacks: [],
   };
 });
@@ -290,26 +289,26 @@ describe("panel animation lifecycle", () => {
     expect(notification?.({}, undefined).render(80).join("\n")).not.toContain("○ Genesis");
   });
 
-  it("renders the carrier job HUD as animated for active squadron jobs even when the column is wait", async () => {
+  it("renders the carrier job HUD as animated for active taskforce jobs even when the column is wait", async () => {
     const state = getState();
     state.streaming = false;
     state.frame = 1;
     state.cols = [buildCol("wait")];
-    const permit = acquireJobPermit(buildRecord("squadron:active", ["genesis"], "carrier_squadron"));
+    const permit = acquireJobPermit(buildRecord("taskforce:active", ["genesis"], "carrier_taskforce"));
     expect(permit.accepted).toBe(true);
     handleCarrierJobStreamEvent({
       type: "job:registered",
-      jobId: "squadron:active",
-      kind: "squadron",
+      jobId: "taskforce:active",
+      kind: "taskforce",
       ownerCarrierId: "genesis",
-      label: "1 subtask",
+      label: "1 backend",
       startedAt: Date.now(),
       tracks: [{
-        trackId: "squadron:active:0",
-        streamKey: "squadron:genesis:0",
+        trackId: "taskforce:active:0",
+        streamKey: "taskforce:genesis:0",
         displayCli: "genesis",
-        displayName: "Subtask",
-        kind: "subtask",
+        displayName: "Backend",
+        kind: "backend",
       }],
     });
     const ctx = buildCtx();

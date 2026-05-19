@@ -120,9 +120,7 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
 
   const archive = getFinalized(jobId, now);
   const isSubOpJob =
-    summary?.tool === "carrier_squadron" ||
     summary?.tool === "carrier_taskforce" ||
-    jobId.startsWith("squadron:") ||
     jobId.startsWith("taskforce:");
   const serializeOpts = isSubOpJob
     ? { perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP, maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP }
@@ -168,7 +166,7 @@ function getAvailability(jobId: string, summary: CarrierJobSummary | null, now: 
 
 function validateJobId(jobId: string | undefined): string | null {
   if (!jobId) return "job_id is required";
-  if (!isCarrierJobId(jobId)) return "job_id must start with carrier:, squadron:, or taskforce:";
+  if (!isCarrierJobId(jobId)) return "job_id must start with carrier:, sortie:, or taskforce:";
   return null;
 }
 

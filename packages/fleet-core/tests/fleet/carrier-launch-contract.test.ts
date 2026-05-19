@@ -17,18 +17,15 @@ describe("carrier launch contract", () => {
     expect(response).not.toHaveProperty("full_result");
   });
 
-  it("global cap and same-carrier busy rejections are independent", () => {
+  it("allows same-carrier permits until the global cap is reached", () => {
     resetJobConcurrencyForTest();
     const first = acquireJobPermit(buildRecord("sortie:first", ["genesis"]));
     expect(first.accepted).toBe(true);
 
-    expect(acquireJobPermit(buildRecord("sortie:busy", ["genesis"]))).toEqual({
-      accepted: false,
-      error: "carrier busy",
-      current_job_id: "sortie:first",
-    });
+    const second = acquireJobPermit(buildRecord("sortie:second", ["genesis"]));
+    expect(second.accepted).toBe(true);
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       expect(acquireJobPermit(buildRecord(`sortie:${i}`, [`carrier-${i}`])).accepted).toBe(true);
     }
     expect(acquireJobPermit(buildRecord("sortie:cap", ["carrier-cap"]))).toEqual({
@@ -44,7 +41,7 @@ describe("carrier launch contract", () => {
   });
 
   it("uses aborted wording without completed wording for detached summaries", () => {
-    for (const tool of ["carrier_genesis", "carrier_squadron", "carrier_taskforce"]) {
+    for (const tool of ["carrier_genesis", "carrier_taskforce"]) {
       const summary = buildSummaryText(tool, "aborted", 1, 1);
       expect(summary).toContain("aborted");
       expect(summary).not.toContain("completed");
@@ -74,8 +71,8 @@ describe("carrier launch contract", () => {
     expect(accepted).not.toContain("<system-reminder");
     expect(accepted).not.toMatch(/^<[^>\n]+>/);
 
-    const rejected = formatLaunchResponseText({ job_id: "sortie:call-1", accepted: false, error: "carrier busy" }, false);
-    expect(rejected).toBe('{"job_id":"sortie:call-1","accepted":false,"error":"carrier busy"}');
+    const rejected = formatLaunchResponseText({ job_id: "sortie:call-1", accepted: false, error: "concurrency limit" }, false);
+    expect(rejected).toBe('{"job_id":"sortie:call-1","accepted":false,"error":"concurrency limit"}');
     expect(rejected).not.toMatch(/^<[^>\n]+>/);
   });
 });

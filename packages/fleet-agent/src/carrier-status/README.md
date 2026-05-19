@@ -8,8 +8,8 @@ Infrastructure substitutions are intentionally narrow: Pi `ctx.ui.custom` become
 
 `pi.registerShortcut` becomes `@sbluemin/fleet-tui/input` keybinding registration.
 
-Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `d`, `S`, `c`, `N`, `C`, `R`.
+Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `d`, `c`, `N`, `C`, `R`.
 
-Edit modes: model dropdown, effort dropdown, CLI type dropdown, batch CLI FROM/TO, rename editor, sortie toggle, Squadron toggle, reset CLI, and TaskForce backend model/effort/reset.
+Edit modes: model dropdown, effort dropdown, CLI type dropdown, batch CLI FROM/TO, rename editor, sortie toggle, reset CLI, and TaskForce backend model/effort/reset.
 
-Smoke path: `Alt+O -> Enter -> Enter -> Enter -> c -> C -> N -> d -> S -> t -> Enter -> Enter -> r -> Esc`.
+Smoke path: `Alt+O -> Enter -> Enter -> Enter -> c -> C -> N -> d -> t -> Enter -> Enter -> r -> Esc`.

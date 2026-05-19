@@ -10,7 +10,6 @@ const { PROTOCOL_PREAMBLE } = admiral.prompts;
 const { CARRIER_OPERATIONS_POLICY } = admiral.protocols.standingOrders;
 const { buildCarrierDispatchToolSpec } = admiral.carrier;
 const { CARRIER_JOBS_DOCTRINE, buildCarrierJobsSchema } = admiral.carrierJobs;
-const { SQUADRON_DOCTRINE, buildSquadronSchema } = admiral.squadron;
 const { TASKFORCE_DOCTRINE, buildTaskForceSchema } = admiral.taskforce;
 
 describe("carrier prompt doctrine", () => {
@@ -28,7 +27,6 @@ describe("carrier prompt doctrine", () => {
     const dispatchSpec = buildCarrierDispatchToolSpec();
     expect(dispatchSpec.id).toBe("carrier_dispatch");
     expect(dispatchSpec.tag).toBe("carrier_dispatch");
-    expect(SQUADRON_DOCTRINE.id).toBe("carrier_squadron");
     expect(TASKFORCE_DOCTRINE.id).toBe("carrier_taskforce");
     expect(CARRIER_JOBS_DOCTRINE.id).toBe("carrier_jobs");
     expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).not.toContain("Available Carriers");
@@ -39,7 +37,7 @@ describe("carrier prompt doctrine", () => {
 
   it("keeps carrier_jobs as fallback or explicit lookup only across async carrier tools", () => {
     const dispatchSpec = buildCarrierDispatchToolSpec();
-    const dispatchManifests = [dispatchSpec, SQUADRON_DOCTRINE, TASKFORCE_DOCTRINE];
+    const dispatchManifests = [dispatchSpec, TASKFORCE_DOCTRINE];
 
     for (const manifest of dispatchManifests) {
       const text = JSON.stringify(manifest);
@@ -65,13 +63,11 @@ describe("carrier prompt doctrine", () => {
     const dispatchSpec = buildCarrierDispatchToolSpec();
     const schemaKeys = [
       Object.keys((dispatchSpec.parameters as any).properties),
-      Object.keys((buildSquadronSchema(["genesis"]) as any).properties),
       Object.keys((buildTaskForceSchema(["genesis"]) as any).properties),
       Object.keys((buildCarrierJobsSchema() as any).properties),
     ].flat();
     const manifestText = [
       JSON.stringify(dispatchSpec),
-      JSON.stringify(SQUADRON_DOCTRINE),
       JSON.stringify(TASKFORCE_DOCTRINE),
       JSON.stringify(CARRIER_JOBS_DOCTRINE),
     ].join("\n");

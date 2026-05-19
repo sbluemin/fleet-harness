@@ -41,7 +41,7 @@ export interface HostSessionStore {
 }
 
 export interface CarrierSessionStore {
-  /** Durable keys are raw executor poolKey values, including carrier IDs and synthetic squadron/taskforce keys. */
+  /** Durable keys are raw executor poolKey values, including carrier IDs and synthetic taskforce keys. */
   restore(entries: readonly SessionPersistenceEntry[]): void;
   get(poolKey: string): string | undefined;
   set(poolKey: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;

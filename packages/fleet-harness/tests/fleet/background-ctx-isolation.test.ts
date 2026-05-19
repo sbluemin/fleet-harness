@@ -129,7 +129,6 @@ function resetPanelGlobals(): void {
     statusUpdateCallbacks: [],
     offlineCarriers: new Set(),
     taskforceConfiguredCarriers: new Set(),
-    squadronEnabledCarriers: new Set(),
   };
 }
 

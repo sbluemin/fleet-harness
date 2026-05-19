@@ -46,11 +46,6 @@ export {
   TASKFORCE_CLI_TYPES,
 } from "./admiral/taskforce/types.js";
 export type {
-  SquadronResult,
-  SquadronState,
-  SubtaskProgress,
-} from "./admiral/squadron/types.js";
-export type {
   CarrierJobsParams,
 } from "./admiral/carrier-jobs/types.js";
 export type {

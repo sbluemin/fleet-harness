@@ -26,7 +26,7 @@ Agents must not confuse logical ownership with physical domain layout. `packages
 
 - Fleet domain orchestration
 - prompt composition and doctrine assets
-- Admiral-owned carrier, carrier-jobs, squadron, taskforce, store, and SSOT streaming event layers under `src/admiral/`
+- Admiral-owned carrier, carrier-jobs, taskforce, store, and SSOT streaming event layers under `src/admiral/`
 - Agent execution (session pool, executeWithPool/executeOneShot, MCP server, session-store, runtime) consolidated under `src/admiral/_shared/agent-runtime.ts` + `src/admiral/_shared/mcp.ts`
 - Tool registry/snapshot domain under `src/services/tool-registry/` and job domain logic under `src/services/job/`
 - pure runtime stores, ports, and adapter-facing contracts

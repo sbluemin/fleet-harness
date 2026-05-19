@@ -21,7 +21,7 @@ import type {
 import { putJobSummary } from "./lru-cache.js";
 import { combineAbortSignals } from "./abort-signals.js";
 
-export type DetachedJobKind = "carrier" | "sortie" | "squadron" | "taskforce";
+export type DetachedJobKind = "carrier" | "sortie" | "taskforce";
 
 export type DetachedJobFinalStatus = "done" | "error" | "aborted";
 
@@ -41,7 +41,7 @@ export type DetachedJobLaunch = DetachedJobAccepted | DetachedJobRejected;
 
 export interface StartDetachedJobOptions {
   jobKind: DetachedJobKind;
-  toolName: "carrier_squadron" | "carrier_taskforce" | `carrier_${string}`;
+  toolName: "carrier_taskforce" | `carrier_${string}`;
   toolCallId: string | undefined;
   startedAt: number;
   carrierIds: string[];
@@ -75,9 +75,7 @@ export function startDetachedJob(options: StartDetachedJobOptions): DetachedJobL
     carriers: options.carrierIds,
   });
   if (!permit.accepted) {
-    const response = permit.error === "carrier busy"
-      ? launchResponseResult({ job_id: jobId, accepted: false, error: permit.error, current_job_id: permit.current_job_id })
-      : launchResponseResult({ job_id: jobId, accepted: false, error: permit.error });
+    const response = launchResponseResult({ job_id: jobId, accepted: false, error: permit.error });
     return { accepted: false, response };
   }
 

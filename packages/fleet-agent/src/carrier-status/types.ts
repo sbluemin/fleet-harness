@@ -71,7 +71,6 @@ export interface CarrierStatusEntry {
   effort: string | null;
   isDefault: boolean;
   isSortieEnabled: boolean;
-  isSquadronEnabled: boolean;
   model: string;
   role: string | null;
   roleDescription: string | null;

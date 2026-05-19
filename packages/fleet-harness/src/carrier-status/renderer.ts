@@ -10,7 +10,6 @@ import {
   PANEL_COLOR,
   PANEL_DIM_COLOR,
   SPINNER_FRAMES,
-  SQUADRON_BADGE_COLOR,
   SYM_INDICATOR,
   TASKFORCE_BADGE_COLOR,
 } from "../fleet-core-facades.js";
@@ -22,7 +21,6 @@ import {
   resolveCarrierDisplayName,
   resolveCarrierRgb,
   isCarrierOnline,
-  isSquadronCarrierEnabled,
 } from "../tools.js";
 import type { AssistantMessage } from "../provider.js";
 import { waveText } from "../panel/panel-render.js";
@@ -59,14 +57,10 @@ export function renderCarrierStatus(input: CarrierStatusRenderInput): string | u
     const name = resolveCarrierDisplayName(col.cli);
     const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(snapshot, col.cli).length;
     const tfBadgeColor = disabled ? DISABLED_COLOR : TASKFORCE_BADGE_COLOR;
-    const sqBadgeColor = disabled ? DISABLED_COLOR : SQUADRON_BADGE_COLOR;
     const tfBadge = taskForceBackendCount >= 2
       ? ` ${tfBadgeColor}[TF:${taskForceBackendCount}]${ANSI_RESET}`
       : "";
-    const sqBadge = isSquadronCarrierEnabled(col.cli)
-      ? ` ${sqBadgeColor}[SQ]${ANSI_RESET}`
-      : "";
-    const badges = `${tfBadge}${sqBadge}`;
+    const badges = tfBadge;
 
     // sortie 비활성 캐리어: 아이콘·이름·배지 모두 dim 처리
     if (disabled) {

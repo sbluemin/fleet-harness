@@ -84,15 +84,11 @@ Watch every active carrier stream results in real time, navigate between carrier
 
 <img src=".github/carrier_status.png" alt="Carrier Status" width="100%" />
 
-The Carrier layer is the fleet's execution engine. Whether you need a single agent, a coordinated squadron, or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
+The Carrier layer is the fleet's execution engine. Whether you need a single agent, a or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
 
 #### Sortie
 
 Deploy one carrier or an entire wing with a single command. Sortie supports fire-and-forget delegation, parallel multi-carrier dispatch in one call, and asynchronous result delivery through push notifications or on-demand lookup via `carrier_jobs`. Set your objectives, launch the fleet, and collect results as they arrive.
-
-#### Squadron
-
-When a task breaks into independent pieces, Squadron fans them out across parallel instances of the same carrier. Perfect for batch analysis, per-file processing, or divide-and-conquer workloads — with up to 10 concurrent subtasks dispatched and tracked as a single coordinated operation.
 
 #### Task Force
 

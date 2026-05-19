@@ -162,7 +162,7 @@ export function isJobBarStateRuntimeBound(): boolean {
 
 export function getDefaultClis(): readonly string[] {
   const rt = getRuntimeBindings().rt;
-  return sortByCategory(rt.admiral.carrier.getRegisteredOrder().filter((id: string) => !rt.admiral.carrier.isSquadronCarrierEnabled(id)));
+  return sortByCategory(rt.admiral.carrier.getRegisteredOrder());
 }
 
 export function makeCols(clis?: readonly string[]): AgentCol[] {

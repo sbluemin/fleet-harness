@@ -53,7 +53,6 @@ function makeEntry(): CarrierStatusEntry {
     role: null,
     roleDescription: null,
     isSortieEnabled: true,
-    isSquadronEnabled: false,
     taskForceBackendCount: 0,
   };
 }
@@ -105,7 +104,6 @@ function createOverlay(options?: {
     resetCliTypesToDefault: vi.fn(async () => []),
     saveModelSelection: options?.saveModelSelection ?? vi.fn(async () => undefined),
     toggleSortieEnabled: vi.fn(),
-    toggleSquadronEnabled: vi.fn(),
     openTaskForce: vi.fn(),
     getAvailableModels: (cliType) => providers[cliType] ?? makeProvider(String(cliType)),
     getServiceSnapshots: () => new Map([

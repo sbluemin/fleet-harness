@@ -19,10 +19,6 @@ export function TASKFORCE_BADGE_COLOR(rt: FleetCoreRuntimeContext): string {
   return rt.admiral.constants.TASKFORCE_BADGE_COLOR;
 }
 
-export function SQUADRON_BADGE_COLOR(rt: FleetCoreRuntimeContext): string {
-  return rt.admiral.constants.SQUADRON_BADGE_COLOR;
-}
-
 export function SYM_INDICATOR(rt: FleetCoreRuntimeContext): string {
   return rt.admiral.constants.SYM_INDICATOR;
 }

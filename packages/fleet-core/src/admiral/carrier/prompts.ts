@@ -10,7 +10,7 @@ import type { CarrierMetadata, RequestBlock } from "./types.js";
 
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
 
-/** carrier_dispatch / carrier_squadron / carrier_taskforce의 공용 brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
+/** carrier_dispatch / carrier_taskforce의 공용 brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
 export const CARRIER_REQUEST_BREVITY_GUIDELINE =
   `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
   ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request.` +

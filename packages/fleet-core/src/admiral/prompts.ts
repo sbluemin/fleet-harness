@@ -16,7 +16,6 @@ import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
 import {
-  getActiveSquadronIds,
   getActiveTaskForceIds,
   getRegisteredOrder,
   getOfflineCarrierIds,
@@ -105,7 +104,6 @@ This is a hard prerequisite. Do NOT skip this step or assume you already know th
 export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
 ## Runtime Context Tags (in <system-reminder>)
 - ${"`"}<current_protocol>${"`"} — active protocol ID; apply matching protocol rules
-- ${"`"}<available_squadron_carriers>${"`"} — carrier IDs in squadron mode after subtracting offline carriers
 - ${"`"}<available_taskforce_carriers>${"`"} — carrier IDs with Task Force configured (≥2 backends) after subtracting offline carriers
 - ${"`"}<offline_carriers>${"`"} — offline carrier IDs omitted from all available_* lists; omit this tag entirely when none are offline
 `;
@@ -188,7 +186,6 @@ export function buildSystemPrompt(): string {
  *
  * `<system-reminder>` 블록 안에 런타임 태그를 묶어 반환한다:
  *  - `<current_protocol>`: 활성 프로토콜 ID
- *  - `<available_squadron_carriers>`: squadron 모드 캐리어 ID 목록
  *  - `<available_taskforce_carriers>`: Task Force 설정 완료(2개 이상 백엔드) 캐리어 ID 목록
  *  - `<offline_carriers>`: 오프라인 상태로 모든 available_* 목록에서 제외된 캐리어 ID 목록
  *
@@ -197,7 +194,6 @@ export function buildSystemPrompt(): string {
  */
 export function buildRuntimeContextPrompt(userRequest: string): string {
   const protocol = getActiveProtocol();
-  const squadronIds = getActiveSquadronIds();
   const taskforceIds = getActiveTaskForceIds();
   const offlineIds = getOfflineCarrierIds();
 
@@ -205,7 +201,6 @@ export function buildRuntimeContextPrompt(userRequest: string): string {
 
   const runtimeTags = [
     `<current_protocol>${protocol.id}</current_protocol>`,
-    `<available_squadron_carriers>${fmt(squadronIds)}</available_squadron_carriers>`,
     `<available_taskforce_carriers>${fmt(taskforceIds)}</available_taskforce_carriers>`,
     ...(offlineIds.length > 0
       ? [`<offline_carriers>${offlineIds.join(",")}</offline_carriers>`]
