@@ -29,7 +29,9 @@ export function createOverlayFrame(options: OverlayFrameOptions): string[] {
   const innerWidth = Math.max(0, width - 4);
   const title = ` ${truncateToWidth(options.title, innerWidth)} `;
   const topFill = Math.max(0, width - 2 - visibleWidth(title));
-  const top = options.theme.border(`${BORDER.topLeft}${title}${BORDER.h.repeat(topFill)}${BORDER.topRight}`);
+  const leftFill = Math.floor(topFill / 2);
+  const rightFill = topFill - leftFill;
+  const top = options.theme.border(`${BORDER.topLeft}${BORDER.h.repeat(leftFill)}${title}${BORDER.h.repeat(rightFill)}${BORDER.topRight}`);
   const body = options.body.map((line) => frameBodyLine(line, innerWidth, options.theme));
   const footer = options.footer ? [frameBodyLine(options.theme.dim(options.footer), innerWidth, options.theme)] : [];
   const bottom = options.theme.border(`${BORDER.bottomLeft}${BORDER.h.repeat(Math.max(0, width - 2))}${BORDER.bottomRight}`);
