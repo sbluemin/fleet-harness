@@ -12,7 +12,7 @@
 npm install -g pnpm
 ```
 
-> The canonical `fleet` CLI lives in this repository under `engines/packages/coding-agent` and is linked globally from the workspace in Step 2.
+> The canonical `fleet` CLI lives in this repository under `packages/fleet-agent` and is linked globally from the workspace in Step 2.
 
 > The repository is pinned to a specific pnpm version via the `packageManager` field in `package.json`. If you have [Corepack](https://nodejs.org/api/corepack.html) enabled, run `corepack enable` once and Corepack will select that version automatically. Otherwise the globally installed pnpm is used as a fallback.
 
@@ -41,7 +41,7 @@ pnpm setup
 
 # Install all workspace dependencies. The root postinstall hook runs `pnpm -r build`,
 # which builds the engine `unified-agent` package plus `fleet-core`, `fleet-wiki`,
-# packages/fleet-wiki-web, and packages/fleet-harness in topological order.
+# `fleet-wiki-web`, and `fleet-agent` in topological order.
 pnpm install
 
 # Approve native build scripts (one-time per machine).
@@ -59,27 +59,21 @@ pnpm --filter @sbluemin/fleet-unified-agent link --global
 
 > The repository uses pnpm workspaces (see `pnpm-workspace.yaml`); the root install is the single setup entry point. `pnpm install` writes a single `pnpm-lock.yaml` at the repo root and links each workspace package's local dependencies via symlinks. Cross-package deps are declared with the `workspace:*` protocol so pnpm orders builds topologically.
 >
-> Provider contract note:
->
-> - `@sbluemin/fleet-ai` no longer ships built-in vendor providers or built-in OAuth providers.
-> - Fleet host wiring owns provider registration explicitly through `packages/fleet-harness/src/provider.ts`.
-> - No legacy registry-filter toggle or hidden upstream bootstrap remains; if host registration has not happened yet, provider-missing throws are the intended contract.
->
 > `pnpm link --global` registers the global commands from this checkout:
 >
-- `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `pnpm dev` (see below).
-- `pnpm dev` — (Defined in `package.json`) sets `FLEET_HARNESS_DEV=1` then delegates to `fleet-main.mjs`. Use for development with live source changes.
+- `fleet` — primary CLI host (via `packages/fleet-agent/fleetd`). Supports multi-carrier orchestration and Fleet Wiki integration. Grand Fleet mode is activated by setting `FLEET_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `pnpm dev` (see below).
+- `pnpm dev` — (Defined in `package.json`) sets `FLEET_DEV=1` then launches the agent. Use for development with live source changes.
 
 > - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of any external runtime.
 >
 > > `pnpm --filter @sbluemin/fleet-unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
 >
-> Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/fleet-harness/src/`; they do not require separate `pnpm install` commands.
+> Fleet infrastructure, carriers, and Agent Panel modules now live under `packages/`; they do not require separate `pnpm install` commands.
 >
 > Fleet engine note:
-> - `engines/` contains the active Fleet engine package set (`tui`, `ai`, `agent`, `coding-agent`) rebranded to `@sbluemin/fleet-*`.
+> - `engines/` contains the core `unified-agent` engine package branded as `@sbluemin/fleet-unified-agent`.
 > - All intra-repo links use `workspace:*`; do not replace them with published npm references.
-> - The engine `unified-agent` package is developed in-tree alongside the other Fleet engine packages and is linked globally as `ait` from this workspace.
+> - The engine `unified-agent` package is developed in-tree alongside the other Fleet packages and is linked globally as `ait` from this workspace.
 
 ### Install troubleshooting
 
@@ -123,10 +117,10 @@ fleet-wiki   # opens http://127.0.0.1:<port> in the system browser
 
 ## 4. Read the Guide
 
-fleet-harness ships built-in guide documents inside its own `.fleet/knowledge/` store. Run `fleet-wiki` from the repository root to browse them:
+Fleet ships built-in guide documents inside its own `.fleet/knowledge/` store. Run `fleet-wiki` from the repository root to browse them:
 
 ```bash
-cd <path-to-fleet-harness>
+cd <path-to-fleet-repo>
 fleet-wiki
 ```
 
@@ -140,6 +134,6 @@ The browser opens at `http://127.0.0.1:<port>`. Navigate to **Index** or use the
 
 | Guide | Description |
 |---|---|
-| Guide - 001 fleet-harness 소개 | Overview, key differentiators, provided CLIs, 8 carriers, and key bindings |
-| Guide - 002 Carrier Status 사용법 | How to use the Carrier Status overlay (`Alt+O`) to configure CLI backends, models, Sortie, Squadron, and Task Force |
+| Guide - 001 Fleet 소개 | Overview, key differentiators, provided CLIs, 8 carriers, and key bindings |
+| Guide - 002 Carrier Status 사용법 | How to use the Carrier Status overlay (`Alt+O`) to configure CLI backends, models, Sortie, and Task Force |
 | Guide - 003 fleet-wiki 사용법 | How to capture, stage, review, approve, and query fleet-wiki knowledge entries |

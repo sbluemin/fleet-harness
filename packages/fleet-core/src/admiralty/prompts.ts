@@ -12,8 +12,8 @@
  * `<reporting_obligations>`)로 감싸지고 `---` 구분자로 분리된다.
  *
  * `buildFleetAcpSystemPrompt()`는 grand-fleet가 소유한 local composition seam이다.
- * `packages/fleet-harness/src/fleet/**`를 import하지 않고 기본 Fleet ACP 의미와 Grand Fleet Context를
- * 같은 파일 안에서 조립한다.
+ * 외부 호스트 조립 코드에 의존하지 않고 기본 Fleet ACP 의미와 Grand Fleet Context를
+ * 이 파일 안에서 조립한다.
  */
 
 import type { ConnectedFleet, FleetId } from "./types.js";

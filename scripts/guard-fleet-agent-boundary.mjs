@@ -33,6 +33,7 @@ const allowedDocPhrases = [
   "must not depend",
   "permanently exclude",
   "fails on forbidden imports",
+  "generally forbidden, with the sole exception",
 ];
 
 const findings = [];

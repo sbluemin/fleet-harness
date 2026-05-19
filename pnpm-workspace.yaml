@@ -1,12 +1,11 @@
 packages:
-  - "engines/packages/*"
+  - "engines/packages/unified-agent"
   - "packages/fleet-core"
   - "packages/fleet-mcp-server"
   - "packages/fleet-carriers"
   - "packages/fleet-tui"
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"
-  - "packages/fleet-harness"
   - "packages/fleet-agent"
 allowBuilds:
   '@google/genai': true

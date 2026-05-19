@@ -4,7 +4,7 @@ chronicle_access: forbidden
 edit_policy: |
   DO NOT MODIFY VIA CHRONICLE.
   This document is the Admiral persona's self-model — its operational reference
-  for how the system prompt and runtime context flow through fleet-harness. Chronicle
+  for how the system prompt and runtime context flow through fleet-agent. Chronicle
   (the chronicle carrier) is FORBIDDEN from editing this file under any tool path,
   including documentation sweeps, change-impact audits, .md cascade synchronization,
   PR summary generation, release-note compilation, or AGENTS.md doctrine alignment.
@@ -31,7 +31,7 @@ edit_policy: |
 > invariants. Updates must come **only from the Admiral**, in response to **verified**
 > changes in `admiral/prompts.ts`, `admiral/agent/internal/session-engine.ts`,
 > `admiral/protocols/`, `admiral/carrier/prompts.ts`,
-> `fleet-harness/src/fleet.ts` (boot preamble / RISEN),
+> `fleet-agent/src/fleet.ts` (boot preamble / RISEN),
 > `packages/fleet-core/src/runtime-flags.ts` (boot-mode type and setter), or
 > `packages/fleet-core/src/public/runtime.ts` (runtime composition entry point).
 >
@@ -41,7 +41,7 @@ edit_policy: |
 
 ## 1. Purpose
 
-This document is the canonical operational reference for how the Admiral (the PI host
+This document is the canonical operational reference for how the Admiral (the host
 agent) is wired up at the prompt and runtime-context layer. It exists because the
 Admiral is observed to **forget the boundary** between the static frame (system prompt,
 frozen at boot) and the dynamic prefix (runtime context, recomputed every user turn),
@@ -66,23 +66,23 @@ unless this document is suspected of drift.
 ## 2. Big Picture — Session Lifecycle
 
 ```
-┌────────────────────────── PI HOST PROCESS ──────────────────────────┐
+┌────────────────────────── HOST PROCESS ─────────────────────────────┐
 │                                                                     │
 │  ① BOOT — one before_agent_start handler                            │
 │                                                                     │
 │    registerBoot()                                                   │
-│      fleet-harness/src/fleet.ts:149-174                        │
-│      → reads env vars (PI_GRAND_FLEET_ROLE, FLEET_HARNESS_DEV, etc.)     │
+│      fleet-agent/src/fleet.ts:149-174                          │
+│      → reads env vars (FLEET_GRAND_FLEET_ROLE, FLEET_DEV, etc.)     │
 │      → sets module-level bootConfig (dev, role, fleet, grandFleet)  │
 │      → does NOT inject a system prompt                              │
 │                                                                     │
-│    Handler: wireFleetPiEvents()                                     │
-│      fleet-harness/src/fleet.ts:207-214                        │
+│    Handler: wireFleetEvents()                                       │
+│      fleet-agent/src/fleet.ts:207-214                          │
 │      → appends { systemPrompt: buildSystemPrompt() }                │
 │        buildSystemPrompt() internally prepends FLEET_PREAMBLE       │
 │        + RISEN_DEV_SLATE when bootMode === "dev"                    │
 │                                                                     │
-│    Pi calls one handler. The ACP layer sees:                        │
+│    Admiral calls one handler. The ACP layer sees:                   │
 │      PREAMBLE + [RISEN if bootMode==="dev"] + fleet sections        │
 │    From this point until the session ends, the entire blob is       │
 │    FROZEN.                                                          │
@@ -118,13 +118,13 @@ in-place update (`admiral/agent/internal/session-engine.ts:89`,
 ## 3. The Static Frame (System Prompt — FROZEN)
 
 The final static frame is assembled by the **single `before_agent_start` handler**
-registered by `wireFleetPiEvents()` (see Section 2). `buildSystemPrompt()`
+registered by `wireFleetEvents()` (see Section 2). `buildSystemPrompt()`
 (`packages/fleet-core/src/admiral/prompts.ts:127-187`) handles the full assembly,
 including the preamble prefix and optional dev slate that precede the fleet sections.
 
 ### 3.1 Boot Preamble (buildSystemPrompt-managed, always present)
 
-`registerBoot()` (`fleet-harness/src/fleet.ts:149-174`) reads environment
+`registerBoot()` (`fleet-agent/src/fleet.ts:149-174`) reads environment
 variables and writes the module-level `bootConfig`. It no longer injects a system
 prompt — prompt injection is fully owned by `buildSystemPrompt()`.
 
@@ -141,7 +141,7 @@ and stored in `packages/fleet-core/src/runtime-flags.ts` via `setFleetCoreBootMo
 `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. In dev mode, the RISEN
 context replaces persona/role/tone; see Section 3.2 for how the conditional works.
 
-The `pnpm dev` script sets `FLEET_HARNESS_DEV=1` and then dynamically
+The `pnpm dev` script sets `FLEET_DEV=1` and then dynamically
 imports `bin/fleet-main.mjs`, which invokes upstream `main()` in-process with
 `extensionFactories: [fleetExtension]`; the extension maps this env var to
 `bootMode: "dev"` when composing the runtime.
@@ -158,7 +158,7 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │  0. FLEET_PREAMBLE  (plain text prefix, not a <fleet> block)        │
 │     Condition: Always                                               │
 │     Content:  <fleet> XML parsing guide + <system-reminder> hint    │
-│     Source:   fleet-harness/src/fleet.ts:97-103                │
+│     Source:   fleet-agent/src/fleet.ts:97-103                  │
 │                                                                     │
 │  0b. RISEN_DEV_SLATE  (plain text prefix)                           │
 │     Condition: bootMode === "dev"  (isFleetCoreDevMode() true)      │
@@ -297,7 +297,7 @@ ultimately call `client.sendMessage(...)` on an ACP client, but they differ in
 ```
 ┌────────────────────────── STREAMING PATH ──────────────────────────┐
 │                                                                    │
-│  Used by: PI host turns (the Admiral's own ACP session, driven     │
+│  Used by: host turns (the Admiral's own ACP session, driven        │
 │           by streamAcp / admiral.session.sendMessage)              │
 │                                                                    │
 │  Per turn: buildRuntimeContextPrompt() runs                        │
@@ -374,8 +374,8 @@ The Admiral's own decision flow at the start of every task:
 ┌──────────────────────── DECISION FLOW ────────────────────────────┐
 │                                                                   │
 │  Step 0.  Pre-work documentation check (dev-mode rule from RISEN).
-   When bootMode === "dev" is active (FLEET_HARNESS_DEV=1 at launch), the Admiral must verify:
-    1. docs/fleet-development-reference.md is read for Fleet SDK / extension context
+   When bootMode === "dev" is active (FLEET_DEV=1 at launch), the Admiral must verify:
+    1. docs/fleet-development-reference.md is read for Fleet SDK context
     2. docs/admiral-workflow-reference.md is read for architecture / delegation
     3. docs/admiral-prompt-architecture.md is read for prompt assembly and runtime-context flow
     4. AGENTS.md is checked in the project root AND every touched subdirectory
@@ -448,7 +448,7 @@ The pattern is always: **static frame tells me how, runtime prefix tells me whom
 |-------|--------|--------|
 | System prompt is frozen at boot | Carriers registered after boot have no Tier-1 metadata in `<fleet section="roster">`. They appear in `<available_*>` tags but their use-cases / NOT-fors / request blocks are absent. | `prompts.ts:147-150` |
 | Protocol catalog is fully embedded | The active protocol's *body* is read statically from the catalog — there is no per-turn injection of the active protocol's body, only its id. | `prompts.ts:127-187` |
-| Protocol switching is lazy | Protocol keybinds persist `activeProtocol` in settings and update the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. With the current catalog, only Fleet Action is registered. | `fleet-harness/src/fleet.ts:281-302` |
+| Protocol switching is lazy | Protocol keybinds persist `activeProtocol` in settings and update the HUD border. In-flight responses continue under the previous protocol; the new one applies on the **next** user turn. | `fleet-agent/src/fleet.ts:281-302` |
 | Executor path has no runtime context | `carrier_dispatch` / `carrier_taskforce` send the request verbatim; sub-agents do not see `<current_protocol>` or `<available_*>` tags. By design — Tier-2 context is composed into the request body instead. | `executor-engine.ts:298, 411` |
 | `setSystemPrompt()` does not exist | The unified-agent client cannot mutate the system prompt mid-session. Drift forces session destruction and reconnect. | `unified-agent/src/client/IUnifiedAgentClient.ts:215-239` |
 | `bootMode` drives dev-mode branch | `bootMode` (`"dev" \| "normal"`) is set via `createFleetCoreRuntime()` (`public/runtime.ts`) and stored in `runtime-flags.ts` via `setFleetCoreBootMode()`. `isFleetCoreDevMode()` checks `getBootMode() === "dev"`. When true, `buildSystemPrompt()` omits persona/role/tone and prepends the RISEN dev context instead of the naval fleet persona. | `runtime-flags.ts:1-15`, `prompts.ts:127-144` |
@@ -460,7 +460,7 @@ mid-session system-prompt mutation, or expecting the executor path to surface
 `<current_protocol>` to sub-agents).
 
 One additional self-check the Admiral must perform: when operating in `pnpm dev`
-mode (`bootMode === "dev"`, launched via `FLEET_HARNESS_DEV=1`), the RISEN dev context
+mode (`bootMode === "dev"`, launched via `FLEET_DEV=1`), the RISEN dev context
 (`RISEN_DEV_SLATE`) contains a mandatory 4-step documentation check. The
 Admiral must **actually perform** those checks, not just claim they were performed.
 They are: (1) read `docs/fleet-development-reference.md`,
@@ -486,9 +486,7 @@ the following code changes ship:
 - A new dispatch tool is registered (`carrier_dispatch` is replaced or a peer to
   `carrier_taskforce` is added or removed).
 - The `buildCarrierSystemPrompt()` composition at `admiral/carrier/prompts.ts`
-  changes (five-section structure: background, identity, permissions, principles, outputFormat;
-  `CARRIER_JOBS_SELF_CALL_HINT` referenced as a shared principle entry by all built-in
-  personas — directly, not always through spread syntax).
+  changes.
 - A `setSystemPrompt()`-equivalent API is introduced on the unified-agent client.
 - A new protocol is added or the protocol-switching mechanism stops being lazy.
 - `FLEET_PREAMBLE` or `RISEN_DEV_SLATE` content changes

@@ -1,6 +1,6 @@
 <div align="center">
-    <h1>Fleet Harness</h1>
-    <img src=".github/logo.png" alt="fleet-harness" width="640" />
+    <h1>Fleet</h1>
+    <img src=".github/logo.png" alt="fleet" width="640" />
     <h3><em>One Fleet. All LLMs.</em></h3>
 </div>
 
@@ -16,7 +16,7 @@
 ---
 
 <div align="center">
-  <img src=".github/fleet-harness.gif" alt="fleet-harness demo" width="640" />
+  <img src=".github/fleet-harness.gif" alt="fleet demo" width="640" />
 </div>
 
 ## 동기
@@ -25,7 +25,7 @@ Claude Code, Codex, Gemini, OpenCode와 같은 모든 프론티어 CLI는 각자
 
 문제는 이 모든 도구가 별도의 터미널에 존재한다는 점입니다. 하나의 작업에 여러 CLI의 강점을 조합하려면 창 사이로 컨텍스트를 복사하고, 상태를 수동으로 동기화하며, 각기 다른 상호작용 패턴 사이를 오가야 합니다. 다중 도구 조율의 마찰은 결국 단일 CLI에 만족하게 만들고, 나머지 도구의 고유한 능력은 활용하지 못한 채 남겨두게 됩니다.
 
-Fleet Harness는 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하지 않기 위해 만들어졌습니다. 모든 네이티브 에이전트 런타임을 해군 **함대(Fleet)** 내의 **항공모함(Carrier)**으로 대우하고, 중앙의 Admiral이 공식 프로토콜을 통해 여러 Carrier를 병렬로 지휘합니다. 각 모델의 네이티브 루프는 설계 그대로 실행되되, 단일 명령 아래 조율됩니다. 한 번의 명령으로 함대 전체가 함께 실행되며, 각 Carrier가 자신만의 강점을 기여합니다.
+Fleet은 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하지 않기 위해 만들어졌습니다. 모든 네이티브 에이전트 런타임을 해군 **함대(Fleet)** 내의 **항공모함(Carrier)**으로 대우하고, 중앙의 Admiral이 공식 프로토콜을 통해 여러 Carrier를 병렬로 지휘합니다. 각 모델의 네이티브 루프는 설계 그대로 실행되되, 단일 명령 아래 조율됩니다. 한 번의 명령으로 함대 전체가 함께 실행되며, 각 Carrier가 자신만의 강점을 기여합니다.
 
 ## 해군 함대 계층 구조
 
@@ -33,7 +33,7 @@ Fleet Harness는 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손
 
 - **Admiral of the Navy (대원수)** — 사용자. 전략을 수립하고 명령을 내립니다.
 - **Fleet Admiral (사령관)** — grand-fleet 모드의 다중 함대 오케스트레이터.
-- **Admiral (제독)** — 워크스페이스 PI 인스턴스. 작전을 기획하고 Carrier를 배치합니다.
+- **Admiral (제독)** — 워크스페이스 에이전트 인스턴스. 작전을 기획하고 Carrier를 배치합니다.
 - **Captain (함장)** — Carrier 에이전트의 지휘관 페르소나.
 
 **Carrier**는 독립된 설정을 가진 CLI 도구의 실행 인스턴스입니다. **Captain**은 이를 지휘하는 페르소나(예: Chief Engineer, Scout Specialist)입니다.
@@ -44,26 +44,26 @@ Fleet Harness는 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손
 
 8개의 기본 Carrier가 각각 고유한 작전 역할을 수행합니다:
 
-- **Nimitz** — 전략 지휘·판단. 읽기 전용 아키텍처 결정·트레이드오프 재결.
+- **Nimitz** — 전략 지휘·판단. 읽기 전용 아키처 결정·트레이드오프 재결.
 - **Kirov** — 작전 기획 브리지. 요구사항 명확화 및 Ohio에 전달할 plan_file 작성(.fleet/plans/*.md).
 - **Genesis** — 수석 엔지니어. 제독 직접 지휘 하의 단발 구현.
 - **Ohio** — 다단 파상 타격 집행. Kirov가 작성한 plan_file을 받아 웨이브 단위로 실행.
 - **Sentinel** — QA & Security Lead. 코드 리뷰, 결함 탐지, 취약점 헌팅.
 - **Vanguard** — Scout Specialist. 코드베이스 탐색, 심볼 추적, 웹 리서치.
-- **Tempest** — 전방 외부 체보 타격. GitHub 인텔리전스 및 외부 레포 분석.
+- **Tempest** — 전방 외부 첩보 타격. GitHub 인텔리전스 및 외부 레포 분석.
 - **Chronicle** — Chief Knowledge Officer. 문서화, 변경 로그, 변경 영향 보고.
 
 ## 기능
 
 ### 멀티 LLM 오케스트레이션
 
-Fleet Harness는 API를 래핑하거나 프록시를 운용하지 않습니다 — **프론티어 CLI 도구를 네이티브로 직접 오케스트레이션**합니다. 각 Carrier는 실제 CLI 바이너리를 실행하고 공식 프로토콜(ACP 또는 App Server)을 통해 통신하므로, 각 도구의 완전한 네이티브 기능을 통합된 명령 구조 안에서 그대로 사용할 수 있습니다.
+Fleet은 API를 래핑하거나 프록시를 운용하지 않습니다 — **프론티어 CLI 도구를 네이티브로 직접 오케스트레이션**합니다. 각 Carrier는 실제 CLI 바이너리를 실행하고 공식 프로토콜(ACP 또는 App Server)을 통해 통신하므로, 각 도구의 완전한 네이티브 기능을 통합된 명령 구조 안에서 그대로 사용할 수 있습니다.
 
 <img src=".github/handoff.png" alt="멀티 LLM 오케스트레이션" width="100%" />
 
 | CLI | 제공자 | 프로토콜 | 주요 기능 |
 |-----|--------|----------|-----------|
-| **Claude Code** | Anthropic | ACP | 심층 추론, 아키텍처 판단 |
+| **Claude Code** | Anthropic | ACP | 심층 추론, 아키처 판단 |
 | **Claude Code (Z.AI GLM)** | Z.AI | ACP | Claude 브리지를 통한 GLM-5 시리즈 |
 | **Claude Code (Moonshot Kimi)** | Moonshot | ACP | Claude 브리지를 통한 Kimi K2 시리즈 |
 | **Codex CLI** | OpenAI | App Server | 빠른 코드 생성, 다단계 실행 |
@@ -88,7 +88,7 @@ Carrier 계층은 함대의 실행 엔진입니다. 단일 에이전트가 필�
 
 #### Sortie
 
-단일 Carrier나 전체 편대를 한 번의 명령으로 배치하세요. Sortie는 Fire-and-forget 위임, 한 번의 호출로 병렬 다중 Carrier를 출격시키는 기능, 그리고 푸시 알림이나 `carrier_jobs` 조회를 통한 비동기 결과 전달을 모두 지원합니다. 목표를 설정하고 함대를 출격시키면, 결과가 도착하는 대로 수집하면 됩니다.
+단일 Carrier나 전체 편대를 한 번의 명령으로 배치하세요. Sortie는 Fire-and-forget 위임, 한 번의 호출로 병렬 다중 Carrier를 출격시키는 기능, 그리고 푸시 알림이나 `carrier_jobs` 조회를 통한 비동기 결과 전달을 모두 지원합니다. 목표를 설정하고 함대를 출격시면, 결과가 도착하는 대로 수집하면 됩니다.
 
 #### Task Force
 
@@ -107,14 +107,9 @@ Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한
 
 자세한 설치 방법은 [SETUP.md](SETUP.md)를 참조하세요.
 
-Provider 계약 메모:
-- `@sbluemin/fleet-ai`는 이제 추상 계층과 registration seam만 제공하며, built-in vendor provider와 built-in OAuth provider는 제거되었습니다.
-- `packages/fleet-harness/src/provider.ts`가 host-owned registration gateway입니다.
-- 기존 registry-filter workaround는 제거되었으며, 후속 host wiring 이전의 provider-missing throw는 의도된 계약입니다.
-
 > **AI 에이전트로 빠른 시작** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
 >
-> Install and configure fleet-harness by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
+> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
 
 ## 문서
 

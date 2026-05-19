@@ -2,7 +2,7 @@
 
 > A TypeScript SDK that unifies Codex CLI, Claude Code, and Gemini CLI under a single interface.
 
-Within this monorepo, Fleet consumes `@sbluemin/fleet-unified-agent` through `workspace:*` from the `engines/packages/` tree. It is part of the active Fleet engine workspace and shares the same build and release flow as the other engine packages.
+Within this monorepo, Fleet consumes `@sbluemin/fleet-unified-agent` through `workspace:*` from the `engines/packages/` tree. It is the core engine for all Fleet agents and shares the same build and release flow as the other workspace packages.
 
 ## Overview
 
@@ -34,8 +34,7 @@ Clone the repository and link globally:
 
 ```bash
 git clone https://github.com/sbluemin/fleet-harness.git
-cd fleet-harness/engines/packages
-cd unified-agent
+cd fleet-harness/engines/packages/unified-agent
 pnpm install
 pnpm build
 pnpm link --global
@@ -165,7 +164,7 @@ Fleet sends Claude ACP effort through the bridge's advertised `effort` config op
 Add as a dependency via git URL:
 
 ```bash
-npm install github:sbluemin/fleet-unified-agent
+npm install github:sbluemin/fleet-harness
 ```
 
 In `package.json`:
@@ -173,7 +172,7 @@ In `package.json`:
 ```json
 {
   "dependencies": {
-    "@sbluemin/fleet-unified-agent": "github:sbluemin/fleet-unified-agent"
+    "@sbluemin/fleet-unified-agent": "github:sbluemin/fleet-harness"
   }
 }
 ```

@@ -1,12 +1,12 @@
 # Carrier Status
 
-Top-level Option Y overlay domain for Dedicated Harness with full fleet-harness carrier-status domain parity.
+Carrier status overlay domain for Fleet Agent.
 
-This domain uses public `@sbluemin/fleet-core` runtime services through the local runtime context and consumes Fleet PTY only through `@sbluemin/fleet-tui/pty`. It does not implement `renderer.ts`; Dedicated Harness has no HUD footer.
+This domain uses public `@sbluemin/fleet-core` runtime services through the local runtime context and consumes Fleet PTY only through `@sbluemin/fleet-tui/pty`.
 
-Infrastructure substitutions are intentionally narrow: Pi `ctx.ui.custom` becomes `fleetPty.custom`, Fleet TUI component/key/width helpers come from `@sbluemin/fleet-tui/pty`.
+Infrastructure substitutions are intentionally narrow: legacy UI components become `fleetPty.custom`, Fleet TUI component/key/width helpers come from `@sbluemin/fleet-tui/pty`.
 
-`pi.registerShortcut` becomes `@sbluemin/fleet-tui/input` keybinding registration.
+Keybindings are registered via `@sbluemin/fleet-tui/input`.
 
 Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `d`, `c`, `N`, `C`, `R`.
 

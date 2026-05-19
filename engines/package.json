@@ -8,11 +8,7 @@
 	"type": "module",
 	"author": "sbluemin",
 	"workspaces": [
-		"packages/tui",
-		"packages/ai",
-		"packages/agent",
-		"packages/coding-agent",
-		"engines/packages/unified\u002dagent"
+		"packages/unified-agent"
 	],
 	"engines": {
 		"node": ">=20.0.0"

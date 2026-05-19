@@ -1217,3 +1217,21 @@
 - result: `accepted`
 - target: `wiki/guide-001-fleet-harness-overview.md`
 
+## 2026-05-19T12:57:59.217Z — raw source added
+
+- id: `prd-coding-agent-scoped-models-removal-source`
+- raw_source_ref: `raw/2026-05-19-prd-coding-agent-scoped-models-removal-source-673668cd.md`
+- source_type: `inline`
+- tag_count: `3`
+- title: `Package Removal Audit 2026-05-19`
+
+## 2026-05-19T12:57:59.219Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-19T12-57-59-212Z-c34be64a`
+- patch_set_id: `null`
+- proposer: `Chronicle`
+- raw_source_ref: `raw/2026-05-19-prd-coding-agent-scoped-models-removal-source-673668cd.md`
+- target: `wiki/prd-coding-agent-scoped-models-removal.md`
+- warning_count: `0`
+

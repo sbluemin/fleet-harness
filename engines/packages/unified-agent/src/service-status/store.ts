@@ -235,7 +235,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
       accept: 'application/json',
-      'user-agent': 'fleet-harness/status',
+      'user-agent': 'fleet-agent/status',
     },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
