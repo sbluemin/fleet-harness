@@ -6,10 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { openBrowser } from "./browser.js";
-import { acquireLockFile, isProcessAlive, LockExistsError, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
+import { isProcessAlive, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
 import type { FleetWikiLock } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";
-import { isLockTrustworthyForRestart } from "./stale.js";
+import { isLockTrustworthyForRestart, isStaleLock } from "./stale.js";
 
 export type RestartMode = "restart" | "reuse" | "abort";
 export type CliMode = "run" | "stop" | "help";
@@ -21,7 +21,7 @@ export interface RestartDecision {
 
 export type HealthyLockWaitOptions =
   | { trust: "owned" }
-  | { trust: "existing"; cwd: string };
+  | { trust: "existing" };
 
 export interface HealthyLockTrustDecision {
   trusted: boolean;
@@ -30,7 +30,6 @@ export interface HealthyLockTrustDecision {
 
 interface CliArgs {
   mode: CliMode;
-  host?: string;
   port?: number;
 }
 
@@ -41,30 +40,25 @@ const HEALTH_INTERVAL_MS = 150;
 const TRAMPOLINE_ENV = "FLEET_WIKI_TRAMPOLINED";
 const SIGNAL_EXIT_FALLBACK_MS = 1000;
 
-const INVALID_HOST_PATTERN = /[\x00-\x1f\x7f\s]/;
-const WILDCARD_BIND_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
 const HELP_TEXT = [
   "Fleet Wiki 웹서버 실행/종료 도구",
   "",
   "사용법:",
-  "  fleet-wiki [--host <host>] [--port <port>]",
+  "  fleet-wiki [--port <port>]",
   "  fleet-wiki --stop",
   "  fleet-wiki --help",
   "",
   "옵션:",
-  "  --host <host>   서버 바인드 호스트를 지정합니다.",
   "  --port <port>   서버 포트를 지정합니다.",
-  "  --stop          현재 CWD에서 실행 중인 Fleet Wiki 웹서버를 종료합니다.",
+  "  --stop          사용자 Fleet Wiki daemon 전체를 종료합니다.",
   "  --help          이 도움말을 출력합니다.",
   "",
   "환경변수:",
   "  FLEET_WIKI_PORT             기본 포트를 지정합니다.",
-  "  FLEET_WIKI_HOST             기본 호스트를 지정합니다.",
   "  FLEET_WIKI_NO_AUTO_RESTART  기존 서버 자동 재시작을 비활성화합니다.",
   "",
   "예시:",
   "  fleet-wiki",
-  "  fleet-wiki --host 0.0.0.0 --port 4040",
   "  FLEET_WIKI_PORT=4040 fleet-wiki",
   "  fleet-wiki --stop",
 ].join("\n");
@@ -77,28 +71,6 @@ export function parseCliArgs(argv: string[]): CliArgs {
       result.mode = "help";
     } else if (arg === "--stop") {
       result.mode = "stop";
-    } else if (arg === "--host") {
-      const value = argv[i + 1];
-      if (!value || value.startsWith("--")) {
-        process.stderr.write("--host requires a value\n");
-        process.exit(1);
-        return result;
-      }
-      i += 1;
-      if (INVALID_HOST_PATTERN.test(value) || value.length === 0) {
-        process.stderr.write(`--host 값이 올바르지 않습니다: ${JSON.stringify(value)}\n`);
-        process.exit(1);
-        return result;
-      }
-      result.host = value;
-    } else if (arg.startsWith("--host=")) {
-      const value = arg.slice("--host=".length);
-      if (INVALID_HOST_PATTERN.test(value) || value.length === 0) {
-        process.stderr.write(`--host 값이 올바르지 않습니다: ${JSON.stringify(value)}\n`);
-        process.exit(1);
-        return result;
-      }
-      result.host = value;
     } else if (arg === "--port") {
       const raw = argv[i + 1];
       if (!raw || raw.startsWith("--")) {
@@ -138,12 +110,13 @@ export function evaluateRestartDecision(
   health: { ok: boolean; cwd: string | null },
   noAutoRestart: boolean,
   host?: string,
+  stale = false,
 ): RestartDecision {
   const trust = isLockTrustworthyForRestart(existing, cwd, health.cwd, host);
   if (!trust.trusted) {
     return { mode: "abort", reason: trust.reason };
   }
-  if (noAutoRestart) {
+  if (noAutoRestart || !stale) {
     return { mode: "reuse" };
   }
   return { mode: "restart" };
@@ -161,7 +134,7 @@ export function evaluateHealthyLockTrust(
   if (options.trust === "owned") {
     return { trusted: true };
   }
-  const trust = isLockTrustworthyForRestart(lock, options.cwd, health.cwd, host);
+  const trust = isLockTrustworthyForRestart(lock, "", health.cwd, host);
   return trust.trusted ? { trusted: true } : { trusted: false, reason: trust.reason };
 }
 
@@ -174,7 +147,7 @@ export async function main(): Promise<void> {
 
   const cwd = path.resolve(process.cwd());
   if (cliArgs.mode === "stop") {
-    await stopServerForCurrentCwd(cwd);
+    await stopDaemon();
     return;
   }
 
@@ -194,11 +167,12 @@ export async function main(): Promise<void> {
     return;
   }
 
-  const host = cliArgs.host ?? configuredHost();
+  const host = DEFAULT_HOST;
   const port = cliArgs.port ?? configuredPort();
-  const lockPath = lockFilePath(cwd);
+  const lockPath = lockFilePath();
   const lock = await ensureServer(cwd, lockPath, host, port);
-  await openBrowser(serverUrl(resolveClientHost(lock.host ?? DEFAULT_HOST), lock.port));
+  const workspace = await registerWorkspace(lock, cwd);
+  await openBrowser(`${serverUrl(lock.host, lock.port)}${workspace.urlPath}`);
 }
 
 export function findLocalCliMjs(cwd: string): string | null {
@@ -228,17 +202,12 @@ function printHelp(): void {
   process.stdout.write(`${HELP_TEXT}\n`);
 }
 
-async function stopServerForCurrentCwd(cwd: string): Promise<void> {
-  const lockPath = lockFilePath(cwd);
+async function stopDaemon(): Promise<void> {
+  const lockPath = lockFilePath();
   const lock = await readLockFile(lockPath);
   if (!lock) {
-    process.stderr.write("현재 CWD에서 실행 중인 Fleet Wiki 서버 lock을 찾지 못했습니다.\n");
+    process.stderr.write("실행 중인 Fleet Wiki daemon lock을 찾지 못했습니다.\n");
     return;
-  }
-  if (path.resolve(lock.cwd) !== cwd) {
-    throw new Error(
-      `현재 CWD와 lock cwd가 다릅니다. 종료를 중단합니다. (current=${cwd}, lock=${lock.cwd})`,
-    );
   }
   if (!Number.isInteger(lock.pid) || lock.pid <= 1) {
     process.stderr.write(
@@ -249,66 +218,58 @@ async function stopServerForCurrentCwd(cwd: string): Promise<void> {
   }
   if (!isProcessAlive(lock.pid)) {
     await removeLockFile(lockPath);
-    process.stderr.write(`Fleet Wiki 서버(pid=${lock.pid})는 이미 종료되어 있습니다.\n`);
+    process.stderr.write(`Fleet Wiki daemon(pid=${lock.pid})은 이미 종료되어 있습니다.\n`);
     return;
   }
   await killServer(lock.pid);
   if (isProcessAlive(lock.pid)) {
-    throw new Error(`Fleet Wiki 서버(pid=${lock.pid})를 종료하지 못했습니다.`);
+    throw new Error(`Fleet Wiki daemon(pid=${lock.pid})을 종료하지 못했습니다.`);
   }
   await removeLockFile(lockPath);
 }
 
 async function ensureServer(cwd: string, lockPath: string, host: string, port: number): Promise<FleetWikiLock> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await acquireLockFile(lockPath, {
-        pid: process.pid,
-        port: 0,
-        cwd,
-        startedAt: new Date().toISOString(),
-        host,
-      });
-      spawnDetachedServer(cwd, lockPath, port, host);
-      return waitForHealthyLock(lockPath, { trust: "owned" }, host);
-    } catch (error) {
-      if (!(error instanceof LockExistsError)) throw error;
-      const existing = await readLockFile(lockPath);
-      if (existing && isProcessAlive(existing.pid)) {
-        if (existing.port > 0) {
-          const health = await healthCheck(existing);
-          if (health.ok) {
-            const decision = evaluateRestartDecision(
-              existing, cwd, health,
-              Boolean(process.env.FLEET_WIKI_NO_AUTO_RESTART),
-              host,
-            );
-            if (decision.mode === "reuse") {
-              return existing;
-            }
-            if (decision.mode === "abort") {
-              throw new Error(
-                `기존 lock의 신뢰 검증 실패(${decision.reason}) — 재기동할 수 없습니다. ` +
-                `lock 파일을 수동으로 삭제한 후 다시 실행하세요.`,
-              );
-            }
-            process.stderr.write(`기존 서버(pid=${existing.pid})를 종료 후 재기동합니다.\n`);
-            await killServer(existing.pid);
-            await removeLockFile(lockPath);
-            continue;
+    const existing = await readLockFile(lockPath);
+    if (existing && isProcessAlive(existing.pid)) {
+      if (existing.port > 0) {
+        const health = await healthCheck(existing);
+        if (health.ok) {
+          const decision = evaluateRestartDecision(
+            existing, cwd, health,
+            Boolean(process.env.FLEET_WIKI_NO_AUTO_RESTART),
+            host,
+            await isExistingDaemonStale(existing),
+          );
+          if (decision.mode === "reuse") {
+            return existing;
           }
+          if (decision.mode === "abort") {
+            throw new Error(
+              `기존 lock의 신뢰 검증 실패(${decision.reason}) — 재기동할 수 없습니다. ` +
+              `lock 파일을 수동으로 삭제한 후 다시 실행하세요.`,
+            );
+          }
+          process.stderr.write(`기존 서버(pid=${existing.pid})를 종료 후 재기동합니다.\n`);
+          await killServer(existing.pid);
+          await removeLockFile(lockPath);
+          continue;
         }
-        return waitForHealthyLock(lockPath, { trust: "existing", cwd }, host);
       }
+      return waitForHealthyLock(lockPath, { trust: "existing" }, host);
+    }
+    if (existing) {
       await removeLockFile(lockPath);
     }
+    spawnDetachedServer(cwd, lockPath, port);
+    return waitForHealthyLock(lockPath, { trust: "existing" }, host);
   }
   throw new Error("Fleet Wiki 서버 락을 획득하지 못했습니다.");
 }
 
-function spawnDetachedServer(cwd: string, lockPath: string, port: number, host: string): void {
+function spawnDetachedServer(cwd: string, lockPath: string, port: number): void {
   const serverPath = fileURLToPath(new URL("./server.mjs", import.meta.url));
-  const child = spawn(process.execPath, [serverPath, "--cwd", cwd, "--lock", lockPath, "--port", String(port), "--host", host], {
+  const child = spawn(process.execPath, [serverPath, "--cwd", cwd, "--lock", lockPath, "--port", String(port)], {
     cwd,
     detached: true,
     stdio: "ignore",
@@ -341,13 +302,42 @@ async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOpti
 
 async function healthCheck(lock: FleetWikiLock): Promise<{ ok: boolean; cwd: string | null }> {
   try {
-    const response = await fetch(`${serverUrl(resolveClientHost(lock.host ?? DEFAULT_HOST), lock.port)}/api/health`);
+    const response = await fetch(`${serverUrl(lock.host, lock.port)}/api/health`);
     if (response.status !== 200) return { ok: false, cwd: null };
     const body = await response.json() as { ok?: boolean; cwd?: string };
     return { ok: body.ok === true, cwd: typeof body.cwd === "string" ? body.cwd : null };
   } catch {
     return { ok: false, cwd: null };
   }
+}
+
+async function isExistingDaemonStale(lock: FleetWikiLock): Promise<boolean> {
+  try {
+    const serverPath = fileURLToPath(new URL("./server.mjs", import.meta.url));
+    const serverStat = await stat(serverPath);
+    return isStaleLock(lock, serverStat.mtimeMs);
+  } catch {
+    return false;
+  }
+}
+
+async function registerWorkspace(lock: FleetWikiLock, cwd: string): Promise<{ id: string; urlPath: string }> {
+  const response = await fetch(`${serverUrl(lock.host, lock.port)}/api/admin/workspaces`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${lock.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ cwd }),
+  });
+  if (!response.ok) {
+    throw new Error(`Fleet Wiki workspace 등록 실패: HTTP ${response.status}`);
+  }
+  const body = await response.json() as { workspace?: { id?: string; urlPath?: string } };
+  if (!body.workspace?.id || !body.workspace.urlPath) {
+    throw new Error("Fleet Wiki workspace 등록 응답이 올바르지 않습니다.");
+  }
+  return { id: body.workspace.id, urlPath: body.workspace.urlPath };
 }
 
 function configuredPort(): number {
@@ -358,22 +348,6 @@ function configuredPort(): number {
     throw new Error(`FLEET_WIKI_PORT 값이 올바르지 않습니다: ${rawPort}`);
   }
   return port;
-}
-
-export function configuredHost(): string {
-  const rawHost = process.env.FLEET_WIKI_HOST;
-  if (!rawHost) return DEFAULT_HOST;
-  if (INVALID_HOST_PATTERN.test(rawHost) || rawHost.length === 0) {
-    process.stderr.write(`FLEET_WIKI_HOST 값이 올바르지 않습니다: ${JSON.stringify(rawHost)}\n`);
-    process.exit(1);
-  }
-  return rawHost;
-}
-
-export function resolveClientHost(bindHost: string): string {
-  if (bindHost === "0.0.0.0") return "127.0.0.1";
-  if (bindHost === "::" || bindHost === "0:0:0:0:0:0:0:0") return "::1";
-  return bindHost;
 }
 
 export function formatHostForUrl(host: string): string {

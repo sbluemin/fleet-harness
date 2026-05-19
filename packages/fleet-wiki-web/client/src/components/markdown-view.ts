@@ -4,6 +4,7 @@ import { renderMarkdown } from "../markdown/renderer";
 import type { TocItem } from "../markdown/renderer";
 import type { WikiEntryResponse, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
+import { entryPath } from "../router";
 
 export interface MarkdownViewRender {
   html: string;
@@ -16,7 +17,7 @@ const ARROW_ICON = `
   </svg>
 `;
 
-export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null): string {
+export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null, hasWorkspace = true): string {
   const total = entries.length;
   const featured = entries.slice(0, 6);
   const firstEntry = entries[0] ?? null;
@@ -28,12 +29,13 @@ export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null): st
       </header>
       <div class="welcome-divider"></div>
       <p class="lead">${t("markdown.welcomeLead")}</p>
+      ${hasWorkspace ? "" : `<p class="error-box">No workspace is registered in this daemon. Re-run <code>fleet-wiki</code> in the target directory.</p>`}
       <div class="workspace-meta">
         <span class="chip chip-aurora">${t("markdown.entriesCount", { n: total })}</span>
         ${cwd ? `<span class="workspace-path">${escapeHtml(cwd)}</span>` : ""}
       </div>
       ${firstEntry ? `
-        <a class="primary-link" href="/entry/${encodeURIComponent(firstEntry.id)}" data-entry-id="${escapeAttribute(firstEntry.id)}">
+        <a class="primary-link" href="${escapeAttribute(entryPath(firstEntry.id))}" data-entry-id="${escapeAttribute(firstEntry.id)}">
           <span>${t("markdown.openFirstPrefix")} ${escapeHtml(firstEntry.title)}</span>
           ${ARROW_ICON}
         </a>
@@ -41,7 +43,7 @@ export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null): st
       ${featured.length > 0 ? `
         <div class="welcome-grid">
           ${featured.map((entry) => `
-            <a class="welcome-card" href="/entry/${encodeURIComponent(entry.id)}" data-entry-id="${escapeAttribute(entry.id)}">
+            <a class="welcome-card" href="${escapeAttribute(entryPath(entry.id))}" data-entry-id="${escapeAttribute(entry.id)}">
               <strong>${escapeHtml(entry.title)}</strong>
               <span class="welcome-card-tags">${renderTagChips(entry.tags.slice(0, 3))}</span>
             </a>

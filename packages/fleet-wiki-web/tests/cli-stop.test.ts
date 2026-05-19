@@ -31,8 +31,9 @@ describe("main --stop", () => {
       readLockFile: vi.fn(async () => ({
         pid: 0,
         port: 3737,
-        cwd: process.cwd(),
+        host: "127.0.0.1",
         startedAt: "2026-05-07T00:00:00.000Z",
+        token: "test-token",
       })),
       removeLockFile,
       acquireLockFile: vi.fn(),
@@ -60,8 +61,9 @@ describe("main --stop", () => {
       readLockFile: vi.fn(async () => ({
         pid: 43210,
         port: 3737,
-        cwd: process.cwd(),
+        host: "127.0.0.1",
         startedAt: "2026-05-07T00:00:00.000Z",
+        token: "test-token",
       })),
       removeLockFile,
       acquireLockFile: vi.fn(),
@@ -75,7 +77,7 @@ describe("main --stop", () => {
     expect(isProcessAlive).toHaveBeenCalledWith(43210);
     expect(removeLockFile).toHaveBeenCalledWith("/tmp/fleet-wiki-test.lock");
     expect(process.stderr.write).toHaveBeenCalledWith(
-      "Fleet Wiki 서버(pid=43210)는 이미 종료되어 있습니다.\n",
+      "Fleet Wiki daemon(pid=43210)은 이미 종료되어 있습니다.\n",
     );
   });
 });

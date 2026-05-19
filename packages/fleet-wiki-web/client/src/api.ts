@@ -5,6 +5,20 @@ export interface HealthResponse {
   knowledgeRoot: string;
 }
 
+export interface WorkspaceMetadata {
+  id: string;
+  cwd: string;
+  label: string;
+  registeredAt: string;
+  lastOpenedAt: string;
+  urlPath: string;
+}
+
+export interface WorkspacesResponse {
+  currentWorkspaceId: string | null;
+  workspaces: WorkspaceMetadata[];
+}
+
 export interface WikiIndexEntry {
   id: string;
   title: string;
@@ -159,19 +173,23 @@ export interface PatchDetailResponse {
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  return fetchJson<HealthResponse>("/api/health");
+  return fetchJson<HealthResponse>(apiPath("/health"));
+}
+
+export async function fetchWorkspaces(): Promise<WorkspacesResponse> {
+  return fetchJson<WorkspacesResponse>(apiPath("/workspaces"));
 }
 
 export async function fetchIndex(): Promise<WikiIndexEntry[]> {
-  return fetchJson<WikiIndexEntry[]>("/api/index");
+  return fetchJson<WikiIndexEntry[]>(apiPath("/index"));
 }
 
 export async function fetchIndexMarkdown(): Promise<string> {
-  return fetchText("/api/index-md");
+  return fetchText(apiPath("/index-md"));
 }
 
 export async function fetchEntry(id: string): Promise<WikiEntryResponse> {
-  return fetchJson<WikiEntryResponse>(`/api/entry/${encodeURIComponent(id)}`);
+  return fetchJson<WikiEntryResponse>(apiPath(`/entry/${encodeURIComponent(id)}`));
 }
 
 export async function fetchSearch(query: string, tags: string[] = [], enhanced = false): Promise<BriefingHit[]> {
@@ -180,40 +198,46 @@ export async function fetchSearch(query: string, tags: string[] = [], enhanced =
   if (tags.length > 0) params.set("tags", tags.join(","));
   if (enhanced) params.set("enhanced", "true");
   const suffix = params.toString();
-  return fetchJson<BriefingHit[]>(`/api/search${suffix ? `?${suffix}` : ""}`);
+  return fetchJson<BriefingHit[]>(apiPath(`/search${suffix ? `?${suffix}` : ""}`));
 }
 
 export async function fetchRaw(ref: string): Promise<string> {
-  return fetchText(`/api/raw?ref=${encodeURIComponent(ref)}`);
+  return fetchText(apiPath(`/raw?ref=${encodeURIComponent(ref)}`));
 }
 
 export async function fetchQueueList(status: "pending" | "archived" | "all"): Promise<QueueListResponse> {
-  return fetchJson<QueueListResponse>(`/api/queue?status=${encodeURIComponent(status)}`);
+  return fetchJson<QueueListResponse>(apiPath(`/queue?status=${encodeURIComponent(status)}`));
 }
 
 export async function fetchPatchDetail(patchId: string): Promise<PatchDetailResponse> {
-  return fetchJson<PatchDetailResponse>(`/api/queue/${encodeURIComponent(patchId)}`);
+  return fetchJson<PatchDetailResponse>(apiPath(`/queue/${encodeURIComponent(patchId)}`));
 }
 
 export async function approveQueuePatch(patchId: string): Promise<{ ok: true; meta: PatchMetaData }> {
-  return postJson<{ ok: true; meta: PatchMetaData }>(`/api/queue/${encodeURIComponent(patchId)}/approve`, {});
+  return postJson<{ ok: true; meta: PatchMetaData }>(apiPath(`/queue/${encodeURIComponent(patchId)}/approve`), {});
 }
 
 export async function rejectQueuePatch(patchId: string, reason: string): Promise<{ ok: true; meta: PatchMetaData }> {
-  return postJson<{ ok: true; meta: PatchMetaData }>(`/api/queue/${encodeURIComponent(patchId)}/reject`, { reason });
+  return postJson<{ ok: true; meta: PatchMetaData }>(apiPath(`/queue/${encodeURIComponent(patchId)}/reject`), { reason });
 }
 
 export async function fetchConflicts(): Promise<ConflictListItem[]> {
-  return fetchJson<ConflictListItem[]>("/api/conflicts");
+  return fetchJson<ConflictListItem[]>(apiPath("/conflicts"));
 }
 
 export async function fetchConflictDetail(id: string): Promise<ConflictDetailResponse> {
-  return fetchJson<ConflictDetailResponse>(`/api/conflicts/${encodeURIComponent(id)}`);
+  return fetchJson<ConflictDetailResponse>(apiPath(`/conflicts/${encodeURIComponent(id)}`));
 }
 
 export async function fetchLog(limit?: number): Promise<LogResponse> {
   const suffix = typeof limit === "number" ? `?limit=${encodeURIComponent(String(limit))}` : "";
-  return fetchJson<LogResponse>(`/api/log${suffix}`);
+  return fetchJson<LogResponse>(apiPath(`/log${suffix}`));
+}
+
+function apiPath(path: string): string {
+  const match = window.location.pathname.match(/^\/w\/([^/]+)(?:\/|$)/);
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return match ? `/w/${encodeURIComponent(decodeURIComponent(match[1] ?? ""))}/api${normalized}` : `/api${normalized}`;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {

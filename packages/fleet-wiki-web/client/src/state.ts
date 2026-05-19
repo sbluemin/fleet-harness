@@ -7,6 +7,7 @@ import {
   fetchIndexMarkdown,
   fetchLog,
   fetchQueueList,
+  fetchWorkspaces,
 } from "./api";
 import type {
   BriefingHit,
@@ -16,6 +17,7 @@ import type {
   LogResponse,
   WikiEntryResponse,
   WikiIndexEntry,
+  WorkspaceMetadata,
 } from "./api";
 
 export interface AppState {
@@ -31,6 +33,8 @@ export interface AppState {
   error: string | null;
   recentIds: string[];
   pendingPatchCount: number;
+  currentWorkspaceId: string | null;
+  workspaces: WorkspaceMetadata[];
 }
 
 type StateListener = (state: AppState) => void;
@@ -50,6 +54,8 @@ const state: AppState = {
   error: null,
   recentIds: readRecentIds(),
   pendingPatchCount: 0,
+  currentWorkspaceId: null,
+  workspaces: [],
 };
 
 export function getState(): AppState {
@@ -64,15 +70,18 @@ export function subscribeState(listener: StateListener): () => void {
 export async function loadInitialData(): Promise<void> {
   setState({ loading: true, error: null });
   try {
-    const [health, index, queueList] = await Promise.all([
+    const [health, index, queueList, workspaces] = await Promise.all([
       fetchHealth(),
       fetchIndex(),
       fetchQueueList("pending").catch(() => null),
+      fetchWorkspaces().catch(() => null),
     ]);
     setState({
       health,
       index,
       pendingPatchCount: queueList?.pendingCount ?? 0,
+      currentWorkspaceId: workspaces?.currentWorkspaceId ?? null,
+      workspaces: workspaces?.workspaces ?? [],
       loading: false,
     });
   } catch (error) {

@@ -1,12 +1,12 @@
 # fleet-wiki-web Doctrine
 
-`packages/fleet-wiki-web` is a standalone web surface for Fleet Wiki workspaces.
+`packages/fleet-wiki-web` is a standalone web surface for Fleet Wiki workspaces. It runs one per-user daemon that can serve multiple registered workspaces concurrently.
 
 ## Owns
 
 - The `fleet-wiki` CLI entry point. 글로벌 `fleet-wiki` CLI 진입점은 `process.cwd()`에서 부모 방향으로 가장 가까운 `packages/fleet-wiki-web/dist/cli.mjs`를 탐색해 자기 자신과 다르면 그 경로로 재spawn(`spawnSync`, `stdio: inherit`)한다. 이를 통해 git worktree 안에서도 worktree-local dist가 자동 사용된다. 무한 재spawn은 경로 비교 + `FLEET_WIKI_TRAMPOLINED=1` 보조 가드로 방지.
-- The detached local HTTP server for Fleet Wiki browsing.
-- Web API routing, PID/port lock handling, browser launch helpers, and the standalone Vite client SPA.
+- The detached per-user local HTTP daemon for Fleet Wiki browsing.
+- Web API routing, daemon PID/port lock handling, in-memory workspace registration, browser launch helpers, and the standalone Vite client SPA.
 - The full visual identity of the Fleet Wiki reading experience — typography, color, spatial composition, motion, and atmosphere.
 
 ## Must Not Own
@@ -28,18 +28,21 @@
 ## Link Syntax Standard
 
 - Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard defined in `@sbluemin/fleet-wiki/src/links.ts`).
-- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to `/entry/foo` SPA links with `data-entry-id` attributes. The pattern is **inlined** with an SSoT comment — the client must never `import` from `@sbluemin/fleet-wiki` because that package's Node-only modules (`fs`/`path`/`crypto`) would break the Vite browser bundle.
+- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to the current workspace's `/w/:ws/entry/foo` SPA links with `data-entry-id` attributes. The pattern is **inlined** with an SSoT comment — the client must never `import` from `@sbluemin/fleet-wiki` because that package's Node-only modules (`fs`/`path`/`crypto`) would break the Vite browser bundle.
 - Legacy markdown links `[title](entry.md)` remain readable but trigger `legacy_markdown_wiki_link` warning in `wiki_drydock`.
 
 ## SPA Routes
 
-- `/` — Welcome / index landing.
-- `/entry/:id` — Entry markdown view with related/manifest panels and copy-context actions.
-- `/raw/:ref` — Raw source viewer (untrusted boundary indicator).
-- `/queue` — Drydock pending list. `/queue/:patchId` — patch detail with patch-set membership and approve/reject.
-- `/conflicts` — Conflict list (read from `.fleet/knowledge/conflicts/`). `/conflicts/:id` — conflict detail showing `current.md` vs `proposed.md` plus raw source.
-- `/index-md` — `wiki/index.md` rendered as a deterministic catalog.
-- `/log?limit=N` — Tail of `log.md` ingest/patch/drydock/rebuild events.
+- `/` — Welcome / index landing, including the expired-workspace notice when a stale workspace URL redirects home.
+- `/w/:ws/` — Canonical workspace Welcome / index landing.
+- `/w/:ws/entry/:id` — Entry markdown view with related/manifest panels and copy-context actions.
+- `/w/:ws/raw/:ref` — Raw source viewer (untrusted boundary indicator).
+- `/w/:ws/queue` — Drydock pending list. `/w/:ws/queue/:patchId` — patch detail with patch-set membership and approve/reject.
+- `/w/:ws/conflicts` — Conflict list (read from the selected workspace's `.fleet/knowledge/conflicts/`). `/w/:ws/conflicts/:id` — conflict detail showing `current.md` vs `proposed.md` plus raw source.
+- `/w/:ws/index-md` — `wiki/index.md` rendered as a deterministic catalog.
+- `/w/:ws/log?limit=N` — Tail of `log.md` ingest/patch/drydock/rebuild events.
+- Legacy routes (`/entry/:id`, `/raw/:ref`, `/queue`, `/conflicts`, `/index-md`, `/log`) redirect to the MRU workspace when one exists. If no MRU exists, navigations redirect to `/` and JSON/XHR clients receive `404 no_workspace_registered`.
+- Canonical API routes live under `/w/:ws/api/...`; legacy `/api/...` resolves through MRU when registered.
 
 ## Copy-Context Actions
 
@@ -61,7 +64,7 @@ Server response (static + API) attaches:
 - `Referrer-Policy: no-referrer`
 - `Cache-Control: no-store`
 
-POST Origin guard, DOMPurify XSS sanitization (`javascript:`/`data:` blocked), `O_EXCL` lockfile creation, and path-traversal containment all remain unchanged.
+POST Origin guard for browser-facing queue mutations, lockfile bearer auth for CLI-only `POST /api/admin/workspaces`, DOMPurify XSS sanitization (`javascript:`/`data:` blocked), `O_EXCL` lockfile creation, and path-traversal containment all remain unchanged.
 
 ## Build Output
 
@@ -189,8 +192,8 @@ A change in `client/` should be flagged by reviewers if it does any of the follo
 8. Disables or removes the `prefers-reduced-motion` short-circuit.
 9. Uses aurora as a primary fill on the op-badge — op-badge must remain brass-primary with glyph+label as the sole distinguishing signal between CREATE and UPDATE.
 
-10. Add a POST handler outside the `/api/queue/:id/approve|reject` whitelist.
-11. Bypass or weaken the `Origin` header guard on POST handlers — same-origin `http://127.0.0.1:${port}` check is the CSRF defense; removing it is a security regression.
+10. Add a POST handler outside the `/api/queue/:id/approve|reject` whitelist, except `POST /api/admin/workspaces` when authenticated by the daemon lockfile bearer token.
+11. Bypass or weaken the `Origin` header guard on queue POST handlers — same-origin `http://127.0.0.1:${port}` check is the CSRF defense; removing it is a security regression. The CLI-only admin registration POST uses bearer auth instead and must not replace the queue Origin guard.
 12. Translate branded Maritime Codex vocabulary in any locale dictionary or component — the following must remain identical in both `ko` and `en` dictionaries and must not be localized as user-visible prose: `CONTENTS`, `MANIFEST`, `Drydock`, `Codex`, `Maritime Codex`, `Manifest · Raw Source`, `MANIFEST · CODEX`, `MANIFEST · PATCH`, `MANIFEST · DRYDOCK`, `MANIFEST · DIAGRAM`, `Fleet · Codex`.
 13. Set Mermaid `securityLevel: "loose"`, call Mermaid `bindFunctions`, relax the CSP in `src/security-headers.ts`, expand the global markdown `sanitizeConfig` with SVG profiles to accommodate diagrams, or change Mermaid `look` away from `"handDrawn"` (e.g. to `"classic"`) — the hand-drawn sketchy stroke is a visual-consistency invariant of the diagram block. The Mermaid hydrator's isolated SVG sanitize must remain confined to `client/src/markdown/diagrams.ts`.
 14. Inserting `.toc-panel` as a grid column inside `<article class="document">` to reduce content width — the `.document-with-toc` pattern is strictly forbidden. ToC must remain in the right rail.
@@ -203,13 +206,13 @@ The web surface is a defense-in-depth layer over the `fleet-wiki` leaf package. 
 
 - **Path traversal defense.** `src/routes.ts` validates entry IDs with `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` and rejects encoded slashes before any fleet-wiki call. The same file's `resolveSafeRawPath()` enforces that `/api/raw?ref=...` payloads start with `raw/`, contain no traversal segments, and resolve to an absolute path that is contained inside `paths.rawDir`; fleet-wiki cannot expose `assertSafeRawSourceRef` due to leaf doctrine, so this contained-by-`raw/` check is the package's own first-line defense. `SAFE_PATCH_ID` (`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{3}Z-[0-9a-f]{8}$`) gates every `/api/queue/:patchId` call; `resolveSafeQueuePath()` enforces containment inside `queueDir` or `archiveDir` before any file read. Tests under `tests/security-routes.test.ts`.
 - **Markdown XSS defense.** `client/src/markdown/renderer.ts` runs every `marked` output through DOMPurify with a `javascript:`/`data:` scheme block and only then injects via `innerHTML`. Tests under `tests/security-markdown.test.ts`.
-- **Method whitelist.** Top-level request handler accepts only `GET`, `HEAD`, and `POST`. POST is restricted to the `/api/queue/:patchId/approve|reject` whitelist with strict `Origin: http://127.0.0.1:${port}` header equality. All other paths receiving POST return `405` with `Allow: GET, HEAD`. Non-POST/GET/HEAD methods return `405` with `Allow: GET, HEAD, POST`. Malformed URLs return `400` instead of throwing an unhandled rejection.
-- **Lockfile.** Per-user lock directory at `0700`, lockfile at `0600` opened with `wx`, symlinks rejected via `lstat`. `src/lock.ts` and `tests/security-lock.test.ts`.
+- **Method whitelist.** Top-level request handler accepts only `GET`, `HEAD`, and `POST`. Browser-facing POST is restricted to the `/api/queue/:patchId/approve|reject` whitelist with strict `Origin: http://127.0.0.1:${port}` header equality. The only non-queue POST exception is CLI-only `POST /api/admin/workspaces`, which requires `Authorization: Bearer <lockfile token>`. All other paths receiving POST return `405` with `Allow: GET, HEAD`. Non-POST/GET/HEAD methods return `405` with `Allow: GET, HEAD, POST`. Malformed URLs return `400` instead of throwing an unhandled rejection.
+- **Lockfile.** Per-user daemon lock directory at `0700`, lockfile `/tmp/fleet-wiki-{uid}/fleet-wiki-daemon.lock` at `0600` opened with `wx`, symlinks rejected via `lstat`. The payload is runtime-only: `{pid, port, host, startedAt, token}`. Workspace metadata is daemon memory only and is never persisted in the lockfile. `src/lock.ts` and `tests/security-lock.test.ts`.
 - **CORS / binding.** Server binds to `127.0.0.1` only and never sets `Access-Control-Allow-Origin: *`. Adding either is a regression.
 - **SPA fallback.** Static-file misses fall back to `client/index.html` only when (a) the path does not start with `/api/` or `/assets/` and (b) the path has no file extension. This is the discipline that lets `/entry/:id` and `/raw/:ref` survive a hard refresh or new-tab open without breaking the API/asset 404 contracts.
 - **Stale server auto-restart.** When `fleet-wiki` CLI reuses an existing lock (`isProcessAlive` + health check pass), it additionally compares `lock.startedAt` with `dist/server.mjs` mtime via `isStaleLock()` (`src/stale.ts`). If the lock predates the current build, it sends SIGTERM (200ms grace, then SIGKILL), removes the lock, and respawns. This ensures a newly built dist is always served. Set `FLEET_WIKI_NO_AUTO_RESTART=1` to suppress and reuse the old server regardless of build age.
 - **Queue counts invariant.** `GET /api/queue` always fetches both pending and archive listings regardless of the `status` query parameter. `pendingCount` and `archivedCount` in the response reflect actual listing sizes — they never silently drop to 0 because of the status filter. The `items` array is filtered by status; the counts are not.
-- **POST method whitelist.** The server accepts `GET`, `HEAD`, and `POST`. Within POST, only two routes are whitelisted: `POST /api/queue/:patchId/approve` and `POST /api/queue/:patchId/reject`. Every other path receiving POST returns `405` with `Allow: GET, HEAD`. Each POST handler requires the `Origin` header to equal exactly `http://127.0.0.1:${port}` — missing or mismatched origin returns `403 origin_mismatch`. This is the CSRF defense for this single-user local server (no CSRF tokens needed; Origin is sufficient). Body is limited to 1 KB; reason 1–256 characters (after trim). Do not add POST handlers outside this whitelist.
+- **POST method whitelist.** The server accepts `GET`, `HEAD`, and `POST`. Within browser-facing POST, only two routes are whitelisted: `POST /api/queue/:patchId/approve` and `POST /api/queue/:patchId/reject`. Each queue POST handler requires the `Origin` header to equal exactly `http://127.0.0.1:${port}` — missing or mismatched origin returns `403 origin_mismatch`. CLI-only `POST /api/admin/workspaces` is the sole exception and requires the daemon lockfile bearer token. Body is limited to 1 KB; reject reason is 1–256 characters (after trim). Do not add broad POST handlers beyond these explicit routes.
 
 Do not relax any of these guards in the name of design or developer convenience.
 

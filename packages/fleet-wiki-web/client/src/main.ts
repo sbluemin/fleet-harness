@@ -35,6 +35,7 @@ import {
   logPath,
   navigate,
   subscribeRoute,
+  workspaceHomePath,
 } from "./router";
 import type { Route } from "./router";
 import {
@@ -71,6 +72,7 @@ subscribeRoute((route) => {
 });
 
 document.addEventListener("click", handleDocumentClick);
+document.addEventListener("change", handleDocumentChange);
 document.addEventListener("submit", handleDocumentSubmit);
 installDiagramHydrator(document.body);
 void boot();
@@ -163,7 +165,7 @@ function renderAppShell(state: AppState, route: Route): void {
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
       </button>
-      ${renderNavTree(state.index, currentId, state.pendingPatchCount, window.location.pathname)}
+      ${renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname)}
       <main class="content">
         ${renderMainContent(state, route, renderedEntry)}
       </main>
@@ -196,7 +198,7 @@ function renderMainContent(state: AppState, route: Route, renderedEntry: Markdow
   if (state.currentEntry && renderedEntry) {
     return renderedEntry.html;
   }
-  return renderWelcome(state.index, state.health?.cwd ?? null);
+  return renderWelcome(state.index, state.health?.cwd ?? null, Boolean(state.currentWorkspaceId));
 }
 
 function renderRailContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
@@ -327,6 +329,15 @@ function handleDocumentSubmit(event: SubmitEvent): void {
   }
 }
 
+function handleDocumentChange(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  if (target.dataset.action !== "switch-workspace") return;
+  if (!target.value) return;
+  navigate(workspaceHomePath(target.value));
+  window.location.reload();
+}
+
 async function copyCode(button: HTMLElement): Promise<void> {
   const block = button.closest<HTMLElement>(".code-block");
   const code = block?.dataset.code ?? "";
@@ -363,11 +374,12 @@ function internalSpaPath(anchor: HTMLAnchorElement): string | null {
   const url = new URL(rawHref, window.location.origin);
   if (url.origin !== window.location.origin) return null;
   if (url.pathname === "/") return "/";
+  if (url.pathname.match(/^\/w\/[^/]+(\/|$)/)) return url.pathname + url.search;
   if (url.pathname.startsWith("/entry/")) return url.pathname;
   if (url.pathname.startsWith("/raw/")) return url.pathname;
   if (url.pathname.startsWith("/queue")) return url.pathname + url.search;
   if (url.pathname.startsWith("/conflicts")) return url.pathname + url.search;
-  if (url.pathname === "/index" || url.pathname === "/log") return url.pathname + url.search;
+  if (url.pathname === "/index" || url.pathname === "/index-md" || url.pathname === "/log") return url.pathname + url.search;
   if (!url.pathname.endsWith(".md")) return null;
   const fileName = url.pathname.split("/").pop() ?? "";
   const id = decodeURIComponent(fileName.replace(/\.md$/, ""));

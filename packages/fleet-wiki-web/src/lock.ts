@@ -7,9 +7,9 @@ import path from "node:path";
 export interface FleetWikiLock {
   pid: number;
   port: number;
-  cwd: string;
+  host: string;
   startedAt: string;
-  host?: string;
+  token: string;
 }
 
 export class LockExistsError extends Error {
@@ -20,7 +20,7 @@ export class LockExistsError extends Error {
 }
 
 const LOCK_PREFIX = "fleet-wiki";
-const LOCK_EXTENSION = ".lock";
+const DAEMON_LOCK_FILENAME = "fleet-wiki-daemon.lock";
 const LOCK_DIR_MODE = 0o700;
 const LOCK_FILE_MODE = 0o600;
 
@@ -29,11 +29,19 @@ export function workspaceHash(cwd: string): string {
 }
 
 export function lockDirectoryPath(): string {
-  return path.join(os.tmpdir(), `${LOCK_PREFIX}-${userLockOwner()}`);
+  return path.join("/tmp", `${LOCK_PREFIX}-${userLockOwner()}`);
 }
 
-export function lockFilePath(cwd: string): string {
-  return path.join(lockDirectoryPath(), `${LOCK_PREFIX}-${workspaceHash(cwd)}${LOCK_EXTENSION}`);
+export function lockFilePath(): string {
+  return daemonLockFilePath();
+}
+
+export function daemonLockFilePath(): string {
+  return path.join(lockDirectoryPath(), DAEMON_LOCK_FILENAME);
+}
+
+export function createDaemonToken(): string {
+  return crypto.randomBytes(32).toString("base64url");
 }
 
 export async function ensureLockDirectory(): Promise<string> {

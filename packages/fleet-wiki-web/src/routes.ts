@@ -21,6 +21,9 @@ import { PATCH_FILENAME, PATCH_META_FILENAME } from "@sbluemin/fleet-wiki";
 import type { MemoryPaths, PatchMeta, PatchSet, WikiEntry, WikiEntryFrontmatter } from "@sbluemin/fleet-wiki";
 
 import { withSecurityHeaders } from "./security-headers.js";
+import { hasAdminBearer } from "./admin-auth.js";
+import type { WorkspaceRegistry } from "./workspaces.js";
+import { toMetadata } from "./workspaces.js";
 
 interface RouteContext {
   cwd: string;
@@ -29,6 +32,9 @@ interface RouteContext {
   version: string;
   port: number;
   host: string;
+  workspaceId: string;
+  workspaces?: WorkspaceRegistry;
+  adminToken?: string;
 }
 
 interface ConflictListItem {
@@ -154,6 +160,14 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
       version: context.version,
       cwd: context.cwd,
       knowledgeRoot: context.knowledgeRoot,
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/workspaces") {
+    sendJson(response, 200, {
+      currentWorkspaceId: context.workspaceId ?? null,
+      workspaces: context.workspaces?.list() ?? [],
     });
     return;
   }
@@ -359,6 +373,11 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
 }
 
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  if (url.pathname === "/api/admin/workspaces") {
+    await routeAdminWorkspaceRegistration(request, response, context);
+    return;
+  }
+
   const approveMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/approve$/);
   const rejectMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/reject$/);
 
@@ -387,17 +406,67 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
-  if (patchActionLocks.has(patchId)) {
+  const lockKey = `${context.workspaceId}:${patchId}`;
+  if (patchActionLocks.has(lockKey)) {
     sendJson(response, 409, { error: "patch_busy" });
     return;
   }
 
   const actionPromise = runPatchAction(patchId, Boolean(approveMatch), request, response, context);
-  patchActionLocks.set(patchId, actionPromise);
+  patchActionLocks.set(lockKey, actionPromise);
   try {
     await actionPromise;
   } finally {
-    patchActionLocks.delete(patchId);
+    patchActionLocks.delete(lockKey);
+  }
+}
+
+async function routeAdminWorkspaceRegistration(
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: RouteContext,
+): Promise<void> {
+  if (!context.workspaces || !context.adminToken) {
+    sendJson(response, 404, { error: "not_found" });
+    return;
+  }
+  if (!hasAdminBearer(request, context.adminToken)) {
+    sendJson(response, 401, { error: "unauthorized" });
+    return;
+  }
+  const contentType = (request.headers["content-type"] ?? "").toLowerCase();
+  if (!contentType.startsWith("application/json")) {
+    sendJson(response, 415, { error: "unsupported_media_type" });
+    return;
+  }
+  const bodyResult = await readRequestBody(request);
+  if (bodyResult === BODY_TOO_LARGE) {
+    sendJson(response, 413, { error: "payload_too_large" });
+    return;
+  }
+  if (bodyResult === null) {
+    sendJson(response, 400, { error: "invalid_body" });
+    return;
+  }
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(bodyResult) as Record<string, unknown>;
+  } catch {
+    sendJson(response, 400, { error: "invalid_body" });
+    return;
+  }
+  const cwd = typeof body.cwd === "string" ? body.cwd : "";
+  if (!cwd) {
+    sendJson(response, 400, { error: "cwd_required" });
+    return;
+  }
+  try {
+    const workspace = await context.workspaces.register(cwd);
+    sendJson(response, 200, { workspace: toMetadata(workspace) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const status = message === "knowledge_root_missing" ? 400 : 500;
+    sendJson(response, status, { error: message });
   }
 }
 
@@ -481,12 +550,6 @@ async function readRequestBody(request: IncomingMessage): Promise<string | null 
   });
 }
 
-const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
-
-function isWildcardHost(host: string): boolean {
-  return WILDCARD_HOSTS.has(host);
-}
-
 function isOriginAllowed(origin: string, serverHost: string, serverPort: number): boolean {
   let parsed: URL;
   try {
@@ -496,7 +559,6 @@ function isOriginAllowed(origin: string, serverHost: string, serverPort: number)
   }
   if (parsed.protocol !== "http:") return false;
   if (Number(parsed.port) !== serverPort) return false;
-  if (isWildcardHost(serverHost)) return true;
   const hostForCompare = net.isIPv6(serverHost) ? `[${serverHost}]` : serverHost;
   return parsed.hostname === hostForCompare || parsed.host === hostForCompare;
 }
