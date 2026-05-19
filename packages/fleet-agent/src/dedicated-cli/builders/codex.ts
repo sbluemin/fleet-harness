@@ -9,7 +9,7 @@ export function buildCodexNativeArgs(context: DedicatedCliInjectionContext): str
   const bearerHeader = `Bearer ${context.bearerToken}`;
   return [
     "-c",
-    `developer_instructions="${escapeTomlBasicString(context.systemPrompt)}"`,
+    `model_instructions_file="${escapeTomlBasicString(context.systemPromptFile)}"`,
     "-c",
     'approval_policy="never"',
     "-c",

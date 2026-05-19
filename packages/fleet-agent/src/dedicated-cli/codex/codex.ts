@@ -8,9 +8,10 @@ export const codexCli: DedicatedCliDefinition = {
   id: "codex",
   label: "Codex",
   createProfile(options: DedicatedCliProfileOptions) {
+    const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
-      args: [],
-      bin: resolveBinary("codex", "CODEX_BIN", options.env),
+      args: [...prefixArgs],
+      bin,
       cwd: options.cwd,
       env: createChildEnv(options.env, createCodexEnv()),
       id: "codex",

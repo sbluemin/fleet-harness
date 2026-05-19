@@ -8,9 +8,10 @@ export const claudeCli: DedicatedCliDefinition = {
   id: "claude",
   label: "Claude",
   createProfile(options: DedicatedCliProfileOptions) {
+    const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", options.env);
     return {
-      args: [],
-      bin: resolveBinary("claude", "CLAUDE_BIN", options.env),
+      args: [...prefixArgs],
+      bin,
       cwd: options.cwd,
       env: createChildEnv(options.env, createClaudeEnv()),
       id: "claude",

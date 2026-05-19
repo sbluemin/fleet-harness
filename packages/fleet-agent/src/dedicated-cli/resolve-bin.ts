@@ -4,8 +4,14 @@ import path from "node:path";
 const PATH_SEPARATOR = path.delimiter;
 const IS_WINDOWS = process.platform === "win32";
 const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+const WINDOWS_SHIM_EXTENSIONS = new Set([".cmd", ".bat"]);
 
-export function resolveBinary(defaultBin: string, overrideName: string, env: NodeJS.ProcessEnv): string {
+export interface ResolvedBinary {
+  readonly bin: string;
+  readonly prefixArgs: readonly string[];
+}
+
+export function resolveBinary(defaultBin: string, overrideName: string, env: NodeJS.ProcessEnv): ResolvedBinary {
   const pathValue = IS_WINDOWS ? (env.Path ?? env.PATH ?? "") : (env.PATH ?? "");
   const pathExts = IS_WINDOWS ? parsePathExt(env.PATHEXT) : [""];
 
@@ -15,7 +21,7 @@ export function resolveBinary(defaultBin: string, overrideName: string, env: Nod
     if (!resolvedOverride) {
       throw new Error(`${overrideName}="${override}" did not resolve to an executable; provide an absolute path or a name discoverable on PATH`);
     }
-    return resolvedOverride;
+    return wrapWindowsShim(resolvedOverride);
   }
 
   const resolved = findOnPath(defaultBin, pathValue, pathExts);
@@ -23,7 +29,17 @@ export function resolveBinary(defaultBin: string, overrideName: string, env: Nod
     throw new Error(`${defaultBin} binary not found; set ${overrideName} or install ${defaultBin} on PATH`);
   }
 
-  return resolved;
+  return wrapWindowsShim(resolved);
+}
+
+function wrapWindowsShim(resolved: string): ResolvedBinary {
+  if (!IS_WINDOWS || !WINDOWS_SHIM_EXTENSIONS.has(path.extname(resolved).toLowerCase())) {
+    return { bin: resolved, prefixArgs: [] };
+  }
+  return {
+    bin: process.env.ComSpec ?? "cmd.exe",
+    prefixArgs: ["/d", "/s", "/c", resolved],
+  };
 }
 
 export function createChildEnv(env: NodeJS.ProcessEnv, overlay: Readonly<Record<string, string | undefined>>): Record<string, string> {
@@ -58,15 +74,11 @@ function findOnPath(bin: string, pathValue: string, pathExts: readonly string[])
 }
 
 function resolveWithExtensions(candidate: string, pathExts: readonly string[]): string | undefined {
-  if (existsSync(candidate)) {
-    return candidate;
+  // POSIX, or an explicit extension on Windows: only the literal candidate is a match.
+  if (!IS_WINDOWS || path.extname(candidate).length > 0) {
+    return existsSync(candidate) ? candidate : undefined;
   }
-  if (!IS_WINDOWS) {
-    return undefined;
-  }
-  if (path.extname(candidate).length > 0) {
-    return undefined;
-  }
+  // Windows + bare name: PATHEXT extensions take precedence over an extensionless match.
   for (const ext of pathExts) {
     if (ext.length === 0) {
       continue;
@@ -76,7 +88,7 @@ function resolveWithExtensions(candidate: string, pathExts: readonly string[]): 
       return withExt;
     }
   }
-  return undefined;
+  return existsSync(candidate) ? candidate : undefined;
 }
 
 function hasPathSeparator(value: string): boolean {

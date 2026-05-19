@@ -1,3 +1,7 @@
+import { writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import type { FleetCoreRuntimeContext } from "../runtime/runtime.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
@@ -14,6 +18,7 @@ export async function injectDedicatedCliProfile(
   }
 
   const endpoint = await rt.admiral.mcp.getEndpoint();
+  const systemPromptFile = writeSystemPromptFile(profile.id, rt.admiral.prompts.buildSystemPrompt());
   const context: DedicatedCliInjectionContext = {
     bearerToken: rt.admiral.mcp.issueDedicatedSessionToken({
       cwd: profile.cwd,
@@ -21,7 +26,7 @@ export async function injectDedicatedCliProfile(
     }),
     cliId: profile.id,
     endpointUrl: endpoint.url,
-    systemPrompt: rt.admiral.prompts.buildSystemPrompt(),
+    systemPromptFile,
   };
   const injectedArgs = buildDedicatedCliArgs(capability.builderId, context);
   return {
@@ -29,6 +34,12 @@ export async function injectDedicatedCliProfile(
     args: [...profile.args, ...injectedArgs],
     env: { ...profile.env },
   };
+}
+
+function writeSystemPromptFile(cliId: string, systemPrompt: string): string {
+  const filePath = path.join(os.tmpdir(), `fleet-${cliId}-system-prompt.md`);
+  writeFileSync(filePath, systemPrompt, "utf8");
+  return filePath;
 }
 
 function buildDedicatedCliArgs(
