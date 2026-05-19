@@ -3,10 +3,11 @@ packages:
   - "packages/fleet-core"
   - "packages/fleet-mcp-server"
   - "packages/fleet-carriers"
+  - "packages/fleet-tui"
   - "packages/fleet-wiki"
   - "packages/fleet-wiki-web"
   - "packages/fleet-harness"
-  - "packages/fleet-dedicated-harness"
+  - "packages/fleet-agent"
 allowBuilds:
   '@google/genai': true
   esbuild: true

@@ -12,9 +12,9 @@
 | `bin/` | Fleet dev and main entry scripts |
 | `docs/` | **Main Developer Guide** — Comprehensive reference for PI SDK, extensions, TUI, themes, and RPC; **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
 | `engines/` | Active Fleet engine workspace — `@sbluemin/fleet-*` packages (`tui`, `ai`, `agent`, `coding-agent`) linked through `workspace:*`, configured for `.fleet` config root, and maintained in-tree as the canonical engine collection. |
-| `packages/` | First-party workspace packages: `fleet-core`, `fleet-mcp-server`, `fleet-wiki`, `fleet-wiki-web`, `fleet-harness` (Pi host adapter), and `fleet-dedicated-harness` (embedded CLI TUI PoC) |
+| `packages/` | First-party workspace packages: `fleet-core`, `fleet-mcp-server`, `fleet-wiki`, `fleet-wiki-web`, `fleet-harness` (Pi host adapter), and `fleet-agent` (embedded CLI TUI PoC) |
 
-> See each directory's `AGENTS.md` for detailed maps: `packages/fleet-core/AGENTS.md`, `packages/fleet-harness/AGENTS.md`, `packages/fleet-dedicated-harness/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `engines/AGENTS.md`.
+> See each directory's `AGENTS.md` for detailed maps: `packages/fleet-core/AGENTS.md`, `packages/fleet-harness/AGENTS.md`, `packages/fleet-agent/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `engines/AGENTS.md`.
 
 ## TypeScript File Structure
 
