@@ -4,7 +4,7 @@ export interface FleetCliOptions {
   readonly replaceSystemPrompt: boolean;
 }
 
-export const FLEET_HELP_TEXT = `fleet — Fleet CLI host
+export const FLEET_HELP_TEXT = `fleet — Fleet Harness
 
 Usage:
   fleet [options]
