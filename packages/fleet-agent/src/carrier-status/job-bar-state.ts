@@ -1,10 +1,10 @@
 import type {
   CarrierCategory,
   CarrierJobStreamEvent,
-  FleetCoreRuntimeContext,
   TrackMeta,
   TrackStatus,
 } from "@sbluemin/fleet-core";
+import { admiral, infra } from "@sbluemin/fleet-core";
 
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
@@ -66,7 +66,6 @@ export interface AgentPanelState {
 export interface JobBarStateOptions {
   readonly onCarrierResultReminder?: (text: string) => void;
   readonly onRenderRequest?: () => void;
-  readonly rt: FleetCoreRuntimeContext;
 }
 
 type MutableColumnTrack = {
@@ -83,7 +82,6 @@ type MutablePanelJob = Omit<PanelJob, "tracks"> & {
 type RuntimeBindings = {
   onCarrierResultReminder: (text: string) => void;
   onRenderRequest: () => void;
-  rt: FleetCoreRuntimeContext;
 };
 
 export const PANEL_JOB_RETENTION = 8;
@@ -100,7 +98,6 @@ export function bindJobBarStateRuntime(options: JobBarStateOptions): void {
   runtimeBindings = {
     onCarrierResultReminder: options.onCarrierResultReminder ?? noop,
     onRenderRequest: options.onRenderRequest ?? noop,
-    rt: options.rt,
   };
 }
 
@@ -110,7 +107,7 @@ export function getState(): AgentPanelState {
   if (!state) {
     state = {
       animTimer: null,
-      bodyH: bindings.rt.admiral.constants.DEFAULT_BODY_H,
+      bodyH: admiral.constants.DEFAULT_BODY_H,
       cols: makeCols(),
       expanded: false,
       frame: 0,
@@ -154,8 +151,7 @@ export function isJobBarStateRuntimeBound(): boolean {
 }
 
 export function getDefaultClis(): readonly string[] {
-  const rt = getRuntimeBindings().rt;
-  return sortByCategory(rt.admiral.carrier.getRegisteredOrder());
+  return sortByCategory(admiral.carrier.getRegisteredOrder());
 }
 
 export function makeCols(clis?: readonly string[]): AgentCol[] {
@@ -231,7 +227,7 @@ export function makeFooterCols(): AgentCol[] {
   const state = getState();
   const activeCols = new Map(state.cols.map((col) => [col.cli, col] as const));
 
-  return sortByCategory(getRuntimeBindings().rt.admiral.carrier.getRegisteredOrder()).map((cli) => {
+  return sortByCategory(admiral.carrier.getRegisteredOrder()).map((cli) => {
     const activeCol = activeCols.get(cli);
     if (activeCol) return activeCol;
 
@@ -337,19 +333,18 @@ export function ensurePanelAnimTimer(): void {
     state.frame++;
     getRuntimeBindings().onRenderRequest();
     stopPanelAnimTimerIfIdle();
-  }, getRuntimeBindings().rt.admiral.constants.ANIM_INTERVAL_MS);
+  }, admiral.constants.ANIM_INTERVAL_MS);
 }
 
 function sortByCategory(ids: readonly string[]): string[] {
-  const rt = getRuntimeBindings().rt;
   return [...ids].sort((a, b) => {
-    const catA = rt.admiral.carrier.getRegisteredCarrierConfig(a)?.carrierMetadata?.category ?? "uncategorized";
-    const catB = rt.admiral.carrier.getRegisteredCarrierConfig(b)?.carrierMetadata?.category ?? "uncategorized";
+    const catA = admiral.carrier.getRegisteredCarrierConfig(a)?.carrierMetadata?.category ?? "uncategorized";
+    const catB = admiral.carrier.getRegisteredCarrierConfig(b)?.carrierMetadata?.category ?? "uncategorized";
     const rankA = CATEGORY_RANK.get(catA) ?? CATEGORY_ORDER.length;
     const rankB = CATEGORY_RANK.get(catB) ?? CATEGORY_ORDER.length;
     if (rankA !== rankB) return rankA - rankB;
-    const slotA = rt.admiral.carrier.getRegisteredCarrierConfig(a)?.slot ?? 0;
-    const slotB = rt.admiral.carrier.getRegisteredCarrierConfig(b)?.slot ?? 0;
+    const slotA = admiral.carrier.getRegisteredCarrierConfig(a)?.slot ?? 0;
+    const slotB = admiral.carrier.getRegisteredCarrierConfig(b)?.slot ?? 0;
     return slotA - slotB;
   });
 }
@@ -607,7 +602,7 @@ function stopPanelAnimTimerIfIdle(): void {
     state.streaming ||
     state.cols.some((col) => col.status === "conn" || col.status === "stream") ||
     getActiveJobs().length > 0;
-  if (stillStreaming || getRuntimeBindings().rt.infra.job.getActiveBackgroundJobCount() > 0) return;
+  if (stillStreaming || infra.job.getActiveBackgroundJobCount() > 0) return;
   if (!state.animTimer) return;
   clearInterval(state.animTimer);
   state.animTimer = null;
@@ -665,7 +660,7 @@ function toReadonlyPanelJob(job: MutablePanelJob): PanelJob {
 }
 
 function getSessionIdFor(carrierId: string): string | undefined {
-  return runtimeBindings?.rt.admiral.agent.connections.getSessionIdFor(carrierId);
+  return runtimeBindings ? admiral.agent.connections.getSessionIdFor(carrierId) : undefined;
 }
 
 function getRuntimeBindings(): RuntimeBindings {
@@ -673,7 +668,6 @@ function getRuntimeBindings(): RuntimeBindings {
     return {
       onCarrierResultReminder: noop,
       onRenderRequest: noop,
-      rt: undefined as never,
     };
   }
   return runtimeBindings;

@@ -2,7 +2,7 @@
 
 Carrier status overlay domain for Fleet Agent.
 
-This domain uses public `@sbluemin/fleet-core` runtime services through the local runtime context and consumes Fleet PTY only through `@sbluemin/fleet-tui/pty`.
+This domain imports public `@sbluemin/fleet-core` root-barrel facades directly and consumes Fleet PTY only through `@sbluemin/fleet-tui/pty`.
 
 Infrastructure substitutions are intentionally narrow: legacy UI components become `fleetPty.custom`, Fleet TUI component/key/width helpers come from `@sbluemin/fleet-tui/pty`.
 

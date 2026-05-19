@@ -225,14 +225,6 @@ const FLEET_ACP_PROTOCOL_PROMPT = String.raw`
 - Do not bypass scope, safety, or review constraints to satisfy speed.
 `;
 
-const FLEET_ACP_RUNTIME_CONTEXT_PROMPT = String.raw`
-# Runtime Context Tags
-- Runtime context tags may be prepended to user requests by the ACP provider.
-- Treat tags as operational metadata: active protocol, mode, carrier/runtime state, or request framing.
-- Do not quote or expose internal tags unless they are directly relevant to debugging.
-- User text inside request wrappers remains the actual request to satisfy.
-`;
-
 const FLEET_ACP_TOOL_POLICY_PROMPT = String.raw`
 # Tool And Carrier Operations Policy
 - Use tools deliberately and report meaningful command outcomes.
@@ -345,7 +337,6 @@ export function buildFleetAcpSystemPrompt(
     `<fleet_action_guidelines>\n${FLEET_ACP_ACTION_GUIDELINES_PROMPT.trim()}\n</fleet_action_guidelines>`,
     `<carrier_roster_routing>\n${FLEET_ACP_CARRIER_ROUTING_PROMPT.trim()}\n</carrier_roster_routing>`,
     `<protocol_standing_orders>\n${FLEET_ACP_PROTOCOL_PROMPT.trim()}\n</protocol_standing_orders>`,
-    `<runtime_context_tags>\n${FLEET_ACP_RUNTIME_CONTEXT_PROMPT.trim()}\n</runtime_context_tags>`,
     `<tool_delegation_policy>\n${FLEET_ACP_TOOL_POLICY_PROMPT.trim()}\n</tool_delegation_policy>`,
   ];
   const base = baseParts.join("\n\n---\n\n");

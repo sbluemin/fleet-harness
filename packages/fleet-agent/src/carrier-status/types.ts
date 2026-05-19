@@ -1,17 +1,16 @@
 import type {
   CarrierCategory,
-  FleetCoreRuntimeContext,
+  FleetStoreSnapshot,
   TaskForceCliType,
 } from "@sbluemin/fleet-core";
 
 import type { FleetPtyApi } from "@sbluemin/fleet-tui/pty";
 
 export type CarrierCliType = TaskForceCliType;
-export type FleetStoreSnapshot = ReturnType<FleetCoreRuntimeContext["admiral"]["store"]["readStatesSnapshot"]>;
+export type { FleetStoreSnapshot };
 
 export interface CarrierStatusContext {
   readonly fleetPty: FleetPtyApi;
-  readonly rt: FleetCoreRuntimeContext;
 }
 
 export interface ModelSelection {

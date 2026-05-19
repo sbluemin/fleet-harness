@@ -2,7 +2,8 @@ import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { FleetCoreRuntimeContext } from "../runtime/runtime.js";
+import { admiral } from "@sbluemin/fleet-core";
+
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getDedicatedCliInjectionCapability } from "./capabilities.js";
@@ -14,7 +15,6 @@ export interface InjectDedicatedCliProfileOptions {
 
 export async function injectDedicatedCliProfile(
   profile: DedicatedCliProfile,
-  rt: FleetCoreRuntimeContext,
   options: InjectDedicatedCliProfileOptions = {},
 ): Promise<DedicatedCliProfile> {
   const capability = getDedicatedCliInjectionCapability(profile.id);
@@ -22,10 +22,10 @@ export async function injectDedicatedCliProfile(
     return profile;
   }
 
-  const endpoint = await rt.admiral.mcp.getEndpoint();
-  const systemPromptFile = writeSystemPromptFile(profile.id, rt.admiral.prompts.buildSystemPrompt());
+  const endpoint = await admiral.mcp.getEndpoint();
+  const systemPromptFile = writeSystemPromptFile(profile.id, admiral.prompts.buildSystemPrompt());
   const context: DedicatedCliInjectionContext = {
-    bearerToken: rt.admiral.mcp.issueDedicatedSessionToken({
+    bearerToken: admiral.mcp.issueDedicatedSessionToken({
       cwd: profile.cwd,
       label: `dedicated:${profile.id}`,
     }),

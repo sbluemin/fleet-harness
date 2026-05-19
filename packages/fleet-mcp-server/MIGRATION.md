@@ -34,8 +34,8 @@ The `AgentToolSpec` interface is now owned by the leaf package. It remains the S
 
 The MCP server is now a singleton managed via `startMcpServer()` and `stopMcpServer()`.
 
-- `fleet-core` no longer implicitly manages the MCP server boot/shutdown in its internal modules.
-- The `shutdown()` method returned by `createFleetCoreRuntime()` now explicitly calls `stopMcpServer()`.
+- `fleet-core` manages MCP server startup and cleanup through its lifecycle boot/shutdown path.
+- The fleet-core shutdown handle explicitly calls `stopMcpServer()`.
 
 ### 4. Hardening and Invariants
 

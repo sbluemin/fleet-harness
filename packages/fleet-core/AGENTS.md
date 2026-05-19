@@ -76,8 +76,8 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
 - `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), and unified settings/log infra.
-- Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly.
-- `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root.
+- Public API contracts and frozen consumer surfaces, including lifecycle-only `public/runtime.ts` boot/shutdown.
+- `bootFleetCore` as the canonical lifecycle boot entry point, exported from the package root; domain operations are consumed through root-barrel facades.
 - Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Pool lifecycle is owned by `admiral.agent.connections`.
 
 - Fleet tool spec builders, explicit default registration bootstrap, prompt usage, and registry facade functions that are host-agnostic and backed by `packages/fleet-mcp-server`

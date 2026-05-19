@@ -1,4 +1,4 @@
-import { TASKFORCE_CLI_TYPES, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { admiral, TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-core";
 import {
   createOverlayFrame,
   isPrintable,
@@ -31,7 +31,6 @@ export interface CarrierStatusOverlayOptions {
   readonly done: () => void;
   readonly fleetPty: FleetPtyApi;
   readonly requestRender: () => void;
-  readonly rt: FleetCoreRuntimeContext;
   readonly theme: FleetPtyTheme;
 }
 
@@ -236,8 +235,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getEntries(): CarrierStatusEntry[] {
-    const snapshot = this.options.rt.admiral.store.readStatesSnapshot();
-    return buildStatusEntriesFromSnapshot(this.options.rt, snapshot);
+    const snapshot = admiral.store.readStatesSnapshot();
+    return buildStatusEntriesFromSnapshot(snapshot);
   }
 
   private buildViewModel(): StatusOverlayViewModel {
@@ -421,8 +420,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.applyModelSelection(entry, selection);
     this.options.requestRender();
     try {
-      await this.options.rt.admiral.store.updateModelSelection(entry.carrierId, selection);
-      this.options.rt.admiral.carrier.notifyStatusUpdate();
+      await admiral.store.updateModelSelection(entry.carrierId, selection);
+      admiral.carrier.notifyStatusUpdate();
       this.feedbackMessage = `${entry.displayName} 모델 설정을 저장했습니다.`;
     } catch (error) {
       this.restoreEntrySnapshot(entry, previous);
@@ -621,7 +620,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       return;
     }
     if (!isPrintable(data)) return;
-    const nextDraft = this.options.rt.admiral.store.normalizeCarrierDisplayNameInput(this.renameState.draft + data);
+    const nextDraft = admiral.store.normalizeCarrierDisplayNameInput(this.renameState.draft + data);
     if (nextDraft == null) return;
     this.renameState = {
       ...this.renameState,
@@ -637,18 +636,18 @@ export class CarrierStatusOverlay implements Component, Focusable {
     if (!entry) return;
     const previousDisplayName = entry.displayName;
     const draft = this.renameState.draft;
-    const sourceDisplayName = this.options.rt.admiral.carrier.getCarrierSourceDisplayName(entry.carrierId);
-    const sanitizedDraft = this.options.rt.admiral.store.sanitizeCarrierDisplayName(draft);
-    const sanitizedSource = this.options.rt.admiral.store.sanitizeCarrierDisplayName(sourceDisplayName);
+    const sourceDisplayName = admiral.carrier.getCarrierSourceDisplayName(entry.carrierId);
+    const sanitizedDraft = admiral.store.sanitizeCarrierDisplayName(draft);
+    const sanitizedSource = admiral.store.sanitizeCarrierDisplayName(sourceDisplayName);
     const reset = sanitizedDraft == null || sanitizedDraft === sanitizedSource;
     this.renameState = null;
     this.state = { kind: "saving" };
     this.feedbackMessage = reset ? `${previousDisplayName} 이름을 기본값으로 복원 중...` : `${previousDisplayName} 이름을 저장 중...`;
     this.options.requestRender();
     try {
-      this.options.rt.admiral.store.updateCarrierDisplayName(entry.carrierId, draft, sourceDisplayName);
-      this.options.rt.admiral.carrier.notifyStatusUpdate();
-      const nextDisplayName = this.options.rt.admiral.carrier.resolveCarrierDisplayName(entry.carrierId);
+      admiral.store.updateCarrierDisplayName(entry.carrierId, draft, sourceDisplayName);
+      admiral.carrier.notifyStatusUpdate();
+      const nextDisplayName = admiral.carrier.resolveCarrierDisplayName(entry.carrierId);
       entry.displayName = nextDisplayName;
       this.feedbackMessage = reset
         ? `${previousDisplayName} 이름을 기본값으로 복원했습니다. (${nextDisplayName})`
@@ -664,13 +663,13 @@ export class CarrierStatusOverlay implements Component, Focusable {
   private toggleSortieState(): void {
     const entry = this.getSelectedEntry();
     if (!entry) return;
-    if (this.options.rt.admiral.carrier.isCarrierOnline(entry.carrierId)) {
-      this.options.rt.admiral.carrier.setCarrierOffline(entry.carrierId);
+    if (admiral.carrier.isCarrierOnline(entry.carrierId)) {
+      admiral.carrier.setCarrierOffline(entry.carrierId);
     } else {
-      this.options.rt.admiral.carrier.setCarrierOnline(entry.carrierId);
+      admiral.carrier.setCarrierOnline(entry.carrierId);
     }
-    this.options.rt.admiral.store.saveOfflineCarriers(this.options.rt.admiral.carrier.getOfflineCarrierIds());
-    this.options.rt.admiral.carrier.notifyStatusUpdate();
+    admiral.store.saveOfflineCarriers(admiral.carrier.getOfflineCarrierIds());
+    admiral.carrier.notifyStatusUpdate();
     entry.isSortieEnabled = !entry.isSortieEnabled;
     this.feedbackMessage = entry.isSortieEnabled ? `${entry.displayName} sortie 활성화됨` : `${entry.displayName} sortie 비활성화됨`;
     this.options.requestRender();
@@ -685,7 +684,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       carrierId: entry.carrierId,
       done,
       requestRender: () => ui.requestRender(),
-      rt: this.options.rt,
       theme,
     }));
   }
@@ -876,8 +874,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
     return Math.max(0, choices.findIndex((choice) => choice.carrierCount > 0));
   }
 
-  private createStatusOverlayController(): InstanceType<typeof this.options.rt.admiral.carrier.StatusOverlayController> {
-    return new this.options.rt.admiral.carrier.StatusOverlayController({
+  private createStatusOverlayController(): InstanceType<typeof admiral.carrier.StatusOverlayController> {
+    return new admiral.carrier.StatusOverlayController({
       applyCliTypeModelSelectionUpdate: async (
         carrierId,
         newCliType,
@@ -886,7 +884,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
         previousSelection,
         selection,
       ) => {
-        await this.options.rt.admiral.store.applyCliTypeModelSelectionUpdate(
+        await admiral.store.applyCliTypeModelSelectionUpdate(
           carrierId,
           newCliType,
           defaultCliType,
@@ -896,31 +894,31 @@ export class CarrierStatusOverlay implements Component, Focusable {
         );
       },
       getAvailableModels: (cliType) => this.getAvailableModels(cliType),
-      getCurrentModelSelection: (carrierId) => this.options.rt.admiral.store.loadModels()[carrierId],
+      getCurrentModelSelection: (carrierId) => admiral.store.loadModels()[carrierId],
       getEffort: (cliType, modelId) => this.getModelEffort(cliType, modelId),
       getEntries: () => this.getEntries(),
-      getPerCliSettings: (carrierId, cliType) => this.options.rt.admiral.store.getPerCliSettings(carrierId, cliType),
-      getRegisteredCarrierConfig: (carrierId) => this.options.rt.admiral.carrier.getRegisteredCarrierConfig(carrierId),
-      getRegisteredOrder: () => this.options.rt.admiral.carrier.getRegisteredOrder(),
+      getPerCliSettings: (carrierId, cliType) => admiral.store.getPerCliSettings(carrierId, cliType),
+      getRegisteredCarrierConfig: (carrierId) => admiral.carrier.getRegisteredCarrierConfig(carrierId),
+      getRegisteredOrder: () => admiral.carrier.getRegisteredOrder(),
       getResolvedCliType: (carrierId) => {
-        const config = this.options.rt.admiral.carrier.getRegisteredCarrierConfig(carrierId);
-        return config ? this.options.rt.admiral.carrier.resolveCarrierCliType(carrierId, config.defaultCliType) : undefined;
+        const config = admiral.carrier.getRegisteredCarrierConfig(carrierId);
+        return config ? admiral.carrier.resolveCarrierCliType(carrierId, config.defaultCliType) : undefined;
       },
-      notifyStatusUpdate: () => this.options.rt.admiral.carrier.notifyStatusUpdate(),
+      notifyStatusUpdate: () => admiral.carrier.notifyStatusUpdate(),
       refreshAgentPanel: () => undefined,
       savePerCliSettings: (carrierId, cliType, selection) => {
-        this.options.rt.admiral.store.savePerCliSettings(carrierId, cliType, selection);
+        admiral.store.savePerCliSettings(carrierId, cliType, selection);
       },
       syncModelConfig: () => undefined,
       updateCarrierCliType: (carrierId, cliType) => {
-        this.options.rt.admiral.carrier.updateCarrierCliType(carrierId, cliType);
+        admiral.carrier.updateCarrierCliType(carrierId, cliType);
       },
     });
   }
 
   private getAvailableModels(cliType: CarrierCliType): CliModelInfo {
     try {
-      const models = this.options.rt.admiral.agent.models.getCliModels(cliType).map((model) => ({
+      const models = admiral.agent.models.getCliModels(cliType).map((model) => ({
         modelId: model.id,
         name: model.name,
       }));
@@ -943,7 +941,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private getModelEffort(cliType: CarrierCliType, modelId: string): ModelEffort {
     try {
-      const levels = this.options.rt.admiral.agent.models.getCliEffortLevels(cliType, modelId);
+      const levels = admiral.agent.models.getCliEffortLevels(cliType, modelId);
       if (!levels || levels.length === 0) return { supported: false };
       return {
         default: levels[0],
@@ -971,15 +969,15 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getEntryColor(cliType: CarrierCliType): string {
-    return this.options.rt.admiral.constants.CARRIER_COLORS[cliType] ?? "";
+    return admiral.constants.CARRIER_COLORS[cliType] ?? "";
   }
 
   private getEntryBgColor(cliType: CarrierCliType): string | undefined {
-    return this.options.rt.admiral.constants.CARRIER_BG_COLORS[cliType];
+    return admiral.constants.CARRIER_BG_COLORS[cliType];
   }
 
   private getCliDisplayName(cliType: string): string {
-    return this.options.rt.admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType;
+    return admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType;
   }
 
   private getFooterHint(): string {
@@ -1003,48 +1001,45 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 }
 
-function buildStatusEntriesFromSnapshot(rt: FleetCoreRuntimeContext, snapshot: FleetStoreSnapshot): CarrierStatusEntry[] {
+function buildStatusEntriesFromSnapshot(snapshot: FleetStoreSnapshot): CarrierStatusEntry[] {
   const entries: CarrierStatusEntry[] = [];
-  const registeredOrder = rt.admiral.carrier.getRegisteredOrder();
-  const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(rt, snapshot);
-  rt.admiral.store.loadModels(cliTypesByCarrier);
-  const healedSnapshot = rt.admiral.store.readStatesSnapshot();
+  const registeredOrder = admiral.carrier.getRegisteredOrder();
+  const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(snapshot);
+  admiral.store.loadModels(cliTypesByCarrier);
+  const healedSnapshot = admiral.store.readStatesSnapshot();
 
   for (const id of registeredOrder) {
-    const config = rt.admiral.carrier.getRegisteredCarrierConfig(id);
+    const config = admiral.carrier.getRegisteredCarrierConfig(id);
     if (!config) continue;
     const cliType = cliTypeForCarrierFromSnapshot(healedSnapshot, id, config.defaultCliType as CarrierCliType);
     const selection = healedSnapshot.models[id];
-    const provider = getProviderModelsEquivalent(rt, cliType);
+    const provider = getProviderModelsEquivalent(cliType);
     const meta = config.carrierMetadata;
     entries.push({
       carrierId: id,
       category: meta?.category,
       cliType,
       defaultCliType: config.defaultCliType as CarrierCliType,
-      displayName: rt.admiral.carrier.resolveCarrierDisplayName(id),
+      displayName: admiral.carrier.resolveCarrierDisplayName(id),
       effort: selection?.effort ?? null,
       isDefault: !selection?.model,
-      isSortieEnabled: rt.admiral.carrier.isCarrierOnline(id),
+      isSortieEnabled: admiral.carrier.isCarrierOnline(id),
       model: selection?.model || provider.defaultModel,
       role: meta?.title ?? null,
       roleDescription: meta ? `${meta.title} - ${meta.summary}` : null,
       slot: config.slot,
-      taskForceBackendCount: rt.admiral.store.getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
+      taskForceBackendCount: admiral.store.getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
     });
   }
 
   return entries;
 }
 
-function buildCliTypesByCarrierFromSnapshot(
-  rt: FleetCoreRuntimeContext,
-  snapshot: FleetStoreSnapshot,
-): Record<string, CarrierCliType> {
+function buildCliTypesByCarrierFromSnapshot(snapshot: FleetStoreSnapshot): Record<string, CarrierCliType> {
   return Object.fromEntries(
-    rt.admiral.carrier.getRegisteredOrder()
+    admiral.carrier.getRegisteredOrder()
       .map((id): [string, CarrierCliType] | null => {
-        const config = rt.admiral.carrier.getRegisteredCarrierConfig(id);
+        const config = admiral.carrier.getRegisteredCarrierConfig(id);
         if (!config) return null;
         return [id, cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType as CarrierCliType)];
       })
@@ -1060,26 +1055,26 @@ function cliTypeForCarrierFromSnapshot(
   return (snapshot.cliTypeOverrides[carrierId] as CarrierCliType | undefined) ?? defaultCliType;
 }
 
-function getProviderModelsEquivalent(rt: FleetCoreRuntimeContext, cliType: CarrierCliType): CliModelInfo {
+function getProviderModelsEquivalent(cliType: CarrierCliType): CliModelInfo {
   try {
-    const models = rt.admiral.agent.models.getCliModels(cliType).map((model) => ({
+    const models = admiral.agent.models.getCliModels(cliType).map((model) => ({
       modelId: model.id,
       name: model.name,
     }));
     const defaultModel = models[0]?.modelId ?? "default";
-    const levels = rt.admiral.agent.models.getCliEffortLevels(cliType, defaultModel);
+    const levels = admiral.agent.models.getCliEffortLevels(cliType, defaultModel);
     return {
       defaultModel,
       effort: levels?.length ? { default: levels[0], levels, supported: true } : { supported: false },
       models,
-      name: rt.admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
+      name: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
     };
   } catch {
     return {
       defaultModel: "default",
       effort: { supported: false },
       models: [],
-      name: rt.admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
+      name: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
     };
   }
 }

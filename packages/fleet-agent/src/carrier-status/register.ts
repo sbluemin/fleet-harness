@@ -13,7 +13,6 @@ export function registerCarrierStatusKeybinding(ctx: CarrierStatusContext): void
         done,
         fleetPty: ctx.fleetPty,
         requestRender: () => ui.requestRender(),
-        rt: ctx.rt,
         theme,
       }));
     },

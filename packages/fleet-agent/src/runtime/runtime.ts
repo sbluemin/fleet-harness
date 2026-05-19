@@ -5,17 +5,21 @@ import "@sbluemin/fleet-wiki";
 import os from "node:os";
 import path from "node:path";
 
-import { createFleetCoreRuntime, type FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { bootFleetCore, type FleetCoreShutdownHandle } from "@sbluemin/fleet-core";
 
 import { reconcileRuntimeState } from "./reconciliation.js";
 
-export type { FleetCoreRuntimeContext };
+let shutdownHandle: FleetCoreShutdownHandle | null = null;
 
-export async function bootRuntime(): Promise<FleetCoreRuntimeContext> {
+export async function bootRuntime(): Promise<void> {
 	const dataDir = path.join(os.homedir(), ".fleet");
-	const rt = createFleetCoreRuntime({ dataDir, bootMode: "normal" });
+	shutdownHandle = bootFleetCore({ dataDir, bootMode: "normal" });
 
-	reconcileRuntimeState(rt);
+	reconcileRuntimeState();
+}
 
-	return rt;
+export async function shutdownRuntime(): Promise<void> {
+	const handle = shutdownHandle;
+	shutdownHandle = null;
+	await handle?.shutdown();
 }

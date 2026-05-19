@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildRuntimeContextPrompt, buildSystemPrompt } from "../../src/admiral/prompts.js";
+import { buildSystemPrompt } from "../../src/admiral/prompts.js";
+import { buildFleetAcpSystemPrompt } from "../../src/admiralty/prompts.js";
 import { getActiveProtocol, getAllProtocols } from "../../src/admiral/protocols/index.js";
 import { initSettingsService, resetSettingsService } from "../../src/infra/settings/runtime.js";
 import type { CoreSettingsAPI, SectionDisplayConfig } from "../../src/infra/settings/types.js";
@@ -21,7 +22,6 @@ describe("Admiral protocols", () => {
     initSettingsService(settings);
 
     expect(getActiveProtocol().id).toBe("fleet-action");
-    expect(buildRuntimeContextPrompt("hello")).toContain("<current_protocol>fleet-action</current_protocol>");
   });
 
   it("omits Positive Control doctrine from the system prompt catalog", () => {
@@ -32,6 +32,27 @@ describe("Admiral protocols", () => {
     expect(prompt).not.toContain("positive-control");
     expect(prompt).not.toContain("Standing Orders**: suspended");
     expect(prompt).not.toContain("Control Mode");
+  });
+
+  it("does not teach removed runtime-context tags in the system prompt", () => {
+    const prompt = buildSystemPrompt();
+
+    expect(prompt).not.toContain("Runtime Context Tags");
+    expect(prompt).not.toContain("<current_protocol>");
+    expect(prompt).not.toContain("<available_taskforce_carriers>");
+    expect(prompt).not.toContain("<offline_carriers>");
+  });
+
+  it("does not teach removed runtime-context tags in the Fleet ACP prompt", () => {
+    const prompt = buildFleetAcpSystemPrompt("local", "Local Fleet", "workspace", {
+      includeGrandFleetContext: false,
+    });
+
+    expect(prompt).not.toContain("<runtime_context_tags>");
+    expect(prompt).not.toContain("Runtime Context Tags");
+    expect(prompt).not.toContain("<current_protocol>");
+    expect(prompt).not.toContain("<available_taskforce_carriers>");
+    expect(prompt).not.toContain("<offline_carriers>");
   });
 });
 

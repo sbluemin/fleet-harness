@@ -1,5 +1,5 @@
 export {
-  createFleetCoreRuntime,
+  bootFleetCore,
 } from "./public/runtime.js";
 export type { BootMode } from "./runtime-flags.js";
 export { admiral } from "./admiral/index.js";
@@ -16,8 +16,8 @@ export {
 } from "./public/infra-services.js";
 
 export type {
-  FleetCoreRuntimeContext,
   FleetCoreRuntimeOptions,
+  FleetCoreShutdownHandle,
 } from "./public/runtime.js";
 export type { FleetAdmiralServices } from "./public/admiral-services.js";
 export type { FleetAdmiraltyServices } from "./public/admiralty-services.js";

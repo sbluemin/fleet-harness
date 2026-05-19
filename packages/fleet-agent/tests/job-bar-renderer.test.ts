@@ -24,7 +24,6 @@ describe("job bar renderer", () => {
         buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000),
         buildDispatchJob("carrier:second", "run:second", "Patch renderer grouping", 1001),
       ],
-      rt: buildRuntime(),
       runs,
       width: 100,
     }).join("\n"));
@@ -40,7 +39,6 @@ describe("job bar renderer", () => {
     const lines = renderCarrierJobHud({
       frame: 0,
       jobs: [],
-      rt: buildRuntime(),
       width: 100,
     });
 
@@ -48,20 +46,18 @@ describe("job bar renderer", () => {
   });
 
   it("keeps the carrier strip visible and hides the detail section when there are no active jobs", () => {
-    const rt = buildRuntime();
-    bindJobBarStateRuntime({ rt });
+    bindJobBarStateRuntime({});
 
-    const sections = createJobBarSections(rt);
+    const sections = createJobBarSections();
 
     expect(sections.map(desiredHeight)).toEqual([1, 0]);
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {
-    const rt = buildRuntime();
-    bindJobBarStateRuntime({ rt });
+    bindJobBarStateRuntime({});
     getPanelJobs().set("carrier:first", buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000));
 
-    const sections = createJobBarSections(rt);
+    const sections = createJobBarSections();
 
     expect(sections.map(desiredHeight)).toEqual([1, 2]);
   });
@@ -88,37 +84,6 @@ function buildDispatchJob(jobId: string, runId: string, label: string, startedAt
       streamKey: "genesis",
       trackId: "genesis",
     }],
-  };
-}
-
-function buildRuntime(): any {
-  return {
-    admiral: {
-      agent: {
-        connections: {
-          getSessionIdFor: () => undefined,
-        },
-      },
-      carrier: {
-        getRegisteredOrder: () => ["genesis"],
-        isCarrierOnline: () => true,
-        resolveCarrierColor: () => "",
-        resolveCarrierDisplayName: () => "Genesis",
-        resolveCarrierRgb: () => [120, 180, 255],
-      },
-      constants: {
-        CLI_DISPLAY_NAMES: { codex: "Codex" },
-        PANEL_DIM_COLOR: "",
-        SPINNER_FRAMES: ["◉"],
-        SYM_INDICATOR: "●",
-        SYM_THINKING: "✦",
-        TASKFORCE_BADGE_COLOR: "",
-      },
-      store: {
-        getConfiguredTaskForceBackendsFromSnapshot: () => [],
-        readStatesSnapshot: () => ({}),
-      },
-    },
   };
 }
 

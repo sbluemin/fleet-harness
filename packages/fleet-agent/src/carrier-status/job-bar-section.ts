@@ -1,4 +1,3 @@
-import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 import type { Component, FleetPtySection } from "@sbluemin/fleet-tui/pty";
 
 import { renderCarrierJobHud, renderCarrierJobHudStrip } from "./job-bar-renderer.js";
@@ -6,16 +5,14 @@ import { getActiveJobs, getPanelRuns, getState, isJobBarStateRuntimeBound } from
 
 const MAX_WIDGET_LINES = 10;
 
-export function createJobBarSections(rt: FleetCoreRuntimeContext): FleetPtySection[] {
+export function createJobBarSections(): FleetPtySection[] {
   return [
-    { component: new JobBarStripSection(rt), id: "job-bar-strip" },
-    { component: new JobBarDetailSection(rt), id: "job-bar-detail" },
+    { component: new JobBarStripSection(), id: "job-bar-strip" },
+    { component: new JobBarDetailSection(), id: "job-bar-detail" },
   ];
 }
 
 class JobBarStripSection implements Component {
-  constructor(private readonly rt: FleetCoreRuntimeContext) {}
-
   invalidate(): void {}
 
   desiredHeight(): number {
@@ -29,7 +26,6 @@ class JobBarStripSection implements Component {
     return renderCarrierJobHudStrip({
       frame: state.frame,
       jobs: getActiveJobs(),
-      rt: this.rt,
       runs: getPanelRuns(),
       width,
     });
@@ -37,8 +33,6 @@ class JobBarStripSection implements Component {
 }
 
 class JobBarDetailSection implements Component {
-  constructor(private readonly rt: FleetCoreRuntimeContext) {}
-
   invalidate(): void {}
 
   desiredHeight(): number {
@@ -57,7 +51,6 @@ class JobBarDetailSection implements Component {
     return renderCarrierJobHud({
       frame: state.frame,
       jobs: getActiveJobs(),
-      rt: this.rt,
       runs: getPanelRuns(),
       width,
     });

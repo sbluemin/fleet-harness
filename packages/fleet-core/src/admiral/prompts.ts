@@ -4,22 +4,13 @@
  * ACP 시스템 프롬프트는 `buildSystemPrompt()`로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
  * `section="role"`은 항상 중립 역할 지침으로 주입된다.
- * 프로토콜 카탈로그 전체가 포함되며, 활성 프로토콜은 매 턴
- * `<current_protocol>` 런타임 태그로 지정된다.
- *
- * 매 턴 follow-up prefix는 `buildRuntimeContextPrompt(userRequest)`가 조립한다.
- * 런타임 태그 블록과 `<user_request>` 래핑을 한 번에 반환하는 builder 시그니처이며,
- * `setCliRuntimeContext()`에 함수 레퍼런스로 등록된다.
+ * 프로토콜 카탈로그 전체가 포함된다.
  */
 
-import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
+import { getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
-import {
-  getActiveTaskForceIds,
-  getRegisteredOrder,
-  getOfflineCarrierIds,
-} from "./carrier/framework.js";
+import { getRegisteredOrder } from "./carrier/framework.js";
 import { buildCarrierRoster } from "./carrier/prompts.js";
 import { isFleetCoreDevMode } from "../runtime-flags.js";
 
@@ -100,14 +91,6 @@ This is a hard prerequisite. Do NOT skip this step or assume you already know th
 - All responses must be written in Korean.
 `;
 
-/** Admiral 런타임 컨텍스트 태그 해석 규칙 — ACP 초기 프롬프트에만 포함 */
-export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
-## Runtime Context Tags (in <system-reminder>)
-- ${"`"}<current_protocol>${"`"} — active protocol ID; apply matching protocol rules
-- ${"`"}<available_taskforce_carriers>${"`"} — carrier IDs with Task Force configured (≥2 backends) after subtracting offline carriers
-- ${"`"}<offline_carriers>${"`"} — offline carrier IDs omitted from all available_* lists; omit this tag entirely when none are offline
-`;
-
 // ─────────────────────────────────────────────────────────
 // 함수
 // ─────────────────────────────────────────────────────────
@@ -119,12 +102,12 @@ export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
  * 섹션 순서:
  *  1. `section="role"` — Fleet 역할·행동 규약
  *  2. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
- *  3. `section="protocols"` — 프로토콜 카탈로그 + 런타임 컨텍스트 태그 해석 규칙
+ *  3. `section="protocols"` — 프로토콜 카탈로그
  *  4. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
  *  5. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
  *
  * ACP에서는 시스템 프롬프트가 최초 1회만 전달되므로 모든 프로토콜 정의를
- * 카탈로그로 포함하고, 런타임 전환은 매 턴 `<current_protocol>` 태그로 제어한다.
+ * 카탈로그로 포함한다.
  * dev 모드에서는 boot이 base prompt + RISEN 개발 컨텍스트를 선행 주입하므로
  * 이 함수는 Fleet persona/role/tone 섹션만 생략한다.
  */
@@ -150,7 +133,7 @@ export function buildSystemPrompt(): string {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
   }
 
-  // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 + 런타임 전환 메타 지시 ──
+  // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 ──
   const protocols = getAllProtocols();
   const catalogSections: string[] = [];
 
@@ -162,7 +145,6 @@ export function buildSystemPrompt(): string {
   });
 
   catalogSections.push(`## Available Protocols\n\n${catalogEntries.join("\n\n---\n\n")}`);
-  catalogSections.push(RUNTIME_CONTEXT_TAGS_PROMPT.trim());
 
   parts.push(`<fleet section="protocols">\n${catalogSections.join("\n\n")}\n</fleet>`);
 
@@ -179,33 +161,4 @@ export function buildSystemPrompt(): string {
   }
 
   return parts.join("\n\n");
-}
-
-/**
- * 매 턴 follow-up 요청용 prefix를 조립한다 (CliRuntimeContextBuilder 시그니처).
- *
- * `<system-reminder>` 블록 안에 런타임 태그를 묶어 반환한다:
- *  - `<current_protocol>`: 활성 프로토콜 ID
- *  - `<available_taskforce_carriers>`: Task Force 설정 완료(2개 이상 백엔드) 캐리어 ID 목록
- *  - `<offline_carriers>`: 오프라인 상태로 모든 available_* 목록에서 제외된 캐리어 ID 목록
- *
- * 빈 캐리어 목록은 `-` sentinel로 표기하여 모델의 상태 추론을 방지한다.
- * 사용자 요청 본문은 system-reminder 블록 바깥에 평문으로 이어붙인다.
- */
-export function buildRuntimeContextPrompt(userRequest: string): string {
-  const protocol = getActiveProtocol();
-  const taskforceIds = getActiveTaskForceIds();
-  const offlineIds = getOfflineCarrierIds();
-
-  const fmt = (ids: string[]) => ids.length > 0 ? ids.join(",") : "-";
-
-  const runtimeTags = [
-    `<current_protocol>${protocol.id}</current_protocol>`,
-    `<available_taskforce_carriers>${fmt(taskforceIds)}</available_taskforce_carriers>`,
-    ...(offlineIds.length > 0
-      ? [`<offline_carriers>${offlineIds.join(",")}</offline_carriers>`]
-      : []),
-  ].join("\n");
-
-  return `<system-reminder>\n${runtimeTags}\n</system-reminder>\n\n${userRequest}`;
 }

@@ -1,4 +1,4 @@
-import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "@sbluemin/fleet-tui/pty";
 
 import {
@@ -38,7 +38,6 @@ export interface CarrierJobHudRenderOptions {
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
   readonly width: number;
-  readonly rt: FleetCoreRuntimeContext;
 }
 
 export type BlockLineType =
@@ -75,14 +74,14 @@ export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string
 
   if (jobs.length === 0) return [];
 
-  appendWidgetJobSummary(lines, options.width, jobs, options.frame, options.rt, options.theme);
+  appendWidgetJobSummary(lines, options.width, jobs, options.frame, options.theme);
   return lines.slice(0, MAX_WIDGET_LINES).map((line) => truncateToWidth(line, options.width));
 }
 
 export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): string[] {
-  const carriers = buildCarrierTiles(options.rt, getActiveJobs(options.jobs));
+  const carriers = buildCarrierTiles(getActiveJobs(options.jobs));
   if (carriers.length === 0) return [];
-  return renderCarrierHudStrip(options.width, carriers, options.frame, options.rt, options.theme);
+  return renderCarrierHudStrip(options.width, carriers, options.frame, options.theme);
 }
 
 export function waveText(
@@ -124,7 +123,7 @@ export function waveText(
   return result;
 }
 
-export function renderBlockLines(rt: FleetCoreRuntimeContext, blocks: readonly ColBlock[]): BlockLine[] {
+export function renderBlockLines(blocks: readonly ColBlock[]): BlockLine[] {
   const lines: BlockLine[] = [];
 
   for (const block of blocks) {
@@ -133,7 +132,7 @@ export function renderBlockLines(rt: FleetCoreRuntimeContext, blocks: readonly C
       if (!trimmed) continue;
       trimmed.split("\n").forEach((line, i) => {
         lines.push({
-          text: i === 0 ? `${SYM_THINKING(rt)} ${line}` : `  ${line}`,
+          text: i === 0 ? `${SYM_THINKING()} ${line}` : `  ${line}`,
           type: "thought",
         });
       });
@@ -145,7 +144,7 @@ export function renderBlockLines(rt: FleetCoreRuntimeContext, blocks: readonly C
       if (!trimmed) continue;
       trimmed.split("\n").forEach((line, i) => {
         lines.push({
-          text: i === 0 ? `${SYM_INDICATOR(rt)} ${line}` : `  ${line}`,
+          text: i === 0 ? `${SYM_INDICATOR()} ${line}` : `  ${line}`,
           type: "text",
         });
       });
@@ -155,7 +154,7 @@ export function renderBlockLines(rt: FleetCoreRuntimeContext, blocks: readonly C
     const isError = block.status === "failed" || block.status === "error";
     const isFinished = block.status === "completed" || block.status === "failed" || block.status === "error";
     const line: BlockLine = {
-      text: `${SYM_INDICATOR(rt)} ${block.title}`,
+      text: `${SYM_INDICATOR()} ${block.title}`,
       type: isError ? "tool-error" : "tool-title",
     };
     if (isFinished) {
@@ -176,10 +175,9 @@ function renderCarrierHudStrip(
   width: number,
   carriers: CarrierHudTile[],
   frame: number,
-  rt: FleetCoreRuntimeContext,
   theme: FleetPtyTheme | undefined,
 ): string[] {
-  const tiles = carriers.map((carrier) => formatCarrierTile(rt, carrier, frame));
+  const tiles = carriers.map((carrier) => formatCarrierTile(carrier, frame));
   return [centerLine(tiles.join(tileSeparator(theme)), width)];
 }
 
@@ -188,18 +186,17 @@ function appendWidgetJobSummary(
   width: number,
   jobs: PanelJobViewModel[],
   frame: number,
-  rt: FleetCoreRuntimeContext,
   theme: FleetPtyTheme | undefined,
 ): void {
   const groups = buildCarrierJobGroups(
     jobs,
-    rt.admiral.carrier.getRegisteredOrder(),
-    (carrierId) => resolveCarrierDisplayName(rt, carrierId),
+    admiral.carrier.getRegisteredOrder(),
+    (carrierId) => resolveCarrierDisplayName(carrierId),
   );
   for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
     const group = groups[groupIndex];
     if (!group || group.jobs.length === 0) continue;
-    const groupColor = resolveCarrierColor(rt, group.carrierId);
+    const groupColor = resolveCarrierColor(group.carrierId);
     lines.push(truncateToWidth(
       `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
@@ -210,18 +207,18 @@ function appendWidgetJobSummary(
       if (!job) continue;
       const isLastJob = jobIndex === group.jobs.length - 1;
       const jobBranch = isLastJob ? "└─" : "├─";
-      const jobColor = resolveCarrierColor(rt, job.ownerCarrierId);
+      const jobColor = resolveCarrierColor(job.ownerCarrierId);
       const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
-        ? trackInlineBlock(rt, job.tracks[0])
+        ? trackInlineBlock(job.tracks[0])
         : "";
-      const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(rt, job.tracks[0]) : "";
+      const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(rt, theme, jobBranch)} ${jobIcon(rt, job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
         width,
       ));
 
       if (shouldInlineSingleTrack(job)) continue;
-      appendTrackRows(lines, width, job, jobColor, frame, rt, theme);
+      appendTrackRows(lines, width, job, jobColor, frame, theme);
     }
   }
 }
@@ -232,36 +229,35 @@ function appendTrackRows(
   job: PanelJobViewModel,
   jobColor: string,
   frame: number,
-  rt: FleetCoreRuntimeContext,
   theme: FleetPtyTheme | undefined,
 ): void {
   for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
     const track = job.tracks[trackIndex];
     if (!track) continue;
-    const trackColor = resolveCarrierColor(rt, track.displayCli) ?? jobColor;
-    const icon = trackStatusIcon(rt, track, frame, trackColor);
-    const stats = widgetTrackStats(rt, track);
-    const inline = !track.isComplete ? trackInlineBlock(rt, track) : "";
+    const trackColor = resolveCarrierColor(track.displayCli) ?? jobColor;
+    const icon = trackStatusIcon(track, frame, trackColor);
+    const stats = widgetTrackStats(track);
+    const inline = !track.isComplete ? trackInlineBlock(track) : "";
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}    ${border(rt, theme, "└─")} ${icon} ${trackColor}${trackDisplayName(rt, track)}${ANSI_RESET}${stats}${inline}`,
+      `${STREAM_PREFIX}    ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${stats}${inline}`,
       width,
     ));
   }
 }
 
-function buildCarrierTiles(rt: FleetCoreRuntimeContext, activeJobs: readonly PanelJob[]): CarrierHudTile[] {
-  const snapshot = readStatesSnapshot(rt);
-  return rt.admiral.carrier.getRegisteredOrder().map((carrierId) => {
+function buildCarrierTiles(activeJobs: readonly PanelJob[]): CarrierHudTile[] {
+  const snapshot = readStatesSnapshot();
+  return admiral.carrier.getRegisteredOrder().map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
     return {
       activeJobCount: activeCarrierJobs.length,
       activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       carrierId,
-      color: resolveCarrierColor(rt, carrierId),
-      displayName: resolveCarrierDisplayName(rt, carrierId),
-      online: isCarrierOnline(rt, carrierId),
-      rgb: resolveCarrierRgb(rt, carrierId),
-      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(rt, snapshot, carrierId).length,
+      color: resolveCarrierColor(carrierId),
+      displayName: resolveCarrierDisplayName(carrierId),
+      online: isCarrierOnline(carrierId),
+      rgb: resolveCarrierRgb(carrierId),
+      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
     };
   });
 }
@@ -280,8 +276,8 @@ function getActiveJobs(jobs: readonly PanelJob[] | undefined): PanelJob[] {
   }));
 }
 
-function border(rt: FleetCoreRuntimeContext, theme: FleetPtyTheme | undefined, text: string): string {
-  return theme?.fg("border", text) ?? `${PANEL_DIM_COLOR(rt)}${text}${ANSI_RESET}`;
+function border(theme: FleetPtyTheme | undefined, text: string): string {
+  return theme?.fg("border", text) ?? `${PANEL_DIM_COLOR()}${text}${ANSI_RESET}`;
 }
 
 function tileSeparator(theme: FleetPtyTheme | undefined): string {
@@ -296,11 +292,11 @@ function centerPadding(line: string, width: number): number {
   return Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
 }
 
-function formatCarrierTile(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile, frame: number): string {
+function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
   const carrierColor = carrier.online ? carrier.color : DISABLED_COLOR;
-  const icon = carrierStatusIcon(rt, carrier, frame, carrierColor);
+  const icon = carrierStatusIcon(carrier, frame, carrierColor);
   const hasActiveJob = carrier.activeJobCount > 0;
-  const suffix = `${carrierBadges(rt, carrier)}${carrierActivityBadge(rt, carrier)}`;
+  const suffix = `${carrierBadges(carrier)}${carrierActivityBadge(carrier)}`;
   const prefix = `${icon} `;
 
   if (hasActiveJob && carrier.online) {
@@ -310,29 +306,29 @@ function formatCarrierTile(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile,
   return `${prefix}${carrierColor}${carrier.displayName}${suffix}${ANSI_RESET}`;
 }
 
-function carrierStatusIcon(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile, frame: number, color?: string): string {
+function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: string): string {
   if (!carrier.online) return `${DISABLED_COLOR}○${ANSI_RESET}`;
   if (carrier.activeJobCount > 0) {
-    const frames = SPINNER_FRAMES(rt);
+    const frames = SPINNER_FRAMES();
     const spinner = frames[frame % frames.length] ?? "○";
     return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
   }
   return color ? `${color}○${ANSI_RESET}` : "○";
 }
 
-function carrierBadges(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile): string {
+function carrierBadges(carrier: CarrierHudTile): string {
   const disabledColor = carrier.online ? null : DISABLED_COLOR;
-  const tfBadgeColor = disabledColor ?? TASKFORCE_BADGE_COLOR(rt);
+  const tfBadgeColor = disabledColor ?? TASKFORCE_BADGE_COLOR();
   const tfBadge = carrier.taskForceBackendCount >= 2
     ? ` ${tfBadgeColor}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   return tfBadge;
 }
 
-function carrierActivityBadge(rt: FleetCoreRuntimeContext, carrier: CarrierHudTile): string {
+function carrierActivityBadge(carrier: CarrierHudTile): string {
   if (carrier.activeJobCount <= 0) return "";
   const trackSuffix = carrier.activeTrackCount > 0 ? `:${carrier.activeTrackCount}` : "";
-  return ` ${PANEL_DIM_COLOR(rt)}[${carrier.activeJobCount}${trackSuffix}]${ANSI_RESET}`;
+  return ` ${PANEL_DIM_COLOR()}[${carrier.activeJobCount}${trackSuffix}]${ANSI_RESET}`;
 }
 
 function kindDisplayName(kind: string): string {
@@ -344,16 +340,16 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function jobIcon(rt: FleetCoreRuntimeContext, job: PanelJobViewModel, frame: number): string {
+function jobIcon(job: PanelJobViewModel, frame: number): string {
   if (job.status === "active") {
-    const color = resolveCarrierColor(rt, job.ownerCarrierId);
-    const frames = SPINNER_FRAMES(rt);
+    const color = resolveCarrierColor(job.ownerCarrierId);
+    const frames = SPINNER_FRAMES();
     const spinner = frames[frame % frames.length] ?? "○";
     return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
   }
-  if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
-  if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
-  return `${PANEL_DIM_COLOR(rt)}○${ANSI_RESET}`;
+  if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR()}${ANSI_RESET}`;
+  if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR()}${ANSI_RESET}`;
+  return `${PANEL_DIM_COLOR()}○${ANSI_RESET}`;
 }
 
 function jobDisplayLabel(job: PanelJobViewModel): string {
@@ -364,34 +360,34 @@ function shouldInlineSingleTrack(job: PanelJobViewModel): boolean {
   return job.kind === "carrier" && job.tracks.length === 1;
 }
 
-function trackStatusIcon(rt: FleetCoreRuntimeContext, track: PanelTrackViewModel, frame: number, color?: string): string {
+function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: string): string {
   if (track.isComplete) {
-    if (track.status === "err") return `${COLOR_ERROR}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
-    return `${COLOR_DONE}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
+    if (track.status === "err") return `${COLOR_ERROR}${SYM_INDICATOR()}${ANSI_RESET}`;
+    return `${COLOR_DONE}${SYM_INDICATOR()}${ANSI_RESET}`;
   }
-  const frames = SPINNER_FRAMES(rt);
+  const frames = SPINNER_FRAMES();
   const spinner = frames[frame % frames.length] ?? "○";
   return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
 }
 
-function trackDisplayName(rt: FleetCoreRuntimeContext, track: PanelTrackViewModel): string {
+function trackDisplayName(track: PanelTrackViewModel): string {
   if (track.kind === "backend") {
-    return CLI_DISPLAY_NAMES(rt)[track.displayCli] ?? capitalize(track.displayCli);
+    return CLI_DISPLAY_NAMES()[track.displayCli] ?? capitalize(track.displayCli);
   }
   return track.displayName;
 }
 
-function trackInlineBlock(rt: FleetCoreRuntimeContext, track: PanelTrackViewModel): string {
+function trackInlineBlock(track: PanelTrackViewModel): string {
   if (track.blocks.length === 0) return "";
-  const rendered = renderBlockLines(rt, track.blocks).filter((line) => line.text.trim());
+  const rendered = renderBlockLines(track.blocks).filter((line) => line.text.trim());
   const latest = rendered[rendered.length - 1];
   if (!latest) return "";
-  return ` ${PANEL_DIM_COLOR(rt)}·${ANSI_RESET} ${STREAM_INLINE_COLOR}${latest.text.trim()}${ANSI_RESET}`;
+  return ` ${PANEL_DIM_COLOR()}·${ANSI_RESET} ${STREAM_INLINE_COLOR}${latest.text.trim()}${ANSI_RESET}`;
 }
 
-function widgetTrackStats(rt: FleetCoreRuntimeContext, track: PanelTrackViewModel): string {
+function widgetTrackStats(track: PanelTrackViewModel): string {
   const parts: string[] = [];
   if (track.toolCallCount > 0) parts.push(`${track.toolCallCount}T`);
   if (track.textLineCount > 0) parts.push(`${track.textLineCount}L`);
-  return parts.length > 0 ? ` ${PANEL_DIM_COLOR(rt)}[${parts.join("·")}]${ANSI_RESET}` : "";
+  return parts.length > 0 ? ` ${PANEL_DIM_COLOR()}[${parts.join("·")}]${ANSI_RESET}` : "";
 }

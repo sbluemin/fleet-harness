@@ -1,4 +1,4 @@
-import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
 import { centerLine, truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui/pty";
 
 const ANSI_RESET = "\x1b[0m";
@@ -7,13 +7,11 @@ const MIN_TASK_FORCE_BACKENDS = 2;
 const DISABLED_COLOR = "\x1b[38;2;169;169;169m";
 
 export class CarrierRosterLine implements Component {
-	constructor(private readonly rt: FleetCoreRuntimeContext) {}
-
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		const carrier = this.rt.admiral.carrier;
-		const store = this.rt.admiral.store;
+		const carrier = admiral.carrier;
+		const store = admiral.store;
 		const snapshot = store.readStatesSnapshot();
 		const segments = carrier.getRegisteredOrder().map((carrierId) => {
 			const online = carrier.isCarrierOnline(carrierId);

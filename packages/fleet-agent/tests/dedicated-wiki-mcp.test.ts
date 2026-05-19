@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { bootRuntime, type FleetCoreRuntimeContext } from "../src/runtime/runtime.js";
+import { admiral } from "@sbluemin/fleet-core";
+
+import { bootRuntime, shutdownRuntime } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
   readonly result?: {
@@ -20,17 +22,14 @@ const EXPECTED_WIKI_TOOL_IDS = [
 ] as const;
 
 describe("fleet-agent dedicated CLI wiki MCP registration", () => {
-  let rt: FleetCoreRuntimeContext | undefined;
-
   afterEach(async () => {
-    await rt?.shutdown();
-    rt = undefined;
+    await shutdownRuntime();
   });
 
   it("exposes all Fleet Wiki agent tools on dedicated session tokens after boot", async () => {
-    rt = await bootRuntime();
-    const endpoint = await rt.admiral.mcp.getEndpoint();
-    const token = rt.admiral.mcp.issueDedicatedSessionToken({
+    await bootRuntime();
+    const endpoint = await admiral.mcp.getEndpoint();
+    const token = admiral.mcp.issueDedicatedSessionToken({
       label: "dedicated:test-wiki",
       cwd: process.cwd(),
     });

@@ -1,4 +1,4 @@
-import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
 
 import { getProgrammaticInput } from "../dedicated-cli/bridge.js";
 import {
@@ -9,7 +9,6 @@ import {
 
 export interface JobBarRegistrationOptions {
   readonly requestResize?: () => void;
-  readonly rt: FleetCoreRuntimeContext;
   readonly scheduleRender: () => void;
 }
 
@@ -26,10 +25,9 @@ export function subscribeJobBar(options: JobBarRegistrationOptions): () => void 
       options.requestResize?.();
       options.scheduleRender();
     },
-    rt: options.rt,
   });
 
-  const unsubscribe = options.rt.admiral.carrierJobs.streaming.register(handleCarrierJobStreamEvent);
+  const unsubscribe = admiral.carrierJobs.streaming.register(handleCarrierJobStreamEvent);
 
   return () => {
     unsubscribe();

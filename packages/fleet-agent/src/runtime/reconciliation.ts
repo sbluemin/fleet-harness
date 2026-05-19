@@ -1,11 +1,11 @@
-import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
 
-export function reconcileRuntimeState(rt: FleetCoreRuntimeContext): void {
-  rt.admiral.carrier.setOfflineCarriers(rt.admiral.store.loadOfflineCarriers());
-  rt.admiral.carrier.setTaskForceConfiguredCarriers(
-    rt.admiral.store.getConfiguredTaskForceCarrierIdsFromSnapshot(
-      rt.admiral.store.readStatesSnapshot(),
-      rt.admiral.carrier.getRegisteredOrder(),
+export function reconcileRuntimeState(): void {
+  admiral.carrier.setOfflineCarriers(admiral.store.loadOfflineCarriers());
+  admiral.carrier.setTaskForceConfiguredCarriers(
+    admiral.store.getConfiguredTaskForceCarrierIdsFromSnapshot(
+      admiral.store.readStatesSnapshot(),
+      admiral.carrier.getRegisteredOrder(),
     ),
   );
 }

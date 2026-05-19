@@ -1,8 +1,7 @@
-import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
 import { truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui/pty";
 
 export interface FleetStatusSectionOptions {
-	readonly rt: FleetCoreRuntimeContext;
 	readonly native?: boolean;
 }
 
@@ -20,7 +19,7 @@ export class FleetStatusSection implements Component {
 		if (this.options.native) {
 			return [renderBorder(width, DIM_COLOR)];
 		}
-		const protocol = this.options.rt.admiral.protocols.getActiveProtocol();
+		const protocol = admiral.protocols.getActiveProtocol();
 		return [renderStatusLine(width, protocol.color ?? DIM_COLOR, protocol.shortLabel)];
 	}
 }

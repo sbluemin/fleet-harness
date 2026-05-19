@@ -16,7 +16,7 @@ import { retainProgrammaticInput } from "./dedicated-cli/bridge.js";
 import { injectDedicatedCliProfile } from "./dedicated-cli/injection.js";
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
-import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
+import { bootRuntime, shutdownRuntime } from "./runtime/runtime.js";
 
 export interface RunAppOptions {
   readonly native?: boolean;
@@ -29,10 +29,10 @@ const RENDER_THROTTLE_MS = 16;
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const native = options.native ?? false;
   const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
-  const rt = await bootRuntime();
+  await bootRuntime();
   const ui = new LocalTui();
   const ptyView = new PtyView(ui.columns, 0);
-  const sections = createDefaultFleetPtySections(rt, { native });
+  const sections = createDefaultFleetPtySections({ native });
   const scheduleRender = createRenderScheduler(ui);
   let ptyManager: TuiPtyManager | undefined;
   const fleetPty = createFleetPtyApi({
@@ -45,9 +45,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     requestResize: () => ptyManager?.requestResize("fleet-overlay"),
     requestRender: scheduleRender,
   });
-  registerCarrierStatusKeybinding({ fleetPty, rt });
+  registerCarrierStatusKeybinding({ fleetPty });
   const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
-  const currentProfile = native ? baseProfile : await injectDedicatedCliProfile(baseProfile, rt, { replaceSystemPrompt });
+  const currentProfile = native ? baseProfile : await injectDedicatedCliProfile(baseProfile, { replaceSystemPrompt });
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });
@@ -69,7 +69,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       return;
     }
     stopping = true;
-    stopApp(rt, ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar);
+    stopApp(ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar);
   };
   const router = createInputRouter({
     initialMode: "MIRROR",
@@ -83,7 +83,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   ui.setChildren([ptyView, createFleetPtyViewport(fleetPty)]);
   unsubscribeJobBar = subscribeJobBar({
     requestResize: () => ptyManager?.requestResize("programmatic"),
-    rt,
     scheduleRender,
   });
   assertInputContract();
@@ -137,7 +136,6 @@ function createRenderScheduler(ui: LocalTui): () => void {
 }
 
 function stopApp(
-  rt: FleetCoreRuntimeContext,
   ui: LocalTui,
   ptyHost: PtyHost,
   resize: () => void,
@@ -153,7 +151,7 @@ function stopApp(
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);
   timer.unref?.();
-  rt.shutdown().finally(() => {
+  shutdownRuntime().finally(() => {
     clearTimeout(timer);
     process.exit(0);
   });

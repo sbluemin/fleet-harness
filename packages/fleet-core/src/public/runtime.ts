@@ -6,16 +6,7 @@ import { disconnectAll } from "../admiral/agent/connections.js";
 import { cleanupDedicatedMcpSessionsForRuntimeShutdown } from "../admiral/mcp.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
 import {
-  createFleetAdmiralServices,
-  type FleetAdmiralServices,
-} from "./admiral-services.js";
-import {
-  createFleetAdmiraltyServices,
-  type FleetAdmiraltyServices,
-} from "./admiralty-services.js";
-import {
   createFleetInfraServices,
-  type FleetInfraServices,
 } from "./infra-services.js";
 
 export type { FleetAdmiralServices } from "./admiral-services.js";
@@ -27,16 +18,13 @@ export interface FleetCoreRuntimeOptions {
   readonly bootMode?: "dev" | "normal";
 }
 
-export interface FleetCoreRuntimeContext {
-  readonly admiral: FleetAdmiralServices;
-  readonly admiralty: FleetAdmiraltyServices;
-  readonly infra: FleetInfraServices;
+export interface FleetCoreShutdownHandle {
   shutdown(): Promise<void>;
 }
 
-export function createFleetCoreRuntime(
+export function bootFleetCore(
   options: FleetCoreRuntimeOptions,
-): FleetCoreRuntimeContext {
+): FleetCoreShutdownHandle {
   const infra = createFleetInfraServices();
   setFleetCoreBootMode(options.bootMode ?? "normal");
   if (options.dataDir === infra.dataDir.getFleetDataDir()) {
@@ -53,9 +41,6 @@ export function createFleetCoreRuntime(
   });
 
   return {
-    admiral: createFleetAdmiralServices(),
-    admiralty: createFleetAdmiraltyServices(),
-    infra,
     async shutdown() {
       await disconnectAll();
       cleanupDedicatedMcpSessionsForRuntimeShutdown();
