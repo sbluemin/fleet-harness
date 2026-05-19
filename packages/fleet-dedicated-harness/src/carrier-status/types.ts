@@ -1,0 +1,110 @@
+import type {
+  CarrierCategory,
+  FleetCoreRuntimeContext,
+  TaskForceCliType,
+} from "@sbluemin/fleet-core";
+
+import type { FleetPtyApi } from "../tui/pty/fleet/api.js";
+
+export type CarrierCliType = TaskForceCliType;
+export type FleetStoreSnapshot = ReturnType<FleetCoreRuntimeContext["admiral"]["store"]["readStatesSnapshot"]>;
+export type HealthStatus = "operational" | "partial_outage" | "major_outage" | "maintenance" | "unknown";
+
+export interface CarrierStatusContext {
+  readonly fleetPty: FleetPtyApi;
+  readonly rt: FleetCoreRuntimeContext;
+}
+
+export interface ModelSelection {
+  effort?: string;
+  model: string;
+}
+
+export interface ModelEffort {
+  readonly default?: string;
+  readonly levels?: readonly string[];
+  readonly supported: boolean;
+}
+
+export interface ProviderModelInfo {
+  readonly modelId: string;
+  readonly name: string;
+}
+
+export interface CliModelInfo {
+  readonly [legacyField: string]: unknown;
+  readonly defaultModel: string;
+  readonly effort: ModelEffort;
+  readonly models: ProviderModelInfo[];
+  readonly name: string;
+}
+
+export interface CliServiceSnapshot {
+  readonly status: HealthStatus;
+}
+
+export interface ResolvedCliSelection {
+  readonly effort: string | null;
+  readonly isDefault: boolean;
+  readonly model: string;
+}
+
+export interface CliTypeChangeResult {
+  readonly carrierId: string;
+  readonly newCliType: CarrierCliType;
+  readonly selection: ResolvedCliSelection;
+}
+
+export interface CliTypeChangeSettledResult {
+  readonly carrierId: string;
+  readonly error?: string;
+  readonly result?: CliTypeChangeResult;
+  readonly status: "fulfilled" | "rejected";
+}
+
+export interface CarrierStatusEntry {
+  carrierId: string;
+  category?: CarrierCategory;
+  cliType: CarrierCliType;
+  defaultCliType: CarrierCliType;
+  displayName: string;
+  effort: string | null;
+  isDefault: boolean;
+  isSortieEnabled: boolean;
+  isSquadronEnabled: boolean;
+  model: string;
+  role: string | null;
+  roleDescription: string | null;
+  slot: number;
+  taskForceBackendCount: number;
+}
+
+export interface CliTypeChoice {
+  readonly label: string;
+  readonly value: CarrierCliType;
+}
+
+export interface BatchCliChoice {
+  readonly carrierCount: number;
+  readonly cliType: CarrierCliType;
+  readonly label: string;
+  readonly status: HealthStatus;
+}
+
+export type OverlayState =
+  | { readonly kind: "browse" }
+  | { readonly carrierId: string; readonly choices: readonly string[]; readonly cursor: number; readonly kind: "model" }
+  | { readonly carrierId: string; readonly choices: readonly string[]; readonly cursor: number; readonly kind: "effort"; readonly pendingModel: string }
+  | { readonly carrierId: string; readonly choices: readonly CliTypeChoice[]; readonly cursor: number; readonly kind: "cliType" }
+  | { readonly choices: readonly BatchCliChoice[]; readonly cursor: number; readonly kind: "batchFrom" }
+  | { readonly choices: readonly BatchCliChoice[]; readonly cursor: number; readonly fromCli: CarrierCliType; readonly kind: "batchTo" }
+  | { readonly kind: "saving" };
+
+export interface TaskForceEntry {
+  readonly cliType: TaskForceCliType;
+  readonly color: string;
+  readonly displayName: string;
+  readonly effort: string | null;
+  readonly isCustom: boolean;
+  readonly model: string;
+}

@@ -12,16 +12,20 @@ export function createOverlayManager(): OverlayManager {
   return {
     current: () => currentOverlay,
     mount: (overlay) => {
-      currentOverlay?.dispose?.();
+      disposeOverlay(currentOverlay);
       currentOverlay = overlay;
       return overlay;
     },
     unmount: () => {
       const previous = currentOverlay;
-      previous?.dispose?.();
+      disposeOverlay(previous);
       currentOverlay = undefined;
       return previous;
     },
   };
 }
 
+function disposeOverlay(overlay: FleetPtyOverlay | undefined): void {
+  overlay?.dispose?.();
+  overlay?.component.dispose?.();
+}

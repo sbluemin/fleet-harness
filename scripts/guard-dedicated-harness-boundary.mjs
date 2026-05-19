@@ -24,6 +24,8 @@ const allowedDocPhrases = [
 ];
 
 const findings = [];
+const forbiddenFleetPtyInternalImport =
+  /from\s+["'][^"']*tui\/pty\/fleet\/(?!api\.js)(?:region-stack|overlay-manager|sections|types|component|frame|keys|local-ui|theme)[^"']*["']/;
 
 for (const file of listFiles(scanRoots)) {
   const text = readFileSync(file, "utf8");
@@ -39,6 +41,14 @@ for (const file of listFiles(scanRoots)) {
 
     findings.push(`${path.relative(root, file)}:${index + 1}: ${line}`);
   });
+
+  if (file.includes(`${path.sep}src${path.sep}`) && !file.includes(`${path.sep}src${path.sep}tui${path.sep}pty${path.sep}fleet${path.sep}`)) {
+    lines.forEach((line, index) => {
+      if (forbiddenFleetPtyInternalImport.test(line)) {
+        findings.push(`${path.relative(root, file)}:${index + 1}: external Fleet PTY consumer must import tui/pty/fleet/api.js only: ${line}`);
+      }
+    });
+  }
 }
 
 if (findings.length > 0) {

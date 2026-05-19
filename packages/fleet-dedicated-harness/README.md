@@ -7,7 +7,8 @@ Standalone Tier-1 Dedicated Harness PoC for running one of five local CLIs insid
 - Boots Fleet runtime state through the public `@sbluemin/fleet-core` root barrel.
 - Hosts `claude`, `codex`, `gemini`, `opencode`, or `cursor-agent` through a `node-pty` backed Dedicated CLI PTY.
 - Renders the upper Dedicated CLI PTY and lower Fleet PTY with local `tui/**` code.
-- Exposes `fleet-pty/api.ts` as the local lower-pane replacement for Pi `ctx.ui.custom`, `setHeader`, and coding-agent `EditorReplace` patterns.
+- Exposes `src/tui/pty/fleet/api.ts` as the local lower-pane replacement for Pi `ctx.ui.custom`, `setHeader`, and coding-agent `EditorReplace` patterns.
+- Opens the full parity carrier-status overlay with `Alt+O`; it restores grouped carrier rendering, model/effort editing, CLI migration, rename, sortie, Squadron, reset, and TaskForce backend editing.
 
 ## Boundary
 
@@ -47,7 +48,21 @@ The package is ESM-only and builds with TypeScript NodeNext.
 
 Tier-2/3 slots are README-only covers in this plan. No implementation code, imports, or exports may be added under those slots until a later plan opens them.
 
-`bridge/`, `carrier-status/`, and `grand-fleet/` are not valid Dedicated Harness slots.
+`carrier-status/` is a top-level implemented Option Y overlay domain. `bridge/`, `grand-fleet/`, and `components/` are not valid Dedicated Harness slots. Domain-coupled components live under `src/tui/pty/{dedicated,fleet}/` or a top-level first-class domain directory.
+
+## Fleet PTY Overlay Lifecycle
+
+`fleetPty.custom<T>()` mounts a focused lower-pane component, routes Fleet PTY input to it, resolves when the component calls `done(result)`, disposes the component if needed, and returns to the default Fleet PTY section composite.
+
+Fleet PTY components may expose `desiredHeight(maxRows)`. `src/tui/pty/manager.ts` reads that value, asks `split-pane.ts` for the permanent vertical two-pane split, preserves `MIN_DEDICATED_ROWS`, and resizes both the Dedicated CLI PTY view and child `PtyHost` through one path.
+
+Carrier status parity smoke path:
+
+```text
+Alt+O -> Enter -> model -> effort -> c -> C -> N -> d -> S -> R -> t -> Enter -> effort -> r -> Esc
+```
+
+If `Alt+O` is pressed while an overlay is active, the active overlay is dismissed and carrier status is reopened.
 
 ## Security Assumptions
 

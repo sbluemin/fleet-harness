@@ -1,8 +1,8 @@
 import type { Terminal as XtermTerminal } from "@xterm/headless";
 
-import { createXterm, renderXtermViewport } from "../../pty/xterm-bridge.js";
-import type { Component } from "../../tui/types.js";
-import { truncateToWidth, visibleWidth } from "../../tui/primitives/text.js";
+import { truncateToWidth, visibleWidth } from "../../primitives/text.js";
+import type { Component } from "../../types.js";
+import { createXterm, renderXtermViewport } from "./xterm-bridge.js";
 
 const MIN_ROWS = 0;
 const MIN_COLUMNS = 1;

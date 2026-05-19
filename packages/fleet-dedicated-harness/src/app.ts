@@ -1,40 +1,53 @@
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
-import { PtyView } from "./components/dedicated/pty-view.js";
-import { createFleetPtyApi } from "./fleet-pty/api.js";
-import { createDefaultFleetPtySections } from "./fleet-pty/sections.js";
+import { registerCarrierStatusKeybinding } from "./carrier-status/register.js";
+import { createDefaultFleetPtySections, createFleetPtyApi, type Component } from "./tui/pty/fleet/api.js";
 import { assertInputContract } from "./input/conflict.js";
 import { createInputRouter } from "./input/input-router.js";
 import { createProgrammaticInput, type ProgrammaticInput } from "./input/programmatic.js";
-import { createPtyHost } from "./pty/pty-host.js";
-import type { PtyHost } from "./pty/types.js";
+import { PtyView } from "./tui/pty/dedicated/pty-view.js";
+import { createPtyHost } from "./tui/pty/dedicated/pty-host.js";
+import type { PtyHost } from "./tui/pty/dedicated/types.js";
 import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
 import { attachInputStream } from "./tui/core/input-stream.js";
 import { LocalTui } from "./tui/core/renderer.js";
-import { getTerminalSize } from "./tui/core/terminal-size.js";
-import { computeVerticalSplit } from "./tui/layout/split-pane.js";
+import { createTuiPtyManager, type TuiPtyManager } from "./tui/pty/manager.js";
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
 const PROGRAMMATIC_INPUT_SLOT: { current?: ProgrammaticInput } = {};
 
 export async function runApp(): Promise<void> {
-  assertInputContract();
-
   const rt = await bootRuntime();
   const ui = new LocalTui();
-  const split = computeVerticalSplit({ columns: ui.columns, rows: ui.rows });
-  const ptyView = new PtyView(ui.columns, split.dedicatedRows);
+  const ptyView = new PtyView(ui.columns, 0);
   const sections = createDefaultFleetPtySections(rt);
-  const fleetPty = createFleetPtyApi({ component: sections[0].component, id: "default-fleet-region" }, sections);
+  const scheduleRender = createRenderScheduler(ui);
+  let ptyManager: TuiPtyManager | undefined;
+  const fleetPty = createFleetPtyApi(sections, {
+    addInputListener: (listener) => ui.addInputListener(listener),
+    getColumns: () => ui.columns,
+    getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - ptyView.maxRows),
+    requestResize: () => ptyManager?.requestResize("fleet-overlay"),
+    requestRender: scheduleRender,
+  });
+  registerCarrierStatusKeybinding({ fleetPty, rt });
+  assertInputContract();
   const currentProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd());
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });
+  ptyManager = createTuiPtyManager({
+    fleetPty,
+    ptyHost,
+    ptyView,
+    refreshSize: (size) => ui.refreshSize(size),
+    requestRender: scheduleRender,
+  });
+  const initialResize = ptyManager.requestResize("initial");
   retainProgrammaticInput(createProgrammaticInput(ptyHost, currentProfile));
-  const scheduleRender = createRenderScheduler(ui);
   let stopping = false;
   let disposeInputStream = () => {};
-  const resize = () => resizePty(ui, ptyView, ptyHost, scheduleRender);
+  const resize = () => ptyManager?.requestResize("terminal-resize");
   const stop = () => {
     if (stopping) {
       process.exit(1);
@@ -46,12 +59,13 @@ export async function runApp(): Promise<void> {
   const router = createInputRouter({
     onExit: stop,
     onModeChange: () => scheduleRender(),
+    routeFleetInput: (data) => fleetPty.dispatchInput(data),
     writeDedicated: (data) => ptyHost.write(data),
   });
 
-  ui.setChildren([ptyView, ...fleetPty.getSections().map((section) => section.component)]);
+  ui.setChildren([ptyView, createFleetPtyViewport(fleetPty)]);
   ui.addInputListener((data) => router.route(data));
-  ptyHost.start({ cols: ui.columns, rows: ptyView.maxRows });
+  ptyHost.start({ cols: ui.columns, rows: initialResize.dedicatedRows });
   ptyHost.onData((chunk) => {
     ptyView.append(chunk, scheduleRender);
   });
@@ -65,13 +79,18 @@ export async function runApp(): Promise<void> {
   disposeInputStream = attachInputStream(ui);
 }
 
-function resizePty(ui: LocalTui, ptyView: PtyView, ptyHost: PtyHost, scheduleRender: () => void): void {
-  const size = getTerminalSize();
-  ui.refreshSize(size);
-  const split = computeVerticalSplit(size);
-  ptyView.resize(size.columns, split.dedicatedRows);
-  ptyHost.resize(size.columns, split.dedicatedRows);
-  scheduleRender();
+function createFleetPtyViewport(fleetPty: ReturnType<typeof createFleetPtyApi>): Component {
+  return {
+    handleInput(data: string): void {
+      fleetPty.dispatchInput(data);
+    },
+    invalidate(): void {
+      fleetPty.getCurrentRegion().component.invalidate();
+    },
+    render(width: number): string[] {
+      return fleetPty.getCurrentRegion().component.render(width);
+    },
+  };
 }
 
 function createRenderScheduler(ui: LocalTui): () => void {

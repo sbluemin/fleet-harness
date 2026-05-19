@@ -1,7 +1,7 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 
-import type { Component } from "../../tui/types.js";
-import { truncateToWidth, visibleWidth } from "../../tui/primitives/text.js";
+import { truncateToWidth, visibleWidth } from "../../primitives/text.js";
+import type { Component } from "./api.js";
 
 export interface FleetStatusSectionOptions {
 	readonly rt: FleetCoreRuntimeContext;

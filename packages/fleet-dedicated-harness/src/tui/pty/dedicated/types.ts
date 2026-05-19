@@ -1,4 +1,4 @@
-import type { DedicatedCliProfile } from "../dedicated-cli/types.js";
+import type { DedicatedCliProfile } from "../../../dedicated-cli/types.js";
 
 export interface PtyStartOptions {
   readonly cols: number;
@@ -16,4 +16,3 @@ export interface PtyHost {
 export interface PtyLaunchConfig {
   readonly profile: DedicatedCliProfile;
 }
-

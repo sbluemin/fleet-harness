@@ -47,6 +47,9 @@ export type {
   TaskForceState,
   TaskForceCliType,
 } from "./admiral/taskforce/types.js";
+export {
+  TASKFORCE_CLI_TYPES,
+} from "./admiral/taskforce/types.js";
 export type {
   SquadronResult,
   SquadronState,

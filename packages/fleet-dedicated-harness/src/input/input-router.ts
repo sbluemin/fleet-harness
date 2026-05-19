@@ -1,4 +1,4 @@
-import { isHostExit, isKeyRelease, isModeToggle } from "./keybindings.js";
+import { dispatchRegisteredKeybinding, isHostExit, isKeyRelease, isModeToggle } from "./keybindings.js";
 import { toggleFleetInputMode, type FleetInputMode } from "./modes.js";
 
 type InputToken = string;
@@ -6,6 +6,7 @@ type InputToken = string;
 export interface InputRouterOptions {
   readonly onExit: () => void;
   readonly onModeChange: (mode: FleetInputMode) => void;
+  readonly routeFleetInput?: (data: string) => boolean;
   readonly writeDedicated: (data: string) => void;
 }
 
@@ -34,6 +35,10 @@ export function createInputRouter(options: InputRouterOptions): InputRouter {
           continue;
         }
 
+        if (dispatchRegisteredKeybinding(token)) {
+          continue;
+        }
+
         if (isModeToggle(token)) {
           if (dedicatedOutput.length > 0) {
             options.writeDedicated(dedicatedOutput);
@@ -41,6 +46,10 @@ export function createInputRouter(options: InputRouterOptions): InputRouter {
           }
           mode = toggleFleetInputMode(mode);
           options.onModeChange(mode);
+          continue;
+        }
+
+        if (options.routeFleetInput?.(token)) {
           continue;
         }
 

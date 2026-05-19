@@ -16,16 +16,21 @@ This package owns the local host assembly for the Dedicated CLI PTY and Fleet PT
 
 Only the permanent vertical two-pane layout is allowed:
 
-- **Dedicated CLI PTY**: Upper pane, backed by `PtyView`, `PtyHost`, and `node-pty`.
-- **Fleet PTY**: Lower pane, backed by default Fleet sections and `fleet-pty/api.ts`.
+- **Dedicated CLI PTY**: Upper pane, backed by `PtyView`, `PtyHost`, and `node-pty` under `src/tui/pty/dedicated/**`.
+- **Fleet PTY**: Lower pane, backed by default Fleet sections and `src/tui/pty/fleet/api.ts`.
+- **Shared PTY negotiation**: `src/tui/pty/{types.ts,manager.ts}` owns desired-height layout and synchronized resize propagation.
 
 Horizontal layouts, tabs, multi-pane layouts, and layout engines are out of scope.
 
 ## Fleet PTY API
 
-`fleet-pty/api.ts` is the only external Fleet PTY API for overlays and region replacement.
+`src/tui/pty/fleet/api.ts` is the only external Fleet PTY API for overlays and region replacement.
 
-External domains must not import `fleet-pty/region-stack.ts`, `fleet-pty/overlay-manager.ts`, `fleet-pty/sections.ts`, or `fleet-pty/types.ts` directly.
+External domains must not import `src/tui/pty/fleet/region-stack.ts`, `overlay-manager.ts`, `sections.ts`, `types.ts`, or other Fleet PTY internals directly.
+
+Fleet PTY components may expose `desiredHeight(maxRows)` for vertical two-pane negotiation. `MIN_DEDICATED_ROWS` is preserved by the split manager.
+
+`carrier-status/` is the first top-level implemented Option Y overlay domain and is a full domain-parity implementation of the fleet-harness carrier-status overlay. Do not simplify it back to text drafts, flat rendering, or partial key handling. It must consume only `src/tui/pty/fleet/api.ts` from outside Fleet PTY internals.
 
 ## Input & Mode Logic
 
@@ -38,7 +43,9 @@ External domains must not import `fleet-pty/region-stack.ts`, `fleet-pty/overlay
 
 Tier-2/3 slots are README-only until later plans open them.
 
-Do not create `bridge/`, `carrier-status/`, or `grand-fleet/`. Future carrier status UI expands under `jobs/status.ts` or `jobs/status/` only when Tier-3 opens.
+Do not create `bridge/`, `grand-fleet/`, or `components/`.
+
+Domain-coupled components belong under `src/tui/pty/{dedicated,fleet}/` or a top-level first-class domain directory such as `carrier-status/`.
 
 ## Development & Execution
 

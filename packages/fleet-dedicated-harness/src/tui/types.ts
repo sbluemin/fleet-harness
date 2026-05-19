@@ -1,6 +1,12 @@
 export interface Component {
+  readonly wantsKeyRelease?: boolean;
+  handleInput?(data: string): void;
   invalidate(): void;
   render(width: number): string[];
+}
+
+export interface Focusable {
+  focused: boolean;
 }
 
 export interface TerminalSize {
@@ -13,4 +19,3 @@ export interface InputResult {
 }
 
 export type InputListener = (data: string) => InputResult | void;
-
