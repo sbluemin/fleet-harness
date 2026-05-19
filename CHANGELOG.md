@@ -19,6 +19,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [wiki] English localization of all tool prompts, schemas, and guidelines in `prompts.ts`.
 
 ### Fixed
+- Resolved an issue where concurrent dispatches from the same carrier shared a single PanelRun and collapsed into one line by enforcing unique run identifiers.
 - [wiki] Unified patch hash calculation to cover the entire `patch.md` content, ensuring `summary` frontmatter changes are correctly reflected in `changed_fields`, `patch_hash`, and `base_patch_hash`.
 - [wiki] Introduced per-`patch_id` in-process mutex and snapshot atomicity to prevent race conditions during concurrent `wiki_patch_edit`, `approve`, and `reject` operations.
 - [wiki] Integrated `lastEditHash` as the single source of truth (SSoT) for the actual written patch hash to ensure consistent stale-base detection during interleaved edits.
@@ -30,6 +31,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [harness] Fixed type-checking issues in status overlay tests by correcting state property access.
 
 ### Changed
+- Redesigned the Job Bar expanded view into a hierarchical structure featuring a carrier header and independent dispatch sub-lines.
 - Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
 - Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [wiki-web] Fleet Wiki Web now runs as a single per-user daemon that can open multiple registered workspaces with workspace-scoped URLs.
@@ -43,6 +45,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
 
 ### Removed
+- Eliminated obsolete `visibleRunIdByCli` payload from status sources and the `_streams` parameter from status updates.
 - Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [agent-core] Removed Gemini and Cursor Agent from dedicated CLI support.
 - [core][harness] Removed 'metaphor' domain (worldview, operation naming, directive refinement) and 'request_directive' tool.

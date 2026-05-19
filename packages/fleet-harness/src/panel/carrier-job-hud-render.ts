@@ -24,8 +24,8 @@ import {
 import { renderBlockLines } from "./message-render.js";
 import { waveText } from "./panel-render.js";
 import { getActiveJobs, getPanelRuns, getState, makeFooterCols } from "./state.js";
-import type { PanelJobViewModel, PanelTrackViewModel } from "./view-model.js";
-import { buildPanelViewModel } from "./view-model.js";
+import type { CarrierJobGroupViewModel, PanelJobViewModel, PanelTrackViewModel } from "./view-model.js";
+import { buildCarrierJobGroups, buildPanelViewModel } from "./view-model.js";
 
 interface CarrierHudTile {
   carrierId: string;
@@ -93,28 +93,54 @@ function appendWidgetJobSummary(
   frame: number,
   theme: Theme | undefined,
 ): void {
-  for (let jobIndex = 0; jobIndex < jobs.length && lines.length < MAX_WIDGET_LINES; jobIndex++) {
-    const job = jobs[jobIndex];
-    if (!job) continue;
-    const jobColor = resolveCarrierColor(job.ownerCarrierId);
-    const jobLabel = `${kindDisplayName(job.kind)} · ${job.label}`;
+  const groups = buildCarrierJobGroups(jobs, makeFooterCols().map((col) => col.cli), resolveCarrierDisplayName);
+  for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
+    const group = groups[groupIndex];
+    if (!group || group.jobs.length === 0) continue;
+    const groupColor = resolveCarrierColor(group.carrierId);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${border(theme, "├─")} ${jobIcon(job, frame)} ${jobColor}${jobLabel}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${border(theme, "├─")} ${groupIcon(group, frame)} ${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
     ));
 
-    for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
-      const track = job.tracks[trackIndex];
-      if (!track) continue;
-      const trackColor = resolveCarrierColor(track.displayCli) ?? jobColor;
-      const icon = trackStatusIcon(track, frame, trackColor);
-      const stats = widgetTrackStats(track);
-      const inline = !track.isComplete ? trackInlineBlock(track) : "";
+    for (let jobIndex = 0; jobIndex < group.jobs.length && lines.length < MAX_WIDGET_LINES; jobIndex++) {
+      const job = group.jobs[jobIndex];
+      if (!job) continue;
+      const jobColor = resolveCarrierColor(job.ownerCarrierId);
+      const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
+        ? trackInlineBlock(job.tracks[0])
+        : "";
+      const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(theme, "├─")} ${jobIcon(job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
         width,
       ));
+
+      if (shouldInlineSingleTrack(job)) continue;
+      appendTrackRows(lines, width, job, jobColor, frame, theme);
     }
+  }
+}
+
+function appendTrackRows(
+  lines: string[],
+  width: number,
+  job: PanelJobViewModel,
+  jobColor: string,
+  frame: number,
+  theme: Theme | undefined,
+): void {
+  for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
+    const track = job.tracks[trackIndex];
+    if (!track) continue;
+    const trackColor = resolveCarrierColor(track.displayCli) ?? jobColor;
+    const icon = trackStatusIcon(track, frame, trackColor);
+    const stats = widgetTrackStats(track);
+    const inline = !track.isComplete ? trackInlineBlock(track) : "";
+    lines.push(truncateToWidth(
+      `${STREAM_PREFIX}    ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${stats}${inline}`,
+      width,
+    ));
   }
 }
 
@@ -210,6 +236,25 @@ function jobIcon(job: PanelJobViewModel, frame: number): string {
   if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
   if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
   return `${PANEL_DIM_COLOR}○${ANSI_RESET}`;
+}
+
+function groupIcon(group: CarrierJobGroupViewModel, frame: number): string {
+  if (group.status === "active") {
+    const color = resolveCarrierColor(group.carrierId);
+    const spinner = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
+    return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
+  }
+  if (group.status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
+  if (group.status === "error" || group.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
+  return `${PANEL_DIM_COLOR}○${ANSI_RESET}`;
+}
+
+function jobDisplayLabel(job: PanelJobViewModel): string {
+  return job.kind === "carrier" ? job.label : `${kindDisplayName(job.kind)} · ${job.label}`;
+}
+
+function shouldInlineSingleTrack(job: PanelJobViewModel): boolean {
+  return job.kind === "carrier" && job.tracks.length === 1;
 }
 
 function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: string): string {

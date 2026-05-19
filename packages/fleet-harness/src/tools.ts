@@ -213,9 +213,11 @@ function renderToolCall(spec: AgentToolSpec, args: unknown, _theme: Theme, conte
   }
   if (spec.id === "carrier_dispatch") {
     const carrierId = isRecord(args) && typeof args.carrier_id === "string" ? args.carrier_id : "";
+    const label = isRecord(args) && typeof args.label === "string" ? args.label.trim() : "";
     const carrierColor = CARRIER_COLORS[carrierId] ?? SORTIE_SUMMARY_COLOR;
     const carrierName = resolveCarrierDisplayName(carrierId) || carrierId;
-    return oneLine(`  ⚓ ${carrierColor}${carrierName}${ANSI_RESET}`);
+    const suffix = label ? ` — ${label}` : "";
+    return oneLine(`  ⚓ ${carrierColor}${carrierName}${ANSI_RESET}${suffix}`);
   }
   return undefined;
 }
@@ -257,7 +259,10 @@ function buildPreviewEntries(toolName: string, args: unknown): RenderEntry[] {
   if (toolName === "carrier_dispatch" && typeof args.carrier_id === "string" && typeof args.request === "string") {
     const carrierId = args.carrier_id;
     const carrierName = resolveCarrierDisplayName(carrierId) || carrierId;
-    return [{ label: carrierName, text: String(args.request) }];
+    const label = typeof args.label === "string" && args.label.trim().length > 0
+      ? `${carrierName} — ${args.label.trim()}`
+      : carrierName;
+    return [{ label, text: String(args.request) }];
   }
 
   if (toolName === "carrier_taskforce" && typeof args.request === "string") {

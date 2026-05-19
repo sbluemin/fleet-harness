@@ -47,7 +47,6 @@ export interface StreamRunLikeState {
 
 export interface StreamStoreLikeState {
   runs?: Map<string, StreamRunLikeState>;
-  visibleRunIdByCli?: Map<string, string>;
 }
 
 export function buildFleetPingPayloadFromState(input: {

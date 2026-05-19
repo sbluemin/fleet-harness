@@ -18,8 +18,8 @@ import {
   SYM_THINKING,
   TASKFORCE_BADGE_COLOR,
 } from "./facade.js";
-import type { ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
-import { buildPanelViewModel } from "./job-bar-view-model.js";
+import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
+import { buildCarrierJobGroups, buildPanelViewModel } from "./job-bar-view-model.js";
 
 export type CarrierJobHudMode = "expanded" | "strip";
 
@@ -207,28 +207,59 @@ function appendWidgetJobSummary(
   rt: FleetCoreRuntimeContext,
   theme: FleetPtyTheme | undefined,
 ): void {
-  for (let jobIndex = 0; jobIndex < jobs.length && lines.length < MAX_WIDGET_LINES; jobIndex++) {
-    const job = jobs[jobIndex];
-    if (!job) continue;
-    const jobColor = resolveCarrierColor(rt, job.ownerCarrierId);
-    const jobLabel = `${kindDisplayName(job.kind)} · ${job.label}`;
+  const groups = buildCarrierJobGroups(
+    jobs,
+    rt.admiral.carrier.getRegisteredOrder(),
+    (carrierId) => resolveCarrierDisplayName(rt, carrierId),
+  );
+  for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
+    const group = groups[groupIndex];
+    if (!group || group.jobs.length === 0) continue;
+    const groupColor = resolveCarrierColor(rt, group.carrierId);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${border(rt, theme, "├─")} ${jobIcon(rt, job, frame)} ${jobColor}${jobLabel}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${border(rt, theme, "├─")} ${groupIcon(rt, group, frame)} ${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
     ));
 
-    for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
-      const track = job.tracks[trackIndex];
-      if (!track) continue;
-      const trackColor = resolveCarrierColor(rt, track.displayCli) ?? jobColor;
-      const icon = trackStatusIcon(rt, track, frame, trackColor);
-      const stats = widgetTrackStats(rt, track);
-      const inline = !track.isComplete ? trackInlineBlock(rt, track) : "";
+    for (let jobIndex = 0; jobIndex < group.jobs.length && lines.length < MAX_WIDGET_LINES; jobIndex++) {
+      const job = group.jobs[jobIndex];
+      if (!job) continue;
+      const jobColor = resolveCarrierColor(rt, job.ownerCarrierId);
+      const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
+        ? trackInlineBlock(rt, job.tracks[0])
+        : "";
+      const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(rt, job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(rt, theme, "└─")} ${icon} ${trackColor}${trackDisplayName(rt, track)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(rt, theme, "├─")} ${jobIcon(rt, job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
         width,
       ));
+
+      if (shouldInlineSingleTrack(job)) continue;
+      appendTrackRows(lines, width, job, jobColor, frame, rt, theme);
     }
+  }
+}
+
+function appendTrackRows(
+  lines: string[],
+  width: number,
+  job: PanelJobViewModel,
+  jobColor: string,
+  frame: number,
+  rt: FleetCoreRuntimeContext,
+  theme: FleetPtyTheme | undefined,
+): void {
+  for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
+    const track = job.tracks[trackIndex];
+    if (!track) continue;
+    const trackColor = resolveCarrierColor(rt, track.displayCli) ?? jobColor;
+    const icon = trackStatusIcon(rt, track, frame, trackColor);
+    const stats = widgetTrackStats(rt, track);
+    const inline = !track.isComplete ? trackInlineBlock(rt, track) : "";
+    lines.push(truncateToWidth(
+      `${STREAM_PREFIX}    ${border(rt, theme, "└─")} ${icon} ${trackColor}${trackDisplayName(rt, track)}${ANSI_RESET}${stats}${inline}`,
+      width,
+    ));
   }
 }
 
@@ -337,6 +368,26 @@ function jobIcon(rt: FleetCoreRuntimeContext, job: PanelJobViewModel, frame: num
   if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
   if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
   return `${PANEL_DIM_COLOR(rt)}○${ANSI_RESET}`;
+}
+
+function groupIcon(rt: FleetCoreRuntimeContext, group: CarrierJobGroupViewModel, frame: number): string {
+  if (group.status === "active") {
+    const color = resolveCarrierColor(rt, group.carrierId);
+    const frames = SPINNER_FRAMES(rt);
+    const spinner = frames[frame % frames.length] ?? "○";
+    return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
+  }
+  if (group.status === "done") return `${COLOR_DONE}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
+  if (group.status === "error" || group.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
+  return `${PANEL_DIM_COLOR(rt)}○${ANSI_RESET}`;
+}
+
+function jobDisplayLabel(job: PanelJobViewModel): string {
+  return job.kind === "carrier" ? job.label : `${kindDisplayName(job.kind)} · ${job.label}`;
+}
+
+function shouldInlineSingleTrack(job: PanelJobViewModel): boolean {
+  return job.kind === "carrier" && job.tracks.length === 1;
 }
 
 function trackStatusIcon(rt: FleetCoreRuntimeContext, track: PanelTrackViewModel, frame: number, color?: string): string {

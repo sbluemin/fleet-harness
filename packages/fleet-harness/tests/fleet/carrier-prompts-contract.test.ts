@@ -21,12 +21,18 @@ describe("carrier prompt doctrine", () => {
     expect(PROTOCOL_PREAMBLE).toContain("stop tool use and wait passively for the [carrier:result] follow-up push");
     expect(PROTOCOL_PREAMBLE).toContain("carrier_jobs is only a fallback path when the push is missing or an explicit lookup is required");
     expect(CARRIER_OPERATIONS_POLICY.prompt).toContain("Lookup/control detached carrier jobs");
+    expect(CARRIER_OPERATIONS_POLICY.prompt).toContain("Every `carrier_dispatch` call MUST include `label`");
+    expect(CARRIER_OPERATIONS_POLICY.prompt).toContain("Missing, empty, or non-string `label` is a hard rejection");
   });
 
   it("carrier_dispatch tool unifies all carriers under a single spec", () => {
     const dispatchSpec = buildCarrierDispatchToolSpec();
     expect(dispatchSpec.id).toBe("carrier_dispatch");
     expect(dispatchSpec.tag).toBe("carrier_dispatch");
+    expect(Object.keys((dispatchSpec.parameters as any).properties)).toEqual(
+      expect.arrayContaining(["carrier_id", "label", "request"]),
+    );
+    expect(JSON.stringify(dispatchSpec.parameters)).toContain("Required concise one-line dispatch intent label");
     expect(TASKFORCE_DOCTRINE.id).toBe("carrier_taskforce");
     expect(CARRIER_JOBS_DOCTRINE.id).toBe("carrier_jobs");
     expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).not.toContain("Available Carriers");

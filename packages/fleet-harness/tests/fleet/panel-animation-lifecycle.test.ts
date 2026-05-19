@@ -13,7 +13,7 @@ import {
   registerAgentPanelShortcut,
   toggleAgentPanel,
 } from "../../src/panel/ui.js";
-import { getState, handleCarrierJobStreamEvent, resetPanelStateForTest } from "../../src/panel/state.js";
+import { getPanelRuns, getState, handleCarrierJobStreamEvent, resetPanelStateForTest } from "../../src/panel/state.js";
 import { syncWidget } from "../../src/panel/widget-sync.js";
 import { _bootstrapKeybind, prepareKeybindBridgeForExtensionLoad, type KeybindRegistration } from "../../src/keybinds.js";
 import { AgentPanelEditor } from "../../src/panel/editor-panel.js";
@@ -256,8 +256,33 @@ describe("panel animation lifecycle", () => {
     expect(stripLines).toHaveLength(1);
     expect(expandedLines.length).toBeGreaterThan(stripLines.length);
     expect(expandedLines.length).toBeLessThanOrEqual(10);
+    expect(stripAnsi(expandedLines.join("\n"))).toContain("Carrier Genesis");
     expect(stripAnsi(expandedLines.join("\n"))).toContain("Taskforce · 2 backends");
     expect(stripAnsi(expandedLines.join("\n"))).toContain("Codex");
+  });
+
+  it("groups same-carrier dispatches under one header without sharing run blocks", async () => {
+    const state = getState();
+    state.streaming = false;
+    state.frame = 0;
+    state.cols = [buildCol("wait")];
+    state.widgetMode = "expanded";
+    registerDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000);
+    registerDispatchJob("carrier:second", "run:second", "Patch renderer grouping", 1001);
+    handleCarrierJobStreamEvent({ type: "track:text", jobId: "carrier:first", trackId: "genesis", text: "alpha preview" });
+    handleCarrierJobStreamEvent({ type: "track:text", jobId: "carrier:second", trackId: "genesis", text: "beta preview" });
+    const ctx = buildCtx();
+
+    syncWidget(ctx);
+    await Promise.resolve();
+    const expandedText = stripAnsi(renderCarrierBridgeExpandedLinesFromCtx(ctx, 100).join("\n"));
+
+    expect(expandedText.match(/Carrier Genesis/g)).toHaveLength(1);
+    expect(expandedText).toContain("Audit stream identity");
+    expect(expandedText).toContain("Patch renderer grouping");
+    expect(expandedText).toContain("alpha preview");
+    expect(expandedText).toContain("beta preview");
+    expect(getPanelRuns().get("run:first")?.blocks).not.toBe(getPanelRuns().get("run:second")?.blocks);
   });
 
   it("registers only the HUD notification aboveEditor widget from HUD editor", async () => {
@@ -420,6 +445,25 @@ function buildCol(status: AgentCol["status"]): AgentCol {
     status,
     scroll: 0,
   };
+}
+
+function registerDispatchJob(jobId: string, runId: string, label: string, startedAt: number): void {
+  handleCarrierJobStreamEvent({
+    type: "job:registered",
+    jobId,
+    kind: "carrier",
+    ownerCarrierId: "genesis",
+    label,
+    startedAt,
+    tracks: [{
+      trackId: "genesis",
+      streamKey: "genesis",
+      displayCli: "genesis",
+      displayName: "Genesis",
+      kind: "carrier",
+      runId,
+    }],
+  });
 }
 
 function buildCtx(): any {

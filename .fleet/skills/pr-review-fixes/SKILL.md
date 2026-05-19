@@ -92,7 +92,7 @@ This policy applies to both step 5 (classification / verification) and step 8 (s
 
 7. Apply the changes:
    - Apply directly for low-risk, narrow edits (≤ 3 dependent steps, single file or tightly coupled set).
-   - Delegate to Genesis via `carrier_dispatch` with `carrier_id: "genesis"` for multi-file or non-trivial implementation work. Provide `<objective>`, `<scope>`, `<constraints>`, and `<references>` blocks; do not prescribe step-by-step instructions.
+   - Delegate to Genesis via `carrier_dispatch` with `carrier_id: "genesis"` and a descriptive `label` (e.g., `label: "Apply PR review fixes to fleet-core"`) for multi-file or non-trivial implementation work. Provide `<objective>`, `<scope>`, `<constraints>`, and `<references>` blocks; do not prescribe step-by-step instructions.
    - Korean is required for all new code comments per the user's global instruction.
 
 8. Self-verification (do this before any external check is run):

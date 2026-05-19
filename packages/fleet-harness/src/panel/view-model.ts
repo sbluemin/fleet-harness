@@ -57,6 +57,14 @@ export interface PanelJobViewModel {
   activeJobToolCallId?: string;
 }
 
+export interface CarrierJobGroupViewModel {
+  carrierId: string;
+  displayName: string;
+  jobs: PanelJobViewModel[];
+  startedAt: number;
+  status: PanelJob["status"];
+}
+
 export interface BuildPanelViewModelOptions {
   maxTrackBlocks?: number;
 }
@@ -106,6 +114,41 @@ export function buildPanelTrackViewModel(
     textLineCount: stats.textLineCount,
     isComplete: status === "done",
   };
+}
+
+export function buildCarrierJobGroups(
+  jobs: readonly PanelJobViewModel[],
+  carrierOrder: readonly string[],
+  resolveDisplayName: (carrierId: string) => string,
+): CarrierJobGroupViewModel[] {
+  const groups = new Map<string, CarrierJobGroupViewModel>();
+  for (const job of jobs) {
+    const group = groups.get(job.ownerCarrierId) ?? {
+      carrierId: job.ownerCarrierId,
+      displayName: resolveDisplayName(job.ownerCarrierId),
+      jobs: [],
+      startedAt: job.startedAt,
+      status: job.status,
+    };
+    group.jobs.push(job);
+    group.startedAt = Math.min(group.startedAt, job.startedAt);
+    group.status = group.status === "active" || job.status === "active" ? "active" : job.status;
+    groups.set(job.ownerCarrierId, group);
+  }
+
+  for (const group of groups.values()) {
+    group.jobs.sort((a, b) => a.startedAt - b.startedAt);
+  }
+
+  const orderRank = new Map(carrierOrder.map((carrierId, index) => [carrierId, index] as const));
+  return Array.from(groups.values()).sort((a, b) => {
+    const rankA = orderRank.get(a.carrierId);
+    const rankB = orderRank.get(b.carrierId);
+    if (rankA !== undefined && rankB !== undefined && rankA !== rankB) return rankA - rankB;
+    if (rankA !== undefined) return -1;
+    if (rankB !== undefined) return 1;
+    return a.startedAt - b.startedAt;
+  });
 }
 
 function resolveRun(

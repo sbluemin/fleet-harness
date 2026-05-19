@@ -47,7 +47,9 @@ class JobBarDetailSection implements Component {
     if (state.widgetMode !== "expanded") return 0;
     const activeJobs = getActiveJobs();
     if (activeJobs.length === 0) return 1;
-    const requestedRows = activeJobs.reduce((rows, job) => rows + 1 + job.tracks.length, 1);
+    const visibleCarrierCount = new Set(activeJobs.map((job) => job.ownerCarrierId)).size;
+    const extraTrackRows = activeJobs.reduce((rows, job) => rows + (job.kind === "carrier" && job.tracks.length === 1 ? 0 : job.tracks.length), 0);
+    const requestedRows = visibleCarrierCount + activeJobs.length + extraTrackRows;
     return Math.min(MAX_WIDGET_LINES, requestedRows);
   }
 

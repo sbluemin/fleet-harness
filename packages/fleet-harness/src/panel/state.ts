@@ -327,10 +327,8 @@ function dispatchCarrierResultSystemReminder(event: Extract<CarrierJobStreamEven
 
 export function getGrandFleetStreamStoreState(): {
   runs: Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>;
-  visibleRunIdByCli: Map<string, string>;
 } {
   const runs = new Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>();
-  const visibleRunIdByCli = new Map<string, string>();
 
   for (const job of getPanelJobs().values()) {
     for (const track of job.tracks) {
@@ -341,11 +339,10 @@ export function getGrandFleetStreamStoreState(): {
         requestPreview: run.requestPreview,
         status: run.status,
       });
-      visibleRunIdByCli.set(track.displayCli, run.runId);
     }
   }
 
-  return { runs, visibleRunIdByCli };
+  return { runs };
 }
 
 function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:registered" }>): void {
@@ -362,10 +359,9 @@ function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:re
   };
   s.panelJobs.set(job.jobId, job);
   for (const track of job.tracks) {
-    const runId = track.runId ?? track.streamKey;
-    const run = ensureRun(runId, track.displayCli, "wait");
+    const run = ensureRun(canonicalRunKey(track), track.displayCli, "wait");
     run.sessionId = getSessionIdFor(track.displayCli) ?? run.sessionId;
-    s.runs.set(track.streamKey, run);
+    syncCarrierActivityStatus(track.displayCli);
   }
   s.streaming = true;
 }
@@ -382,10 +378,10 @@ function finalizeStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:fi
 function beginTrack(event: Extract<CarrierJobStreamEvent, { type: "track:begin" }>): void {
   const track = getTrack(event.jobId, event.trackId);
   if (!track) return;
-  const run = ensureRun(track.runId ?? track.streamKey, track.displayCli, "conn");
+  const run = ensureRun(canonicalRunKey(track), track.displayCli, "conn");
   run.requestPreview = event.requestPreview ?? run.requestPreview;
   track.status = "conn";
-  syncCarrierColumn(track, run);
+  syncCarrierActivityStatus(track.displayCli);
 }
 
 function updateTrackStatus(jobId: string, trackId: string, status: TrackStatus): void {
@@ -395,13 +391,14 @@ function updateTrackStatus(jobId: string, trackId: string, status: TrackStatus):
   const run = resolveRunForTrack(track);
   if (run) {
     run.status = track.status;
-    syncCarrierColumn(track, run);
+    syncCarrierActivityStatus(track.displayCli);
   }
 }
 
 function updateTrackRunId(jobId: string, trackId: string, runId: string): void {
   const track = getTrack(jobId, trackId);
   if (!track) return;
+  const previousKey = canonicalRunKey(track);
   const previousRun = resolveRunForTrack(track);
   track.runId = runId;
   const run = previousRun ?? ensureRun(runId, track.displayCli, "conn");
@@ -409,30 +406,32 @@ function updateTrackRunId(jobId: string, trackId: string, runId: string): void {
   run.cli = track.displayCli;
   if (run.status === "wait") run.status = "conn";
   getPanelRuns().set(runId, run);
-  getPanelRuns().set(track.streamKey, run);
-  syncCarrierColumn(track, run);
+  if (previousKey !== runId && getPanelRuns().get(previousKey) === run) {
+    getPanelRuns().delete(previousKey);
+  }
+  syncCarrierActivityStatus(track.displayCli);
 }
 
 function updateRunBlocks(jobId: string, trackId: string, update: (run: PanelRun) => void): void {
   const track = getTrack(jobId, trackId);
   if (!track) return;
-  const run = resolveRunForTrack(track) ?? ensureRun(track.runId ?? track.streamKey, track.displayCli, "stream");
+  const run = resolveRunForTrack(track) ?? ensureRun(canonicalRunKey(track), track.displayCli, "stream");
   update(run);
   refreshRunDerivedFields(run);
-  syncCarrierColumn(track, run);
+  syncCarrierActivityStatus(track.displayCli);
 }
 
 function finalizeTrack(event: Extract<CarrierJobStreamEvent, { type: "track:finalized" }>): void {
   const track = getTrack(event.jobId, event.trackId);
   if (!track) return;
-  const run = resolveRunForTrack(track) ?? ensureRun(track.runId ?? track.streamKey, track.displayCli, toColStatus(event.status));
+  const run = resolveRunForTrack(track) ?? ensureRun(canonicalRunKey(track), track.displayCli, toColStatus(event.status));
   track.status = toColStatus(event.status);
   run.status = track.status;
   if (event.sessionId !== undefined) run.sessionId = event.sessionId;
   if (event.error !== undefined) run.error = event.error;
   prependFallbackBlocks(run, event.fallbackText, event.fallbackThought);
   refreshRunDerivedFields(run);
-  syncCarrierColumn(track, run);
+  syncCarrierActivityStatus(track.displayCli);
   getState().streaming = hasActiveStreamingTrack();
 }
 
@@ -488,11 +487,15 @@ function createPanelRun(runId: string, cli: string, status: ColStatus): PanelRun
 }
 
 function resolveRunForTrack(track: ColumnTrack): PanelRun | undefined {
+  if (track.runId) return getPanelRuns().get(track.runId);
   return (
-    (track.runId ? getPanelRuns().get(track.runId) : undefined) ??
     getPanelRuns().get(track.streamKey) ??
     getPanelRuns().get(track.trackId)
   );
+}
+
+function canonicalRunKey(track: ColumnTrack): string {
+  return track.runId ?? track.streamKey ?? track.trackId;
 }
 
 function refreshRunDerivedFields(run: PanelRun): void {
@@ -518,20 +521,42 @@ function prependFallbackBlocks(run: PanelRun, fallbackText?: string, fallbackTho
   }
 }
 
-function syncCarrierColumn(track: ColumnTrack, run: PanelRun): void {
-  const colIndex = findColIndex(track.displayCli);
+function syncCarrierActivityStatus(carrierId: string): void {
+  const colIndex = findColIndex(carrierId);
   if (colIndex < 0) return;
   const col = getState().cols[colIndex];
   if (!col) return;
+  const carrierTracks = Array.from(getPanelJobs().values())
+    .flatMap((job) => job.tracks)
+    .filter((track) => track.displayCli === carrierId);
+  const status = resolveAggregateCarrierStatus(carrierTracks);
+  const sessionId = getSessionIdFor(carrierId) ?? col.sessionId;
   Object.assign(col, {
-    sessionId: run.sessionId ?? col.sessionId,
-    status: run.status,
-    text: run.text,
-    thinking: run.thinking,
-    toolCalls: run.toolCalls,
-    blocks: run.blocks,
-    error: run.error,
+    sessionId,
+    status,
+    text: "",
+    thinking: "",
+    toolCalls: [],
+    blocks: [],
+    error: status === "err" ? resolveAggregateCarrierError(carrierTracks) : undefined,
   });
+}
+
+function resolveAggregateCarrierStatus(tracks: ColumnTrack[]): ColStatus {
+  if (tracks.some((track) => track.status === "stream")) return "stream";
+  if (tracks.some((track) => track.status === "conn")) return "conn";
+  if (tracks.some((track) => track.status === "wait")) return "wait";
+  if (tracks.some((track) => track.status === "err")) return "err";
+  if (tracks.some((track) => track.status === "done")) return "done";
+  return "wait";
+}
+
+function resolveAggregateCarrierError(tracks: ColumnTrack[]): string | undefined {
+  for (const track of tracks) {
+    const error = resolveRunForTrack(track)?.error;
+    if (error) return error;
+  }
+  return undefined;
 }
 
 function toColStatus(status: TrackStatus): ColStatus {

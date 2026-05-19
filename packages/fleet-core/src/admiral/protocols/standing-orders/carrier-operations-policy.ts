@@ -73,6 +73,8 @@ Choose the correct dispatch tool based on intent:
 Before every delegation call, verify the target Carrier's availability across **all** dispatch tools.
 - Each Carrier is assigned to exactly one dispatch tool. Check each tool's Available list.
 - If the target Carrier is unavailable in any tool, **report to the Admiral of the Navy (대원수) and await instructions** — do not silently substitute.
+- Every ${"`"}carrier_dispatch${"`"} call MUST include ${"`"}label${"`"}: a concise one-line dispatch intent such as ${"`"}"Audit panel run identity"${"`"}, not the Carrier name and not the full request.
+- Missing, empty, or non-string ${"`"}label${"`"} is a hard rejection; do not call ${"`"}carrier_dispatch${"`"} until ${"`"}carrier_id${"`"}, ${"`"}label${"`"}, and ${"`"}request${"`"} are all ready.
 
 ### Anti-patterns — do NOT do these
 - Splitting a parallel carrier launch into sequential calls instead of bundling into one.
