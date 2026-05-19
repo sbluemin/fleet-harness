@@ -16,8 +16,12 @@ export const claudeCli: DedicatedCliDefinition = {
       env: createChildEnv(options.env, createClaudeEnv()),
       id: "claude",
       label: "Claude",
+      messagePolicy: {
+        bracketedPaste: true,
+        lineTerminator: "\r",
+        multilineStrategy: "paste-mode",
+      },
       terminalName: "xterm-256color",
     };
   },
 };
-

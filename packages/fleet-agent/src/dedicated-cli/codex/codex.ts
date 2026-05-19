@@ -16,8 +16,12 @@ export const codexCli: DedicatedCliDefinition = {
       env: createChildEnv(options.env, createCodexEnv()),
       id: "codex",
       label: "Codex",
+      messagePolicy: {
+        bracketedPaste: true,
+        lineTerminator: "\r",
+        multilineStrategy: "paste-mode",
+      },
       terminalName: "xterm-256color",
     };
   },
 };
-

@@ -20,10 +20,7 @@ const CONTROL_CHARS_EXCEPT_INPUT_WHITESPACE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x
 export function subscribeJobBar(options: JobBarRegistrationOptions): () => void {
   bindJobBarStateRuntime({
     onCarrierResultReminder: (text) => {
-      getProgrammaticInput()?.sendMessage(sanitizeCarrierResultReminder(text), {
-        bracketedPaste: true,
-        multilineStrategy: "paste-mode",
-      });
+      getProgrammaticInput()?.sendMessage(sanitizeCarrierResultReminder(text));
     },
     onRenderRequest: () => {
       options.requestResize?.();

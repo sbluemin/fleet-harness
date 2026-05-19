@@ -356,7 +356,6 @@ function sortByCategory(ids: readonly string[]): string[] {
 
 function dispatchCarrierResultSystemReminder(event: Extract<CarrierJobStreamEvent, { type: "job:finalized" }>): void {
   if (typeof event.systemReminder !== "string" || event.systemReminder.trim().length === 0) return;
-  // TODO(Stage 3): Fleet PTY/host integration에서 전달 방식과 triggerTurn 동등 처리를 연결한다.
   getRuntimeBindings().onCarrierResultReminder(event.systemReminder);
 }
 

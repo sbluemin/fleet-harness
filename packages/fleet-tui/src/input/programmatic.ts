@@ -23,6 +23,11 @@ export interface ProgrammaticInput {
   readonly sendCommand: (line: string) => void;
 }
 
+interface AppliedMessagePolicy {
+  readonly payload: string;
+  readonly submit?: string;
+}
+
 const DEFAULT_BRACKETED_PASTE = false;
 const DEFAULT_LINE_TERMINATOR = "\r";
 const DEFAULT_MULTILINE_STRATEGY = "literal";
@@ -34,8 +39,8 @@ export function createProgrammaticInput(ptyHost: PtyHost, profile: ProgrammaticI
   return {
     sendMessage(text, opts) {
       const policy = resolvePolicy(profile, opts);
-      const payload = applyMessagePolicy(text, policy);
-      ptyHost.write(payload);
+      const appliedPolicy = applyMessagePolicy(text, policy);
+      writeAppliedMessagePolicy(ptyHost, appliedPolicy);
     },
 
     sendKeys(data) {
@@ -44,8 +49,9 @@ export function createProgrammaticInput(ptyHost: PtyHost, profile: ProgrammaticI
 
     sendCommand(line) {
       assertSingleLineCommand(line);
-      const terminator = profile.messagePolicy?.lineTerminator ?? DEFAULT_LINE_TERMINATOR;
-      ptyHost.write(`${line}${terminator}`);
+      const policy = resolvePolicy(profile);
+      const appliedPolicy = applyMessagePolicy(line, policy);
+      writeAppliedMessagePolicy(ptyHost, appliedPolicy);
     },
   };
 }
@@ -68,10 +74,25 @@ function resolvePolicy(
 function applyMessagePolicy(
   text: string,
   policy: Required<CliMessagePolicy>,
-): string {
+): AppliedMessagePolicy {
   const usePasteMode = policy.bracketedPaste || (policy.multilineStrategy === "paste-mode" && LINE_BREAK_PATTERN.test(text));
-  const body = usePasteMode ? `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}` : text;
-  return `${body}${policy.lineTerminator}`;
+
+  if (!usePasteMode) {
+    return { payload: `${text}${policy.lineTerminator}` };
+  }
+
+  return {
+    payload: `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`,
+    submit: policy.lineTerminator,
+  };
+}
+
+function writeAppliedMessagePolicy(ptyHost: PtyHost, appliedPolicy: AppliedMessagePolicy): void {
+  ptyHost.write(appliedPolicy.payload);
+
+  if (appliedPolicy.submit !== undefined && appliedPolicy.submit.length > 0) {
+    ptyHost.write(appliedPolicy.submit);
+  }
 }
 
 function assertSingleLineCommand(line: string): void {
