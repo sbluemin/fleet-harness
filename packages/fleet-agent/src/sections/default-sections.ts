@@ -1,15 +1,13 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 import type { Component, FleetPtySection } from "@sbluemin/fleet-tui/pty";
 
-import { CarrierRosterLine } from "./carrier-roster-line.js";
+import { createJobBarSections } from "../carrier-status/job-bar-section.js";
 import { FleetStatusSection } from "./fleet-status-section.js";
-import { JobsLine } from "./jobs-line.js";
 
 export function createDefaultFleetPtySections(rt: FleetCoreRuntimeContext): FleetPtySection[] {
   return [
     { component: new FleetStatusSection({ rt }), id: "fleet-status-section" },
-    { component: new CarrierRosterLine(rt), id: "carrier-roster-line" },
-    { component: new JobsLine(rt), id: "jobs-line" },
+    ...createJobBarSections(rt),
   ];
 }
 

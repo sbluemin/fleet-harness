@@ -9,6 +9,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [wiki] Added `wiki_patch_edit` for approval-gated in-place edits to pending wiki patches.
+- [core][agent] Absorbed Job Bar functionality from fleet-harness into fleet-agent, including a dynamic dynamic job status section, active-only frame ticker, and programmatic PTY input bridge.
 - [wiki] Implemented approve-time stale-base guard using content hash and version checks to prevent concurrent modification conflicts.
 - [wiki] Added automatic `rawSourceRefs` accumulation and deduplication to preserve complete provenance history across entry updates.
 - [wiki] Enforced POSIX target validation and `realpath`-based approval locks to prevent path traversal and symlink/case-alias attacks.

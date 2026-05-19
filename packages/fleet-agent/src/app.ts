@@ -1,5 +1,5 @@
 import { attachInputStream, LocalTui } from "@sbluemin/fleet-tui/core";
-import { assertInputContract, createInputRouter, createProgrammaticInput, type ProgrammaticInput } from "@sbluemin/fleet-tui/input";
+import { assertInputContract, createInputRouter, createProgrammaticInput } from "@sbluemin/fleet-tui/input";
 import {
   createFleetPtyApi,
   createPtyHost,
@@ -9,15 +9,16 @@ import {
   type PtyHost,
   type TuiPtyManager,
 } from "@sbluemin/fleet-tui/pty";
+import { subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { registerCarrierStatusKeybinding } from "./carrier-status/register.js";
 import { toggleFleetInputMode } from "./controls/modes.js";
+import { retainProgrammaticInput } from "./dedicated-cli/bridge.js";
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
 import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
-const PROGRAMMATIC_INPUT_SLOT: { current?: ProgrammaticInput } = {};
 
 export async function runApp(): Promise<void> {
   const rt = await bootRuntime();
@@ -37,7 +38,6 @@ export async function runApp(): Promise<void> {
     requestRender: scheduleRender,
   });
   registerCarrierStatusKeybinding({ fleetPty, rt });
-  assertInputContract();
   const currentProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd());
   const ptyHost = createPtyHost({
     profile: currentProfile,
@@ -51,6 +51,8 @@ export async function runApp(): Promise<void> {
   });
   const initialResize = ptyManager.requestResize("initial");
   retainProgrammaticInput(createProgrammaticInput(ptyHost, currentProfile));
+  const unsubscribeJobBar = subscribeJobBar({ rt, scheduleRender });
+  assertInputContract();
   let stopping = false;
   let disposeInputStream = () => {};
   const resize = () => ptyManager?.requestResize("terminal-resize");
@@ -60,7 +62,7 @@ export async function runApp(): Promise<void> {
       return;
     }
     stopping = true;
-    stopApp(rt, ui, ptyHost, resize, disposeInputStream);
+    stopApp(rt, ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar);
   };
   const router = createInputRouter({
     initialMode: "MIRROR",
@@ -116,21 +118,19 @@ function createRenderScheduler(ui: LocalTui): () => void {
   };
 }
 
-function retainProgrammaticInput(input: ProgrammaticInput): void {
-  PROGRAMMATIC_INPUT_SLOT.current = input;
-}
-
 function stopApp(
   rt: FleetCoreRuntimeContext,
   ui: LocalTui,
   ptyHost: PtyHost,
   resize: () => void,
   disposeInputStream: () => void,
+  unsubscribeJobBar: () => void,
 ): void {
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
   disposeInputStream();
-  PROGRAMMATIC_INPUT_SLOT.current = undefined;
+  unsubscribeJobBar();
+  retainProgrammaticInput(undefined);
   ptyHost.kill();
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);
