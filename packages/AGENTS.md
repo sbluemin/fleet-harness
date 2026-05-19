@@ -15,16 +15,15 @@ The split between `fleet-core` (host-agnostic Fleet domain) and `fleet-agent` (C
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-agent` side.
 - When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the host adapter half stays in `fleet-agent`.
 
-### 2. Two Execution Patterns, Strictly Separated
+### 2. Executor Pattern Only
 
-The Admiral agent domain exposes **two distinct execution patterns** that must never be merged:
+The Admiral agent domain exposes the closed-loop callback executor surface only:
 
 | Pattern | Surface | Lifetime | Use Case |
 |---------|---------|----------|----------|
-| **Streaming** | `admiral.session.{ensure, sendMessage, deliverToolResults}` + `admiral.events` (module emit/register channel) | Long-lived ACP session, multiplexed per `sessionId` | Host adapter streaming; host `Map<sessionId, push>` routing |
 | **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_taskforce` uses a synthetic id) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (unified per-carrier dispatcher) / `carrier_taskforce` tool execution |
 
-**Why the separation matters**: streaming routes events through a global module channel keyed by `sessionId`, while executor callbacks are owner-specific and finite. Forcing one pattern through the other path causes either listener leaks (callback as event) or routing collisions (event as callback).
+Host streaming is no longer part of the `fleet-core` public agent surface. Carrier execution is routed through the executor callback path only.
 
 ### 3. Single Source of Truth (SSoT)
 
@@ -32,7 +31,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 
 | Concept | Owner | Rationale |
 |---------|-------|-----------|
-| Session persistence (host/carrier → ACP sessionId mappings as JSONL custom entries) | `admiral/agent/internal/session-runtime.ts` | Resume/restore semantics backed by the host JSONL session file with `fleet/host-session` and `fleet/carrier-session` customTypes. |
+| Session persistence (carrier → ACP sessionId mappings as JSONL custom entries) | `admiral/agent/internal/session-runtime.ts` | Resume/restore semantics backed by JSONL custom entries with the `fleet/carrier-session` customType. |
 | Track status enum | `admiral/_shared/carrier-job-events.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
 | CLI provider catalog | `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
@@ -42,13 +41,13 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 
 ### 4. Public Surface Discipline
 
-The **only consumer-facing entry point** is the package root barrel of `@sbluemin/fleet-core`. Consumers reach `executeWithPool`, `executeOneShot`, `bindHostSession`, `cleanIdle`, `disconnect`, `disconnectAll`, `getSessionIdFor`, and `shutdownAllSessions` exclusively through that barrel. Internal helpers under `admiral/agent/internal/` are never re-exported.
+The **only consumer-facing entry point** is the package root barrel of `@sbluemin/fleet-core`. Consumers reach `executeWithPool`, `executeOneShot`, `cleanIdle`, `disconnect`, `disconnectAll`, and `getSessionIdFor` exclusively through that barrel. Internal helpers under `admiral/agent/internal/` are never re-exported.
 
 ### Forbidden Patterns
 
 - `globalThis.<anything>` for shared state — use module-level singletons instead.
 - Push-style "ports" passed into tool execution. Tools depend on `fleet-core` services directly.
-- `on*` callback parameters threaded through `fleet-core` public APIs — events flow through `admiral.events` module-level register/emit only.
+- `on*` callback parameters threaded through `fleet-core` public APIs, except executor callback options owned by `executeWithPool` / `executeOneShot`.
 - Builder functions injected by hosts. Prompt assembly is fleet-core's responsibility; host adapters pass raw `userRequest` + optional `history`.
 
 ## Domain Boundary Rules

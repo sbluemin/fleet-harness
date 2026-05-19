@@ -29,6 +29,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Improved session engine stability by implementing FIFO fatal error handling for ACP tool-call queues.
 - [agent] Grand Fleet now re-registers with Admiralty when the bound ACP session ID changes or the client auto-reconnects after a socket drop, preventing stale registration state on session switches and reconnects.
 - [agent] Fixed type-checking issues in status overlay tests by correcting state property access.
+- [core] Fixed resource leaks by adding explicit executor pool disconnection wiring to `runtime.shutdown()`.
 
 ### Changed
 - [agent-core] Carrier strip stays always visible while the Job Bar detail now auto-shows only when at least one carrier job is active, replacing the prior toggle shortcut and empty-state placeholder.
@@ -52,6 +53,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [agent] Removed Gemini and Cursor Agent from dedicated CLI support.
 - [core][agent] Removed 'metaphor' domain (worldview, operation naming, directive refinement) and 'request_directive' tool.
 - [wiki-web] Removed the Constellation (backlinks) panel and Outgoing references along with the backend backlink indexer and associated API.
+- [agent-core] Removed service status UI and refresh logic.
 
 ## [0.20.0] - 2026-05-16
 

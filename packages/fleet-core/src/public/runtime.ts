@@ -1,10 +1,8 @@
-import {
-  resetServiceStatus,
-} from "@sbluemin/fleet-unified-agent";
 import { startMcpServer, stopMcpServer } from "@sbluemin/fleet-mcp-server";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
 import { registerFleetCoreDefaultAgentTools } from "../admiral/agent/bootstrap.js";
+import { disconnectAll } from "../admiral/agent/connections.js";
 import { cleanupDedicatedMcpSessionsForRuntimeShutdown } from "../admiral/mcp.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
 import {
@@ -49,7 +47,6 @@ export function createFleetCoreRuntime(
   const settings = infra.settings.create();
   infra.settings.initSettingsService(settings);
 
-  resetServiceStatus();
   registerFleetCoreDefaultAgentTools();
   void startMcpServer().catch((error: unknown) => {
     console.error("[fleet-core] Failed to start MCP server", error);
@@ -60,10 +57,10 @@ export function createFleetCoreRuntime(
     admiralty: createFleetAdmiraltyServices(),
     infra,
     async shutdown() {
+      await disconnectAll();
       cleanupDedicatedMcpSessionsForRuntimeShutdown();
       await stopMcpServer();
       infra.settings.resetSettingsService(settings);
-      resetServiceStatus();
     },
   };
 }

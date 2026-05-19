@@ -18,11 +18,9 @@ import type {
   CarrierCliType,
   CarrierStatusEntry,
   CliModelInfo,
-  CliServiceSnapshot,
   CliTypeChangeSettledResult,
   CliTypeChoice,
   FleetStoreSnapshot,
-  HealthStatus,
   ModelEffort,
   ModelSelection,
   OverlayState,
@@ -80,21 +78,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   strategy: "\x1b[38;2;100;180;255m",
   uncategorized: ANSI_DIM,
 };
-const STATUS_TEXT: Record<HealthStatus, string> = {
-  major_outage: "OUT",
-  maintenance: "MNT",
-  operational: "OP",
-  partial_outage: "DEG",
-  unknown: "UNK",
-};
-const STATUS_COLORS: Record<HealthStatus, string> = {
-  major_outage: "\x1b[38;2;220;80;80m",
-  maintenance: "\x1b[38;2;200;170;60m",
-  operational: "\x1b[38;2;80;200;120m",
-  partial_outage: "\x1b[38;2;220;180;50m",
-  unknown: "\x1b[38;2;120;120;120m",
-};
-
 export class CarrierStatusOverlay implements Component, Focusable {
   public focused = false;
   private expandedCarrierId: string | null = null;
@@ -374,8 +357,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const tfTag = entry.taskForceBackendCount >= 2
       ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
       : "";
-    const health = this.renderHealth(entry.cliType);
-    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag} ${health}`;
+    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag}`;
   }
 
   private startModelEdit(): void {
@@ -727,8 +709,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     for (let i = 0; i < state.choices.length; i++) {
       const choice = state.choices[i]!;
       const cursor = i === state.cursor ? "▸" : " ";
-      const statusText = `${STATUS_COLORS[choice.status]}${STATUS_TEXT[choice.status]}${ANSI_RESET}`;
-      const content = `  ${cursor} ○ ${choice.label}  ${statusText}`;
+      const content = `  ${cursor} ○ ${choice.label}`;
       lines.push(choice.carrierCount === 0 && state.kind === "batchFrom" ? this.options.theme.dim(content) : content);
     }
     return lines;
@@ -882,21 +863,16 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getBatchCliChoices(excludeCli?: CarrierCliType): BatchCliChoice[] {
-    const snapshots = this.getServiceSnapshots();
     return this.getAllCliTypes()
       .filter((cliType) => cliType !== excludeCli)
       .map((cliType) => ({
         carrierCount: this.getEntries().filter((entry) => entry.cliType === cliType).length,
         cliType,
         label: `${this.getCliDisplayName(cliType)} (${this.getEntries().filter((entry) => entry.cliType === cliType).length} carriers)`,
-        status: snapshots.get(cliType)?.status ?? "unknown",
       }));
   }
 
   private getPreferredBatchChoiceIndex(choices: readonly BatchCliChoice[]): number {
-    const degradedIndex = choices.findIndex((choice) =>
-      choice.carrierCount > 0 && (choice.status === "major_outage" || choice.status === "partial_outage"));
-    if (degradedIndex !== -1) return degradedIndex;
     return Math.max(0, choices.findIndex((choice) => choice.carrierCount > 0));
   }
 
@@ -990,14 +966,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
     return effort.default ?? effort.levels?.[0] ?? null;
   }
 
-  private getServiceSnapshots(): Map<CarrierCliType, CliServiceSnapshot> {
-    const snapshots = this.options.rt.admiral.agent.serviceStatus.read();
-    return new Map(snapshots.map((snapshot) => [
-      snapshot.provider as CarrierCliType,
-      { status: toHealthStatus(snapshot.status) },
-    ]));
-  }
-
   private getAllCliTypes(): CarrierCliType[] {
     return [...TASKFORCE_CLI_TYPES] as CarrierCliType[];
   }
@@ -1012,11 +980,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private getCliDisplayName(cliType: string): string {
     return this.options.rt.admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType;
-  }
-
-  private renderHealth(cliType: CarrierCliType): string {
-    const status = this.getServiceSnapshots().get(cliType)?.status ?? "unknown";
-    return `${STATUS_COLORS[status]}${STATUS_TEXT[status]}${ANSI_RESET}`;
   }
 
   private getFooterHint(): string {
@@ -1123,13 +1086,6 @@ function getProviderModelsEquivalent(rt: FleetCoreRuntimeContext, cliType: Carri
 
 function getModelLabel(provider: CliModelInfo, modelId: string): string {
   return provider.models.find((model) => model.modelId === modelId)?.name ?? modelId;
-}
-
-function toHealthStatus(value: string): HealthStatus {
-  if (value === "operational" || value === "partial_outage" || value === "major_outage" || value === "maintenance") {
-    return value;
-  }
-  return "unknown";
 }
 
 function clampOverlayRows(maxRows: number, cardRows: number): number {

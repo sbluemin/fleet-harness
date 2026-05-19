@@ -7,7 +7,7 @@
 `fleet-core` is **the** authoritative Fleet domain. Three principles direct every decision in this package:
 
 1. **Host-agnostic by construction** — no Fleet host runtime, no Fleet host UI, no Fleet-AI imports. The package compiles and runs without `fleet-agent`.
-2. **Two execution patterns own two surfaces** — the streaming `admiral.session.*` + `admiral.events` module channel for long-lived ACP sessions (host streaming); the callback-pattern `admiral.executor.{executeWithPool, executeOneShot}` for closed-loop carrier turns. They share `internal/executor-engine.ts` pool/session-store wiring but never share their public surfaces.
+2. **Executor surface only** — `admiral.agent.executor.{executeWithPool, executeOneShot}` is the retained agent entrypoint pair for closed-loop carrier turns. Runtime pool operations stay under `admiral.agent.connections`.
 3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), generic MCP server/registry (`packages/fleet-mcp-server`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), and the fleet-core tool facade/default builders each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
 
 ## Current Architecture Status
@@ -18,19 +18,14 @@
 
 ## The `admiral.agent` Domain
 
-`admiral/agent/` is the **canonical agent domain** that consolidates all CLI backend orchestration. It exposes two complementary surfaces backed by shared internal infrastructure:
+`admiral/agent/` is the **canonical carrier executor domain** that consolidates CLI backend orchestration for closed-loop carrier turns:
 
 | Public module | Purpose | Pattern |
 |---------------|---------|---------|
-| `session.ts` | `ensure` / `sendMessage` / `deliverToolResults` / `resolveSession` | Streaming — events flow through `events.ts` module channel |
-| `events.ts` | `register` / `unregister` / `emit` / `clear` for `AgentStreamEvent` | Module-level emit/register, `carrier-job-events.ts` doppelgänger |
 | `tools.ts` / `bootstrap.ts` | `list` / `invoke` / `registerExtraTools` / `unregisterExtraTools` / `registerAgentTool` / `getAllAgentTools` / `renderAgentToolDoctrineTag` / `getExecutorMcpTools` / `registerFleetCoreDefaultAgentTools` | fleet-core facade over the `packages/fleet-mcp-server` registry. |
 | `executor.ts` | `executeWithPool` / `executeOneShot` (`ExecuteOptions` → `ExecResult`, carrier-agnostic) | Callback pattern — closed-loop, caller maps `poolKey`. **Connect-time MCP**: every executor session receives a whitelist-scoped MCP server resolved by `getExecutorMcpTools(carrierId)`. |
-| `lifecycle.ts` | `bindHostSession` / `shutdownAllSessions` | Host `session_start`/`session_shutdown` integration point |
 | `connections.ts` | `disconnect` / `disconnectAll` / `cleanIdle` / `getSessionIdFor` | `poolKey`-keyed pool operations |
 | `models.ts` | `parseId` / `buildId` / `listProviders` / `getProviderIds` / `getCliModels` / `getCliEffortLevels` / `getSelectableThinkingLevels` | CLI/model codec and selectable UI thinking-level policy |
-| `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
-| `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |
 
 ## The `admiral.mcp` Domain
 
@@ -43,7 +38,7 @@
 - `getEndpoint(): Promise<{ url: string }>`: Returns the active MCP server URL, starting it if necessary.
 - `issueDedicatedSessionToken({ label, cwd }): string`: Generates a dedicated session token with a specific label and working directory.
 
-`admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `state.ts` (session/launch/bridge maps), `session-runtime.ts` (JSONL custom-entry backed session mapping persistence), `session-engine.ts` (ensure/sendMessage/deliverToolResults engine), `event-normalizer.ts` (unified-agent → `AgentStreamEvent`), `executor-engine.ts` (pool + drift detection for the callback path), and `post-connect.ts`.
+`admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `session-runtime.ts` (JSONL custom-entry backed carrier session mapping persistence), `executor-engine.ts` (pool + drift detection for the callback path), and `post-connect.ts`.
 
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.
 
@@ -83,7 +78,7 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), and unified settings/log infra.
 - Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly.
 - `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root.
-- Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Session lifecycle is owned by `admiral.agent.session` and `admiral.agent.lifecycle`.
+- Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Pool lifecycle is owned by `admiral.agent.connections`.
 
 - Fleet tool spec builders, explicit default registration bootstrap, prompt usage, and registry facade functions that are host-agnostic and backed by `packages/fleet-mcp-server`
 - `[carrier:result]` system-reminder assembly via `infra/job/job-reminders.ts`.

@@ -79,20 +79,10 @@ export type {
 } from "./admiral/store/fleet-store.js";
 export type * from "./admiral/carrier/overlay-types.js";
 export type {
-  AgentStreamEvent,
-  AgentStreamHandler,
-  ConversationHistoryEntry,
-  SendMessageRequest,
-  SessionHandle,
-  EnsureOptions,
-  ToolResultEnvelope,
   ParsedModelId,
   ProviderInfo,
   SelectableThinkingLevel,
   CliCapability,
-  LaunchCommandData,
-  BridgeOptions,
-  AgentSessionLaunchConfig,
   ExecuteOptions,
   ExecResult,
 } from "./admiral/agent/index.js";

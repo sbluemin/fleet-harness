@@ -78,4 +78,4 @@ PI is the **host agent** (orchestrator). Registered Carriers are **sub-agents** 
 
 - **Sub-agents are fully independent** — PI provides only background, objectives, and constraints. Never prescribe implementation details.
 - **Sub-agents are unaware of each other** — Cross-analysis is performed solely by PI after all responses are collected.
-- **Communication layer**: Pi consumers invoke `executeWithPool()` / `executeOneShot()` from the `@sbluemin/fleet-core` root barrel (callback-pattern executor); the streaming `streamAcp` adapter consumes `admiral.session.*` + `admiral.events.*`. Both paths terminate at ACP stdio (all CLIs share the protocol).
+- **Communication layer**: Pi consumers invoke `executeWithPool()` / `executeOneShot()` from the `@sbluemin/fleet-core` root barrel (callback-pattern executor). Host streaming adapters are no longer part of the fleet-core agent surface.

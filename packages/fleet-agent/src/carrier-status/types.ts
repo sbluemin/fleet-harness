@@ -8,7 +8,6 @@ import type { FleetPtyApi } from "@sbluemin/fleet-tui/pty";
 
 export type CarrierCliType = TaskForceCliType;
 export type FleetStoreSnapshot = ReturnType<FleetCoreRuntimeContext["admiral"]["store"]["readStatesSnapshot"]>;
-export type HealthStatus = "operational" | "partial_outage" | "major_outage" | "maintenance" | "unknown";
 
 export interface CarrierStatusContext {
   readonly fleetPty: FleetPtyApi;
@@ -37,10 +36,6 @@ export interface CliModelInfo {
   readonly effort: ModelEffort;
   readonly models: ProviderModelInfo[];
   readonly name: string;
-}
-
-export interface CliServiceSnapshot {
-  readonly status: HealthStatus;
 }
 
 export interface ResolvedCliSelection {
@@ -87,7 +82,6 @@ export interface BatchCliChoice {
   readonly carrierCount: number;
   readonly cliType: CarrierCliType;
   readonly label: string;
-  readonly status: HealthStatus;
 }
 
 export type OverlayState =

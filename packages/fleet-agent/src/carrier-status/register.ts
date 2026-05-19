@@ -9,8 +9,6 @@ export function registerCarrierStatusKeybinding(ctx: CarrierStatusContext): void
       if (ctx.fleetPty.hasActiveOverlay()) {
         ctx.fleetPty.popOverlay();
       }
-
-      ctx.rt.admiral.agent.serviceStatus.refresh();
       void ctx.fleetPty.custom<void>((ui, theme, _keys, done) => new CarrierStatusOverlay({
         done,
         fleetPty: ctx.fleetPty,
