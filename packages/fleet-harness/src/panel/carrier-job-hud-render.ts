@@ -99,7 +99,7 @@ function appendWidgetJobSummary(
     if (!group || group.jobs.length === 0) continue;
     const groupColor = resolveCarrierColor(group.carrierId);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${groupIcon(group, frame)} ${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
     ));
 
@@ -237,17 +237,6 @@ function jobIcon(job: PanelJobViewModel, frame: number): string {
   }
   if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
   if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
-  return `${PANEL_DIM_COLOR}○${ANSI_RESET}`;
-}
-
-function groupIcon(group: CarrierJobGroupViewModel, frame: number): string {
-  if (group.status === "active") {
-    const color = resolveCarrierColor(group.carrierId);
-    const spinner = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
-    return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
-  }
-  if (group.status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
-  if (group.status === "error" || group.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
   return `${PANEL_DIM_COLOR}○${ANSI_RESET}`;
 }
 

@@ -217,7 +217,7 @@ function appendWidgetJobSummary(
     if (!group || group.jobs.length === 0) continue;
     const groupColor = resolveCarrierColor(rt, group.carrierId);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${groupIcon(rt, group, frame)} ${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
     ));
 
@@ -369,18 +369,6 @@ function jobIcon(rt: FleetCoreRuntimeContext, job: PanelJobViewModel, frame: num
   }
   if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
   if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
-  return `${PANEL_DIM_COLOR(rt)}○${ANSI_RESET}`;
-}
-
-function groupIcon(rt: FleetCoreRuntimeContext, group: CarrierJobGroupViewModel, frame: number): string {
-  if (group.status === "active") {
-    const color = resolveCarrierColor(rt, group.carrierId);
-    const frames = SPINNER_FRAMES(rt);
-    const spinner = frames[frame % frames.length] ?? "○";
-    return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
-  }
-  if (group.status === "done") return `${COLOR_DONE}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
-  if (group.status === "error" || group.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR(rt)}${ANSI_RESET}`;
   return `${PANEL_DIM_COLOR(rt)}○${ANSI_RESET}`;
 }
 
