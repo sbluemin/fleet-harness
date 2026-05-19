@@ -4,10 +4,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { readPatchSet } from "../src/patch-set.js";
+import { showQueue } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
 import { pathExists, readJsonFile, writeWikiEntry } from "../src/store.js";
 import { buildCompileSourceToolConfig } from "../src/tools/compile-source.js";
-import type { PatchMeta } from "../src/types.js";
+import type { PatchMeta, WikiEntry } from "../src/types.js";
 
 const cleanupPaths: string[] = [];
 
@@ -56,6 +57,7 @@ describe("wiki compile source", () => {
       version: 1,
       body: "Alpha body",
       aliases: ["Alpha Source"],
+      rawSourceRef: "raw/old-alpha.md",
     }, paths);
 
     const result = await tool.execute("tool-call", {
@@ -73,6 +75,8 @@ describe("wiki compile source", () => {
     const patchSet = await readPatchSet(paths, payload.patch_set_id);
     const sourceMeta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, payload.patches[0]!.patch_id, "meta.json"));
     const targetMeta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, payload.patches[1]!.patch_id, "meta.json"));
+    const targetPatch = await showQueue(payload.patches[1]!.patch_id, paths);
+    const targetEntry = JSON.parse(targetPatch.patch.body) as WikiEntry;
     const logContent = await readFile(path.join(paths.root, "log.md"), "utf8");
 
     expect(payload.ok).toBe(true);
@@ -84,6 +88,11 @@ describe("wiki compile source", () => {
     expect(patchSet.patchIds).toEqual(payload.patches.map((item) => item.patch_id));
     expect(sourceMeta.patch_set_id).toBe(payload.patch_set_id);
     expect(targetMeta.patch_set_id).toBe(payload.patch_set_id);
+    expect(targetMeta.baseVersion).toBe(1);
+    expect(targetMeta.baseHash).toBeDefined();
+    expect(sourceMeta.baseVersion).toBeUndefined();
+    expect(targetEntry.rawSourceRef).not.toBe("raw/old-alpha.md");
+    expect(targetEntry.rawSourceRefs?.map((item) => item.ref)).toEqual(["raw/old-alpha.md", targetEntry.rawSourceRef]);
     expect(payload.related_entry_candidates[0]?.id).toBe("alpha");
     expect(logContent).toContain("— patch set staged");
   });

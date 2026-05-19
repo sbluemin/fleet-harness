@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { lstatSync, realpathSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -15,6 +16,7 @@ import {
   pathExists,
   readJsonFile,
   readPatchFile,
+  readWikiEntry,
   rebuildIndex,
   removePath,
   writeJsonFile,
@@ -29,8 +31,6 @@ export interface QueueSelection {
   availableIds: string[];
 }
 
-const INLINE_RAW_SOURCE_REF_PATTERN = /(?:\n+)raw_source_ref:\s*(\S+)\s*$/i;
-
 export interface PatchSetApprovalResult {
   patch_set_id: string;
   status: "accepted" | "partial";
@@ -38,6 +38,12 @@ export interface PatchSetApprovalResult {
   failed: Array<{ patch_id: string; error: string }>;
   missing: string[];
 }
+
+const INLINE_RAW_SOURCE_REF_PATTERN = /(?:\n+)raw_source_ref:\s*(\S+)\s*$/i;
+// 단일 Node 프로세스 안의 승인 경합만 막는다. 프로세스 간 atomic 보장은 별도 file lock/CAS 후속 주제다.
+const approvalLocks = new Map<string, Promise<void>>();
+// 단일 Node 프로세스 안의 patch edit CAS만 막는다. 프로세스 간 atomic 보장은 별도 file lock/CAS 후속 주제다.
+const patchEditLocks = new Map<string, Promise<void>>();
 
 export async function parsePatch(markdown: string): Promise<Patch> {
   const match = markdown.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -67,6 +73,7 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
   if (!["create_wiki", "update_wiki"].includes(op)) throw new Error("invalid patch op");
   if (!target || !summary || !proposer || !created) throw new Error("patch frontmatter is incomplete");
   if (summary.length > 120) throw new Error("patch summary exceeds 120 chars");
+  assertCanonicalPatchTarget(target);
 
   const absoluteTarget = path.resolve(paths.root, target);
   if (!absoluteTarget.startsWith(`${paths.root}${path.sep}`) && absoluteTarget !== paths.root) {
@@ -74,6 +81,7 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
   }
 
   if (!absoluteTarget.startsWith(`${paths.wikiDir}${path.sep}`)) throw new Error("wiki patch must target wiki/");
+  assertNoSymlinkPathComponents(target, paths);
   if (op === "create_wiki" && (await pathExists(absoluteTarget))) {
     throw new Error(
       `[fleet-wiki] create_wiki target already exists: ${target} - use update_wiki to modify existing entries`,
@@ -84,6 +92,7 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
 
 export async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
   await validatePatch(patch, paths);
+  await validatePatchBase(patch, undefined, paths);
 
   const entry = normalizeWikiEntryPatch(JSON.parse(patch.body) as WikiEntry, patch.frontmatter.target, paths);
   const relativePath = await writeWikiEntryAtTarget(entry, patch.frontmatter.target, paths);
@@ -163,43 +172,83 @@ export async function showQueue(id: string, paths: MemoryPaths): Promise<{ patch
   return { patch, meta };
 }
 
-export async function approvePatch(id: string, paths: MemoryPaths): Promise<PatchMeta> {
-  const { patch, meta } = await showQueue(id, paths);
-  if (meta.status !== "pending") throw new Error("patch is not pending");
-  try {
-    await applyPatch(patch, paths);
-  } catch (error) {
-    const reason = classifyPatchConflict(error);
-    if (reason) {
-      const conflictId = await recordPatchConflict(patch, paths, reason, {
-        patchId: id,
-        rawSourceRef: meta.rawSourceRef,
-        warnings: meta.warnings,
-      });
-      const queueDir = path.join(paths.queueDir, id);
-      await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), {
-        ...meta,
-        conflictId,
-      } satisfies PatchMeta, paths);
+export async function rewriteQueuedPatch(
+  id: string,
+  paths: MemoryPaths,
+  patch: Patch,
+  meta: PatchMeta,
+  expectedPatchHash?: string,
+): Promise<string> {
+  assertSafeQueueId(id);
+  return withPatchEditLock(paths, id, async () => {
+    const queueDir = path.join(paths.queueDir, id);
+    if (expectedPatchHash !== undefined) {
+      const currentMarkdown = await readPatchFile(path.join(queueDir, PATCH_FILENAME));
+      const currentHash = computeContentHash(currentMarkdown);
+      if (currentHash !== expectedPatchHash) {
+        throw new Error(`[fleet-wiki] wiki_patch_edit stale base_patch_hash: expected ${currentHash}, got ${expectedPatchHash}`);
+      }
     }
-    throw error;
-  }
-  const nextMeta: PatchMeta = {
-    ...meta,
-    status: "accepted",
-    decidedAt: new Date().toISOString(),
-  };
-  await archiveQueueEntry(id, paths, nextMeta);
-  await appendLog(paths, "patch approved", {
-    op: patch.frontmatter.op,
-    patch_id: id,
-    patch_set_id: nextMeta.patch_set_id ?? null,
-    proposer: patch.frontmatter.proposer,
-    raw_source_ref: nextMeta.rawSourceRef ?? null,
-    result: "accepted",
-    target: patch.frontmatter.target,
+    const patchMarkdown = serializePatch(patch);
+    const patchHash = computeContentHash(patchMarkdown);
+    const nextMeta = { ...meta, lastEditHash: patchHash } satisfies PatchMeta;
+    await writePatchFile(path.join(queueDir, PATCH_FILENAME), patchMarkdown, paths);
+    await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), nextMeta, paths);
+    return patchHash;
   });
-  return nextMeta;
+}
+
+export async function approvePatch(id: string, paths: MemoryPaths): Promise<PatchMeta> {
+  assertSafeQueueId(id);
+  return withPatchEditLock(paths, id, async () => {
+    const { patch, meta } = await showQueue(id, paths);
+    if (meta.status !== "pending") throw new Error("patch is not pending");
+    try {
+      await withApprovalLock(paths, patch, async () => {
+        await validatePatchBase(patch, meta, paths);
+        await applyPatch(patch, paths);
+      });
+    } catch (error) {
+      const reason = classifyPatchConflict(error);
+      if (reason) {
+        const conflictId = await recordPatchConflict(patch, paths, reason, {
+          baseHash: meta.baseHash,
+          baseVersion: meta.baseVersion,
+          patchId: id,
+          rawSourceRef: meta.rawSourceRef,
+          warnings: meta.warnings,
+        });
+        const queueDir = path.join(paths.queueDir, id);
+        await writeJsonFile(path.join(queueDir, PATCH_META_FILENAME), {
+          ...meta,
+          conflictId,
+        } satisfies PatchMeta, paths);
+      }
+      throw error;
+    }
+    const nextMeta: PatchMeta = {
+      ...meta,
+      status: "accepted",
+      decidedAt: new Date().toISOString(),
+    };
+    await archiveQueueEntry(id, paths, nextMeta);
+    await appendLog(paths, "patch approved", {
+      op: patch.frontmatter.op,
+      patch_id: id,
+      patch_set_id: nextMeta.patch_set_id ?? null,
+      proposer: patch.frontmatter.proposer,
+      raw_source_ref: nextMeta.rawSourceRef ?? null,
+      result: "accepted",
+      target: patch.frontmatter.target,
+    });
+    return nextMeta;
+  });
+}
+
+function assertSafeQueueId(id: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-f0-9]{8}$/.test(id)) {
+    throw new Error("patch_id must be a non-empty canonical queue ID");
+  }
 }
 
 export async function approvePatchSet(patchSetId: string, paths: MemoryPaths): Promise<PatchSetApprovalResult> {
@@ -243,25 +292,28 @@ export async function approvePatchSet(patchSetId: string, paths: MemoryPaths): P
 }
 
 export async function rejectPatch(id: string, reason: string, paths: MemoryPaths): Promise<PatchMeta> {
-  const { meta } = await showQueue(id, paths);
-  if (meta.status !== "pending") throw new Error("patch is not pending");
-  const nextMeta: PatchMeta = {
-    ...meta,
-    status: "rejected",
-    decidedAt: new Date().toISOString(),
-    reason,
-  };
-  await archiveQueueEntry(id, paths, nextMeta);
-  await appendLog(paths, "patch rejected", {
-    patch_id: id,
-    patch_set_id: nextMeta.patch_set_id ?? null,
-    reason,
-    result: "rejected",
+  assertSafeQueueId(id);
+  return withPatchEditLock(paths, id, async () => {
+    const { meta } = await showQueue(id, paths);
+    if (meta.status !== "pending") throw new Error("patch is not pending");
+    const nextMeta: PatchMeta = {
+      ...meta,
+      status: "rejected",
+      decidedAt: new Date().toISOString(),
+      reason,
+    };
+    await archiveQueueEntry(id, paths, nextMeta);
+    await appendLog(paths, "patch rejected", {
+      patch_id: id,
+      patch_set_id: nextMeta.patch_set_id ?? null,
+      reason,
+      result: "rejected",
+    });
+    return nextMeta;
   });
-  return nextMeta;
 }
 
-function serializePatch(patch: Patch): string {
+export function serializePatch(patch: Patch): string {
   const lines = [
     `op: "${patch.frontmatter.op}"`,
     `target: "${patch.frontmatter.target}"`,
@@ -312,6 +364,111 @@ function buildPatchId(createdAt: string, summary: string, target: string, body: 
   return `${compact}-${hash}`;
 }
 
+async function validatePatchBase(patch: Patch, meta: PatchMeta | undefined, paths: MemoryPaths): Promise<void> {
+  if (patch.frontmatter.op !== "update_wiki" || (!meta?.baseVersion && !meta?.baseHash)) return;
+
+  const wikiId = path.basename(patch.frontmatter.target, ".md");
+  const currentEntry = await readWikiEntry(wikiId, paths);
+  const currentPath = path.join(paths.root, patch.frontmatter.target);
+  const currentMarkdown = await pathExists(currentPath) ? await readPatchFile(currentPath) : undefined;
+  if (meta.baseVersion !== undefined && currentEntry?.version !== meta.baseVersion) {
+    throw new Error(
+      `[fleet-wiki] approve stale base_version for ${wikiId}: expected ${meta.baseVersion}, got ${currentEntry?.version ?? "missing"}`,
+    );
+  }
+  if (meta.baseHash !== undefined && computeContentHash(currentMarkdown ?? "") !== meta.baseHash) {
+    throw new Error(
+      `[fleet-wiki] approve stale base_hash for ${wikiId}: expected ${meta.baseHash}, got ${currentMarkdown ? computeContentHash(currentMarkdown) : "missing"}`,
+    );
+  }
+}
+
+async function withApprovalLock<T>(paths: MemoryPaths, patch: Patch, action: () => Promise<T>): Promise<T> {
+  await ensureMemoryRoot(paths);
+  const key = canonicalApprovalLockKey(paths, patch.frontmatter.target);
+  const previous = approvalLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  const queued = previous.then(() => current, () => current);
+  approvalLocks.set(key, queued);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (approvalLocks.get(key) === queued) {
+      approvalLocks.delete(key);
+    }
+  }
+}
+
+async function withPatchEditLock<T>(paths: MemoryPaths, patchId: string, action: () => Promise<T>): Promise<T> {
+  const key = canonicalPatchEditLockKey(paths, patchId);
+  const previous = patchEditLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  const queued = previous.then(() => current, () => current);
+  patchEditLocks.set(key, queued);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (patchEditLocks.get(key) === queued) {
+      patchEditLocks.delete(key);
+    }
+  }
+}
+
+function assertCanonicalPatchTarget(target: string): void {
+  if (target.includes("\\")) {
+    throw new Error("patch target must use forward slashes");
+  }
+  if (target.endsWith("/")) {
+    throw new Error("patch target must not end with a slash");
+  }
+  if (target.startsWith("/") || path.posix.isAbsolute(target) || path.win32.isAbsolute(target)) {
+    throw new Error("patch target must be relative");
+  }
+  if (path.posix.normalize(target) !== target) {
+    throw new Error("patch target must not contain dot segments or redundant separators");
+  }
+}
+
+function canonicalApprovalLockKey(paths: MemoryPaths, target: string): string {
+  const wikiRoot = realpathSync(paths.wikiDir);
+  const relativeTarget = path.posix.relative("wiki", target);
+  const targetPath = path.join(wikiRoot, ...relativeTarget.split("/"));
+  // case-insensitive FS alias race 차단을 위해 의도적으로 보수적인 lower-case 잠금을 적용한다.
+  return `${wikiRoot}\u0000${targetPath}`.toLowerCase();
+}
+
+function canonicalPatchEditLockKey(paths: MemoryPaths, patchId: string): string {
+  return `${realpathSync(paths.queueDir)}\u0000${patchId}`;
+}
+
+function assertNoSymlinkPathComponents(target: string, paths: MemoryPaths): void {
+  const parts = target.split("/").slice(1);
+  let current: string;
+  try {
+    current = realpathSync(paths.wikiDir);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+  for (const part of parts) {
+    current = path.join(current, part);
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error("patch target must not include symlink path components");
+      }
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+      throw error;
+    }
+  }
+}
+
 function assertSafeRawSourceRef(rawSourceRef: string, paths: MemoryPaths): void {
   if (!rawSourceRef.startsWith("raw/")) {
     throw new Error("raw source provenance must point into raw/");
@@ -328,6 +485,8 @@ function classifyPatchConflict(error: unknown): ConflictReason | null {
   if (message.includes("update_wiki target does not exist")) return "update_target_missing";
   if (message.includes("wiki patch body id must match target filename")) return "patch_body_target_mismatch";
   if (message.includes("conflicting raw source provenance in wiki patch")) return "source_provenance_conflict";
+  if (message.includes("approve stale base_version")) return "base_version_mismatch";
+  if (message.includes("approve stale base_hash")) return "base_hash_mismatch";
   return null;
 }
 
@@ -335,7 +494,7 @@ async function recordPatchConflict(
   patch: Patch,
   paths: MemoryPaths,
   reason: ConflictReason,
-  options?: { patchId?: string; rawSourceRef?: string; warnings?: string[] },
+  options?: { baseHash?: string; baseVersion?: number; patchId?: string; rawSourceRef?: string; warnings?: string[] },
 ): Promise<string> {
   const now = new Date();
   const targetPath = path.join(paths.root, patch.frontmatter.target);
@@ -354,6 +513,8 @@ async function recordPatchConflict(
     patchId: options?.patchId,
     currentVersion: currentEntry?.version,
     proposedVersion: proposedEntry?.version,
+    baseVersion: options?.baseVersion,
+    baseHash: options?.baseHash,
     currentHash: current ? computeContentHash(current) : undefined,
     warnings: options?.warnings,
     now,

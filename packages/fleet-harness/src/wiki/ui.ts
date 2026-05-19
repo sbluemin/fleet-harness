@@ -7,6 +7,7 @@ import { buildCompileSourceToolConfig } from "@sbluemin/fleet-wiki";
 import { buildDryDockToolConfig } from "@sbluemin/fleet-wiki";
 import { buildIngestToolConfig } from "@sbluemin/fleet-wiki";
 import { buildOrientToolConfig } from "@sbluemin/fleet-wiki";
+import { buildPatchEditToolConfig } from "@sbluemin/fleet-wiki";
 import { buildPatchQueueToolConfig } from "@sbluemin/fleet-wiki";
 import { buildQueryToolConfig } from "@sbluemin/fleet-wiki";
 import { buildReadToolConfig } from "@sbluemin/fleet-wiki";
@@ -72,6 +73,7 @@ export function registerFleetWiki(ctx: ExtensionAPI | ExtensionContext): void {
   pi.registerTool(withCompactRender(buildIngestToolConfig()));
   pi.registerTool(withCompactRender(buildBriefingToolConfig()));
   pi.registerTool(withCompactRender(buildDryDockToolConfig()));
+  pi.registerTool(withCompactRender(buildPatchEditToolConfig()));
   pi.registerTool(withCompactRender(buildPatchQueueToolConfig()));
   pi.registerTool(withCompactRender(buildOrientToolConfig()));
   pi.registerTool(withCompactRender(buildReadToolConfig()));

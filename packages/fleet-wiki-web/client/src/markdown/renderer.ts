@@ -7,6 +7,8 @@ import json from "highlight.js/lib/languages/json";
 import markdown from "highlight.js/lib/languages/markdown";
 import python from "highlight.js/lib/languages/python";
 import typescript from "highlight.js/lib/languages/typescript";
+
+import { entryPath } from "../router";
 // SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
 // Inlined here because the client (Vite SPA) bundle cannot transitively pull
 // fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
@@ -54,7 +56,7 @@ function renderWikiLinks(body: string): string {
     if (!id) return "";
     const label = escapeHtml(id);
     const encodedId = encodeURIComponent(id);
-    const href = `/entry/${encodedId}`;
+    const href = entryPath(id);
     return `<a href="${href}" data-entry-id="${encodedId}">${label}</a>`;
   });
 }

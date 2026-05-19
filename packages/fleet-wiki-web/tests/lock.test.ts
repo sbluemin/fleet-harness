@@ -11,6 +11,6 @@ describe("lock", () => {
   });
 
   it("places lock files in the OS temp directory", () => {
-    expect(lockFilePath("/tmp/example")).toMatch(/fleet-wiki-[a-f0-9]{12}\.lock$/);
+    expect(lockFilePath()).toMatch(/fleet-wiki-daemon\.lock$/);
   });
 });

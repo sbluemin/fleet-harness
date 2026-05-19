@@ -8,18 +8,19 @@ import {
   buildProvenanceContext,
   buildRelatedContextPack,
 } from "./components/copy-context-actions";
-import { renderBacklinksPanel } from "./components/backlinks-panel";
 import { configureCommandPalette, initCommandPalette } from "./components/command-palette";
 import { renderConflictsList, renderConflictDetail } from "./components/conflicts-view";
 import { renderIndexMarkdownView } from "./components/index-md-view";
 import { renderManifestPanel } from "./components/manifest-panel";
 import { installDiagramHydrator } from "./markdown/diagrams";
 import { renderError, renderLoading, renderMarkdownView, renderWelcome } from "./components/markdown-view";
+import type { MarkdownViewRender } from "./components/markdown-view";
 import { renderNavTree, setNavMode, toggleTag } from "./components/nav-tree";
 import type { NavMode } from "./components/nav-tree";
 import { renderRawView } from "./components/raw-view";
 import { renderQueueList } from "./components/queue-list";
 import { renderQueueDetail } from "./components/queue-detail";
+import { renderToc } from "./components/toc";
 import { renderLogView } from "./components/log-view";
 import { initLanguage, setLanguage, subscribeLanguage } from "./i18n/store";
 import type { SupportedLanguage } from "./i18n/types";
@@ -34,6 +35,7 @@ import {
   logPath,
   navigate,
   subscribeRoute,
+  workspaceHomePath,
 } from "./router";
 import type { Route } from "./router";
 import {
@@ -70,6 +72,7 @@ subscribeRoute((route) => {
 });
 
 document.addEventListener("click", handleDocumentClick);
+document.addEventListener("change", handleDocumentChange);
 document.addEventListener("submit", handleDocumentSubmit);
 installDiagramHydrator(document.body);
 void boot();
@@ -153,6 +156,7 @@ function renderRawShell(): void {
 function renderAppShell(state: AppState, route: Route): void {
   const currentId = route.name === "entry" ? route.id : null;
   const isQueueRoute = route.name === "queue" || route.name === "queue-detail";
+  const renderedEntry = state.currentEntry ? renderMarkdownView(state.currentEntry, state.index) : null;
   configureCommandPalette(state.index, state.recentIds);
   app.innerHTML = `
     <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}">
@@ -161,12 +165,12 @@ function renderAppShell(state: AppState, route: Route): void {
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
       </button>
-      ${renderNavTree(state.index, currentId, state.pendingPatchCount, window.location.pathname)}
+      ${renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname)}
       <main class="content">
-        ${renderMainContent(state, route)}
+        ${renderMainContent(state, route, renderedEntry)}
       </main>
       <div class="rail">
-        ${renderRailContent(state, route)}
+        ${renderRailContent(state, route, renderedEntry)}
       </div>
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
@@ -178,7 +182,7 @@ function renderAppShell(state: AppState, route: Route): void {
   }
 }
 
-function renderMainContent(state: AppState, route: Route): string {
+function renderMainContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
   if (route.name === "queue") {
     return renderQueueList(getQueueState());
   }
@@ -191,17 +195,17 @@ function renderMainContent(state: AppState, route: Route): string {
   if (route.name === "log" && state.log) return renderLogView(state.log);
   if (route.name === "conflicts") return renderConflictsList(state.conflicts);
   if (route.name === "conflict-detail" && state.currentConflict) return renderConflictDetail(state.currentConflict);
-  if (state.currentEntry) {
-    return renderMarkdownView(state.currentEntry, state.index);
+  if (state.currentEntry && renderedEntry) {
+    return renderedEntry.html;
   }
-  return renderWelcome(state.index, state.health?.cwd ?? null);
+  return renderWelcome(state.index, state.health?.cwd ?? null, Boolean(state.currentWorkspaceId));
 }
 
-function renderRailContent(state: AppState, route: Route): string {
+function renderRailContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
   if (route.name === "queue" || route.name === "queue-detail") return "";
   return `
-    ${renderManifestPanel(state.currentEntry, state.backlinks, state.outgoing, state.index, state.currentMatchHint)}
-    ${renderBacklinksPanel(state.backlinks, state.outgoing, route.name === "entry" ? route.id : null)}
+    ${renderManifestPanel(state.currentEntry, state.index, state.currentMatchHint)}
+    ${renderedEntry ? renderToc(renderedEntry.toc) : ""}
   `;
 }
 
@@ -248,21 +252,21 @@ function handleDocumentClick(event: MouseEvent): void {
   if (actionElement?.dataset.action === "copy-compact-context") {
     const state = getState();
     if (state.currentEntry) {
-      void copyText(buildCompactContext(state.currentEntry, state.backlinks, state.outgoing), t("entry.copyCompactContextDone"));
+      void copyText(buildCompactContext(state.currentEntry), t("entry.copyCompactContextDone"));
     }
     return;
   }
   if (actionElement?.dataset.action === "copy-provenance-context") {
     const state = getState();
     if (state.currentEntry) {
-      void copyText(buildProvenanceContext(state.currentEntry, state.backlinks, state.outgoing), t("entry.copyWithProvenanceDone"));
+      void copyText(buildProvenanceContext(state.currentEntry), t("entry.copyWithProvenanceDone"));
     }
     return;
   }
   if (actionElement?.dataset.action === "copy-related-context") {
     const state = getState();
     if (state.currentEntry) {
-      void copyText(buildRelatedContextPack(state.currentEntry, state.backlinks, state.outgoing, state.index), t("entry.copyRelatedContextDone"));
+      void copyText(buildRelatedContextPack(state.currentEntry, state.index), t("entry.copyRelatedContextDone"));
     }
     return;
   }
@@ -325,6 +329,15 @@ function handleDocumentSubmit(event: SubmitEvent): void {
   }
 }
 
+function handleDocumentChange(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  if (target.dataset.action !== "switch-workspace") return;
+  if (!target.value) return;
+  navigate(workspaceHomePath(target.value));
+  window.location.reload();
+}
+
 async function copyCode(button: HTMLElement): Promise<void> {
   const block = button.closest<HTMLElement>(".code-block");
   const code = block?.dataset.code ?? "";
@@ -361,11 +374,12 @@ function internalSpaPath(anchor: HTMLAnchorElement): string | null {
   const url = new URL(rawHref, window.location.origin);
   if (url.origin !== window.location.origin) return null;
   if (url.pathname === "/") return "/";
+  if (url.pathname.match(/^\/w\/[^/]+(\/|$)/)) return url.pathname + url.search;
   if (url.pathname.startsWith("/entry/")) return url.pathname;
   if (url.pathname.startsWith("/raw/")) return url.pathname;
   if (url.pathname.startsWith("/queue")) return url.pathname + url.search;
   if (url.pathname.startsWith("/conflicts")) return url.pathname + url.search;
-  if (url.pathname === "/index" || url.pathname === "/log") return url.pathname + url.search;
+  if (url.pathname === "/index" || url.pathname === "/index-md" || url.pathname === "/log") return url.pathname + url.search;
   if (!url.pathname.endsWith(".md")) return null;
   const fileName = url.pathname.split("/").pop() ?? "";
   const id = decodeURIComponent(fileName.replace(/\.md$/, ""));

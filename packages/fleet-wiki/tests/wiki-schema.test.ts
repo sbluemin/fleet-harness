@@ -116,6 +116,24 @@ describe("workspace schema", () => {
     expect(summary.summary.length).toBeGreaterThan(0);
   });
 
+  it("documents current raw provenance and pending patch edit workflow", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await ensureWorkspaceSchema(paths);
+    await ensureWorkspaceDoctrine(paths);
+    const schema = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME), "utf8");
+    const schemaAgents = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME), "utf8");
+    const doctrine = await readFile(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME), "utf8");
+
+    expect(schema).toContain("`rawSourceRef`: Latest immutable raw provenance ref");
+    expect(schema).toContain("`rawSourceRefs`: Ordered provenance history");
+    expect(schema).not.toContain("`rawSourceRef`, `status`, `kind`");
+    expect(schema).toContain("`wiki_patch_edit` may revise already-pending queue proposals");
+    expect(schemaAgents).toContain("Treat `rawSourceRef` as current latest-provenance metadata.");
+    expect(doctrine).toContain("already-pending queue proposal revisions may use `wiki_patch_edit`");
+  });
+
   it("does not recreate a deleted wiki-schema file when reading summary", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

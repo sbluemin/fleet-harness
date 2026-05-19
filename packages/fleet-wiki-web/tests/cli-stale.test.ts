@@ -6,8 +6,9 @@ import type { FleetWikiLock } from "../src/lock.js";
 const BASE_LOCK: FleetWikiLock = {
   pid: 12345,
   port: 3737,
-  cwd: "/workspace",
+  host: "127.0.0.1",
   startedAt: "2026-05-04T04:38:06.000Z",
+  token: "test-token",
 };
 
 describe("isStaleLock", () => {
@@ -41,8 +42,9 @@ describe("isLockTrustworthyForRestart", () => {
   const VALID_LOCK: FleetWikiLock = {
     pid: 12345,
     port: 3737,
-    cwd: "/workspace",
+    host: "127.0.0.1",
     startedAt: "2026-05-04T04:38:06.000Z",
+    token: "test-token",
   };
 
   it("returns trusted=true when all three guards pass", () => {
@@ -69,20 +71,19 @@ describe("isLockTrustworthyForRestart", () => {
     expect(result.trusted).toBe(false);
   });
 
-  it("returns trusted=false when lock.cwd differs from currentCwd", () => {
+  it("returns trusted=true when current cwd differs because daemon is per-user", () => {
     const result = isLockTrustworthyForRestart(VALID_LOCK, "/other-workspace", "/workspace");
-    expect(result.trusted).toBe(false);
-    expect(result.reason).toMatch(/cwd/);
+    expect(result.trusted).toBe(true);
   });
 
-  it("returns trusted=false when healthResponseCwd is null", () => {
+  it("returns trusted=true when healthResponseCwd is null", () => {
     const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", null);
-    expect(result.trusted).toBe(false);
+    expect(result.trusted).toBe(true);
   });
 
-  it("returns trusted=false when healthResponseCwd differs from lock.cwd", () => {
+  it("returns trusted=true when healthResponseCwd differs", () => {
     const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/different-path");
-    expect(result.trusted).toBe(false);
+    expect(result.trusted).toBe(true);
   });
 
   it("returns trusted=false when lock.host differs from currentHost", () => {
@@ -92,10 +93,11 @@ describe("isLockTrustworthyForRestart", () => {
     expect(result.reason).toMatch(/host/);
   });
 
-  it("returns trusted=true when lock.host matches currentHost", () => {
+  it("returns trusted=false for non-loopback lock host even when currentHost matches", () => {
     const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
     const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", "0.0.0.0");
-    expect(result.trusted).toBe(true);
+    expect(result.trusted).toBe(false);
+    expect(result.reason).toMatch(/host/);
   });
 
   it("allows legacy lock (no host field) when currentHost is default", () => {
@@ -103,20 +105,10 @@ describe("isLockTrustworthyForRestart", () => {
     expect(result.trusted).toBe(true);
   });
 
-  it("rejects legacy lock (no host field) when currentHost is explicit non-default", () => {
-    const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/workspace", "0.0.0.0");
-    expect(result.trusted).toBe(false);
-    expect(result.reason).toMatch(/legacy/);
-  });
-
-  it("allows legacy lock (no host field) when currentHost is undefined", () => {
-    const result = isLockTrustworthyForRestart(VALID_LOCK, "/workspace", "/workspace", undefined);
-    expect(result.trusted).toBe(true);
-  });
-
-  it("ignores host comparison when currentHost is undefined", () => {
+  it("rejects non-loopback lock host when currentHost is undefined", () => {
     const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
     const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", undefined);
-    expect(result.trusted).toBe(true);
+    expect(result.trusted).toBe(false);
+    expect(result.reason).toMatch(/host/);
   });
 });

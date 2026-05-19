@@ -5,6 +5,7 @@ import { buildBriefingToolConfig } from "./tools/briefing.js";
 import { buildDryDockToolConfig } from "./tools/drydock.js";
 import { buildIngestToolConfig } from "./tools/ingest.js";
 import { buildOrientToolConfig } from "./tools/orient.js";
+import { buildPatchEditToolConfig } from "./tools/patch-edit.js";
 import { buildQueryToolConfig } from "./tools/query.js";
 import { buildReadToolConfig } from "./tools/read.js";
 import { buildResolveToolConfig } from "./tools/resolve.js";
@@ -37,6 +38,7 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_drydock",
   "wiki_ingest",
   "wiki_orient",
+  "wiki_patch_edit",
   "wiki_query",
   "wiki_read",
   "wiki_resolve",
@@ -57,18 +59,20 @@ const briefingSpec = buildWikiBriefingSpec();
 const dryDockSpec = buildWikiDryDockSpec();
 const ingestSpec = buildWikiIngestSpec();
 const orientSpec = buildWikiOrientSpec();
+const patchEditSpec = buildWikiPatchEditSpec();
 const querySpec = buildWikiQuerySpec();
 const readSpec = buildWikiReadSpec();
 const resolveSpec = buildWikiResolveSpec();
 
 // Self-register into fleet-core agent tool registry AND executor MCP whitelist at module load time.
 // 순수 읽기 도구 4종 (briefing/orient/read/resolve): 모든 캐리어가 위키 지식기반에 접근 가능하도록 글로벌 등록.
-// 쓰기·stage 가능 도구 3종 (drydock/ingest/query): 크로니클 전용 (지식 무결성 보호).
+// 쓰기·stage 가능 도구 4종 (drydock/ingest/patch_edit/query): 크로니클 전용 (지식 무결성 보호).
 // 참고: wiki_query는 mode="stage_answer_page" / save_good_answer=true에서 패치 큐에 stage하므로 read-only가 아님.
 registerGlobalExecutorTool(briefingSpec);
 registerChronicleExecutorTool(dryDockSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerChronicleExecutorTool(ingestSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerGlobalExecutorTool(orientSpec);
+registerChronicleExecutorTool(patchEditSpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerChronicleExecutorTool(querySpec, CHRONICLE_ONLY_EXECUTOR_TOOL);
 registerGlobalExecutorTool(readSpec);
 registerGlobalExecutorTool(resolveSpec);
@@ -124,6 +128,19 @@ function buildWikiOrientSpec(): AgentToolSpec {
     whenNotToUse: [
       "A specific entry ID is already known and full content is needed — use wiki_read instead",
       "Only staging a patch is needed and current wiki context is already understood — use wiki_ingest instead",
+    ],
+  });
+}
+
+function buildWikiPatchEditSpec(): AgentToolSpec {
+  return buildWikiToolSpec(buildPatchEditToolConfig(), {
+    whenToUse: [
+      "A pending Fleet Wiki patch needs a small exact body or metadata correction before approval",
+      "Need to preserve the same patch_id while avoiding a second wiki_ingest queue item",
+    ],
+    whenNotToUse: [
+      "The patch has already been approved or rejected",
+      "The desired change requires approving wiki content — use wiki_patch_queue for approval",
     ],
   });
 }

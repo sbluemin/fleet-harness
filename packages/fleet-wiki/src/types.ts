@@ -120,6 +120,14 @@ export interface PatchMeta {
   conflictId?: string;
   warnings?: string[];
   patch_set_id?: string;
+  baseVersion?: number;
+  baseHash?: string;
+  baseCheckedAt?: string;
+  editedAt?: string;
+  editCount?: number;
+  lastEditedBy?: string;
+  lastEditHash?: string;
+  previousPatchHash?: string;
 }
 
 export interface PatchSet {
@@ -191,6 +199,7 @@ export interface WorkspaceSchema {
 export type WikiLogEvent =
   | "raw source added"
   | "patch enqueued"
+  | "patch edited"
   | "patch approved"
   | "patch rejected"
   | "patch set staged"

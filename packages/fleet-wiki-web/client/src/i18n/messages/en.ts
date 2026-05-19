@@ -86,12 +86,6 @@ export const en: I18nMessages = {
   related: {
     heading: "Related entries",
   },
-  backlinks: {
-    subtitle: "Entries referencing this document",
-    emptyNoEntry: "Select an entry to view backlinks.",
-    emptyNone: "No other entries reference this document yet.",
-    outgoingHeading: "Outgoing",
-  },
   entry: {
     copyCompactContext: "Compact context",
     copyCompactContextDone: "Copied compact context.",

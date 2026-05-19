@@ -62,6 +62,8 @@ interface IngestPlanEnqueue {
   rawSource: RawSourceEntry;
   entry: WikiEntry;
   proposer: string;
+  baseHash?: string;
+  baseVersion?: number;
 }
 
 interface IngestPlanConflict {
@@ -314,10 +316,12 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
     op: "update_wiki",
     warnings,
     rawSource,
-    entry: buildUpdateEntry(currentEntry, input, now),
-    proposer,
-  };
-}
+      entry: buildUpdateEntry(currentEntry, input, now),
+      proposer,
+      baseHash: input.base_hash ?? currentHash,
+      baseVersion: input.base_version ?? currentEntry.version,
+    };
+  }
 
 async function stageIngestPlan(plan: IngestPlan, paths: ReturnType<typeof resolveMemoryPaths>): Promise<IngestResult> {
   const rawSourceRef = await writeRawSourceEntry(plan.rawSource, paths);
@@ -332,6 +336,11 @@ async function stageIngestPlan(plan: IngestPlan, paths: ReturnType<typeof resolv
   const entry = {
     ...plan.entry,
     rawSourceRef,
+    rawSourceRefs: mergeRawSourceRefs(plan.entry.rawSourceRefs, plan.entry.rawSourceRef, {
+      ref: rawSourceRef,
+      title: plan.rawSource.title,
+      hash: computeContentHash(plan.rawSource.content),
+    }),
   } satisfies WikiEntry;
 
   if (plan.kind === "conflict") {
@@ -370,7 +379,13 @@ async function stageIngestPlan(plan: IngestPlan, paths: ReturnType<typeof resolv
   }
 
   const patch = buildPatch(plan.op, entry, plan.proposer, plan.entry.updated);
-  const patchId = await enqueuePatch(patch, paths, { rawSourceRef, warnings: plan.warnings });
+  const patchId = await enqueuePatch(patch, paths, {
+    baseCheckedAt: plan.baseHash || plan.baseVersion !== undefined ? new Date().toISOString() : undefined,
+    baseHash: plan.baseHash,
+    baseVersion: plan.baseVersion,
+    rawSourceRef,
+    warnings: plan.warnings,
+  });
   return {
     ok: true,
     mode: plan.mode,
@@ -476,6 +491,19 @@ function buildPatch(op: PatchOp, entry: WikiEntry, proposer: string, created: st
     },
     body: JSON.stringify(entry),
   };
+}
+
+function mergeRawSourceRefs(
+  refs: WikiEntry["rawSourceRefs"],
+  currentRef: string | undefined,
+  nextRef: NonNullable<WikiEntry["rawSourceRefs"]>[number],
+): WikiEntry["rawSourceRefs"] {
+  const existing = refs ? [...refs] : [];
+  if (currentRef && !existing.some((item) => item.ref === currentRef)) {
+    existing.push({ ref: currentRef });
+  }
+  if (existing.some((item) => item.ref === nextRef.ref)) return existing;
+  return [...existing, nextRef];
 }
 
 function resolveConflictOrThrow(

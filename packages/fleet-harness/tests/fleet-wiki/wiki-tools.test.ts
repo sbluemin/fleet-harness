@@ -147,7 +147,7 @@ describe("wiki tools", () => {
     }, undefined, undefined, { cwd: root } as any)).rejects.toThrow(/Unknown patch ID/);
   });
 
-  it("registers nine wiki tools including wiki_query", async () => {
+  it("registers ten wiki tools including wiki_patch_edit and wiki_query", async () => {
     const root = await makeTempRoot();
     const tools: Array<{ name: string; execute: Function; renderShell?: string }> = [];
 
@@ -161,6 +161,7 @@ describe("wiki tools", () => {
       "wiki_ingest",
       "wiki_briefing",
       "wiki_drydock",
+      "wiki_patch_edit",
       "wiki_patch_queue",
       "wiki_orient",
       "wiki_read",
@@ -168,7 +169,7 @@ describe("wiki tools", () => {
       "wiki_compile_source",
       "wiki_query",
     ]));
-    expect(toolNames).toHaveLength(9);
+    expect(toolNames).toHaveLength(10);
     expect(tools.every((tool) => tool.renderShell === "self")).toBe(true);
 
     const orientTool = tools.find((tool) => tool.name === "wiki_orient");

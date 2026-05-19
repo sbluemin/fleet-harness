@@ -6,8 +6,6 @@ import { join, relative as relativePath, resolve as resolvePath } from "node:pat
 import {
   approvePatch,
   briefingQuery,
-  extractLegacyMarkdownWikiLinks,
-  extractWikiLinks,
   getIndexMarkdownFile,
   getLogFile,
   listQueue,
@@ -23,6 +21,9 @@ import { PATCH_FILENAME, PATCH_META_FILENAME } from "@sbluemin/fleet-wiki";
 import type { MemoryPaths, PatchMeta, PatchSet, WikiEntry, WikiEntryFrontmatter } from "@sbluemin/fleet-wiki";
 
 import { withSecurityHeaders } from "./security-headers.js";
+import { hasAdminBearer } from "./admin-auth.js";
+import type { WorkspaceRegistry } from "./workspaces.js";
+import { toMetadata } from "./workspaces.js";
 
 interface RouteContext {
   cwd: string;
@@ -31,6 +32,9 @@ interface RouteContext {
   version: string;
   port: number;
   host: string;
+  workspaceId: string;
+  workspaces?: WorkspaceRegistry;
+  adminToken?: string;
 }
 
 interface ConflictListItem {
@@ -54,12 +58,6 @@ interface LogResponse {
   entries: string[];
   totalEntries: number;
   truncated: boolean;
-}
-
-interface OutgoingLinkEntry {
-  id: string;
-  title: string;
-  occurrences: number;
 }
 
 interface QueuePatchSetMember {
@@ -162,6 +160,14 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
       version: context.version,
       cwd: context.cwd,
       knowledgeRoot: context.knowledgeRoot,
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/workspaces") {
+    sendJson(response, 200, {
+      currentWorkspaceId: context.workspaceId ?? null,
+      workspaces: context.workspaces?.list() ?? [],
     });
     return;
   }
@@ -363,25 +369,15 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
     return;
   }
 
-  const backlinksMatch = url.pathname.match(/^\/api\/backlinks\/([^/]+)$/);
-  if (backlinksMatch) {
-    const id = decodePathSegment(backlinksMatch[1] ?? "");
-    if (!isSafeEntryId(id)) {
-      sendJson(response, 400, { error: "invalid entry id" });
-      return;
-    }
-    sendJson(response, 200, await buildBacklinksResponse(id, context.paths));
-    return;
-  }
-  if (url.pathname.startsWith("/api/backlinks/")) {
-    sendJson(response, 400, { error: "invalid entry id" });
-    return;
-  }
-
   sendJson(response, 404, { error: "not_found" });
 }
 
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  if (url.pathname === "/api/admin/workspaces") {
+    await routeAdminWorkspaceRegistration(request, response, context);
+    return;
+  }
+
   const approveMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/approve$/);
   const rejectMatch = url.pathname.match(/^\/api\/queue\/([^/]+)\/reject$/);
 
@@ -410,17 +406,67 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
-  if (patchActionLocks.has(patchId)) {
+  const lockKey = `${context.workspaceId}:${patchId}`;
+  if (patchActionLocks.has(lockKey)) {
     sendJson(response, 409, { error: "patch_busy" });
     return;
   }
 
   const actionPromise = runPatchAction(patchId, Boolean(approveMatch), request, response, context);
-  patchActionLocks.set(patchId, actionPromise);
+  patchActionLocks.set(lockKey, actionPromise);
   try {
     await actionPromise;
   } finally {
-    patchActionLocks.delete(patchId);
+    patchActionLocks.delete(lockKey);
+  }
+}
+
+async function routeAdminWorkspaceRegistration(
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: RouteContext,
+): Promise<void> {
+  if (!context.workspaces || !context.adminToken) {
+    sendJson(response, 404, { error: "not_found" });
+    return;
+  }
+  if (!hasAdminBearer(request, context.adminToken)) {
+    sendJson(response, 401, { error: "unauthorized" });
+    return;
+  }
+  const contentType = (request.headers["content-type"] ?? "").toLowerCase();
+  if (!contentType.startsWith("application/json")) {
+    sendJson(response, 415, { error: "unsupported_media_type" });
+    return;
+  }
+  const bodyResult = await readRequestBody(request);
+  if (bodyResult === BODY_TOO_LARGE) {
+    sendJson(response, 413, { error: "payload_too_large" });
+    return;
+  }
+  if (bodyResult === null) {
+    sendJson(response, 400, { error: "invalid_body" });
+    return;
+  }
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(bodyResult) as Record<string, unknown>;
+  } catch {
+    sendJson(response, 400, { error: "invalid_body" });
+    return;
+  }
+  const cwd = typeof body.cwd === "string" ? body.cwd : "";
+  if (!cwd) {
+    sendJson(response, 400, { error: "cwd_required" });
+    return;
+  }
+  try {
+    const workspace = await context.workspaces.register(cwd);
+    sendJson(response, 200, { workspace: toMetadata(workspace) });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const status = message === "knowledge_root_missing" ? 400 : 500;
+    sendJson(response, status, { error: message });
   }
 }
 
@@ -504,85 +550,6 @@ async function readRequestBody(request: IncomingMessage): Promise<string | null 
   });
 }
 
-async function buildBacklinksResponse(id: string, paths: MemoryPaths): Promise<{ id: string; backlinks: Array<{ id: string; title: string; occurrences: number }>; outgoing: OutgoingLinkEntry[] }> {
-  const [entries, index, entry] = await Promise.all([
-    listWiki(paths),
-    loadIndex(paths),
-    readWikiEntry(id, paths),
-  ]);
-  if (!entry) {
-    return { id, backlinks: [], outgoing: [] };
-  }
-
-  const backlinks = await getBacklinksLocal(id, entries, paths, index);
-  const outgoing = getOutgoingLinks(entry, entries, paths, index);
-  return { id, backlinks, outgoing };
-}
-
-async function getBacklinksLocal(
-  id: string,
-  entries: WikiEntry[],
-  paths: MemoryPaths,
-  index: Record<string, { title: string; path: string }>,
-): Promise<Array<{ id: string; title: string; occurrences: number }>> {
-  const counts = new Map<string, number>();
-  for (const source of entries) {
-    const sourcePath = index[source.id]?.path
-      ? join(paths.root, index[source.id].path)
-      : join(paths.wikiDir, `${source.id}.md`);
-    const targetIds = [
-      ...extractWikiLinks(source.body),
-      ...extractLegacyMarkdownWikiLinks(source.body, paths.wikiDir, sourcePath).map((link) => link.entryId),
-    ];
-    for (const targetId of targetIds) {
-      if (!targetId || targetId === source.id || targetId !== id) continue;
-      counts.set(source.id, (counts.get(source.id) ?? 0) + 1);
-    }
-  }
-
-  return [...counts.entries()]
-    .map(([sourceId, occurrences]) => ({
-      id: sourceId,
-      title: index[sourceId]?.title ?? sourceId,
-      occurrences,
-    }))
-    .sort((left, right) => right.occurrences - left.occurrences || left.id.localeCompare(right.id));
-}
-
-function getOutgoingLinks(
-  entry: WikiEntry,
-  entries: WikiEntry[],
-  paths: MemoryPaths,
-  index: Record<string, { title: string; path: string }>,
-): OutgoingLinkEntry[] {
-  const entryPath = index[entry.id]?.path
-    ? join(paths.root, index[entry.id].path)
-    : join(paths.wikiDir, `${entry.id}.md`);
-  const counts = new Map<string, number>();
-  const targetIds = [
-    ...extractWikiLinks(entry.body),
-    ...extractLegacyMarkdownWikiLinks(entry.body, paths.wikiDir, entryPath).map((link) => link.entryId),
-  ];
-  for (const targetId of targetIds) {
-    if (!targetId || targetId === entry.id) continue;
-    counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
-  }
-  const titles = new Map(entries.map((item) => [item.id, item.title]));
-  return [...counts.entries()]
-    .map(([targetId, occurrences]) => ({
-      id: targetId,
-      title: titles.get(targetId) ?? index[targetId]?.title ?? targetId,
-      occurrences,
-    }))
-    .sort((left, right) => right.occurrences - left.occurrences || left.id.localeCompare(right.id));
-}
-
-const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "0:0:0:0:0:0:0:0"]);
-
-function isWildcardHost(host: string): boolean {
-  return WILDCARD_HOSTS.has(host);
-}
-
 function isOriginAllowed(origin: string, serverHost: string, serverPort: number): boolean {
   let parsed: URL;
   try {
@@ -592,7 +559,6 @@ function isOriginAllowed(origin: string, serverHost: string, serverPort: number)
   }
   if (parsed.protocol !== "http:") return false;
   if (Number(parsed.port) !== serverPort) return false;
-  if (isWildcardHost(serverHost)) return true;
   const hostForCompare = net.isIPv6(serverHost) ? `[${serverHost}]` : serverHost;
   return parsed.hostname === hostForCompare || parsed.host === hostForCompare;
 }

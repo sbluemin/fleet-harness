@@ -86,12 +86,6 @@ export const ko: I18nMessages = {
   related: {
     heading: "관련 문서",
   },
-  backlinks: {
-    subtitle: "이 문서를 참조하는 항목",
-    emptyNoEntry: "문서를 선택하면 이 자리에 백링크가 표시됩니다.",
-    emptyNone: "아직 이 문서를 참조하는 다른 문서가 없습니다.",
-    outgoingHeading: "Outgoing",
-  },
   entry: {
     copyCompactContext: "컴팩트 컨텍스트",
     copyCompactContextDone: "compact context를 복사했습니다.",

@@ -7,7 +7,7 @@
 - Pure LLM-Wiki domain logic and types under `src/`
 - Single public subpath `./`
 - LLM-Wiki package-specific validation under `tests/`
-- fleet-core agent registry self-registration via `agent-specs.ts` (9종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 3종 `drydock` / `ingest` / `query`는 chronicle 전용으로 제한 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
+- fleet-core agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 4종 `drydock` / `ingest` / `patch_edit` / `query`는 chronicle 전용으로 제한 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
 
 ## Must Not Own
 
@@ -25,8 +25,9 @@
 
 - `wiki_briefing` — Targeted wiki entry lookup and context pack generation. `enhanced=true` opt-in adds alias/type/status/freshness boost, snippet around match, and graph boost via canonical link/backlink count (inline BM25-style). Default `enhanced=false` keeps deterministic substring ranking.
 - `wiki_drydock` — Deterministic lint gate covering frontmatter, links, queue integrity, safety, schema health, conflicts, claim sidecars, and semantic issues (orphan/stale/deprecated/superseded/duplicate-alias/contradiction).
-- `wiki_ingest` — Captures immutable raw source and stages a patch. `mode` parameter (`auto` / `create` / `update`) plus optional `base_version`, `base_hash`, `duplicate_policy`. Conflicts persisted to `.fleet/knowledge/conflicts/` for inspection.
-- `wiki_patch_queue` — Lists, approves, or rejects pending patches through human approval. `action="approve_set"` accepts a `patch_set_id` for batch approval of patches staged together by `wiki_compile_source`.
+- `wiki_ingest` — Captures immutable raw source and stages a patch. `mode` parameter (`auto` / `create` / `update`) plus optional `base_version`, `base_hash`, `duplicate_policy`. `duplicate_policy="append_evidence"` enqueues a warning for raw-source contradictions while preserving existing body. Conflicts persisted to `.fleet/knowledge/conflicts/` for inspection.
+- `wiki_patch_edit` — Precisely edits an already-pending queue proposal in place before approval. Preserves `patch_id`, utilizes in-process mutex to prevent races, and does not write new raw sources.
+- `wiki_patch_queue` — Lists, approves, or rejects pending patches through human approval. Employs per-patch mutex to block concurrent edits or decision interleaving during the approval flow. `action="approve_set"` accepts a `patch_set_id` for batch approval of patches staged together by `wiki_compile_source`.
 - `wiki_orient` — Workspace orientation snapshot (schema summary, index catalog, recent log entries, pending queue count, drydock status, four-rule trust boundary array, deterministic `max_tokens` truncation).
 - `wiki_read` — Multi-entry full-content read with `mode` (`full` / `summary` / `facts` / `diffable`), `include_raw_source`, `include_related`, deterministic `max_tokens` truncation. All output is boundary-wrapped; raw source uses `trust="untrusted"`.
 - `wiki_resolve` — Context-pack synthesizer combining briefing + read into compact JSON or `markdown_pack` output. Honors `freshness` (`prefer_recent` / `strict_current` / `any`), pulls claim provenance from `.claims/` sidecars when present, and reports `missing_or_uncertain`.
@@ -62,7 +63,7 @@
 ## Compatibility Doctrine
 
 - Preserve the `experimentalWiki` symbol key name for downstream compatibility.
-- Do not change MCP tool names: `wiki_briefing`, `wiki_drydock`, `wiki_ingest`, `wiki_patch_queue`, `wiki_orient`, `wiki_read`, `wiki_resolve`, `wiki_compile_source`, `wiki_query`.
+- Do not change MCP tool names: `wiki_briefing`, `wiki_drydock`, `wiki_ingest`, `wiki_patch_edit`, `wiki_patch_queue`, `wiki_orient`, `wiki_read`, `wiki_resolve`, `wiki_compile_source`, `wiki_query`.
 - Existing `wiki_briefing` callers must remain working with `enhanced=false` (default).
 - Existing `wiki_ingest` callers must remain working with `mode="auto"` (default), which falls back to create when the target is absent.
 - Forbid refactoring or signature changes beyond what these waves require.

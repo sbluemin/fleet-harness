@@ -54,10 +54,6 @@
   margin-top: var(--space-5);
 }
 
-.backlinks-panel > * + * {
-  margin-top: var(--space-5);
-}
-
 .content {
   display: flex;
   flex-direction: column;

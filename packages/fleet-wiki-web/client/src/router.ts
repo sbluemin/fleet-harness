@@ -17,13 +17,17 @@ type RouteListener = (route: Route) => void;
 const listeners = new Set<RouteListener>();
 
 export function currentRoute(): Route {
-  const route = parseRoute(window.location.pathname);
+  const route = parseRoute(stripWorkspacePrefix(window.location.pathname).pathname);
   // /queue 라우트의 tab은 search params에서 결정
   if (route.name === "queue") {
     const tab = new URLSearchParams(window.location.search).get("tab");
     return { name: "queue", tab: tab === "archived" ? "archived" : "pending" };
   }
   return route;
+}
+
+export function currentWorkspaceId(): string | null {
+  return workspacePrefix(window.location.pathname)?.wsId ?? null;
 }
 
 export function navigate(path: string): void {
@@ -47,40 +51,44 @@ export function initRouter(): void {
 }
 
 export function entryPath(id: string): string {
-  return `/entry/${encodeURIComponent(id)}`;
+  return withWorkspace(`/entry/${encodeURIComponent(id)}`);
 }
 
 export function rawPath(ref: string): string {
-  return `/raw/${encodeURIComponent(ref)}`;
+  return withWorkspace(`/raw/${encodeURIComponent(ref)}`);
 }
 
 export function queuePath(tab: "pending" | "archived" = "pending"): string {
-  return tab === "archived" ? "/queue?tab=archived" : "/queue";
+  return withWorkspace(tab === "archived" ? "/queue?tab=archived" : "/queue");
 }
 
 export function queueDetailPath(patchId: string): string {
-  return `/queue/${encodeURIComponent(patchId)}`;
+  return withWorkspace(`/queue/${encodeURIComponent(patchId)}`);
 }
 
 export function conflictsPath(): string {
-  return "/conflicts";
+  return withWorkspace("/conflicts");
 }
 
 export function conflictDetailPath(id: string): string {
-  return `/conflicts/${encodeURIComponent(id)}`;
+  return withWorkspace(`/conflicts/${encodeURIComponent(id)}`);
 }
 
 export function indexMdPath(): string {
-  return "/index";
+  return withWorkspace("/index-md");
 }
 
 export function logPath(limit?: number): string {
-  if (typeof limit !== "number") return "/log";
-  return `/log?limit=${encodeURIComponent(String(limit))}`;
+  if (typeof limit !== "number") return withWorkspace("/log");
+  return withWorkspace(`/log?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function workspaceHomePath(wsId: string): string {
+  return `/w/${encodeURIComponent(wsId)}/`;
 }
 
 function parseRoute(pathname: string): Route {
-  if (pathname === "/index") {
+  if (pathname === "/index" || pathname === "/index-md") {
     return { name: "index-md" };
   }
   if (pathname === "/log") {
@@ -116,6 +124,25 @@ function parseRoute(pathname: string): Route {
     return { name: "home" };
   }
   return { name: "home" };
+}
+
+function withWorkspace(path: string): string {
+  const wsId = currentWorkspaceId();
+  return wsId ? `/w/${encodeURIComponent(wsId)}${path}` : path;
+}
+
+function stripWorkspacePrefix(pathname: string): { pathname: string; wsId: string | null } {
+  const prefix = workspacePrefix(pathname);
+  return prefix ? { pathname: prefix.pathname, wsId: prefix.wsId } : { pathname, wsId: null };
+}
+
+function workspacePrefix(pathname: string): { wsId: string; pathname: string } | null {
+  const match = pathname.match(/^\/w\/([^/]+)(\/.*)?$/);
+  if (!match) return null;
+  return {
+    wsId: decodeURIComponent(match[1] ?? ""),
+    pathname: match[2] ?? "/",
+  };
 }
 
 function emit(route: Route): void {

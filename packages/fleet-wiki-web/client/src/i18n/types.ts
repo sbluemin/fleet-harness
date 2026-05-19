@@ -86,12 +86,6 @@ export interface I18nMessages {
   related: {
     heading: string;
   };
-  backlinks: {
-    subtitle: string;
-    emptyNoEntry: string;
-    emptyNone: string;
-    outgoingHeading: string;
-  };
   entry: {
     copyCompactContext: string;
     copyCompactContextDone: string;

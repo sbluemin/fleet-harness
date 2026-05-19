@@ -10,8 +10,9 @@ import type { FleetWikiLock } from "../src/lock.js";
 const LOCK: FleetWikiLock = {
   pid: process.pid,
   port: 0,
-  cwd: process.cwd(),
+  host: "127.0.0.1",
   startedAt: "2026-05-04T00:00:00.000Z",
+  token: "test-token",
 };
 
 describe("security lock", () => {
