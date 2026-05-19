@@ -40,7 +40,7 @@ Each CLI also supports an uppercase binary override: `CLAUDE_BIN` and `CODEX_BIN
 
 ```sh
 pnpm --filter @sbluemin/fleet-agent build
-pnpm fleetd
+pnpm fleet
 ```
 
 The package is ESM-only and builds with TypeScript NodeNext.

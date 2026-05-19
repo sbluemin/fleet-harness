@@ -7,7 +7,7 @@ This guide explains how Fleet development is organized.
 Fleet development follows a hard split:
 
 - `packages/fleet-core` — host-agnostic Fleet product core
-- `packages/fleet-agent` — primary Fleet CLI host (fleetd)
+- `packages/fleet-agent` — primary Fleet CLI host (fleet)
 - `packages/unified-agent` — core execution engine
 
 ## 2. Where New Work Goes

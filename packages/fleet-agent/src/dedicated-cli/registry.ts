@@ -20,11 +20,17 @@ export function getDedicatedCliIds(): DedicatedCliId[] {
 function parseCliId(argv: readonly string[]): DedicatedCliId | undefined {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--cli") {
+    if (arg === undefined) {
+      continue;
+    }
+    if (arg === "--cli" || arg === "-c") {
       return parseEnvCliId(argv[index + 1]);
     }
     if (arg.startsWith("--cli=")) {
       return parseEnvCliId(arg.slice("--cli=".length));
+    }
+    if (arg.startsWith("-c=")) {
+      return parseEnvCliId(arg.slice("-c=".length));
     }
   }
 

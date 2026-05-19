@@ -98,7 +98,7 @@ After `pnpm link --global` (see [SETUP.md](SETUP.md)), global commands are avail
 
 | Command | Description |
 |---------|-------------|
-| `fleet` | Launch standard Fleet mode (via `packages/fleet-agent/fleetd`) |
+| `fleet` | Launch standard Fleet mode (via `packages/fleet-agent/bin/fleet`) |
 | `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
 
 ## Setup

@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "bin": {
-    "fleetd": "./bin/fleetd.mjs"
+    "fleet": "./bin/fleet"
   },
   "scripts": {
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
     "build": "pnpm boundary:guard && tsc",
     "dev": "tsx src/index.ts",
-    "fleetd": "tsx src/index.ts",
+    "fleet": "tsx src/index.ts",
     "test": "vitest run"
   },
   "dependencies": {

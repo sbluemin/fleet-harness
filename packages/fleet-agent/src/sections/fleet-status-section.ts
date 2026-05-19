@@ -3,6 +3,7 @@ import { truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-t
 
 export interface FleetStatusSectionOptions {
 	readonly rt: FleetCoreRuntimeContext;
+	readonly native?: boolean;
 }
 
 const ANSI_RESET = "\x1b[0m";
@@ -16,6 +17,9 @@ export class FleetStatusSection implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
+		if (this.options.native) {
+			return [renderBorder(width, DIM_COLOR)];
+		}
 		const protocol = this.options.rt.admiral.protocols.getActiveProtocol();
 		return [renderStatusLine(width, protocol.color ?? DIM_COLOR, protocol.shortLabel)];
 	}

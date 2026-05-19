@@ -1,6 +1,6 @@
 # Fleet CLI Doctrine
 
-`packages/fleet-agent` is the primary Fleet CLI entry point (`fleetd`) that embeds a local CLI process inside a permanent vertical two-pane Fleet TUI.
+`packages/fleet-agent` is the primary Fleet CLI entry point (`fleet`) that embeds a local CLI process inside a permanent vertical two-pane Fleet TUI.
 
 ## Package Identity & Boundary
 
@@ -31,8 +31,8 @@ Only the permanent vertical two-pane layout is allowed:
 
 ## Development & Execution
 
-- Use the root `pnpm fleet` or `fleetd` script.
-- Installed or linked `fleet` commands enter through `packages/fleet-agent/fleetd`.
+- Use the root `pnpm fleet` script.
+- Installed or linked `fleet` commands enter through `packages/fleet-agent/bin/fleet`.
 
 ## Operational Standards
 

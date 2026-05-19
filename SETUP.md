@@ -61,7 +61,7 @@ pnpm --filter @sbluemin/fleet-unified-agent link --global
 >
 > `pnpm link --global` registers the global commands from this checkout:
 >
-- `fleet` — primary CLI host (via `packages/fleet-agent/fleetd`). Supports multi-carrier orchestration and Fleet Wiki integration. Grand Fleet mode is activated by setting `FLEET_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `pnpm dev` (see below).
+- `fleet` — primary CLI host (via `packages/fleet-agent/bin/fleet`). Supports multi-carrier orchestration and Fleet Wiki integration. Grand Fleet mode is activated by setting `FLEET_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `pnpm dev` (see below).
 - `pnpm dev` — (Defined in `package.json`) sets `FLEET_DEV=1` then launches the agent. Use for development with live source changes.
 
 > - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of any external runtime.

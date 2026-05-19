@@ -18,14 +18,19 @@ import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
 import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
 
+export interface RunAppOptions {
+  readonly native?: boolean;
+}
+
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
 
-export async function runApp(): Promise<void> {
+export async function runApp(options: RunAppOptions = {}): Promise<void> {
+  const native = options.native ?? false;
   const rt = await bootRuntime();
   const ui = new LocalTui();
   const ptyView = new PtyView(ui.columns, 0);
-  const sections = createDefaultFleetPtySections(rt);
+  const sections = createDefaultFleetPtySections(rt, { native });
   const scheduleRender = createRenderScheduler(ui);
   let ptyManager: TuiPtyManager | undefined;
   const fleetPty = createFleetPtyApi({
@@ -40,7 +45,7 @@ export async function runApp(): Promise<void> {
   });
   registerCarrierStatusKeybinding({ fleetPty, rt });
   const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
-  const currentProfile = await injectDedicatedCliProfile(baseProfile, rt);
+  const currentProfile = native ? baseProfile : await injectDedicatedCliProfile(baseProfile, rt);
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });

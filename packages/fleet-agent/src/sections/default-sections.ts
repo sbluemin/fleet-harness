@@ -4,9 +4,16 @@ import type { Component, FleetPtySection } from "@sbluemin/fleet-tui/pty";
 import { createJobBarSections } from "../carrier-status/job-bar-section.js";
 import { FleetStatusSection } from "./fleet-status-section.js";
 
-export function createDefaultFleetPtySections(rt: FleetCoreRuntimeContext): FleetPtySection[] {
+export interface CreateDefaultFleetPtySectionsOptions {
+  readonly native?: boolean;
+}
+
+export function createDefaultFleetPtySections(
+  rt: FleetCoreRuntimeContext,
+  options: CreateDefaultFleetPtySectionsOptions = {},
+): FleetPtySection[] {
   return [
-    { component: new FleetStatusSection({ rt }), id: "fleet-status-section" },
+    { component: new FleetStatusSection({ rt, native: options.native ?? false }), id: "fleet-status-section" },
     ...createJobBarSections(rt),
   ];
 }
