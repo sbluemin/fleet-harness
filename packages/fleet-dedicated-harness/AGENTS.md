@@ -6,7 +6,7 @@
 
 This package owns the local host assembly for the Dedicated CLI PTY and Fleet PTY lower pane.
 
-- **Must Own**: `PtyHost` adapter, local `tui/**`, layout composition, input routing, Fleet PTY region API, and CLI process lifecycle.
+- **Must Own**: `PtyHost` adapter, generic `tui/**` engine candidate, host `controls/**`, host `sections/**`, layout composition, Fleet PTY region API, and CLI process lifecycle.
 - **Must Not Own**: Fleet domain logic, carrier persona definitions, Pi-specific extensions, or engine packages.
 - **Dependencies**: Restricted to `@sbluemin/fleet-core`, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-wiki`, `@sbluemin/fleet-wiki-web`, `@xterm/headless`, and `node-pty`.
 
@@ -17,8 +17,11 @@ This package owns the local host assembly for the Dedicated CLI PTY and Fleet PT
 Only the permanent vertical two-pane layout is allowed:
 
 - **Dedicated CLI PTY**: Upper pane, backed by `PtyView`, `PtyHost`, and `node-pty` under `src/tui/pty/dedicated/**`.
-- **Fleet PTY**: Lower pane, backed by default Fleet sections and `src/tui/pty/fleet/api.ts`.
+- **Fleet PTY**: Lower pane, backed by generic `src/tui/pty/fleet/api.ts` and host-composed default content from `src/sections/default-sections.ts`.
 - **Shared PTY negotiation**: `src/tui/pty/{types.ts,manager.ts}` owns desired-height layout and synchronized resize propagation.
+- **Generic input core**: `src/tui/input/**` owns keyboard routing, shortcut registry, conflict checks, and programmatic PTY input.
+- **Host control policy**: `src/controls/modes.ts` owns MIRROR/DEDICATED mode semantics.
+- **Host sections**: `src/sections/**` owns the default Fleet PTY blue wireframe content.
 
 Horizontal layouts, tabs, multi-pane layouts, and layout engines are out of scope.
 
@@ -45,7 +48,7 @@ Tier-2/3 slots are README-only until later plans open them.
 
 Do not create `bridge/`, `grand-fleet/`, or `components/`.
 
-Domain-coupled components belong under `src/tui/pty/{dedicated,fleet}/` or a top-level first-class domain directory such as `carrier-status/`.
+Host-specific domain content must live outside `src/tui/**`, in top-level first-class directories such as `carrier-status/`, `controls/`, `sections/`, `runtime/`, or `dedicated-cli/`.
 
 ## Development & Execution
 

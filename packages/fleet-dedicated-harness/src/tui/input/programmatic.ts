@@ -1,5 +1,5 @@
-import type { DedicatedCliProfile } from "../dedicated-cli/types.js";
-import type { PtyHost } from "../tui/pty/dedicated/types.js";
+import type { DedicatedCliProfile } from "../../dedicated-cli/types.js";
+import type { PtyHost } from "../pty/dedicated/types.js";
 
 export interface ProgrammaticInput {
   readonly sendMessage: (

@@ -1,22 +1,23 @@
 import { dispatchRegisteredKeybinding, isHostExit, isKeyRelease, isModeToggle } from "./keybindings.js";
-import { toggleFleetInputMode, type FleetInputMode } from "./modes.js";
 
 type InputToken = string;
 
-export interface InputRouterOptions {
+export interface InputRouterOptions<TMode extends string = string> {
+  readonly initialMode: TMode;
   readonly onExit: () => void;
-  readonly onModeChange: (mode: FleetInputMode) => void;
+  readonly onModeChange: (mode: TMode) => void;
   readonly routeFleetInput?: (data: string) => boolean;
+  readonly toggleMode: (mode: TMode) => TMode;
   readonly writeDedicated: (data: string) => void;
 }
 
-export interface InputRouter {
-  readonly getMode: () => FleetInputMode;
+export interface InputRouter<TMode extends string = string> {
+  readonly getMode: () => TMode;
   readonly route: (data: string) => { readonly consume: boolean };
 }
 
-export function createInputRouter(options: InputRouterOptions): InputRouter {
-  let mode: FleetInputMode = "MIRROR";
+export function createInputRouter<TMode extends string = string>(options: InputRouterOptions<TMode>): InputRouter<TMode> {
+  let mode = options.initialMode;
 
   return {
     getMode: () => mode,
@@ -44,7 +45,7 @@ export function createInputRouter(options: InputRouterOptions): InputRouter {
             options.writeDedicated(dedicatedOutput);
             dedicatedOutput = "";
           }
-          mode = toggleFleetInputMode(mode);
+          mode = options.toggleMode(mode);
           options.onModeChange(mode);
           continue;
         }

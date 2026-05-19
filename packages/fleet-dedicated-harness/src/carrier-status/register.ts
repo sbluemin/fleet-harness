@@ -1,6 +1,6 @@
 import { CarrierStatusOverlay } from "./overlay.js";
 import type { CarrierStatusContext } from "./types.js";
-import { CARRIER_STATUS_KEY, registerKeybinding } from "../input/keybindings.js";
+import { CARRIER_STATUS_KEY, registerKeybinding } from "../tui/input/keybindings.js";
 
 export function registerCarrierStatusKeybinding(ctx: CarrierStatusContext): void {
   registerKeybinding({

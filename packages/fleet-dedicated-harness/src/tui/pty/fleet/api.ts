@@ -2,8 +2,8 @@ import { Key, matchesKey } from "./keys.js";
 import { createFleetPtyLocalUi, type FleetPtyLocalUiOptions } from "./local-ui.js";
 import { createOverlayManager } from "./overlay-manager.js";
 import { createRegionStack } from "./region-stack.js";
-import { createDefaultFleetPtyComponent } from "./sections.js";
 import { createFleetPtyTheme } from "./theme.js";
+import type { Component } from "./component.js";
 import type {
   FleetPtyCustomFactory,
   FleetPtyCustomOptions,
@@ -11,12 +11,25 @@ import type {
   FleetPtyRegion,
   FleetPtySection,
 } from "./types.js";
+import { centerLine, fitLine, truncateToWidth, visibleWidth } from "../../primitives/cell-width.js";
 
 export { createOverlayFrame } from "./frame.js";
-export { createDefaultFleetPtySections } from "./sections.js";
-export { isPrintable, matchesKey } from "./keys.js";
+export { isPrintable, matchesKey, Key } from "./keys.js";
+export { centerLine, fitLine, truncateToWidth, visibleWidth };
 export type { Component, Focusable } from "./component.js";
 export type { FleetPtyTheme } from "./theme.js";
+export type {
+  FleetPtyCustomFactory,
+  FleetPtyCustomOptions,
+  FleetPtyOverlay,
+  FleetPtyRegion,
+  FleetPtySection,
+} from "./types.js";
+
+export interface CreateFleetPtyApiOptions {
+  readonly defaultComponent: Component;
+  readonly sections?: readonly FleetPtySection[];
+}
 
 export interface FleetPtyApi {
   readonly custom: <T>(factory: FleetPtyCustomFactory<T>, opts?: FleetPtyCustomOptions) => Promise<T>;
@@ -32,12 +45,12 @@ export interface FleetPtyApi {
 }
 
 export function createFleetPtyApi(
-  sections: FleetPtySection[],
+  options: CreateFleetPtyApiOptions,
   localUiOptions: FleetPtyLocalUiOptions,
 ): FleetPtyApi {
-  const mountedSections = [...sections];
+  const mountedSections = [...(options.sections ?? [])];
   const defaultRegion = {
-    component: createDefaultFleetPtyComponent(mountedSections),
+    component: options.defaultComponent,
     id: "default-fleet-region",
   };
   const overlays = createOverlayManager();

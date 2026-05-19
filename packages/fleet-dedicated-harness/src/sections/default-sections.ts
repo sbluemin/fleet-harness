@@ -1,10 +1,9 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 
 import { CarrierRosterLine } from "./carrier-roster-line.js";
-import type { Component } from "./component.js";
 import { FleetStatusSection } from "./fleet-status-section.js";
 import { JobsLine } from "./jobs-line.js";
-import type { FleetPtySection } from "./types.js";
+import type { Component, FleetPtySection } from "../tui/pty/fleet/api.js";
 
 export function createDefaultFleetPtySections(rt: FleetCoreRuntimeContext): FleetPtySection[] {
   return [

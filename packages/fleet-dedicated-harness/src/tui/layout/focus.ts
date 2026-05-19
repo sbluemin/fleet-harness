@@ -1,4 +1,4 @@
-import type { FleetInputMode } from "../../input/modes.js";
+import type { FleetInputMode } from "../../controls/modes.js";
 
 export interface FocusState {
   readonly mode: FleetInputMode;
@@ -7,4 +7,3 @@ export interface FocusState {
 export function createFocusState(mode: FleetInputMode): FocusState {
   return { mode };
 }
-

@@ -1,7 +1,6 @@
 import type { FleetCoreRuntimeContext } from "@sbluemin/fleet-core";
 
-import { centerLine, truncateToWidth, visibleWidth } from "../../primitives/text.js";
-import type { Component } from "./api.js";
+import { centerLine, truncateToWidth, visibleWidth, type Component } from "../tui/pty/fleet/api.js";
 
 const ANSI_RESET = "\x1b[0m";
 const SEGMENT_SEPARATOR = " │ ";

@@ -1,9 +1,11 @@
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
 import { registerCarrierStatusKeybinding } from "./carrier-status/register.js";
-import { createDefaultFleetPtySections, createFleetPtyApi, type Component } from "./tui/pty/fleet/api.js";
-import { assertInputContract } from "./input/conflict.js";
-import { createInputRouter } from "./input/input-router.js";
-import { createProgrammaticInput, type ProgrammaticInput } from "./input/programmatic.js";
+import { toggleFleetInputMode } from "./controls/modes.js";
+import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
+import { assertInputContract } from "./tui/input/conflict.js";
+import { createInputRouter } from "./tui/input/input-router.js";
+import { createProgrammaticInput, type ProgrammaticInput } from "./tui/input/programmatic.js";
+import { createFleetPtyApi, type Component } from "./tui/pty/fleet/api.js";
 import { PtyView } from "./tui/pty/dedicated/pty-view.js";
 import { createPtyHost } from "./tui/pty/dedicated/pty-host.js";
 import type { PtyHost } from "./tui/pty/dedicated/types.js";
@@ -23,7 +25,10 @@ export async function runApp(): Promise<void> {
   const sections = createDefaultFleetPtySections(rt);
   const scheduleRender = createRenderScheduler(ui);
   let ptyManager: TuiPtyManager | undefined;
-  const fleetPty = createFleetPtyApi(sections, {
+  const fleetPty = createFleetPtyApi({
+    defaultComponent: createDefaultFleetPtyComponent(sections),
+    sections,
+  }, {
     addInputListener: (listener) => ui.addInputListener(listener),
     getColumns: () => ui.columns,
     getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - ptyView.maxRows),
@@ -57,9 +62,11 @@ export async function runApp(): Promise<void> {
     stopApp(rt, ui, ptyHost, resize, disposeInputStream);
   };
   const router = createInputRouter({
+    initialMode: "MIRROR",
     onExit: stop,
     onModeChange: () => scheduleRender(),
     routeFleetInput: (data) => fleetPty.dispatchInput(data),
+    toggleMode: toggleFleetInputMode,
     writeDedicated: (data) => ptyHost.write(data),
   });
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.dirname(scriptDir);
 const packageRoot = path.join(root, "packages", "fleet-dedicated-harness");
-const scanRoots = ["src", "package.json", "AGENTS.md", "README.md"].map((entry) => path.join(packageRoot, entry));
+const scanRoots = ["src", "package.json", "AGENTS.md", "README.md", "CLAUDE.md"].map((entry) => path.join(packageRoot, entry));
 const forbidden = [
   /@sbluemin\/fleet-harness/,
   /@sbluemin\/fleet-tui/,
@@ -26,6 +26,10 @@ const allowedDocPhrases = [
 const findings = [];
 const forbiddenFleetPtyInternalImport =
   /from\s+["'][^"']*tui\/pty\/fleet\/(?!api\.js)(?:region-stack|overlay-manager|sections|types|component|frame|keys|local-ui|theme)[^"']*["']/;
+const oldInputPathReference =
+  /(?:src\/input|from\s+["'][^"']*(?:\.\/input|\.\.\/input|input\/modes)[^"']*["'])/;
+const tuiImport = /from\s+["']([^"']*tui\/[^"']*)["']/;
+const allowedHostTuiImport = /tui\/(?:pty\/fleet\/api|input\/[^"']+)\.js$/;
 
 for (const file of listFiles(scanRoots)) {
   const text = readFileSync(file, "utf8");
@@ -35,7 +39,7 @@ for (const file of listFiles(scanRoots)) {
       return;
     }
 
-    if ((file.endsWith("AGENTS.md") || file.endsWith("README.md")) && allowedDocPhrases.some((phrase) => line.includes(phrase))) {
+    if ((file.endsWith("AGENTS.md") || file.endsWith("README.md") || file.endsWith("CLAUDE.md")) && allowedDocPhrases.some((phrase) => line.includes(phrase))) {
       return;
     }
 
@@ -46,6 +50,21 @@ for (const file of listFiles(scanRoots)) {
     lines.forEach((line, index) => {
       if (forbiddenFleetPtyInternalImport.test(line)) {
         findings.push(`${path.relative(root, file)}:${index + 1}: external Fleet PTY consumer must import tui/pty/fleet/api.js only: ${line}`);
+      }
+    });
+  }
+
+  lines.forEach((line, index) => {
+    if (oldInputPathReference.test(line)) {
+      findings.push(`${path.relative(root, file)}:${index + 1}: old src/input path is forbidden in V3: ${line}`);
+    }
+  });
+
+  if (isHostControlsOrSections(file)) {
+    lines.forEach((line, index) => {
+      const match = tuiImport.exec(line);
+      if (match && !allowedHostTuiImport.test(match[1])) {
+        findings.push(`${path.relative(root, file)}:${index + 1}: controls/sections may import only tui/pty/fleet/api.js or tui/input/*.js: ${line}`);
       }
     });
   }
@@ -69,4 +88,9 @@ function listFiles(entries) {
     }
   }
   return files;
+}
+
+function isHostControlsOrSections(file) {
+  return file.includes(`${path.sep}src${path.sep}controls${path.sep}`)
+    || file.includes(`${path.sep}src${path.sep}sections${path.sep}`);
 }
