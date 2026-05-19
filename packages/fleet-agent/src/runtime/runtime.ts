@@ -1,4 +1,6 @@
 import "@sbluemin/fleet-carriers";
+// fleet-wiki agent specs는 모듈 로드 시 executor tool을 self-register한다.
+import "@sbluemin/fleet-wiki";
 
 import os from "node:os";
 import path from "node:path";

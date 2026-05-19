@@ -8,6 +8,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [0.21.0] - 2026-05-20
 
 ### Added
+- [agent-core] Added Fleet Wiki tools to dedicated CLI MCP sessions through fleet-agent boot registration.
+- [core][agent-core] Added dedicated CLI launch injection for Fleet Admiral prompts, Fleet MCP access, and native permission bypass flags for Claude and Codex.
 - [wiki] Added `wiki_patch_edit` for approval-gated in-place edits to pending wiki patches.
 - [core][agent] Absorbed Job Bar functionality from fleet-harness into fleet-agent, including a dynamic dynamic job status section, active-only frame ticker, and programmatic PTY input bridge.
 - [wiki] Implemented approve-time stale-base guard using content hash and version checks to prevent concurrent modification conflicts.
@@ -39,6 +41,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
 
 ### Removed
+- [agent-core] Removed Gemini and Cursor Agent from dedicated CLI support.
 - [core][harness] Removed 'metaphor' domain (worldview, operation naming, directive refinement) and 'request_directive' tool.
 - [wiki-web] Removed the Constellation (backlinks) panel and Outgoing references along with the backend backlink indexer and associated API.
 

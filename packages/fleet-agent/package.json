@@ -10,7 +10,8 @@
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
     "build": "pnpm boundary:guard && tsc",
     "dev": "tsx src/index.ts",
-    "fleetd": "tsx src/index.ts"
+    "fleetd": "tsx src/index.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@sbluemin/fleet-carriers": "workspace:*",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "tsx": "^4.20.3",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
   }
 }

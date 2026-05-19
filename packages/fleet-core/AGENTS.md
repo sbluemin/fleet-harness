@@ -33,6 +33,17 @@
 | `service-status.ts` | `read` / `refresh` / `events` | Unified-agent service status delegation |
 | `bridge.ts` | `buildLaunchCommand` (get-only) | Alt+T bridge launch data |
 
+## The `admiral.mcp` Domain
+
+`admiral/mcp/` is the domain for Fleet's Model Context Protocol orchestration. It manages the lifecycle of the internal MCP server and provides session-based access control.
+
+| Public module | Purpose | Pattern |
+|---------------|---------|---------|
+| `index.ts` | `getEndpoint` / `issueDedicatedSessionToken` | Facade for the MCP server lifecycle and token issuance. |
+
+- `getEndpoint(): Promise<{ url: string }>`: Returns the active MCP server URL, starting it if necessary.
+- `issueDedicatedSessionToken({ label, cwd }): string`: Generates a dedicated session token with a specific label and working directory. The issuance policy and token-to-metadata mapping are owned by `fleet-core`, while `packages/fleet-mcp-server` handles the enforcement of token-based isolation.
+
 `admiral/agent/internal/` houses non-public engines that the surfaces above lean on: `state.ts` (session/launch/bridge maps), `session-runtime.ts` (JSONL custom-entry backed session mapping persistence with `HostSessionStore`/`CarrierSessionStore` split, `ResumeFailureKind` classifier, and legacy sidecar cleanup), `session-engine.ts` (ensure/sendMessage/deliverToolResults engine with FIFO fatal error handling for tool-call queues), `event-normalizer.ts` (unified-agent → `AgentStreamEvent`), `executor-engine.ts` (pool + drift detection for the callback path; module-level Maps replace legacy `globalThis`), and `post-connect.ts` (single `applyPostConnectConfig` shared by session-engine and executor-engine). Generic MCP router and tool snapshot logic live in `packages/fleet-mcp-server`.
 
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.

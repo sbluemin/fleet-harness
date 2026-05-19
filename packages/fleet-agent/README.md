@@ -1,13 +1,14 @@
 # Fleet Dedicated Harness
 
-Standalone Tier-1 Dedicated Harness PoC for running one of five local CLIs inside a permanent vertical two-pane Fleet terminal.
+Standalone Tier-1 Dedicated Harness PoC for running one of three local CLIs inside a permanent vertical two-pane Fleet terminal.
 
 ## What This Package Owns
 
 - Boots Fleet runtime state through the public `@sbluemin/fleet-core` root barrel.
-- Hosts `claude`, `codex`, `gemini`, `opencode`, or `cursor-agent` through a `node-pty` backed Dedicated CLI PTY.
+- Hosts `claude`, `codex`, or `opencode` through a `node-pty` backed Dedicated CLI PTY.
 - Renders the upper Dedicated CLI PTY and lower Fleet PTY through `@sbluemin/fleet-tui`.
 - Keeps host control policy in `src/controls/**` and default Fleet PTY blue wireframe content in `src/sections/**`.
+- Manages Dedicated CLI launch and environment injection through `src/dedicated-cli/**` (capabilities, injection, and builders).
 - Uses `@sbluemin/fleet-tui/pty` as the generic lower-pane replacement for Pi `ctx.ui.custom`, `setHeader`, and coding-agent `EditorReplace` patterns.
 - Opens the full parity carrier-status overlay with `Alt+O`; it restores grouped carrier rendering, model/effort editing, CLI migration, rename, sortie, Squadron, reset, and TaskForce backend editing.
 
@@ -31,9 +32,9 @@ Selection priority is:
 2. `FLEET_DEDICATED_CLI`
 3. `claude`
 
-Supported ids are `claude`, `codex`, `gemini`, `opencode`, and `cursor-agent`.
+Supported ids are `claude`, `codex`, and `opencode`.
 
-Each CLI also supports an uppercase binary override: `CLAUDE_BIN`, `CODEX_BIN`, `GEMINI_BIN`, `OPENCODE_BIN`, and `CURSOR_AGENT_BIN`.
+Each CLI also supports an uppercase binary override: `CLAUDE_BIN`, `CODEX_BIN`, and `OPENCODE_BIN`.
 
 ## Commands
 

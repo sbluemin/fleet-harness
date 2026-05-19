@@ -1,4 +1,4 @@
-export type DedicatedCliId = "claude" | "codex" | "gemini" | "opencode" | "cursor-agent";
+export type DedicatedCliId = "claude" | "codex" | "opencode";
 
 export interface DedicatedCliProfile {
   readonly id: DedicatedCliId;
@@ -29,3 +29,24 @@ export interface DedicatedCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
 }
+
+export interface DedicatedCliInjectionContext {
+  readonly cliId: DedicatedCliId;
+  readonly systemPrompt: string;
+  readonly endpointUrl: string;
+  readonly bearerToken: string;
+}
+
+export interface DedicatedCliInjectionCapabilityEnabled {
+  readonly enabled: true;
+  readonly builderId: "claude-native" | "codex-native";
+}
+
+export interface DedicatedCliInjectionCapabilityDisabled {
+  readonly enabled: false;
+  readonly reason: "native-builder-not-implemented";
+}
+
+export type DedicatedCliInjectionCapability =
+  | DedicatedCliInjectionCapabilityEnabled
+  | DedicatedCliInjectionCapabilityDisabled;

@@ -5,6 +5,7 @@ import { startMcpServer, stopMcpServer } from "@sbluemin/fleet-mcp-server";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
 import { registerFleetCoreDefaultAgentTools } from "../admiral/agent/bootstrap.js";
+import { cleanupDedicatedMcpSessionsForRuntimeShutdown } from "../admiral/mcp.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
 import {
   createFleetAdmiralServices,
@@ -59,6 +60,7 @@ export function createFleetCoreRuntime(
     admiralty: createFleetAdmiraltyServices(),
     infra,
     async shutdown() {
+      cleanupDedicatedMcpSessionsForRuntimeShutdown();
       await stopMcpServer();
       infra.settings.resetSettingsService(settings);
       resetServiceStatus();

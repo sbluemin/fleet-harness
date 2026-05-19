@@ -1,7 +1,5 @@
 import { claudeCli } from "./claude/claude.js";
 import { codexCli } from "./codex/codex.js";
-import { cursorAgentCli } from "./cursor-agent/cursor-agent.js";
-import { geminiCli } from "./gemini/gemini.js";
 import { opencodeCli } from "./opencode/opencode.js";
 import type { DedicatedCliDefinition, DedicatedCliId, DedicatedCliProfile } from "./types.js";
 
@@ -9,8 +7,6 @@ const DEFAULT_CLI_ID: DedicatedCliId = "claude";
 const DEFINITIONS: Record<DedicatedCliId, DedicatedCliDefinition> = {
   claude: claudeCli,
   codex: codexCli,
-  "cursor-agent": cursorAgentCli,
-  gemini: geminiCli,
   opencode: opencodeCli,
 };
 
@@ -48,4 +44,3 @@ function parseEnvCliId(value: string | undefined): DedicatedCliId | undefined {
 
   throw new Error(`Unsupported dedicated CLI "${value}". Expected one of: ${getDedicatedCliIds().join(", ")}`);
 }
-

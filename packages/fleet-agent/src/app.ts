@@ -13,6 +13,7 @@ import { subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { registerCarrierStatusKeybinding } from "./carrier-status/register.js";
 import { toggleFleetInputMode } from "./controls/modes.js";
 import { retainProgrammaticInput } from "./dedicated-cli/bridge.js";
+import { injectDedicatedCliProfile } from "./dedicated-cli/injection.js";
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
 import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js";
@@ -38,7 +39,8 @@ export async function runApp(): Promise<void> {
     requestRender: scheduleRender,
   });
   registerCarrierStatusKeybinding({ fleetPty, rt });
-  const currentProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd());
+  const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, process.cwd());
+  const currentProfile = await injectDedicatedCliProfile(baseProfile, rt);
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });
