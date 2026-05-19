@@ -1,8 +1,9 @@
 import type { DedicatedCliInjectionContext } from "../types.js";
 
 export function buildClaudeNativeArgs(context: DedicatedCliInjectionContext): string[] {
+  const systemPromptArg = context.replaceSystemPrompt ? "--system-prompt-file" : "--append-system-prompt-file";
   return [
-    "--append-system-prompt-file",
+    systemPromptArg,
     context.systemPromptFile,
     "--mcp-config",
     JSON.stringify({

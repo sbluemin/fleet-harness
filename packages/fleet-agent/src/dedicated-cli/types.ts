@@ -32,6 +32,7 @@ export interface DedicatedCliProfileOptions {
 
 export interface DedicatedCliInjectionContext {
   readonly cliId: DedicatedCliId;
+  readonly replaceSystemPrompt: boolean;
   readonly systemPromptFile: string;
   readonly endpointUrl: string;
   readonly bearerToken: string;

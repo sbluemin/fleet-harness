@@ -8,9 +8,14 @@ import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getDedicatedCliInjectionCapability } from "./capabilities.js";
 import type { DedicatedCliInjectionContext, DedicatedCliProfile } from "./types.js";
 
+export interface InjectDedicatedCliProfileOptions {
+  readonly replaceSystemPrompt?: boolean;
+}
+
 export async function injectDedicatedCliProfile(
   profile: DedicatedCliProfile,
   rt: FleetCoreRuntimeContext,
+  options: InjectDedicatedCliProfileOptions = {},
 ): Promise<DedicatedCliProfile> {
   const capability = getDedicatedCliInjectionCapability(profile.id);
   if (!capability.enabled) {
@@ -26,6 +31,7 @@ export async function injectDedicatedCliProfile(
     }),
     cliId: profile.id,
     endpointUrl: endpoint.url,
+    replaceSystemPrompt: options.replaceSystemPrompt ?? false,
     systemPromptFile,
   };
   const injectedArgs = buildDedicatedCliArgs(capability.builderId, context);

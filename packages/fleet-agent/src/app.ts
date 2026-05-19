@@ -20,6 +20,7 @@ import { bootRuntime, type FleetCoreRuntimeContext } from "./runtime/runtime.js"
 
 export interface RunAppOptions {
   readonly native?: boolean;
+  readonly replaceSystemPrompt?: boolean;
 }
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
@@ -27,6 +28,7 @@ const RENDER_THROTTLE_MS = 16;
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const native = options.native ?? false;
+  const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
   const rt = await bootRuntime();
   const ui = new LocalTui();
   const ptyView = new PtyView(ui.columns, 0);
@@ -45,7 +47,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   });
   registerCarrierStatusKeybinding({ fleetPty, rt });
   const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
-  const currentProfile = native ? baseProfile : await injectDedicatedCliProfile(baseProfile, rt);
+  const currentProfile = native ? baseProfile : await injectDedicatedCliProfile(baseProfile, rt, { replaceSystemPrompt });
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });

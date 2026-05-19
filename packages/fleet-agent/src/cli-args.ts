@@ -1,6 +1,7 @@
 export interface FleetCliOptions {
   readonly help: boolean;
   readonly native: boolean;
+  readonly replaceSystemPrompt: boolean;
 }
 
 export const FLEET_HELP_TEXT = `fleet — Fleet CLI host
@@ -15,17 +16,21 @@ Options:
   -n, --native        Run the dedicated CLI in native mode: do not inject
                       the Fleet system prompt and hide the Fleet Action
                       Protocol label from the Fleet PTY (divider preserved).
+  -rsp, --replace-system-prompt  Replace the Claude system prompt instead of appending it.
 `;
 
 export function parseFleetCliOptions(argv: readonly string[]): FleetCliOptions {
   let help = false;
   let native = false;
+  let replaceSystemPrompt = false;
   for (const arg of argv) {
     if (arg === "--help" || arg === "-h") {
       help = true;
     } else if (arg === "--native" || arg === "-n") {
       native = true;
+    } else if (arg === "--replace-system-prompt" || arg === "-rsp") {
+      replaceSystemPrompt = true;
     }
   }
-  return { help, native };
+  return { help, native, replaceSystemPrompt };
 }
