@@ -21,8 +21,6 @@ import {
 import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
 import { buildCarrierJobGroups, buildPanelViewModel } from "./job-bar-view-model.js";
 
-export type CarrierJobHudMode = "expanded" | "strip";
-
 export interface CarrierHudTile {
   readonly activeJobCount: number;
   readonly activeTrackCount: number;
@@ -37,7 +35,6 @@ export interface CarrierHudTile {
 export interface CarrierJobHudRenderOptions {
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
-  readonly mode?: CarrierJobHudMode;
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
   readonly width: number;
@@ -73,32 +70,19 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string[] {
-  if (options.mode === "expanded") {
-    return renderCarrierJobHudExpanded(options);
-  }
-  return renderCarrierJobHudStrip(options);
+  const lines: string[] = [];
+  const jobs = buildActiveJobViewModels(options.jobs, options.runs);
+
+  if (jobs.length === 0) return [];
+
+  appendWidgetJobSummary(lines, options.width, jobs, options.frame, options.rt, options.theme);
+  return lines.slice(0, MAX_WIDGET_LINES).map((line) => truncateToWidth(line, options.width));
 }
 
 export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): string[] {
   const carriers = buildCarrierTiles(options.rt, getActiveJobs(options.jobs));
   if (carriers.length === 0) return [];
   return renderCarrierHudStrip(options.width, carriers, options.frame, options.rt, options.theme);
-}
-
-export function renderCarrierJobHudExpanded(options: CarrierJobHudRenderOptions): string[] {
-  const lines: string[] = [];
-  const jobs = buildActiveJobViewModels(options.jobs, options.runs);
-
-  if (jobs.length === 0) {
-    lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${border(options.rt, options.theme, "└─")} ${PANEL_DIM_COLOR(options.rt)}No active jobs${ANSI_RESET}`,
-      options.width,
-    ));
-    return lines.slice(0, MAX_WIDGET_LINES);
-  }
-
-  appendWidgetJobSummary(lines, options.width, jobs, options.frame, options.rt, options.theme);
-  return lines.slice(0, MAX_WIDGET_LINES).map((line) => truncateToWidth(line, options.width));
 }
 
 export function waveText(

@@ -8,8 +8,6 @@ import type {
 
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
-export type WidgetMode = "expanded" | "strip";
-
 export interface FooterModelInfo {
   readonly effort?: string;
   readonly model: string;
@@ -52,7 +50,6 @@ export interface PanelRun extends PanelRunViewModelSource {
 export interface AgentPanelState {
   animTimer: ReturnType<typeof setInterval> | null;
   bodyH: number;
-  bottomHint: string;
   cols: AgentCol[];
   expanded: boolean;
   frame: number;
@@ -64,7 +61,6 @@ export interface AgentPanelState {
   serviceSnapshots: unknown[];
   streaming: boolean;
   toggleCallbacks: Array<(expanded: boolean) => void>;
-  widgetMode: WidgetMode;
 }
 
 export interface JobBarStateOptions {
@@ -91,7 +87,6 @@ type RuntimeBindings = {
 };
 
 export const PANEL_JOB_RETENTION = 8;
-export const PANEL_BRIDGE_HINT = " alt+j/k · alt+p ";
 
 const CATEGORY_ORDER: readonly CarrierCategory[] = ["strategy", "planning", "operations"];
 const CATEGORY_RANK = new Map<CarrierCategory | "uncategorized", number>(
@@ -116,7 +111,6 @@ export function getState(): AgentPanelState {
     state = {
       animTimer: null,
       bodyH: bindings.rt.admiral.constants.DEFAULT_BODY_H,
-      bottomHint: PANEL_BRIDGE_HINT,
       cols: makeCols(),
       expanded: false,
       frame: 0,
@@ -128,7 +122,6 @@ export function getState(): AgentPanelState {
       serviceSnapshots: [],
       streaming: false,
       toggleCallbacks: [],
-      widgetMode: "strip",
     };
     panelState = state;
   }

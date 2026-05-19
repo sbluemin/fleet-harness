@@ -31,6 +31,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [agent] Fixed type-checking issues in status overlay tests by correcting state property access.
 
 ### Changed
+- [agent-core] Carrier strip stays always visible while the Job Bar detail now auto-shows only when at least one carrier job is active, replacing the prior toggle shortcut and empty-state placeholder.
 - Redesigned the Job Bar expanded view into a hierarchical structure featuring a carrier header and independent dispatch sub-lines.
 - Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
 - Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
@@ -45,6 +46,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
 
 ### Removed
+- [core] Removed unused legacy panel hint constants.
 - Eliminated obsolete `visibleRunIdByCli` payload from status sources and the `_streams` parameter from status updates.
 - Removed squadron-specific UI elements including the `[SQ]` badge, `→SQ` filtering, `S` toggle special handling, and Sortie-Squadron mutual exclusion logic.
 - [agent] Removed Gemini and Cursor Agent from dedicated CLI support.

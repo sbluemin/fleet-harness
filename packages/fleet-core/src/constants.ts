@@ -143,21 +143,6 @@ export const MAX_BODY_H = 50;
 /** 높이 조절 1회당 증감량 */
 export const BODY_H_STEP = 2;
 
-// ─── Fleet Bridge 힌트 ──────────────────────────────────
-
-/** Fleet Bridge 멀티컬럼 뷰 하단 힌트 */
-export const PANEL_MULTI_COL_HINT = " ctrl+enter detail · alt+j/k · alt+p ";
-
-/** Fleet Bridge 상세 뷰 하단 힌트 */
-export const PANEL_DETAIL_HINT = " ctrl+enter back · alt+j/k · alt+p ";
-
-/** 패널 높이 표시를 포함한 멀티컬럼 뷰 하단 힌트 */
-export function formatPanelMultiColHint(bodyH?: number): string {
-  return bodyH === undefined
-    ? PANEL_MULTI_COL_HINT
-    : `${PANEL_MULTI_COL_HINT}[h=${bodyH}]`;
-}
-
 function rgb(r: number, g: number, b: number): string {
   return `\x1b[38;2;${r};${g};${b}m`;
 }
