@@ -9,10 +9,6 @@ export const DEDICATED_CLI_INJECTION_CAPABILITIES: Record<DedicatedCliId, Dedica
     builderId: "codex-native",
     enabled: true,
   },
-  opencode: {
-    enabled: false,
-    reason: "native-builder-not-implemented",
-  },
 };
 
 export function getDedicatedCliInjectionCapability(

@@ -1,13 +1,11 @@
 import { claudeCli } from "./claude/claude.js";
 import { codexCli } from "./codex/codex.js";
-import { opencodeCli } from "./opencode/opencode.js";
 import type { DedicatedCliDefinition, DedicatedCliId, DedicatedCliProfile } from "./types.js";
 
 const DEFAULT_CLI_ID: DedicatedCliId = "claude";
 const DEFINITIONS: Record<DedicatedCliId, DedicatedCliDefinition> = {
   claude: claudeCli,
   codex: codexCli,
-  opencode: opencodeCli,
 };
 
 export function resolveDedicatedCliProfile(argv: readonly string[], env: NodeJS.ProcessEnv, cwd: string): DedicatedCliProfile {

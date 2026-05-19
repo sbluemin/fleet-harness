@@ -1,4 +1,4 @@
-export type DedicatedCliId = "claude" | "codex" | "opencode";
+export type DedicatedCliId = "claude" | "codex";
 
 export interface DedicatedCliProfile {
   readonly id: DedicatedCliId;
