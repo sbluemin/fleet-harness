@@ -8,7 +8,7 @@ export interface FleetStatusSectionOptions {
 const ANSI_RESET = "\x1b[0m";
 const DIM_COLOR = "\x1b[38;5;244m";
 const BORDER_CHAR = "─";
-const STATUS_SEPARATOR = " │ ";
+const PROTOCOL_ICON = "⚓";
 
 export class FleetStatusSection implements Component {
 	constructor(private readonly options: FleetStatusSectionOptions) {}
@@ -17,14 +17,13 @@ export class FleetStatusSection implements Component {
 
 	render(width: number): string[] {
 		const protocol = this.options.rt.admiral.protocols.getActiveProtocol();
-		return [renderStatusLine(width, protocol.color ?? DIM_COLOR)];
+		return [renderStatusLine(width, protocol.color ?? DIM_COLOR, protocol.shortLabel)];
 	}
 }
 
-function renderStatusLine(width: number, protocolColor: string): string {
+function renderStatusLine(width: number, protocolColor: string, protocolLabel: string): string {
 	if (width <= 0) return "";
-	const center = colorize("Fleet Action Protocol", protocolColor);
-	const centerBlock = `${renderSeparator(protocolColor)}${center}${renderSeparator(protocolColor)}`;
+	const centerBlock = colorize(` ${PROTOCOL_ICON} ${protocolLabel} `, protocolColor);
 	const centerWidth = visibleWidth(centerBlock);
 	if (centerWidth >= width) return truncateToWidth(centerBlock, width);
 
@@ -41,8 +40,4 @@ function colorize(text: string, color: string): string {
 function renderBorder(width: number, color: string): string {
 	if (width <= 0) return "";
 	return colorize(BORDER_CHAR.repeat(width), color);
-}
-
-function renderSeparator(color: string): string {
-	return colorize(STATUS_SEPARATOR, color);
 }
