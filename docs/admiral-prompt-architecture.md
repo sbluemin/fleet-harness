@@ -170,21 +170,21 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │                                                                     │
 │  1. <fleet section="persona">                                       │
 │     Condition: !isFleetCoreDevMode()  &&  isWorldviewEnabled()      │
-│     Content:  FLEET_PERSONA_PROMPT                               │
-│     Source:   metaphor/prompts.ts:56-62                             │
+│     Content:  FLEET_PERSONA_PROMPT                                  │
+│     Source:   admiral/prompts.ts                                    │
 │     ★ OMITTED in dev mode — RISEN dev context replaces this.        │
 │                                                                     │
 │  2. <fleet section="role">                                          │
 │     Condition: !isFleetCoreDevMode()                                │
 │     Content:  worldview ON  → FLEET_ROLE_PROMPT (naval — "제독")   │
 │               worldview OFF → FLEET_ROLE_PROMPT_NEUTRAL             │
-│     Source:   prompts.ts:52-64 (naval) / 72-83 (neutral)            │
+│     Source:   admiral/prompts.ts:52-64 (naval) / 72-83 (neutral)    │
 │     ★ OMITTED in dev mode — RISEN dev context provides role.        │
 │                                                                     │
 │  3. <fleet section="tone">                                          │
 │     Condition: !isFleetCoreDevMode()  &&  isWorldviewEnabled()      │
 │     Content:  FLEET_TONE_PROMPT                                     │
-│     Source:   metaphor/prompts.ts:69-75                             │
+│     Source:   admiral/prompts.ts                                    │
 │     ★ OMITTED in dev mode — RISEN dev context provides tone.        │
 │                                                                     │
 │  4. <fleet section="roster">                                        │
@@ -211,8 +211,7 @@ each wrapped in a `<fleet section="...">` XML block. The order matches the actua
 │     Condition: one block per registered AgentToolSpec               │
 │     Content:  renderAgentToolDoctrineTag(spec)                      │
 │     Source:   admiral/agent/tools.ts:52-72                          │
-│     ★ request_directive lives here (request-directive/tool-spec.ts) │
-│       rendered at position 7 — the LAST static segment.             │
+│     ★ The LAST static segment.                                      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```

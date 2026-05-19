@@ -38,7 +38,7 @@
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.
 
 ### Facade-First Export Rule
-All new domain features MUST be exposed through their respective domain facade (`admiral`, `admiralty`, `metaphor`, `infra`) and consumed via the facade namespace (e.g., `admiral.protocols.xxx`). Direct named exports to the root barrel for new domain functionality are prohibited. The root barrel may only re-export the facade objects and frozen legacy symbols.
+All new domain features MUST be exposed through their respective domain facade (`admiral`, `admiralty`, `infra`) and consumed via the facade namespace (e.g., `admiral.protocols.xxx`). Direct named exports to the root barrel for new domain functionality are prohibited. The root barrel may only re-export the facade objects and frozen legacy symbols.
 
 ### Unified `AgentToolSpec` shape
 
@@ -70,9 +70,9 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - `carrier/`, `carrier-jobs/`, `squadron/`, `taskforce/` — carrier framework, fleet tool specs, roster rendering, and execution doctrine. Default carrier persona data is owned by `packages/fleet-carriers`.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
-- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), unified settings/log infra, and `metaphor/`. The former `infra/tool-registry/` directory has been removed; generic tool registry, doctrine formatter, and tool snapshot now live in `packages/fleet-mcp-server`, with `admiral/agent/tools.ts` retaining the fleet-core facade and carrier metadata adapter.
+- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), and unified settings/log infra. The former `infra/tool-registry/` directory has been removed; generic tool registry, doctrine formatter, and tool snapshot now live in `packages/fleet-mcp-server`, with `admiral/agent/tools.ts` retaining the fleet-core facade and carrier metadata adapter.
 - Public API contracts and frozen consumer surfaces, including the canonical `public/runtime.ts` for agent runtime assembly. Note that `agent-services.ts` and `tool-registry-services.ts` have been removed from the public surface.
-- `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes runtime-owned state and returns `FleetCoreRuntimeContext` containing exactly `admiral`, `admiralty`, `metaphor`, `infra`, and `shutdown`.
+- `createFleetCoreRuntime` as the canonical composition entry point, exported from the package root, that initializes runtime-owned state and returns `FleetCoreRuntimeContext` containing exactly `admiral`, `admiralty`, `infra`, and `shutdown`.
 - Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Session lifecycle is owned by `admiral.agent.session` and `admiral.agent.lifecycle`; internal session mapping persistence lives in `admiral/agent/internal/session-runtime.ts` as JSONL custom entries.
 
 - Fleet tool spec builders, explicit default registration bootstrap, prompt usage, and registry facade functions that are host-agnostic and backed by `packages/fleet-mcp-server`
@@ -99,7 +99,8 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 
 ## Migration Guardrails
 
-- Do not reintroduce Fleet domain folders back into `packages/fleet-harness/src/fleet/**`, `src/grand-fleet/**`, `src/metaphor/**`, or similar legacy Pi-side domain homes.
+- Do not reintroduce Fleet domain folders back into legacy Pi-side domain homes.
+- Do not reintroduce removed prompt-helper domains into `fleet-core`.
 - Do not add new deep-import dependencies from `fleet-harness` into `fleet-core/src/**`; use public exports.
 - When splitting mixed modules, move the pure/domain half into `fleet-core` and keep only the Pi adapter half in `fleet-harness`.
 - Intermediate re-export shims are a migration artifact only; do not treat them as long-term architecture.

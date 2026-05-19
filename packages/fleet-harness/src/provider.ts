@@ -253,7 +253,6 @@ async function runFreshQuery(
     activeStreams.set(handle.sessionId, wrapped);
   });
 
-  // sendMessage — fleet-core가 firstPromptSent 분기 + buildRuntimeContextPrompt 자체 처리
   await sendMessage(handle, { userRequest, history }, options?.signal);
 
   await donePromise;

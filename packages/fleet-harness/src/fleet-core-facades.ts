@@ -1,7 +1,6 @@
 import {
   admiral,
   infra,
-  metaphor,
   type FleetStoreSnapshot,
   type FleetStoreWriteFingerprint,
 } from "@sbluemin/fleet-core";
@@ -73,7 +72,3 @@ export const {
   getActiveBackgroundJobCount,
   onActiveJobCountChange,
 } = infra.job;
-
-export const composeOperationNameRequest: any = metaphor.operationName.composeOperationNameRequest;
-export const loadOperationNameSettings: any = metaphor.operationName.loadSettings;
-export const sanitizeOperationNameDisplay: any = metaphor.operationName.sanitizeOperationNameDisplay;

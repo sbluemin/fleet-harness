@@ -81,16 +81,13 @@ Each feature area maps to exactly one command domain. Use the domain below regar
 | `fleet-wiki` surfaces | `wiki` | Fleet Wiki store, patch queue, ingest |
 | Admiral protocol and doctrine surfaces | `admiral` | Host-agent prompt policy, protocols, and operational doctrine |
 | Detached carrier job surfaces | `jobs` | Detached carrier job rendering and verbose toggle |
-| Metaphor/persona/worldview surfaces | `metaphor` | Naval Fleet persona prompts, worldview management, and shared metaphor controls |
 | Carrier registration surfaces | `carrier` | Individual carrier registration and configuration |
 | HUD display surfaces | `hud` | HUD / editor display features |
-| Operation naming surfaces | `metaphor:operation` | Session operation naming settings |
-| Directive refinement surfaces | `metaphor:directive` | Directive refinement settings — surfaced inside `fleet:metaphor:settings` (no standalone command) |
 When adding a **new extension**, assign a domain that reflects the **feature category**, not the directory prefix (`core-`, etc.).
 
 ### Feature Naming
 
-- Use a **verb or noun** that describes the action or target — e.g., `status`, `editor`, `models`, `settings`, `worldview`.
+- Use a **verb or noun** that describes the action or target — e.g., `status`, `editor`, `models`, `settings`.
 - Prefer short, unambiguous words. Avoid abbreviations (`settings` not `cfg`, `status` not `stat`).
 - `settings` — reserved for commands that open a configuration UI for that domain.
 - `run` — reserved for manual re-trigger of an automated behavior (e.g., re-summarize on demand).

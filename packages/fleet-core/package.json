@@ -34,11 +34,6 @@
       "import": "./dist/admiralty.js",
       "require": "./dist/admiralty.cjs"
     },
-    "./metaphor": {
-      "types": "./dist/metaphor.d.ts",
-      "import": "./dist/metaphor.js",
-      "require": "./dist/metaphor.cjs"
-    },
     "./infra": {
       "types": "./dist/infra.d.ts",
       "import": "./dist/infra.js",

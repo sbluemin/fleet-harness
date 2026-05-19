@@ -18,7 +18,6 @@ fleet-core의 외부 소비자에게 노출되는 서비스 조립 계층. 비�
 | `runtime.ts` | Composition root — 전체 초기화 + shutdown |
 | `admiral-services.ts` | 캐리어 오케스트레이션, agent/session/executor, carrier jobs |
 | `admiralty-services.ts` | 다중 인스턴스 그랜드 플릿 |
-| `metaphor-services.ts` | 페르소나/세계관 |
 | `infra-services.ts` | auth/data-dir/job/log/settings/tool-registry |
 
 ## Prohibited

@@ -2,22 +2,22 @@
 
 `packages/fleet-core/src/admiral/` is the Admiral-owned Fleet orchestration/runtime module home — carrier operations, agent session management, task force coordination, and protocol policy.
 
-## Fleet Architecture (Metaphor)
+## Fleet Architecture
 
 This project is an **Agent Harness** that centrally commands and orchestrates powerful CLI tools (Claude Code, Codex, Gemini, etc.), each of which possesses its own internal sub-agent system.
 
-Beyond simple parallel API calls, the system adopts a **naval fleet metaphor** to clearly separate roles and responsibilities across the architecture.
+Beyond simple parallel API calls, the system uses clear role boundaries to separate responsibilities across the architecture.
 
 ### Core Entities
 
-| Layer | Entity | Metaphor | Definition |
-|-------|--------|----------|------------|
-| 1 | **Admiral of the Navy** (ATN) | 대원수 (User) | **The user** who wields the tool. Sets ultimate strategy and final objectives for the fleet. |
-| 2 | **Fleet Admiral** | 사령관 (Grand Fleet) | The **Admiralty LLM persona** (internalized domain in `fleet-core`). Responsible for multi-fleet orchestration. *Does not exist in single-fleet mode; the user communicates directly with the Admiral.* |
-| 3 | **Admiral** | 제독 (Host PI) | A single **workspace PI instance**. Plans operations and dispatches Carriers within its operational zone. |
-| 4 | **Captain** | 함장 (Carrier Persona) | The **persona of a Carrier agent**. While a Carrier is the system entity, the Captain is its personified commander. |
+| Layer | Entity | Definition |
+|-------|--------|------------|
+| 1 | **User** | Sets ultimate strategy and final objectives. |
+| 2 | **Admiralty** | Internalized domain in `fleet-core` for multi-fleet orchestration. *Does not exist in single-fleet mode; the user communicates directly with the Admiral.* |
+| 3 | **Admiral** | A single workspace PI instance. Plans operations and dispatches Carriers within its operational zone. |
+| 4 | **Carrier Persona** | The role profile for a Carrier agent. |
 
-> **Note on Persona & Tone**: The naming conventions, personified personas, and linguistic tone for all tiers are centrally managed by `packages/fleet-core/src/metaphor/`. The former `packages/fleet-harness/src/metaphor/` legacy directory has been removed and must not be recreated as a Pi-side domain home.
+> **Note on Persona & Tone**: Carrier role data is managed through carrier metadata and prompt assets within the `admiral` domain.
 
 #### Carrier vs Captain Separation
 - **Carrier**: The **system entity** (ID: `genesis`, `sentinel`, etc.). Represents the execution instance, process, and configuration.

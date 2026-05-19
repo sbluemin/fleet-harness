@@ -38,6 +38,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
 
 ### Removed
+- [core][harness] Removed 'metaphor' domain (worldview, operation naming, directive refinement) and 'request_directive' tool.
 - [wiki-web] Removed the Constellation (backlinks) panel and Outgoing references along with the backend backlink indexer and associated API.
 
 ## [0.20.0] - 2026-05-16

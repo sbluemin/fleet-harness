@@ -1,5 +1,5 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@sbluemin/fleet-coding-agent";
-import { attachStatusContext, detachStatusContext, getEffort } from "@sbluemin/fleet-unified-agent";
+import type { ExtensionAPI, ExtensionContext } from "@sbluemin/fleet-coding-agent";
+import { attachStatusContext, detachStatusContext } from "@sbluemin/fleet-unified-agent";
 import type { CliType, ServiceStatusContextPort } from "@sbluemin/fleet-unified-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -8,18 +8,14 @@ import {
   admiral,
   createFleetCoreRuntime,
   infra,
-  metaphor,
   type FleetCoreRuntimeContext,
 } from "@sbluemin/fleet-core";
 import { registerDefaultCarrierPersonas } from "@sbluemin/fleet-carriers";
 import { bootBridge, ensureBridgeKeybinds } from "./bridge/handler.js";
 import { syncModelConfig } from "./panel/config.js";
-import { completeSimple } from "./provider.js";
-import type { Api, Model, ThinkingLevel } from "./provider.js";
 import { registerGrandFleet } from "./grand-fleet/index.js";
 import { getKeybindAPI } from "./keybinds.js";
 import { detachAgentPanelUi, refreshAgentPanel } from "./panel/ui.js";
-import { requestHudRender } from "./hud/editor.js";
 import { setDeliverAs, getDeliverAs } from "./settings.js";
 import {
   getRegisteredCarrierConfig,
@@ -32,7 +28,7 @@ import {
   setSquadronEnabledCarriers,
   setTaskForceConfiguredCarriers,
 } from "./tools.js";
-import { setEditorBorderColor, setEditorRightLabel, setEditorTopRightLabel } from "./hud/border-bridge.js";
+import { setEditorBorderColor, setEditorRightLabel } from "./hud/border-bridge.js";
 import { getCarrierJobsVerbose, setCarrierJobsVerbose, toggleCarrierJobsVerbose } from "./jobs.js";
 
 export interface FleetLifecycleRuntime {
@@ -47,22 +43,6 @@ export interface BootConfig {
   role: string | null;
 }
 
-interface OperationNameGlobalState {
-  sessionId: string;
-  displayName?: string;
-  pending: boolean;
-}
-
-interface OperationNameSessionState {
-  displayName?: string;
-  pending: boolean;
-}
-
-interface OperationNameGlobalStore {
-  currentSessionId?: string;
-  sessions: Record<string, OperationNameSessionState | undefined>;
-}
-
 interface PiServiceStatusContextLike {
   hasUI?: boolean;
   sessionManager?: {
@@ -75,8 +55,6 @@ interface PiServiceStatusContextLike {
     notify?: (message: string, level: "info" | "warning") => void;
   };
 }
-
-const OPERATION_NAME_ATTEMPTS = new Set<string>();
 
 const {
   buildSystemPrompt,
@@ -103,20 +81,12 @@ const {
   saveSquadronEnabled,
   seedDefaultModels,
 } = admiral.store;
-const {
-  composeOperationNameRequest,
-  loadSettings: loadOperationNameSettings,
-  sanitizeOperationNameDisplay,
-} = metaphor.operationName;
-const { isWorldviewEnabled } = metaphor.worldview;
-
 let fleetRuntime: FleetCoreRuntimeContext | undefined;
 let bootConfig: BootConfig | null = null;
 let reconciliationScheduled = false;
 let statesWatcher: fs.FSWatcher | null = null;
 let lastObservedGeneration = 0;
 let lastObservedStatesFileMeta: { mtimeMs: number; size: number } | null = null;
-let operationNameStore: OperationNameGlobalStore | OperationNameGlobalState | null = null;
 
 export { bootBridge, ensureBridgeKeybinds };
 
@@ -221,8 +191,7 @@ export function scheduleFleetReconciliation(): void {
 }
 
 export function wireFleetPiEvents(pi: ExtensionAPI): void {
-  pi.on("before_agent_start", (event, ctx) => {
-    scheduleOperationNameGeneration(ctx, event.prompt);
+  pi.on("before_agent_start", () => {
     if (process.env.PI_GRAND_FLEET_ROLE === "fleet") return;
     const fleetPrompt = buildSystemPrompt();
     infra.log.getLogAPI().debug("acp-system-prompt", fleetPrompt, { category: "acp-system-prompt" });
@@ -331,7 +300,6 @@ function registerProtocolKeybinds(): void {
 function bindFleetHostSession(ctx: ExtensionContext): void {
   const sessionId = ctx.sessionManager.getSessionId();
   bindHostSession(sessionId, ctx.sessionManager);
-  syncOperationNameSession(sessionId);
   cleanIdle();
   refreshAgentPanel(ctx);
   attachStatusContext(toServiceStatusContext(ctx));
@@ -348,166 +316,12 @@ function registerAdmiralSettingsSection(): void {
     key: "admiral",
     displayName: "Admiral",
     getDisplayFields() {
-      const enabled = isWorldviewEnabled();
       const activeProtocol = getActiveProtocol();
       return [
-        { label: "Worldview", value: enabled ? "ON" : "OFF", color: enabled ? "accent" : "dim" },
         { label: "Protocol", value: activeProtocol.shortLabel, color: "accent" },
       ];
     },
   });
-}
-
-function scheduleOperationNameGeneration(ctx: ExtensionContext | undefined, eventPrompt?: string): void {
-  if (!ctx?.sessionManager) return;
-
-  const sessionId = ctx.sessionManager.getSessionId();
-  if (!sessionId || OPERATION_NAME_ATTEMPTS.has(sessionId)) return;
-
-  const prompt = eventPrompt?.trim() || extractFirstUserPrompt(ctx);
-  if (!prompt) return;
-
-  OPERATION_NAME_ATTEMPTS.add(sessionId);
-  syncOperationNameSession(sessionId, true);
-
-  void generateOperationName(ctx, sessionId, prompt);
-}
-
-async function generateOperationName(ctx: ExtensionContext, sessionId: string, preparedPrompt: string): Promise<void> {
-  const worldviewEnabled = isWorldviewEnabled();
-  const model = resolveOperationNameModel(ctx);
-  if (!model) {
-    syncOperationNameSession(sessionId, false);
-    return;
-  }
-
-  try {
-    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-    if (!auth.ok) throw new Error(auth.error);
-    if (!auth.apiKey && !auth.headers && ctx.modelRegistry.isUsingOAuth(model)) {
-      throw new Error(`OAuth credentials unavailable for ${model.provider}/${model.id}`);
-    }
-
-    const settings = loadOperationNameSettings();
-    const reasoning = resolveOperationNameReasoning(model, settings.reasoning);
-    const composed = composeOperationNameRequest({ worldviewEnabled, preparedPrompt });
-    const response = await completeSimple(
-      model,
-      {
-        systemPrompt: composed.systemPrompt,
-        messages: composed.messages.map((message) => ({ ...message, timestamp: Date.now() })),
-      },
-      {
-        ...(auth.apiKey && { apiKey: auth.apiKey }),
-        ...(auth.headers && { headers: auth.headers }),
-        ...(reasoning && { reasoning }),
-      },
-    );
-
-    if (response.stopReason === "aborted") {
-      syncOperationNameSession(sessionId, false);
-      return;
-    }
-
-    const raw = response.content
-      .filter((content): content is { type: "text"; text: string } => content.type === "text")
-      .map((content) => content.text)
-      .join("\n");
-    const displayName = sanitizeOperationNameDisplay(raw, worldviewEnabled);
-    if (!isCurrentOperationNameSession(ctx, sessionId)) return;
-    syncOperationNameSession(sessionId, false, displayName ?? undefined);
-  } catch (error) {
-    infra.log.getLogAPI().debug(
-      "metaphor-operation",
-      `operation name generation failed: ${error instanceof Error ? error.message : String(error)}`,
-      { hideFromFooter: true },
-    );
-    syncOperationNameSession(sessionId, false);
-  }
-}
-
-function extractFirstUserPrompt(ctx: ExtensionContext): string | null {
-  const entries = ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? [];
-  for (const entry of entries as any[]) {
-    if (entry?.type !== "message" || entry.message?.role !== "user") continue;
-    const text = extractMessageText(entry.message);
-    if (text) return text;
-  }
-  return null;
-}
-
-function extractMessageText(message: any): string | null {
-  if (typeof message?.content === "string") return message.content.trim() || null;
-  if (!Array.isArray(message?.content)) return null;
-
-  const text = message.content
-    .map((part: any) => typeof part?.text === "string" ? part.text : "")
-    .join("\n")
-    .trim();
-  return text || null;
-}
-
-function resolveOperationNameModel(ctx: ExtensionContext): Model<Api> | null {
-  const settings = loadOperationNameSettings();
-  const model = settings.provider && settings.model
-    ? ctx.modelRegistry.find(settings.provider, settings.model)
-    : ctx.model;
-
-  if (!model) {
-    infra.log.getLogAPI().debug("metaphor-operation", "operation name model not available", { hideFromFooter: true });
-    return null;
-  }
-
-  return model;
-}
-
-function syncOperationNameSession(sessionId: string, pending = false, displayName?: string): void {
-  const store = readOperationNameStore();
-  const current = store.sessions[sessionId];
-  const nextDisplayName = displayName ?? current?.displayName;
-  store.currentSessionId = sessionId;
-  store.sessions[sessionId] = {
-    displayName: nextDisplayName,
-    pending,
-  };
-  operationNameStore = store;
-  setEditorTopRightLabel(!pending && nextDisplayName ? nextDisplayName : null);
-  requestHudRender();
-}
-
-function readOperationNameStore(): OperationNameGlobalStore {
-  const current = operationNameStore ?? undefined;
-  if (isOperationNameGlobalStore(current)) {
-    return current;
-  }
-  if (isOperationNameGlobalState(current)) {
-    return {
-      currentSessionId: current.sessionId,
-      sessions: {
-        [current.sessionId]: {
-          displayName: current.displayName,
-          pending: current.pending,
-        },
-      },
-    };
-  }
-  return { sessions: {} };
-}
-
-function isOperationNameGlobalStore(value: OperationNameGlobalStore | OperationNameGlobalState | undefined): value is OperationNameGlobalStore {
-  return Boolean(value && "sessions" in value && value.sessions);
-}
-
-function isOperationNameGlobalState(value: OperationNameGlobalStore | OperationNameGlobalState | undefined): value is OperationNameGlobalState {
-  return Boolean(value && "sessionId" in value && value.sessionId);
-}
-
-function isCurrentOperationNameSession(ctx: ExtensionContext, sessionId: string): boolean {
-  try {
-    return ctx.sessionManager.getSessionId() === sessionId;
-  } catch {
-    return false;
-  }
 }
 
 function toServiceStatusContext(ctx: PiServiceStatusContextLike): ServiceStatusContextPort {
@@ -520,23 +334,6 @@ function toServiceStatusContext(ctx: PiServiceStatusContextLike): ServiceStatusC
       ctx.ui?.notify?.(message, level);
     },
   };
-}
-
-function resolveOperationNameReasoning(
-  model: Model<Api>,
-  reasoning: string | undefined,
-): ThinkingLevel | undefined {
-  if (!reasoning || reasoning === "off") return undefined;
-  const parsed = admiral.agent.models.parseModelId(model.id, model.provider);
-  if (!parsed) return undefined;
-  const modelEffort = getModelEffort(parsed.cli, parsed.backendModel);
-  return modelEffort.supported && modelEffort.levels?.includes(reasoning)
-    ? reasoning as ThinkingLevel
-    : undefined;
-}
-
-function getModelEffort(cli: CliType, modelId: string): ReturnType<typeof getEffort> {
-  return getEffort(cli, modelId);
 }
 
 function reconcileRegisteredCarrierModels(): void {

@@ -193,7 +193,6 @@ describe("Fleet runtime bucket", () => {
     expect(prompt).toContain("<carrier_roster_routing>");
     expect(prompt).toContain("<protocol_standing_orders>");
     expect(prompt).toContain("<runtime_context_tags>");
-    expect(prompt).toContain("<request_directive_guidance>");
     expect(prompt).toContain("<tool_delegation_policy>");
     expect(prompt).not.toContain("<fleet_identity>");
   });

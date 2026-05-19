@@ -27,8 +27,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 | `src/wiki/` | `@sbluemin/fleet-wiki` | Fleet Wiki tool/command registration and overlays |
 | `src/btw/` | `admiral.agent.models` + `admiral.agent.executor.executeOneShot` | Ephemeral multi-turn query overlay (/btw command, Editor-Replace, no host JSONL trace) |
 | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | (Host Surfaces) | HUD, Welcome UI, shared TUI overlays, and shortcuts |
-| `src/fleet.ts` | `admiral` + `metaphor` + `infra` | Core Fleet state, protocols, operation naming, event adapters |
-| `src/metaphor.ts` | `metaphor` | Worldview and directive refinement wiring |
+| `src/fleet.ts` | `admiral` + `infra` | Core Fleet state, protocols, operation naming, event adapters |
 | `src/jobs.ts` | `admiral.carrierJobs` + `infra.job` | Fleet carrier job lifecycle and status tracking |
 | `src/settings.ts` | `infra.settings` | Fleet-to-Pi settings sync and persistence |
 | `src/logs.ts` | `infra.log` | Fleet log store and terminal output streaming |
@@ -54,7 +53,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 
 ## Import Boundaries
 
-- Consume `@sbluemin/fleet-core` only through the root barrel or the four documented subpaths: `admiral`, `admiralty`, `metaphor`, `infra`.
+- Consume `@sbluemin/fleet-core` only through the root barrel or the three documented subpaths: `admiral`, `admiralty`, `infra`.
 - Direct `@sbluemin/fleet-mcp-server` imports are not the default harness path; consume tool registry behavior through the fleet-core facade.
 - When accessing domain functionality, prefer the facade namespace (e.g., `admiral.protocols.xxx`) over root barrel named imports. Root barrel direct imports are reserved for runtime assembly (`createFleetCoreRuntime`) and frozen legacy symbols.
 - Consume Grand Fleet domain APIs through `@sbluemin/fleet-core/admiralty` or the root `admiralty` facade.
@@ -84,7 +83,7 @@ This package is a **thin, opinionated adapter** between fleet-core's domain surf
 - `globalThis.<key>` for shared host state. Use module-level singletons; the legacy `__pi_unified_agent_*` keys have been removed.
 - Holding fleet-core builders (e.g., `setCliRuntimeContext`-style setters). Prompt assembly is fleet-core's responsibility — the host sends raw `userRequest` + optional `history` through `admiral.session.sendMessage`.
 - Per-turn `admiral.events.register` calls. Stream-event handlers register **once at boot** via `initStreamEventHandler()`; per-turn routing happens through the host-local `Map<sessionId, push>`.
-- Re-implementing fleet tool specs. Hosts query `admiral.tools.list()` for metadata and call `admiral.tools.invoke()` for execution; only host-only tools (`request_directive`, fleet-wiki, admiralty, grand-fleet) are registered through `pi.registerTool` directly.
+- Re-implementing fleet tool specs. Hosts query `admiral.tools.list()` for metadata and call `admiral.tools.invoke()` for execution; only host-only tools (fleet-wiki, admiralty, grand-fleet) are registered through `pi.registerTool` directly.
 
 ## Compatibility Rules
 

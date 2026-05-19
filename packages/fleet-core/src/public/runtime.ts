@@ -18,15 +18,10 @@ import {
   createFleetInfraServices,
   type FleetInfraServices,
 } from "./infra-services.js";
-import {
-  createFleetMetaphorServices,
-  type FleetMetaphorServices,
-} from "./metaphor-services.js";
 
 export type { FleetAdmiralServices } from "./admiral-services.js";
 export type { FleetAdmiraltyServices } from "./admiralty-services.js";
 export type { FleetInfraServices } from "./infra-services.js";
-export type { FleetMetaphorServices } from "./metaphor-services.js";
 
 export interface FleetCoreRuntimeOptions {
   readonly dataDir: string;
@@ -36,7 +31,6 @@ export interface FleetCoreRuntimeOptions {
 export interface FleetCoreRuntimeContext {
   readonly admiral: FleetAdmiralServices;
   readonly admiralty: FleetAdmiraltyServices;
-  readonly metaphor: FleetMetaphorServices;
   readonly infra: FleetInfraServices;
   shutdown(): Promise<void>;
 }
@@ -63,7 +57,6 @@ export function createFleetCoreRuntime(
   return {
     admiral: createFleetAdmiralServices(),
     admiralty: createFleetAdmiraltyServices(),
-    metaphor: createFleetMetaphorServices(),
     infra,
     async shutdown() {
       await stopMcpServer();

@@ -74,7 +74,6 @@ Current Flat Domain Architecture in `fleet-harness`:
 | `src/grand-fleet/` | Domain-internal home for multi-instance Grand Fleet orchestration |
 | `src/wiki/` | Domain-internal home for knowledge base, ingest, and patching |
 | `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` | Host shell integration and terminal features |
-| `src/metaphor.ts` | Domain entrypoint for persona, worldview, and naval metaphors |
 | `src/jobs.ts` | Domain entrypoint for detached carrier job management |
 | `src/settings.ts` | Domain entrypoint for fleet-wide settings and configuration |
 | `src/logs.ts` | Domain entrypoint for fleet activity logging and categories |
@@ -93,7 +92,7 @@ The following legacy directories under `packages/fleet-harness/src/` are already
 
 Do not treat historical paths as present-day ownership signals. Their features have been absorbed into the respective domain homes (e.g., `src/provider.ts` owns its tools and UI).
 
-Do not treat historical paths such as `src/metaphor/`, `src/fleet/admiral/`, or `src/fleet/shipyard/carrier_jobs/` as present-day ownership signals. Their former existence does not change current ownership: Fleet domain logic belongs in `fleet-core`, and Fleet host wiring belongs in the active domain adapters under `src/`.
+Do not treat historical paths such as `src/metaphor/`, `src/admiral/request-directive/`, `src/fleet/admiral/`, or `src/fleet/shipyard/carrier_jobs/` as present-day ownership signals. Their former existence does not change current ownership: Fleet domain logic belongs in `fleet-core`, and Fleet host wiring belongs in the active domain adapters under `src/`.
 
 When migrating or restoring behavior that once lived under those paths:
 

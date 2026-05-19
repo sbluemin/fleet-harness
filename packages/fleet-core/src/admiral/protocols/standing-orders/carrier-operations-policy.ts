@@ -67,7 +67,6 @@ Choose the correct dispatch tool based on intent:
 | Same Carrier, parallel subtasks | ${"``"}carrier_squadron${"``"} | Independent subtasks on one Carrier (e.g., review 5 files independently) |
 | Cross-model validation | ${"``"}carrier_taskforce${"``"} | Need consensus, blind-spot detection, or multi-backend comparison |
 | Lookup/control detached carrier jobs | ${"``"}carrier_jobs${"``"} | Check status/results, read full output once, cancel, or list jobs; never for new delegation |
-| Ask the Admiral of the Navy (대원수) | ${"``"}request_directive${"``"} | Strategic ambiguity requiring human judgment |
 | Direct handling | *(no tool)* | Quick lookups, synthesis, strategic advice |
 
 ### Carrier dispatch procedure

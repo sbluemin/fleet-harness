@@ -32,18 +32,16 @@ The Admiral extension implements a modular prompt policy system that governs how
 ```text
 System Prompt
   + [Boot] Initial Slate (pnpm dev 사용 시 FLEET_HARNESS_DEV=1로 인해 RISEN 개발 컨텍스트 활성화, 그 외 빈 문자열)
-  + [Toggle] Worldview (via fleet:metaphor:settings)
   + [Always] Standing Orders (Carrier Operations Policy + Deep Dive + ...)
   + [Always] Active Protocol (Fleet Action Protocol, etc.)
-  + [Always] request_directive guide
 ```
 
 ### UI & UX Integration
 
 - **Editor Border Color**: The editor's border color changes based on the active protocol through the `core-hud/border-bridge` module-level set/get API.
 - **Editor Top Border (Center Label)**: The active protocol short label (e.g., `⚓ Fleet Action`) is rendered at the center of the editor's top border via the `core-hud/border-bridge` `setEditorRightLabel` API.
-- **Editor Bottom Border (Right Label)**: The current session's operation name (managed by the `metaphor:operation` domain) is rendered at the right end of the editor's bottom border via the `core-hud/border-bridge` `setEditorBottomRightLabel` API. Distinct domain from protocol UI but shares the editor border surface.
-- **Settings Popup (Alt+/)**: The "Admiral" section displays the current protocol and worldview state; protocol switching currently resolves to Fleet Action via `Alt+1`.
+- **Editor Bottom Border (Right Label)**: The current session's operation name is rendered at the right end of the editor's bottom border via the `core-hud/border-bridge` `setEditorBottomRightLabel` API. Distinct domain from protocol UI but shares the editor border surface.
+- **Settings Popup (Alt+/)**: The "Admiral" section displays the current protocol state; protocol switching currently resolves to Fleet Action via `Alt+1`.
 
 ### Key Bindings
 

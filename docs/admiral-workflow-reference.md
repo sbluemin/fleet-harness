@@ -26,14 +26,13 @@ Agents must not confuse logical ownership with physical domain layout. `packages
 
 - Fleet domain orchestration
 - prompt composition and doctrine assets
-- persona, tone, worldview, operation-name, and directive-refinement domain logic
 - Admiral-owned carrier, carrier-jobs, squadron, taskforce, store, and SSOT streaming event layers under `src/admiral/`
 - Agent execution (session pool, executeWithPool/executeOneShot, MCP server, session-store, runtime) consolidated under `src/admiral/_shared/agent-runtime.ts` + `src/admiral/_shared/mcp.ts`
 - Tool registry/snapshot domain under `src/services/tool-registry/` and job domain logic under `src/services/job/`
 - pure runtime stores, ports, and adapter-facing contracts
 - shared doctrine/runtime surfaces consumed by extracted leaf packages
 
-Runtime composition is exposed only through the package root (`@sbluemin/fleet-core`). The legacy `@sbluemin/fleet-core/runtime` subpath has been removed. Public service access flows through `FleetCoreRuntimeContext` (`fleet`, `grandFleet`, `metaphor`, `jobs`, `log`, `settings`, `shutdown`); the agent runtime layer is reachable via the `@sbluemin/fleet-core/admiral/agent-runtime` compatibility subpath for adapters that need direct executor access.
+Runtime composition is exposed only through the package root (`@sbluemin/fleet-core`). The legacy `@sbluemin/fleet-core/runtime` subpath has been removed. Public service access flows through `FleetCoreRuntimeContext` (`admiral`, `admiralty`, `infra`, `shutdown`); the agent runtime layer is reachable via the `@sbluemin/fleet-core/admiral/agent-runtime` compatibility subpath for adapters that need direct executor access.
 
 `fleet-core` must not own:
 
@@ -87,7 +86,6 @@ In the Flat Domain Architecture, Pi ownership is expressed through these domain-
 - `src/grand-fleet/` — Multi-instance Grand Fleet orchestration
 - `src/wiki/` — Fleet knowledge base and ingest
 - `src/hud/`, `src/panel/`, `src/pty/`, `src/welcome.ts` — Host shell integration and terminal features
-- `src/metaphor.ts` — Persona, worldview, and naval metaphors
 - `src/jobs.ts` — Detached carrier job management
 - `src/settings.ts` — Fleet-wide settings and configuration
 - `src/logs.ts` — Fleet activity logging and categories

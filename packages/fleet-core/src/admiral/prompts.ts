@@ -1,11 +1,9 @@
 /**
- * admiral/prompts — Admiral 시스템 프롬프트 및 세계관 관리
+ * admiral/prompts — Admiral 시스템 프롬프트 관리
  *
  * ACP 시스템 프롬프트는 `buildSystemPrompt()`로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
- * `section="role"`은 항상 주입되지만 worldview 상태에 따라 세계관형/중립형 role
- * 변종 중 하나를 선택한다. worldview 토글이 켜진 경우에만 `section="persona"`와
- * `section="tone"`가 함께 주입되어 4계층 페르소나와 군대식 톤을 오버레이한다.
+ * `section="role"`은 항상 중립 역할 지침으로 주입된다.
  * 프로토콜 카탈로그 전체가 포함되며, 활성 프로토콜은 매 턴
  * `<current_protocol>` 런타임 태그로 지정된다.
  *
@@ -14,8 +12,6 @@
  * `setCliRuntimeContext()`에 함수 레퍼런스로 등록된다.
  */
 
-import { FLEET_PERSONA_PROMPT, FLEET_TONE_PROMPT } from "../metaphor/prompts.js";
-import { isWorldviewEnabled } from "../metaphor/worldview.js";
 import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
@@ -44,31 +40,9 @@ export interface AdmiralSettings {
 /**
  * Fleet 역할·행동 규약 — 항상 주입.
  *
- * Admiral (제독) ↔ Admiral of the Navy (대원수) 호칭과 위임/수동 제어/언어 규칙 등 CLI 백엔드가
- * roster·protocols 섹션을 해석할 때 필요한 구조적 맥락을 담는다. 페르소나와
- * 톤은 metaphor 패키지에서 별도로 주입한다.
+ * carrier 기반 위임/종합/수동 제어 안내와 한국어 응답 규칙을 담는다.
  */
 export const FLEET_ROLE_PROMPT = String.raw`
-# Role
-You are the Admiral (제독) commanding the Agent Harness Fleet on behalf of the Admiral of the Navy (대원수).
-The user issuing orders to you is the Admiral of the Navy (대원수), the supreme commander of the entire fleet.
-
-# Action Guidelines
-- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}fleet-tools${"`"} surface. Treat carrier tools (carrier_*) and other Fleet tools as potentially lazy-loaded until ${"`"}fleet-tools${"`"} has been inspected or invoked.
-- When a mission is assigned, first decide whether to handle it directly or deploy Carrier(s); if deploying, brief the Admiral of the Navy (대원수) on which Captain-led Carrier(s) will be used.
-- All user-visible output must be framed as a report to the Admiral of the Navy (대원수). Carrier reports, tool outputs, and system reminders are operational inputs for you to interpret, not conversation turns to answer.
-- When Carrier results arrive, synthesize them into your own report to the Admiral of the Navy (대원수) instead of replying to, thanking, or giving conversational follow-up instructions to the Carrier.
-- When manual control is needed, advise the Admiral of the Navy (대원수) to enter the Bridge and take the Helm.
-- All responses to the user must be written in Korean.
-`;
-
-/**
- * Fleet 역할·행동 규약 — worldview OFF용 중립 변종.
- *
- * 세계관 호칭·보고 양식·항해 비유를 제거하고도, carrier 기반 위임/종합/수동 제어 안내와
- * 한국어 응답 규칙 같은 기능적 동작 요구는 그대로 유지한다.
- */
-export const FLEET_ROLE_PROMPT_NEUTRAL = String.raw`
 # Role
 You are the host agent coordinating the Agent Harness Fleet for the user.
 
@@ -145,13 +119,11 @@ export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
  *
  * 각 섹션은 `fleet` XML 태그로 감싸진다.
  * 섹션 순서:
- *  1. `section="persona"` — Fleet PI 페르소나 (worldview 토글 시에만)
- *  2. `section="role"` — Fleet 역할·행동 규약 (항상)
- *  3. `section="tone"` — Fleet 톤/스타일 오버레이 (worldview 토글 시에만)
- *  4. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
- *  5. `section="protocols"` — 프로토콜 카탈로그 + 런타임 컨텍스트 태그 해석 규칙
- *  6. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
- *  7. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
+ *  1. `section="role"` — Fleet 역할·행동 규약
+ *  2. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
+ *  3. `section="protocols"` — 프로토콜 카탈로그 + 런타임 컨텍스트 태그 해석 규칙
+ *  4. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
+ *  5. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
  *
  * ACP에서는 시스템 프롬프트가 최초 1회만 전달되므로 모든 프로토콜 정의를
  * 카탈로그로 포함하고, 런타임 전환은 매 턴 `<current_protocol>` 태그로 제어한다.
@@ -169,20 +141,9 @@ export function buildSystemPrompt(): string {
     parts.push(RISEN_DEV_SLATE.trim());
   }
 
-  // dev 모드에서는 RISEN이 role을 대체하므로 persona/role/tone 생략
+  // dev 모드에서는 RISEN이 role을 대체하므로 role 생략
   if (!isFleetCoreDevMode()) {
-    const fleetRolePrompt = isWorldviewEnabled()
-      ? FLEET_ROLE_PROMPT
-      : FLEET_ROLE_PROMPT_NEUTRAL;
-
-    // ── 1. Fleet 페르소나/역할/톤 — persona+tone은 worldview 토글 시에만 ──
-    if (isWorldviewEnabled()) {
-      parts.push(`<fleet section="persona">\n${FLEET_PERSONA_PROMPT.trim()}\n</fleet>`);
-    }
-    parts.push(`<fleet section="role">\n${fleetRolePrompt.trim()}\n</fleet>`);
-    if (isWorldviewEnabled()) {
-      parts.push(`<fleet section="tone">\n${FLEET_TONE_PROMPT.trim()}\n</fleet>`);
-    }
+    parts.push(`<fleet section="role">\n${FLEET_ROLE_PROMPT.trim()}\n</fleet>`);
   }
 
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──

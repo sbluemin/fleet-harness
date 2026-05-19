@@ -17,7 +17,6 @@ import { registerAgentPanelShortcut, bindPanelBackgroundJobAnimation } from "./p
 import { registerCarrierStatusKeybind } from "./carrier-status/overlay.js";
 import { bindCarrierJobStreamPi, handleCarrierJobStreamEvent } from "./streaming.js";
 import { registerLog as registerLogDomain } from "./logs.js";
-import { registerMetaphor } from "./metaphor.js";
 import { registerSettings } from "./settings.js";
 import { registerToolRegistry } from "./tools.js";
 import { prepareKeybindBridgeForExtensionLoad } from "./keybinds.js";
@@ -65,7 +64,6 @@ export function bootFleet(ctx: ExtensionAPI): void {
   registerProviderRuntime(ctx, fleetServices, streamAcp);
   const { fleetEnabled: activeFleet } = registerFleetLifecycle(ctx);
   registerFleetWiki(ctx as any);
-  registerMetaphorDomain(ctx, activeFleet);
   if (activeFleet) registerJob(ctx);
   registerSettings(ctx);
   registerLog(ctx, activeFleet);
@@ -82,11 +80,6 @@ function registerStreamingHandler(pi: ExtensionAPI): void {
     unregisterStreamingHandler = null;
     bindCarrierJobStreamPi(null);
   });
-}
-
-function registerMetaphorDomain(pi: ExtensionAPI, fleetEnabled: boolean): void {
-  if (!fleetEnabled) return;
-  registerMetaphor(pi);
 }
 
 function registerLog(pi: ExtensionAPI, fleetEnabled: boolean): void {

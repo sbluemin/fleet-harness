@@ -3,9 +3,10 @@ id: "guide-001-fleet-harness-overview"
 title: "Guide - 001 fleet-harness 소개"
 tags: ["guide", "fleet-harness", "overview", "onboarding", "current"]
 created: "2026-05-07T15:44:30.628Z"
-updated: "2026-05-07T15:57:26.922Z"
-version: 5
-rawSourceRef: "raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md"
+updated: "2026-05-19T08:24:10.563Z"
+version: 6
+rawSourceRef: "raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md\"},{\"ref\":\"raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"f2083507\"}]"
 ---
 # fleet-harness 소개
 
@@ -111,7 +112,6 @@ Alt+1로 Fleet Action Protocol을 활성화한다. Editor 상단 테두리에 �
 | Alt+P | Agent Panel 표시/숨김 |
 | Alt+T | Bridge 모드 (단일 캐리어 직접 쉘) |
 | Alt+/ | 설정 오버레이 |
-| Alt+M | 입력 텍스트 Directive Refinement |
 | Alt+G | Grand Fleet 상태 오버레이 |
 | Alt+. | 키바인딩 목록 팝업 |
 
@@ -122,7 +122,6 @@ Alt+1로 Fleet Action Protocol을 활성화한다. Editor 상단 테두리에 �
 | 명령어 | 기능 |
 |---|---|
 | /fleet:wiki:menu | Fleet Wiki 허브 |
-| /fleet:metaphor:settings | Worldview · 작전명 · Directive 설정 |
 | /fleet:admiral:report | Admiral Completion Report 요청 |
 | /fleet:jobs:settings | Carrier Jobs 설정 |
 

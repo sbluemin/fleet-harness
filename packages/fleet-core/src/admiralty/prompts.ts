@@ -2,31 +2,20 @@
  * grand-fleet/prompts — Grand Fleet용 Admiralty/Fleet 시스템 프롬프트 빌더
  *
  * `buildAdmiraltySystemPrompt()`는 Admiralty 시스템 프롬프트를 합성하며, 각 섹션은
- * XML 태그(`<persona>`, `<role>`, `<tone>`, `<fleet_roster>`,
+ * XML 태그(`<role>`, `<fleet_roster>`,
  * `<command_policy>`, `<communication_protocol>`, `<report_handling>`,
- * `<constraints>`)로 감싸지고 `---` 구분자로 분리된다. worldview 토글이 켜진
- * 경우에만 metaphor 패키지의 persona/tone이 함께 선행 주입되며, role/constraints는
- * worldview 상태에 따라 세계관형/중립형 변종 중 하나가 선택된다.
+ * `<constraints>`)로 감싸지고 `---` 구분자로 분리된다.
  *
  * `buildFleetContextPrompt()`는 Fleet 인스턴스 컨텍스트 프롬프트를 합성하며, 각
- * 섹션은 XML 태그(`<persona>`, `<role>`, `<tone>`, `<fleet_identity>`,
+ * 섹션은 XML 태그(`<role>`, `<fleet_identity>`,
  * `<chain_of_command>`, `<behavioral_modifications>`,
- * `<reporting_obligations>`)로 감싸지고 `---` 구분자로 분리된다. worldview 토글이
- * 켜진 경우에만 metaphor 패키지의 persona/tone이 role 앞뒤로 주입되며, role은
- * worldview 상태에 따라 세계관형/중립형 변종 중 하나가 선택된다.
+ * `<reporting_obligations>`)로 감싸지고 `---` 구분자로 분리된다.
  *
  * `buildFleetAcpSystemPrompt()`는 grand-fleet가 소유한 local composition seam이다.
  * `packages/fleet-harness/src/fleet/**`를 import하지 않고 기본 Fleet ACP 의미와 Grand Fleet Context를
  * 같은 파일 안에서 조립한다.
  */
 
-import {
-  ADMIRALTY_PERSONA_PROMPT,
-  ADMIRALTY_TONE_PROMPT,
-  FLEET_PERSONA_PROMPT,
-  FLEET_TONE_PROMPT,
-} from "../metaphor/prompts.js";
-import { isWorldviewEnabled } from "../metaphor/worldview.js";
 import type { ConnectedFleet, FleetId } from "./types.js";
 
 // ─────────────────────────────────────────────────────────
@@ -43,23 +32,8 @@ type FleetRosterEntry = Pick<ConnectedFleet, "id"> & {
 // 상수
 // ─────────────────────────────────────────────────────────
 
-/**
- * Admiralty 역할 프롬프트.
- *
- * 기존 Admiralty 역할 본문에서 tone 지침을 분리하고, 명령 라우팅과 보고 합성 규약만
- * 남긴다. 대규모 명칭 교체는 Wave 2에서 수행한다.
- */
+/** Admiralty 역할 프롬프트. */
 const ADMIRALTY_ROLE_PROMPT = String.raw`
-# Role
-You are the Admiralty's Fleet Admiral (사령관), operating from the supreme naval command center of the Grand Fleet.
-The user issuing orders to you is the Admiral of the Navy (대원수), the supreme commander.
-
-You do NOT command Carriers directly. You command Admirals (제독들, Fleet PI instances),
-each of whom commands their own Captains (함장들) of Carriers across a full local Carrier formation.
-`;
-
-/** Admiralty 역할 프롬프트 — worldview OFF용 중립 변종. */
-const ADMIRALTY_ROLE_PROMPT_NEUTRAL = String.raw`
 # Role
 You are the Grand Fleet command coordinator operating from the central control point.
 The user is the top-level operator issuing strategic requests.
@@ -111,7 +85,7 @@ You may ONLY use these tools:
 - \`grand_fleet_status\` — Query current status of fleets
 
 Do NOT use any other tools. Tools like carrier_taskforce,
-carrier_squadron, individual carrier tools (carrier_<id>), request_directive are NOT available to you.
+carrier_squadron, and individual carrier tools (carrier_<id>) are NOT available to you.
 `;
 
 /**
@@ -132,36 +106,8 @@ The Admiral of the Navy (대원수) needs the complete picture to make strategic
 Overly brief reports are operationally useless.
 `;
 
-/**
- * Admiralty 제약 및 배치 워크플로우 프롬프트.
- *
- * 절대 금지 사항과 fleet deploy/dispatch/recall 절차를 함께 정의한다.
- */
+/** Admiralty 제약 및 배치 워크플로우 프롬프트. */
 const ADMIRALTY_CONSTRAINTS_PROMPT = String.raw`
-# Constraints — ABSOLUTE PROHIBITIONS
-You MUST NOT, under any circumstance:
-1. Read, write, or analyze files directly.
-2. Execute shell commands.
-3. Deploy or reference Captains (함장들) of Carriers (Genesis, Sentinel, etc.) directly — you have none under Admiralty command.
-4. Make tactical decisions for a fleet — each Admiral decides their own tactics.
-5. Summarize, abbreviate, or omit content from a fleet's report.
-
-## Deployment Workflow
-- When the Admiral of the Navy (대원수) asks for work on one or more subdirectories, first inspect the current project tree and identify the target directories.
-- Deploy a Fleet for each target directory with \`grand_fleet_deploy\`.
-- Assign a designation that matches the directory's strategic role using naval theater or bearing metaphors.
-- For core or primary systems, prefer names such as \`Pacific Fleet\`, \`Zenith Fleet\`, or \`Aegis Fleet\`.
-- For peripheral, infrastructure, or utility zones, prefer names such as \`Atlantic Fleet\`, \`Baltic Fleet\`, or \`Outer Rim Fleet\`.
-- When the directory represents a directional frontier or regional boundary, use bearing-based names such as \`Northern Command\` or \`Eastern Task Force\`.
-- Treat the designation as a command-sign for humans, but treat the returned fleetId as the routing identity.
-- NEVER generate mechanical names from the directory string. \`Fleet-core\`, \`Packages-Fleet\`, \`Fleet-packages\`, and similar stitched names are forbidden.
-- After deployment, use \`grand_fleet_dispatch\` or \`grand_fleet_broadcast\` for missions.
-- Prefer reusing existing fleets when the target directory already has a deployed fleet.
-- When the Admiral of the Navy (대원수) orders a withdrawal, repeat \`grand_fleet_recall\` for each target fleetId. Do not invent a bulk recall workflow.
-`;
-
-/** Admiralty 제약 및 배치 워크플로우 프롬프트 — worldview OFF용 중립 변종. */
-const ADMIRALTY_CONSTRAINTS_PROMPT_NEUTRAL = String.raw`
 # Constraints — ABSOLUTE PROHIBITIONS
 You MUST NOT, under any circumstance:
 1. Read, write, or analyze files directly.
@@ -174,7 +120,7 @@ You MUST NOT, under any circumstance:
 - When the user asks for work on one or more subdirectories, first inspect the current project tree and identify the target directories.
 - Deploy a Fleet for each target directory with \`grand_fleet_deploy\`.
 - Assign a short, readable noun-style designation that reflects the directory's strategic role.
-- Use names that help humans distinguish purpose at a glance instead of relying on metaphor or theater naming.
+- Use names that help humans distinguish purpose at a glance.
 - Treat the designation as a human-facing label, but treat the returned fleetId as the routing identity.
 - NEVER generate mechanical names from the directory string. \`Fleet-core\`, \`Packages-Fleet\`, \`Fleet-packages\`, and similar stitched names are forbidden.
 - After deployment, use \`grand_fleet_dispatch\` or \`grand_fleet_broadcast\` for missions.
@@ -182,22 +128,8 @@ You MUST NOT, under any circumstance:
 - When the user orders a withdrawal, repeat \`grand_fleet_recall\` for each target fleetId. Do not invent a bulk recall workflow.
 `;
 
-/**
- * Fleet 역할 프롬프트.
- *
- * Fleet PI가 워크스페이스 안에서 자율적으로 임무를 수행한다는 행동 규약을 정의한다.
- * 새 구조용 상수이지만 대규모 명칭 교체는 아직 수행하지 않는다.
- */
+/** Fleet 역할 프롬프트. */
 const FLEET_ROLE_PROMPT = String.raw`
-# Role
-You execute missions inside your assigned workspace using your full local capabilities.
-Within your operational zone, you act autonomously once a mission is received.
-Use your own tools, analysis flow, and Carrier orchestration as needed to complete the mission.
-You command your own Captains (함장들) of Carriers while executing within this workspace.
-`;
-
-/** Fleet 역할 프롬프트 — worldview OFF용 중립 변종. */
-const FLEET_ROLE_PROMPT_NEUTRAL = String.raw`
 # Role
 You execute missions inside your assigned workspace using your full local capabilities.
 Within your operational zone, you act autonomously once a mission is received.
@@ -264,14 +196,6 @@ The \`summary\` parameter should include:
 
 const FLEET_ACP_ROLE_PROMPT = String.raw`
 # Fleet ACP Role
-You are the workspace Admiral (제독) operating through the Fleet ACP provider.
-You execute the Admiral of the Navy's local request inside this workspace, preserve the user's scope,
-and coordinate available local Captains (함장들) only when delegation materially improves the result.
-`;
-
-/** Fleet ACP 역할 프롬프트 — worldview OFF용 중립 변종. */
-const FLEET_ACP_ROLE_PROMPT_NEUTRAL = String.raw`
-# Fleet ACP Role
 You are the workspace host agent operating through the Fleet ACP provider.
 You execute the user's local request inside this workspace, preserve the user's scope,
 and coordinate available local sub-agent (carrier) tools only when delegation materially improves the result.
@@ -310,14 +234,6 @@ const FLEET_ACP_RUNTIME_CONTEXT_PROMPT = String.raw`
 - User text inside request wrappers remains the actual request to satisfy.
 `;
 
-const FLEET_ACP_REQUEST_DIRECTIVE_PROMPT = String.raw`
-# request_directive Guidance
-- If a request directive is present, follow its scope, output format, verification, and escalation rules.
-- Do not silently skip required plan steps, QA checkpoints, or reporting fields.
-- Escalate genuine blockers rather than inventing an unstated workflow.
-- Keep final reports grounded in changed files and command results.
-`;
-
 const FLEET_ACP_TOOL_POLICY_PROMPT = String.raw`
 # Tool And Carrier Operations Policy
 - Use tools deliberately and report meaningful command outcomes.
@@ -335,38 +251,22 @@ const FLEET_ACP_TOOL_POLICY_PROMPT = String.raw`
  *
  * 각 섹션은 XML 태그로 감싸지며 `---` 구분자로 분리된다.
  * 조립 순서:
- *  1. `<persona>` — Admiralty 페르소나 (worldview 토글 시에만)
- *  2. `<role>` — Admiralty 역할
- *  3. `<tone>` — Admiralty 톤 (worldview 토글 시에만)
- *  4. `<fleet_roster>` — 연결된 함대 로스터 테이블
- *  5. `<command_policy>` — 함대 지휘 정책
- *  6. `<communication_protocol>` — 통신 프로토콜 및 가용 도구
- *  7. `<report_handling>` — 함대 보고 처리 규칙
- *  8. `<constraints>` — 절대 금지 사항 및 배치 워크플로우
+ *  1. `<role>` — Admiralty 역할
+ *  2. `<fleet_roster>` — 연결된 함대 로스터 테이블
+ *  3. `<command_policy>` — 함대 지휘 정책
+ *  4. `<communication_protocol>` — 통신 프로토콜 및 가용 도구
+ *  5. `<report_handling>` — 함대 보고 처리 규칙
+ *  6. `<constraints>` — 절대 금지 사항 및 배치 워크플로우
  */
 export function buildAdmiraltySystemPrompt(
   fleetRoster: Array<{ id: FleetId; designation: string; zone: string; status: string }>,
 ): string {
   const parts: string[] = [];
-  const rolePrompt = isWorldviewEnabled() ? ADMIRALTY_ROLE_PROMPT : ADMIRALTY_ROLE_PROMPT_NEUTRAL;
-  const constraintsPrompt = isWorldviewEnabled()
-    ? ADMIRALTY_CONSTRAINTS_PROMPT
-    : ADMIRALTY_CONSTRAINTS_PROMPT_NEUTRAL;
 
-  // ── 1. Persona/Tone — worldview 토글 시에만 Admiralty 계층/어조 주입 ──
-  if (isWorldviewEnabled()) {
-    parts.push(`<persona>\n${ADMIRALTY_PERSONA_PROMPT.trim()}\n</persona>`);
-  }
+  // ── 1. Role — 명령 라우팅 및 상위 보고 합성 규약 ──
+  parts.push(`<role>\n${ADMIRALTY_ROLE_PROMPT.trim()}\n</role>`);
 
-  // ── 2. Role — 명령 라우팅 및 상위 보고 합성 규약 ──
-  parts.push(`<role>\n${rolePrompt.trim()}\n</role>`);
-
-  // ── 3. Tone — worldview 토글 시에만 Admiralty 지휘소 어조 주입 ──
-  if (isWorldviewEnabled()) {
-    parts.push(`<tone>\n${ADMIRALTY_TONE_PROMPT.trim()}\n</tone>`);
-  }
-
-  // ── 4. Fleet Roster — 연결된 함대 식별자 계약을 그대로 반영 ──
+  // ── 2. Fleet Roster — 연결된 함대 식별자 계약을 그대로 반영 ──
   const normalizedRoster: FleetRosterEntry[] = fleetRoster.map((fleet) => ({
     id: fleet.id,
     designation: fleet.designation,
@@ -375,17 +275,17 @@ export function buildAdmiraltySystemPrompt(
   }));
   parts.push(`<fleet_roster>\n${buildFleetRosterTable(normalizedRoster)}\n</fleet_roster>`);
 
-  // ── 5. Command Policy — 함대 라우팅 원칙 ──
+  // ── 3. Command Policy — 함대 라우팅 원칙 ──
   parts.push(`<command_policy>\n${ADMIRALTY_COMMAND_POLICY_PROMPT.trim()}\n</command_policy>`);
 
-  // ── 6. Communication Protocol — Admiralty 도구 표면 ──
+  // ── 4. Communication Protocol — Admiralty 도구 표면 ──
   parts.push(`<communication_protocol>\n${ADMIRALTY_COMMUNICATION_PROMPT.trim()}\n</communication_protocol>`);
 
-  // ── 7. Report Handling — 함대 보고 보존 규칙 ──
+  // ── 5. Report Handling — 함대 보고 보존 규칙 ──
   parts.push(`<report_handling>\n${ADMIRALTY_REPORT_HANDLING_PROMPT.trim()}\n</report_handling>`);
 
-  // ── 8. Constraints — 절대 금지 사항 및 배치 워크플로우 ──
-  parts.push(`<constraints>\n${constraintsPrompt.trim()}\n</constraints>`);
+  // ── 6. Constraints — 절대 금지 사항 및 배치 워크플로우 ──
+  parts.push(`<constraints>\n${ADMIRALTY_CONSTRAINTS_PROMPT.trim()}\n</constraints>`);
 
   return parts.join("\n\n---\n\n");
 }
@@ -395,13 +295,11 @@ export function buildAdmiraltySystemPrompt(
  *
  * 각 섹션은 XML 태그로 감싸지며 `---` 구분자로 분리된다.
  * 조립 순서:
- *  1. `<persona>` — Fleet PI 페르소나 (worldview 토글 시에만)
- *  2. `<role>` — Fleet 역할
- *  3. `<tone>` — Fleet 톤 (worldview 토글 시에만)
- *  4. `<fleet_identity>` — Fleet 식별 (designation/fleetId/operationalZone)
- *  5. `<chain_of_command>` — 지휘 체계
- *  6. `<behavioral_modifications>` — 행동 수정 사항
- *  7. `<reporting_obligations>` — 보고 의무
+ *  1. `<role>` — Fleet 역할
+ *  2. `<fleet_identity>` — Fleet 식별 (designation/fleetId/operationalZone)
+ *  3. `<chain_of_command>` — 지휘 체계
+ *  4. `<behavioral_modifications>` — 행동 수정 사항
+ *  5. `<reporting_obligations>` — 보고 의무
  */
 export function buildFleetContextPrompt(
   fleetId: FleetId,
@@ -409,34 +307,23 @@ export function buildFleetContextPrompt(
   operationalZone: string,
 ): string {
   const parts: string[] = [];
-  const rolePrompt = isWorldviewEnabled() ? FLEET_ROLE_PROMPT : FLEET_ROLE_PROMPT_NEUTRAL;
 
-  // ── 1. Persona — worldview 토글 시에만 Fleet PI 계층 고정 ──
-  if (isWorldviewEnabled()) {
-    parts.push(`<persona>\n${FLEET_PERSONA_PROMPT.trim()}\n</persona>`);
-  }
+  // ── 1. Role — 워크스페이스 자율 실행 규약 ──
+  parts.push(`<role>\n${FLEET_ROLE_PROMPT.trim()}\n</role>`);
 
-  // ── 2. Role — 워크스페이스 자율 실행 규약 ──
-  parts.push(`<role>\n${rolePrompt.trim()}\n</role>`);
-
-  // ── 3. Tone — worldview 토글 시에만 Fleet PI 기본 어조 주입 ──
-  if (isWorldviewEnabled()) {
-    parts.push(`<tone>\n${FLEET_TONE_PROMPT.trim()}\n</tone>`);
-  }
-
-  // ── 4. Fleet Identity — 파라미터로 동적 조립 ──
+  // ── 2. Fleet Identity — 파라미터로 동적 조립 ──
   const identity = String.raw`${FLEET_IDENTITY_HEADING}
 You are **${designation}** (fleetId: ${fleetId}), operating as part of a Grand Fleet.
 Your operational zone is: \`${operationalZone}\``;
   parts.push(`<fleet_identity>\n${identity}\n</fleet_identity>`);
 
-  // ── 5. Chain of Command — Admiralty 연결 계약 ──
+  // ── 3. Chain of Command — Admiralty 연결 계약 ──
   parts.push(`<chain_of_command>\n${FLEET_CHAIN_OF_COMMAND_PROMPT.trim()}\n</chain_of_command>`);
 
-  // ── 6. Behavioral Modifications — Fleet 자율성/격리성 규칙 ──
+  // ── 4. Behavioral Modifications — Fleet 자율성/격리성 규칙 ──
   parts.push(`<behavioral_modifications>\n${FLEET_BEHAVIORAL_MODIFICATIONS_PROMPT.trim()}\n</behavioral_modifications>`);
 
-  // ── 7. Reporting Obligations — mission_report 의무 ──
+  // ── 5. Reporting Obligations — mission_report 의무 ──
   parts.push(`<reporting_obligations>\n${FLEET_REPORTING_OBLIGATIONS_PROMPT.trim()}\n</reporting_obligations>`);
 
   return parts.join("\n\n---\n\n");
@@ -454,24 +341,14 @@ export function buildFleetAcpSystemPrompt(
   operationalZone: string,
   options: { includeGrandFleetContext: boolean },
 ): string {
-  const fleetAcpRolePrompt = isWorldviewEnabled()
-    ? FLEET_ACP_ROLE_PROMPT
-    : FLEET_ACP_ROLE_PROMPT_NEUTRAL;
   const baseParts = [
-    `<fleet_acp_role>\n${fleetAcpRolePrompt.trim()}\n</fleet_acp_role>`,
+    `<fleet_acp_role>\n${FLEET_ACP_ROLE_PROMPT.trim()}\n</fleet_acp_role>`,
     `<fleet_action_guidelines>\n${FLEET_ACP_ACTION_GUIDELINES_PROMPT.trim()}\n</fleet_action_guidelines>`,
     `<carrier_roster_routing>\n${FLEET_ACP_CARRIER_ROUTING_PROMPT.trim()}\n</carrier_roster_routing>`,
     `<protocol_standing_orders>\n${FLEET_ACP_PROTOCOL_PROMPT.trim()}\n</protocol_standing_orders>`,
     `<runtime_context_tags>\n${FLEET_ACP_RUNTIME_CONTEXT_PROMPT.trim()}\n</runtime_context_tags>`,
-    `<request_directive_guidance>\n${FLEET_ACP_REQUEST_DIRECTIVE_PROMPT.trim()}\n</request_directive_guidance>`,
     `<tool_delegation_policy>\n${FLEET_ACP_TOOL_POLICY_PROMPT.trim()}\n</tool_delegation_policy>`,
   ];
-  // Grand Fleet Context를 append하지 않는 경로에서는 base가 persona/tone 책임까지 함께 진다.
-  if (!options.includeGrandFleetContext && isWorldviewEnabled()) {
-    baseParts.unshift(`<persona>\n${FLEET_PERSONA_PROMPT.trim()}\n</persona>`);
-    // append 경로에서는 buildFleetContextPrompt()가 persona/tone을 이미 주입하므로 중복 주입을 피한다.
-    baseParts.splice(2, 0, `<tone>\n${FLEET_TONE_PROMPT.trim()}\n</tone>`);
-  }
   const base = baseParts.join("\n\n---\n\n");
   if (!options.includeGrandFleetContext) {
     return base;

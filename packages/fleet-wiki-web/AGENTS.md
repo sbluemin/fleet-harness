@@ -87,7 +87,7 @@ POST Origin guard for browser-facing queue mutations, lockfile bearer auth for C
 
 ## Design Philosophy — "Maritime Codex"
 
-Fleet Wiki's web surface is a **reading instrument**, not a generic docs template. Its visual language reinterprets the project's naval metaphor through a **modern maritime cartography lens** (deep-water ink, brass instrumentation, aurora signals) — never as retro-terminal pastiche or 90s-wiki nostalgia. Information is treated like a constellation: nodes, links, and back-references are foregrounded so the Admiral can navigate by sight.
+Fleet Wiki's web surface is a **reading instrument**, not a generic docs template. Its visual language reinterprets the project's conceptual **naval metaphor** through a **modern maritime cartography lens** (deep-water ink, brass instrumentation, aurora signals) — never as retro-terminal pastiche or 90s-wiki nostalgia. Information is treated like a constellation: nodes, links, and back-references are foregrounded so the Admiral can navigate by sight.
 
 The aesthetic intent is fixed and load-bearing — design changes that drift away from this identity are reviewed with the same rigor as code regressions.
 

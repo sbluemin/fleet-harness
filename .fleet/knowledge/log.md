@@ -1185,3 +1185,35 @@
 - result: `accepted`
 - target: `wiki/mermaid-test-suite.md`
 
+## 2026-05-19T08:24:10.585Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - 001 fleet-harness 소개`
+
+## 2026-05-19T08:24:10.587Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-19T08-24-10-563Z-8698ae8c`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-19T08:31:46.637Z — index rebuilt
+
+- entry_count: `9`
+
+## 2026-05-19T08:31:46.638Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-19T08-24-10-563Z-8698ae8c`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+

@@ -17,7 +17,6 @@ Pi-specific capabilities are organized into domain-mirroring adapters under `src
 
 ### Lean Services (Single Files)
 - **fleet**: Core Fleet state and event adapters
-- **metaphor**: Worldview and directive refinement wiring
 - **job**: Fleet carrier job lifecycle and status tracking
 - **settings**: Fleet-to-Pi settings synchronization
 - **log**: Fleet log store and terminal output streaming
