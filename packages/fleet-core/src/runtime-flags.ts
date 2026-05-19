@@ -9,7 +9,3 @@ export function setFleetCoreBootMode(mode: BootMode): void {
 export function getBootMode(): BootMode {
   return fleetCoreBootMode;
 }
-
-export function isFleetCoreDevMode(): boolean {
-  return getBootMode() === "dev";
-}

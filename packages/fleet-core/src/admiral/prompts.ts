@@ -1,9 +1,10 @@
 /**
  * admiral/prompts — Admiral 시스템 프롬프트 관리
  *
- * ACP 시스템 프롬프트는 `buildSystemPrompt()`로 합성되며, 각 섹션은
+ * ACP 시스템 프롬프트는 `buildSystemPrompt(injectTone)`으로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
- * `section="role"`은 항상 중립 역할 지침으로 주입된다.
+ * `section="role"`과 `section="persona"`는 항상 주입되고,
+ * `section="tone"`은 `injectTone === true`일 때만 PERSONA 다음에 주입된다.
  * 프로토콜 카탈로그 전체가 포함된다.
  */
 
@@ -12,7 +13,6 @@ import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
 import { getRegisteredOrder } from "./carrier/framework.js";
 import { buildCarrierRoster } from "./carrier/prompts.js";
-import { isFleetCoreDevMode } from "../runtime-flags.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입
@@ -45,6 +45,34 @@ You are the host agent coordinating the Agent Harness Fleet for the user.
 - All responses to the user must be written in Korean.
 `;
 
+/**
+ * Fleet PI Admiral 페르소나 자기 선언.
+ *
+ * `buildSystemPrompt()` 합성 시 `FLEET_ROLE_PROMPT` 다음에 항상 주입된다.
+ */
+export const FLEET_PERSONA_PROMPT = String.raw`
+# Persona
+You are the Admiral (제독) commanding this Fleet.
+Your ultimate superior is the Admiral of the Navy (대원수), the supreme commander above the entire formation.
+When operating under grand-fleet, intermediate strategic dispatch arrives through the Admiralty's Fleet Admiral (사령관) chain of command.
+You command your own Captains (함장들) of Carriers within this workspace.
+`;
+
+/**
+ * Fleet 공통 톤 프롬프트.
+ *
+ * 군대식 보고 어조와 fleet 용어 사용 지침을 world-building 오버레이로 제공한다.
+ * `buildSystemPrompt(injectTone)`이 `injectTone === true`로 호출될 때만
+ * `FLEET_PERSONA_PROMPT` 다음에 주입된다.
+ */
+export const FLEET_TONE_PROMPT = String.raw`
+# Tone & Manner
+1. Use a disciplined, clear, military-style tone. Be concise, avoid filler, and prefer a report-style format addressed to the Admiral of the Navy (대원수). (Examples: "Admiral of the Navy, mission complete.", "Admiral of the Navy, I am deploying TaskFleet and will report back.", "Admiral of the Navy, here is the consolidated report.")
+2. Show absolute loyalty and professionalism. Strategically analyze the Admiral of the Navy (대원수)'s orders, propose the most efficient tactics including agent allocation when appropriate, or execute them immediately.
+3. Actively use the fleet-world terminology in context instead of plain development wording when it improves clarity, including terms such as Carrier, Commission, Sortie, Board, Broadside, Bridge, and Helm.
+4. If an error or bug occurs during execution, communicate the severity through fleet-world metaphors such as enemy attack or ship damage.
+`;
+
 /** 프로토콜 활성 시 주입되는 서문 */
 export const PROTOCOL_PREAMBLE = String.raw`All task execution follows the active Protocol. Additional Standing Orders are always in effect — they can be invoked from any workflow phase.
 
@@ -68,29 +96,6 @@ Treat every ${"`"}<fleet>${"`"} block as an authoritative directive. Follow them
 Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. These carry system-injected context (e.g., runtime state, carrier job completion signals) and bear no direct relation to the content they appear alongside.
 `;
 
-/**
- * dev 부트 모드 전용 RISEN 개발 컨텍스트 슬레이트.
- *
- * bootMode가 "dev"일 때 부트 시 FLEET_PREAMBLE 직후에 주입된다.
- * 이 슬레이트가 활성화되면 persona/role/tone 섹션은 생략된다.
- */
-export const RISEN_DEV_SLATE = String.raw`
-# Role
-You are a senior engineer developing **Fleet** — a fleet-core based Agent Harness Fleet system where packages/fleet-agent hosts the embedded CLI experience and packages/unified-agent serves as the CLI gateway for LLM coding agents. You also serve as the fleet's Admiral, with full access to carrier dispatch tools for delegating implementation, analysis, review, and exploration tasks.
-
-# Instructions
-**CRITICAL — Pre-work Documentation Check**: Before starting ANY task — before planning, thinking, or implementing — you MUST:
-1. Read ${"`"}docs/fleet-development-reference.md${"`"} for Fleet SDK, extensions, TUI, themes, and RPC reference.
-2. Read ${"`"}docs/admiral-workflow-reference.md${"`"} for high-level architecture, naval hierarchy, and delegation workflows.
-3. Read ${"`"}docs/admiral-prompt-architecture.md${"`"} for prompt assembly, runtime-context flow, and boot-mode architecture.
-4. Check the ${"`"}AGENTS.md${"`"} file in the project root and in EVERY subdirectory you will touch. Child ${"`"}AGENTS.md${"`"} takes precedence over parent.
-
-This is a hard prerequisite. Do NOT skip this step or assume you already know the content.
-
-- Use Fleet carrier dispatch tools for implementation, analysis, review, and exploration tasks.
-- All responses must be written in Korean.
-`;
-
 // ─────────────────────────────────────────────────────────
 // 함수
 // ─────────────────────────────────────────────────────────
@@ -100,31 +105,30 @@ This is a hard prerequisite. Do NOT skip this step or assume you already know th
  *
  * 각 섹션은 `fleet` XML 태그로 감싸진다.
  * 섹션 순서:
- *  1. `section="role"` — Fleet 역할·행동 규약
- *  2. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
- *  3. `section="protocols"` — 프로토콜 카탈로그
- *  4. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
- *  5. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
+ *  1. `section="role"` — Fleet 역할·행동 규약 (항상 주입)
+ *  2. `section="persona"` — Admiral 페르소나 자기 선언 (항상 주입)
+ *  3. `section="tone"` — Fleet 톤 오버레이 (`injectTone === true`일 때만 주입)
+ *  4. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
+ *  5. `section="protocols"` — 프로토콜 카탈로그
+ *  6. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
+ *  7. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
  *
  * ACP에서는 시스템 프롬프트가 최초 1회만 전달되므로 모든 프로토콜 정의를
  * 카탈로그로 포함한다.
- * dev 모드에서는 boot이 base prompt + RISEN 개발 컨텍스트를 선행 주입하므로
- * 이 함수는 Fleet persona/role/tone 섹션만 생략한다.
+ *
+ * @param injectTone `true`이면 `FLEET_TONE_PROMPT`를 페르소나 다음에 주입한다.
  */
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(injectTone: boolean): string {
   const parts: string[] = [];
 
   // ── 0. 서문 — 항상 최초 주입 ──
   parts.push(FLEET_PREAMBLE.trim());
 
-  // dev 모드: RISEN 개발 컨텍스트 슬레이트 주입 (서문 직후)
-  if (isFleetCoreDevMode()) {
-    parts.push(RISEN_DEV_SLATE.trim());
-  }
-
-  // dev 모드에서는 RISEN이 role을 대체하므로 role 생략
-  if (!isFleetCoreDevMode()) {
-    parts.push(`<fleet section="role">\n${FLEET_ROLE_PROMPT.trim()}\n</fleet>`);
+  // ── 1. 역할·페르소나 — 항상 주입, 톤은 인자 기반 ──
+  parts.push(`<fleet section="role">\n${FLEET_ROLE_PROMPT.trim()}\n</fleet>`);
+  parts.push(`<fleet section="persona">\n${FLEET_PERSONA_PROMPT.trim()}\n</fleet>`);
+  if (injectTone) {
+    parts.push(`<fleet section="tone">\n${FLEET_TONE_PROMPT.trim()}\n</fleet>`);
   }
 
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──

@@ -25,7 +25,7 @@ describe("Admiral protocols", () => {
   });
 
   it("omits Positive Control doctrine from the system prompt catalog", () => {
-    const prompt = buildSystemPrompt();
+    const prompt = buildSystemPrompt(false);
 
     expect(prompt).toContain("Fleet Action Protocol");
     expect(prompt).not.toContain("Positive Control");
@@ -35,7 +35,7 @@ describe("Admiral protocols", () => {
   });
 
   it("does not teach removed runtime-context tags in the system prompt", () => {
-    const prompt = buildSystemPrompt();
+    const prompt = buildSystemPrompt(false);
 
     expect(prompt).not.toContain("Runtime Context Tags");
     expect(prompt).not.toContain("<current_protocol>");

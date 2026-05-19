@@ -8,7 +8,11 @@ if (options.help) {
   process.exit(0);
 }
 
-runApp({ native: options.native, replaceSystemPrompt: options.replaceSystemPrompt }).catch((error: unknown) => {
+runApp({
+  native: options.native,
+  replaceSystemPrompt: options.replaceSystemPrompt,
+  disableMetaphor: options.disableMetaphor,
+}).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`${message}\n`);
   process.exit(1);
