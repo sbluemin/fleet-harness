@@ -126,7 +126,7 @@ function resolveRun(
     const byRunId = runs.get(track.runId);
     if (byRunId) return byRunId;
   }
-  return runs.get(track.streamKey);
+  return runs.get(track.streamKey) ?? runs.get(track.trackId);
 }
 
 function collectBlockStats(blocks: readonly ColBlock[]): { readonly textLineCount: number; readonly toolCallCount: number } {

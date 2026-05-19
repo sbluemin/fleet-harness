@@ -10,6 +10,7 @@ import {
 } from "./job-bar-state.js";
 
 export interface JobBarRegistrationOptions {
+  readonly requestResize?: () => void;
   readonly rt: FleetCoreRuntimeContext;
   readonly scheduleRender: () => void;
 }
@@ -28,7 +29,10 @@ export function subscribeJobBar(options: JobBarRegistrationOptions): () => void 
         multilineStrategy: "paste-mode",
       });
     },
-    onRenderRequest: options.scheduleRender,
+    onRenderRequest: () => {
+      options.requestResize?.();
+      options.scheduleRender();
+    },
     rt: options.rt,
   });
 

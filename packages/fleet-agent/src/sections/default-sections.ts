@@ -13,6 +13,9 @@ export function createDefaultFleetPtySections(rt: FleetCoreRuntimeContext): Flee
 
 export function createDefaultFleetPtyComponent(sections: readonly FleetPtySection[]): Component {
   return {
+    desiredHeight(maxRows: number): number {
+      return Math.min(maxRows, sections.reduce((sum, section) => sum + (section.component.desiredHeight?.(maxRows) ?? 1), 0));
+    },
     invalidate(): void {
       for (const section of sections) {
         section.component.invalidate();

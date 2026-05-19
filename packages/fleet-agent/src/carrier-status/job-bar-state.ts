@@ -156,6 +156,10 @@ export function disposeJobBarState(): void {
   runtimeBindings = null;
 }
 
+export function isJobBarStateRuntimeBound(): boolean {
+  return runtimeBindings !== null;
+}
+
 export function getDefaultClis(): readonly string[] {
   const rt = getRuntimeBindings().rt;
   return sortByCategory(rt.admiral.carrier.getRegisteredOrder().filter((id: string) => !rt.admiral.carrier.isSquadronCarrierEnabled(id)));
@@ -253,6 +257,8 @@ export function makeFooterCols(): AgentCol[] {
 }
 
 export function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void {
+  if (!runtimeBindings) return;
+
   switch (event.type) {
     case "job:registered":
       registerStreamJob(event);
@@ -327,12 +333,14 @@ export function getGrandFleetStreamStoreState(): {
 }
 
 export function schedulePanelRender(animate: boolean): void {
+  if (!runtimeBindings) return;
   if (animate) ensurePanelAnimTimer();
   getRuntimeBindings().onRenderRequest();
   if (!animate) stopPanelAnimTimerIfIdle();
 }
 
 export function ensurePanelAnimTimer(): void {
+  if (!runtimeBindings) return;
   const state = getState();
   if (state.animTimer) return;
   state.animTimer = setInterval(() => {
@@ -640,12 +648,16 @@ function toReadonlyPanelJob(job: MutablePanelJob): PanelJob {
 }
 
 function getSessionIdFor(carrierId: string): string | undefined {
-  return getRuntimeBindings().rt.admiral.agent.connections.getSessionIdFor(carrierId);
+  return runtimeBindings?.rt.admiral.agent.connections.getSessionIdFor(carrierId);
 }
 
 function getRuntimeBindings(): RuntimeBindings {
   if (!runtimeBindings) {
-    throw new Error("Job Bar state runtime is not bound. Call bindJobBarStateRuntime() first.");
+    return {
+      onCarrierResultReminder: noop,
+      onRenderRequest: noop,
+      rt: undefined as never,
+    };
   }
   return runtimeBindings;
 }

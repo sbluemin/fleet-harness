@@ -224,7 +224,7 @@ function appendWidgetJobSummary(
     for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
       const track = job.tracks[trackIndex];
       if (!track) continue;
-      const trackColor = resolveCarrierColor(rt, track.displayCli) || jobColor;
+      const trackColor = resolveCarrierColor(rt, track.displayCli) ?? jobColor;
       const icon = trackStatusIcon(rt, track, frame, trackColor);
       const stats = widgetTrackStats(rt, track);
       const inline = !track.isComplete ? trackInlineBlock(rt, track) : "";

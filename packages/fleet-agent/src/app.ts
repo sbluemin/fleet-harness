@@ -49,10 +49,8 @@ export async function runApp(): Promise<void> {
     refreshSize: (size) => ui.refreshSize(size),
     requestRender: scheduleRender,
   });
-  const initialResize = ptyManager.requestResize("initial");
   retainProgrammaticInput(createProgrammaticInput(ptyHost, currentProfile));
-  const unsubscribeJobBar = subscribeJobBar({ rt, scheduleRender });
-  assertInputContract();
+  let unsubscribeJobBar = () => {};
   let stopping = false;
   let disposeInputStream = () => {};
   const resize = () => ptyManager?.requestResize("terminal-resize");
@@ -74,6 +72,13 @@ export async function runApp(): Promise<void> {
   });
 
   ui.setChildren([ptyView, createFleetPtyViewport(fleetPty)]);
+  unsubscribeJobBar = subscribeJobBar({
+    requestResize: () => ptyManager?.requestResize("programmatic"),
+    rt,
+    scheduleRender,
+  });
+  assertInputContract();
+  const initialResize = ptyManager.requestResize("initial");
   ui.addInputListener((data) => router.route(data));
   ptyHost.start({ cols: ui.columns, rows: initialResize.dedicatedRows });
   ptyHost.onData((chunk) => {
