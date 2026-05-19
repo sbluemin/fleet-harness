@@ -895,7 +895,7 @@ async function buildProviderClient(options: UnifiedAgentBuildOptions): Promise<I
 
 /**
  * ACP `tool_call_update`의 title이 도구 종류 prefix 없이 파일 경로/인자만 도착하는 경우
- * (예: `"engines/.../npx.ts"`), `data.kind`를 활용해 사람이 읽기 쉬운 prefix를 합성한다.
+ * (예: `"packages/.../npx.ts"`), `data.kind`를 활용해 사람이 읽기 쉬운 prefix를 합성한다.
  *
  * - title이 비어있으면 그대로 빈 문자열 반환 (머지 가드 동작 유지)
  * - title이 이미 kind 라벨로 시작하면 변형하지 않음 (예: "Read /tmp/x.txt")

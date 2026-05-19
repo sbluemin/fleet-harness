@@ -184,7 +184,7 @@ ait (gemini) ❯ {input}           # Omitted if effort is not supported
 
 Adding a new CLI provider requires updating the provider registry first, then any provider-specific seams that do not derive automatically:
 
-1. **`engines/packages/` tree의 `unified-agent/src/config/CliConfigs.ts`** — Add an entry to `CLI_BACKENDS` with the required spawn/protocol metadata.
+1. **`packages/unified-agent/src/config/CliConfigs.ts`** — Add an entry to `CLI_BACKENDS` with the required spawn/protocol metadata.
 2. **Claude-family alias additions** — If the new provider reuses `UnifiedClaudeAgentClient`, also update the `cliType` union in `src/client/UnifiedClaudeAgentClient.ts`, the Claude bridge allowlist in `src/connection/AcpConnection.ts#getClaudeSystemPrompt()`, the status fetcher registration in `src/service-status/store.ts`, and any provider-specific fallback URL/target switches in the same store.
 3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/IUnifiedAgentClient.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, OpenCode entries in `src/service-status/store.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
 4. **Non-derived provider seams** — Add or adjust any dedicated client routing, status fetcher, or fallback behavior that is not automatically derived from `CLI_BACKENDS`.

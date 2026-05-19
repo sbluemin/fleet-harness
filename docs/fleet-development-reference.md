@@ -8,7 +8,7 @@ Fleet development follows a hard split:
 
 - `packages/fleet-core` — host-agnostic Fleet product core
 - `packages/fleet-agent` — primary Fleet CLI host (fleetd)
-- `engines/packages/unified-agent` — core execution engine
+- `packages/unified-agent` — core execution engine
 
 ## 2. Where New Work Goes
 
@@ -41,7 +41,7 @@ Put code here when it requires:
 
 - Host packages (`fleet-agent`) consume `fleet-core` through public exports.
 - `fleet-core` must not import host-specific packages.
-- `@sbluemin/unified-agent` is the primary engine dependency.
+- `@sbluemin/fleet-unified-agent` is the primary engine dependency.
 - Do not deep-import `src/**` or `internal/**` across package boundaries.
 
 ## 5. State Synchronization

@@ -71,7 +71,7 @@ pnpm --filter @sbluemin/fleet-unified-agent link --global
 > Fleet infrastructure, carriers, and Agent Panel modules now live under `packages/`; they do not require separate `pnpm install` commands.
 >
 > Fleet engine note:
-> - `engines/` contains the core `unified-agent` engine package branded as `@sbluemin/fleet-unified-agent`.
+> - `packages/unified-agent/` contains the core `unified-agent` engine package branded as `@sbluemin/fleet-unified-agent`.
 > - All intra-repo links use `workspace:*`; do not replace them with published npm references.
 > - The engine `unified-agent` package is developed in-tree alongside the other Fleet packages and is linked globally as `ait` from this workspace.
 

@@ -5,7 +5,7 @@ Fleet has completed the logical product split that separates the product core fr
 
 - `packages/fleet-core` owns Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, and public APIs.
 - `packages/fleet-agent` owns CLI lifecycle wiring, TUI rendering, and host-specific adapters.
-- `@sbluemin/unified-agent` remains the independent backend client package.
+- `@sbluemin/fleet-unified-agent` remains the independent backend client package.
 
 This split is the foundation for turning Fleet into a standalone product that can be exposed through multiple hosts.
 

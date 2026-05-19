@@ -10,7 +10,7 @@ This package owns the local host assembly for the Dedicated CLI PTY and Fleet PT
 - **Must Not Own**: Fleet domain logic, carrier persona definitions, or generic engine logic.
 - **Dependencies**: Restricted to `@sbluemin/fleet-core`, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
 
-Dependencies on `engines/*` are generally forbidden, with the sole exception of `@sbluemin/unified-agent`. The Job Bar functionality is fully absorbed into `fleet-agent`.
+Direct dependencies on execution-engine packages are generally forbidden, with the sole exception handled through `@sbluemin/fleet-core`'s dependency on `@sbluemin/fleet-unified-agent`. The Job Bar functionality is fully absorbed into `fleet-agent`.
 
 ## Canonical Layout
 
@@ -39,4 +39,3 @@ Only the permanent vertical two-pane layout is allowed:
 - ESM-only with TypeScript `NodeNext`.
 - Local imports use `.js` specifiers.
 - Do not mutate `process.env`.
-

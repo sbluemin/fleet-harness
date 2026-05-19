@@ -11,10 +11,9 @@
 |------|-------------|
 | `bin/` | Fleet dev and main entry scripts |
 | `docs/` | **Main Developer Guide** — Comprehensive reference for SDK, extensions, TUI, themes, and RPC; **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
-| `engines/` | Active Fleet engine workspace — `@sbluemin/unified-agent` package linked through `workspace:*`, configured for `.fleet` config root, and maintained in-tree as the canonical engine. |
-| `packages/` | First-party workspace packages: `fleet-core`, `fleet-mcp-server`, `fleet-wiki`, `fleet-wiki-web`, `fleet-tui`, and `fleet-agent` (embedded CLI TUI) |
+| `packages/` | First-party workspace packages: `fleet-core`, `fleet-mcp-server`, `fleet-wiki`, `fleet-wiki-web`, `fleet-tui`, `fleet-agent` (embedded CLI TUI), and `unified-agent` (`@sbluemin/fleet-unified-agent`) |
 
-> See each directory's `AGENTS.md` for detailed maps: `packages/fleet-core/AGENTS.md`, `packages/fleet-agent/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `engines/AGENTS.md`.
+> See each directory's `AGENTS.md` for detailed maps: `packages/fleet-core/AGENTS.md`, `packages/fleet-agent/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `packages/unified-agent/AGENTS.md`.
 
 ## TypeScript File Structure
 

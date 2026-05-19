@@ -1,5 +1,5 @@
 packages:
-  - "engines/packages/unified-agent"
+  - "packages/unified-agent"
   - "packages/fleet-core"
   - "packages/fleet-mcp-server"
   - "packages/fleet-carriers"

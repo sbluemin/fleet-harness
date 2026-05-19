@@ -12,7 +12,6 @@ const forbidden = [
   /@sbluemin\/fleet-harness/,
   /@sbluemin\/fleet-ai/,
   /@sbluemin\/fleet-coding-agent/,
-  /engines\//,
   /workspace:\*.*@sbluemin\/fleet-(?:ai|agent|coding-agent)/,
 ];
 const fleetTuiForbidden = [
@@ -24,7 +23,6 @@ const fleetTuiForbidden = [
   /@sbluemin\/fleet-wiki-web/,
   /@sbluemin\/fleet-ai/,
   /@sbluemin\/fleet-coding-agent/,
-  /engines\//,
 ];
 const allowedDocPhrases = [
   "permanently forbidden",

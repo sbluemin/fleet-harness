@@ -22,7 +22,7 @@ Allowed workspace dependencies are:
 - `@sbluemin/fleet-wiki`
 - `@sbluemin/fleet-wiki-web`
 
-Engine packages under `engines/*` are permanently forbidden dependencies.
+Execution-engine packages such as `@sbluemin/fleet-unified-agent` are permanently forbidden direct dependencies.
 
 ## CLI Selection
 
