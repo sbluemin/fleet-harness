@@ -217,20 +217,22 @@ function appendWidgetJobSummary(
     if (!group || group.jobs.length === 0) continue;
     const groupColor = resolveCarrierColor(rt, group.carrierId);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${border(rt, theme, "├─")} ${groupIcon(rt, group, frame)} ${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${groupIcon(rt, group, frame)} ${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
     ));
 
     for (let jobIndex = 0; jobIndex < group.jobs.length && lines.length < MAX_WIDGET_LINES; jobIndex++) {
       const job = group.jobs[jobIndex];
       if (!job) continue;
+      const isLastJob = jobIndex === group.jobs.length - 1;
+      const jobBranch = isLastJob ? "└─" : "├─";
       const jobColor = resolveCarrierColor(rt, job.ownerCarrierId);
       const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
         ? trackInlineBlock(rt, job.tracks[0])
         : "";
       const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(rt, job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(rt, theme, "├─")} ${jobIcon(rt, job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(rt, theme, jobBranch)} ${jobIcon(rt, job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
         width,
       ));
 
