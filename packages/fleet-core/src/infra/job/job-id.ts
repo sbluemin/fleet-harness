@@ -1,11 +1,11 @@
-export type CarrierJobKind = "carrier" | "sortie" | "squadron" | "taskforce";
+export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
 
 export interface ParsedCarrierJobId {
   kind: CarrierJobKind;
   toolCallId: string;
 }
 
-const JOB_PREFIXES = new Set<CarrierJobKind>(["carrier", "sortie", "squadron", "taskforce"]);
+const JOB_PREFIXES = new Set<CarrierJobKind>(["carrier", "sortie", "taskforce"]);
 
 export function buildCarrierJobId(kind: CarrierJobKind, toolCallId: string): string {
   if (!JOB_PREFIXES.has(kind)) {

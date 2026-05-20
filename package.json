@@ -10,11 +10,11 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "FLEET_HARNESS_DEV=1 node ./bin/fleet-main.mjs",
+    "fleet": "pnpm --filter @sbluemin/fleet-unified-agent build && pnpm --filter @sbluemin/fleet-agent dev",
     "postinstall": "pnpm -r build"
   },
   "bin": {
-    "fleet": "./bin/fleet-main.mjs",
+    "fleet": "./packages/fleet-agent/bin/fleet",
     "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs"
   },
   "devDependencies": {
@@ -25,8 +25,6 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.119",
-    "@sbluemin/fleet-coding-agent": "workspace:*",
-    "@sbluemin/fleet-harness": "workspace:*",
     "undici": "^7"
   }
 }

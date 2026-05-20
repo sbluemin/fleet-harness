@@ -31,12 +31,13 @@ import {
   type SessionMappingCommitToken,
 } from "./session-runtime.js";
 import {
+  startMcpServer,
   installExecutorToolCallRouter,
   cleanupExecutorSession,
   detachExecutorMcpForReuse,
   registerExecutorSessionTools,
-} from "./mcp-router.js";
-import { getExecutorMcpTools } from "../tools.js";
+} from "@sbluemin/fleet-mcp-server";
+import { getExecutorMcpTools, invoke } from "../tools.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 
@@ -375,7 +376,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (activeMcpToken) {
         if (poolEntry) poolEntry.mcpSessionToken = activeMcpToken;
-        installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+        installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
       }
 
       const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
@@ -400,7 +401,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (poolEntry?.mcpSessionToken) {
         activeMcpToken = poolEntry.mcpSessionToken;
-        installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+        installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
       }
     }
 
@@ -530,7 +531,7 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
     await applyResolvedEffort(client, cliType, model, effortResolution);
 
     if (activeMcpToken) {
-      installExecutorToolCallRouter(activeMcpToken, { cwd, signal });
+      installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
     }
 
     if (aborted) {
@@ -894,7 +895,7 @@ async function buildProviderClient(options: UnifiedAgentBuildOptions): Promise<I
 
 /**
  * ACP `tool_call_update`의 title이 도구 종류 prefix 없이 파일 경로/인자만 도착하는 경우
- * (예: `"engines/.../npx.ts"`), `data.kind`를 활용해 사람이 읽기 쉬운 prefix를 합성한다.
+ * (예: `"packages/.../npx.ts"`), `data.kind`를 활용해 사람이 읽기 쉬운 prefix를 합성한다.
  *
  * - title이 비어있으면 그대로 빈 문자열 반환 (머지 가드 동작 유지)
  * - title이 이미 kind 라벨로 시작하면 변형하지 않음 (예: "Read /tmp/x.txt")
@@ -939,7 +940,6 @@ async function setupExecutorMcp(
   const specs = getExecutorMcpTools(carrierId);
   if (specs.length === 0) return null;
   try {
-    const { startMcpServer } = await import("../../_shared/mcp.js");
     const mcpUrl = await startMcpServer();
     const token = crypto.randomUUID();
     registerExecutorSessionTools(token, specs);

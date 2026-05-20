@@ -2,7 +2,7 @@
 
 > **A Multi-LLM Orchestration Kit**
 >
-> A custom extension fleet based on [pi-coding-agent](https://github.com/badlogic/pi-mono).
+> A standalone multi-LLM orchestration kit.
 > The core purpose is to operate 8 carriers — Claude Code, Codex CLI, and Gemini CLI — through a single unified interface.
 
 ## Structure
@@ -10,11 +10,10 @@
 | Path | Description |
 |------|-------------|
 | `bin/` | Fleet dev and main entry scripts |
-| `docs/` | **Main Developer Guide** — Comprehensive reference for PI SDK, extensions, TUI, themes, and RPC; **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
-| `engines/` | Active Fleet engine workspace — `@sbluemin/fleet-*` packages (`tui`, `ai`, `agent`, `coding-agent`) linked through `workspace:*`, configured for `.fleet` config root, and maintained in-tree as the canonical engine collection. |
-| `packages/` | First-party workspace packages: `fleet-core`, `fleet-wiki`, `fleet-wiki-web`, `fleet-harness` (Pi capability wiring, host surfaces, and `/btw` ephemeral overlay) |
+| `docs/` | **Main Developer Guide** — Comprehensive reference for SDK, extensions, TUI, themes, and RPC; **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
+| `packages/` | First-party workspace packages: `fleet-core`, `fleet-mcp-server`, `fleet-carriers`, `fleet-wiki`, `fleet-wiki-web`, `fleet-tui`, `fleet-agent` (embedded CLI TUI), and `unified-agent` (`@sbluemin/fleet-unified-agent`) |
 
-> See each directory's `AGENTS.md` for detailed maps: `packages/fleet-core/AGENTS.md`, `packages/fleet-harness/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `engines/AGENTS.md`.
+> See each directory's `AGENTS.md` for detailed maps: `packages/fleet-core/AGENTS.md`, `packages/fleet-agent/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `packages/unified-agent/AGENTS.md`.
 
 ## TypeScript File Structure
 
@@ -42,5 +41,5 @@ Do **not** interleave constants and functions, or declare types mid-file.
 - **Language:** `CHANGELOG.md` **MUST be written entirely in English** — entries, descriptions, and all prose.
 - **Format:** Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions (`Added`, `Changed`, `Fixed`, `Removed`, `Breaking Changes` subsections).
 - **Versioning:** Each release maps to a git tag (e.g., `## [0.1.1] - YYYY-MM-DD`). The `[Unreleased]` section stays empty until the next release is cut.
-- **Package Prefixes:** Starting with `[Unreleased]`, prefix entries with package tags from this vocabulary only: `[core]`, `[wiki]`, `[wiki-web]`, `[harness]`, `[coding-agent]`, `[ai]`, `[agent-core]`, `[unified-agent]`. Drop the historical `fleet-` prefix in tags. For exactly two affected packages, combine tags (e.g., `[core][unified-agent]`). For cross-cutting changes affecting three or more packages, omit the prefix as fleet-wide. Do **not** use `[tui]`; `tui` maintains a separate changelog. Do **not** link these prefixes to Conventional Commits scopes.
+- **Package Prefixes:** Starting with `[Unreleased]`, prefix entries with package tags from this vocabulary only: `[core]`, `[mcp-server]`, `[wiki]`, `[wiki-web]`, `[agent-core]`, `[unified-agent]`. Drop the historical `fleet-` prefix in tags. For exactly two affected packages, combine tags (e.g., `[core][unified-agent]`). For cross-cutting changes affecting three or more packages, omit the prefix as fleet-wide. Do **not** use `[tui]`; `tui` maintains a separate changelog. Do **not** link these prefixes to Conventional Commits scopes.
 - **Entry Granularity:** Each entry is a single-line summary of the change. Describe the user-/operator-visible behavior change in plain English; do **not** reference source files, function names, line numbers, or implementation details. Implementation specifics belong in the commit message, not in `CHANGELOG.md`.

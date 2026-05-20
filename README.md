@@ -1,6 +1,6 @@
 <div align="center">
-    <h1>Fleet Harness</h1>
-    <img src=".github/logo.png" alt="fleet-harness" width="640" />
+    <h1>Fleet</h1>
+    <img src=".github/logo.png" alt="fleet" width="640" />
     <h3><em>One Fleet. All LLMs.</em></h3>
 </div>
 
@@ -16,7 +16,7 @@
 ---
 
 <div align="center">
-  <img src=".github/fleet-harness.gif" alt="fleet-harness demo" width="640" />
+  <img src=".github/fleet-harness.gif" alt="fleet demo" width="640" />
 </div>
 
 ## Motivation
@@ -25,15 +25,15 @@ Every frontier CLI — Claude Code, Codex, Gemini, OpenCode — ships with an ag
 
 The problem is that they all live in separate terminals. To combine their strengths on a single task, you must copy context between windows, manually sync state, and context-switch across different interaction patterns. The friction of multi-tool coordination often forces you to settle for a single CLI, leaving the unique capabilities of the others on the table.
 
-Fleet Harness was built to remove that friction without sacrificing what makes each CLI special. It treats every native agent runtime as a **Carrier** within a naval **Fleet**. A central Admiral orchestrates multiple Carriers in parallel through their official protocols, so each model's native loop runs exactly as designed — just coordinated under one command. You give the order once; the fleet executes together, with every Carrier contributing its distinct strengths.
+Fleet was built to remove that friction without sacrificing what makes each CLI special. It treats every native agent runtime as a **Carrier** within a naval **Fleet**. A central Admiral orchestrates multiple Carriers in parallel through their official protocols, so each model's native loop runs exactly as designed — just coordinated under one command. You give the order once; the fleet executes together, with every Carrier contributing its distinct strengths.
 
 ## Naval Fleet Hierarchy
 
 A 4-tier command structure maps users, orchestrators, and agents into clear roles:
 
 - **Admiral of the Navy** — The user. Sets strategy and gives orders.
-- **Fleet Admiral** — Multi-fleet orchestrator (Admiralty persona internalized in `fleet-core`).
-- **Admiral** — A workspace PI instance. Plans and dispatches Carriers.
+- **Fleet Admiral** — Multi-fleet orchestrator (`fleet-core` internalized Admiralty persona).
+- **Admiral** — A workspace agent instance. Plans and dispatches Carriers.
 - **Captain** — The commander persona of a Carrier agent.
 
 A **Carrier** is an execution instance of a CLI tool with isolated configuration. A **Captain** is the persona (e.g., Chief Engineer, Scout Specialist) that commands it.
@@ -57,15 +57,13 @@ Eight built-in Carriers, each with a distinct operational role:
 
 ### Multi-LLM Orchestration
 
-Fleet Harness does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
+Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
 
 <img src=".github/handoff.png" alt="Multi-LLM Orchestration" width="100%" />
 
 | CLI | Provider | Protocol | Key Capabilities |
 |-----|----------|----------|------------------|
 | **Claude Code** | Anthropic | ACP | Deep reasoning, architecture judgment |
-| **Claude Code (Z.AI GLM)** | Z.AI | ACP | GLM-5 series via Claude bridge |
-| **Claude Code (Moonshot Kimi)** | Moonshot | ACP | Kimi K2 series via Claude bridge |
 | **Codex CLI** | OpenAI | App Server | Fast code generation, multi-wave execution |
 | **Gemini CLI** | Google | ACP | Large-context analysis, research |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
@@ -84,15 +82,11 @@ Watch every active carrier stream results in real time, navigate between carrier
 
 <img src=".github/carrier_status.png" alt="Carrier Status" width="100%" />
 
-The Carrier layer is the fleet's execution engine. Whether you need a single agent, a coordinated squadron, or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
+The Carrier layer is the fleet's execution engine. Whether you need a single agent, a or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
 
 #### Sortie
 
 Deploy one carrier or an entire wing with a single command. Sortie supports fire-and-forget delegation, parallel multi-carrier dispatch in one call, and asynchronous result delivery through push notifications or on-demand lookup via `carrier_jobs`. Set your objectives, launch the fleet, and collect results as they arrive.
-
-#### Squadron
-
-When a task breaks into independent pieces, Squadron fans them out across parallel instances of the same carrier. Perfect for batch analysis, per-file processing, or divide-and-conquer workloads — with up to 10 concurrent subtasks dispatched and tracked as a single coordinated operation.
 
 #### Task Force
 
@@ -100,25 +94,20 @@ Task Force runs the same mission across multiple CLI backends at once, then surf
 
 ## Commands
 
-After `pnpm link --global` (see [SETUP.md](SETUP.md)), five global commands are available:
+After `pnpm link --global` (see [SETUP.md](SETUP.md)), global commands are available:
 
 | Command | Description |
 |---------|-------------|
-| `fleet` | Launch standard Fleet mode |
+| `fleet` | Launch standard Fleet mode (via `packages/fleet-agent/bin/fleet`) |
 | `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
 
 ## Setup
 
 See [SETUP.md](SETUP.md) for step-by-step instructions.
 
-Provider contract note:
-- `@sbluemin/fleet-ai` now provides abstractions and registration seams only; built-in vendor providers and built-in OAuth providers are removed.
-- `packages/fleet-harness/src/provider.ts` is the host-owned registration gateway.
-- The old registry-filter workaround is removed; any pre-registration provider-missing throw is intentional until follow-up host wiring lands.
-
 > **Quick Start with AI Agent** — Copy and paste into your LLM agent:
 >
-> Install and configure fleet-harness by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
+> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
 
 ## Documentation
 

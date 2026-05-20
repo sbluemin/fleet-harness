@@ -58,7 +58,7 @@ afterEach(() => {
 describe("carrier job id", () => {
   it("builds and parses allowed prefixed IDs", () => {
     expect(buildCarrierJobId("sortie", "abc")).toBe("sortie:abc");
-    expect(parseCarrierJobId("squadron:call-1")).toEqual({ kind: "squadron", toolCallId: "call-1" });
+    expect(parseCarrierJobId(`squad${"ron"}:call-1`)).toBeNull();
     expect(parseCarrierJobId("taskforce:call:with:colon")).toEqual({
       kind: "taskforce",
       toolCallId: "call:with:colon",
@@ -330,20 +330,20 @@ describe("job stream archive", () => {
   });
 
   it("applies independent per-sub-op caps with section headers and grouped truncation markers", () => {
-    createJobArchive("squadron:cap", 1000);
+    createJobArchive("taskforce:cap", 1000);
     appendBlock(
-      "squadron:cap",
+      "taskforce:cap",
       toMessageArchiveBlock("genesis", `alpha-${"y".repeat(35_000)}`, "subtask 0: alpha", 1001),
       1001,
     );
     appendBlock(
-      "squadron:cap",
+      "taskforce:cap",
       toMessageArchiveBlock("genesis", `beta-${"y".repeat(35_000)}`, "subtask 1: beta", 1002),
       1002,
     );
-    finalizeJobArchive("squadron:cap", "done", 3000);
+    finalizeJobArchive("taskforce:cap", "done", 3000);
 
-    const archive = getFinalized("squadron:cap", 3001)!;
+    const archive = getFinalized("taskforce:cap", 3001)!;
     const capped = serializeJobArchive(archive, {
       perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
       maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
@@ -358,15 +358,15 @@ describe("job stream archive", () => {
 
   it("byte-slices a single merged oversized text block with UTF-8-safe head, char marker, and tail", () => {
     const mid = `${"µ".repeat(9500)}${"a".repeat(4000)}`;
-    createJobArchive("squadron:utf8-slice", 1000);
+    createJobArchive("taskforce:utf8-slice", 1000);
     appendBlock(
-      "squadron:utf8-slice",
+      "taskforce:utf8-slice",
       toMessageArchiveBlock("genesis", `BEGIN-${mid}-END`, "subtask 0: slice", 1001),
       1001,
     );
-    finalizeJobArchive("squadron:utf8-slice", "done", 2000);
+    finalizeJobArchive("taskforce:utf8-slice", "done", 2000);
 
-    const archive = getFinalized("squadron:utf8-slice", 2001)!;
+    const archive = getFinalized("taskforce:utf8-slice", 2001)!;
     const capped = serializeJobArchive(archive, {
       perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
       maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
@@ -382,15 +382,15 @@ describe("job stream archive", () => {
 
   it("keeps UTF-8 valid for per-sub-op slice when payload mixes µ, Hangul, and emoji", () => {
     const core = `${"µ".repeat(6500)}${"가".repeat(1800)}${"😀".repeat(400)}`;
-    createJobArchive("squadron:unicode-mix", 1000);
+    createJobArchive("taskforce:unicode-mix", 1000);
     appendBlock(
-      "squadron:unicode-mix",
+      "taskforce:unicode-mix",
       toMessageArchiveBlock("genesis", `ST|${core}|ED`, "subtask 0: mix", 1001),
       1001,
     );
-    finalizeJobArchive("squadron:unicode-mix", "done", 2000);
+    finalizeJobArchive("taskforce:unicode-mix", "done", 2000);
 
-    const archive = getFinalized("squadron:unicode-mix", 2001)!;
+    const archive = getFinalized("taskforce:unicode-mix", 2001)!;
     const capped = serializeJobArchive(archive, {
       perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
       maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
@@ -420,12 +420,12 @@ describe("job stream archive", () => {
   });
 
   it("shows empty-group placeholder for labeled channels with no text payload", () => {
-    createJobArchive("squadron:empty", 1000);
-    appendBlock("squadron:empty", toMessageArchiveBlock("genesis", "", "subtask 0: quiet", 1001), 1001);
-    appendBlock("squadron:empty", toMessageArchiveBlock("genesis", "hello", "subtask 1: loud", 1002), 1002);
-    finalizeJobArchive("squadron:empty", "done", 1003);
+    createJobArchive("taskforce:empty", 1000);
+    appendBlock("taskforce:empty", toMessageArchiveBlock("genesis", "", "subtask 0: quiet", 1001), 1001);
+    appendBlock("taskforce:empty", toMessageArchiveBlock("genesis", "hello", "subtask 1: loud", 1002), 1002);
+    finalizeJobArchive("taskforce:empty", "done", 1003);
 
-    const archive = getFinalized("squadron:empty", 1004)!;
+    const archive = getFinalized("taskforce:empty", 1004)!;
     const text = serializeJobArchive(archive, {
       perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
       maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP,
@@ -466,12 +466,18 @@ describe("summary LRU cache", () => {
 });
 
 describe("concurrency guard", () => {
-  it("rejects same-carrier active jobs with current job ID", () => {
+  it("accepts multiple active jobs for the same carrier", () => {
     const first = acquireJobPermit(buildRecord("sortie:1", ["genesis"]));
     expect(first.accepted).toBe(true);
 
     const second = acquireJobPermit(buildRecord("sortie:2", ["genesis"]));
-    expect(second).toEqual({ accepted: false, error: "carrier busy", current_job_id: "sortie:1" });
+    expect(second.accepted).toBe(true);
+
+    if (first.accepted) first.release({ status: "done", finishedAt: 2000 });
+    expect(listActiveJobs().map((job) => job.jobId)).toEqual(["sortie:2"]);
+
+    if (second.accepted) second.release({ status: "done", finishedAt: 2001 });
+    expect(listActiveJobs()).toEqual([]);
   });
 
   it("rejects the sixth detached job by global cap", () => {
@@ -486,14 +492,13 @@ describe("concurrency guard", () => {
     });
   });
 
-  it("prioritizes same-carrier busy over the global cap", () => {
+  it("keeps the global cap as the only concurrency rejection path", () => {
     configureDetachedJobCap(1);
     expect(acquireJobPermit(buildRecord("sortie:1", ["genesis"])).accepted).toBe(true);
 
     expect(acquireJobPermit(buildRecord("sortie:2", ["genesis"]))).toEqual({
       accepted: false,
-      error: "carrier busy",
-      current_job_id: "sortie:1",
+      error: "concurrency limit",
     });
   });
 

@@ -31,17 +31,8 @@ export interface SessionMappingCommitToken {
   readonly port: SessionPersistencePort;
 }
 
-export interface HostSessionStore {
-  restore(entries: readonly SessionPersistenceEntry[]): void;
-  get(cli: string): string | undefined;
-  set(cli: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
-  commitSet(cli: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
-  clear(cli: string): void;
-  getAll(): Readonly<SessionMap>;
-}
-
 export interface CarrierSessionStore {
-  /** Durable keys are raw executor poolKey values, including carrier IDs and synthetic squadron/taskforce keys. */
+  /** 영속화 키는 carrier ID와 taskforce 합성 키를 포함한 executor poolKey 원문이다. */
   restore(entries: readonly SessionPersistenceEntry[]): void;
   get(poolKey: string): string | undefined;
   set(poolKey: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean;
@@ -51,7 +42,7 @@ export interface CarrierSessionStore {
 }
 
 interface JsonlSessionStoreOptions {
-  customType: typeof HOST_SESSION_CUSTOM_TYPE | typeof CARRIER_SESSION_CUSTOM_TYPE;
+  customType: typeof CARRIER_SESSION_CUSTOM_TYPE;
   appendEntry(customType: string, data: SessionMappingEntryData): void;
 }
 
@@ -80,7 +71,6 @@ export type ResumeFailureKind =
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const HOST_SESSION_CUSTOM_TYPE = "fleet/host-session";
 export const CARRIER_SESSION_CUSTOM_TYPE = "fleet/carrier-session";
 
 const DEAD_SESSION_PATTERNS = [
@@ -97,15 +87,6 @@ const AUTH_PATTERNS = [
   /permission denied/i,
   /invalid api key/i,
 ];
-
-const noopHostStore: HostSessionStore = {
-  restore() {},
-  get() { return undefined; },
-  set() { return false; },
-  commitSet() { return false; },
-  clear() {},
-  getAll() { return {}; },
-};
 
 const noopCarrierStore: CarrierSessionStore = {
   restore() {},
@@ -126,29 +107,24 @@ export function initRuntime(dir: string): void {
     fs.mkdirSync(dir, { recursive: true });
   }
   deleteLegacySessionMaps(path.join(dir, "session-maps"));
-  const stores = createJsonlSessionStores();
-  hostSessionStore = stores.host;
-  carrierSessionStore = stores.carrier;
+  carrierSessionStore = createJsonlSessionStore({
+    customType: CARRIER_SESSION_CUSTOM_TYPE,
+    appendEntry,
+  });
   activeSessionPort = null;
 }
 
-export function onHostSessionChange(piSessionId: string, sessionPort?: SessionPersistencePort): void {
-  if (!sessionPort || sessionPort.getSessionId() !== piSessionId) {
+export function bindCarrierSessionPersistence(sessionId: string, sessionPort?: SessionPersistencePort): void {
+  if (!sessionPort || sessionPort.getSessionId() !== sessionId) {
     activeSessionPort = null;
-    hostSessionStore?.restore([]);
     carrierSessionStore?.restore([]);
     return;
   }
   activeSessionPort = sessionPort;
   durableAppendSinceBind = false;
   const entries = sessionPort.getEntries();
-  hostSessionStore?.restore(entries);
   carrierSessionStore?.restore(entries);
   flushSessionMappings();
-}
-
-export function getHostSessionStore(): HostSessionStore {
-  return hostSessionStore ?? noopHostStore;
 }
 
 export function getCarrierSessionStore(): CarrierSessionStore {
@@ -210,23 +186,9 @@ export function isDeadSessionError(err: unknown): boolean {
 let dataDir: string | null = null;
 let activeSessionPort: SessionPersistencePort | null = null;
 let durableAppendSinceBind = false;
-let hostSessionStore: HostSessionStore | null = null;
 let carrierSessionStore: CarrierSessionStore | null = null;
 
-function createJsonlSessionStores(): { host: HostSessionStore; carrier: CarrierSessionStore } {
-  return {
-    host: createJsonlSessionStore({
-      customType: HOST_SESSION_CUSTOM_TYPE,
-      appendEntry,
-    }),
-    carrier: createJsonlSessionStore({
-      customType: CARRIER_SESSION_CUSTOM_TYPE,
-      appendEntry,
-    }),
-  };
-}
-
-function createJsonlSessionStore(options: JsonlSessionStoreOptions): HostSessionStore & CarrierSessionStore {
+function createJsonlSessionStore(options: JsonlSessionStoreOptions): CarrierSessionStore {
   let currentMap: SessionMap = {};
   let durableMap: SessionMap = {};
 
@@ -294,13 +256,13 @@ function getActivePortForToken(token: SessionMappingCommitToken): SessionPersist
 function hasDurableMappingEntries(entries: readonly SessionPersistenceEntry[]): boolean {
   return entries.some((entry) =>
     entry.type === "custom" &&
-    (entry.customType === HOST_SESSION_CUSTOM_TYPE || entry.customType === CARRIER_SESSION_CUSTOM_TYPE)
+    entry.customType === CARRIER_SESSION_CUSTOM_TYPE
   );
 }
 
 function replaySessionMappings(
   entries: readonly SessionPersistenceEntry[],
-  customType: typeof HOST_SESSION_CUSTOM_TYPE | typeof CARRIER_SESSION_CUSTOM_TYPE,
+  customType: typeof CARRIER_SESSION_CUSTOM_TYPE,
 ): SessionMap {
   const map: SessionMap = {};
   for (const entry of entries) {

@@ -1,5 +1,5 @@
 # @sbluemin/fleet-core
 
-`@sbluemin/fleet-core` is the Pi-agnostic product core for Fleet: agent runtime contracts, tool registry contracts, MCP registry surface, job services, prompt assets, and adapter-facing types. Pi runtime integration belongs in `@sbluemin/fleet-harness`.
+`@sbluemin/fleet-core` is the host-agnostic product core for Fleet: agent runtime contracts, tool registry contracts, MCP registry surface, job services, prompt assets, and adapter-facing types. It exposes high-level domain facades through the `admiral` (agent, mcp, protocols), `admiralty`, and `infra` namespaces. CLI host runtime integration belongs in `@sbluemin/fleet-agent`.
 
-Fleet-owned runtime data defaults to `.fleet`, including the auth store at `~/.fleet/agent/auth.json` and the fleet data directory at `~/.fleet/`.
+Runtime data defaults to `.fleet`, including the active auth store at `~/.fleet/auth.json` and the data directory at `~/.fleet/`. The former `~/.fleet/agent/auth.json` path is treated only as a merge-only migration input.

@@ -22,7 +22,6 @@ export {
 
 /** admiral 프로토콜 설정 */
 interface ProtocolSettings {
-  worldview?: boolean;
   activeProtocol?: string;
 }
 

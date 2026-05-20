@@ -340,11 +340,11 @@ const DIFFS = [
   },
   {
     n: "03",
-    name: "Task Force & Squadron",
+    name: "Task Force & Parallel Dispatch",
     kr: "Wave",
     body: tr(
-      "Task Force는 여러 백엔드의 결과를 합의 알고리즘으로 통합. Squadron은 동일 작전을 병렬 분기로 동시에 시도하고 가장 우수한 줄기를 채택한다.",
-      "Task Force integrates results from multiple backends via consensus algorithm. Squadron runs the same operation on parallel branches simultaneously and adopts the superior output."
+      "Task Force는 여러 백엔드의 결과를 합의 알고리즘으로 통합. 동일 carrier의 독립 작업은 여러 직접 dispatch로 동시에 실행한다.",
+      "Task Force integrates results from multiple backends via consensus algorithm. Independent same-carrier work runs through multiple direct dispatches."
     ),
   },
   {

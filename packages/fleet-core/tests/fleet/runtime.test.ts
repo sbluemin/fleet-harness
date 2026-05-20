@@ -4,7 +4,7 @@
  * internal/agent/runtime.ts의 핵심 계약을 검증합니다:
  * - initRuntime이 `.data` 디렉토리를 생성하는지
  * - 모델 설정 load/save가 올바른 경로에서 동작하는지
- * - 세션 매핑이 initRuntime → onHostSessionChange 흐름으로 동작하는지
+ * - 세션 매핑이 initRuntime → bindCarrierSessionPersistence 흐름으로 동작하는지
  * - 미초기화 상태에서 graceful fallback이 동작하는지
  */
 
@@ -17,14 +17,12 @@ import { UnifiedAgent, type IUnifiedAgentClient, type UnifiedClientOptions } fro
 
 import {
   CARRIER_SESSION_CUSTOM_TYPE,
-  HOST_SESSION_CUSTOM_TYPE,
   captureSessionMappingCommitToken,
   initRuntime,
-  onHostSessionChange,
+  bindCarrierSessionPersistence,
   getCarrierSessionStore,
   getSessionId,
   getDataDir,
-  getHostSessionStore,
   flushSessionMappings,
   type SessionPersistencePort,
 } from "../../src/admiral/agent/internal/session-runtime.js";
@@ -231,9 +229,9 @@ describe("getModelConfig / saveSelectedModels", () => {
   it("updateModelSelection은 cliType이 아닌 carrierId 키로 저장한다", async () => {
     initRuntime(tmpDir);
     initStore(tmpDir);
-    onHostSessionChange("model-by-carrier");
+    bindCarrierSessionPersistence("model-by-carrier");
     const port = createSessionPort("model-by-carrier");
-    onHostSessionChange("model-by-carrier", port);
+    bindCarrierSessionPersistence("model-by-carrier", port);
     const store = getCarrierSessionStore();
     store.set("vanguard", "vanguard-session", captureSessionMappingCommitToken());
 
@@ -247,9 +245,9 @@ describe("getModelConfig / saveSelectedModels", () => {
   it("updateAllModelSelections은 carrierId 키들을 그대로 저장하고 세션을 정리한다", async () => {
     initRuntime(tmpDir);
     initStore(tmpDir);
-    onHostSessionChange("bulk-models");
+    bindCarrierSessionPersistence("bulk-models");
     const port = createSessionPort("bulk-models");
-    onHostSessionChange("bulk-models", port);
+    bindCarrierSessionPersistence("bulk-models", port);
     const store = getCarrierSessionStore();
     store.set("vanguard", "vanguard-session", captureSessionMappingCommitToken());
     store.set("sentinel", "sentinel-session", captureSessionMappingCommitToken());
@@ -386,29 +384,29 @@ describe("getModelConfig / saveSelectedModels", () => {
   });
 });
 
-describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
-  it("호스트 세션 변경 후 세션 매핑이 복원된다", () => {
+describe("세션 매핑 (sessionStore + bindCarrierSessionPersistence)", () => {
+  it("캐리어 persistence 변경 후 세션 매핑이 복원된다", () => {
     initRuntime(tmpDir);
 
     const port1 = createSessionPort("test-session-1");
     const port2 = createSessionPort("test-session-2");
-    onHostSessionChange("test-session-1", port1);
+    bindCarrierSessionPersistence("test-session-1", port1);
     const store = getCarrierSessionStore();
     store.set("genesis" as any, "sub-session-abc", captureSessionMappingCommitToken());
     store.commitSet("genesis" as any, "sub-session-abc", captureSessionMappingCommitToken());
     expect(store.get("genesis" as any)).toBe("sub-session-abc");
 
-    onHostSessionChange("test-session-2", port2);
+    bindCarrierSessionPersistence("test-session-2", port2);
     expect(store.get("genesis" as any)).toBeUndefined();
 
-    onHostSessionChange("test-session-1", port1);
+    bindCarrierSessionPersistence("test-session-1", port1);
     expect(store.get("genesis" as any)).toBe("sub-session-abc");
   });
 
   it("getSessionId로 CLI별 sessionId를 조회할 수 있다", () => {
     initRuntime(tmpDir);
     const port = createSessionPort("sid-1");
-    onHostSessionChange("sid-1", port);
+    bindCarrierSessionPersistence("sid-1", port);
     const store = getCarrierSessionStore();
     store.set("sentinel" as any, "sentinel-session-xyz", captureSessionMappingCommitToken());
 
@@ -427,7 +425,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
   it("set은 메모리만 갱신하고 commitSet은 coding-agent JSONL custom entry로 저장한다", () => {
     initRuntime(tmpDir);
     const port = createSessionPort("persist-test");
-    onHostSessionChange("persist-test", port);
+    bindCarrierSessionPersistence("persist-test", port);
     const store = getCarrierSessionStore();
     store.set("vanguard" as any, "gem-sess-1", captureSessionMappingCommitToken());
 
@@ -446,28 +444,10 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     ]);
   });
 
-  it("호스트와 캐리어 세션 매핑은 customType과 key space를 분리한다", () => {
-    initRuntime(tmpDir);
-    const port = createSessionPort("separated");
-    onHostSessionChange("separated", port);
-
-    getHostSessionStore().set("codex", "host-session", captureSessionMappingCommitToken());
-    getCarrierSessionStore().set("codex", "carrier-session", captureSessionMappingCommitToken());
-    getHostSessionStore().commitSet("codex", "host-session", captureSessionMappingCommitToken());
-    getCarrierSessionStore().commitSet("codex", "carrier-session", captureSessionMappingCommitToken());
-
-    expect(getHostSessionStore().get("codex")).toBe("host-session");
-    expect(getCarrierSessionStore().get("codex")).toBe("carrier-session");
-    expect(port.entries.map((entry) => entry.customType)).toEqual([
-      HOST_SESSION_CUSTOM_TYPE,
-      CARRIER_SESSION_CUSTOM_TYPE,
-    ]);
-  });
-
   it("commitSet/clear는 의미 있는 durable 변경에만 custom entry를 추가한다", () => {
     initRuntime(tmpDir);
     const port = createSessionPort("idempotent");
-    onHostSessionChange("idempotent", port);
+    bindCarrierSessionPersistence("idempotent", port);
     const store = getCarrierSessionStore();
 
     store.set("taskforce:one", "sid-1", captureSessionMappingCommitToken());
@@ -484,16 +464,16 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     expect(port.entries[1]?.data).toEqual({ action: "clear", key: "taskforce:one" });
   });
 
-  it("stale commit token은 다른 host session port에 mapping을 append하거나 주입하지 않는다", () => {
+  it("stale commit token은 다른 carrier persistence port에 mapping을 append하거나 주입하지 않는다", () => {
     initRuntime(tmpDir);
     const originPort = createSessionPort("origin-session");
     const nextPort = createSessionPort("next-session");
-    onHostSessionChange("origin-session", originPort);
+    bindCarrierSessionPersistence("origin-session", originPort);
     const originToken = captureSessionMappingCommitToken();
     const store = getCarrierSessionStore();
     store.set("genesis", "origin-carrier-session", originToken);
 
-    onHostSessionChange("next-session", nextPort);
+    bindCarrierSessionPersistence("next-session", nextPort);
     const committed = store.commitSet("genesis", "origin-carrier-session", originToken);
 
     expect(committed).toBe(false);
@@ -511,7 +491,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
       port.entries.push({ type: "custom", customType, data });
       return `entry-${port.entries.length}`;
     };
-    onHostSessionChange("retry-append", port);
+    bindCarrierSessionPersistence("retry-append", port);
     const token = captureSessionMappingCommitToken();
     const store = getCarrierSessionStore();
     store.set("sentinel", "retry-sid", token);
@@ -532,19 +512,17 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
       { type: "custom", customType: CARRIER_SESSION_CUSTOM_TYPE, data: { action: "set", key: "nimitz", sessionId: "sid-2" } },
       { type: "custom", customType: CARRIER_SESSION_CUSTOM_TYPE, data: { action: "set", key: "", sessionId: "bad" } },
       { type: "custom", customType: CARRIER_SESSION_CUSTOM_TYPE, data: { action: "clear", key: "nimitz" } },
-      { type: "custom", customType: HOST_SESSION_CUSTOM_TYPE, data: { action: "set", key: "codex", sessionId: "host-sid" } },
     ]);
 
-    onHostSessionChange("replay", port);
+    bindCarrierSessionPersistence("replay", port);
 
     expect(getCarrierSessionStore().get("nimitz")).toBeUndefined();
-    expect(getHostSessionStore().get("codex")).toBe("host-sid");
   });
 
   it("fresh bind와 일반 set은 flush하지 않고 durable 변경 후 flush한다", () => {
     initRuntime(tmpDir);
     const port = createSessionPort("flush-policy");
-    onHostSessionChange("flush-policy", port);
+    bindCarrierSessionPersistence("flush-policy", port);
     expect(port.flushCount).toBe(0);
 
     getCarrierSessionStore().set("genesis", "sid-1", captureSessionMappingCommitToken());
@@ -576,7 +554,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
       });
       vi.mocked(UnifiedAgent.build).mockResolvedValue(client);
     });
-    onHostSessionChange("executor-pending", port);
+    bindCarrierSessionPersistence("executor-pending", port);
 
     const run = executeWithPool({
       poolKey: "genesis",
@@ -600,7 +578,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     });
   });
 
-  it("executor connect completion 전에 host port가 바뀌면 pending carrier map을 오염시키지 않는다", async () => {
+  it("executor connect completion 전에 persistence port가 바뀌면 pending carrier map을 오염시키지 않는다", async () => {
     initRuntime(tmpDir);
     const originPort = createSessionPort("executor-connect-origin");
     const nextPort = createSessionPort("executor-connect-next");
@@ -617,7 +595,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
       });
       vi.mocked(UnifiedAgent.build).mockResolvedValue(client);
     });
-    onHostSessionChange("executor-connect-origin", originPort);
+    bindCarrierSessionPersistence("executor-connect-origin", originPort);
 
     const run = executeWithPool({
       poolKey: "chronicle",
@@ -628,7 +606,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     });
     await connectStarted;
 
-    onHostSessionChange("executor-connect-next", nextPort);
+    bindCarrierSessionPersistence("executor-connect-next", nextPort);
     releaseConnect();
     await run;
 
@@ -637,7 +615,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     expect(getCarrierSessionStore().get("chronicle")).toBeUndefined();
   });
 
-  it("stale connect completion으로 채워진 pool entry를 다음 host session에서 재사용하지 않는다", async () => {
+  it("stale connect completion으로 채워진 pool entry를 다음 carrier persistence에서 재사용하지 않는다", async () => {
     initRuntime(tmpDir);
     const originPort = createSessionPort("executor-stale-pool-origin");
     const nextPort = createSessionPort("executor-stale-pool-next");
@@ -654,7 +632,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     vi.mocked(UnifiedAgent.build)
       .mockResolvedValueOnce(staleClient)
       .mockResolvedValueOnce(freshClient);
-    onHostSessionChange("executor-stale-pool-origin", originPort);
+    bindCarrierSessionPersistence("executor-stale-pool-origin", originPort);
 
     const staleRun = executeWithPool({
       poolKey: "tempest",
@@ -666,7 +644,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     await vi.waitFor(() => {
       expect(releaseConnect).toBeTypeOf("function");
     });
-    onHostSessionChange("executor-stale-pool-next", nextPort);
+    bindCarrierSessionPersistence("executor-stale-pool-next", nextPort);
     releaseConnect();
     await staleRun;
 
@@ -695,7 +673,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     });
   });
 
-  it("executor post-send commit은 origin host port가 stale이면 폐기하고 새 port를 오염시키지 않는다", async () => {
+  it("executor post-send commit은 origin persistence port가 stale이면 폐기하고 새 port를 오염시키지 않는다", async () => {
     initRuntime(tmpDir);
     const originPort = createSessionPort("executor-origin");
     const nextPort = createSessionPort("executor-next");
@@ -711,7 +689,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
       });
       vi.mocked(UnifiedAgent.build).mockResolvedValue(client);
     });
-    onHostSessionChange("executor-origin", originPort);
+    bindCarrierSessionPersistence("executor-origin", originPort);
 
     const run = executeWithPool({
       poolKey: "vanguard",
@@ -722,7 +700,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     });
     await sendStarted;
 
-    onHostSessionChange("executor-next", nextPort);
+    bindCarrierSessionPersistence("executor-next", nextPort);
     releaseSend();
     await run;
 
@@ -735,7 +713,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
     initRuntime(tmpDir);
     const port = createSessionPort("executor-post-send");
     const client = createMockClient("pre-send-sid", { postSendSessionId: "post-send-sid" });
-    onHostSessionChange("executor-post-send", port);
+    bindCarrierSessionPersistence("executor-post-send", port);
     vi.mocked(UnifiedAgent.build).mockResolvedValue(client);
 
     await executeWithPool({
@@ -762,7 +740,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
   it("executor systemPrompt drift 무효화는 clear 후 flush하고 disconnect한다", async () => {
     initRuntime(tmpDir);
     const port = createSessionPort("drift-flush");
-    onHostSessionChange("drift-flush", port);
+    bindCarrierSessionPersistence("drift-flush", port);
     const client = createMockClient("drift-session");
     vi.mocked(UnifiedAgent.build).mockResolvedValue(client);
 
@@ -793,7 +771,7 @@ describe("세션 매핑 (sessionStore + onHostSessionChange)", () => {
   it("executor dead-session fallback 무효화는 clear 후 flush하고 fresh connect한다", async () => {
     initRuntime(tmpDir);
     const port = createSessionPort("dead-session-flush");
-    onHostSessionChange("dead-session-flush", port);
+    bindCarrierSessionPersistence("dead-session-flush", port);
     getCarrierSessionStore().set("sentinel", "dead-sid", captureSessionMappingCommitToken());
     const deadClient = createMockClient("dead-sid", {
       connectImpl: async (connectOptions) => {

@@ -49,7 +49,6 @@ function makeEntry(
     role: null,
     roleDescription: null,
     isSortieEnabled: true,
-    isSquadronEnabled: false,
     taskForceBackendCount: 0,
   };
 }

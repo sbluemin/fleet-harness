@@ -1,4 +1,4 @@
-export type CarrierJobKind = "carrier" | "sortie" | "squadron" | "taskforce";
+export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
 
 export type CarrierJobStatus = "done" | "error" | "aborted";
 

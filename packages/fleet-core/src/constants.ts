@@ -112,14 +112,11 @@ export const THINKING_COLOR = "\x1b[38;2;180;140;255m";
 /** Tools 블록 색상 (틸/청록) */
 export const TOOLS_COLOR = "\x1b[38;2;80;200;180m";
 
-/** Sortie 도구 요약 색상 (기존 Squadron renderCall 색상 계승) */
+/** Sortie 도구 요약 색상 */
 export const SORTIE_SUMMARY_COLOR = TOOLS_COLOR;
 
 /** Task Force 배지/도구 요약 색상 */
 export const TASKFORCE_BADGE_COLOR = "\x1b[38;2;100;180;255m";
-
-/** Squadron 배지/도구 요약 색상 */
-export const SQUADRON_BADGE_COLOR = "\x1b[38;2;180;140;255m";
 
 // ─── Claude Code 스타일 심볼 ─────────────────────────────
 
@@ -145,21 +142,6 @@ export const MAX_BODY_H = 50;
 
 /** 높이 조절 1회당 증감량 */
 export const BODY_H_STEP = 2;
-
-// ─── Fleet Bridge 힌트 ──────────────────────────────────
-
-/** Fleet Bridge 멀티컬럼 뷰 하단 힌트 */
-export const PANEL_MULTI_COL_HINT = " ctrl+enter detail · alt+j/k · alt+p ";
-
-/** Fleet Bridge 상세 뷰 하단 힌트 */
-export const PANEL_DETAIL_HINT = " ctrl+enter back · alt+j/k · alt+p ";
-
-/** 패널 높이 표시를 포함한 멀티컬럼 뷰 하단 힌트 */
-export function formatPanelMultiColHint(bodyH?: number): string {
-  return bodyH === undefined
-    ? PANEL_MULTI_COL_HINT
-    : `${PANEL_MULTI_COL_HINT}[h=${bodyH}]`;
-}
 
 function rgb(r: number, g: number, b: number): string {
   return `\x1b[38;2;${r};${g};${b}m`;

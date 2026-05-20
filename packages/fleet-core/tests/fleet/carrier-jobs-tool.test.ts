@@ -30,7 +30,6 @@ describe("carrier_jobs tool", () => {
     const action = schema.properties.action;
 
     expect(action.enum).toEqual(["status", "result", "cancel", "list"]);
-    expect(JSON.stringify(schema)).not.toContain("carrier_squadron");
     expect(CARRIER_JOBS_DOCTRINE.id).toBe("carrier_jobs");
     expect(CARRIER_JOBS_DOCTRINE.usageGuidelines.join("\n")).toContain("never reads the Agent Panel stream-store");
   });
@@ -159,16 +158,16 @@ describe("carrier_jobs tool", () => {
     expect(response.full_result).not.toMatch(/^── /m);
   });
 
-  it("applies per-sub-op caps for squadron full result when summary was evicted (jobId prefix fallback)", () => {
-    createJobArchive("squadron:no-summary", 1000);
+  it("applies per-sub-op caps for taskforce full result when summary was evicted (jobId prefix fallback)", () => {
+    createJobArchive("taskforce:no-summary", 1000);
     appendBlock(
-      "squadron:no-summary",
+      "taskforce:no-summary",
       toMessageArchiveBlock("genesis", `solo-${"z".repeat(35_000)}`, "subtask 0: only", 1001),
       1001,
     );
-    finalizeJobArchive("squadron:no-summary", "done", 2000);
+    finalizeJobArchive("taskforce:no-summary", "done", 2000);
 
-    const response = dispatchCarrierJobsAction({ action: "result", job_id: "squadron:no-summary" }, 2001);
+    const response = dispatchCarrierJobsAction({ action: "result", job_id: "taskforce:no-summary" }, 2001);
 
     expect(response.ok).toBe(true);
     expect(response.summary_available).toBe(false);
@@ -177,22 +176,22 @@ describe("carrier_jobs tool", () => {
     expect(Buffer.byteLength(response.full_result!, "utf8")).toBeLessThanOrEqual(60_000);
   });
 
-  it("uses per-sub-op plus global caps for squadron jobs in full result", () => {
-    putJobSummary(buildSquadronSummary("squadron:tf", 1000), 1000);
-    createJobArchive("squadron:tf", 1000);
+  it("uses per-sub-op plus global caps for taskforce jobs in full result", () => {
+    putJobSummary(buildTaskForceSummary("taskforce:tf", 1000), 1000);
+    createJobArchive("taskforce:tf", 1000);
     appendBlock(
-      "squadron:tf",
+      "taskforce:tf",
       toMessageArchiveBlock("genesis", `a-${"z".repeat(35_000)}`, "subtask 0: a", 1001),
       1001,
     );
     appendBlock(
-      "squadron:tf",
+      "taskforce:tf",
       toMessageArchiveBlock("genesis", `b-${"z".repeat(35_000)}`, "subtask 1: b", 1002),
       1002,
     );
-    finalizeJobArchive("squadron:tf", "done", 3000);
+    finalizeJobArchive("taskforce:tf", "done", 3000);
 
-    const response = dispatchCarrierJobsAction({ action: "result", job_id: "squadron:tf" }, 3001);
+    const response = dispatchCarrierJobsAction({ action: "result", job_id: "taskforce:tf" }, 3001);
 
     expect(response.ok).toBe(true);
     expect(response.full_result).toContain("── subtask 0: a ──");
@@ -240,10 +239,10 @@ function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
   };
 }
 
-function buildSquadronSummary(jobId: string, startedAt: number): CarrierJobSummary {
+function buildTaskForceSummary(jobId: string, startedAt: number): CarrierJobSummary {
   return {
     jobId,
-    tool: "carrier_squadron",
+    tool: "carrier_taskforce",
     status: "done",
     summary: "completed",
     startedAt,

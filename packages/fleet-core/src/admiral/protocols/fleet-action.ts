@@ -69,10 +69,10 @@ Design missions across **multiple angles**:
 - **Constraints**: architectural boundaries, frozen APIs, compatibility invariants.
 
 **Step 4 — Vanguard Dispatch**
-- Sortie Vanguard via ${"``"}carrier_squadron${"``"} (parallel subtasks) or the carrier's individual tool (${"``"}carrier_<id>${"``"}) for a single mission.
-- Use ${"``"}carrier_squadron${"``"} when multiple independent reconnaissance missions were designed in Step 3.
-- Use the carrier's individual tool (${"``"}carrier_<id>${"``"}) when only a single focused mission is needed.
-- Each subtask must carry exactly one focused mission from Step 3.
+- Sortie Vanguard through the carrier's individual tool (${"``"}carrier_<id>${"``"}).
+- Use multiple ${"``"}carrier_<id>${"``"} calls in the same response when multiple independent reconnaissance missions were designed in Step 3, including same-carrier parallel work.
+- Use one ${"``"}carrier_<id>${"``"} call when only a single focused mission is needed.
+- Each request must carry exactly one focused mission from Step 3.
 - Do NOT perform direct multi-file exploration — delegate to Vanguard instead.
 - Let the Carrier determine its own search approach within the mission boundary.
 
@@ -154,7 +154,7 @@ After finishing (or terminating early), include a brief phase summary in your fi
 - **Follow-up Plan**: Reason step-by-step about how the Admiral should proceed after this task — do not jump straight to the answer. Provide all three lines in order:
   - **State**: one line on what this task changed and what remains pending.
   - **Reasoning**: 1–2 lines — what follow-up options exist (sortie a Carrier, the Admiral handles it directly, request a directive from the Admiral of the Navy (대원수), or terminate), what alternatives were considered, and why the chosen option fits.
-  - **Conclusion**: one line stating the chosen action. If it involves a sortie, name the Carrier ID(s) from the active roster and the dispatch tool (carrier_<id> / carrier_squadron / carrier_taskforce). If it requires the 대원수's authority, mark it as a recommendation pending their directive.
+  - **Conclusion**: one line stating the chosen action. If it involves a sortie, name the Carrier ID(s) from the active roster and the dispatch tool (carrier_<id> / carrier_taskforce). If it requires the 대원수's authority, mark it as a recommendation pending their directive.
   Do not invent speculative next steps — "None — task terminal" is a valid conclusion.
 This report ensures the Admiral of the Navy (대원수) can verify that no phase was silently dropped, and can immediately authorize the next operation with the appropriate fleet.`,
 };

@@ -2,144 +2,76 @@
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed and authenticated
+- [Node.js](https://nodejs.org/) v18+
+- [pnpm](https://pnpm.io/). The repo pins a version via the `packageManager` field; enable [Corepack](https://nodejs.org/api/corepack.html) once (`corepack enable`) and it will be selected automatically. Otherwise install pnpm globally with `npm install -g pnpm`.
+- Authenticated [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), and [Gemini CLI](https://github.com/google-gemini/gemini-cli) on PATH.
 
-## 0. Install pnpm
-
-```bash
-# pnpm is the package manager for this repository.
-npm install -g pnpm
-```
-
-> The canonical `fleet` CLI lives in this repository under `engines/packages/coding-agent` and is linked globally from the workspace in Step 2.
-
-> The repository is pinned to a specific pnpm version via the `packageManager` field in `package.json`. If you have [Corepack](https://nodejs.org/api/corepack.html) enabled, run `corepack enable` once and Corepack will select that version automatically. Otherwise the globally installed pnpm is used as a fallback.
-
-## 1. Clone the repository
-
-Before cloning, ask the user whether it is okay to clone the repository under the current working directory. If not, ask for the desired parent directory and clone it there instead.
-
-> The example below assumes the current directory has been approved by the user.
+## 1. Clone
 
 ```bash
 git clone https://github.com/sbluemin/fleet-harness.git
 cd fleet-harness
 ```
 
-## 2. Install dependencies and register global commands
+## 2. Install
 
 ```bash
-# One-time per machine: configure the pnpm global bin directory and add it to PATH.
-# Skip if `pnpm setup` was already run on this machine (PNPM_HOME is set).
+# One-time per machine: configure pnpm's global bin directory and add it to PATH.
+# Skip if PNPM_HOME is already set.
 pnpm setup
 
-# After `pnpm setup`, open a new terminal so PNPM_HOME and PATH take effect, then cd back.
-# (In the same terminal you can also `export PNPM_HOME="$LOCALAPPDATA/pnpm"` on Windows
-# or `export PNPM_HOME="$HOME/Library/pnpm"` on macOS / `"$HOME/.local/share/pnpm"` on Linux,
-# and `export PATH="$PNPM_HOME:$PATH"` to use it without restarting the shell.)
-
-# Install all workspace dependencies. The root postinstall hook runs `pnpm -r build`,
-# which builds the engine `unified-agent` package plus `fleet-core`, `fleet-wiki`,
-# packages/fleet-wiki-web, and packages/fleet-harness in topological order.
+# Install workspace dependencies. The root postinstall runs `pnpm -r build`
+# topologically across the workspace (unified-agent, fleet-core, fleet-tui,
+# fleet-wiki, fleet-wiki-web, fleet-agent).
 pnpm install
 
-# Approve native build scripts (one-time per machine).
-# Required for node-pty, esbuild, koffi, protobufjs, and @google/genai.
-# The result is saved to pnpm-workspace.yaml `allowBuilds` — subsequent installs
-# run these scripts automatically without a warning.
+# One-time per machine: approve native postinstall scripts. Required by
+# node-pty, esbuild, koffi, protobufjs, and @google/genai. The decision is
+# persisted in `pnpm-workspace.yaml` under `allowBuilds`.
 pnpm approve-builds --all
 
-# Register the Fleet wrapper commands globally.
+# Register the global commands `fleet` and `fleet-wiki` from this checkout.
 pnpm link --global
 
-# Register the Fleet unified-agent CLI used by provider diagnostics.
+# Register `ait`, the unified-agent CLI used for provider diagnostics.
 pnpm --filter @sbluemin/fleet-unified-agent link --global
 ```
 
-> The repository uses pnpm workspaces (see `pnpm-workspace.yaml`); the root install is the single setup entry point. `pnpm install` writes a single `pnpm-lock.yaml` at the repo root and links each workspace package's local dependencies via symlinks. Cross-package deps are declared with the `workspace:*` protocol so pnpm orders builds topologically.
->
-> Provider contract note:
->
-> - `@sbluemin/fleet-ai` no longer ships built-in vendor providers or built-in OAuth providers.
-> - Fleet host wiring owns provider registration explicitly through `packages/fleet-harness/src/provider.ts`.
-> - No legacy registry-filter toggle or hidden upstream bootstrap remains; if host registration has not happened yet, provider-missing throws are the intended contract.
->
-> `pnpm link --global` registers the global commands from this checkout:
->
-- `fleet` — in-process wrapper (`bin/fleet-main.mjs`) that injects `fleet-harness` as a first-class extension factory via `main(argv, { extensionFactories })`. Forces `--no-extensions` to block file-based auto-discovery. Grand Fleet mode is activated by setting `PI_GRAND_FLEET_ROLE=admiralty` before running `fleet` (no dedicated launcher needed). Source-level dev mode: `pnpm dev` (see below).
-- `pnpm dev` — (Defined in `package.json`) sets `FLEET_HARNESS_DEV=1` then delegates to `fleet-main.mjs`. Use for development with live source changes.
-
-> - `fleet-wiki` — launches the Fleet Wiki web UI for the current working directory's `.fleet/knowledge/` store. Spawns a detached local HTTP server bound to `127.0.0.1` (a per-user lock under `$TMPDIR/fleet-wiki-<uid>/` ensures a single server per workspace) and opens the system browser. Re-running the command while the server is alive only re-opens the browser. Independent of any external runtime.
->
-> > `pnpm --filter @sbluemin/fleet-unified-agent link --global` registers `ait`, the local unified-agent CLI. Fleet uses the same workspace package internally, so linking it from the checkout keeps diagnostics and provider behavior aligned with the source tree.
->
-> Fleet infrastructure, metaphor, carriers, and Agent Panel modules now live under `packages/fleet-harness/src/`; they do not require separate `pnpm install` commands.
->
-> Fleet engine note:
-> - `engines/` contains the active Fleet engine package set (`tui`, `ai`, `agent`, `coding-agent`) rebranded to `@sbluemin/fleet-*`.
-> - All intra-repo links use `workspace:*`; do not replace them with published npm references.
-> - The engine `unified-agent` package is developed in-tree alongside the other Fleet engine packages and is linked globally as `ait` from this workspace.
-
-### Install troubleshooting
-
-- If `pnpm install` reports blocked native build scripts, run `pnpm approve-builds --all`, then run `pnpm install` again.
-- If a non-interactive shell reports `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`, rerun with `CI=true pnpm install`.
-- If CI reports `ERR_PNPM_OUTDATED_LOCKFILE`, the lockfile does not match a package manifest. Run `pnpm install --no-frozen-lockfile` locally, commit the updated `pnpm-lock.yaml`, then rerun CI.
-- If `pnpm build` cannot resolve a workspace package, confirm the consuming package lists it in `dependencies` with `workspace:*` and rerun `pnpm install`.
-
 ## 3. Verify
 
-Run the build and CLI checks from the repository root:
-
 ```bash
-pnpm build
 fleet --help
 ait --help
-ait --list-models
-
-# Confirm the Fleet Wiki CLI is on PATH (registered by `pnpm link --global`)
-which fleet-wiki
 ```
 
-Then launch `fleet` and run `/reload`, then check:
+Launch the TUI with `fleet`. The window is a permanent two-pane layout: a dedicated CLI on top, the Fleet PTY on the bottom.
 
-- No extension load errors in the output
-- `Alt+H` / `Alt+L` to move cursor between carrier slots
-- `Ctrl+Enter` to activate the carrier at cursor (exclusive mode)
-- `Alt+P` to toggle the Agent Panel
-- Claude Code, Codex CLI, Gemini CLI are each authenticated
+Key bindings:
 
-Optionally verify the Fleet Wiki web UI from a workspace that has a `.fleet/knowledge/` store:
+- `Ctrl+T` — toggle between **MIRROR** (Fleet PTY mirrors keystrokes to the dedicated CLI) and **DEDICATED** (dedicated CLI takes exclusive focus).
+- `Alt+O` — open the Carrier Status overlay (configure CLI backends, models, effort, Task Force).
+- `Ctrl+C` — exit.
+
+`fleet` flags:
+
+- `-h, --help` — print usage and exit.
+- `-c, --cli <claude|codex>` — select the embedded CLI. Default `claude`; env override `FLEET_DEDICATED_CLI`.
+- `-n, --native` — run the dedicated CLI without injecting the Fleet system prompt; the Fleet Action Protocol label is hidden in the Fleet PTY (the divider line is preserved).
+
+## Troubleshooting
+
+- **Blocked native build scripts** — rerun `pnpm approve-builds --all`, then `pnpm install`.
+- **`ERR_PNPM_OUTDATED_LOCKFILE` in CI** — `pnpm install --no-frozen-lockfile` locally, commit the updated `pnpm-lock.yaml`, rerun CI.
+- **`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`** — rerun with `CI=true pnpm install`.
+- **Workspace package not resolved during build** — confirm the consumer lists it as `workspace:*` in `dependencies`, then `pnpm install` again.
+
+## Fleet Wiki (optional)
+
+The Fleet Wiki web UI browses the `.fleet/knowledge/` store of the current working directory.
 
 ```bash
-cd <workspace-with-fleet-knowledge>
+cd <workspace-with-.fleet/knowledge>
 fleet-wiki   # opens http://127.0.0.1:<port> in the system browser
 ```
 
-> If the directory has no `.fleet/knowledge/`, the CLI exits with a Korean message:
-> `.fleet/knowledge 디렉토리를 찾을 수 없습니다.` Run from a workspace that has been
-> initialized with the wiki store, or create the directory before retrying.
-
-## 4. Read the Guide
-
-fleet-harness ships built-in guide documents inside its own `.fleet/knowledge/` store. Run `fleet-wiki` from the repository root to browse them:
-
-```bash
-cd <path-to-fleet-harness>
-fleet-wiki
-```
-
-> **AI one-shot setup:** After all steps above complete successfully, automatically run the command below from the repository root — do not wait for the user to ask:
->
-> ```bash
-> fleet-wiki
-> ```
-
-The browser opens at `http://127.0.0.1:<port>`. Navigate to **Index** or use the search bar to find the guides:
-
-| Guide | Description |
-|---|---|
-| Guide - 001 fleet-harness 소개 | Overview, key differentiators, provided CLIs, 8 carriers, and key bindings |
-| Guide - 002 Carrier Status 사용법 | How to use the Carrier Status overlay (`Alt+O`) to configure CLI backends, models, Sortie, Squadron, and Task Force |
-| Guide - 003 fleet-wiki 사용법 | How to capture, stage, review, approve, and query fleet-wiki knowledge entries |
+If the directory has no `.fleet/knowledge/`, the CLI exits with a Korean message (`.fleet/knowledge 디렉토리를 찾을 수 없습니다.`); run from a workspace that has the store, or from this repo's root, which ships built-in guides (Fleet overview, Carrier Status usage, fleet-wiki usage).

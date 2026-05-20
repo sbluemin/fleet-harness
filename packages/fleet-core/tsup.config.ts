@@ -5,7 +5,6 @@ export default defineConfig({
     index: "src/index.ts",
     admiral: "src/admiral/index.ts",
     admiralty: "src/admiralty/index.ts",
-    metaphor: "src/metaphor/index.ts",
     infra: "src/infra/index.ts"
   },
   format: ["esm", "cjs"],

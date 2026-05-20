@@ -6,7 +6,7 @@ interface SystemReminderAttributes {
 
 export interface CarrierResultSystemReminderInput {
   jobId: string;
-  kind: "carrier" | "squadron" | "taskforce";
+  kind: "carrier" | "taskforce";
   status: CarrierJobStatus;
   summary: CarrierJobSummary;
   error?: string;

@@ -1,0 +1,46 @@
+{
+  "name": "@sbluemin/fleet-tui",
+  "version": "0.21.0",
+  "private": true,
+  "type": "module",
+  "files": ["dist", "AGENTS.md", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./layout": {
+      "types": "./dist/layout/index.d.ts",
+      "import": "./dist/layout/index.js"
+    },
+    "./primitives": {
+      "types": "./dist/primitives/index.d.ts",
+      "import": "./dist/primitives/index.js"
+    },
+    "./input": {
+      "types": "./dist/input/index.d.ts",
+      "import": "./dist/input/index.js"
+    },
+    "./pty": {
+      "types": "./dist/pty/index.d.ts",
+      "import": "./dist/pty/index.js"
+    }
+  },
+  "dependencies": {
+    "@xterm/headless": "^5.5.0",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.2"
+  }
+}

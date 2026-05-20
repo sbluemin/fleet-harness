@@ -1,5 +1,6 @@
 node_modules
 dist/
+*.tsbuildinfo
 session-maps/
 selected-models.json
 keybindings.json
@@ -16,19 +17,3 @@ keybindings.json
 !.fleet/skills/**
 .grand-fleet/
 .claude/
-
-# engines/ build artifacts that must not live next to .ts sources.
-# coding-agent/src/core/export-html/ keeps its own source .js assets and is intentionally not ignored.
-engines/packages/ai/src/**/*.js
-engines/packages/ai/src/**/*.js.map
-engines/packages/ai/src/**/*.d.ts
-engines/packages/ai/src/**/*.d.ts.map
-engines/packages/agent/src/**/*.js
-engines/packages/agent/src/**/*.js.map
-engines/packages/agent/src/**/*.d.ts
-engines/packages/agent/src/**/*.d.ts.map
-engines/packages/tui/src/**/*.js
-engines/packages/tui/src/**/*.js.map
-engines/packages/tui/src/**/*.d.ts
-engines/packages/tui/src/**/*.d.ts.map
-engines/packages/coding-agent/examples/extensions/*/build/

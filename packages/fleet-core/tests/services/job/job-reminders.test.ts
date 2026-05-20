@@ -29,20 +29,20 @@ describe("buildCarrierResultSystemReminder", () => {
     ].join("\n"));
   });
 
-  it("includes squadron status and error metadata", () => {
-    const summary = { ...BASE_SUMMARY, jobId: "squadron:2", tool: "carrier_squadron" as const, status: "error" as const, summary: "squadron failed" };
+  it("includes carrier status and error metadata", () => {
+    const summary = { ...BASE_SUMMARY, jobId: "carrier:2", status: "error" as const, summary: "carrier failed" };
 
     const reminder = buildCarrierResultSystemReminder({
-      jobId: "squadron:2",
-      kind: "squadron",
+      jobId: "carrier:2",
+      kind: "carrier",
       status: "error",
       summary,
       error: "boom",
-      label: "2 subtasks",
+      label: "Genesis",
     });
 
     expect(reminder).toContain("[carrier:result]");
-    expect(reminder).toContain("kind=squadron");
+    expect(reminder).toContain("kind=carrier");
     expect(reminder).toContain("status=error");
     expect(reminder).toContain("error=boom");
   });

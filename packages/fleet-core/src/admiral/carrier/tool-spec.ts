@@ -68,6 +68,7 @@ interface CarrierSingleResult {
 interface CarrierBackgroundOptions {
   jobId: string;
   carrierId: string;
+  label: string;
   request: string;
   signal: AbortSignal | undefined;
   cwd: string;
@@ -110,6 +111,8 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
     ],
     whenNotToUse: [],
     usageGuidelines: [
+      `Every carrier_dispatch call MUST include label: a concise one-line dispatch intent, not the carrier name and not the full request.` +
+        ` Missing, empty, or non-string label is rejected before launch.`,
       `When composing a request, provide only background, context, objective, and constraints.` +
         ` Do NOT prescribe implementation details or step-by-step instructions — trust the carrier's own reasoning.` +
         ` Launch response schema is { job_id, accepted, error? } and never includes synchronous result content.` +
@@ -145,6 +148,9 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
           enum: carrierIds,
           description: `The target carrier ID to dispatch the job to. See <fleet section="roster"> for available carriers.`,
         }),
+        label: Type.String({
+          description: `Required concise one-line dispatch intent label. Describe the work intent, e.g. "Audit panel run identity"; do not use the carrier name and do not paste the full request.`,
+        }),
         request: Type.String({ description: requestDesc }),
       });
     },
@@ -160,11 +166,12 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
         return launchResponseResult({
           job_id: jobId,
           accepted: false,
-          error: "Invalid arguments: carrier_id and request must be non-empty strings.",
+          error: "Invalid arguments: carrier_id, label, and request must be non-empty strings.",
         });
       }
 
-      const carrierId = args.carrier_id;
+      const carrierId = args.carrier_id.trim();
+      const label = args.label.trim();
       const request = args.request;
 
       logDebug(
@@ -217,11 +224,12 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
       });
       if (!launch.accepted) return launch.response;
 
-      emitJobRegistered(jobId, carrierId, toolCallId, t0);
+      emitJobRegistered(jobId, carrierId, toolCallId, label, t0);
 
       void runCarrierJobInBackground({
         jobId,
         carrierId,
+        label,
         request,
         signal: launch.signal,
         cwd,
@@ -285,7 +293,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
         status: finalStatus as StoredCarrierJobStatus,
         summary,
         error: finalError,
-        label: resolveCarrierDisplayName(opts.carrierId),
+        label: opts.label,
       }),
     });
     logDebug(CARRIER_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);
@@ -395,21 +403,24 @@ function emitJobRegistered(
   jobId: string,
   carrierId: string,
   sortieKey: string,
+  label: string,
   startedAt: number,
 ): void {
+  const runId = buildCarrierDispatchRunId(jobId, carrierId);
   const tracks: TrackMeta[] = [{
     trackId: carrierId,
     streamKey: carrierId,
     displayCli: carrierId,
     displayName: resolveCarrierDisplayName(carrierId),
     kind: "carrier",
+    runId,
   }];
   emitStreamEvent({
     type: "job:registered",
     jobId,
     kind: "carrier",
     ownerCarrierId: carrierId,
-    label: resolveCarrierDisplayName(carrierId),
+    label,
     startedAt,
     activeJobToolCallId: sortieKey,
     tracks,
@@ -428,12 +439,18 @@ function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
   return "err";
 }
 
-function isDispatchArgs(v: unknown): v is { carrier_id: string; request: string } {
+function buildCarrierDispatchRunId(jobId: string, carrierId: string): string {
+  return `${jobId}:${carrierId}`;
+}
+
+function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string } {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (
     typeof obj.carrier_id === "string" &&
-    obj.carrier_id.length > 0 &&
+    obj.carrier_id.trim().length > 0 &&
+    typeof obj.label === "string" &&
+    obj.label.trim().length > 0 &&
     typeof obj.request === "string" &&
     obj.request.trim().length > 0
   );

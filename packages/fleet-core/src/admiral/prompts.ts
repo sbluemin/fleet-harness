@@ -1,32 +1,18 @@
 /**
- * admiral/prompts — Admiral 시스템 프롬프트 및 세계관 관리
+ * admiral/prompts — Admiral 시스템 프롬프트 관리
  *
- * ACP 시스템 프롬프트는 `buildSystemPrompt()`로 합성되며, 각 섹션은
+ * ACP 시스템 프롬프트는 `buildSystemPrompt(injectTone)`으로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
- * `section="role"`은 항상 주입되지만 worldview 상태에 따라 세계관형/중립형 role
- * 변종 중 하나를 선택한다. worldview 토글이 켜진 경우에만 `section="persona"`와
- * `section="tone"`가 함께 주입되어 4계층 페르소나와 군대식 톤을 오버레이한다.
- * 프로토콜 카탈로그 전체가 포함되며, 활성 프로토콜은 매 턴
- * `<current_protocol>` 런타임 태그로 지정된다.
- *
- * 매 턴 follow-up prefix는 `buildRuntimeContextPrompt(userRequest)`가 조립한다.
- * 런타임 태그 블록과 `<user_request>` 래핑을 한 번에 반환하는 builder 시그니처이며,
- * `setCliRuntimeContext()`에 함수 레퍼런스로 등록된다.
+ * `section="role"`과 `section="persona"`는 항상 주입되고,
+ * `section="tone"`은 `injectTone === true`일 때만 PERSONA 다음에 주입된다.
+ * 프로토콜 카탈로그 전체가 포함된다.
  */
 
-import { FLEET_PERSONA_PROMPT, FLEET_TONE_PROMPT } from "../metaphor/prompts.js";
-import { isWorldviewEnabled } from "../metaphor/worldview.js";
-import { getActiveProtocol, getAllProtocols } from "./protocols/index.js";
+import { getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
-import {
-  getActiveSquadronIds,
-  getActiveTaskForceIds,
-  getRegisteredOrder,
-  getOfflineCarrierIds,
-} from "./carrier/framework.js";
+import { getRegisteredOrder } from "./carrier/framework.js";
 import { buildCarrierRoster } from "./carrier/prompts.js";
-import { isFleetCoreDevMode } from "../runtime-flags.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입
@@ -44,31 +30,9 @@ export interface AdmiralSettings {
 /**
  * Fleet 역할·행동 규약 — 항상 주입.
  *
- * Admiral (제독) ↔ Admiral of the Navy (대원수) 호칭과 위임/수동 제어/언어 규칙 등 CLI 백엔드가
- * roster·protocols 섹션을 해석할 때 필요한 구조적 맥락을 담는다. 페르소나와
- * 톤은 metaphor 패키지에서 별도로 주입한다.
+ * carrier 기반 위임/종합/수동 제어 안내와 한국어 응답 규칙을 담는다.
  */
 export const FLEET_ROLE_PROMPT = String.raw`
-# Role
-You are the Admiral (제독) commanding the Agent Harness Fleet on behalf of the Admiral of the Navy (대원수).
-The user issuing orders to you is the Admiral of the Navy (대원수), the supreme commander of the entire fleet.
-
-# Action Guidelines
-- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}fleet-tools${"`"} surface. Treat carrier tools (carrier_*) and other Fleet tools as potentially lazy-loaded until ${"`"}fleet-tools${"`"} has been inspected or invoked.
-- When a mission is assigned, first decide whether to handle it directly or deploy Carrier(s); if deploying, brief the Admiral of the Navy (대원수) on which Captain-led Carrier(s) will be used.
-- All user-visible output must be framed as a report to the Admiral of the Navy (대원수). Carrier reports, tool outputs, and system reminders are operational inputs for you to interpret, not conversation turns to answer.
-- When Carrier results arrive, synthesize them into your own report to the Admiral of the Navy (대원수) instead of replying to, thanking, or giving conversational follow-up instructions to the Carrier.
-- When manual control is needed, advise the Admiral of the Navy (대원수) to enter the Bridge and take the Helm.
-- All responses to the user must be written in Korean.
-`;
-
-/**
- * Fleet 역할·행동 규약 — worldview OFF용 중립 변종.
- *
- * 세계관 호칭·보고 양식·항해 비유를 제거하고도, carrier 기반 위임/종합/수동 제어 안내와
- * 한국어 응답 규칙 같은 기능적 동작 요구는 그대로 유지한다.
- */
-export const FLEET_ROLE_PROMPT_NEUTRAL = String.raw`
 # Role
 You are the host agent coordinating the Agent Harness Fleet for the user.
 
@@ -79,6 +43,34 @@ You are the host agent coordinating the Agent Harness Fleet for the user.
 - When carrier results arrive, synthesize them into your own response to the user instead of replying to, thanking, or giving conversational follow-up instructions to the carrier.
 - When manual control is needed, tell the user what manual action is required in plain language.
 - All responses to the user must be written in Korean.
+`;
+
+/**
+ * Fleet PI Admiral 페르소나 자기 선언.
+ *
+ * `buildSystemPrompt()` 합성 시 `FLEET_ROLE_PROMPT` 다음에 항상 주입된다.
+ */
+export const FLEET_PERSONA_PROMPT = String.raw`
+# Persona
+You are the Admiral (제독) commanding this Fleet.
+Your ultimate superior is the Admiral of the Navy (대원수), the supreme commander above the entire formation.
+When operating under grand-fleet, intermediate strategic dispatch arrives through the Admiralty's Fleet Admiral (사령관) chain of command.
+You command your own Captains (함장들) of Carriers within this workspace.
+`;
+
+/**
+ * Fleet 공통 톤 프롬프트.
+ *
+ * 군대식 보고 어조와 fleet 용어 사용 지침을 world-building 오버레이로 제공한다.
+ * `buildSystemPrompt(injectTone)`이 `injectTone === true`로 호출될 때만
+ * `FLEET_PERSONA_PROMPT` 다음에 주입된다.
+ */
+export const FLEET_TONE_PROMPT = String.raw`
+# Tone & Manner
+1. Use a disciplined, clear, military-style tone. Be concise, avoid filler, and prefer a report-style format addressed to the Admiral of the Navy (대원수). (Examples: "Admiral of the Navy, mission complete.", "Admiral of the Navy, I am deploying TaskFleet and will report back.", "Admiral of the Navy, here is the consolidated report.")
+2. Show absolute loyalty and professionalism. Strategically analyze the Admiral of the Navy (대원수)'s orders, propose the most efficient tactics including agent allocation when appropriate, or execute them immediately.
+3. Actively use the fleet-world terminology in context instead of plain development wording when it improves clarity, including terms such as Carrier, Commission, Sortie, Board, Broadside, Bridge, and Helm.
+4. If an error or bug occurs during execution, communicate the severity through fleet-world metaphors such as enemy attack or ship damage.
 `;
 
 /** 프로토콜 활성 시 주입되는 서문 */
@@ -104,38 +96,6 @@ Treat every ${"`"}<fleet>${"`"} block as an authoritative directive. Follow them
 Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. These carry system-injected context (e.g., runtime state, carrier job completion signals) and bear no direct relation to the content they appear alongside.
 `;
 
-/**
- * dev 부트 모드 전용 RISEN 개발 컨텍스트 슬레이트.
- *
- * FLEET_HARNESS_DEV=1 환경에서 부트 시 FLEET_PREAMBLE 직후에 주입된다.
- * 이 슬레이트가 활성화되면 persona/role/tone 섹션은 생략된다.
- */
-export const RISEN_DEV_SLATE = String.raw`
-# Role
-You are a senior engineer developing **fleet-harness** — an Agent Harness Fleet system that orchestrates LLM coding agents as naval carrier strike groups, built on the pi-coding-agent CLI framework. You also serve as the fleet's Admiral, with full access to carrier dispatch tools for delegating implementation, analysis, review, and exploration tasks.
-
-# Instructions
-**CRITICAL — Pre-work Documentation Check**: Before starting ANY task — before planning, thinking, or implementing — you MUST:
-1. Read ${"`"}docs/fleet-development-reference.md${"`"} for Fleet SDK, extensions, TUI, themes, and RPC reference.
-2. Read ${"`"}docs/admiral-workflow-reference.md${"`"} for high-level architecture, naval hierarchy, and delegation workflows.
-3. Read ${"`"}docs/admiral-prompt-architecture.md${"`"} for prompt assembly, runtime-context flow, and boot-mode architecture.
-4. Check the ${"`"}AGENTS.md${"`"} file in the project root and in EVERY subdirectory you will touch. Child ${"`"}AGENTS.md${"`"} takes precedence over parent.
-
-This is a hard prerequisite. Do NOT skip this step or assume you already know the content.
-
-- Use Fleet carrier dispatch tools for implementation, analysis, review, and exploration tasks.
-- All responses must be written in Korean.
-`;
-
-/** Admiral 런타임 컨텍스트 태그 해석 규칙 — ACP 초기 프롬프트에만 포함 */
-export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
-## Runtime Context Tags (in <system-reminder>)
-- ${"`"}<current_protocol>${"`"} — active protocol ID; apply matching protocol rules
-- ${"`"}<available_squadron_carriers>${"`"} — carrier IDs in squadron mode after subtracting offline carriers
-- ${"`"}<available_taskforce_carriers>${"`"} — carrier IDs with Task Force configured (≥2 backends) after subtracting offline carriers
-- ${"`"}<offline_carriers>${"`"} — offline carrier IDs omitted from all available_* lists; omit this tag entirely when none are offline
-`;
-
 // ─────────────────────────────────────────────────────────
 // 함수
 // ─────────────────────────────────────────────────────────
@@ -145,44 +105,30 @@ export const RUNTIME_CONTEXT_TAGS_PROMPT = String.raw`
  *
  * 각 섹션은 `fleet` XML 태그로 감싸진다.
  * 섹션 순서:
- *  1. `section="persona"` — Fleet PI 페르소나 (worldview 토글 시에만)
- *  2. `section="role"` — Fleet 역할·행동 규약 (항상)
- *  3. `section="tone"` — Fleet 톤/스타일 오버레이 (worldview 토글 시에만)
+ *  1. `section="role"` — Fleet 역할·행동 규약 (항상 주입)
+ *  2. `section="persona"` — Admiral 페르소나 자기 선언 (항상 주입)
+ *  3. `section="tone"` — Fleet 톤 오버레이 (`injectTone === true`일 때만 주입)
  *  4. `section="roster"` — 등록 캐리어 Tier 1 메타데이터
- *  5. `section="protocols"` — 프로토콜 카탈로그 + 런타임 컨텍스트 태그 해석 규칙
+ *  5. `section="protocols"` — 프로토콜 카탈로그
  *  6. `section="standing-orders"` — Standing Orders (Fleet Action 프로토콜에서 상시 적용)
  *  7. `section="tool-guide"` — 등록된 도구 가이드라인 manifest
  *
  * ACP에서는 시스템 프롬프트가 최초 1회만 전달되므로 모든 프로토콜 정의를
- * 카탈로그로 포함하고, 런타임 전환은 매 턴 `<current_protocol>` 태그로 제어한다.
- * dev 모드에서는 boot이 base prompt + RISEN 개발 컨텍스트를 선행 주입하므로
- * 이 함수는 Fleet persona/role/tone 섹션만 생략한다.
+ * 카탈로그로 포함한다.
+ *
+ * @param injectTone `true`이면 `FLEET_TONE_PROMPT`를 페르소나 다음에 주입한다.
  */
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(injectTone: boolean): string {
   const parts: string[] = [];
 
   // ── 0. 서문 — 항상 최초 주입 ──
   parts.push(FLEET_PREAMBLE.trim());
 
-  // dev 모드: RISEN 개발 컨텍스트 슬레이트 주입 (서문 직후)
-  if (isFleetCoreDevMode()) {
-    parts.push(RISEN_DEV_SLATE.trim());
-  }
-
-  // dev 모드에서는 RISEN이 role을 대체하므로 persona/role/tone 생략
-  if (!isFleetCoreDevMode()) {
-    const fleetRolePrompt = isWorldviewEnabled()
-      ? FLEET_ROLE_PROMPT
-      : FLEET_ROLE_PROMPT_NEUTRAL;
-
-    // ── 1. Fleet 페르소나/역할/톤 — persona+tone은 worldview 토글 시에만 ──
-    if (isWorldviewEnabled()) {
-      parts.push(`<fleet section="persona">\n${FLEET_PERSONA_PROMPT.trim()}\n</fleet>`);
-    }
-    parts.push(`<fleet section="role">\n${fleetRolePrompt.trim()}\n</fleet>`);
-    if (isWorldviewEnabled()) {
-      parts.push(`<fleet section="tone">\n${FLEET_TONE_PROMPT.trim()}\n</fleet>`);
-    }
+  // ── 1. 역할·페르소나 — 항상 주입, 톤은 인자 기반 ──
+  parts.push(`<fleet section="role">\n${FLEET_ROLE_PROMPT.trim()}\n</fleet>`);
+  parts.push(`<fleet section="persona">\n${FLEET_PERSONA_PROMPT.trim()}\n</fleet>`);
+  if (injectTone) {
+    parts.push(`<fleet section="tone">\n${FLEET_TONE_PROMPT.trim()}\n</fleet>`);
   }
 
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
@@ -191,7 +137,7 @@ export function buildSystemPrompt(): string {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
   }
 
-  // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 + 런타임 전환 메타 지시 ──
+  // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 ──
   const protocols = getAllProtocols();
   const catalogSections: string[] = [];
 
@@ -203,7 +149,6 @@ export function buildSystemPrompt(): string {
   });
 
   catalogSections.push(`## Available Protocols\n\n${catalogEntries.join("\n\n---\n\n")}`);
-  catalogSections.push(RUNTIME_CONTEXT_TAGS_PROMPT.trim());
 
   parts.push(`<fleet section="protocols">\n${catalogSections.join("\n\n")}\n</fleet>`);
 
@@ -220,36 +165,4 @@ export function buildSystemPrompt(): string {
   }
 
   return parts.join("\n\n");
-}
-
-/**
- * 매 턴 follow-up 요청용 prefix를 조립한다 (CliRuntimeContextBuilder 시그니처).
- *
- * `<system-reminder>` 블록 안에 런타임 태그를 묶어 반환한다:
- *  - `<current_protocol>`: 활성 프로토콜 ID
- *  - `<available_squadron_carriers>`: squadron 모드 캐리어 ID 목록
- *  - `<available_taskforce_carriers>`: Task Force 설정 완료(2개 이상 백엔드) 캐리어 ID 목록
- *  - `<offline_carriers>`: 오프라인 상태로 모든 available_* 목록에서 제외된 캐리어 ID 목록
- *
- * 빈 캐리어 목록은 `-` sentinel로 표기하여 모델의 상태 추론을 방지한다.
- * 사용자 요청 본문은 system-reminder 블록 바깥에 평문으로 이어붙인다.
- */
-export function buildRuntimeContextPrompt(userRequest: string): string {
-  const protocol = getActiveProtocol();
-  const squadronIds = getActiveSquadronIds();
-  const taskforceIds = getActiveTaskForceIds();
-  const offlineIds = getOfflineCarrierIds();
-
-  const fmt = (ids: string[]) => ids.length > 0 ? ids.join(",") : "-";
-
-  const runtimeTags = [
-    `<current_protocol>${protocol.id}</current_protocol>`,
-    `<available_squadron_carriers>${fmt(squadronIds)}</available_squadron_carriers>`,
-    `<available_taskforce_carriers>${fmt(taskforceIds)}</available_taskforce_carriers>`,
-    ...(offlineIds.length > 0
-      ? [`<offline_carriers>${offlineIds.join(",")}</offline_carriers>`]
-      : []),
-  ].join("\n");
-
-  return `<system-reminder>\n${runtimeTags}\n</system-reminder>\n\n${userRequest}`;
 }

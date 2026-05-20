@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `8`
+- total_entries: `9`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -13,9 +13,10 @@
 - title: `Guide - 001 fleet-harness 소개`
 - path: `wiki/guide-001-fleet-harness-overview.md`
 - tags: `guide, fleet-harness, overview, onboarding, current`
-- updated: `2026-05-07T15:57:26.922Z`
+- updated: `2026-05-19T08:24:10.563Z`
 - summary: `# fleet-harness 소개`
-- raw_source_ref: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md`
+- raw_source_ref: `raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
+- raw_source_refs: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md, raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
 
 ### guide-002-carrier-status
 

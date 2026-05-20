@@ -1,0 +1,61 @@
+{
+  "name": "@sbluemin/fleet-unified-agent",
+  "version": "0.21.0",
+  "description": "Codex CLI, Claude Code, Gemini CLI를 통합하는 TypeScript 기반 SDK",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/unified-agent"
+  },
+  "type": "module",
+  "bin": {
+    "ait": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "models.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --project tsconfig.json",
+    "typecheck:test": "tsc --project tsconfig.test.json",
+    "prepare": ""
+  },
+  "keywords": [
+    "unified-agent",
+    "agent",
+    "cli",
+    "acp",
+    "gemini",
+    "claude",
+    "codex",
+    "json-rpc"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.21.0",
+    "picocolors": "^1.1.1",
+    "zod": "^4.3.6"
+  }
+}

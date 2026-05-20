@@ -2,7 +2,7 @@ import type { CarrierJobRecord } from "./job-types.js";
 
 interface GuardState {
   activeJobs: Map<string, CarrierJobRecord>;
-  activeCarrierJobs: Map<string, string>;
+  activeCarrierJobs: Map<string, Set<string>>;
   maxDetachedJobs: number;
   activeJobCountCallbacks: Array<(count: number) => void>;
 }
@@ -14,29 +14,29 @@ export interface JobPermitAccepted {
 
 export interface JobPermitRejected {
   accepted: false;
-  error: "concurrency limit" | "carrier busy";
-  current_job_id?: string;
+  error: "concurrency limit";
 }
 
 export type JobPermit = JobPermitAccepted | JobPermitRejected;
 
-const GUARD_STATE_KEY = "__fleet_harness_job_concurrency_guard__";
 const DEFAULT_MAX_DETACHED_JOBS = 5;
+const guardState: GuardState = {
+  activeJobs: new Map(),
+  activeCarrierJobs: new Map(),
+  maxDetachedJobs: DEFAULT_MAX_DETACHED_JOBS,
+  activeJobCountCallbacks: [],
+};
 
 export function acquireJobPermit(record: CarrierJobRecord): JobPermit {
   const state = getGuardState();
-  for (const carrierId of record.carriers) {
-    const current = state.activeCarrierJobs.get(carrierId);
-    if (current) {
-      return { accepted: false, error: "carrier busy", current_job_id: current };
-    }
-  }
   if (state.activeJobs.size >= state.maxDetachedJobs) {
     return { accepted: false, error: "concurrency limit" };
   }
   state.activeJobs.set(record.jobId, record);
   for (const carrierId of record.carriers) {
-    state.activeCarrierJobs.set(carrierId, record.jobId);
+    const activeSet = state.activeCarrierJobs.get(carrierId) ?? new Set<string>();
+    activeSet.add(record.jobId);
+    state.activeCarrierJobs.set(carrierId, activeSet);
   }
   notifyActiveJobCountChange(state);
   return {
@@ -53,7 +53,10 @@ export function releaseJobPermit(
   const record = state.activeJobs.get(jobId);
   if (!record) return;
   for (const carrierId of record.carriers) {
-    if (state.activeCarrierJobs.get(carrierId) === jobId) {
+    const activeSet = state.activeCarrierJobs.get(carrierId);
+    if (!activeSet) continue;
+    activeSet.delete(jobId);
+    if (activeSet.size === 0) {
       state.activeCarrierJobs.delete(carrierId);
     }
   }
@@ -105,15 +108,5 @@ function notifyActiveJobCountChange(state: GuardState): void {
 }
 
 function getGuardState(): GuardState {
-  const root = globalThis as Record<string, unknown>;
-  const existing = root[GUARD_STATE_KEY] as GuardState | undefined;
-  if (existing) return existing;
-  const state: GuardState = {
-    activeJobs: new Map(),
-    activeCarrierJobs: new Map(),
-    maxDetachedJobs: DEFAULT_MAX_DETACHED_JOBS,
-    activeJobCountCallbacks: [],
-  };
-  root[GUARD_STATE_KEY] = state;
-  return state;
+  return guardState;
 }

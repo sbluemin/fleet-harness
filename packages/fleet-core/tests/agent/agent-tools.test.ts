@@ -3,12 +3,14 @@ import {
   list,
   invoke,
   registerAgentTool,
+  registerFleetCoreDefaultAgentTools,
   registerExtraTools,
   unregisterExtraTools,
   clearAllDefaultTools,
   clearAllExtraTools,
 } from "../../src/admiral/agent/tools.js";
-import type { AgentToolSpec } from "../../src/admiral/agent/types.js";
+import type { AgentToolSpec } from "@sbluemin/fleet-core";
+import { buildCarrierDispatchToolSpec } from "../../src/admiral/carrier/tool-spec.js";
 
 const testSpec: AgentToolSpec = {
   id: "test_tool",
@@ -26,7 +28,7 @@ const testSpec: AgentToolSpec = {
 };
 
 function listTestTools() {
-  const BUILTIN_IDS = new Set(["carrier_dispatch", "carrier_jobs", "request_directive"]);
+  const BUILTIN_IDS = new Set(["carrier_dispatch", "carrier_jobs"]);
   return list().filter((spec) => !BUILTIN_IDS.has(spec.id));
 }
 
@@ -34,6 +36,7 @@ describe("admiral.agent.tools", () => {
   beforeEach(() => {
     clearAllDefaultTools();
     clearAllExtraTools();
+    registerFleetCoreDefaultAgentTools();
   });
 
   describe("list()", () => {
@@ -53,6 +56,21 @@ describe("admiral.agent.tools", () => {
   });
 
   describe("invoke()", () => {
+    it("carrier_dispatch rejects calls without a non-empty label", async () => {
+      const spec = buildCarrierDispatchToolSpec();
+      const result = await spec.execute(
+        { carrier_id: "genesis", request: "Do the thing" },
+        { cwd: process.cwd(), toolCallId: "missing-label" },
+      ) as { isError: boolean; details: unknown };
+
+      expect(result.isError).toBe(true);
+      expect(result.details).toMatchObject({
+        job_id: "carrier:missing-label",
+        accepted: false,
+        error: "Invalid arguments: carrier_id, label, and request must be non-empty strings.",
+      });
+    });
+
     it("기본 도구를 실행하고 McpCallToolResult를 반환한다", async () => {
       registerAgentTool(testSpec);
       const result = await invoke("test_tool", { key: "value" });

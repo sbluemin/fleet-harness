@@ -31,7 +31,6 @@ export interface FleetFrameworkLikeState {
   modes?: Map<string, FleetFrameworkLikeMode>;
   registeredOrder?: string[];
   offlineCarriers?: Set<string>;
-  squadronEnabledCarriers?: Set<string>;
   taskforceConfiguredCarriers?: Set<string>;
 }
 
@@ -48,7 +47,6 @@ export interface StreamRunLikeState {
 
 export interface StreamStoreLikeState {
   runs?: Map<string, StreamRunLikeState>;
-  visibleRunIdByCli?: Map<string, string>;
 }
 
 export function buildFleetPingPayloadFromState(input: {
@@ -81,8 +79,7 @@ export function collectCarrierMap(
     const mode = framework.modes?.get(carrierId);
     const cli = normalizeCliBackend(mode?.config?.cliType);
     const isUnavailable = framework.offlineCarriers?.has(carrierId) ?? false;
-    const isStandby = framework.squadronEnabledCarriers?.has(carrierId) ?? false;
-    const status = deriveCarrierStatus(undefined, isUnavailable, isStandby);
+    const status = deriveCarrierStatus(undefined, isUnavailable);
     const info: CarrierInfo = {
       status,
     };
@@ -122,7 +119,6 @@ export function deriveFleetStatus(
 function deriveCarrierStatus(
   runStatus: string | undefined,
   isUnavailable: boolean,
-  isStandby: boolean,
 ): CarrierStatus {
   if (runStatus === "conn" || runStatus === "stream") {
     return "active";
@@ -135,9 +131,6 @@ function deriveCarrierStatus(
   }
   if (isUnavailable) {
     return "unavailable";
-  }
-  if (isStandby) {
-    return "standby";
   }
   return "idle";
 }

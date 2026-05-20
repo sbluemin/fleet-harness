@@ -92,7 +92,7 @@ This policy applies to both step 5 (classification / verification) and step 8 (s
 
 7. Apply the changes:
    - Apply directly for low-risk, narrow edits (≤ 3 dependent steps, single file or tightly coupled set).
-   - Delegate to Genesis via `carrier_dispatch` with `carrier_id: "genesis"` for multi-file or non-trivial implementation work. Provide `<objective>`, `<scope>`, `<constraints>`, and `<references>` blocks; do not prescribe step-by-step instructions.
+   - Delegate to Genesis via `carrier_dispatch` with `carrier_id: "genesis"` and a descriptive `label` (e.g., `label: "Apply PR review fixes to fleet-core"`) for multi-file or non-trivial implementation work. Provide `<objective>`, `<scope>`, `<constraints>`, and `<references>` blocks; do not prescribe step-by-step instructions.
    - Korean is required for all new code comments per the user's global instruction.
 
 8. Self-verification (do this before any external check is run):
@@ -112,7 +112,7 @@ This policy applies to both step 5 (classification / verification) and step 8 (s
    - `git status --short` and `git diff --stat` — confirm only the intended files changed.
    - `git diff` — final pass to confirm the diff still matches the self-verification outcome from step 8.
    - Run the workspace's available checks for the touched packages. Common entry points:
-     - `pnpm --filter <workspace-name> typecheck` (e.g., `--filter @sbluemin/fleet-harness`)
+     - `pnpm --filter <workspace-name> typecheck` (e.g., `--filter @sbluemin/fleet-core`)
      - `pnpm --filter <workspace-name> build` if a build script exists
      - `pnpm --filter <workspace-name> test` if a test script exists and is relevant
    - If a script does not exist for the touched workspace, state that explicitly in the report.
