@@ -9,10 +9,13 @@ export const FLEET_HELP_TEXT = `fleet — Fleet Harness
 
 Usage:
   fleet [options]
+  fleet auth login [claude-zai|claude-kimi]
+  fleet auth list
+  fleet auth logout [claude-zai|claude-kimi]
 
 Options:
   -h, --help          Show this help message and exit.
-  -c, --cli <id>      Select the dedicated CLI to embed (claude | codex).
+  -c, --cli <id>      Select the dedicated CLI to embed (claude | claude-zai | claude-kimi | codex).
                       Default: claude. Env override: FLEET_DEDICATED_CLI.
   -n, --native        Run the dedicated CLI in native mode: do not inject
                       the Fleet system prompt and hide the Fleet Action

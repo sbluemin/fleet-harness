@@ -1,7 +1,18 @@
+import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
 import { FLEET_HELP_TEXT, parseFleetCliOptions } from "./cli-args.js";
 
-const options = parseFleetCliOptions(process.argv.slice(2));
+const argv = process.argv.slice(2);
+
+if (argv[0] === "auth") {
+  const status = await dispatchAuthCommand(argv, {
+    stdout: process.stdout,
+    stderr: process.stderr,
+  });
+  process.exit(status);
+}
+
+const options = parseFleetCliOptions(argv);
 
 if (options.help) {
   process.stdout.write(FLEET_HELP_TEXT);
