@@ -36,7 +36,7 @@ export async function runAuthLoginFlow(
 
   const providerId = infra.auth.CLI_TO_AUTH_PROVIDER_ID[selectedCli];
   if (!providerId) {
-    io.stderr.write("해당 기함 인증 항로를 찾을 수 없습니다.\n");
+    io.stderr.write(`Auth provider not found for cli '${selectedCli}'. Use \`fleet auth login\` with a supported provider.\n`);
     return 1;
   }
 

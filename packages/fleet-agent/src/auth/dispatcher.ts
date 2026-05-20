@@ -4,7 +4,7 @@ import { infra } from "@sbluemin/fleet-core";
 import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
 import type { AuthCommandIo } from "./types.js";
 
-export const AUTH_HELP_TEXT = `fleet auth — Fleet 인증 작전
+export const AUTH_HELP_TEXT = `fleet auth — Authentication
 
 Usage:
   fleet auth login [claude-zai|claude-kimi]
@@ -31,7 +31,7 @@ export async function dispatchAuthCommand(
     return logoutAuthProvider(argv.slice(2), io);
   }
 
-  io.stderr.write(`알 수 없는 fleet auth 명령입니다: ${command}\n`);
+  io.stderr.write(`Unknown fleet auth command: ${command}\n`);
   io.stdout.write(AUTH_HELP_TEXT);
   return 1;
 }
@@ -71,7 +71,7 @@ async function logoutAuthProvider(
 
   const providerId = infra.auth.CLI_TO_AUTH_PROVIDER_ID[selectedCli];
   if (!providerId) {
-    io.stderr.write("해당 기함 인증 항로를 찾을 수 없습니다.\n");
+    io.stderr.write(`Auth provider not found for cli '${selectedCli}'. Use \`fleet auth logout\` with a supported provider.\n`);
     return 1;
   }
 

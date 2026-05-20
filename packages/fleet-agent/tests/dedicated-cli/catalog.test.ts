@@ -95,9 +95,9 @@ describe("dedicated CLI catalog", () => {
 
   it("fails before returning a variant profile when auth resolution fails", async () => {
     const env = createEnvWithBins();
-    mocks.resolveAuthEnvMock.mockRejectedValue(new Error("검증 실패"));
+    mocks.resolveAuthEnvMock.mockRejectedValue(new Error("Validation failed"));
 
-    await expect(resolveDedicatedCliProfile(["--cli", "claude-kimi"], env, "/tmp")).rejects.toThrow("검증 실패");
+    await expect(resolveDedicatedCliProfile(["--cli", "claude-kimi"], env, "/tmp")).rejects.toThrow("Validation failed");
   });
 
   it("does not mutate process.env while creating profiles", async () => {

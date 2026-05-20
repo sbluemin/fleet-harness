@@ -56,7 +56,7 @@ describe("auth providers", () => {
     await auth.setApiKey("Claude Code with Moonshot Kimi", "kimi-token");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("forbidden", { status: 403 }));
 
-    await expect(resolveAuthEnv("claude-kimi")).rejects.toThrow("기함 인증 권한이 부족합니다");
+    await expect(resolveAuthEnv("claude-kimi")).rejects.toThrow("Auth token is not allowed for this provider");
   });
 });
 

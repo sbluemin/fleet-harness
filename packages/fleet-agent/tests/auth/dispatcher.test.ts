@@ -28,9 +28,9 @@ vi.mock("../../src/auth/login-flow.js", () => ({
 vi.mock("@sbluemin/fleet-core", () => ({
   infra: {
     auth: {
-      AUTH_LIST_EMPTY_MESSAGE: "저장소 비어 있음",
-      AUTH_COMMAND_CANCELLED_MESSAGE: "취소됨",
-      AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE: "해제 대상 선택",
+      AUTH_LIST_EMPTY_MESSAGE: "No auth tokens",
+      AUTH_COMMAND_CANCELLED_MESSAGE: "Cancelled",
+      AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE: "Select provider",
       CLI_TO_AUTH_PROVIDER_ID: {
         "claude-zai": "Claude Code with Z.AI GLM",
         "claude-kimi": "Claude Code with Moonshot Kimi",
@@ -39,8 +39,8 @@ vi.mock("@sbluemin/fleet-core", () => ({
         deleteApiKey: mocks.deleteApiKeyMock,
         listProviderIds: mocks.listProviderIdsMock,
       }),
-      formatAuthLogoutSuccessMessage: (providerId: string) => `제거 완료: ${providerId}`,
-      formatAuthMigrationNotice: () => "이전 완료",
+      formatAuthLogoutSuccessMessage: (providerId: string) => `Removed: ${providerId}`,
+      formatAuthMigrationNotice: () => "Migration complete",
       migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
     },
   },
@@ -89,7 +89,7 @@ describe("auth dispatcher", () => {
 
     await expect(dispatchAuthCommand(["auth", "list"], io)).resolves.toBe(0);
 
-    expect(io.stdout.output).toContain("저장소 비어 있음");
+    expect(io.stdout.output).toContain("No auth tokens");
   });
 
   it("logs out a selected provider", async () => {
@@ -98,7 +98,7 @@ describe("auth dispatcher", () => {
     await expect(dispatchAuthCommand(["auth", "logout", "claude-kimi"], io)).resolves.toBe(0);
 
     expect(mocks.deleteApiKeyMock).toHaveBeenCalledWith("Claude Code with Moonshot Kimi");
-    expect(io.stdout.output).toContain("제거 완료: Claude Code with Moonshot Kimi");
+    expect(io.stdout.output).toContain("Removed: Claude Code with Moonshot Kimi");
   });
 
   it("prompts for logout provider when no backend is supplied", async () => {
@@ -115,7 +115,7 @@ describe("auth dispatcher", () => {
 
     await expect(dispatchAuthCommand(["auth", "unknown"], io)).resolves.toBe(1);
 
-    expect(io.stderr.output).toContain("알 수 없는 fleet auth 명령입니다");
+    expect(io.stderr.output).toContain("Unknown fleet auth command");
   });
 });
 

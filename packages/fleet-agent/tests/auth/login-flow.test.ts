@@ -28,9 +28,9 @@ vi.mock("@sbluemin/fleet-core", () => ({
       createAuthService: () => ({
         setApiKey: mocks.setApiKeyMock,
       }),
-      formatAuthLoginSuccessMessage: (providerId: string) => `등록 완료: ${providerId}`,
-      formatAuthMigrationNotice: () => "이전 완료",
-      formatAuthValidationFailureMessage: () => "검증 실패",
+      formatAuthLoginSuccessMessage: (providerId: string) => `Registered: ${providerId}`,
+      formatAuthMigrationNotice: () => "Migration complete",
+      formatAuthValidationFailureMessage: () => "Validation failed",
       migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
       validateAuthKeyForCli: mocks.validateAuthKeyForCliMock,
     },
@@ -55,7 +55,7 @@ describe("auth login flow", () => {
 
     expect(mocks.validateAuthKeyForCliMock).toHaveBeenCalledWith("claude-zai", "secret-token");
     expect(mocks.setApiKeyMock).toHaveBeenCalledWith("Claude Code with Z.AI GLM", "secret-token");
-    expect(io.stdout.output).toContain("등록 완료: Claude Code with Z.AI GLM");
+    expect(io.stdout.output).toContain("Registered: Claude Code with Z.AI GLM");
   });
 
   it("prompts for a backend when one is not supplied", async () => {
@@ -83,7 +83,7 @@ describe("auth login flow", () => {
     await expect(runAuthLoginFlow(["claude-zai"], io)).resolves.toBe(1);
 
     expect(mocks.setApiKeyMock).not.toHaveBeenCalled();
-    expect(io.stderr.output).toContain("검증 실패");
+    expect(io.stderr.output).toContain("Validation failed");
   });
 
   it("cancels without saving when secret entry is cancelled", async () => {

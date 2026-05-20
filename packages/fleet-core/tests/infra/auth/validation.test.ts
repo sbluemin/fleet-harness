@@ -77,13 +77,13 @@ describe("auth validation", () => {
     });
   });
 
-  it("creates a Korean validation error message", () => {
+  it("creates a plain English validation error message", () => {
     const error = createAuthValidationError({
       providerId: "Claude Code with Moonshot Kimi",
       status: "forbidden",
     });
 
-    expect(error.message).toContain("기함 인증 권한이 부족합니다");
+    expect(error.message).toContain("Auth token is not allowed for this provider");
     expect(error.message).toContain("Claude Code with Moonshot Kimi");
   });
 });
