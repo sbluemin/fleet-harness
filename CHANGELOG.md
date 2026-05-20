@@ -5,10 +5,12 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
+
 ## [0.21.0] - 2026-05-20
 
 ### Added
-- [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
 - [agent-core] Added `--replace-system-prompt` (`-rsp`) CLI flag that overrides instead of appending the system prompt when launching the Claude dedicated CLI.
 - [agent] Added Fleet Wiki tools to dedicated CLI MCP sessions through fleet-agent boot registration.
 - [core][agent] Added dedicated CLI launch injection for Fleet Admiral prompts, Fleet MCP access, and native permission bypass flags for Claude and Codex.
