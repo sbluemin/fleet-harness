@@ -23,9 +23,19 @@ export type { FleetAdmiralServices } from "./public/admiral-services.js";
 export type { FleetAdmiraltyServices } from "./public/admiralty-services.js";
 export type { FleetInfraServices } from "./public/infra-services.js";
 export type {
+  AuthMessageProviderRef,
+  AuthMigrationMergeResult,
+  AuthMigrationNoticeInput,
+  AuthMigrationResult,
   AuthService,
   AuthStorageData,
   AuthStorageEntry,
+  AuthValidationFailureMessageInput,
+  AuthValidationFailureResult,
+  AuthValidationFailureStatus,
+  AuthValidationRequest,
+  AuthValidationResult,
+  AuthValidationStatus,
 } from "./infra/auth/index.js";
 export type {
   AgentToolCtx,
