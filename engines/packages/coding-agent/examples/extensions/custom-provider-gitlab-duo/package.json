@@ -1,7 +1,7 @@
 {
   "name": "pi-extension-custom-provider-gitlab-duo",
   "private": true,
-  "version": "0.20.0",
+  "version": "0.21.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",

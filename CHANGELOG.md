@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-05-20
+
 ### Added
 - [wiki] Added `wiki_patch_edit` for approval-gated in-place edits to pending wiki patches.
 - [wiki] Implemented approve-time stale-base guard using content hash and version checks to prevent concurrent modification conflicts.
