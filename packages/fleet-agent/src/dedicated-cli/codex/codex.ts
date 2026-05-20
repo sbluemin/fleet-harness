@@ -7,7 +7,7 @@ export const codexCli: DedicatedCliDefinition = {
   envOverrideName: "CODEX_BIN",
   id: "codex",
   label: "Codex",
-  createProfile(options: DedicatedCliProfileOptions) {
+  async createProfile(options: DedicatedCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
       args: [...prefixArgs],

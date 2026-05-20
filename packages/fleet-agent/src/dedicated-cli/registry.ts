@@ -1,14 +1,18 @@
 import { claudeCli } from "./claude/claude.js";
+import { claudeKimiCli } from "./claude-kimi/claude-kimi.js";
+import { claudeZaiCli } from "./claude-zai/claude-zai.js";
 import { codexCli } from "./codex/codex.js";
 import type { DedicatedCliDefinition, DedicatedCliId, DedicatedCliProfile } from "./types.js";
 
 const DEFAULT_CLI_ID: DedicatedCliId = "claude";
 const DEFINITIONS: Record<DedicatedCliId, DedicatedCliDefinition> = {
   claude: claudeCli,
+  "claude-zai": claudeZaiCli,
+  "claude-kimi": claudeKimiCli,
   codex: codexCli,
 };
 
-export function resolveDedicatedCliProfile(argv: readonly string[], env: NodeJS.ProcessEnv, cwd: string): DedicatedCliProfile {
+export async function resolveDedicatedCliProfile(argv: readonly string[], env: NodeJS.ProcessEnv, cwd: string): Promise<DedicatedCliProfile> {
   const id = parseCliId(argv) ?? parseEnvCliId(env.FLEET_DEDICATED_CLI) ?? DEFAULT_CLI_ID;
   return DEFINITIONS[id].createProfile({ cwd, env });
 }

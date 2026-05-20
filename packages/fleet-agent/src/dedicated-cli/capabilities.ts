@@ -5,6 +5,14 @@ export const DEDICATED_CLI_INJECTION_CAPABILITIES: Record<DedicatedCliId, Dedica
     builderId: "claude-native",
     enabled: true,
   },
+  "claude-zai": {
+    builderId: "claude-native",
+    enabled: true,
+  },
+  "claude-kimi": {
+    builderId: "claude-native",
+    enabled: true,
+  },
   codex: {
     builderId: "codex-native",
     enabled: true,

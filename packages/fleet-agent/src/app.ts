@@ -48,7 +48,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     requestRender: scheduleRender,
   });
   registerCarrierStatusKeybinding({ fleetPty });
-  const baseProfile = resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
+  const baseProfile = await resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
   const currentProfile = native
     ? baseProfile
     : await injectDedicatedCliProfile(baseProfile, { replaceSystemPrompt, disableMetaphor });

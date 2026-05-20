@@ -1,4 +1,4 @@
-export type DedicatedCliId = "claude" | "codex";
+export type DedicatedCliId = "claude" | "claude-zai" | "claude-kimi" | "codex";
 
 export interface DedicatedCliProfile {
   readonly id: DedicatedCliId;
@@ -22,7 +22,7 @@ export interface DedicatedCliDefinition {
   readonly label: string;
   readonly defaultBin: string;
   readonly envOverrideName: string;
-  createProfile(options: DedicatedCliProfileOptions): DedicatedCliProfile;
+  createProfile(options: DedicatedCliProfileOptions): Promise<DedicatedCliProfile>;
 }
 
 export interface DedicatedCliProfileOptions {
