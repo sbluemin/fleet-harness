@@ -11,7 +11,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "fleet": "pnpm --filter @sbluemin/fleet-unified-agent build && pnpm --filter @sbluemin/fleet-agent dev",
-    "postinstall": "pnpm -r build"
+    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && pnpm -r build"
   },
   "bin": {
     "fleet": "./packages/fleet-agent/bin/fleet",
