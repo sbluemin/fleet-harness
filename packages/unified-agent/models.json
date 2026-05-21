@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-01T06:30:57Z",
+  "updatedAt": "2026-05-21T00:00:00Z",
   "providers": {
     "claude": {
       "name": "Claude Code with Anthropic",
@@ -78,6 +78,7 @@
         { "modelId": "auto", "name": "Auto", "effort": { "supported": false } },
         { "modelId": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "effort": { "supported": false } },
         { "modelId": "gemini-3-flash", "name": "Gemini 3 Flash", "effort": { "supported": false } },
+        { "modelId": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "effort": { "supported": false } },
         { "modelId": "claude-opus-4-7-thinking", "name": "Claude Opus 4.7 Thinking", "spawnModelTemplate": "claude-opus-4-7-thinking-{effort}", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
         { "modelId": "claude-4.6-sonnet-medium-thinking", "name": "Claude Sonnet 4.6 Medium Thinking", "effort": { "supported": false } }
       ]
