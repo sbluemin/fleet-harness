@@ -2,7 +2,6 @@ import { admiral } from "@sbluemin/fleet-core";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "@sbluemin/fleet-tui/pty";
 
 import {
-  isCarrierOnline,
   resolveCarrierColor,
   resolveCarrierDisplayName,
   resolveCarrierRgb,
@@ -27,7 +26,6 @@ export interface CarrierHudTile {
   readonly carrierId: string;
   readonly color: string;
   readonly displayName: string;
-  readonly online: boolean;
   readonly rgb: [number, number, number];
   readonly taskForceBackendCount: number;
 }
@@ -59,7 +57,6 @@ const MAX_EXPANDED_STREAM_LINES = 1;
 const MAX_WIDGET_LINES = 10;
 const COLOR_DONE = "\x1b[38;2;80;200;120m";
 const COLOR_ERROR = "\x1b[38;2;255;80;80m";
-const DISABLED_COLOR = "\x1b[38;2;100;100;100m";
 const STREAM_PREFIX = "  ";
 const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
 const KIND_LABELS: Record<string, string> = {
@@ -255,7 +252,6 @@ function buildCarrierTiles(activeJobs: readonly PanelJob[]): CarrierHudTile[] {
       carrierId,
       color: resolveCarrierColor(carrierId),
       displayName: resolveCarrierDisplayName(carrierId),
-      online: isCarrierOnline(carrierId),
       rgb: resolveCarrierRgb(carrierId),
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
     };
@@ -293,21 +289,19 @@ function centerPadding(line: string, width: number): number {
 }
 
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
-  const carrierColor = carrier.online ? carrier.color : DISABLED_COLOR;
-  const icon = carrierStatusIcon(carrier, frame, carrierColor);
+  const icon = carrierStatusIcon(carrier, frame, carrier.color);
   const hasActiveJob = carrier.activeJobCount > 0;
   const suffix = `${carrierBadges(carrier)}${carrierActivityBadge(carrier)}`;
   const prefix = `${icon} `;
 
-  if (hasActiveJob && carrier.online) {
+  if (hasActiveJob) {
     return `${prefix}${waveText(carrier.displayName, carrier.rgb, frame)}${suffix}${ANSI_RESET}`;
   }
 
-  return `${prefix}${carrierColor}${carrier.displayName}${suffix}${ANSI_RESET}`;
+  return `${prefix}${carrier.color}${carrier.displayName}${suffix}${ANSI_RESET}`;
 }
 
 function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: string): string {
-  if (!carrier.online) return `${DISABLED_COLOR}○${ANSI_RESET}`;
   if (carrier.activeJobCount > 0) {
     const frames = SPINNER_FRAMES();
     const spinner = frames[frame % frames.length] ?? "○";
@@ -317,10 +311,8 @@ function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: strin
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
-  const disabledColor = carrier.online ? null : DISABLED_COLOR;
-  const tfBadgeColor = disabledColor ?? TASKFORCE_BADGE_COLOR();
   const tfBadge = carrier.taskForceBackendCount >= 2
-    ? ` ${tfBadgeColor}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
+    ? ` ${TASKFORCE_BADGE_COLOR()}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   return tfBadge;
 }

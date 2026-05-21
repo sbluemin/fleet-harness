@@ -3,8 +3,7 @@
  *
  * 모든 fleet 영속 상태를 `states.json` 단일 파일로 일원화합니다.
  * - 모델 선택 (기존 model-config.ts)
- * - Offline carrier 상태 (기존 sortie-store.ts)
- * - cliType 오버라이드 (기존 sortie-store.ts)
+ * - cliType 오버라이드
  *
  * 단일 게이트 I/O 패턴으로 race condition을 방지합니다.
  */
@@ -58,8 +57,6 @@ interface FleetStates {
   _generation?: number;
   /** 모델 선택 설정 */
   models?: SelectedModelsConfig;
-  /** offline carrier ID 목록 */
-  offline?: string[];
   /** carrier별 cliType 오버라이드 (defaultCliType과 다를 때만 저장) */
   cliTypeOverrides?: Record<string, string>;
   /** carrier별 사용자 지정 표시 이름 오버라이드 */
@@ -77,7 +74,6 @@ export interface FleetStoreSnapshot {
   models: SelectedModelsConfig;
   cliTypeOverrides: Record<string, string>;
   carrierDisplayNames: Record<string, string>;
-  offline: string[];
 }
 
 /** 로컬 프로세스가 직전에 기록한 states.json 지문(watcher echo 판별용, mtime+size 병합) */
@@ -441,30 +437,6 @@ export function getConfiguredTaskForceCarrierIdsFromSnapshot(
   return registeredIds.filter((id) => isTaskForceFormableInConfig(snapshot.models, id));
 }
 
-// ─── Offline 상태 ───────────────────────────────────────
-
-/**
- * 디스크에서 offline carrier ID 목록을 로드합니다.
- * 유효한 carrier ID만 필터링하여 반환합니다.
- */
-export function loadOfflineCarriers(validIds?: Set<string>): string[] {
-  const states = readStates();
-  const ids = states.offline;
-  if (!Array.isArray(ids)) return [];
-  return ids.filter((id): id is string =>
-    typeof id === "string" && (!validIds || validIds.has(id)),
-  );
-}
-
-/**
- * offline carrier ID 목록을 디스크에 저장합니다.
- */
-export function saveOfflineCarriers(ids: string[]): void {
-  updateStates((states) => {
-    states.offline = ids;
-  });
-}
-
 // ─── cliType 오버라이드 ─────────────────────────────────
 
 /**
@@ -617,7 +589,6 @@ export function readStatesSnapshot(): FleetStoreSnapshot {
     models: sanitizeSelectedModelsConfig(states.models),
     cliTypeOverrides: sanitizeCliTypeOverrides(states.cliTypeOverrides),
     carrierDisplayNames: sanitizeCarrierDisplayNames(states.carrierDisplayNames),
-    offline: sanitizeIdArray(states.offline),
   };
 }
 
@@ -653,7 +624,7 @@ function writeStates(s: FleetStates): void {
   fs.mkdirSync(storeDir, { recursive: true });
   const filePath = path.join(storeDir, FILENAME);
   const tmpPath = buildTempPath(filePath);
-  const next: FleetStates = { ...s, _generation: sanitizeGeneration(s._generation) + 1 };
+  const next = serializeFleetStates(s);
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
     fs.renameSync(tmpPath, filePath);
@@ -663,6 +634,14 @@ function writeStates(s: FleetStates): void {
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
     throw error;
   }
+}
+
+function serializeFleetStates(states: FleetStates): FleetStates {
+  const next: FleetStates = { _generation: sanitizeGeneration(states._generation) + 1 };
+  if (states.models !== undefined) next.models = states.models;
+  if (states.cliTypeOverrides !== undefined) next.cliTypeOverrides = states.cliTypeOverrides;
+  if (states.carrierDisplayNames !== undefined) next.carrierDisplayNames = states.carrierDisplayNames;
+  return next;
 }
 
 function updateStates(mutator: (states: FleetStates) => void): void {
@@ -909,14 +888,6 @@ function sanitizeCliTypeOverrides(value: unknown): Record<string, string> {
 function sanitizeGeneration(value: unknown): number {
   if (!Number.isInteger(value) || (value as number) < 0) return 0;
   return value as number;
-}
-
-function sanitizeIdArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => sanitizeConfigKey(item))
-    .filter((item): item is string => item !== null);
 }
 
 function sanitizeCarrierDisplayNames(value: unknown): Record<string, string> {

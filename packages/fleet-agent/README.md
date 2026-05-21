@@ -10,7 +10,7 @@ Primary CLI host for running local CLIs inside a permanent vertical two-pane Fle
 - Keeps host control policy in `src/controls/**` and default Fleet PTY wireframe content in `src/sections/**`.
 - Manages CLI launch and environment injection through `src/dedicated-cli/**`.
 - Uses `@sbluemin/fleet-tui/pty` as the generic lower-pane replacement for legacy TUI patterns.
-- Opens the carrier-status overlay with `Alt+O`; it handles carrier rendering, model/effort editing, sortie, reset, and TaskForce backend editing.
+- Opens the carrier-status overlay with `Alt+O`; it handles carrier rendering, model/effort editing, reset, and TaskForce backend editing.
 
 ## Boundary
 

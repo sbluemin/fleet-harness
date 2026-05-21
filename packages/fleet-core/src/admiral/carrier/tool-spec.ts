@@ -2,7 +2,6 @@
  * carrier/tool-spec.ts — carrier_dispatch 단일 도구 스펙
  *
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합합니다.
- * offline 호출은 execute() 진입점에서 안전장치로 거부합니다.
  */
 
 import { Type } from "typebox";
@@ -41,7 +40,6 @@ import {
 import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  isCarrierOnline,
   resolveCarrierCliType,
   resolveCarrierDisplayName,
 } from "./framework.js";
@@ -190,16 +188,6 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
       }
 
       const metadata = config.carrierMetadata;
-
-      // 캐리어 online 상태 확인
-      if (!isCarrierOnline(carrierId)) {
-        logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier offline carrier=${carrierId}`);
-        return launchResponseResult({
-          job_id: jobId,
-          accepted: false,
-          error: `Carrier "${carrierId}" is offline.`,
-        });
-      }
 
       // 필수 request-block 검증
       if (metadata) {

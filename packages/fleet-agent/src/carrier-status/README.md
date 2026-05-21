@@ -8,8 +8,8 @@ Infrastructure substitutions are intentionally narrow: legacy UI components beco
 
 Keybindings are registered via `@sbluemin/fleet-tui/input`.
 
-Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `d`, `c`, `N`, `C`, `R`.
+Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `c`, `N`, `C`, `R`.
 
-Edit modes: model dropdown, effort dropdown, CLI type dropdown, batch CLI FROM/TO, rename editor, sortie toggle, reset CLI, and TaskForce backend model/effort/reset.
+Edit modes: model dropdown, effort dropdown, CLI type dropdown, batch CLI FROM/TO, rename editor, reset CLI, and TaskForce backend model/effort/reset.
 
-Smoke path: `Alt+O -> Enter -> Enter -> Enter -> c -> C -> N -> d -> t -> Enter -> Enter -> r -> Esc`.
+Smoke path: `Alt+O -> Enter -> Enter -> Enter -> c -> C -> N -> t -> Enter -> Enter -> r -> Esc`.

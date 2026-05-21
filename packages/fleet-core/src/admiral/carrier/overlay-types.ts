@@ -60,7 +60,6 @@ export interface CarrierStatusEntry {
   effort: string | null;
   role: string | null;
   roleDescription: string | null;
-  isSortieEnabled: boolean;
   taskForceBackendCount: number;
   category?: CarrierCategory;
 }
@@ -99,7 +98,6 @@ export interface CarrierOverlayCallbacks {
   changeCliTypes(updates: Array<{ carrierId: string; newCliType: CarrierCliType }>): Promise<CliTypeChangeSettledResult[]>;
   resetCliTypesToDefault(): Promise<CliTypeChangeSettledResult[]>;
   saveModelSelection(carrierId: string, selection: ModelSelection): Promise<void>;
-  toggleSortieEnabled(carrierId: string): void;
   openTaskForce(carrierId: string): void;
   getAvailableModels(cliType: CarrierCliType): CliModelInfo;
   getServiceSnapshots(): Map<CarrierCliType, CliServiceSnapshot>;

@@ -1,9 +1,5 @@
 import { admiral } from "@sbluemin/fleet-core";
 
-export function isCarrierOnline(carrierId: string): boolean {
-  return admiral.carrier.isCarrierOnline(carrierId);
-}
-
 export function resolveCarrierColor(carrierId: string): string {
   return admiral.carrier.resolveCarrierColor(carrierId);
 }

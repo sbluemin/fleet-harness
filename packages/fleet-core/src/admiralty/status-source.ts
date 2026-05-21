@@ -30,7 +30,6 @@ export interface FleetFrameworkLikeMode {
 export interface FleetFrameworkLikeState {
   modes?: Map<string, FleetFrameworkLikeMode>;
   registeredOrder?: string[];
-  offlineCarriers?: Set<string>;
   taskforceConfiguredCarriers?: Set<string>;
 }
 
@@ -78,8 +77,7 @@ export function collectCarrierMap(
   for (const carrierId of order) {
     const mode = framework.modes?.get(carrierId);
     const cli = normalizeCliBackend(mode?.config?.cliType);
-    const isUnavailable = framework.offlineCarriers?.has(carrierId) ?? false;
-    const status = deriveCarrierStatus(undefined, isUnavailable);
+    const status = deriveCarrierStatus(undefined);
     const info: CarrierInfo = {
       status,
     };
@@ -118,7 +116,6 @@ export function deriveFleetStatus(
 
 function deriveCarrierStatus(
   runStatus: string | undefined,
-  isUnavailable: boolean,
 ): CarrierStatus {
   if (runStatus === "conn" || runStatus === "stream") {
     return "active";
@@ -128,9 +125,6 @@ function deriveCarrierStatus(
   }
   if (runStatus === "done") {
     return "done";
-  }
-  if (isUnavailable) {
-    return "unavailable";
   }
   return "idle";
 }

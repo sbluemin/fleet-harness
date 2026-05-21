@@ -48,7 +48,6 @@ function makeEntry(
     effort: null,
     role: null,
     roleDescription: null,
-    isSortieEnabled: true,
     taskForceBackendCount: 0,
   };
 }

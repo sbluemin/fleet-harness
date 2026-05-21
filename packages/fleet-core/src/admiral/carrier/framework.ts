@@ -8,7 +8,6 @@
  *  - Carrier 상태 관리
  *  - 등록 순서/메타데이터 보관
  *  - 렌더러 등록 (커스텀 or 기본)
- *  - offline carrier는 전역 kill-switch이며, taskforce active view도 이 Set을 차감해 구성
  */
 
 import type { CliType } from "@sbluemin/fleet-unified-agent";
@@ -128,58 +127,6 @@ export function getRegisteredOrder(): string[] {
   return [...getState().registeredOrder];
 }
 
-// ─── Offline 상태 관리 ─────────────────────────────
-
-/**
- * 지정 carrier를 offline 상태로 전환합니다.
- */
-export function setCarrierOffline(id: string): void {
-  const gs = getState();
-  if (!gs.modes.has(id)) return;
-  if (gs.offlineCarriers.has(id)) return;
-  gs.offlineCarriers.add(id);
-}
-
-/**
- * 지정 carrier를 online 상태로 복원합니다.
- */
-export function setCarrierOnline(id: string): void {
-  const gs = getState();
-  if (!gs.offlineCarriers.has(id)) return;
-  gs.offlineCarriers.delete(id);
-}
-
-/**
- * 지정 carrier가 online 상태인지 반환합니다.
- */
-export function isCarrierOnline(id: string): boolean {
-  return !getState().offlineCarriers.has(id);
-}
-
-/**
- * online 상태인 carrier ID만 registeredOrder 순서로 반환합니다.
- * (offline 캐리어 제외)
- */
-export function getOnlineCarrierIds(): string[] {
-  const gs = getState();
-  return gs.registeredOrder.filter((id) => !gs.offlineCarriers.has(id));
-}
-
-/**
- * 현재 offline 상태인 carrier ID 목록을 반환합니다.
- */
-export function getOfflineCarrierIds(): string[] {
-  return [...getState().offlineCarriers];
-}
-
-/**
- * offline carrier 목록을 일괄 설정합니다.
- */
-export function setOfflineCarriers(ids: string[]): void {
-  const gs = getState();
-  gs.offlineCarriers = new Set(ids);
-}
-
 // ─── Task Force 설정 변경 관리 ──────────────────────────
 
 /**
@@ -189,13 +136,11 @@ export function getTaskForceConfiguredIds(): string[] {
   return [...getState().taskforceConfiguredCarriers];
 }
 
-/**
- * offline을 제외한 Task Force 설정 carrier ID 목록을 반환합니다.
- */
+/** Task Force 설정 carrier ID 목록을 registeredOrder 순서로 반환합니다. */
 export function getActiveTaskForceIds(): string[] {
   const gs = getState();
   return gs.registeredOrder.filter(
-    (id) => gs.taskforceConfiguredCarriers.has(id) && !gs.offlineCarriers.has(id),
+    (id) => gs.taskforceConfiguredCarriers.has(id),
   );
 }
 
@@ -324,7 +269,6 @@ function getState(): CarrierFrameworkState {
       modes: new Map(),
       registeredOrder: [],
       statusUpdateCallbacks: [],
-      offlineCarriers: new Set(),
       taskforceConfiguredCarriers: new Set(),
     };
     (globalThis as any)[CARRIER_FRAMEWORK_KEY] = s;

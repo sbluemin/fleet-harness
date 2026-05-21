@@ -40,7 +40,6 @@ describe("Admiral protocols", () => {
     expect(prompt).not.toContain("Runtime Context Tags");
     expect(prompt).not.toContain("<current_protocol>");
     expect(prompt).not.toContain("<available_taskforce_carriers>");
-    expect(prompt).not.toContain("<offline_carriers>");
   });
 
   it("does not teach removed runtime-context tags in the Fleet ACP prompt", () => {
@@ -52,7 +51,6 @@ describe("Admiral protocols", () => {
     expect(prompt).not.toContain("Runtime Context Tags");
     expect(prompt).not.toContain("<current_protocol>");
     expect(prompt).not.toContain("<available_taskforce_carriers>");
-    expect(prompt).not.toContain("<offline_carriers>");
   });
 });
 

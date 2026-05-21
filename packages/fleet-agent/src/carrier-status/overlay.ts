@@ -148,11 +148,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       return;
     }
 
-    if (this.state.kind === "browse" && data === "d") {
-      this.toggleSortieState();
-      return;
-    }
-
     if (!matchesKey(data, "enter")) return;
     switch (this.state.kind) {
       case "browse":
@@ -343,20 +338,18 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const slotStr = `#${entry.slot}`;
     const slotPad = " ".repeat(Math.max(0, SLOT_WIDTH - slotStr.length));
     const namePad = " ".repeat(Math.max(0, NAME_WIDTH - visibleWidth(entry.displayName)));
-    const disabled = !entry.isSortieEnabled;
-    const nameColor = disabled ? ANSI_DIM : this.getEntryColor(entry.cliType);
+    const nameColor = this.getEntryColor(entry.cliType);
     const selectedPrefix = isSelected ? `${nameColor}▸${ANSI_RESET}` : " ";
     const coloredName = `${nameColor}${entry.displayName}${ANSI_RESET}`;
     const modelLabel = getModelLabel(this.getAvailableModels(entry.cliType), entry.model);
-    const modelStr = entry.isDefault || disabled ? dim(modelLabel) : modelLabel;
+    const modelStr = entry.isDefault ? dim(modelLabel) : modelLabel;
     const effortSupported = this.getModelEffortLevels(entry.cliType, entry.model).length > 0;
-    const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${disabled ? dim(entry.effort) : entry.effort}` : "";
+    const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
     const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
-    const sortieTag = disabled ? `  \x1b[38;2;255;80;80m✕ sortie off${ANSI_RESET}` : "";
     const tfTag = entry.taskForceBackendCount >= 2
       ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
       : "";
-    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${sortieTag}${tfTag}`;
+    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${tfTag}`;
   }
 
   private startModelEdit(): void {
@@ -658,21 +651,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       this.state = { kind: "browse" };
       this.options.requestRender();
     }
-  }
-
-  private toggleSortieState(): void {
-    const entry = this.getSelectedEntry();
-    if (!entry) return;
-    if (admiral.carrier.isCarrierOnline(entry.carrierId)) {
-      admiral.carrier.setCarrierOffline(entry.carrierId);
-    } else {
-      admiral.carrier.setCarrierOnline(entry.carrierId);
-    }
-    admiral.store.saveOfflineCarriers(admiral.carrier.getOfflineCarrierIds());
-    admiral.carrier.notifyStatusUpdate();
-    entry.isSortieEnabled = !entry.isSortieEnabled;
-    this.feedbackMessage = entry.isSortieEnabled ? `${entry.displayName} sortie 활성화됨` : `${entry.displayName} sortie 비활성화됨`;
-    this.options.requestRender();
   }
 
   private openTaskForce(): void {
@@ -983,7 +961,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
   private getFooterHint(): string {
     if (this.renameState) return "이름 입력  Enter save  Esc cancel  Backspace delete  empty = reset";
     if (this.state.kind === "saving") return "저장 중...";
-    if (this.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  S sq  d toggle  Tab  Esc";
+    if (this.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  S sq  Tab  Esc";
     return "↑↓ select  Enter confirm  Esc cancel";
   }
 
@@ -1023,7 +1001,6 @@ function buildStatusEntriesFromSnapshot(snapshot: FleetStoreSnapshot): CarrierSt
       displayName: admiral.carrier.resolveCarrierDisplayName(id),
       effort: selection?.effort ?? null,
       isDefault: !selection?.model,
-      isSortieEnabled: admiral.carrier.isCarrierOnline(id),
       model: selection?.model || provider.defaultModel,
       role: meta?.title ?? null,
       roleDescription: meta ? `${meta.title} - ${meta.summary}` : null,

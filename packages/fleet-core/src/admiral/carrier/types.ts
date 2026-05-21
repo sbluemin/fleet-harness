@@ -133,8 +133,6 @@ export interface CarrierFrameworkState {
   registeredOrder: string[];
   /** 상태바 갱신 콜백 */
   statusUpdateCallbacks: Array<() => void>;
-  /** offline 상태인 carrier ID 집합 */
-  offlineCarriers: Set<string>;
   /** Task Force 설정이 완료된 carrier ID 집합 */
   taskforceConfiguredCarriers: Set<string>;
 }

@@ -39,7 +39,6 @@ import {
   getActiveTaskForceIds,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  isCarrierOnline,
   resolveCarrierDisplayName,
 } from "../carrier/framework.js";
 import { buildCarrierSystemPrompt } from "../carrier/prompts.js";
@@ -109,7 +108,6 @@ export function buildTaskForceToolSpec(): AgentToolSpec | null {
       );
 
       assertRegisteredCarrier(carrierId);
-      assertSortieEnabled(carrierId);
       const activeBackends = assertTaskForceFormable(carrierId);
       logDebug(
         TASKFORCE_LOG_CATEGORY_VALIDATE,
@@ -234,12 +232,6 @@ function assertRegisteredCarrier(carrierId: string): void {
     logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `unknown carrier carrier=${carrierId}`);
     throw new Error(`Unknown carrier: ${formatCarrierIdForMessage(carrierId)}. Registered carriers: ${registered}`);
   }
-}
-
-function assertSortieEnabled(carrierId: string): void {
-  if (isCarrierOnline(carrierId)) return;
-  logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `carrier=${carrierId} online=false reason=manually disabled`);
-  throw new Error(`Carrier ${formatCarrierIdForMessage(carrierId)} is not available for task force: manually disabled.`);
 }
 
 function assertTaskForceFormable(carrierId: string): TaskForceCliType[] {

@@ -4,7 +4,6 @@ import { centerLine, truncateToWidth, visibleWidth, type Component } from "@sblu
 const ANSI_RESET = "\x1b[0m";
 const SEGMENT_SEPARATOR = " │ ";
 const MIN_TASK_FORCE_BACKENDS = 2;
-const DISABLED_COLOR = "\x1b[38;2;169;169;169m";
 
 export class CarrierRosterLine implements Component {
 	invalidate(): void {}
@@ -14,13 +13,11 @@ export class CarrierRosterLine implements Component {
 		const store = admiral.store;
 		const snapshot = store.readStatesSnapshot();
 		const segments = carrier.getRegisteredOrder().map((carrierId) => {
-			const online = carrier.isCarrierOnline(carrierId);
-			const color = online ? carrier.resolveCarrierColor(carrierId) : DISABLED_COLOR;
+			const color = carrier.resolveCarrierColor(carrierId);
 			const name = carrier.resolveCarrierDisplayName(carrierId);
 			const taskForceBackendCount = store.getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
 			return `${colorize(`○ ${name}`, color)}${formatBadges(
 				taskForceBackendCount,
-				online,
 			)}`;
 		});
 		return [centerLine(segments.join(SEGMENT_SEPARATOR), width)];
@@ -29,11 +26,9 @@ export class CarrierRosterLine implements Component {
 
 function formatBadges(
 	taskForceBackendCount: number,
-	online: boolean,
 ): string {
-	const tfBadgeColor = online ? "\x1b[38;2;100;180;255m" : DISABLED_COLOR;
 	const tfBadge = taskForceBackendCount >= MIN_TASK_FORCE_BACKENDS
-		? ` ${tfBadgeColor}[TF:${taskForceBackendCount}]${ANSI_RESET}`
+		? ` \x1b[38;2;100;180;255m[TF:${taskForceBackendCount}]${ANSI_RESET}`
 		: "";
 	return tfBadge;
 }
