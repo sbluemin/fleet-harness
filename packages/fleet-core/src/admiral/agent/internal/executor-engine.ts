@@ -7,6 +7,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
+import { createHash, randomUUID } from "node:crypto";
 import {
   UnifiedAgent,
   getEffort,
@@ -21,6 +22,16 @@ import {
   type UnifiedClientOptions,
 } from "@sbluemin/fleet-unified-agent";
 
+import {
+  startMcpServer,
+  installExecutorToolCallRouter,
+  cleanupExecutorSession,
+  detachExecutorMcpForReuse,
+  registerExecutorSessionTools,
+} from "@sbluemin/fleet-mcp-server";
+
+import { resolveBuiltinExternalMcpServers } from "../../external-mcp.js";
+import { getRegisteredCarrierConfig } from "../../carrier/framework.js";
 import { resolveAuthEnv } from "../../../infra/auth/index.js";
 import { getLogAPI } from "../../../infra/log/store.js";
 import {
@@ -30,13 +41,6 @@ import {
   getCarrierSessionStore,
   type SessionMappingCommitToken,
 } from "./session-runtime.js";
-import {
-  startMcpServer,
-  installExecutorToolCallRouter,
-  cleanupExecutorSession,
-  detachExecutorMcpForReuse,
-  registerExecutorSessionTools,
-} from "@sbluemin/fleet-mcp-server";
 import { getExecutorMcpTools, invoke } from "../tools.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 import type { TrackStatus } from "../../_shared/carrier-job-events.js";
@@ -78,6 +82,7 @@ interface PooledClient {
   ownerToken?: SessionMappingCommitToken;
   sessionId?: string;
   mcpSessionToken?: string;
+  builtinExternalMcpSignature?: string;
 }
 
 interface LaunchConfig {
@@ -104,6 +109,7 @@ type EffortResolution =
 
 const CLIENT_INFO = { name: "pi-unified-agent", version: "1.0.0" } as const;
 const MAX_TOOL_CALLS_TO_KEEP = 30;
+const EMPTY_BUILTIN_EXTERNAL_MCP_SIGNATURE = createHash("sha256").update("").digest("hex");
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Module-level pool (globalThis 대체)
@@ -120,6 +126,8 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   const { poolKey, carrierId, cliType, request, cwd, signal } = opts;
   const store = getCarrierSessionStore();
   const commitToken = captureSessionMappingCommitToken();
+  const builtinExternalMcpSignature = buildBuiltinExternalMcpSignature(carrierId);
+  const sessionPoolKey = buildSessionPoolKey(poolKey, builtinExternalMcpSignature);
 
   let responseText = "";
   let thoughtText = "";
@@ -152,6 +160,12 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     } else if (!sameSessionMappingOwner(poolEntry.ownerToken, commitToken)) {
       await discardPoolEntry(poolKey, poolEntry);
       poolEntry = undefined;
+    } else if (poolEntry.builtinExternalMcpSignature !== builtinExternalMcpSignature) {
+      // ACP mcpServers는 session/new 시점 snapshot — drift 감지 시 reconnect.
+      store.clear(sessionPoolKey);
+      flushSessionMappings();
+      await discardPoolEntry(poolKey, poolEntry);
+      poolEntry = undefined;
     }
   }
 
@@ -163,7 +177,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   } else {
     client = await buildProviderClient({ cli: cliType });
     if (!isTemporary) {
-      const newEntry: PooledClient = { client, busy: true };
+      const newEntry: PooledClient = { client, busy: true, builtinExternalMcpSignature };
       clientPool.set(poolKey, newEntry);
       poolEntry = newEntry;
       client.on("exit", () => {
@@ -279,7 +293,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
     if (!needsConnect && hasSystemPromptDrift(client, opts.connectSystemPrompt ?? null)) {
       debugSystemPromptDrift("executeWithPool", poolKey, cliType);
-      store.clear(poolKey);
+      store.clear(sessionPoolKey);
       flushSessionMappings();
       if (poolEntry) {
         if (poolEntry.mcpSessionToken) {
@@ -294,7 +308,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
     if (needsConnect) {
       const mcpSetup = await setupExecutorMcp(cwd, signal, carrierId);
-      if (mcpSetup) activeMcpToken = mcpSetup.token;
+      if (mcpSetup?.token) activeMcpToken = mcpSetup.token;
       const model = resolveModel(poolKey, cliType, opts.model);
       const effortResolution = resolveEffort(poolKey, cliType, model, opts.model, opts.effort);
 
@@ -304,7 +318,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         effort: effortResolution.effort,
       }, opts.connectSystemPrompt ?? null, mcpSetup?.mcpServers);
 
-      const savedSessionId = store.get(poolKey) ?? poolEntry?.sessionId;
+      const savedSessionId = store.get(sessionPoolKey) ?? poolEntry?.sessionId;
       if (savedSessionId) connectOpts.sessionId = savedSessionId;
 
       let connectResult: ConnectResult;
@@ -320,7 +334,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
           connectError instanceof Error ? connectError.message : connectError,
         );
 
-        store.clear(poolKey);
+        store.clear(sessionPoolKey);
         flushSessionMappings();
         if (poolEntry) delete poolEntry.sessionId;
         delete connectOpts.sessionId;
@@ -337,7 +351,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         client = await buildProviderClient({ cli: cliType });
         detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
         if (!isTemporary) {
-          poolEntry = { client, busy: true };
+          poolEntry = { client, busy: true, builtinExternalMcpSignature };
           clientPool.set(poolKey, poolEntry);
           client.on("exit", () => {
             const current = clientPool.get(poolKey);
@@ -366,7 +380,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       sessionId = connectResult.session?.sessionId ?? undefined;
 
       if (!isTemporary && sessionId && poolEntry) {
-        const mapped = store.set(poolKey, sessionId, commitToken);
+        const mapped = store.set(sessionPoolKey, sessionId, commitToken);
         recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, mapped);
         if (!mapped) {
           poolEntry = undefined;
@@ -386,7 +400,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       sessionId = info.sessionId ?? undefined;
 
       if (!isTemporary && sessionId && poolEntry) {
-        const mapped = store.set(poolKey, sessionId, commitToken);
+        const mapped = store.set(sessionPoolKey, sessionId, commitToken);
         recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, mapped);
         if (!mapped) {
           poolEntry = undefined;
@@ -426,7 +440,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       sessionId = postSendInfo.sessionId;
     }
     if (!isTemporary && sessionId) {
-      durableCommittedAfterSend = store.commitSet(poolKey, sessionId, commitToken);
+      durableCommittedAfterSend = store.commitSet(sessionPoolKey, sessionId, commitToken);
       if (durableCommittedAfterSend) {
         if (poolEntry) recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, true);
         flushSessionMappings(commitToken);
@@ -459,7 +473,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       const finalSessionId = client.getConnectionInfo().sessionId ?? sessionId;
       if (finalSessionId) {
         sessionId = finalSessionId;
-        if (store.commitSet(poolKey, finalSessionId, commitToken)) {
+        if (store.commitSet(sessionPoolKey, finalSessionId, commitToken)) {
           if (poolEntry) recordPoolSessionMapping(poolKey, poolEntry, finalSessionId, commitToken, true);
           flushSessionMappings(commitToken);
         } else if (poolEntry) {
@@ -935,23 +949,72 @@ async function setupExecutorMcp(
   cwd: string,
   signal?: AbortSignal,
   carrierId?: string,
-): Promise<{ token: string; mcpServers: McpServerConfig[] } | null> {
+): Promise<{ token?: string; mcpServers: McpServerConfig[] } | null> {
   if (signal?.aborted) return null;
+  let token: string | undefined;
+  const mcpServers: McpServerConfig[] = [];
+
   const specs = getExecutorMcpTools(carrierId);
-  if (specs.length === 0) return null;
+  if (specs.length > 0) {
+    try {
+      const mcpUrl = await startMcpServer();
+      token = randomUUID();
+      registerExecutorSessionTools(token, specs);
+      mcpServers.push({
+        type: "http",
+        url: mcpUrl,
+        headers: [{ name: "Authorization", value: `Bearer ${token}` }],
+        name: "fleet-tools",
+        toolTimeout: 1800,
+      });
+    } catch {
+      token = undefined;
+    }
+  }
+
   try {
-    const mcpUrl = await startMcpServer();
-    const token = crypto.randomUUID();
-    registerExecutorSessionTools(token, specs);
-    const mcpServers: McpServerConfig[] = [{
-      type: "http",
-      url: mcpUrl,
-      headers: [{ name: "Authorization", value: `Bearer ${token}` }],
-      name: "fleet-tools",
-      toolTimeout: 1800,
-    }];
-    return { token, mcpServers };
-  } catch {
+    mcpServers.push(...resolveBuiltinExternalMcpServers(getAllowedBuiltinExternalMcpServerIds(carrierId)));
+  } catch (err) {
+    console.warn(
+      `[unified-agent] builtin external MCP resolve 실패 (carrierId=${carrierId ?? "none"}, servers=${formatBuiltinExternalMcpServerIds(carrierId)}): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  assertFleetToolsTokenNotShared(mcpServers, token);
+  if (mcpServers.length === 0) {
     return null;
   }
+  return { token, mcpServers };
+}
+
+function getAllowedBuiltinExternalMcpServerIds(carrierId?: string): readonly string[] {
+  if (!carrierId) return [];
+  return getRegisteredCarrierConfig(carrierId)?.carrierMetadata?.allowedBuiltinExternalMcpServers ?? [];
+}
+
+function formatBuiltinExternalMcpServerIds(carrierId?: string): string {
+  const ids = getAllowedBuiltinExternalMcpServerIds(carrierId);
+  return ids.length === 0 ? "none" : ids.join(",");
+}
+
+function assertFleetToolsTokenNotShared(mcpServers: readonly McpServerConfig[], token?: string): void {
+  if (!token) return;
+  for (const server of mcpServers) {
+    if (server.name === "fleet-tools") continue;
+    if (server.headers?.some((header) => header.value.includes(token))) {
+      throw new Error(`fleet-tools Bearer token leaked into external MCP server "${server.name}".`);
+    }
+  }
+}
+
+function buildBuiltinExternalMcpSignature(carrierId?: string): string {
+  const ids = [...getAllowedBuiltinExternalMcpServerIds(carrierId)].sort();
+  return createHash("sha256").update(ids.join("\0")).digest("hex");
+}
+
+function buildSessionPoolKey(poolKey: string, builtinExternalMcpSignature: string): string {
+  if (builtinExternalMcpSignature === EMPTY_BUILTIN_EXTERNAL_MCP_SIGNATURE) return poolKey;
+  return `${poolKey}#builtinExternalMcp=${builtinExternalMcpSignature}`;
 }

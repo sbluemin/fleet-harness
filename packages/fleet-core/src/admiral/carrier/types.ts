@@ -63,6 +63,11 @@ export interface CarrierMetadata {
    * prior job self-fetch가 필요한 carrier는 `carrier_jobs`를 명시적으로 열거해야 한다.
    */
   allowedExecutorTools?: readonly string[];
+  /**
+   * 이 carrier의 executor ACP 세션에 노출할 builtin external MCP server ID 목록.
+   * 내부 fleet-tools tool ID와 섞지 않고 server 단위 allowlist로만 사용한다.
+   */
+  allowedBuiltinExternalMcpServers?: readonly string[];
 
   // ── Tier 2: Composition (→ 실행 시 request에 자동 주입) ──
   /** 권한/제약 (여러 줄) */

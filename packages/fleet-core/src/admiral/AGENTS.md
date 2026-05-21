@@ -79,3 +79,24 @@ PI is the **host agent** (orchestrator). Registered Carriers are **sub-agents** 
 - **Sub-agents are fully independent** — PI provides only background, objectives, and constraints. Never prescribe implementation details.
 - **Sub-agents are unaware of each other** — Cross-analysis is performed solely by PI after all responses are collected.
 - **Communication layer**: Pi consumers invoke `executeWithPool()` / `executeOneShot()` from the `@sbluemin/fleet-core` root barrel (callback-pattern executor). Host streaming adapters are no longer part of the fleet-core agent surface.
+
+## Builtin External MCP Integration
+
+Admiral 도메인은 각 Carrier가 사용하는 MCP(Model Context Protocol) 서버를 관리하며, 내부 도구 모음인 `fleet-tools`와 외부 등록형 `builtin external MCP` 서버를 명확히 구분하여 처리합니다.
+
+### Layer Separation: Tool ID vs Server ID
+
+- **`allowedExecutorTools` (Tool Layer)**: `fleet-tools` 세션에 노출할 개별 도구 ID(예: `carrier_jobs`) 목록입니다.
+- **`allowedBuiltinExternalMcpServers` (Server Layer)**: 에이전트에 통째로 노출할 외부 builtin MCP 서버 ID(예: `grep_app`) 목록입니다. 두 개념은 서로 다른 계층(Layer)에 존재하므로 도구 ID와 서버 ID를 혼용해서는 안 됩니다.
+
+### Invariants & Limitations
+
+1. **HTTP/HTTPS Transports Only**: Builtin external MCP catalog(`admiral/external-mcp.ts`)는 오직 HTTP/HTTPS 전송 프로토콜만 허용합니다.
+2. **`strictMcp:true` Preservation**: 모든 외부 MCP 서버 연결 시에도 엄격한 도구 해상도 검증(`strictMcp`) 정책을 계속 유지합니다.
+3. **`fleet-tools` Bearer Isolation**: 내부 `fleet-tools`용 세션 Bearer 토큰이 외부 MCP 서버로 유출되지 않도록 엄격하게 격리(assertFleetToolsTokenNotShared)합니다.
+4. **No Workspace Configuration**: 사용자 workspace 레벨의 `.fleet/external-mcp.json` 파일 기반 동적 구성은 지원하지 않으며, 소스 레벨 catalog(`admiral/external-mcp.ts`)의 정적 설정으로만 작동합니다. 이 파일은 internal helper로서 public root barrel에 노출되지 않습니다.
+
+### Session Lifecycle, Drift Detection & Empty Allowlist Policy
+
+- **ACP mcpServers Immutability & Drift Detection**: ACP 프로토콜의 `mcpServers` 속성은 `session/new` 연결 시점의 스냅샷으로 불변(Immutable) 상태를 유지합니다. 만약 도중에 `allowedBuiltinExternalMcpServers` 구성이 변경되면 signature가 변경되어 session pool key(`{poolKey}#builtinExternalMcp={signature}`)의 drift를 감지합니다. 이 경우 기존 세션을 안전하게 연결 해제(disconnect)하고 새 세션을 생성하여 재연결(reconnect)을 수행합니다.
+- **Empty Allowlist Conservation**: allowlist가 비어 있거나 선언되지 않은 경우, 별도의 signature를 부여하지 않고 기존 `poolKey`를 그대로 유지하여 불필요한 세션 폐기를 방지합니다.

@@ -8,7 +8,7 @@
 
 1. **Host-agnostic by construction** — no Fleet host runtime, no Fleet host UI, no Fleet-AI imports. The package compiles and runs without `fleet-agent`.
 2. **Executor surface only** — `admiral.agent.executor.{executeWithPool, executeOneShot}` is the retained agent entrypoint pair for closed-loop carrier turns. Runtime pool operations stay under `admiral.agent.connections`.
-3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), generic MCP server/registry (`packages/fleet-mcp-server`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), and the fleet-core tool facade/default builders each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
+3. **Single Source of Truth, single owner** — session persistence (`internal/session-runtime.ts`), generic MCP server/registry (`packages/fleet-mcp-server`), TrackStatus enum (`_shared/carrier-job-events.ts`), CLI catalog (`@sbluemin/fleet-unified-agent` `CLI_BACKENDS`), builtin external MCP catalog (`admiral/external-mcp.ts`), and the fleet-core tool facade/default builders each have exactly one home. Reaching around them — copying state, re-defining types, shadowing stores — is treated as a regression.
 
 ## Current Architecture Status
 
@@ -72,6 +72,7 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - Fleet domain modules under `admiral/`:
   - `_shared/` — SSOT carrier job stream events (`carrier-job-events.ts`) and CLI tool type aliases (`cli-tool-types.ts`).
   - `agent/` — the canonical agent domain documented above.
+  - Builtin external MCP catalog (`external-mcp.ts`) — internal helper resolving carrier-specific external servers.
 - `carrier/`, `carrier-jobs/`, `taskforce/` — carrier framework, fleet tool specs, roster rendering, and execution doctrine.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
@@ -99,6 +100,7 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - Do not import `@sbluemin/fleet-*` engine packages.
 - `@sbluemin/fleet-mcp-server` is the sole allowed Fleet workspace dependency for generic MCP registry/server primitives.
 - Public consumers must use the package root barrel or documented public subpaths only.
+- Builtin external MCP catalog (`admiral/external-mcp.ts`) is an internal helper and MUST NOT be exposed via public root barrel.
 - `fleet-core` may expose ports, adapters, and pure state machines, but host implementations live in `fleet-agent`.
 - If a module needs host lifecycle hooks or UI registration, that code belongs in `fleet-agent`, not here.
 
@@ -125,6 +127,11 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - Carrier registration is idempotent.
 - Carrier registration does not mutate executor MCP authorization state.
 - CLI type resolution is pull-based.
+- **Builtin External MCP Invariants**:
+  - **HTTP/HTTPS MCP Transport only**: Builtin external MCP catalog must only define HTTP/HTTPS servers.
+  - **strictMcp:true preservation**: Every executor connect options holds strict MCP tool resolution.
+  - **fleet-tools Bearer Isolation**: fleet-tools authentication Bearer tokens must never leak to external MCP servers.
+  - **No local workspace JSON configurations**: Local `.fleet/external-mcp.json` is not supported; external MCP server registration is statically owned by code catalog.
 
 ## CLI Provider Constants
 
