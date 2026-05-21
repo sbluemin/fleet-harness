@@ -11,7 +11,7 @@
 import { getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
-import { getActiveTaskForceIds, getRegisteredOrder } from "./carrier/framework.js";
+import { getRegisteredOrder } from "./carrier/framework.js";
 import { buildCarrierRoster } from "./carrier/prompts.js";
 
 // ─────────────────────────────────────────────────────────
@@ -134,11 +134,7 @@ export function buildSystemPrompt(injectTone: boolean): string {
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
   const carrierIds = getRegisteredOrder();
   if (carrierIds.length > 0) {
-    const tfActive = new Set(getActiveTaskForceIds());
-    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds, {
-      heading: "# Available Carriers",
-      extraLines: (carrierId) => (tfActive.has(carrierId) ? [`  Task Force: configured`] : []),
-    })}\n</fleet>`);
+    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
   }
 
   // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 ──

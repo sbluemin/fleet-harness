@@ -32,7 +32,11 @@ import {
   type TrackStatus,
 } from "../_shared/carrier-job-events.js";
 import { executeWithPool } from "../agent/executor.js";
-import { loadModels } from "../store/index.js";
+import {
+  getConfiguredTaskForceBackends,
+  loadModels,
+} from "../store/index.js";
+import { launchTaskForceJob } from "../taskforce/tool-spec.js";
 import {
   buildCarrierSystemPrompt,
   CARRIER_REQUEST_BREVITY_GUIDELINE,
@@ -200,6 +204,17 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
             error: blockValidation.error,
           });
         }
+      }
+
+      if (getConfiguredTaskForceBackends(carrierId).length >= 2) {
+        return launchTaskForceJob({
+          carrierId,
+          request,
+          label,
+          startedAt: t0,
+          toolName,
+          ctx,
+        });
       }
 
       const launch = startDetachedJob({

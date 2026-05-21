@@ -84,7 +84,7 @@ You may ONLY use these tools:
 - \`grand_fleet_broadcast\` — Send a mission to all connected fleets
 - \`grand_fleet_status\` — Query current status of fleets
 
-Do NOT use any other tools. Tools like carrier_taskforce and individual carrier tools (carrier_<id>) are NOT available to you.
+Do NOT use any other tools. Local carrier delegation tools are NOT available to you.
 `;
 
 /**
@@ -212,7 +212,7 @@ const FLEET_ACP_ACTION_GUIDELINES_PROMPT = String.raw`
 const FLEET_ACP_CARRIER_ROUTING_PROMPT = String.raw`
 # Carrier Roster And Routing
 - Carrier state is observed from the local Fleet runtime snapshot when available.
-- Active, standby, unavailable, and taskforce-configured carrier metadata is routing context, not an order to delegate.
+- Carrier availability and configuration metadata is routing context, not an order to delegate.
 - Use local Carrier orchestration only for work that benefits from parallel execution, focused review, or specialized implementation.
 - Do not assume other Fleets exist unless a Grand Fleet Context section is appended.
 `;

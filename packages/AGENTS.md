@@ -21,7 +21,7 @@ The Admiral agent domain exposes the closed-loop callback executor surface only:
 
 | Pattern | Surface | Lifetime | Use Case |
 |---------|---------|----------|----------|
-| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument; `carrier_taskforce` uses a synthetic id) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (unified per-carrier dispatcher) / `carrier_taskforce` tool execution |
+| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument and automatically promotes to multi-backend Task Force execution when the target carrier has Task Force configured) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (sole carrier delegation surface) |
 
 Host streaming is no longer part of the `fleet-core` public agent surface. Carrier execution is routed through the executor callback path only.
 

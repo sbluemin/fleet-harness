@@ -41,7 +41,7 @@ describe("carrier launch contract", () => {
   });
 
   it("uses aborted wording without completed wording for detached summaries", () => {
-    for (const tool of ["carrier_genesis", "carrier_taskforce"]) {
+    for (const tool of ["carrier_genesis"]) {
       const summary = buildSummaryText(tool, "aborted", 1, 1);
       expect(summary).toContain("aborted");
       expect(summary).not.toContain("completed");
@@ -63,7 +63,8 @@ describe("carrier launch contract", () => {
   it("adds launch guidance only for accepted background jobs", () => {
     const accepted = formatLaunchResponseText({ job_id: "sortie:call-1", accepted: true }, true);
     expect(accepted.startsWith(JOB_LAUNCH_NOTICE)).toBe(true);
-    expect(accepted).toContain("Job accepted");
+    expect(accepted).toMatch(/job accepted/i);
+    expect(accepted).toContain("carrier_dispatch");
     expect(accepted).toContain("carrier-completion follow-up push");
     expect(accepted).toContain("[carrier:result]");
     expect(accepted).toContain("DO NOT poll carrier_jobs");

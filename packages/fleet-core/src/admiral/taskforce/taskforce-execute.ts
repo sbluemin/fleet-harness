@@ -49,9 +49,9 @@ export function buildTaskForceSummaryText(
   failureCount: number,
   error?: string,
 ): string {
-  if (status === "aborted") return `carrier_taskforce aborted: ${successCount} done, ${failureCount} failed`;
-  if (error) return `carrier_taskforce failed: ${error}`;
-  return `carrier_taskforce completed: ${successCount} done, ${failureCount} failed`;
+  if (status === "aborted") return `carrier_dispatch taskforce aborted: ${successCount} done, ${failureCount} failed`;
+  if (error) return `carrier_dispatch taskforce failed: ${error}`;
+  return `carrier_dispatch taskforce completed: ${successCount} done, ${failureCount} failed`;
 }
 
 export function buildTaskForceJobSummary(
@@ -61,13 +61,14 @@ export function buildTaskForceJobSummary(
   carrierId: string,
   results: readonly TaskForceResult[],
   status: CarrierJobStatus,
+  toolName: `carrier_${string}`,
   error?: string,
 ): CarrierJobSummary {
   const successCount = results.filter((result) => result.status === "done").length;
   const failureCount = results.length - successCount;
   return {
     jobId,
-    tool: "carrier_taskforce",
+    tool: toolName,
     status,
     summary: buildTaskForceSummaryText(status, successCount, failureCount, error),
     startedAt,

@@ -8,8 +8,10 @@ import {
   CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
   CARRIER_JOBS_GLOBAL_BYTE_CAP,
   CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
+  type ArchiveBlock,
   type CarrierJobRecord,
   type CarrierJobSummary,
+  type JobArchive,
 } from "../../infra/job/job-types.js";
 import type { CarrierJobsAvailability, CarrierJobsFormat, CarrierJobsParams } from "./types.js";
 
@@ -23,6 +25,7 @@ export interface CarrierJobsResponse {
   recent?: CarrierJobSummary[];
   summary?: CarrierJobSummary;
   full_result?: string;
+  results?: Record<string, string>;
   full_available?: boolean;
   full_invalidated?: boolean;
   retry_after?: string;
@@ -119,12 +122,12 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
   }
 
   const archive = getFinalized(jobId, now);
-  const isSubOpJob =
-    summary?.tool === "carrier_taskforce" ||
-    jobId.startsWith("taskforce:");
+  const isTaskForceJob = jobId.startsWith("taskforce:");
+  const isSubOpJob = isTaskForceJob;
   const serializeOpts = isSubOpJob
     ? { perSubOpMaxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP, maxBytes: CARRIER_JOBS_GLOBAL_BYTE_CAP }
     : { maxBytes: CARRIER_JOBS_FULL_RESULT_BYTE_CAP };
+  const fullResult = archive ? serializeJobArchive(archive, serializeOpts) : undefined;
   return {
     action: "result",
     format,
@@ -133,7 +136,8 @@ function resultResponse(jobId: string, format: CarrierJobsFormat, now: number): 
     status: archive?.status ?? summary?.status ?? "not_found",
     summary: summary ?? undefined,
     ...availability,
-    full_result: archive ? serializeJobArchive(archive, serializeOpts) : undefined,
+    full_result: isTaskForceJob ? undefined : fullResult,
+    results: archive && isTaskForceJob ? serializeTaskForceResultsByBackend(archive) : undefined,
     error: archive ? undefined : "full result unavailable or expired",
   };
 }
@@ -172,4 +176,27 @@ function validateJobId(jobId: string | undefined): string | null {
 
 function normalizeFormat(format: CarrierJobsParams["format"]): CarrierJobsFormat {
   return format === "summary" ? "summary" : "full";
+}
+
+function serializeTaskForceResultsByBackend(archive: JobArchive): Record<string, string> {
+  const grouped = new Map<string, ArchiveBlock[]>();
+  const orderedKeys: string[] = [];
+  for (const block of archive.blocks) {
+    if (!block.label) continue;
+    if (!grouped.has(block.label)) {
+      grouped.set(block.label, []);
+      orderedKeys.push(block.label);
+    }
+    grouped.get(block.label)!.push(block);
+  }
+
+  const results: Record<string, string> = {};
+  for (const cliType of orderedKeys) {
+    const blocks = grouped.get(cliType)!;
+    results[cliType] = serializeJobArchive(
+      { ...archive, blocks },
+      { maxBytes: CARRIER_JOBS_PER_SUBOP_BYTE_CAP },
+    );
+  }
+  return results;
 }

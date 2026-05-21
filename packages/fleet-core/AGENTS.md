@@ -73,7 +73,9 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
   - `_shared/` — SSOT carrier job stream events (`carrier-job-events.ts`) and CLI tool type aliases (`cli-tool-types.ts`).
   - `agent/` — the canonical agent domain documented above.
   - Builtin external MCP catalog (`external-mcp.ts`) — internal helper resolving carrier-specific external servers.
-- `carrier/`, `carrier-jobs/`, `taskforce/` — carrier framework, fleet tool specs, roster rendering, and execution doctrine.
+- `carrier/` — carrier framework, roster rendering, `carrier_dispatch` tool spec, and single-carrier execution doctrine. `carrier_dispatch` is the sole public carrier delegation surface; when the selected carrier has a valid Task Force configuration, it promotes automatically to Task Force execution.
+- `carrier-jobs/` — detached carrier job lookup/control surface. For `carrier_jobs(action:"result", format:"full")`, Task Force jobs (`jobId.startsWith("taskforce:")`) return `results: Record<cliType, string>` and omit `full_result`; non-Task-Force jobs keep `full_result` exactly.
+- `taskforce/` — internal Task Force execution mode and backend coordination used by `carrier_dispatch` auto-promotion, not a separate public tool surface.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
 - `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), and unified settings/log infra.
@@ -118,6 +120,8 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - `fleet-agent` must not introduce or preserve `globalThis` usage patterns.
 - Background paths must accept plain runtime data and host ports, never host-specific context.
 - Job archive behavior remains read-many within TTL.
+- `carrier_dispatch` is the only public carrier delegation entrypoint; Task Force runs are an internal execution mode selected automatically from carrier configuration.
+- `carrier_jobs` full responses are schema-stable by job kind: Task Force job IDs return backend-keyed `results` without `full_result`, while non-Task-Force job IDs preserve the existing `full_result` contract exactly.
 - **UTF-8 safe job archives**: Job archive serialization guarantees valid UTF-8 output during truncation.
 - **Prefix-based policy enforcement**: Sub-operation byte caps and formatting are consistently applied via `jobId` prefix detection.
 - Fleet Store (`admiral/store/fleet-store.ts`) writes are guarded by compare-then-write.

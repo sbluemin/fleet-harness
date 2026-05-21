@@ -41,7 +41,7 @@ export type DetachedJobLaunch = DetachedJobAccepted | DetachedJobRejected;
 
 export interface StartDetachedJobOptions {
   jobKind: DetachedJobKind;
-  toolName: "carrier_taskforce" | `carrier_${string}`;
+  toolName: `carrier_${string}`;
   toolCallId: string | undefined;
   startedAt: number;
   carrierIds: string[];

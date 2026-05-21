@@ -1,12 +1,12 @@
 /**
- * taskforce/tool-spec.ts — carrier_taskforce 도구 스펙
+ * taskforce/tool-spec.ts — Task Force 내부 실행 지원
  *
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
 
 import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
-import type { AgentToolSpec } from "../agent/types.js";
+import type { AgentToolCtx, AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
 import type { LogOptions } from "../../infra/log/index.js";
 import type { ExecResult } from "../agent/executor.js";
@@ -36,7 +36,6 @@ import {
   type TrackStatus,
 } from "../_shared/carrier-job-events.js";
 import {
-  getActiveTaskForceIds,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   resolveCarrierDisplayName,
@@ -46,10 +45,6 @@ import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
 } from "../store/index.js";
-import {
-  TASKFORCE_DOCTRINE,
-  buildTaskForceSchema,
-} from "./prompts.js";
 import {
   assertTaskForceBackendCount,
   buildTaskForceJobSummary,
@@ -74,6 +69,17 @@ interface TaskForceBackgroundOptions {
   cwd: string;
   permit: JobPermitAccepted;
   startedAt: number;
+  toolName: `carrier_${string}`;
+  label: string;
+}
+
+export interface TaskForceLaunchOptions {
+  carrierId: string;
+  request: string;
+  label: string;
+  startedAt: number;
+  toolName: `carrier_${string}`;
+  ctx: AgentToolCtx;
 }
 
 const TASKFORCE_LOG_CATEGORY_INVOKE = "fleet-taskforce:invoke";
@@ -85,87 +91,76 @@ const TASKFORCE_LOG_CATEGORY_RESULT = "fleet-taskforce:result";
 const TASKFORCE_LOG_CATEGORY_ERROR = "fleet-taskforce:error";
 const taskForceStateStore = new Map<string, TaskForceState>();
 
-export function buildTaskForceToolSpec(): AgentToolSpec | null {
-  const allCarriers = getRegisteredOrder();
-  if (allCarriers.length < 1) return null;
+export const buildTaskForceToolSpec: () => AgentToolSpec | null = () => null;
 
-  const configuredCarriers = getActiveTaskForceIds();
+export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
+  const { carrierId, request, label, startedAt, toolName, ctx } = options;
+  const requestKey = buildTaskForceRequestKey(carrierId, request);
+  const backendIds = getConfiguredTaskForceBackends(carrierId);
+  logDebug(
+    TASKFORCE_LOG_CATEGORY_INVOKE,
+    `execute start carrier=${carrierId} backends=${backendIds.length} ids=${backendIds.join(", ") || "(none)"}`,
+  );
 
-  return {
-    ...TASKFORCE_DOCTRINE,
-    parameters: buildTaskForceSchema(configuredCarriers),
+  assertRegisteredCarrier(carrierId);
+  const activeBackends = assertTaskForceFormable(carrierId);
+  logDebug(
+    TASKFORCE_LOG_CATEGORY_VALIDATE,
+    `validated carrier=${carrierId} backends=${activeBackends.length} ids=${activeBackends.join(", ")}`,
+  );
 
-    async execute(args: unknown, ctx) {
-      const t0 = Date.now();
-      const cwd = ctx.cwd;
-      const params = args as { carrier: string; request: string };
-      const { carrier: carrierId, request } = params;
-      const requestKey = buildTaskForceRequestKey(carrierId, request);
-      const backendIds = getConfiguredTaskForceBackends(carrierId);
+  // 필수 request-block 검증은 carrier_dispatch와 동일한 hard-error 타이밍을 유지합니다.
+  const carrierConfig = getRegisteredCarrierConfig(carrierId);
+  if (carrierConfig?.carrierMetadata) {
+    const blockValidation = validateTaskForceRequestBlocks(
+      carrierId,
+      carrierConfig.carrierMetadata,
+      request,
+    );
+    if (blockValidation) {
       logDebug(
-        TASKFORCE_LOG_CATEGORY_INVOKE,
-        `execute start carrier=${carrierId} backends=${backendIds.length} ids=${backendIds.join(", ") || "(none)"}`,
+        TASKFORCE_LOG_CATEGORY_ERROR,
+        `request-block validation failed carrier=${carrierId} missing=${blockValidation.missing.join(",")}`,
       );
-
-      assertRegisteredCarrier(carrierId);
-      const activeBackends = assertTaskForceFormable(carrierId);
-      logDebug(
-        TASKFORCE_LOG_CATEGORY_VALIDATE,
-        `validated carrier=${carrierId} backends=${activeBackends.length} ids=${activeBackends.join(", ")}`,
-      );
-
-      // 필수 request-block 검증 — detached job 시작 전
-      const carrierConfig = getRegisteredCarrierConfig(carrierId);
-      if (carrierConfig?.carrierMetadata) {
-        const blockValidation = validateTaskForceRequestBlocks(
-          carrierId,
-          carrierConfig.carrierMetadata,
-          request,
-        );
-        if (blockValidation) {
-          logDebug(
-            TASKFORCE_LOG_CATEGORY_ERROR,
-            `request-block validation failed carrier=${carrierId} missing=${blockValidation.missing.join(",")}`,
-          );
-          const jobId = buildCarrierJobId("taskforce", ctx.toolCallId ?? "");
-          return launchResponseResult({
-            job_id: jobId,
-            accepted: false,
-            error: blockValidation.error,
-          });
-        }
-      }
-
-      const launch = startDetachedJob({
-        jobKind: "taskforce",
-        toolName: "carrier_taskforce",
-        toolCallId: ctx.toolCallId,
-        startedAt: t0,
-        carrierIds: [carrierId],
-        signal: ctx.signal,
+      const jobId = buildCarrierJobId("taskforce", ctx.toolCallId ?? "");
+      return launchResponseResult({
+        job_id: jobId,
+        accepted: false,
+        error: blockValidation.error,
       });
-      if (!launch.accepted) return launch.response;
+    }
+  }
 
-      const state = initTaskForceState(carrierId, requestKey, activeBackends);
-      emitTaskForceJobRegistered(launch.jobId, carrierId, requestKey, activeBackends, t0);
+  const launch = startDetachedJob({
+    jobKind: "taskforce",
+    toolName,
+    toolCallId: ctx.toolCallId,
+    startedAt,
+    carrierIds: [carrierId],
+    signal: ctx.signal,
+  });
+  if (!launch.accepted) return launch.response;
 
-      void runTaskForceJobInBackground({
-        jobId: launch.jobId,
-        carrierId,
-        requestKey,
-        activeBackends,
-        request,
-        state,
-        signal: launch.signal,
-        cwd,
-        permit: launch.permit,
-        startedAt: t0,
-      });
+  const state = initTaskForceState(carrierId, requestKey, activeBackends);
+  emitTaskForceJobRegistered(launch.jobId, carrierId, requestKey, activeBackends, startedAt, label);
 
-      logDebug(TASKFORCE_LOG_CATEGORY_RESULT, `carrier=${carrierId} accepted job=${launch.jobId}`);
-      return launchResponseResult({ job_id: launch.jobId, accepted: true });
-    },
-  };
+  void runTaskForceJobInBackground({
+    jobId: launch.jobId,
+    carrierId,
+    requestKey,
+    activeBackends,
+    request,
+    state,
+    signal: launch.signal,
+    cwd: ctx.cwd,
+    permit: launch.permit,
+    startedAt,
+    toolName,
+    label,
+  });
+
+  logDebug(TASKFORCE_LOG_CATEGORY_RESULT, `carrier=${carrierId} accepted job=${launch.jobId}`);
+  return launchResponseResult({ job_id: launch.jobId, accepted: true });
 }
 
 async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Promise<void> {
@@ -190,7 +185,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
     finalError = error instanceof Error ? error.message : String(error);
   } finally {
     const finishedAt = Date.now();
-    const summary = buildTaskForceJobSummary(opts.jobId, opts.startedAt, finishedAt, opts.carrierId, results, finalStatus as StoredCarrierJobStatus, finalError);
+    const summary = buildTaskForceJobSummary(opts.jobId, opts.startedAt, finishedAt, opts.carrierId, results, finalStatus as StoredCarrierJobStatus, opts.toolName, finalError);
     finalizeDetachedJob({
       jobId: opts.jobId,
       status: finalStatus,
@@ -213,7 +208,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
         summary,
         error: finalError,
         taskforceBackend: opts.activeBackends.join(", "),
-        label: `${opts.activeBackends.length} backends`,
+        label: opts.label,
       }),
     });
     clearTaskForceState(opts.requestKey);
@@ -349,6 +344,7 @@ function emitTaskForceJobRegistered(
   requestKey: string,
   activeBackends: readonly TaskForceCliType[],
   startedAt: number,
+  label: string,
 ): void {
   const tracks: TrackMeta[] = activeBackends.map((cliType) => ({
     trackId: `${jobId}:${cliType}`,
@@ -363,7 +359,7 @@ function emitTaskForceJobRegistered(
     jobId,
     kind: "taskforce",
     ownerCarrierId: carrierId,
-    label: `${activeBackends.length} backends`,
+    label,
     startedAt,
     tracks,
   });

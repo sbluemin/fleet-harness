@@ -15,7 +15,8 @@ export interface CarrierResultSystemReminderInput {
 }
 
 export const JOB_LAUNCH_NOTICE = [
-  "Job accepted; result arrives later via carrier-completion follow-up push tagged [carrier:result].",
+  "Job accepted from carrier_dispatch; result arrives later via carrier-completion follow-up push tagged [carrier:result].",
+  "Task Force is an execution mode of carrier_dispatch when the selected carrier is configured for it.",
   "DO NOT poll carrier_jobs.",
 ].join(" ");
 

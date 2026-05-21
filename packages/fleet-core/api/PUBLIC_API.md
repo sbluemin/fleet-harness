@@ -26,11 +26,13 @@ The lifecycle boot function does not return these facades and does not expose a 
 
 ## Facades
 
-- `admiral` owns agent executor, carrier/taskforce, carrier job streaming, protocols, store, prompts, and Fleet constants.
+- `admiral` owns agent executor, carrier delegation including Task Force execution mode, carrier job streaming, protocols, store, prompts, and Fleet constants.
 - `admiralty` owns Grand Fleet IPC, prompts, reporter, status-source, sanitization, tool specs, and runtime access.
 - `infra` owns auth, data-dir, job archive/lifecycle utilities, log, and settings.
 
 `admiral.agent.tools.*`, `AgentToolSpec`, and `AgentToolCtx` remain reachable through the fleet-core root/facade compatibility surface. The generic registry, MCP HTTP server, token routing, snapshots, and formatter primitives are implemented by `@sbluemin/fleet-mcp-server`; fleet-core owns the carrier metadata adapter, default Fleet tool bootstrap, prompt usage, and lifecycle boot.
+
+`carrier_dispatch` is the public carrier delegation entrypoint. When the selected carrier has a valid Task Force configuration, dispatch auto-promotes to Task Force execution under the same delegation surface. Task Force job IDs keep the `taskforce:` prefix, and `carrier_jobs(action: "result", format: "full")` returns `results: Record<cliType, string>` for Task Force jobs.
 
 `admiral.agent` exposes only `executor`, `connections`, `tools`, and `models`. The executor entrypoints are `admiral.agent.executor.executeWithPool` and `admiral.agent.executor.executeOneShot`; host streaming session/event/bridge/service-status surfaces are intentionally absent.
 

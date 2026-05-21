@@ -7,13 +7,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [core] Per-carrier builtin external MCP allowlist; Tempest now exposes the grep.app code search MCP.
-- [core] Admiral system prompt now signals which carriers have Task Force configured, preventing the host from incorrectly skipping `carrier_taskforce` invocations.
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
+
+### Changed
+- [core] carrier_jobs full responses for auto-promoted Task Force jobs return per-backend results keyed by CLI type instead of a single full_result string.
 
 ### Fixed
 - [agent-core] Anchored CJK IME preedit to the dedicated CLI input cursor and added `--disable-cursor-sync` for terminals that need to opt out.
 
 ### Breaking Changes
+- [core] Removed the carrier_taskforce tool; carrier_dispatch now auto-promotes carriers with configured Task Force to multi-backend execution.
 - [core][agent-core] Removed the sortie toggle feature, eliminating the ability to toggle individual carriers offline, the 'd' keybinding in the carrier status overlay, offline carrier states/persistence, and all associated UI indicators (such as dimmed roster lines, inactive HUD tiles, and footer hints).
 - [agent-core] Fleet-world tone overlay is now disabled by default; the previous `--disable-metaphor` flag is removed and replaced by an explicit `--enable-metaphor` opt-in.
 

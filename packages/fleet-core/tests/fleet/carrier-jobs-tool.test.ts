@@ -158,11 +158,11 @@ describe("carrier_jobs tool", () => {
     expect(response.full_result).not.toMatch(/^── /m);
   });
 
-  it("applies per-sub-op caps for taskforce full result when summary was evicted (jobId prefix fallback)", () => {
+  it("returns taskforce full results by backend when summary was evicted (jobId prefix fallback)", () => {
     createJobArchive("taskforce:no-summary", 1000);
     appendBlock(
       "taskforce:no-summary",
-      toMessageArchiveBlock("genesis", `solo-${"z".repeat(35_000)}`, "subtask 0: only", 1001),
+      toMessageArchiveBlock("genesis", "solo output", "codex", 1001),
       1001,
     );
     finalizeJobArchive("taskforce:no-summary", "done", 2000);
@@ -171,22 +171,24 @@ describe("carrier_jobs tool", () => {
 
     expect(response.ok).toBe(true);
     expect(response.summary_available).toBe(false);
-    expect(response.full_result).toContain("── subtask 0: only ──");
-    expect(response.full_result).toMatch(/\[truncated \d+ chars in subtask 0: only]/);
-    expect(Buffer.byteLength(response.full_result!, "utf8")).toBeLessThanOrEqual(60_000);
+    expect(response.full_result).toBeUndefined();
+    expect(response.results).toEqual({
+      codex: "solo output",
+    });
+    expect(Buffer.byteLength(response.results!.codex, "utf8")).toBeLessThanOrEqual(30_000);
   });
 
-  it("uses per-sub-op plus global caps for taskforce jobs in full result", () => {
+  it("returns taskforce full results as backend-keyed records", () => {
     putJobSummary(buildTaskForceSummary("taskforce:tf", 1000), 1000);
     createJobArchive("taskforce:tf", 1000);
     appendBlock(
       "taskforce:tf",
-      toMessageArchiveBlock("genesis", `a-${"z".repeat(35_000)}`, "subtask 0: a", 1001),
+      toMessageArchiveBlock("genesis", "codex output", "codex", 1001),
       1001,
     );
     appendBlock(
       "taskforce:tf",
-      toMessageArchiveBlock("genesis", `b-${"z".repeat(35_000)}`, "subtask 1: b", 1002),
+      toMessageArchiveBlock("genesis", "claude output", "claude", 1002),
       1002,
     );
     finalizeJobArchive("taskforce:tf", "done", 3000);
@@ -194,9 +196,13 @@ describe("carrier_jobs tool", () => {
     const response = dispatchCarrierJobsAction({ action: "result", job_id: "taskforce:tf" }, 3001);
 
     expect(response.ok).toBe(true);
-    expect(response.full_result).toContain("── subtask 0: a ──");
-    expect(response.full_result).toContain("── subtask 1: b ──");
-    expect(Buffer.byteLength(response.full_result!, "utf8")).toBeLessThanOrEqual(60_000);
+    expect(response.full_result).toBeUndefined();
+    expect(response.results).toEqual({
+      codex: "codex output",
+      claude: "claude output",
+    });
+    expect(Buffer.byteLength(response.results!.codex, "utf8")).toBeLessThanOrEqual(30_000);
+    expect(Buffer.byteLength(response.results!.claude, "utf8")).toBeLessThanOrEqual(30_000);
   });
 
   it("cancels by job ID without touching unrelated jobs", () => {
@@ -242,7 +248,7 @@ function buildSummary(jobId: string, startedAt: number): CarrierJobSummary {
 function buildTaskForceSummary(jobId: string, startedAt: number): CarrierJobSummary {
   return {
     jobId,
-    tool: "carrier_taskforce",
+    tool: "carrier_dispatch",
     status: "done",
     summary: "completed",
     startedAt,

@@ -48,19 +48,21 @@ describe("buildCarrierResultSystemReminder", () => {
   });
 
   it("includes taskforce backend labels", () => {
-    const summary = { ...BASE_SUMMARY, jobId: "taskforce:3", tool: "carrier_taskforce" as const, summary: "taskforce done" };
+    const summary = { ...BASE_SUMMARY, jobId: "taskforce:3", tool: "carrier_dispatch" as const, summary: "taskforce done" };
 
-    const reminder = buildCarrierResultSystemReminder({
+    expect(buildCarrierResultSystemReminder({
       jobId: "taskforce:3",
       kind: "taskforce",
       status: "done",
       summary,
       taskforceBackend: "claude-zai, codex",
       label: "2 backends",
-    });
-
-    expect(reminder).toContain("[carrier:result]");
-    expect(reminder).toContain("kind=taskforce");
-    expect(reminder).toContain("backend=claude-zai, codex");
+    })).toBe([
+      '<system-reminder source="carrier-completion">',
+      "[carrier:result]",
+      "- taskforce:3: taskforce done",
+      "  kind=taskforce status=done label=2 backends backend=claude-zai, codex",
+      "</system-reminder>",
+    ].join("\n"));
   });
 });

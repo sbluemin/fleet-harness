@@ -58,7 +58,7 @@ PI is the **host agent** (orchestrator). Registered Carriers are **sub-agents** 
 
 ### Task Force Backend Whitelist
 
-`carrier_taskforce` accepts every CLI provider registered in `CLI_BACKENDS` (Single Source of Truth). The current whitelist contains **6 backends**:
+Task Force execution is an internal mode selected by `carrier_dispatch` auto-promotion when a carrier has configured backends. The configured backend whitelist is derived from every CLI provider registered in `CLI_BACKENDS` (Single Source of Truth). The current whitelist contains **6 backends**:
 
 | CLI Type | Display Name | Notes |
 |----------|--------------|-------|
@@ -70,7 +70,7 @@ PI is the **host agent** (orchestrator). Registered Carriers are **sub-agents** 
 | `opencode-go` | OpenCode | OpenCode Go CLI |
 
 - `TaskForceCliType` is an alias of `CliType`; `TASKFORCE_CLI_TYPES` is auto-derived via `Object.keys(CLI_BACKENDS) as CliType[]` in `packages/fleet-core/src/admiral/taskforce/types.ts`.
-- Tool description copy (`TASKFORCE_CONFIGURE_HINT`, `[carrier:result]` backend label examples) and overlay colors (`CARRIER_COLORS`) are derived from `CLI_BACKENDS × CLI_DISPLAY_NAMES`. Adding a new entry to `CLI_BACKENDS` automatically extends Task Force without touching prompts or the overlay.
+- Dispatch/configuration copy (`TASKFORCE_CONFIGURE_HINT`, `[carrier:result]` backend label examples) and overlay colors (`CARRIER_COLORS`) are derived from `CLI_BACKENDS × CLI_DISPLAY_NAMES`. Adding a new entry to `CLI_BACKENDS` automatically extends Task Force without touching prompts or the overlay.
 - **Persona × CLI compatibility is allowed**: any registered carrier persona may pair with any of the six CLI backends. Configure pairings via Carrier Status (Alt+O → T) per carrier.
 - Providers without supported reasoning effort follow the existing Gemini pattern (`effort.supported = false`) and surface no effort/budget controls in the configuration overlay.
 
