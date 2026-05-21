@@ -7,6 +7,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [core] Per-carrier builtin external MCP allowlist; Tempest now exposes the grep.app code search MCP.
+- [core] Admiral system prompt now signals which carriers have Task Force configured, preventing the host from incorrectly skipping `carrier_taskforce` invocations.
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
 
 ### Fixed
