@@ -8,6 +8,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
 
+### Breaking Changes
+- [agent-core] Fleet-world tone overlay is now disabled by default; the previous `--disable-metaphor` flag is removed and replaced by an explicit `--enable-metaphor` opt-in.
+
 ## [0.21.0] - 2026-05-20
 
 ### Added

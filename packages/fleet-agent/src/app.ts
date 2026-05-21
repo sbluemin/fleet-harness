@@ -21,7 +21,7 @@ import { bootRuntime, shutdownRuntime } from "./runtime/runtime.js";
 export interface RunAppOptions {
   readonly native?: boolean;
   readonly replaceSystemPrompt?: boolean;
-  readonly disableMetaphor?: boolean;
+  readonly enableMetaphor?: boolean;
 }
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
@@ -30,7 +30,7 @@ const RENDER_THROTTLE_MS = 16;
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const native = options.native ?? false;
   const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
-  const disableMetaphor = options.disableMetaphor ?? false;
+  const enableMetaphor = options.enableMetaphor ?? false;
   await bootRuntime();
   const ui = new LocalTui();
   const ptyView = new PtyView(ui.columns, 0);
@@ -51,7 +51,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const baseProfile = await resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
   const currentProfile = native
     ? baseProfile
-    : await injectDedicatedCliProfile(baseProfile, { replaceSystemPrompt, disableMetaphor });
+    : await injectDedicatedCliProfile(baseProfile, { replaceSystemPrompt, enableMetaphor });
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });

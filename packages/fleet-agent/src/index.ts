@@ -22,7 +22,7 @@ if (options.help) {
 runApp({
   native: options.native,
   replaceSystemPrompt: options.replaceSystemPrompt,
-  disableMetaphor: options.disableMetaphor,
+  enableMetaphor: options.enableMetaphor,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`${message}\n`);

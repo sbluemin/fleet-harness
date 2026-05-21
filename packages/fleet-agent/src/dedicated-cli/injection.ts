@@ -11,7 +11,7 @@ import type { DedicatedCliInjectionContext, DedicatedCliProfile } from "./types.
 
 export interface InjectDedicatedCliProfileOptions {
   readonly replaceSystemPrompt?: boolean;
-  readonly disableMetaphor?: boolean;
+  readonly enableMetaphor?: boolean;
 }
 
 export async function injectDedicatedCliProfile(
@@ -23,7 +23,7 @@ export async function injectDedicatedCliProfile(
     return profile;
   }
 
-  const injectTone = !(options.disableMetaphor ?? false);
+  const injectTone = options.enableMetaphor ?? false;
   const endpoint = await admiral.mcp.getEndpoint();
   const systemPromptFile = writeSystemPromptFile(profile.id, admiral.prompts.buildSystemPrompt(injectTone));
   const context: DedicatedCliInjectionContext = {
