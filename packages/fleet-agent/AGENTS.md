@@ -29,6 +29,15 @@ Only the permanent vertical two-pane layout is allowed:
 - `Ctrl+T` toggles between modes.
 - The Fleet PTY owns no visible text input.
 
+## Host Cursor Policy
+
+Outer-terminal cursor sync policy is owned here; `fleet-tui` supplies only generic anchor primitives (`getCursorAnchor`, `setCursorAnchorTarget`, `cursorSyncEnabled`, post-flush `requestRender` callback).
+
+- **Policy sync**: `createCursorPolicySync()` in `app.ts` (assigned to `syncCursorPolicy`) runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Dedicated PTY view in `MIRROR`/`DEDICATED` when cursor sync is on, mode-toggle suppression is off, and the Fleet PTY has no active overlay; otherwise the target is cleared.
+- **Mode-toggle suppression**: `Ctrl+T` clears the target and schedules one hidden render frame; policy resumes in the renderer post-flush `afterRender` callback (`scheduleRender` → `ui.requestRender(..., callback)`), then a follow-up render — not via independent timer chains.
+- **Off-switch** (read-only env; do not mutate `process.env`): `RunAppOptions.cursorSync` (default on), CLI `--disable-cursor-sync`, and `FLEET_CURSOR_SYNC=0` or `false` parsed in `cli-args.ts` and passed through `index.ts`.
+- **Boundary**: IME/terminal compatibility decisions and overlay/mode gating stay in this package; do not push host policy into `fleet-tui` renderer or anchor types.
+
 ## Development & Execution
 
 - Use the root `pnpm fleet` script.

@@ -12,7 +12,7 @@ if (argv[0] === "auth") {
   process.exit(status);
 }
 
-const options = parseFleetCliOptions(argv);
+const options = parseFleetCliOptions(argv, process.env);
 
 if (options.help) {
   process.stdout.write(FLEET_HELP_TEXT);
@@ -20,6 +20,7 @@ if (options.help) {
 }
 
 runApp({
+  cursorSync: options.cursorSync,
   native: options.native,
   replaceSystemPrompt: options.replaceSystemPrompt,
   enableMetaphor: options.enableMetaphor,

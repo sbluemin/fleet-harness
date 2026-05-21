@@ -1,4 +1,5 @@
 export interface FleetCliOptions {
+  readonly cursorSync: boolean;
   readonly help: boolean;
   readonly native: boolean;
   readonly replaceSystemPrompt: boolean;
@@ -20,11 +21,15 @@ Options:
   -n, --native        Run the dedicated CLI in native mode: do not inject
                       the Fleet system prompt and hide the Fleet Action
                       Protocol label from the Fleet PTY (divider preserved).
+  --disable-cursor-sync
+                      Disable outer-terminal cursor projection for terminals
+                      with problematic IME cursor anchoring.
   -rsp, --replace-system-prompt  Replace the Claude system prompt instead of appending it.
   -em, --enable-metaphor         Enable the fleet-world tone overlay in the injected system prompt.
 `;
 
-export function parseFleetCliOptions(argv: readonly string[]): FleetCliOptions {
+export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
+  let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
   let help = false;
   let native = false;
   let replaceSystemPrompt = false;
@@ -34,11 +39,22 @@ export function parseFleetCliOptions(argv: readonly string[]): FleetCliOptions {
       help = true;
     } else if (arg === "--native" || arg === "-n") {
       native = true;
+    } else if (arg === "--disable-cursor-sync") {
+      cursorSync = false;
     } else if (arg === "--replace-system-prompt" || arg === "-rsp") {
       replaceSystemPrompt = true;
     } else if (arg === "--enable-metaphor" || arg === "-em") {
       enableMetaphor = true;
     }
   }
-  return { help, native, replaceSystemPrompt, enableMetaphor };
+  return { cursorSync, help, native, replaceSystemPrompt, enableMetaphor };
+}
+
+function parseCursorSyncEnv(value: string | undefined): boolean {
+  if (value === undefined) {
+    return true;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "0" && normalized !== "false";
 }

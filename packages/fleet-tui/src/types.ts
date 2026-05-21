@@ -1,8 +1,15 @@
 export interface Component {
   readonly wantsKeyRelease?: boolean;
+  getCursorAnchor?(width: number): CursorAnchor | null;
   handleInput?(data: string): void;
   invalidate(): void;
   render(width: number): string[];
+}
+
+export interface CursorAnchor {
+  readonly column: number;
+  readonly row: number;
+  readonly visible: boolean;
 }
 
 export interface Focusable {

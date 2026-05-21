@@ -79,7 +79,7 @@ describe("LocalTui", () => {
     assert.match(renderWrites[0] ?? "", /beta/);
   });
 
-  it("skips identical frames and updates only changed rows", () => {
+  it("skips identical row diffs while still syncing the cursor", () => {
     const component = mutableComponent(["alpha", "bravo"]);
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
@@ -89,7 +89,7 @@ describe("LocalTui", () => {
     writes = [];
 
     flush(tui, false);
-    assert.equal(writes.join(""), "");
+    assert.equal(writes.join(""), "\x1b[?25l");
 
     component.lines = ["alpha", "charlie"];
     flush(tui, false);
@@ -98,7 +98,119 @@ describe("LocalTui", () => {
     assert.equal(output.includes("\x1b[1;1H"), false);
     assert.equal(output.includes("\x1b[2;1Hcharlie"), true);
     assert.equal(output.includes("\x1b[2K"), false);
+    assert.equal(output.endsWith("\x1b[?25l"), true);
     tui.stop();
+  });
+
+  it("appends visible cursor sync after full renders", () => {
+    const component = anchorComponent(["alpha"], { column: 2, row: 0, visible: true });
+    const tui = new LocalTui({ renderIntervalMs: 1000 });
+
+    tui.addChild(component);
+    tui.setCursorAnchorTarget(component);
+    tui.start();
+    flush(tui, true);
+
+    const output = writes.join("");
+    assert.equal(output.includes("\x1b[1;1Halpha"), true);
+    assert.equal(output.endsWith("\x1b[1;3H\x1b[?25h"), true);
+    tui.stop();
+  });
+
+  it("appends visible cursor sync after no-diff renders", () => {
+    const component = anchorComponent(["alpha"], { column: 4, row: 0, visible: true });
+    const tui = new LocalTui({ renderIntervalMs: 1000 });
+
+    tui.addChild(component);
+    tui.setCursorAnchorTarget(component);
+    tui.start();
+    flush(tui, true);
+    writes = [];
+
+    flush(tui, false);
+
+    assert.equal(writes.join(""), "\x1b[1;5H\x1b[?25h");
+    tui.stop();
+  });
+
+  it("projects child-local anchors with row offsets", () => {
+    const first = mutableComponent(["top"]);
+    const second = anchorComponent(["middle", "bottom"], { column: 1, row: 1, visible: true });
+    const tui = new LocalTui({ renderIntervalMs: 1000 });
+
+    tui.setChildren([first, second]);
+    tui.setCursorAnchorTarget(second);
+    tui.start();
+    flush(tui, true);
+
+    assert.equal(writes.join("").endsWith("\x1b[3;2H\x1b[?25h"), true);
+    tui.stop();
+  });
+
+  it("hides the cursor when no target exists or the target is hidden", () => {
+    const component = anchorComponent(["alpha"], { column: 0, row: 0, visible: false });
+    const tui = new LocalTui({ renderIntervalMs: 1000 });
+
+    tui.addChild(component);
+    tui.start();
+    flush(tui, true);
+    assert.equal(writes.join("").endsWith("\x1b[?25l"), true);
+
+    writes = [];
+    tui.setCursorAnchorTarget(component);
+    flush(tui, false);
+    assert.equal(writes.join(""), "\x1b[?25l");
+    tui.stop();
+  });
+
+  it("hides the cursor for out-of-frame anchors and disabled sync", () => {
+    const component = anchorComponent(["alpha"], { column: 12, row: 0, visible: true });
+    const disabled = anchorComponent(["bravo"], { column: 0, row: 0, visible: true });
+    const tui = new LocalTui({ renderIntervalMs: 1000 });
+    const disabledTui = new LocalTui({ cursorSyncEnabled: false, renderIntervalMs: 1000 });
+
+    tui.addChild(component);
+    tui.setCursorAnchorTarget(component);
+    tui.start();
+    flush(tui, true);
+    assert.equal(writes.join("").endsWith("\x1b[?25l"), true);
+    tui.stop();
+
+    writes = [];
+    disabledTui.addChild(disabled);
+    disabledTui.setCursorAnchorTarget(disabled);
+    disabledTui.start();
+    flush(disabledTui, true);
+    assert.equal(writes.join("").endsWith("\x1b[?25l"), true);
+    disabledTui.stop();
+  });
+
+  it("hides the cursor for non-integer and negative anchors", () => {
+    const invalidAnchors = [
+      { column: 0, row: Number.NaN, visible: true },
+      { column: Number.NaN, row: 0, visible: true },
+      { column: 0, row: Number.POSITIVE_INFINITY, visible: true },
+      { column: Number.POSITIVE_INFINITY, row: 0, visible: true },
+      { column: 0, row: 0.5, visible: true },
+      { column: 1.5, row: 0, visible: true },
+      { column: 0, row: -1, visible: true },
+      { column: -1, row: 0, visible: true },
+    ];
+
+    for (const anchor of invalidAnchors) {
+      writes = [];
+      const component = anchorComponent(["alpha"], anchor);
+      const tui = new LocalTui({ renderIntervalMs: 1000 });
+
+      tui.addChild(component);
+      tui.setCursorAnchorTarget(component);
+      tui.start();
+      flush(tui, true);
+
+      assert.equal(writes.join("").endsWith("\x1b[?25l"), true);
+      assert.equal(writes.join("").includes("\x1b[?25h"), false);
+      tui.stop();
+    }
   });
 
   it("uses clear-to-EOL only for shortened rows and trailing row deletion", () => {
@@ -292,6 +404,19 @@ function flush(tui: LocalTui, force: boolean): void {
 
 function mutableComponent(lines: string[]): Component & { lines: string[] } {
   return {
+    invalidate() {},
+    lines,
+    render() {
+      return this.lines;
+    },
+  };
+}
+
+function anchorComponent(lines: string[], anchor: NonNullable<ReturnType<NonNullable<Component["getCursorAnchor"]>>>): Component & { lines: string[] } {
+  return {
+    getCursorAnchor() {
+      return anchor;
+    },
     invalidate() {},
     lines,
     render() {

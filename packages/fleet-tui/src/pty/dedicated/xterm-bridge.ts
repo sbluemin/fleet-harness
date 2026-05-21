@@ -1,6 +1,9 @@
 import xterm from "@xterm/headless";
 import type { IBufferCell, Terminal as XtermTerminal } from "@xterm/headless";
 
+import { visibleWidth } from "../../primitives/text.js";
+import type { CursorAnchor } from "../../types.js";
+
 type ColorMode = "default" | "palette" | "rgb";
 
 type CellStyle = {
@@ -17,6 +20,13 @@ type CellStyle = {
   readonly strikethrough: boolean;
   readonly underline: boolean;
 };
+
+export interface LogicalCursor {
+  readonly viewportY: number;
+  readonly visible: boolean;
+  readonly x: number;
+  readonly y: number;
+}
 
 const ANSI_RESET = "\x1b[0m";
 const DEFAULT_STYLE: CellStyle = {
@@ -57,6 +67,53 @@ export function renderXtermViewport(terminal: XtermTerminal): string[] {
   return lines;
 }
 
+export function getLogicalCursor(terminal: XtermTerminal): LogicalCursor {
+  const buffer = terminal.buffer.active;
+  const viewportY = buffer.viewportY;
+  const x = buffer.cursorX;
+  const y = buffer.baseY + buffer.cursorY;
+  const viewportRow = y - viewportY;
+
+  return {
+    viewportY,
+    visible: viewportRow >= 0 && viewportRow < terminal.rows && x >= 0 && x <= terminal.cols,
+    x,
+    y,
+  };
+}
+
+export function projectLogicalCursor(terminal: XtermTerminal, width: number): CursorAnchor | null {
+  if (terminal.rows <= 0 || width <= 0) {
+    return null;
+  }
+
+  const cursor = getLogicalCursor(terminal);
+  if (!cursor.visible) {
+    return {
+      column: 0,
+      row: Math.max(0, cursor.y - cursor.viewportY),
+      visible: false,
+    };
+  }
+
+  const row = cursor.y - cursor.viewportY;
+  const line = terminal.buffer.active.getLine(cursor.y);
+  if (!line) {
+    return {
+      column: 0,
+      row,
+      visible: false,
+    };
+  }
+
+  const column = Math.min(projectLineColumn(line, cursor.x, terminal.cols), width - 1);
+  return {
+    column,
+    row,
+    visible: true,
+  };
+}
+
 function renderLine(line: NonNullable<ReturnType<XtermTerminal["buffer"]["active"]["getLine"]>>, cols: number): string {
   let rendered = "";
   let activeStyle = DEFAULT_STYLE;
@@ -83,6 +140,27 @@ function renderLine(line: NonNullable<ReturnType<XtermTerminal["buffer"]["active
   }
 
   return rendered;
+}
+
+function projectLineColumn(
+  line: NonNullable<ReturnType<XtermTerminal["buffer"]["active"]["getLine"]>>,
+  cursorX: number,
+  cols: number,
+): number {
+  let column = 0;
+  let prefix = "";
+  const limit = Math.min(Math.max(cursorX, 0), cols);
+  for (let index = 0; index < limit; index += 1) {
+    const cell = line.getCell(index);
+    if (!cell || cell.getWidth() === 0) {
+      continue;
+    }
+
+    prefix += cell.getChars() || " ";
+  }
+
+  column = visibleWidth(prefix);
+  return Math.max(0, column);
 }
 
 function getCellStyle(cell: IBufferCell): CellStyle {
@@ -161,4 +239,3 @@ function colorCodes(target: "fg" | "bg", mode: ColorMode, color: number): string
   const blue = color & 0xff;
   return [base, "2", String(red), String(green), String(blue)];
 }
-

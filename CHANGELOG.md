@@ -8,6 +8,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
 
+### Fixed
+- [agent-core] Anchored CJK IME preedit to the dedicated CLI input cursor and added `--disable-cursor-sync` for terminals that need to opt out.
+
 ### Breaking Changes
 - [agent-core] Fleet-world tone overlay is now disabled by default; the previous `--disable-metaphor` flag is removed and replaced by an explicit `--enable-metaphor` opt-in.
 

@@ -6,6 +6,7 @@ import {
   createTuiPtyManager,
   PtyView,
   type Component,
+  type FleetPtyApi,
   type PtyHost,
   type TuiPtyManager,
 } from "@sbluemin/fleet-tui/pty";
@@ -19,23 +20,35 @@ import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from ".
 import { bootRuntime, shutdownRuntime } from "./runtime/runtime.js";
 
 export interface RunAppOptions {
+  readonly cursorSync?: boolean;
   readonly native?: boolean;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
+}
+
+type FleetInputMode = "MIRROR" | "DEDICATED";
+type RenderCallback = () => void;
+type RenderScheduler = (afterRender?: RenderCallback) => void;
+
+interface RenderSchedulerUi {
+  requestRender(force?: boolean, afterRender?: RenderCallback): void;
 }
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
+  const cursorSync = options.cursorSync !== false;
   const native = options.native ?? false;
   const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
   const enableMetaphor = options.enableMetaphor ?? false;
   await bootRuntime();
-  const ui = new LocalTui();
+  const ui = new LocalTui({ cursorSyncEnabled: cursorSync });
   const ptyView = new PtyView(ui.columns, 0);
   const sections = createDefaultFleetPtySections({ native });
-  const scheduleRender = createRenderScheduler(ui);
+  let modeToggleSuppressed = false;
+  let syncCursorPolicy = () => {};
+  const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
   let ptyManager: TuiPtyManager | undefined;
   const fleetPty = createFleetPtyApi({
     defaultComponent: createDefaultFleetPtyComponent(sections),
@@ -78,13 +91,30 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const router = createInputRouter({
     initialMode: "MIRROR",
     onExit: stop,
-    onModeChange: () => scheduleRender(),
+    onModeChange: () => {
+      modeToggleSuppressed = true;
+      ui.setCursorAnchorTarget(undefined);
+      scheduleRender(() => {
+        modeToggleSuppressed = false;
+        syncCursorPolicy();
+        ui.requestRender();
+      });
+    },
     routeFleetInput: (data) => fleetPty.dispatchInput(data),
     toggleMode: toggleFleetInputMode,
     writeDedicated: (data) => ptyHost.write(data),
   });
+  syncCursorPolicy = createCursorPolicySync({
+    cursorSync,
+    fleetPty,
+    getMode: router.getMode,
+    isModeToggleSuppressed: () => modeToggleSuppressed,
+    ptyView,
+    ui,
+  });
 
   ui.setChildren([ptyView, createFleetPtyViewport(fleetPty)]);
+  syncCursorPolicy();
   unsubscribeJobBar = subscribeJobBar({
     requestResize: () => ptyManager?.requestResize("programmatic"),
     scheduleRender,
@@ -106,7 +136,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   disposeInputStream = attachInputStream(ui);
 }
 
-function createFleetPtyViewport(fleetPty: ReturnType<typeof createFleetPtyApi>): Component {
+function createFleetPtyViewport(fleetPty: FleetPtyApi): Component {
   return {
     handleInput(data: string): void {
       fleetPty.dispatchInput(data);
@@ -124,9 +154,14 @@ function resolveInvocationCwd(): string {
   return process.env.INIT_CWD || process.cwd();
 }
 
-function createRenderScheduler(ui: LocalTui): () => void {
+export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () => void): RenderScheduler {
   let renderPending = false;
-  return () => {
+  let afterRenderCallbacks: RenderCallback[] = [];
+  return (afterRender?: RenderCallback) => {
+    if (afterRender !== undefined) {
+      afterRenderCallbacks.push(afterRender);
+    }
+
     if (renderPending) {
       return;
     }
@@ -134,8 +169,34 @@ function createRenderScheduler(ui: LocalTui): () => void {
     renderPending = true;
     setTimeout(() => {
       renderPending = false;
-      ui.requestRender();
+      const callbacks = afterRenderCallbacks;
+      afterRenderCallbacks = [];
+      beforeRender();
+      ui.requestRender(false, () => {
+        for (const callback of callbacks) {
+          callback();
+        }
+      });
     }, RENDER_THROTTLE_MS);
+  };
+}
+
+function createCursorPolicySync(options: {
+  readonly cursorSync: boolean;
+  readonly fleetPty: FleetPtyApi;
+  readonly getMode: () => FleetInputMode;
+  readonly isModeToggleSuppressed: () => boolean;
+  readonly ptyView: PtyView;
+  readonly ui: LocalTui;
+}): () => void {
+  return () => {
+    if (!options.cursorSync || options.isModeToggleSuppressed() || options.fleetPty.hasActiveOverlay()) {
+      options.ui.setCursorAnchorTarget(undefined);
+      return;
+    }
+
+    const mode = options.getMode();
+    options.ui.setCursorAnchorTarget(mode === "MIRROR" || mode === "DEDICATED" ? options.ptyView : undefined);
   };
 }
 
