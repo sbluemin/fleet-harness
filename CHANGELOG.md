@@ -6,6 +6,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- [core] Per-carrier builtin external MCP allowlist; Tempest now exposes the grep.app code search MCP.
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
 
 ### Fixed

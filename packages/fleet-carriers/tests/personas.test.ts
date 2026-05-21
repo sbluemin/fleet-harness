@@ -87,6 +87,19 @@ describe("allowedExecutorTools", () => {
   });
 });
 
+describe("allowedBuiltinExternalMcpServers", () => {
+  it("tempest만 grep_app builtin external MCP를 명시 허용", () => {
+    expect(TEMPEST_METADATA.allowedBuiltinExternalMcpServers).toEqual(["grep_app"]);
+  });
+
+  it("나머지 7개 carrier는 builtin external MCP를 열지 않는다", () => {
+    for (const { name, meta } of ALL_PERSONAS) {
+      if (name === "tempest") continue;
+      expect(meta.allowedBuiltinExternalMcpServers ?? []).toHaveLength(0);
+    }
+  });
+});
+
 describe("DEFAULT_CARRIER_PERSONAS", () => {
   it("예상 8개 carrier id를 같은 순서로 포함", () => {
     expect(DEFAULT_CARRIER_PERSONAS.map((persona) => persona.options.id)).toEqual(EXPECTED_IDS);

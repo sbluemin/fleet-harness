@@ -10,6 +10,7 @@
 - Package-local tests for default persona data and self-registration behavior
 - Explicit default persona executor access: all 8 personas must explicitly list `carrier_jobs` in `allowedExecutorTools`.
 - Explicit default persona `<prior_jobs?>` request blocks: all 8 personas must explicitly append `PRIOR_JOBS_REQUEST_BLOCK` to `requestBlocks`.
+- Default persona external server access: personas (e.g., Tempest) may explicitly declare external server ID strings (e.g., `["grep_app"]`) in `allowedBuiltinExternalMcpServers` to request builtin external MCP servers.
 - Chronicle's opaque `allowedExecutorTools` metadata for chronicle-exclusive wiki tools. Four pure read-only wiki tools are registered globally and available to all carriers.
 
 ## Must Not Own
@@ -25,6 +26,7 @@
 - Reverse dependencies from `fleet-core` back to `fleet-carriers` are forbidden.
 - Module-load self-registration must stay side-effect-only and host-agnostic; renderer registration belongs in `fleet-agent`.
 - Personas may declare executor tool IDs as strings in `allowedExecutorTools`, but this package must not import the wiki package or its agent-tool ID aggregate.
+- Personas may declare builtin external MCP server IDs as strings in `allowedBuiltinExternalMcpServers` without directly importing the external MCP catalog or resolver functions from `fleet-core`.
 
 ## TypeScript File Structure
 

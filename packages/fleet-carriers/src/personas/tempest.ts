@@ -31,10 +31,12 @@ export const CARRIER_METADATA: CarrierMetadata = {
     PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
+  allowedBuiltinExternalMcpServers: ["grep_app"],
 
   // ── Tier 2: Composition ──
   permissions: [
     "CRITICAL: When cloning, MUST use OS-native temporary directory (e.g., mktemp -d). NEVER clone into the current working directory or any project path. MUST clean up the cloned directory after analysis.",
+    "MUST use grep_app for public code search only; MUST NOT query secrets, internal code, or private repo content.",
     "Full access to gh CLI for GitHub API interactions.",
     "Tempest decides whether API-level exploration suffices or local clone is needed for deeper analysis.",
     "If the request fails (timeout/rate limit), retry up to 3 times before reporting failure.",
