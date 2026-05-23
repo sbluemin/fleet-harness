@@ -4,35 +4,36 @@ This document is the operational doctrine for Admiral and Carrier agents working
 
 ## 1. Architecture State
 
-- `packages/fleet-core` owns Fleet **domain logic**.
-- `packages/fleet-core/src/admiralty` owns the internalized **Grand Fleet domain**.
+- `packages/fleet-admiral` owns single-fleet **domain logic**.
+- `packages/fleet-admiralty` owns the **Grand Fleet domain**.
 - `packages/fleet-agent` owns **host domains** and CLI integration (Flat Domain Architecture).
 
 Physical domain layout:
-- `packages/fleet-core` remains the foundation for domain orchestration.
+- `packages/fleet-admiral` is the foundation for single-fleet domain orchestration.
+- `packages/fleet-admiralty` composes multi-fleet coordination on top of `fleet-admiral`.
 - `packages/fleet-agent` is the active physical home for host integration, assembling the Fleet runtime by composing domain modules.
 
 ## 2. Ownership Model
 
-### 2.1 `fleet-core`
+### 2.1 `fleet-admiral`
 
-`fleet-core` owns:
-- Fleet domain orchestration
+`fleet-admiral` owns:
+- Single-fleet domain orchestration
 - Prompt composition and doctrine assets
-- Admiral-owned carrier, carrier-jobs, taskforce, store, and SSOT streaming event layers under `src/admiral/`
+- Admiral-owned carrier, carrier-jobs, taskforce, store, and SSOT streaming event layers
 - Agent execution (session pool, executor, MCP server, runtime)
 - Tool registry/snapshot domain and job domain logic
 - Pure runtime stores, ports, and adapter-facing contracts
 
-`fleet-core` must not own:
+`fleet-admiral` must not own:
 - CLI host lifecycle registration
 - Command/Shortcut registration
 - TUI rendering
 - Grand Fleet formation/process management
 
-### 2.2 `fleet-core/src/admiralty`
+### 2.2 `fleet-admiralty`
 
-`fleet-core/src/admiralty` owns:
+`fleet-admiralty` owns:
 - Grand Fleet prompt composition and status source logic
 - Grand Fleet IPC protocol contracts
 - Grand Fleet reporter output helpers, tool specs, and shared types
@@ -71,26 +72,30 @@ The intended dependency direction is:
 fleet-wiki
   -> (leaf package; no workspace imports)
 
-fleet-core
-  -> admiralty public subpaths
+fleet-admiral
+  -> fleet-carriers
+  -> fleet-infra
+
+fleet-admiralty
+  -> fleet-admiral public APIs
 
 fleet-agent domains
-  -> fleet-core public APIs
-  -> fleet-core admiralty public APIs
+  -> fleet-admiralty public APIs
+  -> fleet-admiral public APIs
   -> fleet-wiki
   -> Host TUI / CLI facilities
 ```
 
 Forbidden patterns:
-- `fleet-core` importing host-specific packages
-- `fleet-agent` deep-importing `fleet-core/src/**`
+- `fleet-admiral` or `fleet-admiralty` importing host-specific packages
+- `fleet-agent` deep-importing `fleet-admiral/src/**` or `fleet-admiralty/src/**`
 - New pure domain logic landing under `fleet-agent`
 
 ## 5. Operational Guidance For Agents
 
 When editing or reviewing this repo:
 1. Ask first whether the behavior is pure Fleet domain logic or host integration.
-2. Put pure logic in `fleet-core`.
+2. Put single-fleet pure logic in `fleet-admiral`; put multi-fleet coordination in `fleet-admiralty`.
 3. Put lifecycle/registration/rendering in the appropriate domain home in `fleet-agent`.
 4. Keep documentation and code organization aligned with the active `packages/fleet-agent/src/` layout.
 

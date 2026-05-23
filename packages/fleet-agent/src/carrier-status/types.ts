@@ -2,7 +2,7 @@ import type {
   CarrierCategory,
   FleetStoreSnapshot,
   TaskForceCliType,
-} from "@sbluemin/fleet-core";
+} from "@sbluemin/fleet-admiral";
 
 import type { FleetPtyApi } from "@sbluemin/fleet-tui/pty";
 

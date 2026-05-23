@@ -1,4 +1,4 @@
-import { admiral } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-admiral";
 
 import { getProgrammaticInput } from "../dedicated-cli/bridge.js";
 import {

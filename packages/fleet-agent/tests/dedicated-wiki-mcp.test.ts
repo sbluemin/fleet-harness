@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { admiral } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-admiral";
 
 import { bootRuntime, shutdownRuntime } from "../src/runtime/runtime.js";
 

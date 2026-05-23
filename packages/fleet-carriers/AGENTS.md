@@ -1,11 +1,12 @@
 # fleet-carriers Doctrine
 
-`packages/fleet-carriers` owns Fleet's default carrier persona catalog and carrier runtime implementation.
+`packages/fleet-carriers` owns Fleet's default carrier persona catalog and the full carrier runtime implementation.
 
 ## Owns
 
 - Default carrier persona metadata under `src/personas/`
 - Carrier runtime constants under `src/constants.ts`
+- Carrier runtime construction through `createCarrierRuntime(deps)`
 - `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, and sortie helpers
 - `jobs/` — `carrier_jobs` lookup/control tool surface and prompt/schema contract
 - `store/` — `states.json` carrier runtime persistence with `state-io.ts` as the single file-I/O and lock/update gate
@@ -16,14 +17,19 @@
 ## Must Not Own
 
 - Host runtime wiring, message renderers, UI components, or host adapters
-- `fleet-core` protocol/admiralty policy implementation
+- `fleet-admiral` protocol/admiralty policy implementation
 - `packages/fleet-infra/src/job/`; detached job infrastructure stays in `fleet-infra`
+- Raw filesystem, process, network, or settings I/O beyond carrier-owned state-store gates
 
 ## Dependency Rules
 
+- The DI layer order is one-way: `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
+- This package sits below `fleet-admiral` and above `fleet-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
+- `createCarrierRuntime(deps)` is the public construction boundary for carrier runtime services. Do not require callers to assemble dispatch/jobs/store/events internals independently.
 - This package may import `@sbluemin/fleet-infra`, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-unified-agent`, and `typebox`.
-- This package MUST NOT import `@sbluemin/fleet-core` or `packages/fleet-core/src/**`.
-- `fleet-core` may depend on this package only through the public package root for compatibility facades.
+- This package MUST NOT import `@sbluemin/fleet-admiral` or `packages/fleet-admiral/src/**`.
+- This package MUST NOT import `fleet-agent`, `fleet-admiralty`, `fleet-admiral`, host UI/runtime packages, or host adapters.
+- `fleet-admiral` may depend on this package only through the public package root for compatibility facades.
 - Personas may declare executor tool IDs and builtin external MCP server IDs as opaque strings without importing host/UI/wiki packages.
 
 ## Testing Doctrine

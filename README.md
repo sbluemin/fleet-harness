@@ -32,7 +32,7 @@ Fleet was built to remove that friction without sacrificing what makes each CLI 
 A 4-tier command structure maps users, orchestrators, and agents into clear roles:
 
 - **Admiral of the Navy** — The user. Sets strategy and gives orders.
-- **Fleet Admiral** — Multi-fleet orchestrator (`fleet-core` internalized Admiralty persona).
+- **Fleet Admiral** — Multi-fleet orchestrator (`fleet-admiral` internalized Admiralty persona).
 - **Admiral** — A workspace agent instance. Plans and dispatches Carriers.
 - **Captain** — The commander persona of a Carrier agent.
 

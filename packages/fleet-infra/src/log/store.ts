@@ -4,11 +4,28 @@ import * as path from "node:path";
 import { getFleetDataDir } from "../data-dir/paths.js";
 import { getSettingsService } from "../settings/runtime.js";
 import type { CoreLogAPI, LogCategoryMeta, LogEntry, LogLevel, LogSettings } from "./types.js";
-import { CORE_LOG_KEY, DEFAULT_LOG_CATEGORY, LOG_LEVEL_PRIORITY } from "./types.js";
+import { DEFAULT_LOG_CATEGORY, LOG_LEVEL_PRIORITY } from "./types.js";
 
 export interface CoreLogSettingsPort {
   load<T = Record<string, unknown>>(sectionKey: string): T;
   save(sectionKey: string, data: unknown): void;
+}
+
+export interface CoreLogStore {
+  setCoreLogSettingsPort(port: CoreLogSettingsPort | null): void;
+  getLogAPI(): CoreLogAPI;
+  initLogAPI(api: CoreLogAPI): void;
+  loadSettings(): Required<LogSettings>;
+  saveSettings(settings: Partial<LogSettings>): void;
+  registerCategory(meta: LogCategoryMeta): void;
+  getRegisteredCategories(): LogCategoryMeta[];
+  isCategoryRegistered(id: string): boolean;
+  appendLog(entry: LogEntry, settings: Required<LogSettings>): void;
+  getRecentLogs(count?: number): LogEntry[];
+  getLatestVisibleLog(minLevel: LogLevel): LogEntry | null;
+  getLatestVisibleLogs(minLevel: LogLevel, count: number): LogEntry[];
+  clearLogs(): void;
+  clearFileLogs(): void;
 }
 
 const SECTION_KEY = "core-log";
@@ -38,112 +55,186 @@ const NOOP_LOG_API: CoreLogAPI = {
   registerCategory() {},
   getRegisteredCategories: () => [],
 };
-const ringBuffer: LogEntry[] = [];
-const categoryRegistry = new Map<string, LogCategoryMeta>();
+const defaultCoreLogStore = createCoreLogStore();
 
-let settingsPort: CoreLogSettingsPort | null = null;
-let migrated = false;
+export function createCoreLogStore(): CoreLogStore {
+  const ringBuffer: LogEntry[] = [];
+  const categoryRegistry = new Map<string, LogCategoryMeta>();
+  let settingsPort: CoreLogSettingsPort | null = null;
+  let migrated = false;
+  let logApi: CoreLogAPI = NOOP_LOG_API;
 
-registerCategory({
-  id: DEFAULT_LOG_CATEGORY,
-  label: "General",
-  description: "기본 로그 카테고리",
-});
+  function getSettingsPort(): CoreLogSettingsPort {
+    const api = settingsPort ?? getSettingsService();
+    if (!api) throw new Error("Settings API not available");
+    return api;
+  }
+
+  function ensureMigrated(): void {
+    if (migrated) return;
+
+    try {
+      const api = getSettingsPort();
+      migrated = true;
+      const newData = api.load<LogSettings>(SECTION_KEY);
+      if (newData && Object.keys(newData).length > 0) return;
+
+      const legacyData = api.load<LogSettings>(LEGACY_SECTION_KEY);
+      if (legacyData && Object.keys(legacyData).length > 0) {
+        api.save(SECTION_KEY, legacyData);
+        api.save(LEGACY_SECTION_KEY, {});
+      }
+    } catch {
+      // 마이그레이션 실패 시 무시
+    }
+  }
+
+  function isCategoryRegistered(id: string): boolean {
+    return categoryRegistry.has(id);
+  }
+
+  categoryRegistry.set(DEFAULT_LOG_CATEGORY, {
+    id: DEFAULT_LOG_CATEGORY,
+    label: "General",
+    description: "기본 로그 카테고리",
+  });
+
+  return {
+    setCoreLogSettingsPort(port) {
+      settingsPort = port;
+      migrated = false;
+    },
+    getLogAPI() {
+      return logApi;
+    },
+    initLogAPI(api) {
+      logApi = api;
+    },
+    loadSettings() {
+      try {
+        ensureMigrated();
+        const raw = getSettingsPort().load<LogSettings>(SECTION_KEY);
+        return { ...DEFAULT_SETTINGS, ...raw };
+      } catch {
+        return { ...DEFAULT_SETTINGS };
+      }
+    },
+    saveSettings(settings) {
+      ensureMigrated();
+      const current = this.loadSettings();
+      const merged = { ...current, ...settings };
+      getSettingsPort().save(SECTION_KEY, merged);
+    },
+    registerCategory(meta) {
+      categoryRegistry.set(meta.id, meta);
+    },
+    getRegisteredCategories() {
+      return Array.from(categoryRegistry.values());
+    },
+    isCategoryRegistered,
+    appendLog(entry, settings) {
+      if (!isCategoryRegistered(entry.category)) return;
+      if (settings.disabledCategories.includes(entry.category)) return;
+
+      if (LOG_LEVEL_PRIORITY[entry.level] < LOG_LEVEL_PRIORITY[settings.minLevel]) {
+        return;
+      }
+
+      ringBuffer.push(entry);
+      if (ringBuffer.length > RING_BUFFER_SIZE) {
+        ringBuffer.shift();
+      }
+
+      if (settings.fileLog) {
+        writeToFile(entry);
+      }
+    },
+    getRecentLogs(count = 10) {
+      const start = Math.max(0, ringBuffer.length - count);
+      return ringBuffer.slice(start);
+    },
+    getLatestVisibleLog(minLevel) {
+      const threshold = LOG_LEVEL_PRIORITY[minLevel];
+      for (let i = ringBuffer.length - 1; i >= 0; i--) {
+        if (
+          !ringBuffer[i]!.hideFromFooter &&
+          LOG_LEVEL_PRIORITY[ringBuffer[i]!.level] >= threshold
+        ) {
+          return ringBuffer[i]!;
+        }
+      }
+      return null;
+    },
+    getLatestVisibleLogs(minLevel, count) {
+      const threshold = LOG_LEVEL_PRIORITY[minLevel];
+      const result: LogEntry[] = [];
+      for (let i = ringBuffer.length - 1; i >= 0 && result.length < count; i--) {
+        if (
+          !ringBuffer[i]!.hideFromFooter &&
+          LOG_LEVEL_PRIORITY[ringBuffer[i]!.level] >= threshold
+        ) {
+          result.push(ringBuffer[i]!);
+        }
+      }
+      return result.reverse();
+    },
+    clearLogs() {
+      ringBuffer.length = 0;
+    },
+    clearFileLogs,
+  };
+}
 
 export function setCoreLogSettingsPort(port: CoreLogSettingsPort | null): void {
-  settingsPort = port;
-  migrated = false;
+  defaultCoreLogStore.setCoreLogSettingsPort(port);
 }
 
 export function getLogAPI(): CoreLogAPI {
-  return (globalThis as Record<string, unknown>)[CORE_LOG_KEY] as CoreLogAPI ?? NOOP_LOG_API;
+  return defaultCoreLogStore.getLogAPI();
 }
 
 export function initLogAPI(api: CoreLogAPI): void {
-  (globalThis as Record<string, unknown>)[CORE_LOG_KEY] = api;
+  defaultCoreLogStore.initLogAPI(api);
 }
 
 export function loadSettings(): Required<LogSettings> {
-  try {
-    ensureMigrated();
-    const raw = getSettingsPort().load<LogSettings>(SECTION_KEY);
-    return { ...DEFAULT_SETTINGS, ...raw };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
+  return defaultCoreLogStore.loadSettings();
 }
 
 export function saveSettings(settings: Partial<LogSettings>): void {
-  ensureMigrated();
-  const current = loadSettings();
-  const merged = { ...current, ...settings };
-  getSettingsPort().save(SECTION_KEY, merged);
+  defaultCoreLogStore.saveSettings(settings);
 }
 
 export function registerCategory(meta: LogCategoryMeta): void {
-  categoryRegistry.set(meta.id, meta);
+  defaultCoreLogStore.registerCategory(meta);
 }
 
 export function getRegisteredCategories(): LogCategoryMeta[] {
-  return Array.from(categoryRegistry.values());
+  return defaultCoreLogStore.getRegisteredCategories();
 }
 
 export function isCategoryRegistered(id: string): boolean {
-  return categoryRegistry.has(id);
+  return defaultCoreLogStore.isCategoryRegistered(id);
 }
 
 export function appendLog(entry: LogEntry, settings: Required<LogSettings>): void {
-  if (!isCategoryRegistered(entry.category)) return;
-  if (settings.disabledCategories.includes(entry.category)) return;
-
-  if (LOG_LEVEL_PRIORITY[entry.level] < LOG_LEVEL_PRIORITY[settings.minLevel]) {
-    return;
-  }
-
-  ringBuffer.push(entry);
-  if (ringBuffer.length > RING_BUFFER_SIZE) {
-    ringBuffer.shift();
-  }
-
-  if (settings.fileLog) {
-    writeToFile(entry);
-  }
+  defaultCoreLogStore.appendLog(entry, settings);
 }
 
 export function getRecentLogs(count: number = 10): LogEntry[] {
-  const start = Math.max(0, ringBuffer.length - count);
-  return ringBuffer.slice(start);
+  return defaultCoreLogStore.getRecentLogs(count);
 }
 
 export function getLatestVisibleLog(minLevel: LogLevel): LogEntry | null {
-  const threshold = LOG_LEVEL_PRIORITY[minLevel];
-  for (let i = ringBuffer.length - 1; i >= 0; i--) {
-    if (
-      !ringBuffer[i]!.hideFromFooter &&
-      LOG_LEVEL_PRIORITY[ringBuffer[i]!.level] >= threshold
-    ) {
-      return ringBuffer[i]!;
-    }
-  }
-  return null;
+  return defaultCoreLogStore.getLatestVisibleLog(minLevel);
 }
 
 export function getLatestVisibleLogs(minLevel: LogLevel, count: number): LogEntry[] {
-  const threshold = LOG_LEVEL_PRIORITY[minLevel];
-  const result: LogEntry[] = [];
-  for (let i = ringBuffer.length - 1; i >= 0 && result.length < count; i--) {
-    if (
-      !ringBuffer[i]!.hideFromFooter &&
-      LOG_LEVEL_PRIORITY[ringBuffer[i]!.level] >= threshold
-    ) {
-      result.push(ringBuffer[i]!);
-    }
-  }
-  return result.reverse();
+  return defaultCoreLogStore.getLatestVisibleLogs(minLevel, count);
 }
 
 export function clearLogs(): void {
-  ringBuffer.length = 0;
+  defaultCoreLogStore.clearLogs();
 }
 
 export function clearFileLogs(): void {
@@ -161,25 +252,6 @@ export function clearFileLogs(): void {
     }
   } catch {
     // 파일 삭제 실패 시 무시
-  }
-}
-
-function ensureMigrated(): void {
-  if (migrated) return;
-
-  try {
-    const api = getSettingsPort();
-    migrated = true;
-    const newData = api.load<LogSettings>(SECTION_KEY);
-    if (newData && Object.keys(newData).length > 0) return;
-
-    const legacyData = api.load<LogSettings>(LEGACY_SECTION_KEY);
-    if (legacyData && Object.keys(legacyData).length > 0) {
-      api.save(SECTION_KEY, legacyData);
-      api.save(LEGACY_SECTION_KEY, {});
-    }
-  } catch {
-    // 마이그레이션 실패 시 무시
   }
 }
 
@@ -261,12 +333,6 @@ function safeLstat(targetPath: string): fs.Stats | null {
 function getSafeLogDate(timestamp: string): string {
   const match = ISO_DATE_PATTERN.exec(timestamp);
   return match ? match[0].slice(0, 10) : UNKNOWN_LOG_DATE;
-}
-
-function getSettingsPort(): CoreLogSettingsPort {
-  const api = settingsPort ?? getSettingsService();
-  if (!api) throw new Error("Settings API not available");
-  return api;
 }
 
 function getLogsDir(): string {

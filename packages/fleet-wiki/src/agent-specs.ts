@@ -33,7 +33,7 @@ interface WikiAgentToolConfig {
 // Constants — build specs (uses hoisted function declarations below)
 // ═══════════════════════════════════════
 
-// fleet-wiki가 fleet-core agent tool registry에 self-register하는 tool ID의 SSoT.
+// fleet-wiki가 fleet-admiral agent tool registry에 self-register하는 tool ID의 SSoT.
 // fleet-harness `registerFleetPiTools`가 host PI tool 등록 시 이 집합을 skip하여
 // `registerFleetWiki`가 등록한 compact wiki UI가 generic core wrapper로 덮어쓰이지 않도록 한다.
 export const FLEET_WIKI_AGENT_TOOL_IDS = [
@@ -67,7 +67,7 @@ const querySpec = buildWikiQuerySpec();
 const readSpec = buildWikiReadSpec();
 const resolveSpec = buildWikiResolveSpec();
 
-// Self-register into fleet-core agent tool registry AND executor MCP whitelist at module load time.
+// Self-register into fleet-admiral agent tool registry AND executor MCP whitelist at module load time.
 // 순수 읽기 도구 4종 (briefing/orient/read/resolve): 모든 캐리어가 위키 지식기반에 접근 가능하도록 글로벌 등록.
 // 쓰기·stage 가능 도구 4종 (drydock/ingest/patch_edit/query): 크로니클 전용 (지식 무결성 보호).
 // 참고: wiki_query는 mode="stage_answer_page" / save_good_answer=true에서 패치 큐에 stage하므로 read-only가 아님.

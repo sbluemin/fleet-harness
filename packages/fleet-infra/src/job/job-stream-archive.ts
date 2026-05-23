@@ -5,84 +5,127 @@ interface ArchiveState {
   archives: Map<string, JobArchive>;
 }
 
-const ARCHIVE_STATE_KEY = "__fleet_harness_job_stream_archive__";
+export interface JobStreamArchiveStore {
+  createJobArchive(jobId: string, now?: number): JobArchive;
+  appendBlock(jobId: string, block: ArchiveBlock, now?: number): boolean;
+  finalizeJobArchive(jobId: string, status: CarrierJobStatus, now?: number): boolean;
+  getFinalized(jobId: string, now?: number): JobArchive | null;
+  hasJobArchive(jobId: string, now?: number): boolean;
+  hasFinalizedJobArchive(jobId: string, now?: number): boolean;
+  detachJobArchive(jobId: string): void;
+  resetJobArchivesForTest(): void;
+}
+
 const MAX_BLOCKS = 2000;
 const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const PRESERVE_HEAD_BLOCKS = 20;
 const PRESERVE_TAIL_BLOCKS = 50;
 
-export function createJobArchive(jobId: string, now = Date.now()): JobArchive {
-  const archive: JobArchive = {
-    jobId,
-    createdAt: now,
-    updatedAt: now,
-    expiresAt: now + CARRIER_JOB_TTL_MS,
-    status: "active",
-    truncated: false,
-    totalBytes: 0,
-    blocks: [],
-    mergeIndex: new Map<string, number>(),
+const defaultJobStreamArchiveStore = createJobStreamArchiveStore();
+
+export function createJobStreamArchiveStore(): JobStreamArchiveStore {
+  const state: ArchiveState = { archives: new Map() };
+
+  function getLiveArchive(jobId: string, now: number): JobArchive | null {
+    purgeExpired(now);
+    return state.archives.get(jobId) ?? null;
+  }
+
+  function purgeExpired(now: number): void {
+    for (const [jobId, archive] of state.archives) {
+      if (archive.expiresAt <= now) {
+        state.archives.delete(jobId);
+      }
+    }
+  }
+
+  return {
+    createJobArchive(jobId, now = Date.now()) {
+      const archive: JobArchive = {
+        jobId,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: now + CARRIER_JOB_TTL_MS,
+        status: "active",
+        truncated: false,
+        totalBytes: 0,
+        blocks: [],
+        mergeIndex: new Map<string, number>(),
+      };
+      state.archives.set(jobId, archive);
+      return archive;
+    },
+    appendBlock(jobId, block, now = Date.now()) {
+      const archive = getLiveArchive(jobId, now);
+      if (!archive) return false;
+      ensureArchiveBytes(archive);
+      applyAppendPolicy(archive, block);
+      archive.updatedAt = now;
+      pruneArchiveIfNeeded(archive, now);
+      return true;
+    },
+    finalizeJobArchive(jobId, status, now = Date.now()) {
+      const archive = getLiveArchive(jobId, now);
+      if (!archive) return false;
+      archive.status = status;
+      archive.finalizedAt = now;
+      archive.updatedAt = now;
+      archive.expiresAt = now + CARRIER_JOB_TTL_MS;
+      return true;
+    },
+    getFinalized(jobId, now = Date.now()) {
+      purgeExpired(now);
+      const archive = state.archives.get(jobId) ?? null;
+      if (!archive) return null;
+      if (archive.status === "active") return null;
+      return archive;
+    },
+    hasJobArchive(jobId, now = Date.now()) {
+      return getLiveArchive(jobId, now) !== null;
+    },
+    hasFinalizedJobArchive(jobId, now = Date.now()) {
+      const archive = getLiveArchive(jobId, now);
+      return archive !== null && archive.status !== "active";
+    },
+    detachJobArchive(jobId) {
+      state.archives.delete(jobId);
+    },
+    resetJobArchivesForTest() {
+      state.archives.clear();
+    },
   };
-  getArchiveState().archives.set(jobId, archive);
-  return archive;
+}
+
+export function createJobArchive(jobId: string, now = Date.now()): JobArchive {
+  return defaultJobStreamArchiveStore.createJobArchive(jobId, now);
 }
 
 export function appendBlock(jobId: string, block: ArchiveBlock, now = Date.now()): boolean {
-  const archive = getLiveArchive(jobId, now);
-  if (!archive) return false;
-  ensureArchiveBytes(archive);
-  applyAppendPolicy(archive, block);
-  archive.updatedAt = now;
-  pruneArchiveIfNeeded(archive, now);
-  return true;
+  return defaultJobStreamArchiveStore.appendBlock(jobId, block, now);
 }
 
 export function finalizeJobArchive(jobId: string, status: CarrierJobStatus, now = Date.now()): boolean {
-  const archive = getLiveArchive(jobId, now);
-  if (!archive) return false;
-  archive.status = status;
-  archive.finalizedAt = now;
-  archive.updatedAt = now;
-  archive.expiresAt = now + CARRIER_JOB_TTL_MS;
-  return true;
+  return defaultJobStreamArchiveStore.finalizeJobArchive(jobId, status, now);
 }
 
 export function getFinalized(jobId: string, now = Date.now()): JobArchive | null {
-  purgeExpired(now);
-  const archive = getArchiveState().archives.get(jobId) ?? null;
-  if (!archive) return null;
-  if (archive.status === "active") return null;
-  return archive;
+  return defaultJobStreamArchiveStore.getFinalized(jobId, now);
 }
 
 export function hasJobArchive(jobId: string, now = Date.now()): boolean {
-  return getLiveArchive(jobId, now) !== null;
+  return defaultJobStreamArchiveStore.hasJobArchive(jobId, now);
 }
 
 export function hasFinalizedJobArchive(jobId: string, now = Date.now()): boolean {
-  const archive = getLiveArchive(jobId, now);
-  return archive !== null && archive.status !== "active";
+  return defaultJobStreamArchiveStore.hasFinalizedJobArchive(jobId, now);
 }
 
 export function detachJobArchive(jobId: string): void {
-  getArchiveState().archives.delete(jobId);
+  defaultJobStreamArchiveStore.detachJobArchive(jobId);
 }
 
 export function resetJobArchivesForTest(): void {
-  getArchiveState().archives.clear();
-}
-
-function getLiveArchive(jobId: string, now: number): JobArchive | null {
-  purgeExpired(now);
-  return getArchiveState().archives.get(jobId) ?? null;
-}
-
-function purgeExpired(now: number): void {
-  for (const [jobId, archive] of getArchiveState().archives) {
-    if (archive.expiresAt <= now) {
-      getArchiveState().archives.delete(jobId);
-    }
-  }
+  defaultJobStreamArchiveStore.resetJobArchivesForTest();
 }
 
 function buildTruncatedBlock(timestamp: number): ArchiveBlock {
@@ -186,13 +229,4 @@ function blockBytesTotal(blocks: ArchiveBlock[]): number {
 
 function blockBytes(block: ArchiveBlock): number {
   return Buffer.byteLength(JSON.stringify(block), "utf8");
-}
-
-function getArchiveState(): ArchiveState {
-  const root = globalThis as Record<string, unknown>;
-  const existing = root[ARCHIVE_STATE_KEY] as ArchiveState | undefined;
-  if (existing) return existing;
-  const state: ArchiveState = { archives: new Map() };
-  root[ARCHIVE_STATE_KEY] = state;
-  return state;
 }

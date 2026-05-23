@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   resolveAuthEnvMock: vi.fn(),
 }));
 
-vi.mock("@sbluemin/fleet-core", () => ({
+vi.mock("@sbluemin/fleet-admiral", () => ({
   admiral: {
     mcp: {
       getEndpoint: vi.fn(),

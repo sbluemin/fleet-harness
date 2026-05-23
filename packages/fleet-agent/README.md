@@ -4,7 +4,7 @@ Primary CLI host for running local CLIs inside a permanent vertical two-pane Fle
 
 ## What This Package Owns
 
-- Boots Fleet runtime state through the public `@sbluemin/fleet-core` root barrel.
+- Boots Fleet runtime state as the sole Composition Root through explicit factory calls.
 - Hosts `claude` or `codex` through a `node-pty` backed CLI PTY.
 - Renders the upper CLI PTY and lower Fleet PTY through `@sbluemin/fleet-tui`.
 - Keeps host control policy in `src/controls/**` and default Fleet PTY wireframe content in `src/sections/**`.
@@ -16,8 +16,11 @@ Primary CLI host for running local CLIs inside a permanent vertical two-pane Fle
 
 Allowed workspace dependencies are:
 
-- `@sbluemin/fleet-core`
+- `@sbluemin/fleet-admiral`
+- `@sbluemin/fleet-admiralty`
 - `@sbluemin/fleet-carriers`
+- `@sbluemin/fleet-infra`
+- `@sbluemin/fleet-mcp-server`
 - `@sbluemin/fleet-tui`
 - `@sbluemin/fleet-wiki`
 - `@sbluemin/fleet-wiki-web`

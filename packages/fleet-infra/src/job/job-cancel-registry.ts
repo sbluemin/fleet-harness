@@ -2,47 +2,67 @@ interface CancelState {
   controllers: Map<string, Set<AbortController>>;
 }
 
+export interface JobCancelRegistry {
+  registerJobAbortController(jobId: string, controller: AbortController): void;
+  unregisterJobAbortControllers(jobId: string): void;
+  cancelJob(jobId: string): CancelResult;
+  hasJobCancelControllers(jobId: string): boolean;
+  resetJobCancelRegistryForTest(): void;
+}
+
 export interface CancelResult {
   cancelled: boolean;
   status: "cancelled" | "not_found";
 }
 
-const CANCEL_STATE_KEY = "__fleet_harness_job_cancel_registry__";
+const defaultJobCancelRegistry = createJobCancelRegistry();
+
+export function createJobCancelRegistry(): JobCancelRegistry {
+  const state: CancelState = { controllers: new Map() };
+
+  return {
+    registerJobAbortController(jobId, controller) {
+      const existing = state.controllers.get(jobId) ?? new Set<AbortController>();
+      existing.add(controller);
+      state.controllers.set(jobId, existing);
+    },
+    unregisterJobAbortControllers(jobId) {
+      state.controllers.delete(jobId);
+    },
+    cancelJob(jobId) {
+      const controllers = state.controllers.get(jobId);
+      if (!controllers || controllers.size === 0) return { cancelled: false, status: "not_found" };
+      for (const controller of controllers) {
+        controller.abort();
+      }
+      return { cancelled: true, status: "cancelled" };
+    },
+    hasJobCancelControllers(jobId) {
+      const controllers = state.controllers.get(jobId);
+      return Boolean(controllers && controllers.size > 0);
+    },
+    resetJobCancelRegistryForTest() {
+      state.controllers.clear();
+    },
+  };
+}
 
 export function registerJobAbortController(jobId: string, controller: AbortController): void {
-  const state = getCancelState();
-  const existing = state.controllers.get(jobId) ?? new Set<AbortController>();
-  existing.add(controller);
-  state.controllers.set(jobId, existing);
+  defaultJobCancelRegistry.registerJobAbortController(jobId, controller);
 }
 
 export function unregisterJobAbortControllers(jobId: string): void {
-  getCancelState().controllers.delete(jobId);
+  defaultJobCancelRegistry.unregisterJobAbortControllers(jobId);
 }
 
 export function cancelJob(jobId: string): CancelResult {
-  const controllers = getCancelState().controllers.get(jobId);
-  if (!controllers || controllers.size === 0) return { cancelled: false, status: "not_found" };
-  for (const controller of controllers) {
-    controller.abort();
-  }
-  return { cancelled: true, status: "cancelled" };
+  return defaultJobCancelRegistry.cancelJob(jobId);
 }
 
 export function hasJobCancelControllers(jobId: string): boolean {
-  const controllers = getCancelState().controllers.get(jobId);
-  return Boolean(controllers && controllers.size > 0);
+  return defaultJobCancelRegistry.hasJobCancelControllers(jobId);
 }
 
 export function resetJobCancelRegistryForTest(): void {
-  getCancelState().controllers.clear();
-}
-
-function getCancelState(): CancelState {
-  const root = globalThis as Record<string, unknown>;
-  const existing = root[CANCEL_STATE_KEY] as CancelState | undefined;
-  if (existing) return existing;
-  const state: CancelState = { controllers: new Map() };
-  root[CANCEL_STATE_KEY] = state;
-  return state;
+  defaultJobCancelRegistry.resetJobCancelRegistryForTest();
 }

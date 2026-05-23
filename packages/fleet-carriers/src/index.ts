@@ -1,3 +1,10 @@
+import { registerDefaultCarriers } from "./agent-specs.js";
+import { createCarrierRegistry, type CarrierRegistry } from "./dispatch/framework.js";
+import * as carrierDispatch from "./dispatch/index.js";
+import * as carrierEvents from "./events/index.js";
+import * as carrierJobs from "./jobs/index.js";
+import * as carrierStore from "./store/index.js";
+
 export { registerDefaultCarriers } from "./agent-specs.js";
 export * from "./constants.js";
 export * as dispatch from "./dispatch/index.js";
@@ -48,3 +55,30 @@ export type {
   SelectedModelsConfig,
 } from "./store/index.js";
 export * from "./personas/index.js";
+
+export interface CarrierRuntime {
+  registry: CarrierRegistry;
+  dispatch: typeof carrierDispatch;
+  events: typeof carrierEvents;
+  jobs: typeof carrierJobs;
+  store: typeof carrierStore;
+  registerDefaultCarriers(): void;
+}
+
+export interface CarrierRuntimeDeps {
+  readonly config?: Record<string, never>;
+}
+
+export function createCarrierRuntime(_deps: CarrierRuntimeDeps = {}): CarrierRuntime {
+  const registry = createCarrierRegistry();
+  return {
+    registry,
+    dispatch: carrierDispatch,
+    events: carrierEvents,
+    jobs: carrierJobs,
+    store: carrierStore,
+    registerDefaultCarriers() {
+      registerDefaultCarriers(registry);
+    },
+  };
+}

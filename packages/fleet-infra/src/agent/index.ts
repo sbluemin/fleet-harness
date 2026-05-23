@@ -6,7 +6,7 @@ export type {
 } from "./types.js";
 export type { ExecutorPort } from "./executor-port.js";
 export type { ExecuteOptions, ExecResult } from "./executor.js";
-export type { SessionPersistencePort } from "./internal/session-runtime.js";
+export type { SessionPersistencePort, SessionRuntime } from "./internal/session-runtime.js";
 export type {
   ParsedModelId,
   ProviderInfo,
@@ -50,6 +50,7 @@ export {
 } from "./executor.js";
 export {
   initRuntime,
+  createSessionRuntime,
   bindCarrierSessionPersistence,
   getCarrierSessionStore,
   getSessionId,

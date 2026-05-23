@@ -1,4 +1,4 @@
-import { admiral } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-admiral";
 
 export function reconcileRuntimeState(): void {
   admiral.carrier.setTaskForceConfiguredCarriers(

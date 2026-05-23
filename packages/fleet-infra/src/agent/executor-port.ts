@@ -13,7 +13,7 @@ export function registerExecutorPort(port: ExecutorPort): void {
 
 export function getExecutorPort(): ExecutorPort {
   if (!executorPort) {
-    throw new Error("Fleet agent executor port is not registered. Call bootFleetCore() before executor use.");
+    throw new Error("Fleet agent executor port is not registered. Boot the fleet-agent Composition Root before executor use.");
   }
 
   return executorPort;

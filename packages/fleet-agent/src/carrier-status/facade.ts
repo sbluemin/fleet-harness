@@ -1,7 +1,7 @@
 import "@sbluemin/fleet-carriers";
 
-import { admiral, TASKFORCE_CLI_TYPES as CORE_TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-core";
-import type { FleetStoreSnapshot, TaskForceCliType } from "@sbluemin/fleet-core";
+import { admiral, TASKFORCE_CLI_TYPES as CORE_TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-admiral";
+import type { FleetStoreSnapshot, TaskForceCliType } from "@sbluemin/fleet-admiral";
 
 export type { FleetStoreSnapshot };
 

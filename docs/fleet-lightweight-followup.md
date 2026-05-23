@@ -1,38 +1,33 @@
 # Fleet Lightweight Follow-up
 
 ## Background
-Fleet has completed the logical product split that separates the product core from the host adapter.
 
-- `packages/fleet-core` owns Fleet domain logic, prompts, runtime contracts, MCP/tool/job internals, and public APIs.
-- `packages/fleet-agent` owns CLI lifecycle wiring, TUI rendering, and host-specific adapters.
+Fleet now uses explicit package ownership instead of a transitional core facade.
+
+- `packages/fleet-agent` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, and concrete runtime assembly.
+- `packages/fleet-admiralty` owns multi-fleet coordination.
+- `packages/fleet-admiral` owns single-fleet orchestration, prompts, runtime contracts, MCP tool policy, and operational protocols.
+- `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, and carrier state.
+- `packages/fleet-infra` owns host-agnostic infrastructure and I/O gateways.
 - `@sbluemin/fleet-unified-agent` remains the independent backend client package.
 
-This split is the foundation for turning Fleet into a standalone product that can be exposed through multiple hosts.
-
 ## Purpose
-The lightweight follow-up exists to reduce the amount of product behavior that has to be understood through the host package. The goal is to make the already-split architecture easier to maintain by hardening the `fleet-core` public surface and making host packages thinner, more mechanical, and more replaceable.
+
+The follow-up keeps host packages thin while preserving a clear product-domain home for each behavior. The goal is explicit construction, one-way dependencies, and no hidden process-global runtime state.
 
 ## Current State
-- **Logical ownership:** Final. `fleet-core` owns Fleet domain logic; host packages own host capabilities.
-- **Dependency direction:** Host packages consume `fleet-core` through public APIs. `fleet-core` must not import host packages.
+
+- **Logical ownership:** Final package homes are split by domain.
+- **Dependency direction:** `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
 
 ## Goals
-- **Thin Host adapter:** Keep host packages (like `fleet-agent`) focused on registration, rendering, and lifecycle.
-- **Thick product core:** Move reusable Fleet behavior, product policy, domain decisions, and pure execution contracts toward `fleet-core`.
-- **Future host readiness:** Ensure the architecture allows new hosts to reuse the same core without modification.
 
-## Target Direction
-The target model is **thick core, thin adapter**.
-
-```text
-fleet-core
-  owns product behavior, domain policy, prompt assets, job logic, public APIs
-
-fleet-agent (host)
-  adapts Fleet to CLI through TUI, process management, and input routing
-```
+- **Thin Host adapter:** Keep host packages focused on registration, rendering, lifecycle, and concrete service assembly.
+- **Explicit domain services:** Keep reusable Fleet behavior in its owning package with public factory APIs.
+- **Future host readiness:** Ensure new hosts can reuse the same public package surfaces without private imports.
 
 ## Guardrails
-- Keep `fleet-core` host-agnostic.
-- Keep host packages focused on their specific environment (TUI, terminal, etc.).
-- Keep host imports on public `fleet-core` exports only.
+
+- Keep lower packages host-agnostic.
+- Keep host imports on public package exports only.
+- Use explicit `create*(deps)` factories instead of DI containers, service locators, or hidden global registries.

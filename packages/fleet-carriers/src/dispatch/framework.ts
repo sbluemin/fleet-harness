@@ -58,7 +58,11 @@ export class CarrierRegistry {
   }
 }
 
-export const defaultRegistry = new CarrierRegistry();
+export function createCarrierRegistry(): CarrierRegistry {
+  return new CarrierRegistry();
+}
+
+export const defaultRegistry = createCarrierRegistry();
 
 /**
  * 커스텀 Carrier를 등록합니다.

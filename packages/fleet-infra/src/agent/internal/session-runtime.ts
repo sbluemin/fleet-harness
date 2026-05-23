@@ -41,6 +41,23 @@ export interface CarrierSessionStore {
   getAll(): Readonly<SessionMap>;
 }
 
+export interface SessionRuntime {
+  initRuntime(dir: string): void;
+  bindCarrierSessionPersistence(sessionId: string, sessionPort?: SessionPersistencePort): void;
+  getCarrierSessionStore(): CarrierSessionStore;
+  getSessionId(poolKey: string): string | undefined;
+  getDataDir(): string | null;
+  captureSessionMappingCommitToken(): SessionMappingCommitToken | undefined;
+  flushSessionMappings(token?: SessionMappingCommitToken): void;
+}
+
+interface SessionRuntimeState {
+  dataDir: string | null;
+  activeSessionPort: SessionPersistencePort | null;
+  durableAppendSinceBind: boolean;
+  carrierSessionStore: CarrierSessionStore | null;
+}
+
 interface JsonlSessionStoreOptions {
   customType: typeof CARRIER_SESSION_CUSTOM_TYPE;
   appendEntry(customType: string, data: SessionMappingEntryData): void;
@@ -97,65 +114,102 @@ const noopCarrierStore: CarrierSessionStore = {
   getAll() { return {}; },
 };
 
+const defaultSessionRuntime = createSessionRuntime();
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function initRuntime(dir: string): void {
-  dataDir = dir;
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  deleteLegacySessionMaps(path.join(dir, "session-maps"));
-  carrierSessionStore = createJsonlSessionStore({
-    customType: CARRIER_SESSION_CUSTOM_TYPE,
-    appendEntry,
-  });
-  activeSessionPort = null;
-}
+export function createSessionRuntime(): SessionRuntime {
+  const state: SessionRuntimeState = {
+    dataDir: null,
+    activeSessionPort: null,
+    durableAppendSinceBind: false,
+    carrierSessionStore: null,
+  };
 
-export function bindCarrierSessionPersistence(sessionId: string, sessionPort?: SessionPersistencePort): void {
-  if (!sessionPort || sessionPort.getSessionId() !== sessionId) {
-    activeSessionPort = null;
-    carrierSessionStore?.restore([]);
-    return;
-  }
-  activeSessionPort = sessionPort;
-  durableAppendSinceBind = false;
-  const entries = sessionPort.getEntries();
-  carrierSessionStore?.restore(entries);
-  flushSessionMappings();
-}
-
-export function getCarrierSessionStore(): CarrierSessionStore {
-  return carrierSessionStore ?? noopCarrierStore;
-}
-
-export function getSessionId(poolKey: string): string | undefined {
-  return carrierSessionStore?.get(poolKey);
-}
-
-export function getDataDir(): string | null {
-  return dataDir;
-}
-
-export function captureSessionMappingCommitToken(): SessionMappingCommitToken | undefined {
-  if (!activeSessionPort) return undefined;
   return {
-    sessionId: activeSessionPort.getSessionId(),
-    port: activeSessionPort,
+    initRuntime(dir) {
+      state.dataDir = dir;
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      deleteLegacySessionMaps(path.join(dir, "session-maps"));
+      state.carrierSessionStore = createJsonlSessionStore(state, {
+        customType: CARRIER_SESSION_CUSTOM_TYPE,
+        appendEntry(customType, data) {
+          appendEntry(state, customType, data);
+        },
+      });
+      state.activeSessionPort = null;
+    },
+    bindCarrierSessionPersistence(sessionId, sessionPort) {
+      if (!sessionPort || sessionPort.getSessionId() !== sessionId) {
+        state.activeSessionPort = null;
+        state.carrierSessionStore?.restore([]);
+        return;
+      }
+      state.activeSessionPort = sessionPort;
+      state.durableAppendSinceBind = false;
+      const entries = sessionPort.getEntries();
+      state.carrierSessionStore?.restore(entries);
+      this.flushSessionMappings();
+    },
+    getCarrierSessionStore() {
+      return state.carrierSessionStore ?? noopCarrierStore;
+    },
+    getSessionId(poolKey) {
+      return state.carrierSessionStore?.get(poolKey);
+    },
+    getDataDir() {
+      return state.dataDir;
+    },
+    captureSessionMappingCommitToken() {
+      if (!state.activeSessionPort) return undefined;
+      return {
+        sessionId: state.activeSessionPort.getSessionId(),
+        port: state.activeSessionPort,
+      };
+    },
+    flushSessionMappings(token) {
+      try {
+        const port = token ? getActivePortForToken(state, token) : state.activeSessionPort;
+        if (!port) return;
+        if (!state.durableAppendSinceBind && !hasDurableMappingEntries(port.getEntries())) return;
+        port.flush?.();
+      } catch {
+        // 세션 매핑 checkpoint 실패는 ACP 요청 자체를 막지 않는다.
+      }
+    },
   };
 }
 
+export function initRuntime(dir: string): void {
+  defaultSessionRuntime.initRuntime(dir);
+}
+
+export function bindCarrierSessionPersistence(sessionId: string, sessionPort?: SessionPersistencePort): void {
+  defaultSessionRuntime.bindCarrierSessionPersistence(sessionId, sessionPort);
+}
+
+export function getCarrierSessionStore(): CarrierSessionStore {
+  return defaultSessionRuntime.getCarrierSessionStore();
+}
+
+export function getSessionId(poolKey: string): string | undefined {
+  return defaultSessionRuntime.getSessionId(poolKey);
+}
+
+export function getDataDir(): string | null {
+  return defaultSessionRuntime.getDataDir();
+}
+
+export function captureSessionMappingCommitToken(): SessionMappingCommitToken | undefined {
+  return defaultSessionRuntime.captureSessionMappingCommitToken();
+}
+
 export function flushSessionMappings(token?: SessionMappingCommitToken): void {
-  try {
-    const port = token ? getActivePortForToken(token) : activeSessionPort;
-    if (!port) return;
-    if (!durableAppendSinceBind && !hasDurableMappingEntries(port.getEntries())) return;
-    port.flush?.();
-  } catch {
-    // 세션 매핑 checkpoint 실패는 ACP 요청 자체를 막지 않는다.
-  }
+  defaultSessionRuntime.flushSessionMappings(token);
 }
 
 export function classifyResumeFailure(error: unknown): ResumeFailureKind {
@@ -183,12 +237,10 @@ export function isDeadSessionError(err: unknown): boolean {
 // Internal
 // ═══════════════════════════════════════════════════════════════════════════
 
-let dataDir: string | null = null;
-let activeSessionPort: SessionPersistencePort | null = null;
-let durableAppendSinceBind = false;
-let carrierSessionStore: CarrierSessionStore | null = null;
-
-function createJsonlSessionStore(options: JsonlSessionStoreOptions): CarrierSessionStore {
+function createJsonlSessionStore(
+  state: SessionRuntimeState,
+  options: JsonlSessionStoreOptions,
+): CarrierSessionStore {
   let currentMap: SessionMap = {};
   let durableMap: SessionMap = {};
 
@@ -202,7 +254,7 @@ function createJsonlSessionStore(options: JsonlSessionStoreOptions): CarrierSess
     },
     set(key: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean {
       if (!key || !sessionId) return false;
-      if (!token || !getActivePortForToken(token)) return false;
+      if (!token || !getActivePortForToken(state, token)) return false;
       if (currentMap[key] === sessionId) return true;
       currentMap[key] = sessionId;
       return true;
@@ -210,11 +262,11 @@ function createJsonlSessionStore(options: JsonlSessionStoreOptions): CarrierSess
     commitSet(key: string, sessionId: string, token: SessionMappingCommitToken | undefined): boolean {
       if (!key || !sessionId) return false;
       if (durableMap[key] === sessionId) return true;
-      if (!token || !getActivePortForToken(token)) return false;
+      if (!token || !getActivePortForToken(state, token)) return false;
       if (currentMap[key] !== sessionId) {
         currentMap[key] = sessionId;
       }
-      if (!appendEntry(options.customType, { action: "set", key, sessionId }, token)) return false;
+      if (!appendEntry(state, options.customType, { action: "set", key, sessionId }, token)) return false;
       durableMap[key] = sessionId;
       return true;
     },
@@ -231,14 +283,15 @@ function createJsonlSessionStore(options: JsonlSessionStoreOptions): CarrierSess
 }
 
 function appendEntry(
+  state: SessionRuntimeState,
   customType: string,
   data: SessionMappingEntryData,
   token?: SessionMappingCommitToken,
 ): boolean {
   try {
-    const port = token ? getActivePortForToken(token) : activeSessionPort;
+    const port = token ? getActivePortForToken(state, token) : state.activeSessionPort;
     const entryId = port?.appendCustomEntry?.(customType, data);
-    if (entryId) durableAppendSinceBind = true;
+    if (entryId) state.durableAppendSinceBind = true;
     return !!entryId;
   } catch {
     // 세션 매핑 append 실패는 ACP 요청 자체를 막지 않는다.
@@ -246,11 +299,14 @@ function appendEntry(
   }
 }
 
-function getActivePortForToken(token: SessionMappingCommitToken): SessionPersistencePort | null {
-  if (!activeSessionPort) return null;
-  if (activeSessionPort !== token.port) return null;
-  if (activeSessionPort.getSessionId() !== token.sessionId) return null;
-  return activeSessionPort;
+function getActivePortForToken(
+  state: SessionRuntimeState,
+  token: SessionMappingCommitToken,
+): SessionPersistencePort | null {
+  if (!state.activeSessionPort) return null;
+  if (state.activeSessionPort !== token.port) return null;
+  if (state.activeSessionPort.getSessionId() !== token.sessionId) return null;
+  return state.activeSessionPort;
 }
 
 function hasDurableMappingEntries(entries: readonly SessionPersistenceEntry[]): boolean {

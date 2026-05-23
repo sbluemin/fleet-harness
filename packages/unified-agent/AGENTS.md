@@ -186,4 +186,4 @@ Adding a new CLI provider requires updating the provider registry first, then an
 3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/IUnifiedAgentClient.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, OpenCode entries in `src/service-status/store.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
 4. **Non-derived provider seams** — Add or adjust any dedicated client routing, status fetcher, or fallback behavior that is not automatically derived from `CLI_BACKENDS`.
 
-All downstream consumers (`fleet-core` constants: `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `VALID_CLI_TYPES`, `CLI_PROVIDER_DISPLAY_NAMES`, `CLI_TYPE_DISPLAY_ORDER`) derive automatically from `CLI_BACKENDS`.
+All downstream consumers (`fleet-admiral` constants: `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `VALID_CLI_TYPES`, `CLI_PROVIDER_DISPLAY_NAMES`, `CLI_TYPE_DISPLAY_ORDER`) derive automatically from `CLI_BACKENDS`.

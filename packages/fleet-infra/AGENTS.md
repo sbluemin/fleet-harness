@@ -1,6 +1,6 @@
 # fleet-infra Doctrine
 
-`packages/fleet-infra` owns Fleet's host-agnostic runtime infrastructure.
+`packages/fleet-infra` owns Fleet's host-agnostic runtime infrastructure and I/O gateway services.
 
 ## Owns
 
@@ -10,6 +10,16 @@
 - `job/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, and cache helpers.
 - `log/` — runtime log store and log entry contracts.
 - `settings/` — settings store, runtime singleton, and settings service.
+
+## I/O Gateway Contract
+
+`fleet-infra` is the bottom layer of the DI graph and the only package in the carrier runtime chain that may own generic runtime I/O gateways.
+
+- The DI layer order is one-way: `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
+- `createInfraServices(deps)` is the public construction boundary for infrastructure services.
+- Filesystem, auth storage, data-dir resolution, detached job archive/cache, runtime log persistence, settings storage, process-safe executor/session infrastructure, and generic MCP routing belong here.
+- Higher layers must receive infra capabilities as explicit dependencies; `fleet-infra` must not look up host, carrier, admiral, or admiralty services.
+- Keep Fleet-domain policy out of this package. It provides gateways and durable runtime primitives, not carrier persona, admiral policy, or host UI behavior.
 
 ## Public Surface
 
@@ -30,9 +40,9 @@ Do not add individual deep source-file exports without an explicit public API de
 - This package must stay host-agnostic.
 - It may depend on `@sbluemin/fleet-unified-agent` for shared CLI type definitions.
 - It may depend on `@sbluemin/fleet-mcp-server` for generic MCP registry/server types and executor MCP routing.
-- It must not import `@sbluemin/fleet-core`, `@sbluemin/fleet-agent`, host UI/runtime packages, or engine packages.
+- It must not import `@sbluemin/fleet-admiral`, `@sbluemin/fleet-agent`, `fleet-admiralty`, `fleet-admiral`, `fleet-carriers`, host UI/runtime packages, or engine packages.
 - Relative imports inside `src/` must stay within `packages/fleet-infra/src/**`.
-- `ExecutorPort` has exactly two methods: `getCarrierExternalMcpServerIds` and `getExecutorMcpTools`; lookup before `bootFleetCore()` registration must hard throw.
+- `ExecutorPort` has exactly two methods: `getCarrierExternalMcpServerIds` and `getExecutorMcpTools`; lookup before fleet-agent Composition Root registration must hard throw.
 
 ## Tests
 

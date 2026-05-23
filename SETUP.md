@@ -21,7 +21,7 @@ cd fleet-harness
 pnpm setup
 
 # Install workspace dependencies. The root postinstall runs `pnpm -r build`
-# topologically across the workspace (unified-agent, fleet-core, fleet-tui,
+# topologically across the workspace (unified-agent, fleet-admiral, fleet-tui,
 # fleet-wiki, fleet-wiki-web, fleet-agent).
 pnpm install
 

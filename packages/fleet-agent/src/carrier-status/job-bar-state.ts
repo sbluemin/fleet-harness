@@ -3,8 +3,8 @@ import type {
   CarrierJobStreamEvent,
   TrackMeta,
   TrackStatus,
-} from "@sbluemin/fleet-core";
-import { admiral } from "@sbluemin/fleet-core";
+} from "@sbluemin/fleet-admiral";
+import { admiral } from "@sbluemin/fleet-admiral";
 import { getActiveBackgroundJobCount } from "@sbluemin/fleet-infra/job";
 
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";

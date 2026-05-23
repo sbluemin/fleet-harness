@@ -1,4 +1,4 @@
-import { admiral } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-admiral";
 import { truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui/pty";
 
 export interface FleetStatusSectionOptions {

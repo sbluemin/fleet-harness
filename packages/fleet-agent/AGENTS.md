@@ -6,11 +6,20 @@
 
 This package owns the local host assembly for the Dedicated CLI PTY and Fleet PTY lower pane.
 
-- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, and programmatic PTY input bridge.
+- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, and Fleet's CLI Composition Root.
 - **Must Not Own**: Fleet domain logic, carrier persona definitions, or generic engine logic.
-- **Dependencies**: Restricted to `@sbluemin/fleet-core`, `@sbluemin/fleet-infra` for auth/job infrastructure, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
+- **Dependencies**: Restricted to `@sbluemin/fleet-admiral`, `@sbluemin/fleet-admiralty`, `@sbluemin/fleet-infra` for auth/job infrastructure, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
 
-Direct dependencies on execution-engine packages are generally forbidden, with the sole exception handled through `@sbluemin/fleet-core`'s dependency on `@sbluemin/fleet-unified-agent`. The Job Bar functionality is fully absorbed into `fleet-agent`.
+Direct dependencies on execution-engine packages are generally forbidden. Execution and model catalog access flow through `fleet-infra` and the Fleet orchestration packages. The Job Bar functionality is fully absorbed into `fleet-agent`.
+
+## Composition Root Contract
+
+`fleet-agent` is the only Composition Root for the CLI runtime. It assembles all service instances bottom-up and passes dependencies downward through explicit factory dependency objects.
+
+- The DI layer order is one-way: `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
+- `fleet-agent` may call `createInfraServices(deps)` and `createCarrierRuntime(deps)` while assembling the runtime, but lower layers must not reach back into host wiring.
+- Service construction must stay explicit in the host assembly path; do not introduce hidden global service containers, lazy host lookups, or reverse imports from lower layers.
+- Host UI and PTY objects are terminal adapters only. Domain services receive narrow dependencies, not `fleet-agent` module state.
 
 ## Canonical Layout
 

@@ -26,7 +26,7 @@ const FILE_LOG_SETTINGS = {
 let testHomeDir = "";
 
 beforeEach(() => {
-  testHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-core-log-store-"));
+  testHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-log-store-"));
   vi.resetModules();
   vi.doMock("node:os", async (importOriginal) => {
     const actual = await importOriginal<typeof import("node:os")>();

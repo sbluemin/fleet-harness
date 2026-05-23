@@ -2,7 +2,7 @@ import type {
   CarrierJobKind,
   CarrierJobStatus,
   TrackKind,
-} from "@sbluemin/fleet-core";
+} from "@sbluemin/fleet-admiral";
 
 export type ColStatus = "wait" | "conn" | "stream" | "done" | "err";
 

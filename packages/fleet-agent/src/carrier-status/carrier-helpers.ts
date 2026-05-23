@@ -1,4 +1,4 @@
-import { admiral } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-admiral";
 
 export function resolveCarrierColor(carrierId: string): string {
   return admiral.carrier.resolveCarrierColor(carrierId);

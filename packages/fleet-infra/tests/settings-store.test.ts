@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 let testHomeDir = "";
 
 beforeEach(() => {
-  testHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-core-settings-store-"));
+  testHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-settings-store-"));
   vi.resetModules();
   vi.doMock("node:os", async (importOriginal) => {
     const actual = await importOriginal<typeof import("node:os")>();

@@ -16,6 +16,12 @@ import type {
   StoreLockOwner,
 } from "./types.js";
 
+interface StateIoRuntimeState {
+  storeDir: string | null;
+  lastLocalWriteGeneration: number;
+  lastLocalWriteFingerprint: FleetStoreWriteFingerprint | null;
+}
+
 /** 통합 영속화 파일명 */
 const FILENAME = "states.json";
 
@@ -27,23 +33,25 @@ const LOCK_TIMEOUT_MS = 5000;
 const STALE_LOCK_MS = 30000;
 
 /** 스토어 데이터 디렉토리 */
-let storeDir: string | null = null;
-let lastLocalWriteGeneration = 0;
-let lastLocalWriteFingerprint: FleetStoreWriteFingerprint | null = null;
+const runtimeState: StateIoRuntimeState = {
+  storeDir: null,
+  lastLocalWriteGeneration: 0,
+  lastLocalWriteFingerprint: null,
+};
 
 /**
  * Fleet 통합 스토어를 초기화합니다.
  * index.ts에서 initRuntime() 직후 1회 호출합니다.
  */
 export function initStore(dir: string): void {
-  storeDir = dir;
+  runtimeState.storeDir = dir;
   fs.mkdirSync(dir, { recursive: true });
 }
 
 export function resetStoreForTests(): void {
-  storeDir = null;
-  lastLocalWriteGeneration = 0;
-  lastLocalWriteFingerprint = null;
+  runtimeState.storeDir = null;
+  runtimeState.lastLocalWriteGeneration = 0;
+  runtimeState.lastLocalWriteFingerprint = null;
 }
 
 export function readStatesSnapshot(): FleetStoreSnapshot {
@@ -57,21 +65,21 @@ export function readStatesSnapshot(): FleetStoreSnapshot {
 }
 
 export function getLastLocalStatesGeneration(): number {
-  return lastLocalWriteGeneration;
+  return runtimeState.lastLocalWriteGeneration;
 }
 
 /** `writeStates` 직후 동기 stat으로 기록된 최신 로컬 write 지문(없으면 null) */
 export function getLastLocalWriteFingerprint(): FleetStoreWriteFingerprint | null {
-  return lastLocalWriteFingerprint;
+  return runtimeState.lastLocalWriteFingerprint;
 }
 
 export function getStatesFilePath(): string | null {
-  if (!storeDir) return null;
-  return path.join(storeDir, FILENAME);
+  if (!runtimeState.storeDir) return null;
+  return path.join(runtimeState.storeDir, FILENAME);
 }
 
 export function updateStates(mutator: (states: FleetStates) => void): void {
-  if (!storeDir) return;
+  if (!runtimeState.storeDir) return;
   withStoreLock(() => {
     const states = readStates();
     const snapshot = structuredClone(states);
@@ -82,9 +90,9 @@ export function updateStates(mutator: (states: FleetStates) => void): void {
 }
 
 export function withStoreLock<T>(operation: () => T): T {
-  if (!storeDir) return operation();
-  fs.mkdirSync(storeDir, { recursive: true });
-  const lockDir = path.join(storeDir, LOCK_DIRNAME);
+  if (!runtimeState.storeDir) return operation();
+  fs.mkdirSync(runtimeState.storeDir, { recursive: true });
+  const lockDir = path.join(runtimeState.storeDir, LOCK_DIRNAME);
   const startedAt = Date.now();
   while (true) {
     try {
@@ -108,8 +116,8 @@ export function withStoreLock<T>(operation: () => T): T {
 }
 
 function readStates(): FleetStates {
-  if (!storeDir) return {};
-  const filePath = path.join(storeDir, FILENAME);
+  if (!runtimeState.storeDir) return {};
+  const filePath = path.join(runtimeState.storeDir, FILENAME);
   try {
     if (!fs.existsSync(filePath)) return {};
     return JSON.parse(fs.readFileSync(filePath, "utf-8")) as FleetStates;
@@ -125,23 +133,23 @@ function readStates(): FleetStates {
 function recordLastLocalWriteFingerprint(filePath: string, generation: number): void {
   try {
     const st = fs.statSync(filePath);
-    lastLocalWriteFingerprint = { generation, mtimeMs: st.mtimeMs, size: st.size };
+    runtimeState.lastLocalWriteFingerprint = { generation, mtimeMs: st.mtimeMs, size: st.size };
   } catch {
-    lastLocalWriteFingerprint = { generation, mtimeMs: 0, size: 0 };
+    runtimeState.lastLocalWriteFingerprint = { generation, mtimeMs: 0, size: 0 };
   }
 }
 
 function writeStates(s: FleetStates): void {
-  if (!storeDir) throw new Error("Fleet store is not initialized.");
-  fs.mkdirSync(storeDir, { recursive: true });
-  const filePath = path.join(storeDir, FILENAME);
+  if (!runtimeState.storeDir) throw new Error("Fleet store is not initialized.");
+  fs.mkdirSync(runtimeState.storeDir, { recursive: true });
+  const filePath = path.join(runtimeState.storeDir, FILENAME);
   const tmpPath = buildTempPath(filePath);
   const next = serializeFleetStates(s);
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
     fs.renameSync(tmpPath, filePath);
-    lastLocalWriteGeneration = next._generation ?? 0;
-    recordLastLocalWriteFingerprint(filePath, lastLocalWriteGeneration);
+    runtimeState.lastLocalWriteGeneration = next._generation ?? 0;
+    recordLastLocalWriteFingerprint(filePath, runtimeState.lastLocalWriteGeneration);
   } catch (error) {
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
     throw error;

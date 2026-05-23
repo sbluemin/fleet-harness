@@ -1,4 +1,4 @@
-import { admiral, TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-core";
+import { admiral, TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-admiral";
 import {
   createOverlayFrame,
   isPrintable,

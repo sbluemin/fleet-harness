@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { admiral } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-admiral";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
