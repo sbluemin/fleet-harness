@@ -2479,3 +2479,60 @@
 - reason: `E2E 테스트 완료 — 정리`
 - result: `rejected`
 
+## 2026-05-23T17:29:02.659Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-c320993e.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Guide - 003 fleet-wiki 사용법 v6: 템플릿 기반 스키마 검증 현행화`
+
+## 2026-05-23T17:29:02.661Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T17-29-02-652Z-9e5afbf1`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-c320993e.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-23T17:36:34.189Z — patch rejected
+
+- patch_id: `2026-05-23T17-29-02-652Z-9e5afbf1`
+- patch_set_id: `null`
+- reason: `guide 기본 템플릿 제거 후 templateId:guide가 유효하지 않음 — template_id 없이 재ingest`
+- result: `rejected`
+
+## 2026-05-23T17:37:53.769Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Guide - 003 fleet-wiki 사용법 v6: 템플릿 기반 스키마 검증 현행화 (guide 기본 제거 반영)`
+
+## 2026-05-23T17:37:53.771Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T17-37-53-758Z-2dea1438`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-23T17:37:57.583Z — index rebuilt
+
+- entry_count: `14`
+
+## 2026-05-23T17:37:57.585Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T17-37-53-758Z-2dea1438`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+- result: `accepted`
+- target: `wiki/guide-003-fleet-wiki.md`
+

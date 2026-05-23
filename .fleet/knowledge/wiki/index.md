@@ -33,10 +33,10 @@
 - title: `Guide - 003 fleet-wiki 사용법`
 - path: `wiki/guide-003-fleet-wiki.md`
 - tags: `guide, fleet-wiki, fleet-wiki-web, workflow, onboarding, current`
-- updated: `2026-05-23T14:47:42.640Z`
-- summary: `# fleet-wiki 사용법`
-- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
-- raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
+- updated: `2026-05-23T17:37:53.758Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+- raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md, raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
 
 ### prd-agent-core-model-bypass
 

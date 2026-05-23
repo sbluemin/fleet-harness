@@ -3,12 +3,13 @@ id: "guide-003-fleet-wiki"
 title: "Guide - 003 fleet-wiki 사용법"
 tags: ["guide", "fleet-wiki", "fleet-wiki-web", "workflow", "onboarding", "current"]
 created: "2026-05-07T15:45:43.577Z"
-updated: "2026-05-23T14:47:42.640Z"
-version: 5
-rawSourceRef: "raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md"
-rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md\"},{\"ref\":\"raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md\",\"title\":\"Guide - 003 fleet-wiki 사용법\",\"hash\":\"d740bf60\"}]"
+updated: "2026-05-23T17:37:53.758Z"
+version: 6
+rawSourceRef: "raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md"
+template_id: "guide"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md\"},{\"ref\":\"raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md\",\"title\":\"Guide - 003 fleet-wiki 사용법\",\"hash\":\"d740bf60\"},{\"ref\":\"raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md\",\"title\":\"Guide - 003 fleet-wiki 사용법 v6: 템플릿 기반 스키마 검증 현행화 (guide 기본 제거 반영)\",\"hash\":\"77439d0c\"}]"
 ---
-# fleet-wiki 사용법
+## Overview
 
 fleet-wiki는 fleet-harness의 **워크스페이스 로컬 마크다운 지식 베이스**다. Admiral과 캐리어가 작업 중 발견한 지식을 체계적으로 축적하고 조회할 수 있다.
 
@@ -51,16 +52,19 @@ fleet-wiki는 fleet-harness의 **워크스페이스 로컬 마크다운 지식 �
 
 ```
 wiki_ingest(
-  id:    "my-entry-id",
-  title: "엔트리 제목",
-  body:  "마크다운 본문",
-  tags:  ["tag1", "tag2"],
-  source: "원본 내용 (immutable raw source)"
+  id:          "my-entry-id",
+  title:       "엔트리 제목",
+  body:        "마크다운 본문",
+  tags:        ["tag1", "tag2"],
+  source:      "원본 내용 (immutable raw source)",
+  template_id: "prd"
 )
 ```
 
 - `mode`: `auto` (기본) / `create` / `update`
+- `template_id`: 사용할 문서 템플릿 (선택). 미지정 시 기존 entry의 `templateId` 또는 filename prefix(`prd-` 등)로 자동 추론. 매칭되는 템플릿이 없으면 검증을 건너뛴다.
 - 결과: 패치가 `.fleet/knowledge/queue/{patchId}/` 에 대기
+- **템플릿 검증**: 지정된 템플릿의 필수 섹션이 본문에 포함되지 않으면 ingest가 거부되며, 누락 섹션 목록이 반환된다
 
 ### `wiki_compile_source` — 배치 멀티 페이지 인제스트
 
@@ -84,6 +88,10 @@ wiki_patch_queue(action="list")
 ```
 wiki_patch_queue(action="show", patch_id="...")
 ```
+
+### 패치 수정 (`wiki_patch_edit`)
+
+승인 전 대기 중인 패치의 본문이나 메타데이터를 수정할 수 있다. 단, 승인 시점에 템플릿 검증이 재실행되므로 필수 섹션을 제거하면 승인이 거부된다.
 
 ### 웹 UI로 확인
 
@@ -126,8 +134,10 @@ wiki_patch_queue(action="reject", patch_id="...", reason="반려 사유")
 wiki_patch_queue(action="approve_set", patch_set_id="...")
 ```
 
-승인 시: `wiki/{id}.md` 반영 → 인덱스 재빌드 → `archive/`로 이동  
+승인 시: `wiki/{id}.md` 반영 → 인덱스 재빌드 → `archive/`로 이동
 반려 시: 사유 기록 후 `archive/`로 이동
+
+> **승인 barrier**: 승인 시점에 해당 entry의 템플릿 필수 섹션을 재검증한다. `wiki_patch_edit`으로 필수 섹션을 제거한 패치는 승인이 거부된다.
 
 웹 UI(`/w/:ws/queue/:patchId`)에서도 승인/반려할 수 있다.
 
@@ -141,7 +151,7 @@ wiki_patch_queue(action="approve_set", patch_set_id="...")
 
 ### `wiki_orient` — 워크스페이스 현황 파악
 
-작업 시작 시 한 번 호출해 전체 엔트리 목록, 스키마, 최근 로그, 큐 대기 수를 확인한다.
+작업 시작 시 한 번 호출해 전체 엔트리 목록, 스키마, 최근 로그, 큐 대기 수를 확인한다. `include_schema=true`(기본값) 시 사용 가능한 **모든 템플릿 목록**과 각 템플릿의 필수 섹션이 함께 반환된다.
 
 ### `wiki_briefing` — 키워드 검색
 
@@ -180,6 +190,35 @@ wiki_query(question="질문", mode="answer")
 
 ---
 
+## 템플릿 시스템
+
+Fleet Wiki의 문서는 **문서 유형별 템플릿**을 따를 수 있다. 템플릿은 `.fleet/knowledge/schema/template-{id}.md` 파일로 정의되며, 각 템플릿은 해당 문서 유형의 필수 섹션을 열거한다.
+
+### 기본 제공 템플릿
+
+| 템플릿 ID | 파일 | 필수 섹션 |
+|-----------|------|----------|
+| `prd` | `template-prd.md` | Overview, Problem, Goals, Non-Goals, User Stories, Functional Requirements, Acceptance Criteria, Open Questions, Related |
+
+### 커스텀 템플릿 추가
+
+사용자는 `template-` 프리픽스 컨벤션만 준수하면 자유롭게 템플릿을 확장할 수 있다.
+
+1. `.fleet/knowledge/schema/template-{id}.md` 파일을 생성한다
+2. 필수 섹션을 `## 섹션명` 헤더로 열거한다
+3. 선택적으로 YAML frontmatter에 기본 프론트매터 값을 정의할 수 있다
+4. 코드 수정 없이 `wiki_orient`, `wiki_ingest`, `wiki_drydock`이 자동으로 인식한다
+
+### 검증 규칙
+
+- **subset 검증**: 템플릿의 필수 섹션이 entry 본문에 모두 포함되어야 한다
+- **순서 무관**: 섹션 순서는 강제하지 않는다
+- **추가 섹션 허용**: 템플릿에 없는 섹션을 추가하는 것은 자유다
+- **이중 검증**: ingest 시점과 approve 시점 모두에서 검증이 실행된다
+- **template_id 추론**: 미지정 시 기존 entry → filename prefix 순으로 자동 추론. 매칭 템플릿이 없으면 검증 스킵
+
+---
+
 ## 정합성 검사: `wiki_drydock`
 
 위키 전체 lint를 실행한다. 체크 항목:
@@ -187,6 +226,7 @@ wiki_query(question="질문", mode="answer")
 - 프론트매터 누락 / 링크 오류
 - 큐 정합성 · 고아 페이지 · 중복 별칭
 - 스테일(stale) · 폐기(deprecated) · 모순(contradiction) 항목
+- **템플릿 준수 여부**: 기존 entry가 추론된 템플릿의 필수 섹션을 충족하는지 검사 (warning 레벨)
 
 ---
 
@@ -213,7 +253,8 @@ Per-user daemon은 여러 워크스페이스를 동시에 제공한다. 각 경�
 
 ---
 
-## 관련 항목
+## Related
 
 - [[wiki:guide-001-fleet-harness-overview]] — fleet-harness 전체 소개
 - [[wiki:guide-002-carrier-status]] — Carrier Status 사용법
+- [[wiki:prd-wiki-template-schema]] — 템플릿 기반 스키마 검증 PRD
