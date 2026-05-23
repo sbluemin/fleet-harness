@@ -219,7 +219,7 @@ describe("getModelConfig / saveSelectedModels", () => {
     initStore(deepDir);
 
     expect(() => {
-      saveSelectedModels({ vanguard: { model: "gemini-3" } });
+      saveSelectedModels({ vanguard: { model: "gpt-5.4" } });
     }).not.toThrow();
 
     const filePath = path.join(deepDir, "states.json");
@@ -235,10 +235,10 @@ describe("getModelConfig / saveSelectedModels", () => {
     const store = getCarrierSessionStore();
     store.set("vanguard", "vanguard-session", captureSessionMappingCommitToken());
 
-    await updateModelSelection("vanguard", { model: "gemini-2.5-pro" });
+    await updateModelSelection("vanguard", { model: "opus" });
 
     const loaded = getModelConfig();
-    expect(loaded.vanguard?.model).toBe("gemini-2.5-pro");
+    expect(loaded.vanguard?.model).toBe("opus");
     expect(store.get("vanguard")).toBeUndefined();
   });
 
@@ -253,12 +253,12 @@ describe("getModelConfig / saveSelectedModels", () => {
     store.set("sentinel", "sentinel-session", captureSessionMappingCommitToken());
 
     await updateAllModelSelections({
-      vanguard: { model: "gemini-2.5-flash" },
+      vanguard: { model: "opus" },
       sentinel: { model: "gpt-5" },
     });
 
     const loaded = getModelConfig();
-    expect(loaded.vanguard?.model).toBe("gemini-2.5-flash");
+    expect(loaded.vanguard?.model).toBe("opus");
     expect(loaded.sentinel?.model).toBe("gpt-5");
     expect(store.get("vanguard")).toBeUndefined();
     expect(store.get("sentinel")).toBeUndefined();
@@ -276,20 +276,20 @@ describe("getModelConfig / saveSelectedModels", () => {
             model: "gpt-5.4-mini",
             effort: "xhigh",
           },
-          gemini: {
-            model: "gemini-3.1-pro-preview",
+          "opencode-go": {
+            model: "opencode-go/glm-5.1",
           },
         },
       },
     });
 
-    const changed = reconcileActiveModelSelections({ vanguard: "gemini" as any });
+    const changed = reconcileActiveModelSelections({ vanguard: "opencode-go" as any });
     const loaded = getModelConfig();
 
     expect(changed).toBe(true);
-    expect(loaded.vanguard?.model).toBe("gemini-3.1-pro-preview");
+    expect(loaded.vanguard?.model).toBe("opencode-go/glm-5.1");
     expect(loaded.vanguard?.effort).toBeUndefined();
-    expect(loaded.vanguard?.perCliSettings?.gemini?.model).toBe("gemini-3.1-pro-preview");
+    expect(loaded.vanguard?.perCliSettings?.["opencode-go"]?.model).toBe("opencode-go/glm-5.1");
   });
 
   it("reconcileActiveModelSelections는 현재 top-level 선택이 유효하면 유지한다", () => {
@@ -321,11 +321,11 @@ describe("getModelConfig / saveSelectedModels", () => {
     initStore(tmpDir);
 
     updateCliTypeOverride("alpha", "codex", "claude");
-    updateCliTypeOverride("beta", "gemini", "codex");
+    updateCliTypeOverride("beta", "opencode-go", "codex");
 
     expect(loadCliTypeOverrides()).toEqual({
       alpha: "codex",
-      beta: "gemini",
+      beta: "opencode-go",
     });
   });
 
@@ -334,11 +334,11 @@ describe("getModelConfig / saveSelectedModels", () => {
     initStore(tmpDir);
 
     updateCliTypeOverride("alpha", "codex", "claude");
-    updateCliTypeOverride("beta", "gemini", "codex");
+    updateCliTypeOverride("beta", "opencode-go", "codex");
     updateCliTypeOverride("alpha", "claude", "claude");
 
     expect(loadCliTypeOverrides()).toEqual({
-      beta: "gemini",
+      beta: "opencode-go",
     });
   });
 

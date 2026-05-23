@@ -78,16 +78,6 @@ function makeProviders(): Record<CarrierCliType, CliModelInfo> {
         default: "medium",
       },
     },
-    gemini: {
-      defaultModel: "gemini-default",
-      models: [
-        { modelId: "gemini-default", name: "Gemini Default" },
-        { modelId: "gemini-saved", name: "Gemini Saved" },
-      ],
-      effort: {
-        supported: false,
-      },
-    },
     "opencode-go": {
       defaultModel: "opencode-go/glm-5.1",
       models: [
@@ -205,17 +195,17 @@ describe("StatusOverlayController", () => {
       configs: new Map([
         ["alpha", makeCarrierConfig("alpha", "claude", "claude")],
         ["beta", makeCarrierConfig("beta", "codex", "codex")],
-        ["gamma", makeCarrierConfig("gamma", "gemini", "claude")],
+        ["gamma", makeCarrierConfig("gamma", "cursor", "claude")],
       ]),
       currentSelections: {
         alpha: { model: "claude-current", effort: "high", direct: true },
         beta: { model: "codex-current", effort: "high" },
-        gamma: { model: "gemini-current" },
+        gamma: { model: "composer-2" },
       },
       entries: [
         makeEntry("alpha", "claude", "claude"),
         makeEntry("beta", "codex", "codex"),
-        makeEntry("gamma", "gemini", "claude"),
+        makeEntry("gamma", "cursor", "claude"),
       ],
       perCliSettings: new Map(),
       providers: makeProviders(),
@@ -270,13 +260,13 @@ describe("StatusOverlayController", () => {
   });
 
   it("changeCliTypes는 여러 캐리어에 대한 일괄 전환 결과를 반환한다", async () => {
-    state.perCliSettings.set("alpha:gemini", {
-      model: "gemini-saved",
+    state.perCliSettings.set("alpha:cursor", {
+      model: "composer-2",
     });
     const { controller } = createController(state);
 
     const results = await controller.changeCliTypes([
-      { carrierId: "alpha", newCliType: "gemini" },
+      { carrierId: "alpha", newCliType: "cursor" },
       { carrierId: "beta", newCliType: "claude" },
     ]);
 
@@ -286,9 +276,9 @@ describe("StatusOverlayController", () => {
         carrierId: "alpha",
         result: {
           carrierId: "alpha",
-          newCliType: "gemini",
+          newCliType: "cursor",
           selection: {
-            model: "gemini-saved",
+            model: "composer-2",
             effort: null,
             isDefault: false,
           },
@@ -311,7 +301,7 @@ describe("StatusOverlayController", () => {
   });
 
   it("resetCliTypesToDefault는 UI 스냅샷과 무관하게 framework 기준으로 defaultCliType 복원을 수행한다", async () => {
-    state.configs.get("gamma")!.cliType = "gemini";
+    state.configs.get("gamma")!.cliType = "cursor";
     state.entries.find((entry) => entry.carrierId === "gamma")!.cliType = "claude";
     state.perCliSettings.set("gamma:claude", {
       model: "claude-saved",
@@ -368,13 +358,13 @@ describe("StatusOverlayController", () => {
   });
 
   it("이전 상태가 non-default인 실패도 이전 override intent로 복원한다", async () => {
-    state.configs.get("gamma")!.cliType = "gemini";
+    state.configs.get("gamma")!.cliType = "cursor";
     const { controller, spies } = createController(state);
     spies.applyCliTypeModelSelectionUpdate.mockRejectedValueOnce(new Error("boom"));
 
     await expect(controller.changeCliType("gamma", "codex")).rejects.toThrow("boom");
 
-    expect(state.configs.get("gamma")?.cliType).toBe("gemini");
+    expect(state.configs.get("gamma")?.cliType).toBe("cursor");
     expect(spies.applyCliTypeModelSelectionUpdate).toHaveBeenCalledTimes(1);
   });
 });

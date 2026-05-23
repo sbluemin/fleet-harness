@@ -89,8 +89,8 @@ describe("framework cliType 동기화", () => {
     initStore(dir);
     clearRegisteredCarriers();
     registerCarrier(makeConfig("genesis"));
-    updateCliTypeOverride("genesis", "gemini", "codex");
-    expect(resolveCarrierCliDisplayName("genesis")).toBe("Google Gemini CLI");
+    updateCliTypeOverride("genesis", "opencode-go", "codex");
+    expect(resolveCarrierCliDisplayName("genesis")).toBe("OpenCode Go");
   });
 });
 

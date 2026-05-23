@@ -38,12 +38,6 @@ const CONTRACT_CASES: ContractCase[] = [
     model: 'gpt-5.3-codex-spark',
     supportsResetSession: true,
   },
-  {
-    cli: 'gemini',
-    expectedProtocol: 'acp',
-    model: 'gemini-3-flash-preview',
-    supportsResetSession: false,
-  },
 ];
 
 for (const contractCase of CONTRACT_CASES) {

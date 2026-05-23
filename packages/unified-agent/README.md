@@ -1,12 +1,12 @@
 # @sbluemin/fleet-unified-agent
 
-> A TypeScript SDK that unifies Codex CLI, Claude Code, and Gemini CLI under a single interface.
+> A TypeScript SDK that unifies Codex CLI, Claude Code, OpenCode, and Cursor Agent under a single interface.
 
 Within this monorepo, Fleet consumes `@sbluemin/fleet-unified-agent` through `workspace:*` from `packages/unified-agent/`. It is the core engine for all Fleet agents and shares the same build and release flow as the other workspace packages.
 
 ## Overview
 
-Unified Agent provides two ways to control three major CLI agents — Gemini, Claude, and Codex — under a single interface.
+Unified Agent provides two ways to control supported CLI agents — Claude, Codex, OpenCode, and Cursor — under a single interface.
 
 - **CLI Binary** — One-shot prompt execution from the command line
 - **TypeScript SDK** — Full programmatic control with event-based streaming
@@ -15,9 +15,10 @@ Unified Agent provides two ways to control three major CLI agents — Gemini, Cl
 
 | CLI | Protocol | Spawn Command |
 |-----|----------|---------------|
-| **Gemini** | ACP | `gemini --acp` |
 | **Claude** | ACP | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` |
 | **Codex** | `codex-app-server` | `codex app-server --listen stdio://` |
+| **OpenCode Go** | ACP | `opencode acp` |
+| **Cursor Agent** | ACP | `cursor-agent acp` |
 
 ### Prerequisites
 
@@ -68,7 +69,7 @@ The prompt displays the current model, and shows reasoning effort only for CLIs 
 | Command | Description |
 |---------|-------------|
 | `/model <name>` | Change the current model |
-| `/effort <level>` | Change reasoning effort when supported; Gemini still ignores it with a notice |
+| `/effort <level>` | Change reasoning effort when supported |
 | `/status` | Show connection status and session info |
 | `/clear` | Clear the terminal screen |
 | `/help` | Show available commands |
@@ -98,7 +99,7 @@ ait -c codex -e high "Refactor this module"
 ait -c claude -m sonnet -e max "Review this code"
 
 # Pipe from stdin
-cat error.log | ait -c gemini "Explain this error"
+cat error.log | ait -c claude "Explain this error"
 
 # Resume a previous session
 ait -c claude -s <sessionId> "Continue this conversation"
@@ -111,12 +112,12 @@ ait --json -c claude "Summarize" | jq .response
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--cli <name>` | `-c` | CLI selection (`gemini` \| `claude` \| `codex`) |
+| `--cli <name>` | `-c` | CLI selection (`claude` \| `claude-zai` \| `claude-kimi` \| `codex` \| `opencode-go` \| `cursor`) |
 | `--session <id>` | `-s` | Resume a previous session (requires `--cli`) |
 | `--model <name>` | `-m` | Model override |
 | `--effort <level>` | `-e` | Reasoning effort when supported by the selected CLI |
 | `--cwd <path>` | `-d` | Working directory (default: current directory) |
-| `--yolo` | | Auto-approve all permissions (mapped to `--approval-mode=yolo` for Gemini internally) |
+| `--yolo` | | Auto-approve all permissions where supported |
 | `--json` | | JSON output mode |
 | `--help` | `-h` | Show help |
 
@@ -151,7 +152,6 @@ On error:
 
 - **Codex**: supported via native `codex-app-server` turn config
 - **Claude (ACP via `claude-agent-acp`)**: supported on the `claude` provider with `low | medium | high | max`
-- **Gemini**: unsupported, `ait -c gemini -e high ...` is ignored with a notice
 
 Fleet sends Claude ACP effort through the bridge's advertised `effort` config option. Only the primary `claude` provider exposes effort in `models.json`; `claude-zai` and `claude-kimi` remain conservatively disabled in this package.
 
@@ -210,10 +210,10 @@ Connects to a CLI agent.
 ```typescript
 const result = await client.connect({
   cwd: '/my/workspace',       // Working directory (required)
-  cli: 'gemini',               // CLI selection (auto-detected if omitted)
+  cli: 'claude',               // CLI selection (auto-detected if omitted)
   autoApprove: true,           // Auto-approve permissions
   yoloMode: false,             // CLI-specific YOLO approval mode
-  model: 'gemini-pro',         // Model override
+  model: 'opus',               // Model override
   clientInfo: { name: 'MyApp', version: '1.0.0' },
 });
 ```
@@ -286,7 +286,6 @@ Closes the connection and terminates the child process.
 ```
 UnifiedAgent
   +-- UnifiedClaudeAgentClient
-  +-- UnifiedGeminiAgentClient
   +-- UnifiedCodexAgentClient
 ```
 

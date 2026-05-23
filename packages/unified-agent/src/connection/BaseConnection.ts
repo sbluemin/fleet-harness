@@ -77,7 +77,7 @@ export class BaseConnection extends EventEmitter {
   protected spawnRawProcess(): ChildProcess {
     this.setState('connecting');
 
-    // Windows에서 .cmd 래퍼(npx.cmd, gemini.cmd 등)를 실행하려면 cmd.exe를 경유해야 합니다.
+    // Windows에서 .cmd 래퍼(npx.cmd 등)를 실행하려면 cmd.exe를 경유해야 합니다.
     // cmd.exe /C 단순 래핑은 경로에 공백이 있을 때(예: C:\Program Files\nodejs\npx.cmd)
     // cmd의 quote-stripping 규칙에 따라 바깥 따옴표가 벗겨져 명령이 공백에서 끊깁니다.
     // 이를 회피하려면 cmd.exe /S /C ""<cmd>" <args>" 관용구와 windowsVerbatimArguments를

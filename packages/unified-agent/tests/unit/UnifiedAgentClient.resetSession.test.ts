@@ -23,7 +23,7 @@ function createMockAcpConnection(): EventEmitter & Record<string, unknown> {
     setModel: mockSetModel,
     connectionState: 'ready',
     removeAllListeners: mockRemoveAllListeners,
-    canResetSession: true, // close capability 지원 가정 (Gemini 제외)
+    canResetSession: true,
   });
   return emitter as EventEmitter & Record<string, unknown>;
 }
@@ -39,7 +39,7 @@ vi.mock('../../src/detector/CliDetector.js', () => ({
   })),
 }));
 
-const { UnifiedGeminiAgentClient } = await import('../../src/client/UnifiedGeminiAgentClient.js');
+const { UnifiedClaudeAgentClient } = await import('../../src/client/UnifiedClaudeAgentClient.js');
 
 // ─── 헬퍼 ────────────────────────────────────────────────
 
@@ -52,10 +52,10 @@ const newSession: NewSessionResponse = {
 } as NewSessionResponse;
 
 /** 클라이언트를 연결 상태로 만드는 헬퍼 */
-async function createConnectedClient(cwd = '/workspace'): Promise<InstanceType<typeof UnifiedGeminiAgentClient>> {
+async function createConnectedClient(cwd = '/workspace'): Promise<UnifiedClaudeAgentClient> {
   mockConnect.mockResolvedValue(initialSession);
-  const client = new UnifiedGeminiAgentClient();
-  await client.connect({ cwd, cli: 'gemini' });
+  const client = new UnifiedClaudeAgentClient();
+  await client.connect({ cwd, cli: 'claude' });
   vi.clearAllMocks();
   // reconnect mock 재설정
   mockEndSession.mockResolvedValue(undefined);
@@ -71,7 +71,7 @@ describe('resetSession()', () => {
   });
 
   it('연결 없이 resetSession() 호출 → 명확한 에러', async () => {
-    const client = new UnifiedGeminiAgentClient();
+    const client = new UnifiedClaudeAgentClient();
 
     await expect(client.resetSession()).rejects.toThrow('연결되어 있지 않습니다');
   });
@@ -82,7 +82,7 @@ describe('resetSession()', () => {
     const result = await client.resetSession();
 
     expect(result.session?.sessionId).toBe('new-session-after-reset');
-    expect(result.cli).toBe('gemini');
+    expect(result.cli).toBe('claude');
     expect(result.protocol).toBe('acp');
   });
 
@@ -91,7 +91,14 @@ describe('resetSession()', () => {
 
     await client.resetSession('/new-workspace');
 
-    expect(mockReconnectSession).toHaveBeenCalledWith('/new-workspace');
+    expect(mockReconnectSession).toHaveBeenCalledWith(
+      '/new-workspace',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('cwd 미지정 시 sessionCwd 재사용', async () => {
@@ -99,7 +106,14 @@ describe('resetSession()', () => {
 
     await client.resetSession();
 
-    expect(mockReconnectSession).toHaveBeenCalledWith('/original-workspace');
+    expect(mockReconnectSession).toHaveBeenCalledWith(
+      '/original-workspace',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('resetSession 후 내부 sessionId 갱신', async () => {
