@@ -22,7 +22,7 @@ export function createClaudeFamilyCliDefinition(
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
       const authEnv = options.authCli ? await infra.auth.resolveAuthEnv(options.authCli) : {};
       return {
-        args: [...prefixArgs],
+        args: [...prefixArgs, ...buildModelArgs(profileOptions.model)],
         bin,
         cwd: profileOptions.cwd,
         env: createChildEnv(profileOptions.env, {
@@ -40,4 +40,8 @@ export function createClaudeFamilyCliDefinition(
       };
     },
   };
+}
+
+function buildModelArgs(model: string | undefined): string[] {
+  return model === undefined ? [] : ["--model", model];
 }

@@ -10,7 +10,7 @@ export const codexCli: DedicatedCliDefinition = {
   async createProfile(options: DedicatedCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
-      args: [...prefixArgs],
+      args: [...prefixArgs, ...buildModelArgs(options.model)],
       bin,
       cwd: options.cwd,
       env: createChildEnv(options.env, createCodexEnv()),
@@ -25,3 +25,7 @@ export const codexCli: DedicatedCliDefinition = {
     };
   },
 };
+
+function buildModelArgs(model: string | undefined): string[] {
+  return model === undefined ? [] : ["--model", model];
+}

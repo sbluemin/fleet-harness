@@ -28,6 +28,7 @@ export interface DedicatedCliDefinition {
 export interface DedicatedCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly model?: string;
 }
 
 export interface DedicatedCliInjectionContext {

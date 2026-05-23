@@ -60,22 +60,22 @@ describe("dedicated CLI catalog", () => {
   it("parses --cli, --cli=, and FLEET_DEDICATED_CLI values", async () => {
     const env = createEnvWithBins();
 
-    await expect(resolveDedicatedCliProfile(["--cli", "claude-zai"], env, "/tmp")).resolves.toMatchObject({
+    await expect(resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-zai" })).resolves.toMatchObject({
       id: "claude-zai",
     });
-    await expect(resolveDedicatedCliProfile(["--cli=claude-kimi"], env, "/tmp")).resolves.toMatchObject({
+    await expect(resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-kimi" })).resolves.toMatchObject({
       id: "claude-kimi",
     });
-    await expect(resolveDedicatedCliProfile([], { ...env, FLEET_DEDICATED_CLI: "claude-zai" }, "/tmp")).resolves.toMatchObject({
+    await expect(resolveDedicatedCliProfile({ ...env, FLEET_DEDICATED_CLI: "claude-zai" }, "/tmp")).resolves.toMatchObject({
       id: "claude-zai",
     });
   });
 
   it("shares Claude-family terminal and message policy", async () => {
     const env = createEnvWithBins();
-    const claude = await resolveDedicatedCliProfile(["--cli", "claude"], env, "/tmp");
-    const zai = await resolveDedicatedCliProfile(["--cli", "claude-zai"], env, "/tmp");
-    const kimi = await resolveDedicatedCliProfile(["--cli", "claude-kimi"], env, "/tmp");
+    const claude = await resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude" });
+    const zai = await resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-zai" });
+    const kimi = await resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-kimi" });
 
     expect(zai.terminalName).toBe(claude.terminalName);
     expect(kimi.terminalName).toBe(claude.terminalName);
@@ -86,7 +86,7 @@ describe("dedicated CLI catalog", () => {
   it("resolves variant auth env before profile creation succeeds", async () => {
     const env = createEnvWithBins();
 
-    const profile = await resolveDedicatedCliProfile(["--cli", "claude-zai"], env, "/tmp");
+    const profile = await resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-zai" });
 
     expect(mocks.resolveAuthEnvMock).toHaveBeenCalledWith("claude-zai");
     expect(profile.env.ANTHROPIC_AUTH_TOKEN).toBe("variant-token");
@@ -97,16 +97,33 @@ describe("dedicated CLI catalog", () => {
     const env = createEnvWithBins();
     mocks.resolveAuthEnvMock.mockRejectedValue(new Error("Validation failed"));
 
-    await expect(resolveDedicatedCliProfile(["--cli", "claude-kimi"], env, "/tmp")).rejects.toThrow("Validation failed");
+    await expect(resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-kimi" })).rejects.toThrow("Validation failed");
   });
 
   it("does not mutate process.env while creating profiles", async () => {
     const env = createEnvWithBins();
     const before = { ...process.env };
 
-    await resolveDedicatedCliProfile(["--cli", "claude-zai"], env, "/tmp");
+    await resolveDedicatedCliProfile(env, "/tmp", { cliId: "claude-zai" });
 
     expect(process.env).toEqual(before);
+  });
+
+  it("forwards model values into dedicated CLI profile args", async () => {
+    const env = createEnvWithBins();
+
+    const profile = await resolveDedicatedCliProfile(env, "/tmp", { cliId: "codex", model: "gpt-5.2" });
+
+    expect(profile.args).toContain("--model");
+    expect(profile.args).toContain("gpt-5.2");
+  });
+
+  it("omits model args when no model is provided", async () => {
+    const env = createEnvWithBins();
+
+    const profile = await resolveDedicatedCliProfile(env, "/tmp", { cliId: "codex" });
+
+    expect(profile.args).not.toContain("--model");
   });
 
   it("uses the Claude native injection builder for alternate backends", () => {

@@ -29,12 +29,30 @@ Execution-engine packages such as `@sbluemin/fleet-unified-agent` are permanentl
 Selection priority is:
 
 1. `--cli <id>` or `--cli=<id>`
-2. `FLEET_CLI`
+2. `FLEET_DEDICATED_CLI`
 3. `claude`
 
-Supported ids are `claude` and `codex`.
+Supported ids are `claude`, `claude-zai`, `claude-kimi`, and `codex`.
 
 Each CLI also supports an uppercase binary override: `CLAUDE_BIN` and `CODEX_BIN`.
+
+## Options
+
+`--help` prints options in two categories:
+
+- **Fleet Agent Options** — flags that control Fleet behavior (`--cli`, `--native`, `--disable-cursor-sync`, `--replace-system-prompt`, `--enable-metaphor`).
+- **Underlying CLI Options** — flags forwarded verbatim to the selected dedicated CLI.
+
+### `--model <name>`
+
+Forward a model name to the selected dedicated CLI. The value is passed as `--model <value>` to the underlying CLI without validation by Fleet.
+
+Example:
+
+```sh
+fleet --cli claude --model claude-opus-4-7
+fleet --cli codex --model o4-mini
+```
 
 ## Commands
 

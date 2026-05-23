@@ -20,7 +20,9 @@ import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from ".
 import { bootRuntime, shutdownRuntime } from "./runtime/runtime.js";
 
 export interface RunAppOptions {
+  readonly cliId?: string;
   readonly cursorSync?: boolean;
+  readonly model?: string;
   readonly native?: boolean;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
@@ -38,7 +40,9 @@ const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
+  const cliId = options.cliId;
   const cursorSync = options.cursorSync !== false;
+  const model = options.model;
   const native = options.native ?? false;
   const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
   const enableMetaphor = options.enableMetaphor ?? false;
@@ -61,7 +65,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     requestRender: scheduleRender,
   });
   registerCarrierStatusKeybinding({ fleetPty });
-  const baseProfile = await resolveDedicatedCliProfile(process.argv.slice(2), process.env, resolveInvocationCwd());
+  const baseProfile = await resolveDedicatedCliProfile(process.env, resolveInvocationCwd(), { cliId, model });
   const currentProfile = native
     ? baseProfile
     : await injectDedicatedCliProfile(baseProfile, { replaceSystemPrompt, enableMetaphor });
