@@ -7,15 +7,18 @@ export function buildClaudeNativeArgs(context: DedicatedCliInjectionContext): st
     context.systemPromptFile,
     "--mcp-config",
     JSON.stringify({
-      mcpServers: {
-        "fleet-tools": {
+      mcpServers: Object.fromEntries(
+        context.mcpServers.map((server) => [
+          server.name,
+          {
           type: "http",
-          url: context.endpointUrl,
+            url: server.endpointUrl,
           headers: {
-            Authorization: `Bearer ${context.bearerToken}`,
+              Authorization: `Bearer ${server.bearerToken}`,
           },
-        },
-      },
+          },
+        ]),
+      ),
     }),
     "--dangerously-skip-permissions",
   ];

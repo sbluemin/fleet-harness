@@ -4,7 +4,11 @@ export type {
   McpCallToolResult,
   TrackStatus,
 } from "./types.js";
-export type { ExecutorPort, ExecutorPortRuntime } from "./executor-port.js";
+export type {
+  ExecutorMcpRouterRuntime,
+  ExecutorPort,
+  ExecutorPortRuntime,
+} from "./executor-port.js";
 export type { ExecuteOptions, ExecResult } from "./executor.js";
 export type { SessionPersistencePort, SessionRuntime } from "./internal/session-runtime.js";
 export type {

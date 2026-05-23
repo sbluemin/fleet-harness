@@ -1889,3 +1889,77 @@
 - result: `accepted`
 - target: `wiki/prd-fleet-agent-composition-root-consolidation.md`
 
+## 2026-05-23T13:25:29.667Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T13:26:10.695Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T13:28:59.410Z — raw source added
+
+- id: `prd-mcp-server-surface-split-source`
+- raw_source_ref: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: Fleet 낭부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화`
+
+## 2026-05-23T13:28:59.412Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T13-28-59-405Z-bc6f99e0`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
+- target: `wiki/prd-mcp-server-surface-split.md`
+- warning_count: `0`
+
+## 2026-05-23T13:29:03.835Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T13:30:03.967Z — patch edited
+
+- body_replacements: `5`
+- changed_fields: `title, body, updated, summary`
+- next_hash: `80f3067e`
+- patch_id: `2026-05-23T13-28-59-405Z-bc6f99e0`
+- previous_hash: `7bcd3303`
+- target: `wiki/prd-mcp-server-surface-split.md`
+
+## 2026-05-23T13:30:23.579Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `9c50f8db`
+- patch_id: `2026-05-23T13-28-59-405Z-bc6f99e0`
+- previous_hash: `80f3067e`
+- target: `wiki/prd-mcp-server-surface-split.md`
+
+## 2026-05-23T13:30:47.017Z — index rebuilt
+
+- entry_count: `12`
+
+## 2026-05-23T13:30:47.018Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T13-28-59-405Z-bc6f99e0`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
+- result: `accepted`
+- target: `wiki/prd-mcp-server-surface-split.md`
+

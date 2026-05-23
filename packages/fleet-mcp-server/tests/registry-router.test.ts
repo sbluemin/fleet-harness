@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  EXECUTOR_MCP_TOOL_IDS,
   cleanupExecutorSession,
   createMcpServer,
   createMcpToolRegistry,
@@ -11,14 +10,9 @@ import {
 } from "../src/index.js";
 import type { AgentToolSpec, McpRouterRuntime } from "../src/index.js";
 
-const WIKI_EXECUTOR_TOOL_IDS = [
-  "wiki_briefing",
-  "wiki_drydock",
-  "wiki_ingest",
-  "wiki_orient",
-  "wiki_query",
-  "wiki_read",
-  "wiki_resolve",
+const SCOPED_EXECUTOR_TOOL_IDS = [
+  "scoped_read",
+  "scoped_write",
 ] as const;
 
 let whitelistRegistry = createMcpToolRegistry();
@@ -42,7 +36,7 @@ function makeToolSpec(id: string, execute: (args: unknown) => unknown): AgentToo
 }
 
 function registerChronicleWikiTools(): void {
-  for (const id of WIKI_EXECUTOR_TOOL_IDS) {
+  for (const id of SCOPED_EXECUTOR_TOOL_IDS) {
     whitelistRegistry.registerExecutorTool(makeToolSpec(id, () => `${id}-ok`), { allowedCarriers: ["chronicle"] });
   }
 }
@@ -74,10 +68,6 @@ describe("executor MCP whitelist", () => {
     whitelistRegistry = createMcpToolRegistry();
   });
 
-  it("EXECUTOR_MCP_TOOL_IDS에 carrier_jobs가 포함된다", () => {
-    expect(EXECUTOR_MCP_TOOL_IDS).toContain("carrier_jobs");
-  });
-
   it("기본 global scope에서 도구를 반환하지 않는다", () => {
     const specs = whitelistRegistry.getExecutorMcpToolsForCarrier();
     expect(specs.map((s) => s.id)).toEqual([]);
@@ -85,16 +75,16 @@ describe("executor MCP whitelist", () => {
 
   it("carrier-scoped 도구와 metadata-declared 도구를 lazy union한다", () => {
     registerChronicleWikiTools();
-    whitelistRegistry.registerAgentTool(makeToolSpec("carrier_jobs", () => "jobs-ok"));
+    whitelistRegistry.registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
 
-    const chronicleIds = whitelistRegistry.getExecutorMcpToolsForCarrier("chronicle", ["carrier_jobs"])
+    const chronicleIds = whitelistRegistry.getExecutorMcpToolsForCarrier("chronicle", ["metadata_tool"])
       .map((s) => s.id);
-    const otherIds = whitelistRegistry.getExecutorMcpToolsForCarrier("genesis", ["carrier_jobs"])
+    const otherIds = whitelistRegistry.getExecutorMcpToolsForCarrier("genesis", ["metadata_tool"])
       .map((s) => s.id);
 
-    expect(WIKI_EXECUTOR_TOOL_IDS.every((id) => chronicleIds.includes(id))).toBe(true);
-    expect(chronicleIds).toContain("carrier_jobs");
-    expect(otherIds).toEqual(["carrier_jobs"]);
+    expect(SCOPED_EXECUTOR_TOOL_IDS.every((id) => chronicleIds.includes(id))).toBe(true);
+    expect(chronicleIds).toContain("metadata_tool");
+    expect(otherIds).toEqual(["metadata_tool"]);
   });
 
   it("registerExecutorTool(spec)는 옵션 없이 global scope에 도구를 등록한다", () => {
@@ -183,5 +173,33 @@ describe("executor MCP router", () => {
     expect(routerRuntime.snapshotStore.getToolsForSession(token).length).toBeGreaterThan(0);
     cleanupExecutorSession(routerRuntime, token);
     expect(routerRuntime.snapshotStore.getToolsForSession(token)).toHaveLength(0);
+  });
+
+  it("serverInfo 옵션이 initialize 응답 이름을 바꾼다", async () => {
+    const registry = createMcpToolRegistry();
+    const snapshotStore = createMcpToolSnapshotStore();
+    const server = createMcpServer({
+      registry,
+      serverInfo: { name: "custom-mcp", version: "9.9.9" },
+      toolSnapshotStore: snapshotStore,
+    });
+    const url = await server.start();
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer init-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+      }),
+    });
+    const body = await res.json() as { result?: { serverInfo?: unknown } };
+
+    expect(body.result?.serverInfo).toEqual({ name: "custom-mcp", version: "9.9.9" });
+    await server.stop();
   });
 });

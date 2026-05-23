@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `11`
+- total_entries: `12`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -114,6 +114,16 @@
 - raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
 - raw_source_refs: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
 
+### prd-mcp-server-surface-split
+
+- title: `PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화`
+- path: `wiki/prd-mcp-server-surface-split.md`
+- tags: `fleet-mcp-server, fleet-agent, fleet-infra, mcp, architecture, shipped`
+- updated: `2026-05-23T13:30:23.577Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
+- raw_source_refs: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
+
 ## Tags
 
 ### agent-core
@@ -131,6 +141,7 @@
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+- [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
 ### carrier
 
@@ -184,6 +195,7 @@
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
+- [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
 ### fleet-carriers
 
@@ -209,6 +221,11 @@
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+- [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
+
+### fleet-mcp-server
+
+- [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
 ### fleet-wiki
 
@@ -227,6 +244,10 @@
 ### keybind
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+
+### mcp
+
+- [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
 ### mermaid
 
@@ -269,6 +290,7 @@
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
+- [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
 ### singleton-elimination
 

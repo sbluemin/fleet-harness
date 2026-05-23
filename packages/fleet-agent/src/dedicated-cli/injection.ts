@@ -26,14 +26,14 @@ export async function injectDedicatedCliProfile(
 
   const injectTone = options.enableMetaphor ?? false;
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
+  const tokens = options.dedicatedMcpSession.issueSessionToken({
+    cwd: profile.cwd,
+    label: `dedicated:${profile.id}`,
+  });
   const systemPromptFile = writeSystemPromptFile(profile.id, options.buildSystemPrompt(injectTone));
   const context: DedicatedCliInjectionContext = {
-    bearerToken: options.dedicatedMcpSession.issueSessionToken({
-      cwd: profile.cwd,
-      label: `dedicated:${profile.id}`,
-    }),
     cliId: profile.id,
-    endpointUrl: endpoint.url,
+    mcpServers: buildDedicatedCliMcpServerConfigs(endpoint.servers, tokens),
     replaceSystemPrompt: options.replaceSystemPrompt ?? false,
     systemPromptFile,
   };
@@ -43,6 +43,23 @@ export async function injectDedicatedCliProfile(
     args: [...profile.args, ...injectedArgs],
     env: { ...profile.env },
   };
+}
+
+function buildDedicatedCliMcpServerConfigs(
+  endpoints: readonly { readonly name: string; readonly url: string }[],
+  tokens: readonly { readonly name: string; readonly token: string }[],
+): DedicatedCliInjectionContext["mcpServers"] {
+  return endpoints.map((endpoint) => {
+    const token = tokens.find((entry) => entry.name === endpoint.name)?.token;
+    if (!token) {
+      throw new Error(`Dedicated MCP token missing for ${endpoint.name}`);
+    }
+    return {
+      name: endpoint.name,
+      endpointUrl: endpoint.url,
+      bearerToken: token,
+    };
+  });
 }
 
 function writeSystemPromptFile(cliId: string, systemPrompt: string): string {

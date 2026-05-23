@@ -2,10 +2,15 @@ import type { McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
 
 import type { AgentToolSpec } from "./types.js";
 
+export interface ExecutorMcpRouterRuntime {
+  readonly name: string;
+  readonly runtime: McpRouterRuntime;
+}
+
 export interface ExecutorPort {
   getCarrierExternalMcpServerIds(carrierId?: string): readonly string[];
-  getExecutorMcpTools(carrierId?: string): readonly AgentToolSpec[];
-  getExecutorMcpRouterRuntime(): McpRouterRuntime;
+  getExecutorMcpTools(serverName: string, carrierId?: string): readonly AgentToolSpec[];
+  getExecutorMcpRouterRuntimes(): readonly ExecutorMcpRouterRuntime[];
 }
 
 export interface ExecutorPortRuntime extends ExecutorPort {
@@ -32,11 +37,11 @@ export function createExecutorPortRuntime(): ExecutorPortRuntime {
     getCarrierExternalMcpServerIds(carrierId) {
       return getPort().getCarrierExternalMcpServerIds(carrierId);
     },
-    getExecutorMcpTools(carrierId) {
-      return getPort().getExecutorMcpTools(carrierId);
+    getExecutorMcpTools(serverName, carrierId) {
+      return getPort().getExecutorMcpTools(serverName, carrierId);
     },
-    getExecutorMcpRouterRuntime() {
-      return getPort().getExecutorMcpRouterRuntime();
+    getExecutorMcpRouterRuntimes() {
+      return getPort().getExecutorMcpRouterRuntimes();
     },
   };
 }

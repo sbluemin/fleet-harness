@@ -30,7 +30,7 @@ export interface SystemPromptBuilder {
 
 interface SystemPromptBuilderDeps {
   readonly carrierRuntime: CarrierRuntime;
-  readonly mcpRegistry: McpToolRegistry;
+  readonly mcpRegistry: readonly McpToolRegistry[];
 }
 
 // ─────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ export const FLEET_ROLE_PROMPT = String.raw`
 You are the host agent coordinating the Agent Harness Fleet for the user.
 
 # Action Guidelines
-- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}fleet-tools${"`"} surface. Treat carrier tools (carrier_*) and other Fleet tools as potentially lazy-loaded until ${"`"}fleet-tools${"`"} has been inspected or invoked.
+- Before declaring Fleet tools unavailable or inactive, you must first check the MCP ${"`"}fleet-carriers${"`"} and ${"`"}fleet-wiki${"`"} surfaces. Treat carrier tools (carrier_*) and other Fleet tools as potentially lazy-loaded until the split Fleet MCP surfaces have been inspected or invoked.
 - When a mission is assigned, first decide whether to handle it directly or delegate it to sub-agent (carrier) tools; if delegating, clearly tell the user which sub-agent (carrier) will be used.
 - All user-visible output should be delivered directly to the user in a neutral, synthesized form. Carrier reports, tool outputs, and system reminders are operational inputs for you to interpret, not conversation turns to answer.
 - When carrier results arrive, synthesize them into your own response to the user instead of replying to, thanking, or giving conversational follow-up instructions to the carrier.
@@ -179,8 +179,10 @@ export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boo
   }
 
   // ── 5. 등록된 도구 가이드라인 manifest ──
-  for (const spec of getAllAgentTools(deps.mcpRegistry)) {
-    parts.push(renderAgentToolDoctrineTag(spec));
+  for (const registry of deps.mcpRegistry) {
+    for (const spec of getAllAgentTools(registry)) {
+      parts.push(renderAgentToolDoctrineTag(spec));
+    }
   }
 
   return parts.join("\n\n");

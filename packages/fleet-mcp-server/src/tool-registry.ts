@@ -30,17 +30,6 @@ export interface McpToolRegistry {
 const TOOL_ID_PATTERN = /^[a-z0-9_]+$/;
 const GLOBAL_EXECUTOR_SCOPE = "*";
 
-export const EXECUTOR_MCP_TOOL_IDS = [
-  "carrier_jobs",
-  "wiki_briefing",
-  "wiki_drydock",
-  "wiki_ingest",
-  "wiki_orient",
-  "wiki_query",
-  "wiki_read",
-  "wiki_resolve",
-] as const;
-
 export function createMcpToolRegistry(): McpToolRegistry {
   const doctrineOrder: string[] = [];
   const primaryToolSpecs = new Map<string, AgentToolSpec>();

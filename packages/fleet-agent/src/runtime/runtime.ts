@@ -14,14 +14,19 @@ import {
 import { getWikiToolSpecs } from "@sbluemin/fleet-wiki";
 
 import { createDedicatedMcpSession, type DedicatedMcpSessionPort } from "../admiral/mcp.js";
-import { getExecutorMcpTools, registerAgentToolDefaults } from "../admiral/tools.js";
+import {
+	CARRIER_MCP_SERVER_NAME,
+	getExecutorMcpTools,
+	registerAgentToolDefaults,
+	WIKI_MCP_SERVER_NAME,
+} from "../admiral/tools.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 
 export interface RuntimeServices {
 	readonly carrierRuntime: CarrierRuntime;
 	readonly dedicatedMcpSession: DedicatedMcpSessionPort;
 	readonly infraServices: InfraServices;
-	readonly mcpRegistry: McpToolRegistry;
+	readonly mcpRegistry: readonly McpToolRegistry[];
 }
 
 export interface FleetRuntimeLifecycle {
@@ -35,9 +40,15 @@ interface FleetRuntimeLifecycleDeps {
 }
 
 interface RuntimeMcpServices {
+	readonly name: string;
 	readonly mcpRegistry: McpToolRegistry;
 	readonly mcpServer: McpServer;
 	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
+}
+
+interface RuntimeMcpBundles {
+	readonly carriers: RuntimeMcpServices;
+	readonly wiki: RuntimeMcpServices;
 }
 
 interface StartedRuntime {
@@ -70,7 +81,7 @@ export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}
 async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
 	const dataDir = deps.dataDir ?? path.join(os.homedir(), ".fleet");
 	const infraServices = createInfraServices();
-	const { mcpRegistry, mcpServer, mcpToolSnapshotStore } = createRuntimeMcpServices();
+	const mcpRuntimes = createRuntimeMcpServices();
 	const carrierRuntime = createCarrierRuntime({ config: {} });
 
 	infraServices.executorPortRuntime.register({
@@ -79,15 +90,35 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 				? carrierRuntime.registry.getState().modes.get(carrierId)?.config.carrierMetadata?.allowedBuiltinExternalMcpServers ?? []
 				: [];
 		},
-		getExecutorMcpTools(carrierId) {
-			return getExecutorMcpTools(mcpRegistry, carrierRuntime, carrierId);
+		getExecutorMcpTools(serverName, carrierId) {
+			switch (serverName) {
+				case CARRIER_MCP_SERVER_NAME:
+					return getExecutorMcpTools(mcpRuntimes.carriers.mcpRegistry, carrierRuntime, carrierId);
+				case WIKI_MCP_SERVER_NAME:
+					return getExecutorMcpTools(mcpRuntimes.wiki.mcpRegistry, carrierRuntime, carrierId);
+				default:
+					return [];
+			}
 		},
-		getExecutorMcpRouterRuntime() {
-			return {
-				registry: mcpRegistry,
-				server: mcpServer,
-				snapshotStore: mcpToolSnapshotStore,
-			};
+		getExecutorMcpRouterRuntimes() {
+			return [
+				{
+					name: mcpRuntimes.carriers.name,
+					runtime: {
+						registry: mcpRuntimes.carriers.mcpRegistry,
+						server: mcpRuntimes.carriers.mcpServer,
+						snapshotStore: mcpRuntimes.carriers.mcpToolSnapshotStore,
+					},
+				},
+				{
+					name: mcpRuntimes.wiki.name,
+					runtime: {
+						registry: mcpRuntimes.wiki.mcpRegistry,
+						server: mcpRuntimes.wiki.mcpServer,
+						snapshotStore: mcpRuntimes.wiki.mcpToolSnapshotStore,
+					},
+				},
+			];
 		},
 	});
 	infraServices.sessionRuntime.initRuntime(dataDir);
@@ -96,10 +127,10 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const settings = infraServices.settings.create();
 	infraServices.settingsRuntime.init(settings);
 
-	registerAgentToolDefaults(mcpRegistry, carrierRuntime);
+	registerAgentToolDefaults(mcpRuntimes.carriers.mcpRegistry, carrierRuntime);
 	for (const spec of getWikiToolSpecs()) {
 		if (spec.id === "wiki_patch_queue") {
-			mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
+			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
 		} else if (
 			spec.id === "wiki_drydock"
 			|| spec.id === "wiki_ingest"
@@ -107,18 +138,36 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			|| spec.id === "wiki_compile_source"
 			|| spec.id === "wiki_query"
 		) {
-			mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
+			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
 		} else {
-			mcpRegistry.registerExecutorTool(spec);
+			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec);
 		}
 	}
 	const dedicatedMcpSession = createDedicatedMcpSession({
-		server: mcpServer,
-		registry: mcpRegistry,
-		snapshotStore: mcpToolSnapshotStore,
+		runtimes: [
+			{
+				name: mcpRuntimes.carriers.name,
+				runtime: {
+					registry: mcpRuntimes.carriers.mcpRegistry,
+					server: mcpRuntimes.carriers.mcpServer,
+					snapshotStore: mcpRuntimes.carriers.mcpToolSnapshotStore,
+				},
+			},
+			{
+				name: mcpRuntimes.wiki.name,
+				runtime: {
+					registry: mcpRuntimes.wiki.mcpRegistry,
+					server: mcpRuntimes.wiki.mcpServer,
+					snapshotStore: mcpRuntimes.wiki.mcpToolSnapshotStore,
+				},
+			},
+		],
 	});
-	void mcpServer.start().catch((error: unknown) => {
-		console.error("[fleet-agent] Failed to start MCP server", error);
+	void Promise.all([
+		mcpRuntimes.carriers.mcpServer.start(),
+		mcpRuntimes.wiki.mcpServer.start(),
+	]).catch((error: unknown) => {
+		console.error("[fleet-agent] Failed to start MCP servers", error);
 	});
 
 	reconcileRuntimeState(carrierRuntime);
@@ -128,24 +177,38 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			carrierRuntime,
 			dedicatedMcpSession,
 			infraServices,
-			mcpRegistry,
+			mcpRegistry: [
+				mcpRuntimes.carriers.mcpRegistry,
+				mcpRuntimes.wiki.mcpRegistry,
+			],
 		},
 		async shutdown() {
 			dedicatedMcpSession.cleanup();
 			const disconnectAgentSessions = infraServices.agent.disconnectAll;
 			await disconnectAgentSessions();
-			await mcpServer.stop();
+			await Promise.all([
+				mcpRuntimes.carriers.mcpServer.stop(),
+				mcpRuntimes.wiki.mcpServer.stop(),
+			]);
 			infraServices.settingsRuntime.reset(settings);
 		},
 	};
 }
 
-function createRuntimeMcpServices(): RuntimeMcpServices {
+function createRuntimeMcpServices(): RuntimeMcpBundles {
+	return {
+		carriers: createRuntimeMcpBundle(CARRIER_MCP_SERVER_NAME),
+		wiki: createRuntimeMcpBundle(WIKI_MCP_SERVER_NAME),
+	};
+}
+
+function createRuntimeMcpBundle(name: string): RuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
 	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
 	const mcpServer = createMcpServer({
 		registry: mcpRegistry,
+		serverInfo: { name },
 		toolSnapshotStore: mcpToolSnapshotStore,
 	});
-	return { mcpRegistry, mcpServer, mcpToolSnapshotStore };
+	return { name, mcpRegistry, mcpServer, mcpToolSnapshotStore };
 }

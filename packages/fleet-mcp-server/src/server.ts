@@ -56,7 +56,13 @@ export interface McpServer {
 
 export interface CreateMcpServerDeps {
   registry: McpToolRegistry;
+  serverInfo?: McpServerInfo;
   toolSnapshotStore?: McpToolSnapshotStore;
+}
+
+interface McpServerInfo {
+  readonly name?: string;
+  readonly version?: string;
 }
 
 type JsonRpcPayload = JsonRpcResponse | JsonRpcResponse[] | null;
@@ -77,6 +83,10 @@ const MCP_SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 export function createMcpServer(deps: CreateMcpServerDeps): McpServer {
   void deps.registry;
   const snapshotStore = deps.toolSnapshotStore ?? createMcpToolSnapshotStore();
+  const serverInfo = {
+    name: deps.serverInfo?.name ?? "fleet-tools",
+    version: deps.serverInfo?.version ?? "1.0.0",
+  };
   let activeServer: http.Server | null = null;
   let activeServerUrl: string | null = null;
   let activeOpaquePath: string | null = null;
@@ -177,7 +187,7 @@ export function createMcpServer(deps: CreateMcpServerDeps): McpServer {
         return makeResult(id, {
           protocolVersion: "2025-03-26",
           capabilities: { tools: {} },
-          serverInfo: { name: "fleet-tools", version: "1.0.0" },
+          serverInfo,
         });
 
       case "notifications/initialized":
