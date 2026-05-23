@@ -1119,7 +1119,15 @@ kbd {
   box-shadow: var(--shadow-soft), 0 0 0 4px var(--brass-glow);
 }
 
-:is(.diagram-block, .diagram-lightbox__viewport) svg {
+.diagram-block svg {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.diagram-lightbox__viewport svg {
   display: block;
   max-width: none;
   width: max-content;
