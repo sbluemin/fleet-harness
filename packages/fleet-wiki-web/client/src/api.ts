@@ -55,6 +55,11 @@ export interface WikiEntryResponse {
   body: string;
 }
 
+export interface BriefingMatchSnippet {
+  field: string;
+  snippet: string;
+}
+
 export interface BriefingHit {
   id: string;
   title: string;
@@ -70,6 +75,7 @@ export interface BriefingHit {
   aliases?: string[];
   type?: string;
   matchedFields?: string[];
+  matchedSnippets?: BriefingMatchSnippet[];
   whyThisMatched?: string;
   enhanced_score?: number;
   graph_boost?: number;

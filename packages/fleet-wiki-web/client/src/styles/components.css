@@ -1743,6 +1743,11 @@ kbd {
   -webkit-backdrop-filter: blur(24px) saturate(150%);
 }
 
+.command-card:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
+  outline-offset: 4px;
+}
+
 .command-search {
   display: flex;
   align-items: center;
@@ -1773,6 +1778,11 @@ kbd {
   color: var(--ink-fog);
 }
 
+#command-input:focus-visible {
+  outline: 0;
+  text-shadow: 0 0 18px var(--brass-glow);
+}
+
 .command-results {
   display: grid;
   gap: 2px;
@@ -1798,6 +1808,12 @@ kbd {
   font-family: inherit;
   position: relative;
   transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.command-result:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass-bright) 30%, transparent);
 }
 
 .command-result-text {
@@ -1860,6 +1876,13 @@ kbd {
   min-width: 0;
 }
 
+.command-highlight {
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 24%, transparent);
+  color: var(--brass-bright);
+  padding: 0 0.16em;
+}
+
 .command-result small {
   display: block;
   color: var(--ink-fog);
@@ -1870,6 +1893,35 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.command-result-excerpt {
+  max-width: 100%;
+  letter-spacing: 0.01em;
+  opacity: 0.84;
+  text-transform: none;
+}
+
+.command-section-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.command-section-heading::after {
+  content: "";
+  flex: 1;
+  min-width: 24px;
+  height: 1px;
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
 }
 
 .command-tags {
