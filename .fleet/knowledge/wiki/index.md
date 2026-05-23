@@ -23,27 +23,20 @@
 - title: `Guide - 002 Carrier Status 사용법`
 - path: `wiki/guide-002-carrier-status.md`
 - tags: `guide, carrier-status, keybind, onboarding, current`
-- updated: `2026-05-07T15:45:04.197Z`
+- updated: `2026-05-23T14:47:14.664Z`
 - summary: `# Carrier Status 사용법`
-- raw_source_ref: `raw/2026-05-07-guide-002-carrier-status-source-cb364687.md`
+- raw_source_ref: `raw/2026-05-23-guide-002-carrier-status-source-1e912bd9.md`
+- raw_source_refs: `raw/2026-05-07-guide-002-carrier-status-source-cb364687.md, raw/2026-05-23-guide-002-carrier-status-source-1e912bd9.md`
 
 ### guide-003-fleet-wiki
 
 - title: `Guide - 003 fleet-wiki 사용법`
 - path: `wiki/guide-003-fleet-wiki.md`
 - tags: `guide, fleet-wiki, fleet-wiki-web, workflow, onboarding, current`
-- updated: `2026-05-07T16:06:18.121Z`
+- updated: `2026-05-23T14:47:42.640Z`
 - summary: `# fleet-wiki 사용법`
-- raw_source_ref: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md`
-
-### mermaid-test-suite
-
-- title: `Mermaid Rendering Test Suite`
-- path: `wiki/mermaid-test-suite.md`
-- tags: `test, mermaid`
-- updated: `2026-05-17T12:03:19.194Z`
-- summary: `# Mermaid Rendering Test Suite`
-- raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-bba4e643.md`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
+- raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
 
 ### prd-agent-core-model-bypass
 
@@ -274,10 +267,6 @@
 
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
-### mermaid
-
-- [[wiki:mermaid-test-suite]] — Mermaid Rendering Test Suite
-
 ### model-forwarding
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
@@ -321,10 +310,6 @@
 ### singleton-elimination
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
-
-### test
-
-- [[wiki:mermaid-test-suite]] — Mermaid Rendering Test Suite
 
 ### tool-scoping
 

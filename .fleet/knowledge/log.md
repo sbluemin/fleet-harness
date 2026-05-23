@@ -2085,3 +2085,141 @@
 - result: `accepted`
 - target: `wiki/prd-tui-keyboard-protocol-architecture.md`
 
+## 2026-05-23T14:46:55.454Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - 001 fleet-harness 소개`
+
+## 2026-05-23T14:46:55.458Z — conflict detected
+
+- conflict_id: `20260523t144655455z-guide-001-fleet-harness-overview-raw_source_contradiction-91fa8390`
+- patch_id: `null`
+- raw_source_ref: `raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md`
+- reason: `raw_source_contradiction`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- wiki_id: `guide-001-fleet-harness-overview`
+
+## 2026-05-23T14:47:14.669Z — raw source added
+
+- id: `guide-002-carrier-status-source`
+- raw_source_ref: `raw/2026-05-23-guide-002-carrier-status-source-1e912bd9.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - 002 Carrier Status 사용법`
+
+## 2026-05-23T14:47:14.685Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T14-47-14-664Z-b9e29758`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-002-carrier-status-source-1e912bd9.md`
+- target: `wiki/guide-002-carrier-status.md`
+- warning_count: `0`
+
+## 2026-05-23T14:47:42.645Z — raw source added
+
+- id: `guide-003-fleet-wiki-source`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Guide - 003 fleet-wiki 사용법`
+
+## 2026-05-23T14:47:42.648Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T14-47-42-640Z-57197365`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
+- target: `wiki/guide-003-fleet-wiki.md`
+- warning_count: `0`
+
+## 2026-05-23T14:48:05.453Z — index rebuilt
+
+- entry_count: `13`
+
+## 2026-05-23T14:48:05.454Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T14-47-14-664Z-b9e29758`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-002-carrier-status-source-1e912bd9.md`
+- result: `accepted`
+- target: `wiki/guide-002-carrier-status.md`
+
+## 2026-05-23T14:48:05.465Z — index rebuilt
+
+- entry_count: `13`
+
+## 2026-05-23T14:48:05.485Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T14-47-42-640Z-57197365`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
+- result: `accepted`
+- target: `wiki/guide-003-fleet-wiki.md`
+
+## 2026-05-23T14:48:27.494Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-23-guide-001-fleet-harness-overview-source-73ab9602.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - 001 fleet-harness 소개`
+
+## 2026-05-23T14:48:27.497Z — conflict detected
+
+- conflict_id: `20260523t144827495z-guide-001-fleet-harness-overview-raw_source_contradiction-c5d6a967`
+- patch_id: `null`
+- raw_source_ref: `raw/2026-05-23-guide-001-fleet-harness-overview-source-73ab9602.md`
+- reason: `raw_source_contradiction`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- wiki_id: `guide-001-fleet-harness-overview`
+
+## 2026-05-23T14:48:32.676Z — drydock run
+
+- error_count: `4`
+- info_count: `4`
+- issue_count: `10`
+- ok: `false`
+- warning_count: `2`
+
+## 2026-05-23T14:49:10.902Z — drydock run
+
+- error_count: `2`
+- info_count: `4`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:49:47.449Z — drydock run
+
+- error_count: `2`
+- info_count: `3`
+- issue_count: `5`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:50:04.978Z — drydock run
+
+- error_count: `2`
+- info_count: `3`
+- issue_count: `5`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:50:31.949Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `3`
+- ok: `true`
+- warning_count: `0`
+

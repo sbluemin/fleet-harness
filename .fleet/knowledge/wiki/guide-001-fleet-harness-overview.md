@@ -3,14 +3,14 @@ id: "guide-001-fleet-harness-overview"
 title: "Guide - 001 fleet-harness 소개"
 tags: ["guide", "fleet-harness", "overview", "onboarding", "current"]
 created: "2026-05-07T15:44:30.628Z"
-updated: "2026-05-19T08:24:10.563Z"
-version: 6
-rawSourceRef: "raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md"
-rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md\"},{\"ref\":\"raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"f2083507\"}]"
+updated: "2026-05-23T14:46:55.449Z"
+version: 7
+rawSourceRef: "raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md\"},{\"ref\":\"raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"f2083507\"},{\"ref\":\"raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"c0ca2e83\"}]"
 ---
 # fleet-harness 소개
 
-fleet-harness는 [pi-coding-agent](https://github.com/badlogic/pi-mono) 기반의 멀티-LLM 오케스트레이션 키트다. Claude Code, Codex CLI, Gemini CLI 등 강력한 CLI AI 도구 8개를 **단일 인터페이스**에서 지휘한다.
+fleet-harness는 멀티-LLM 오케스트레이션 키트다. Claude Code, Codex CLI 등 강력한 CLI AI 도구 8개를 **단일 인터페이스**에서 지휘한다.
 
 ---
 
@@ -30,28 +30,26 @@ fleet-harness는 [pi-coding-agent](https://github.com/badlogic/pi-mono) 기반�
 
 ## 제공 CLI
 
-fleet-harness는 용도에 따라 2개의 CLI 진입점과 개발용 스크립트를 제공한다. fleet은 내부적으로 pi CLI를 감싸는 얇은 래퍼이며, 환경변수 조합으로 동작 모드가 결정된다.
+fleet-harness는 용도에 따라 2개의 CLI 진입점과 개발용 스크립트를 제공한다.
 
 ### 주 CLI 및 스크립트
 
 | 항목 | 설명 |
 |---|---|
 | fleet | **기본 운영 진입점.** 빌드된 프로덕션 익스텐션(dist/index.js)을 로드한다. 일상적인 작업에 사용한다. |
-| pnpm dev | **개발 모드.** (스크립트) 소스(src/index.ts)를 직접 로드하며 FLEET_HARNESS_DEV=1 + PI_EXPERIMENTAL=1을 설정한다. RISEN 개발 컨텍스트와 Admiral 7단계 프로토콜이 활성화된다. 익스텐션 개발 시 사용한다. |
-| fleet-exp | **실험적 모드.** 프로덕션 dist를 로드하되 PI_EXPERIMENTAL=1만 설정한다. 개발 슬레이트 없이 실험적 PI 기능을 사용할 때 쓴다. |
+| pnpm dev | **개발 모드.** (스크립트) 소스(src/index.ts)를 직접 로드하며 FLEET_HARNESS_DEV=1을 설정한다. RISEN 개발 컨텍스트와 Admiral 7단계 프로토콜이 활성화된다. 익스텐션 개발 시 사용한다. |
 
 ### 웹 UI
 
 | CLI | 설명 |
 |---|---|
-| fleet-wiki | **Fleet Wiki 웹 UI 서버.** 로컬 HTTP 서버를 detached 프로세스로 기동하고 브라우저를 자동으로 연다. 127.0.0.1:3737 기본. --stop으로 종료. 자세한 사용법은 [[wiki:fleet-wiki-cli-onboarding]] 참조. |
+| fleet-wiki | **Fleet Wiki 웹 UI 서버.** 로컬 HTTP 서버를 detached 프로세스로 기동하고 브라우저를 자동으로 연다. 127.0.0.1:3737 기본. --stop으로 종료. 자세한 사용법은 [[wiki:guide-003-fleet-wiki]] 참조. |
 
 ### 모드별 환경변수 요약
 
 | 환경변수 | 값 | 효과 |
 |---|---|---|
 | FLEET_HARNESS_DEV | 1 | Admiral RISEN 개발 컨텍스트 활성화 (7단계 Fleet Action Protocol 프롬프트) |
-| PI_EXPERIMENTAL | 1 | PI 실험적 기능 활성화 |
 
 ---
 
@@ -62,7 +60,7 @@ fleet-harness는 용도에 따라 2개의 CLI 진입점과 개발용 스크립�
   └─ 사용자. 전략적 목표를 제시한다.
 
 제독 (Admiral)
-  └─ PI 호스트 에이전트. 작전을 계획하고 캐리어를 파견한다.
+  └─ 호스트 에이전트. 작전을 계획하고 캐리어를 파견한다.
 
 함장 (Captain)
   └─ 각 캐리어의 페르소나. 전문 역할로 실행을 담당한다.
@@ -80,8 +78,8 @@ fleet-harness는 용도에 따라 2개의 CLI 진입점과 개발용 스크립�
 | **Ohio** | 다단계 계획 실행 (plan_file 소비) | Codex |
 | **Sentinel** | QA · 보안 감사 · 버그 사냥 | Codex |
 | **Vanguard** | 코드베이스 정찰 · 내부 탐색 | Codex |
-| **Tempest** | 외부 GitHub 저장소 정보 수집 | Gemini |
-| **Chronicle** | 문서화 · 릴리즈 노트 · 변경 영향 요약 | Gemini |
+| **Tempest** | 외부 GitHub 저장소 정보 수집 | Claude |
+| **Chronicle** | 문서화 · 릴리즈 노트 · 변경 영향 요약 | Claude |
 
 ---
 
@@ -131,4 +129,3 @@ Alt+1로 Fleet Action Protocol을 활성화한다. Editor 상단 테두리에 �
 
 - [[wiki:guide-002-carrier-status]] — Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — fleet-wiki 사용법
-- [[wiki:fleet-wiki-cli-onboarding]] — fleet-wiki 웹 서버 CLI 상세

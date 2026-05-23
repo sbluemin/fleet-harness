@@ -60,6 +60,4 @@ fleet-agent가 dedicated-cli를 spawn할 때, 사용자는 첫 spawn 시점에 �
 
 ## Related
 
-- [[wiki:prd-coding-agent-scoped-models-removal]] — 모델 관리 표면을 단일화한 인접 결정. "모델 카탈로그를 한 채널에서만 다룬다"는 같은 철학.
-- [[wiki:prd-harness-btw-overlay]] — model-selector 영역의 인접 사례.
 - [[wiki:guide-001-fleet-harness-overview]] — fleet-harness 전체 구조 입구.
