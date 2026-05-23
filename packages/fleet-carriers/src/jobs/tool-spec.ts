@@ -1,4 +1,4 @@
-import type { AgentToolSpec } from "../agent/types.js";
+import type { AgentToolSpec } from "@sbluemin/fleet-mcp-server";
 import { dispatchCarrierJobsAction } from "./dispatch.js";
 import {
   CARRIER_JOBS_DOCTRINE,

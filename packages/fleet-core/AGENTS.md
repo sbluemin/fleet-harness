@@ -1,6 +1,6 @@
 # fleet-core Doctrine
 
-`packages/fleet-core` is the host-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, fleet-core tool builders/facades, runtime composition, SSOT streaming event contracts, and adapter-facing public APIs.
+`packages/fleet-core` is the host-agnostic Fleet compatibility core. It owns prompt assets, fleet-core tool facades, runtime composition, protocol/admiralty domains, frozen public API compatibility, and adapter-facing lifecycle APIs. Carrier runtime implementation now lives in `packages/fleet-carriers`.
 
 ## Core Philosophy
 
@@ -13,7 +13,7 @@
 ## Current Architecture Status
 
 - The **ownership model is already final**: Fleet domain logic belongs in `fleet-core`; host runtime integration belongs in `fleet-agent`.
-- The current implementation lives under `packages/fleet-core/src/`.
+- Carrier runtime, jobs, store, stream events, and carrier runtime constants are implemented in `packages/fleet-carriers/src/` and consumed through fleet-core compatibility facades.
 - `packages/fleet-agent` is the active host capability-bucket home.
 
 ## The `admiral.agent` Domain
@@ -70,13 +70,9 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 ## Owns
 
 - Fleet domain modules under `admiral/`:
-  - `_shared/` — SSOT carrier job stream events (`carrier-job-events.ts`) and CLI tool type aliases (`cli-tool-types.ts`).
   - `agent/` — retained bootstrap/tool facade and root-barrel compatibility re-exports for the infra executor surface.
-- `carrier/` — carrier framework, roster rendering, `carrier_dispatch` tool spec, and single-carrier execution doctrine. `carrier_dispatch` is the sole public carrier delegation surface; when the selected carrier has a valid Task Force configuration, it promotes automatically to Task Force execution.
-- `carrier-jobs/` — detached carrier job lookup/control surface. For `carrier_jobs(action:"result", format:"full")`, Task Force jobs (`jobId.startsWith("taskforce:")`) return `results: Record<cliType, string>` and omit `full_result`; non-Task-Force jobs keep `full_result` exactly.
-- `taskforce/` — internal Task Force execution mode and backend coordination used by `carrier_dispatch` auto-promotion, not a separate public tool surface.
-  - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
+- Carrier runtime symbols (`carrier`, `carrierJobs`, `store`, `taskforce`) are re-exported from `@sbluemin/fleet-carriers` through the `admiral` facade root; implementation ownership is not in fleet-core.
 - `admiralty/` (internalized Grand Fleet domain).
 - Public API contracts and frozen consumer surfaces, including lifecycle-only `public/runtime.ts` boot/shutdown.
 - `bootFleetCore` as the canonical lifecycle boot entry point, exported from the package root; domain operations are consumed through root-barrel facades.
@@ -98,7 +94,8 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 ## Import Boundaries
 
 - Do not import `@sbluemin/fleet-*` engine packages.
-- `@sbluemin/fleet-mcp-server` is the sole allowed Fleet workspace dependency for generic MCP registry/server primitives.
+- `@sbluemin/fleet-carriers` is the allowed carrier runtime dependency for compatibility facades.
+- `@sbluemin/fleet-mcp-server` is the allowed Fleet workspace dependency for generic MCP registry/server primitives.
 - `@sbluemin/fleet-infra` is the allowed Fleet workspace dependency for host-agnostic auth, data-dir, job, log, and settings infrastructure.
 - Public consumers must use the package root barrel or documented public subpaths only.
 - Builtin external MCP catalog is owned by `@sbluemin/fleet-infra/agent` and is not exposed through the `@sbluemin/fleet-core` root barrel.
@@ -116,14 +113,14 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 
 - `api/PUBLIC_API.md` is the frozen public API contract for the productization migration.
 - Provider MCP FIFO, token isolation, pre-queue, and HTTP-hold behavior are invariants.
-- `fleet-agent` must not introduce or preserve `globalThis` usage patterns.
+- `fleet-carriers` and `fleet-agent` must not introduce or preserve `globalThis` usage patterns; shared carrier state uses the `CarrierRegistry` module-level singleton.
 - Background paths must accept plain runtime data and host ports, never host-specific context.
 - Job archive behavior remains read-many within TTL.
 - `carrier_dispatch` is the only public carrier delegation entrypoint; Task Force runs are an internal execution mode selected automatically from carrier configuration.
 - `carrier_jobs` full responses are schema-stable by job kind: Task Force job IDs return backend-keyed `results` without `full_result`, while non-Task-Force job IDs preserve the existing `full_result` contract exactly.
 - **UTF-8 safe job archives**: Job archive serialization guarantees valid UTF-8 output during truncation.
 - **Prefix-based policy enforcement**: Sub-operation byte caps and formatting are consistently applied via `jobId` prefix detection.
-- Fleet Store (`admiral/store/fleet-store.ts`) writes are guarded by compare-then-write.
+- Fleet Store writes are implemented in `@sbluemin/fleet-carriers` and guarded by compare-then-write.
 - **State Consistency via `_generation` Token**: Every state update increments a monotonic `_generation` counter.
 - **Self-Healing State Resolution**: The store implements a healing-aware `loadModels()`.
 - **Pull-Based CLI Type Resolution**: The carrier framework pulls the current override directly from the fleet store snapshot via a resolver.
@@ -144,6 +141,6 @@ CLI provider constants are derived from `@sbluemin/fleet-unified-agent`'s `CLI_B
 - `CLI_DISPLAY_NAMES` merges both maps for backward compatibility.
 - `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `CARRIER_RGBS` iterate `CLI_BACKENDS`.
 - `VALID_CLI_TYPES` and `CLI_TYPE_DISPLAY_ORDER` are computed from `Object.keys(CLI_BACKENDS)`.
-- `TASKFORCE_CLI_TYPES` (in `admiral/taskforce/types.ts`) is `Object.keys(CLI_BACKENDS) as CliType[]`.
+- `TASKFORCE_CLI_TYPES` (re-exported from `@sbluemin/fleet-carriers`) is `Object.keys(CLI_BACKENDS) as CliType[]`.
 - Task Force configuration hint is built from `TASKFORCE_CLI_TYPES × CLI_DISPLAY_NAMES`.
 - Model selection types carry only `model` / `effort` / `direct`. There is no `budgetTokens` field.

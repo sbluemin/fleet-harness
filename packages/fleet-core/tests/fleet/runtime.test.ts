@@ -37,7 +37,7 @@ import {
   savePerCliSettings,
   loadCliTypeOverrides,
   updateCliTypeOverride,
-} from "../../src/admiral/store/index.js";
+} from "@sbluemin/fleet-carriers";
 import { executeWithPool, disconnectAll } from "../../src/admiral/agent/index.js";
 
 vi.mock("@sbluemin/fleet-unified-agent", async (importOriginal) => {

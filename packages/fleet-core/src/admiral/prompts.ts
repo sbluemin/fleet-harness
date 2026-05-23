@@ -8,11 +8,11 @@
  * 프로토콜 카탈로그 전체가 포함된다.
  */
 
+import { buildCarrierRoster, getRegisteredOrder } from "@sbluemin/fleet-carriers";
+
 import { getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
-import { getRegisteredOrder } from "./carrier/framework.js";
-import { buildCarrierRoster } from "./carrier/prompts.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입

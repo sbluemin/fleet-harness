@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `11`
+- total_entries: `14`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -64,6 +64,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-90383528.md`
 
+### prd-carrier-runtime-migration
+
+- title: `PRD: 캐리어 런타임 도메인의 fleet-carriers 이관`
+- path: `wiki/prd-carrier-runtime-migration.md`
+- tags: `carrier, fleet-carriers, fleet-core, fleet-infra, carrier-runtime, package-migration, architecture, dependency-injection`
+- updated: `2026-05-23T07:54:10.365Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
+- raw_source_refs: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md, raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
+
 ### prd-coding-agent-empty-session-guard
 
 - title: `PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드`
@@ -91,6 +101,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
 
+### prd-core-dismantling-di-architecture
+
+- title: `PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립`
+- path: `wiki/prd-core-dismantling-di-architecture.md`
+- tags: `fleet-core, fleet-admiral, fleet-admiralty, fleet-carriers, fleet-infra, fleet-agent, dependency-injection, architecture, package-dissolution`
+- updated: `2026-05-23T07:52:08.995Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-core-dismantling-di-architecture-source-e3b0c442.md`
+- raw_source_refs: `raw/2026-05-23-prd-core-dismantling-di-architecture-source-e3b0c442.md`
+
 ### prd-core-infra-extraction
 
 - title: `PRD: fleet-core 인프라 계층 독립 패키지 분리`
@@ -110,15 +130,32 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-3dbd5b5c.md`
 
+### prd-infra-agent-executor-migration
+
+- title: `PRD: Agent Executor 엔진의 인프라 계층 이전`
+- path: `wiki/prd-infra-agent-executor-migration.md`
+- tags: `fleet-core, fleet-infra, agent-executor, package-migration, architecture, dependency-injection`
+- updated: `2026-05-23T05:40:45.905Z`
+- summary: `---`
+- raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
+- raw_source_refs: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
+
 ## Tags
 
 ### agent-core
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
+### agent-executor
+
+- [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+
 ### architecture
 
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+- [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 
 ### btw
 
@@ -127,6 +164,11 @@
 ### carrier
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+
+### carrier-runtime
+
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 
 ### carrier-status
 
@@ -152,6 +194,12 @@
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
+### dependency-injection
+
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+- [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+
 ### durable-commit
 
 - [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
@@ -160,19 +208,33 @@
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
+### fleet-admiral
+
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+
+### fleet-admiralty
+
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+
 ### fleet-agent
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### fleet-carriers
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 
 ### fleet-core
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+- [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 
 ### fleet-harness
 
@@ -180,7 +242,10 @@
 
 ### fleet-infra
 
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+- [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 
 ### fleet-wiki
 
@@ -238,9 +303,18 @@
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 
+### package-dissolution
+
+- [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+
 ### package-extraction
 
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+
+### package-migration
+
+- [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 
 ### persistence
 

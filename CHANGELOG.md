@@ -13,6 +13,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - [core] carrier_jobs full responses for auto-promoted Task Force jobs return per-backend results keyed by CLI type instead of a single full_result string.
+- [core][carriers] Completed migration of carrier runtime, dispatch, jobs, store, and Task Force implementation to `@sbluemin/fleet-carriers` with preserved fleet-core compatibility facades.
 
 ### Fixed
 - [agent-core] Anchored CJK IME preedit to the dedicated CLI input cursor and added `--disable-cursor-sync` for terminals that need to opt out.

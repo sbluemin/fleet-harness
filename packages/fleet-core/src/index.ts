@@ -25,19 +25,19 @@ export type {
   CarrierCategory,
   CarrierConfig,
   CarrierMetadata,
-} from "./admiral/carrier/types.js";
+} from "@sbluemin/fleet-carriers";
 export type {
   BackendProgress,
   TaskForceResult,
   TaskForceState,
   TaskForceCliType,
-} from "./admiral/taskforce/types.js";
+} from "@sbluemin/fleet-carriers";
 export {
   TASKFORCE_CLI_TYPES,
-} from "./admiral/taskforce/types.js";
+} from "@sbluemin/fleet-carriers";
 export type {
   CarrierJobsParams,
-} from "./admiral/carrier-jobs/types.js";
+} from "@sbluemin/fleet-carriers";
 export type {
   CarrierJobKind,
   CarrierJobStreamEvent,
@@ -45,15 +45,15 @@ export type {
   TrackMeta,
   TrackKind,
   TrackStatus,
-} from "./admiral/_shared/carrier-job-events.js";
+} from "@sbluemin/fleet-carriers";
 export type {
   RequestBlock,
-} from "./admiral/carrier/types.js";
+} from "@sbluemin/fleet-carriers";
 export type {
   FleetStoreSnapshot,
   FleetStoreWriteFingerprint,
-} from "./admiral/store/fleet-store.js";
-export type * from "./admiral/carrier/overlay-types.js";
+} from "@sbluemin/fleet-carriers";
+export type * from "@sbluemin/fleet-carriers";
 export type {
   ParsedModelId,
   ProviderInfo,

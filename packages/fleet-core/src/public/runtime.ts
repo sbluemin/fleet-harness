@@ -1,12 +1,15 @@
 import { startMcpServer, stopMcpServer } from "@sbluemin/fleet-mcp-server";
 import { infra, registerExecutorPort } from "@sbluemin/fleet-infra";
 import {
+  getRegisteredCarrierConfig,
+  initStore,
+  registerDefaultCarriers,
+} from "@sbluemin/fleet-carriers";
+import {
   initRuntime as initAgentSessionRuntime,
   disconnectAll,
 } from "@sbluemin/fleet-infra/agent";
 import { getExecutorMcpTools as getFleetCoreExecutorMcpTools } from "../admiral/agent/tools.js";
-import { getRegisteredCarrierConfig } from "../admiral/carrier/framework.js";
-import { initStore } from "../admiral/store/fleet-store.js";
 import { registerFleetCoreDefaultAgentTools } from "../admiral/agent/bootstrap.js";
 import { cleanupDedicatedMcpSessionsForRuntimeShutdown } from "../admiral/mcp.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
@@ -42,6 +45,7 @@ export function bootFleetCore(
   });
   initAgentSessionRuntime(options.dataDir);
   initStore(options.dataDir);
+  registerDefaultCarriers();
   const settings = infra.settings.create();
   infra.settings.initSettingsService(settings);
 

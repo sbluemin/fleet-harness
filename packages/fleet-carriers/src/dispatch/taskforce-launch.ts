@@ -6,15 +6,15 @@
 
 import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
-import type { AgentToolCtx, AgentToolSpec } from "../agent/types.js";
+import type { AgentToolCtx, AgentToolSpec } from "@sbluemin/fleet-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "@sbluemin/fleet-infra/job";
 import type { LogOptions } from "@sbluemin/fleet-infra/log";
 import type { ExecResult } from "@sbluemin/fleet-infra/agent";
-import type { ModelEffort } from "../carrier/overlay-types.js";
+import type { ModelEffort } from "./overlay-types.js";
 
 import {
   CLI_DISPLAY_NAMES,
-} from "../../constants.js";
+} from "../constants.js";
 import {
   appendBlock,
   buildCarrierJobId,
@@ -34,13 +34,13 @@ import {
   type CarrierJobStatus,
   type TrackMeta,
   type TrackStatus,
-} from "../_shared/carrier-job-events.js";
+} from "../events/stream-events.js";
 import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   resolveCarrierDisplayName,
-} from "../carrier/framework.js";
-import { buildCarrierSystemPrompt } from "../carrier/prompts.js";
+} from "./framework.js";
+import { buildCarrierSystemPrompt } from "./prompts.js";
 import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
@@ -51,7 +51,7 @@ import {
   buildTaskForceRequestKey,
   computeTaskForceFinalStatus,
   validateTaskForceRequestBlocks,
-} from "./taskforce-execute.js";
+} from "./taskforce-helpers.js";
 import {
   type TaskForceCliType,
   type TaskForceResult,

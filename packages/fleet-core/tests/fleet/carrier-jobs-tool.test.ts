@@ -14,8 +14,7 @@ import { toMessageArchiveBlock } from "@sbluemin/fleet-infra/job";
 import type { CarrierJobRecord, CarrierJobSummary } from "@sbluemin/fleet-infra/job";
 import { CARRIER_JOBS_FULL_RESULT_BYTE_CAP } from "@sbluemin/fleet-infra/job";
 import { putJobSummary, resetJobSummaryCacheForTest } from "@sbluemin/fleet-infra/job";
-import { dispatchCarrierJobsAction } from "../../src/admiral/carrier-jobs/index.js";
-import { buildCarrierJobsSchema, CARRIER_JOBS_DOCTRINE } from "../../src/admiral/carrier-jobs/prompts.js";
+import { buildCarrierJobsSchema, CARRIER_JOBS_DOCTRINE, dispatchCarrierJobsAction } from "@sbluemin/fleet-carriers";
 
 beforeEach(() => {
   resetJobArchivesForTest();

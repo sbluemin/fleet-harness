@@ -1,13 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-import { StatusOverlayController } from "../../src/admiral/carrier/status-overlay-controller.js";
+import { StatusOverlayController } from "@sbluemin/fleet-carriers";
 import type {
   CarrierCliType,
   CarrierStatusEntry,
   CliModelInfo,
   ModelSelection,
-} from "../../src/admiral/carrier/overlay-types.js";
-import type { CarrierConfig } from "../../src/admiral/carrier/types.js";
+  CarrierConfig,
+} from "@sbluemin/fleet-carriers";
 
 interface TestState {
   configs: Map<string, CarrierConfig>;

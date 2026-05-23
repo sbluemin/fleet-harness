@@ -1,23 +1,35 @@
-import type { CarrierConfig } from "@sbluemin/fleet-core";
-import { admiral } from "@sbluemin/fleet-core";
-
+import type { CarrierConfig } from "./dispatch/types.js";
+import {
+  defaultRegistry,
+  registerCarrier,
+  reorderRegisteredByCliType,
+  type CarrierRegistry,
+} from "./dispatch/framework.js";
 import { registerDefaultCarrierPersonas } from "./personas/index.js";
 
-registerDefaultCarrierPersonas({
-  register(cli, metadata, options) {
-    const config: CarrierConfig = {
-      id: options.id,
-      cliType: cli,
-      defaultCliType: cli,
-      slot: options.slot,
-      displayName: options.displayName,
-      color: "",
-      carrierMetadata: metadata,
-      defaultModel: options.defaultModel,
-      defaultEffort: options.defaultEffort,
-    };
-    admiral.carrier.registerCarrier(config);
-  },
-});
+export function registerDefaultCarriers(registry: CarrierRegistry = defaultRegistry): void {
+  registerDefaultCarrierPersonas({
+    register(cli, metadata, options) {
+      const config: CarrierConfig = {
+        id: options.id,
+        cliType: cli,
+        defaultCliType: cli,
+        slot: options.slot,
+        displayName: options.displayName,
+        color: "",
+        carrierMetadata: metadata,
+        defaultModel: options.defaultModel,
+        defaultEffort: options.defaultEffort,
+      };
+      if (registry === defaultRegistry) {
+        registerCarrier(config);
+        return;
+      }
+      registry.getState().modes.set(config.id, { config });
+    },
+  });
 
-admiral.carrier.reorderRegisteredByCliType();
+  if (registry === defaultRegistry) {
+    reorderRegisteredByCliType();
+  }
+}

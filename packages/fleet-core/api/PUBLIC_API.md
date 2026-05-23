@@ -12,7 +12,7 @@ interface FleetCoreShutdownHandle {
 ```
 
 `bootFleetCore(options)` preserves boot side effects in this order:
-`setFleetCoreBootMode` -> `migrateLegacyFleetDataDir` -> `initAgentSessionRuntime` -> `initStore`.
+`setFleetCoreBootMode` -> `migrateLegacyFleetDataDir` -> `registerExecutorPort` -> `initAgentSessionRuntime` -> `initStore` -> `registerDefaultCarriers`.
 
 `shutdown()` disconnects all executor pool clients, stops the `@sbluemin/fleet-mcp-server` singleton, and resets settings runtime state.
 
@@ -25,7 +25,7 @@ The lifecycle boot function does not return these facades and does not expose a 
 
 ## Facades
 
-- `admiral` owns agent executor, carrier delegation including Task Force execution mode, carrier job streaming, protocols, store, prompts, and Fleet constants.
+- `admiral` exposes agent executor, carrier delegation including Task Force execution mode, carrier job streaming, protocols, store, prompts, and Fleet constants. Carrier runtime implementation is owned by `@sbluemin/fleet-carriers`; fleet-core preserves the facade shape.
 - `admiralty` owns Grand Fleet IPC, prompts, reporter, status-source, sanitization, tool specs, and runtime access.
 Host-agnostic infrastructure is owned by `@sbluemin/fleet-infra`.
 
@@ -36,6 +36,8 @@ Host-agnostic infrastructure is owned by `@sbluemin/fleet-infra`.
 `admiral.agent` exposes only `executor`, `connections`, `tools`, and `models`. The executor entrypoints are `admiral.agent.executor.executeWithPool` and `admiral.agent.executor.executeOneShot`; host streaming session/event/bridge/service-status surfaces are intentionally absent.
 
 Carrier job stream handlers live at `admiral.carrierJobs.streaming.register(handler)` and `admiral.carrierJobs.streaming.unregister(handler)`.
+
+Carrier runtime symbols exported from the fleet-core root and `admiral` facade remain compatibility re-exports. The implementation relocation to `@sbluemin/fleet-carriers` does not add package entries or change the frozen symbol surface.
 
 ## Package Entries
 

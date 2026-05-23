@@ -5,7 +5,7 @@
  * 공개 타입 및 내부 상태 타입을 정의합니다.
  */
 
-import type { CliType } from "@sbluemin/fleet-unified-agent";
+import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
 export type {
   BatchCliChoice,
   CarrierCliType,
@@ -90,9 +90,6 @@ export const CARRIER_ID_FORMAT_REGEX = /^[a-z][a-z0-9_]*$/;
 
 // ─── 공개 타입 ───────────────────────────────────────────
 
-/** Carrier 프레임워크 globalThis 공유 키 */
-export const CARRIER_FRAMEWORK_KEY = "__pi_bridge_framework__";
-
 export interface CarrierConfig {
   /** 고유 식별자 (carrierId) → 메시지 `{id}-user/{id}-response`, 풀/세션 키 */
   id: string;
@@ -136,3 +133,31 @@ export interface CarrierFrameworkState {
   /** Task Force 설정이 완료된 carrier ID 집합 */
   taskforceConfiguredCarriers: Set<string>;
 }
+
+export type TaskForceCliType = CliType;
+
+export interface BackendProgress {
+  status: "queued" | "connecting" | "streaming" | "done" | "error";
+  toolCallCount: number;
+  lineCount: number;
+}
+
+export interface TaskForceResult {
+  cliType: TaskForceCliType;
+  displayName: string;
+  status: "done" | "error" | "aborted";
+  responseText: string;
+  error?: string;
+  thinking?: string;
+  toolCalls?: { title: string; status: string }[];
+}
+
+export interface TaskForceState {
+  carrierId: string;
+  requestKey: string;
+  backends: Map<TaskForceCliType, BackendProgress>;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+export const TASKFORCE_CLI_TYPES = Object.keys(CLI_BACKENDS) as CliType[];

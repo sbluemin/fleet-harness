@@ -7,7 +7,7 @@
 import { Type } from "typebox";
 import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
-import type { AgentToolSpec } from "../agent/types.js";
+import type { AgentToolSpec } from "@sbluemin/fleet-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "@sbluemin/fleet-infra/job";
 import type { LogOptions } from "@sbluemin/fleet-infra/log";
 import type { ModelEffort } from "./overlay-types.js";
@@ -30,13 +30,13 @@ import {
   type CarrierJobStatus,
   type TrackMeta,
   type TrackStatus,
-} from "../_shared/carrier-job-events.js";
+} from "../events/stream-events.js";
 import { executeWithPool } from "@sbluemin/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
   loadModels,
 } from "../store/index.js";
-import { launchTaskForceJob } from "../taskforce/tool-spec.js";
+import { launchTaskForceJob } from "./taskforce-launch.js";
 import {
   buildCarrierSystemPrompt,
   CARRIER_REQUEST_BREVITY_GUIDELINE,
@@ -50,7 +50,7 @@ import {
 import { validateRequiredRequestBlocks } from "./request-blocks.js";
 import {
   buildSortieJobSummary,
-} from "./sortie-execute.js";
+} from "./sortie-helpers.js";
 
 // ═════════════════════════════════════════════════════════
 // Types / Interfaces

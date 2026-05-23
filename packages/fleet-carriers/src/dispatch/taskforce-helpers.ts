@@ -1,7 +1,7 @@
-import { CLI_DISPLAY_NAMES } from "../../constants.js";
+import { CLI_DISPLAY_NAMES } from "../constants.js";
 import type { CarrierJobStatus, CarrierJobSummary } from "@sbluemin/fleet-infra/job";
-import type { CarrierMetadata } from "../carrier/types.js";
-import { validateRequiredRequestBlocks } from "../carrier/request-blocks.js";
+import type { CarrierMetadata } from "./types.js";
+import { validateRequiredRequestBlocks } from "./request-blocks.js";
 import type { TaskForceCliType, TaskForceResult } from "./types.js";
 
 export function assertTaskForceBackendCount(carrierId: string, backends: readonly TaskForceCliType[]): readonly TaskForceCliType[] {

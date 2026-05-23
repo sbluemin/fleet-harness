@@ -7,17 +7,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  CARRIER_ID_FORMAT_REGEX,
+  RESERVED_CARRIER_IDS,
   registerCarrier,
   clearRegisteredCarriers,
   getRegisteredOrder,
+  initStore,
   resolveCarrierCliDisplayName,
-} from "../../src/admiral/carrier/framework.js";
-import { initStore, updateCliTypeOverride } from "../../src/admiral/store/fleet-store.js";
-import {
-  RESERVED_CARRIER_IDS,
-  CARRIER_ID_FORMAT_REGEX,
-} from "../../src/admiral/carrier/types.js";
-import type { CarrierConfig } from "../../src/admiral/carrier/types.js";
+  updateCliTypeOverride,
+} from "@sbluemin/fleet-carriers";
+import type { CarrierConfig } from "@sbluemin/fleet-carriers";
 
 // ─────────────────────────────────────────────────────────
 // 테스트 픽스처

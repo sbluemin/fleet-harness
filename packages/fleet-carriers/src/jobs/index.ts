@@ -5,8 +5,8 @@ import * as types from "./types.js";
 import {
   registerStreamHandler,
   unregisterStreamHandler,
-} from "../_shared/carrier-job-events.js";
-import * as streamingEvents from "../_shared/carrier-job-events.js";
+} from "../events/stream-events.js";
+import * as streamingEvents from "../events/stream-events.js";
 
 export * from "./dispatch.js";
 export * from "./prompts.js";

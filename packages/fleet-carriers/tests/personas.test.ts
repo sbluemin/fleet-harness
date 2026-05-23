@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { admiral, type CarrierMetadata } from "@sbluemin/fleet-core";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { CarrierMetadata } from "../src/index.js";
 import {
   CARRIER_JOBS_SELF_CALL_HINT,
   CHRONICLE_METADATA,
@@ -11,6 +11,9 @@ import {
   SENTINEL_METADATA,
   TEMPEST_METADATA,
   VANGUARD_METADATA,
+  clearRegisteredCarriers,
+  getRegisteredCarrierConfig,
+  registerDefaultCarriers,
 } from "../src/index.js";
 
 interface PersonaCase {
@@ -127,10 +130,15 @@ describe("DEFAULT_CARRIER_PERSONAS", () => {
   }
 });
 
-describe("module-load self-registration", () => {
-  it("@sbluemin/fleet-carriers import가 fleet-core carrier facade에 기본 carrier를 등록", () => {
+describe("explicit default registration", () => {
+  beforeEach(() => {
+    clearRegisteredCarriers();
+  });
+
+  it("registerDefaultCarriers()가 package-local framework에 기본 carrier를 등록", () => {
+    registerDefaultCarriers();
     for (const id of EXPECTED_IDS) {
-      const config = admiral.carrier.getRegisteredCarrierConfig(id);
+      const config = getRegisteredCarrierConfig(id);
       expect(config?.carrierMetadata?.title).toBe(
         DEFAULT_CARRIER_PERSONAS.find((persona) => persona.options.id === id)?.metadata.title,
       );

@@ -1,0 +1,11 @@
+{
+  "id": "2026-05-23T07-54-10-365Z-7ca006b4",
+  "status": "accepted",
+  "createdAt": "2026-05-23T07:54:10.365Z",
+  "baseCheckedAt": "2026-05-23T07:54:10.370Z",
+  "baseHash": "14702de0",
+  "baseVersion": 1,
+  "rawSourceRef": "raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md",
+  "warnings": [],
+  "decidedAt": "2026-05-23T07:54:25.975Z"
+}

@@ -1,13 +1,17 @@
 ---
+name: wiki-history
 description: Register a Fleet Wiki PRD entry that captures cognitive-debt-resolving decision history. NOT a code-grounded document. NOT a planning document. Records the WHY of a decision so future readers do not have to reverse-engineer it from code and git log.
-argument-hint: <feature-or-decision-topic>
 ---
 
-# Wiki History Authoring Request
+# Wiki History Authoring
 
-Author a Fleet Wiki history PRD for the following decision/change: $ARGUMENTS
+Use this skill when authoring a Fleet Wiki history PRD that enshrines the motivation behind a decision that has already been made.
 
----
+## Inputs
+
+Replace each `<placeholder>` before running.
+
+- `<feature-or-decision-topic>` — The feature, decision, or change whose *why* needs to be preserved (required).
 
 ## Sole Purpose — Cognitive Debt Resolution
 
@@ -17,8 +21,6 @@ This document exists for exactly one reason: to let future-self and future-team 
 - The wiki preserves that *why* permanently, so future readers never need to reconstruct the decision context.
 - This wiki is **NOT a planning document**. It does not describe future work. It enshrines the motivation behind a decision that has already been made.
 - This wiki is **NOT an implementation guide**. Code and PRs already explain how it was built.
-
----
 
 ## Hard Rules
 
@@ -39,8 +41,6 @@ This document exists for exactly one reason: to let future-self and future-team 
 - "Here is how to implement it" style implementation guidance
 - Build/test commands, directory trees, package dependency graphs
 
----
-
 ## Output Format
 
 Follow the same section structure used by existing Fleet Wiki PRD entries (`prd-*`):
@@ -56,9 +56,7 @@ Follow the same section structure used by existing Fleet Wiki PRD entries (`prd-
 
 Every section must be written from "**why**" and "**what the user feels at the surface**". If a single line slips into "how it was implemented", rewrite it.
 
----
-
-## Procedure
+## Required Workflow
 
 1. Call `wiki_orient` to capture existing PRD section structure, tag vocabulary, and naming patterns.
 2. Identify existing entries in the same feature area (e.g., `coding-agent`, `harness`, `carrier`) and reserve them as `related` candidates.
@@ -66,12 +64,10 @@ Every section must be written from "**why**" and "**what the user feels at the s
    - `<doc_type>`: `wiki-create` (new) or `wiki-update` (refine existing)
    - `<target>`: proposed entry id, format `prd-<area>-<topic>`
    - `<audience>`: `contributors`
-   - `<scope>`: **Quote the DO / DO NOT rules from this prompt verbatim into the request.** Chronicle is also an LLM; without explicit guardrails the output drifts into code-grounded or planning-style writing.
+   - `<scope>`: **Quote the DO / DO NOT rules from this skill verbatim into the request.** Chronicle is also an LLM; without explicit guardrails the output drifts into code-grounded or planning-style writing.
 4. After Chronicle enqueues a patch with `wiki_ingest`, fetch the preview using `wiki_patch_queue(action:"show")` and present it to the Admiral of the Navy.
 5. Walk through the preview line by line, checking each DO / DO NOT rule. If any rule is violated (code detail, planning phrasing, implementation action), reject and re-dispatch Chronicle with a specific correction note.
 6. Only after explicit Admiral-of-the-Navy approval, register the entry via `wiki_patch_queue(action:"approve")`. **Never auto-approve** — wiki entries are permanent.
-
----
 
 ## Pre-Registration Self-Check
 

@@ -1,0 +1,281 @@
+/**
+ * fleet/shipyard/store.ts — Fleet 통합 영속 스토어
+ *
+ * 모든 fleet 영속 상태를 `states.json` 단일 파일로 일원화합니다.
+ * 단일 게이트 I/O 패턴으로 race condition을 방지합니다.
+ */
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import type {
+  FleetStates,
+  FleetStoreSnapshot,
+  FleetStoreWriteFingerprint,
+  SelectedModelsConfig,
+  StoreLockOwner,
+} from "./types.js";
+
+/** 통합 영속화 파일명 */
+const FILENAME = "states.json";
+
+const LOCK_DIRNAME = "states.json.lock";
+const LOCK_OWNER_FILENAME = "owner.json";
+const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
+const LOCK_RETRY_MS = 25;
+const LOCK_TIMEOUT_MS = 5000;
+const STALE_LOCK_MS = 30000;
+
+/** 스토어 데이터 디렉토리 */
+let storeDir: string | null = null;
+let lastLocalWriteGeneration = 0;
+let lastLocalWriteFingerprint: FleetStoreWriteFingerprint | null = null;
+
+/**
+ * Fleet 통합 스토어를 초기화합니다.
+ * index.ts에서 initRuntime() 직후 1회 호출합니다.
+ */
+export function initStore(dir: string): void {
+  storeDir = dir;
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+export function resetStoreForTests(): void {
+  storeDir = null;
+  lastLocalWriteGeneration = 0;
+  lastLocalWriteFingerprint = null;
+}
+
+export function readStatesSnapshot(): FleetStoreSnapshot {
+  const states = readStates();
+  return {
+    generation: sanitizeGeneration(states._generation),
+    models: sanitizeModelsMap(states.models),
+    cliTypeOverrides: sanitizeStringMap(states.cliTypeOverrides),
+    carrierDisplayNames: sanitizeStringMap(states.carrierDisplayNames),
+  };
+}
+
+export function getLastLocalStatesGeneration(): number {
+  return lastLocalWriteGeneration;
+}
+
+/** `writeStates` 직후 동기 stat으로 기록된 최신 로컬 write 지문(없으면 null) */
+export function getLastLocalWriteFingerprint(): FleetStoreWriteFingerprint | null {
+  return lastLocalWriteFingerprint;
+}
+
+export function getStatesFilePath(): string | null {
+  if (!storeDir) return null;
+  return path.join(storeDir, FILENAME);
+}
+
+export function updateStates(mutator: (states: FleetStates) => void): void {
+  if (!storeDir) return;
+  withStoreLock(() => {
+    const states = readStates();
+    const snapshot = structuredClone(states);
+    mutator(states);
+    if (JSON.stringify(snapshot) === JSON.stringify(states)) return;
+    writeStates(states);
+  });
+}
+
+export function withStoreLock<T>(operation: () => T): T {
+  if (!storeDir) return operation();
+  fs.mkdirSync(storeDir, { recursive: true });
+  const lockDir = path.join(storeDir, LOCK_DIRNAME);
+  const startedAt = Date.now();
+  while (true) {
+    try {
+      fs.mkdirSync(lockDir);
+      writeLockOwner(lockDir);
+      try {
+        return operation();
+      } finally {
+        releaseStoreLock(lockDir);
+      }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw error;
+      recoverStaleStoreLock(lockDir);
+      if (Date.now() - startedAt >= LOCK_TIMEOUT_MS) {
+        throw new Error(`Timed out waiting for fleet store lock: ${lockDir}`);
+      }
+      sleepSync(LOCK_RETRY_MS);
+    }
+  }
+}
+
+function readStates(): FleetStates {
+  if (!storeDir) return {};
+  const filePath = path.join(storeDir, FILENAME);
+  try {
+    if (!fs.existsSync(filePath)) return {};
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as FleetStates;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * writeStates rename 직후 동기 stat으로 (generation, mtime, size) 지문을 기록합니다.
+ * mtime 정밀도 한계는 size와 함께 사용해 구분합니다.
+ */
+function recordLastLocalWriteFingerprint(filePath: string, generation: number): void {
+  try {
+    const st = fs.statSync(filePath);
+    lastLocalWriteFingerprint = { generation, mtimeMs: st.mtimeMs, size: st.size };
+  } catch {
+    lastLocalWriteFingerprint = { generation, mtimeMs: 0, size: 0 };
+  }
+}
+
+function writeStates(s: FleetStates): void {
+  if (!storeDir) throw new Error("Fleet store is not initialized.");
+  fs.mkdirSync(storeDir, { recursive: true });
+  const filePath = path.join(storeDir, FILENAME);
+  const tmpPath = buildTempPath(filePath);
+  const next = serializeFleetStates(s);
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
+    fs.renameSync(tmpPath, filePath);
+    lastLocalWriteGeneration = next._generation ?? 0;
+    recordLastLocalWriteFingerprint(filePath, lastLocalWriteGeneration);
+  } catch (error) {
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    throw error;
+  }
+}
+
+function serializeFleetStates(states: FleetStates): FleetStates {
+  const next: FleetStates = { _generation: sanitizeGeneration(states._generation) + 1 };
+  if (states.models !== undefined) next.models = states.models;
+  if (states.cliTypeOverrides !== undefined) next.cliTypeOverrides = states.cliTypeOverrides;
+  if (states.carrierDisplayNames !== undefined) next.carrierDisplayNames = states.carrierDisplayNames;
+  return next;
+}
+
+function releaseStoreLock(lockDir: string): void {
+  try {
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  } catch {
+    // 다른 프로세스의 stale-lock 복구와 경합할 수 있으므로 해제 실패는 무시합니다.
+  }
+}
+
+function recoverStaleStoreLock(lockDir: string): void {
+  try {
+    const owner = readLockOwner(lockDir);
+    if (!owner || !isRecoverableLockOwner(owner)) return;
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") throw error;
+  }
+}
+
+function writeLockOwner(lockDir: string): void {
+  const owner: StoreLockOwner = {
+    pid: process.pid,
+    hostname: os.hostname(),
+    startedAt: Date.now(),
+  };
+  const ownerPath = path.join(lockDir, LOCK_OWNER_FILENAME);
+  try {
+    fs.writeFileSync(ownerPath, JSON.stringify(owner), "utf-8");
+  } catch (error) {
+    releaseStoreLock(lockDir);
+    throw error;
+  }
+}
+
+function readLockOwner(lockDir: string): StoreLockOwner | null {
+  const ownerPath = path.join(lockDir, LOCK_OWNER_FILENAME);
+  try {
+    return sanitizeLockOwner(JSON.parse(fs.readFileSync(ownerPath, "utf-8")));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function isRecoverableLockOwner(owner: StoreLockOwner): boolean {
+  if (owner.hostname !== os.hostname()) return false;
+  if (Date.now() - owner.startedAt < STALE_LOCK_MS) return false;
+  return !isProcessAlive(owner.pid);
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    return true;
+  }
+}
+
+function sanitizeLockOwner(value: unknown): StoreLockOwner | null {
+  if (!isRecord(value)) return null;
+  const pid = value.pid;
+  const hostname = value.hostname;
+  const startedAt = value.startedAt;
+  if (!Number.isInteger(pid) || (pid as number) <= 0) return null;
+  if (typeof hostname !== "string" || !hostname) return null;
+  if (!Number.isFinite(startedAt) || (startedAt as number) <= 0) return null;
+  return {
+    pid: pid as number,
+    hostname,
+    startedAt: startedAt as number,
+  };
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function buildTempPath(filePath: string): string {
+  const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
+  return `${filePath}.${suffix}.tmp`;
+}
+
+function sanitizeGeneration(value: unknown): number {
+  if (!Number.isInteger(value) || (value as number) < 0) return 0;
+  return value as number;
+}
+
+function sanitizeModelsMap(value: unknown): SelectedModelsConfig {
+  if (!isRecord(value)) return {};
+  return value as SelectedModelsConfig;
+}
+
+function sanitizeStringMap(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const sanitizedKey = sanitizeConfigKey(key);
+    const sanitizedValue = sanitizeFreeformText(entry);
+    if (sanitizedKey && sanitizedValue) result[sanitizedKey] = sanitizedValue;
+  }
+  return result;
+}
+
+function sanitizeConfigKey(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+function sanitizeFreeformText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

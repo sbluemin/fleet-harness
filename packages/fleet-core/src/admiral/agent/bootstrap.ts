@@ -1,7 +1,6 @@
 import { registerAgentTool } from "@sbluemin/fleet-mcp-server";
 
-import { buildCarrierJobsToolSpec } from "../carrier-jobs/tool-spec.js";
-import { buildCarrierDispatchToolSpec } from "../carrier/tool-spec.js";
+import { buildCarrierDispatchToolSpec, buildCarrierJobsToolSpec } from "@sbluemin/fleet-carriers";
 import type { AgentToolSpec } from "./types.js";
 
 const registeredDefaultToolIds = new Set<string>();

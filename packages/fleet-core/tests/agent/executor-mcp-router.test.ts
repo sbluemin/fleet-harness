@@ -13,6 +13,13 @@ import {
   registerExecutorSessionTools,
   cleanupExecutorSession,
 } from "@sbluemin/fleet-mcp-server";
+import type { AgentToolSpec } from "@sbluemin/fleet-core";
+import {
+  clearRegisteredCarriers,
+  registerCarrier,
+} from "@sbluemin/fleet-carriers";
+import type { CarrierMetadata } from "@sbluemin/fleet-carriers";
+
 import {
   registerAgentTool,
   registerExecutorTool,
@@ -23,12 +30,6 @@ import {
   getExecutorMcpTools,
   registerFleetCoreDefaultAgentTools,
 } from "../../src/admiral/agent/tools.js";
-import type { AgentToolSpec } from "@sbluemin/fleet-core";
-import {
-  clearRegisteredCarriers,
-  registerCarrier,
-} from "../../src/admiral/carrier/framework.js";
-import type { CarrierMetadata } from "../../src/admiral/carrier/types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

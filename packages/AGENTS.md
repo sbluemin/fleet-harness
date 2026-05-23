@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (host-agnostic domain core), `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-carriers` (carrier persona catalog and self-registration leaf package), `fleet-tui` (generic TUI engine), `fleet-agent` (primary CLI host), `fleet-wiki`, and `fleet-wiki-web`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (host-agnostic compatibility core and lifecycle facade), `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-tui` (generic TUI engine), `fleet-agent` (primary CLI host), `fleet-wiki`, and `fleet-wiki-web`.
 
 ## Architecture Philosophy
 
@@ -39,7 +39,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Fleet tool catalog | `admiral.agent.tools.list()` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the fleet-core facade — never re-implements specs. |
 | Executor MCP tool exposure | `admiral/agent/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; fleet-core registers the two-method `ExecutorPort` at boot. |
-| Default carrier persona catalog | `packages/fleet-carriers` | Default carrier metadata, default slots/models/efforts, persona-only constants, and module-load carrier self-registration live in the leaf package. |
+| Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline
 
@@ -51,6 +51,7 @@ The **only consumer-facing entry point** is the package root barrel of `@sbluemi
 - Push-style "ports" passed into tool execution. Tools depend on `fleet-core` services directly.
 - `on*` callback parameters threaded through `fleet-core` public APIs, except executor callback options owned by `executeWithPool` / `executeOneShot`.
 - Builder functions injected by hosts. Prompt assembly is fleet-core's responsibility; host adapters pass raw `userRequest` + optional `history`.
+- `fleet-carriers` importing `@sbluemin/fleet-core` or `packages/fleet-core/src/**`; compatibility flows from fleet-core to fleet-carriers, never the reverse.
 
 ## Domain Boundary Rules
 

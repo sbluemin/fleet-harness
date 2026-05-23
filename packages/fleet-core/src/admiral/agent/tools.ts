@@ -14,7 +14,7 @@ import {
   unregisterExtraTools,
 } from "@sbluemin/fleet-mcp-server";
 
-import { getRegisteredCarrierConfig } from "../carrier/framework.js";
+import { getRegisteredCarrierConfig } from "@sbluemin/fleet-carriers";
 import { resetFleetCoreDefaultAgentToolsRegistration } from "./bootstrap.js";
 import type { AgentToolSpec } from "./types.js";
 

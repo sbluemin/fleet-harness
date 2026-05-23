@@ -1,4 +1,7 @@
 import { describe, it, beforeEach, expect } from "vitest";
+import type { AgentToolSpec } from "@sbluemin/fleet-core";
+import { buildCarrierDispatchToolSpec } from "@sbluemin/fleet-carriers";
+
 import {
   list,
   invoke,
@@ -9,8 +12,6 @@ import {
   clearAllDefaultTools,
   clearAllExtraTools,
 } from "../../src/admiral/agent/tools.js";
-import type { AgentToolSpec } from "@sbluemin/fleet-core";
-import { buildCarrierDispatchToolSpec } from "../../src/admiral/carrier/tool-spec.js";
 
 const testSpec: AgentToolSpec = {
   id: "test_tool",

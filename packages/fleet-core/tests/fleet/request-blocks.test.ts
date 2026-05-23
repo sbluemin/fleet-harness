@@ -3,13 +3,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { CarrierMetadata } from "../../src/admiral/carrier/types.js";
-import { validateRequiredRequestBlocks } from "../../src/admiral/carrier/request-blocks.js";
 import {
   formatRequestBlocksGuide,
   CARRIER_REQUEST_BREVITY_GUIDELINE,
-} from "../../src/admiral/carrier/prompts.js";
-import type { RequestBlock } from "../../src/admiral/carrier/types.js";
+  validateRequiredRequestBlocks,
+} from "@sbluemin/fleet-carriers";
+import type { CarrierMetadata, RequestBlock } from "@sbluemin/fleet-carriers";
 
 const PRIOR_JOBS_REQUEST_BLOCK: RequestBlock = {
   tag: "prior_jobs",

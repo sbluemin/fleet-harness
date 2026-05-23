@@ -71,6 +71,21 @@
     ],
     "updated": "2026-05-23T05:09:02.587Z"
   },
+  "prd-carrier-runtime-migration": {
+    "path": "wiki/prd-carrier-runtime-migration.md",
+    "title": "PRD: 캐리어 런타임 도메인의 fleet-carriers 이관",
+    "tags": [
+      "carrier",
+      "fleet-carriers",
+      "fleet-core",
+      "fleet-infra",
+      "carrier-runtime",
+      "package-migration",
+      "architecture",
+      "dependency-injection"
+    ],
+    "updated": "2026-05-23T07:54:10.365Z"
+  },
   "prd-coding-agent-empty-session-guard": {
     "path": "wiki/prd-coding-agent-empty-session-guard.md",
     "title": "PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드",
@@ -107,6 +122,22 @@
     ],
     "updated": "2026-05-16T03:59:46.982Z"
   },
+  "prd-core-dismantling-di-architecture": {
+    "path": "wiki/prd-core-dismantling-di-architecture.md",
+    "title": "PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립",
+    "tags": [
+      "fleet-core",
+      "fleet-admiral",
+      "fleet-admiralty",
+      "fleet-carriers",
+      "fleet-infra",
+      "fleet-agent",
+      "dependency-injection",
+      "architecture",
+      "package-dissolution"
+    ],
+    "updated": "2026-05-23T07:52:08.995Z"
+  },
   "prd-core-infra-extraction": {
     "path": "wiki/prd-core-infra-extraction.md",
     "title": "PRD: fleet-core 인프라 계층 독립 패키지 분리",
@@ -131,5 +162,18 @@
       "model-selector"
     ],
     "updated": "2026-05-16T03:03:47.224Z"
+  },
+  "prd-infra-agent-executor-migration": {
+    "path": "wiki/prd-infra-agent-executor-migration.md",
+    "title": "PRD: Agent Executor 엔진의 인프라 계층 이전",
+    "tags": [
+      "fleet-core",
+      "fleet-infra",
+      "agent-executor",
+      "package-migration",
+      "architecture",
+      "dependency-injection"
+    ],
+    "updated": "2026-05-23T05:40:45.905Z"
   }
 }

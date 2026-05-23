@@ -1,32 +1,36 @@
 # fleet-carriers Doctrine
 
-`packages/fleet-carriers` is a leaf workspace package that owns Fleet's default carrier persona catalog, persona metadata, default persona registration helper, and carrier-framework self-registration.
+`packages/fleet-carriers` owns Fleet's default carrier persona catalog and carrier runtime implementation.
 
 ## Owns
 
 - Default carrier persona metadata under `src/personas/`
-- Persona-only constants under `src/constants.ts`
-- Self-registration into the `@sbluemin/fleet-core` carrier facade via `src/agent-specs.ts`
-- Package-local tests for default persona data and self-registration behavior
-- Explicit default persona executor access: all 8 personas must explicitly list `carrier_jobs` in `allowedExecutorTools`.
-- Explicit default persona `<prior_jobs?>` request blocks: all 8 personas must explicitly append `PRIOR_JOBS_REQUEST_BLOCK` to `requestBlocks`.
-- Default persona external server access: personas (e.g., Tempest) may explicitly declare external server ID strings (e.g., `["grep_app"]`) in `allowedBuiltinExternalMcpServers` to request builtin external MCP servers.
-- Chronicle's opaque `allowedExecutorTools` metadata for chronicle-exclusive wiki tools. Four pure read-only wiki tools are registered globally and available to all carriers.
+- Carrier runtime constants under `src/constants.ts`
+- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, and sortie helpers
+- `jobs/` — `carrier_jobs` lookup/control tool surface and prompt/schema contract
+- `store/` — `states.json` carrier runtime persistence with `state-io.ts` as the single file-I/O and lock/update gate
+- `events/` — carrier job stream event types and Set-based handler registry
+- Explicit default carrier registration via `registerDefaultCarriers()`
+- Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior
 
 ## Must Not Own
 
-- Carrier framework, dispatch, roster rendering, request-block validation, status overlays, or execution logic
 - Host runtime wiring, message renderers, UI components, or host adapters
-- Imports of host packages, engines, `fleet-agent`, `fleet-wiki`, or sibling workspace packages
+- `fleet-core` protocol/admiralty policy implementation
+- `packages/fleet-infra/src/job/`; detached job infrastructure stays in `fleet-infra`
 
 ## Dependency Rules
 
-- This package may import only `@sbluemin/fleet-core` from the workspace, and only through its public package root.
-- Deep imports such as `@sbluemin/fleet-core/src/**` are forbidden.
-- Reverse dependencies from `fleet-core` back to `fleet-carriers` are forbidden.
-- Module-load self-registration must stay side-effect-only and host-agnostic; renderer registration belongs in `fleet-agent`.
-- Personas may declare executor tool IDs as strings in `allowedExecutorTools`, but this package must not import the wiki package or its agent-tool ID aggregate.
-- Personas may declare builtin external MCP server IDs as strings in `allowedBuiltinExternalMcpServers` without directly importing the external MCP catalog or resolver functions from `fleet-core`.
+- This package may import `@sbluemin/fleet-infra`, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-unified-agent`, and `typebox`.
+- This package MUST NOT import `@sbluemin/fleet-core` or `packages/fleet-core/src/**`.
+- `fleet-core` may depend on this package only through the public package root for compatibility facades.
+- Personas may declare executor tool IDs and builtin external MCP server IDs as opaque strings without importing host/UI/wiki packages.
+
+## Testing Doctrine
+
+- Use `clearRegisteredCarriers()` / `resetCarrierRegistryForTests()` for dispatch framework isolation.
+- Use `clearStreamHandlers()` for event registry isolation.
+- Use `resetStoreForTests()` plus `initStore(tempDir)` for store isolation.
 
 ## TypeScript File Structure
 

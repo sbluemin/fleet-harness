@@ -17,15 +17,14 @@ import {
   CARRIER_RGBS,
   CLI_DISPLAY_NAMES,
   CLI_TYPE_DISPLAY_ORDER,
-} from "../../constants.js";
-import { loadCarrierDisplayNames, resolveCarrierCliType as resolveCarrierCliTypeFromStore } from "../store/fleet-store.js";
+} from "../constants.js";
+import { loadCarrierDisplayNames, resolveCarrierCliType as resolveCarrierCliTypeFromStore } from "../store/index.js";
 
 import type {
   CarrierConfig,
   CarrierFrameworkState,
 } from "./types.js";
 import {
-  CARRIER_FRAMEWORK_KEY,
   CARRIER_ID_FORMAT_REGEX,
   RESERVED_CARRIER_IDS,
 } from "./types.js";
@@ -38,6 +37,28 @@ export type { CarrierConfig };
 const DEFAULT_CARRIER_RGB: [number, number, number] = [180, 160, 220];
 
 // ─── 공개 API ────────────────────────────────────────────
+
+export class CarrierRegistry {
+  private readonly state: CarrierFrameworkState = {
+    modes: new Map(),
+    registeredOrder: [],
+    statusUpdateCallbacks: [],
+    taskforceConfiguredCarriers: new Set(),
+  };
+
+  getState(): CarrierFrameworkState {
+    return this.state;
+  }
+
+  clear(): void {
+    this.state.modes.clear();
+    this.state.registeredOrder.splice(0);
+    this.state.statusUpdateCallbacks.splice(0);
+    this.state.taskforceConfiguredCarriers.clear();
+  }
+}
+
+export const defaultRegistry = new CarrierRegistry();
 
 /**
  * 커스텀 Carrier를 등록합니다.
@@ -258,22 +279,14 @@ export function resolveCarrierCliDisplayName(carrierId: string): string {
  * 등록된 모든 캐리어 상태를 초기화합니다 (테스트용).
  */
 export function clearRegisteredCarriers(): void {
-  (globalThis as any)[CARRIER_FRAMEWORK_KEY] = undefined;
+  defaultRegistry.clear();
 }
 
-/** globalThis 기반 공유 상태를 반환합니다. */
+export function resetCarrierRegistryForTests(): void {
+  clearRegisteredCarriers();
+}
+
+/** module singleton 기반 공유 상태를 반환합니다. */
 function getState(): CarrierFrameworkState {
-  let s = (globalThis as any)[CARRIER_FRAMEWORK_KEY] as CarrierFrameworkState | undefined;
-  if (!s) {
-    s = {
-      modes: new Map(),
-      registeredOrder: [],
-      statusUpdateCallbacks: [],
-      taskforceConfiguredCarriers: new Set(),
-    };
-    (globalThis as any)[CARRIER_FRAMEWORK_KEY] = s;
-  }
-  // 런타임 방어: 기존 상태에 필드가 없을 경우 초기화
-  if (!s.taskforceConfiguredCarriers) s.taskforceConfiguredCarriers = new Set();
-  return s;
+  return defaultRegistry.getState();
 }

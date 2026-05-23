@@ -1445,3 +1445,381 @@
 - result: `accepted`
 - target: `wiki/prd-carrier-persona-extraction.md`
 
+## 2026-05-23T05:36:57.008Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T05:38:14.565Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T05:39:14.657Z — raw source added
+
+- id: `prd-infra-agent-executor-migration-source`
+- raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: Agent Executor 엔진의 인프라 계층 이전`
+
+## 2026-05-23T05:39:14.659Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+- warning_count: `0`
+
+## 2026-05-23T05:39:19.139Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T05:39:51.202Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `1a1b612d`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- previous_hash: `449ccbd6`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+
+## 2026-05-23T05:39:56.852Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `e82e8a0e`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- previous_hash: `1a1b612d`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+
+## 2026-05-23T05:40:02.540Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T05:40:33.456Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `e3133cc5`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- previous_hash: `e82e8a0e`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+
+## 2026-05-23T05:40:39.865Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `803167e6`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- previous_hash: `e3133cc5`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+
+## 2026-05-23T05:40:45.907Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `cb99b86f`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- previous_hash: `803167e6`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+
+## 2026-05-23T05:40:52.397Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T06:47:56.170Z — index rebuilt
+
+- entry_count: `12`
+
+## 2026-05-23T06:47:56.171Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T05-39-14-652Z-428f3b30`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
+- result: `accepted`
+- target: `wiki/prd-infra-agent-executor-migration.md`
+
+## 2026-05-23T07:19:27.457Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T07:20:26.510Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T07:22:44.938Z — raw source added
+
+- id: `prd-carrier-runtime-migration-source`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md`
+- source_type: `inline`
+- tag_count: `8`
+- title: `PRD: 캐리어 런타임 도메인의 fleet-carriers 이관`
+
+## 2026-05-23T07:22:44.940Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T07-22-44-922Z-c725b5a5`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md`
+- target: `wiki/prd-carrier-runtime-migration.md`
+- warning_count: `0`
+
+## 2026-05-23T07:22:48.816Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T07:24:28.515Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `43784d68`
+- patch_id: `2026-05-23T07-22-44-922Z-c725b5a5`
+- previous_hash: `54a830b8`
+- target: `wiki/prd-carrier-runtime-migration.md`
+
+## 2026-05-23T07:24:34.657Z — patch edited
+
+- body_replacements: `4`
+- changed_fields: `body, updated`
+- next_hash: `7f2f3560`
+- patch_id: `2026-05-23T07-22-44-922Z-c725b5a5`
+- previous_hash: `43784d68`
+- target: `wiki/prd-carrier-runtime-migration.md`
+
+## 2026-05-23T07:29:40.944Z — index rebuilt
+
+- entry_count: `13`
+
+## 2026-05-23T07:29:40.947Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T07-22-44-922Z-c725b5a5`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md`
+- result: `accepted`
+- target: `wiki/prd-carrier-runtime-migration.md`
+
+## 2026-05-23T07:40:56.723Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T07:41:44.067Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T07:44:05.801Z — raw source added
+
+- id: `prd-core-dismantling-di-architecture-source`
+- raw_source_ref: `raw/2026-05-23-prd-core-dismantling-di-architecture-source-e3b0c442.md`
+- source_type: `inline`
+- tag_count: `9`
+- title: `PRD: fleet-core 해체 및 순수 팩토리 DI 아키텍처 전환`
+
+## 2026-05-23T07:44:05.803Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-core-dismantling-di-architecture-source-e3b0c442.md`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+- warning_count: `0`
+
+## 2026-05-23T07:44:11.035Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T07:44:48.737Z — patch edited
+
+- body_replacements: `0`
+- changed_fields: ``
+- next_hash: `1a2a884a`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `1a2a884a`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:45:23.694Z — patch edited
+
+- body_replacements: `3`
+- changed_fields: `body, updated`
+- next_hash: `a50a72cb`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `1a2a884a`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:45:28.152Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `e6985f59`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `a50a72cb`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:46:42.188Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `title, body, updated`
+- next_hash: `03ad4671`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `e6985f59`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:49:40.896Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `99d01abd`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `03ad4671`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:49:57.586Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `f2a03010`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `99d01abd`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:50:18.163Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `783a2800`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `f2a03010`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:51:30.011Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `4cc1243d`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `783a2800`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:51:35.847Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `8fb4f602`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `4cc1243d`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:51:50.190Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `18157abf`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `8fb4f602`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:52:08.998Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `3c5e11ca`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- previous_hash: `18157abf`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:52:29.509Z — index rebuilt
+
+- entry_count: `14`
+
+## 2026-05-23T07:52:29.511Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T07-44-05-795Z-96203c66`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-core-dismantling-di-architecture-source-e3b0c442.md`
+- result: `accepted`
+- target: `wiki/prd-core-dismantling-di-architecture.md`
+
+## 2026-05-23T07:54:10.370Z — raw source added
+
+- id: `prd-carrier-runtime-migration-source`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
+- source_type: `inline`
+- tag_count: `8`
+- title: `prd-carrier-runtime-migration frontmatter 중복 제거`
+
+## 2026-05-23T07:54:10.372Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T07-54-10-365Z-7ca006b4`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
+- target: `wiki/prd-carrier-runtime-migration.md`
+- warning_count: `0`
+
+## 2026-05-23T07:54:25.974Z — index rebuilt
+
+- entry_count: `14`
+
+## 2026-05-23T07:54:25.977Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T07-54-10-365Z-7ca006b4`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
+- result: `accepted`
+- target: `wiki/prd-carrier-runtime-migration.md`
+

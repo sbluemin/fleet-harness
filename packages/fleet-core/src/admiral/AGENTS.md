@@ -1,6 +1,6 @@
 # Admiral Domain Doctrine
 
-`packages/fleet-core/src/admiral/` is the Admiral-owned Fleet orchestration/runtime module home — carrier operations, agent session management, task force coordination, and protocol policy.
+`packages/fleet-core/src/admiral/` is the Admiral-owned compatibility facade and policy module home. Carrier dispatch, Task Force runtime, jobs, store, events, and carrier runtime constants are implemented in `packages/fleet-carriers` and consumed through fleet-core facades.
 
 ## Fleet Architecture
 
@@ -69,7 +69,7 @@ Task Force execution is an internal mode selected by `carrier_dispatch` auto-pro
 | `gemini` | Gemini | Google Gemini CLI |
 | `opencode-go` | OpenCode | OpenCode Go CLI |
 
-- `TaskForceCliType` is an alias of `CliType`; `TASKFORCE_CLI_TYPES` is auto-derived via `Object.keys(CLI_BACKENDS) as CliType[]` in `packages/fleet-core/src/admiral/taskforce/types.ts`.
+- `TaskForceCliType` is an alias of `CliType`; `TASKFORCE_CLI_TYPES` is auto-derived via `Object.keys(CLI_BACKENDS) as CliType[]` in `packages/fleet-carriers/src/dispatch/types.ts`.
 - Dispatch/configuration copy (`TASKFORCE_CONFIGURE_HINT`, `[carrier:result]` backend label examples) and overlay colors (`CARRIER_COLORS`) are derived from `CLI_BACKENDS × CLI_DISPLAY_NAMES`. Adding a new entry to `CLI_BACKENDS` automatically extends Task Force without touching prompts or the overlay.
 - **Persona × CLI compatibility is allowed**: any registered carrier persona may pair with any of the six CLI backends. Configure pairings via Carrier Status (Alt+O → T) per carrier.
 - Providers without supported reasoning effort follow the existing Gemini pattern (`effort.supported = false`) and surface no effort/budget controls in the configuration overlay.
@@ -79,10 +79,11 @@ Task Force execution is an internal mode selected by `carrier_dispatch` auto-pro
 - **Sub-agents are fully independent** — PI provides only background, objectives, and constraints. Never prescribe implementation details.
 - **Sub-agents are unaware of each other** — Cross-analysis is performed solely by PI after all responses are collected.
 - **Communication layer**: Pi consumers invoke `executeWithPool()` / `executeOneShot()` from the `@sbluemin/fleet-core` root barrel (callback-pattern executor). Host streaming adapters are no longer part of the fleet-core agent surface.
+- **Carrier runtime layer**: `carrier_dispatch` remains the sole public carrier delegation tool; Task Force remains an internal auto-promotion path implemented by `fleet-carriers`. `doctrine/protocols` remain in fleet-core and are excluded from carrier runtime migration.
 
 ## Builtin External MCP Integration
 
-Admiral 도메인은 각 Carrier가 사용하는 MCP(Model Context Protocol) 서버를 관리하며, 내부 도구 모음인 `fleet-tools`와 외부 등록형 `builtin external MCP` 서버를 명확히 구분하여 처리합니다.
+Admiral 도메인은 각 Carrier가 사용하는 MCP(Model Context Protocol) 서버를 관리하며, 내부 도구 모음인 `fleet-tools`와 외부 등록형 `builtin external MCP` 서버를 명확히 구분하여 처리합니다. Builtin external MCP catalog 소유권은 `packages/fleet-infra/src/agent/external-mcp.ts`에 있습니다.
 
 ### Layer Separation: Tool ID vs Server ID
 
@@ -91,10 +92,10 @@ Admiral 도메인은 각 Carrier가 사용하는 MCP(Model Context Protocol) 서
 
 ### Invariants & Limitations
 
-1. **HTTP/HTTPS Transports Only**: Builtin external MCP catalog(`admiral/external-mcp.ts`)는 오직 HTTP/HTTPS 전송 프로토콜만 허용합니다.
+1. **HTTP/HTTPS Transports Only**: Builtin external MCP catalog(`packages/fleet-infra/src/agent/external-mcp.ts`)는 오직 HTTP/HTTPS 전송 프로토콜만 허용합니다.
 2. **`strictMcp:true` Preservation**: 모든 외부 MCP 서버 연결 시에도 엄격한 도구 해상도 검증(`strictMcp`) 정책을 계속 유지합니다.
 3. **`fleet-tools` Bearer Isolation**: 내부 `fleet-tools`용 세션 Bearer 토큰이 외부 MCP 서버로 유출되지 않도록 엄격하게 격리(assertFleetToolsTokenNotShared)합니다.
-4. **No Workspace Configuration**: 사용자 workspace 레벨의 `.fleet/external-mcp.json` 파일 기반 동적 구성은 지원하지 않으며, 소스 레벨 catalog(`admiral/external-mcp.ts`)의 정적 설정으로만 작동합니다. 이 파일은 internal helper로서 public root barrel에 노출되지 않습니다.
+4. **No Workspace Configuration**: 사용자 workspace 레벨의 `.fleet/external-mcp.json` 파일 기반 동적 구성은 지원하지 않으며, 소스 레벨 catalog(`packages/fleet-infra/src/agent/external-mcp.ts`)의 정적 설정으로만 작동합니다. 이 파일은 internal helper로서 public root barrel에 노출되지 않습니다.
 
 ### Session Lifecycle, Drift Detection & Empty Allowlist Policy
 
