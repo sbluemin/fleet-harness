@@ -293,8 +293,18 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
     } else {
       items = archivedItems;
     }
+    const enriched = await Promise.all(items.map(async (item) => {
+      if (!SAFE_PATCH_ID.test(item.id)) return item;
+      try {
+        const dir = item.source === "queue" ? context.paths.queueDir : context.paths.archiveDir;
+        const patch = await parsePatch(await readFile(join(dir, item.id, PATCH_FILENAME), "utf8"));
+        return { ...item, summary: patch.frontmatter.summary, op: patch.frontmatter.op, target: patch.frontmatter.target };
+      } catch {
+        return item;
+      }
+    }));
     sendJson(response, 200, {
-      items,
+      items: enriched,
       pendingCount: pendingItems.length,
       archivedCount: archivedItems.length,
     });

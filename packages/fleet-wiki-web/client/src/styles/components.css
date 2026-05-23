@@ -1541,6 +1541,36 @@ kbd {
   box-shadow: var(--shadow-soft);
 }
 
+.queue-toc-nav {
+  display: grid;
+  gap: 5px;
+}
+
+.queue-toc-link {
+  display: block;
+  min-width: 0;
+  padding: 5px 0;
+  color: var(--ink-fog);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  line-height: 1.45;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.queue-toc-link:hover {
+  color: var(--ink-pearl);
+  transform: translateX(2px);
+}
+
+.queue-toc-level-3 {
+  padding-left: var(--space-3);
+  font-size: 12.5px;
+}
+
 .manifest-card {
   display: flex;
   flex-direction: column;
@@ -2291,6 +2321,31 @@ kbd {
   color: var(--ink-fog);
   letter-spacing: 0.04em;
   flex-shrink: 0;
+}
+
+.queue-card-summary {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-pearl);
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.queue-card-target {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .queue-card-chips {

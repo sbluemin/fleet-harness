@@ -140,6 +140,9 @@ export interface QueueListItem {
   id: string;
   meta: PatchMetaData;
   source: "queue" | "archive";
+  summary?: string;
+  op?: "create_wiki" | "update_wiki";
+  target?: string;
 }
 
 export interface QueueListResponse {
