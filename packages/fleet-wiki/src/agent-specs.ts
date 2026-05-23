@@ -4,10 +4,12 @@ import {
 } from "@sbluemin/fleet-mcp-server";
 
 import { buildBriefingToolConfig } from "./tools/briefing.js";
+import { buildCompileSourceToolConfig } from "./tools/compile-source.js";
 import { buildDryDockToolConfig } from "./tools/drydock.js";
 import { buildIngestToolConfig } from "./tools/ingest.js";
 import { buildOrientToolConfig } from "./tools/orient.js";
 import { buildPatchEditToolConfig } from "./tools/patch-edit.js";
+import { buildPatchQueueToolConfig } from "./tools/patch-queue.js";
 import { buildQueryToolConfig } from "./tools/query.js";
 import { buildReadToolConfig } from "./tools/read.js";
 import { buildResolveToolConfig } from "./tools/resolve.js";
@@ -41,6 +43,8 @@ export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_ingest",
   "wiki_orient",
   "wiki_patch_edit",
+  "wiki_patch_queue",
+  "wiki_compile_source",
   "wiki_query",
   "wiki_read",
   "wiki_resolve",
@@ -57,6 +61,8 @@ export function getWikiToolSpecs(): AgentToolSpec[] {
     buildWikiIngestSpec(),
     buildWikiOrientSpec(),
     buildWikiPatchEditSpec(),
+    buildWikiPatchQueueSpec(),
+    buildWikiCompileSourceSpec(),
     buildWikiQuerySpec(),
     buildWikiReadSpec(),
     buildWikiResolveSpec(),
@@ -123,6 +129,32 @@ function buildWikiPatchEditSpec(): AgentToolSpec {
     whenNotToUse: [
       "The patch has already been approved or rejected",
       "The desired change requires approving wiki content — use wiki_patch_queue for approval",
+    ],
+  });
+}
+
+function buildWikiPatchQueueSpec(): AgentToolSpec {
+  return buildWikiToolSpec(buildPatchQueueToolConfig(), {
+    whenToUse: [
+      "Pending Fleet Wiki patches need human approval or rejection",
+      "A patch set staged by wiki_compile_source needs batch approval",
+    ],
+    whenNotToUse: [
+      "New wiki content needs to be staged — use wiki_ingest instead",
+      "Existing approved wiki content needs to be read — use wiki_read instead",
+    ],
+  });
+}
+
+function buildWikiCompileSourceSpec(): AgentToolSpec {
+  return buildWikiToolSpec(buildCompileSourceToolConfig(), {
+    whenToUse: [
+      "A single source needs to be split into multiple proposed wiki page patches",
+      "Multi-page batch ingest from one source should be previewed or staged under one patch_set_id",
+    ],
+    whenNotToUse: [
+      "Only one wiki entry needs to be staged — use wiki_ingest instead",
+      "Pending patches need approval or rejection — use wiki_patch_queue instead",
     ],
   });
 }

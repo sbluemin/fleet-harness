@@ -88,7 +88,7 @@ export function createMcpToolRegistry(): McpToolRegistry {
     },
     registerExecutorTool(spec, opts) {
       this.registerAgentTool(spec);
-      const scopes = opts?.allowedCarriers?.length
+      const scopes = opts?.allowedCarriers != null
         ? opts.allowedCarriers
         : [GLOBAL_EXECUTOR_SCOPE];
       for (const scope of scopes) {
