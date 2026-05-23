@@ -16,7 +16,6 @@ import {
   CARRIER_COLORS,
   CARRIER_RGBS,
   CLI_DISPLAY_NAMES,
-  CLI_TYPE_DISPLAY_ORDER,
 } from "../constants.js";
 import { loadCarrierDisplayNames, resolveCarrierCliType as resolveCarrierCliTypeFromStore } from "../store/index.js";
 
@@ -178,7 +177,7 @@ export function setTaskForceConfiguredCarriers(registry: CarrierRegistry, ids: s
 
 /**
  * 지정 carrier의 cliType을 동적으로 변경합니다.
- * 색상·배경색을 새 cliType에 맞게 갱신하고 정렬 + 상태바를 업데이트합니다.
+ * 색상·배경색을 새 cliType에 맞게 갱신하고 상태바를 업데이트합니다.
  */
 export function updateCarrierCliType(registry: CarrierRegistry, carrierId: string, newType: CliType): void {
   const gs = registry.getState();
@@ -187,24 +186,7 @@ export function updateCarrierCliType(registry: CarrierRegistry, carrierId: strin
   const config = state.config;
   config.color = CARRIER_COLORS[newType] ?? "";
   config.bgColor = CARRIER_BG_COLORS[newType];
-  reorderRegisteredByCliType(registry);
   notifyStatusUpdate(registry);
-}
-
-/** registeredOrder를 SSoT 기반 CliType 우선순위로 재정렬합니다. */
-export function reorderRegisteredByCliType(registry: CarrierRegistry): void {
-  const gs = registry.getState();
-  gs.registeredOrder.sort((a, b) => {
-    const configA = gs.modes.get(a)?.config;
-    const configB = gs.modes.get(b)?.config;
-    const typeA = configA ? resolveCarrierCliTypeFromStore(a, configA.defaultCliType) : undefined;
-    const typeB = configB ? resolveCarrierCliTypeFromStore(b, configB.defaultCliType) : undefined;
-    const orderA = typeA ? CLI_TYPE_DISPLAY_ORDER[typeA] : 99;
-    const orderB = typeB ? CLI_TYPE_DISPLAY_ORDER[typeB] : 99;
-    if (orderA !== orderB) return orderA - orderB;
-    // 같은 CliType 내에서는 slot 순 유지
-    return (configA?.slot ?? 99) - (configB?.slot ?? 99);
-  });
 }
 
 /**

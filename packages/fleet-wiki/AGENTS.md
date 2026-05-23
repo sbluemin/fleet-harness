@@ -12,13 +12,13 @@
 ## Must Not Own
 
 - Imports of other workspace packages (except `@sbluemin/fleet-mcp-server` as noted below)
-- Imports of `@mariozechner/pi-*` or `@anthropic-ai/*`
-- Pi runtime wiring, UI registration, or host-specific adapter code
+- Imports of `@anthropic-ai/*`
+- UI registration or host-specific adapter code
 
 ## Dependency Rules
 
 - `@sbluemin/fleet-mcp-server`에 한해 도구 타입/등록 의존이 허용됨.
-- 다른 워크스페이스 패키지(`@sbluemin/fleet-*` 엔진 포함) 및 `@anthropic-ai/*` / `@mariozechner/pi-*` 의존은 여전히 금지.
+- 다른 워크스페이스 패키지(`@sbluemin/fleet-*` 엔진 포함) 및 `@anthropic-ai/*` 의존은 여전히 금지.
 - 순환 의존성은 금지.
 
 ## Tools

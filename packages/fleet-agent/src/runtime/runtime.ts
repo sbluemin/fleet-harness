@@ -31,9 +31,6 @@ export async function bootRuntime(): Promise<void> {
 	const carrierRuntime = createCarrierRuntime({ config: {} });
 	configureCarrierRuntime(carrierRuntime);
 
-	if (dataDir === infraServices.dataDir.getFleetDataDir()) {
-		infraServices.dataDir.migrateLegacyFleetDataDir(dataDir);
-	}
 	infraServices.executorPortRuntime.register({
 		getCarrierExternalMcpServerIds(carrierId) {
 			return carrierId

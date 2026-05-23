@@ -1,5 +1,4 @@
 import type {
-  CarrierCategory,
   CarrierJobStreamEvent,
   TrackMeta,
   TrackStatus,
@@ -10,7 +9,6 @@ import {
 } from "../admiral/constants.js";
 import {
   getActiveBackgroundJobCount,
-  getCarrierConfig,
   getRegisteredOrder,
 } from "@sbluemin/fleet-carriers";
 import { getSessionIdFor as getAgentSessionIdFor } from "@sbluemin/fleet-infra/agent";
@@ -96,11 +94,6 @@ type RuntimeBindings = {
 
 export const PANEL_JOB_RETENTION = 8;
 
-const CATEGORY_ORDER: readonly CarrierCategory[] = ["strategy", "planning", "operations"];
-const CATEGORY_RANK = new Map<CarrierCategory | "uncategorized", number>(
-  [...CATEGORY_ORDER.map((category, index) => [category, index] as const), ["uncategorized", CATEGORY_ORDER.length] as const],
-);
-
 let panelState: AgentPanelState | null = null;
 let runtimeBindings: RuntimeBindings | null = null;
 
@@ -161,7 +154,7 @@ export function isJobBarStateRuntimeBound(): boolean {
 }
 
 export function getDefaultClis(): readonly string[] {
-  return sortByCategory(getRegisteredOrder(getCarrierRuntime().registry));
+  return [...getRegisteredOrder(getCarrierRuntime().registry)];
 }
 
 export function makeCols(clis?: readonly string[]): AgentCol[] {
@@ -237,7 +230,7 @@ export function makeFooterCols(): AgentCol[] {
   const state = getState();
   const activeCols = new Map(state.cols.map((col) => [col.cli, col] as const));
 
-  return sortByCategory(getRegisteredOrder(getCarrierRuntime().registry)).map((cli) => {
+  return [...getRegisteredOrder(getCarrierRuntime().registry)].map((cli) => {
     const activeCol = activeCols.get(cli);
     if (activeCol) return activeCol;
 
@@ -344,20 +337,6 @@ export function ensurePanelAnimTimer(): void {
     getRuntimeBindings().onRenderRequest();
     stopPanelAnimTimerIfIdle();
   }, ANIM_INTERVAL_MS);
-}
-
-function sortByCategory(ids: readonly string[]): string[] {
-  const registry = getCarrierRuntime().registry;
-  return [...ids].sort((a, b) => {
-    const catA = getCarrierConfig(registry, a)?.carrierMetadata?.category ?? "uncategorized";
-    const catB = getCarrierConfig(registry, b)?.carrierMetadata?.category ?? "uncategorized";
-    const rankA = CATEGORY_RANK.get(catA) ?? CATEGORY_ORDER.length;
-    const rankB = CATEGORY_RANK.get(catB) ?? CATEGORY_ORDER.length;
-    if (rankA !== rankB) return rankA - rankB;
-    const slotA = getCarrierConfig(registry, a)?.slot ?? 0;
-    const slotB = getCarrierConfig(registry, b)?.slot ?? 0;
-    return slotA - slotB;
-  });
 }
 
 function dispatchCarrierResultSystemReminder(event: Extract<CarrierJobStreamEvent, { type: "job:finalized" }>): void {

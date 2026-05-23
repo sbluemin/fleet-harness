@@ -1,7 +1,6 @@
 import type { CarrierConfig } from "./dispatch/types.js";
 import {
   registerCarrier,
-  reorderRegisteredByCliType,
   type CarrierRegistry,
 } from "./dispatch/framework.js";
 import { registerDefaultCarrierPersonas } from "./personas/index.js";
@@ -24,5 +23,4 @@ export function registerDefaultCarriers(registry: CarrierRegistry): void {
     },
   });
 
-  reorderRegisteredByCliType(registry);
 }

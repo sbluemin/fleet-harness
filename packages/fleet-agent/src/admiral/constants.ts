@@ -5,7 +5,6 @@ export {
   CARRIER_RGBS,
   CLI_DISPLAY_NAMES,
   CLI_PROVIDER_DISPLAY_NAMES,
-  CLI_TYPE_DISPLAY_ORDER,
   VALID_CLI_TYPES,
 } from "@sbluemin/fleet-carriers";
 

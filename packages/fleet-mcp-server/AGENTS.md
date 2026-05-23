@@ -12,9 +12,9 @@
 
 ## Must Not Own
 
-- Fleet carrier framework, carrier metadata lookup, persona registration, default Fleet tool builders, prompt assembly, Pi runtime wiring, or host UI
+- Fleet carrier framework, carrier metadata lookup, persona registration, default Fleet tool builders, prompt assembly, or host UI
 - Imports from any `@sbluemin/fleet-*` workspace package
-- Imports from Pi host packages, Fleet engine packages, Anthropic packages, or `@modelcontextprotocol/*` unless an Admiral-approved plan explicitly changes this package boundary
+- Imports from Fleet engine packages, Anthropic packages, or `@modelcontextprotocol/*` unless an Admiral-approved plan explicitly changes this package boundary
 
 ## Import Boundaries
 

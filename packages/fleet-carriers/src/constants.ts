@@ -20,10 +20,6 @@ export const CLI_DISPLAY_NAMES: Record<string, string> = {
   ...CARRIER_DISPLAY_NAMES,
 };
 
-export const CLI_TYPE_DISPLAY_ORDER: Record<CliType, number> = Object.fromEntries(
-  Object.keys(CLI_BACKENDS).map((cliType, index) => [cliType, index]),
-) as Record<CliType, number>;
-
 export const VALID_CLI_TYPES = new Set<CliType>(Object.keys(CLI_BACKENDS) as CliType[]);
 
 export const CARRIER_RGBS: Record<string, [number, number, number]> = Object.fromEntries(
