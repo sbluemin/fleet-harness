@@ -60,7 +60,7 @@
   },
   "prd-carrier-persona-extraction": {
     "path": "wiki/prd-carrier-persona-extraction.md",
-    "title": "캐리어 페르소나 외부화 및 선언적 도구 스코핑",
+    "title": "PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑",
     "tags": [
       "carrier",
       "fleet-carriers",
@@ -69,7 +69,7 @@
       "tool-scoping",
       "shipped"
     ],
-    "updated": "2026-05-16T07:34:09.878Z"
+    "updated": "2026-05-23T05:09:02.587Z"
   },
   "prd-coding-agent-empty-session-guard": {
     "path": "wiki/prd-coding-agent-empty-session-guard.md",

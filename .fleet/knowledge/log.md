@@ -1378,3 +1378,70 @@
 - ok: `false`
 - warning_count: `0`
 
+## 2026-05-23T05:07:09.623Z — patch edited
+
+- body_replacements: `0`
+- changed_fields: `title, updated, summary`
+- next_hash: `b2e59c04`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- previous_hash: `11280299`
+- target: `wiki/prd-carrier-persona-extraction.md`
+
+## 2026-05-23T05:07:17.652Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `a29609eb`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- previous_hash: `b2e59c04`
+- target: `wiki/prd-carrier-persona-extraction.md`
+
+## 2026-05-23T05:07:59.443Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `96692b30`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- previous_hash: `a29609eb`
+- target: `wiki/prd-carrier-persona-extraction.md`
+
+## 2026-05-23T05:08:18.667Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `af4050b7`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- previous_hash: `96692b30`
+- target: `wiki/prd-carrier-persona-extraction.md`
+
+## 2026-05-23T05:09:02.590Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `496bbe21`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- previous_hash: `af4050b7`
+- target: `wiki/prd-carrier-persona-extraction.md`
+
+## 2026-05-23T05:09:06.908Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T05:09:48.047Z — index rebuilt
+
+- entry_count: `11`
+
+## 2026-05-23T05:09:48.050Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-16T08-29-39-027Z-25c4c75d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-90383528.md`
+- result: `accepted`
+- target: `wiki/prd-carrier-persona-extraction.md`
+

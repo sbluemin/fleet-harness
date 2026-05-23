@@ -57,11 +57,12 @@
 
 ### prd-carrier-persona-extraction
 
-- title: `캐리어 페르소나 외부화 및 선언적 도구 스코핑`
+- title: `PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑`
 - path: `wiki/prd-carrier-persona-extraction.md`
 - tags: `carrier, fleet-carriers, fleet-core, persona, tool-scoping, shipped`
-- updated: `2026-05-16T07:34:09.878Z`
+- updated: `2026-05-23T05:09:02.587Z`
 - summary: `## Overview`
+- raw_source_ref: `raw/2026-05-16-prd-carrier-persona-extraction-source-90383528.md`
 
 ### prd-coding-agent-empty-session-guard
 
@@ -125,7 +126,7 @@
 
 ### carrier
 
-- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### carrier-status
 
@@ -166,11 +167,11 @@
 
 ### fleet-carriers
 
-- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### fleet-core
 
-- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### fleet-harness
@@ -247,7 +248,7 @@
 
 ### persona
 
-- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### prompts
 
@@ -268,7 +269,7 @@
 ### shipped
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
-- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 - [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 - [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
@@ -283,7 +284,7 @@
 
 ### tool-scoping
 
-- [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### ux
 
