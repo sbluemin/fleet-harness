@@ -50,16 +50,6 @@
         { "modelId": "gpt-5.4-mini", "name": "GPT-5.4 Mini", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh"], "default": "high" } }
       ]
     },
-    "gemini": {
-      "name": "Google Gemini CLI",
-      "defaultModel": "gemini-3.1-flash-lite-preview",
-      "models": [
-        { "modelId": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "effort": { "supported": false } },
-        { "modelId": "gemini-3-flash-preview", "name": "Gemini 3 Flash Preview", "effort": { "supported": false } },
-        { "modelId": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview", "effort": { "supported": false } },
-        { "modelId": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview", "effort": { "supported": false } }
-      ]
-    },
     "opencode-go": {
       "name": "OpenCode Go",
       "defaultModel": "opencode-go/glm-5.1",

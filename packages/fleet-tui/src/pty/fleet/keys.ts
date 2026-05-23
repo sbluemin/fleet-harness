@@ -21,11 +21,11 @@ export const Key = {
 
 const KEY_SEQUENCES: Record<KeyId, readonly string[]> = {
   "alt+o": ["\x1bo", "\x1bO"],
-  backspace: ["\x7f", "\b"],
+  backspace: ["\x7f", "\b", "\x1b[127u"],
   down: ["\x1b[B"],
   end: ["\x1b[F", "\x1b[4~", "\x1b[8~"],
-  enter: ["\r", "\n"],
-  escape: ["\x1b"],
+  enter: ["\r", "\n", "\x1b[13u"],
+  escape: ["\x1b", "\x1b[27u"],
   home: ["\x1b[H", "\x1b[1~", "\x1b[7~"],
   left: ["\x1b[D"],
   pagedown: ["\x1b[6~"],

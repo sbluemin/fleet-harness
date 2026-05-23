@@ -1,13 +1,9 @@
 /**
  * service-status/store.ts — 서비스 상태 모니터링 (polling/fetching/store)
  *
- * Claude/OpenAI/Gemini 서비스 상태를 주기적으로 조회하고
+ * Claude/OpenAI 서비스 상태를 주기적으로 조회하고
  * 콜백을 통해 상위 계층에 반영합니다.
  */
-
-import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { promisify } from 'node:util';
 
 import type { CliType } from '../config/CliConfigs.js';
 import { getProviderModels } from '../models/ModelRegistry.js';
@@ -53,19 +49,14 @@ interface ProviderFetchConfig {
 
 type FetcherFn = () => Promise<ServiceSnapshot>;
 
-const execFileAsync = promisify(execFile);
-
 // Claude/OpenAI: 가벼운 JSON fetch → 3분
-// Gemini: headless Chrome DOM dump → 10분 (프로세스 spawn 리소스 부담 고려)
 const POLL_TICK_MS = 3 * 60_000;
 const JSON_API_INTERVAL_MS = 3 * 60_000;
-const GEMINI_INTERVAL_MS = 10 * 60_000;
 
 /** /fleet:agent:status 수동 갱신 최소 간격 */
 const MIN_MANUAL_REFRESH_MS = 60_000;
 
 const FETCH_TIMEOUT_MS = 15_000;
-const GEMINI_RENDER_TIMEOUT_MS = 20_000;
 
 const CLAUDE_COMPONENT_NAMES = [
   'Claude API (api.anthropic.com)',
@@ -84,21 +75,18 @@ const CURSOR_COMPONENT_NAMES = [
   'cursor.com',
 ];
 
-const STORE_KEY = '__pi_unified_agent_status_store__';
-
 const PROVIDER_FETCHERS: Record<CliType, FetcherFn> = {
   claude: () => fetchClaudeStatus('claude'),
   'claude-zai': () => fetchClaudeStatus('claude-zai'),
   'claude-kimi': () => fetchClaudeStatus('claude-kimi'),
   codex: fetchOpenAiStatus,
-  gemini: fetchGeminiStatus,
   'opencode-go': () => fetchOpenCodeStatus('opencode-go'),
   cursor: () => fetchCursorStatus('cursor'),
 };
 const PROVIDER_ORDER = Object.keys(PROVIDER_FETCHERS) as CliType[];
 const PROVIDER_CONFIGS: ProviderFetchConfig[] = PROVIDER_ORDER.map((key) => ({
   key,
-  intervalMs: key === 'gemini' ? GEMINI_INTERVAL_MS : JSON_API_INTERVAL_MS,
+  intervalMs: JSON_API_INTERVAL_MS,
   fetcher: PROVIDER_FETCHERS[key],
   fallback: (err) => buildUnknownSnapshot(
     key,
@@ -110,6 +98,7 @@ const PROVIDER_CONFIGS: ProviderFetchConfig[] = PROVIDER_ORDER.map((key) => ({
 }));
 
 let currentStatusCtx: ServiceStatusContextPort | null = null;
+let statusStore: StatusStore | null = null;
 let statusContextGeneration = 0;
 
 /**
@@ -173,9 +162,8 @@ export function refreshStatusQuiet(): void {
 }
 
 function getStore(): StatusStore {
-  let store = (globalThis as unknown as Record<string, StatusStore | undefined>)[STORE_KEY];
-  if (!store) {
-    store = {
+  if (!statusStore) {
+    statusStore = {
       callbacks: null,
       timer: null,
       inFlight: null,
@@ -184,14 +172,13 @@ function getStore(): StatusStore {
       snapshots: [],
       providerLastChecked: createProviderLastChecked(),
     };
-    (globalThis as unknown as Record<string, StatusStore | undefined>)[STORE_KEY] = store;
   }
 
-  if (!store.providerLastChecked) {
-    store.providerLastChecked = createProviderLastChecked();
+  if (!statusStore.providerLastChecked) {
+    statusStore.providerLastChecked = createProviderLastChecked();
   }
 
-  return store;
+  return statusStore;
 }
 
 function syncPanelStatus(): void {
@@ -302,8 +289,6 @@ function getProviderFallbackTarget(provider: CliType): string {
       return CLAUDE_COMPONENT_NAMES[0]!;
     case 'codex':
       return OPENAI_COMPONENT_NAMES[0]!;
-    case 'gemini':
-      return 'API';
     case 'opencode-go':
       return 'Service';
     case 'cursor':
@@ -319,8 +304,6 @@ function getProviderFallbackSourceUrl(provider: CliType): string {
       return 'https://status.claude.com/#';
     case 'codex':
       return 'https://status.openai.com/';
-    case 'gemini':
-      return 'https://aistudio.google.com/status';
     case 'opencode-go':
       return 'https://opencode.ai/';
     case 'cursor':
@@ -358,131 +341,6 @@ async function fetchOpenAiStatus(): Promise<ServiceSnapshot> {
     matchedTarget: matched.name,
     sourceUrl,
     checkedAt: matched.updatedAt ? Date.parse(matched.updatedAt) || Date.now() : Date.now(),
-  };
-}
-
-function getChromeCandidates(): string[] {
-  if (process.env.PI_UNIFIED_AGENT_STATUS_CHROME) {
-    return [process.env.PI_UNIFIED_AGENT_STATUS_CHROME];
-  }
-
-  switch (process.platform) {
-    case 'darwin':
-      return [
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        'google-chrome',
-        'chromium',
-      ];
-    case 'win32':
-      return [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        'chrome.exe',
-      ];
-    default:
-      return [
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        'google-chrome',
-        'chromium-browser',
-        'chromium',
-      ];
-  }
-}
-
-function looksLikePath(binary: string): boolean {
-  return binary.includes('/') || binary.includes('\\');
-}
-
-async function dumpDomWithChrome(url: string): Promise<string> {
-  const args = ['--headless=new', '--disable-gpu', '--dump-dom', url];
-  let lastError: unknown;
-
-  for (const candidate of getChromeCandidates()) {
-    if (looksLikePath(candidate) && !existsSync(candidate)) continue;
-
-    try {
-      const { stdout } = await execFileAsync(candidate, args, {
-        timeout: GEMINI_RENDER_TIMEOUT_MS,
-        maxBuffer: 8 * 1024 * 1024,
-      });
-      if (stdout?.trim()) return stdout;
-    } catch (error) {
-      lastError = error;
-      const code = (error as NodeJS.ErrnoException | undefined)?.code;
-      if (code === 'ENOENT') continue;
-    }
-  }
-
-  const message = lastError instanceof Error ? lastError.message : 'Chrome headless 실행 실패';
-  throw new Error(message);
-}
-
-function extractGeminiOverallStatus(dom: string): HealthStatus {
-  const match = dom.match(
-    /class="status status-large ([^"]+)".*?<span[^>]*>(All Systems Operational|Partial Outage|We are working to resolve the issues as quickly as possible)<\/span>/s,
-  );
-  const rawClass = match?.[1] ?? '';
-  const rawText = match?.[2] ?? '';
-
-  if (rawClass.includes('operational') || rawText === 'All Systems Operational') {
-    return 'operational';
-  }
-  if (rawClass.includes('full-outage') || rawText.startsWith('We are working to resolve')) {
-    return 'major_outage';
-  }
-  if (rawClass.includes('partial-outage') || rawText === 'Partial Outage') {
-    return 'partial_outage';
-  }
-  return 'unknown';
-}
-
-function extractGeminiServiceBlocks(dom: string): Map<string, string> {
-  const normalized = dom.replace(/></g, '>\n<');
-  const blocks = new Map<string, string>();
-  const regex =
-    /data-testid="service-name"[^>]*>\s*([^<]+?)\s*<\/div>([\s\S]*?)(?=<div [^>]*data-testid="service-name"|<footer\b)/g;
-
-  for (const match of normalized.matchAll(regex)) {
-    const serviceName = match[1]?.trim();
-    const block = match[2];
-    if (serviceName && block) {
-      blocks.set(serviceName, block);
-    }
-  }
-
-  return blocks;
-}
-
-function extractLastTimelineStatus(block: string): HealthStatus {
-  const matches = [...block.matchAll(/class="xap-inline-dialog timeline-day([^"]*)"/g)];
-  const lastClass = matches.at(-1)?.[1] ?? '';
-
-  if (lastClass.includes('severity-major')) return 'major_outage';
-  if (lastClass.includes('severity-moderate')) return 'partial_outage';
-  if (matches.length > 0) return 'operational';
-  return 'unknown';
-}
-
-async function fetchGeminiStatus(): Promise<ServiceSnapshot> {
-  const sourceUrl = 'https://aistudio.google.com/status';
-  const dom = await dumpDomWithChrome(sourceUrl);
-  const overallStatus = extractGeminiOverallStatus(dom);
-  const serviceBlocks = extractGeminiServiceBlocks(dom);
-  const apiBlock = serviceBlocks.get('API');
-  const blockStatus = apiBlock ? extractLastTimelineStatus(apiBlock) : 'unknown';
-
-  return {
-    provider: 'gemini',
-    label: 'Gemini',
-    status: overallStatus === 'operational' ? 'operational' : blockStatus,
-    matchedTarget: 'API',
-    sourceUrl,
-    checkedAt: Date.now(),
-    note: apiBlock ? undefined : 'API 블록 파싱 실패 — HTML 구조 변경 가능성',
   };
 }
 

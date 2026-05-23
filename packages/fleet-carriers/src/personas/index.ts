@@ -1,4 +1,4 @@
-import type { CarrierConfig, CarrierMetadata } from "@sbluemin/fleet-core";
+import type { CarrierConfig, CarrierMetadata } from "../dispatch/types.js";
 
 import { CARRIER_METADATA as CHRONICLE_METADATA } from "./chronicle.js";
 import { CARRIER_METADATA as GENESIS_METADATA } from "./genesis.js";

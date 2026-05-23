@@ -15,7 +15,6 @@ const forbidden = [
   /workspace:\*.*@sbluemin\/fleet-(?:ai|agent|coding-agent)/,
 ];
 const fleetTuiForbidden = [
-  /@sbluemin\/fleet-core/,
   /@sbluemin\/fleet-carriers/,
   /@sbluemin\/fleet-harness/,
   /@sbluemin\/fleet-agent/,

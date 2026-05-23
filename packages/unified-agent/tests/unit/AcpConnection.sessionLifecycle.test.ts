@@ -156,7 +156,7 @@ describe('AcpConnection.reconnectSession()', () => {
     expect(mockAgent.initialize).not.toHaveBeenCalled();
   });
 
-  it('canResetSession=false(Gemini)이면 newSession 없이 에러 throw', async () => {
+  it('canResetSession=false이면 newSession 없이 에러 throw', async () => {
     const conn = createConnection();
     const mockAgent = createMockAgent();
     conn.agentProxy = mockAgent;

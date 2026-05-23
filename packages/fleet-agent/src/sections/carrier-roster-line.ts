@@ -1,21 +1,29 @@
-import { admiral } from "@sbluemin/fleet-core";
+import {
+	getConfiguredTaskForceBackendsFromSnapshot,
+	getRegisteredOrder,
+	readStatesSnapshot,
+	type CarrierRuntime,
+} from "@sbluemin/fleet-carriers";
 import { centerLine, truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui/pty";
+
+import { resolveCarrierColor, resolveCarrierDisplayName } from "../carrier-status/carrier-helpers.js";
 
 const ANSI_RESET = "\x1b[0m";
 const SEGMENT_SEPARATOR = " │ ";
 const MIN_TASK_FORCE_BACKENDS = 2;
 
 export class CarrierRosterLine implements Component {
+	constructor(private readonly carrierRuntime: CarrierRuntime) {}
+
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		const carrier = admiral.carrier;
-		const store = admiral.store;
-		const snapshot = store.readStatesSnapshot();
-		const segments = carrier.getRegisteredOrder().map((carrierId) => {
-			const color = carrier.resolveCarrierColor(carrierId);
-			const name = carrier.resolveCarrierDisplayName(carrierId);
-			const taskForceBackendCount = store.getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
+		const snapshot = readStatesSnapshot();
+		const registry = this.carrierRuntime.registry;
+		const segments = getRegisteredOrder(registry).map((carrierId) => {
+			const color = resolveCarrierColor(registry, carrierId);
+			const name = resolveCarrierDisplayName(registry, carrierId);
+			const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
 			return `${colorize(`○ ${name}`, color)}${formatBadges(
 				taskForceBackendCount,
 			)}`;

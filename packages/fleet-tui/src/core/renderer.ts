@@ -2,6 +2,8 @@ import {
   ANSI_HIDE_CURSOR,
   ANSI_SHOW_CURSOR,
   clearToEndOfLine,
+  disableSgrMouse,
+  enableSgrMouse,
   enterAltScreen,
   exitAltScreen,
   moveCursorTo,
@@ -98,7 +100,7 @@ export class LocalTui {
     this.terminalRestored = false;
     this.frame = null;
     registerTerminalRestore(this.restoreFromProcessRegistry);
-    process.stdout.write(`${this.shouldUseAltScreen() ? enterAltScreen() : ""}${ANSI_HIDE_CURSOR}`);
+    process.stdout.write(`${this.shouldUseAltScreen() ? enterAltScreen() : ""}${enableSgrMouse()}${ANSI_HIDE_CURSOR}`);
     this.requestRender(true);
   }
 
@@ -280,7 +282,7 @@ export class LocalTui {
     }
 
     this.terminalRestored = true;
-    process.stdout.write(`${ANSI_SHOW_CURSOR}${this.shouldUseAltScreen() ? exitAltScreen() : ""}`);
+    process.stdout.write(`${disableSgrMouse()}${ANSI_SHOW_CURSOR}${this.shouldUseAltScreen() ? exitAltScreen() : ""}`);
   }
 
   private shouldUseAltScreen(): boolean {

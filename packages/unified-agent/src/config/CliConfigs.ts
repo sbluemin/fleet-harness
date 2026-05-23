@@ -14,30 +14,8 @@ import { resolveNpxPath, buildNpxArgs } from '../utils/npx.js';
 import { cleanEnvironment } from '../utils/env.js';
 import { resolveCursorSpawnModel } from '../models/ModelRegistry.js';
 
-/** ACP 기본 인자 */
-const DEFAULT_ACP_ARGS = ['--acp'];
-
 /** CLI 백엔드 설정 전체 맵 */
 export const CLI_BACKENDS = {
-  gemini: {
-    id: 'gemini',
-    cliCommand: 'gemini',
-    protocol: 'acp',
-    authRequired: true,
-    acpArgs: DEFAULT_ACP_ARGS,
-    modes: [
-      { id: 'default', label: 'Default' },
-      { id: 'autoEdit', label: 'Auto-Accept Edits' },
-      { id: 'yolo', label: 'YOLO' },
-    ],
-    supportsSessionClose: false,
-    supportsSessionLoad: false,
-    requiresModelAtSpawn: true,
-    usesNpxBridge: false,
-    defaultMaxTokens: 65_536,
-    colorRgb: [66, 133, 244],
-    bgColorRgb: [15, 22, 42],
-  },
   claude: {
     id: 'claude',
     cliCommand: 'claude',
@@ -208,19 +186,9 @@ export function createSpawnConfig(
     };
   }
 
-  // CLI를 직접 spawn하는 경우 (Gemini, Cursor, OpenCode 계열)
+  // CLI를 직접 spawn하는 경우 (Cursor, OpenCode 계열)
   const command = options.cliPath ?? backend.cliCommand;
   const args = backend.acpArgs ? [...backend.acpArgs] : [];
-
-  if (cli === 'gemini' && options.yoloMode) {
-    // Gemini CLI 공식 문서 기준 YOLO는 command line approval mode로 켜는 것이 가장 명시적입니다.
-    args.push('--approval-mode=yolo');
-  }
-
-  if (cli === 'gemini' && options.model) {
-    // Gemini ACP는 세션 시작 후 모델 변경 지원이 제한적이어서 spawn 시점에 모델을 넘깁니다.
-    args.push('--model', options.model);
-  }
 
   if (cli === 'cursor' && options.model) {
     // Cursor global option은 acp subcommand 앞에 와야 하므로 기존 acp 인자 앞에 삽입합니다.
@@ -260,7 +228,6 @@ export function getYoloModeId(cli: CliType): string {
       return 'build';
     case 'cursor':
       return 'agent';
-    case 'gemini':
     case 'codex':
       return 'yolo';
   }
@@ -328,7 +295,7 @@ export function mcpServerConfigsToCodexArgs(servers: McpServerConfig[]): string[
 
 /**
  * McpServerConfig 배열을 ACP McpServer 배열로 변환합니다.
- * Claude/Gemini는 ACP session/new에 mcpServers로 전달합니다.
+ * Claude는 ACP session/new에 mcpServers로 전달합니다.
  *
  * @param servers - 통합 MCP 서버 설정 배열
  * @returns ACP SDK McpServer 배열

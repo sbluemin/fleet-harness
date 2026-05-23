@@ -1,3 +1,9 @@
+import type { KeyboardProtocolState } from "./keyboard-protocol.js";
+import type { MouseProtocolState } from "./mouse-protocol.js";
+
+export type { KeyboardProtocolState } from "./keyboard-protocol.js";
+export type { MouseProtocolState } from "./mouse-protocol.js";
+
 export interface PtyStartOptions {
   readonly cols: number;
   readonly rows: number;
@@ -16,6 +22,8 @@ export interface PtyHost {
   write(data: string): void;
   resize(cols: number, rows: number): void;
   onData(handler: (chunk: string) => void): void;
+  getKeyboardProtocol?: () => KeyboardProtocolState;
+  getMouseProtocol?: () => MouseProtocolState;
   kill(): void;
 }
 

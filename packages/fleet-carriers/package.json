@@ -23,10 +23,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./job": {
+      "types": "./dist/job.d.ts",
+      "import": "./dist/job.js",
+      "require": "./dist/job.cjs"
     }
   },
   "dependencies": {
-    "@sbluemin/fleet-core": "workspace:*"
+    "@sbluemin/fleet-infra": "workspace:*",
+    "@sbluemin/fleet-mcp-server": "workspace:*",
+    "@sbluemin/fleet-unified-agent": "workspace:*",
+    "typebox": "^1.1.24"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

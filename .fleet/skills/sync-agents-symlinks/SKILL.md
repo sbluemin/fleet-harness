@@ -5,7 +5,7 @@ description: AGENTS.md 파일이 있는 모든 디렉토리에 CLAUDE.md 심볼�
 
 # Sync AGENTS.md Symlinks
 
-Use this prompt to ensure every directory that contains an `AGENTS.md` file also has a `CLAUDE.md` symlink pointing to it. This keeps Claude Code and pi-coding-agent reading the same doctrinal file without duplication.
+Use this prompt to ensure every directory that contains an `AGENTS.md` file also has a `CLAUDE.md` symlink pointing to it. This keeps Claude Code reading the same doctrinal file without duplication.
 
 ## Inputs
 

@@ -21,7 +21,7 @@ export interface AgentMode {
 
 /** CLI 스폰 설정 */
 export interface CliSpawnConfig {
-  /** 실행 커맨드 (e.g., 'gemini', 'npx') */
+  /** 실행 커맨드 (e.g., 'claude', 'npx') */
   command: string;
   /** 커맨드 인자 */
   args: string[];
@@ -79,7 +79,7 @@ export interface McpServerConfig {
   headers?: { name: string; value: string }[];
   /** MCP tool call 타임아웃 (초).
    *  Codex: `-c mcp_servers.{name}.tool_timeout_sec` 으로 전달.
-   *  Claude/Gemini: 현재 ACP에서 미지원, 향후 `_meta` 확장 예정. */
+   *  Claude: 현재 ACP에서 미지원, 향후 `_meta` 확장 예정. */
   toolTimeout?: number;
 }
 
@@ -135,14 +135,14 @@ export interface UnifiedClientOptions extends ConnectionOptions {
   /** Claude 계열에서만 의미한다. true이면 자식 Claude Code 프로세스에
    * `--strict-mcp-config`를 주입하여 사용자 글로벌·프로젝트의 MCP 자동 로딩을
    * 차단한다. ACP로 명시 등록한 MCP는 유지되며, OAuth 인증 경로에는 영향이 없다.
-   * Claude 외 CLI(codex/gemini/opencode-go)는 본 옵션을 무시한다. 기본값 undefined. */
+   * Claude 외 CLI(codex/opencode-go)는 본 옵션을 무시한다. 기본값 undefined. */
   strictMcp?: boolean;
   /** 재개할 기존 세션 ID */
   sessionId?: string;
   /** 세션 초기 시스템 지침.
    * Claude에서는 native system prompt에 append되며,
    * Codex에서는 app-server의 developerInstructions로 전달되고,
-   * Gemini에서는 세션의 최초 user turn 앞에 선행 text block으로 주입됨
+   * OpenCode Go에서는 세션의 최초 user turn 앞에 선행 text block으로 주입됨
    * (best-effort initial session instructions). */
   systemPrompt?: string;
   /** 에이전트에 연결할 MCP 서버 목록 (선택) */

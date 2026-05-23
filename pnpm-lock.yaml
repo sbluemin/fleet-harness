@@ -36,9 +36,12 @@ importers:
       '@sbluemin/fleet-carriers':
         specifier: workspace:*
         version: link:../fleet-carriers
-      '@sbluemin/fleet-core':
+      '@sbluemin/fleet-infra':
         specifier: workspace:*
-        version: link:../fleet-core
+        version: link:../fleet-infra
+      '@sbluemin/fleet-mcp-server':
+        specifier: workspace:*
+        version: link:../fleet-mcp-server
       '@sbluemin/fleet-tui':
         specifier: workspace:../fleet-tui
         version: link:../fleet-tui
@@ -64,9 +67,18 @@ importers:
 
   packages/fleet-carriers:
     dependencies:
-      '@sbluemin/fleet-core':
+      '@sbluemin/fleet-infra':
         specifier: workspace:*
-        version: link:../fleet-core
+        version: link:../fleet-infra
+      '@sbluemin/fleet-mcp-server':
+        specifier: workspace:*
+        version: link:../fleet-mcp-server
+      '@sbluemin/fleet-unified-agent':
+        specifier: workspace:*
+        version: link:../unified-agent
+      typebox:
+        specifier: ^1.1.24
+        version: 1.1.34
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -81,7 +93,7 @@ importers:
         specifier: ^4.0.13
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  packages/fleet-core:
+  packages/fleet-infra:
     dependencies:
       '@sbluemin/fleet-mcp-server':
         specifier: workspace:*
@@ -89,9 +101,6 @@ importers:
       '@sbluemin/fleet-unified-agent':
         specifier: workspace:*
         version: link:../unified-agent
-      typebox:
-        specifier: ^1.1.24
-        version: 1.1.34
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

@@ -1,10 +1,18 @@
-import { admiral } from "@sbluemin/fleet-core";
+import {
+  type CarrierRuntime,
+  getConfiguredTaskForceCarrierIdsFromSnapshot,
+  getRegisteredOrder,
+  readStatesSnapshot,
+  setTaskForceConfiguredCarriers,
+} from "@sbluemin/fleet-carriers";
 
-export function reconcileRuntimeState(): void {
-  admiral.carrier.setTaskForceConfiguredCarriers(
-    admiral.store.getConfiguredTaskForceCarrierIdsFromSnapshot(
-      admiral.store.readStatesSnapshot(),
-      admiral.carrier.getRegisteredOrder(),
+export function reconcileRuntimeState(carrierRuntime: CarrierRuntime): void {
+  const registry = carrierRuntime.registry;
+  setTaskForceConfiguredCarriers(
+    registry,
+    getConfiguredTaskForceCarrierIdsFromSnapshot(
+      readStatesSnapshot(),
+      getRegisteredOrder(registry),
     ),
   );
 }

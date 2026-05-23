@@ -1,6 +1,6 @@
 packages:
   - "packages/unified-agent"
-  - "packages/fleet-core"
+  - "packages/fleet-infra"
   - "packages/fleet-mcp-server"
   - "packages/fleet-carriers"
   - "packages/fleet-tui"

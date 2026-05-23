@@ -3,9 +3,10 @@ id: "guide-003-fleet-wiki"
 title: "Guide - 003 fleet-wiki 사용법"
 tags: ["guide", "fleet-wiki", "fleet-wiki-web", "workflow", "onboarding", "current"]
 created: "2026-05-07T15:45:43.577Z"
-updated: "2026-05-07T16:06:18.121Z"
-version: 4
-rawSourceRef: "raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md"
+updated: "2026-05-23T14:47:42.640Z"
+version: 5
+rawSourceRef: "raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md\"},{\"ref\":\"raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md\",\"title\":\"Guide - 003 fleet-wiki 사용법\",\"hash\":\"d740bf60\"}]"
 ---
 # fleet-wiki 사용법
 
@@ -90,19 +91,18 @@ wiki_patch_queue(action="show", patch_id="...")
 
 ```bash
 fleet-wiki                             # 기본 (127.0.0.1:3737)
-fleet-wiki --host 127.0.0.1 --port 4000  # 호스트/포트 지정
+fleet-wiki --port 4000                  # 포트 지정
 fleet-wiki --stop                      # 서버 종료
 fleet-wiki --help                      # 옵션 안내
 ```
 
 | 옵션 | 설명 |
 |---|---|
-| --host | 바인드 호스트. 기본 127.0.0.1 |
-| --port | 서버 포트. 미지정 시 free port 자동 선택 |
-| --stop | 현재 워크스페이스 서버를 graceful 종료 (SIGTERM → SIGKILL) |
+| --port | 서버 포트. 미지정 시 3737 기본 |
+| --stop | per-user daemon 전체 종료 (SIGTERM → SIGKILL) |
 | --help | 옵션·환경변수·예시 출력 |
 
-환경변수 `FLEET_WIKI_PORT` / `FLEET_WIKI_HOST`로도 기본값을 설정할 수 있다. 같은 워크스페이스에서 재실행 시 기존 서버를 재사용하며, 빌드가 더 새것이면 자동 재기동한다.
+환경변수 `FLEET_WIKI_PORT`로도 기본값을 설정할 수 있다. daemon은 per-user로 실행되며 여러 워크스페이스를 동시에 제공할 수 있다.
 
 ---
 
@@ -129,7 +129,7 @@ wiki_patch_queue(action="approve_set", patch_set_id="...")
 승인 시: `wiki/{id}.md` 반영 → 인덱스 재빌드 → `archive/`로 이동  
 반려 시: 사유 기록 후 `archive/`로 이동
 
-웹 UI(`/queue/:patchId`)에서도 승인/반려할 수 있다.
+웹 UI(`/w/:ws/queue/:patchId`)에서도 승인/반려할 수 있다.
 
 ---
 
@@ -192,16 +192,22 @@ wiki_query(question="질문", mode="answer")
 
 ## 웹 UI SPA 경로
 
+Per-user daemon은 여러 워크스페이스를 동시에 제공한다. 각 경로는 워크스페이스 ID(`:ws`)를 포함한다.
+
 | 경로 | 설명 |
 |---|---|
-| `/` | 웰컴 페이지 |
-| `/queue` | 패치 큐 목록 |
-| `/queue/:patchId` | 패치 상세 · 승인 · 반려 |
-| `/entry/:id` | 위키 엔트리 조회 |
-| `/conflicts` | 충돌 목록 |
-| `/conflicts/:id` | 충돌 상세 |
-| `/index-md` | 전체 인덱스 마크다운 |
-| `/log` | 활동 로그 |
+| `/` | 웰컴 페이지 (expired workspace 리다이렉션 포함) |
+| `/w/:ws/` | 워크스페이스 홈 / 인덱스 |
+| `/w/:ws/entry/:id` | 위키 엔트리 조회 |
+| `/w/:ws/raw/:ref` | Raw source viewer |
+| `/w/:ws/queue` | 패치 큐 목록 (Drydock) |
+| `/w/:ws/queue/:patchId` | 패치 상세 · 승인 · 반려 |
+| `/w/:ws/conflicts` | 충돌 목록 |
+| `/w/:ws/conflicts/:id` | 충돌 상세 |
+| `/w/:ws/index-md` | 전체 인덱스 마크다운 |
+| `/w/:ws/log` | 활동 로그 |
+
+레거시 경로(`/entry/:id`, `/queue` 등)는 MRU(Most Recently Used) 워크스페이스가 있을 경우 해당 워크스페이스 경로로 리다이렉션된다.
 
 > 서버는 127.0.0.1에만 바인드된다. 웹 UI POST 요청은 Origin 헤더 CSRF 보호가 적용된다.
 

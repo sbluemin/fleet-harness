@@ -108,4 +108,4 @@ The following invariants are enforced at the transport level:
 
 ## Migration
 
-If you are migrating from the internal `fleet-core` tool registry, please refer to [MIGRATION.md](./MIGRATION.md) for detailed instructions.
+If you are migrating from the internal `fleet-admiral` tool registry, please refer to [MIGRATION.md](./MIGRATION.md) for detailed instructions.

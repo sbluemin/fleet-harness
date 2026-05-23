@@ -1,6 +1,6 @@
 /**
  * AcpConnection - 공식 ACP SDK 기반 연결 구현
- * ClientSideConnection을 래핑하여 Gemini, Claude, Codex 통합 통신
+ * ClientSideConnection을 래핑하여 Claude, Codex 통합 통신
  */
 
 import {
@@ -315,7 +315,7 @@ export class AcpConnection extends BaseConnection {
   /**
    * 현재 세션을 종료합니다 (프로세스는 유지).
    * close capability가 있는 에이전트만 closeSession을 호출합니다.
-   * Gemini 등 close 미지원 에이전트는 아무것도 하지 않습니다 (hang 방지).
+   * close 미지원 에이전트는 아무것도 하지 않습니다 (hang 방지).
    *
    * @param sessionId - 종료할 세션 ID
    */
@@ -344,7 +344,7 @@ export class AcpConnection extends BaseConnection {
    */
   /**
    * 세션 리셋(newSession 재호출) 가능 여부를 반환합니다.
-   * close capability가 없는 Gemini는 두 번째 newSession 호출 시 hang되므로 false를 반환합니다.
+   * close capability가 없는 에이전트는 두 번째 newSession 호출 시 hang될 수 있으므로 false를 반환합니다.
    */
   get canResetSession(): boolean {
     return this.agentCapabilities?.sessionCapabilities?.close != null;
@@ -358,7 +358,7 @@ export class AcpConnection extends BaseConnection {
     strictMcp?: boolean,
     effort?: string,
   ): Promise<NewSessionResponse> {
-    // close capability가 없는 CLI(Gemini 등)는 newSession 재호출 시 hang됩니다
+    // close capability가 없는 CLI는 newSession 재호출 시 hang될 수 있습니다
     if (!sessionId && !this.canResetSession) {
       throw new Error(
         `[${this.command}] 세션 리셋을 지원하지 않습니다 (session/close 미지원). disconnect() 후 재연결하세요.`,

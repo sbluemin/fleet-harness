@@ -28,12 +28,18 @@ export interface DedicatedCliDefinition {
 export interface DedicatedCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly model?: string;
 }
 
 export interface DedicatedCliInjectionContext {
   readonly cliId: DedicatedCliId;
   readonly replaceSystemPrompt: boolean;
   readonly systemPromptFile: string;
+  readonly mcpServers: readonly DedicatedCliMcpServerConfig[];
+}
+
+export interface DedicatedCliMcpServerConfig {
+  readonly name: string;
   readonly endpointUrl: string;
   readonly bearerToken: string;
 }

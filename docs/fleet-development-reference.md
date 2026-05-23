@@ -4,46 +4,40 @@ This guide explains how Fleet development is organized.
 
 ## 1. Architectural Split
 
-Fleet development follows a hard split:
+Fleet development follows a hard one-way dependency graph:
 
-- `packages/fleet-core` — host-agnostic Fleet product core
-- `packages/fleet-agent` — primary Fleet CLI host (fleet)
-- `packages/unified-agent` — core execution engine
+- `packages/fleet-agent` — sole CLI Composition Root, host adapter, absorbed Admiral policy, and absorbed Grand Fleet policy.
+- `packages/fleet-carriers` — carrier runtime, personas, jobs, and carrier state.
+- `packages/fleet-infra` — host-agnostic infrastructure and I/O gateways.
+- `packages/fleet-mcp-server` — generic MCP server, registry, routing, and tool snapshots.
+- `packages/fleet-wiki` and `packages/fleet-wiki-web` — Fleet knowledge package and web UI.
+- `packages/unified-agent` — independent execution engine client package.
 
 ## 2. Where New Work Goes
 
-### 2.1 `packages/fleet-core`
+### 2.1 `packages/fleet-agent`
 
-Put code here when it is:
-- pure orchestration or domain logic
-- prompt composition
-- state/store logic
-- runtime contracts, ports, pure controllers, or public APIs
+Put code here when it requires terminal rendering, CLI process lifecycle management, host input routing, concrete service assembly, Admiral prompt/protocol/tool policy, or Grand Fleet coordination helpers.
 
-### 2.2 `packages/fleet-agent`
+### 2.2 `packages/fleet-carriers`
 
-Put code here when it requires:
-- terminal rendering or TUI components (`fleet-tui`)
-- CLI process lifecycle management
-- host-specific input routing
+Put code here when it owns carrier persona metadata, carrier dispatch, carrier job surfaces, or carrier state persistence.
 
-## 3. Domain Layout Map
+### 2.3 `packages/fleet-infra`
 
-| Home / Entrypoint | Responsibility |
-|-------------------|----------------|
-| `packages/fleet-agent/src/runtime/` | Host runtime assembly and lifecycle |
-| `packages/fleet-agent/src/dedicated-cli/` | Dedicated CLI process management |
-| `packages/fleet-agent/src/carrier-status/` | Carrier status and Job Bar TUI |
-| `packages/fleet-core/admiral/` | Agent orchestration, tools, and protocols |
-| `packages/fleet-wiki/` | Knowledge base, ingest, and patching |
+Put code here when it owns generic auth, data-dir, executor, log, settings, detached-job, or runtime I/O primitives.
 
-## 4. Import Rules
+### 2.4 `packages/fleet-mcp-server`
 
-- Host packages (`fleet-agent`) consume `fleet-core` through public exports.
-- `fleet-core` must not import host-specific packages.
-- `@sbluemin/fleet-unified-agent` is the primary engine dependency.
+Put code here when it owns generic MCP registry/server behavior, token isolation, routing, or tool snapshots.
+
+## 3. Import Rules
+
+- `fleet-agent` assembles concrete services through explicit leaf package calls.
+- Lower packages must not import `fleet-agent` or any package above them in the dependency graph.
+- Consumers use public package exports only.
 - Do not deep-import `src/**` or `internal/**` across package boundaries.
 
-## 5. State Synchronization
+## 4. State Synchronization
 
-Fleet supports multiple concurrent instances sharing the same `states.json` file via a `_generation` token and `fs.watch`. Developers must avoid in-memory caches for state-derived values and use pull-based resolvers.
+Fleet supports multiple concurrent instances sharing the same `states.json` file via a `_generation` token and file locks. Developers must avoid hidden process-global state and use explicit service instances plus pull-based resolvers.

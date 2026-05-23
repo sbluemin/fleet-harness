@@ -10,7 +10,6 @@ import type { PromptResponse } from "@agentclientprotocol/sdk";
 import { UnifiedClaudeAgentClient } from "./UnifiedClaudeAgentClient.js";
 import { UnifiedCodexAgentClient } from "./UnifiedCodexAgentClient.js";
 import { UnifiedCursorAgentClient } from "./UnifiedCursorAgentClient.js";
-import { UnifiedGeminiAgentClient } from "./UnifiedGeminiAgentClient.js";
 import { UnifiedOpenCodeAgentClient } from "./UnifiedOpenCodeAgentClient.js";
 import { CliDetector } from "../detector/CliDetector.js";
 import type {
@@ -244,7 +243,7 @@ export interface IUnifiedAgentClient {
 
   /**
    * 에이전트 모드를 설정합니다.
-   * CLI별 지원 모드: Gemini(default/autoEdit/yolo), Claude(default/plan/bypassPermissions), Codex(default/autoEdit/yolo) 등.
+   * CLI별 지원 모드: Claude(default/plan/bypassPermissions), Codex(default/autoEdit/yolo) 등.
    *
    * @param mode - 모드 ID (e.g., 'plan', 'yolo', 'bypassPermissions')
    */
@@ -309,8 +308,6 @@ export const UnifiedAgent = {
         return new UnifiedClaudeAgentClient(cli);
       case "codex":
         return new UnifiedCodexAgentClient();
-      case "gemini":
-        return new UnifiedGeminiAgentClient();
       case "opencode-go":
         return new UnifiedOpenCodeAgentClient("opencode-go");
       case "cursor":
@@ -332,7 +329,7 @@ export const UnifiedAgent = {
     const preferred = await new CliDetector().getPreferred();
     if (!preferred) {
       throw new Error(
-        "사용 가능한 CLI가 없습니다. gemini, claude, claude-zai, claude-kimi, codex, opencode-go, cursor 중 하나를 설치해주세요.",
+        "사용 가능한 CLI가 없습니다. claude, claude-zai, claude-kimi, codex, opencode-go, cursor 중 하나를 설치해주세요.",
       );
     }
 

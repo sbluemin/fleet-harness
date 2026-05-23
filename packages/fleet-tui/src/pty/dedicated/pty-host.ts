@@ -1,6 +1,9 @@
 import type { IPty } from "node-pty";
 
 import { encodeTerminalInput } from "./key-encoding.js";
+import { createKeyboardProtocol } from "./keyboard-protocol.js";
+import type { KeyboardProtocolState } from "./keyboard-protocol.js";
+import { createMouseProtocol } from "./mouse-protocol.js";
 import { killShell, resizeShell, startShell } from "./shell-lifecycle.js";
 import type { PtyHost, PtyLaunchConfig, PtyStartOptions } from "./types.js";
 
@@ -8,6 +11,8 @@ export function createPtyHost(config: PtyLaunchConfig): PtyHost {
   let child: IPty | undefined;
   let started = false;
   const handlers: Array<(chunk: string) => void> = [];
+  const protocol = createKeyboardProtocol();
+  const mouseProtocol = createMouseProtocol();
 
   return {
     start(opts: PtyStartOptions): void {
@@ -19,6 +24,8 @@ export function createPtyHost(config: PtyLaunchConfig): PtyHost {
       child = startShell(config, opts);
 
       child.onData((chunk) => {
+        protocol.detectChildRequest(chunk);
+        mouseProtocol.detectChildRequest(chunk);
         for (const handler of handlers) {
           handler(chunk);
         }
@@ -26,7 +33,7 @@ export function createPtyHost(config: PtyLaunchConfig): PtyHost {
     },
 
     write(data: string): void {
-      child?.write(encodeTerminalInput(data));
+      child?.write(encodeTerminalInput(data, protocol));
     },
 
     resize(cols: number, rows: number): void {
@@ -35,6 +42,14 @@ export function createPtyHost(config: PtyLaunchConfig): PtyHost {
 
     onData(handler: (chunk: string) => void): void {
       handlers.push(handler);
+    },
+
+    getKeyboardProtocol(): KeyboardProtocolState {
+      return protocol.getState();
+    },
+
+    getMouseProtocol() {
+      return mouseProtocol.getState();
     },
 
     kill(): void {

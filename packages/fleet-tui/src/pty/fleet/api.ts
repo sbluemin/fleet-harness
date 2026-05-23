@@ -12,6 +12,7 @@ import type {
   FleetPtySection,
 } from "./types.js";
 import { centerLine, fitLine, truncateToWidth, visibleWidth } from "../../primitives/cell-width.js";
+import type { RoutedMouseInput } from "../../input/input-router.js";
 
 export { createOverlayFrame } from "./frame.js";
 export { isPrintable, matchesKey, Key } from "./keys.js";
@@ -34,6 +35,7 @@ export interface CreateFleetPtyApiOptions {
 export interface FleetPtyApi {
   readonly custom: <T>(factory: FleetPtyCustomFactory<T>, opts?: FleetPtyCustomOptions) => Promise<T>;
   readonly dispatchInput: (data: string) => boolean;
+  readonly dispatchMouse: (event: RoutedMouseInput) => boolean;
   readonly getCurrentRegion: () => FleetPtyRegion;
   readonly getDesiredHeight: (maxRows: number) => number | undefined;
   readonly getSections: () => FleetPtySection[];
@@ -104,6 +106,14 @@ export function createFleetPtyApi(
 
       regions.current().component.handleInput?.(data);
       return true;
+    },
+    dispatchMouse: (event) => {
+      if (regions.isDefault()) {
+        return true;
+      }
+
+      const result = regions.current().component.handleMouse?.(event);
+      return result !== false;
     },
     getCurrentRegion: () => regions.current(),
     getDesiredHeight: (maxRows) => regions.current().component.desiredHeight?.(maxRows),

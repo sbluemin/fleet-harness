@@ -12,8 +12,8 @@
 ## Must Not Own
 
 - Changes to `packages/fleet-wiki` exports, signatures, schemas, tools, or storage rules.
-- Imports from `@sbluemin/fleet-core`, `@mariozechner/pi-*`, or `@anthropic-ai/*`.
-- Pi runtime wiring, `ExtensionContext`, `registerCommand`, `registerTool`, or host UI registration.
+- Imports from `@anthropic-ai/*`.
+- `ExtensionContext`, `registerCommand`, `registerTool`, or host UI registration.
 
 ## Dependency Rules
 

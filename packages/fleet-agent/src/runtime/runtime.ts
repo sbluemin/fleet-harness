@@ -1,25 +1,214 @@
-import "@sbluemin/fleet-carriers";
-// fleet-wiki agent specs는 모듈 로드 시 executor tool을 self-register한다.
-import "@sbluemin/fleet-wiki";
-
 import os from "node:os";
 import path from "node:path";
 
-import { bootFleetCore, type FleetCoreShutdownHandle } from "@sbluemin/fleet-core";
+import { createCarrierRuntime, type CarrierRuntime } from "@sbluemin/fleet-carriers";
+import { createInfraServices, type InfraServices } from "@sbluemin/fleet-infra";
+import {
+	createMcpServer,
+	createMcpToolRegistry,
+	createMcpToolSnapshotStore,
+	type McpServer,
+	type McpToolRegistry,
+	type McpToolSnapshotStore,
+} from "@sbluemin/fleet-mcp-server";
+import { getWikiToolSpecs } from "@sbluemin/fleet-wiki";
 
+import { createDedicatedMcpSession, type DedicatedMcpSessionPort } from "../admiral/mcp.js";
+import {
+	CARRIER_MCP_SERVER_NAME,
+	getExecutorMcpTools,
+	registerAgentToolDefaults,
+	WIKI_MCP_SERVER_NAME,
+} from "../admiral/tools.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 
-let shutdownHandle: FleetCoreShutdownHandle | null = null;
-
-export async function bootRuntime(): Promise<void> {
-	const dataDir = path.join(os.homedir(), ".fleet");
-	shutdownHandle = bootFleetCore({ dataDir, bootMode: "normal" });
-
-	reconcileRuntimeState();
+export interface RuntimeServices {
+	readonly carrierRuntime: CarrierRuntime;
+	readonly dedicatedMcpSession: DedicatedMcpSessionPort;
+	readonly infraServices: InfraServices;
+	readonly mcpRegistry: readonly McpToolRegistry[];
 }
 
-export async function shutdownRuntime(): Promise<void> {
-	const handle = shutdownHandle;
-	shutdownHandle = null;
-	await handle?.shutdown();
+export interface FleetRuntimeLifecycle {
+	readonly services: RuntimeServices | undefined;
+	shutdown(): Promise<void>;
+	start(): Promise<RuntimeServices>;
+}
+
+interface FleetRuntimeLifecycleDeps {
+	readonly dataDir?: string;
+}
+
+interface RuntimeMcpServices {
+	readonly name: string;
+	readonly mcpRegistry: McpToolRegistry;
+	readonly mcpServer: McpServer;
+	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
+}
+
+interface RuntimeMcpBundles {
+	readonly carriers: RuntimeMcpServices;
+	readonly wiki: RuntimeMcpServices;
+}
+
+interface StartedRuntime {
+	readonly services: RuntimeServices;
+	readonly shutdown: () => Promise<void>;
+}
+
+export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}): FleetRuntimeLifecycle {
+	let startedRuntime: StartedRuntime | undefined;
+	return {
+		get services() {
+			return startedRuntime?.services;
+		},
+		async shutdown() {
+			const runtime = startedRuntime;
+			startedRuntime = undefined;
+			await runtime?.shutdown();
+		},
+		async start() {
+			if (startedRuntime !== undefined) {
+				return startedRuntime.services;
+			}
+
+			startedRuntime = await startRuntime(deps);
+			return startedRuntime.services;
+		},
+	};
+}
+
+async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
+	const dataDir = deps.dataDir ?? path.join(os.homedir(), ".fleet");
+	const infraServices = createInfraServices();
+	const mcpRuntimes = createRuntimeMcpServices();
+	const carrierRuntime = createCarrierRuntime({ config: {} });
+
+	infraServices.executorPortRuntime.register({
+		getCarrierExternalMcpServerIds(carrierId) {
+			return carrierId
+				? carrierRuntime.registry.getState().modes.get(carrierId)?.config.carrierMetadata?.allowedBuiltinExternalMcpServers ?? []
+				: [];
+		},
+		getExecutorMcpTools(serverName, carrierId) {
+			switch (serverName) {
+				case CARRIER_MCP_SERVER_NAME:
+					return getExecutorMcpTools(mcpRuntimes.carriers.mcpRegistry, carrierRuntime, carrierId);
+				case WIKI_MCP_SERVER_NAME:
+					return getExecutorMcpTools(mcpRuntimes.wiki.mcpRegistry, carrierRuntime, carrierId);
+				default:
+					return [];
+			}
+		},
+		getExecutorMcpRouterRuntimes() {
+			return [
+				{
+					name: mcpRuntimes.carriers.name,
+					runtime: {
+						registry: mcpRuntimes.carriers.mcpRegistry,
+						server: mcpRuntimes.carriers.mcpServer,
+						snapshotStore: mcpRuntimes.carriers.mcpToolSnapshotStore,
+					},
+				},
+				{
+					name: mcpRuntimes.wiki.name,
+					runtime: {
+						registry: mcpRuntimes.wiki.mcpRegistry,
+						server: mcpRuntimes.wiki.mcpServer,
+						snapshotStore: mcpRuntimes.wiki.mcpToolSnapshotStore,
+					},
+				},
+			];
+		},
+	});
+	infraServices.sessionRuntime.initRuntime(dataDir);
+	carrierRuntime.store.initStore(dataDir);
+	carrierRuntime.registerCarrierDefaults();
+	const settings = infraServices.settings.create();
+	infraServices.settingsRuntime.init(settings);
+
+	registerAgentToolDefaults(mcpRuntimes.carriers.mcpRegistry, carrierRuntime);
+	for (const spec of getWikiToolSpecs()) {
+		if (spec.id === "wiki_patch_queue") {
+			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
+		} else if (
+			spec.id === "wiki_drydock"
+			|| spec.id === "wiki_ingest"
+			|| spec.id === "wiki_patch_edit"
+			|| spec.id === "wiki_compile_source"
+			|| spec.id === "wiki_query"
+		) {
+			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
+		} else {
+			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec);
+		}
+	}
+	const dedicatedMcpSession = createDedicatedMcpSession({
+		runtimes: [
+			{
+				name: mcpRuntimes.carriers.name,
+				runtime: {
+					registry: mcpRuntimes.carriers.mcpRegistry,
+					server: mcpRuntimes.carriers.mcpServer,
+					snapshotStore: mcpRuntimes.carriers.mcpToolSnapshotStore,
+				},
+			},
+			{
+				name: mcpRuntimes.wiki.name,
+				runtime: {
+					registry: mcpRuntimes.wiki.mcpRegistry,
+					server: mcpRuntimes.wiki.mcpServer,
+					snapshotStore: mcpRuntimes.wiki.mcpToolSnapshotStore,
+				},
+			},
+		],
+	});
+	void Promise.all([
+		mcpRuntimes.carriers.mcpServer.start(),
+		mcpRuntimes.wiki.mcpServer.start(),
+	]).catch((error: unknown) => {
+		console.error("[fleet-agent] Failed to start MCP servers", error);
+	});
+
+	reconcileRuntimeState(carrierRuntime);
+
+	return {
+		services: {
+			carrierRuntime,
+			dedicatedMcpSession,
+			infraServices,
+			mcpRegistry: [
+				mcpRuntimes.carriers.mcpRegistry,
+				mcpRuntimes.wiki.mcpRegistry,
+			],
+		},
+		async shutdown() {
+			dedicatedMcpSession.cleanup();
+			const disconnectAgentSessions = infraServices.agent.disconnectAll;
+			await disconnectAgentSessions();
+			await Promise.all([
+				mcpRuntimes.carriers.mcpServer.stop(),
+				mcpRuntimes.wiki.mcpServer.stop(),
+			]);
+			infraServices.settingsRuntime.reset(settings);
+		},
+	};
+}
+
+function createRuntimeMcpServices(): RuntimeMcpBundles {
+	return {
+		carriers: createRuntimeMcpBundle(CARRIER_MCP_SERVER_NAME),
+		wiki: createRuntimeMcpBundle(WIKI_MCP_SERVER_NAME),
+	};
+}
+
+function createRuntimeMcpBundle(name: string): RuntimeMcpServices {
+	const mcpRegistry = createMcpToolRegistry();
+	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
+	const mcpServer = createMcpServer({
+		registry: mcpRegistry,
+		serverInfo: { name },
+		toolSnapshotStore: mcpToolSnapshotStore,
+	});
+	return { name, mcpRegistry, mcpServer, mcpToolSnapshotStore };
 }

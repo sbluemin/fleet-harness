@@ -28,6 +28,8 @@ export interface LogicalCursor {
   readonly y: number;
 }
 
+export type XtermBufferType = "normal" | "alternate";
+
 const ANSI_RESET = "\x1b[0m";
 const DEFAULT_STYLE: CellStyle = {
   bg: 0,
@@ -65,6 +67,20 @@ export function renderXtermViewport(terminal: XtermTerminal): string[] {
   }
 
   return lines;
+}
+
+export function getXtermBufferType(terminal: XtermTerminal): XtermBufferType {
+  return terminal.buffer.active.type === "alternate" ? "alternate" : "normal";
+}
+
+export function scrollXtermLines(terminal: XtermTerminal, delta: number): boolean {
+  if (getXtermBufferType(terminal) !== "normal" || delta === 0) {
+    return false;
+  }
+
+  const before = terminal.buffer.active.viewportY;
+  terminal.scrollLines(delta);
+  return terminal.buffer.active.viewportY !== before;
 }
 
 export function getLogicalCursor(terminal: XtermTerminal): LogicalCursor {

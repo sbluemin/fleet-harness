@@ -1,24 +1,29 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createCarrierRuntime } from "@sbluemin/fleet-carriers";
+
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
 import { renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
-import { bindJobBarStateRuntime, getPanelJobs, resetJobBarStateForTest } from "../src/carrier-status/job-bar-state.js";
+import { createJobBarState, type JobBarState } from "../src/carrier-status/job-bar-state.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/carrier-status/job-bar-view-model.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 afterEach(() => {
-  resetJobBarStateForTest();
+  currentJobBarState?.dispose();
+  currentJobBarState = undefined;
 });
 
 describe("job bar renderer", () => {
   it("groups same-carrier dispatches under one carrier header with independent previews", () => {
+    const runtime = createTestCarrierRuntime();
     const runs = new Map<string, PanelRunViewModelSource>([
       ["run:first", { runId: "run:first", status: "stream", blocks: [{ type: "text", text: "alpha preview" }] }],
       ["run:second", { runId: "run:second", status: "stream", blocks: [{ type: "text", text: "beta preview" }] }],
     ]);
 
     const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
       frame: 0,
       jobs: [
         buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000),
@@ -36,7 +41,9 @@ describe("job bar renderer", () => {
   });
 
   it("renders no empty-state text when there are no active jobs", () => {
+    const runtime = createTestCarrierRuntime();
     const lines = renderCarrierJobHud({
+      carrierRuntime: runtime,
       frame: 0,
       jobs: [],
       width: 100,
@@ -46,22 +53,35 @@ describe("job bar renderer", () => {
   });
 
   it("keeps the carrier strip visible and hides the detail section when there are no active jobs", () => {
-    bindJobBarStateRuntime({});
+    const state = createTestJobBarState();
 
-    const sections = createJobBarSections();
+    const sections = createJobBarSections(state);
 
     expect(sections.map(desiredHeight)).toEqual([1, 0]);
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {
-    bindJobBarStateRuntime({});
-    getPanelJobs().set("carrier:first", buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000));
+    const state = createTestJobBarState();
+    state.getPanelJobs().set("carrier:first", buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000));
 
-    const sections = createJobBarSections();
+    const sections = createJobBarSections(state);
 
     expect(sections.map(desiredHeight)).toEqual([1, 2]);
   });
 });
+
+let currentJobBarState: JobBarState | undefined;
+
+function createTestCarrierRuntime(): ReturnType<typeof createCarrierRuntime> {
+  const runtime = createCarrierRuntime();
+  runtime.registerCarrierDefaults();
+  return runtime;
+}
+
+function createTestJobBarState(): JobBarState {
+  currentJobBarState = createJobBarState({ carrierRuntime: createTestCarrierRuntime() });
+  return currentJobBarState;
+}
 
 function desiredHeight(section: ReturnType<typeof createJobBarSections>[number]): number | undefined {
   return section.component.desiredHeight?.(20);

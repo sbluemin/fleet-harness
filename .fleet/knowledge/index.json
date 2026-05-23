@@ -9,7 +9,7 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-19T08:24:10.563Z"
+    "updated": "2026-05-23T14:46:55.449Z"
   },
   "guide-002-carrier-status": {
     "path": "wiki/guide-002-carrier-status.md",
@@ -21,7 +21,7 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-07T15:45:04.197Z"
+    "updated": "2026-05-23T14:47:14.664Z"
   },
   "guide-003-fleet-wiki": {
     "path": "wiki/guide-003-fleet-wiki.md",
@@ -34,20 +34,24 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-07T16:06:18.121Z"
+    "updated": "2026-05-23T14:47:42.640Z"
   },
-  "mermaid-test-suite": {
-    "path": "wiki/mermaid-test-suite.md",
-    "title": "Mermaid Rendering Test Suite",
+  "prd-agent-core-model-bypass": {
+    "path": "wiki/prd-agent-core-model-bypass.md",
+    "title": "PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입",
     "tags": [
-      "test",
-      "mermaid"
+      "agent-core",
+      "fleet-agent",
+      "dedicated-cli",
+      "cli-options",
+      "model-forwarding",
+      "shipped"
     ],
-    "updated": "2026-05-17T12:03:19.194Z"
+    "updated": "2026-05-23T04:42:11.057Z"
   },
   "prd-carrier-persona-extraction": {
     "path": "wiki/prd-carrier-persona-extraction.md",
-    "title": "캐리어 페르소나 외부화 및 선언적 도구 스코핑",
+    "title": "PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑",
     "tags": [
       "carrier",
       "fleet-carriers",
@@ -56,54 +60,116 @@
       "tool-scoping",
       "shipped"
     ],
-    "updated": "2026-05-16T07:34:09.878Z"
+    "updated": "2026-05-23T05:09:02.587Z"
   },
-  "prd-coding-agent-empty-session-guard": {
-    "path": "wiki/prd-coding-agent-empty-session-guard.md",
-    "title": "PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드",
+  "prd-carrier-runtime-migration": {
+    "path": "wiki/prd-carrier-runtime-migration.md",
+    "title": "PRD: 캐리어 런타임 도메인의 fleet-carriers 이관",
     "tags": [
-      "coding-agent",
-      "session-selector",
-      "persistence",
-      "durable-commit",
+      "carrier",
+      "fleet-carriers",
+      "fleet-core",
+      "fleet-infra",
+      "carrier-runtime",
+      "package-migration",
+      "architecture",
+      "dependency-injection"
+    ],
+    "updated": "2026-05-23T07:54:10.365Z"
+  },
+  "prd-core-dismantling-di-architecture": {
+    "path": "wiki/prd-core-dismantling-di-architecture.md",
+    "title": "PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립",
+    "tags": [
+      "fleet-core",
+      "fleet-admiral",
+      "fleet-admiralty",
+      "fleet-carriers",
+      "fleet-infra",
+      "fleet-agent",
+      "dependency-injection",
+      "architecture",
+      "package-dissolution"
+    ],
+    "updated": "2026-05-23T07:52:08.995Z"
+  },
+  "prd-core-infra-extraction": {
+    "path": "wiki/prd-core-infra-extraction.md",
+    "title": "PRD: fleet-core 인프라 계층 독립 패키지 분리",
+    "tags": [
+      "fleet-core",
+      "fleet-infra",
+      "fleet-agent",
+      "package-extraction",
+      "architecture",
       "shipped"
     ],
-    "updated": "2026-05-16T16:41:05.671Z"
+    "updated": "2026-05-23T05:00:45.830Z"
   },
-  "prd-coding-agent-prompt-slash-prefix": {
-    "path": "wiki/prd-coding-agent-prompt-slash-prefix.md",
-    "title": "PRD: Prompt Template 호출 접두사(/prompt:) 도입",
+  "prd-fleet-agent-composition-root-consolidation": {
+    "path": "wiki/prd-fleet-agent-composition-root-consolidation.md",
+    "title": "PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거",
     "tags": [
-      "coding-agent",
-      "prompts",
-      "slash-command",
-      "naming-convention",
-      "ux",
+      "fleet-agent",
+      "dependency-injection",
+      "composition-root",
+      "architecture",
+      "singleton-elimination",
       "shipped"
     ],
-    "updated": "2026-05-16T15:53:01.036Z"
+    "updated": "2026-05-23T12:39:41.016Z"
   },
-  "prd-coding-agent-scoped-models-removal": {
-    "path": "wiki/prd-coding-agent-scoped-models-removal.md",
-    "title": "코딩 에이전트 /scoped-models 제거",
+  "prd-infra-agent-executor-migration": {
+    "path": "wiki/prd-infra-agent-executor-migration.md",
+    "title": "PRD: Agent Executor 엔진의 인프라 계층 이전",
     "tags": [
-      "coding-agent",
-      "scoped-models",
-      "removal",
-      "model-cycling"
+      "fleet-core",
+      "fleet-infra",
+      "agent-executor",
+      "package-migration",
+      "architecture",
+      "dependency-injection"
     ],
-    "updated": "2026-05-16T03:59:46.982Z"
+    "updated": "2026-05-23T05:40:45.905Z"
   },
-  "prd-harness-btw-overlay": {
-    "path": "wiki/prd-harness-btw-overlay.md",
-    "title": "Harness /btw Ephemeral Overlay",
+  "prd-mcp-server-surface-split": {
+    "path": "wiki/prd-mcp-server-surface-split.md",
+    "title": "PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화",
     "tags": [
-      "harness",
-      "btw",
-      "overlay",
-      "ephemeral",
-      "model-selector"
+      "fleet-mcp-server",
+      "fleet-agent",
+      "fleet-infra",
+      "mcp",
+      "architecture",
+      "shipped"
     ],
-    "updated": "2026-05-16T03:03:47.224Z"
+    "updated": "2026-05-23T13:30:23.577Z"
+  },
+  "prd-tui-keyboard-protocol-architecture": {
+    "path": "wiki/prd-tui-keyboard-protocol-architecture.md",
+    "title": "PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture",
+    "tags": [
+      "fleet-tui",
+      "fleet-agent",
+      "keyboard-protocol",
+      "keybinding",
+      "dependency-injection",
+      "architecture",
+      "shipped"
+    ],
+    "updated": "2026-05-23T14:44:24.303Z"
+  },
+  "prd-tui-mouse-scroll-hybrid-routing": {
+    "path": "wiki/prd-tui-mouse-scroll-hybrid-routing.md",
+    "title": "PRD: Fleet TUI Mouse Scroll Hybrid Routing",
+    "tags": [
+      "fleet-tui",
+      "fleet-agent",
+      "mouse-protocol",
+      "scroll",
+      "architecture",
+      "shipped"
+    ],
+    "updated": "2026-05-23T15:42:55.604Z"
   }
 }

@@ -1,17 +1,44 @@
-import { admiral, TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-core";
 import {
-  createOverlayFrame,
+  CLI_DISPLAY_NAMES,
+  StatusOverlayController,
+  TASKFORCE_CLI_TYPES,
+  applyCliTypeModelSelectionUpdate,
+  getCarrierSourceDisplayName,
+  getPerCliSettings,
+  getCarrierConfig,
+  getRegisteredOrder,
+  loadModels,
+  notifyStatusUpdate,
+  normalizeCarrierDisplayNameInput,
+  resolveCarrierCliType,
+  resolveCarrierDisplayName,
+  sanitizeCarrierDisplayName,
+  savePerCliSettings,
+  updateCarrierCliType,
+  updateCarrierDisplayName,
+  updateModelSelection,
+} from "@sbluemin/fleet-carriers";
+import { getCliEffortLevels, getCliModels } from "@sbluemin/fleet-infra/agent";
+import {
   isPrintable,
   matchesKey,
-  MIN_DEDICATED_ROWS,
-  visibleWidth,
   type Component,
-  type FleetPtyApi,
-  type FleetPtyTheme,
   type Focusable,
 } from "@sbluemin/fleet-tui/pty";
 
 import { buildModelEffortTransition } from "./model-flow.js";
+import { handleCarrierStatusOverlayInput } from "./overlay-input.js";
+import {
+  clampCarrierStatusOverlayRows,
+  estimateCarrierStatusRows,
+  renderCarrierStatusOverlay,
+} from "./overlay-renderer.js";
+import type { CarrierStatusOverlayOptions, EntrySnapshot, RenameState } from "./overlay-types.js";
+import {
+  buildStatusEntries,
+  buildStatusOverlayViewModel,
+  resolveSelectedCarrierId,
+} from "./overlay-view-model.js";
 import { TaskForceConfigOverlay } from "./taskforce-overlay.js";
 import type {
   BatchCliChoice,
@@ -20,63 +47,14 @@ import type {
   CliModelInfo,
   CliTypeChangeSettledResult,
   CliTypeChoice,
-  FleetStoreSnapshot,
   ModelEffort,
   ModelSelection,
   OverlayState,
   ResolvedCliSelection,
 } from "./types.js";
 
-export interface CarrierStatusOverlayOptions {
-  readonly done: () => void;
-  readonly fleetPty: FleetPtyApi;
-  readonly requestRender: () => void;
-  readonly theme: FleetPtyTheme;
-}
-
-interface EntrySnapshot {
-  readonly cliType: CarrierCliType;
-  readonly effort: string | null;
-  readonly isDefault: boolean;
-  readonly model: string;
-}
-
-interface GroupedEntries {
-  readonly color: string;
-  readonly entries: CarrierStatusEntry[];
-  readonly header: string;
-}
-
-interface RenameState {
-  readonly carrierId: string;
-  readonly draft: string;
-}
-
-interface StatusOverlayViewModel {
-  readonly flatEntries: CarrierStatusEntry[];
-  readonly groupedEntries: GroupedEntries[];
-  readonly selectedCarrierId: string | null;
-}
-
-const ANSI_RESET = "\x1b[0m";
-const ANSI_DIM = "\x1b[38;2;100;100;100m";
-const SLOT_WIDTH = 4;
-const NAME_WIDTH = 12;
 const CARRIER_STATUS_FRAME_ROWS = 3;
 const CARRIER_STATUS_EXTRA_BODY_ROWS = 6;
-const CATEGORY_ORDER = ["strategy", "planning", "operations"] as const;
-const CATEGORY_LABELS: Record<string, string> = {
-  operations: "Operations",
-  planning: "Planning",
-  strategy: "Strategy",
-  uncategorized: "Uncategorized",
-};
-const CATEGORY_COLORS: Record<string, string> = {
-  operations: "\x1b[38;2;80;200;120m",
-  planning: "\x1b[38;2;180;140;255m",
-  strategy: "\x1b[38;2;100;180;255m",
-  uncategorized: ANSI_DIM,
-};
 export class CarrierStatusOverlay implements Component, Focusable {
   public focused = false;
   private expandedCarrierId: string | null = null;
@@ -90,222 +68,92 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   handleInput(data: string): void {
-    if (this.state.kind === "saving") return;
-
-    if (this.renameState) {
-      this.handleRenameInput(data);
-      return;
-    }
-
-    if (matchesKey(data, "escape") || matchesKey(data, "alt+o")) {
-      if (this.state.kind === "browse") {
-        this.options.done();
-      } else {
-        this.cancelEdit();
-      }
-      return;
-    }
-
-    if (matchesKey(data, "up")) {
-      if (this.state.kind === "browse") this.moveSelection(-1);
-      else this.moveEditCursor(-1);
-      return;
-    }
-
-    if (matchesKey(data, "down")) {
-      if (this.state.kind === "browse") this.moveSelection(1);
-      else this.moveEditCursor(1);
-      return;
-    }
-
-    if (this.state.kind === "browse" && data === "\t") {
-      this.toggleDetails();
-      return;
-    }
-
-    if (this.state.kind === "browse" && matchesKey(data, "t")) {
-      this.openTaskForce();
-      return;
-    }
-
-    if (this.state.kind === "browse" && data === "c") {
-      this.startCliTypeEdit();
-      return;
-    }
-
-    if (this.state.kind === "browse" && data === "N") {
-      this.startRenameEdit();
-      return;
-    }
-
-    if (this.state.kind === "browse" && data === "C") {
-      this.startBatchCliFromEdit();
-      return;
-    }
-
-    if (this.state.kind === "browse" && data === "R") {
-      this.resetCliTypesToDefault();
-      return;
-    }
-
-    if (!matchesKey(data, "enter")) return;
-    switch (this.state.kind) {
-      case "browse":
-        this.startModelEdit();
-        return;
-      case "model":
-        this.confirmModelEdit();
-        return;
-      case "effort":
-        this.confirmEffortEdit();
-        return;
-      case "cliType":
-        this.confirmCliTypeEdit();
-        return;
-      case "batchFrom":
-        this.confirmBatchCliFromEdit();
-        return;
-      case "batchTo":
-        this.confirmBatchCliToEdit();
-        return;
-    }
+    handleCarrierStatusOverlayInput(data, {
+      renameState: this.renameState,
+      state: this.state,
+    }, {
+      cancelEdit: () => this.cancelEdit(),
+      confirmBatchCliFromEdit: () => this.confirmBatchCliFromEdit(),
+      confirmBatchCliToEdit: () => this.confirmBatchCliToEdit(),
+      confirmCliTypeEdit: () => this.confirmCliTypeEdit(),
+      confirmEffortEdit: () => this.confirmEffortEdit(),
+      confirmModelEdit: () => this.confirmModelEdit(),
+      done: this.options.done,
+      handleRenameInput: (input) => this.handleRenameInput(input),
+      moveEditCursor: (delta) => this.moveEditCursor(delta),
+      moveSelection: (delta) => this.moveSelection(delta),
+      openTaskForce: () => this.openTaskForce(),
+      resetCliTypesToDefault: () => this.resetCliTypesToDefault(),
+      startBatchCliFromEdit: () => this.startBatchCliFromEdit(),
+      startCliTypeEdit: () => this.startCliTypeEdit(),
+      startModelEdit: () => this.startModelEdit(),
+      startRenameEdit: () => this.startRenameEdit(),
+      toggleDetails: () => this.toggleDetails(),
+    });
   }
 
   invalidate(): void {}
 
   desiredHeight(maxRows: number): number | undefined {
-    return clampOverlayRows(maxRows, this.estimateRows() + CARRIER_STATUS_EXTRA_BODY_ROWS + CARRIER_STATUS_FRAME_ROWS);
+    return clampCarrierStatusOverlayRows(
+      maxRows,
+      estimateCarrierStatusRows(this.getRenderModel(), this.getRenderDeps()) + CARRIER_STATUS_EXTRA_BODY_ROWS + CARRIER_STATUS_FRAME_ROWS,
+    );
   }
 
   render(width: number): string[] {
-    const viewModel = this.buildViewModel();
-    const body: Array<string | { bg?: string; text: string }> = [];
-
-    if (this.state.kind === "batchFrom" || this.state.kind === "batchTo") {
-      body.push(...this.buildBatchCliPanelLines(), "");
-    }
-
-    for (let gi = 0; gi < viewModel.groupedEntries.length; gi++) {
-      const group = viewModel.groupedEntries[gi]!;
-      body.push(`  ${group.color}◇${ANSI_RESET} ${group.color}${group.header}${ANSI_RESET}`);
-
-      for (const entry of group.entries) {
-        const isSelected = entry.carrierId === viewModel.selectedCarrierId;
-        body.push({
-          bg: isSelected ? this.getEntryBgColor(entry.cliType) : undefined,
-          text: this.renderEntryLine(entry, isSelected),
-        });
-
-        if (isSelected && this.shouldRenderEntryEditor(entry.carrierId)) {
-          body.push(...this.buildEntryEditorLines(entry));
-        }
-
-        if (isSelected && this.renameState?.carrierId === entry.carrierId) {
-          body.push(...this.buildRenameEditorLines());
-        }
-
-        if (isSelected && this.expandedCarrierId === entry.carrierId) {
-          body.push(...this.buildDetailRows(entry, Math.max(20, width - 8)));
-        }
-      }
-
-      if (gi < viewModel.groupedEntries.length - 1) {
-        body.push("");
-      }
-    }
-
-    body.push("");
-    if (this.feedbackMessage) {
-      const tone = this.feedbackMessage.startsWith("저장 실패") ? this.options.theme.warning : this.options.theme.accent;
-      body.push(tone(this.feedbackMessage), "");
-    }
-
-    return createOverlayFrame({
-      body,
-      footer: this.getFooterHint(),
-      theme: this.options.theme,
-      title: "Carrier Status",
-      width,
-    });
+    return renderCarrierStatusOverlay(width, this.getRenderModel(), this.getRenderDeps());
   }
 
   private getEntries(): CarrierStatusEntry[] {
-    const snapshot = admiral.store.readStatesSnapshot();
-    return buildStatusEntriesFromSnapshot(snapshot);
-  }
-
-  private buildViewModel(): StatusOverlayViewModel {
-    const groupedEntries = this.getGroupedEntries();
-    const flatEntries = groupedEntries.flatMap((group) => group.entries);
-    return {
-      flatEntries,
-      groupedEntries,
-      selectedCarrierId: this.resolveSelectedCarrierId(flatEntries),
-    };
-  }
-
-  private getGroupedEntries(): GroupedEntries[] {
-    const bucket = new Map<string, CarrierStatusEntry[]>();
-    for (const entry of this.getEntries()) {
-      const key = entry.category ?? "uncategorized";
-      const list = bucket.get(key) ?? [];
-      list.push(entry);
-      bucket.set(key, list);
-    }
-
-    for (const list of bucket.values()) {
-      list.sort((a, b) => a.slot - b.slot);
-    }
-
-    const result: GroupedEntries[] = [];
-    for (const category of CATEGORY_ORDER) {
-      const entries = bucket.get(category);
-      if (!entries?.length) continue;
-      result.push({
-        color: CATEGORY_COLORS[category],
-        entries,
-        header: CATEGORY_LABELS[category],
-      });
-    }
-
-    const uncategorized = bucket.get("uncategorized");
-    if (uncategorized?.length) {
-      result.push({
-        color: CATEGORY_COLORS.uncategorized,
-        entries: uncategorized,
-        header: CATEGORY_LABELS.uncategorized,
-      });
-    }
-
-    return result;
+    return buildStatusEntries(this.options.carrierRuntime);
   }
 
   private getFlatEntries(): CarrierStatusEntry[] {
-    return this.getGroupedEntries().flatMap((group) => group.entries);
+    return this.getViewModel().flatEntries;
   }
 
   private getSelectedEntry(): CarrierStatusEntry | null {
     const flatEntries = this.getFlatEntries();
-    const selectedCarrierId = this.resolveSelectedCarrierId(flatEntries);
+    const selectedCarrierId = this.syncSelectedCarrierId(flatEntries);
     return selectedCarrierId ? flatEntries.find((entry) => entry.carrierId === selectedCarrierId) ?? null : null;
   }
 
-  private resolveSelectedCarrierId(entries: readonly CarrierStatusEntry[]): string | null {
-    if (entries.length === 0) {
-      this.selectedCarrierId = null;
-      return null;
-    }
-    if (this.selectedCarrierId && entries.some((entry) => entry.carrierId === this.selectedCarrierId)) {
-      return this.selectedCarrierId;
-    }
-    this.selectedCarrierId = entries[0]!.carrierId;
+  private getRenderDeps() {
+    return {
+      getAvailableModels: (cliType: CarrierCliType) => this.getAvailableModels(cliType),
+      getBatchCliChoices: (excludeCli?: CarrierCliType) => this.getBatchCliChoices(excludeCli),
+      getDefaultEffort: (cliType: CarrierCliType, modelId: string) => this.getDefaultEffort(cliType, modelId),
+      getModelEffortLevels: (cliType: CarrierCliType, modelId: string) => this.getModelEffortLevels(cliType, modelId),
+      theme: this.options.theme,
+    };
+  }
+
+  private getRenderModel() {
+    return {
+      expandedCarrierId: this.expandedCarrierId,
+      feedbackMessage: this.feedbackMessage,
+      renameState: this.renameState,
+      state: this.state,
+      viewModel: this.getViewModel(),
+    };
+  }
+
+  private getViewModel() {
+    const viewModel = buildStatusOverlayViewModel(this.getEntries(), this.selectedCarrierId);
+    this.selectedCarrierId = viewModel.selectedCarrierId;
+    return viewModel;
+  }
+
+  private syncSelectedCarrierId(entries: readonly CarrierStatusEntry[]): string | null {
+    this.selectedCarrierId = resolveSelectedCarrierId(entries, this.selectedCarrierId);
     return this.selectedCarrierId;
   }
 
   private moveSelection(delta: number): void {
     const flatEntries = this.getFlatEntries();
     if (flatEntries.length === 0) return;
-    const selectedCarrierId = this.resolveSelectedCarrierId(flatEntries);
+    const selectedCarrierId = this.syncSelectedCarrierId(flatEntries);
     const currentIndex = Math.max(0, flatEntries.findIndex((entry) => entry.carrierId === selectedCarrierId));
     this.selectedCarrierId = flatEntries[(currentIndex + delta + flatEntries.length) % flatEntries.length]!.carrierId;
     this.feedbackMessage = null;
@@ -331,25 +179,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.expandedCarrierId = this.expandedCarrierId === entry.carrierId ? null : entry.carrierId;
     this.feedbackMessage = null;
     this.options.requestRender();
-  }
-
-  private renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean): string {
-    const dim = this.options.theme.dim;
-    const slotStr = `#${entry.slot}`;
-    const slotPad = " ".repeat(Math.max(0, SLOT_WIDTH - slotStr.length));
-    const namePad = " ".repeat(Math.max(0, NAME_WIDTH - visibleWidth(entry.displayName)));
-    const nameColor = this.getEntryColor(entry.cliType);
-    const selectedPrefix = isSelected ? `${nameColor}▸${ANSI_RESET}` : " ";
-    const coloredName = `${nameColor}${entry.displayName}${ANSI_RESET}`;
-    const modelLabel = getModelLabel(this.getAvailableModels(entry.cliType), entry.model);
-    const modelStr = entry.isDefault ? dim(modelLabel) : modelLabel;
-    const effortSupported = this.getModelEffortLevels(entry.cliType, entry.model).length > 0;
-    const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
-    const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
-    const tfTag = entry.taskForceBackendCount >= 2
-      ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
-      : "";
-    return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${tfTag}`;
   }
 
   private startModelEdit(): void {
@@ -413,8 +242,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.applyModelSelection(entry, selection);
     this.options.requestRender();
     try {
-      await admiral.store.updateModelSelection(entry.carrierId, selection);
-      admiral.carrier.notifyStatusUpdate();
+      await updateModelSelection(entry.carrierId, selection);
+      notifyStatusUpdate(this.options.carrierRuntime.registry);
       this.feedbackMessage = `${entry.displayName} 모델 설정을 저장했습니다.`;
     } catch (error) {
       this.restoreEntrySnapshot(entry, previous);
@@ -613,7 +442,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       return;
     }
     if (!isPrintable(data)) return;
-    const nextDraft = admiral.store.normalizeCarrierDisplayNameInput(this.renameState.draft + data);
+    const nextDraft = normalizeCarrierDisplayNameInput(this.renameState.draft + data);
     if (nextDraft == null) return;
     this.renameState = {
       ...this.renameState,
@@ -629,18 +458,19 @@ export class CarrierStatusOverlay implements Component, Focusable {
     if (!entry) return;
     const previousDisplayName = entry.displayName;
     const draft = this.renameState.draft;
-    const sourceDisplayName = admiral.carrier.getCarrierSourceDisplayName(entry.carrierId);
-    const sanitizedDraft = admiral.store.sanitizeCarrierDisplayName(draft);
-    const sanitizedSource = admiral.store.sanitizeCarrierDisplayName(sourceDisplayName);
+    const registry = this.options.carrierRuntime.registry;
+    const sourceDisplayName = getCarrierSourceDisplayName(registry, entry.carrierId);
+    const sanitizedDraft = sanitizeCarrierDisplayName(draft);
+    const sanitizedSource = sanitizeCarrierDisplayName(sourceDisplayName);
     const reset = sanitizedDraft == null || sanitizedDraft === sanitizedSource;
     this.renameState = null;
     this.state = { kind: "saving" };
     this.feedbackMessage = reset ? `${previousDisplayName} 이름을 기본값으로 복원 중...` : `${previousDisplayName} 이름을 저장 중...`;
     this.options.requestRender();
     try {
-      admiral.store.updateCarrierDisplayName(entry.carrierId, draft, sourceDisplayName);
-      admiral.carrier.notifyStatusUpdate();
-      const nextDisplayName = admiral.carrier.resolveCarrierDisplayName(entry.carrierId);
+      updateCarrierDisplayName(entry.carrierId, draft, sourceDisplayName);
+      notifyStatusUpdate(registry);
+      const nextDisplayName = resolveCarrierDisplayName(registry, entry.carrierId);
       entry.displayName = nextDisplayName;
       this.feedbackMessage = reset
         ? `${previousDisplayName} 이름을 기본값으로 복원했습니다. (${nextDisplayName})`
@@ -658,6 +488,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     if (!entry) return;
     this.options.done();
     void this.options.fleetPty.custom<void>((ui, theme, _keys, done) => new TaskForceConfigOverlay({
+      carrierRuntime: this.options.carrierRuntime,
       carrierDisplayName: entry.displayName,
       carrierId: entry.carrierId,
       done,
@@ -671,127 +502,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.state = { kind: "browse" };
     this.feedbackMessage = null;
     this.options.requestRender();
-  }
-
-  private buildBatchCliPanelLines(): string[] {
-    if (this.state.kind !== "batchFrom" && this.state.kind !== "batchTo") return [];
-    const state = this.state;
-    const title = state.kind === "batchFrom" ? "  Batch CLI: FROM 선택" : "  Batch CLI: TO 선택";
-    const lines = [this.options.theme.accent(title)];
-    if (state.kind === "batchTo") {
-      const fromChoice = this.getBatchCliChoices().find((choice) => choice.cliType === state.fromCli);
-      if (fromChoice) lines.push(`  FROM: ${this.getCliDisplayName(fromChoice.cliType)} (${fromChoice.carrierCount} carriers)`);
-    }
-    for (let i = 0; i < state.choices.length; i++) {
-      const choice = state.choices[i]!;
-      const cursor = i === state.cursor ? "▸" : " ";
-      const content = `  ${cursor} ○ ${choice.label}`;
-      lines.push(choice.carrierCount === 0 && state.kind === "batchFrom" ? this.options.theme.dim(content) : content);
-    }
-    return lines;
-  }
-
-  private buildEntryEditorLines(entry: CarrierStatusEntry): string[] {
-    const options = this.getEntryEditorOptions(entry);
-    const currentValue = this.getEntryEditorCurrentValue(entry);
-    const cursor = this.getStateCursor();
-    return options.map((option, index) => {
-      const cursorToken = index === cursor ? `${this.getEntryColor(entry.cliType)}▸${ANSI_RESET}` : " ";
-      const marker = option.value === currentValue ? "●" : "○";
-      return `      ${cursorToken} ${marker} ${option.label}`;
-    });
-  }
-
-  private buildRenameEditorLines(): string[] {
-    if (!this.renameState) return [];
-    const draft = this.renameState.draft.length > 0 ? this.renameState.draft : this.options.theme.dim("(empty resets default)");
-    return [
-      this.options.theme.accent("      이름 변경"),
-      `      ▸ ${draft}`,
-    ];
-  }
-
-  private buildDetailRows(entry: CarrierStatusEntry, innerWidth: number): string[] {
-    const provider = this.getAvailableModels(entry.cliType);
-    const modelLabel = getModelLabel(provider, entry.model);
-    const labelWidth = 8;
-    const valueWidth = Math.max(10, innerWidth - 10 - labelWidth);
-    const lines: string[] = [];
-    const detailLine = (label: string, value: string) => {
-      lines.push(`      ${this.options.theme.dim(label.padEnd(labelWidth, " "))} ${value}`);
-    };
-    detailLine("model", modelLabel);
-    detailLine("cli", this.getCliDisplayName(entry.cliType));
-    detailLine("role", entry.role ?? "-");
-    const desc = this.wrapText(entry.roleDescription ?? "-", valueWidth);
-    for (let i = 0; i < desc.length; i++) {
-      detailLine(i === 0 ? "desc" : "", desc[i]!);
-    }
-    return lines;
-  }
-
-  private wrapText(text: string, maxWidth: number): string[] {
-    if (!text.trim()) return ["-"];
-    const words = text.split(/\s+/);
-    const lines: string[] = [];
-    let current = "";
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (visibleWidth(candidate) <= maxWidth) {
-        current = candidate;
-      } else if (current) {
-        lines.push(current);
-        current = word;
-      } else {
-        lines.push(word.slice(0, maxWidth));
-      }
-    }
-    if (current) lines.push(current);
-    return lines;
-  }
-
-  private getEntryEditorOptions(entry: CarrierStatusEntry): Array<{ value: string; label: string }> {
-    switch (this.state.kind) {
-      case "model":
-        return this.state.choices.map((modelId) => ({
-          label: getModelLabel(this.getAvailableModels(entry.cliType), modelId),
-          value: modelId,
-        }));
-      case "effort":
-        return this.state.choices.map((level) => ({ label: level, value: level }));
-      case "cliType":
-        return this.state.choices.map((choice) => ({ label: choice.label, value: choice.value }));
-      case "batchFrom":
-      case "batchTo":
-      case "browse":
-      case "saving":
-        return [];
-    }
-  }
-
-  private getEntryEditorCurrentValue(entry: CarrierStatusEntry): string | null {
-    switch (this.state.kind) {
-      case "model":
-        return entry.model;
-      case "effort":
-        return entry.effort ?? this.getDefaultEffort(entry.cliType, this.state.pendingModel);
-      case "cliType":
-        return entry.cliType;
-      case "batchFrom":
-      case "batchTo":
-      case "browse":
-      case "saving":
-        return null;
-    }
-  }
-
-  private getStateCursor(): number {
-    return "cursor" in this.state ? this.state.cursor : 0;
-  }
-
-  private shouldRenderEntryEditor(carrierId: string): boolean {
-    return (this.state.kind === "model" || this.state.kind === "effort" || this.state.kind === "cliType")
-      && this.state.carrierId === carrierId;
   }
 
   private applyResolvedSelection(entry: CarrierStatusEntry, cliType: CarrierCliType, resolved: ResolvedCliSelection): void {
@@ -852,8 +562,8 @@ export class CarrierStatusOverlay implements Component, Focusable {
     return Math.max(0, choices.findIndex((choice) => choice.carrierCount > 0));
   }
 
-  private createStatusOverlayController(): InstanceType<typeof admiral.carrier.StatusOverlayController> {
-    return new admiral.carrier.StatusOverlayController({
+  private createStatusOverlayController(): InstanceType<typeof StatusOverlayController> {
+    return new StatusOverlayController({
       applyCliTypeModelSelectionUpdate: async (
         carrierId,
         newCliType,
@@ -862,7 +572,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
         previousSelection,
         selection,
       ) => {
-        await admiral.store.applyCliTypeModelSelectionUpdate(
+        await applyCliTypeModelSelectionUpdate(
           carrierId,
           newCliType,
           defaultCliType,
@@ -872,31 +582,31 @@ export class CarrierStatusOverlay implements Component, Focusable {
         );
       },
       getAvailableModels: (cliType) => this.getAvailableModels(cliType),
-      getCurrentModelSelection: (carrierId) => admiral.store.loadModels()[carrierId],
+      getCurrentModelSelection: (carrierId) => loadModels()[carrierId],
       getEffort: (cliType, modelId) => this.getModelEffort(cliType, modelId),
       getEntries: () => this.getEntries(),
-      getPerCliSettings: (carrierId, cliType) => admiral.store.getPerCliSettings(carrierId, cliType),
-      getRegisteredCarrierConfig: (carrierId) => admiral.carrier.getRegisteredCarrierConfig(carrierId),
-      getRegisteredOrder: () => admiral.carrier.getRegisteredOrder(),
+      getPerCliSettings: (carrierId, cliType) => getPerCliSettings(carrierId, cliType),
+      getCarrierConfig: (carrierId) => getCarrierConfig(this.options.carrierRuntime.registry, carrierId),
+      getRegisteredOrder: () => getRegisteredOrder(this.options.carrierRuntime.registry),
       getResolvedCliType: (carrierId) => {
-        const config = admiral.carrier.getRegisteredCarrierConfig(carrierId);
-        return config ? admiral.carrier.resolveCarrierCliType(carrierId, config.defaultCliType) : undefined;
+        const config = getCarrierConfig(this.options.carrierRuntime.registry, carrierId);
+        return config ? resolveCarrierCliType(carrierId, config.defaultCliType) : undefined;
       },
-      notifyStatusUpdate: () => admiral.carrier.notifyStatusUpdate(),
+      notifyStatusUpdate: () => notifyStatusUpdate(this.options.carrierRuntime.registry),
       refreshAgentPanel: () => undefined,
       savePerCliSettings: (carrierId, cliType, selection) => {
-        admiral.store.savePerCliSettings(carrierId, cliType, selection);
+        savePerCliSettings(carrierId, cliType, selection);
       },
       syncModelConfig: () => undefined,
       updateCarrierCliType: (carrierId, cliType) => {
-        admiral.carrier.updateCarrierCliType(carrierId, cliType);
+        updateCarrierCliType(this.options.carrierRuntime.registry, carrierId, cliType);
       },
     });
   }
 
   private getAvailableModels(cliType: CarrierCliType): CliModelInfo {
     try {
-      const models = admiral.agent.models.getCliModels(cliType).map((model) => ({
+      const models = getCliModels(cliType).map((model) => ({
         modelId: model.id,
         name: model.name,
       }));
@@ -919,7 +629,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private getModelEffort(cliType: CarrierCliType, modelId: string): ModelEffort {
     try {
-      const levels = admiral.agent.models.getCliEffortLevels(cliType, modelId);
+      const levels = getCliEffortLevels(cliType, modelId);
       if (!levels || levels.length === 0) return { supported: false };
       return {
         default: levels[0],
@@ -946,123 +656,9 @@ export class CarrierStatusOverlay implements Component, Focusable {
     return [...TASKFORCE_CLI_TYPES] as CarrierCliType[];
   }
 
-  private getEntryColor(cliType: CarrierCliType): string {
-    return admiral.constants.CARRIER_COLORS[cliType] ?? "";
-  }
-
-  private getEntryBgColor(cliType: CarrierCliType): string | undefined {
-    return admiral.constants.CARRIER_BG_COLORS[cliType];
-  }
-
   private getCliDisplayName(cliType: string): string {
-    return admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType;
+    return CLI_DISPLAY_NAMES[cliType] ?? cliType;
   }
-
-  private getFooterHint(): string {
-    if (this.renameState) return "이름 입력  Enter save  Esc cancel  Backspace delete  empty = reset";
-    if (this.state.kind === "saving") return "저장 중...";
-    if (this.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  S sq  Tab  Esc";
-    return "↑↓ select  Enter confirm  Esc cancel";
-  }
-
-  private estimateRows(): number {
-    let rows = 0;
-    for (const group of this.getGroupedEntries()) {
-      rows += 2 + group.entries.length;
-    }
-    if (this.state.kind === "batchFrom" || this.state.kind === "batchTo") rows += this.buildBatchCliPanelLines().length + 1;
-    const selected = this.getSelectedEntry();
-    if (selected && this.shouldRenderEntryEditor(selected.carrierId)) rows += this.getEntryEditorOptions(selected).length;
-    if (this.renameState) rows += 2;
-    if (selected && this.expandedCarrierId === selected.carrierId) rows += 4;
-    return rows;
-  }
-}
-
-function buildStatusEntriesFromSnapshot(snapshot: FleetStoreSnapshot): CarrierStatusEntry[] {
-  const entries: CarrierStatusEntry[] = [];
-  const registeredOrder = admiral.carrier.getRegisteredOrder();
-  const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(snapshot);
-  admiral.store.loadModels(cliTypesByCarrier);
-  const healedSnapshot = admiral.store.readStatesSnapshot();
-
-  for (const id of registeredOrder) {
-    const config = admiral.carrier.getRegisteredCarrierConfig(id);
-    if (!config) continue;
-    const cliType = cliTypeForCarrierFromSnapshot(healedSnapshot, id, config.defaultCliType as CarrierCliType);
-    const selection = healedSnapshot.models[id];
-    const provider = getProviderModelsEquivalent(cliType);
-    const meta = config.carrierMetadata;
-    entries.push({
-      carrierId: id,
-      category: meta?.category,
-      cliType,
-      defaultCliType: config.defaultCliType as CarrierCliType,
-      displayName: admiral.carrier.resolveCarrierDisplayName(id),
-      effort: selection?.effort ?? null,
-      isDefault: !selection?.model,
-      model: selection?.model || provider.defaultModel,
-      role: meta?.title ?? null,
-      roleDescription: meta ? `${meta.title} - ${meta.summary}` : null,
-      slot: config.slot,
-      taskForceBackendCount: admiral.store.getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
-    });
-  }
-
-  return entries;
-}
-
-function buildCliTypesByCarrierFromSnapshot(snapshot: FleetStoreSnapshot): Record<string, CarrierCliType> {
-  return Object.fromEntries(
-    admiral.carrier.getRegisteredOrder()
-      .map((id): [string, CarrierCliType] | null => {
-        const config = admiral.carrier.getRegisteredCarrierConfig(id);
-        if (!config) return null;
-        return [id, cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType as CarrierCliType)];
-      })
-      .filter((entry): entry is [string, CarrierCliType] => entry !== null),
-  );
-}
-
-function cliTypeForCarrierFromSnapshot(
-  snapshot: FleetStoreSnapshot,
-  carrierId: string,
-  defaultCliType: CarrierCliType,
-): CarrierCliType {
-  return (snapshot.cliTypeOverrides[carrierId] as CarrierCliType | undefined) ?? defaultCliType;
-}
-
-function getProviderModelsEquivalent(cliType: CarrierCliType): CliModelInfo {
-  try {
-    const models = admiral.agent.models.getCliModels(cliType).map((model) => ({
-      modelId: model.id,
-      name: model.name,
-    }));
-    const defaultModel = models[0]?.modelId ?? "default";
-    const levels = admiral.agent.models.getCliEffortLevels(cliType, defaultModel);
-    return {
-      defaultModel,
-      effort: levels?.length ? { default: levels[0], levels, supported: true } : { supported: false },
-      models,
-      name: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
-    };
-  } catch {
-    return {
-      defaultModel: "default",
-      effort: { supported: false },
-      models: [],
-      name: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
-    };
-  }
-}
-
-function getModelLabel(provider: CliModelInfo, modelId: string): string {
-  return provider.models.find((model) => model.modelId === modelId)?.name ?? modelId;
-}
-
-function clampOverlayRows(maxRows: number, cardRows: number): number {
-  const maxFleetRows = Math.max(0, maxRows - MIN_DEDICATED_ROWS);
-  return Math.min(maxFleetRows, Math.max(0, cardRows));
 }
 
 function errorMessage(error: unknown): string {

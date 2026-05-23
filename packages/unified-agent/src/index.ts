@@ -1,15 +1,15 @@
 /**
  * @sbluemin/fleet-unified-agent
- * Codex CLI, Claude Code, Gemini CLI 통합 SDK
+ * Codex CLI, Claude Code 통합 SDK
  * 공식 ACP SDK (@agentclientprotocol/sdk) 기반
  *
  * @example
  * ```typescript
  * import { UnifiedAgent } from '@sbluemin/fleet-unified-agent';
  *
- * const client = await UnifiedAgent.build({ cli: 'gemini' });
+ * const client = await UnifiedAgent.build({ cli: 'claude' });
  * client.on('messageChunk', (text) => process.stdout.write(text));
- * await client.connect({ cwd: '/my/workspace', cli: 'gemini' });
+ * await client.connect({ cwd: '/my/workspace', cli: 'claude' });
  * await client.sendMessage('이 프로젝트를 분석해줘');
  * ```
  */
@@ -27,7 +27,6 @@ export {
 export { UnifiedClaudeAgentClient } from './client/UnifiedClaudeAgentClient.js';
 export { UnifiedCodexAgentClient } from './client/UnifiedCodexAgentClient.js';
 export { UnifiedCursorAgentClient } from './client/UnifiedCursorAgentClient.js';
-export { UnifiedGeminiAgentClient } from './client/UnifiedGeminiAgentClient.js';
 export { UnifiedOpenCodeAgentClient } from './client/UnifiedOpenCodeAgentClient.js';
 
 // === 모델 레지스트리 ===

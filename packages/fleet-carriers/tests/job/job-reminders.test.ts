@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+
+import { buildCarrierResultSystemReminder, type CarrierJobSummary } from "../../src/job/index.js";
+
+const BASE_SUMMARY: CarrierJobSummary = {
+  jobId: "sortie:1",
+  tool: "carrier_genesis",
+  status: "done",
+  startedAt: 1,
+  finishedAt: 2,
+  carriers: ["genesis"],
+  summary: "first full output must not appear",
+};
+
+describe("buildCarrierResultSystemReminder", () => {
+  it("matches the previous single carrier completion push envelope", () => {
+    expect(buildCarrierResultSystemReminder({
+      jobId: "sortie:1",
+      kind: "carrier",
+      status: "done",
+      summary: BASE_SUMMARY,
+      label: "Genesis",
+    })).toBe([
+      '<system-reminder source="carrier-completion">',
+      "[carrier:result]",
+      "- sortie:1: first full output must not appear",
+      "  kind=carrier status=done label=Genesis",
+      "</system-reminder>",
+    ].join("\n"));
+  });
+
+  it("includes carrier status and error metadata", () => {
+    const summary = { ...BASE_SUMMARY, jobId: "carrier:2", status: "error" as const, summary: "carrier failed" };
+
+    const reminder = buildCarrierResultSystemReminder({
+      jobId: "carrier:2",
+      kind: "carrier",
+      status: "error",
+      summary,
+      error: "boom",
+      label: "Genesis",
+    });
+
+    expect(reminder).toContain("[carrier:result]");
+    expect(reminder).toContain("kind=carrier");
+    expect(reminder).toContain("status=error");
+    expect(reminder).toContain("error=boom");
+  });
+
+  it("includes taskforce backend labels", () => {
+    const summary = { ...BASE_SUMMARY, jobId: "taskforce:3", tool: "carrier_dispatch" as const, summary: "taskforce done" };
+
+    expect(buildCarrierResultSystemReminder({
+      jobId: "taskforce:3",
+      kind: "taskforce",
+      status: "done",
+      summary,
+      taskforceBackend: "claude-zai, codex",
+      label: "2 backends",
+    })).toBe([
+      '<system-reminder source="carrier-completion">',
+      "[carrier:result]",
+      "- taskforce:3: taskforce done",
+      "  kind=taskforce status=done label=2 backends backend=claude-zai, codex",
+      "</system-reminder>",
+    ].join("\n"));
+  });
+});

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A minimal-dependency TypeScript SDK that integrates Gemini CLI, Claude Code, and Codex CLI into a single interface.
+A minimal-dependency TypeScript SDK that integrates Claude Code, Codex CLI, OpenCode, and Cursor Agent into a single interface.
 
 ## Tech Stack
 
@@ -37,7 +37,6 @@ src/
 ├── client/
 │   ├── IUnifiedAgentClient.ts  # Public API contract + UnifiedAgent builder
 │   ├── UnifiedClaudeAgentClient.ts # Claude-specific client
-│   ├── UnifiedGeminiAgentClient.ts # Gemini-specific client
 │   ├── UnifiedCodexAgentClient.ts  # Codex-specific client
 │   └── UnifiedOpenCodeAgentClient.ts # OpenCode-specific client
 ├── detector/
@@ -57,7 +56,7 @@ tests/
     ├── helpers.ts              # Shared helper functions
     ├── claude.test.ts           # Claude E2E
     ├── codex.test.ts            # Codex E2E
-    └── gemini.test.ts           # Gemini E2E
+    └── opencode.test.ts         # OpenCode E2E
 ```
 
 ## Core Commands
@@ -69,7 +68,7 @@ pnpm lint
 # E2E tests per CLI (Requires actual CLI, local only)
 pnpm exec vitest run tests/e2e/claude.test.ts
 pnpm exec vitest run tests/e2e/codex.test.ts
-pnpm exec vitest run tests/e2e/gemini.test.ts
+pnpm exec vitest run tests/e2e/opencode.test.ts
 
 # Run all tests
 pnpm test
@@ -86,7 +85,7 @@ Binary name: `ait` (`bin` field in `package.json`)
 # Oneshot mode — Executes immediately and exits if arguments are provided
 ait "prompt"
 ait -c claude -m opus "code review"
-echo "error" | ait -c gemini
+echo "error" | ait -c claude
 
 # REPL mode — Executes in TTY without arguments
 ait
@@ -96,7 +95,7 @@ ait -c claude -m opus
 ### REPL Prompt
 ```
 ait (model) (effort) ❯ {input}
-ait (gemini) ❯ {input}           # Omitted if effort is not supported
+ait (model) ❯ {input}            # Omitted if effort is not supported
 ```
 
 ### Slash Commands
@@ -142,7 +141,6 @@ ait (gemini) ❯ {input}           # Omitted if effort is not supported
 
 | CLI | Protocol | spawn Method | set_config_option | set_mode |
 |-----|----------|--------------|-------------------|----------|
-| Gemini | ACP | `gemini --acp` | ❌ | ❌ |
 | Claude | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` | ✅ | ✅ |
 | Claude (ZAI) | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp --cli` | ✅ | ✅ |
 | Claude (Kimi) | ACP (npx bridge) | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp --cli` | ✅ | ✅ |
@@ -151,20 +149,19 @@ ait (gemini) ❯ {input}           # Omitted if effort is not supported
 
 ## Architecture Decisions
 
-1. **Specialized Clients per CLI**: The `UnifiedAgent` builder selects the provider client, and `UnifiedClaudeAgentClient` / `UnifiedGeminiAgentClient` / `UnifiedCodexAgentClient` / `UnifiedOpenCodeAgentClient` directly hold each CLI specialization.
-2. **ACP SDK used for ACP-based CLIs**: Claude, Gemini, and OpenCode Go use the ACP SDK via `AcpConnection`. Codex handles both `AcpConnection` (npx bridge path) and `CodexAppServerConnection` (legacy stdio JSON-RPC path) depending on the validation toggle.
+1. **Specialized Clients per CLI**: The `UnifiedAgent` builder selects the provider client, and `UnifiedClaudeAgentClient` / `UnifiedCodexAgentClient` / `UnifiedOpenCodeAgentClient` / `UnifiedCursorAgentClient` directly hold each CLI specialization.
+2. **ACP SDK used for ACP-based CLIs**: Claude, OpenCode Go, and Cursor use the ACP SDK via `AcpConnection`. Codex handles both `AcpConnection` (npx bridge path) and `CodexAppServerConnection` (legacy stdio JSON-RPC path) depending on the validation toggle.
 3. **Config-driven + provider seam**: Maintain common contracts while encapsulating CLI differences in `CliConfigs.ts` and internal connection seams.
 4. **Event-driven Streaming**: Real-time response processing based on `EventEmitter` (`messageChunk`, `toolCall`, etc.).
 5. **Graceful Process Management**: 2-stage termination (SIGTERM → SIGKILL), environment sanitization to prevent child process interference, and Codex legacy AppServer exit classification that treats graceful/intentional exits separately from abnormal child death.
-6. **Service Status Management**: Provides a unified way to track and report the health and status of various services (Gemini, Claude, Codex) through `ServiceSnapshot` and `HealthStatus`. Managed via `ServiceStatusCallbacks` and `ServiceStatusContextPort`.
+6. **Service Status Management**: Provides a unified way to track and report the health and status of various services (Claude, Codex, Cursor) through `ServiceSnapshot` and `HealthStatus`. Managed via `ServiceStatusCallbacks` and `ServiceStatusContextPort`.
 7. **System Prompt Injection (Provider-aware)**:
    - **Claude**: `AcpConnection` appends to the native system prompt via `_meta.systemPrompt.append` when calling `session/new`. The `claude-agent-acp` bridge handles this.
    - **Codex (Dual-path)**: 
      - **ACP path**: Passes `systemPrompt` via spawn args `-c developer_instructions="..."`.
      - **AppServer path**: Passes `systemPrompt` as `developerInstructions` when creating/resuming a thread.
-   - **Gemini**: `UnifiedGeminiAgentClient` manages `firstPromptPending` state and prefixes the first `sendMessage()` after a new session with the system text `ContentBlock`. This is not a true system-role guarantee.
-   - **OpenCode Go**: `UnifiedOpenCodeAgentClient` also manages `firstPromptPending` state (same approach as Gemini) since `_meta.systemPrompt.append` is unsupported. Session reset is handled via disconnect + reconnect.
-   - **Session Persistence Contract**: Re-armed for new sessions after `resetSession()`. Codex resume/load paths via `sessionId` re-pass the current client's `systemPrompt`, policies (`approvalPolicy`/`sandbox`), and thread config to `thread/resume`. Claude/Gemini session resume follows a best-effort policy prioritizing conversation continuity; if intentional drift cleanup is needed, the caller must invoke `resetSession()`.
+   - **OpenCode Go**: `UnifiedOpenCodeAgentClient` manages `firstPromptPending` state since `_meta.systemPrompt.append` is unsupported. Session reset is handled via disconnect + reconnect.
+   - **Session Persistence Contract**: Re-armed for new sessions after `resetSession()`. Codex resume/load paths via `sessionId` re-pass the current client's `systemPrompt`, policies (`approvalPolicy`/`sandbox`), and thread config to `thread/resume`. Claude session resume follows a best-effort policy prioritizing conversation continuity; if intentional drift cleanup is needed, the caller must invoke `resetSession()`.
 
 8. **CLI_BACKENDS Single Source of Truth**: `CLI_BACKENDS` in `src/config/CliConfigs.ts` is the sole configuration registry for all CLI providers. `CliType` is derived as `keyof typeof CLI_BACKENDS`. Each entry defines:
    - `id`, `cliCommand`, `protocol`, `authRequired`
@@ -189,4 +186,4 @@ Adding a new CLI provider requires updating the provider registry first, then an
 3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/IUnifiedAgentClient.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, OpenCode entries in `src/service-status/store.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
 4. **Non-derived provider seams** — Add or adjust any dedicated client routing, status fetcher, or fallback behavior that is not automatically derived from `CLI_BACKENDS`.
 
-All downstream consumers (`fleet-core` constants: `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `VALID_CLI_TYPES`, `CLI_PROVIDER_DISPLAY_NAMES`, `CLI_TYPE_DISPLAY_ORDER`) derive automatically from `CLI_BACKENDS`.
+All downstream consumers (`fleet-admiral` constants: `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `VALID_CLI_TYPES`, `CLI_PROVIDER_DISPLAY_NAMES`, `CLI_TYPE_DISPLAY_ORDER`) derive automatically from `CLI_BACKENDS`.

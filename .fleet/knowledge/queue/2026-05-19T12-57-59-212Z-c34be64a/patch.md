@@ -1,8 +1,0 @@
----
-op: "update_wiki"
-target: "wiki/prd-coding-agent-scoped-models-removal.md"
-summary: "[Historical] 코딩 에이전트 /scoped-models 및 패키지 제거 기록"
-proposer: "Chronicle"
-created: "2026-05-19T12:57:59.212Z"
----
-{"id":"prd-coding-agent-scoped-models-removal","title":"[Historical] 코딩 에이전트 /scoped-models 및 패키지 제거 기록","tags":["removal","architecture","unification"],"created":"2026-05-16T03:59:46.982Z","updated":"2026-05-19T12:57:59.212Z","version":2,"rawSourceRef":"raw/2026-05-19-prd-coding-agent-scoped-models-removal-source-673668cd.md","rawSourceRefs":[{"ref":"raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md"},{"ref":"raw/2026-05-19-prd-coding-agent-scoped-models-removal-source-673668cd.md","title":"Package Removal Audit 2026-05-19","hash":"673668cd"}],"body":"## Overview\n본 문서는 `@sbluemin/fleet-coding-agent` 패키지가 워크스페이스에서 영구적으로 제거됨에 따라, 해당 패키지 내의 `/scoped-models` 제거 건이 완료되었으며 패키지 전체가 `packages/fleet-agent`(`fleetd`) 및 `@sbluemin/unified-agent`로 통합되었음을 기록한다.\n\n## Status: Superseded by Package Removal\n2026-05-19 기준, `@sbluemin/fleet-coding-agent`를 포함한 5개 패키지가 제거되고 Fleet CLI 진입점이 `fleetd`로 단일화되었다. 이에 따라 기존에 추진되던 `/scoped-models` 기능 제거 및 UI 정리는 패키지 삭제의 일환으로 모두 완료되었다.\n\n## Removed Packages List\n- `@sbluemin/fleet-harness`\n- `@sbluemin/fleet-ai`\n- `@sbluemin/fleet-coding-agent`\n- `engines/packages/agent`\n- `engines/packages/tui`\n\n## New Architecture\n- **Entry Point**: `packages/fleet-agent/fleetd`\n- **Engine Core**: `@sbluemin/unified-agent`\n- **Domain Core**: `@sbluemin/fleet-core`\n\n이 기록은 향후 시스템 아키텍처 추적을 위한 역사적 맥락을 제공한다."}

@@ -16,7 +16,7 @@ describe('AcpConnection session updates', () => {
     connection.on('availableCommandsUpdate', handler);
 
     connection.processSessionUpdate({
-      sessionId: 'session-gemini',
+      sessionId: 'session-acp',
       update: {
         sessionUpdate: 'available_commands_update',
         availableCommands: [
@@ -36,7 +36,7 @@ describe('AcpConnection session updates', () => {
           description: '계획을 생성합니다.',
         },
       ],
-      'session-gemini',
+      'session-acp',
       {
         sessionUpdate: 'available_commands_update',
         availableCommands: [
@@ -55,7 +55,7 @@ describe('AcpConnection session updates', () => {
     connection.promptKeepAlive = keepAlive;
 
     connection.processSessionUpdate({
-      sessionId: 'session-gemini',
+      sessionId: 'session-acp',
       update: {
         sessionUpdate: 'available_commands_update',
         availableCommands: [
@@ -76,7 +76,7 @@ describe('AcpConnection session updates', () => {
     connection.promptKeepAlive = keepAlive;
 
     connection.processSessionUpdate({
-      sessionId: 'session-gemini',
+      sessionId: 'session-acp',
       update: {
         sessionUpdate: 'config_option_update',
         configOptions: [],

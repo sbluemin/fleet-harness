@@ -1,0 +1,76 @@
+---
+id: "prd-carrier-runtime-migration"
+title: "PRD: 캐리어 런타임 도메인의 fleet-carriers 이관"
+tags: ["carrier", "fleet-carriers", "fleet-core", "fleet-infra", "carrier-runtime", "package-migration", "architecture", "dependency-injection"]
+created: "2026-05-23T07:22:44.922Z"
+updated: "2026-05-23T07:54:10.365Z"
+version: 2
+rawSourceRef: "raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md\",\"title\":\"PRD: 캐리어 런타임 도메인의 fleet-carriers 이관\",\"hash\":\"b208b642\"},{\"ref\":\"raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md\",\"title\":\"prd-carrier-runtime-migration frontmatter 중복 제거\",\"hash\":\"6aa1865a\"}]"
+---
+## Overview
+
+fleet-core의 carrier dispatch, carrier-jobs 조회, store 영속화, TaskForce 다중백엔드 실행 도메인을 fleet-carriers 패키지로 이관하여, 캐리어 관련 모든 런타임 책임을 단일 패키지로 집결시킵니다. fleet-carriers는 기존에 페르소나 메타데이터만 담는 리프 패키지였으나, 이관 후 캐리어 런타임 전체를 소유하는 핵심 패키지로 승격됩니다. fleet-core는 기존 public API를 보존하는 thin re-export facade로 격하되며, 장기적으로 fleet-core의 장기적 제거를 가능하게 하는 구조적 전환점을 형성합니다.
+
+이 결정은 페르소나 외부화와 인프라 분리라는 두 선행 구조 조정이 마련한 자리에, 캐리어 런타임이라는 마지막 도메인 조각을 제 위치에 놓는 것입니다.
+
+## Problem
+
+- **쌍방향 수정 강제**: 페르소나는 fleet-carriers에, 런타임은 fleet-core에 있어 캐리어 관련 변경이 항상 두 패키지를 동시에 수정해야 했습니다. 새 캐리어 추가나 도구 권한 조정 시 페르소나 정의를 바꾼 뒤 런타임 등록 로직까지 fleet-core에서 찾아 수정해야 하는 cognitive debt가 반복되었습니다.
+- **의존 방향의 역설**: fleet-carriers가 페르소나 자가등록을 위해 fleet-core를 참조하고, fleet-core가 캐리어 런타임을 소유하는 구조에서는 두 패키지가 서로를 필요로 하는 순환적 긴장 상태가 존재했습니다.
+- **패키지 역할 혼란**: fleet-core가 오케스트레이션과 캐리어 런타임을 동시에 품고 있어, 기여자가 코드를 탐색할 때 "이 기능은 오케스트레이션인가, 캐리어 런타임인가"를 매번 판단해야 했습니다.
+- **store 모놀리스**: 영속화 상태를 관리하는 store가 거대한 단일 파일로 존재하여, 모델 선택, CLI 타입 오버라이드, TaskForce 설정, 표시 이름 등 서로 다른 도메인의 수정이 같은 파일에서 충돌했습니다.
+
+구조적 원인은 fleet-core가 오케스트레이션, 인프라, 캐리어 런타임이라는 세 종류의 관심사를 동시에 소유하고 있었기 때문입니다. 특히 캐리어 런타임은 페르소나와 물리적으로 분리되어 있어 자연스러운 소유권 경계가 존재하지 않았고, 이로 인해 모든 캐리어 변경이 두 패키지를 동시에 건드리는 구조적 비용이 발생했습니다.
+
+## Goals
+
+- 캐리어 런타임 전체를 fleet-carriers가 단일 소유하도록 하여, 캐리어 변경 시 하나의 패키지만 수정하게 합니다.
+- fleet-core는 frozen public API를 보존하는 thin re-export facade로 전환하여, 기존 소비자 코드의 breakage를 제로로 만듭니다.
+- carrier와 taskforce의 실행 도메인을 통합하여 중복된 tool spec 구조를 제거합니다.
+- store 영속화를 도메인별로 분해하여, 서로 다른 설정 영역의 수정이 충돌하지 않게 합니다.
+- global 상태를 클래스 싱글톤으로 캡슐화하고, import 시점 자동 등록을 explicit boot call로 전환하여 테스트 격리와 DI 안전성을 확보합니다.
+
+## Non-Goals
+
+- fleet-core 자체의 완전 제거 — 이 결정은 fleet-core를 thin facade로 격하시키는 것이며, 최종 제거는 별도 후속 결정입니다.
+- 오케스트레이션 로직의 내부 아키텍처 변경.
+- 페르소나 메타데이터 카탈로그의 구조 변경.
+- 외부 소비자를 위한 별도 마이그레이션 가이드.
+
+## User Stories
+
+- **As a** 함대 운영자, **when** 새로운 캐리어를 추가할 때, **then** 페르소나 정의와 런타임 등록을 같은 패키지 안에서 완료할 수 있습니다.
+- **As a** 개발자, **when** 캐리어의 도구 권한이나 상태 오버레이를 수정할 때, **then** fleet-core를 열지 않고 fleet-carriers만 편집할 수 있습니다.
+- **As a** 기여자, **when** 코드베이스를 처음 탐색할 때, **then** "캐리어와 관련된 모든 것은 fleet-carriers에 있다"는 단일 규칙으로 코드 위치를 즉시 판단할 수 있습니다.
+- **As a** 테스트 작성자, **when** 캐리어 프레임워크 단위 테스트를 작성할 때, **then** 전역 상태를 explicit reset으로 격리하여 안전하게 병렬 실행할 수 있습니다.
+
+## Functional Requirements
+
+- **런타임 단일 소유**: dispatch, jobs, store, events, personas를 fleet-carriers가 통합 소유하며, fleet-core는 re-export만 수행합니다.
+- **의존 역전**: fleet-carriers가 fleet-core를 참조하지 않고, fleet-core가 fleet-carriers를 참조하는 단방향 의존으로 전환됩니다.
+- **Public API 보존**: fleet-core의 기존 진입점과 namespace 형상은 변경 없이 유지됩니다. 소비자는 기존 import 경로를 그대로 사용합니다.
+- **carrier+taskforce 통합**: 단일 carrier dispatch tool이 내부적으로 단일 carrier sortie와 multi-backend TaskForce 실행 모드를 모두 처리합니다. TaskForce는 별도의 public tool surface를 갖지 않습니다.
+- **store 분해**: 영속화 게이트를 단일 I/O 레이어로 추출하고, 모델 선택, CLI 타입, TaskForce 설정, 표시 이름 등 도메인별 파일이 이 게이트를 공유합니다.
+- **DI 캡슐화**: global 상태는 클래스 싱글톤 인스턴스로 캡슐화되며, 모듈 레벨 default 인스턴스는 하위호환을 위해 유지됩니다. 테스트 환경에서는 fresh 인스턴스 생성 및 clear가 가능합니다.
+- **명시적 등록**: 페르소나 자가등록은 import 시점 side effect가 아닌, boot 시점의 explicit 함수 호출로 수행됩니다.
+
+## Acceptance Criteria
+
+- [ ] 캐리어 런타임의 모든 도메인이 fleet-carriers 내부에 배치되고, fleet-core는 re-export facade로 동작하는가?
+- [ ] 소비자의 기존 import 경로 변경이 0건인가?
+- [ ] fleet-carriers가 fleet-core를 import하지 않으며, 의존 방향이 단방향으로 확립되었는가?
+- [ ] carrier_dispatch는 단일 public entrypoint를 유지하면서 내부적으로 TaskForce 모드를 처리하는가?
+- [ ] store 분해 후 도메인별 파일이 단일 I/O 게이트를 통해 영속화를 공유하는가?
+- [ ] 프레임워크와 이벤트 핸들러가 클래스 인스턴스로 캡슐화되고, 테스트에서 reset/clear가 가능한가?
+- [ ] 페르소나 등록이 boot 시점 explicit call로 전환되었는가?
+
+## Open Questions
+
+- 없음. 아키텍처 방향은 Nimitz Task Force 2회 교차검증(3백엔드: claude, codex, cursor)을 통해 확정되었으며, 실행은 미착수 상태입니다.
+
+## Related
+
+- [[wiki:prd-core-infra-extraction]] — fleet-core 인프라 분리 선행 결정
+- [[wiki:prd-carrier-persona-extraction]] — 페르소나 외부화 선행 결정
+- [[wiki:prd-infra-agent-executor-migration]] — executor 이전 동일 맥락

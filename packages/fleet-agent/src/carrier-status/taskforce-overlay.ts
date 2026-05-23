@@ -1,4 +1,20 @@
-import { admiral, TASKFORCE_CLI_TYPES, type TaskForceCliType } from "@sbluemin/fleet-core";
+import {
+  CARRIER_BG_COLORS,
+  CARRIER_COLORS,
+  CLI_DISPLAY_NAMES,
+  TASKFORCE_CLI_TYPES,
+  getConfiguredTaskForceCarrierIds,
+  getTaskForceModelConfig,
+  getRegisteredOrder,
+  notifyStatusUpdate,
+  readStatesSnapshot,
+  resetTaskForceModelSelection,
+  setTaskForceConfiguredCarriers,
+  updateTaskForceModelSelection,
+  type CarrierRuntime,
+  type TaskForceCliType,
+} from "@sbluemin/fleet-carriers";
+import { getCliEffortLevels, getCliModels } from "@sbluemin/fleet-infra/agent";
 import {
   createOverlayFrame,
   matchesKey,
@@ -17,6 +33,7 @@ import type {
 } from "./types.js";
 
 export interface TaskForceOverlayOptions {
+  readonly carrierRuntime: CarrierRuntime;
   readonly carrierDisplayName: string;
   readonly carrierId: string;
   readonly done: () => void;
@@ -93,7 +110,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
       const entry = entries[i]!;
       const isSelected = i === this.selectedIndex;
       body.push({
-        bg: isSelected ? admiral.constants.CARRIER_BG_COLORS[entry.cliType] : undefined,
+        bg: isSelected ? CARRIER_BG_COLORS[entry.cliType] : undefined,
         text: this.renderEntryLine(entry, isSelected),
       });
 
@@ -138,8 +155,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
       const config = this.getBackendConfig(cliType);
       return {
         cliType,
-        color: admiral.constants.CARRIER_COLORS[cliType] ?? "",
-        displayName: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
+        color: CARRIER_COLORS[cliType] ?? "",
+        displayName: CLI_DISPLAY_NAMES[cliType] ?? cliType,
         effort: config.effort,
         isCustom: config.isCustom,
         model: config.model,
@@ -226,8 +243,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
       this.options.requestRender();
       return;
     }
-    admiral.store.resetTaskForceModelSelection(this.options.carrierId, entry.cliType);
-    syncConfiguredTaskForceCarriers();
+    resetTaskForceModelSelection(this.options.carrierId, entry.cliType);
+    syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
     this.feedbackMessage = `${entry.displayName} 설정을 origin으로 초기화했습니다.`;
     this.options.requestRender();
   }
@@ -251,8 +268,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
     this.mode = "saving";
     this.options.requestRender();
     try {
-      admiral.store.updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
-      syncConfiguredTaskForceCarriers();
+      updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
+      syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
       this.feedbackMessage = `${entry.displayName} 설정을 저장했습니다.`;
     } catch (error) {
       this.feedbackMessage = `저장 실패: ${errorMessage(error)}`;
@@ -288,10 +305,10 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   }
 
   private getBackendConfig(cliType: TaskForceCliType): { effort: string | null; isCustom: boolean; model: string } {
-    const snapshot = admiral.store.readStatesSnapshot();
+    const snapshot = readStatesSnapshot();
     const provider = this.getAvailableModels(cliType);
     try {
-      const config = admiral.store.getTaskForceModelConfig(this.options.carrierId, cliType, snapshot);
+      const config = getTaskForceModelConfig(this.options.carrierId, cliType, snapshot);
       const isCustom = !!snapshot.models[this.options.carrierId]?.taskforce?.[cliType];
       return {
         effort: config?.effort ?? null,
@@ -309,7 +326,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
 
   private getAvailableModels(cliType: TaskForceCliType): CliModelInfo {
     try {
-      const models = admiral.agent.models.getCliModels(cliType).map((model) => ({
+      const models = getCliModels(cliType).map((model) => ({
         modelId: model.id,
         name: model.name,
       }));
@@ -318,21 +335,21 @@ export class TaskForceConfigOverlay implements Component, Focusable {
         defaultModel,
         effort: this.getModelEffort(cliType, defaultModel),
         models,
-        name: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
+        name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
       };
     } catch {
       return {
         defaultModel: "default",
         effort: { supported: false },
         models: [],
-        name: admiral.constants.CLI_DISPLAY_NAMES[cliType] ?? cliType,
+        name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
       };
     }
   }
 
   private getModelEffort(cliType: TaskForceCliType, modelId: string): ModelEffort {
     try {
-      const levels = admiral.agent.models.getCliEffortLevels(cliType, modelId);
+      const levels = getCliEffortLevels(cliType, modelId);
       if (!levels || levels.length === 0) return { supported: false };
       return {
         default: levels[0],
@@ -382,11 +399,12 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   }
 }
 
-function syncConfiguredTaskForceCarriers(): void {
-  const registeredOrder = admiral.carrier.getRegisteredOrder();
-  const ids = admiral.store.getConfiguredTaskForceCarrierIds(registeredOrder);
-  admiral.carrier.setTaskForceConfiguredCarriers(ids);
-  admiral.carrier.notifyStatusUpdate();
+function syncConfiguredTaskForceCarriers(carrierRuntime: CarrierRuntime): void {
+  const registry = carrierRuntime.registry;
+  const registeredOrder = getRegisteredOrder(registry);
+  const ids = getConfiguredTaskForceCarrierIds(registeredOrder);
+  setTaskForceConfiguredCarriers(registry, ids);
+  notifyStatusUpdate(registry);
 }
 
 function clampOverlayRows(maxRows: number, cardRows: number): number {

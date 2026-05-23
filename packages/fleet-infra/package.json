@@ -1,0 +1,73 @@
+{
+  "name": "@sbluemin/fleet-infra",
+  "version": "0.21.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/fleet-infra"
+  },
+  "private": true,
+  "author": "sbluemin",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "AGENTS.md"],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --noEmit false -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth.js",
+      "require": "./dist/auth.cjs"
+    },
+    "./agent": {
+      "types": "./dist/agent/index.d.ts",
+      "import": "./dist/agent.js",
+      "require": "./dist/agent.cjs"
+    },
+    "./data-dir": {
+      "types": "./dist/data-dir/index.d.ts",
+      "import": "./dist/data-dir.js",
+      "require": "./dist/data-dir.cjs"
+    },
+    "./log": {
+      "types": "./dist/log/index.d.ts",
+      "import": "./dist/log.js",
+      "require": "./dist/log.cjs"
+    },
+    "./settings": {
+      "types": "./dist/settings/index.d.ts",
+      "import": "./dist/settings.js",
+      "require": "./dist/settings.cjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "agent": ["dist/agent/index.d.ts"],
+      "auth": ["dist/auth/index.d.ts"],
+      "data-dir": ["dist/data-dir/index.d.ts"],
+      "log": ["dist/log/index.d.ts"],
+      "settings": ["dist/settings/index.d.ts"]
+    }
+  },
+  "dependencies": {
+    "@sbluemin/fleet-mcp-server": "workspace:*",
+    "@sbluemin/fleet-unified-agent": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}

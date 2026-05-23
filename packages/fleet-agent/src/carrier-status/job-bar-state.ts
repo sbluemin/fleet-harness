@@ -1,11 +1,20 @@
 import type {
-  CarrierCategory,
   CarrierJobStreamEvent,
+  CarrierRuntime,
   TrackMeta,
   TrackStatus,
-} from "@sbluemin/fleet-core";
-import { admiral, infra } from "@sbluemin/fleet-core";
+} from "@sbluemin/fleet-carriers";
+import {
+  getActiveBackgroundJobCount,
+  getRegisteredOrder,
+} from "@sbluemin/fleet-carriers";
+import { getSessionIdFor as getAgentSessionIdFor } from "@sbluemin/fleet-infra/agent";
+import type { KeyboardProtocolState } from "@sbluemin/fleet-tui/pty";
 
+import {
+  ANIM_INTERVAL_MS,
+  DEFAULT_BODY_H,
+} from "../admiral/constants.js";
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
 export interface FooterModelInfo {
@@ -64,8 +73,31 @@ export interface AgentPanelState {
 }
 
 export interface JobBarStateOptions {
+  readonly carrierRuntime: CarrierRuntime;
+  readonly getKeyboardProtocol?: () => KeyboardProtocolState;
   readonly onCarrierResultReminder?: (text: string) => void;
   readonly onRenderRequest?: () => void;
+}
+
+export interface JobBarState {
+  readonly carrierRuntime: CarrierRuntime;
+  dispose(): void;
+  ensurePanelAnimTimer(): void;
+  getActiveJobs(): PanelJob[];
+  getKeyboardProtocol?: () => KeyboardProtocolState;
+  getGrandFleetStreamStoreState(): {
+    runs: Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>;
+  };
+  getJobById(jobId: string): PanelJob | undefined;
+  getPanelJobs(): Map<string, MutablePanelJob>;
+  getPanelRuns(): Map<string, PanelRun>;
+  getRegisteredCarrierCols(): AgentCol[];
+  getState(): AgentPanelState;
+  handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void;
+  isRuntimeBound(): boolean;
+  makeFooterCols(): AgentCol[];
+  schedulePanelRender(animate: boolean): void;
+  syncColsWithRegisteredOrder(): void;
 }
 
 type MutableColumnTrack = {
@@ -79,35 +111,45 @@ type MutablePanelJob = Omit<PanelJob, "tracks"> & {
   tracks: MutableColumnTrack[];
 };
 
-type RuntimeBindings = {
+type JobBarStateBindings = {
   onCarrierResultReminder: (text: string) => void;
   onRenderRequest: () => void;
 };
 
 export const PANEL_JOB_RETENTION = 8;
 
-const CATEGORY_ORDER: readonly CarrierCategory[] = ["strategy", "planning", "operations"];
-const CATEGORY_RANK = new Map<CarrierCategory | "uncategorized", number>(
-  [...CATEGORY_ORDER.map((category, index) => [category, index] as const), ["uncategorized", CATEGORY_ORDER.length] as const],
-);
-
-let panelState: AgentPanelState | null = null;
-let runtimeBindings: RuntimeBindings | null = null;
-
-export function bindJobBarStateRuntime(options: JobBarStateOptions): void {
-  runtimeBindings = {
+export function createJobBarState(options: JobBarStateOptions): JobBarState {
+  let stateValue: AgentPanelState | null = null;
+  const bindings: JobBarStateBindings = {
     onCarrierResultReminder: options.onCarrierResultReminder ?? noop,
     onRenderRequest: options.onRenderRequest ?? noop,
   };
-}
 
-export function getState(): AgentPanelState {
-  const bindings = getRuntimeBindings();
-  let state = panelState;
+  return {
+    carrierRuntime: options.carrierRuntime,
+    dispose: disposeJobBarState,
+    ensurePanelAnimTimer,
+    getActiveJobs,
+    getKeyboardProtocol: options.getKeyboardProtocol,
+    getGrandFleetStreamStoreState,
+    getJobById,
+    getPanelJobs,
+    getPanelRuns,
+    getRegisteredCarrierCols,
+    getState,
+    handleCarrierJobStreamEvent,
+    isRuntimeBound,
+    makeFooterCols,
+    schedulePanelRender,
+    syncColsWithRegisteredOrder,
+  };
+
+function getState(): AgentPanelState {
+  let state = stateValue;
   if (!state) {
     state = {
       animTimer: null,
-      bodyH: admiral.constants.DEFAULT_BODY_H,
+      bodyH: DEFAULT_BODY_H,
       cols: makeCols(),
       expanded: false,
       frame: 0,
@@ -120,7 +162,7 @@ export function getState(): AgentPanelState {
       streaming: false,
       toggleCallbacks: [],
     };
-    panelState = state;
+    stateValue = state;
   }
 
   if (state.cols.length === 0 && getDefaultClis().length > 0) {
@@ -130,31 +172,22 @@ export function getState(): AgentPanelState {
   return state;
 }
 
-export function resetJobBarStateForTest(): void {
-  if (panelState?.animTimer) {
-    clearInterval(panelState.animTimer);
+function disposeJobBarState(): void {
+  if (stateValue?.animTimer) {
+    clearInterval(stateValue.animTimer);
+    stateValue.animTimer = null;
   }
-  panelState = null;
-  runtimeBindings = null;
 }
 
-export function disposeJobBarState(): void {
-  if (panelState?.animTimer) {
-    clearInterval(panelState.animTimer);
-    panelState.animTimer = null;
-  }
-  runtimeBindings = null;
+function isRuntimeBound(): boolean {
+  return true;
 }
 
-export function isJobBarStateRuntimeBound(): boolean {
-  return runtimeBindings !== null;
+function getDefaultClis(): readonly string[] {
+  return [...getRegisteredOrder(options.carrierRuntime.registry)];
 }
 
-export function getDefaultClis(): readonly string[] {
-  return sortByCategory(admiral.carrier.getRegisteredOrder());
-}
-
-export function makeCols(clis?: readonly string[]): AgentCol[] {
+function makeCols(clis?: readonly string[]): AgentCol[] {
   const targets = clis ?? getDefaultClis();
   return targets.map((cli) => ({
     blocks: [],
@@ -168,35 +201,35 @@ export function makeCols(clis?: readonly string[]): AgentCol[] {
   }));
 }
 
-export function getPanelJobs(): Map<string, MutablePanelJob> {
+function getPanelJobs(): Map<string, MutablePanelJob> {
   return getState().panelJobs;
 }
 
-export function getPanelRuns(): Map<string, PanelRun> {
+function getPanelRuns(): Map<string, PanelRun> {
   return getState().runs;
 }
 
-export function getActiveJobs(): PanelJob[] {
+function getActiveJobs(): PanelJob[] {
   return Array.from(getPanelJobs().values())
     .filter((job) => job.status === "active")
     .sort((a, b) => a.startedAt - b.startedAt)
     .map(toReadonlyPanelJob);
 }
 
-export function getJobById(jobId: string): PanelJob | undefined {
+function getJobById(jobId: string): PanelJob | undefined {
   const job = getPanelJobs().get(jobId);
   return job ? toReadonlyPanelJob(job) : undefined;
 }
 
-export function getRegisteredCarrierCols(): AgentCol[] {
+function getRegisteredCarrierCols(): AgentCol[] {
   return getState().cols;
 }
 
-export function findColIndex(carrierId: string): number {
+function findColIndex(carrierId: string): number {
   return getState().cols.findIndex((col) => col.cli === carrierId);
 }
 
-export function syncColsWithRegisteredOrder(): void {
+function syncColsWithRegisteredOrder(): void {
   const state = getState();
   const existing = new Map(state.cols.map((col) => [col.cli, col] as const));
   const orderedIds = getDefaultClis();
@@ -223,11 +256,11 @@ export function syncColsWithRegisteredOrder(): void {
   });
 }
 
-export function makeFooterCols(): AgentCol[] {
+function makeFooterCols(): AgentCol[] {
   const state = getState();
   const activeCols = new Map(state.cols.map((col) => [col.cli, col] as const));
 
-  return sortByCategory(admiral.carrier.getRegisteredOrder()).map((cli) => {
+  return [...getRegisteredOrder(options.carrierRuntime.registry)].map((cli) => {
     const activeCol = activeCols.get(cli);
     if (activeCol) return activeCol;
 
@@ -245,9 +278,7 @@ export function makeFooterCols(): AgentCol[] {
   });
 }
 
-export function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void {
-  if (!runtimeBindings) return;
-
+function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void {
   switch (event.type) {
     case "job:registered":
       registerStreamJob(event);
@@ -298,7 +329,7 @@ export function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void 
   }
 }
 
-export function getGrandFleetStreamStoreState(): {
+function getGrandFleetStreamStoreState(): {
   runs: Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>;
 } {
   const runs = new Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>();
@@ -318,40 +349,25 @@ export function getGrandFleetStreamStoreState(): {
   return { runs };
 }
 
-export function schedulePanelRender(animate: boolean): void {
-  if (!runtimeBindings) return;
+function schedulePanelRender(animate: boolean): void {
   if (animate) ensurePanelAnimTimer();
-  getRuntimeBindings().onRenderRequest();
+  getJobBarStateBindings().onRenderRequest();
   if (!animate) stopPanelAnimTimerIfIdle();
 }
 
-export function ensurePanelAnimTimer(): void {
-  if (!runtimeBindings) return;
+function ensurePanelAnimTimer(): void {
   const state = getState();
   if (state.animTimer) return;
   state.animTimer = setInterval(() => {
     state.frame++;
-    getRuntimeBindings().onRenderRequest();
+    getJobBarStateBindings().onRenderRequest();
     stopPanelAnimTimerIfIdle();
-  }, admiral.constants.ANIM_INTERVAL_MS);
-}
-
-function sortByCategory(ids: readonly string[]): string[] {
-  return [...ids].sort((a, b) => {
-    const catA = admiral.carrier.getRegisteredCarrierConfig(a)?.carrierMetadata?.category ?? "uncategorized";
-    const catB = admiral.carrier.getRegisteredCarrierConfig(b)?.carrierMetadata?.category ?? "uncategorized";
-    const rankA = CATEGORY_RANK.get(catA) ?? CATEGORY_ORDER.length;
-    const rankB = CATEGORY_RANK.get(catB) ?? CATEGORY_ORDER.length;
-    if (rankA !== rankB) return rankA - rankB;
-    const slotA = admiral.carrier.getRegisteredCarrierConfig(a)?.slot ?? 0;
-    const slotB = admiral.carrier.getRegisteredCarrierConfig(b)?.slot ?? 0;
-    return slotA - slotB;
-  });
+  }, ANIM_INTERVAL_MS);
 }
 
 function dispatchCarrierResultSystemReminder(event: Extract<CarrierJobStreamEvent, { type: "job:finalized" }>): void {
   if (typeof event.systemReminder !== "string" || event.systemReminder.trim().length === 0) return;
-  getRuntimeBindings().onCarrierResultReminder(event.systemReminder);
+  getJobBarStateBindings().onCarrierResultReminder(event.systemReminder);
 }
 
 function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:registered" }>): void {
@@ -602,7 +618,7 @@ function stopPanelAnimTimerIfIdle(): void {
     state.streaming ||
     state.cols.some((col) => col.status === "conn" || col.status === "stream") ||
     getActiveJobs().length > 0;
-  if (stillStreaming || infra.job.getActiveBackgroundJobCount() > 0) return;
+  if (stillStreaming || getActiveBackgroundJobCount() > 0) return;
   if (!state.animTimer) return;
   clearInterval(state.animTimer);
   state.animTimer = null;
@@ -660,17 +676,12 @@ function toReadonlyPanelJob(job: MutablePanelJob): PanelJob {
 }
 
 function getSessionIdFor(carrierId: string): string | undefined {
-  return runtimeBindings ? admiral.agent.connections.getSessionIdFor(carrierId) : undefined;
+  return getAgentSessionIdFor(carrierId);
 }
 
-function getRuntimeBindings(): RuntimeBindings {
-  if (!runtimeBindings) {
-    return {
-      onCarrierResultReminder: noop,
-      onRenderRequest: noop,
-    };
-  }
-  return runtimeBindings;
+function getJobBarStateBindings(): JobBarStateBindings {
+  return bindings;
 }
 
 function noop(): void {}
+}

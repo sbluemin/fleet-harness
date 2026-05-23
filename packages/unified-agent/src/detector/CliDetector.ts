@@ -115,7 +115,7 @@ export class CliDetector {
 
   /**
    * 첫 번째 사용 가능한 CLI를 반환합니다.
-   * 우선순위: gemini > claude > codex
+   * 우선순위: CLI_BACKENDS 선언 순서
    *
    * @returns 사용 가능한 CLI 또는 null
    */

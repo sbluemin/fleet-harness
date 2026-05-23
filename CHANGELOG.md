@@ -6,19 +6,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- Added `@sbluemin/fleet-infra` as the host-agnostic infrastructure package for auth, data-dir, job, log, and settings services.
 - [core] Per-carrier builtin external MCP allowlist; Tempest now exposes the grep.app code search MCP.
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
+- [agent-core] Added `--model` option to forward a model name to the selected dedicated CLI, and reorganized `--help` output into Fleet Agent and underlying CLI option categories.
 
 ### Changed
+- Split Fleet internal MCP access into independent `fleet-carriers` and `fleet-wiki` servers with isolated tokens.
 - [core] carrier_jobs full responses for auto-promoted Task Force jobs return per-backend results keyed by CLI type instead of a single full_result string.
+- [core][carriers] Completed migration of carrier runtime, dispatch, jobs, store, and Task Force implementation to `@sbluemin/fleet-carriers` while removing obsolete compatibility facades.
 
 ### Fixed
 - [agent-core] Anchored CJK IME preedit to the dedicated CLI input cursor and added `--disable-cursor-sync` for terminals that need to opt out.
 
 ### Breaking Changes
+- Removed the standalone Fleet Admiral and Fleet Admiralty workspace packages; Fleet Agent now owns the absorbed single-fleet and Grand Fleet policy modules.
+- Removed obsolete root infrastructure re-exports; consumers must import infrastructure APIs from `@sbluemin/fleet-infra`.
 - [core] Removed the carrier_taskforce tool; carrier_dispatch now auto-promotes carriers with configured Task Force to multi-backend execution.
 - [core][agent-core] Removed the sortie toggle feature, eliminating the ability to toggle individual carriers offline, the 'd' keybinding in the carrier status overlay, offline carrier states/persistence, and all associated UI indicators (such as dimmed roster lines, inactive HUD tiles, and footer hints).
 - [agent-core] Fleet-world tone overlay is now disabled by default; the previous `--disable-metaphor` flag is removed and replaced by an explicit `--enable-metaphor` opt-in.
+- [unified-agent] Removed Gemini CLI provider support; users and API consumers must migrate to other supported CLI backends.
 
 ## [0.21.0] - 2026-05-20
 
@@ -57,7 +64,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [wiki-web] Relocated Table of Contents to a sticky rail card for wider document readability. The card hides when empty and hoists above content on mobile.
 - [wiki-web] Added interactive Mermaid diagram lightbox with zoom controls (25–400%), drag-to-pan, mouse-wheel/keyboard shortcuts, auto-fit on open, and navigation-preserving anchor-link guards.
 - [agent] Prompt templates are now invoked with the `/prompt:{name}` prefix, aligning with the `/skill:{name}` convention for consistent slash-command naming and eliminating namespace collision risk with built-in commands.
-- [core][mcp-server] Extracted Fleet MCP server and tool registry internals into a leaf package (`@sbluemin/fleet-mcp-server`) and hardened with 1MiB body caps, 5m timeouts, and snapshot cleanup while preserving fleet-core facade compatibility; see `MIGRATION.md` in the package for details.
+- [core][mcp-server] Extracted Fleet MCP server and tool registry internals into a leaf package (`@sbluemin/fleet-mcp-server`) and hardened with 1MiB body caps, 5m timeouts, and snapshot cleanup while preserving fleet-admiral facade compatibility; see `MIGRATION.md` in the package for details.
 - [core] Enhanced session and executor engines to capture and validate origin tokens during state transitions and execution to ensure transactional integrity.
 - [agent] Improved Grand Fleet registration stability by utilizing in-flight guards for session identifiers and generations instead of synthetic IDs.
 - [core] Refined Grand Fleet registration state fields to include explicit status tracking for better observability.
@@ -82,7 +89,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Enabled parallel execution for `carrier_dispatch` on the same carrier, eliminating the "carrier busy" rejection for concurrent requests.
 - Deprecated `squadronEnabled` persistence key in `fleet-store`; the field is now ignored during runtime initialization.
 - [core] Carrier prior-job access now requires explicit persona `carrier_jobs` tool and `<prior_jobs?>` request-block declarations instead of inherited defaults; `CarrierMetadata.commonRequestBlocks` removed.
-- [carriers] `PRIOR_JOBS_REQUEST_BLOCK` constant moved from fleet-core to fleet-carriers/constants.ts for better domain isolation.
+- [carriers] `PRIOR_JOBS_REQUEST_BLOCK` constant moved from fleet-admiral to fleet-carriers/constants.ts for better domain isolation.
 - [wiki] Five read-only wiki tools (`wiki_briefing`, `wiki_orient`, `wiki_query`, `wiki_read`, `wiki_resolve`) are now registered globally, making the wiki knowledge base available to all carriers by default.
 - [agent] Enforce `canary` as the only allowed PR base; non-canary PRs, including from forks, are auto-closed with guidance.
 - [agent] Auto fast-forward `canary` to match `main` after each push to `main` so release commits propagate automatically.
@@ -90,7 +97,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [wiki] Wiki tool rendering is now consistent with carrier tools, featuring a transparent background in the TUI for improved visual integration.
 
 ### Fixed
-- [core][wiki] Carrier executor MCP tool whitelist decoupled from wiki module load order; domain packages self-register tools into the executor whitelist so fleet-core no longer throws when invoked without fleet-wiki imported
+- [core][wiki] Carrier executor MCP tool whitelist decoupled from wiki module load order; domain packages self-register tools into the executor whitelist so fleet-admiral no longer throws when invoked without fleet-wiki imported
 - [agent] Fixed missing frontmatter on the pr-creates skill that prevented it from loading.
 
 ### Removed

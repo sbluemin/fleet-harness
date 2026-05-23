@@ -5,16 +5,16 @@
 ## Owns
 
 - Generic MCP HTTP JSON-RPC server lifecycle (body caps, timeouts, snapshot cleanup) and routing under `src/`
-- Bearer token isolation, opaque server path, FIFO `tools/call` hold behavior, and pre-queued result handling. While `fleet-mcp-server` enforces isolation based on these tokens, the issuance of dedicated session tokens and the associated metadata mapping are owned by `packages/fleet-core` (via `admiral.mcp`).
+- Bearer token isolation, opaque server path, FIFO `tools/call` hold behavior, and pre-queued result handling. While `fleet-mcp-server` enforces isolation based on these tokens, the issuance of dedicated session tokens and the associated metadata mapping are owned by `packages/fleet-admiral` (via `admiral.mcp`).
 - Session tool snapshots and MCP tool schema conversion
 - Generic `AgentToolSpec`, `AgentToolCtx`, `McpCallToolResult`, registry, formatter, and invocation primitives
 - Package-local tests for MCP server and registry behavior
 
 ## Must Not Own
 
-- Fleet carrier framework, carrier metadata lookup, persona registration, default Fleet tool builders, prompt assembly, Pi runtime wiring, or host UI
+- Fleet carrier framework, carrier metadata lookup, persona registration, default Fleet tool builders, prompt assembly, or host UI
 - Imports from any `@sbluemin/fleet-*` workspace package
-- Imports from Pi host packages, Fleet engine packages, Anthropic packages, or `@modelcontextprotocol/*` unless an Admiral-approved plan explicitly changes this package boundary
+- Imports from Fleet engine packages, Anthropic packages, or `@modelcontextprotocol/*` unless an Admiral-approved plan explicitly changes this package boundary
 
 ## Import Boundaries
 
