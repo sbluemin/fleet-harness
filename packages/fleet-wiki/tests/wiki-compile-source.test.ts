@@ -74,6 +74,8 @@ describe("wiki compile source", () => {
     };
     const patchSet = await readPatchSet(paths, payload.patch_set_id);
     const sourceMeta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, payload.patches[0]!.patch_id, "meta.json"));
+    const sourcePatch = await showQueue(payload.patches[0]!.patch_id, paths);
+    const sourceEntry = JSON.parse(sourcePatch.patch.body) as WikiEntry;
     const targetMeta = await readJsonFile<PatchMeta>(path.join(paths.queueDir, payload.patches[1]!.patch_id, "meta.json"));
     const targetPatch = await showQueue(payload.patches[1]!.patch_id, paths);
     const targetEntry = JSON.parse(targetPatch.patch.body) as WikiEntry;
@@ -87,6 +89,9 @@ describe("wiki compile source", () => {
     ]));
     expect(patchSet.patchIds).toEqual(payload.patches.map((item) => item.patch_id));
     expect(sourceMeta.patch_set_id).toBe(payload.patch_set_id);
+    expect(sourceEntry.templateId).toBe("guide");
+    expect(sourceEntry.body).toContain("## Overview");
+    expect(sourceEntry.body).toContain("## Related");
     expect(targetMeta.patch_set_id).toBe(payload.patch_set_id);
     expect(targetMeta.baseVersion).toBe(1);
     expect(targetMeta.baseHash).toBeDefined();

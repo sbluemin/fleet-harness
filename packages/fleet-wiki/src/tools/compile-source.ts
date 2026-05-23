@@ -296,6 +296,7 @@ async function buildCompileProposals(
     created: existingSourceEntry?.created ?? now,
     updated: now,
     version: existingSourceEntry ? existingSourceEntry.version + 1 : 1,
+    templateId: "guide",
     type: "source",
     status: "current",
     rawSourceRef: resolvedSource.rawSourceRef,
@@ -446,7 +447,7 @@ function normalizeMaxPagesTouched(value: number | undefined): number {
 
 function buildSourcePageBody(sourcePageTitle: string, resolvedSource: ResolvedCompileSource): string {
   return [
-    "## Summary",
+    "## Overview",
     "",
     `${sourcePageTitle} source compile snapshot.`,
     "",
@@ -460,6 +461,10 @@ function buildSourcePageBody(sourcePageTitle: string, resolvedSource: ResolvedCo
       ref: resolvedSource.rawSourceRef,
       content: resolvedSource.sourceContent,
     }),
+    "",
+    "## Related",
+    "",
+    "- None",
   ].join("\n");
 }
 

@@ -238,6 +238,7 @@ async function stageAnswerPage(
     created: existingEntry?.created ?? now,
     updated: now,
     version: existingEntry ? existingEntry.version + 1 : 1,
+    templateId: "guide",
     type: input.targetType,
     status: "current",
     confidence: "medium",
@@ -265,6 +266,10 @@ async function stageAnswerPage(
 
 function buildAnswerPageBody(question: string, answer: string, citations: WikiQueryOutputCitation[]): string {
   const lines = [
+    "## Overview",
+    "",
+    question,
+    "",
     "## Question",
     "",
     question,
@@ -282,6 +287,12 @@ function buildAnswerPageBody(question: string, answer: string, citations: WikiQu
     if (citation.claim_ids?.length) {
       lines.push(`  - claim_ids: ${citation.claim_ids.join(", ")}`);
     }
+  }
+  lines.push("");
+  lines.push("## Related");
+  lines.push("");
+  for (const citation of citations) {
+    lines.push(`- [[wiki:${citation.entry_id}]]`);
   }
   return `${lines.join("\n")}\n`;
 }

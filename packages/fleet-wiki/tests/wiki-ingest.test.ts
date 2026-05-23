@@ -16,6 +16,50 @@ afterEach(async () => {
 });
 
 describe("wiki ingest provenance", () => {
+  it("persists explicit template_id and enforces required template sections", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const tool = buildIngestToolConfig();
+
+    const result = await tool.execute("tool-call", {
+      id: "guide-alpha",
+      title: "Guide Alpha",
+      body: [
+        "## Overview",
+        "",
+        "candidate knowledge ".repeat(6),
+        "",
+        "## Related",
+        "",
+        "- [[wiki:guide-beta]]",
+      ].join("\n"),
+      tags: ["fleet"],
+      source: "guide source text",
+      template_id: "guide",
+      mode: "create",
+    }, undefined, undefined, { cwd: root } as any);
+    const payload = JSON.parse(result.content[0]!.text) as { patch_id: string };
+    const queued = await showQueue(payload.patch_id, paths);
+    const entry = JSON.parse(queued.patch.body) as WikiEntry;
+
+    expect(entry.templateId).toBe("guide");
+  });
+
+  it("rejects template_id bodies that omit required sections", async () => {
+    const root = await makeTempRoot();
+    const tool = buildIngestToolConfig();
+
+    await expect(tool.execute("tool-call", {
+      id: "guide-missing",
+      title: "Guide Missing",
+      body: ["## Overview", "", "candidate knowledge ".repeat(8)].join("\n"),
+      tags: ["fleet"],
+      source: "guide source text",
+      template_id: "guide",
+      mode: "create",
+    }, undefined, undefined, { cwd: root } as any)).rejects.toThrow("missing sections: Related");
+  });
+
   it("adds latest rawSourceRef and appends a deduped rawSourceRefs entry", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

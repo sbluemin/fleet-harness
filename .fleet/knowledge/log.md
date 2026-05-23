@@ -2297,3 +2297,185 @@
 - result: `accepted`
 - target: `wiki/prd-tui-mouse-scroll-hybrid-routing.md`
 
+## 2026-05-23T16:17:02.805Z — raw source added
+
+- id: `prd-wiki-template-schema-source`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-59b5f033.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Wiki Template-Based Schema Validation`
+
+## 2026-05-23T16:17:02.807Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-17-02-793Z-e0131323`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-59b5f033.md`
+- target: `wiki/prd-wiki-template-schema.md`
+- warning_count: `0`
+
+## 2026-05-23T16:21:18.020Z — patch rejected
+
+- patch_id: `2026-05-23T16-17-02-793Z-e0131323`
+- patch_set_id: `null`
+- reason: `Nimitz 교차 검증 권고사항 전면 반영을 위한 PRD 재작성`
+- result: `rejected`
+
+## 2026-05-23T16:23:12.974Z — raw source added
+
+- id: `prd-wiki-template-schema-source`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-ffdf541f.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Wiki Template-Based Schema Validation`
+
+## 2026-05-23T16:23:12.976Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-23-12-968Z-25a1f980`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-ffdf541f.md`
+- target: `wiki/prd-wiki-template-schema.md`
+- warning_count: `0`
+
+## 2026-05-23T16:27:20.854Z — patch rejected
+
+- patch_id: `2026-05-23T16-23-12-968Z-25a1f980`
+- patch_set_id: `null`
+- reason: `템플릿 프론트매터 override 기능 추가 + title 컨벤션 수정`
+- result: `rejected`
+
+## 2026-05-23T16:29:50.349Z — raw source added
+
+- id: `prd-wiki-template-schema-source`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: Fleet Wiki 템플릿 기반 스키마 검증`
+
+## 2026-05-23T16:29:50.351Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-29-50-341Z-06d922cf`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
+- target: `wiki/prd-wiki-template-schema.md`
+- warning_count: `0`
+
+## 2026-05-23T16:30:52.660Z — index rebuilt
+
+- entry_count: `14`
+
+## 2026-05-23T16:30:52.661Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-29-50-341Z-06d922cf`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
+- result: `accepted`
+- target: `wiki/prd-wiki-template-schema.md`
+
+## 2026-05-23T16:55:49.457Z — drydock run
+
+- error_count: `0`
+- info_count: `4`
+- issue_count: `12`
+- ok: `true`
+- warning_count: `8`
+
+## 2026-05-23T16:56:01.847Z — raw source added
+
+- id: `test-e2e-template-pass-source`
+- raw_source_ref: `raw/2026-05-23-test-e2e-template-pass-source-a64daaa0.md`
+- source_type: `inline`
+- tag_count: `1`
+- title: `PRD: E2E 템플릿 검증 테스트 — 정상 케이스`
+
+## 2026-05-23T16:56:01.850Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-56-01-839Z-44f9a94a`
+- patch_set_id: `null`
+- proposer: `admiral-e2e`
+- raw_source_ref: `raw/2026-05-23-test-e2e-template-pass-source-a64daaa0.md`
+- target: `wiki/test-e2e-template-pass.md`
+- warning_count: `0`
+
+## 2026-05-23T16:56:33.100Z — raw source added
+
+- id: `test-e2e-template-extra-source`
+- raw_source_ref: `raw/2026-05-23-test-e2e-template-extra-source-4037a39d.md`
+- source_type: `inline`
+- tag_count: `1`
+- title: `E2E 가이드 테스트 — 추가 섹션 허용`
+
+## 2026-05-23T16:56:33.103Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-56-33-092Z-98aecd04`
+- patch_set_id: `null`
+- proposer: `admiral-e2e`
+- raw_source_ref: `raw/2026-05-23-test-e2e-template-extra-source-4037a39d.md`
+- target: `wiki/test-e2e-template-extra.md`
+- warning_count: `0`
+
+## 2026-05-23T16:56:43.004Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated, summary`
+- next_hash: `08578f0c`
+- patch_id: `2026-05-23T16-56-01-839Z-44f9a94a`
+- previous_hash: `93a5f91e`
+- target: `wiki/test-e2e-template-pass.md`
+
+## 2026-05-23T16:57:12.626Z — raw source added
+
+- id: `prd-e2e-auto-infer-source`
+- raw_source_ref: `raw/2026-05-23-prd-e2e-auto-infer-source-4fc31a02.md`
+- source_type: `inline`
+- tag_count: `1`
+- title: `PRD: E2E 템플릿 자동 추론 테스트`
+
+## 2026-05-23T16:57:12.628Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T16-57-12-619Z-cda0c720`
+- patch_set_id: `null`
+- proposer: `admiral-e2e`
+- raw_source_ref: `raw/2026-05-23-prd-e2e-auto-infer-source-4fc31a02.md`
+- target: `wiki/prd-e2e-auto-infer.md`
+- warning_count: `0`
+
+## 2026-05-23T16:57:29.674Z — drydock run
+
+- error_count: `0`
+- info_count: `4`
+- issue_count: `12`
+- ok: `true`
+- warning_count: `8`
+
+## 2026-05-23T16:57:38.402Z — patch rejected
+
+- patch_id: `2026-05-23T16-56-01-839Z-44f9a94a`
+- patch_set_id: `null`
+- reason: `E2E 테스트 완료 — 정리`
+- result: `rejected`
+
+## 2026-05-23T16:57:39.319Z — patch rejected
+
+- patch_id: `2026-05-23T16-56-33-092Z-98aecd04`
+- patch_set_id: `null`
+- reason: `E2E 테스트 완료 — 정리`
+- result: `rejected`
+
+## 2026-05-23T16:57:40.227Z — patch rejected
+
+- patch_id: `2026-05-23T16-57-12-619Z-cda0c720`
+- patch_set_id: `null`
+- reason: `E2E 테스트 완료 — 정리`
+- result: `rejected`
+

@@ -171,5 +171,18 @@
       "shipped"
     ],
     "updated": "2026-05-23T15:42:55.604Z"
+  },
+  "prd-wiki-template-schema": {
+    "path": "wiki/prd-wiki-template-schema.md",
+    "title": "PRD: Fleet Wiki 템플릿 기반 스키마 검증",
+    "tags": [
+      "wiki",
+      "schema",
+      "template",
+      "validation",
+      "ingest",
+      "fleet-wiki"
+    ],
+    "updated": "2026-05-23T16:29:50.341Z"
   }
 }

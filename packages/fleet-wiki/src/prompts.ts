@@ -5,7 +5,7 @@ import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./boundaries.js";
 interface MemoryCaptureSession { branchId: string }
 
 export const WIKI_SCHEMA_PROMPT_NOTE =
-  "Workspace conventions live in `.fleet/knowledge/schema/wiki-schema.md`. Read it first if uncertain.";
+  "Workspace common rules live in `.fleet/knowledge/schema/wiki-schema.md`; body sections live in `.fleet/knowledge/schema/template-*.md`.";
 export const CANONICAL_WIKI_LINK_GUIDELINE =
   "When linking to other wiki entries, use canonical `[[wiki:entry-id]]` syntax.";
 
@@ -18,6 +18,7 @@ export const WIKI_INGEST_GUIDELINES = [
   "When evidence conflicts, consider duplicate_policy=queue_conflict first.",
   "Store the original source immutably under raw, then keep the raw ref in patch metadata.",
   "The wiki body must be synthesized markdown that reads on its own without opening the raw source.",
+  "Use `template_id` when the target template is known; otherwise `prd-` and `guide-` IDs are inferred from the filename prefix.",
   "Do not write raw_source_ref in the body; let the tool preserve it only as provenance metadata.",
   "In session capture contexts, default to one call; additional calls are allowed only when clearly separate domains coexist, such as a code decision and an operational incident record.",
   WIKI_SCHEMA_PROMPT_NOTE,
@@ -174,6 +175,7 @@ export function buildWikiIngestSchema() {
     source: Type.String({ description: "Original content to store as an immutable raw source" }),
     source_type: Type.Optional(Type.String({ description: "Raw source type. Default inline" })),
     source_title: Type.Optional(Type.String({ description: "Original title or filename" })),
+    template_id: Type.Optional(Type.String({ description: "Optional template id matching schema/template-{id}.md. Empty values are ignored." })),
     proposer: Type.Optional(Type.String({ description: "Proposer identifier" })),
     mode: Type.Optional(Type.Union([
       Type.Literal("auto"),

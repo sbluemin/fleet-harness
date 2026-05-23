@@ -33,6 +33,7 @@ describe("wiki store", () => {
       created: "2026-04-26T00:00:00.000Z",
       updated: "2026-04-26T00:00:00.000Z",
       version: 1,
+      templateId: "guide",
       rawSourceRef: "raw/2026-04-26-alpha-source.md",
       aliases: ["Project Apollo", "Launch Notes"],
       type: "decision",
@@ -57,6 +58,7 @@ describe("wiki store", () => {
     const indexMarkdown = await readFile(getIndexMarkdownFile(paths), "utf8");
 
     expect(wiki?.title).toBe("Alpha");
+    expect(wiki?.templateId).toBe("guide");
     expect(wiki?.rawSourceRef).toBe("raw/2026-04-26-alpha-source.md");
     expect(wiki?.aliases).toEqual(["Project Apollo", "Launch Notes"]);
     expect(wiki?.type).toBe("decision");

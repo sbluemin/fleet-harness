@@ -162,6 +162,56 @@ describe("wiki drydock", () => {
     expect(report.issues.some((issue) => issue.code === "legacy_markdown_wiki_link")).toBe(true);
   });
 
+  it("reports template compliance as warning for existing persisted entries", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "guide-template-warning",
+      title: "Guide Template Warning",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      templateId: "guide",
+      body: "## Overview\n\nOnly overview is present.",
+    }, paths);
+
+    const report = await runDryDock(paths);
+    const templateIssues = report.issues.filter((issue) => issue.code === "template_compliance");
+
+    expect(report.ok).toBe(true);
+    expect(templateIssues).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        message: expect.stringContaining("Related"),
+      }),
+    ]);
+  });
+
+  it("warns on unknown persisted template_id without failing drydock", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await writeWikiEntry({
+      id: "unknown-template",
+      title: "Unknown Template",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      templateId: "missing",
+      body: "Body",
+    }, paths);
+
+    const report = await runDryDock(paths);
+
+    expect(report.ok).toBe(true);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: "template_compliance",
+      severity: "warning",
+      message: expect.stringContaining("unknown template_id: missing"),
+    }));
+  });
+
   it("does not warn for external, fragment, or traversal markdown links", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

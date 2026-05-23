@@ -4,6 +4,7 @@ import { createConflict } from "../conflicts.js";
 import { appendLog } from "../log.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
+import { ensureWorkspaceSchema, inferTemplateIdFromTarget, validateTemplateCompliance } from "../schema.js";
 import {
   WIKI_INGEST_DESCRIPTION,
   WIKI_INGEST_GUIDELINES,
@@ -36,6 +37,7 @@ interface WikiIngestParams {
   base_version?: number;
   base_hash?: string;
   duplicate_policy?: DuplicatePolicy;
+  template_id?: string;
 }
 
 interface DuplicateMatch {
@@ -126,6 +128,7 @@ function parseIngestParams(params: Record<string, unknown>): WikiIngestParams {
     base_version: typeof params.base_version === "number" ? params.base_version : undefined,
     base_hash: typeof params.base_hash === "string" ? params.base_hash : undefined,
     duplicate_policy: normalizeDuplicatePolicy(params.duplicate_policy),
+    template_id: normalizeTemplateInput(params.template_id),
   };
   assertSafeEntryId(input.id);
   assertNoUnsafeSecret(input.source);
@@ -145,6 +148,9 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
   const currentMarkdown = currentEntry ? await readPatchFile(path.join(paths.wikiDir, `${input.id}.md`)) : undefined;
   const currentHash = currentMarkdown ? computeContentHash(currentMarkdown) : undefined;
   const rawSource = buildRawSourceEntry(input, now);
+  const resolvedTemplateId = input.template_id ?? currentEntry?.templateId ?? inferTemplateIdFromTarget(target);
+  await ensureWorkspaceSchema(paths);
+  await validateTemplateCompliance(paths, resolvedTemplateId, input.body);
 
   if (mode === "create" && currentEntry) {
     return resolveConflictOrThrow(
@@ -157,7 +163,7 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
         mode,
         warnings,
         rawSource,
-        entry: buildCreateEntry(input, now),
+        entry: buildCreateEntry(input, now, resolvedTemplateId),
         proposer,
         conflict: {
           reason: "create_target_exists",
@@ -182,7 +188,7 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
         mode,
         warnings,
         rawSource,
-        entry: buildCreateEntry(input, now),
+        entry: buildCreateEntry(input, now, resolvedTemplateId),
         proposer,
         conflict: {
           reason: "update_target_missing",
@@ -203,7 +209,9 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
         mode,
         warnings,
         rawSource,
-        entry: currentEntry ? buildUpdateEntry(currentEntry, input, now) : buildCreateEntry(input, now),
+        entry: currentEntry
+          ? buildUpdateEntry(currentEntry, input, now, resolvedTemplateId)
+          : buildCreateEntry(input, now, resolvedTemplateId),
         proposer,
         conflict: {
           reason: duplicateMatch.reason,
@@ -228,7 +236,7 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
         mode,
         warnings,
         rawSource,
-        entry: buildUpdateEntry(currentEntry, input, now),
+        entry: buildUpdateEntry(currentEntry, input, now, resolvedTemplateId),
         proposer,
         conflict: {
           reason: "base_version_mismatch",
@@ -254,7 +262,7 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
         mode,
         warnings,
         rawSource,
-        entry: buildUpdateEntry(currentEntry, input, now),
+        entry: buildUpdateEntry(currentEntry, input, now, resolvedTemplateId),
         proposer,
         conflict: {
           reason: "base_hash_mismatch",
@@ -278,7 +286,7 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
         mode,
         warnings,
         rawSource,
-        entry: buildUpdateEntry(currentEntry!, input, now),
+        entry: buildUpdateEntry(currentEntry!, input, now, resolvedTemplateId),
         proposer,
         conflict: {
           reason: "raw_source_contradiction",
@@ -305,7 +313,7 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
       op: "create_wiki",
       warnings,
       rawSource,
-      entry: buildCreateEntry(input, now),
+      entry: buildCreateEntry(input, now, resolvedTemplateId),
       proposer,
     };
   }
@@ -316,12 +324,12 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
     op: "update_wiki",
     warnings,
     rawSource,
-      entry: buildUpdateEntry(currentEntry, input, now),
-      proposer,
-      baseHash: input.base_hash ?? currentHash,
-      baseVersion: input.base_version ?? currentEntry.version,
-    };
-  }
+    entry: buildUpdateEntry(currentEntry, input, now, resolvedTemplateId),
+    proposer,
+    baseHash: input.base_hash ?? currentHash,
+    baseVersion: input.base_version ?? currentEntry.version,
+  };
+}
 
 async function stageIngestPlan(plan: IngestPlan, paths: ReturnType<typeof resolveMemoryPaths>): Promise<IngestResult> {
   const rawSourceRef = await writeRawSourceEntry(plan.rawSource, paths);
@@ -455,7 +463,7 @@ function buildRawSourceEntry(input: WikiIngestParams, now: string): RawSourceEnt
   };
 }
 
-function buildCreateEntry(input: WikiIngestParams, now: string): WikiEntry {
+function buildCreateEntry(input: WikiIngestParams, now: string, templateId: string | undefined): WikiEntry {
   return {
     id: input.id,
     title: input.title,
@@ -463,11 +471,17 @@ function buildCreateEntry(input: WikiIngestParams, now: string): WikiEntry {
     created: now,
     updated: now,
     version: 1,
+    templateId,
     body: input.body,
   };
 }
 
-function buildUpdateEntry(currentEntry: WikiEntry, input: WikiIngestParams, now: string): WikiEntry {
+function buildUpdateEntry(
+  currentEntry: WikiEntry,
+  input: WikiIngestParams,
+  now: string,
+  templateId: string | undefined,
+): WikiEntry {
   return {
     ...currentEntry,
     id: currentEntry.id,
@@ -476,6 +490,7 @@ function buildUpdateEntry(currentEntry: WikiEntry, input: WikiIngestParams, now:
     created: currentEntry.created,
     updated: now,
     version: currentEntry.version + 1,
+    templateId,
     body: input.body,
   };
 }
@@ -539,6 +554,12 @@ function normalizeDuplicatePolicy(value: unknown): DuplicatePolicy | undefined {
   return value === "reject" || value === "queue_conflict" || value === "append_evidence" ? value : undefined;
 }
 
+function normalizeTemplateInput(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function normalizeComparableText(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -557,6 +578,7 @@ function serializeConflictEntry(entry: WikiEntry): string {
     `version: ${entry.version}`,
   ];
   if (entry.rawSourceRef) frontmatterLines.push(`rawSourceRef: ${serializeFrontmatterValue(entry.rawSourceRef)}`);
+  if (entry.templateId) frontmatterLines.push(`template_id: ${serializeFrontmatterValue(entry.templateId)}`);
   if (entry.aliases?.length) frontmatterLines.push(`aliases: ${serializeFrontmatterValue(entry.aliases)}`);
   if (entry.type) frontmatterLines.push(`type: ${serializeFrontmatterValue(entry.type)}`);
   if (entry.status) frontmatterLines.push(`status: ${serializeFrontmatterValue(entry.status)}`);

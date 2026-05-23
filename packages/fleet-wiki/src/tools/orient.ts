@@ -146,6 +146,11 @@ async function buildSchemaSummary(paths: ReturnType<typeof resolveMemoryPaths>):
     summary: schema.summary,
     required_sections: [...schema.requiredSections],
     missing_required_sections: schema.missingRequiredSections,
+    templates: (schema.templates ?? []).map((template) => ({
+      id: template.id,
+      frontmatter: template.frontmatter,
+      sections: template.sections,
+    })),
   };
 }
 
