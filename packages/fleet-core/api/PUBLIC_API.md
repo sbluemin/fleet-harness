@@ -20,7 +20,6 @@ Consumers access domain operations through the root barrel:
 
 - `admiral`
 - `admiralty`
-- `infra`
 
 The lifecycle boot function does not return these facades and does not expose a service container.
 
@@ -28,7 +27,7 @@ The lifecycle boot function does not return these facades and does not expose a 
 
 - `admiral` owns agent executor, carrier delegation including Task Force execution mode, carrier job streaming, protocols, store, prompts, and Fleet constants.
 - `admiralty` owns Grand Fleet IPC, prompts, reporter, status-source, sanitization, tool specs, and runtime access.
-- `infra` owns auth, data-dir, job archive/lifecycle utilities, log, and settings.
+Host-agnostic infrastructure is owned by `@sbluemin/fleet-infra`.
 
 `admiral.agent.tools.*`, `AgentToolSpec`, and `AgentToolCtx` remain reachable through the fleet-core root/facade compatibility surface. The generic registry, MCP HTTP server, token routing, snapshots, and formatter primitives are implemented by `@sbluemin/fleet-mcp-server`; fleet-core owns the carrier metadata adapter, default Fleet tool bootstrap, prompt usage, and lifecycle boot.
 
@@ -45,9 +44,8 @@ Allowed package entries:
 - `@sbluemin/fleet-core`
 - `@sbluemin/fleet-core/admiral`
 - `@sbluemin/fleet-core/admiralty`
-- `@sbluemin/fleet-core/infra`
 
-Removed compatibility subpaths are intentionally not restored. Consumers must use the root barrel or one of the three documented subpaths.
+Removed compatibility subpaths are intentionally not restored. Consumers must use the root barrel or one of the documented subpaths. Infra consumers must import from `@sbluemin/fleet-infra`.
 
 ## Public Source Layout
 
@@ -56,9 +54,8 @@ Removed compatibility subpaths are intentionally not restored. Consumers must us
 - `runtime.ts`
 - `admiral-services.ts`
 - `admiralty-services.ts`
-- `infra-services.ts`
 
-Do not add domain logic to public files. Move behavior into the owning domain or infra facade first.
+Do not add domain logic to public files. Move behavior into the owning domain first.
 
 ## Breaking Changes
 

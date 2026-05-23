@@ -1,6 +1,6 @@
 # fleet-core Doctrine
 
-`packages/fleet-core` is the host-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, fleet-core tool builders/facades, runtime composition, job services, SSOT streaming event contracts, and adapter-facing public APIs.
+`packages/fleet-core` is the host-agnostic Fleet product core. It owns Fleet domain logic, prompt assets, fleet-core tool builders/facades, runtime composition, SSOT streaming event contracts, and adapter-facing public APIs.
 
 ## Core Philosophy
 
@@ -43,7 +43,7 @@
 **Public consumer rule**: there is no `@sbluemin/fleet-core/admiral/agent` subpath. Consumers reach this domain through the `@sbluemin/fleet-core` root barrel re-exports only.
 
 ### Facade-First Export Rule
-All new domain features MUST be exposed through their respective domain facade (`admiral`, `admiralty`, `infra`) and consumed via the facade namespace (e.g., `admiral.protocols.xxx`). Direct named exports to the root barrel for new domain functionality are prohibited.
+All new fleet-core domain features MUST be exposed through their respective domain facade (`admiral`, `admiralty`) and consumed via the facade namespace (e.g., `admiral.protocols.xxx`). Direct named exports to the root barrel for new domain functionality are prohibited.
 
 ### Unified `AgentToolSpec` shape
 
@@ -78,14 +78,13 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 - `taskforce/` — internal Task Force execution mode and backend coordination used by `carrier_dispatch` auto-promotion, not a separate public tool surface.
   - `store/` — provider catalog and `fleet-store.ts` unified persistence.
   - `protocols/` — operational protocols with integrated `standing-orders/`.
-- `admiralty/` (internalized Grand Fleet domain), `infra/auth/`, `infra/job` (including `sanitize.ts` and `detached-job-lifecycle.ts`), and unified settings/log infra.
+- `admiralty/` (internalized Grand Fleet domain).
 - Public API contracts and frozen consumer surfaces, including lifecycle-only `public/runtime.ts` boot/shutdown.
 - `bootFleetCore` as the canonical lifecycle boot entry point, exported from the package root; domain operations are consumed through root-barrel facades.
 - Agent execution is orchestrated through `admiral.agent.executor` (`executeWithPool`, `executeOneShot`) backed by `admiral/agent/internal/executor-engine.ts`. Pool lifecycle is owned by `admiral.agent.connections`.
 
 - Fleet tool spec builders, explicit default registration bootstrap, prompt usage, and registry facade functions that are host-agnostic and backed by `packages/fleet-mcp-server`
-- `[carrier:result]` system-reminder assembly via `infra/job/job-reminders.ts`.
-- Global runtime stores, **runtime-owned settings singletons (owned by `infra/settings`)**, job lifecycle infrastructure, streaming event contracts, and compatibility keys used by host adapters
+- Streaming event contracts and compatibility keys used by host adapters.
 - Pure prompt composition, domain-level orchestration logic, and **render-agnostic view-model builders**.
 - The Fleet Wiki domain extracted to the leaf `packages/fleet-wiki`
 - Default carrier persona metadata extracted to the leaf `packages/fleet-carriers`
@@ -101,6 +100,7 @@ Single SSoT for the generic type and registry lives in `packages/fleet-mcp-serve
 
 - Do not import `@sbluemin/fleet-*` engine packages.
 - `@sbluemin/fleet-mcp-server` is the sole allowed Fleet workspace dependency for generic MCP registry/server primitives.
+- `@sbluemin/fleet-infra` is the allowed Fleet workspace dependency for host-agnostic auth, data-dir, job, log, and settings infrastructure.
 - Public consumers must use the package root barrel or documented public subpaths only.
 - Builtin external MCP catalog (`admiral/external-mcp.ts`) is an internal helper and MUST NOT be exposed via public root barrel.
 - `fleet-core` may expose ports, adapters, and pure state machines, but host implementations live in `fleet-agent`.

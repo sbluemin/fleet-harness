@@ -1,19 +1,19 @@
 import { describe, expect, beforeEach, it } from "vitest";
 
-import { registerJobAbortController, resetJobCancelRegistryForTest } from "../../src/infra/job/job-cancel-registry.js";
-import { acquireJobPermit, resetJobConcurrencyForTest } from "../../src/infra/job/concurrency-guard.js";
-import { serializeJobArchive } from "../../src/infra/job/archive-serializer.js";
+import { registerJobAbortController, resetJobCancelRegistryForTest } from "@sbluemin/fleet-infra/job";
+import { acquireJobPermit, resetJobConcurrencyForTest } from "@sbluemin/fleet-infra/job";
+import { serializeJobArchive } from "@sbluemin/fleet-infra/job";
 import {
   appendBlock,
   createJobArchive,
   finalizeJobArchive,
   getFinalized,
   resetJobArchivesForTest,
-} from "../../src/infra/job/job-stream-archive.js";
-import { toMessageArchiveBlock } from "../../src/infra/job/archive-block-converter.js";
-import type { CarrierJobRecord, CarrierJobSummary } from "../../src/infra/job/job-types.js";
-import { CARRIER_JOBS_FULL_RESULT_BYTE_CAP } from "../../src/infra/job/job-types.js";
-import { putJobSummary, resetJobSummaryCacheForTest } from "../../src/infra/job/lru-cache.js";
+} from "@sbluemin/fleet-infra/job";
+import { toMessageArchiveBlock } from "@sbluemin/fleet-infra/job";
+import type { CarrierJobRecord, CarrierJobSummary } from "@sbluemin/fleet-infra/job";
+import { CARRIER_JOBS_FULL_RESULT_BYTE_CAP } from "@sbluemin/fleet-infra/job";
+import { putJobSummary, resetJobSummaryCacheForTest } from "@sbluemin/fleet-infra/job";
 import { dispatchCarrierJobsAction } from "../../src/admiral/carrier-jobs/index.js";
 import { buildCarrierJobsSchema, CARRIER_JOBS_DOCTRINE } from "../../src/admiral/carrier-jobs/prompts.js";
 

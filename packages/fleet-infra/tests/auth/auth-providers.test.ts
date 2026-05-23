@@ -8,7 +8,7 @@ import {
   createAuthService,
   DEFAULT_AUTH_PATH,
   resolveAuthEnv,
-} from "../../../src/infra/auth/index.js";
+} from "../../src/auth/index.js";
 
 const tempRoots: string[] = [];
 

@@ -1,10 +1,12 @@
 {
   "id": "2026-05-19T12-57-59-212Z-c34be64a",
-  "status": "pending",
+  "status": "rejected",
   "createdAt": "2026-05-19T12:57:59.212Z",
   "baseCheckedAt": "2026-05-19T12:57:59.218Z",
   "baseHash": "9efb085a",
   "baseVersion": 1,
   "rawSourceRef": "raw/2026-05-19-prd-coding-agent-scoped-models-removal-source-673668cd.md",
-  "warnings": []
+  "warnings": [],
+  "decidedAt": "2026-05-23T05:01:19.821Z",
+  "reason": "pi는 폐기됨."
 }

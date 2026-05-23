@@ -1,4 +1,4 @@
-import { infra } from "@sbluemin/fleet-core";
+import { resolveAuthEnv } from "@sbluemin/fleet-infra/auth";
 
 import { createChildEnv, resolveBinary } from "../resolve-bin.js";
 import type { DedicatedCliDefinition, DedicatedCliId, DedicatedCliProfileOptions } from "../types.js";
@@ -20,7 +20,7 @@ export function createClaudeFamilyCliDefinition(
     label: options.label,
     async createProfile(profileOptions: DedicatedCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
-      const authEnv = options.authCli ? await infra.auth.resolveAuthEnv(options.authCli) : {};
+      const authEnv = options.authCli ? await resolveAuthEnv(options.authCli) : {};
       return {
         args: [...prefixArgs, ...buildModelArgs(profileOptions.model)],
         bin,

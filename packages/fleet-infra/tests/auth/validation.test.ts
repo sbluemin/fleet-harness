@@ -4,7 +4,7 @@ import {
   createAuthValidationError,
   isAuthValidationSuccess,
   validateAnthropicCompatibleApiKey,
-} from "../../../src/infra/auth/index.js";
+} from "../../src/auth/index.js";
 
 describe("auth validation", () => {
   afterEach(() => {

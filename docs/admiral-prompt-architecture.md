@@ -71,7 +71,8 @@ Runtime state is read through fleet-core facades:
 - `admiral.carrier.getActiveTaskForceIds()`
 - `admiral.store.*`
 - `admiral.carrierJobs.*`
-- `infra.job.*`
+
+Host-agnostic job infrastructure is read through `@sbluemin/fleet-infra/job`.
 
 These values are operational inputs for services, overlays, tools, and status
 rendering. They are not serialized into a per-turn prompt wrapper.
@@ -90,8 +91,9 @@ interface FleetCoreShutdownHandle {
 }
 ```
 
-Consumers use root-barrel facades such as `admiral`, `admiralty`, and `infra`
-directly. The boot function does not return a domain service container.
+Consumers use root-barrel facades such as `admiral` and `admiralty` directly.
+Infra consumers import from `@sbluemin/fleet-infra`. The boot function does not
+return a domain service container.
 
 `packages/fleet-agent/src/runtime/runtime.ts` owns the shutdown handle in module
 scope. `bootRuntime()` starts fleet-core and reconciles host runtime state.

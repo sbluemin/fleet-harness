@@ -4,7 +4,8 @@ import type {
   TrackMeta,
   TrackStatus,
 } from "@sbluemin/fleet-core";
-import { admiral, infra } from "@sbluemin/fleet-core";
+import { admiral } from "@sbluemin/fleet-core";
+import { getActiveBackgroundJobCount } from "@sbluemin/fleet-infra/job";
 
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
@@ -602,7 +603,7 @@ function stopPanelAnimTimerIfIdle(): void {
     state.streaming ||
     state.cols.some((col) => col.status === "conn" || col.status === "stream") ||
     getActiveJobs().length > 0;
-  if (stillStreaming || infra.job.getActiveBackgroundJobCount() > 0) return;
+  if (stillStreaming || getActiveBackgroundJobCount() > 0) return;
   if (!state.animTimer) return;
   clearInterval(state.animTimer);
   state.animTimer = null;

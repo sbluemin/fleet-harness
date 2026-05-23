@@ -25,25 +25,21 @@ vi.mock("../../src/auth/login-flow.js", () => ({
   runAuthLoginFlow: mocks.runAuthLoginFlowMock,
 }));
 
-vi.mock("@sbluemin/fleet-core", () => ({
-  infra: {
-    auth: {
-      AUTH_LIST_EMPTY_MESSAGE: "No auth tokens",
-      AUTH_COMMAND_CANCELLED_MESSAGE: "Cancelled",
-      AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE: "Select provider",
-      CLI_TO_AUTH_PROVIDER_ID: {
-        "claude-zai": "Claude Code with Z.AI GLM",
-        "claude-kimi": "Claude Code with Moonshot Kimi",
-      },
-      createAuthService: () => ({
-        deleteApiKey: mocks.deleteApiKeyMock,
-        listProviderIds: mocks.listProviderIdsMock,
-      }),
-      formatAuthLogoutSuccessMessage: (providerId: string) => `Removed: ${providerId}`,
-      formatAuthMigrationNotice: () => "Migration complete",
-      migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
-    },
+vi.mock("@sbluemin/fleet-infra/auth", () => ({
+  AUTH_LIST_EMPTY_MESSAGE: "No auth tokens",
+  AUTH_COMMAND_CANCELLED_MESSAGE: "Cancelled",
+  AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE: "Select provider",
+  CLI_TO_AUTH_PROVIDER_ID: {
+    "claude-zai": "Claude Code with Z.AI GLM",
+    "claude-kimi": "Claude Code with Moonshot Kimi",
   },
+  createAuthService: () => ({
+    deleteApiKey: mocks.deleteApiKeyMock,
+    listProviderIds: mocks.listProviderIdsMock,
+  }),
+  formatAuthLogoutSuccessMessage: (providerId: string) => `Removed: ${providerId}`,
+  formatAuthMigrationNotice: () => "Migration complete",
+  migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
 }));
 
 describe("auth dispatcher", () => {

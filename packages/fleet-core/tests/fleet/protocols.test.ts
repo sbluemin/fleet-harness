@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "../../src/admiral/prompts.js";
 import { buildFleetAcpSystemPrompt } from "../../src/admiralty/prompts.js";
 import { getActiveProtocol, getAllProtocols } from "../../src/admiral/protocols/index.js";
-import { initSettingsService, resetSettingsService } from "../../src/infra/settings/runtime.js";
-import type { CoreSettingsAPI, SectionDisplayConfig } from "../../src/infra/settings/types.js";
+import { initSettingsService, resetSettingsService } from "@sbluemin/fleet-infra/settings";
+import type { CoreSettingsAPI, SectionDisplayConfig } from "@sbluemin/fleet-infra/settings";
 
 describe("Admiral protocols", () => {
   afterEach(() => {

@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `10`
+- total_entries: `11`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -90,6 +90,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
 
+### prd-core-infra-extraction
+
+- title: `PRD: fleet-core 인프라 계층 독립 패키지 분리`
+- path: `wiki/prd-core-infra-extraction.md`
+- tags: `fleet-core, fleet-infra, fleet-agent, package-extraction, architecture, shipped`
+- updated: `2026-05-23T05:00:45.830Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
+- raw_source_refs: `raw/2026-05-23-prd-core-infra-extraction-source-fc2b48c4.md, raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
+
 ### prd-harness-btw-overlay
 
 - title: `Harness /btw Ephemeral Overlay`
@@ -104,6 +114,10 @@
 ### agent-core
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
+
+### architecture
+
+- [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### btw
 
@@ -148,6 +162,7 @@
 ### fleet-agent
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
+- [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### fleet-carriers
 
@@ -156,10 +171,15 @@
 ### fleet-core
 
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+- [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### fleet-harness
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+
+### fleet-infra
+
+- [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### fleet-wiki
 
@@ -217,6 +237,10 @@
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 
+### package-extraction
+
+- [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+
 ### persistence
 
 - [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
@@ -247,6 +271,7 @@
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 - [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 - [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
+- [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### slash-command
 

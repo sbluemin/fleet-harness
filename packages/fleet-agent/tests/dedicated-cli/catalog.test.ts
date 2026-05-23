@@ -24,11 +24,10 @@ vi.mock("@sbluemin/fleet-core", () => ({
       buildSystemPrompt: vi.fn(),
     },
   },
-  infra: {
-    auth: {
-      resolveAuthEnv: mocks.resolveAuthEnvMock,
-    },
-  },
+}));
+
+vi.mock("@sbluemin/fleet-infra/auth", () => ({
+  resolveAuthEnv: mocks.resolveAuthEnvMock,
 }));
 
 const tempRoots: string[] = [];

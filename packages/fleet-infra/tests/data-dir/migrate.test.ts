@@ -31,7 +31,7 @@ describe("Fleet data directory migration", () => {
     fs.mkdirSync(path.join(legacyDir, "logs"), { recursive: true });
     fs.writeFileSync(path.join(legacyDir, "settings.json"), "{}");
 
-    const { migrateLegacyFleetDataDir } = await import("../../../src/infra/data-dir/migrate.js");
+    const { migrateLegacyFleetDataDir } = await import("../../src/data-dir/migrate.js");
     migrateLegacyFleetDataDir(dataDir);
 
     expect(fs.statSync(dataDir).isDirectory()).toBe(true);
@@ -52,7 +52,7 @@ describe("Fleet data directory migration", () => {
     fs.writeFileSync(path.join(legacyDir, "notes.txt"), "legacy");
     fs.writeFileSync(path.join(dataDir, "notes.txt"), "current");
 
-    const { migrateLegacyFleetDataDir } = await import("../../../src/infra/data-dir/migrate.js");
+    const { migrateLegacyFleetDataDir } = await import("../../src/data-dir/migrate.js");
     migrateLegacyFleetDataDir(dataDir);
 
     // 충돌 파일은 backup으로 이동, 현재 파일은 유지
@@ -74,7 +74,7 @@ describe("Fleet data directory migration", () => {
     fs.writeFileSync(path.join(testHomeDir, "outside.txt"), "outside");
     fs.symlinkSync(path.join(testHomeDir, "outside.txt"), path.join(legacyDir, "linked.txt"));
 
-    const { migrateLegacyFleetDataDir } = await import("../../../src/infra/data-dir/migrate.js");
+    const { migrateLegacyFleetDataDir } = await import("../../src/data-dir/migrate.js");
     migrateLegacyFleetDataDir(dataDir);
 
     expect(fs.existsSync(path.join(dataDir, "linked.txt"))).toBe(false);
@@ -88,7 +88,7 @@ describe("Fleet data directory migration", () => {
     fs.writeFileSync(path.join(testHomeDir, "outside-lock"), "outside");
     fs.symlinkSync(path.join(testHomeDir, "outside-lock"), path.join(testHomeDir, ".fleet.migration.lock"));
 
-    const { migrateLegacyFleetDataDir } = await import("../../../src/infra/data-dir/migrate.js");
+    const { migrateLegacyFleetDataDir } = await import("../../src/data-dir/migrate.js");
 
     expect(() => migrateLegacyFleetDataDir(dataDir)).toThrow(/migration lock/i);
     expect(fs.existsSync(dataDir)).toBe(false);
@@ -97,7 +97,7 @@ describe("Fleet data directory migration", () => {
   it("does nothing when legacy dir does not exist", async () => {
     const dataDir = path.join(testHomeDir, ".fleet");
 
-    const { migrateLegacyFleetDataDir } = await import("../../../src/infra/data-dir/migrate.js");
+    const { migrateLegacyFleetDataDir } = await import("../../src/data-dir/migrate.js");
     migrateLegacyFleetDataDir(dataDir);
 
     expect(fs.existsSync(dataDir)).toBe(false);
@@ -111,7 +111,7 @@ describe("Fleet data directory migration", () => {
     fs.mkdirSync(outsideDir, { recursive: true });
     fs.symlinkSync(outsideDir, dataDir);
 
-    const { migrateLegacyFleetDataDir } = await import("../../../src/infra/data-dir/migrate.js");
+    const { migrateLegacyFleetDataDir } = await import("../../src/data-dir/migrate.js");
     migrateLegacyFleetDataDir(dataDir);
 
     expect(fs.existsSync(legacyDir)).toBe(true);

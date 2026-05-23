@@ -32,8 +32,8 @@ import {
 
 import { resolveBuiltinExternalMcpServers } from "../../external-mcp.js";
 import { getRegisteredCarrierConfig } from "../../carrier/framework.js";
-import { resolveAuthEnv } from "../../../infra/auth/index.js";
-import { getLogAPI } from "../../../infra/log/store.js";
+import { resolveAuthEnv } from "@sbluemin/fleet-infra/auth";
+import { getLogAPI } from "@sbluemin/fleet-infra/log";
 import {
   captureSessionMappingCommitToken,
   classifyResumeFailure,

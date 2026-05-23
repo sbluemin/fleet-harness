@@ -33,11 +33,6 @@
       "types": "./dist/admiralty.d.ts",
       "import": "./dist/admiralty.js",
       "require": "./dist/admiralty.cjs"
-    },
-    "./infra": {
-      "types": "./dist/infra.d.ts",
-      "import": "./dist/infra.js",
-      "require": "./dist/infra.cjs"
     }
   },
   "scripts": {
@@ -46,6 +41,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@sbluemin/fleet-infra": "workspace:*",
     "@sbluemin/fleet-mcp-server": "workspace:*",
     "@sbluemin/fleet-unified-agent": "workspace:*",
     "typebox": "^1.1.24"

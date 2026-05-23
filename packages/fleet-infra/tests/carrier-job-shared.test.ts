@@ -1,26 +1,26 @@
 import { describe, expect, beforeEach, afterEach, it, vi } from "vitest";
 
-import { serializeJobArchive } from "../../src/infra/job/archive-serializer.js";
+import { serializeJobArchive } from "../src/job/archive-serializer.js";
 import {
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
   toToolCallArchiveBlock,
   redactSecrets,
-} from "../../src/infra/job/archive-block-converter.js";
+} from "../src/job/archive-block-converter.js";
 import {
   acquireJobPermit,
   configureDetachedJobCap,
   listActiveJobs,
   resetJobConcurrencyForTest,
-} from "../../src/infra/job/concurrency-guard.js";
+} from "../src/job/concurrency-guard.js";
 import {
   cancelJob,
   hasJobCancelControllers,
   registerJobAbortController,
   resetJobCancelRegistryForTest,
   unregisterJobAbortControllers,
-} from "../../src/infra/job/job-cancel-registry.js";
-import { buildCarrierJobId, parseCarrierJobId } from "../../src/infra/job/job-id.js";
+} from "../src/job/job-cancel-registry.js";
+import { buildCarrierJobId, parseCarrierJobId } from "../src/job/job-id.js";
 import {
   appendBlock,
   createJobArchive,
@@ -28,21 +28,21 @@ import {
   getFinalized,
   hasJobArchive,
   resetJobArchivesForTest,
-} from "../../src/infra/job/job-stream-archive.js";
-import type { CarrierJobRecord, CarrierJobSummary } from "../../src/infra/job/job-types.js";
+} from "../src/job/job-stream-archive.js";
+import type { CarrierJobRecord, CarrierJobSummary } from "../src/job/job-types.js";
 import {
   CARRIER_JOB_TTL_MS,
   CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
   CARRIER_JOBS_GLOBAL_BYTE_CAP,
   CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
-} from "../../src/infra/job/job-types.js";
+} from "../src/job/job-types.js";
 import {
   configureJobSummaryCache,
   getJobSummary,
   listJobSummaries,
   putJobSummary,
   resetJobSummaryCacheForTest,
-} from "../../src/infra/job/lru-cache.js";
+} from "../src/job/lru-cache.js";
 
 beforeEach(() => {
   resetJobArchivesForTest();

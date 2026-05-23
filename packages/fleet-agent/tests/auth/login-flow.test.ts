@@ -18,23 +18,22 @@ vi.mock("@clack/prompts", () => ({
   select: mocks.selectMock,
 }));
 
-vi.mock("@sbluemin/fleet-core", () => ({
-  infra: {
-    auth: {
-      CLI_TO_AUTH_PROVIDER_ID: {
-        "claude-zai": "Claude Code with Z.AI GLM",
-        "claude-kimi": "Claude Code with Moonshot Kimi",
-      },
-      createAuthService: () => ({
-        setApiKey: mocks.setApiKeyMock,
-      }),
-      formatAuthLoginSuccessMessage: (providerId: string) => `Registered: ${providerId}`,
-      formatAuthMigrationNotice: () => "Migration complete",
-      formatAuthValidationFailureMessage: () => "Validation failed",
-      migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
-      validateAuthKeyForCli: mocks.validateAuthKeyForCliMock,
-    },
+vi.mock("@sbluemin/fleet-infra/auth", () => ({
+  AUTH_COMMAND_CANCELLED_MESSAGE: "Cancelled",
+  AUTH_LOGIN_PROVIDER_PROMPT_MESSAGE: "Select provider",
+  AUTH_LOGIN_SECRET_PROMPT_MESSAGE: "Enter token",
+  CLI_TO_AUTH_PROVIDER_ID: {
+    "claude-zai": "Claude Code with Z.AI GLM",
+    "claude-kimi": "Claude Code with Moonshot Kimi",
   },
+  createAuthService: () => ({
+    setApiKey: mocks.setApiKeyMock,
+  }),
+  formatAuthLoginSuccessMessage: (providerId: string) => `Registered: ${providerId}`,
+  formatAuthMigrationNotice: () => "Migration complete",
+  formatAuthValidationFailureMessage: () => "Validation failed",
+  migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
+  validateAuthKeyForCli: mocks.validateAuthKeyForCliMock,
 }));
 
 describe("auth login flow", () => {

@@ -7,8 +7,8 @@
 import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import type { AgentToolCtx, AgentToolSpec } from "../agent/types.js";
-import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
-import type { LogOptions } from "../../infra/log/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "@sbluemin/fleet-infra/job";
+import type { LogOptions } from "@sbluemin/fleet-infra/log";
 import type { ExecResult } from "../agent/executor.js";
 import type { ModelEffort } from "../carrier/overlay-types.js";
 
@@ -26,8 +26,8 @@ import {
   startDetachedJob,
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
-} from "../../infra/job/index.js";
-import { getLogAPI } from "../../infra/log/store.js";
+} from "@sbluemin/fleet-infra/job";
+import { getLogAPI } from "@sbluemin/fleet-infra/log";
 import { executeOneShot } from "../agent/executor.js";
 import {
   emitStreamEvent,

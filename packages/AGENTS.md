@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (host-agnostic domain core), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-carriers` (carrier persona catalog and self-registration leaf package), `fleet-tui` (generic TUI engine), `fleet-agent` (primary CLI host), `fleet-wiki`, and `fleet-wiki-web`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-core` (host-agnostic domain core), `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-carriers` (carrier persona catalog and self-registration leaf package), `fleet-tui` (generic TUI engine), `fleet-agent` (primary CLI host), `fleet-wiki`, and `fleet-wiki-web`.
 
 ## Architecture Philosophy
 
@@ -11,6 +11,7 @@ The Fleet codebase is built on **four core principles**. Every contribution and 
 The split between `fleet-core` (host-agnostic Fleet domain) and `fleet-agent` (CLI host) is **not a guideline; it is enforced by build/grep gates**:
 
 - `fleet-core` MUST NOT import any engine package or external agent package. The single Fleet-AI gateway lives in `fleet-agent/src/provider.ts`, which re-exports the AI surface for the rest of the host.
+- `fleet-core` and `fleet-agent` may depend directly on `@sbluemin/fleet-infra` for host-agnostic auth, data-dir, job, log, and settings infrastructure.
 - `fleet-agent` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-agent` side.
 - When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the host adapter half stays in `fleet-agent`.

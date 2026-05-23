@@ -1,4 +1,4 @@
-import type { CarrierJobStatus, CarrierJobSummary } from "../../infra/job/index.js";
+import type { CarrierJobStatus, CarrierJobSummary } from "@sbluemin/fleet-infra/job";
 
 export interface CarrierSortieOutcome {
   readonly carrierId: string;

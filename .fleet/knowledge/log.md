@@ -1317,3 +1317,64 @@
 - ok: `false`
 - warning_count: `0`
 
+## 2026-05-23T04:58:52.499Z — index rebuilt
+
+- entry_count: `11`
+
+## 2026-05-23T04:58:52.501Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T04-57-00-412Z-776c54c9`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-fc2b48c4.md`
+- result: `accepted`
+- target: `wiki/prd-core-infra-extraction.md`
+
+## 2026-05-23T05:00:45.835Z — raw source added
+
+- id: `prd-core-infra-extraction-source`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: fleet-core 인프라 계층 독립 패키지 분리`
+
+## 2026-05-23T05:00:45.837Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T05-00-45-830Z-5b32e62c`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
+- target: `wiki/prd-core-infra-extraction.md`
+- warning_count: `0`
+
+## 2026-05-23T05:01:03.668Z — index rebuilt
+
+- entry_count: `11`
+
+## 2026-05-23T05:01:03.669Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T05-00-45-830Z-5b32e62c`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
+- result: `accepted`
+- target: `wiki/prd-core-infra-extraction.md`
+
+## 2026-05-23T05:01:19.824Z — patch rejected
+
+- patch_id: `2026-05-19T12-57-59-212Z-c34be64a`
+- patch_set_id: `null`
+- reason: `pi는 폐기됨.`
+- result: `rejected`
+
+## 2026-05-23T05:02:31.572Z — drydock run
+
+- error_count: `2`
+- info_count: `5`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+

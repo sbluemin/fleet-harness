@@ -8,8 +8,8 @@ import { Type } from "typebox";
 import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 
 import type { AgentToolSpec } from "../agent/types.js";
-import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../../infra/job/index.js";
-import type { LogOptions } from "../../infra/log/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "@sbluemin/fleet-infra/job";
+import type { LogOptions } from "@sbluemin/fleet-infra/log";
 import type { ModelEffort } from "./overlay-types.js";
 
 import {
@@ -23,8 +23,8 @@ import {
   startDetachedJob,
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
-} from "../../infra/job/index.js";
-import { getLogAPI } from "../../infra/log/store.js";
+} from "@sbluemin/fleet-infra/job";
+import { getLogAPI } from "@sbluemin/fleet-infra/log";
 import {
   emitStreamEvent,
   type CarrierJobStatus,

@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAuthService, DEFAULT_AUTH_PATH } from "../../../src/infra/auth/index.js";
+import { createAuthService, DEFAULT_AUTH_PATH } from "../../src/auth/index.js";
 
 const tempRoots: string[] = [];
 

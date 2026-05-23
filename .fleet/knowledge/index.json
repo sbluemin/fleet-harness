@@ -107,6 +107,19 @@
     ],
     "updated": "2026-05-16T03:59:46.982Z"
   },
+  "prd-core-infra-extraction": {
+    "path": "wiki/prd-core-infra-extraction.md",
+    "title": "PRD: fleet-core 인프라 계층 독립 패키지 분리",
+    "tags": [
+      "fleet-core",
+      "fleet-infra",
+      "fleet-agent",
+      "package-extraction",
+      "architecture",
+      "shipped"
+    ],
+    "updated": "2026-05-23T05:00:45.830Z"
+  },
   "prd-harness-btw-overlay": {
     "path": "wiki/prd-harness-btw-overlay.md",
     "title": "Harness /btw Ephemeral Overlay",

@@ -9,7 +9,7 @@ import {
   CURRENT_AUTH_PATH,
   mergeAuthStoresNoOverwrite,
   migrateLegacyAuthStore,
-} from "../../../src/infra/auth/index.js";
+} from "../../src/auth/index.js";
 
 const tempRoots: string[] = [];
 

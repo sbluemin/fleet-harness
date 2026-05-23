@@ -17,6 +17,7 @@
     "@clack/prompts": "1.4.0",
     "@sbluemin/fleet-carriers": "workspace:*",
     "@sbluemin/fleet-core": "workspace:*",
+    "@sbluemin/fleet-infra": "workspace:*",
     "@sbluemin/fleet-tui": "workspace:../fleet-tui",
     "@sbluemin/fleet-wiki": "workspace:*",
     "@sbluemin/fleet-wiki-web": "workspace:*"

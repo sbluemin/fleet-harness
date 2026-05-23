@@ -1,17 +1,14 @@
 import { startMcpServer, stopMcpServer } from "@sbluemin/fleet-mcp-server";
+import { infra } from "@sbluemin/fleet-infra";
 import { initStore } from "../admiral/store/fleet-store.js";
 import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
 import { registerFleetCoreDefaultAgentTools } from "../admiral/agent/bootstrap.js";
 import { disconnectAll } from "../admiral/agent/connections.js";
 import { cleanupDedicatedMcpSessionsForRuntimeShutdown } from "../admiral/mcp.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
-import {
-  createFleetInfraServices,
-} from "./infra-services.js";
 
 export type { FleetAdmiralServices } from "./admiral-services.js";
 export type { FleetAdmiraltyServices } from "./admiralty-services.js";
-export type { FleetInfraServices } from "./infra-services.js";
 
 export interface FleetCoreRuntimeOptions {
   readonly dataDir: string;
@@ -25,7 +22,6 @@ export interface FleetCoreShutdownHandle {
 export function bootFleetCore(
   options: FleetCoreRuntimeOptions,
 ): FleetCoreShutdownHandle {
-  const infra = createFleetInfraServices();
   setFleetCoreBootMode(options.bootMode ?? "normal");
   if (options.dataDir === infra.dataDir.getFleetDataDir()) {
     infra.dataDir.migrateLegacyFleetDataDir(options.dataDir);

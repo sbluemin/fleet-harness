@@ -7,7 +7,7 @@
 
 import type { AdmiralProtocol } from "./types.js";
 
-import { getSettingsService } from "../../infra/settings/runtime.js";
+import { getSettingsService } from "@sbluemin/fleet-infra/settings";
 import { FLEET_ACTION } from "./fleet-action.js";
 import * as standingOrders from "./standing-orders/index.js";
 export { standingOrders };

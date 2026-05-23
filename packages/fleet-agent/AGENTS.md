@@ -8,7 +8,7 @@ This package owns the local host assembly for the Dedicated CLI PTY and Fleet PT
 
 - **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, and programmatic PTY input bridge.
 - **Must Not Own**: Fleet domain logic, carrier persona definitions, or generic engine logic.
-- **Dependencies**: Restricted to `@sbluemin/fleet-core`, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
+- **Dependencies**: Restricted to `@sbluemin/fleet-core`, `@sbluemin/fleet-infra` for auth/job infrastructure, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
 
 Direct dependencies on execution-engine packages are generally forbidden, with the sole exception handled through `@sbluemin/fleet-core`'s dependency on `@sbluemin/fleet-unified-agent`. The Job Bar functionality is fully absorbed into `fleet-agent`.
 
