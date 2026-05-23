@@ -296,7 +296,6 @@ async function buildCompileProposals(
     created: existingSourceEntry?.created ?? now,
     updated: now,
     version: existingSourceEntry ? existingSourceEntry.version + 1 : 1,
-    templateId: "guide",
     type: "source",
     status: "current",
     rawSourceRef: resolvedSource.rawSourceRef,

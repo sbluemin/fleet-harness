@@ -89,7 +89,7 @@ describe("wiki compile source", () => {
     ]));
     expect(patchSet.patchIds).toEqual(payload.patches.map((item) => item.patch_id));
     expect(sourceMeta.patch_set_id).toBe(payload.patch_set_id);
-    expect(sourceEntry.templateId).toBe("guide");
+    expect(sourceEntry.templateId).toBeUndefined();
     expect(sourceEntry.body).toContain("## Overview");
     expect(sourceEntry.body).toContain("## Related");
     expect(targetMeta.patch_set_id).toBe(payload.patch_set_id);

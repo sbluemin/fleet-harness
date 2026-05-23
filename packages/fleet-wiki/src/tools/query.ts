@@ -238,7 +238,6 @@ async function stageAnswerPage(
     created: existingEntry?.created ?? now,
     updated: now,
     version: existingEntry ? existingEntry.version + 1 : 1,
-    templateId: "guide",
     type: input.targetType,
     status: "current",
     confidence: "medium",

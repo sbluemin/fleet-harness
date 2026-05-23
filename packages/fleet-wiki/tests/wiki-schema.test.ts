@@ -6,7 +6,6 @@ import path from "node:path";
 import { ensureMemoryRoot, resolveMemoryPaths } from "../src/paths.js";
 import {
   DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS,
-  DEFAULT_TEMPLATE_GUIDE,
   DEFAULT_TEMPLATE_PRD,
   REQUIRED_WORKSPACE_SCHEMA_SECTIONS,
   WORKSPACE_KNOWLEDGE_AGENTS_FILENAME,
@@ -39,7 +38,6 @@ describe("workspace schema", () => {
     expect(await pathExists(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME))).toBe(true);
     expect(await pathExists(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME))).toBe(true);
     expect(await pathExists(path.join(paths.schemaDir, `${WORKSPACE_TEMPLATE_PREFIX}prd${WORKSPACE_TEMPLATE_SUFFIX}`))).toBe(true);
-    expect(await pathExists(path.join(paths.schemaDir, `${WORKSPACE_TEMPLATE_PREFIX}guide${WORKSPACE_TEMPLATE_SUFFIX}`))).toBe(true);
   });
 
   it("creates the workspace doctrine AGENTS.md seed byte-for-byte", async () => {
@@ -60,18 +58,15 @@ describe("workspace schema", () => {
     const firstAgents = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME), "utf8");
     const firstWikiSchema = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME), "utf8");
     const firstPrdTemplate = await readFile(path.join(paths.schemaDir, "template-prd.md"), "utf8");
-    const firstGuideTemplate = await readFile(path.join(paths.schemaDir, "template-guide.md"), "utf8");
 
     await ensureWorkspaceSchema(paths);
     const secondAgents = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME), "utf8");
     const secondWikiSchema = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME), "utf8");
     const secondPrdTemplate = await readFile(path.join(paths.schemaDir, "template-prd.md"), "utf8");
-    const secondGuideTemplate = await readFile(path.join(paths.schemaDir, "template-guide.md"), "utf8");
 
     expect(secondAgents).toBe(firstAgents);
     expect(secondWikiSchema).toBe(firstWikiSchema);
     expect(secondPrdTemplate).toBe(firstPrdTemplate);
-    expect(secondGuideTemplate).toBe(firstGuideTemplate);
   });
 
   it("is idempotent across repeated ensureWorkspaceDoctrine calls", async () => {
@@ -127,7 +122,7 @@ describe("workspace schema", () => {
     expect(summary.exists).toBe(true);
     expect(summary.requiredSections).toEqual(REQUIRED_WORKSPACE_SCHEMA_SECTIONS);
     expect(summary.missingRequiredSections).toEqual([]);
-    expect(summary.templates?.map((template) => template.id)).toEqual(["guide", "prd"]);
+    expect(summary.templates?.map((template) => template.id)).toEqual(["prd"]);
     expect(summary.summary.length).toBeGreaterThan(0);
   });
 
@@ -137,12 +132,10 @@ describe("workspace schema", () => {
 
     await ensureWorkspaceSchema(paths);
     const prdTemplate = await readFile(path.join(paths.schemaDir, "template-prd.md"), "utf8");
-    const guideTemplate = await readFile(path.join(paths.schemaDir, "template-guide.md"), "utf8");
     const templates = await scanTemplates(paths);
 
     expect(prdTemplate).toBe(DEFAULT_TEMPLATE_PRD);
-    expect(guideTemplate).toBe(DEFAULT_TEMPLATE_GUIDE);
-    expect(templates.map((template) => template.id)).toEqual(["guide", "prd"]);
+    expect(templates.map((template) => template.id)).toEqual(["prd"]);
     expect(templates.find((template) => template.id === "prd")?.sections).toEqual([
       "Overview",
       "Problem",
@@ -154,7 +147,6 @@ describe("workspace schema", () => {
       "Open Questions",
       "Related",
     ]);
-    expect(templates.find((template) => template.id === "guide")?.sections).toEqual(["Overview", "Related"]);
   });
 
   it("validates selected template sections as an order-insensitive subset", async () => {
@@ -162,8 +154,44 @@ describe("workspace schema", () => {
     const paths = resolveMemoryPaths(root);
     await ensureWorkspaceSchema(paths);
 
-    await expect(validateTemplateCompliance(paths, "guide", "## Related\n\nlinks\n\n## Overview\n\nsummary")).resolves.toBeUndefined();
-    await expect(validateTemplateCompliance(paths, "guide", "## Overview\n\nsummary")).rejects.toThrow("missing sections: Related");
+    await expect(validateTemplateCompliance(paths, "prd", [
+      "## Related",
+      "",
+      "links",
+      "",
+      "## Open Questions",
+      "",
+      "none",
+      "",
+      "## Acceptance Criteria",
+      "",
+      "criteria",
+      "",
+      "## Functional Requirements",
+      "",
+      "requirements",
+      "",
+      "## User Stories",
+      "",
+      "stories",
+      "",
+      "## Non-Goals",
+      "",
+      "out of scope",
+      "",
+      "## Goals",
+      "",
+      "goals",
+      "",
+      "## Problem",
+      "",
+      "problem",
+      "",
+      "## Overview",
+      "",
+      "summary",
+    ].join("\n"))).resolves.toBeUndefined();
+    await expect(validateTemplateCompliance(paths, "prd", "## Overview\n\nsummary")).rejects.toThrow("missing sections: Problem");
   });
 
   it("documents current raw provenance and pending patch edit workflow", async () => {

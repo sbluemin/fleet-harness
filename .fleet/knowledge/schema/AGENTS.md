@@ -19,6 +19,6 @@ This directory defines the workspace-local operating conventions for `.fleet/kno
 
 ## Template Policy
 
-- `template-prd.md` and `template-guide.md` are default templates.
+- `template-prd.md` is the default template. Users may add custom templates with the `template-` prefix.
 - Template frontmatter is guidance only; level-2 headings define deterministic required body sections.
 - Existing persisted entry template compliance issues are warnings; ingest and approval remain hard gates.

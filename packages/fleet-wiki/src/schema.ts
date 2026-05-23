@@ -40,7 +40,7 @@ This directory defines the workspace-local operating conventions for \`.fleet/kn
 
 ## Template Policy
 
-- \`template-prd.md\` and \`template-guide.md\` are default templates.
+- \`template-prd.md\` is the default template. Users may add custom templates with the \`template-\` prefix.
 - Template frontmatter is guidance only; level-2 headings define deterministic required body sections.
 - Existing persisted entry template compliance issues are warnings; ingest and approval remain hard gates.
 `;
@@ -83,7 +83,7 @@ Every wiki entry must include frontmatter in YAML format.
 - Template frontmatter is guidance only and is not deterministically enforced.
 - Every level-2 heading (\`## Heading\`) in the selected template is a required entry body section.
 - Validation uses subset semantics: required template sections must exist in the entry body, order is ignored, and extra entry sections are allowed.
-- Default templates are \`template-prd.md\` and \`template-guide.md\`.
+- The default template is \`template-prd.md\`. Users may add custom templates with the \`template-\` prefix.
 
 ## Prohibited Content
 
@@ -137,17 +137,6 @@ description: Product requirements document
 ## Acceptance Criteria
 
 ## Open Questions
-
-## Related
-`;
-
-export const DEFAULT_TEMPLATE_GUIDE = `---
-template_id: guide
-description: Operational guide or generated reference page
----
-# Guide Template
-
-## Overview
 
 ## Related
 `;
@@ -233,7 +222,6 @@ export async function ensureWorkspaceSchema(paths: MemoryPaths): Promise<Workspa
   await writeDefaultFileIfMissing(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME), DEFAULT_WORKSPACE_SCHEMA_AGENTS);
   await writeDefaultFileIfMissing(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME), DEFAULT_WORKSPACE_WIKI_SCHEMA);
   await writeDefaultFileIfMissing(buildTemplatePath(paths, "prd"), DEFAULT_TEMPLATE_PRD);
-  await writeDefaultFileIfMissing(buildTemplatePath(paths, "guide"), DEFAULT_TEMPLATE_GUIDE);
   return readWorkspaceSchemaSummary(paths);
 }
 
@@ -326,7 +314,6 @@ export async function validateTemplateCompliance(
 }
 
 export function inferTemplateIdFromTarget(target: string, knownTemplateIds?: string[]): string | undefined {
-  if (target.includes("/sources/") || target.includes("/queries/") || target.includes("/synthesis/")) return "guide";
   const basename = path.basename(target, ".md");
   const ids = knownTemplateIds ?? DEFAULT_TEMPLATE_IDS;
   const sorted = [...ids].sort((a, b) => b.length - a.length);
@@ -336,7 +323,7 @@ export function inferTemplateIdFromTarget(target: string, knownTemplateIds?: str
   return undefined;
 }
 
-const DEFAULT_TEMPLATE_IDS = ["prd", "guide"];
+const DEFAULT_TEMPLATE_IDS = ["prd"];
 
 async function writeDefaultFileIfMissing(filePath: string, content: string): Promise<void> {
   try {

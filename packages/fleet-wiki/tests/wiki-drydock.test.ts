@@ -166,13 +166,13 @@ describe("wiki drydock", () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
     await writeWikiEntry({
-      id: "guide-template-warning",
-      title: "Guide Template Warning",
+      id: "prd-template-warning",
+      title: "PRD Template Warning",
       tags: [],
       created: "2026-04-26T00:00:00.000Z",
       updated: "2026-04-26T00:00:00.000Z",
       version: 1,
-      templateId: "guide",
+      templateId: "prd",
       body: "## Overview\n\nOnly overview is present.",
     }, paths);
 
