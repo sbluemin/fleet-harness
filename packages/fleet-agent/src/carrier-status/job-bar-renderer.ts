@@ -1,5 +1,5 @@
 import { getRegisteredOrder, type CarrierRuntime } from "@sbluemin/fleet-carriers";
-import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "@sbluemin/fleet-tui/pty";
+import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "@sbluemin/fleet-tui/pty";
 
 import {
   resolveCarrierColor,
@@ -34,6 +34,7 @@ export interface CarrierJobHudRenderOptions {
   readonly carrierRuntime: CarrierRuntime;
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
+  readonly keyboardProtocol?: KeyboardProtocolState;
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
   readonly width: number;
@@ -79,7 +80,7 @@ export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string
 export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): string[] {
   const carriers = buildCarrierTiles(options.carrierRuntime, getActiveJobs(options.jobs));
   if (carriers.length === 0) return [];
-  return renderCarrierHudStrip(options.width, carriers, options.frame, options.theme);
+  return renderCarrierHudStrip(options.width, carriers, options.frame, options.theme, options.keyboardProtocol);
 }
 
 export function waveText(
@@ -174,9 +175,11 @@ function renderCarrierHudStrip(
   carriers: CarrierHudTile[],
   frame: number,
   theme: FleetPtyTheme | undefined,
+  keyboardProtocol: KeyboardProtocolState | undefined,
 ): string[] {
   const tiles = carriers.map((carrier) => formatCarrierTile(carrier, frame));
-  return [centerLine(tiles.join(tileSeparator(theme)), width)];
+  const line = centerLine(tiles.join(tileSeparator(theme)), width);
+  return [appendProtocolIndicator(line, width, keyboardProtocol)];
 }
 
 function appendWidgetJobSummary(
@@ -289,6 +292,25 @@ function centerLine(line: string, width: number): string {
 
 function centerPadding(line: string, width: number): number {
   return Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
+}
+
+function appendProtocolIndicator(line: string, width: number, state: KeyboardProtocolState | undefined): string {
+  if (!state) return line;
+  const indicator = formatProtocolIndicator(state);
+  const indicatorWidth = visibleWidth(indicator);
+  const content = truncateToWidth(line, Math.max(0, width - indicatorWidth));
+  const padding = Math.max(0, width - visibleWidth(content) - indicatorWidth);
+  return `${content}${" ".repeat(padding)}${indicator}`;
+}
+
+function formatProtocolIndicator(state: KeyboardProtocolState): string {
+  const suffix = protocolIndicatorSuffix(state);
+  return `${PANEL_DIM_COLOR()}⌨${suffix}${ANSI_RESET}`;
+}
+
+function protocolIndicatorSuffix(state: KeyboardProtocolState): string {
+  if (!state.outerEnabled) return "S";
+  return state.effectiveMode === "transform" ? "T" : "E";
 }
 
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {

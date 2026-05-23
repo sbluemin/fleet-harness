@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `12`
+- total_entries: `13`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -124,6 +124,16 @@
 - raw_source_ref: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
 - raw_source_refs: `raw/2026-05-23-prd-mcp-server-surface-split-source-24dd317c.md`
 
+### prd-tui-keyboard-protocol-architecture
+
+- title: `PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture`
+- path: `wiki/prd-tui-keyboard-protocol-architecture.md`
+- tags: `fleet-tui, fleet-agent, keyboard-protocol, keybinding, dependency-injection, architecture, shipped`
+- updated: `2026-05-23T14:44:24.303Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
+- raw_source_refs: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-d31b5299.md, raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
+
 ## Tags
 
 ### agent-core
@@ -142,6 +152,7 @@
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 
 ### carrier
 
@@ -180,6 +191,7 @@
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 
 ### fleet-admiral
 
@@ -196,6 +208,7 @@
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 
 ### fleet-carriers
 
@@ -227,6 +240,10 @@
 
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
+### fleet-tui
+
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+
 ### fleet-wiki
 
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
@@ -244,6 +261,14 @@
 ### keybind
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+
+### keybinding
+
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+
+### keyboard-protocol
+
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 
 ### mcp
 
@@ -291,6 +316,7 @@
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 
 ### singleton-elimination
 

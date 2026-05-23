@@ -1,9 +1,10 @@
-import { dispatchRegisteredKeybinding, isHostExit, isKeyRelease, isModeToggle } from "./keybindings.js";
+import { isHostExit, isKeyRelease, isModeToggle, type InputKeybindingConfig } from "./keybindings.js";
 
 type InputToken = string;
 
 export interface InputRouterOptions<TMode extends string = string> {
   readonly initialMode: TMode;
+  readonly keybindings: InputKeybindingConfig;
   readonly onExit: () => void;
   readonly onModeChange: (mode: TMode) => void;
   readonly routeFleetInput?: (data: string) => boolean;
@@ -24,7 +25,7 @@ export function createInputRouter<TMode extends string = string>(options: InputR
     route(data: string) {
       let dedicatedOutput = "";
       for (const token of splitInputChunk(data)) {
-        if (isHostExit(token)) {
+        if (isHostExit(token, options.keybindings)) {
           if (dedicatedOutput.length > 0) {
             options.writeDedicated(dedicatedOutput);
           }
@@ -36,11 +37,11 @@ export function createInputRouter<TMode extends string = string>(options: InputR
           continue;
         }
 
-        if (dispatchRegisteredKeybinding(token)) {
+        if (options.keybindings.dispatch(token)) {
           continue;
         }
 
-        if (isModeToggle(token)) {
+        if (isModeToggle(token, options.keybindings)) {
           if (dedicatedOutput.length > 0) {
             options.writeDedicated(dedicatedOutput);
             dedicatedOutput = "";

@@ -1,9 +1,21 @@
 import { attachInputStream, LocalTui } from "@sbluemin/fleet-tui/core";
-import { assertInputContract, createInputRouter, createProgrammaticInput } from "@sbluemin/fleet-tui/input";
 import {
+  assertInputContract,
+  createInputKeybindingConfig,
+  createInputRouter,
+  createKeybindingRegistry,
+  createProgrammaticInput,
+  type InputKeybindingConfig,
+  type KeybindingDefinition,
+  type KeybindingRegistration,
+} from "@sbluemin/fleet-tui/input";
+import {
+  createCsiUInputNormalizer,
   createFleetPtyApi,
   createPtyHost,
   createTuiPtyManager,
+  KITTY_DISABLE,
+  KITTY_ENABLE,
   PtyView,
   type Component,
   type FleetPtyApi,
@@ -12,7 +24,7 @@ import {
 } from "@sbluemin/fleet-tui/pty";
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
-import { registerCarrierStatusKeybinding } from "./carrier-status/register.js";
+import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";
 import { toggleFleetInputMode } from "./controls/modes.js";
 import { injectDedicatedCliProfile } from "./dedicated-cli/injection.js";
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
@@ -32,6 +44,7 @@ export interface RunAppOptions {
 type FleetInputMode = "MIRROR" | "DEDICATED";
 type RenderCallback = () => void;
 type RenderScheduler = (afterRender?: RenderCallback) => void;
+type FleetHostKeybindingHandlers = Record<string, () => void>;
 
 interface RenderSchedulerUi {
   requestRender(force?: boolean, afterRender?: RenderCallback): void;
@@ -39,6 +52,19 @@ interface RenderSchedulerUi {
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
 const RENDER_THROTTLE_MS = 16;
+
+const DEFAULT_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
+  { action: "host-exit", key: "\x11", label: "Ctrl+Q" },
+  { action: "host-interrupt", key: "\x03", label: "Ctrl+C" },
+  { action: "mode-toggle", key: "\x14", label: "Ctrl+T" },
+  { action: "carrier-status", key: "\x1bo", label: "Alt+O", normalizationAliases: ["\x1bO"] },
+];
+
+const STANDARD_KEYBOARD_PROTOCOL_STATE = {
+  outerEnabled: false,
+  childRequested: false,
+  effectiveMode: "passthrough" as const,
+};
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const cliId = options.cliId;
@@ -56,8 +82,24 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   let syncCursorPolicy = () => {};
   let sendCarrierResultReminder = (_text: string) => {};
   const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
+  const baseProfile = await resolveDedicatedCliProfile(process.env, resolveInvocationCwd(), { cliId, model });
+  const currentProfile = native
+    ? baseProfile
+    : await injectDedicatedCliProfile(baseProfile, {
+        buildSystemPrompt: createSystemPromptBuilder({
+          carrierRuntime: runtime.carrierRuntime,
+          mcpRegistry: runtime.mcpRegistry,
+        }).build,
+        dedicatedMcpSession: runtime.dedicatedMcpSession,
+        replaceSystemPrompt,
+        enableMetaphor,
+      });
+  const ptyHost = createPtyHost({
+    profile: currentProfile,
+  });
   const jobBarState = createJobBarState({
     carrierRuntime: runtime.carrierRuntime,
+    getKeyboardProtocol: () => ptyHost.getKeyboardProtocol?.() ?? STANDARD_KEYBOARD_PROTOCOL_STATE,
     onCarrierResultReminder: (text) => sendCarrierResultReminder(sanitizeCarrierResultReminder(text)),
     onRenderRequest: () => {
       ptyManager?.requestResize("programmatic");
@@ -74,22 +116,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - ptyView.maxRows),
     requestResize: () => ptyManager?.requestResize("fleet-overlay"),
     requestRender: scheduleRender,
-  });
-  registerCarrierStatusKeybinding({ carrierRuntime: runtime.carrierRuntime, fleetPty });
-  const baseProfile = await resolveDedicatedCliProfile(process.env, resolveInvocationCwd(), { cliId, model });
-  const currentProfile = native
-    ? baseProfile
-    : await injectDedicatedCliProfile(baseProfile, {
-        buildSystemPrompt: createSystemPromptBuilder({
-          carrierRuntime: runtime.carrierRuntime,
-          mcpRegistry: runtime.mcpRegistry,
-        }).build,
-        dedicatedMcpSession: runtime.dedicatedMcpSession,
-        replaceSystemPrompt,
-        enableMetaphor,
-      });
-  const ptyHost = createPtyHost({
-    profile: currentProfile,
   });
   ptyManager = createTuiPtyManager({
     fleetPty,
@@ -112,18 +138,33 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     stopping = true;
     stopApp(ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle);
   };
+  const handleModeToggleCursorSuppression = () => {
+    modeToggleSuppressed = true;
+    ui.setCursorAnchorTarget(undefined);
+    scheduleRender(() => {
+      modeToggleSuppressed = false;
+      syncCursorPolicy();
+      ui.requestRender();
+    });
+  };
+  const fleetKeybindings = createKeybindingRegistry({ definitions: DEFAULT_HOST_KEYBINDINGS });
+  const keybindings = createFleetHostInputKeybindingConfig({
+    definitions: fleetKeybindings.list(),
+    handlers: {
+      "carrier-status": createCarrierStatusKeybindingHandler({ carrierRuntime: runtime.carrierRuntime, fleetPty }),
+      "host-exit": stop,
+      "host-interrupt": stop,
+      "mode-toggle": handleModeToggleCursorSuppression,
+    },
+  });
+  const csiUNormalizer = createCsiUInputNormalizer({
+    csiUMap: fleetKeybindings.createCsiUNormalizationMap(),
+  });
   const router = createInputRouter({
     initialMode: "MIRROR",
+    keybindings,
     onExit: stop,
-    onModeChange: () => {
-      modeToggleSuppressed = true;
-      ui.setCursorAnchorTarget(undefined);
-      scheduleRender(() => {
-        modeToggleSuppressed = false;
-        syncCursorPolicy();
-        ui.requestRender();
-      });
-    },
+    onModeChange: handleModeToggleCursorSuppression,
     routeFleetInput: (data) => fleetPty.dispatchInput(data),
     toggleMode: toggleFleetInputMode,
     writeDedicated: (data) => ptyHost.write(data),
@@ -142,9 +183,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   unsubscribeJobBar = subscribeJobBar({
     jobBarState,
   });
-  assertInputContract();
+  assertInputContract(keybindings);
   const initialResize = ptyManager.requestResize("initial");
-  ui.addInputListener((data) => router.route(data));
+  ui.addInputListener((data) => router.route(csiUNormalizer.normalize(data)));
   ptyHost.start({ cols: ui.columns, rows: initialResize.dedicatedRows });
   ptyHost.onData((chunk) => {
     ptyView.append(chunk, scheduleRender);
@@ -155,26 +196,44 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  const disableKeyboardProtocol = () => process.stdout.write(KITTY_DISABLE);
+  process.on("exit", disableKeyboardProtocol);
+
   ui.start();
+  process.stdout.write(KITTY_ENABLE);
   disposeInputStream = attachInputStream(ui);
 }
 
-function createFleetPtyViewport(fleetPty: FleetPtyApi): Component {
-  return {
-    handleInput(data: string): void {
-      fleetPty.dispatchInput(data);
-    },
-    invalidate(): void {
-      fleetPty.getCurrentRegion().component.invalidate();
-    },
-    render(width: number): string[] {
-      return fleetPty.getCurrentRegion().component.render(width);
-    },
-  };
-}
+export function createFleetHostInputKeybindingConfig(options: {
+  readonly definitions: readonly KeybindingDefinition[];
+  readonly handlers: FleetHostKeybindingHandlers;
+}): InputKeybindingConfig {
+  const exitKeys = options.definitions
+    .filter((definition) => definition.action === "host-exit" || definition.action === "host-interrupt")
+    .map((definition) => definition.key);
+  const modeToggleKeys = options.definitions
+    .filter((definition) => definition.action === "mode-toggle")
+    .map((definition) => definition.key);
+  const registeredKeybindings = options.definitions
+    .filter((definition) => definition.action !== "host-exit" && definition.action !== "host-interrupt" && definition.action !== "mode-toggle")
+    .map((definition): KeybindingRegistration => {
+      const handler = options.handlers[definition.action];
+      if (handler === undefined) {
+        throw new Error(`Missing Fleet host keybinding handler: ${definition.action}`);
+      }
 
-function resolveInvocationCwd(): string {
-  return process.env.INIT_CWD || process.cwd();
+      return {
+        action: definition.action,
+        handler,
+        key: definition.key,
+      };
+    });
+
+  return createInputKeybindingConfig({
+    exitKeys,
+    modeToggleKeys,
+    registeredKeybindings,
+  });
 }
 
 export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () => void): RenderScheduler {
@@ -202,6 +261,24 @@ export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () =>
       });
     }, RENDER_THROTTLE_MS);
   };
+}
+
+function createFleetPtyViewport(fleetPty: FleetPtyApi): Component {
+  return {
+    handleInput(data: string): void {
+      fleetPty.dispatchInput(data);
+    },
+    invalidate(): void {
+      fleetPty.getCurrentRegion().component.invalidate();
+    },
+    render(width: number): string[] {
+      return fleetPty.getCurrentRegion().component.render(width);
+    },
+  };
+}
+
+function resolveInvocationCwd(): string {
+  return process.env.INIT_CWD || process.cwd();
 }
 
 function createCursorPolicySync(options: {
@@ -235,6 +312,7 @@ function stopApp(
   process.off("SIGWINCH", resize);
   disposeInputStream();
   unsubscribeJobBar();
+  process.stdout.write(KITTY_DISABLE);
   ptyHost.kill();
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);

@@ -5,15 +5,16 @@ import type {
   TrackStatus,
 } from "@sbluemin/fleet-carriers";
 import {
-  ANIM_INTERVAL_MS,
-  DEFAULT_BODY_H,
-} from "../admiral/constants.js";
-import {
   getActiveBackgroundJobCount,
   getRegisteredOrder,
 } from "@sbluemin/fleet-carriers";
 import { getSessionIdFor as getAgentSessionIdFor } from "@sbluemin/fleet-infra/agent";
+import type { KeyboardProtocolState } from "@sbluemin/fleet-tui/pty";
 
+import {
+  ANIM_INTERVAL_MS,
+  DEFAULT_BODY_H,
+} from "../admiral/constants.js";
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
 export interface FooterModelInfo {
@@ -73,6 +74,7 @@ export interface AgentPanelState {
 
 export interface JobBarStateOptions {
   readonly carrierRuntime: CarrierRuntime;
+  readonly getKeyboardProtocol?: () => KeyboardProtocolState;
   readonly onCarrierResultReminder?: (text: string) => void;
   readonly onRenderRequest?: () => void;
 }
@@ -82,6 +84,7 @@ export interface JobBarState {
   dispose(): void;
   ensurePanelAnimTimer(): void;
   getActiveJobs(): PanelJob[];
+  getKeyboardProtocol?: () => KeyboardProtocolState;
   getGrandFleetStreamStoreState(): {
     runs: Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>;
   };
@@ -127,6 +130,7 @@ export function createJobBarState(options: JobBarStateOptions): JobBarState {
     dispose: disposeJobBarState,
     ensurePanelAnimTimer,
     getActiveJobs,
+    getKeyboardProtocol: options.getKeyboardProtocol,
     getGrandFleetStreamStoreState,
     getJobById,
     getPanelJobs,

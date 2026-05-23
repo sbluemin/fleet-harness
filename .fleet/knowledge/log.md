@@ -1963,3 +1963,125 @@
 - result: `accepted`
 - target: `wiki/prd-mcp-server-surface-split.md`
 
+## 2026-05-23T14:29:55.673Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:31:19.298Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:33:13.973Z — raw source added
+
+- id: `prd-tui-keyboard-protocol-architecture-source`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-d31b5299.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `prd-tui-keyboard-protocol-architecture-source`
+
+## 2026-05-23T14:33:13.975Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T14-33-13-966Z-b7a20bec`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-d31b5299.md`
+- target: `wiki/prd-tui-keyboard-protocol-architecture.md`
+- warning_count: `0`
+
+## 2026-05-23T14:35:00.505Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `da530441`
+- patch_id: `2026-05-23T14-33-13-966Z-b7a20bec`
+- previous_hash: `0c267217`
+- target: `wiki/prd-tui-keyboard-protocol-architecture.md`
+
+## 2026-05-23T14:35:50.668Z — index rebuilt
+
+- entry_count: `13`
+
+## 2026-05-23T14:35:50.670Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T14-33-13-966Z-b7a20bec`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-d31b5299.md`
+- result: `accepted`
+- target: `wiki/prd-tui-keyboard-protocol-architecture.md`
+
+## 2026-05-23T14:38:20.171Z — drydock run
+
+- error_count: `4`
+- info_count: `4`
+- issue_count: `8`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:43:21.810Z — drydock run
+
+- error_count: `4`
+- info_count: `4`
+- issue_count: `8`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:43:35.893Z — raw source added
+
+- id: `prd-tui-keyboard-protocol-architecture-source`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `prd-tui-keyboard-protocol-architecture-restructured`
+
+## 2026-05-23T14:43:35.896Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T14-43-35-880Z-1c440584`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
+- target: `wiki/prd-tui-keyboard-protocol-architecture.md`
+- warning_count: `0`
+
+## 2026-05-23T14:43:42.004Z — drydock run
+
+- error_count: `4`
+- info_count: `4`
+- issue_count: `8`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T14:44:24.305Z — patch edited
+
+- body_replacements: `2`
+- changed_fields: `body, updated`
+- next_hash: `12ddc06f`
+- patch_id: `2026-05-23T14-43-35-880Z-1c440584`
+- previous_hash: `7d6eec07`
+- target: `wiki/prd-tui-keyboard-protocol-architecture.md`
+
+## 2026-05-23T14:45:36.493Z — index rebuilt
+
+- entry_count: `13`
+
+## 2026-05-23T14:45:36.495Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-23T14-43-35-880Z-1c440584`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
+- result: `accepted`
+- target: `wiki/prd-tui-keyboard-protocol-architecture.md`
+
