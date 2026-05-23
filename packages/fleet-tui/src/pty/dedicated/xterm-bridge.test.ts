@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { PtyView } from "./pty-view.js";
-import { createXterm, getLogicalCursor, projectLogicalCursor } from "./xterm-bridge.js";
+import { createXterm, getLogicalCursor, getXtermBufferType, projectLogicalCursor, scrollXtermLines } from "./xterm-bridge.js";
 
 describe("xterm cursor projection", () => {
   it("projects plain ASCII cursor columns", async () => {
@@ -69,6 +69,26 @@ describe("xterm cursor projection", () => {
     view.resize(12, 0);
 
     assert.equal(view.getCursorAnchor(12), null);
+  });
+
+  it("scrolls normal-buffer viewport lines", async () => {
+    const terminal = createXterm(12, 3);
+
+    await writeTerminal(terminal, "one\r\ntwo\r\nthree\r\nfour\r\nfive");
+    const before = terminal.buffer.active.viewportY;
+
+    assert.equal(getXtermBufferType(terminal), "normal");
+    assert.equal(scrollXtermLines(terminal, -1), true);
+    assert.equal(terminal.buffer.active.viewportY, before - 1);
+  });
+
+  it("detects alternate buffer and leaves scrollback untouched there", async () => {
+    const terminal = createXterm(12, 3);
+
+    await writeTerminal(terminal, "\x1b[?1049hhello");
+
+    assert.equal(getXtermBufferType(terminal), "alternate");
+    assert.equal(scrollXtermLines(terminal, 1), false);
   });
 });
 

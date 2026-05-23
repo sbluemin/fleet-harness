@@ -52,6 +52,20 @@ describe("LocalTui", () => {
     assert.equal(countWrites("\x1b[?1049l"), 1);
   });
 
+  it("enables and disables SGR mouse reporting exactly once per lifecycle", () => {
+    const tui = new LocalTui();
+
+    tui.start();
+    tui.start();
+    tui.stop();
+    tui.stop();
+
+    assert.equal(countWrites("\x1b[?1000h"), 1);
+    assert.equal(countWrites("\x1b[?1006h"), 1);
+    assert.equal(countWrites("\x1b[?1006l"), 1);
+    assert.equal(countWrites("\x1b[?1000l"), 1);
+  });
+
   it("supports useAltScreen opt-out", () => {
     const tui = new LocalTui({ useAltScreen: false });
 
@@ -310,6 +324,7 @@ describe("LocalTui", () => {
       assert.equal(externalSigintCalls, 1);
       assert.equal(killCalls, 0);
       assert.equal(writes.join("").includes("\x1b[?1049l"), true);
+      assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1000l"), true);
     } finally {
       process.removeListener("SIGINT", externalSigintHandler);
       tui.stop();
@@ -330,6 +345,7 @@ describe("LocalTui", () => {
 
     assert.deepEqual(killSignals, ["SIGTERM"]);
     assert.equal(writes.join("").includes("\x1b[?1049l"), true);
+    assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1000l"), true);
     tui.stop();
   });
 
@@ -353,6 +369,8 @@ describe("LocalTui", () => {
     process.emit("uncaughtExceptionMonitor", new Error("panic again"));
 
     assert.equal(countWrites("\x1b[?25h"), 1);
+    assert.equal(countWrites("\x1b[?1006l"), 1);
+    assert.equal(countWrites("\x1b[?1000l"), 1);
     assert.equal(countWrites("\x1b[?1049l"), 1);
     assert.equal(process.listenerCount("SIGINT"), initialSigintListeners);
     assert.equal(process.listenerCount("SIGTERM"), initialSigtermListeners);

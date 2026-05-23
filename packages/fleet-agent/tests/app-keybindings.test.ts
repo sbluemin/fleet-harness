@@ -1,8 +1,8 @@
-import { createKeybindingRegistry, type KeybindingDefinition } from "@sbluemin/fleet-tui/input";
+import { createKeybindingRegistry, type KeybindingDefinition, type RoutedMouseInput } from "@sbluemin/fleet-tui/input";
 import { createCsiUInputNormalizer } from "@sbluemin/fleet-tui/pty";
 import { describe, expect, it } from "vitest";
 
-import { createFleetHostInputKeybindingConfig } from "../src/app.js";
+import { createDedicatedMouseRouter, createFleetHostInputKeybindingConfig } from "../src/app.js";
 
 const TEST_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "host-exit", key: "\x11" },
@@ -53,3 +53,85 @@ describe("app keybinding composition", () => {
     expect(events).toEqual(["carrier-status"]);
   });
 });
+
+describe("dedicated mouse routing composition", () => {
+  it("scrolls normal-buffer xterm scrollback when child mouse is off", () => {
+    const writes: string[] = [];
+    const scrolls: number[] = [];
+    let renderRequests = 0;
+    const routeMouse = createDedicatedMouseRouter({
+      ptyHost: {
+        getMouseProtocol: () => ({ activeEncoding: "default", activeProtocol: "none", mouseTrackingEnabled: false }),
+        write: (data) => writes.push(data),
+      },
+      ptyView: {
+        isAlternateBufferActive: () => false,
+        scrollLines: (delta) => {
+          scrolls.push(delta);
+          return true;
+        },
+      },
+      requestRender: () => {
+        renderRequests += 1;
+      },
+    });
+
+    expect(routeMouse(mouseEvent({ wheelDirection: "up" }))).toBe(true);
+
+    expect(writes).toEqual([]);
+    expect(scrolls).toEqual([-3]);
+    expect(renderRequests).toBe(1);
+  });
+
+  it("writes arrow keys for alternate-buffer wheel when child mouse is off", () => {
+    const writes: string[] = [];
+    const routeMouse = createDedicatedMouseRouter({
+      ptyHost: {
+        getMouseProtocol: () => ({ activeEncoding: "default", activeProtocol: "none", mouseTrackingEnabled: false }),
+        write: (data) => writes.push(data),
+      },
+      ptyView: {
+        isAlternateBufferActive: () => true,
+        scrollLines: () => false,
+      },
+      requestRender: () => undefined,
+    });
+
+    expect(routeMouse(mouseEvent({ wheelDirection: "down" }))).toBe(true);
+
+    expect(writes).toEqual(["\x1b[B"]);
+  });
+
+  it("passes through re-encoded SGR mouse when child mouse is on", () => {
+    const writes: string[] = [];
+    const routeMouse = createDedicatedMouseRouter({
+      ptyHost: {
+        getMouseProtocol: () => ({ activeEncoding: "sgr", activeProtocol: "vt200", mouseTrackingEnabled: true }),
+        write: (data) => writes.push(data),
+      },
+      ptyView: {
+        isAlternateBufferActive: () => false,
+        scrollLines: () => false,
+      },
+      requestRender: () => undefined,
+    });
+
+    expect(routeMouse(mouseEvent({ localRow: 2, row: 7, wheelDirection: "up" }))).toBe(true);
+
+    expect(writes).toEqual(["\x1b[<64;4;2M"]);
+  });
+});
+
+function mouseEvent(overrides: Partial<RoutedMouseInput> = {}): RoutedMouseInput {
+  return {
+    buttonCode: 64,
+    column: 4,
+    final: "M",
+    localColumn: 4,
+    localRow: 1,
+    raw: "\x1b[<64;4;1M",
+    row: 1,
+    wheelDirection: "up",
+    ...overrides,
+  };
+}

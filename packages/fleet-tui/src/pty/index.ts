@@ -19,7 +19,7 @@ export { MIN_DEDICATED_ROWS } from "../layout/split-pane.js";
 export type { TuiPtyManager, TuiPtyManagerOptions } from "./manager.js";
 export type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "./types.js";
 export type { CsiUInputNormalizer, CreateCsiUInputNormalizerDeps, KeyboardProtocolState } from "./dedicated/keyboard-protocol.js";
-export type { PtyHost, PtyLaunchConfig, PtyLaunchProfile, PtyStartOptions } from "./dedicated/types.js";
+export type { MouseProtocolState, PtyHost, PtyLaunchConfig, PtyLaunchProfile, PtyStartOptions } from "./dedicated/types.js";
 export type {
   Component,
   CreateFleetPtyApiOptions,

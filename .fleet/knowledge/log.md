@@ -2223,3 +2223,77 @@
 - ok: `true`
 - warning_count: `0`
 
+## 2026-05-23T15:33:58.730Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `3`
+- ok: `true`
+- warning_count: `0`
+
+## 2026-05-23T15:35:03.348Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `3`
+- ok: `true`
+- warning_count: `0`
+
+## 2026-05-23T15:39:52.646Z — raw source added
+
+- id: `prd-tui-mouse-scroll-hybrid-routing-source`
+- raw_source_ref: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: Fleet TUI Mouse Scroll Hybrid Routing`
+
+## 2026-05-23T15:39:52.648Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T15-39-52-623Z-fd6b04ed`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
+- target: `wiki/prd-tui-mouse-scroll-hybrid-routing.md`
+- warning_count: `0`
+
+## 2026-05-23T15:39:57.357Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `3`
+- ok: `true`
+- warning_count: `0`
+
+## 2026-05-23T15:41:44.522Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated, summary`
+- next_hash: `34932f29`
+- patch_id: `2026-05-23T15-39-52-623Z-fd6b04ed`
+- previous_hash: `c13e158f`
+- target: `wiki/prd-tui-mouse-scroll-hybrid-routing.md`
+
+## 2026-05-23T15:42:55.608Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated, summary`
+- next_hash: `5dd24fde`
+- patch_id: `2026-05-23T15-39-52-623Z-fd6b04ed`
+- previous_hash: `34932f29`
+- target: `wiki/prd-tui-mouse-scroll-hybrid-routing.md`
+
+## 2026-05-23T15:43:40.026Z — index rebuilt
+
+- entry_count: `13`
+
+## 2026-05-23T15:43:40.028Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T15-39-52-623Z-fd6b04ed`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
+- result: `accepted`
+- target: `wiki/prd-tui-mouse-scroll-hybrid-routing.md`
+

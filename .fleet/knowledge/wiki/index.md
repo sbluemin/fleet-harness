@@ -13,10 +13,10 @@
 - title: `Guide - 001 fleet-harness 소개`
 - path: `wiki/guide-001-fleet-harness-overview.md`
 - tags: `guide, fleet-harness, overview, onboarding, current`
-- updated: `2026-05-19T08:24:10.563Z`
+- updated: `2026-05-23T14:46:55.449Z`
 - summary: `# fleet-harness 소개`
-- raw_source_ref: `raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
-- raw_source_refs: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md, raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md`
+- raw_source_ref: `raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md`
+- raw_source_refs: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md, raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md, raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md`
 
 ### guide-002-carrier-status
 
@@ -127,6 +127,16 @@
 - raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
 - raw_source_refs: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-d31b5299.md, raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
 
+### prd-tui-mouse-scroll-hybrid-routing
+
+- title: `PRD: Fleet TUI Mouse Scroll Hybrid Routing`
+- path: `wiki/prd-tui-mouse-scroll-hybrid-routing.md`
+- tags: `fleet-tui, fleet-agent, mouse-protocol, scroll, architecture, shipped`
+- updated: `2026-05-23T15:42:55.604Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
+- raw_source_refs: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
+
 ## Tags
 
 ### agent-core
@@ -146,6 +156,7 @@
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
 ### carrier
 
@@ -202,6 +213,7 @@
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
 ### fleet-carriers
 
@@ -236,6 +248,7 @@
 ### fleet-tui
 
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
 ### fleet-wiki
 
@@ -271,6 +284,10 @@
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
+### mouse-protocol
+
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
+
 ### onboarding
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
@@ -298,6 +315,10 @@
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
+### scroll
+
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
+
 ### shipped
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
@@ -306,6 +327,7 @@
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
 ### singleton-elimination
 

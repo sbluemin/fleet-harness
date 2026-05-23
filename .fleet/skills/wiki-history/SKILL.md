@@ -40,6 +40,8 @@ This document exists for exactly one reason: to let future-self and future-team 
 - Implementation actions such as "changed X to Y", "added to module Z", "refactored A into B"
 - "Here is how to implement it" style implementation guidance
 - Build/test commands, directory trees, package dependency graphs
+- Duplicated frontmatter inside the body (e.g., `id:`, `title:`, `tags:`, `created:`, `updated:`, `version:`, `feature_area:`, `lifecycle:` YAML blocks that repeat metadata already carried in the patch envelope)
+- Sections not listed in the Output Format below (e.g., "Open Questions", "Future Considerations")
 
 ## Output Format
 
@@ -76,6 +78,8 @@ Before approving the patch, ask each question once more:
 - [ ] Does any source file path, function name, or line number appear in the body?
 - [ ] Do phrases like "next step", "later", "future", "TODO", or "Roadmap" appear?
 - [ ] Are there implementation-action sentences ("changed X to Y", "added Z")?
+- [ ] Does the body contain duplicated frontmatter (YAML block with `id:`, `title:`, `tags:`, `version:`, etc.) that repeats metadata already in the patch envelope?
+- [ ] Are there sections not listed in the Output Format (e.g., "Open Questions", "Future Considerations")?
 - [ ] Does the Problem section describe the **structural cause**, not just the visible symptom?
 - [ ] Are the User Stories written from the actual user/carrier perspective, not the developer's?
 - [ ] Can a reader, one year from now, understand "why this decision was made" from this document alone?

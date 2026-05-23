@@ -5,9 +5,11 @@ import {
   createInputRouter,
   createKeybindingRegistry,
   createProgrammaticInput,
+  encodeSgrMouseInput,
   type InputKeybindingConfig,
   type KeybindingDefinition,
   type KeybindingRegistration,
+  type RoutedMouseInput,
 } from "@sbluemin/fleet-tui/input";
 import {
   createCsiUInputNormalizer,
@@ -65,6 +67,12 @@ const STANDARD_KEYBOARD_PROTOCOL_STATE = {
   childRequested: false,
   effectiveMode: "passthrough" as const,
 };
+const STANDARD_MOUSE_PROTOCOL_STATE = {
+  activeEncoding: "default" as const,
+  activeProtocol: "none" as const,
+  mouseTrackingEnabled: false,
+};
+const WHEEL_SCROLL_LINES = 3;
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const cliId = options.cliId;
@@ -161,11 +169,24 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     csiUMap: fleetKeybindings.createCsiUNormalizationMap(),
   });
   const router = createInputRouter({
+    getLayout: () =>
+      ptyManager?.getCurrentRequest() ?? {
+        columns: ui.columns,
+        dedicatedRows: ptyView.maxRows,
+        fleetRows: Math.max(0, ui.rows - ptyView.maxRows),
+        totalRows: ui.rows,
+      },
     initialMode: "MIRROR",
     keybindings,
     onExit: stop,
     onModeChange: handleModeToggleCursorSuppression,
+    routeDedicatedMouse: createDedicatedMouseRouter({
+      ptyHost,
+      ptyView,
+      requestRender: scheduleRender,
+    }),
     routeFleetInput: (data) => fleetPty.dispatchInput(data),
+    routeFleetMouse: (event) => fleetPty.dispatchMouse(event),
     toggleMode: toggleFleetInputMode,
     writeDedicated: (data) => ptyHost.write(data),
   });
@@ -260,6 +281,35 @@ export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () =>
         }
       });
     }, RENDER_THROTTLE_MS);
+  };
+}
+
+export function createDedicatedMouseRouter(options: {
+  readonly ptyHost: Pick<PtyHost, "getMouseProtocol" | "write">;
+  readonly ptyView: Pick<PtyView, "isAlternateBufferActive" | "scrollLines">;
+  readonly requestRender: () => void;
+}): (event: RoutedMouseInput) => boolean {
+  return (event) => {
+    const mouseProtocol = options.ptyHost.getMouseProtocol?.() ?? STANDARD_MOUSE_PROTOCOL_STATE;
+    if (mouseProtocol.mouseTrackingEnabled) {
+      options.ptyHost.write(encodeSgrMouseInput(event, { column: event.localColumn, row: event.localRow }));
+      return true;
+    }
+
+    if (event.wheelDirection === null) {
+      return true;
+    }
+
+    if (options.ptyView.isAlternateBufferActive()) {
+      options.ptyHost.write(event.wheelDirection === "up" ? "\x1b[A" : "\x1b[B");
+      return true;
+    }
+
+    const delta = event.wheelDirection === "up" ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES;
+    if (options.ptyView.scrollLines(delta)) {
+      options.requestRender();
+    }
+    return true;
   };
 }
 

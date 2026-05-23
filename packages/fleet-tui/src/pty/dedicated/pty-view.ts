@@ -2,7 +2,8 @@ import type { Terminal as XtermTerminal } from "@xterm/headless";
 
 import { truncateToWidth, visibleWidth } from "../../primitives/text.js";
 import type { Component, CursorAnchor } from "../../types.js";
-import { createXterm, projectLogicalCursor, renderXtermViewport } from "./xterm-bridge.js";
+import { createXterm, getXtermBufferType, projectLogicalCursor, renderXtermViewport, scrollXtermLines } from "./xterm-bridge.js";
+import type { XtermBufferType } from "./xterm-bridge.js";
 
 const MIN_ROWS = 0;
 const MIN_COLUMNS = 1;
@@ -40,6 +41,18 @@ export class PtyView implements Component {
 
 	public get maxRows(): number {
 		return this.rows;
+	}
+
+	public getBufferType(): XtermBufferType {
+		return getXtermBufferType(this.terminal);
+	}
+
+	public isAlternateBufferActive(): boolean {
+		return this.getBufferType() === "alternate";
+	}
+
+	public scrollLines(delta: number): boolean {
+		return scrollXtermLines(this.terminal, delta);
 	}
 
 	public getCursorAnchor(width: number): CursorAnchor | null {

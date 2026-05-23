@@ -9,7 +9,7 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-19T08:24:10.563Z"
+    "updated": "2026-05-23T14:46:55.449Z"
   },
   "guide-002-carrier-status": {
     "path": "wiki/guide-002-carrier-status.md",
@@ -158,5 +158,18 @@
       "shipped"
     ],
     "updated": "2026-05-23T14:44:24.303Z"
+  },
+  "prd-tui-mouse-scroll-hybrid-routing": {
+    "path": "wiki/prd-tui-mouse-scroll-hybrid-routing.md",
+    "title": "PRD: Fleet TUI Mouse Scroll Hybrid Routing",
+    "tags": [
+      "fleet-tui",
+      "fleet-agent",
+      "mouse-protocol",
+      "scroll",
+      "architecture",
+      "shipped"
+    ],
+    "updated": "2026-05-23T15:42:55.604Z"
   }
 }
