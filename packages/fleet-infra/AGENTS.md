@@ -7,7 +7,6 @@
 - `auth/` — CLI auth provider mapping, storage, migration, validation, and user-facing auth messages.
 - `agent/` — executor runtime engine, pool/session persistence, provider/model codec, `TrackStatus` SSoT, builtin external MCP catalog, and the two-method `ExecutorPort`.
 - `data-dir/` — Fleet data directory resolution and legacy migration.
-- `job/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, and cache helpers.
 - `log/` — runtime log store and log entry contracts.
 - `settings/` — settings store, runtime singleton, and settings service.
 
@@ -17,7 +16,7 @@
 
 - The DI layer order is one-way: `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
 - `createInfraServices(deps)` is the public construction boundary for infrastructure services.
-- Filesystem, auth storage, data-dir resolution, detached job archive/cache, runtime log persistence, settings storage, process-safe executor/session infrastructure, and generic MCP routing belong here.
+- Filesystem, auth storage, data-dir resolution, runtime log persistence, settings storage, process-safe executor/session infrastructure, and generic MCP routing belong here.
 - Higher layers must receive infra capabilities as explicit dependencies; `fleet-infra` must not look up host, carrier, admiral, or admiralty services.
 - Keep Fleet-domain policy out of this package. It provides gateways and durable runtime primitives, not carrier persona, admiral policy, or host UI behavior.
 
@@ -29,7 +28,6 @@ Consumers use the package root or documented subdomain barrels only:
 - `@sbluemin/fleet-infra/agent`
 - `@sbluemin/fleet-infra/auth`
 - `@sbluemin/fleet-infra/data-dir`
-- `@sbluemin/fleet-infra/job`
 - `@sbluemin/fleet-infra/log`
 - `@sbluemin/fleet-infra/settings`
 
@@ -49,5 +47,5 @@ Do not add individual deep source-file exports without an explicit public API de
 Infrastructure tests live in `packages/fleet-infra/tests/**`.
 
 - Agent infrastructure tests live in `packages/fleet-infra/tests/agent/**`.
-- Reset global singleton state in tests that touch agent executor ports/pools, job archive/cache/concurrency/cancel registry, settings runtime, or log store.
+- Reset global singleton state in tests that touch agent executor ports/pools, settings runtime, or log store.
 - Prefer package-local source imports for unit tests and public barrels when validating the exported package surface.

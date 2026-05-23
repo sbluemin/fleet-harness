@@ -1,5 +1,6 @@
 import { describe, expect, beforeEach, afterEach, it, vi } from "vitest";
 
+import { getActiveBackgroundJobCount as getActiveBackgroundJobCountFromRoot } from "../src/index.js";
 import { serializeJobArchive } from "../src/job/archive-serializer.js";
 import {
   toMessageArchiveBlock,
@@ -43,6 +44,7 @@ import {
   putJobSummary,
   resetJobSummaryCacheForTest,
 } from "../src/job/lru-cache.js";
+import * as jobBarrel from "../src/job/index.js";
 
 beforeEach(() => {
   resetJobArchivesForTest();
@@ -56,6 +58,11 @@ afterEach(() => {
 });
 
 describe("carrier job id", () => {
+  it("exposes job APIs through the carrier root and job barrel", () => {
+    expect(getActiveBackgroundJobCountFromRoot()).toBe(0);
+    expect(jobBarrel.getActiveBackgroundJobCount()).toBe(0);
+  });
+
   it("builds and parses allowed prefixed IDs", () => {
     expect(buildCarrierJobId("sortie", "abc")).toBe("sortie:abc");
     expect(parseCarrierJobId(`squad${"ron"}:call-1`)).toBeNull();

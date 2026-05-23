@@ -23,6 +23,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./job": {
+      "types": "./dist/job.d.ts",
+      "import": "./dist/job.js",
+      "require": "./dist/job.cjs"
     }
   },
   "dependencies": {

@@ -40,11 +40,6 @@
       "import": "./dist/data-dir.js",
       "require": "./dist/data-dir.cjs"
     },
-    "./job": {
-      "types": "./dist/job/index.d.ts",
-      "import": "./dist/job.js",
-      "require": "./dist/job.cjs"
-    },
     "./log": {
       "types": "./dist/log/index.d.ts",
       "import": "./dist/log.js",
@@ -61,7 +56,6 @@
       "agent": ["dist/agent/index.d.ts"],
       "auth": ["dist/auth/index.d.ts"],
       "data-dir": ["dist/data-dir/index.d.ts"],
-      "job": ["dist/job/index.d.ts"],
       "log": ["dist/log/index.d.ts"],
       "settings": ["dist/settings/index.d.ts"]
     }

@@ -72,7 +72,7 @@ Runtime state is read through fleet-admiral facades:
 - `admiral.store.*`
 - `admiral.carrierJobs.*`
 
-Host-agnostic job infrastructure is read through `@sbluemin/fleet-infra/job`.
+Detached carrier job infrastructure is read through `@sbluemin/fleet-carriers/job`.
 
 These values are operational inputs for services, overlays, tools, and status
 rendering. They are not serialized into a per-turn prompt wrapper.

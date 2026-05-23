@@ -2,6 +2,7 @@ import { registerDefaultCarriers } from "./agent-specs.js";
 import { createCarrierRegistry, type CarrierRegistry } from "./dispatch/framework.js";
 import * as carrierDispatch from "./dispatch/index.js";
 import * as carrierEvents from "./events/index.js";
+import * as job from "./job/index.js";
 import * as carrierJobs from "./jobs/index.js";
 import * as carrierStore from "./store/index.js";
 
@@ -10,11 +11,13 @@ export * from "./constants.js";
 export * as dispatch from "./dispatch/index.js";
 export * as carrier from "./dispatch/index.js";
 export * as taskforce from "./dispatch/index.js";
+export * as job from "./job/index.js";
 export * as jobs from "./jobs/index.js";
 export * as carrierJobs from "./jobs/index.js";
 export * as store from "./store/index.js";
 export * as events from "./events/index.js";
 export * from "./dispatch/index.js";
+export { getActiveBackgroundJobCount } from "./job/index.js";
 export * from "./jobs/index.js";
 export * from "./events/index.js";
 export {

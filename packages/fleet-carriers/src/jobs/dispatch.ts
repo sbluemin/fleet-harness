@@ -1,9 +1,9 @@
-import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "@sbluemin/fleet-infra/job";
-import { cancelJob } from "@sbluemin/fleet-infra/job";
-import { getActiveJob, listActiveJobs } from "@sbluemin/fleet-infra/job";
-import { isCarrierJobId } from "@sbluemin/fleet-infra/job";
-import { serializeJobArchive } from "@sbluemin/fleet-infra/job";
-import { getJobSummary, listJobSummaries } from "@sbluemin/fleet-infra/job";
+import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "../job/index.js";
+import { cancelJob } from "../job/index.js";
+import { getActiveJob, listActiveJobs } from "../job/index.js";
+import { isCarrierJobId } from "../job/index.js";
+import { serializeJobArchive } from "../job/index.js";
+import { getJobSummary, listJobSummaries } from "../job/index.js";
 import {
   CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
   CARRIER_JOBS_GLOBAL_BYTE_CAP,
@@ -12,7 +12,7 @@ import {
   type CarrierJobRecord,
   type CarrierJobSummary,
   type JobArchive,
-} from "@sbluemin/fleet-infra/job";
+} from "../job/index.js";
 import type { CarrierJobsAvailability, CarrierJobsFormat, CarrierJobsParams } from "./types.js";
 
 export interface CarrierJobsResponse {

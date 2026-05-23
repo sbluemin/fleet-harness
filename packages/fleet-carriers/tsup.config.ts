@@ -2,7 +2,8 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: "src/index.ts"
+    index: "src/index.ts",
+    job: "src/job/index.ts"
   },
   format: ["esm", "cjs"],
   dts: true,

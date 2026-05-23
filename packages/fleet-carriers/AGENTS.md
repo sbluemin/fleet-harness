@@ -8,6 +8,7 @@
 - Carrier runtime constants under `src/constants.ts`
 - Carrier runtime construction through `createCarrierRuntime(deps)`
 - `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, and sortie helpers
+- `job/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, and cache helpers
 - `jobs/` — `carrier_jobs` lookup/control tool surface and prompt/schema contract
 - `store/` — `states.json` carrier runtime persistence with `state-io.ts` as the single file-I/O and lock/update gate
 - `events/` — carrier job stream event types and Set-based handler registry
@@ -18,7 +19,6 @@
 
 - Host runtime wiring, message renderers, UI components, or host adapters
 - `fleet-admiral` protocol/admiralty policy implementation
-- `packages/fleet-infra/src/job/`; detached job infrastructure stays in `fleet-infra`
 - Raw filesystem, process, network, or settings I/O beyond carrier-owned state-store gates
 
 ## Dependency Rules

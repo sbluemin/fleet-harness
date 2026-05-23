@@ -39,7 +39,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Fleet tool catalog | `admiral.agent.tools.list()` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
 | Executor MCP tool exposure | `admiral/agent/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; fleet-admiral registers the two-method `ExecutorPort` at boot. |
-| Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
+| Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, detached job infrastructure, carrier jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline
 

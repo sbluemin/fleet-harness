@@ -1,6 +1,6 @@
-import type { TrackStatus } from "@sbluemin/fleet-infra/agent";
+import type { TrackStatus } from "@sbluemin/fleet-infra";
 
-export type { TrackStatus } from "@sbluemin/fleet-infra/agent";
+export type { TrackStatus } from "@sbluemin/fleet-infra";
 
 export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
 

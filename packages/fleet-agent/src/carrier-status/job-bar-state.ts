@@ -5,7 +5,7 @@ import type {
   TrackStatus,
 } from "@sbluemin/fleet-admiral";
 import { admiral } from "@sbluemin/fleet-admiral";
-import { getActiveBackgroundJobCount } from "@sbluemin/fleet-infra/job";
+import { getActiveBackgroundJobCount } from "@sbluemin/fleet-carriers";
 
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
