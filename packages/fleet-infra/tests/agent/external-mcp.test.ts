@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveBuiltinExternalMcpServers } from "../src/admiral/external-mcp.js";
+import { resolveBuiltinExternalMcpServers } from "../../src/agent/external-mcp.js";
 
 describe("resolveBuiltinExternalMcpServers", () => {
   it("allowed가 없으면 빈 배열을 반환한다", () => {

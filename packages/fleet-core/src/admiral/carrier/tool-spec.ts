@@ -31,7 +31,7 @@ import {
   type TrackMeta,
   type TrackStatus,
 } from "../_shared/carrier-job-events.js";
-import { executeWithPool } from "../agent/executor.js";
+import { executeWithPool } from "@sbluemin/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
   loadModels,

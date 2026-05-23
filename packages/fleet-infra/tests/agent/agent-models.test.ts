@@ -5,7 +5,7 @@ import {
   isFleetProviderId,
   parseProviderId,
   listProviders,
-} from "../../src/admiral/agent/models.js";
+} from "../../src/agent/models.js";
 
 describe("admiral.agent.models", () => {
   describe("hashSystemPrompt()", () => {

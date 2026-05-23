@@ -1,9 +1,13 @@
 import { startMcpServer, stopMcpServer } from "@sbluemin/fleet-mcp-server";
-import { infra } from "@sbluemin/fleet-infra";
+import { infra, registerExecutorPort } from "@sbluemin/fleet-infra";
+import {
+  initRuntime as initAgentSessionRuntime,
+  disconnectAll,
+} from "@sbluemin/fleet-infra/agent";
+import { getExecutorMcpTools as getFleetCoreExecutorMcpTools } from "../admiral/agent/tools.js";
+import { getRegisteredCarrierConfig } from "../admiral/carrier/framework.js";
 import { initStore } from "../admiral/store/fleet-store.js";
-import { initRuntime as initAgentSessionRuntime } from "../admiral/agent/internal/session-runtime.js";
 import { registerFleetCoreDefaultAgentTools } from "../admiral/agent/bootstrap.js";
-import { disconnectAll } from "../admiral/agent/connections.js";
 import { cleanupDedicatedMcpSessionsForRuntimeShutdown } from "../admiral/mcp.js";
 import { setFleetCoreBootMode } from "../runtime-flags.js";
 
@@ -26,6 +30,16 @@ export function bootFleetCore(
   if (options.dataDir === infra.dataDir.getFleetDataDir()) {
     infra.dataDir.migrateLegacyFleetDataDir(options.dataDir);
   }
+  registerExecutorPort({
+    getCarrierExternalMcpServerIds(carrierId) {
+      return carrierId
+        ? getRegisteredCarrierConfig(carrierId)?.carrierMetadata?.allowedBuiltinExternalMcpServers ?? []
+        : [];
+    },
+    getExecutorMcpTools(carrierId) {
+      return getFleetCoreExecutorMcpTools(carrierId);
+    },
+  });
   initAgentSessionRuntime(options.dataDir);
   initStore(options.dataDir);
   const settings = infra.settings.create();

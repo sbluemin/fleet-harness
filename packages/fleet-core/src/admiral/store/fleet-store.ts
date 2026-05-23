@@ -17,9 +17,8 @@ import {
   getProviderModels,
   type CliType,
 } from "@sbluemin/fleet-unified-agent";
+import { disconnect, flushSessionMappings, getCarrierSessionStore } from "@sbluemin/fleet-infra/agent";
 import { CLI_DISPLAY_NAMES } from "../../constants.js";
-import { disconnect } from "../agent/connections.js";
-import { flushSessionMappings, getCarrierSessionStore } from "../agent/internal/session-runtime.js";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../taskforce/types.js";
 
 // ─── 타입 정의 ──────────────────────────────────────────

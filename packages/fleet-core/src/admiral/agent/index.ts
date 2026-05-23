@@ -1,7 +1,7 @@
+import * as models from "@sbluemin/fleet-infra/agent";
+import * as connections from "@sbluemin/fleet-infra/agent";
+import * as executor from "@sbluemin/fleet-infra/agent";
 import { registerFleetCoreDefaultAgentTools } from "./bootstrap.js";
-import * as connections from "./connections.js";
-import * as executor from "./executor.js";
-import * as models from "./models.js";
 import * as tools from "./tools.js";
 
 export type {
@@ -14,12 +14,12 @@ export type {
   ProviderInfo,
   SelectableThinkingLevel,
   CliCapability,
-} from "./models.js";
-export type { SessionPersistencePort } from "./internal/session-runtime.js";
+} from "@sbluemin/fleet-infra/agent";
+export type { SessionPersistencePort } from "@sbluemin/fleet-infra/agent";
 export type {
   ExecuteOptions,
   ExecResult,
-} from "./executor.js";
+} from "@sbluemin/fleet-infra/agent";
 
 export {
   clearAllDefaultTools,
@@ -42,7 +42,7 @@ export {
   disconnect,
   disconnectAll,
   cleanIdle,
-} from "./connections.js";
+} from "@sbluemin/fleet-infra/agent";
 export {
   parseModelId,
   buildModelId,
@@ -57,11 +57,11 @@ export {
   SELECTABLE_THINKING_LEVELS,
   hashSystemPrompt,
   CLI_CAPABILITIES,
-} from "./models.js";
+} from "@sbluemin/fleet-infra/agent";
 export {
   executeWithPool,
   executeOneShot,
-} from "./executor.js";
+} from "@sbluemin/fleet-infra/agent";
 
 export const agent = {
   registerFleetCoreDefaultAgentTools,

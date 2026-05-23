@@ -9,7 +9,7 @@ import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
 import type { AgentToolCtx, AgentToolSpec } from "../agent/types.js";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "@sbluemin/fleet-infra/job";
 import type { LogOptions } from "@sbluemin/fleet-infra/log";
-import type { ExecResult } from "../agent/executor.js";
+import type { ExecResult } from "@sbluemin/fleet-infra/agent";
 import type { ModelEffort } from "../carrier/overlay-types.js";
 
 import {
@@ -28,7 +28,7 @@ import {
   toThoughtArchiveBlock,
 } from "@sbluemin/fleet-infra/job";
 import { getLogAPI } from "@sbluemin/fleet-infra/log";
-import { executeOneShot } from "../agent/executor.js";
+import { executeOneShot } from "@sbluemin/fleet-infra/agent";
 import {
   emitStreamEvent,
   type CarrierJobStatus,

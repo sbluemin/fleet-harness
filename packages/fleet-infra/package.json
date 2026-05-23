@@ -30,6 +30,11 @@
       "import": "./dist/auth.js",
       "require": "./dist/auth.cjs"
     },
+    "./agent": {
+      "types": "./dist/agent/index.d.ts",
+      "import": "./dist/agent.js",
+      "require": "./dist/agent.cjs"
+    },
     "./data-dir": {
       "types": "./dist/data-dir/index.d.ts",
       "import": "./dist/data-dir.js",
@@ -53,6 +58,7 @@
   },
   "typesVersions": {
     "*": {
+      "agent": ["dist/agent/index.d.ts"],
       "auth": ["dist/auth/index.d.ts"],
       "data-dir": ["dist/data-dir/index.d.ts"],
       "job": ["dist/job/index.d.ts"],
@@ -61,6 +67,7 @@
     }
   },
   "dependencies": {
+    "@sbluemin/fleet-mcp-server": "workspace:*",
     "@sbluemin/fleet-unified-agent": "workspace:*"
   },
   "devDependencies": {

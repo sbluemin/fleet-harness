@@ -11,7 +11,7 @@ The Fleet codebase is built on **four core principles**. Every contribution and 
 The split between `fleet-core` (host-agnostic Fleet domain) and `fleet-agent` (CLI host) is **not a guideline; it is enforced by build/grep gates**:
 
 - `fleet-core` MUST NOT import any engine package or external agent package. The single Fleet-AI gateway lives in `fleet-agent/src/provider.ts`, which re-exports the AI surface for the rest of the host.
-- `fleet-core` and `fleet-agent` may depend directly on `@sbluemin/fleet-infra` for host-agnostic auth, data-dir, job, log, and settings infrastructure.
+- `fleet-core` and `fleet-agent` may depend directly on `@sbluemin/fleet-infra` for host-agnostic auth, data-dir, job, log, settings, and agent executor infrastructure.
 - `fleet-agent` consumes `fleet-core` only through the **public root barrel** or documented public subpaths. Deep imports into `src/**` are forbidden.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-agent` side.
 - When splitting a mixed module, the pure/domain half moves into `fleet-core` and only the host adapter half stays in `fleet-agent`.
@@ -32,17 +32,18 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 
 | Concept | Owner | Rationale |
 |---------|-------|-----------|
-| Session persistence (carrier → ACP sessionId mappings as JSONL custom entries) | `admiral/agent/internal/session-runtime.ts` | Resume/restore semantics backed by JSONL custom entries with the `fleet/carrier-session` customType. |
-| Track status enum | `admiral/_shared/carrier-job-events.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle. |
+| Session persistence (carrier → ACP sessionId mappings as JSONL custom entries) | `packages/fleet-infra/src/agent/internal/session-runtime.ts` | Resume/restore semantics backed by JSONL custom entries with the `fleet/carrier-session` customType. |
+| Track status enum | `packages/fleet-infra/src/agent/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; fleet-core re-exports it for carrier job event compatibility. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
 | CLI provider catalog | `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
 | Fleet tool catalog | `admiral.agent.tools.list()` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the fleet-core facade — never re-implements specs. |
 | Executor MCP tool exposure | `admiral/agent/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
+| Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; fleet-core registers the two-method `ExecutorPort` at boot. |
 | Default carrier persona catalog | `packages/fleet-carriers` | Default carrier metadata, default slots/models/efforts, persona-only constants, and module-load carrier self-registration live in the leaf package. |
 
 ### 4. Public Surface Discipline
 
-The **only consumer-facing entry point** is the package root barrel of `@sbluemin/fleet-core`. Consumers reach `executeWithPool`, `executeOneShot`, `cleanIdle`, `disconnect`, `disconnectAll`, and `getSessionIdFor` exclusively through that barrel. Internal helpers under `admiral/agent/internal/` are never re-exported.
+The **only consumer-facing entry point** is the package root barrel of `@sbluemin/fleet-core`. Consumers reach `executeWithPool`, `executeOneShot`, `cleanIdle`, `disconnect`, `disconnectAll`, and `getSessionIdFor` exclusively through that barrel/facade. The implementation is re-exported from `@sbluemin/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
 
 ### Forbidden Patterns
 

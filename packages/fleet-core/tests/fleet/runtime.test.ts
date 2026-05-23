@@ -24,8 +24,9 @@ import {
   getSessionId,
   getDataDir,
   flushSessionMappings,
+  registerExecutorPort,
   type SessionPersistencePort,
-} from "../../src/admiral/agent/internal/session-runtime.js";
+} from "@sbluemin/fleet-infra/agent";
 import {
   initStore,
   loadModels as getModelConfig,
@@ -161,6 +162,10 @@ function createSessionPort(sessionId: string, initialEntries: TestCustomEntry[] 
 
 beforeEach(() => {
   tmpDir = makeTmpDir();
+  registerExecutorPort({
+    getCarrierExternalMcpServerIds: () => [],
+    getExecutorMcpTools: () => [],
+  });
   vi.mocked(UnifiedAgent.build).mockReset();
 });
 

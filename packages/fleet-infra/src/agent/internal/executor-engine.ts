@@ -27,13 +27,15 @@ import {
   installExecutorToolCallRouter,
   cleanupExecutorSession,
   detachExecutorMcpForReuse,
+  invoke,
   registerExecutorSessionTools,
 } from "@sbluemin/fleet-mcp-server";
 
-import { resolveBuiltinExternalMcpServers } from "../../external-mcp.js";
-import { getRegisteredCarrierConfig } from "../../carrier/framework.js";
-import { resolveAuthEnv } from "@sbluemin/fleet-infra/auth";
-import { getLogAPI } from "@sbluemin/fleet-infra/log";
+import { getExecutorMcpTools, getCarrierExternalMcpServerIds } from "../executor-port.js";
+import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
+import type { TrackStatus } from "../types.js";
+import { resolveAuthEnv } from "../../auth/index.js";
+import { getLogAPI } from "../../log/index.js";
 import {
   captureSessionMappingCommitToken,
   classifyResumeFailure,
@@ -41,9 +43,7 @@ import {
   getCarrierSessionStore,
   type SessionMappingCommitToken,
 } from "./session-runtime.js";
-import { getExecutorMcpTools, invoke } from "../tools.js";
 import { applyPostConnectConfig } from "./post-connect.js";
-import type { TrackStatus } from "../../_shared/carrier-job-events.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -345,7 +345,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
           activeMcpToken = undefined;
         }
 
-        try { await client.disconnect(); } catch {}
+        try { await client.disconnect(); } catch { }
         detachListeners();
         detachStderr();
         client = await buildProviderClient({ cli: cliType });
@@ -636,7 +636,7 @@ export async function engineDisconnectAll(): Promise<void> {
       cleanupExecutorSession(entry.mcpSessionToken);
       entry.mcpSessionToken = undefined;
     }
-    promises.push(entry.client.disconnect().catch(() => {}));
+    promises.push(entry.client.disconnect().catch(() => { }));
   }
   await Promise.allSettled(promises);
   clientPool.clear();
@@ -651,7 +651,7 @@ export function engineCleanIdle(): void {
         cleanupExecutorSession(entry.mcpSessionToken);
         entry.mcpSessionToken = undefined;
       }
-      entry.client.disconnect().catch(() => {});
+      entry.client.disconnect().catch(() => { });
       clientPool.delete(key);
     }
   }
@@ -959,7 +959,7 @@ async function setupExecutorMcp(
     try {
       const mcpUrl = await startMcpServer();
       token = randomUUID();
-      registerExecutorSessionTools(token, specs);
+      registerExecutorSessionTools(token, [...specs]);
       mcpServers.push({
         type: "http",
         url: mcpUrl,
@@ -976,8 +976,7 @@ async function setupExecutorMcp(
     mcpServers.push(...resolveBuiltinExternalMcpServers(getAllowedBuiltinExternalMcpServerIds(carrierId)));
   } catch (err) {
     console.warn(
-      `[unified-agent] builtin external MCP resolve 실패 (carrierId=${carrierId ?? "none"}, servers=${formatBuiltinExternalMcpServerIds(carrierId)}): ${
-        err instanceof Error ? err.message : String(err)
+      `[unified-agent] builtin external MCP resolve 실패 (carrierId=${carrierId ?? "none"}, servers=${formatBuiltinExternalMcpServerIds(carrierId)}): ${err instanceof Error ? err.message : String(err)
       }`,
     );
   }
@@ -990,8 +989,7 @@ async function setupExecutorMcp(
 }
 
 function getAllowedBuiltinExternalMcpServerIds(carrierId?: string): readonly string[] {
-  if (!carrierId) return [];
-  return getRegisteredCarrierConfig(carrierId)?.carrierMetadata?.allowedBuiltinExternalMcpServers ?? [];
+  return getCarrierExternalMcpServerIds(carrierId);
 }
 
 function formatBuiltinExternalMcpServerIds(carrierId?: string): string {

@@ -1,8 +1,10 @@
+import type { TrackStatus } from "@sbluemin/fleet-infra/agent";
+
+export type { TrackStatus } from "@sbluemin/fleet-infra/agent";
+
 export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
 
 export type CarrierJobStatus = "done" | "error" | "aborted";
-
-export type TrackStatus = "queued" | "conn" | "stream" | "done" | "err" | "aborted";
 
 export type TrackKind = "carrier" | "subtask" | "backend";
 

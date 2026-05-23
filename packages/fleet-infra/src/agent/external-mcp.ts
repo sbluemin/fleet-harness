@@ -1,7 +1,7 @@
 /**
- * admiral/external-mcp — Admiral 소유 builtin external MCP catalog.
+ * agent/external-mcp — executor infrastructure builtin external MCP catalog.
  *
- * 사용자 workspace 설정이 아니라 소스 코드가 소유하는 carrier별 allowlist resolver다.
+ * 사용자 workspace 설정이 아니라 소스 코드가 소유하는 allowlist resolver다.
  */
 
 import type { McpServerConfig } from "@sbluemin/fleet-unified-agent";

@@ -1,5 +1,5 @@
 /**
- * admiral/agent/models — provider/model ID codec 및 조회 유틸리티.
+ * agent/models — provider/model ID codec 및 조회 유틸리티.
  *
  * imports → types/interfaces → constants → functions 순서 준수.
  */

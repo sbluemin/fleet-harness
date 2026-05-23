@@ -114,6 +114,9 @@ importers:
 
   packages/fleet-infra:
     dependencies:
+      '@sbluemin/fleet-mcp-server':
+        specifier: workspace:*
+        version: link:../fleet-mcp-server
       '@sbluemin/fleet-unified-agent':
         specifier: workspace:*
         version: link:../unified-agent

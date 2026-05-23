@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSelectableThinkingLevels,
   SELECTABLE_THINKING_LEVELS,
-} from "../../src/admiral/agent/models.js";
+} from "../../src/agent/models.js";
 
 describe("admiral.agent.models thinking levels", () => {
   it("sonnet은 max를 selectable thinking level로 노출한다", () => {
