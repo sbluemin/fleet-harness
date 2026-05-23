@@ -10,14 +10,15 @@ import {
   type PtyHost,
   type TuiPtyManager,
 } from "@sbluemin/fleet-tui/pty";
-import { subscribeJobBar } from "./carrier-status/job-bar-register.js";
+import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
+import { createJobBarState } from "./carrier-status/job-bar-state.js";
 import { registerCarrierStatusKeybinding } from "./carrier-status/register.js";
 import { toggleFleetInputMode } from "./controls/modes.js";
-import { retainProgrammaticInput } from "./dedicated-cli/bridge.js";
 import { injectDedicatedCliProfile } from "./dedicated-cli/injection.js";
 import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
-import { bootRuntime, shutdownRuntime } from "./runtime/runtime.js";
+import { createSystemPromptBuilder } from "./admiral/prompts.js";
+import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
 
 export interface RunAppOptions {
   readonly cliId?: string;
@@ -46,14 +47,24 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const native = options.native ?? false;
   const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
   const enableMetaphor = options.enableMetaphor ?? false;
-  const runtime = await bootRuntime();
+  const runtimeLifecycle = createFleetRuntimeLifecycle();
+  const runtime = await runtimeLifecycle.start();
   const ui = new LocalTui({ cursorSyncEnabled: cursorSync });
   const ptyView = new PtyView(ui.columns, 0);
-  const sections = createDefaultFleetPtySections({ native });
+  let ptyManager: TuiPtyManager | undefined;
   let modeToggleSuppressed = false;
   let syncCursorPolicy = () => {};
+  let sendCarrierResultReminder = (_text: string) => {};
   const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
-  let ptyManager: TuiPtyManager | undefined;
+  const jobBarState = createJobBarState({
+    carrierRuntime: runtime.carrierRuntime,
+    onCarrierResultReminder: (text) => sendCarrierResultReminder(sanitizeCarrierResultReminder(text)),
+    onRenderRequest: () => {
+      ptyManager?.requestResize("programmatic");
+      scheduleRender();
+    },
+  });
+  const sections = createDefaultFleetPtySections({ jobBarState, native });
   const fleetPty = createFleetPtyApi({
     defaultComponent: createDefaultFleetPtyComponent(sections),
     sections,
@@ -64,11 +75,15 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     requestResize: () => ptyManager?.requestResize("fleet-overlay"),
     requestRender: scheduleRender,
   });
-  registerCarrierStatusKeybinding({ fleetPty });
+  registerCarrierStatusKeybinding({ carrierRuntime: runtime.carrierRuntime, fleetPty });
   const baseProfile = await resolveDedicatedCliProfile(process.env, resolveInvocationCwd(), { cliId, model });
   const currentProfile = native
     ? baseProfile
     : await injectDedicatedCliProfile(baseProfile, {
+        buildSystemPrompt: createSystemPromptBuilder({
+          carrierRuntime: runtime.carrierRuntime,
+          mcpRegistry: runtime.mcpRegistry,
+        }).build,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         replaceSystemPrompt,
         enableMetaphor,
@@ -83,7 +98,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     refreshSize: (size) => ui.refreshSize(size),
     requestRender: scheduleRender,
   });
-  retainProgrammaticInput(createProgrammaticInput(ptyHost, currentProfile));
+  const programmaticInput = createProgrammaticInput(ptyHost, currentProfile);
+  sendCarrierResultReminder = (text) => programmaticInput.sendMessage(text);
   let unsubscribeJobBar = () => {};
   let stopping = false;
   let disposeInputStream = () => {};
@@ -94,7 +110,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       return;
     }
     stopping = true;
-    stopApp(ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar);
+    stopApp(ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle);
   };
   const router = createInputRouter({
     initialMode: "MIRROR",
@@ -124,8 +140,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   ui.setChildren([ptyView, createFleetPtyViewport(fleetPty)]);
   syncCursorPolicy();
   unsubscribeJobBar = subscribeJobBar({
-    requestResize: () => ptyManager?.requestResize("programmatic"),
-    scheduleRender,
+    jobBarState,
   });
   assertInputContract();
   const initialResize = ptyManager.requestResize("initial");
@@ -214,17 +229,17 @@ function stopApp(
   resize: () => void,
   disposeInputStream: () => void,
   unsubscribeJobBar: () => void,
+  runtimeLifecycle: FleetRuntimeLifecycle,
 ): void {
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
   disposeInputStream();
   unsubscribeJobBar();
-  retainProgrammaticInput(undefined);
   ptyHost.kill();
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);
   timer.unref?.();
-  shutdownRuntime().finally(() => {
+  runtimeLifecycle.shutdown().finally(() => {
     clearTimeout(timer);
     process.exit(0);
   });

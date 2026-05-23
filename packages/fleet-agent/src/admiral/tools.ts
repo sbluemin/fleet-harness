@@ -11,24 +11,18 @@ import {
 
 import type { AgentToolSpec } from "./types.js";
 
-let activeToolRegistry: McpToolRegistry | null = null;
-
 export {
   EXECUTOR_MCP_TOOL_IDS,
   renderAgentToolDoctrineTag,
 };
-
-export function configureAgentToolRegistry(registry: McpToolRegistry): void {
-  activeToolRegistry = registry;
-}
 
 export function registerAgentToolDefaults(registry: McpToolRegistry, carrierRuntime: CarrierRuntime): void {
   registry.registerAgentTool(buildCarrierDispatchToolSpec(carrierRuntime.registry));
   registry.registerAgentTool(buildCarrierJobsToolSpec());
 }
 
-export function getAllAgentTools(): AgentToolSpec[] {
-  return requireActiveToolRegistry().getAllAgentTools();
+export function getAllAgentTools(registry: McpToolRegistry): AgentToolSpec[] {
+  return registry.getAllAgentTools();
 }
 
 export function getExecutorMcpTools(
@@ -44,11 +38,4 @@ export function getExecutorMcpTools(
 
 export function clearAllDefaultTools(registry: McpToolRegistry): void {
   registry.clearAllDefaultTools();
-}
-
-function requireActiveToolRegistry(): McpToolRegistry {
-  if (!activeToolRegistry) {
-    throw new Error("Admiral tool registry is not configured");
-  }
-  return activeToolRegistry;
 }

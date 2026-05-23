@@ -11,6 +11,7 @@ import {
   resetTaskForceModelSelection,
   setTaskForceConfiguredCarriers,
   updateTaskForceModelSelection,
+  type CarrierRuntime,
   type TaskForceCliType,
 } from "@sbluemin/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@sbluemin/fleet-infra/agent";
@@ -24,7 +25,6 @@ import {
 } from "@sbluemin/fleet-tui/pty";
 
 import { buildModelEffortTransition } from "./model-flow.js";
-import { getCarrierRuntime } from "../runtime/instances.js";
 import type {
   CliModelInfo,
   ModelEffort,
@@ -33,6 +33,7 @@ import type {
 } from "./types.js";
 
 export interface TaskForceOverlayOptions {
+  readonly carrierRuntime: CarrierRuntime;
   readonly carrierDisplayName: string;
   readonly carrierId: string;
   readonly done: () => void;
@@ -243,7 +244,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
       return;
     }
     resetTaskForceModelSelection(this.options.carrierId, entry.cliType);
-    syncConfiguredTaskForceCarriers();
+    syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
     this.feedbackMessage = `${entry.displayName} 설정을 origin으로 초기화했습니다.`;
     this.options.requestRender();
   }
@@ -268,7 +269,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
     this.options.requestRender();
     try {
       updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
-      syncConfiguredTaskForceCarriers();
+      syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
       this.feedbackMessage = `${entry.displayName} 설정을 저장했습니다.`;
     } catch (error) {
       this.feedbackMessage = `저장 실패: ${errorMessage(error)}`;
@@ -398,8 +399,8 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   }
 }
 
-function syncConfiguredTaskForceCarriers(): void {
-  const registry = getCarrierRuntime().registry;
+function syncConfiguredTaskForceCarriers(carrierRuntime: CarrierRuntime): void {
+  const registry = carrierRuntime.registry;
   const registeredOrder = getRegisteredOrder(registry);
   const ids = getConfiguredTaskForceCarrierIds(registeredOrder);
   setTaskForceConfiguredCarriers(registry, ids);

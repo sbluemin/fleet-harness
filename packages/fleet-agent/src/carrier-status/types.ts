@@ -1,5 +1,6 @@
 import type {
   CarrierCategory,
+  CarrierRuntime,
   FleetStoreSnapshot,
   TaskForceCliType,
 } from "@sbluemin/fleet-carriers";
@@ -10,6 +11,7 @@ export type CarrierCliType = TaskForceCliType;
 export type { FleetStoreSnapshot };
 
 export interface CarrierStatusContext {
+  readonly carrierRuntime: CarrierRuntime;
   readonly fleetPty: FleetPtyApi;
 }
 

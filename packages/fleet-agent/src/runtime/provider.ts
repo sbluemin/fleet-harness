@@ -1,16 +1,27 @@
-import { getRegisteredOrder } from "@sbluemin/fleet-carriers";
+import { getRegisteredOrder, type CarrierRuntime } from "@sbluemin/fleet-carriers";
 
 import { getActiveProtocol } from "../admiral/protocols/index.js";
-import { getCarrierRuntime } from "./instances.js";
 
 export interface FleetRuntimeStatus {
   readonly activeProtocol: string;
   readonly carrierCount: number;
 }
 
-export function readFleetRuntimeStatus(): FleetRuntimeStatus {
+export interface RuntimeProvider {
+  readFleetRuntimeStatus(): FleetRuntimeStatus;
+}
+
+interface RuntimeProviderDeps {
+  readonly carrierRuntime: CarrierRuntime;
+}
+
+export function createRuntimeProvider(deps: RuntimeProviderDeps): RuntimeProvider {
   return {
-    activeProtocol: getActiveProtocol().name,
-    carrierCount: getRegisteredOrder(getCarrierRuntime().registry).length,
+    readFleetRuntimeStatus() {
+      return {
+        activeProtocol: getActiveProtocol().name,
+        carrierCount: getRegisteredOrder(deps.carrierRuntime.registry).length,
+      };
+    },
   };
 }

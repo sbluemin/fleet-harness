@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { bootRuntime, shutdownRuntime } from "../src/runtime/runtime.js";
+import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
   readonly result?: {
@@ -20,12 +20,16 @@ const EXPECTED_WIKI_TOOL_IDS = [
 ] as const;
 
 describe("fleet-agent dedicated CLI wiki MCP registration", () => {
+  let lifecycle: FleetRuntimeLifecycle | undefined;
+
   afterEach(async () => {
-    await shutdownRuntime();
+    await lifecycle?.shutdown();
+    lifecycle = undefined;
   });
 
   it("exposes all Fleet Wiki agent tools on dedicated session tokens after boot", async () => {
-    const runtime = await bootRuntime();
+    lifecycle = createFleetRuntimeLifecycle();
+    const runtime = await lifecycle.start();
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
     const token = runtime.dedicatedMcpSession.issueSessionToken({
       label: "dedicated:test-wiki",

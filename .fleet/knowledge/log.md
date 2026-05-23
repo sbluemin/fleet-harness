@@ -1823,3 +1823,69 @@
 - result: `accepted`
 - target: `wiki/prd-carrier-runtime-migration.md`
 
+## 2026-05-23T11:09:13.461Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T12:33:40.043Z — drydock run
+
+- error_count: `4`
+- info_count: `3`
+- issue_count: `7`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T12:36:14.935Z — raw source added
+
+- id: `prd-fleet-agent-composition-root-consolidation-source`
+- raw_source_ref: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: fleet-agent 난집 Composition Root 확립과 module-level singleton 전면 제거`
+
+## 2026-05-23T12:36:14.938Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T12-36-14-913Z-2496e910`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
+- target: `wiki/prd-fleet-agent-composition-root-consolidation.md`
+- warning_count: `0`
+
+## 2026-05-23T12:38:49.057Z — patch edited
+
+- body_replacements: `9`
+- changed_fields: `title, body, updated, summary`
+- next_hash: `e869c9a2`
+- patch_id: `2026-05-23T12-36-14-913Z-2496e910`
+- previous_hash: `f0177d04`
+- target: `wiki/prd-fleet-agent-composition-root-consolidation.md`
+
+## 2026-05-23T12:39:41.018Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `a24b761d`
+- patch_id: `2026-05-23T12-36-14-913Z-2496e910`
+- previous_hash: `e869c9a2`
+- target: `wiki/prd-fleet-agent-composition-root-consolidation.md`
+
+## 2026-05-23T12:40:16.711Z — index rebuilt
+
+- entry_count: `11`
+
+## 2026-05-23T12:40:16.713Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T12-36-14-913Z-2496e910`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-agent-composition-root-consolidation.md`
+

@@ -8,12 +8,12 @@
  * 프로토콜 카탈로그 전체가 포함된다.
  */
 
-import { buildCarrierRoster, getRegisteredOrder } from "@sbluemin/fleet-carriers";
+import { buildCarrierRoster, getRegisteredOrder, type CarrierRuntime } from "@sbluemin/fleet-carriers";
+import type { McpToolRegistry } from "@sbluemin/fleet-mcp-server";
 
 import { getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 import { getAllAgentTools, renderAgentToolDoctrineTag } from "./tools.js";
-import { getCarrierRuntime } from "../runtime/instances.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입
@@ -22,6 +22,15 @@ import { getCarrierRuntime } from "../runtime/instances.js";
 /** admiral 섹션 설정 타입 */
 export interface AdmiralSettings {
   activeProtocol?: string;
+}
+
+export interface SystemPromptBuilder {
+  build(injectTone: boolean): string;
+}
+
+interface SystemPromptBuilderDeps {
+  readonly carrierRuntime: CarrierRuntime;
+  readonly mcpRegistry: McpToolRegistry;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -119,7 +128,15 @@ Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. T
  *
  * @param injectTone `true`이면 `FLEET_TONE_PROMPT`를 페르소나 다음에 주입한다.
  */
-export function buildSystemPrompt(injectTone: boolean): string {
+export function createSystemPromptBuilder(deps: SystemPromptBuilderDeps): SystemPromptBuilder {
+  return {
+    build(injectTone) {
+      return buildSystemPrompt(deps, injectTone);
+    },
+  };
+}
+
+export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boolean): string {
   const parts: string[] = [];
 
   // ── 0. 서문 — 항상 최초 주입 ──
@@ -133,7 +150,7 @@ export function buildSystemPrompt(injectTone: boolean): string {
   }
 
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
-  const carrierRuntime = getCarrierRuntime();
+  const carrierRuntime = deps.carrierRuntime;
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
   if (carrierIds.length > 0) {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
@@ -162,7 +179,7 @@ export function buildSystemPrompt(injectTone: boolean): string {
   }
 
   // ── 5. 등록된 도구 가이드라인 manifest ──
-  for (const spec of getAllAgentTools()) {
+  for (const spec of getAllAgentTools(deps.mcpRegistry)) {
     parts.push(renderAgentToolDoctrineTag(spec));
   }
 

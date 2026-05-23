@@ -1,38 +1,77 @@
 import os from "node:os";
 import path from "node:path";
 
-import { createCarrierRuntime } from "@sbluemin/fleet-carriers";
-import { createInfraServices } from "@sbluemin/fleet-infra";
-import { createMcpServer, createMcpToolRegistry, createMcpToolSnapshotStore } from "@sbluemin/fleet-mcp-server";
+import { createCarrierRuntime, type CarrierRuntime } from "@sbluemin/fleet-carriers";
+import { createInfraServices, type InfraServices } from "@sbluemin/fleet-infra";
+import {
+	createMcpServer,
+	createMcpToolRegistry,
+	createMcpToolSnapshotStore,
+	type McpServer,
+	type McpToolRegistry,
+	type McpToolSnapshotStore,
+} from "@sbluemin/fleet-mcp-server";
 import { getWikiToolSpecs } from "@sbluemin/fleet-wiki";
 
 import { createDedicatedMcpSession, type DedicatedMcpSessionPort } from "../admiral/mcp.js";
-import { configureAgentToolRegistry, getExecutorMcpTools, registerAgentToolDefaults } from "../admiral/tools.js";
-import { configureCarrierRuntime } from "./instances.js";
+import { getExecutorMcpTools, registerAgentToolDefaults } from "../admiral/tools.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 
 export interface RuntimeServices {
+	readonly carrierRuntime: CarrierRuntime;
 	readonly dedicatedMcpSession: DedicatedMcpSessionPort;
+	readonly infraServices: InfraServices;
+	readonly mcpRegistry: McpToolRegistry;
 }
 
-interface RuntimeShutdownHandle {
+export interface FleetRuntimeLifecycle {
+	readonly services: RuntimeServices | undefined;
 	shutdown(): Promise<void>;
+	start(): Promise<RuntimeServices>;
 }
 
-let shutdownHandle: RuntimeShutdownHandle | null = null;
+interface FleetRuntimeLifecycleDeps {
+	readonly dataDir?: string;
+}
 
-export async function bootRuntime(): Promise<RuntimeServices> {
-	const dataDir = path.join(os.homedir(), ".fleet");
+interface RuntimeMcpServices {
+	readonly mcpRegistry: McpToolRegistry;
+	readonly mcpServer: McpServer;
+	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
+}
+
+interface StartedRuntime {
+	readonly services: RuntimeServices;
+	readonly shutdown: () => Promise<void>;
+}
+
+export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}): FleetRuntimeLifecycle {
+	let startedRuntime: StartedRuntime | undefined;
+	return {
+		get services() {
+			return startedRuntime?.services;
+		},
+		async shutdown() {
+			const runtime = startedRuntime;
+			startedRuntime = undefined;
+			await runtime?.shutdown();
+		},
+		async start() {
+			if (startedRuntime !== undefined) {
+				return startedRuntime.services;
+			}
+
+			startedRuntime = await startRuntime(deps);
+			return startedRuntime.services;
+		},
+	};
+}
+
+async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
+	const dataDir = deps.dataDir ?? path.join(os.homedir(), ".fleet");
 	const infraServices = createInfraServices();
-	const mcpRegistry = createMcpToolRegistry();
-	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
-	const mcpServer = createMcpServer({
-		registry: mcpRegistry,
-		toolSnapshotStore: mcpToolSnapshotStore,
-	});
-	configureAgentToolRegistry(mcpRegistry);
+	const { mcpRegistry, mcpServer, mcpToolSnapshotStore } = createRuntimeMcpServices();
 	const carrierRuntime = createCarrierRuntime({ config: {} });
-	configureCarrierRuntime(carrierRuntime);
 
 	infraServices.executorPortRuntime.register({
 		getCarrierExternalMcpServerIds(carrierId) {
@@ -59,7 +98,15 @@ export async function bootRuntime(): Promise<RuntimeServices> {
 
 	registerAgentToolDefaults(mcpRegistry, carrierRuntime);
 	for (const spec of getWikiToolSpecs()) {
-		if (spec.id === "wiki_drydock" || spec.id === "wiki_ingest" || spec.id === "wiki_patch_edit" || spec.id === "wiki_query") {
+		if (spec.id === "wiki_patch_queue") {
+			mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
+		} else if (
+			spec.id === "wiki_drydock"
+			|| spec.id === "wiki_ingest"
+			|| spec.id === "wiki_patch_edit"
+			|| spec.id === "wiki_compile_source"
+			|| spec.id === "wiki_query"
+		) {
 			mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
 		} else {
 			mcpRegistry.registerExecutorTool(spec);
@@ -73,23 +120,32 @@ export async function bootRuntime(): Promise<RuntimeServices> {
 	void mcpServer.start().catch((error: unknown) => {
 		console.error("[fleet-agent] Failed to start MCP server", error);
 	});
-	shutdownHandle = {
+
+	reconcileRuntimeState(carrierRuntime);
+
+	return {
+		services: {
+			carrierRuntime,
+			dedicatedMcpSession,
+			infraServices,
+			mcpRegistry,
+		},
 		async shutdown() {
 			dedicatedMcpSession.cleanup();
 			const disconnectAgentSessions = infraServices.agent.disconnectAll;
 			await disconnectAgentSessions();
 			await mcpServer.stop();
 			infraServices.settingsRuntime.reset(settings);
-			configureCarrierRuntime(null);
 		},
 	};
-
-	reconcileRuntimeState();
-	return { dedicatedMcpSession };
 }
 
-export async function shutdownRuntime(): Promise<void> {
-	const handle = shutdownHandle;
-	shutdownHandle = null;
-	await handle?.shutdown();
+function createRuntimeMcpServices(): RuntimeMcpServices {
+	const mcpRegistry = createMcpToolRegistry();
+	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
+	const mcpServer = createMcpServer({
+		registry: mcpRegistry,
+		toolSnapshotStore: mcpToolSnapshotStore,
+	});
+	return { mcpRegistry, mcpServer, mcpToolSnapshotStore };
 }

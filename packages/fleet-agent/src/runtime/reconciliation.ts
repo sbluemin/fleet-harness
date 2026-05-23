@@ -1,14 +1,13 @@
 import {
+  type CarrierRuntime,
   getConfiguredTaskForceCarrierIdsFromSnapshot,
   getRegisteredOrder,
   readStatesSnapshot,
   setTaskForceConfiguredCarriers,
 } from "@sbluemin/fleet-carriers";
 
-import { getCarrierRuntime } from "./instances.js";
-
-export function reconcileRuntimeState(): void {
-  const registry = getCarrierRuntime().registry;
+export function reconcileRuntimeState(carrierRuntime: CarrierRuntime): void {
+  const registry = carrierRuntime.registry;
   setTaskForceConfiguredCarriers(
     registry,
     getConfiguredTaskForceCarrierIdsFromSnapshot(

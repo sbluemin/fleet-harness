@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `14`
+- total_entries: `11`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -74,21 +74,6 @@
 - raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
 - raw_source_refs: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md, raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
 
-- title: `PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드`
-- tags: `coding-agent, session-selector, persistence, durable-commit, shipped`
-- updated: `2026-05-16T16:41:05.671Z`
-- summary: `## Overview`
-
-- title: `PRD: Prompt Template 호출 접두사(/prompt:) 도입`
-- tags: `coding-agent, prompts, slash-command, naming-convention, ux, shipped`
-- updated: `2026-05-16T15:53:01.036Z`
-- summary: `## Overview`
-
-- title: `코딩 에이전트 /scoped-models 제거`
-- tags: `coding-agent, scoped-models, removal, model-cycling`
-- updated: `2026-05-16T03:59:46.982Z`
-- summary: `## Overview`
-
 ### prd-core-dismantling-di-architecture
 
 - title: `PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립`
@@ -109,10 +94,15 @@
 - raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
 - raw_source_refs: `raw/2026-05-23-prd-core-infra-extraction-source-fc2b48c4.md, raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
 
-- title: `Harness /btw Ephemeral Overlay`
-- tags: `harness, btw, overlay, ephemeral, model-selector`
-- updated: `2026-05-16T03:03:47.224Z`
+### prd-fleet-agent-composition-root-consolidation
+
+- title: `PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거`
+- path: `wiki/prd-fleet-agent-composition-root-consolidation.md`
+- tags: `fleet-agent, dependency-injection, composition-root, architecture, singleton-elimination, shipped`
+- updated: `2026-05-23T12:39:41.016Z`
 - summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
+- raw_source_refs: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
 
 ### prd-infra-agent-executor-migration
 
@@ -139,9 +129,8 @@
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+- [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
-
-### btw
 
 ### carrier
 
@@ -160,7 +149,9 @@
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
-### coding-agent
+### composition-root
+
+- [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 
 ### current
 
@@ -176,11 +167,8 @@
 
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+- [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
-
-### durable-commit
-
-### ephemeral
 
 ### fleet-admiral
 
@@ -195,6 +183,7 @@
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+- [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 
 ### fleet-carriers
 
@@ -235,8 +224,6 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
-### harness
-
 ### keybind
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
@@ -245,23 +232,15 @@
 
 - [[wiki:mermaid-test-suite]] — Mermaid Rendering Test Suite
 
-### model-cycling
-
 ### model-forwarding
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
-
-### model-selector
-
-### naming-convention
 
 ### onboarding
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
-
-### overlay
 
 ### overview
 
@@ -280,27 +259,20 @@
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 
-### persistence
-
 ### persona
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
-
-### prompts
-
-### removal
-
-### scoped-models
-
-### session-selector
 
 ### shipped
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
+- [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 
-### slash-command
+### singleton-elimination
+
+- [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 
 ### test
 
@@ -309,8 +281,6 @@
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
-
-### ux
 
 ### workflow
 

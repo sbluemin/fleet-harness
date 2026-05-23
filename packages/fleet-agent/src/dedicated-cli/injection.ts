@@ -3,13 +3,13 @@ import os from "node:os";
 import path from "node:path";
 
 import type { DedicatedMcpSessionPort } from "../admiral/mcp.js";
-import { buildSystemPrompt } from "../admiral/prompts.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getDedicatedCliInjectionCapability } from "./capabilities.js";
 import type { DedicatedCliInjectionContext, DedicatedCliProfile } from "./types.js";
 
 export interface InjectDedicatedCliProfileOptions {
+  readonly buildSystemPrompt: (injectTone: boolean) => string;
   readonly dedicatedMcpSession: DedicatedMcpSessionPort;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
@@ -26,7 +26,7 @@ export async function injectDedicatedCliProfile(
 
   const injectTone = options.enableMetaphor ?? false;
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
-  const systemPromptFile = writeSystemPromptFile(profile.id, buildSystemPrompt(injectTone));
+  const systemPromptFile = writeSystemPromptFile(profile.id, options.buildSystemPrompt(injectTone));
   const context: DedicatedCliInjectionContext = {
     bearerToken: options.dedicatedMcpSession.issueSessionToken({
       cwd: profile.cwd,

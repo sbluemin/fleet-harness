@@ -1,4 +1,4 @@
-import { getRegisteredOrder } from "@sbluemin/fleet-carriers";
+import { getRegisteredOrder, type CarrierRuntime } from "@sbluemin/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "@sbluemin/fleet-tui/pty";
 
 import {
@@ -19,7 +19,6 @@ import {
 } from "./facade.js";
 import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
 import { buildCarrierJobGroups, buildPanelViewModel } from "./job-bar-view-model.js";
-import { getCarrierRuntime } from "../runtime/instances.js";
 
 export interface CarrierHudTile {
   readonly activeJobCount: number;
@@ -32,6 +31,7 @@ export interface CarrierHudTile {
 }
 
 export interface CarrierJobHudRenderOptions {
+  readonly carrierRuntime: CarrierRuntime;
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
@@ -72,12 +72,12 @@ export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string
 
   if (jobs.length === 0) return [];
 
-  appendWidgetJobSummary(lines, options.width, jobs, options.frame, options.theme);
+  appendWidgetJobSummary(options.carrierRuntime, lines, options.width, jobs, options.frame, options.theme);
   return lines.slice(0, MAX_WIDGET_LINES).map((line) => truncateToWidth(line, options.width));
 }
 
 export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): string[] {
-  const carriers = buildCarrierTiles(getActiveJobs(options.jobs));
+  const carriers = buildCarrierTiles(options.carrierRuntime, getActiveJobs(options.jobs));
   if (carriers.length === 0) return [];
   return renderCarrierHudStrip(options.width, carriers, options.frame, options.theme);
 }
@@ -180,6 +180,7 @@ function renderCarrierHudStrip(
 }
 
 function appendWidgetJobSummary(
+  carrierRuntime: CarrierRuntime,
   lines: string[],
   width: number,
   jobs: PanelJobViewModel[],
@@ -188,13 +189,13 @@ function appendWidgetJobSummary(
 ): void {
   const groups = buildCarrierJobGroups(
     jobs,
-    getRegisteredOrder(getCarrierRuntime().registry),
-    (carrierId) => resolveCarrierDisplayName(carrierId),
+    getRegisteredOrder(carrierRuntime.registry),
+    (carrierId) => resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
   );
   for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
     const group = groups[groupIndex];
     if (!group || group.jobs.length === 0) continue;
-    const groupColor = resolveCarrierColor(group.carrierId);
+    const groupColor = resolveCarrierColor(carrierRuntime.registry, group.carrierId);
     lines.push(truncateToWidth(
       `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
@@ -205,23 +206,24 @@ function appendWidgetJobSummary(
       if (!job) continue;
       const isLastJob = jobIndex === group.jobs.length - 1;
       const jobBranch = isLastJob ? "└─" : "├─";
-      const jobColor = resolveCarrierColor(job.ownerCarrierId);
+      const jobColor = resolveCarrierColor(carrierRuntime.registry, job.ownerCarrierId);
       const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
         ? trackInlineBlock(job.tracks[0])
         : "";
       const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(carrierRuntime, job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
         width,
       ));
 
       if (shouldInlineSingleTrack(job)) continue;
-      appendTrackRows(lines, width, job, jobColor, frame, theme);
+      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme);
     }
   }
 }
 
 function appendTrackRows(
+  carrierRuntime: CarrierRuntime,
   lines: string[],
   width: number,
   job: PanelJobViewModel,
@@ -232,7 +234,7 @@ function appendTrackRows(
   for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
     const track = job.tracks[trackIndex];
     if (!track) continue;
-    const trackColor = resolveCarrierColor(track.displayCli) ?? jobColor;
+    const trackColor = resolveCarrierColor(carrierRuntime.registry, track.displayCli) ?? jobColor;
     const icon = trackStatusIcon(track, frame, trackColor);
     const stats = widgetTrackStats(track);
     const inline = !track.isComplete ? trackInlineBlock(track) : "";
@@ -243,17 +245,17 @@ function appendTrackRows(
   }
 }
 
-function buildCarrierTiles(activeJobs: readonly PanelJob[]): CarrierHudTile[] {
+function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly PanelJob[]): CarrierHudTile[] {
   const snapshot = readStatesSnapshot();
-  return getRegisteredOrder(getCarrierRuntime().registry).map((carrierId) => {
+  return getRegisteredOrder(carrierRuntime.registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
     return {
       activeJobCount: activeCarrierJobs.length,
       activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       carrierId,
-      color: resolveCarrierColor(carrierId),
-      displayName: resolveCarrierDisplayName(carrierId),
-      rgb: resolveCarrierRgb(carrierId),
+      color: resolveCarrierColor(carrierRuntime.registry, carrierId),
+      displayName: resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
+      rgb: resolveCarrierRgb(carrierRuntime.registry, carrierId),
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
     };
   });
@@ -333,9 +335,9 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function jobIcon(job: PanelJobViewModel, frame: number): string {
+function jobIcon(carrierRuntime: CarrierRuntime, job: PanelJobViewModel, frame: number): string {
   if (job.status === "active") {
-    const color = resolveCarrierColor(job.ownerCarrierId);
+    const color = resolveCarrierColor(carrierRuntime.registry, job.ownerCarrierId);
     const frames = SPINNER_FRAMES();
     const spinner = frames[frame % frames.length] ?? "○";
     return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
