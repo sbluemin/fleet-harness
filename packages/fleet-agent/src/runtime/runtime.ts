@@ -6,11 +6,14 @@ import { createInfraServices } from "@sbluemin/fleet-infra";
 import { createMcpServer, createMcpToolRegistry, createMcpToolSnapshotStore } from "@sbluemin/fleet-mcp-server";
 import { getWikiToolSpecs } from "@sbluemin/fleet-wiki";
 
-import { registerAgentToolDefaults } from "../admiral/bootstrap.js";
-import { cleanupDedicatedMcpRuntime, configureDedicatedMcpRuntime } from "../admiral/mcp.js";
-import { configureAgentToolRegistry, getExecutorMcpTools } from "../admiral/tools.js";
+import { createDedicatedMcpSession, type DedicatedMcpSessionPort } from "../admiral/mcp.js";
+import { configureAgentToolRegistry, getExecutorMcpTools, registerAgentToolDefaults } from "../admiral/tools.js";
 import { configureCarrierRuntime } from "./instances.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
+
+export interface RuntimeServices {
+	readonly dedicatedMcpSession: DedicatedMcpSessionPort;
+}
 
 interface RuntimeShutdownHandle {
 	shutdown(): Promise<void>;
@@ -18,7 +21,7 @@ interface RuntimeShutdownHandle {
 
 let shutdownHandle: RuntimeShutdownHandle | null = null;
 
-export async function bootRuntime(): Promise<void> {
+export async function bootRuntime(): Promise<RuntimeServices> {
 	const dataDir = path.join(os.homedir(), ".fleet");
 	const infraServices = createInfraServices();
 	const mcpRegistry = createMcpToolRegistry();
@@ -62,7 +65,7 @@ export async function bootRuntime(): Promise<void> {
 			mcpRegistry.registerExecutorTool(spec);
 		}
 	}
-	configureDedicatedMcpRuntime({
+	const dedicatedMcpSession = createDedicatedMcpSession({
 		server: mcpServer,
 		registry: mcpRegistry,
 		snapshotStore: mcpToolSnapshotStore,
@@ -72,7 +75,7 @@ export async function bootRuntime(): Promise<void> {
 	});
 	shutdownHandle = {
 		async shutdown() {
-			cleanupDedicatedMcpRuntime();
+			dedicatedMcpSession.cleanup();
 			const disconnectAgentSessions = infraServices.agent.disconnectAll;
 			await disconnectAgentSessions();
 			await mcpServer.stop();
@@ -82,6 +85,7 @@ export async function bootRuntime(): Promise<void> {
 	};
 
 	reconcileRuntimeState();
+	return { dedicatedMcpSession };
 }
 
 export async function shutdownRuntime(): Promise<void> {

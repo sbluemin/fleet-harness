@@ -1,13 +1,11 @@
 import crypto from "node:crypto";
 
-import type {
-  AgentToolCtx,
-  McpCallToolResult,
-  McpServer,
-  McpToolRegistry,
-  McpToolSnapshotStore,
+import type { McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
+import {
+  cleanupExecutorSession,
+  installExecutorToolCallRouter,
+  registerExecutorSessionTools,
 } from "@sbluemin/fleet-mcp-server";
-import { specToMcpTool } from "@sbluemin/fleet-mcp-server";
 
 export interface DedicatedMcpEndpoint {
   readonly url: string;
@@ -16,27 +14,42 @@ export interface DedicatedMcpEndpoint {
 export interface DedicatedMcpSessionRequest {
   readonly label: string;
   readonly cwd: string;
+  readonly signal?: AbortSignal;
 }
 
-interface DedicatedMcpRuntime {
-  readonly server: McpServer;
-  readonly registry: McpToolRegistry;
-  readonly snapshotStore: McpToolSnapshotStore;
+export interface DedicatedMcpSessionPort {
+  getEndpoint(): Promise<DedicatedMcpEndpoint>;
+  issueSessionToken(request: DedicatedMcpSessionRequest): string;
+  cleanup(): void;
 }
 
-const dedicatedSessionTokensByLabel = new Map<string, string>();
-let dedicatedRuntime: DedicatedMcpRuntime | null = null;
+export type DedicatedMcpSessionDeps = McpRouterRuntime;
 
-export function configureDedicatedMcpRuntime(runtime: DedicatedMcpRuntime): void {
-  dedicatedRuntime = runtime;
+export function createDedicatedMcpSession(deps: DedicatedMcpSessionDeps): DedicatedMcpSessionPort {
+  const sessionTokensByLabel = new Map<string, string>();
+
+  return {
+    async getEndpoint() {
+      const url = await deps.server.start();
+      return { url };
+    },
+    issueSessionToken(request) {
+      return issueSessionToken(deps, sessionTokensByLabel, request);
+    },
+    cleanup() {
+      for (const token of sessionTokensByLabel.values()) {
+        cleanupExecutorSession(deps, token);
+      }
+      sessionTokensByLabel.clear();
+    },
+  };
 }
 
-export async function getEndpoint(): Promise<DedicatedMcpEndpoint> {
-  const url = await requireDedicatedRuntime().server.start();
-  return { url };
-}
-
-export function issueDedicatedSessionToken(request: DedicatedMcpSessionRequest): string {
+function issueSessionToken(
+  deps: DedicatedMcpSessionDeps,
+  sessionTokensByLabel: Map<string, string>,
+  request: DedicatedMcpSessionRequest,
+): string {
   const label = request.label.trim();
   const cwd = request.cwd.trim();
   if (!label) {
@@ -46,64 +59,19 @@ export function issueDedicatedSessionToken(request: DedicatedMcpSessionRequest):
     throw new Error("Dedicated MCP session cwd is required");
   }
 
-  const runtime = requireDedicatedRuntime();
-  const tools = runtime.registry.getAllAgentTools();
+  const tools = deps.registry.getAllAgentTools();
   if (tools.length === 0) {
     throw new Error("Dedicated MCP session requires a non-empty Admiral tool snapshot");
   }
 
-  const previousToken = dedicatedSessionTokensByLabel.get(label);
+  const previousToken = sessionTokensByLabel.get(label);
   if (previousToken) {
-    cleanupExecutorSession(runtime, previousToken);
+    cleanupExecutorSession(deps, previousToken);
   }
 
   const token = crypto.randomUUID();
-  runtime.snapshotStore.registerToolsForSession(token, tools.map(specToMcpTool));
-  runtime.server.setOnToolCallArrived(token, (toolName, args) => {
-    const toolCallId = crypto.randomUUID();
-    void invokeTool(runtime.registry, toolName, args, { cwd, toolCallId })
-      .then((result) => runtime.server.resolveNextToolCall(token, toolCallId, result))
-      .catch((err) => {
-        runtime.server.resolveNextToolCall(token, toolCallId, {
-          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
-          isError: true,
-        });
-      });
-    return toolCallId;
-  });
-  dedicatedSessionTokensByLabel.set(label, token);
+  registerExecutorSessionTools(deps, token, tools);
+  installExecutorToolCallRouter(deps, token, { cwd, signal: request.signal });
+  sessionTokensByLabel.set(label, token);
   return token;
-}
-
-export function cleanupDedicatedMcpRuntime(): void {
-  const runtime = dedicatedRuntime;
-  for (const token of dedicatedSessionTokensByLabel.values()) {
-    if (runtime) {
-      cleanupExecutorSession(runtime, token);
-    }
-  }
-  dedicatedSessionTokensByLabel.clear();
-  dedicatedRuntime = null;
-}
-
-function requireDedicatedRuntime(): DedicatedMcpRuntime {
-  if (!dedicatedRuntime) {
-    throw new Error("Dedicated MCP runtime is not configured. Boot the fleet-agent Composition Root first.");
-  }
-  return dedicatedRuntime;
-}
-
-function cleanupExecutorSession(runtime: DedicatedMcpRuntime, sessionToken: string): void {
-  runtime.server.setOnToolCallArrived(sessionToken, null);
-  runtime.snapshotStore.removeToolsForSession(sessionToken);
-  runtime.server.clearPendingForSession(sessionToken);
-}
-
-async function invokeTool(
-  registry: McpToolRegistry,
-  name: string,
-  args: unknown,
-  ctx?: Partial<AgentToolCtx>,
-): Promise<McpCallToolResult> {
-  return registry.invoke(name, args, ctx);
 }

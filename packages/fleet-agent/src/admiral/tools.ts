@@ -1,11 +1,14 @@
 import {
+  buildCarrierDispatchToolSpec,
+  buildCarrierJobsToolSpec,
+  type CarrierRuntime,
+} from "@sbluemin/fleet-carriers";
+import {
   EXECUTOR_MCP_TOOL_IDS,
   type McpToolRegistry,
   renderAgentToolDoctrineTag,
 } from "@sbluemin/fleet-mcp-server";
 
-import type { CarrierRuntime } from "@sbluemin/fleet-carriers";
-import { resetDefaultAgentToolsRegistration } from "./bootstrap.js";
 import type { AgentToolSpec } from "./types.js";
 
 let activeToolRegistry: McpToolRegistry | null = null;
@@ -14,10 +17,14 @@ export {
   EXECUTOR_MCP_TOOL_IDS,
   renderAgentToolDoctrineTag,
 };
-export { registerAgentToolDefaults } from "./bootstrap.js";
 
 export function configureAgentToolRegistry(registry: McpToolRegistry): void {
   activeToolRegistry = registry;
+}
+
+export function registerAgentToolDefaults(registry: McpToolRegistry, carrierRuntime: CarrierRuntime): void {
+  registry.registerAgentTool(buildCarrierDispatchToolSpec(carrierRuntime.registry));
+  registry.registerAgentTool(buildCarrierJobsToolSpec());
 }
 
 export function getAllAgentTools(): AgentToolSpec[] {
@@ -37,7 +44,6 @@ export function getExecutorMcpTools(
 
 export function clearAllDefaultTools(registry: McpToolRegistry): void {
   registry.clearAllDefaultTools();
-  resetDefaultAgentToolsRegistration();
 }
 
 function requireActiveToolRegistry(): McpToolRegistry {

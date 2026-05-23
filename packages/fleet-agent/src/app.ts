@@ -46,7 +46,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const native = options.native ?? false;
   const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
   const enableMetaphor = options.enableMetaphor ?? false;
-  await bootRuntime();
+  const runtime = await bootRuntime();
   const ui = new LocalTui({ cursorSyncEnabled: cursorSync });
   const ptyView = new PtyView(ui.columns, 0);
   const sections = createDefaultFleetPtySections({ native });
@@ -68,7 +68,11 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const baseProfile = await resolveDedicatedCliProfile(process.env, resolveInvocationCwd(), { cliId, model });
   const currentProfile = native
     ? baseProfile
-    : await injectDedicatedCliProfile(baseProfile, { replaceSystemPrompt, enableMetaphor });
+    : await injectDedicatedCliProfile(baseProfile, {
+        dedicatedMcpSession: runtime.dedicatedMcpSession,
+        replaceSystemPrompt,
+        enableMetaphor,
+      });
   const ptyHost = createPtyHost({
     profile: currentProfile,
   });

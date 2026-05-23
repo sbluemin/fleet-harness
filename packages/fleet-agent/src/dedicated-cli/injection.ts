@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { getEndpoint, issueDedicatedSessionToken } from "../admiral/mcp.js";
+import type { DedicatedMcpSessionPort } from "../admiral/mcp.js";
 import { buildSystemPrompt } from "../admiral/prompts.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
@@ -10,13 +10,14 @@ import { getDedicatedCliInjectionCapability } from "./capabilities.js";
 import type { DedicatedCliInjectionContext, DedicatedCliProfile } from "./types.js";
 
 export interface InjectDedicatedCliProfileOptions {
+  readonly dedicatedMcpSession: DedicatedMcpSessionPort;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
 }
 
 export async function injectDedicatedCliProfile(
   profile: DedicatedCliProfile,
-  options: InjectDedicatedCliProfileOptions = {},
+  options: InjectDedicatedCliProfileOptions,
 ): Promise<DedicatedCliProfile> {
   const capability = getDedicatedCliInjectionCapability(profile.id);
   if (!capability.enabled) {
@@ -24,10 +25,10 @@ export async function injectDedicatedCliProfile(
   }
 
   const injectTone = options.enableMetaphor ?? false;
-  const endpoint = await getEndpoint();
+  const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const systemPromptFile = writeSystemPromptFile(profile.id, buildSystemPrompt(injectTone));
   const context: DedicatedCliInjectionContext = {
-    bearerToken: issueDedicatedSessionToken({
+    bearerToken: options.dedicatedMcpSession.issueSessionToken({
       cwd: profile.cwd,
       label: `dedicated:${profile.id}`,
     }),

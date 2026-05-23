@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getEndpoint, issueDedicatedSessionToken } from "../src/admiral/mcp.js";
 import { bootRuntime, shutdownRuntime } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -26,9 +25,9 @@ describe("fleet-agent dedicated CLI wiki MCP registration", () => {
   });
 
   it("exposes all Fleet Wiki agent tools on dedicated session tokens after boot", async () => {
-    await bootRuntime();
-    const endpoint = await getEndpoint();
-    const token = issueDedicatedSessionToken({
+    const runtime = await bootRuntime();
+    const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
+    const token = runtime.dedicatedMcpSession.issueSessionToken({
       label: "dedicated:test-wiki",
       cwd: process.cwd(),
     });
