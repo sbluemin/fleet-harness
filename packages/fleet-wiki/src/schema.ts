@@ -325,13 +325,18 @@ export async function validateTemplateCompliance(
   }
 }
 
-export function inferTemplateIdFromTarget(target: string): string | undefined {
-  const basename = path.basename(target, ".md");
-  if (basename.startsWith("prd-")) return "prd";
-  if (basename.startsWith("guide-")) return "guide";
+export function inferTemplateIdFromTarget(target: string, knownTemplateIds?: string[]): string | undefined {
   if (target.includes("/sources/") || target.includes("/queries/") || target.includes("/synthesis/")) return "guide";
+  const basename = path.basename(target, ".md");
+  const ids = knownTemplateIds ?? DEFAULT_TEMPLATE_IDS;
+  const sorted = [...ids].sort((a, b) => b.length - a.length);
+  for (const id of sorted) {
+    if (basename.startsWith(`${id}-`)) return id;
+  }
   return undefined;
 }
+
+const DEFAULT_TEMPLATE_IDS = ["prd", "guide"];
 
 async function writeDefaultFileIfMissing(filePath: string, content: string): Promise<void> {
   try {

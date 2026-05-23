@@ -4,7 +4,7 @@ import { createConflict } from "../conflicts.js";
 import { appendLog } from "../log.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
-import { ensureWorkspaceSchema, inferTemplateIdFromTarget, validateTemplateCompliance } from "../schema.js";
+import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, validateTemplateCompliance } from "../schema.js";
 import {
   WIKI_INGEST_DESCRIPTION,
   WIKI_INGEST_GUIDELINES,
@@ -148,8 +148,9 @@ async function planIngest(input: WikiIngestParams, paths: ReturnType<typeof reso
   const currentMarkdown = currentEntry ? await readPatchFile(path.join(paths.wikiDir, `${input.id}.md`)) : undefined;
   const currentHash = currentMarkdown ? computeContentHash(currentMarkdown) : undefined;
   const rawSource = buildRawSourceEntry(input, now);
-  const resolvedTemplateId = input.template_id ?? currentEntry?.templateId ?? inferTemplateIdFromTarget(target);
   await ensureWorkspaceSchema(paths);
+  const knownIds = (await scanTemplates(paths)).map((t) => t.id);
+  const resolvedTemplateId = input.template_id ?? currentEntry?.templateId ?? inferTemplateIdFromTarget(target, knownIds);
   await validateTemplateCompliance(paths, resolvedTemplateId, input.body);
 
   if (mode === "create" && currentEntry) {

@@ -8,7 +8,7 @@ import { PATCH_FILENAME, PATCH_META_FILENAME } from "./constants.js";
 import { appendLog } from "./log.js";
 import { readPatchSet } from "./patch-set.js";
 import { ensureMemoryRoot } from "./paths.js";
-import { ensureWorkspaceSchema, inferTemplateIdFromTarget, validateTemplateCompliance } from "./schema.js";
+import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, validateTemplateCompliance } from "./schema.js";
 import {
   assertSafeEntryId,
   computeContentHash,
@@ -340,7 +340,8 @@ async function normalizeWikiEntryPatch(entry: WikiEntry, target: string, paths: 
     assertSafeRawSourceRef(rawSourceRef, paths);
   }
   const currentEntry = await readWikiEntry(entry.id, paths);
-  const templateId = entry.templateId ?? currentEntry?.templateId ?? inferTemplateIdFromTarget(target);
+  const knownIds = (await scanTemplates(paths)).map((t) => t.id);
+  const templateId = entry.templateId ?? currentEntry?.templateId ?? inferTemplateIdFromTarget(target, knownIds);
   const body = inlineRawSourceRef ? inlineRawSourceRef.body : entry.body;
   try {
     await validateTemplateCompliance(paths, templateId, body);

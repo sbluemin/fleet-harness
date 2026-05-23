@@ -381,7 +381,7 @@ async function templateComplianceIssues(paths: MemoryPaths, entries: ParsedSeman
   for (const entry of entries) {
     const templateId = typeof entry.frontmatter.template_id === "string"
       ? entry.frontmatter.template_id
-      : inferTemplateIdFromTarget(entry.filePath);
+      : inferTemplateIdFromTarget(entry.filePath, [...templatesById.keys()]);
     if (!templateId) continue;
     const template = templatesById.get(templateId);
     if (!template) {
