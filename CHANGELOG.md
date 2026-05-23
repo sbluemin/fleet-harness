@@ -13,13 +13,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - [core] carrier_jobs full responses for auto-promoted Task Force jobs return per-backend results keyed by CLI type instead of a single full_result string.
-- [core][carriers] Completed migration of carrier runtime, dispatch, jobs, store, and Task Force implementation to `@sbluemin/fleet-carriers` with preserved fleet-admiral compatibility facades.
+- [core][carriers] Completed migration of carrier runtime, dispatch, jobs, store, and Task Force implementation to `@sbluemin/fleet-carriers` while removing obsolete compatibility facades.
 
 ### Fixed
 - [agent-core] Anchored CJK IME preedit to the dedicated CLI input cursor and added `--disable-cursor-sync` for terminals that need to opt out.
 
 ### Breaking Changes
-- Removed `@sbluemin/fleet-admiral/infra` and fleet-admiral root infra re-exports; consumers must import infrastructure APIs from `@sbluemin/fleet-infra`.
+- Removed the standalone Fleet Admiral and Fleet Admiralty workspace packages; Fleet Agent now owns the absorbed single-fleet and Grand Fleet policy modules.
+- Removed obsolete root infrastructure re-exports; consumers must import infrastructure APIs from `@sbluemin/fleet-infra`.
 - [core] Removed the carrier_taskforce tool; carrier_dispatch now auto-promotes carriers with configured Task Force to multi-backend execution.
 - [core][agent-core] Removed the sortie toggle feature, eliminating the ability to toggle individual carriers offline, the 'd' keybinding in the carrier status overlay, offline carrier states/persistence, and all associated UI indicators (such as dimmed roster lines, inactive HUD tiles, and footer hints).
 - [agent-core] Fleet-world tone overlay is now disabled by default; the previous `--disable-metaphor` flag is removed and replaced by an explicit `--enable-metaphor` opt-in.

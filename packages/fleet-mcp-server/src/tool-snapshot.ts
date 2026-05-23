@@ -1,5 +1,13 @@
 import type { McpTool, RegisteredTool } from "./types.js";
 
+export interface McpToolSnapshotStore {
+  registerToolsForSession(sessionToken: string, tools: McpTool[]): void;
+  getToolsForSession(sessionToken: string): RegisteredTool[];
+  getToolNamesForSession(sessionToken: string): Set<string>;
+  removeToolsForSession(sessionToken: string): void;
+  clearAllTools(): void;
+}
+
 const TYPEBOX_KEYS = new Set([
   "$id",
   "Kind",
@@ -9,9 +17,6 @@ const TYPEBOX_KEYS = new Set([
 
 const PI_BUILTIN_TOOLS = new Set<string>();
 
-const sessionTools = new Map<string, RegisteredTool[]>();
-const sessionToolNames = new Map<string, Set<string>>();
-
 export function convertToolSchema(schema: unknown): Record<string, unknown> {
   if (!schema || typeof schema !== "object") {
     return { type: "object", properties: {} };
@@ -20,38 +25,38 @@ export function convertToolSchema(schema: unknown): Record<string, unknown> {
   return cleanSchema(schema as Record<string, unknown>);
 }
 
-export function registerToolsForSession(
-  sessionToken: string,
-  tools: McpTool[],
-): void {
-  const filtered = tools.filter((tool) => !PI_BUILTIN_TOOLS.has(tool.name));
+export function createMcpToolSnapshotStore(): McpToolSnapshotStore {
+  const sessionTools = new Map<string, RegisteredTool[]>();
+  const sessionToolNames = new Map<string, Set<string>>();
 
-  const registered: RegisteredTool[] = filtered.map((tool) => ({
-    name: tool.name,
-    description: tool.description ?? "",
-    inputSchema: convertToolSchema(tool.parameters),
-  }));
+  return {
+    registerToolsForSession(sessionToken, tools) {
+      const filtered = tools.filter((tool) => !PI_BUILTIN_TOOLS.has(tool.name));
 
-  sessionTools.set(sessionToken, registered);
-  sessionToolNames.set(sessionToken, new Set(filtered.map((tool) => tool.name)));
-}
+      const registered: RegisteredTool[] = filtered.map((tool) => ({
+        name: tool.name,
+        description: tool.description ?? "",
+        inputSchema: convertToolSchema(tool.parameters),
+      }));
 
-export function getToolsForSession(sessionToken: string): RegisteredTool[] {
-  return sessionTools.get(sessionToken) ?? [];
-}
-
-export function getToolNamesForSession(sessionToken: string): Set<string> {
-  return sessionToolNames.get(sessionToken) ?? new Set();
-}
-
-export function removeToolsForSession(sessionToken: string): void {
-  sessionTools.delete(sessionToken);
-  sessionToolNames.delete(sessionToken);
-}
-
-export function clearAllTools(): void {
-  sessionTools.clear();
-  sessionToolNames.clear();
+      sessionTools.set(sessionToken, registered);
+      sessionToolNames.set(sessionToken, new Set(filtered.map((tool) => tool.name)));
+    },
+    getToolsForSession(sessionToken) {
+      return sessionTools.get(sessionToken) ?? [];
+    },
+    getToolNamesForSession(sessionToken) {
+      return sessionToolNames.get(sessionToken) ?? new Set();
+    },
+    removeToolsForSession(sessionToken) {
+      sessionTools.delete(sessionToken);
+      sessionToolNames.delete(sessionToken);
+    },
+    clearAllTools() {
+      sessionTools.clear();
+      sessionToolNames.clear();
+    },
+  };
 }
 
 export function computeToolHash(tools: McpTool[]): string {

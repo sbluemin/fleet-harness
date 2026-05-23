@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { FLEET_WIKI_AGENT_TOOL_IDS } from "../src/agent-specs.js";
+import { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "../src/agent-specs.js";
 import { parseLog } from "../src/log.js";
 import { approvePatch, enqueuePatch, listQueue, parsePatch, rewriteQueuedPatch, showQueue } from "../src/patch.js";
 import { resolveMemoryPaths } from "../src/paths.js";
@@ -274,6 +274,9 @@ describe("wiki patch edit", () => {
 
   it("registers wiki_patch_edit as a fleet wiki agent tool id", () => {
     expect(FLEET_WIKI_AGENT_TOOL_IDS).toContain("wiki_patch_edit");
+    expect(getWikiToolSpecs().map((spec) => spec.id)).toEqual([
+      ...FLEET_WIKI_AGENT_TOOL_IDS,
+    ]);
   });
 });
 

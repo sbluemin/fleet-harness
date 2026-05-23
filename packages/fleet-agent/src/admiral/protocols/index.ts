@@ -7,7 +7,7 @@
 
 import type { AdmiralProtocol } from "./types.js";
 
-import { getSettingsService } from "@sbluemin/fleet-infra/settings";
+import { settingsRuntime } from "@sbluemin/fleet-infra/settings";
 import { FLEET_ACTION } from "./fleet-action.js";
 import * as standingOrders from "./standing-orders/index.js";
 export type { AdmiralProtocol } from "./types.js";
@@ -56,7 +56,7 @@ export function getAllProtocols(): readonly AdmiralProtocol[] {
 
 /** 현재 활성 프로토콜을 반환한다. 항상 유효한 프로토콜을 반환한다. */
 export function getActiveProtocol(): AdmiralProtocol {
-  const api = getSettingsService();
+  const api = settingsRuntime.get();
   if (!api) return getProtocolById(DEFAULT_ACTIVE_PROTOCOL_ID) ?? FLEET_ACTION;
 
   const cfg = api.load<ProtocolSettings>("admiral");
@@ -66,7 +66,7 @@ export function getActiveProtocol(): AdmiralProtocol {
 
 /** 활성 프로토콜을 변경한다. */
 export function setActiveProtocol(protocolId: string): void {
-  const api = getSettingsService();
+  const api = settingsRuntime.get();
   if (!api) return;
   const cfg = api.load<ProtocolSettings>("admiral");
   api.save("admiral", { ...cfg, activeProtocol: protocolId });

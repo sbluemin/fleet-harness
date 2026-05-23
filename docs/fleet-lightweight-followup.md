@@ -2,32 +2,31 @@
 
 ## Background
 
-Fleet now uses explicit package ownership instead of a transitional core facade.
+Fleet now uses explicit package ownership without standalone Admiral compatibility packages.
 
-- `packages/fleet-agent` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, and concrete runtime assembly.
-- `packages/fleet-admiralty` owns multi-fleet coordination.
-- `packages/fleet-admiral` owns single-fleet orchestration, prompts, runtime contracts, MCP tool policy, and operational protocols.
+- `packages/fleet-agent` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, concrete runtime assembly, absorbed Admiral policy, and absorbed Grand Fleet policy.
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, and carrier state.
 - `packages/fleet-infra` owns host-agnostic infrastructure and I/O gateways.
+- `packages/fleet-mcp-server` owns generic MCP registry/server behavior.
 - `@sbluemin/fleet-unified-agent` remains the independent backend client package.
 
 ## Purpose
 
-The follow-up keeps host packages thin while preserving a clear product-domain home for each behavior. The goal is explicit construction, one-way dependencies, and no hidden process-global runtime state.
+The follow-up keeps lower packages host-agnostic while preserving a clear home for each behavior. The goal is explicit construction, one-way dependencies, and no hidden process-global runtime state.
 
 ## Current State
 
 - **Logical ownership:** Final package homes are split by domain.
-- **Dependency direction:** `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
+- **Dependency direction:** `fleet-agent` -> `fleet-carriers` -> `fleet-infra`, with `fleet-mcp-server` consumed as a generic leaf.
 
 ## Goals
 
-- **Thin Host adapter:** Keep host packages focused on registration, rendering, lifecycle, and concrete service assembly.
-- **Explicit domain services:** Keep reusable Fleet behavior in its owning package with public factory APIs.
-- **Future host readiness:** Ensure new hosts can reuse the same public package surfaces without private imports.
+- **Thin lower layers:** Keep lower packages focused on reusable carrier, infrastructure, and MCP behavior.
+- **Explicit host assembly:** Keep concrete boot order in `fleet-agent`.
+- **No compatibility facades:** Do not recreate deleted namespace or factory packages.
 
 ## Guardrails
 
 - Keep lower packages host-agnostic.
-- Keep host imports on public package exports only.
-- Use explicit `create*(deps)` factories instead of DI containers, service locators, or hidden global registries.
+- Keep host imports on public package exports plus package-local `.js` relative imports.
+- Use explicit `create*(deps)` factories where a new injectable service is genuinely needed.

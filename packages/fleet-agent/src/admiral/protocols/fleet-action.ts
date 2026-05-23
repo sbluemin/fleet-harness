@@ -55,7 +55,7 @@ Translate each blocking/confirmatory gap into a **focused, verifiable mission**.
 | Good mission | Bad mission |
 |--------------|-------------|
 | "Find all call sites of ${"``"}parseConfig${"``"} in ${"``"}src/${"``"} and list their file paths" | "Explore the config parsing code" |
-| "Read ${"``"}AGENTS.md${"``"} in ${"``"}packages/fleet-admiral/${"``"} and summarize dependency rules" | "Check if there are any AGENTS.md files" |
+| "Read ${"``"}AGENTS.md${"``"} in the package that owns the target path and summarize dependency rules" | "Check if there are any AGENTS.md files" |
 | "List test files that import ${"``"}UserService${"``"} and report their assertion patterns" | "Look for tests related to users" |
 | "Check the last 5 commits touching ${"``"}src/db/${"``"} for migration patterns" | "See what's recently changed in the database code" |
 

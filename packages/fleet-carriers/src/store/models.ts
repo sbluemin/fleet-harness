@@ -3,7 +3,7 @@ import {
   getProviderModels,
   type CliType,
 } from "@sbluemin/fleet-unified-agent";
-import { disconnect, flushSessionMappings, getCarrierSessionStore } from "@sbluemin/fleet-infra/agent";
+import { disconnect, sessionRuntime } from "@sbluemin/fleet-infra/agent";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 import type {
   FleetStoreSnapshot,
@@ -123,8 +123,8 @@ export async function updateModelSelection(
     };
     states.models = { ...states.models, [carrierId]: merged };
   });
-  getCarrierSessionStore().clear(carrierId);
-  flushSessionMappings();
+  sessionRuntime.getCarrierSessionStore().clear(carrierId);
+  sessionRuntime.flushSessionMappings();
   await disconnect(carrierId);
 }
 
@@ -137,11 +137,11 @@ export async function updateAllModelSelections(
 ): Promise<void> {
   saveModels(config);
   const keys = Object.keys(config);
-  const sessionStore = getCarrierSessionStore();
+  const sessionStore = sessionRuntime.getCarrierSessionStore();
   for (const key of keys) {
     sessionStore.clear(key);
   }
-  flushSessionMappings();
+  sessionRuntime.flushSessionMappings();
   await Promise.allSettled(keys.map((key) => disconnect(key)));
 }
 

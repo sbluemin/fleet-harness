@@ -5,15 +5,30 @@ import type {
   RegisterExecutorToolOptions,
 } from "./types.js";
 
+export interface McpToolRegistry {
+  registerAgentTool(spec: AgentToolSpec): void;
+  registerExecutorTool(spec: AgentToolSpec, opts?: RegisterExecutorToolOptions): void;
+  getAllAgentTools(): AgentToolSpec[];
+  getExecutorMcpToolsForCarrier(
+    carrierId?: string,
+    metadataAllowedToolIds?: readonly string[],
+  ): AgentToolSpec[];
+  renderAgentToolDoctrineTag(spec: AgentToolSpec): string;
+  list(): readonly AgentToolSpec[];
+  listSpecs(): readonly AgentToolSpec[];
+  invoke(
+    name: string,
+    args: unknown,
+    ctx?: Partial<AgentToolCtx>,
+  ): Promise<McpCallToolResult>;
+  registerExtraTools(scopeKey: string, tools: readonly AgentToolSpec[]): void;
+  unregisterExtraTools(scopeKey: string, names: readonly string[]): void;
+  clearAllDefaultTools(): void;
+  clearAllExtraTools(): void;
+}
+
 const TOOL_ID_PATTERN = /^[a-z0-9_]+$/;
 const GLOBAL_EXECUTOR_SCOPE = "*";
-
-const doctrineOrder: string[] = [];
-const doctrineEntries = new Map<string, AgentToolSpec>();
-const extraTools = new Map<string, Map<string, AgentToolSpec>>();
-const executorWhitelist = new Map<string, Set<string>>([
-  [GLOBAL_EXECUTOR_SCOPE, new Set()],
-]);
 
 export const EXECUTOR_MCP_TOOL_IDS = [
   "carrier_jobs",
@@ -26,122 +41,146 @@ export const EXECUTOR_MCP_TOOL_IDS = [
   "wiki_resolve",
 ] as const;
 
-export function registerAgentTool(spec: AgentToolSpec): void {
-  assertToolId(spec.id, "id");
-  assertToolId(spec.tag, "tag");
-  assertUniqueTag(spec);
+export function createMcpToolRegistry(): McpToolRegistry {
+  const doctrineOrder: string[] = [];
+  const primaryToolSpecs = new Map<string, AgentToolSpec>();
+  const scopedToolSpecs = new Map<string, Map<string, AgentToolSpec>>();
+  const executorToolScopes = new Map<string, Set<string>>([
+    [GLOBAL_EXECUTOR_SCOPE, new Set()],
+  ]);
 
-  if (!doctrineEntries.has(spec.id)) {
-    doctrineOrder.push(spec.id);
+  function addExecutorWhitelistEntry(scope: string, toolId: string): void {
+    const scoped = executorToolScopes.get(scope) ?? new Set<string>();
+    scoped.add(toolId);
+    executorToolScopes.set(scope, scoped);
   }
 
-  doctrineEntries.set(spec.id, spec);
-}
-
-export function registerExecutorTool(spec: AgentToolSpec, opts?: RegisterExecutorToolOptions): void {
-  registerAgentTool(spec);
-  const scopes = opts?.allowedCarriers?.length ? opts.allowedCarriers : [GLOBAL_EXECUTOR_SCOPE];
-  for (const scope of scopes) {
-    addExecutorWhitelistEntry(scope, spec.id);
-  }
-}
-
-export function getAllAgentTools(): AgentToolSpec[] {
-  return doctrineOrder
-    .map((id) => doctrineEntries.get(id))
-    .filter((s): s is AgentToolSpec => s != null);
-}
-
-export function getExecutorMcpToolsForCarrier(
-  carrierId?: string,
-  metadataAllowedToolIds: readonly string[] = [],
-): AgentToolSpec[] {
-  const specs: AgentToolSpec[] = [];
-  const ids = new Set<string>(executorWhitelist.get(GLOBAL_EXECUTOR_SCOPE));
-  if (carrierId) {
-    for (const id of executorWhitelist.get(carrierId) ?? []) {
-      ids.add(id);
-    }
-    for (const id of metadataAllowedToolIds) {
-      ids.add(id);
+  function assertUniqueTag(spec: AgentToolSpec): void {
+    for (const existing of primaryToolSpecs.values()) {
+      if (existing.id === spec.id) continue;
+      if (existing.tag === spec.tag) {
+        throw new Error(
+          `Agent tool tag "${spec.tag}" is already registered by "${existing.id}"`,
+        );
+      }
     }
   }
-  for (const id of ids) {
-    const spec = doctrineEntries.get(id);
-    if (spec) specs.push(spec);
+
+  function findExtraTool(name: string): AgentToolSpec | undefined {
+    for (const scoped of scopedToolSpecs.values()) {
+      const spec = scoped.get(name);
+      if (spec) return spec;
+    }
+    return undefined;
   }
-  return specs;
+
+  return {
+    registerAgentTool(spec) {
+      assertToolId(spec.id, "id");
+      assertToolId(spec.tag, "tag");
+      assertUniqueTag(spec);
+
+      if (!primaryToolSpecs.has(spec.id)) {
+        doctrineOrder.push(spec.id);
+      }
+
+      primaryToolSpecs.set(spec.id, spec);
+    },
+    registerExecutorTool(spec, opts) {
+      this.registerAgentTool(spec);
+      const scopes = opts?.allowedCarriers?.length
+        ? opts.allowedCarriers
+        : [GLOBAL_EXECUTOR_SCOPE];
+      for (const scope of scopes) {
+        addExecutorWhitelistEntry(scope, spec.id);
+      }
+    },
+    getAllAgentTools() {
+      return doctrineOrder
+        .map((id) => primaryToolSpecs.get(id))
+        .filter((s): s is AgentToolSpec => s != null);
+    },
+    getExecutorMcpToolsForCarrier(carrierId, metadataAllowedToolIds = []) {
+      const specs: AgentToolSpec[] = [];
+      const ids = new Set<string>(executorToolScopes.get(GLOBAL_EXECUTOR_SCOPE));
+      if (carrierId) {
+        for (const id of executorToolScopes.get(carrierId) ?? []) {
+          ids.add(id);
+        }
+        for (const id of metadataAllowedToolIds) {
+          ids.add(id);
+        }
+      }
+      for (const id of ids) {
+        const spec = primaryToolSpecs.get(id);
+        if (spec) specs.push(spec);
+      }
+      return specs;
+    },
+    renderAgentToolDoctrineTag(spec) {
+      return `<fleet section="tool-guide" tool="${spec.tag}">\n${renderDoctrineMarkdown(spec)}\n</fleet>`;
+    },
+    list() {
+      const specs: AgentToolSpec[] = [...this.getAllAgentTools()];
+      for (const scoped of scopedToolSpecs.values()) {
+        for (const spec of scoped.values()) {
+          if (!specs.some((s) => s.id === spec.id)) specs.push(spec);
+        }
+      }
+      return specs;
+    },
+    listSpecs() {
+      return this.getAllAgentTools();
+    },
+    async invoke(name, args, ctx) {
+      const fullCtx: AgentToolCtx = {
+        cwd: ctx?.cwd ?? process.cwd(),
+        toolCallId: ctx?.toolCallId,
+        signal: ctx?.signal,
+      };
+
+      const spec = primaryToolSpecs.get(name) ?? findExtraTool(name);
+      if (!spec) {
+        return {
+          content: [{ type: "text", text: `Unknown tool: ${name}` }],
+          isError: true,
+        };
+      }
+
+      const result = await spec.execute(args, fullCtx);
+      return toMcpCallToolResult(result);
+    },
+    registerExtraTools(scopeKey, tools) {
+      const scoped = scopedToolSpecs.get(scopeKey) ?? new Map();
+      for (const spec of tools) {
+        scoped.set(spec.id, spec);
+      }
+      scopedToolSpecs.set(scopeKey, scoped);
+    },
+    unregisterExtraTools(scopeKey, names) {
+      const scoped = scopedToolSpecs.get(scopeKey);
+      if (!scoped) return;
+      for (const name of names) {
+        scoped.delete(name);
+      }
+      if (scoped.size === 0) {
+        scopedToolSpecs.delete(scopeKey);
+      }
+    },
+    clearAllDefaultTools() {
+      doctrineOrder.length = 0;
+      primaryToolSpecs.clear();
+      executorToolScopes.clear();
+      executorToolScopes.set(GLOBAL_EXECUTOR_SCOPE, new Set());
+    },
+    clearAllExtraTools() {
+      scopedToolSpecs.clear();
+    },
+  };
 }
 
 export function renderAgentToolDoctrineTag(spec: AgentToolSpec): string {
   return `<fleet section="tool-guide" tool="${spec.tag}">\n${renderDoctrineMarkdown(spec)}\n</fleet>`;
-}
-
-export function list(): readonly AgentToolSpec[] {
-  const specs: AgentToolSpec[] = [...getAllAgentTools()];
-  for (const scoped of extraTools.values()) {
-    for (const spec of scoped.values()) {
-      if (!specs.some((s) => s.id === spec.id)) specs.push(spec);
-    }
-  }
-  return specs;
-}
-
-export function listSpecs(): readonly AgentToolSpec[] {
-  return getAllAgentTools();
-}
-
-export async function invoke(
-  name: string,
-  args: unknown,
-  ctx?: Partial<AgentToolCtx>,
-): Promise<McpCallToolResult> {
-  const fullCtx: AgentToolCtx = {
-    cwd: ctx?.cwd ?? process.cwd(),
-    toolCallId: ctx?.toolCallId,
-    signal: ctx?.signal,
-  };
-
-  const spec = doctrineEntries.get(name) ?? findExtraTool(name);
-  if (!spec) {
-    return {
-      content: [{ type: "text", text: `Unknown tool: ${name}` }],
-      isError: true,
-    };
-  }
-
-  const result = await spec.execute(args, fullCtx);
-  return toMcpCallToolResult(result);
-}
-
-export function registerExtraTools(scopeKey: string, tools: readonly AgentToolSpec[]): void {
-  const scoped = extraTools.get(scopeKey) ?? new Map();
-  for (const spec of tools) {
-    scoped.set(spec.id, spec);
-  }
-  extraTools.set(scopeKey, scoped);
-}
-
-export function unregisterExtraTools(scopeKey: string, names: readonly string[]): void {
-  const scoped = extraTools.get(scopeKey);
-  if (!scoped) return;
-  for (const name of names) {
-    scoped.delete(name);
-  }
-  if (scoped.size === 0) {
-    extraTools.delete(scopeKey);
-  }
-}
-
-export function clearAllDefaultTools(): void {
-  doctrineOrder.length = 0;
-  doctrineEntries.clear();
-  executorWhitelist.clear();
-  executorWhitelist.set(GLOBAL_EXECUTOR_SCOPE, new Set());
-}
-
-export function clearAllExtraTools(): void {
-  extraTools.clear();
 }
 
 function renderList(items: readonly string[]): string {
@@ -174,34 +213,9 @@ function renderDoctrineMarkdown(spec: AgentToolSpec): string {
   return sections.join("\n\n");
 }
 
-function findExtraTool(name: string): AgentToolSpec | undefined {
-  for (const scoped of extraTools.values()) {
-    const spec = scoped.get(name);
-    if (spec) return spec;
-  }
-  return undefined;
-}
-
-function addExecutorWhitelistEntry(scope: string, toolId: string): void {
-  const scoped = executorWhitelist.get(scope) ?? new Set<string>();
-  scoped.add(toolId);
-  executorWhitelist.set(scope, scoped);
-}
-
 function assertToolId(value: string, field: "id" | "tag"): void {
   if (!TOOL_ID_PATTERN.test(value)) {
     throw new Error(`Invalid agent tool spec ${field}: "${value}"`);
-  }
-}
-
-function assertUniqueTag(spec: AgentToolSpec): void {
-  for (const existing of doctrineEntries.values()) {
-    if (existing.id === spec.id) continue;
-    if (existing.tag === spec.tag) {
-      throw new Error(
-        `Agent tool tag "${spec.tag}" is already registered by "${existing.id}"`,
-      );
-    }
   }
 }
 

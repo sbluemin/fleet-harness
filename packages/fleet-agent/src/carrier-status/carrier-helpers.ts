@@ -1,13 +1,19 @@
-import { admiral } from "@sbluemin/fleet-admiral";
+import {
+  resolveCarrierColor as resolveCoreCarrierColor,
+  resolveCarrierDisplayName as resolveCoreCarrierDisplayName,
+  resolveCarrierRgb as resolveCoreCarrierRgb,
+} from "@sbluemin/fleet-carriers";
+
+import { getCarrierRuntime } from "../runtime/instances.js";
 
 export function resolveCarrierColor(carrierId: string): string {
-  return admiral.carrier.resolveCarrierColor(carrierId);
+  return resolveCoreCarrierColor(getCarrierRuntime().registry, carrierId);
 }
 
 export function resolveCarrierDisplayName(carrierId: string): string {
-  return admiral.carrier.resolveCarrierDisplayName(carrierId);
+  return resolveCoreCarrierDisplayName(getCarrierRuntime().registry, carrierId);
 }
 
 export function resolveCarrierRgb(carrierId: string): [number, number, number] {
-  return admiral.carrier.resolveCarrierRgb(carrierId);
+  return resolveCoreCarrierRgb(getCarrierRuntime().registry, carrierId);
 }

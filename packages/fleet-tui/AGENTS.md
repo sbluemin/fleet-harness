@@ -7,7 +7,7 @@
 - **Must Own**: terminal renderer primitives, generic input routing, programmatic PTY input, Dedicated CLI PTY host/view infrastructure, Fleet PTY component/overlay API, and vertical two-pane split negotiation.
 - **Must Not Own**: Fleet domain logic, carrier persona definitions, fleet-agent host policy, host adapter code, default Fleet PTY content, or any engine workspace package.
 - **Allowed Runtime Dependencies**: `@xterm/headless` and `node-pty`.
-- **Forbidden Workspace Dependencies**: `@sbluemin/fleet-admiral`, `@sbluemin/fleet-carriers`, `@sbluemin/fleet-agent`, `@sbluemin/fleet-wiki`, `@sbluemin/fleet-wiki-web`, and `@sbluemin/fleet-unified-agent`.
+- **Forbidden Workspace Dependencies**: `@sbluemin/fleet-carriers`, `@sbluemin/fleet-agent`, `@sbluemin/fleet-wiki`, `@sbluemin/fleet-wiki-web`, and `@sbluemin/fleet-unified-agent`.
 
 ## Public Surface
 

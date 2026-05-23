@@ -1,9 +1,5 @@
 import { SettingsService } from "./service.js";
-import {
-  getSettingsService,
-  initSettingsService,
-  resetSettingsService,
-} from "./runtime.js";
+import { settingsRuntime } from "./runtime.js";
 import * as runtime from "./runtime.js";
 import * as store from "./store.js";
 import * as types from "./types.js";
@@ -24,7 +20,5 @@ export const settings = {
   runtime,
   store,
   types,
-  getSettingsService,
-  initSettingsService,
-  resetSettingsService,
+  settingsRuntime,
 };

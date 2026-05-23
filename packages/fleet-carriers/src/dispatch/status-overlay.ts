@@ -20,7 +20,7 @@ interface StoredCliSelection {
 interface StatusOverlayControllerDeps {
   getEntries: () => CarrierStatusEntry[];
   getRegisteredOrder: () => string[];
-  getRegisteredCarrierConfig: (carrierId: string) => CarrierConfig | undefined;
+  getCarrierConfig: (carrierId: string) => CarrierConfig | undefined;
   getResolvedCliType: (carrierId: string) => CarrierCliType | undefined;
   getCurrentModelSelection: (carrierId: string) => (ModelSelection & { direct?: boolean }) | undefined;
   getAvailableModels: (cliType: CarrierCliType) => CliModelInfo;
@@ -82,7 +82,7 @@ export class StatusOverlayController implements Pick<
   async resetCliTypesToDefault(): Promise<CliTypeChangeSettledResult[]> {
     const updates = this.deps.getRegisteredOrder()
       .map((carrierId) => {
-        const config = this.deps.getRegisteredCarrierConfig(carrierId);
+        const config = this.deps.getCarrierConfig(carrierId);
         const resolvedCliType = this.deps.getResolvedCliType(carrierId);
         if (!config || !resolvedCliType || resolvedCliType === config.defaultCliType) {
           return null;
@@ -100,7 +100,7 @@ export class StatusOverlayController implements Pick<
     carrierId: string,
     newCliType: CarrierCliType,
   ): Promise<CliTypeChangeResult> {
-    const currentConfig = this.deps.getRegisteredCarrierConfig(carrierId);
+    const currentConfig = this.deps.getCarrierConfig(carrierId);
     const currentCliType = this.deps.getResolvedCliType(carrierId);
     const defaultCliType = currentConfig?.defaultCliType as CarrierCliType | undefined;
     let cliTypeChanged = false;

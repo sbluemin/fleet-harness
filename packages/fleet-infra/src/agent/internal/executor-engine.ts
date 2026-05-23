@@ -23,24 +23,22 @@ import {
 } from "@sbluemin/fleet-unified-agent";
 
 import {
-  startMcpServer,
+  cleanupExecutorSession as cleanupExecutorMcpSession,
+  detachExecutorMcpForReuse as detachExecutorMcpForSessionReuse,
   installExecutorToolCallRouter,
-  cleanupExecutorSession,
-  detachExecutorMcpForReuse,
-  invoke,
   registerExecutorSessionTools,
+  type AgentToolSpec,
+  type McpRouterRuntime,
 } from "@sbluemin/fleet-mcp-server";
 
-import { getExecutorMcpTools, getCarrierExternalMcpServerIds } from "../executor-port.js";
+import { executorPortRuntime } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
 import type { TrackStatus } from "../types.js";
 import { resolveAuthEnv } from "../../auth/index.js";
 import { getLogAPI } from "../../log/index.js";
 import {
-  captureSessionMappingCommitToken,
+  sessionRuntime,
   classifyResumeFailure,
-  flushSessionMappings,
-  getCarrierSessionStore,
   type SessionMappingCommitToken,
 } from "./session-runtime.js";
 import { applyPostConnectConfig } from "./post-connect.js";
@@ -118,14 +116,40 @@ const EMPTY_BUILTIN_EXTERNAL_MCP_SIGNATURE = createHash("sha256").update("").dig
 const clientPool = new Map<string, PooledClient>();
 const launchConfigs = new Map<string, LaunchConfig>();
 
+function getMcpRouterRuntime(): McpRouterRuntime {
+  return executorPortRuntime.getExecutorMcpRouterRuntime();
+}
+
+function cleanupExecutorSession(sessionToken: string): void {
+  cleanupExecutorMcpSession(getMcpRouterRuntime(), sessionToken);
+}
+
+function detachExecutorMcpForReuse(sessionToken: string): void {
+  detachExecutorMcpForSessionReuse(getMcpRouterRuntime(), sessionToken);
+}
+
+function installActiveExecutorToolCallRouter(
+  sessionToken: string,
+  ctx: { cwd: string; signal?: AbortSignal },
+): void {
+  installExecutorToolCallRouter(getMcpRouterRuntime(), sessionToken, ctx);
+}
+
+function registerActiveExecutorSessionTools(
+  sessionToken: string,
+  specs: AgentToolSpec[],
+): void {
+  registerExecutorSessionTools(getMcpRouterRuntime(), sessionToken, specs);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions (공개 — executor.ts facade에서 호출)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
   const { poolKey, carrierId, cliType, request, cwd, signal } = opts;
-  const store = getCarrierSessionStore();
-  const commitToken = captureSessionMappingCommitToken();
+  const store = sessionRuntime.getCarrierSessionStore();
+  const commitToken = sessionRuntime.captureSessionMappingCommitToken();
   const builtinExternalMcpSignature = buildBuiltinExternalMcpSignature(carrierId);
   const sessionPoolKey = buildSessionPoolKey(poolKey, builtinExternalMcpSignature);
 
@@ -163,7 +187,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     } else if (poolEntry.builtinExternalMcpSignature !== builtinExternalMcpSignature) {
       // ACP mcpServers는 session/new 시점 snapshot — drift 감지 시 reconnect.
       store.clear(sessionPoolKey);
-      flushSessionMappings();
+      sessionRuntime.flushSessionMappings();
       await discardPoolEntry(poolKey, poolEntry);
       poolEntry = undefined;
     }
@@ -294,7 +318,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     if (!needsConnect && hasSystemPromptDrift(client, opts.connectSystemPrompt ?? null)) {
       debugSystemPromptDrift("executeWithPool", poolKey, cliType);
       store.clear(sessionPoolKey);
-      flushSessionMappings();
+      sessionRuntime.flushSessionMappings();
       if (poolEntry) {
         if (poolEntry.mcpSessionToken) {
           cleanupExecutorSession(poolEntry.mcpSessionToken);
@@ -335,7 +359,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         );
 
         store.clear(sessionPoolKey);
-        flushSessionMappings();
+        sessionRuntime.flushSessionMappings();
         if (poolEntry) delete poolEntry.sessionId;
         delete connectOpts.sessionId;
 
@@ -390,7 +414,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (activeMcpToken) {
         if (poolEntry) poolEntry.mcpSessionToken = activeMcpToken;
-        installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
+        installActiveExecutorToolCallRouter(activeMcpToken, { cwd, signal });
       }
 
       const effortApplied = await applyResolvedEffort(client, cliType, model, effortResolution);
@@ -415,7 +439,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       if (poolEntry?.mcpSessionToken) {
         activeMcpToken = poolEntry.mcpSessionToken;
-        installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
+        installActiveExecutorToolCallRouter(activeMcpToken, { cwd, signal });
       }
     }
 
@@ -443,7 +467,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       durableCommittedAfterSend = store.commitSet(sessionPoolKey, sessionId, commitToken);
       if (durableCommittedAfterSend) {
         if (poolEntry) recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, true);
-        flushSessionMappings(commitToken);
+        sessionRuntime.flushSessionMappings(commitToken);
       } else if (poolEntry) {
         await discardPoolEntry(poolKey, poolEntry);
         poolEntry = undefined;
@@ -475,7 +499,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         sessionId = finalSessionId;
         if (store.commitSet(sessionPoolKey, finalSessionId, commitToken)) {
           if (poolEntry) recordPoolSessionMapping(poolKey, poolEntry, finalSessionId, commitToken, true);
-          flushSessionMappings(commitToken);
+          sessionRuntime.flushSessionMappings(commitToken);
         } else if (poolEntry) {
           await discardPoolEntry(poolKey, poolEntry);
           poolEntry = undefined;
@@ -545,7 +569,7 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
     await applyResolvedEffort(client, cliType, model, effortResolution);
 
     if (activeMcpToken) {
-      installExecutorToolCallRouter(activeMcpToken, { cwd, signal }, invoke);
+      installActiveExecutorToolCallRouter(activeMcpToken, { cwd, signal });
     }
 
     if (aborted) {
@@ -954,12 +978,13 @@ async function setupExecutorMcp(
   let token: string | undefined;
   const mcpServers: McpServerConfig[] = [];
 
-  const specs = getExecutorMcpTools(carrierId);
+  const specs = executorPortRuntime.getExecutorMcpTools(carrierId);
   if (specs.length > 0) {
     try {
-      const mcpUrl = await startMcpServer();
+      const runtime = getMcpRouterRuntime();
+      const mcpUrl = await runtime.server.start();
       token = randomUUID();
-      registerExecutorSessionTools(token, [...specs]);
+      registerActiveExecutorSessionTools(token, [...specs]);
       mcpServers.push({
         type: "http",
         url: mcpUrl,
@@ -989,7 +1014,7 @@ async function setupExecutorMcp(
 }
 
 function getAllowedBuiltinExternalMcpServerIds(carrierId?: string): readonly string[] {
-  return getCarrierExternalMcpServerIds(carrierId);
+  return executorPortRuntime.getCarrierExternalMcpServerIds(carrierId);
 }
 
 function formatBuiltinExternalMcpServerIds(carrierId?: string): string {

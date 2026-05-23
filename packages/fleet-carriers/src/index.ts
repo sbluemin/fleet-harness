@@ -65,7 +65,7 @@ export interface CarrierRuntime {
   events: typeof carrierEvents;
   jobs: typeof carrierJobs;
   store: typeof carrierStore;
-  registerDefaultCarriers(): void;
+  registerCarrierDefaults(): void;
 }
 
 export interface CarrierRuntimeDeps {
@@ -80,7 +80,7 @@ export function createCarrierRuntime(_deps: CarrierRuntimeDeps = {}): CarrierRun
     events: carrierEvents,
     jobs: carrierJobs,
     store: carrierStore,
-    registerDefaultCarriers() {
+    registerCarrierDefaults() {
       registerDefaultCarriers(registry);
     },
   };

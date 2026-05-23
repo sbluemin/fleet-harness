@@ -12,6 +12,7 @@ import {
   TEMPEST_METADATA,
   VANGUARD_METADATA,
   clearRegisteredCarriers,
+  createCarrierRegistry,
   getRegisteredCarrierConfig,
   registerDefaultCarriers,
 } from "../src/index.js";
@@ -131,14 +132,16 @@ describe("DEFAULT_CARRIER_PERSONAS", () => {
 });
 
 describe("explicit default registration", () => {
+  const registry = createCarrierRegistry();
+
   beforeEach(() => {
-    clearRegisteredCarriers();
+    clearRegisteredCarriers(registry);
   });
 
-  it("registerDefaultCarriers()가 package-local framework에 기본 carrier를 등록", () => {
-    registerDefaultCarriers();
+  it("registerDefaultCarriers()가 전달된 registry에 기본 carrier를 등록", () => {
+    registerDefaultCarriers(registry);
     for (const id of EXPECTED_IDS) {
-      const config = getRegisteredCarrierConfig(id);
+      const config = getRegisteredCarrierConfig(registry, id);
       expect(config?.carrierMetadata?.title).toBe(
         DEFAULT_CARRIER_PERSONAS.find((persona) => persona.options.id === id)?.metadata.title,
       );

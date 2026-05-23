@@ -23,13 +23,11 @@
 
 ## Dependency Rules
 
-- The DI layer order is one-way: `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
-- This package sits below `fleet-admiral` and above `fleet-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
+- The DI layer order is one-way: `fleet-agent` -> `fleet-carriers` -> `fleet-infra`.
+- This package sits above `fleet-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
 - `createCarrierRuntime(deps)` is the public construction boundary for carrier runtime services. Do not require callers to assemble dispatch/jobs/store/events internals independently.
 - This package may import `@sbluemin/fleet-infra`, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-unified-agent`, and `typebox`.
-- This package MUST NOT import `@sbluemin/fleet-admiral` or `packages/fleet-admiral/src/**`.
-- This package MUST NOT import `fleet-agent`, `fleet-admiralty`, `fleet-admiral`, host UI/runtime packages, or host adapters.
-- `fleet-admiral` may depend on this package only through the public package root for compatibility facades.
+- This package MUST NOT import `fleet-agent`, host UI/runtime packages, or host adapters.
 - Personas may declare executor tool IDs and builtin external MCP server IDs as opaque strings without importing host/UI/wiki packages.
 
 ## Testing Doctrine

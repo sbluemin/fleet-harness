@@ -46,6 +46,7 @@ import {
   getRegisteredOrder,
   resolveCarrierCliType,
   resolveCarrierDisplayName,
+  type CarrierRegistry,
 } from "./framework.js";
 import { validateRequiredRequestBlocks } from "./request-blocks.js";
 import {
@@ -68,6 +69,7 @@ interface CarrierSingleResult {
 }
 
 interface CarrierBackgroundOptions {
+  registry: CarrierRegistry;
   jobId: string;
   carrierId: string;
   label: string;
@@ -97,7 +99,7 @@ const CARRIER_LOG_CATEGORY_ERROR = "fleet-carrier:error";
 /**
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합한 AgentToolSpec을 반환합니다.
  */
-export function buildCarrierDispatchToolSpec(): AgentToolSpec {
+export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentToolSpec {
   return {
     id: "carrier_dispatch",
     tag: "carrier_dispatch",
@@ -133,10 +135,10 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
         ` Always re-read a file before modifying it, as it may have changed since your last read.`,
     ],
     get parameters() {
-      const carrierIds = getRegisteredOrder();
+      const carrierIds = getRegisteredOrder(registry);
       const blockLines = carrierIds
         .map((carrierId) => {
-          const config = getRegisteredCarrierConfig(carrierId);
+          const config = getRegisteredCarrierConfig(registry, carrierId);
           const required = config?.carrierMetadata?.requestBlocks.filter((b) => b.required) ?? [];
           if (required.length === 0) return null;
           return `${carrierId}: ${required.map((b) => `<${b.tag}>`).join(", ")}`;
@@ -181,7 +183,7 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
         `execute start carrier=${carrierId}`,
       );
 
-      const config = getRegisteredCarrierConfig(carrierId);
+      const config = getRegisteredCarrierConfig(registry, carrierId);
       if (!config) {
         logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier not registered carrier=${carrierId}`);
         return launchResponseResult({
@@ -208,6 +210,7 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
 
       if (getConfiguredTaskForceBackends(carrierId).length >= 2) {
         return launchTaskForceJob({
+          registry,
           carrierId,
           request,
           label,
@@ -227,9 +230,10 @@ export function buildCarrierDispatchToolSpec(): AgentToolSpec {
       });
       if (!launch.accepted) return launch.response;
 
-      emitJobRegistered(jobId, carrierId, toolCallId, label, t0);
+      emitJobRegistered(registry, jobId, carrierId, toolCallId, label, t0);
 
       void runCarrierJobInBackground({
+        registry,
         jobId,
         carrierId,
         label,
@@ -270,7 +274,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
     const assignments = [{ carrier: opts.carrierId, request: opts.request }];
     const results = result
       ? [result]
-      : [{ carrierId: opts.carrierId, displayName: resolveCarrierDisplayName(opts.carrierId), status: "error" as CarrierJobStatus, responseText: finalError ?? "Unknown error", error: finalError }];
+      : [{ carrierId: opts.carrierId, displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId), status: "error" as CarrierJobStatus, responseText: finalError ?? "Unknown error", error: finalError }];
     const summary = buildSortieJobSummary(
       opts.jobId, opts.startedAt, finishedAt,
       assignments, results, finalStatus as StoredCarrierJobStatus, finalError, opts.toolName,
@@ -305,7 +309,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
 
 async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<CarrierSingleResult> {
   const execStartedAt = Date.now();
-  const carrierConfig = getRegisteredCarrierConfig(opts.carrierId);
+  const carrierConfig = getRegisteredCarrierConfig(opts.registry, opts.carrierId);
   const cliType = carrierConfig
     ? resolveCarrierCliType(opts.carrierId, carrierConfig.defaultCliType)
     : (opts.carrierId as CliType);
@@ -380,7 +384,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
     logDebug(CARRIER_LOG_CATEGORY_EXEC, `carrier=${opts.carrierId} success=${execResult.status === "done"} status=${execResult.status} elapsedMs=${Date.now() - execStartedAt}`);
     return {
       carrierId: opts.carrierId,
-      displayName: resolveCarrierDisplayName(opts.carrierId),
+      displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId),
       status: finalStatus,
       responseText: execResult.responseText || "(no output)",
       sessionId,
@@ -403,6 +407,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
 }
 
 function emitJobRegistered(
+  registry: CarrierRegistry,
   jobId: string,
   carrierId: string,
   sortieKey: string,
@@ -414,7 +419,7 @@ function emitJobRegistered(
     trackId: carrierId,
     streamKey: carrierId,
     displayCli: carrierId,
-    displayName: resolveCarrierDisplayName(carrierId),
+    displayName: resolveCarrierDisplayName(registry, carrierId),
     kind: "carrier",
     runId,
   }];

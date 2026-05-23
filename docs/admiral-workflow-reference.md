@@ -4,106 +4,51 @@ This document is the operational doctrine for Admiral and Carrier agents working
 
 ## 1. Architecture State
 
-- `packages/fleet-admiral` owns single-fleet **domain logic**.
-- `packages/fleet-admiralty` owns the **Grand Fleet domain**.
-- `packages/fleet-agent` owns **host domains** and CLI integration (Flat Domain Architecture).
-
-Physical domain layout:
-- `packages/fleet-admiral` is the foundation for single-fleet domain orchestration.
-- `packages/fleet-admiralty` composes multi-fleet coordination on top of `fleet-admiral`.
-- `packages/fleet-agent` is the active physical home for host integration, assembling the Fleet runtime by composing domain modules.
+- `packages/fleet-agent` owns the CLI host, Composition Root, absorbed single-fleet Admiral policy in `src/admiral/**`, and absorbed Grand Fleet policy in `src/grand-fleet/**`.
+- `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, store, and carrier runtime state.
+- `packages/fleet-infra` owns host-agnostic auth, settings, executor/session infrastructure, logs, and I/O gateways.
+- `packages/fleet-mcp-server` owns the generic MCP registry/server, token isolation, and tool snapshots.
 
 ## 2. Ownership Model
 
-### 2.1 `fleet-admiral`
-
-`fleet-admiral` owns:
-- Single-fleet domain orchestration
-- Prompt composition and doctrine assets
-- Admiral-owned carrier, carrier-jobs, taskforce, store, and SSOT streaming event layers
-- Agent execution (session pool, executor, MCP server, runtime)
-- Tool registry/snapshot domain and job domain logic
-- Pure runtime stores, ports, and adapter-facing contracts
-
-`fleet-admiral` must not own:
-- CLI host lifecycle registration
-- Command/Shortcut registration
-- TUI rendering
-- Grand Fleet formation/process management
-
-### 2.2 `fleet-admiralty`
-
-`fleet-admiralty` owns:
-- Grand Fleet prompt composition and status source logic
-- Grand Fleet IPC protocol contracts
-- Grand Fleet reporter output helpers, tool specs, and shared types
-
-### 2.3 `fleet-agent`
-
 `fleet-agent` owns:
-- CLI host lifecycle registration
-- Command, keybind, and tool registration
-- Provider registration/stream glue and session handling
-- Settings, log, HUD glue, and lifecycle management
-- TUI overlays, widgets, and editor/footer rendering
-- Compatibility adapters and push delivery seams
+- CLI lifecycle registration and dedicated CLI launch.
+- TUI rendering, overlays, widgets, and host input routing.
+- Admiral prompt/protocol/tool/MCP policy modules under `src/admiral/**`.
+- Grand Fleet IPC, prompt, reporting, status, and runtime access helpers under `src/grand-fleet/**`.
+- Concrete runtime assembly in `src/runtime/runtime.ts`.
 
-`fleet-agent` must not become a home for pure Fleet domain business logic.
+`fleet-agent` must not own carrier persona catalogs, host-agnostic infrastructure internals, or generic MCP transport internals.
 
-## 3. Domain Layout
-
-In the Flat Domain Architecture, host ownership is expressed through these domain-internal homes and entrypoints in `packages/fleet-agent`:
-
-- `src/boot.ts` — Entry point — assembles the Fleet runtime by composing domain modules
-- `src/fleet.ts` — Fleet lifecycle, runtime initialization, and host port implementation
-- `src/provider.ts` — Fleet-AI gateway and provider runtime registration
-- `src/admiralty/` — Multi-instance Grand Fleet orchestration
-- `src/wiki/` — Fleet knowledge base and ingest
-- `src/hud/`, `src/panel/`, `src/pty/` — Host shell integration and terminal features
-- `src/jobs.ts` — Detached carrier job management
-- `src/settings.ts` — Fleet-wide settings and configuration
-- `src/logs.ts` — Fleet activity logging
-
-## 4. Allowed Dependency Direction
-
-The intended dependency direction is:
+## 3. Allowed Dependency Direction
 
 ```text
-fleet-wiki
-  -> (leaf package; no workspace imports)
-
-fleet-admiral
+fleet-agent
   -> fleet-carriers
   -> fleet-infra
-
-fleet-admiralty
-  -> fleet-admiral public APIs
-
-fleet-agent domains
-  -> fleet-admiralty public APIs
-  -> fleet-admiral public APIs
-  -> fleet-wiki
-  -> Host TUI / CLI facilities
+  -> fleet-mcp-server
+  -> fleet-wiki / fleet-wiki-web
+  -> fleet-tui
 ```
 
 Forbidden patterns:
-- `fleet-admiral` or `fleet-admiralty` importing host-specific packages
-- `fleet-agent` deep-importing `fleet-admiral/src/**` or `fleet-admiralty/src/**`
-- New pure domain logic landing under `fleet-agent`
+- Lower packages importing `fleet-agent`.
+- Recreating deleted compatibility packages or namespace facades.
+- Deep-importing package `src/**` or `internal/**` across package boundaries.
 
-## 5. Operational Guidance For Agents
+## 4. Operational Guidance For Agents
 
-When editing or reviewing this repo:
-1. Ask first whether the behavior is pure Fleet domain logic or host integration.
-2. Put single-fleet pure logic in `fleet-admiral`; put multi-fleet coordination in `fleet-admiralty`.
-3. Put lifecycle/registration/rendering in the appropriate domain home in `fleet-agent`.
-4. Keep documentation and code organization aligned with the active `packages/fleet-agent/src/` layout.
+1. Ask whether the behavior belongs to host assembly, carrier runtime, generic infrastructure, or generic MCP transport.
+2. Put Admiral prompt/protocol/tool policy in `packages/fleet-agent/src/admiral/**`.
+3. Put Grand Fleet coordination helpers in `packages/fleet-agent/src/grand-fleet/**`.
+4. Put carrier persona/runtime behavior in `packages/fleet-carriers`.
+5. Keep runtime boot order explicit in `packages/fleet-agent/src/runtime/runtime.ts`.
 
-## 6. Compatibility Invariants
+## 5. Compatibility Invariants
 
 Preserve:
-- Slash command names
-- Carrier completion push semantics
-- Detached-job acceptance vs completion-push distinction
-- MCP/provider FIFO and archive behavior
-- **Multi-Instance State Integrity**: Shared `states.json` must remain race-free through `_generation` token guarding and `fs.watch` synchronization.
+- Slash command names.
+- Carrier completion push semantics.
+- Detached-job acceptance vs completion-push distinction.
+- MCP/provider FIFO and archive behavior.
+- Multi-instance state integrity for shared `states.json`.

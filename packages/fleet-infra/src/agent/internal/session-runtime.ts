@@ -114,8 +114,6 @@ const noopCarrierStore: CarrierSessionStore = {
   getAll() { return {}; },
 };
 
-const defaultSessionRuntime = createSessionRuntime();
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions
 // ═══════════════════════════════════════════════════════════════════════════
@@ -184,33 +182,7 @@ export function createSessionRuntime(): SessionRuntime {
   };
 }
 
-export function initRuntime(dir: string): void {
-  defaultSessionRuntime.initRuntime(dir);
-}
-
-export function bindCarrierSessionPersistence(sessionId: string, sessionPort?: SessionPersistencePort): void {
-  defaultSessionRuntime.bindCarrierSessionPersistence(sessionId, sessionPort);
-}
-
-export function getCarrierSessionStore(): CarrierSessionStore {
-  return defaultSessionRuntime.getCarrierSessionStore();
-}
-
-export function getSessionId(poolKey: string): string | undefined {
-  return defaultSessionRuntime.getSessionId(poolKey);
-}
-
-export function getDataDir(): string | null {
-  return defaultSessionRuntime.getDataDir();
-}
-
-export function captureSessionMappingCommitToken(): SessionMappingCommitToken | undefined {
-  return defaultSessionRuntime.captureSessionMappingCommitToken();
-}
-
-export function flushSessionMappings(token?: SessionMappingCommitToken): void {
-  defaultSessionRuntime.flushSessionMappings(token);
-}
+export const sessionRuntime = createSessionRuntime();
 
 export function classifyResumeFailure(error: unknown): ResumeFailureKind {
   const message = extractErrorMessage(error);

@@ -1,18 +1,28 @@
 import type { CoreSettingsAPI } from "./types.js";
 
-let settingsService: CoreSettingsAPI | null = null;
-
-export function initSettingsService(service: CoreSettingsAPI): void {
-  settingsService = service;
+export interface SettingsRuntime {
+  init(service: CoreSettingsAPI): void;
+  reset(expectedService?: CoreSettingsAPI): void;
+  get(): CoreSettingsAPI | null;
 }
 
-export function resetSettingsService(expectedService?: CoreSettingsAPI): void {
-  if (expectedService && settingsService !== expectedService) {
-    return;
-  }
-  settingsService = null;
+export function createSettingsRuntime(): SettingsRuntime {
+  let serviceRef: CoreSettingsAPI | null = null;
+
+  return {
+    init(service) {
+      serviceRef = service;
+    },
+    reset(expectedService) {
+      if (expectedService && serviceRef !== expectedService) {
+        return;
+      }
+      serviceRef = null;
+    },
+    get() {
+      return serviceRef;
+    },
+  };
 }
 
-export function getSettingsService(): CoreSettingsAPI | null {
-  return settingsService;
-}
+export const settingsRuntime = createSettingsRuntime();

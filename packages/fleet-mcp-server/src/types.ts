@@ -46,7 +46,7 @@ export interface PendingToolCallState {
 export interface McpSessionRoutingState {
   sessionKey: string;
   mcpSessionToken?: string;
-  pendingToolCalls: PendingToolCallState[];
+  pendingToolQueue: PendingToolCallState[];
   pendingToolCallNotifier?: (() => void) | null;
 }
 

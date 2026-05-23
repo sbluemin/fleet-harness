@@ -62,8 +62,6 @@ export function createCarrierRegistry(): CarrierRegistry {
   return new CarrierRegistry();
 }
 
-export const defaultRegistry = createCarrierRegistry();
-
 /**
  * 커스텀 Carrier를 등록합니다.
  *
@@ -72,6 +70,7 @@ export const defaultRegistry = createCarrierRegistry();
  *  - 메시지 렌더러 등록
  */
 export function registerCarrier(
+  registry: CarrierRegistry,
   config: CarrierConfig,
 ): void {
   // carrier ID 형식 및 예약어 검증 (상태 변경 전 fail-fast)
@@ -86,7 +85,7 @@ export function registerCarrier(
     );
   }
 
-  const gs = getState();
+  const gs = registry.getState();
   const existingState = gs.modes.get(config.id);
   const resolvedCliType = resolveCarrierCliTypeFromStore(config.id, config.defaultCliType);
 
@@ -130,16 +129,16 @@ export function registerCarrier(
 /**
  * 상태바 갱신 콜백을 등록합니다.
  */
-export function onStatusUpdate(callback: () => void): void {
-  const gs = getState();
+export function onStatusUpdate(registry: CarrierRegistry, callback: () => void): void {
+  const gs = registry.getState();
   gs.statusUpdateCallbacks.push(callback);
 }
 
 /**
  * 등록된 모든 상태바 갱신 콜백을 호출합니다.
  */
-export function notifyStatusUpdate(): void {
-  const gs = getState();
+export function notifyStatusUpdate(registry: CarrierRegistry): void {
+  const gs = registry.getState();
   for (const cb of gs.statusUpdateCallbacks) {
     try { cb(); } catch { /* 무시 */ }
   }
@@ -148,8 +147,8 @@ export function notifyStatusUpdate(): void {
 /**
  * slot 순으로 정렬된 carrierId 배열을 반환합니다.
  */
-export function getRegisteredOrder(): string[] {
-  return [...getState().registeredOrder];
+export function getRegisteredOrder(registry: CarrierRegistry): string[] {
+  return [...registry.getState().registeredOrder];
 }
 
 // ─── Task Force 설정 변경 관리 ──────────────────────────
@@ -157,13 +156,13 @@ export function getRegisteredOrder(): string[] {
 /**
  * Task Force 설정이 완료된 carrier ID 목록을 반환합니다.
  */
-export function getTaskForceConfiguredIds(): string[] {
-  return [...getState().taskforceConfiguredCarriers];
+export function getTaskForceConfiguredIds(registry: CarrierRegistry): string[] {
+  return [...registry.getState().taskforceConfiguredCarriers];
 }
 
 /** Task Force 설정 carrier ID 목록을 registeredOrder 순서로 반환합니다. */
-export function getActiveTaskForceIds(): string[] {
-  const gs = getState();
+export function getActiveTaskForceIds(registry: CarrierRegistry): string[] {
+  const gs = registry.getState();
   return gs.registeredOrder.filter(
     (id) => gs.taskforceConfiguredCarriers.has(id),
   );
@@ -172,8 +171,8 @@ export function getActiveTaskForceIds(): string[] {
 /**
  * Task Force 설정 완료 carrier ID 목록을 일괄 설정합니다.
  */
-export function setTaskForceConfiguredCarriers(ids: string[]): void {
-  const gs = getState();
+export function setTaskForceConfiguredCarriers(registry: CarrierRegistry, ids: string[]): void {
+  const gs = registry.getState();
   gs.taskforceConfiguredCarriers = new Set(ids);
 }
 
@@ -181,20 +180,20 @@ export function setTaskForceConfiguredCarriers(ids: string[]): void {
  * 지정 carrier의 cliType을 동적으로 변경합니다.
  * 색상·배경색을 새 cliType에 맞게 갱신하고 정렬 + 상태바를 업데이트합니다.
  */
-export function updateCarrierCliType(carrierId: string, newType: CliType): void {
-  const gs = getState();
+export function updateCarrierCliType(registry: CarrierRegistry, carrierId: string, newType: CliType): void {
+  const gs = registry.getState();
   const state = gs.modes.get(carrierId);
   if (!state) return;
   const config = state.config;
   config.color = CARRIER_COLORS[newType] ?? "";
   config.bgColor = CARRIER_BG_COLORS[newType];
-  reorderRegisteredByCliType();
-  notifyStatusUpdate();
+  reorderRegisteredByCliType(registry);
+  notifyStatusUpdate(registry);
 }
 
 /** registeredOrder를 SSoT 기반 CliType 우선순위로 재정렬합니다. */
-export function reorderRegisteredByCliType(): void {
-  const gs = getState();
+export function reorderRegisteredByCliType(registry: CarrierRegistry): void {
+  const gs = registry.getState();
   gs.registeredOrder.sort((a, b) => {
     const configA = gs.modes.get(a)?.config;
     const configB = gs.modes.get(b)?.config;
@@ -211,9 +210,11 @@ export function reorderRegisteredByCliType(): void {
 /**
  * carrierId에 해당하는 CarrierConfig를 반환합니다.
  */
-export function getRegisteredCarrierConfig(carrierId: string): CarrierConfig | undefined {
-  return getState().modes.get(carrierId)?.config;
+export function getRegisteredCarrierConfig(registry: CarrierRegistry, carrierId: string): CarrierConfig | undefined {
+  return registry.getState().modes.get(carrierId)?.config;
 }
+
+export const getCarrierConfig = getRegisteredCarrierConfig;
 
 export function resolveCarrierCliType(carrierId: string, defaultCliType: CliType): CliType {
   return resolveCarrierCliTypeFromStore(carrierId, defaultCliType);
@@ -223,8 +224,8 @@ export function resolveCarrierCliType(carrierId: string, defaultCliType: CliType
  * 등록된 전체 carrierId를 순회하여 cliType Set으로 수집하고,
  * 중복 제거 후 배열로 반환합니다.
  */
-export function getAllCliTypes(): CliType[] {
-  const gs = getState();
+export function getAllCliTypes(registry: CarrierRegistry): CliType[] {
+  const gs = registry.getState();
   const types = new Set<string>();
   for (const id of gs.registeredOrder) {
     const config = gs.modes.get(id)?.config;
@@ -235,44 +236,44 @@ export function getAllCliTypes(): CliType[] {
 }
 
 /** carrierId 기준으로 전경(프레임) 색상을 반환합니다. */
-export function resolveCarrierColor(carrierId: string): string {
-  const config = getRegisteredCarrierConfig(carrierId);
+export function resolveCarrierColor(registry: CarrierRegistry, carrierId: string): string {
+  const config = getRegisteredCarrierConfig(registry, carrierId);
   const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CARRIER_COLORS[cliType] ?? "";
 }
 
 /** carrierId 기준으로 배경색을 반환합니다. */
-export function resolveCarrierBgColor(carrierId: string): string {
-  const config = getRegisteredCarrierConfig(carrierId);
+export function resolveCarrierBgColor(registry: CarrierRegistry, carrierId: string): string {
+  const config = getRegisteredCarrierConfig(registry, carrierId);
   const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CARRIER_BG_COLORS[cliType] ?? "";
 }
 
 /** carrierId 기준으로 파도 그라데이션용 RGB를 반환합니다. */
-export function resolveCarrierRgb(carrierId: string): [number, number, number] {
-  const config = getRegisteredCarrierConfig(carrierId);
+export function resolveCarrierRgb(registry: CarrierRegistry, carrierId: string): [number, number, number] {
+  const config = getRegisteredCarrierConfig(registry, carrierId);
   const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CARRIER_RGBS[cliType] ?? DEFAULT_CARRIER_RGB;
 }
 
 /** carrierId 기준으로 carrier 표시 이름을 반환합니다. */
-export function resolveCarrierDisplayName(carrierId: string): string {
+export function resolveCarrierDisplayName(registry: CarrierRegistry, carrierId: string): string {
   const persistedDisplayName = loadCarrierDisplayNames()[carrierId];
   if (persistedDisplayName) return persistedDisplayName;
-  return getCarrierSourceDisplayName(carrierId);
+  return getCarrierSourceDisplayName(registry, carrierId);
 }
 
 /** carrierId 기준으로 persisted override를 제외한 source-default 표시 이름을 반환합니다. */
-export function getCarrierSourceDisplayName(carrierId: string): string {
-  const carrierConfig = getRegisteredCarrierConfig(carrierId);
+export function getCarrierSourceDisplayName(registry: CarrierRegistry, carrierId: string): string {
+  const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
   return carrierConfig?.displayName
     ?? CLI_DISPLAY_NAMES[carrierId]
     ?? carrierId;
 }
 
 /** carrierId 기준으로 실제 CLI 표시 이름을 반환합니다. */
-export function resolveCarrierCliDisplayName(carrierId: string): string {
-  const config = getRegisteredCarrierConfig(carrierId);
+export function resolveCarrierCliDisplayName(registry: CarrierRegistry, carrierId: string): string {
+  const config = getRegisteredCarrierConfig(registry, carrierId);
   const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CLI_DISPLAY_NAMES[cliType] ?? cliType;
 }
@@ -282,15 +283,10 @@ export function resolveCarrierCliDisplayName(carrierId: string): string {
 /**
  * 등록된 모든 캐리어 상태를 초기화합니다 (테스트용).
  */
-export function clearRegisteredCarriers(): void {
-  defaultRegistry.clear();
+export function clearRegisteredCarriers(registry: CarrierRegistry): void {
+  registry.clear();
 }
 
-export function resetCarrierRegistryForTests(): void {
-  clearRegisteredCarriers();
-}
-
-/** module singleton 기반 공유 상태를 반환합니다. */
-function getState(): CarrierFrameworkState {
-  return defaultRegistry.getState();
+export function resetCarrierRegistryForTests(registry: CarrierRegistry): void {
+  clearRegisteredCarriers(registry);
 }

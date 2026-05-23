@@ -1,8 +1,6 @@
 # Protocols Doctrine
 
-> **Transitional Migration Notice**: `fleet-admiral` is preparing to split into `fleet-admiral` (single-fleet orchestration) and `fleet-admiralty` (multi-fleet coordination). `admiral/protocols/` remains the transitional prompt-policy home for the single-fleet side that will move toward `fleet-admiral`. Existing prompt and protocol rules remain binding. Any new injectable composition must use explicit `create*(deps): Interface` pure factories and must not introduce DI containers or frameworks.
-
-`packages/fleet-admiral/src/admiral/protocols/` owns the modular prompt policy system that governs how the host agent (PI) operates, composed of **Standing Orders** and **Protocols**.
+`packages/fleet-agent/src/admiral/protocols/` owns the modular prompt policy system that governs how the host agent operates, composed of **Standing Orders** and **Protocols**. Any new injectable composition must use explicit `create*(deps): Interface` pure factories and must not introduce DI containers or frameworks.
 
 ## Operational Protocols & Standing Orders
 

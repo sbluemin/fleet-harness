@@ -1,4 +1,4 @@
-import { admiral } from "@sbluemin/fleet-admiral";
+import { carrierJobs } from "@sbluemin/fleet-carriers";
 
 import { getProgrammaticInput } from "../dedicated-cli/bridge.js";
 import {
@@ -27,7 +27,7 @@ export function subscribeJobBar(options: JobBarRegistrationOptions): () => void 
     },
   });
 
-  const unsubscribe = admiral.carrierJobs.streaming.register(handleCarrierJobStreamEvent);
+  const unsubscribe = carrierJobs.streaming.register(handleCarrierJobStreamEvent);
 
   return () => {
     unsubscribe();

@@ -75,8 +75,6 @@ const CURSOR_COMPONENT_NAMES = [
   'cursor.com',
 ];
 
-const STORE_KEY = '__pi_unified_agent_status_store__';
-
 const PROVIDER_FETCHERS: Record<CliType, FetcherFn> = {
   claude: () => fetchClaudeStatus('claude'),
   'claude-zai': () => fetchClaudeStatus('claude-zai'),
@@ -100,6 +98,7 @@ const PROVIDER_CONFIGS: ProviderFetchConfig[] = PROVIDER_ORDER.map((key) => ({
 }));
 
 let currentStatusCtx: ServiceStatusContextPort | null = null;
+let statusStore: StatusStore | null = null;
 let statusContextGeneration = 0;
 
 /**
@@ -163,9 +162,8 @@ export function refreshStatusQuiet(): void {
 }
 
 function getStore(): StatusStore {
-  let store = (globalThis as unknown as Record<string, StatusStore | undefined>)[STORE_KEY];
-  if (!store) {
-    store = {
+  if (!statusStore) {
+    statusStore = {
       callbacks: null,
       timer: null,
       inFlight: null,
@@ -174,14 +172,13 @@ function getStore(): StatusStore {
       snapshots: [],
       providerLastChecked: createProviderLastChecked(),
     };
-    (globalThis as unknown as Record<string, StatusStore | undefined>)[STORE_KEY] = store;
   }
 
-  if (!store.providerLastChecked) {
-    store.providerLastChecked = createProviderLastChecked();
+  if (!statusStore.providerLastChecked) {
+    statusStore.providerLastChecked = createProviderLastChecked();
   }
 
-  return store;
+  return statusStore;
 }
 
 function syncPanelStatus(): void {

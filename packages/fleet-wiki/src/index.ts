@@ -1,6 +1,4 @@
-import "./agent-specs.js";
-
-export { FLEET_WIKI_AGENT_TOOL_IDS } from "./agent-specs.js";
+export { FLEET_WIKI_AGENT_TOOL_IDS, getWikiToolSpecs } from "./agent-specs.js";
 
 export * from "./boundaries.js";
 export * from "./briefing.js";

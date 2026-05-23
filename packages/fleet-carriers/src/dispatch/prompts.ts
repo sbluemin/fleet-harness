@@ -5,7 +5,7 @@
  * buildCarrierSystemPrompt() — 캐리어 세션 systemPrompt 본문 주입
  */
 
-import { getRegisteredCarrierConfig } from "./framework.js";
+import { getRegisteredCarrierConfig, type CarrierRegistry } from "./framework.js";
 import type { CarrierMetadata, RequestBlock } from "./types.js";
 
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
@@ -67,6 +67,7 @@ export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
 // ═════════════════════════════════════════════════════════
 
 export function buildCarrierRoster(
+  registry: CarrierRegistry,
   carrierIds: string[],
   options?: CarrierRosterOptions,
 ): string {
@@ -79,7 +80,7 @@ export function buildCarrierRoster(
   }
 
   for (const carrierId of carrierIds) {
-    const config = getRegisteredCarrierConfig(carrierId);
+    const config = getRegisteredCarrierConfig(registry, carrierId);
     if (!config) continue;
 
     const meta = config.carrierMetadata;

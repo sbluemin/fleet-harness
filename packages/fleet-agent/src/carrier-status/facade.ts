@@ -1,34 +1,46 @@
-import "@sbluemin/fleet-carriers";
+import {
+  CLI_DISPLAY_NAMES as CORE_CLI_DISPLAY_NAMES,
+  TASKFORCE_CLI_TYPES as CORE_TASKFORCE_CLI_TYPES,
+  getConfiguredTaskForceBackendsFromSnapshot as getCoreConfiguredTaskForceBackendsFromSnapshot,
+  readStatesSnapshot as readCoreStatesSnapshot,
+  type FleetStoreSnapshot,
+  type TaskForceCliType,
+} from "@sbluemin/fleet-carriers";
 
-import { admiral, TASKFORCE_CLI_TYPES as CORE_TASKFORCE_CLI_TYPES } from "@sbluemin/fleet-admiral";
-import type { FleetStoreSnapshot, TaskForceCliType } from "@sbluemin/fleet-admiral";
+import {
+  PANEL_DIM_COLOR as CORE_PANEL_DIM_COLOR,
+  SPINNER_FRAMES as CORE_SPINNER_FRAMES,
+  SYM_INDICATOR as CORE_SYM_INDICATOR,
+  SYM_THINKING as CORE_SYM_THINKING,
+  TASKFORCE_BADGE_COLOR as CORE_TASKFORCE_BADGE_COLOR,
+} from "../admiral/constants.js";
 
 export type { FleetStoreSnapshot };
 
 export const ANSI_RESET = "\x1b[0m";
 
 export function SPINNER_FRAMES(): readonly string[] {
-  return admiral.constants.SPINNER_FRAMES;
+  return CORE_SPINNER_FRAMES;
 }
 
 export function PANEL_DIM_COLOR(): string {
-  return admiral.constants.PANEL_DIM_COLOR;
+  return CORE_PANEL_DIM_COLOR;
 }
 
 export function TASKFORCE_BADGE_COLOR(): string {
-  return admiral.constants.TASKFORCE_BADGE_COLOR;
+  return CORE_TASKFORCE_BADGE_COLOR;
 }
 
 export function SYM_INDICATOR(): string {
-  return admiral.constants.SYM_INDICATOR;
+  return CORE_SYM_INDICATOR;
 }
 
 export function SYM_THINKING(): string {
-  return admiral.constants.SYM_THINKING;
+  return CORE_SYM_THINKING;
 }
 
 export function CLI_DISPLAY_NAMES(): Record<string, string> {
-  return admiral.constants.CLI_DISPLAY_NAMES;
+  return CORE_CLI_DISPLAY_NAMES;
 }
 
 export function TASKFORCE_CLI_TYPES(): readonly TaskForceCliType[] {
@@ -36,12 +48,12 @@ export function TASKFORCE_CLI_TYPES(): readonly TaskForceCliType[] {
 }
 
 export function readStatesSnapshot(): FleetStoreSnapshot {
-  return admiral.store.readStatesSnapshot();
+  return readCoreStatesSnapshot();
 }
 
 export function getConfiguredTaskForceBackendsFromSnapshot(
   snapshot: FleetStoreSnapshot,
   carrierId: string,
 ): readonly TaskForceCliType[] {
-  return admiral.store.getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId);
+  return getCoreConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId);
 }

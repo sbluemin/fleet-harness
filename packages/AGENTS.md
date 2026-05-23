@@ -10,9 +10,9 @@ The Fleet codebase is built on **five core principles**. Every contribution and 
 
 The final Fleet graph is layered and enforced by build/grep gates:
 
-- `fleet-admiral` and `fleet-admiralty` own Fleet orchestration policy and must not import host packages.
-- `fleet-agent` assembles `fleet-infra`, `fleet-carriers`, `fleet-admiral`, and `fleet-admiralty` through explicit factory calls.
-- `fleet-agent` consumes `fleet-admiral`, `fleet-admiralty`, `fleet-carriers`, and `fleet-infra` through public package surfaces only.
+- `fleet-agent` owns host assembly plus absorbed `src/admiral/**` single-fleet policy and `src/grand-fleet/**` Grand Fleet policy.
+- `fleet-agent` assembles `fleet-infra`, `fleet-carriers`, and `fleet-mcp-server` through direct leaf service calls.
+- `fleet-agent` consumes `fleet-carriers`, `fleet-infra`, and `fleet-mcp-server` through public package surfaces only.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-agent` side.
 - Mixed modules must keep host adapters in `fleet-agent` and domain policy in the owning Fleet package.
 
@@ -22,7 +22,7 @@ The Admiral agent domain exposes the closed-loop callback executor surface only:
 
 | Pattern | Surface | Lifetime | Use Case |
 |---------|---------|----------|----------|
-| **Closed-loop callback** | `admiral.executor.{executeWithPool, executeOneShot}` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument and automatically promotes to multi-backend Task Force execution when the target carrier has Task Force configured) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (sole carrier delegation surface) |
+| **Closed-loop callback** | `@sbluemin/fleet-infra/agent` `executeWithPool` / `executeOneShot` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument and automatically promotes to multi-backend Task Force execution when the target carrier has Task Force configured) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (sole carrier delegation surface) |
 
 Host streaming is not part of the Fleet orchestration public agent surface. Carrier execution is routed through the executor callback path only.
 
@@ -36,14 +36,14 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Track status enum | `packages/fleet-infra/src/agent/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | One HTTP server, per-session Bearer tokens, FIFO routing isolated by token. |
 | CLI provider catalog | `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
-| Fleet tool catalog | `admiral.agent.tools.list()` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
-| Executor MCP tool exposure | `admiral/agent/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
-| Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; fleet-admiral registers the two-method `ExecutorPort` at boot. |
+| Fleet tool catalog | `packages/fleet-agent/src/admiral/tools.ts` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
+| Executor MCP tool exposure | `packages/fleet-agent/src/admiral/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
+| Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-agent` registers the two-method `ExecutorPort` at boot. |
 | Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, detached job infrastructure, carrier jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline
 
-Consumers use public package root barrels: `@sbluemin/fleet-admiral` for orchestration/agent APIs, `@sbluemin/fleet-admiralty` for multi-fleet coordination, `@sbluemin/fleet-carriers` for carrier runtime, and `@sbluemin/fleet-infra` for infrastructure. The implementation is re-exported from `@sbluemin/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
+Consumers use public package root barrels: `@sbluemin/fleet-carriers` for carrier runtime, `@sbluemin/fleet-infra` for infrastructure, and `@sbluemin/fleet-mcp-server` for generic MCP registry/server APIs. `fleet-agent` imports its absorbed policy modules through package-local `.js` relative imports. The implementation is re-exported from `@sbluemin/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
 
 ### 5. DI Factory Discipline
 
@@ -56,14 +56,14 @@ createThing(deps): ThingInterface
 - Use the `create*(deps): Interface` pattern for new injectable domains and services.
 - Keep factories pure: dependencies enter through `deps`, and the factory returns the declared interface without hidden host lookups or global registries.
 - Do not introduce DI containers or DI frameworks, including Inversify, tsyringe, or equivalent service-locator frameworks.
-- Preserve this pattern across `fleet-admiral` (single-fleet orchestration) and `fleet-admiralty` (multi-fleet coordination).
+- Preserve this pattern for injectable services without recreating deleted compatibility packages.
 
 ### Forbidden Patterns
 
 - `globalThis.<anything>` or module-level mutable singletons for shared runtime state — use explicit service instances returned by `create*(deps)` factories instead.
 - Push-style "ports" passed into tool execution. Tools depend on explicit Fleet service APIs directly.
 - `on*` callback parameters threaded through Fleet public APIs, except executor callback options owned by `executeWithPool` / `executeOneShot`.
-- Builder functions injected by hosts. Prompt assembly is `fleet-admiral` responsibility; host adapters pass raw `userRequest` + optional `history`.
+- Builder functions injected by hosts. Prompt assembly is `fleet-agent/src/admiral` responsibility; host adapters pass raw `userRequest` + optional `history`.
 - `fleet-carriers` importing upper-layer packages; dependencies flow one way from `fleet-agent` down to `fleet-infra`.
 - DI containers, decorator-based injection, and service-locator frameworks are forbidden; use explicit `create*(deps): Interface` factories instead.
 

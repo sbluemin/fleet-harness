@@ -1,28 +1,44 @@
+import type { McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
+
 import type { AgentToolSpec } from "./types.js";
 
 export interface ExecutorPort {
   getCarrierExternalMcpServerIds(carrierId?: string): readonly string[];
   getExecutorMcpTools(carrierId?: string): readonly AgentToolSpec[];
+  getExecutorMcpRouterRuntime(): McpRouterRuntime;
 }
 
-let executorPort: ExecutorPort | undefined;
-
-export function registerExecutorPort(port: ExecutorPort): void {
-  executorPort = port;
+export interface ExecutorPortRuntime extends ExecutorPort {
+  register(port: ExecutorPort): void;
+  getPort(): ExecutorPort;
 }
 
-export function getExecutorPort(): ExecutorPort {
-  if (!executorPort) {
-    throw new Error("Fleet agent executor port is not registered. Boot the fleet-agent Composition Root before executor use.");
+export function createExecutorPortRuntime(): ExecutorPortRuntime {
+  let portRef: ExecutorPort | undefined;
+
+  function getPort(): ExecutorPort {
+    if (!portRef) {
+      throw new Error("Fleet agent executor port is not registered. Boot the fleet-agent Composition Root before executor use.");
+    }
+
+    return portRef;
   }
 
-  return executorPort;
+  return {
+    register(port) {
+      portRef = port;
+    },
+    getPort,
+    getCarrierExternalMcpServerIds(carrierId) {
+      return getPort().getCarrierExternalMcpServerIds(carrierId);
+    },
+    getExecutorMcpTools(carrierId) {
+      return getPort().getExecutorMcpTools(carrierId);
+    },
+    getExecutorMcpRouterRuntime() {
+      return getPort().getExecutorMcpRouterRuntime();
+    },
+  };
 }
 
-export function getCarrierExternalMcpServerIds(carrierId?: string): readonly string[] {
-  return getExecutorPort().getCarrierExternalMcpServerIds(carrierId);
-}
-
-export function getExecutorMcpTools(carrierId?: string): readonly AgentToolSpec[] {
-  return getExecutorPort().getExecutorMcpTools(carrierId);
-}
+export const executorPortRuntime = createExecutorPortRuntime();

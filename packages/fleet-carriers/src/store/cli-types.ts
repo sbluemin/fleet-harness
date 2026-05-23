@@ -1,5 +1,5 @@
 import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
-import { disconnect, flushSessionMappings, getCarrierSessionStore } from "@sbluemin/fleet-infra/agent";
+import { disconnect, sessionRuntime } from "@sbluemin/fleet-infra/agent";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 import type {
   ModelSelection,
@@ -93,8 +93,8 @@ export async function applyCliTypeModelSelectionUpdate(
       delete states.cliTypeOverrides;
     }
   });
-  getCarrierSessionStore().clear(carrierId);
-  flushSessionMappings();
+  sessionRuntime.getCarrierSessionStore().clear(carrierId);
+  sessionRuntime.flushSessionMappings();
   await disconnect(carrierId);
 }
 

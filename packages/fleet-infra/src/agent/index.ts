@@ -4,7 +4,7 @@ export type {
   McpCallToolResult,
   TrackStatus,
 } from "./types.js";
-export type { ExecutorPort } from "./executor-port.js";
+export type { ExecutorPort, ExecutorPortRuntime } from "./executor-port.js";
 export type { ExecuteOptions, ExecResult } from "./executor.js";
 export type { SessionPersistencePort, SessionRuntime } from "./internal/session-runtime.js";
 export type {
@@ -14,10 +14,8 @@ export type {
   CliCapability,
 } from "./models.js";
 export {
-  getCarrierExternalMcpServerIds,
-  getExecutorMcpTools,
-  getExecutorPort,
-  registerExecutorPort,
+  createExecutorPortRuntime,
+  executorPortRuntime,
 } from "./executor-port.js";
 export {
   parseModelId,
@@ -49,14 +47,8 @@ export {
   executeOneShot,
 } from "./executor.js";
 export {
-  initRuntime,
   createSessionRuntime,
-  bindCarrierSessionPersistence,
-  getCarrierSessionStore,
-  getSessionId,
-  getDataDir,
-  captureSessionMappingCommitToken,
-  flushSessionMappings,
+  sessionRuntime,
   classifyResumeFailure,
   isDeadSessionError,
   CARRIER_SESSION_CUSTOM_TYPE,

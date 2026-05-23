@@ -1,18 +1,23 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createCarrierRuntime } from "@sbluemin/fleet-carriers";
+
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
 import { renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
 import { bindJobBarStateRuntime, getPanelJobs, resetJobBarStateForTest } from "../src/carrier-status/job-bar-state.js";
+import { configureCarrierRuntime } from "../src/runtime/instances.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/carrier-status/job-bar-view-model.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 afterEach(() => {
   resetJobBarStateForTest();
+  configureCarrierRuntime(null);
 });
 
 describe("job bar renderer", () => {
   it("groups same-carrier dispatches under one carrier header with independent previews", () => {
+    configureTestCarrierRuntime();
     const runs = new Map<string, PanelRunViewModelSource>([
       ["run:first", { runId: "run:first", status: "stream", blocks: [{ type: "text", text: "alpha preview" }] }],
       ["run:second", { runId: "run:second", status: "stream", blocks: [{ type: "text", text: "beta preview" }] }],
@@ -46,6 +51,7 @@ describe("job bar renderer", () => {
   });
 
   it("keeps the carrier strip visible and hides the detail section when there are no active jobs", () => {
+    configureTestCarrierRuntime();
     bindJobBarStateRuntime({});
 
     const sections = createJobBarSections();
@@ -54,6 +60,7 @@ describe("job bar renderer", () => {
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {
+    configureTestCarrierRuntime();
     bindJobBarStateRuntime({});
     getPanelJobs().set("carrier:first", buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000));
 
@@ -62,6 +69,12 @@ describe("job bar renderer", () => {
     expect(sections.map(desiredHeight)).toEqual([1, 2]);
   });
 });
+
+function configureTestCarrierRuntime(): void {
+  const runtime = createCarrierRuntime();
+  runtime.registerCarrierDefaults();
+  configureCarrierRuntime(runtime);
+}
 
 function desiredHeight(section: ReturnType<typeof createJobBarSections>[number]): number | undefined {
   return section.component.desiredHeight?.(20);

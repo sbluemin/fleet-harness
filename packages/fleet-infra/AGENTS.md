@@ -38,7 +38,7 @@ Do not add individual deep source-file exports without an explicit public API de
 - This package must stay host-agnostic.
 - It may depend on `@sbluemin/fleet-unified-agent` for shared CLI type definitions.
 - It may depend on `@sbluemin/fleet-mcp-server` for generic MCP registry/server types and executor MCP routing.
-- It must not import `@sbluemin/fleet-admiral`, `@sbluemin/fleet-agent`, `fleet-admiralty`, `fleet-admiral`, `fleet-carriers`, host UI/runtime packages, or engine packages.
+- It must not import `@sbluemin/fleet-agent`, `fleet-carriers`, host UI/runtime packages, or engine packages.
 - Relative imports inside `src/` must stay within `packages/fleet-infra/src/**`.
 - `ExecutorPort` has exactly two methods: `getCarrierExternalMcpServerIds` and `getExecutorMcpTools`; lookup before fleet-agent Composition Root registration must hard throw.
 

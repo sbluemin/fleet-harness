@@ -3,20 +3,18 @@ import http from "node:http";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  clearAllTools,
-  getToolsForSession,
-  hasPendingToolCall,
-  registerToolsForSession,
-  removeToolsForSession,
-  resolveNextToolCall,
-  setOnToolCallArrived,
-  startMcpServer,
-  stopMcpServer,
+  createMcpServer,
+  createMcpToolRegistry,
+  createMcpToolSnapshotStore,
 } from "../src/index.js";
+
+const registry = createMcpToolRegistry();
+const snapshotStore = createMcpToolSnapshotStore();
+const server = createMcpServer({ registry, toolSnapshotStore: snapshotStore });
 
 describe("provider-mcp", () => {
   beforeEach(() => {
-    clearAllTools();
+    snapshotStore.clearAllTools();
   });
 
   afterEach(() => {
@@ -24,14 +22,14 @@ describe("provider-mcp", () => {
   });
 
   afterAll(async () => {
-    await stopMcpServer();
+    await server.stop();
   });
 
   it("router가 정리된 세션의 늦은 tools/call을 즉시 거부한다", async () => {
     const token = "test-token-router-detached";
-    const url = await startMcpServer();
+    const url = await server.start();
 
-    registerToolsForSession(token, [
+    snapshotStore.registerToolsForSession(token, [
       {
         name: "custom-tool",
         description: "custom",
@@ -59,23 +57,23 @@ describe("provider-mcp", () => {
     expect(body.error.code).toBe(-32000);
     expect(String(body.error.message)).toContain("router");
 
-    removeToolsForSession(token);
-    setOnToolCallArrived(token, null);
+    snapshotStore.removeToolsForSession(token);
+    server.setOnToolCallArrived(token, null);
   });
 
   it("tools/call은 결과 전에도 헤더를 즉시 반환한다", async () => {
     const token = "test-token-immediate-header";
     const callback = vi.fn(() => "call-1");
-    const url = await startMcpServer();
+    const url = await server.start();
 
-    registerToolsForSession(token, [
+    snapshotStore.registerToolsForSession(token, [
       {
         name: "custom-tool",
         description: "custom",
         parameters: { type: "object", properties: {} },
       },
     ]);
-    setOnToolCallArrived(token, callback);
+    server.setOnToolCallArrived(token, callback);
 
     const response = await Promise.race([
       fetch(url, {
@@ -99,7 +97,7 @@ describe("provider-mcp", () => {
     expect(response.status).toBe(200);
     expect(callback).toHaveBeenCalledTimes(1);
 
-    resolveNextToolCall(token, "call-1", {
+    server.resolveNextToolCall(token, "call-1", {
       content: [{ type: "text", text: "ok" }],
       isError: false,
     });
@@ -110,23 +108,23 @@ describe("provider-mcp", () => {
       isError: false,
     });
 
-    removeToolsForSession(token);
-    setOnToolCallArrived(token, null);
+    snapshotStore.removeToolsForSession(token);
+    server.setOnToolCallArrived(token, null);
   });
 
   it("client disconnect 시 held tools/call pending entry를 정리한다", async () => {
     const token = "test-token-close-cleanup";
     const callback = vi.fn(() => "call-close");
-    const url = await startMcpServer();
+    const url = await server.start();
 
-    registerToolsForSession(token, [
+    snapshotStore.registerToolsForSession(token, [
       {
         name: "custom-tool",
         description: "custom",
         parameters: { type: "object", properties: {} },
       },
     ]);
-    setOnToolCallArrived(token, callback);
+    server.setOnToolCallArrived(token, callback);
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -153,29 +151,29 @@ describe("provider-mcp", () => {
       }));
     });
     expect(callback).toHaveBeenCalledTimes(1);
-    expect(hasPendingToolCall(token)).toBe(true);
+    expect(server.hasPendingToolCall(token)).toBe(true);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(hasPendingToolCall(token)).toBe(false);
+    expect(server.hasPendingToolCall(token)).toBe(false);
 
-    removeToolsForSession(token);
-    setOnToolCallArrived(token, null);
+    snapshotStore.removeToolsForSession(token);
+    server.setOnToolCallArrived(token, null);
   });
 
   it("배치 요청에 tools/call이 섞여 있어도 헤더를 즉시 반환한다", async () => {
     const token = "test-token-batch-header";
     const callback = vi.fn(() => "call-2");
-    const url = await startMcpServer();
+    const url = await server.start();
 
-    registerToolsForSession(token, [
+    snapshotStore.registerToolsForSession(token, [
       {
         name: "custom-tool",
         description: "custom",
         parameters: { type: "object", properties: {} },
       },
     ]);
-    setOnToolCallArrived(token, callback);
+    server.setOnToolCallArrived(token, callback);
 
     const response = await Promise.race([
       fetch(url, {
@@ -202,7 +200,7 @@ describe("provider-mcp", () => {
     expect(response.status).toBe(200);
     expect(callback).toHaveBeenCalledTimes(1);
 
-    resolveNextToolCall(token, "call-2", {
+    server.resolveNextToolCall(token, "call-2", {
       content: [{ type: "text", text: "batch-ok" }],
       isError: false,
     });
@@ -220,25 +218,25 @@ describe("provider-mcp", () => {
       }),
     ]));
 
-    removeToolsForSession(token);
-    setOnToolCallArrived(token, null);
+    snapshotStore.removeToolsForSession(token);
+    server.setOnToolCallArrived(token, null);
   });
 
   it("pre-queued result와 token auth, stop/restart를 보존한다", async () => {
-    const firstUrl = await startMcpServer();
+    const firstUrl = await server.start();
     const token = "test-token-prequeue";
     const callback = vi.fn(() => "call-pre");
 
-    registerToolsForSession(token, [
+    snapshotStore.registerToolsForSession(token, [
       {
         name: "custom-tool",
         description: "custom",
         parameters: { type: "object", properties: {} },
       },
     ]);
-    setOnToolCallArrived(token, callback);
+    server.setOnToolCallArrived(token, callback);
 
-    resolveNextToolCall(token, "call-pre", {
+    server.resolveNextToolCall(token, "call-pre", {
       content: [{ type: "text", text: "pre-ok" }],
       isError: false,
     });
@@ -266,13 +264,13 @@ describe("provider-mcp", () => {
     const body = await response.json();
     expect(body.result.content[0].text).toBe("pre-ok");
 
-    await stopMcpServer();
-    const secondUrl = await startMcpServer();
+    await server.stop();
+    const secondUrl = await server.start();
     expect(secondUrl).not.toBe(firstUrl);
   });
 
   it("body size cap 초과 요청은 413으로 거부한다", async () => {
-    const url = await startMcpServer();
+    const url = await server.start();
     const token = "test-token-body-cap";
     const response = await fetch(url, {
       method: "POST",
@@ -286,21 +284,21 @@ describe("provider-mcp", () => {
     expect(response.status).toBe(413);
   });
 
-  it("stopMcpServer는 session tool snapshot을 전역 정리한다", async () => {
+  it("server.stop()은 session tool snapshot을 인스턴스 단위로 정리한다", async () => {
     const token = "test-token-stop-clears-snapshot";
-    await startMcpServer();
+    await server.start();
 
-    registerToolsForSession(token, [
+    snapshotStore.registerToolsForSession(token, [
       {
         name: "stale-tool",
         description: "stale",
         parameters: { type: "object", properties: {} },
       },
     ]);
-    expect(getToolsForSession(token)).toHaveLength(1);
+    expect(snapshotStore.getToolsForSession(token)).toHaveLength(1);
 
-    await stopMcpServer();
+    await server.stop();
 
-    expect(getToolsForSession(token)).toHaveLength(0);
+    expect(snapshotStore.getToolsForSession(token)).toHaveLength(0);
   });
 });

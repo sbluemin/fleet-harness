@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { getFleetDataDir } from "../data-dir/paths.js";
-import { getSettingsService } from "../settings/runtime.js";
+import { settingsRuntime } from "../settings/runtime.js";
+import type { SettingsRuntime } from "../settings/runtime.js";
 import type { CoreLogAPI, LogCategoryMeta, LogEntry, LogLevel, LogSettings } from "./types.js";
 import { DEFAULT_LOG_CATEGORY, LOG_LEVEL_PRIORITY } from "./types.js";
 
@@ -26,6 +27,10 @@ export interface CoreLogStore {
   getLatestVisibleLogs(minLevel: LogLevel, count: number): LogEntry[];
   clearLogs(): void;
   clearFileLogs(): void;
+}
+
+export interface CoreLogStoreDeps {
+  readonly settingsRuntime?: SettingsRuntime;
 }
 
 const SECTION_KEY = "core-log";
@@ -57,7 +62,7 @@ const NOOP_LOG_API: CoreLogAPI = {
 };
 const defaultCoreLogStore = createCoreLogStore();
 
-export function createCoreLogStore(): CoreLogStore {
+export function createCoreLogStore(deps: CoreLogStoreDeps = {}): CoreLogStore {
   const ringBuffer: LogEntry[] = [];
   const categoryRegistry = new Map<string, LogCategoryMeta>();
   let settingsPort: CoreLogSettingsPort | null = null;
@@ -65,7 +70,7 @@ export function createCoreLogStore(): CoreLogStore {
   let logApi: CoreLogAPI = NOOP_LOG_API;
 
   function getSettingsPort(): CoreLogSettingsPort {
-    const api = settingsPort ?? getSettingsService();
+    const api = settingsPort ?? deps.settingsRuntime?.get() ?? settingsRuntime.get();
     if (!api) throw new Error("Settings API not available");
     return api;
   }

@@ -4,11 +4,11 @@
 
 ## Package Identity & Boundary
 
-This package owns the local host assembly for the Dedicated CLI PTY and Fleet PTY lower pane.
+This package owns the local host assembly for the Dedicated CLI PTY, Fleet PTY lower pane, absorbed single-fleet Admiral policy modules, and absorbed Grand Fleet policy modules.
 
-- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, and Fleet's CLI Composition Root.
-- **Must Not Own**: Fleet domain logic, carrier persona definitions, or generic engine logic.
-- **Dependencies**: Restricted to `@sbluemin/fleet-admiral`, `@sbluemin/fleet-admiralty`, `@sbluemin/fleet-infra` for auth/session/settings infrastructure, `@sbluemin/fleet-carriers` for carrier runtime and detached job count, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
+- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, Fleet's CLI Composition Root, `src/admiral/**`, and `src/grand-fleet/**`.
+- **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
+- **Dependencies**: Restricted to `@sbluemin/fleet-infra` for auth/session/settings infrastructure, `@sbluemin/fleet-carriers` for carrier runtime and detached job count, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
 
 Direct dependencies on execution-engine packages are generally forbidden. Execution and model catalog access flow through `fleet-infra` and the Fleet orchestration packages. The Job Bar functionality is fully absorbed into `fleet-agent`.
 
@@ -16,8 +16,8 @@ Direct dependencies on execution-engine packages are generally forbidden. Execut
 
 `fleet-agent` is the only Composition Root for the CLI runtime. It assembles all service instances bottom-up and passes dependencies downward through explicit factory dependency objects.
 
-- The DI layer order is one-way: `fleet-agent` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
-- `fleet-agent` may call `createInfraServices(deps)` and `createCarrierRuntime(deps)` while assembling the runtime, but lower layers must not reach back into host wiring.
+- The DI layer order is one-way: `fleet-agent` -> `fleet-carriers` -> `fleet-infra`; `fleet-mcp-server` is a generic leaf dependency consumed through public APIs.
+- `fleet-agent` may call `createInfraServices(deps)`, `createCarrierRuntime(deps)`, default agent tool registration, and MCP startup while assembling the runtime, but lower layers must not reach back into host wiring.
 - Service construction must stay explicit in the host assembly path; do not introduce hidden global service containers, lazy host lookups, or reverse imports from lower layers.
 - Host UI and PTY objects are terminal adapters only. Domain services receive narrow dependencies, not `fleet-agent` module state.
 

@@ -1,4 +1,7 @@
-import { admiral } from "@sbluemin/fleet-admiral";
+import { getRegisteredOrder } from "@sbluemin/fleet-carriers";
+
+import { getActiveProtocol } from "../admiral/protocols/index.js";
+import { getCarrierRuntime } from "./instances.js";
 
 export interface FleetRuntimeStatus {
   readonly activeProtocol: string;
@@ -7,7 +10,7 @@ export interface FleetRuntimeStatus {
 
 export function readFleetRuntimeStatus(): FleetRuntimeStatus {
   return {
-    activeProtocol: admiral.protocols.getActiveProtocol().name,
-    carrierCount: admiral.carrier.getRegisteredOrder().length,
+    activeProtocol: getActiveProtocol().name,
+    carrierCount: getRegisteredOrder(getCarrierRuntime().registry).length,
   };
 }

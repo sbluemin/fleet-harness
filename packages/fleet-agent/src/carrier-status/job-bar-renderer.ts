@@ -1,4 +1,4 @@
-import { admiral } from "@sbluemin/fleet-admiral";
+import { getRegisteredOrder } from "@sbluemin/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "@sbluemin/fleet-tui/pty";
 
 import {
@@ -19,6 +19,7 @@ import {
 } from "./facade.js";
 import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
 import { buildCarrierJobGroups, buildPanelViewModel } from "./job-bar-view-model.js";
+import { getCarrierRuntime } from "../runtime/instances.js";
 
 export interface CarrierHudTile {
   readonly activeJobCount: number;
@@ -187,7 +188,7 @@ function appendWidgetJobSummary(
 ): void {
   const groups = buildCarrierJobGroups(
     jobs,
-    admiral.carrier.getRegisteredOrder(),
+    getRegisteredOrder(getCarrierRuntime().registry),
     (carrierId) => resolveCarrierDisplayName(carrierId),
   );
   for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
@@ -244,7 +245,7 @@ function appendTrackRows(
 
 function buildCarrierTiles(activeJobs: readonly PanelJob[]): CarrierHudTile[] {
   const snapshot = readStatesSnapshot();
-  return admiral.carrier.getRegisteredOrder().map((carrierId) => {
+  return getRegisteredOrder(getCarrierRuntime().registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
     return {
       activeJobCount: activeCarrierJobs.length,

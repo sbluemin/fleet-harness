@@ -14,6 +14,7 @@ interface MemorySettingsAPI extends CoreSettingsAPI {
 
 type LogStoreModule = typeof import("../src/log/store.js");
 type SettingsRuntimeModule = typeof import("../src/settings/runtime.js");
+type LogStore = ReturnType<LogStoreModule["createCoreLogStore"]>;
 
 const FILE_LOG_SETTINGS = {
   enabled: true,
@@ -47,7 +48,7 @@ describe("core log settings store", () => {
   it("saves through the runtime-owned settings service when no explicit port is set", async () => {
     const { settingsRuntime, store } = await loadLogStoreModules();
     const api = createMemorySettingsAPI();
-    settingsRuntime.initSettingsService(api);
+    settingsRuntime.init(api);
 
     store.saveSettings({ enabled: true, minLevel: "warn" });
 
@@ -75,7 +76,7 @@ describe("core log settings store", () => {
         minLevel: "error",
       },
     });
-    settingsRuntime.initSettingsService(api);
+    settingsRuntime.init(api);
 
     store.saveSettings({ footerDisplay: false });
 
@@ -143,15 +144,16 @@ describe("core log settings store", () => {
 });
 
 async function loadLogStoreModules(): Promise<{
-  settingsRuntime: SettingsRuntimeModule;
-  store: LogStoreModule;
+  settingsRuntime: ReturnType<SettingsRuntimeModule["createSettingsRuntime"]>;
+  store: LogStore;
 }> {
-  const [settingsRuntime, store] = await Promise.all([
+  const [settingsRuntimeModule, storeModule] = await Promise.all([
     import("../src/settings/runtime.js"),
     import("../src/log/store.js"),
   ]);
+  const settingsRuntime = settingsRuntimeModule.createSettingsRuntime();
+  const store = storeModule.createCoreLogStore({ settingsRuntime });
   store.setCoreLogSettingsPort(null);
-  settingsRuntime.resetSettingsService();
   return { settingsRuntime, store };
 }
 

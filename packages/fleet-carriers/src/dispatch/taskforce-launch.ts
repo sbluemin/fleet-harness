@@ -39,6 +39,7 @@ import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   resolveCarrierDisplayName,
+  type CarrierRegistry,
 } from "./framework.js";
 import { buildCarrierSystemPrompt } from "./prompts.js";
 import {
@@ -59,6 +60,7 @@ import {
 } from "./types.js";
 
 interface TaskForceBackgroundOptions {
+  registry: CarrierRegistry;
   jobId: string;
   carrierId: string;
   requestKey: string;
@@ -74,6 +76,7 @@ interface TaskForceBackgroundOptions {
 }
 
 export interface TaskForceLaunchOptions {
+  registry: CarrierRegistry;
   carrierId: string;
   request: string;
   label: string;
@@ -94,7 +97,7 @@ const taskForceStateStore = new Map<string, TaskForceState>();
 export const buildTaskForceToolSpec: () => AgentToolSpec | null = () => null;
 
 export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
-  const { carrierId, request, label, startedAt, toolName, ctx } = options;
+  const { registry, carrierId, request, label, startedAt, toolName, ctx } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
   const backendIds = getConfiguredTaskForceBackends(carrierId);
   logDebug(
@@ -102,7 +105,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     `execute start carrier=${carrierId} backends=${backendIds.length} ids=${backendIds.join(", ") || "(none)"}`,
   );
 
-  assertRegisteredCarrier(carrierId);
+  assertRegisteredCarrier(registry, carrierId);
   const activeBackends = assertTaskForceFormable(carrierId);
   logDebug(
     TASKFORCE_LOG_CATEGORY_VALIDATE,
@@ -110,7 +113,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
   );
 
   // 필수 request-block 검증은 carrier_dispatch와 동일한 hard-error 타이밍을 유지합니다.
-  const carrierConfig = getRegisteredCarrierConfig(carrierId);
+  const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
   if (carrierConfig?.carrierMetadata) {
     const blockValidation = validateTaskForceRequestBlocks(
       carrierId,
@@ -142,9 +145,10 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
   if (!launch.accepted) return launch.response;
 
   const state = initTaskForceState(carrierId, requestKey, activeBackends);
-  emitTaskForceJobRegistered(launch.jobId, carrierId, requestKey, activeBackends, startedAt, label);
+  emitTaskForceJobRegistered(registry, launch.jobId, carrierId, requestKey, activeBackends, startedAt, label);
 
   void runTaskForceJobInBackground({
+    registry,
     jobId: launch.jobId,
     carrierId,
     requestKey,
@@ -170,7 +174,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
   try {
     const settledResults = await Promise.allSettled(
       opts.activeBackends.map((cliType) =>
-        runTaskForceBackend(cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId),
+        runTaskForceBackend(opts.registry, cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId),
       ),
     );
     opts.state.finishedAt = Date.now();
@@ -220,8 +224,8 @@ function formatCarrierIdForMessage(carrierId: string): string {
   return JSON.stringify(carrierId);
 }
 
-function assertRegisteredCarrier(carrierId: string): void {
-  const allIds = new Set(getRegisteredOrder());
+function assertRegisteredCarrier(registry: CarrierRegistry, carrierId: string): void {
+  const allIds = new Set(getRegisteredOrder(registry));
   if (!allIds.has(carrierId)) {
     const registered = [...allIds].map(formatCarrierIdForMessage).join(", ") || "(none)";
     logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `unknown carrier carrier=${carrierId}`);
@@ -249,6 +253,7 @@ function getRequiredTaskForceModelConfig(
 }
 
 async function runTaskForceBackend(
+  registry: CarrierRegistry,
   cliType: TaskForceCliType,
   carrierId: string,
   requestKey: string,
@@ -292,7 +297,7 @@ async function runTaskForceBackend(
       cwd,
       model: modelConfig.model,
       effort,
-      connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(carrierId)?.carrierMetadata),
+      connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(registry, carrierId)?.carrierMetadata),
       signal,
       onStatusChange: (status) => {
         emitTrackStatus(jobId, trackId, status);
@@ -339,6 +344,7 @@ async function runTaskForceBackend(
 }
 
 function emitTaskForceJobRegistered(
+  registry: CarrierRegistry,
   jobId: string,
   carrierId: string,
   requestKey: string,
@@ -351,7 +357,7 @@ function emitTaskForceJobRegistered(
     streamKey: buildTaskForceScopedRunId(requestKey, cliType),
     displayCli: cliType,
     displayName: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-    subtitle: resolveCarrierDisplayName(carrierId),
+    subtitle: resolveCarrierDisplayName(registry, carrierId),
     kind: "backend",
   }));
   emitStreamEvent({

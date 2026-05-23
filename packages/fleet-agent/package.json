@@ -15,8 +15,6 @@
   },
   "dependencies": {
     "@clack/prompts": "1.4.0",
-    "@sbluemin/fleet-admiral": "workspace:*",
-    "@sbluemin/fleet-admiralty": "workspace:*",
     "@sbluemin/fleet-carriers": "workspace:*",
     "@sbluemin/fleet-infra": "workspace:*",
     "@sbluemin/fleet-mcp-server": "workspace:*",

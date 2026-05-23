@@ -12,7 +12,8 @@ import { buildCarrierRoster, getRegisteredOrder } from "@sbluemin/fleet-carriers
 
 import { getAllProtocols } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
-import { getAllAgentTools, renderAgentToolDoctrineTag } from "./agent/tools.js";
+import { getAllAgentTools, renderAgentToolDoctrineTag } from "./tools.js";
+import { getCarrierRuntime } from "../runtime/instances.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입
@@ -132,9 +133,10 @@ export function buildSystemPrompt(injectTone: boolean): string {
   }
 
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
-  const carrierIds = getRegisteredOrder();
+  const carrierRuntime = getCarrierRuntime();
+  const carrierIds = getRegisteredOrder(carrierRuntime.registry);
   if (carrierIds.length > 0) {
-    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
+    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
   }
 
   // ── 3. 프로토콜 카탈로그 — 모든 프로토콜 정의 ──

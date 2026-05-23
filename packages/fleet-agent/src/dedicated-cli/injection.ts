@@ -2,8 +2,8 @@ import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { admiral } from "@sbluemin/fleet-admiral";
-
+import { getEndpoint, issueDedicatedSessionToken } from "../admiral/mcp.js";
+import { buildSystemPrompt } from "../admiral/prompts.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getDedicatedCliInjectionCapability } from "./capabilities.js";
@@ -24,10 +24,10 @@ export async function injectDedicatedCliProfile(
   }
 
   const injectTone = options.enableMetaphor ?? false;
-  const endpoint = await admiral.mcp.getEndpoint();
-  const systemPromptFile = writeSystemPromptFile(profile.id, admiral.prompts.buildSystemPrompt(injectTone));
+  const endpoint = await getEndpoint();
+  const systemPromptFile = writeSystemPromptFile(profile.id, buildSystemPrompt(injectTone));
   const context: DedicatedCliInjectionContext = {
-    bearerToken: admiral.mcp.issueDedicatedSessionToken({
+    bearerToken: issueDedicatedSessionToken({
       cwd: profile.cwd,
       label: `dedicated:${profile.id}`,
     }),
