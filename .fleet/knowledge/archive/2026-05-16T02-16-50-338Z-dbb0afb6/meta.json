@@ -1,9 +1,0 @@
-{
-  "id": "2026-05-16T02-16-50-338Z-dbb0afb6",
-  "status": "rejected",
-  "createdAt": "2026-05-16T02:16:50.338Z",
-  "rawSourceRef": "raw/2026-05-16-prd-harness-btw-overlay-source-c8dc2003.md",
-  "warnings": [],
-  "decidedAt": "2026-05-16T03:02:54.553Z",
-  "reason": "v3 doctrine 정착 후 새 워크플로우(chronicle 재출격)로 재이식하기 위한 절차상 reject. 본문 품질에 문제 없음."
-}

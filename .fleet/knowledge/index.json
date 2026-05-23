@@ -86,42 +86,6 @@
     ],
     "updated": "2026-05-23T07:54:10.365Z"
   },
-  "prd-coding-agent-empty-session-guard": {
-    "path": "wiki/prd-coding-agent-empty-session-guard.md",
-    "title": "PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드",
-    "tags": [
-      "coding-agent",
-      "session-selector",
-      "persistence",
-      "durable-commit",
-      "shipped"
-    ],
-    "updated": "2026-05-16T16:41:05.671Z"
-  },
-  "prd-coding-agent-prompt-slash-prefix": {
-    "path": "wiki/prd-coding-agent-prompt-slash-prefix.md",
-    "title": "PRD: Prompt Template 호출 접두사(/prompt:) 도입",
-    "tags": [
-      "coding-agent",
-      "prompts",
-      "slash-command",
-      "naming-convention",
-      "ux",
-      "shipped"
-    ],
-    "updated": "2026-05-16T15:53:01.036Z"
-  },
-  "prd-coding-agent-scoped-models-removal": {
-    "path": "wiki/prd-coding-agent-scoped-models-removal.md",
-    "title": "코딩 에이전트 /scoped-models 제거",
-    "tags": [
-      "coding-agent",
-      "scoped-models",
-      "removal",
-      "model-cycling"
-    ],
-    "updated": "2026-05-16T03:59:46.982Z"
-  },
   "prd-core-dismantling-di-architecture": {
     "path": "wiki/prd-core-dismantling-di-architecture.md",
     "title": "PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립",
@@ -151,18 +115,6 @@
     ],
     "updated": "2026-05-23T05:00:45.830Z"
   },
-  "prd-harness-btw-overlay": {
-    "path": "wiki/prd-harness-btw-overlay.md",
-    "title": "Harness /btw Ephemeral Overlay",
-    "tags": [
-      "harness",
-      "btw",
-      "overlay",
-      "ephemeral",
-      "model-selector"
-    ],
-    "updated": "2026-05-16T03:03:47.224Z"
-  },
   "prd-infra-agent-executor-migration": {
     "path": "wiki/prd-infra-agent-executor-migration.md",
     "title": "PRD: Agent Executor 엔진의 인프라 계층 이전",
@@ -175,5 +127,6 @@
       "dependency-injection"
     ],
     "updated": "2026-05-23T05:40:45.905Z"
-  }
+  },
+  "entries": []
 }

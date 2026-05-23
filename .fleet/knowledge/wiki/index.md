@@ -74,32 +74,20 @@
 - raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
 - raw_source_refs: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md, raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
 
-### prd-coding-agent-empty-session-guard
-
 - title: `PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드`
-- path: `wiki/prd-coding-agent-empty-session-guard.md`
 - tags: `coding-agent, session-selector, persistence, durable-commit, shipped`
 - updated: `2026-05-16T16:41:05.671Z`
 - summary: `## Overview`
-- raw_source_ref: `raw/2026-05-16-prd-coding-agent-empty-session-guard-source-aefd1f8d.md`
-
-### prd-coding-agent-prompt-slash-prefix
 
 - title: `PRD: Prompt Template 호출 접두사(/prompt:) 도입`
-- path: `wiki/prd-coding-agent-prompt-slash-prefix.md`
 - tags: `coding-agent, prompts, slash-command, naming-convention, ux, shipped`
 - updated: `2026-05-16T15:53:01.036Z`
 - summary: `## Overview`
-- raw_source_ref: `raw/2026-05-16-prd-coding-agent-prompt-slash-prefix-source-e708f533.md`
-
-### prd-coding-agent-scoped-models-removal
 
 - title: `코딩 에이전트 /scoped-models 제거`
-- path: `wiki/prd-coding-agent-scoped-models-removal.md`
 - tags: `coding-agent, scoped-models, removal, model-cycling`
 - updated: `2026-05-16T03:59:46.982Z`
 - summary: `## Overview`
-- raw_source_ref: `raw/2026-05-16-prd-coding-agent-scoped-models-removal-source-848ab00e.md`
 
 ### prd-core-dismantling-di-architecture
 
@@ -121,14 +109,10 @@
 - raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
 - raw_source_refs: `raw/2026-05-23-prd-core-infra-extraction-source-fc2b48c4.md, raw/2026-05-23-prd-core-infra-extraction-source-20b14ecf.md`
 
-### prd-harness-btw-overlay
-
 - title: `Harness /btw Ephemeral Overlay`
-- path: `wiki/prd-harness-btw-overlay.md`
 - tags: `harness, btw, overlay, ephemeral, model-selector`
 - updated: `2026-05-16T03:03:47.224Z`
 - summary: `## Overview`
-- raw_source_ref: `raw/2026-05-16-prd-harness-btw-overlay-source-3dbd5b5c.md`
 
 ### prd-infra-agent-executor-migration
 
@@ -159,8 +143,6 @@
 
 ### btw
 
-- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
-
 ### carrier
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
@@ -180,10 +162,6 @@
 
 ### coding-agent
 
-- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
-- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
-- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
-
 ### current
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
@@ -202,11 +180,7 @@
 
 ### durable-commit
 
-- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
-
 ### ephemeral
-
-- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
 ### fleet-admiral
 
@@ -263,8 +237,6 @@
 
 ### harness
 
-- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
-
 ### keybind
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
@@ -275,19 +247,13 @@
 
 ### model-cycling
 
-- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
-
 ### model-forwarding
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
 ### model-selector
 
-- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
-
 ### naming-convention
-
-- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 
 ### onboarding
 
@@ -296,8 +262,6 @@
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
 ### overlay
-
-- [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
 
 ### overview
 
@@ -318,39 +282,25 @@
 
 ### persistence
 
-- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
-
 ### persona
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### prompts
 
-- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
-
 ### removal
-
-- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
 
 ### scoped-models
 
-- [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
-
 ### session-selector
-
-- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 
 ### shipped
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
-- [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
-- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 
 ### slash-command
-
-- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 
 ### test
 
@@ -361,8 +311,6 @@
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### ux
-
-- [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입
 
 ### workflow
 
