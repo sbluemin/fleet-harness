@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `9`
+- total_entries: `10`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -44,6 +44,16 @@
 - updated: `2026-05-17T12:03:19.194Z`
 - summary: `# Mermaid Rendering Test Suite`
 - raw_source_ref: `raw/2026-05-17-mermaid-test-suite-source-bba4e643.md`
+
+### prd-agent-core-model-bypass
+
+- title: `PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입`
+- path: `wiki/prd-agent-core-model-bypass.md`
+- tags: `agent-core, fleet-agent, dedicated-cli, cli-options, model-forwarding, shipped`
+- updated: `2026-05-23T04:42:11.057Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-agent-core-model-bypass-source-028ce468.md`
+- raw_source_refs: `raw/2026-05-23-prd-agent-core-model-bypass-source-028ce468.md`
 
 ### prd-carrier-persona-extraction
 
@@ -91,6 +101,10 @@
 
 ## Tags
 
+### agent-core
+
+- [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
+
 ### btw
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
@@ -102,6 +116,10 @@
 ### carrier-status
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+
+### cli-options
+
+- [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
 ### coding-agent
 
@@ -115,6 +133,10 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
+### dedicated-cli
+
+- [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
+
 ### durable-commit
 
 - [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
@@ -122,6 +144,10 @@
 ### ephemeral
 
 - [[wiki:prd-harness-btw-overlay]] — Harness /btw Ephemeral Overlay
+
+### fleet-agent
+
+- [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
 ### fleet-carriers
 
@@ -164,6 +190,10 @@
 ### model-cycling
 
 - [[wiki:prd-coding-agent-scoped-models-removal]] — 코딩 에이전트 /scoped-models 제거
+
+### model-forwarding
+
+- [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
 ### model-selector
 
@@ -213,6 +243,7 @@
 
 ### shipped
 
+- [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 - [[wiki:prd-carrier-persona-extraction]] — 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 - [[wiki:prd-coding-agent-empty-session-guard]] — PRD: 코딩 에이전트 빈 세션 생성 방지 및 영속화 가드
 - [[wiki:prd-coding-agent-prompt-slash-prefix]] — PRD: Prompt Template 호출 접두사(/prompt:) 도입

@@ -45,6 +45,19 @@
     ],
     "updated": "2026-05-17T12:03:19.194Z"
   },
+  "prd-agent-core-model-bypass": {
+    "path": "wiki/prd-agent-core-model-bypass.md",
+    "title": "PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입",
+    "tags": [
+      "agent-core",
+      "fleet-agent",
+      "dedicated-cli",
+      "cli-options",
+      "model-forwarding",
+      "shipped"
+    ],
+    "updated": "2026-05-23T04:42:11.057Z"
+  },
   "prd-carrier-persona-extraction": {
     "path": "wiki/prd-carrier-persona-extraction.md",
     "title": "캐리어 페르소나 외부화 및 선언적 도구 스코핑",

@@ -1235,3 +1235,85 @@
 - target: `wiki/prd-coding-agent-scoped-models-removal.md`
 - warning_count: `0`
 
+## 2026-05-23T04:38:25.710Z — drydock run
+
+- error_count: `2`
+- info_count: `3`
+- issue_count: `5`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T04:42:11.076Z — raw source added
+
+- id: `prd-agent-core-model-bypass-source`
+- raw_source_ref: `raw/2026-05-23-prd-agent-core-model-bypass-source-028ce468.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입`
+
+## 2026-05-23T04:42:11.079Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T04-42-11-057Z-43b4a1a6`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-agent-core-model-bypass-source-028ce468.md`
+- target: `wiki/prd-agent-core-model-bypass.md`
+- warning_count: `0`
+
+## 2026-05-23T04:52:29.143Z — index rebuilt
+
+- entry_count: `10`
+
+## 2026-05-23T04:52:29.145Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T04-42-11-057Z-43b4a1a6`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-agent-core-model-bypass-source-028ce468.md`
+- result: `accepted`
+- target: `wiki/prd-agent-core-model-bypass.md`
+
+## 2026-05-23T04:54:49.848Z — drydock run
+
+- error_count: `2`
+- info_count: `4`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T04:55:42.728Z — drydock run
+
+- error_count: `2`
+- info_count: `4`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `0`
+
+## 2026-05-23T04:57:00.430Z — raw source added
+
+- id: `prd-core-infra-extraction-source`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-fc2b48c4.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `fleet-core 인프라 계층 독립 패키지 분리`
+
+## 2026-05-23T04:57:00.432Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-23T04-57-00-412Z-776c54c9`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-23-prd-core-infra-extraction-source-fc2b48c4.md`
+- target: `wiki/prd-core-infra-extraction.md`
+- warning_count: `0`
+
+## 2026-05-23T04:57:04.968Z — drydock run
+
+- error_count: `2`
+- info_count: `4`
+- issue_count: `6`
+- ok: `false`
+- warning_count: `0`
+
