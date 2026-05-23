@@ -105,7 +105,7 @@ type EffortResolution =
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CLIENT_INFO = { name: "pi-unified-agent", version: "1.0.0" } as const;
+const CLIENT_INFO = { name: "fleet-unified-agent", version: "1.0.0" } as const;
 const MAX_TOOL_CALLS_TO_KEEP = 30;
 const EMPTY_BUILTIN_EXTERNAL_MCP_SIGNATURE = createHash("sha256").update("").digest("hex");
 

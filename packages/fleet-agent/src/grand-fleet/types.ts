@@ -241,7 +241,6 @@ export const DEFAULT_EXCLUDE_PATTERNS = [
   ".next",
   ".nuxt",
   ".grand-fleet",
-  ".pi",
   "__pycache__",
   ".venv",
   "venv",

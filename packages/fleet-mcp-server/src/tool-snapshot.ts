@@ -15,8 +15,6 @@ const TYPEBOX_KEYS = new Set([
   "$schema",
 ]);
 
-const PI_BUILTIN_TOOLS = new Set<string>();
-
 export function convertToolSchema(schema: unknown): Record<string, unknown> {
   if (!schema || typeof schema !== "object") {
     return { type: "object", properties: {} };
@@ -31,16 +29,14 @@ export function createMcpToolSnapshotStore(): McpToolSnapshotStore {
 
   return {
     registerToolsForSession(sessionToken, tools) {
-      const filtered = tools.filter((tool) => !PI_BUILTIN_TOOLS.has(tool.name));
-
-      const registered: RegisteredTool[] = filtered.map((tool) => ({
+      const registered: RegisteredTool[] = tools.map((tool) => ({
         name: tool.name,
         description: tool.description ?? "",
         inputSchema: convertToolSchema(tool.parameters),
       }));
 
       sessionTools.set(sessionToken, registered);
-      sessionToolNames.set(sessionToken, new Set(filtered.map((tool) => tool.name)));
+      sessionToolNames.set(sessionToken, new Set(tools.map((tool) => tool.name)));
     },
     getToolsForSession(sessionToken) {
       return sessionTools.get(sessionToken) ?? [];
