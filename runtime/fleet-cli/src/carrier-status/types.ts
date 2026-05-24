@@ -5,14 +5,14 @@ import type {
   TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
 
-import type { FleetPtyApi } from "@dotobokuri/fleet-tui/pty";
+import type { MissionControlPanelHost } from "../mission-control/types.js";
 
 export type CarrierCliType = TaskForceCliType;
 export type { FleetStoreSnapshot };
 
 export interface CarrierStatusContext {
   readonly carrierRuntime: CarrierRuntime;
-  readonly fleetPty: FleetPtyApi;
+  readonly missionControl: MissionControlPanelHost;
 }
 
 export interface ModelSelection {

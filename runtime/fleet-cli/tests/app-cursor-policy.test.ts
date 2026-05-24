@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createRenderScheduler } from "../src/app.js";
+import { createCursorPolicySync, createRenderScheduler } from "../src/controls/index.js";
 
 const HIDDEN_CURSOR_FRAME = "\x1b[?25l";
 const RENDER_THROTTLE_MS = 16;
@@ -51,5 +51,27 @@ describe("app cursor policy", () => {
 
     await vi.advanceTimersByTimeAsync(RENDER_THROTTLE_MS + 1);
     expect(renderedFrames).toEqual([HIDDEN_CURSOR_FRAME, VISIBLE_CURSOR_FRAME]);
+  });
+
+  it("clears cursor target while a Mission Control panel is active", () => {
+    let cursorTarget: unknown = "visible";
+    const ptyView = {};
+    const syncCursorPolicy = createCursorPolicySync({
+      cursorSync: true,
+      fleetPty: { hasActiveOverlay: () => false },
+      getMode: () => "DEDICATED",
+      hasActiveMissionControlPanel: () => true,
+      isModeToggleSuppressed: () => false,
+      ptyView,
+      ui: {
+        setCursorAnchorTarget(target: unknown): void {
+          cursorTarget = target;
+        },
+      },
+    } as never);
+
+    syncCursorPolicy();
+
+    expect(cursorTarget).toBeUndefined();
   });
 });

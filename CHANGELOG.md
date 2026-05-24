@@ -5,9 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [agent-core] Added Mission Control for starting or relaunching the upper Dedicated CLI after exit.
+
 ### Changed
+- [agent-core] Changed Carrier Status to open as a Mission Control panel while preserving active Dedicated CLI input pass-through.
 - [core] HUD label is now a compile-time constant tied to the single immutable Fleet Action Protocol; the protocol switching abstraction and dynamic protocol state have been removed.
 - [agent-core] fleet CLI now rejects unknown subcommands and options with an error message on stderr and exits with status 1 instead of silently ignoring them.
+
+### Breaking Changes
+- [agent-core] Removed `@dotobokuri/fleet-tui/input` and `@dotobokuri/fleet-tui/pty`; primitive component contracts now use `@dotobokuri/fleet-tui/components`, layout resize contracts use `@dotobokuri/fleet-tui/layout`, and the xterm-backed Dedicated CLI viewport is owned by fleet CLI controls.
 
 ## [0.22.1] - 2026-05-24
 

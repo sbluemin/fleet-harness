@@ -2656,3 +2656,110 @@
 - ok: `true`
 - warning_count: `6`
 
+## 2026-05-24T11:10:46.163Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:11:20.623Z — raw source added
+
+- id: `prd-tui-cli-bay-source`
+- raw_source_ref: `raw/2026-05-24-prd-tui-cli-bay-source-388a12f5.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `Conversation brief: CLI Bay MVP product direction`
+
+## 2026-05-24T11:11:20.625Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-tui-cli-bay-source-388a12f5.md`
+- target: `wiki/prd-tui-cli-bay.md`
+- warning_count: `0`
+
+## 2026-05-24T11:11:29.114Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:12:45.174Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `title, confidence, body, updated, summary`
+- next_hash: `1c65a2f3`
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- previous_hash: `f6fd8830`
+- target: `wiki/prd-tui-cli-bay.md`
+
+## 2026-05-24T11:12:49.237Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:15:55.245Z — patch edited
+
+- body_replacements: `11`
+- changed_fields: `title, body, updated, summary`
+- next_hash: `cfb7a7a6`
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- previous_hash: `1c65a2f3`
+- target: `wiki/prd-tui-cli-bay.md`
+
+## 2026-05-24T11:19:31.417Z — patch rejected
+
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- patch_set_id: `null`
+- reason: `제품명이 Mission Control로 확정되어 기존 prd-tui-cli-bay ID와 제목이 PRD 명명 규칙 및 제품명과 불일치함`
+- result: `rejected`
+
+## 2026-05-24T11:19:54.449Z — raw source added
+
+- id: `prd-tui-mission-control-source`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Conversation brief: Mission Control MVP product direction`
+
+## 2026-05-24T11:19:54.452Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T11-19-54-420Z-dc20c031`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- target: `wiki/prd-tui-mission-control.md`
+- warning_count: `0`
+
+## 2026-05-24T11:19:56.206Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T16:36:37.975Z — index rebuilt
+
+- entry_count: `16`
+
+## 2026-05-24T16:36:37.976Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T11-19-54-420Z-dc20c031`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- result: `accepted`
+- target: `wiki/prd-tui-mission-control.md`
+

@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `15`
+- total_entries: `16`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -137,6 +137,16 @@
 - raw_source_ref: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
 - raw_source_refs: `raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-d31b5299.md, raw/2026-05-23-prd-tui-keyboard-protocol-architecture-source-9a350656.md`
 
+### prd-tui-mission-control
+
+- title: `PRD: 전용 CLI Mission Control 도입`
+- path: `wiki/prd-tui-mission-control.md`
+- tags: `fleet-tui, fleet-agent, dedicated-cli, mission-control, region-stack, ux`
+- updated: `2026-05-24T11:19:54.420Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- raw_source_refs: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+
 ### prd-tui-mouse-scroll-hybrid-routing
 
 - title: `PRD: Fleet TUI Mouse Scroll Hybrid Routing`
@@ -220,6 +230,7 @@
 ### dedicated-cli
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
+- [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 
 ### dependency-injection
 
@@ -249,6 +260,7 @@
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+- [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
 ### fleet-carriers
@@ -284,6 +296,7 @@
 ### fleet-tui
 
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+- [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
 ### fleet-wiki
@@ -320,6 +333,10 @@
 ### mcp
 
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
+
+### mission-control
+
+- [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 
 ### model-forwarding
 
@@ -360,6 +377,10 @@
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 
+### region-stack
+
+- [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
+
 ### schema
 
 - [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
@@ -389,6 +410,10 @@
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### ux
+
+- [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 
 ### validation
 

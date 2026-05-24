@@ -1,21 +1,20 @@
 # @dotobokuri/fleet-tui
 
-Fleet-specific generic TUI engine for terminal rendering, input routing, PTY infrastructure, Fleet PTY overlays, and permanent vertical two-pane negotiation.
+Fleet-owned TUI primitives for terminal rendering, component contracts, layout math, text helpers, cursor anchors, and terminal-size helpers.
 
 ## Public API
 
 Use the documented subpath exports:
 
 - `@dotobokuri/fleet-tui/core`
+- `@dotobokuri/fleet-tui/components`
 - `@dotobokuri/fleet-tui/layout`
 - `@dotobokuri/fleet-tui/primitives`
-- `@dotobokuri/fleet-tui/input`
-- `@dotobokuri/fleet-tui/pty`
 
 The root package export is intentionally narrow and reserved for shared types/constants. Do not import from package `/src/*`, package `/dist/*`, or undocumented file-level subpaths.
 
 ## Scope
 
-This package contains generic Fleet TUI infrastructure only. Host policy, default Fleet PTY content, carrier-status domain logic, Pi host adapters, and Fleet domain services live in their owning packages.
+This package contains generic TUI primitives only. Host policy, input routing, PTY process lifecycle, lower-pane panel runtime, default content, host-specific domain logic, Pi host adapters, and Fleet domain services live in their owning packages.
 
-Runtime dependencies are limited to `@xterm/headless` and `node-pty`.
+Runtime dependencies should not include xterm or PTY host code unless a future primitive scope is explicitly approved.

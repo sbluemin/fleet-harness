@@ -9,7 +9,7 @@ import {
   getRegisteredOrder,
 } from "@dotobokuri/fleet-carriers";
 import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/fleet-infra/agent";
-import type { KeyboardProtocolState } from "@dotobokuri/fleet-tui/pty";
+import type { KeyboardProtocolState } from "../controls/index.js";
 
 import {
   ANIM_INTERVAL_MS,

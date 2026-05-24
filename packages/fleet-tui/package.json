@@ -18,6 +18,10 @@
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
     },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "import": "./dist/components/index.js"
+    },
     "./layout": {
       "types": "./dist/layout/index.d.ts",
       "import": "./dist/layout/index.js"
@@ -25,19 +29,7 @@
     "./primitives": {
       "types": "./dist/primitives/index.d.ts",
       "import": "./dist/primitives/index.js"
-    },
-    "./input": {
-      "types": "./dist/input/index.d.ts",
-      "import": "./dist/input/index.js"
-    },
-    "./pty": {
-      "types": "./dist/pty/index.d.ts",
-      "import": "./dist/pty/index.js"
     }
-  },
-  "dependencies": {
-    "@xterm/headless": "^5.5.0",
-    "node-pty": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

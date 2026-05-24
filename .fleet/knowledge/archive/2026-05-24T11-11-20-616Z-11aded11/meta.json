@@ -1,0 +1,14 @@
+{
+  "id": "2026-05-24T11-11-20-616Z-11aded11",
+  "status": "rejected",
+  "createdAt": "2026-05-24T11:11:20.616Z",
+  "rawSourceRef": "raw/2026-05-24-prd-tui-cli-bay-source-388a12f5.md",
+  "warnings": [],
+  "editedAt": "2026-05-24T11:15:55.242Z",
+  "editCount": 2,
+  "lastEditedBy": "admiral",
+  "previousPatchHash": "1c65a2f3",
+  "lastEditHash": "cfb7a7a6",
+  "decidedAt": "2026-05-24T11:19:31.416Z",
+  "reason": "제품명이 Mission Control로 확정되어 기존 prd-tui-cli-bay ID와 제목이 PRD 명명 규칙 및 제품명과 불일치함"
+}

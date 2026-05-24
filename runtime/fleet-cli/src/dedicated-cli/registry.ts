@@ -9,6 +9,11 @@ interface ResolveDedicatedCliProfileOptions {
   readonly model?: string;
 }
 
+export interface DedicatedCliMetadata {
+  readonly id: DedicatedCliId;
+  readonly label: string;
+}
+
 const DEFAULT_CLI_ID: DedicatedCliId = "claude";
 const DEFINITIONS: Record<DedicatedCliId, DedicatedCliDefinition> = {
   claude: claudeCli,
@@ -22,12 +27,23 @@ export async function resolveDedicatedCliProfile(
   cwd: string,
   options: ResolveDedicatedCliProfileOptions = {},
 ): Promise<DedicatedCliProfile> {
-  const id = parseEnvCliId(options.cliId) ?? parseEnvCliId(env.FLEET_DEDICATED_CLI) ?? DEFAULT_CLI_ID;
+  const id = resolveDedicatedCliId(env, options);
   return DEFINITIONS[id].createProfile({ cwd, env, model: options.model });
+}
+
+export function resolveDedicatedCliId(env: NodeJS.ProcessEnv, options: ResolveDedicatedCliProfileOptions = {}): DedicatedCliId {
+  return parseEnvCliId(options.cliId) ?? parseEnvCliId(env.FLEET_DEDICATED_CLI) ?? DEFAULT_CLI_ID;
 }
 
 export function getDedicatedCliIds(): DedicatedCliId[] {
   return Object.keys(DEFINITIONS) as DedicatedCliId[];
+}
+
+export function getDedicatedCliMetadata(ids: readonly DedicatedCliId[] = getDedicatedCliIds()): DedicatedCliMetadata[] {
+  return ids.map((id) => ({
+    id,
+    label: DEFINITIONS[id].label,
+  }));
 }
 
 function parseEnvCliId(value: string | undefined): DedicatedCliId | undefined {

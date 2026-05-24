@@ -6,7 +6,7 @@
 
 This package owns the local host assembly for the Dedicated CLI PTY, Fleet PTY lower pane, absorbed single-fleet Admiral policy modules, and absorbed Grand Fleet policy modules.
 
-- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, Fleet's CLI Composition Root, `src/admiral/**`, and `src/grand-fleet/**`.
+- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, mission-control domain wiring, panel host callback, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Dedicated CLI viewport, Fleet's CLI Composition Root, `src/admiral/**`, and `src/grand-fleet/**`.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
 - **Dependencies**: Restricted to `@dotobokuri/fleet-infra` for auth/session/settings infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 
@@ -25,11 +25,17 @@ Direct dependencies on execution-engine packages are generally forbidden. Execut
 
 Only the permanent vertical two-pane layout is allowed:
 
-- **Dedicated CLI PTY**: Upper pane.
+- **Dedicated CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
 - **Fleet PTY**: Lower pane.
-- **Shared PTY negotiation**: `@dotobokuri/fleet-tui/pty` owns desired-height layout.
-- **Generic input core**: `@dotobokuri/fleet-tui/input` owns keyboard routing.
-- **Host control policy**: `src/controls/modes.ts` owns MIRROR/DEDICATED mode semantics.
+- **Mission Control**: Upper interaction layer that hosts the Dedicated CLI PTY and temporarily yields to panels (e.g., Carrier Status) while they are active.
+- **Shared PTY negotiation**: `src/controls/pty.ts` owns host resize negotiation over `@dotobokuri/fleet-tui/layout` primitives.
+- **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Dedicated CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
+- **Input runtime**: `src/controls/input.ts` owns host keyboard routing, keybinding helpers, mouse parsing, and programmatic PTY input.
+- **Panel runtime**: `src/controls/panels.ts` owns lower-pane panel API, overlays, sections, theme/key helpers, and desired-height adapters.
+- **Render coordination**: `src/controls/render.ts` owns host render scheduling, cursor policy sync, viewport adapter, and mouse-to-PTY routing helpers.
+- **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
+- **Controls barrel**: `src/controls/index.ts` is package-local only; it is not a public workspace surface.
+- **Host control policy**: `src/controls/modes.ts` may remain as a tiny mode toggle compatibility source.
 
 ## Input & Mode Logic
 
@@ -42,7 +48,7 @@ Only the permanent vertical two-pane layout is allowed:
 
 Outer-terminal cursor sync policy is owned here; `fleet-tui` supplies only generic anchor primitives (`getCursorAnchor`, `setCursorAnchorTarget`, `cursorSyncEnabled`, post-flush `requestRender` callback).
 
-- **Policy sync**: `createCursorPolicySync()` in `app.ts` (assigned to `syncCursorPolicy`) runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Dedicated PTY view in `MIRROR`/`DEDICATED` when cursor sync is on, mode-toggle suppression is off, and the Fleet PTY has no active overlay; otherwise the target is cleared.
+- **Policy sync**: `createCursorPolicySync()` in `src/controls/render.ts` runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Dedicated PTY view in `MIRROR`/`DEDICATED` when cursor sync is on, mode-toggle suppression is off, the Fleet PTY has no active overlay, and the Mission Control has no active panel; otherwise the target is cleared.
 - **Mode-toggle suppression**: `Ctrl+T` clears the target and schedules one hidden render frame; policy resumes in the renderer post-flush `afterRender` callback (`scheduleRender` → `ui.requestRender(..., callback)`), then a follow-up render — not via independent timer chains.
 - **Off-switch** (read-only env; do not mutate `process.env`): `RunAppOptions.cursorSync` (default on), CLI `--disable-cursor-sync`, and `FLEET_CURSOR_SYNC=0` or `false` parsed in `cli-args.ts` and passed through `index.ts`.
 - **Boundary**: IME/terminal compatibility decisions and overlay/mode gating stay in this package; do not push host policy into `fleet-tui` renderer or anchor types.

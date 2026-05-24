@@ -4,7 +4,7 @@ import {
 	readStatesSnapshot,
 	type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
-import { centerLine, truncateToWidth, visibleWidth, type Component } from "@dotobokuri/fleet-tui/pty";
+import { centerLine, truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
 
 import { resolveCarrierColor, resolveCarrierDisplayName } from "../carrier-status/carrier-helpers.js";
 

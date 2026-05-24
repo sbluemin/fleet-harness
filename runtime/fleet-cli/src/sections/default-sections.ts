@@ -1,4 +1,4 @@
-import type { Component, FleetPtySection } from "@dotobokuri/fleet-tui/pty";
+import type { Component, FleetPtySection } from "../controls/index.js";
 
 import { createJobBarSections } from "../carrier-status/job-bar-section.js";
 import type { JobBarState } from "../carrier-status/job-bar-state.js";

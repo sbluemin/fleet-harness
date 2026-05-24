@@ -1,7 +1,7 @@
 import { CLI_DISPLAY_NAMES } from "../constants.js";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
+const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const DISPLAY_NAME_BIDI_CONTROL_PATTERN = /[\u202A-\u202E\u2066-\u2069]/g;
 const DISPLAY_NAME_ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
 const DISPLAY_NAME_MAX_LENGTH = 50;

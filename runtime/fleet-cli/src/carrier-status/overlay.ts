@@ -24,7 +24,7 @@ import {
   matchesKey,
   type Component,
   type Focusable,
-} from "@dotobokuri/fleet-tui/pty";
+} from "../controls/index.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
 import { handleCarrierStatusOverlayInput } from "./overlay-input.js";
@@ -39,7 +39,6 @@ import {
   buildStatusOverlayViewModel,
   resolveSelectedCarrierId,
 } from "./overlay-view-model.js";
-import { TaskForceConfigOverlay } from "./taskforce-overlay.js";
 import type {
   BatchCliChoice,
   CarrierCliType,
@@ -487,14 +486,10 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const entry = this.getSelectedEntry();
     if (!entry) return;
     this.options.done();
-    void this.options.fleetPty.custom<void>((ui, theme, _keys, done) => new TaskForceConfigOverlay({
-      carrierRuntime: this.options.carrierRuntime,
+    this.options.openTaskForceConfig({
       carrierDisplayName: entry.displayName,
       carrierId: entry.carrierId,
-      done,
-      requestRender: () => ui.requestRender(),
-      theme,
-    }));
+    });
   }
 
   private cancelEdit(): void {

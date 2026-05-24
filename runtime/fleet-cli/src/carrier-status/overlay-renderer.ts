@@ -5,10 +5,9 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import {
   createOverlayFrame,
-  MIN_DEDICATED_ROWS,
   visibleWidth,
   type FleetPtyTheme,
-} from "@dotobokuri/fleet-tui/pty";
+} from "../controls/index.js";
 
 import type { RenameState, StatusOverlayViewModel } from "./overlay-types.js";
 import type { BatchCliChoice, CarrierCliType, CarrierStatusEntry, CliModelInfo, OverlayState } from "./types.js";
@@ -107,8 +106,7 @@ export function estimateCarrierStatusRows(
 }
 
 export function clampCarrierStatusOverlayRows(maxRows: number, cardRows: number): number {
-  const maxFleetRows = Math.max(0, maxRows - MIN_DEDICATED_ROWS);
-  return Math.min(maxFleetRows, Math.max(0, cardRows));
+  return Math.min(Math.max(0, maxRows), Math.max(0, cardRows));
 }
 
 export function getModelLabel(provider: CliModelInfo, modelId: string): string {

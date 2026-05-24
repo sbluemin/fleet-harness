@@ -8,6 +8,7 @@ import {
   resolveCarrierDisplayName,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
+import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers/job";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 
 import type { GroupedEntries, StatusOverlayViewModel } from "./overlay-types.js";
@@ -27,6 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   strategy: "\x1b[38;2;100;180;255m",
   uncategorized: ANSI_DIM,
 };
+const ROLE_DESCRIPTION_SEPARATOR = " - ";
 
 export function buildStatusEntries(carrierRuntime: CarrierRuntime): CarrierStatusEntry[] {
   const snapshot = readStatesSnapshot();
@@ -108,6 +110,8 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
     const selection = healedSnapshot.models[id];
     const provider = getProviderModelsEquivalent(cliType);
     const meta = config.carrierMetadata;
+    const role = sanitizeCarrierMetadataText(meta?.title);
+    const roleSummary = sanitizeCarrierMetadataText(meta?.summary);
     entries.push({
       carrierId: id,
       category: meta?.category,
@@ -117,8 +121,8 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
       effort: selection?.effort ?? null,
       isDefault: !selection?.model,
       model: selection?.model || provider.defaultModel,
-      role: meta?.title ?? null,
-      roleDescription: meta ? `${meta.title} - ${meta.summary}` : null,
+      role,
+      roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
     });
@@ -170,4 +174,15 @@ function getProviderModelsEquivalent(cliType: CarrierCliType): CliModelInfo {
       name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
     };
   }
+}
+
+function buildRoleDescription(role: string | null, summary: string | null): string | null {
+  if (role && summary) return `${role}${ROLE_DESCRIPTION_SEPARATOR}${summary}`;
+  return role ?? summary;
+}
+
+function sanitizeCarrierMetadataText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const sanitized = sanitizeToolBlockLabel(value).replace(/\s+/g, " ").trim();
+  return sanitized || null;
 }

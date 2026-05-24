@@ -16,4 +16,4 @@ export { attachInputStream } from "./input-stream.js";
 export { LocalTui } from "./renderer.js";
 export type { LocalTuiOptions } from "./renderer.js";
 export { getTerminalSize } from "./terminal-size.js";
-export type { Component, CursorAnchor, InputListener, InputResult, TerminalSize } from "../types.js";
+export type { Component, CursorAnchor, Focusable, InputListener, InputResult, TerminalSize } from "../components/index.js";

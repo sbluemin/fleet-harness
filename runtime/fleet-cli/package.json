@@ -27,7 +27,9 @@
     "@dotobokuri/fleet-mcp-server": "workspace:*",
     "@dotobokuri/fleet-tui": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
-    "@dotobokuri/fleet-wiki-ui": "workspace:*"
+    "@dotobokuri/fleet-wiki-ui": "workspace:*",
+    "@xterm/headless": "^5.5.0",
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth, type Component } from "@dotobokuri/fleet-tui/pty";
+import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
 
 import { FLEET_ACTION_COLOR, FLEET_ACTION_LABEL } from "../admiral/protocols/index.js";
 

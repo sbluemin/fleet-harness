@@ -171,6 +171,19 @@
     ],
     "updated": "2026-05-23T14:44:24.303Z"
   },
+  "prd-tui-mission-control": {
+    "path": "wiki/prd-tui-mission-control.md",
+    "title": "PRD: 전용 CLI Mission Control 도입",
+    "tags": [
+      "fleet-tui",
+      "fleet-agent",
+      "dedicated-cli",
+      "mission-control",
+      "region-stack",
+      "ux"
+    ],
+    "updated": "2026-05-24T11:19:54.420Z"
+  },
   "prd-tui-mouse-scroll-hybrid-routing": {
     "path": "wiki/prd-tui-mouse-scroll-hybrid-routing.md",
     "title": "PRD: Fleet TUI Mouse Scroll Hybrid Routing",

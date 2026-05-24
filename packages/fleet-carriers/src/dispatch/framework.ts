@@ -17,7 +17,11 @@ import {
   CARRIER_RGBS,
   CLI_DISPLAY_NAMES,
 } from "../constants.js";
-import { loadCarrierDisplayNames, resolveCarrierCliType as resolveCarrierCliTypeFromStore } from "../store/index.js";
+import {
+  loadCarrierDisplayNames,
+  resolveCarrierCliType as resolveCarrierCliTypeFromStore,
+  sanitizeCarrierDisplayName,
+} from "../store/index.js";
 
 import type {
   CarrierConfig,
@@ -248,8 +252,9 @@ export function resolveCarrierDisplayName(registry: CarrierRegistry, carrierId: 
 /** carrierId 기준으로 persisted override를 제외한 source-default 표시 이름을 반환합니다. */
 export function getCarrierSourceDisplayName(registry: CarrierRegistry, carrierId: string): string {
   const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
-  return carrierConfig?.displayName
-    ?? CLI_DISPLAY_NAMES[carrierId]
+  return sanitizeCarrierDisplayName(carrierConfig?.displayName)
+    ?? sanitizeCarrierDisplayName(CLI_DISPLAY_NAMES[carrierId])
+    ?? sanitizeCarrierDisplayName(carrierId)
     ?? carrierId;
 }
 

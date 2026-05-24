@@ -18,11 +18,10 @@ import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent"
 import {
   createOverlayFrame,
   matchesKey,
-  MIN_DEDICATED_ROWS,
   type Component,
   type FleetPtyTheme,
   type Focusable,
-} from "@dotobokuri/fleet-tui/pty";
+} from "../controls/index.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
 import type {
@@ -408,8 +407,7 @@ function syncConfiguredTaskForceCarriers(carrierRuntime: CarrierRuntime): void {
 }
 
 function clampOverlayRows(maxRows: number, cardRows: number): number {
-  const maxFleetRows = Math.max(0, maxRows - MIN_DEDICATED_ROWS);
-  return Math.min(maxFleetRows, Math.max(0, cardRows));
+  return Math.min(Math.max(0, maxRows), Math.max(0, cardRows));
 }
 
 function errorMessage(error: unknown): string {

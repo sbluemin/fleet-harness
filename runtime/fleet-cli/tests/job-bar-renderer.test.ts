@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
-import { renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
+import { renderBlockLines, renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
 import { createJobBarState, type JobBarState } from "../src/carrier-status/job-bar-state.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/carrier-status/job-bar-view-model.js";
 
@@ -38,6 +38,79 @@ describe("job bar renderer", () => {
     expect(text).toContain("Patch renderer grouping");
     expect(text).toContain("alpha preview");
     expect(text).toContain("beta preview");
+  });
+
+  it("sanitizes raw job labels and inline stream text before rendering the HUD", () => {
+    const runtime = createTestCarrierRuntime();
+    const runs = new Map<string, PanelRunViewModelSource>([
+      ["run:first", {
+        runId: "run:first",
+        status: "stream",
+        blocks: [{
+          type: "text",
+          text: "preview\x1b[2J\nnext\u009b31m\x1b]52;c;AAAA\x07done",
+        }],
+      }],
+    ]);
+
+    const lines = renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [
+        buildDispatchJob("carrier:first", "run:first", "Audit\r\n\x1b]52;c;AAAA\x07Phase\u009b2J Done", 1000),
+      ],
+      runs,
+      width: 120,
+    });
+    const rendered = lines.join("\n");
+    const text = stripAnsi(rendered);
+
+    expect(text).toContain("Audit Phase Done");
+    expect(text).toContain("nextdone");
+    expect(text).not.toContain("preview nextdone");
+    expect(rendered).not.toContain("\x1b]52");
+    expect(rendered).not.toContain("\x1b[2J");
+    expect(rendered).not.toContain("\u009b");
+    expect(rendered).not.toContain("\u009d");
+    expect(lines.every((line) => !line.includes("\r") && !line.includes("\n"))).toBe(true);
+  });
+
+  it("preserves multiline stream preview structure before inline preview selection", () => {
+    const runtime = createTestCarrierRuntime();
+    const runs = new Map<string, PanelRunViewModelSource>([
+      ["run:first", {
+        runId: "run:first",
+        status: "stream",
+        blocks: [{
+          type: "text",
+          text: "first line\x1b[2J\r\nsecond line\u009b31m\nthird line",
+        }],
+      }],
+    ]);
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [
+        buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000),
+      ],
+      runs,
+      width: 120,
+    }).join("\n"));
+
+    expect(text).toContain("third line");
+    expect(text).not.toContain("first line second line third line");
+  });
+
+  it("keeps multiline block rendering split while removing terminal controls", () => {
+    expect(renderBlockLines([{
+      type: "thought",
+      text: "plan\x1b]52;c;AAAA\x07\r\nstep\u009b31m\nfinish",
+    }])).toEqual([
+      { text: "◇ plan", type: "thought" },
+      { text: "  step", type: "thought" },
+      { text: "  finish", type: "thought" },
+    ]);
   });
 
   it("renders no empty-state text when there are no active jobs", () => {

@@ -22,6 +22,10 @@ export const JOB_LAUNCH_NOTICE = [
 
 export const CARRIER_RESULT_PUSH_PREFIX = "[carrier:result]";
 
+const REMINDER_TEXT_LIMIT = 500;
+const REMINDER_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+const REMINDER_WHITESPACE = /\s+/g;
+
 export function formatLaunchResponseText(response: unknown, accepted: boolean): string {
   const payload = JSON.stringify(response);
   if (!accepted) return payload;
@@ -29,13 +33,13 @@ export function formatLaunchResponseText(response: unknown, accepted: boolean): 
 }
 
 export function buildCarrierResultSystemReminder(input: CarrierResultSystemReminderInput): string {
-  const lines = [`- ${input.jobId}: ${sanitizeReminderSummary(input.summary.summary)}`];
+  const lines = [`- ${input.jobId}: ${sanitizeReminderText(input.summary.summary)}`];
   const metadata = [
     `kind=${input.kind}`,
     `status=${input.status}`,
-    input.label ? `label=${input.label}` : undefined,
-    input.taskforceBackend ? `backend=${input.taskforceBackend}` : undefined,
-    input.error ? `error=${sanitizeReminderSummary(input.error)}` : undefined,
+    input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
+    input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
+    input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,
   ].filter((part): part is string => Boolean(part));
   if (metadata.length > 0) lines.push(`  ${metadata.join(" ")}`);
   return wrapSystemReminder(`${CARRIER_RESULT_PUSH_PREFIX}\n${lines.join("\n")}`, { source: "carrier-completion" });
@@ -46,8 +50,14 @@ export function wrapSystemReminder(text: string, attrs?: SystemReminderAttribute
   return `<system-reminder${renderedAttrs}>\n${text}\n</system-reminder>`;
 }
 
-function sanitizeReminderSummary(summary: string): string {
-  return summary.replace(/\s+/g, " ").trim().slice(0, 500);
+function sanitizeReminderText(text: string): string {
+  return escapeXmlText(
+    text
+      .replace(REMINDER_CONTROL_CHARS, " ")
+      .replace(REMINDER_WHITESPACE, " ")
+      .trim()
+      .slice(0, REMINDER_TEXT_LIMIT),
+  );
 }
 
 function renderSystemReminderAttributes(attrs?: SystemReminderAttributes): string {
@@ -59,4 +69,8 @@ function renderSystemReminderAttributes(attrs?: SystemReminderAttributes): strin
 
 function escapeXmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
