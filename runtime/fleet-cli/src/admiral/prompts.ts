@@ -35,7 +35,8 @@ interface SystemPromptBuilderDeps {
 /**
  * Fleet 역할·행동 규약 — 항상 주입.
  *
- * carrier 기반 위임/종합/수동 제어 안내와 한국어 응답 규칙을 담는다.
+ * protocol/standing-orders 바인딩 지침, Fleet MCP lazy-load 가드, 캐리어 위임 안내,
+ * 출력 합성 규칙, 수동 제어 안내를 담는다.
  */
 export const FLEET_ROLE_PROMPT = String.raw`
 # Role
