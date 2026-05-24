@@ -24,7 +24,7 @@ export const FLEET_ACTION: AdmiralProtocol = {
 
 **Completion rule:** All 7 phases must be evaluated for every task — do not stop after execution. Conditional phases may be skipped, but the decision to skip must be conscious, not accidental. If you end a task before reaching Phase 7, you **must** report which phases were skipped and why in your final response. Omitting phases without explanation is an anti-pattern.
 
-#### Phase 1 — Reconnaissance (Vanguard mandatory)
+#### Phase 1 — Reconnaissance (roster reconnaissance carrier mandatory)
 
 Every task begins with systematic context acquisition. Do not skip this phase.
 
@@ -64,16 +64,16 @@ Design missions across **multiple angles**:
 - **History**: recent git commits, blame lines, related PRs/issues.
 - **Constraints**: architectural boundaries, frozen APIs, compatibility invariants.
 
-**Step 4 — Vanguard Dispatch**
-- Sortie Vanguard through the carrier's individual tool (${"``"}carrier_<id>${"``"}).
-- Use multiple ${"``"}carrier_<id>${"``"} calls in the same response when multiple independent reconnaissance missions were designed in Step 3, including same-carrier parallel work.
-- Use one ${"``"}carrier_<id>${"``"} call when only a single focused mission is needed.
+**Step 4 — Reconnaissance Dispatch**
+- Sortie the codebase reconnaissance carrier from the roster through ${"``"}carrier_dispatch${"``"}.
+- Use multiple ${"``"}carrier_dispatch${"``"} calls in the same response when multiple independent reconnaissance missions were designed in Step 3, including same-carrier parallel work.
+- Use one ${"``"}carrier_dispatch${"``"} call when only a single focused mission is needed.
 - Each request must carry exactly one focused mission from Step 3.
-- Do NOT perform direct multi-file exploration — delegate to Vanguard instead.
+- Do NOT perform direct multi-file exploration — delegate to the codebase reconnaissance carrier from the roster instead.
 - Let the Carrier determine its own search approach within the mission boundary.
 
 **Step 5 — Result Synthesis**
-- Integrate Vanguard findings with your internal knowledge audit.
+- Integrate reconnaissance findings with your internal knowledge audit.
 - Update the known-facts list and resolve or refine remaining gaps.
 - Classify task scope (trivial vs. non-trivial) based on the **now-complete** context picture.
 - Use the synthesized context to inform Phase 2–7 decisions.
@@ -109,7 +109,7 @@ When the boundary is unclear, prefer the inline plan — escalate to a structure
 Present the plan to the Admiral of the Navy (대원수) for approval only when a structured plan was produced, or when the work changes user-visible behavior across multiple modules; otherwise execution may proceed directly.
 
 #### Phase 4 — Execution
-- Execute the plan by delegating to the designated Carrier(s) through their assigned Captain (함장).
+- Execute the plan by delegating to the designated Carrier(s) from the active roster.
 - Monitor progress and intervene only when a Carrier reports a blocker or deviates from the plan.
 
 #### Phase 5 — Refactoring *(conditional)*
@@ -138,7 +138,7 @@ Execute the following reviews **in parallel**:
 #### Completion Report
 After finishing (or terminating early), include a brief phase summary in your final response:
 - **Executed**: list phases that ran (e.g., "1 → 3 → 4 → 6 → 7")
-- **Deep Dives triggered**: list which phase(s) triggered Deep Dive and the outcome (e.g., "Phase 1 — 2 speculative claims verified via Task Force")
+- **Deep Dives triggered**: list which phase(s) triggered Deep Dive and the outcome (e.g., "Phase 1 — 2 speculative claims verified")
 - **Skipped (conditional)**: list phases skipped with one-line reason each (e.g., "Phase 2 — no structural changes", "Phase 5 — code already clean")
 - **Skipped (early termination)**: if the workflow did not reach Phase 7, explain the blocker or reason for stopping
 - **Context Confidence**: [complete | sufficient | partial | speculative]

@@ -30,14 +30,14 @@ When multiple Carriers contribute to the same task, apply structured feedback:
 
 | Pattern | Flow | When |
 |---------|------|------|
-| **Build → Review** | Genesis → Sentinel review → findings back to Genesis → re-review | Standard implementation cycle |
-| **Analyze → Execute** | Genesis refactoring → Sentinel verifies | Refactoring workflow |
-| **Decide → Plan → Execute** | Nimitz decision → Kirov plan_file → Ohio execution | Complex features |
-| **Research → Act** | Vanguard/Tempest recon → Nimitz/Kirov/Ohio (Genesis for single-shot follow-ups) | Unknown scope tasks |
+| **Build → Review** | implementation carrier → review carrier → findings back to implementation carrier → re-review | Standard implementation cycle |
+| **Analyze → Execute** | implementation or refactoring carrier → review carrier verifies | Refactoring workflow |
+| **Decide → Plan → Execute** | judgment carrier → planning carrier → execution carrier | Complex features |
+| **Research → Act** | reconnaissance carrier → appropriate follow-up carrier from the active roster | Unknown scope tasks |
 
-- After a review Carrier (Sentinel) produces findings, route actionable items back to the implementation Carrier (Genesis) with explicit fix instructions.
+- After a review carrier produces findings, route actionable items back to the implementation carrier with explicit fix instructions.
 - After fixes are applied, **re-run the same review** on changed code only — do not re-review the entire codebase.
-- Chronicle runs **last** in any pipeline — only after implementation and verification are complete.
+- Documentation carriers run **last** in any pipeline — only after implementation and verification are complete.
 
 ### Retry Policy
 When a Carrier operation fails (timeout, connection error, or runtime error):
