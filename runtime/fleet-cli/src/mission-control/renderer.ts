@@ -1,13 +1,13 @@
 import { CARRIER_COLORS } from "@dotobokuri/fleet-carriers";
 import { createOverlayFrame, truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
-import type { DedicatedCliId } from "../agent-cli/types.js";
+import type { AgentCliId } from "../agent-cli/types.js";
 import type { MissionControlCliOption, MissionControlStateKind } from "./types.js";
 
 interface MissionControlRenderOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
   readonly lastExit: PtyExitEvent | undefined;
-  readonly selectedCliId: DedicatedCliId;
+  readonly selectedCliId: AgentCliId;
   readonly state: MissionControlStateKind;
 }
 
@@ -120,7 +120,7 @@ function formatExitEvent(event: PtyExitEvent | undefined): string {
   return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
 }
 
-function colorizeProvider(cliId: DedicatedCliId, text: string): string {
+function colorizeProvider(cliId: AgentCliId, text: string): string {
   const color = CARRIER_COLORS[cliId] ?? "";
   return color ? `${color}${text}${ANSI_RESET}` : text;
 }

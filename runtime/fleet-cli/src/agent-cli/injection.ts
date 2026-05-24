@@ -6,21 +6,21 @@ import type { ExecutorSessionManager } from "@dotobokuri/fleet-mcp-server";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
-import { getDedicatedCliInjectionCapability } from "./capabilities.js";
-import type { DedicatedCliInjectionContext, DedicatedCliProfile } from "./types.js";
+import { getAgentCliInjectionCapability } from "./capabilities.js";
+import type { AgentCliInjectionContext, AgentCliProfile } from "./types.js";
 
-export interface InjectDedicatedCliProfileOptions {
+export interface InjectAgentCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
   readonly dedicatedMcpSession: ExecutorSessionManager;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
 }
 
-export async function injectDedicatedCliProfile(
-  profile: DedicatedCliProfile,
-  options: InjectDedicatedCliProfileOptions,
-): Promise<DedicatedCliProfile> {
-  const capability = getDedicatedCliInjectionCapability(profile.id);
+export async function injectAgentCliProfile(
+  profile: AgentCliProfile,
+  options: InjectAgentCliProfileOptions,
+): Promise<AgentCliProfile> {
+  const capability = getAgentCliInjectionCapability(profile.id);
   if (!capability.enabled) {
     return profile;
   }
@@ -32,13 +32,13 @@ export async function injectDedicatedCliProfile(
     label: `dedicated:${profile.id}`,
   });
   const systemPromptFile = writeSystemPromptFile(profile.id, options.buildSystemPrompt(injectTone));
-  const context: DedicatedCliInjectionContext = {
+  const context: AgentCliInjectionContext = {
     cliId: profile.id,
-    mcpServers: buildDedicatedCliMcpServerConfigs(endpoint.servers, tokens),
+    mcpServers: buildAgentCliMcpServerConfigs(endpoint.servers, tokens),
     replaceSystemPrompt: options.replaceSystemPrompt ?? false,
     systemPromptFile,
   };
-  const injectedArgs = buildDedicatedCliArgs(capability.builderId, context);
+  const injectedArgs = buildAgentCliArgs(capability.builderId, context);
   return {
     ...profile,
     args: [...profile.args, ...injectedArgs],
@@ -46,10 +46,10 @@ export async function injectDedicatedCliProfile(
   };
 }
 
-function buildDedicatedCliMcpServerConfigs(
+function buildAgentCliMcpServerConfigs(
   endpoints: readonly { readonly name: string; readonly url: string }[],
   tokens: readonly { readonly name: string; readonly token: string }[],
-): DedicatedCliInjectionContext["mcpServers"] {
+): AgentCliInjectionContext["mcpServers"] {
   return endpoints.map((endpoint) => {
     const token = tokens.find((entry) => entry.name === endpoint.name)?.token;
     if (!token) {
@@ -69,9 +69,9 @@ function writeSystemPromptFile(cliId: string, systemPrompt: string): string {
   return filePath;
 }
 
-function buildDedicatedCliArgs(
+function buildAgentCliArgs(
   builderId: "claude-native" | "codex-native",
-  context: DedicatedCliInjectionContext,
+  context: AgentCliInjectionContext,
 ): string[] {
   switch (builderId) {
     case "claude-native":

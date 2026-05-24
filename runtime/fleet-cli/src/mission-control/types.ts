@@ -1,17 +1,17 @@
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 
-import type { DedicatedCliId, DedicatedCliProfile } from "../agent-cli/types.js";
+import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { PtyView } from "../controls/terminal-view.js";
 
 export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" | "failed";
 
 export interface MissionControlCliOption {
-  readonly id: DedicatedCliId;
+  readonly id: AgentCliId;
   readonly label: string;
 }
 
 export interface MissionControlStateSnapshot {
-  readonly cliId: DedicatedCliId;
+  readonly cliId: AgentCliId;
   readonly kind: MissionControlStateKind;
   readonly lastExit?: PtyExitEvent;
 }
@@ -21,7 +21,7 @@ export interface MissionControlController {
   readonly ptyHost: PtyHost;
   readonly ptyView: MissionControlPtyView;
   readonly closePanel: () => void;
-  readonly getActiveProfile: () => DedicatedCliProfile | undefined;
+  readonly getActiveProfile: () => AgentCliProfile | undefined;
   readonly getState: () => MissionControlStateSnapshot;
   readonly hasActivePanel: () => boolean;
   readonly kill: () => void;
@@ -55,9 +55,9 @@ export interface CreateMissionControlControllerOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
   readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
   readonly createPtyView?: (cols: number, rows: number) => PtyView;
-  readonly defaultCliId: DedicatedCliId;
-  readonly injectProfile: (profile: DedicatedCliProfile) => Promise<DedicatedCliProfile>;
+  readonly defaultCliId: AgentCliId;
+  readonly injectProfile: (profile: AgentCliProfile) => Promise<AgentCliProfile>;
   readonly onExitFleet: () => void;
   readonly onRenderRequest: () => void;
-  readonly resolveProfile: (cliId: DedicatedCliId) => Promise<DedicatedCliProfile>;
+  readonly resolveProfile: (cliId: AgentCliId) => Promise<AgentCliProfile>;
 }

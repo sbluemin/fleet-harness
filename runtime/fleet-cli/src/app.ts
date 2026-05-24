@@ -27,8 +27,8 @@ import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
 import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";
-import { injectDedicatedCliProfile } from "./agent-cli/injection.js";
-import { getDedicatedCliMetadata, resolveDedicatedCliId, resolveDedicatedCliProfile } from "./agent-cli/registry.js";
+import { injectAgentCliProfile } from "./agent-cli/injection.js";
+import { getAgentCliMetadata, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
@@ -70,10 +70,10 @@ export function createMissionControlProfileConfig(
   options: CreateMissionControlProfileConfigOptions,
 ): MissionControlProfileConfig {
   return {
-    cliOptions: getDedicatedCliMetadata(),
-    defaultCliId: resolveDedicatedCliId(options.env, { cliId: options.cliId }),
+    cliOptions: getAgentCliMetadata(),
+    defaultCliId: resolveAgentCliId(options.env, { cliId: options.cliId }),
     resolveProfile: (selectedCliId) =>
-      resolveDedicatedCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: options.model }),
+      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: options.model }),
   };
 }
 
@@ -108,7 +108,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     injectProfile: (profile) =>
       native
         ? Promise.resolve(profile)
-        : injectDedicatedCliProfile(profile, {
+        : injectAgentCliProfile(profile, {
             buildSystemPrompt,
             dedicatedMcpSession: runtime.dedicatedMcpSession,
             enableMetaphor,

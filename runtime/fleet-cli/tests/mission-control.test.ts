@@ -6,8 +6,8 @@ import { createMissionControlProfileConfig } from "../src/app.js";
 import { createMissionControlController } from "../src/mission-control/controller.js";
 import { renderMissionControl } from "../src/mission-control/renderer.js";
 import type { MissionControlCliOption } from "../src/mission-control/types.js";
-import { getDedicatedCliMetadata, resolveDedicatedCliId } from "../src/agent-cli/registry.js";
-import type { DedicatedCliId, DedicatedCliProfile } from "../src/agent-cli/types.js";
+import { getAgentCliMetadata, resolveAgentCliId } from "../src/agent-cli/registry.js";
+import type { AgentCliId, AgentCliProfile } from "../src/agent-cli/types.js";
 
 interface FakeHost extends PtyHost {
   readonly writes: string[];
@@ -19,7 +19,7 @@ interface FakePanel extends Component {
   readonly invalidations: { count: number };
 }
 
-const TEST_PROFILE: DedicatedCliProfile = {
+const TEST_PROFILE: AgentCliProfile = {
   args: [],
   bin: "test",
   cwd: "/tmp",
@@ -32,7 +32,7 @@ const CLI_OPTIONS = [
   { id: "claude" as const, label: "Claude" },
   { id: "codex" as const, label: "Codex" },
 ];
-const ALL_CLI_OPTIONS = getDedicatedCliMetadata();
+const ALL_CLI_OPTIONS = getAgentCliMetadata();
 const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 const RAW_ANSI_PATTERN = /\x1b/;
 const LONG_ANSI_CJK_LABEL = "\x1b[1mClaude超長プロバイダー名終端ラベル\x1b[0m";
@@ -242,7 +242,7 @@ describe("Mission Control controller", () => {
   });
 
   it("selects Codex from idle key input", async () => {
-    const launched: DedicatedCliId[] = [];
+    const launched: AgentCliId[] = [];
     const controller = createTestController({
       resolveProfile: (cliId) => {
         launched.push(cliId);
@@ -258,7 +258,7 @@ describe("Mission Control controller", () => {
   });
 
   it("moves CLI selection with arrow keys and vim keys before launch", async () => {
-    const launched: DedicatedCliId[] = [];
+    const launched: AgentCliId[] = [];
     const controller = createTestController({
       cliOptions: ALL_CLI_OPTIONS,
       resolveProfile: (cliId) => {
@@ -297,15 +297,15 @@ describe("Mission Control controller", () => {
   });
 
   it("preserves dedicated CLI resolver precedence for Mission Control defaults", () => {
-    expect(resolveDedicatedCliId({ FLEET_DEDICATED_CLI: "codex" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
-    expect(resolveDedicatedCliId({ FLEET_DEDICATED_CLI: "claude-zai" })).toBe("claude-zai");
+    expect(resolveAgentCliId({ FLEET_DEDICATED_CLI: "codex" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
+    expect(resolveAgentCliId({ FLEET_DEDICATED_CLI: "claude-zai" })).toBe("claude-zai");
   });
 
   it("keeps variant CLI selections instead of collapsing them to Claude", async () => {
-    const launched: DedicatedCliId[] = [];
+    const launched: AgentCliId[] = [];
     const controller = createTestController({
       cliOptions: ALL_CLI_OPTIONS,
-      defaultCliId: resolveDedicatedCliId({ FLEET_DEDICATED_CLI: "claude-zai" }),
+      defaultCliId: resolveAgentCliId({ FLEET_DEDICATED_CLI: "claude-zai" }),
       resolveProfile: (cliId) => {
         launched.push(cliId);
         return Promise.resolve({ ...TEST_PROFILE, id: cliId, label: cliId });
@@ -349,10 +349,10 @@ describe("Mission Control controller", () => {
 
 function createTestController(options: {
   readonly cliOptions?: readonly MissionControlCliOption[];
-  readonly defaultCliId?: DedicatedCliId;
+  readonly defaultCliId?: AgentCliId;
   readonly hosts?: FakeHost[];
   readonly onRenderRequest?: () => void;
-  readonly resolveProfile?: (cliId: DedicatedCliId) => Promise<DedicatedCliProfile>;
+  readonly resolveProfile?: (cliId: AgentCliId) => Promise<AgentCliProfile>;
 } = {}) {
   const controller = createMissionControlController({
     cliOptions: options.cliOptions ?? CLI_OPTIONS,

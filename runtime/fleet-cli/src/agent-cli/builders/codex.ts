@@ -1,9 +1,9 @@
-import type { DedicatedCliInjectionContext } from "../types.js";
+import type { AgentCliInjectionContext } from "../types.js";
 import { escapeTomlBasicString } from "./toml.js";
 
 const CODEX_TOOL_TIMEOUT_SEC = 1_800;
 
-export function buildCodexNativeArgs(context: DedicatedCliInjectionContext): string[] {
+export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[] {
   const args = [
     "-c",
     `model_instructions_file="${escapeTomlBasicString(context.systemPromptFile)}"`,

@@ -1,7 +1,7 @@
-export type DedicatedCliId = "claude" | "claude-zai" | "claude-kimi" | "codex";
+export type AgentCliId = "claude" | "claude-zai" | "claude-kimi" | "codex";
 
-export interface DedicatedCliProfile {
-  readonly id: DedicatedCliId;
+export interface AgentCliProfile {
+  readonly id: AgentCliId;
   readonly label: string;
   readonly bin: string;
   readonly args: readonly string[];
@@ -17,43 +17,43 @@ export interface CliMessagePolicy {
   readonly multilineStrategy?: "literal" | "paste-mode";
 }
 
-export interface DedicatedCliDefinition {
-  readonly id: DedicatedCliId;
+export interface AgentCliDefinition {
+  readonly id: AgentCliId;
   readonly label: string;
   readonly defaultBin: string;
   readonly envOverrideName: string;
-  createProfile(options: DedicatedCliProfileOptions): Promise<DedicatedCliProfile>;
+  createProfile(options: AgentCliProfileOptions): Promise<AgentCliProfile>;
 }
 
-export interface DedicatedCliProfileOptions {
+export interface AgentCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;
 }
 
-export interface DedicatedCliInjectionContext {
-  readonly cliId: DedicatedCliId;
+export interface AgentCliInjectionContext {
+  readonly cliId: AgentCliId;
   readonly replaceSystemPrompt: boolean;
   readonly systemPromptFile: string;
-  readonly mcpServers: readonly DedicatedCliMcpServerConfig[];
+  readonly mcpServers: readonly AgentCliMcpServerConfig[];
 }
 
-export interface DedicatedCliMcpServerConfig {
+export interface AgentCliMcpServerConfig {
   readonly name: string;
   readonly endpointUrl: string;
   readonly bearerToken: string;
 }
 
-export interface DedicatedCliInjectionCapabilityEnabled {
+export interface AgentCliInjectionCapabilityEnabled {
   readonly enabled: true;
   readonly builderId: "claude-native" | "codex-native";
 }
 
-export interface DedicatedCliInjectionCapabilityDisabled {
+export interface AgentCliInjectionCapabilityDisabled {
   readonly enabled: false;
   readonly reason: "native-builder-not-implemented";
 }
 
-export type DedicatedCliInjectionCapability =
-  | DedicatedCliInjectionCapabilityEnabled
-  | DedicatedCliInjectionCapabilityDisabled;
+export type AgentCliInjectionCapability =
+  | AgentCliInjectionCapabilityEnabled
+  | AgentCliInjectionCapabilityDisabled;

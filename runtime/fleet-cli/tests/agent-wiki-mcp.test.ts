@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
 import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
-import type { DedicatedCliInjectionContext } from "../src/agent-cli/types.js";
+import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -79,7 +79,7 @@ describe("fleet-cli dedicated CLI MCP registration", () => {
   });
 
   it("builds Claude and Codex configs with only the split internal MCP server names", () => {
-    const context = makeDedicatedCliInjectionContext();
+    const context = makeAgentCliInjectionContext();
 
     const claudeArgs = buildClaudeNativeArgs(context);
     const mcpConfigIndex = claudeArgs.indexOf("--mcp-config") + 1;
@@ -115,7 +115,7 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
   return new Set(body.result?.tools?.map((tool) => tool.name).filter((name): name is string => Boolean(name)));
 }
 
-function makeDedicatedCliInjectionContext(): DedicatedCliInjectionContext {
+function makeAgentCliInjectionContext(): AgentCliInjectionContext {
   return {
     cliId: "codex",
     mcpServers: [

@@ -1,24 +1,24 @@
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 
 import { createChildEnv, resolveBinary } from "../resolve-bin.js";
-import type { DedicatedCliDefinition, DedicatedCliId, DedicatedCliProfileOptions } from "../types.js";
+import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 import { createClaudeEnv } from "./env.js";
 
 interface ClaudeFamilyCliFactoryOptions {
-  readonly id: Extract<DedicatedCliId, "claude" | "claude-zai" | "claude-kimi">;
+  readonly id: Extract<AgentCliId, "claude" | "claude-zai" | "claude-kimi">;
   readonly label: string;
-  readonly authCli?: Extract<DedicatedCliId, "claude-zai" | "claude-kimi">;
+  readonly authCli?: Extract<AgentCliId, "claude-zai" | "claude-kimi">;
 }
 
 export function createClaudeFamilyCliDefinition(
   options: ClaudeFamilyCliFactoryOptions,
-): DedicatedCliDefinition {
+): AgentCliDefinition {
   return {
     defaultBin: "claude",
     envOverrideName: "CLAUDE_BIN",
     id: options.id,
     label: options.label,
-    async createProfile(profileOptions: DedicatedCliProfileOptions) {
+    async createProfile(profileOptions: AgentCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
       const authEnv = options.authCli ? await resolveAuthEnv(options.authCli) : {};
       return {

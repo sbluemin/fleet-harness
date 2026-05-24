@@ -1,6 +1,6 @@
-import type { DedicatedCliInjectionContext } from "../types.js";
+import type { AgentCliInjectionContext } from "../types.js";
 
-export function buildClaudeNativeArgs(context: DedicatedCliInjectionContext): string[] {
+export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string[] {
   const systemPromptArg = context.replaceSystemPrompt ? "--system-prompt-file" : "--append-system-prompt-file";
   return [
     systemPromptArg,

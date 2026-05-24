@@ -1,6 +1,6 @@
 import { matchesKey, type Component, type KeyboardProtocolState, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
 
-import type { DedicatedCliId, DedicatedCliProfile } from "../agent-cli/types.js";
+import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
 import { renderMissionControl } from "./renderer.js";
 import type {
@@ -14,7 +14,7 @@ import type {
 
 interface ActivePty {
   readonly host: PtyHost;
-  readonly profile: DedicatedCliProfile;
+  readonly profile: AgentCliProfile;
   readonly view: PtyView;
 }
 
@@ -248,9 +248,9 @@ export function createMissionControlController(options: CreateMissionControlCont
 
 function resolveNextCliId(
   data: string,
-  selectedCliId: DedicatedCliId,
+  selectedCliId: AgentCliId,
   cliOptions: readonly MissionControlCliOption[],
-): DedicatedCliId | undefined {
+): AgentCliId | undefined {
   const indexedCliId = parseCliOptionKey(data, cliOptions);
   if (indexedCliId !== undefined) {
     return indexedCliId;
@@ -267,7 +267,7 @@ function resolveNextCliId(
   return undefined;
 }
 
-function parseCliOptionKey(data: string, cliOptions: readonly MissionControlCliOption[]): DedicatedCliId | undefined {
+function parseCliOptionKey(data: string, cliOptions: readonly MissionControlCliOption[]): AgentCliId | undefined {
   if (!/^[1-9]$/.test(data)) {
     return undefined;
   }
@@ -276,10 +276,10 @@ function parseCliOptionKey(data: string, cliOptions: readonly MissionControlCliO
 }
 
 function moveSelection(
-  selectedCliId: DedicatedCliId,
+  selectedCliId: AgentCliId,
   cliOptions: readonly MissionControlCliOption[],
   delta: -1 | 1,
-): DedicatedCliId | undefined {
+): AgentCliId | undefined {
   if (cliOptions.length === 0) {
     return undefined;
   }

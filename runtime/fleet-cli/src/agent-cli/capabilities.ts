@@ -1,6 +1,6 @@
-import type { DedicatedCliId, DedicatedCliInjectionCapability } from "./types.js";
+import type { AgentCliId, AgentCliInjectionCapability } from "./types.js";
 
-export const DEDICATED_CLI_INJECTION_CAPABILITIES: Record<DedicatedCliId, DedicatedCliInjectionCapability> = {
+export const AGENT_CLI_INJECTION_CAPABILITIES: Record<AgentCliId, AgentCliInjectionCapability> = {
   claude: {
     builderId: "claude-native",
     enabled: true,
@@ -19,8 +19,8 @@ export const DEDICATED_CLI_INJECTION_CAPABILITIES: Record<DedicatedCliId, Dedica
   },
 };
 
-export function getDedicatedCliInjectionCapability(
-  cliId: DedicatedCliId,
-): DedicatedCliInjectionCapability {
-  return DEDICATED_CLI_INJECTION_CAPABILITIES[cliId];
+export function getAgentCliInjectionCapability(
+  cliId: AgentCliId,
+): AgentCliInjectionCapability {
+  return AGENT_CLI_INJECTION_CAPABILITIES[cliId];
 }

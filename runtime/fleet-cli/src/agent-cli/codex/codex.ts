@@ -1,13 +1,13 @@
 import { createChildEnv, resolveBinary } from "../resolve-bin.js";
-import type { DedicatedCliDefinition, DedicatedCliProfileOptions } from "../types.js";
+import type { AgentCliDefinition, AgentCliProfileOptions } from "../types.js";
 import { createCodexEnv } from "./env.js";
 
-export const codexCli: DedicatedCliDefinition = {
+export const codexCli: AgentCliDefinition = {
   defaultBin: "codex",
   envOverrideName: "CODEX_BIN",
   id: "codex",
   label: "Codex",
-  async createProfile(options: DedicatedCliProfileOptions) {
+  async createProfile(options: AgentCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
       args: [...prefixArgs, ...buildModelArgs(options.model)],
