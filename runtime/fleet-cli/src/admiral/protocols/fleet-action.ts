@@ -20,17 +20,13 @@ export const FLEET_ACTION: AdmiralProtocol = {
 
 **Deep Dive rule:** After **every phase** that produces analytical results, evaluate whether the Deep Dive Standing Order should be triggered before advancing to the next phase. This applies to all phases — not just analysis phases.
 
+**Mission Anchor rule:** Apply the Mission Anchor Standing Order before Phase 1 and at every phase boundary.
+
 **Completion rule:** All 7 phases must be evaluated for every task — do not stop after execution. Conditional phases may be skipped, but the decision to skip must be conscious, not accidental. If you end a task before reaching Phase 7, you **must** report which phases were skipped and why in your final response. Omitting phases without explanation is an anti-pattern.
 
 #### Phase 1 — Reconnaissance (Vanguard mandatory)
 
 Every task begins with systematic context acquisition. Do not skip this phase.
-
-**Step 0 — Mission Objective Anchor**
-Before any investigation, explicitly anchor the task's core objective in one sentence. This sentence is the fixed north star for all subsequent phases. State it as:
-- **Objective**: [A single sentence capturing the user's essential request — what must be built, fixed, or achieved.]
-
-If the user's request is materially ambiguous, state the ambiguity explicitly in the Objective line rather than guessing.
 
 **Step 1 — Internal Knowledge Audit**
 Before dispatching any Carrier, explicitly assess what you already know:

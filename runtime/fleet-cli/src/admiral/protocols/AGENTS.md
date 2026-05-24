@@ -15,8 +15,10 @@ The Admiral extension implements a modular prompt policy system that governs how
 
 ### Standing Orders
 
+- **Mission Anchor**: Anchors every phase decision to the Mission Objective; enforces pre-phase recall, post-phase self-check, and drift recovery.
 - **Carrier Operations Policy**: Defines how and when PI should delegate tasks to carriers.
 - **Deep Dive**: Strategy for recursive investigation and root-cause analysis.
+- **Result Integrity**: Governs how carrier results are evaluated, cross-carrier feedback loops, and retry policy on carrier failures.
 - **Always Active**: These are injected into every agent start sequence regardless of the selected protocol.
 
 ### Protocols
