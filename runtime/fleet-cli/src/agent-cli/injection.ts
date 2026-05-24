@@ -29,7 +29,7 @@ export async function injectAgentCliProfile(
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokens = options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
-    label: `agent:`,
+    label: `agent:${profile.id}`,
   });
   const systemPromptFile = writeSystemPromptFile(profile.id, options.buildSystemPrompt(injectTone));
   const context: AgentCliInjectionContext = {
