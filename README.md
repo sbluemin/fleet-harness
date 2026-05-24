@@ -59,8 +59,6 @@ Eight built-in Carriers, each with a distinct operational role:
 
 Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
 
-<img src=".github/handoff.png" alt="Multi-LLM Orchestration" width="100%" />
-
 | CLI | Provider | Protocol | Key Capabilities |
 |-----|----------|----------|------------------|
 | **Claude Code** | Anthropic | ACP | Deep reasoning, architecture judgment |
