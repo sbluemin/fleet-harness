@@ -228,7 +228,7 @@ function getCliDisplayName(cliType: string): string {
 function getFooterHint(model: CarrierStatusRenderModel): string {
   if (model.renameState) return "이름 입력  Enter save  Esc cancel  Backspace delete  empty = reset";
   if (model.state.kind === "saving") return "저장 중...";
-  if (model.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  S sq  Tab  Esc";
+  if (model.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  Tab  Esc";
   return "↑↓ select  Enter confirm  Esc cancel";
 }
 
