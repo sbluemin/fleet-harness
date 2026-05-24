@@ -313,6 +313,7 @@ function serializeWikiEntry(entry: WikiEntry): string {
     version: entry.version,
   };
   if (entry.rawSourceRef) frontmatter.rawSourceRef = entry.rawSourceRef;
+  if (entry.templateId) frontmatter.template_id = entry.templateId;
   if (entry.aliases?.length) frontmatter.aliases = entry.aliases;
   if (entry.type) frontmatter.type = entry.type;
   if (entry.status) frontmatter.status = entry.status;
@@ -338,6 +339,7 @@ function parseWikiEntry(content: string): WikiEntry {
     updated: String(parsed.frontmatter.updated),
     version: Number(parsed.frontmatter.version),
     rawSourceRef: parsed.frontmatter.rawSourceRef ? String(parsed.frontmatter.rawSourceRef) : undefined,
+    templateId: optionalString(parsed.frontmatter.template_id),
     aliases: optionalStringArray(parsed.frontmatter.aliases),
     type: optionalEnum(parsed.frontmatter.type, WIKI_ENTRY_TYPES),
     status: optionalEnum(parsed.frontmatter.status, WIKI_ENTRY_STATUSES),

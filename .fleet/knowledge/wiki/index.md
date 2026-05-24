@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `13`
+- total_entries: `14`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -33,10 +33,10 @@
 - title: `Guide - 003 fleet-wiki 사용법`
 - path: `wiki/guide-003-fleet-wiki.md`
 - tags: `guide, fleet-wiki, fleet-wiki-web, workflow, onboarding, current`
-- updated: `2026-05-23T14:47:42.640Z`
-- summary: `# fleet-wiki 사용법`
-- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
-- raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md`
+- updated: `2026-05-23T17:37:53.758Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+- raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md, raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
 
 ### prd-agent-core-model-bypass
 
@@ -136,6 +136,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
 - raw_source_refs: `raw/2026-05-23-prd-tui-mouse-scroll-hybrid-routing-source-bfe0d84c.md`
+
+### prd-wiki-template-schema
+
+- title: `PRD: Fleet Wiki 템플릿 기반 스키마 검증`
+- path: `wiki/prd-wiki-template-schema.md`
+- tags: `wiki, schema, template, validation, ingest, fleet-wiki`
+- updated: `2026-05-23T16:29:50.341Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
+- raw_source_refs: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
 
 ## Tags
 
@@ -253,6 +263,7 @@
 ### fleet-wiki
 
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### fleet-wiki-web
 
@@ -263,6 +274,10 @@
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### ingest
+
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### keybind
 
@@ -315,6 +330,10 @@
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
+### schema
+
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
+
 ### scroll
 
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
@@ -333,9 +352,21 @@
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 
+### template
+
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
+
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### validation
+
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
+
+### wiki
+
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### workflow
 

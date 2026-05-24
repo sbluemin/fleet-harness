@@ -10,8 +10,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Per-carrier builtin external MCP allowlist; Tempest now exposes the grep.app code search MCP.
 - [agent-core] Added auth login, list, and logout commands with migrated auth storage and Claude-family alternate backend support.
 - [agent-core] Added `--model` option to forward a model name to the selected dedicated CLI, and reorganized `--help` output into Fleet Agent and underlying CLI option categories.
+- [wiki-web] Command palette can now be toggled with the Cmd+K (or Ctrl+K) keyboard shortcut.
+- [wiki-web] Command palette now locks page scroll while open and restores it on close.
+- [wiki-web] Keyboard focus is now trapped within the command palette while it is open, restoring the previous focus on close.
+- [wiki-web] Hovering over a search result now synchronizes the active selection.
+- [wiki-web] Search matches in result titles are now visually highlighted.
+- [wiki-web] Search results now display body match excerpts with markers stripped for readability.
+- [wiki-web] Command palette results are now grouped under section headers for recent and matched entries.
 
 ### Changed
+- [wiki-web] Inline mermaid diagrams now scale to fit the container as a miniature overview instead of rendering at intrinsic size with overflow scroll; the lightbox retains full-size pan/zoom.
+- [wiki-web] Removed raw relevance scores from command palette search results.
 - Split Fleet internal MCP access into independent `fleet-carriers` and `fleet-wiki` servers with isolated tokens.
 - [core] carrier_jobs full responses for auto-promoted Task Force jobs return per-backend results keyed by CLI type instead of a single full_result string.
 - [core][carriers] Completed migration of carrier runtime, dispatch, jobs, store, and Task Force implementation to `@sbluemin/fleet-carriers` while removing obsolete compatibility facades.

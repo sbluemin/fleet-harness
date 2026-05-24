@@ -1119,7 +1119,15 @@ kbd {
   box-shadow: var(--shadow-soft), 0 0 0 4px var(--brass-glow);
 }
 
-:is(.diagram-block, .diagram-lightbox__viewport) svg {
+.diagram-block svg {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.diagram-lightbox__viewport svg {
   display: block;
   max-width: none;
   width: max-content;
@@ -1541,6 +1549,36 @@ kbd {
   box-shadow: var(--shadow-soft);
 }
 
+.queue-toc-nav {
+  display: grid;
+  gap: 5px;
+}
+
+.queue-toc-link {
+  display: block;
+  min-width: 0;
+  padding: 5px 0;
+  color: var(--ink-fog);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  line-height: 1.45;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.queue-toc-link:hover {
+  color: var(--ink-pearl);
+  transform: translateX(2px);
+}
+
+.queue-toc-level-3 {
+  padding-left: var(--space-3);
+  font-size: 12.5px;
+}
+
 .manifest-card {
   display: flex;
   flex-direction: column;
@@ -1695,7 +1733,7 @@ kbd {
 }
 
 .command-card {
-  width: min(640px, 100%);
+  width: min(1080px, 100%);
   padding: var(--space-3);
   border-radius: var(--radius-lg);
   border: 1px solid var(--surface-rim-strong);
@@ -1703,6 +1741,11 @@ kbd {
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+
+.command-card:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
+  outline-offset: 4px;
 }
 
 .command-search {
@@ -1735,11 +1778,16 @@ kbd {
   color: var(--ink-fog);
 }
 
+#command-input:focus-visible {
+  outline: 0;
+  text-shadow: 0 0 18px var(--brass-glow);
+}
+
 .command-results {
   display: grid;
   gap: 2px;
   margin-top: var(--space-3);
-  max-height: 420px;
+  max-height: 70vh;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -1760,6 +1808,12 @@ kbd {
   font-family: inherit;
   position: relative;
   transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.command-result:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass-bright) 30%, transparent);
 }
 
 .command-result-text {
@@ -1822,6 +1876,13 @@ kbd {
   min-width: 0;
 }
 
+.command-highlight {
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 24%, transparent);
+  color: var(--brass-bright);
+  padding: 0 0.16em;
+}
+
 .command-result small {
   display: block;
   color: var(--ink-fog);
@@ -1832,6 +1893,35 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.command-result-excerpt {
+  max-width: 100%;
+  letter-spacing: 0.01em;
+  opacity: 0.84;
+  text-transform: none;
+}
+
+.command-section-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.command-section-heading::after {
+  content: "";
+  flex: 1;
+  min-width: 24px;
+  height: 1px;
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
 }
 
 .command-tags {
@@ -2291,6 +2381,31 @@ kbd {
   color: var(--ink-fog);
   letter-spacing: 0.04em;
   flex-shrink: 0;
+}
+
+.queue-card-summary {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-pearl);
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.queue-card-target {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .queue-card-chips {

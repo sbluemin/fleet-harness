@@ -58,7 +58,7 @@ function renderQueueEmpty(tab: "pending" | "archived"): string {
 }
 
 function renderQueueCard(item: QueueListItem): string {
-  const { id, meta, source } = item;
+  const { id, meta, source, summary, op, target } = item;
   const statusDot = renderStatusDot(meta.status);
   const relative = relativeTime(meta.createdAt);
   const warnings = meta.warnings ?? [];
@@ -71,14 +71,24 @@ function renderQueueCard(item: QueueListItem): string {
   const sourceChip = source === "archive"
     ? `<span class="chip">${escapeHtml(meta.status)}</span>`
     : "";
+  const opBadge = op ? renderOpBadge(op, true) : "";
+  const summaryHtml = summary
+    ? `<p class="queue-card-summary">${escapeHtml(summary)}</p>`
+    : "";
+  const targetHtml = target
+    ? `<span class="queue-card-target">${escapeHtml(target)}</span>`
+    : "";
 
   return `
     <a class="queue-card" href="${escapeAttribute(queueDetailPath(id))}">
+      ${summaryHtml}
       <div class="queue-card-top">
         <span class="queue-card-id">${escapeHtml(id)}</span>
         ${statusDot}
       </div>
       <div class="queue-card-meta">
+        ${opBadge}
+        ${targetHtml}
         <span class="queue-card-time">${escapeHtml(relative)}</span>
         ${sourceChip}
         <div class="queue-card-chips">

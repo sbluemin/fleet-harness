@@ -78,6 +78,14 @@ export interface I18nMessages {
     ariaLabel: string;
     placeholder: string;
     emptyResults: string;
+    recentSection: string;
+    allSection: string;
+    matchId: string;
+    matchAlias: string;
+    matchTag: string;
+    matchTitle: string;
+    matchBody: string;
+    matchOther: string;
   };
   toc: {
     ariaLabel: string;

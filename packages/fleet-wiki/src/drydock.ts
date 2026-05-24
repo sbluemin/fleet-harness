@@ -19,7 +19,9 @@ import {
   REQUIRED_WORKSPACE_SCHEMA_SECTIONS,
   WORKSPACE_SCHEMA_AGENTS_FILENAME,
   WORKSPACE_SCHEMA_FILENAME,
+  inferTemplateIdFromTarget,
   readWorkspaceSchemaSummary,
+  scanTemplates,
 } from "./schema.js";
 import { listDirectoryNames, listFileNames, loadIndex, pathExists, readJsonFile, readPatchFile } from "./store.js";
 import {
@@ -240,6 +242,7 @@ export async function runDryDock(paths: MemoryPaths): Promise<DryDockReport> {
   }
 
   issues.push(...await schemaIssues(paths));
+  issues.push(...await templateComplianceIssues(paths, semanticEntries));
   issues.push(...semanticIssues(buildSemanticGraph(semanticEntries), await loadIndex(paths), new Date()));
 
   const errorCount = issues.filter((item) => item.severity === "error").length;
@@ -368,6 +371,40 @@ async function schemaIssues(paths: MemoryPaths): Promise<DryDockIssue[]> {
     issues.push(...safetyIssues(agentsContent, agentsPath));
   }
 
+  return issues;
+}
+
+async function templateComplianceIssues(paths: MemoryPaths, entries: ParsedSemanticEntry[]): Promise<DryDockIssue[]> {
+  const issues: DryDockIssue[] = [];
+  const templates = await scanTemplates(paths);
+  const templatesById = new Map(templates.map((template) => [template.id, template]));
+  for (const entry of entries) {
+    const templateId = typeof entry.frontmatter.template_id === "string"
+      ? entry.frontmatter.template_id
+      : inferTemplateIdFromTarget(entry.filePath, [...templatesById.keys()]);
+    if (!templateId) continue;
+    const template = templatesById.get(templateId);
+    if (!template) {
+      issues.push(issue("template_compliance", "warning", `unknown template_id: ${templateId}`, entry.filePath));
+      continue;
+    }
+    if (template.sections.length === 0) {
+      issues.push(issue("template_compliance", "warning", `template has no required sections: ${templateId}`, entry.filePath));
+      continue;
+    }
+    const bodySections = new Set(parseBodySections(entry.body));
+    const missing = template.sections.filter((section) => !bodySections.has(section));
+    if (missing.length > 0) {
+      issues.push(
+        issue(
+          "template_compliance",
+          "warning",
+          `template ${templateId} missing required body sections: ${missing.join(", ")}`,
+          entry.filePath,
+        ),
+      );
+    }
+  }
   return issues;
 }
 
@@ -603,6 +640,14 @@ function hasRawSourceRef(frontmatter: Record<string, unknown>): boolean {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => String(item)) : [];
+}
+
+function parseBodySections(body: string): string[] {
+  return body
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.match(/^##\s+(.+?)\s*$/)?.[1]?.trim())
+    .filter((section): section is string => Boolean(section));
 }
 
 function normalizeLookupKey(value: string): string {

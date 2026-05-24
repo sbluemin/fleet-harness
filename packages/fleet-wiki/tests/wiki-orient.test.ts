@@ -33,6 +33,7 @@ describe("wiki orient", () => {
 
     expect(payload.ok).toBe(true);
     expect(payload.schema_summary).toBeDefined();
+    expect((payload.schema_summary as { templates: Array<{ id: string }> }).templates.map((template) => template.id)).toEqual(["prd"]);
     expect(payload.pending_queue_count).toBe(0);
     expect(typeof (payload.drydock_summary as { issue_count: unknown }).issue_count).toBe("number");
     expect(payload.trust_boundary).toEqual(TRUST_BOUNDARY);

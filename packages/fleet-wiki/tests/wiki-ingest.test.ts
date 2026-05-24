@@ -16,6 +16,78 @@ afterEach(async () => {
 });
 
 describe("wiki ingest provenance", () => {
+  it("persists explicit template_id and enforces required template sections", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const tool = buildIngestToolConfig();
+
+    const result = await tool.execute("tool-call", {
+      id: "prd-alpha",
+      title: "PRD Alpha",
+      body: [
+        "## Overview",
+        "",
+        "candidate knowledge ".repeat(6),
+        "",
+        "## Problem",
+        "",
+        "problem",
+        "",
+        "## Goals",
+        "",
+        "goals",
+        "",
+        "## Non-Goals",
+        "",
+        "non-goals",
+        "",
+        "## User Stories",
+        "",
+        "stories",
+        "",
+        "## Functional Requirements",
+        "",
+        "requirements",
+        "",
+        "## Acceptance Criteria",
+        "",
+        "criteria",
+        "",
+        "## Open Questions",
+        "",
+        "questions",
+        "",
+        "## Related",
+        "",
+        "- [[wiki:prd-beta]]",
+      ].join("\n"),
+      tags: ["fleet", "prd"],
+      source: "prd source text",
+      template_id: "prd",
+      mode: "create",
+    }, undefined, undefined, { cwd: root } as any);
+    const payload = JSON.parse(result.content[0]!.text) as { patch_id: string };
+    const queued = await showQueue(payload.patch_id, paths);
+    const entry = JSON.parse(queued.patch.body) as WikiEntry;
+
+    expect(entry.templateId).toBe("prd");
+  });
+
+  it("rejects template_id bodies that omit required sections", async () => {
+    const root = await makeTempRoot();
+    const tool = buildIngestToolConfig();
+
+    await expect(tool.execute("tool-call", {
+      id: "prd-missing",
+      title: "PRD Missing",
+      body: ["## Overview", "", "candidate knowledge ".repeat(8)].join("\n"),
+      tags: ["fleet", "prd"],
+      source: "prd source text",
+      template_id: "prd",
+      mode: "create",
+    }, undefined, undefined, { cwd: root } as any)).rejects.toThrow("missing sections: Problem");
+  });
+
   it("adds latest rawSourceRef and appends a deduped rawSourceRefs entry", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);

@@ -3,6 +3,7 @@ import type { PatchDetailResponse } from "../api";
 import type { QueueState } from "../queue-state";
 import { renderOpBadge } from "./op-badge";
 import { renderMarkdown } from "../markdown/renderer";
+import type { TocItem } from "../markdown/renderer";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
 import { t } from "../i18n/t";
 
@@ -40,7 +41,6 @@ function renderPatchDetail(detail: PatchDetailResponse, state: QueueState): stri
   const rendered = renderMarkdown(wikiEntry.body);
   const opBadge = renderOpBadge(frontmatter.op, targetExists);
   const rawRef = meta.rawSourceRef;
-
   return `
     <div class="queue-detail-view">
       <div class="queue-detail-layout">
@@ -56,11 +56,12 @@ function renderPatchDetail(detail: PatchDetailResponse, state: QueueState): stri
             ${opBadge}
           </div>
           <article class="document">
-            <div class="markdown-body">${rendered.html}</div>
+            <div class="markdown-body" id="markdown-body">${rendered.html}</div>
           </article>
         </div>
         <aside class="queue-rail">
           ${renderPatchManifestCard(detail, rawRef)}
+          ${renderQueueRailToc(rendered.toc)}
           ${renderPatchSetCard(detail)}
           ${renderQueueActionsCard(detail, state)}
         </aside>
@@ -196,6 +197,23 @@ function renderPatchSetCard(detail: PatchDetailResponse): string {
           </li>
         `).join("")}
       </ul>
+    </div>
+  `;
+}
+
+function renderQueueRailToc(items: TocItem[]): string {
+  if (items.length === 0) return "";
+  const links = items.map((item) =>
+    `<a class="queue-toc-link queue-toc-level-${item.level}" href="#${escapeAttribute(item.id)}">${escapeHtml(item.text)}</a>`,
+  ).join("");
+  return `
+    <div class="queue-rail-card queue-toc-card">
+      <div class="queue-rail-header">
+        <p class="drydock-eyebrow">CONTENTS</p>
+      </div>
+      <nav class="queue-toc-nav" aria-label="${t("toc.ariaLabel")}">
+        ${links}
+      </nav>
     </div>
   `;
 }

@@ -8,6 +8,7 @@ import { PATCH_FILENAME, PATCH_META_FILENAME } from "./constants.js";
 import { appendLog } from "./log.js";
 import { readPatchSet } from "./patch-set.js";
 import { ensureMemoryRoot } from "./paths.js";
+import { ensureWorkspaceSchema, inferTemplateIdFromTarget, scanTemplates, validateTemplateCompliance } from "./schema.js";
 import {
   assertSafeEntryId,
   computeContentHash,
@@ -93,8 +94,9 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
 export async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
   await validatePatch(patch, paths);
   await validatePatchBase(patch, undefined, paths);
+  await ensureWorkspaceSchema(paths);
 
-  const entry = normalizeWikiEntryPatch(JSON.parse(patch.body) as WikiEntry, patch.frontmatter.target, paths);
+  const entry = await normalizeWikiEntryPatch(JSON.parse(patch.body) as WikiEntry, patch.frontmatter.target, paths);
   const relativePath = await writeWikiEntryAtTarget(entry, patch.frontmatter.target, paths);
   await rebuildIndex(paths);
   return relativePath;
@@ -324,7 +326,7 @@ export function serializePatch(patch: Patch): string {
   return `---\n${lines.join("\n")}\n---\n${patch.body}`;
 }
 
-function normalizeWikiEntryPatch(entry: WikiEntry, target: string, paths: MemoryPaths): WikiEntry {
+async function normalizeWikiEntryPatch(entry: WikiEntry, target: string, paths: MemoryPaths): Promise<WikiEntry> {
   assertSafeEntryId(entry.id);
   if (entry.id !== path.basename(target, ".md")) {
     throw new Error("wiki patch body id must match target filename");
@@ -337,10 +339,21 @@ function normalizeWikiEntryPatch(entry: WikiEntry, target: string, paths: Memory
   if (rawSourceRef) {
     assertSafeRawSourceRef(rawSourceRef, paths);
   }
+  const currentEntry = await readWikiEntry(entry.id, paths);
+  const knownIds = (await scanTemplates(paths)).map((t) => t.id);
+  const templateId = entry.templateId ?? currentEntry?.templateId ?? inferTemplateIdFromTarget(target, knownIds);
+  const body = inlineRawSourceRef ? inlineRawSourceRef.body : entry.body;
+  try {
+    await validateTemplateCompliance(paths, templateId, body);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[fleet-wiki] template approval failed for ${target} using template "${templateId ?? "(none)"}": ${message}`);
+  }
   return {
     ...entry,
-    body: inlineRawSourceRef ? inlineRawSourceRef.body : entry.body,
+    body,
     rawSourceRef,
+    templateId,
   };
 }
 

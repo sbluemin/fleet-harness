@@ -89,17 +89,20 @@ describe("wiki query", () => {
       citations: Array<{ entry_id: string; raw_source_refs: string[] }>;
     };
     const queued = await showQueue(payload.staged_patch_id, paths);
-    const entry = JSON.parse(queued.patch.body) as { id: string; type: string; rawSourceRefs: Array<{ ref: string }>; body: string };
+    const entry = JSON.parse(queued.patch.body) as { id: string; type: string; templateId?: string; rawSourceRefs: Array<{ ref: string }>; body: string };
 
     expect(payload.staged_patch_id.length).toBeGreaterThan(0);
     expect(payload.deferred).toContain("claim sidecar auto-staging deferred until queue auxiliary sidecar support exists");
     expect(queued.patch.frontmatter.target).toBe("wiki/queries/alpha-answer.md");
     expect(entry.id).toBe("alpha-answer");
     expect(entry.type).toBe("query");
+    expect(entry.templateId).toBeUndefined();
     expect(entry.rawSourceRefs).toEqual([{ ref: "raw/alpha.md" }]);
+    expect(entry.body).toContain("## Overview");
     expect(entry.body).toContain("## Question");
     expect(entry.body).toContain("## Answer");
     expect(entry.body).toContain("## Citations");
+    expect(entry.body).toContain("## Related");
     expect(await pathExists(getClaimsFile(paths, "alpha-answer"))).toBe(false);
   });
 

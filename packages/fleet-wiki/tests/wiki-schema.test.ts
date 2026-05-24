@@ -6,13 +6,18 @@ import path from "node:path";
 import { ensureMemoryRoot, resolveMemoryPaths } from "../src/paths.js";
 import {
   DEFAULT_WORKSPACE_KNOWLEDGE_AGENTS,
+  DEFAULT_TEMPLATE_PRD,
   REQUIRED_WORKSPACE_SCHEMA_SECTIONS,
   WORKSPACE_KNOWLEDGE_AGENTS_FILENAME,
   WORKSPACE_SCHEMA_AGENTS_FILENAME,
   WORKSPACE_SCHEMA_FILENAME,
+  WORKSPACE_TEMPLATE_PREFIX,
+  WORKSPACE_TEMPLATE_SUFFIX,
   ensureWorkspaceDoctrine,
   ensureWorkspaceSchema,
   readWorkspaceSchemaSummary,
+  scanTemplates,
+  validateTemplateCompliance,
 } from "../src/schema.js";
 import { pathExists } from "../src/store.js";
 
@@ -32,6 +37,7 @@ describe("workspace schema", () => {
     expect(await pathExists(path.join(paths.root, WORKSPACE_KNOWLEDGE_AGENTS_FILENAME))).toBe(true);
     expect(await pathExists(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME))).toBe(true);
     expect(await pathExists(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME))).toBe(true);
+    expect(await pathExists(path.join(paths.schemaDir, `${WORKSPACE_TEMPLATE_PREFIX}prd${WORKSPACE_TEMPLATE_SUFFIX}`))).toBe(true);
   });
 
   it("creates the workspace doctrine AGENTS.md seed byte-for-byte", async () => {
@@ -51,13 +57,16 @@ describe("workspace schema", () => {
     await ensureWorkspaceSchema(paths);
     const firstAgents = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME), "utf8");
     const firstWikiSchema = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME), "utf8");
+    const firstPrdTemplate = await readFile(path.join(paths.schemaDir, "template-prd.md"), "utf8");
 
     await ensureWorkspaceSchema(paths);
     const secondAgents = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_AGENTS_FILENAME), "utf8");
     const secondWikiSchema = await readFile(path.join(paths.schemaDir, WORKSPACE_SCHEMA_FILENAME), "utf8");
+    const secondPrdTemplate = await readFile(path.join(paths.schemaDir, "template-prd.md"), "utf8");
 
     expect(secondAgents).toBe(firstAgents);
     expect(secondWikiSchema).toBe(firstWikiSchema);
+    expect(secondPrdTemplate).toBe(firstPrdTemplate);
   });
 
   it("is idempotent across repeated ensureWorkspaceDoctrine calls", async () => {
@@ -113,7 +122,76 @@ describe("workspace schema", () => {
     expect(summary.exists).toBe(true);
     expect(summary.requiredSections).toEqual(REQUIRED_WORKSPACE_SCHEMA_SECTIONS);
     expect(summary.missingRequiredSections).toEqual([]);
+    expect(summary.templates?.map((template) => template.id)).toEqual(["prd"]);
     expect(summary.summary.length).toBeGreaterThan(0);
+  });
+
+  it("creates default template seeds and scans their required sections deterministically", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await ensureWorkspaceSchema(paths);
+    const prdTemplate = await readFile(path.join(paths.schemaDir, "template-prd.md"), "utf8");
+    const templates = await scanTemplates(paths);
+
+    expect(prdTemplate).toBe(DEFAULT_TEMPLATE_PRD);
+    expect(templates.map((template) => template.id)).toEqual(["prd"]);
+    expect(templates.find((template) => template.id === "prd")?.sections).toEqual([
+      "Overview",
+      "Problem",
+      "Goals",
+      "Non-Goals",
+      "User Stories",
+      "Functional Requirements",
+      "Acceptance Criteria",
+      "Open Questions",
+      "Related",
+    ]);
+  });
+
+  it("validates selected template sections as an order-insensitive subset", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await ensureWorkspaceSchema(paths);
+
+    await expect(validateTemplateCompliance(paths, "prd", [
+      "## Related",
+      "",
+      "links",
+      "",
+      "## Open Questions",
+      "",
+      "none",
+      "",
+      "## Acceptance Criteria",
+      "",
+      "criteria",
+      "",
+      "## Functional Requirements",
+      "",
+      "requirements",
+      "",
+      "## User Stories",
+      "",
+      "stories",
+      "",
+      "## Non-Goals",
+      "",
+      "out of scope",
+      "",
+      "## Goals",
+      "",
+      "goals",
+      "",
+      "## Problem",
+      "",
+      "problem",
+      "",
+      "## Overview",
+      "",
+      "summary",
+    ].join("\n"))).resolves.toBeUndefined();
+    await expect(validateTemplateCompliance(paths, "prd", "## Overview\n\nsummary")).rejects.toThrow("missing sections: Problem");
   });
 
   it("documents current raw provenance and pending patch edit workflow", async () => {
@@ -130,6 +208,8 @@ describe("workspace schema", () => {
     expect(schema).toContain("`rawSourceRefs`: Ordered provenance history");
     expect(schema).not.toContain("`rawSourceRef`, `status`, `kind`");
     expect(schema).toContain("`wiki_patch_edit` may revise already-pending queue proposals");
+    expect(schema).toContain("schema/template-{id}.md");
+    expect(schema).toContain("patch approval enforce selected template body sections");
     expect(schemaAgents).toContain("Treat `rawSourceRef` as current latest-provenance metadata.");
     expect(doctrine).toContain("already-pending queue proposal revisions may use `wiki_patch_edit`");
   });

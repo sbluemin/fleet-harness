@@ -11,6 +11,8 @@ interface CommandPaletteState {
   results: BriefingHit[];
   debounceId: number | null;
   searchSeq: number;
+  previousBodyOverflow: string | null;
+  previousActiveElement: HTMLElement | null;
 }
 
 const state: CommandPaletteState = {
@@ -20,6 +22,8 @@ const state: CommandPaletteState = {
   results: [],
   debounceId: null,
   searchSeq: 0,
+  previousBodyOverflow: null,
+  previousActiveElement: null,
 };
 
 let indexCache: WikiIndexEntry[] = [];
@@ -36,43 +40,57 @@ export function configureCommandPalette(index: WikiIndexEntry[], recentIds: stri
 }
 
 export function openCommandPalette(): void {
+  if (state.open) {
+    focusCommandInput();
+    return;
+  }
   state.open = true;
   state.query = "";
   state.selectedIndex = 0;
   state.results = defaultResults();
+  state.previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  lockBodyScroll();
   mountPaletteShell();
   updatePaletteResults();
-  window.setTimeout(() => {
-    const input = document.querySelector<HTMLInputElement>("#command-input");
-    if (!input) return;
-    input.focus();
-    input.select();
-  }, 0);
+  focusCommandInput();
 }
 
 export function closeCommandPalette(): void {
+  if (!state.open) return;
   state.open = false;
+  state.searchSeq++;
   if (state.debounceId !== null) {
     window.clearTimeout(state.debounceId);
     state.debounceId = null;
   }
   unmountPalette();
+  restoreBodyScroll();
+  restorePreviousFocus();
 }
 
 export function initCommandPalette(): void {
   document.addEventListener("keydown", handleDocumentKeydown);
   document.addEventListener("input", handleDocumentInput);
   document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("mouseover", handleDocumentMouseover);
 }
 
 function handleDocumentKeydown(event: KeyboardEvent): void {
   const isCommandKey = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
   if (isCommandKey) {
     event.preventDefault();
-    openCommandPalette();
+    if (state.open) {
+      closeCommandPalette();
+    } else {
+      openCommandPalette();
+    }
     return;
   }
   if (!state.open) return;
+  if (event.key === "Tab") {
+    trapCommandPaletteFocus(event);
+    return;
+  }
   if (event.key === "Escape") {
     event.preventDefault();
     closeCommandPalette();
@@ -81,13 +99,13 @@ function handleDocumentKeydown(event: KeyboardEvent): void {
   if (event.key === "ArrowDown") {
     event.preventDefault();
     state.selectedIndex = Math.min(state.selectedIndex + 1, Math.max(0, state.results.length - 1));
-    syncPaletteHighlight();
+    syncPaletteHighlight({ scroll: true });
     return;
   }
   if (event.key === "ArrowUp") {
     event.preventDefault();
     state.selectedIndex = Math.max(0, state.selectedIndex - 1);
-    syncPaletteHighlight();
+    syncPaletteHighlight({ scroll: true });
     return;
   }
   if (event.key === "Enter") {
@@ -130,6 +148,18 @@ function handleDocumentClick(event: MouseEvent): void {
     navigate(entryPath(item.dataset.commandEntryId ?? ""));
     closeCommandPalette();
   }
+}
+
+function handleDocumentMouseover(event: MouseEvent): void {
+  if (!state.open) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const item = target.closest<HTMLElement>("[data-command-index]");
+  if (!item) return;
+  const index = Number(item.dataset.commandIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= state.results.length) return;
+  state.selectedIndex = index;
+  syncPaletteHighlight({ scroll: false });
 }
 
 async function runSearch(query: string): Promise<void> {
@@ -177,30 +207,34 @@ function unmountPalette(): void {
 function updatePaletteResults(): void {
   const list = document.querySelector<HTMLElement>("#command-results-list");
   if (!list) return;
-  list.innerHTML = state.results.length === 0
-    ? `<p class="empty-state">${t("command.emptyResults")}</p>`
-    : state.results.map(renderResult).join("");
+  if (state.results.length === 0) {
+    list.innerHTML = `<p class="empty-state">${escapeHtml(t("command.emptyResults"))}</p>`;
+    return;
+  }
+  list.innerHTML = state.query ? state.results.map(renderResult).join("") : renderDefaultResults();
 }
 
-function syncPaletteHighlight(): void {
+function syncPaletteHighlight(options: { scroll: boolean } = { scroll: true }): void {
   const buttons = document.querySelectorAll<HTMLElement>(".command-result");
   buttons.forEach((button, index) => {
     button.classList.toggle("active", index === state.selectedIndex);
   });
   const active = buttons[state.selectedIndex];
-  active?.scrollIntoView({ block: "nearest" });
+  if (options.scroll) active?.scrollIntoView({ block: "nearest" });
 }
 
 function paletteShellHtml(): string {
+  const ariaLabel = escapeAttribute(t("command.ariaLabel"));
+  const placeholder = escapeAttribute(t("command.placeholder"));
   return `
     <div class="command-overlay">
-      <section class="command-card" role="dialog" aria-modal="true" aria-label="${t("command.ariaLabel")}">
+      <section class="command-card" role="dialog" aria-modal="true" aria-label="${ariaLabel}" tabindex="-1">
         <div class="command-search">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="6.5" />
             <path d="m20 20-3.5-3.5" />
           </svg>
-          <input id="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="${t("command.placeholder")}" />
+          <input id="command-input" type="search" autocomplete="off" spellcheck="false" placeholder="${placeholder}" />
           <kbd>esc</kbd>
         </div>
         <div class="command-results" id="command-results-list"></div>
@@ -214,6 +248,7 @@ function renderResult(result: BriefingHit, index: number): string {
   const safeTitle = escapeAttribute(result.title);
   const visibleTags = result.tags.slice(0, 2);
   const overflow = result.tags.length - visibleTags.length;
+  const excerpt = selectSnippet(result);
   const tagsHtml = visibleTags
     .map((tag) => `<span class="chip chip-tag">${escapeHtml(tag)}</span>`)
     .join("");
@@ -221,23 +256,41 @@ function renderResult(result: BriefingHit, index: number): string {
     ? `<span class="chip chip-muted">+${overflow}</span>`
     : "";
   return `
-    <button class="command-result${activeClass}" type="button" data-command-entry-id="${escapeAttribute(result.id)}" title="${safeTitle}">
+    <button class="command-result${activeClass}" type="button" data-command-entry-id="${escapeAttribute(result.id)}" data-command-index="${index}" title="${safeTitle}">
       <span class="command-result-text">
-        <strong>${escapeHtml(result.title)}</strong>
-        <small>${escapeHtml(result.reason)} · score ${result.score}</small>
+        <strong>${renderHighlightedTitle(result.title, state.query)}</strong>
+        <small>${escapeHtml(formatMatchLocation(result))}</small>
+        ${excerpt ? `<small class="command-result-excerpt">${escapeHtml(excerpt)}</small>` : ""}
       </span>
       <span class="command-result-aside">${tagsHtml}${overflowHtml}</span>
     </button>
   `;
 }
 
+function renderDefaultResults(): string {
+  const recentCount = getRecentResultCount();
+  const recentResults = state.results.slice(0, recentCount);
+  const allResults = state.results.slice(recentCount);
+  return [
+    recentResults.length > 0 ? renderDefaultSection(t("command.recentSection"), recentResults, 0) : "",
+    allResults.length > 0 ? renderDefaultSection(t("command.allSection"), allResults, recentCount) : "",
+  ].join("");
+}
+
+function renderDefaultSection(label: string, results: BriefingHit[], offset: number): string {
+  return `
+    <div class="command-section-heading">${escapeHtml(label)}</div>
+    ${results.map((result, index) => renderResult(result, offset + index)).join("")}
+  `;
+}
+
 function defaultResults(): BriefingHit[] {
   const recentSet = new Set(recentIdsCache);
-  const recent = recentIdsCache
+  const recent = uniqueRecentIds()
     .map((id) => indexCache.find((entry) => entry.id === id))
     .filter((entry): entry is WikiIndexEntry => Boolean(entry));
   const rest = indexCache.filter((entry) => !recentSet.has(entry.id));
-  return [...recent, ...rest].slice(0, 8).map((entry, index) => ({
+  return [...recent, ...rest].slice(0, 12).map((entry, index) => ({
     id: entry.id,
     title: entry.title,
     score: Math.max(1, 100 - index),
@@ -247,6 +300,145 @@ function defaultResults(): BriefingHit[] {
     tags: entry.tags,
     updated: entry.updated,
   }));
+}
+
+function getRecentResultCount(): number {
+  return uniqueRecentIds()
+    .filter((id, index) => state.results[index]?.id === id)
+    .length;
+}
+
+function uniqueRecentIds(): string[] {
+  return Array.from(new Set(recentIdsCache));
+}
+
+function lockBodyScroll(): void {
+  if (state.previousBodyOverflow !== null) return;
+  state.previousBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+}
+
+function restoreBodyScroll(): void {
+  if (state.previousBodyOverflow === null) return;
+  document.body.style.overflow = state.previousBodyOverflow;
+  state.previousBodyOverflow = null;
+}
+
+function restorePreviousFocus(): void {
+  const previous = state.previousActiveElement;
+  state.previousActiveElement = null;
+  if (!previous?.isConnected) return;
+  previous.focus();
+}
+
+function focusCommandInput(): void {
+  window.setTimeout(() => {
+    const input = document.querySelector<HTMLInputElement>("#command-input");
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, 0);
+}
+
+function trapCommandPaletteFocus(event: KeyboardEvent): void {
+  const card = document.querySelector<HTMLElement>(".command-card");
+  if (!card) return;
+  const focusable = getCommandFocusableElements(card);
+  if (focusable.length === 0) {
+    event.preventDefault();
+    card.focus();
+    return;
+  }
+  const current = document.activeElement;
+  const currentIndex = current instanceof HTMLElement ? focusable.indexOf(current) : -1;
+  const nextIndex = event.shiftKey
+    ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+    : (currentIndex === -1 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+  if (
+    currentIndex === -1
+    || (event.shiftKey && currentIndex === 0)
+    || (!event.shiftKey && currentIndex === focusable.length - 1)
+  ) {
+    event.preventDefault();
+    focusable[nextIndex]?.focus();
+  }
+}
+
+function getCommandFocusableElements(root: HTMLElement): HTMLElement[] {
+  const selector = [
+    "a[href]",
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(",");
+  return Array.from(root.querySelectorAll<HTMLElement>(selector))
+    .filter((element) => !element.hasAttribute("hidden") && element.offsetParent !== null);
+}
+
+function renderHighlightedTitle(title: string, query: string): string {
+  if (!query) return escapeHtml(title);
+  const lowerTitle = title.toLocaleLowerCase();
+  const lowerQuery = query.toLocaleLowerCase();
+  if (!lowerQuery) return escapeHtml(title);
+  let cursor = 0;
+  let html = "";
+  while (cursor < title.length) {
+    const matchIndex = lowerTitle.indexOf(lowerQuery, cursor);
+    if (matchIndex === -1) break;
+    html += escapeHtml(title.slice(cursor, matchIndex));
+    html += `<mark class="command-highlight">${escapeHtml(title.slice(matchIndex, matchIndex + query.length))}</mark>`;
+    cursor = matchIndex + query.length;
+  }
+  return html + escapeHtml(title.slice(cursor));
+}
+
+function formatMatchLocation(result: BriefingHit): string {
+  switch (result.reason) {
+    case "id":
+      return t("command.matchId");
+    case "alias":
+      return t("command.matchAlias");
+    case "tag":
+      return t("command.matchTag");
+    case "title":
+      return t("command.matchTitle");
+    case "body":
+      return t("command.matchBody");
+    default:
+      return t("command.matchOther");
+  }
+}
+
+function selectSnippet(result: BriefingHit): string {
+  const bodySnippet = result.matchedSnippets?.find((snippet) => snippet.field === "body")?.snippet;
+  if (result.reason !== "body") return "";
+  const snippet = bodySnippet ?? result.excerpt;
+  return normalizeSnippet(snippet ?? "");
+}
+
+function normalizeSnippet(value: string): string {
+  return stripMarkdownSyntax(stripWikiBoundaryMarkers(value)).replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function stripWikiBoundaryMarkers(value: string): string {
+  return value.replace(/<<<[^>]*>>>/g, " ");
+}
+
+function stripMarkdownSyntax(value: string): string {
+  return value
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[\[wiki:([^\]\|]+)(?:\|[^\]]*)?]]/g, "$1")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*(?:[-*]\s+|\d+\.\s+)/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/`+/g, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1");
 }
 
 function escapeHtml(value: string): string {

@@ -49,6 +49,15 @@ describe("wiki patch queue", () => {
     expect(await pathExists(path.join(paths.wikiDir, "alpha.md"))).toBe(true);
   });
 
+  it("rejects template section regressions at approval time", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const patch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/prd-approval.md"\nsummary: "PRD approval"\nproposer: "test"\ncreated: "2026-04-26T00:00:00.000Z"\n---\n{"id":"prd-approval","title":"PRD approval","tags":[],"created":"2026-04-26T00:00:00.000Z","updated":"2026-04-26T00:00:00.000Z","version":1,"body":"## Overview\\n\\nlong enough approval body without the required PRD sections"}`);
+    const patchId = await enqueuePatch(patch, paths);
+
+    await expect(approvePatch(patchId, paths)).rejects.toThrow(/template approval failed.*missing sections: Problem/);
+  });
+
   it("rejects traversal targets", async () => {
     const root = await makeTempRoot();
     const paths = resolveMemoryPaths(root);
@@ -286,7 +295,7 @@ describe("wiki patch queue", () => {
     const paths = resolveMemoryPaths(root);
     const createdAt = "2026-04-26T00:00:00.000Z";
     const patchSetId = buildPatchSetId(createdAt, "raw/2026-04-26-source-a1b2c3d4.md");
-    const sourcePatch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/sources/source-alpha.md"\nsummary: "Source Alpha"\nproposer: "test"\ncreated: "${createdAt}"\n---\n{"id":"source-alpha","title":"Source Alpha","tags":["source"],"created":"${createdAt}","updated":"${createdAt}","version":1,"type":"source","status":"current","body":"source body"}`);
+    const sourcePatch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/sources/source-alpha.md"\nsummary: "Source Alpha"\nproposer: "test"\ncreated: "${createdAt}"\n---\n{"id":"source-alpha","title":"Source Alpha","tags":["source"],"created":"${createdAt}","updated":"${createdAt}","version":1,"type":"source","status":"current","body":"## Overview\\n\\nsource body\\n\\n## Related\\n\\n- None"}`);
     const targetPatch = await parsePatch(`---\nop: "create_wiki"\ntarget: "wiki/alpha.md"\nsummary: "Alpha"\nproposer: "test"\ncreated: "${createdAt}"\n---\n{"id":"alpha","title":"Alpha","tags":[],"created":"${createdAt}","updated":"${createdAt}","version":1,"body":"alpha body"}`);
 
     const sourcePatchId = await enqueuePatch(sourcePatch, paths, { patch_set_id: patchSetId });

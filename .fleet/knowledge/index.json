@@ -34,7 +34,7 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-23T14:47:42.640Z"
+    "updated": "2026-05-23T17:37:53.758Z"
   },
   "prd-agent-core-model-bypass": {
     "path": "wiki/prd-agent-core-model-bypass.md",
@@ -171,5 +171,18 @@
       "shipped"
     ],
     "updated": "2026-05-23T15:42:55.604Z"
+  },
+  "prd-wiki-template-schema": {
+    "path": "wiki/prd-wiki-template-schema.md",
+    "title": "PRD: Fleet Wiki 템플릿 기반 스키마 검증",
+    "tags": [
+      "wiki",
+      "schema",
+      "template",
+      "validation",
+      "ingest",
+      "fleet-wiki"
+    ],
+    "updated": "2026-05-23T16:29:50.341Z"
   }
 }

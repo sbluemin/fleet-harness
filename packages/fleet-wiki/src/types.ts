@@ -5,6 +5,7 @@ export interface WikiEntryFrontmatter {
   created: string;
   updated: string;
   version: number;
+  templateId?: string;
   rawSourceRef?: string;
   aliases?: string[];
   type?: WikiEntryType;
@@ -20,6 +21,13 @@ export interface WikiEntryFrontmatter {
 
 export interface WikiEntry extends WikiEntryFrontmatter {
   body: string;
+}
+
+export interface WorkspaceTemplate {
+  id: string;
+  path: string;
+  frontmatter: Record<string, unknown>;
+  sections: string[];
 }
 
 export type WikiEntryType =
@@ -194,6 +202,7 @@ export interface WorkspaceSchema {
   summary: string;
   requiredSections: readonly string[];
   missingRequiredSections: string[];
+  templates?: WorkspaceTemplate[];
 }
 
 export type WikiLogEvent =
@@ -325,6 +334,7 @@ export interface DryDockIssue {
     | "malformed_log_md"
     | "schema_missing"
     | "schema_required_section_missing"
+    | "template_compliance"
     | "schema_agents_missing"
     | "unresolved_conflict"
     | "orphan_patch_set_member"
