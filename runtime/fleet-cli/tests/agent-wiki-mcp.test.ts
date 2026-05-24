@@ -43,7 +43,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     const runtime = await lifecycle.start();
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
     const tokens = runtime.dedicatedMcpSession.issueSessionToken({
-      label: "dedicated:test-wiki",
+      label: "agent:test-wiki",
       cwd: process.cwd(),
     });
     const servers = endpoint.servers.map((server) => ({

@@ -32,7 +32,7 @@ export async function resolveAgentCliProfile(
 }
 
 export function resolveAgentCliId(env: NodeJS.ProcessEnv, options: ResolveAgentCliProfileOptions = {}): AgentCliId {
-  return parseEnvCliId(options.cliId) ?? parseEnvCliId(env.FLEET_DEDICATED_CLI) ?? DEFAULT_CLI_ID;
+  return parseEnvCliId(options.cliId) ?? parseEnvCliId(env.FLEET_AGENT_CLI) ?? DEFAULT_CLI_ID;
 }
 
 export function getAgentCliIds(): AgentCliId[] {
@@ -55,5 +55,5 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
     return value as AgentCliId;
   }
 
-  throw new Error(`Unsupported dedicated CLI "${value}". Expected one of: ${getAgentCliIds().join(", ")}`);
+  throw new Error(`Unsupported agent CLI "${value}". Expected one of: ${getAgentCliIds().join(", ")}`);
 }

@@ -297,15 +297,15 @@ describe("Mission Control controller", () => {
   });
 
   it("preserves agent CLI resolver precedence for Mission Control defaults", () => {
-    expect(resolveAgentCliId({ FLEET_DEDICATED_CLI: "codex" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
-    expect(resolveAgentCliId({ FLEET_DEDICATED_CLI: "claude-zai" })).toBe("claude-zai");
+    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "codex" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
+    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "claude-zai" })).toBe("claude-zai");
   });
 
   it("keeps variant CLI selections instead of collapsing them to Claude", async () => {
     const launched: AgentCliId[] = [];
     const controller = createTestController({
       cliOptions: ALL_CLI_OPTIONS,
-      defaultCliId: resolveAgentCliId({ FLEET_DEDICATED_CLI: "claude-zai" }),
+      defaultCliId: resolveAgentCliId({ FLEET_AGENT_CLI: "claude-zai" }),
       resolveProfile: (cliId) => {
         launched.push(cliId);
         return Promise.resolve({ ...TEST_PROFILE, id: cliId, label: cliId });
@@ -326,7 +326,7 @@ describe("Mission Control controller", () => {
       cliId: "claude-kimi",
       env: {
         CODEX_BIN: process.execPath,
-        FLEET_DEDICATED_CLI: "codex",
+        FLEET_AGENT_CLI: "codex",
       },
       invocationCwd: "/tmp/mission-control",
       model: "gpt-test",

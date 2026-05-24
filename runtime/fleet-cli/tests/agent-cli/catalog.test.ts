@@ -44,7 +44,7 @@ describe("agent CLI catalog", () => {
     ]);
   });
 
-  it("parses --cli, --cli=, and FLEET_DEDICATED_CLI values", async () => {
+  it("parses --cli, --cli=, and FLEET_AGENT_CLI values", async () => {
     const env = createEnvWithBins();
 
     await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "claude-zai" })).resolves.toMatchObject({
@@ -53,7 +53,7 @@ describe("agent CLI catalog", () => {
     await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" })).resolves.toMatchObject({
       id: "claude-kimi",
     });
-    await expect(resolveAgentCliProfile({ ...env, FLEET_DEDICATED_CLI: "claude-zai" }, "/tmp")).resolves.toMatchObject({
+    await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "claude-zai" }, "/tmp")).resolves.toMatchObject({
       id: "claude-zai",
     });
   });

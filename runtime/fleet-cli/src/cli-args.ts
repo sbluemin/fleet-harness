@@ -25,9 +25,9 @@ Commands:
 
 Fleet Agent Options:
   -h, --help          Show this help message and exit.
-  -c, --cli <id>      Select the dedicated CLI to embed (claude | claude-zai | claude-kimi | codex).
-                      Default: claude. Env override: FLEET_DEDICATED_CLI.
-  -n, --native        Run the dedicated CLI in native mode: do not inject
+  -c, --cli <id>      Select the agent CLI to embed (claude | claude-zai | claude-kimi | codex).
+                      Default: claude. Env override: FLEET_AGENT_CLI.
+  -n, --native        Run the agent CLI in native mode: do not inject
                       the Fleet system prompt and hide the Fleet Action
                       Protocol label from the Fleet PTY (divider preserved).
   --disable-cursor-sync
@@ -37,7 +37,7 @@ Fleet Agent Options:
   -em, --enable-metaphor         Enable the fleet-world tone overlay in the injected system prompt.
 
 Underlying CLI Options (forwarded to selected CLI):
-  --model <name>      Forward the model name to the selected dedicated CLI.
+  --model <name>      Forward the model name to the selected agent CLI.
 `;
 
 export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
