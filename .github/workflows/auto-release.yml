@@ -283,3 +283,33 @@ jobs:
             --notes-file "$NOTES_PATH" \
             --generate-notes \
             "${release_args[@]}"
+
+      - name: Setup pnpm
+        if: steps.version.outputs.should_release == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        if: steps.version.outputs.should_release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        if: steps.version.outputs.should_release == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish fleet-wiki-web
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-wiki-web.mjs --tag=latest --version=$NEXT_VERSION
+
+      - name: Publish fleet-agent
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-agent.mjs --tag=latest --version=$NEXT_VERSION --wiki-web-version=$NEXT_VERSION
