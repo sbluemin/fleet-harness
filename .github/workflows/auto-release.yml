@@ -34,7 +34,7 @@ jobs:
         env:
           HEAD_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if printf '%s' "$HEAD_MESSAGE" | grep -Fq 'chore(release):'; then
+          if printf '%s' "$HEAD_MESSAGE" | head -1 | grep -Fq 'chore(release):'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
