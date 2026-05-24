@@ -2536,3 +2536,123 @@
 - result: `accepted`
 - target: `wiki/guide-003-fleet-wiki.md`
 
+## 2026-05-24T07:48:14.665Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `10`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-24T07:48:14.697Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `10`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-24T07:51:25.140Z — raw source added
+
+- id: `prd-admiral-protocol-single-immutable-fleet-action-source`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화`
+
+## 2026-05-24T07:51:25.142Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T07-51-25-117Z-8bd4ce8b`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+- warning_count: `0`
+
+## 2026-05-24T07:53:03.051Z — index rebuilt
+
+- entry_count: `15`
+
+## 2026-05-24T07:53:03.053Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T07-51-25-117Z-8bd4ce8b`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md`
+- result: `accepted`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+
+## 2026-05-24T07:54:50.821Z — raw source added
+
+- id: `prd-admiral-protocol-single-immutable-fleet-action-source`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `PRD body fix — strip duplicated frontmatter`
+
+## 2026-05-24T07:54:50.824Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-54-50-816Z-d1ccca9d`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+- warning_count: `0`
+
+## 2026-05-24T07:55:54.509Z — index rebuilt
+
+- entry_count: `15`
+
+## 2026-05-24T07:55:54.511Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-54-50-816Z-d1ccca9d`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- result: `accepted`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+
+## 2026-05-24T07:56:24.948Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-001 Alt+1 residual fix — single immutable protocol`
+
+## 2026-05-24T07:56:24.951Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-56-24-926Z-0e167208`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-24T07:56:33.595Z — index rebuilt
+
+- entry_count: `15`
+
+## 2026-05-24T07:56:33.596Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-56-24-926Z-0e167208`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-24T07:56:43.057Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+

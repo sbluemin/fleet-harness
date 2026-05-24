@@ -48,7 +48,7 @@ the Admiral prompt. The static prompt includes:
 - `RISEN_DEV_SLATE` when enabled by development context
 - `<fleet section="role">` outside dev mode
 - `<fleet section="roster">` when carriers are registered
-- `<fleet section="protocols">` with the protocol catalog
+- `<fleet section="protocol">` containing the Fleet Action Protocol body — fleet-harness's single, immutable protocol; no catalog, no switching
 - `<fleet section="standing-orders">`
 - one `<fleet section="tool-guide" tool="...">` block per registered tool
 

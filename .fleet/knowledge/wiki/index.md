@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `14`
+- total_entries: `15`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -13,10 +13,10 @@
 - title: `Guide - 001 fleet-harness 소개`
 - path: `wiki/guide-001-fleet-harness-overview.md`
 - tags: `guide, fleet-harness, overview, onboarding, current`
-- updated: `2026-05-23T14:46:55.449Z`
+- updated: `2026-05-24T07:56:24.926Z`
 - summary: `# fleet-harness 소개`
-- raw_source_ref: `raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md`
-- raw_source_refs: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md, raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md, raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- raw_source_refs: `raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md, raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md, raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md, raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
 
 ### guide-002-carrier-status
 
@@ -37,6 +37,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
 - raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md, raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+
+### prd-admiral-protocol-single-immutable-fleet-action
+
+- title: `PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화`
+- path: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+- tags: `admiral, protocols, doctrine, decision-history, cognitive-debt`
+- updated: `2026-05-24T07:54:50.816Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- raw_source_refs: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md, raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
 
 ### prd-agent-core-model-bypass
 
@@ -149,6 +159,10 @@
 
 ## Tags
 
+### admiral
+
+- [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
+
 ### agent-core
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
@@ -185,6 +199,10 @@
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
+### cognitive-debt
+
+- [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
+
 ### composition-root
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
@@ -194,6 +212,10 @@
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### decision-history
+
+- [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 
 ### dedicated-cli
 
@@ -206,6 +228,10 @@
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+
+### doctrine
+
+- [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 
 ### fleet-admiral
 
@@ -329,6 +355,10 @@
 ### persona
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### protocols
+
+- [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 
 ### schema
 

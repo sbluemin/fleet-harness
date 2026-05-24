@@ -1,6 +1,6 @@
 import { truncateToWidth, visibleWidth, type Component } from "@dotobokuri/fleet-tui/pty";
 
-import { getActiveProtocol } from "../admiral/protocols/index.js";
+import { FLEET_ACTION_COLOR, FLEET_ACTION_LABEL } from "../admiral/protocols/index.js";
 
 export interface FleetStatusSectionOptions {
 	readonly native?: boolean;
@@ -20,8 +20,7 @@ export class FleetStatusSection implements Component {
 		if (this.options.native) {
 			return [renderBorder(width, DIM_COLOR)];
 		}
-		const protocol = getActiveProtocol();
-		return [renderStatusLine(width, protocol.color ?? DIM_COLOR, protocol.shortLabel)];
+		return [renderStatusLine(width, FLEET_ACTION_COLOR, FLEET_ACTION_LABEL)];
 	}
 }
 

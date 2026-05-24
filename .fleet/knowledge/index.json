@@ -9,7 +9,7 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-23T14:46:55.449Z"
+    "updated": "2026-05-24T07:56:24.926Z"
   },
   "guide-002-carrier-status": {
     "path": "wiki/guide-002-carrier-status.md",
@@ -35,6 +35,18 @@
       "current"
     ],
     "updated": "2026-05-23T17:37:53.758Z"
+  },
+  "prd-admiral-protocol-single-immutable-fleet-action": {
+    "path": "wiki/prd-admiral-protocol-single-immutable-fleet-action.md",
+    "title": "PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화",
+    "tags": [
+      "admiral",
+      "protocols",
+      "doctrine",
+      "decision-history",
+      "cognitive-debt"
+    ],
+    "updated": "2026-05-24T07:54:50.816Z"
   },
   "prd-agent-core-model-bypass": {
     "path": "wiki/prd-agent-core-model-bypass.md",
