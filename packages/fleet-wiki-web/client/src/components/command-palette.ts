@@ -290,7 +290,7 @@ function defaultResults(): BriefingHit[] {
     .map((id) => indexCache.find((entry) => entry.id === id))
     .filter((entry): entry is WikiIndexEntry => Boolean(entry));
   const rest = indexCache.filter((entry) => !recentSet.has(entry.id));
-  return [...recent, ...rest].slice(0, 8).map((entry, index) => ({
+  return [...recent, ...rest].slice(0, 12).map((entry, index) => ({
     id: entry.id,
     title: entry.title,
     score: Math.max(1, 100 - index),
@@ -419,11 +419,26 @@ function selectSnippet(result: BriefingHit): string {
 }
 
 function normalizeSnippet(value: string): string {
-  return stripWikiBoundaryMarkers(value).replace(/\s+/g, " ").trim().slice(0, 180);
+  return stripMarkdownSyntax(stripWikiBoundaryMarkers(value)).replace(/\s+/g, " ").trim().slice(0, 180);
 }
 
 function stripWikiBoundaryMarkers(value: string): string {
   return value.replace(/<<<[^>]*>>>/g, " ");
+}
+
+function stripMarkdownSyntax(value: string): string {
+  return value
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[\[wiki:([^\]\|]+)(?:\|[^\]]*)?]]/g, "$1")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*(?:[-*]\s+|\d+\.\s+)/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/`+/g, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1");
 }
 
 function escapeHtml(value: string): string {
