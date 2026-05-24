@@ -1,7 +1,7 @@
 import { CARRIER_COLORS } from "@dotobokuri/fleet-carriers";
 import { createOverlayFrame, truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
-import type { DedicatedCliId } from "../dedicated-cli/types.js";
+import type { DedicatedCliId } from "../agent-cli/types.js";
 import type { MissionControlCliOption, MissionControlStateKind } from "./types.js";
 
 interface MissionControlRenderOptions {

@@ -6,8 +6,8 @@ import { createMissionControlProfileConfig } from "../src/app.js";
 import { createMissionControlController } from "../src/mission-control/controller.js";
 import { renderMissionControl } from "../src/mission-control/renderer.js";
 import type { MissionControlCliOption } from "../src/mission-control/types.js";
-import { getDedicatedCliMetadata, resolveDedicatedCliId } from "../src/dedicated-cli/registry.js";
-import type { DedicatedCliId, DedicatedCliProfile } from "../src/dedicated-cli/types.js";
+import { getDedicatedCliMetadata, resolveDedicatedCliId } from "../src/agent-cli/registry.js";
+import type { DedicatedCliId, DedicatedCliProfile } from "../src/agent-cli/types.js";
 
 interface FakeHost extends PtyHost {
   readonly writes: string[];

@@ -1,6 +1,6 @@
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 
-import type { DedicatedCliId, DedicatedCliProfile } from "../dedicated-cli/types.js";
+import type { DedicatedCliId, DedicatedCliProfile } from "../agent-cli/types.js";
 import type { PtyView } from "../controls/terminal-view.js";
 
 export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" | "failed";

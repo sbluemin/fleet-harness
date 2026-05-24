@@ -4,11 +4,11 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getDedicatedCliInjectionCapability } from "../../src/dedicated-cli/capabilities.js";
+import { getDedicatedCliInjectionCapability } from "../../src/agent-cli/capabilities.js";
 import {
   getDedicatedCliIds,
   resolveDedicatedCliProfile,
-} from "../../src/dedicated-cli/registry.js";
+} from "../../src/agent-cli/registry.js";
 
 const mocks = vi.hoisted(() => ({
   resolveAuthEnvMock: vi.fn(),
@@ -126,7 +126,7 @@ describe("dedicated CLI catalog", () => {
 });
 
 function createEnvWithBins(): NodeJS.ProcessEnv {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dedicated-cli-"));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agent-cli-"));
   tempRoots.push(tempRoot);
   fs.writeFileSync(path.join(tempRoot, "claude"), "");
   fs.writeFileSync(path.join(tempRoot, "codex"), "");

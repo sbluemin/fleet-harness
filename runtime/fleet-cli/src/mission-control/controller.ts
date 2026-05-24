@@ -1,6 +1,6 @@
 import { matchesKey, type Component, type KeyboardProtocolState, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
 
-import type { DedicatedCliId, DedicatedCliProfile } from "../dedicated-cli/types.js";
+import type { DedicatedCliId, DedicatedCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
 import { renderMissionControl } from "./renderer.js";
 import type {
