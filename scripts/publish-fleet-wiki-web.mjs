@@ -7,9 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_PATH = path.resolve(__dirname, "../packages/fleet-wiki-web/package.json");
 const PKG_DIR = path.dirname(PKG_PATH);
 
-const EXTERNAL_DEPS = {
-  typebox: "^1.1.24",
-};
+const EXTERNAL_DEPS = {};
 
 const args = process.argv.slice(2);
 const tag = args.find((a) => a.startsWith("--tag="))?.split("=")[1] ?? "beta";
