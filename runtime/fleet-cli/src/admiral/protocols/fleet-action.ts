@@ -87,6 +87,8 @@ Triggered when the task involves structural changes, new modules, cross-layer de
 
 #### Phase 3 — Work Plan
 
+**Entry Gate.** Apply the Context Confidence Standing Order before commencing planning. Default threshold is ${"`"}sufficient${"`"}; require ${"`"}complete${"`"} when the task involves structural or architectural changes, multi-carrier coordination, cross-module modifications, doctrine or prompt-policy edits, or irreversible operations. Output the evidence checklist before declaring the confidence level. Gate failure triggers Phase 1 re-entry scoped to unresolved blocking gaps — do not lower the threshold to pass the gate.
+
 Choose planning depth proportional to task complexity:
 
 **Inline plan** (Admiral-direct):
@@ -141,12 +143,8 @@ After finishing (or terminating early), include a brief phase summary in your fi
 - **Deep Dives triggered**: list which phase(s) triggered Deep Dive and the outcome (e.g., "Phase 1 — 2 speculative claims verified")
 - **Skipped (conditional)**: list phases skipped with one-line reason each (e.g., "Phase 2 — no structural changes", "Phase 5 — code already clean")
 - **Skipped (early termination)**: if the workflow did not reach Phase 7, explain the blocker or reason for stopping
-- **Context Confidence**: [complete | sufficient | partial | speculative]
-  - **complete**: All relevant files, dependencies, and constraints verified. Zero unverified assumptions driving implementation.
-  - **sufficient**: Core context secured; minor details left for discovery during implementation. Safe to proceed.
-  - **partial**: One or more significant gaps remain (e.g., untested code paths, unknown AGENTS.md rules, unresolved cross-module impact). A follow-up verification sortie is advisable.
-  - **speculative**: Two or more blocking gaps were not resolved before execution. The implementation rests on unverified assumptions. Flag this explicitly to the Admiral of the Navy.
-- **Confidence Rationale**: [1–2 sentences explaining why the chosen confidence level was assigned — cite specific files verified, gaps acknowledged, or assumptions made.]
+- **Context Confidence**: [complete | sufficient | partial | speculative] — as defined in the Context Confidence Standing Order. Report the final level reached at task end; if confidence was re-evaluated mid-workflow (downgrade or gate re-entry), report the lowest level reached and the recovery action taken.
+- **Confidence Rationale**: 1–2 sentences citing the evidence checklist key items — verified facts, deferred confirmatories, and any unresolved blocking gaps if confidence is partial/speculative.
 - **Follow-up Plan**: Reason step-by-step about how the Admiral should proceed after this task — do not jump straight to the answer. Provide all three lines in order:
   - **State**: one line on what this task changed and what remains pending.
   - **Reasoning**: 1–2 lines — what follow-up options exist (sortie a Carrier, the Admiral handles it directly, request a directive from the Admiral of the Navy (대원수), or terminate), what alternatives were considered, and why the chosen option fits.

@@ -8,12 +8,14 @@
 import type { StandingOrder } from "./types.js";
 
 import { CARRIER_OPERATIONS_POLICY } from "./carrier-operations-policy.js";
+import { CONTEXT_CONFIDENCE } from "./context-confidence.js";
 import { DEEP_DIVE } from "./deep-dive.js";
 import { MISSION_ANCHOR } from "./mission-anchor.js";
 import { RESULT_INTEGRITY } from "./result-integrity.js";
 
 export * from "./deep-dive.js";
 export * from "./carrier-operations-policy.js";
+export * from "./context-confidence.js";
 export * from "./mission-anchor.js";
 export * from "./result-integrity.js";
 export * from "./types.js";
@@ -25,6 +27,7 @@ export * from "./types.js";
 /** 등록된 Standing Orders — 주입 순서대로 나열 */
 const STANDING_ORDERS: readonly StandingOrder[] = [
   MISSION_ANCHOR,
+  CONTEXT_CONFIDENCE,
   CARRIER_OPERATIONS_POLICY,
   DEEP_DIVE,
   RESULT_INTEGRITY,
