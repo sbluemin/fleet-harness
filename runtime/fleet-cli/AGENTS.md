@@ -4,9 +4,9 @@
 
 ## Package Identity & Boundary
 
-This package owns the local host assembly for the Dedicated CLI PTY and Fleet PTY lower pane, and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
+This package owns the local host assembly for the Agent CLI PTY and Fleet PTY lower pane, and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
 
-- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, mission-control domain wiring, panel host callback, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Dedicated CLI viewport, and Fleet's CLI Composition Root.
+- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, mission-control domain wiring, panel host callback, agent CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Agent CLI viewport, and Fleet's CLI Composition Root.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
 - **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session/settings infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 
@@ -25,11 +25,11 @@ Direct dependencies on execution-engine packages are generally forbidden. Execut
 
 Only the permanent vertical two-pane layout is allowed:
 
-- **Dedicated CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
+- **Agent CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
 - **Fleet PTY**: Lower pane.
-- **Mission Control**: Upper interaction layer that hosts the Dedicated CLI PTY and temporarily yields to panels (e.g., Carrier Status) while they are active.
+- **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Status) while they are active.
 - **Shared PTY negotiation**: `src/controls/pty.ts` owns host resize negotiation over `@dotobokuri/fleet-tui/layout` primitives.
-- **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Dedicated CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
+- **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Agent CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
 - **Input runtime**: `src/controls/input.ts` owns host keyboard routing, keybinding helpers, mouse parsing, and programmatic PTY input.
 - **Panel runtime**: `src/controls/panels.ts` owns lower-pane panel API, overlays, sections, theme/key helpers, and desired-height adapters.
 - **Render coordination**: `src/controls/render.ts` owns host render scheduling, cursor policy sync, viewport adapter, and mouse-to-PTY routing helpers.
@@ -39,8 +39,8 @@ Only the permanent vertical two-pane layout is allowed:
 
 ## Input & Mode Logic
 
-- `MIRROR` mode forwards Fleet PTY keystrokes to the Dedicated CLI PTY.
-- `DEDICATED` mode gives exclusive control to the Dedicated CLI PTY.
+- `MIRROR` mode forwards Fleet PTY keystrokes to the Agent CLI PTY.
+- `DEDICATED` mode gives exclusive control to the Agent CLI PTY.
 - `Ctrl+T` toggles between modes.
 - The Fleet PTY owns no visible text input.
 

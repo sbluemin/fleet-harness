@@ -12,7 +12,7 @@ This document is the operational doctrine for Admiral and Carrier agents working
 ## 2. Ownership Model
 
 `fleet-cli` owns:
-- CLI lifecycle registration and dedicated CLI launch.
+- CLI lifecycle registration and agent CLI launch.
 - TUI rendering, overlays, widgets, and host input routing.
 - Host adapters that consume Admiral prompt/protocol/tool policy from `@dotobokuri/fleet-admiral`.
 - Concrete runtime assembly in `src/runtime/runtime.ts`.

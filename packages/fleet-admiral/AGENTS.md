@@ -11,7 +11,7 @@
 
 ## Must Not Own
 
-- Host UI, PTY, render lifecycle, panels, or Dedicated CLI pane behavior
+- Host UI, PTY, render lifecycle, panels, or Agent CLI pane behavior
 - Generic MCP HTTP server internals, token routing, executor session management, or schema conversion primitives
 - Fleet Wiki UI, Fleet TUI, Fleet Infra, or CLI composition-root wiring
 

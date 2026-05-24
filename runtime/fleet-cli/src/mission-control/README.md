@@ -1,13 +1,13 @@
 # Mission Control
 
-Upper interaction layer that hosts the Dedicated CLI PTY in the Fleet TUI upper pane.
+Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane.
 
-Mission Control owns the launch menu for selecting a Dedicated CLI, the active PTY session lifecycle, and a panel host API that temporarily yields the upper pane to interactive panels (e.g., Carrier Status) while they are active.
+Mission Control owns the launch menu for selecting an Agent CLI, the active PTY session lifecycle, and a panel host API that temporarily yields the upper pane to interactive panels (e.g., Carrier Status) while they are active.
 
 ## Architecture
 
 - **`createMissionControlController(options)`** — Factory that returns a `MissionControlController` with a `component` (implements `MissionControlPtyView`), a `ptyHost`, and panel host methods.
-- **Panel Host API** — `openPanel(panel)`, `closePanel()`, and `hasActivePanel()`. When a panel is active, all operator input is routed to the panel component; when closed, input falls through to the underlying Dedicated CLI PTY or Mission Control control UI.
+- **Panel Host API** — `openPanel(panel)`, `closePanel()`, and `hasActivePanel()`. When a panel is active, all operator input is routed to the panel component; when closed, input falls through to the underlying Agent CLI PTY or Mission Control control UI.
 - **`writeChildInput(data)`** — Programmatic input path that writes directly to the active child PTY, bypassing panel routing. Used by system reminders (e.g., carrier result notifications) that must reach the child process regardless of panel state.
 - **Input Routing Order** — `ptyHost.write(data)` checks `activePanel` first; if a panel is open, data is sent to `panel.component.handleInput`. Otherwise, data goes to the active child PTY (`active.host.write`) or Mission Control control input (`handleControlInput`).
 - **Cursor Suppression** — When a panel is active or the controller state is not `"active"`, `getCursorAnchor` returns `null` to suppress the outer-terminal cursor.

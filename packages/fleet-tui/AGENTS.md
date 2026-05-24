@@ -5,7 +5,7 @@
 ## Package Identity & Boundary
 
 - **Must Own**: terminal renderer primitives, generic component contracts, cursor-anchor primitives, terminal-size helpers, layout math, and text/render helpers.
-- **Must Not Own**: Fleet domain logic, carrier persona definitions, fleet-cli host policy, host adapter code, default lower-pane content, input-router runtime, programmatic PTY input, PTY process lifecycle, panel host runtime, Mission Control policy, Dedicated CLI lifecycle, or any engine workspace package.
+- **Must Not Own**: Fleet domain logic, carrier persona definitions, fleet-cli host policy, host adapter code, default lower-pane content, input-router runtime, programmatic PTY input, PTY process lifecycle, panel host runtime, Mission Control policy, Agent CLI lifecycle, or any engine workspace package.
 - **Allowed Runtime Dependencies**: none.
 - **Forbidden Workspace Dependencies**: `@dotobokuri/fleet-carriers`, `@dotobokuri/fleet-cli`, `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-wiki-ui`, and `@dotobokuri/fleet-unified-agent`.
 
@@ -36,7 +36,7 @@ Generic outer-terminal cursor positioning primitive. When to sync, overlay suppr
 
 - **Component contract**: optional `getCursorAnchor(width)` returns `CursorAnchor | null` — frame-local `row`/`column` (0-based within the component's rendered region) plus `visible`. Host terminal viewport projection lives in `runtime/fleet-cli/src/controls/terminal-view.ts`.
 - **LocalTui API**: `setCursorAnchorTarget(component | undefined)` selects the anchor source; `cursorSyncEnabled` (default on) gates per-render sync ANSI. `requestRender(force?, afterRender?)` accepts an optional post-flush callback after stdout flush (hosts use this for phased policy resume; it is not a host-policy surface).
-- **Host-agnostic invariant**: cursor-anchor types and renderer paths MUST NOT reference Fleet, IME, Dedicated CLI branding, overlay semantics, or host-policy names.
+- **Host-agnostic invariant**: cursor-anchor types and renderer paths MUST NOT reference Fleet, IME, Agent CLI branding, overlay semantics, or host-policy names.
 - **Visibility invariant**: `start()` hides the cursor; `stop()` / `restoreTerminal()` show it. Each render pass appends either `\x1b[row;colH\x1b[?25h` (valid visible in-frame anchor) or `\x1b[?25l` (sync disabled, no target, `visible: false`, or fail-closed invalid coordinates).
 - **Fail-closed validation**: non-safe-integer, negative, or out-of-frame row/column values are treated as hidden (emit hide cursor).
 - **Unchanged invariants**: host policy, protocol runtime, and xterm-backed viewport rendering stay outside this package.
