@@ -1,15 +1,15 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-const PATH_SEPARATOR = path.delimiter;
-const IS_WINDOWS = process.platform === "win32";
-const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
-const WINDOWS_SHIM_EXTENSIONS = new Set([".cmd", ".bat"]);
-
 export interface ResolvedBinary {
   readonly bin: string;
   readonly prefixArgs: readonly string[];
 }
+
+const PATH_SEPARATOR = path.delimiter;
+const IS_WINDOWS = process.platform === "win32";
+const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+const WINDOWS_SHIM_EXTENSIONS = new Set([".cmd", ".bat"]);
 
 export function resolveBinary(defaultBin: string, overrideName: string, env: NodeJS.ProcessEnv): ResolvedBinary {
   const pathValue = IS_WINDOWS ? (env.Path ?? env.PATH ?? "") : (env.PATH ?? "");
