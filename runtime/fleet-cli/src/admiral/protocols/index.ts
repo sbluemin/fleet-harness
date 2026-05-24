@@ -11,7 +11,3 @@ export {
   FLEET_ACTION_COLOR,
   FLEET_ACTION_PROMPT,
 } from "./fleet-action.js";
-export {
-  buildCompletionReportRequestPrompt,
-  COMPLETION_REPORT_REQUEST_PROMPT,
-} from "./completion-report.js";
