@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   resolveAuthEnvMock: vi.fn(),
 }));
 
-vi.mock("@sbluemin/fleet-infra/auth", () => ({
+vi.mock("@dotobokuri/fleet-infra/auth", () => ({
   resolveAuthEnv: mocks.resolveAuthEnvMock,
 }));
 

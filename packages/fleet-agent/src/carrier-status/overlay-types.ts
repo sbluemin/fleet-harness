@@ -1,5 +1,5 @@
-import type { CarrierRuntime } from "@sbluemin/fleet-carriers";
-import type { FleetPtyApi, FleetPtyTheme } from "@sbluemin/fleet-tui/pty";
+import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import type { FleetPtyApi, FleetPtyTheme } from "@dotobokuri/fleet-tui/pty";
 
 import type { CarrierCliType, CarrierStatusEntry } from "./types.js";
 

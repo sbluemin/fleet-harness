@@ -2,11 +2,11 @@ import {
   buildCarrierDispatchToolSpec,
   buildCarrierJobsToolSpec,
   type CarrierRuntime,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 import {
   type McpToolRegistry,
   renderAgentToolDoctrineTag,
-} from "@sbluemin/fleet-mcp-server";
+} from "@dotobokuri/fleet-mcp-server";
 
 import type { AgentToolSpec } from "./types.js";
 

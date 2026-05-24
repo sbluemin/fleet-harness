@@ -6,7 +6,7 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
+import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

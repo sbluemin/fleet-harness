@@ -11,7 +11,7 @@
 |------|-------------|
 | `bin/` | Fleet dev and main entry scripts |
 | `docs/` | **Main Developer Guide** — Comprehensive reference for SDK, extensions, TUI, themes, and RPC; **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
-| `packages/` | First-party workspace packages: `fleet-agent` (embedded CLI TUI, host assembly, single-fleet policy, and Grand Fleet policy), `fleet-mcp-server`, `fleet-carriers`, `fleet-infra`, `fleet-wiki`, `fleet-wiki-web`, `fleet-tui`, and `unified-agent` (`@sbluemin/fleet-unified-agent`) |
+| `packages/` | First-party workspace packages: `fleet-agent` (embedded CLI TUI, host assembly, single-fleet policy, and Grand Fleet policy), `fleet-mcp-server`, `fleet-carriers`, `fleet-infra`, `fleet-wiki`, `fleet-wiki-web`, `fleet-tui`, and `unified-agent` (`@dotobokuri/fleet-unified-agent`) |
 
 > See each directory's `AGENTS.md` for detailed maps: `packages/fleet-agent/AGENTS.md`, `packages/fleet-infra/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, `packages/fleet-wiki-web/AGENTS.md`, and `packages/unified-agent/AGENTS.md`.
 

@@ -1,5 +1,5 @@
 {
-  "name": "@sbluemin/fleet-wiki",
+  "name": "@dotobokuri/fleet-wiki",
   "version": "0.21.0",
   "repository": {
     "type": "git",
@@ -26,7 +26,7 @@
     }
   },
   "dependencies": {
-    "@sbluemin/fleet-mcp-server": "workspace:*",
+    "@dotobokuri/fleet-mcp-server": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

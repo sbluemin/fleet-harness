@@ -17,14 +17,14 @@ import {
   updateCarrierCliType,
   updateCarrierDisplayName,
   updateModelSelection,
-} from "@sbluemin/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@sbluemin/fleet-infra/agent";
+} from "@dotobokuri/fleet-carriers";
+import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 import {
   isPrintable,
   matchesKey,
   type Component,
   type Focusable,
-} from "@sbluemin/fleet-tui/pty";
+} from "@dotobokuri/fleet-tui/pty";
 
 import { buildModelEffortTransition } from "./model-flow.js";
 import { handleCarrierStatusOverlayInput } from "./overlay-input.js";

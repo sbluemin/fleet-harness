@@ -1,7 +1,7 @@
 import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-import type { MemoryPaths } from "@sbluemin/fleet-wiki";
+import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 
 import { workspaceHash } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";

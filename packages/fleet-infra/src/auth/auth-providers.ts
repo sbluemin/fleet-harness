@@ -1,4 +1,4 @@
-import type { CliType } from "@sbluemin/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/fleet-unified-agent";
 
 import { createAuthService } from "./auth-storage.js";
 import { formatMissingAuthKeyMessage } from "./messages.js";

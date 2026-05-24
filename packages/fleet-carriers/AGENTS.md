@@ -26,7 +26,7 @@
 - The DI layer order is one-way: `fleet-agent` -> `fleet-carriers` -> `fleet-infra`.
 - This package sits above `fleet-infra`; it must expose carrier runtime services upward and consume infrastructure services downward through explicit dependencies.
 - `createCarrierRuntime(deps)` is the public construction boundary for carrier runtime services. Do not require callers to assemble dispatch/jobs/store/events internals independently.
-- This package may import `@sbluemin/fleet-infra`, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-unified-agent`, and `typebox`.
+- This package may import `@dotobokuri/fleet-infra`, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-unified-agent`, and `typebox`.
 - This package MUST NOT import `fleet-agent`, host UI/runtime packages, or host adapters.
 - Personas may declare executor tool IDs and builtin external MCP server IDs as opaque strings without importing host/UI/wiki packages.
 

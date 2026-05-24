@@ -1,4 +1,4 @@
-import { VALID_CLI_TYPES, type TaskForceCliType as CliType } from "@sbluemin/fleet-carriers";
+import { VALID_CLI_TYPES, type TaskForceCliType as CliType } from "@dotobokuri/fleet-carriers";
 
 import type {
   CarrierInfo,

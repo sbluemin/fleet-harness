@@ -2,8 +2,8 @@ import {
   getEffort,
   getProviderModels,
   type CliType,
-} from "@sbluemin/fleet-unified-agent";
-import { disconnect, sessionRuntime } from "@sbluemin/fleet-infra/agent";
+} from "@dotobokuri/fleet-unified-agent";
+import { disconnect, sessionRuntime } from "@dotobokuri/fleet-infra/agent";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 import type {
   FleetStoreSnapshot,

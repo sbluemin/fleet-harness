@@ -1,5 +1,5 @@
 {
-  "name": "@sbluemin/fleet-wiki-web",
+  "name": "@dotobokuri/fleet-wiki-web",
   "version": "0.21.0",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
   },
   "dependencies": {
-    "@sbluemin/fleet-wiki": "workspace:*",
+    "@dotobokuri/fleet-wiki": "workspace:*",
     "dompurify": "^3.4.2",
     "highlight.js": "^11.11.1",
     "marked": "^16.4.1",

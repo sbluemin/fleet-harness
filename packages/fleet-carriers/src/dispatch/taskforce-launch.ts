@@ -4,12 +4,12 @@
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
 
-import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
+import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
-import type { AgentToolCtx, AgentToolSpec } from "@sbluemin/fleet-mcp-server";
+import type { AgentToolCtx, AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../job/index.js";
-import type { LogOptions } from "@sbluemin/fleet-infra/log";
-import type { ExecResult } from "@sbluemin/fleet-infra/agent";
+import type { LogOptions } from "@dotobokuri/fleet-infra/log";
+import type { ExecResult } from "@dotobokuri/fleet-infra/agent";
 import type { ModelEffort } from "./overlay-types.js";
 
 import {
@@ -27,8 +27,8 @@ import {
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
 } from "../job/index.js";
-import { getLogAPI } from "@sbluemin/fleet-infra/log";
-import { executeOneShot } from "@sbluemin/fleet-infra/agent";
+import { getLogAPI } from "@dotobokuri/fleet-infra/log";
+import { executeOneShot } from "@dotobokuri/fleet-infra/agent";
 import {
   emitStreamEvent,
   type CarrierJobStatus,

@@ -2,7 +2,7 @@ import type {
   CarrierJobKind,
   CarrierJobStatus,
   TrackKind,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 
 export type ColStatus = "wait" | "conn" | "stream" | "done" | "err";
 

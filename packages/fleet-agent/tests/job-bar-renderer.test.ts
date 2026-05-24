@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createCarrierRuntime } from "@sbluemin/fleet-carriers";
+import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
 import { renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";

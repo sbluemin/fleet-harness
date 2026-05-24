@@ -6,7 +6,7 @@
  * 순서를 따른다.
  */
 
-import type { TaskForceCliType as CliType } from "@sbluemin/fleet-carriers";
+import type { TaskForceCliType as CliType } from "@dotobokuri/fleet-carriers";
 
 export interface JsonRpcRequest {
   jsonrpc: "2.0";

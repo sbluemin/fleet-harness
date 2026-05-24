@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
 
-import type { AgentToolSpec, McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
+import type { AgentToolSpec, McpRouterRuntime } from "@dotobokuri/fleet-mcp-server";
 import {
   cleanupExecutorSession,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
-} from "@sbluemin/fleet-mcp-server";
+} from "@dotobokuri/fleet-mcp-server";
 
 export interface DedicatedMcpServerEndpoint {
   readonly name: string;

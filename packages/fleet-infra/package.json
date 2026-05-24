@@ -1,5 +1,5 @@
 {
-  "name": "@sbluemin/fleet-infra",
+  "name": "@dotobokuri/fleet-infra",
   "version": "0.21.0",
   "repository": {
     "type": "git",
@@ -61,8 +61,8 @@
     }
   },
   "dependencies": {
-    "@sbluemin/fleet-mcp-server": "workspace:*",
-    "@sbluemin/fleet-unified-agent": "workspace:*"
+    "@dotobokuri/fleet-mcp-server": "workspace:*",
+    "@dotobokuri/fleet-unified-agent": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

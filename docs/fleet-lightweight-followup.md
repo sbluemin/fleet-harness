@@ -8,7 +8,7 @@ Fleet now uses explicit package ownership without standalone Admiral compatibili
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, and carrier state.
 - `packages/fleet-infra` owns host-agnostic infrastructure and I/O gateways.
 - `packages/fleet-mcp-server` owns generic MCP registry/server behavior.
-- `@sbluemin/fleet-unified-agent` remains the independent backend client package.
+- `@dotobokuri/fleet-unified-agent` remains the independent backend client package.
 
 ## Purpose
 

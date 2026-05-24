@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui/pty";
+import { truncateToWidth, visibleWidth, type Component } from "@dotobokuri/fleet-tui/pty";
 
 import { getActiveProtocol } from "../admiral/protocols/index.js";
 

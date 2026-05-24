@@ -17,18 +17,18 @@
 
 ## Dependency Rules
 
-- Runtime dependencies should remain limited to `@sbluemin/fleet-wiki`, `marked`, `highlight.js`, `dompurify`, and `mermaid`. `mermaid` is loaded only via dynamic `import("mermaid")` inside `client/src/markdown/diagrams.ts`; no other module may statically import it.
+- Runtime dependencies should remain limited to `@dotobokuri/fleet-wiki`, `marked`, `highlight.js`, `dompurify`, and `mermaid`. `mermaid` is loaded only via dynamic `import("mermaid")` inside `client/src/markdown/diagrams.ts`; no other module may statically import it.
 - HTTP serving must use Node.js built-in modules.
 - Browser launch must use OS-level commands via `child_process.spawn`; do not add an `open` dependency.
-- Markdown parsing must reuse `@sbluemin/fleet-wiki` public behavior where available; package-local parsing is forbidden.
+- Markdown parsing must reuse `@dotobokuri/fleet-wiki` public behavior where available; package-local parsing is forbidden.
 - Client code must stay Vanilla TypeScript. Do not add React, Preact, Svelte, Solid, router libraries, or state libraries.
 - Client routing is owned by `client/src/router.ts` and must use the History API.
 - Web fonts must be self-hosted via `@fontsource-variable/*` packages. External font CDNs (Google Fonts CDN, jsDelivr fonts, Adobe Fonts, etc.) are forbidden — every asset that ships to the browser must originate from a workspace dependency and end up in `dist/client/assets/`.
 
 ## Link Syntax Standard
 
-- Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard defined in `@sbluemin/fleet-wiki/src/links.ts`).
-- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to the current workspace's `/w/:ws/entry/foo` SPA links with `data-entry-id` attributes. The pattern is **inlined** with an SSoT comment — the client must never `import` from `@sbluemin/fleet-wiki` because that package's Node-only modules (`fs`/`path`/`crypto`) would break the Vite browser bundle.
+- Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard defined in `@dotobokuri/fleet-wiki/src/links.ts`).
+- Web renderer in `client/src/markdown/renderer.ts` converts `[[wiki:foo]]` to the current workspace's `/w/:ws/entry/foo` SPA links with `data-entry-id` attributes. The pattern is **inlined** with an SSoT comment — the client must never `import` from `@dotobokuri/fleet-wiki` because that package's Node-only modules (`fs`/`path`/`crypto`) would break the Vite browser bundle.
 - Legacy markdown links `[title](entry.md)` remain readable but trigger `legacy_markdown_wiki_link` warning in `wiki_drydock`.
 
 ## SPA Routes

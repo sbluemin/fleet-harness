@@ -13,8 +13,8 @@ import {
   updateTaskForceModelSelection,
   type CarrierRuntime,
   type TaskForceCliType,
-} from "@sbluemin/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@sbluemin/fleet-infra/agent";
+} from "@dotobokuri/fleet-carriers";
+import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 import {
   createOverlayFrame,
   matchesKey,
@@ -22,7 +22,7 @@ import {
   type Component,
   type FleetPtyTheme,
   type Focusable,
-} from "@sbluemin/fleet-tui/pty";
+} from "@dotobokuri/fleet-tui/pty";
 
 import { buildModelEffortTransition } from "./model-flow.js";
 import type {

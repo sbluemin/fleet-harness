@@ -25,7 +25,7 @@ vi.mock("../../src/auth/login-flow.js", () => ({
   runAuthLoginFlow: mocks.runAuthLoginFlowMock,
 }));
 
-vi.mock("@sbluemin/fleet-infra/auth", () => ({
+vi.mock("@dotobokuri/fleet-infra/auth", () => ({
   AUTH_LIST_EMPTY_MESSAGE: "No auth tokens",
   AUTH_COMMAND_CANCELLED_MESSAGE: "Cancelled",
   AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE: "Select provider",

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentToolSpec, McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
+import type { AgentToolSpec, McpRouterRuntime } from "@dotobokuri/fleet-mcp-server";
 
 const mcpMocks = vi.hoisted(() => ({
   cleanupExecutorSession: vi.fn(),
@@ -8,7 +8,7 @@ const mcpMocks = vi.hoisted(() => ({
   registerExecutorSessionTools: vi.fn(),
 }));
 
-vi.mock("@sbluemin/fleet-mcp-server", () => mcpMocks);
+vi.mock("@dotobokuri/fleet-mcp-server", () => mcpMocks);
 
 import { createDedicatedMcpSession } from "../src/admiral/mcp.js";
 

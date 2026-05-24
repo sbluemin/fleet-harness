@@ -5,7 +5,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@sbluemin/fleet-wiki": ["../fleet-wiki/src/index.ts"]
+      "@dotobokuri/fleet-wiki": ["../fleet-wiki/src/index.ts"]
     },
     "strict": true,
     "declaration": true,

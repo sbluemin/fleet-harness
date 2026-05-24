@@ -1,4 +1,4 @@
-import type { Component, FleetPtySection } from "@sbluemin/fleet-tui/pty";
+import type { Component, FleetPtySection } from "@dotobokuri/fleet-tui/pty";
 
 import { renderCarrierJobHud, renderCarrierJobHudStrip } from "./job-bar-renderer.js";
 import type { JobBarState } from "./job-bar-state.js";

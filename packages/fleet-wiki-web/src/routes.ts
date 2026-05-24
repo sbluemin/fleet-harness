@@ -16,9 +16,9 @@ import {
   readWikiEntry,
   rejectPatch,
   showQueue,
-} from "@sbluemin/fleet-wiki";
-import { PATCH_FILENAME, PATCH_META_FILENAME } from "@sbluemin/fleet-wiki";
-import type { MemoryPaths, PatchMeta, PatchSet, WikiEntry, WikiEntryFrontmatter } from "@sbluemin/fleet-wiki";
+} from "@dotobokuri/fleet-wiki";
+import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
+import type { MemoryPaths, PatchMeta, PatchSet, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
 
 import { withSecurityHeaders } from "./security-headers.js";
 import { hasAdminBearer } from "./admin-auth.js";

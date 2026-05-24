@@ -1,5 +1,5 @@
-import { getRegisteredOrder, type CarrierRuntime } from "@sbluemin/fleet-carriers";
-import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "@sbluemin/fleet-tui/pty";
+import { getRegisteredOrder, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "@dotobokuri/fleet-tui/pty";
 
 import {
   resolveCarrierColor,

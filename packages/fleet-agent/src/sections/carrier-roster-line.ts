@@ -3,8 +3,8 @@ import {
 	getRegisteredOrder,
 	readStatesSnapshot,
 	type CarrierRuntime,
-} from "@sbluemin/fleet-carriers";
-import { centerLine, truncateToWidth, visibleWidth, type Component } from "@sbluemin/fleet-tui/pty";
+} from "@dotobokuri/fleet-carriers";
+import { centerLine, truncateToWidth, visibleWidth, type Component } from "@dotobokuri/fleet-tui/pty";
 
 import { resolveCarrierColor, resolveCarrierDisplayName } from "../carrier-status/carrier-helpers.js";
 

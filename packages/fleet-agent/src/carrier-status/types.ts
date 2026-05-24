@@ -3,9 +3,9 @@ import type {
   CarrierRuntime,
   FleetStoreSnapshot,
   TaskForceCliType,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 
-import type { FleetPtyApi } from "@sbluemin/fleet-tui/pty";
+import type { FleetPtyApi } from "@dotobokuri/fleet-tui/pty";
 
 export type CarrierCliType = TaskForceCliType;
 export type { FleetStoreSnapshot };

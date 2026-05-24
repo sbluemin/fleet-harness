@@ -1,8 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 
-import { createCarrierRuntime, type CarrierRuntime } from "@sbluemin/fleet-carriers";
-import { createInfraServices, type InfraServices } from "@sbluemin/fleet-infra";
+import { createCarrierRuntime, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
 import {
 	createMcpServer,
 	createMcpToolRegistry,
@@ -10,8 +10,8 @@ import {
 	type McpServer,
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
-} from "@sbluemin/fleet-mcp-server";
-import { getWikiToolSpecs } from "@sbluemin/fleet-wiki";
+} from "@dotobokuri/fleet-mcp-server";
+import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import { createDedicatedMcpSession, type DedicatedMcpSessionPort } from "../admiral/mcp.js";
 import {

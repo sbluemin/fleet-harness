@@ -1,4 +1,4 @@
-import { attachInputStream, LocalTui } from "@sbluemin/fleet-tui/core";
+import { attachInputStream, LocalTui } from "@dotobokuri/fleet-tui/core";
 import {
   assertInputContract,
   createInputKeybindingConfig,
@@ -10,7 +10,7 @@ import {
   type KeybindingDefinition,
   type KeybindingRegistration,
   type RoutedMouseInput,
-} from "@sbluemin/fleet-tui/input";
+} from "@dotobokuri/fleet-tui/input";
 import {
   createCsiUInputNormalizer,
   createFleetPtyApi,
@@ -23,7 +23,7 @@ import {
   type FleetPtyApi,
   type PtyHost,
   type TuiPtyManager,
-} from "@sbluemin/fleet-tui/pty";
+} from "@dotobokuri/fleet-tui/pty";
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
 import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";

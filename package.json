@@ -10,7 +10,7 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "build": "pnpm -r build",
-    "fleet": "pnpm --filter @sbluemin/fleet-unified-agent build && pnpm --filter @sbluemin/fleet-agent dev",
+    "fleet": "pnpm --filter @dotobokuri/fleet-unified-agent build && pnpm --filter @dotobokuri/fleet-agent dev",
     "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && pnpm -r build"
   },
   "bin": {

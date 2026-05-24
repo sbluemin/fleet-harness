@@ -10,7 +10,7 @@ import {
   getModelsRegistry,
   getProviderModels,
   type CliType,
-} from "@sbluemin/fleet-unified-agent";
+} from "@dotobokuri/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

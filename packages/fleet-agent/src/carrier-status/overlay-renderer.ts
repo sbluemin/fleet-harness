@@ -2,13 +2,13 @@ import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,
   CLI_DISPLAY_NAMES,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 import {
   createOverlayFrame,
   MIN_DEDICATED_ROWS,
   visibleWidth,
   type FleetPtyTheme,
-} from "@sbluemin/fleet-tui/pty";
+} from "@dotobokuri/fleet-tui/pty";
 
 import type { RenameState, StatusOverlayViewModel } from "./overlay-types.js";
 import type { BatchCliChoice, CarrierCliType, CarrierStatusEntry, CliModelInfo, OverlayState } from "./types.js";

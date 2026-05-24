@@ -7,24 +7,24 @@ Primary CLI host for running local CLIs inside a permanent vertical two-pane Fle
 - Boots Fleet runtime state as the sole Composition Root through direct leaf service registration.
 - Owns absorbed Admiral prompt/protocol/tool/MCP policy in `src/admiral/**` and Grand Fleet helpers in `src/grand-fleet/**`.
 - Hosts `claude` or `codex` through a `node-pty` backed CLI PTY.
-- Renders the upper CLI PTY and lower Fleet PTY through `@sbluemin/fleet-tui`.
+- Renders the upper CLI PTY and lower Fleet PTY through `@dotobokuri/fleet-tui`.
 - Keeps host control policy in `src/controls/**` and default Fleet PTY wireframe content in `src/sections/**`.
 - Manages CLI launch and environment injection through `src/dedicated-cli/**`.
-- Uses `@sbluemin/fleet-tui/pty` as the generic lower-pane replacement for legacy TUI patterns.
+- Uses `@dotobokuri/fleet-tui/pty` as the generic lower-pane replacement for legacy TUI patterns.
 - Opens the carrier-status overlay with `Alt+O`; it handles carrier rendering, model/effort editing, reset, and TaskForce backend editing.
 
 ## Boundary
 
 Allowed workspace dependencies are:
 
-- `@sbluemin/fleet-carriers`
-- `@sbluemin/fleet-infra`
-- `@sbluemin/fleet-mcp-server`
-- `@sbluemin/fleet-tui`
-- `@sbluemin/fleet-wiki`
-- `@sbluemin/fleet-wiki-web`
+- `@dotobokuri/fleet-carriers`
+- `@dotobokuri/fleet-infra`
+- `@dotobokuri/fleet-mcp-server`
+- `@dotobokuri/fleet-tui`
+- `@dotobokuri/fleet-wiki`
+- `@dotobokuri/fleet-wiki-web`
 
-Execution-engine packages such as `@sbluemin/fleet-unified-agent` are permanently forbidden direct dependencies.
+Execution-engine packages such as `@dotobokuri/fleet-unified-agent` are permanently forbidden direct dependencies.
 
 ## CLI Selection
 
@@ -59,7 +59,7 @@ fleet --cli codex --model o4-mini
 ## Commands
 
 ```sh
-pnpm --filter @sbluemin/fleet-agent build
+pnpm --filter @dotobokuri/fleet-agent build
 pnpm fleet
 ```
 
@@ -67,8 +67,8 @@ The package is ESM-only and builds with TypeScript NodeNext.
 
 ## V4 Tree
 
-- `@sbluemin/fleet-tui/input`: generic input router, keybinding registry, conflict checks, and programmatic input API.
-- `@sbluemin/fleet-tui/pty`: generic Fleet PTY API, CLI PTY infrastructure, and shared resize negotiation.
+- `@dotobokuri/fleet-tui/input`: generic input router, keybinding registry, conflict checks, and programmatic input API.
+- `@dotobokuri/fleet-tui/pty`: generic Fleet PTY API, CLI PTY infrastructure, and shared resize negotiation.
 - `src/controls/modes.ts`: host mode policy.
 - `src/sections/default-sections.ts`: host-composed default lower-pane content.
 - `src/carrier-status/**`: carrier-status overlay domain.
@@ -77,7 +77,7 @@ The package is ESM-only and builds with TypeScript NodeNext.
 
 `fleetPty.custom<T>()` mounts a focused lower-pane component, routes Fleet PTY input to it, resolves when the component calls `done(result)`, disposes the component if needed, and returns to the host-composed default Fleet PTY section composite.
 
-Fleet PTY components may expose `desiredHeight(maxRows)`. `@sbluemin/fleet-tui/pty` reads that value, asks the permanent vertical two-pane split helper for sizing, preserves `MIN_DEDICATED_ROWS`, and resizes both the CLI PTY view and child `PtyHost` through one path.
+Fleet PTY components may expose `desiredHeight(maxRows)`. `@dotobokuri/fleet-tui/pty` reads that value, asks the permanent vertical two-pane split helper for sizing, preserves `MIN_DEDICATED_ROWS`, and resizes both the CLI PTY view and child `PtyHost` through one path.
 
 ## Security Assumptions
 

@@ -5,7 +5,7 @@ import {
   readStatesSnapshot as readCoreStatesSnapshot,
   type FleetStoreSnapshot,
   type TaskForceCliType,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 
 import {
   PANEL_DIM_COLOR as CORE_PANEL_DIM_COLOR,

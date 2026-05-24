@@ -4,7 +4,7 @@ import {
   getRegisteredOrder,
   readStatesSnapshot,
   setTaskForceConfiguredCarriers,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 
 export function reconcileRuntimeState(carrierRuntime: CarrierRuntime): void {
   const registry = carrierRuntime.registry;

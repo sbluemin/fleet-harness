@@ -1,8 +1,8 @@
-# @sbluemin/fleet-unified-agent
+# @dotobokuri/fleet-unified-agent
 
 > A TypeScript SDK that unifies Codex CLI, Claude Code, OpenCode, and Cursor Agent under a single interface.
 
-Within this monorepo, Fleet consumes `@sbluemin/fleet-unified-agent` through `workspace:*` from `packages/unified-agent/`. It is the core engine for all Fleet agents and shares the same build and release flow as the other workspace packages.
+Within this monorepo, Fleet consumes `@dotobokuri/fleet-unified-agent` through `workspace:*` from `packages/unified-agent/`. It is the core engine for all Fleet agents and shares the same build and release flow as the other workspace packages.
 
 ## Overview
 
@@ -50,7 +50,7 @@ ait --help
 To unlink:
 
 ```bash
-npm unlink -g @sbluemin/fleet-unified-agent
+npm unlink -g @dotobokuri/fleet-unified-agent
 ```
 
 ### REPL Mode
@@ -172,7 +172,7 @@ In `package.json`:
 ```json
 {
   "dependencies": {
-    "@sbluemin/fleet-unified-agent": "github:sbluemin/fleet-harness"
+    "@dotobokuri/fleet-unified-agent": "github:sbluemin/fleet-harness"
   }
 }
 ```
@@ -180,7 +180,7 @@ In `package.json`:
 ### Quick Start
 
 ```typescript
-import { UnifiedAgent } from '@sbluemin/fleet-unified-agent';
+import { UnifiedAgent } from '@dotobokuri/fleet-unified-agent';
 
 const client = await UnifiedAgent.build();
 

@@ -1,6 +1,6 @@
 # Fleet PTY
 
-`@sbluemin/fleet-tui/pty` is the only external Fleet PTY entrypoint for overlays and region replacement.
+`@dotobokuri/fleet-tui/pty` is the only external Fleet PTY entrypoint for overlays and region replacement.
 
 Consumers must not import `region-stack.ts`, `overlay-manager.ts`, `types.ts`, or other Fleet PTY internals directly. The default behavior is host-composed default region -> overlay push -> overlay pop -> previous/default region.
 
@@ -21,6 +21,6 @@ Fleet PTY desired-height measurement is pure: components return a requested row 
 
 Fleet PTY does not own host default content or mode policy. Default content and host modes stay in consuming host packages.
 
-Generic keyboard and mouse token routing stays in `@sbluemin/fleet-tui/input`.
+Generic keyboard and mouse token routing stays in `@dotobokuri/fleet-tui/input`.
 
-Dedicated CLI PTY infrastructure stays in `@sbluemin/fleet-tui/pty`.
+Dedicated CLI PTY infrastructure stays in `@dotobokuri/fleet-tui/pty`.

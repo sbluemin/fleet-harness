@@ -33,28 +33,31 @@ importers:
       '@clack/prompts':
         specifier: 1.4.0
         version: 1.4.0
-      '@sbluemin/fleet-carriers':
+      '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../fleet-carriers
-      '@sbluemin/fleet-infra':
+      '@dotobokuri/fleet-infra':
         specifier: workspace:*
         version: link:../fleet-infra
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
-      '@sbluemin/fleet-tui':
+      '@dotobokuri/fleet-tui':
         specifier: workspace:../fleet-tui
         version: link:../fleet-tui
-      '@sbluemin/fleet-wiki':
+      '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../fleet-wiki
-      '@sbluemin/fleet-wiki-web':
+      '@dotobokuri/fleet-wiki-web':
         specifier: workspace:*
         version: link:../fleet-wiki-web
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
         version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
       tsx:
         specifier: ^4.20.3
         version: 4.21.0
@@ -67,13 +70,13 @@ importers:
 
   packages/fleet-carriers:
     dependencies:
-      '@sbluemin/fleet-infra':
+      '@dotobokuri/fleet-infra':
         specifier: workspace:*
         version: link:../fleet-infra
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
-      '@sbluemin/fleet-unified-agent':
+      '@dotobokuri/fleet-unified-agent':
         specifier: workspace:*
         version: link:../unified-agent
       typebox:
@@ -95,10 +98,10 @@ importers:
 
   packages/fleet-infra:
     dependencies:
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
-      '@sbluemin/fleet-unified-agent':
+      '@dotobokuri/fleet-unified-agent':
         specifier: workspace:*
         version: link:../unified-agent
     devDependencies:
@@ -148,7 +151,7 @@ importers:
 
   packages/fleet-wiki:
     dependencies:
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
       typebox:
@@ -170,7 +173,7 @@ importers:
 
   packages/fleet-wiki-web:
     dependencies:
-      '@sbluemin/fleet-wiki':
+      '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../fleet-wiki
       dompurify:

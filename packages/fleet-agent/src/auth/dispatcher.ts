@@ -8,7 +8,7 @@ import {
   formatAuthLogoutSuccessMessage,
   formatAuthMigrationNotice,
   migrateLegacyAuthStore,
-} from "@sbluemin/fleet-infra/auth";
+} from "@dotobokuri/fleet-infra/auth";
 
 import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
 import type { AuthCommandIo } from "./types.js";

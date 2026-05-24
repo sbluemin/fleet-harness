@@ -20,7 +20,7 @@ import {
   type McpServerConfig,
   type UnifiedAgentBuildOptions,
   type UnifiedClientOptions,
-} from "@sbluemin/fleet-unified-agent";
+} from "@dotobokuri/fleet-unified-agent";
 
 import {
   cleanupExecutorSession as cleanupExecutorMcpSession,
@@ -29,7 +29,7 @@ import {
   registerExecutorSessionTools,
   type AgentToolSpec,
   type McpRouterRuntime,
-} from "@sbluemin/fleet-mcp-server";
+} from "@dotobokuri/fleet-mcp-server";
 
 import { executorPortRuntime } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";

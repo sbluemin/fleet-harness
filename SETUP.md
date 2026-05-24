@@ -34,7 +34,7 @@ pnpm approve-builds --all
 pnpm link --global
 
 # Register `ait`, the unified-agent CLI used for provider diagnostics.
-pnpm --filter @sbluemin/fleet-unified-agent link --global
+pnpm --filter @dotobokuri/fleet-unified-agent link --global
 ```
 
 ## 3. Verify

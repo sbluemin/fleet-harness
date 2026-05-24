@@ -1,4 +1,4 @@
-# AGENTS.md — @sbluemin/fleet-unified-agent
+# AGENTS.md — @dotobokuri/fleet-unified-agent
 
 ## Project Overview
 

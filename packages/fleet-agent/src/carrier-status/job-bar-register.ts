@@ -1,4 +1,4 @@
-import { carrierJobs } from "@sbluemin/fleet-carriers";
+import { carrierJobs } from "@dotobokuri/fleet-carriers";
 
 import type { JobBarState } from "./job-bar-state.js";
 

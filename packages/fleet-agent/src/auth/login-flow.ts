@@ -10,7 +10,7 @@ import {
   formatAuthValidationFailureMessage,
   migrateLegacyAuthStore,
   validateAuthKeyForCli,
-} from "@sbluemin/fleet-infra/auth";
+} from "@dotobokuri/fleet-infra/auth";
 
 import type { AuthCliId, AuthCommandIo } from "./types.js";
 

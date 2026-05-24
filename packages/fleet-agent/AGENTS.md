@@ -8,7 +8,7 @@ This package owns the local host assembly for the Dedicated CLI PTY, Fleet PTY l
 
 - **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, Fleet's CLI Composition Root, `src/admiral/**`, and `src/grand-fleet/**`.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
-- **Dependencies**: Restricted to `@sbluemin/fleet-infra` for auth/session/settings infrastructure, `@sbluemin/fleet-carriers` for carrier runtime and detached job count, `@sbluemin/fleet-mcp-server`, `@sbluemin/fleet-tui`, `@sbluemin/fleet-wiki`, and `@sbluemin/fleet-wiki-web`.
+- **Dependencies**: Restricted to `@dotobokuri/fleet-infra` for auth/session/settings infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-web`.
 
 Direct dependencies on execution-engine packages are generally forbidden. Execution and model catalog access flow through `fleet-infra` and the Fleet orchestration packages. The Job Bar functionality is fully absorbed into `fleet-agent`.
 
@@ -27,8 +27,8 @@ Only the permanent vertical two-pane layout is allowed:
 
 - **Dedicated CLI PTY**: Upper pane.
 - **Fleet PTY**: Lower pane.
-- **Shared PTY negotiation**: `@sbluemin/fleet-tui/pty` owns desired-height layout.
-- **Generic input core**: `@sbluemin/fleet-tui/input` owns keyboard routing.
+- **Shared PTY negotiation**: `@dotobokuri/fleet-tui/pty` owns desired-height layout.
+- **Generic input core**: `@dotobokuri/fleet-tui/input` owns keyboard routing.
 - **Host control policy**: `src/controls/modes.ts` owns MIRROR/DEDICATED mode semantics.
 
 ## Input & Mode Logic

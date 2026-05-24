@@ -1,5 +1,5 @@
 {
-  "name": "@sbluemin/fleet-unified-agent",
+  "name": "@dotobokuri/fleet-unified-agent",
   "version": "0.21.0",
   "description": "Codex CLI와 Claude Code를 통합하는 TypeScript 기반 SDK",
   "repository": {

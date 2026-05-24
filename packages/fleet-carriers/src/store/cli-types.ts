@@ -1,5 +1,5 @@
-import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
-import { disconnect, sessionRuntime } from "@sbluemin/fleet-infra/agent";
+import { CLI_BACKENDS, type CliType } from "@dotobokuri/fleet-unified-agent";
+import { disconnect, sessionRuntime } from "@dotobokuri/fleet-infra/agent";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 import type {
   ModelSelection,

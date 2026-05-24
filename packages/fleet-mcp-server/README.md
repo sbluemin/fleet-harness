@@ -1,10 +1,10 @@
-# @sbluemin/fleet-mcp-server
+# @dotobokuri/fleet-mcp-server
 
 A leaf workspace package for Fleet's generic Model Context Protocol (MCP) HTTP server, tool registry, and session-scoped routing primitives.
 
 ## Overview
 
-`@sbluemin/fleet-mcp-server` provides a robust, session-aware implementation of the MCP JSON-RPC 2.0 protocol over HTTP. It is designed to be a "leaf" package—purely focused on MCP transport and tool management without dependencies on the Fleet engine or host runtime.
+`@dotobokuri/fleet-mcp-server` provides a robust, session-aware implementation of the MCP JSON-RPC 2.0 protocol over HTTP. It is designed to be a "leaf" package—purely focused on MCP transport and tool management without dependencies on the Fleet engine or host runtime.
 
 ## Key Features
 
@@ -38,7 +38,7 @@ A leaf workspace package for Fleet's generic Model Context Protocol (MCP) HTTP s
 ### Starting the Server and Registering a Tool
 
 ```typescript
-import { startMcpServer, registerAgentTool } from "@sbluemin/fleet-mcp-server";
+import { startMcpServer, registerAgentTool } from "@dotobokuri/fleet-mcp-server";
 
 // 1. Start the server
 const mcpUrl = await startMcpServer();
@@ -69,7 +69,7 @@ registerAgentTool({
 ### Resolving an MCP Tool Call Manually
 
 ```typescript
-import { setOnToolCallArrived, resolveNextToolCall } from "@sbluemin/fleet-mcp-server";
+import { setOnToolCallArrived, resolveNextToolCall } from "@dotobokuri/fleet-mcp-server";
 
 const sessionToken = "my-secret-token";
 

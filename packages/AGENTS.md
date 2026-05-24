@@ -22,7 +22,7 @@ The Admiral agent domain exposes the closed-loop callback executor surface only:
 
 | Pattern | Surface | Lifetime | Use Case |
 |---------|---------|----------|----------|
-| **Closed-loop callback** | `@sbluemin/fleet-infra/agent` `executeWithPool` / `executeOneShot` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument and automatically promotes to multi-backend Task Force execution when the target carrier has Task Force configured) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (sole carrier delegation surface) |
+| **Closed-loop callback** | `@dotobokuri/fleet-infra/agent` `executeWithPool` / `executeOneShot` with `ExecuteOptions.onMessageChunk/onThoughtChunk/onToolCall/...` (carrier-agnostic — caller maps `poolKey`: `carrier_dispatch` resolves `poolKey` from its `carrier_id` argument and automatically promotes to multi-backend Task Force execution when the target carrier has Task Force configured) | Single carrier turn, returns `ExecResult` synchronously | `carrier_dispatch` (sole carrier delegation surface) |
 
 Host streaming is not part of the Fleet orchestration public agent surface. Carrier execution is routed through the executor callback path only.
 
@@ -35,7 +35,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Session persistence (carrier → ACP sessionId mappings as JSONL custom entries) | `packages/fleet-infra/src/agent/internal/session-runtime.ts` | Resume/restore semantics backed by JSONL custom entries with the `fleet/carrier-session` customType. |
 | Track status enum | `packages/fleet-infra/src/agent/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | Two independent HTTP servers (`fleet-carriers` and `fleet-wiki`), each with per-session Bearer tokens and FIFO routing isolated by token. |
-| CLI provider catalog | `@sbluemin/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
+| CLI provider catalog | `@dotobokuri/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
 | Fleet tool catalog | `packages/fleet-agent/src/admiral/tools.ts` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
 | Executor MCP tool exposure | `packages/fleet-agent/src/admiral/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-agent` registers the two-method `ExecutorPort` at boot. |
@@ -43,7 +43,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 
 ### 4. Public Surface Discipline
 
-Consumers use public package root barrels: `@sbluemin/fleet-carriers` for carrier runtime, `@sbluemin/fleet-infra` for infrastructure, and `@sbluemin/fleet-mcp-server` for generic MCP registry/server APIs. `fleet-agent` imports its absorbed policy modules through package-local `.js` relative imports. The implementation is re-exported from `@sbluemin/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
+Consumers use public package root barrels: `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/fleet-infra` for infrastructure, and `@dotobokuri/fleet-mcp-server` for generic MCP registry/server APIs. `fleet-agent` imports its absorbed policy modules through package-local `.js` relative imports. The implementation is re-exported from `@dotobokuri/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
 
 ### 5. DI Factory Discipline
 

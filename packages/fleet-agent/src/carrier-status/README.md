@@ -2,11 +2,11 @@
 
 Carrier status overlay domain for Fleet Agent.
 
-This domain imports public Fleet package facades directly and consumes Fleet PTY only through `@sbluemin/fleet-tui/pty`.
+This domain imports public Fleet package facades directly and consumes Fleet PTY only through `@dotobokuri/fleet-tui/pty`.
 
-Infrastructure substitutions are intentionally narrow: legacy UI components become `fleetPty.custom`, Fleet TUI component/key/width helpers come from `@sbluemin/fleet-tui/pty`.
+Infrastructure substitutions are intentionally narrow: legacy UI components become `fleetPty.custom`, Fleet TUI component/key/width helpers come from `@dotobokuri/fleet-tui/pty`.
 
-Keybindings are registered via `@sbluemin/fleet-tui/input`.
+Keybindings are registered via `@dotobokuri/fleet-tui/input`.
 
 Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `c`, `N`, `C`, `R`.
 

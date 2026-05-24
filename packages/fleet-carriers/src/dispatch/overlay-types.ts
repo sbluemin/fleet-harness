@@ -1,4 +1,4 @@
-import type { HealthStatus, ProviderKey } from "@sbluemin/fleet-unified-agent";
+import type { HealthStatus, ProviderKey } from "@dotobokuri/fleet-unified-agent";
 import type { CarrierCategory } from "./types.js";
 
 export type CarrierCliType = ProviderKey;

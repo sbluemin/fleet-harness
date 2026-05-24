@@ -66,10 +66,10 @@ It also does not include a runtime-context tag section.
 Runtime state is read through direct owners:
 
 - Protocol state: `packages/fleet-agent/src/admiral/protocols/**`
-- Carrier registry and display state: `@sbluemin/fleet-carriers`
-- Carrier store and job stream state: `@sbluemin/fleet-carriers`
-- Executor/session/model state: `@sbluemin/fleet-infra/agent`
-- MCP registry/server state: `@sbluemin/fleet-mcp-server`
+- Carrier registry and display state: `@dotobokuri/fleet-carriers`
+- Carrier store and job stream state: `@dotobokuri/fleet-carriers`
+- Executor/session/model state: `@dotobokuri/fleet-infra/agent`
+- MCP registry/server state: `@dotobokuri/fleet-mcp-server`
 
 These values are operational inputs for services, overlays, tools, and status
 rendering. They are not serialized into a per-turn prompt wrapper.
@@ -98,7 +98,7 @@ stops the MCP server, and resets settings.
 
 ## 5. Executor Path
 
-Carrier execution is routed through `@sbluemin/fleet-infra/agent`
+Carrier execution is routed through `@dotobokuri/fleet-infra/agent`
 `executeWithPool()` and `executeOneShot()`. Carrier requests receive the request
 body composed by the caller plus the carrier system prompt assembled by
 `buildCarrierSystemPrompt()`.

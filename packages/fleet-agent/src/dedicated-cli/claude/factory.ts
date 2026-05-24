@@ -1,4 +1,4 @@
-import { resolveAuthEnv } from "@sbluemin/fleet-infra/auth";
+import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 
 import { createChildEnv, resolveBinary } from "../resolve-bin.js";
 import type { DedicatedCliDefinition, DedicatedCliId, DedicatedCliProfileOptions } from "../types.js";

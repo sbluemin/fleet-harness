@@ -24,21 +24,21 @@
 
 Consumers use the package root or documented subdomain barrels only:
 
-- `@sbluemin/fleet-infra`
-- `@sbluemin/fleet-infra/agent`
-- `@sbluemin/fleet-infra/auth`
-- `@sbluemin/fleet-infra/data-dir`
-- `@sbluemin/fleet-infra/log`
-- `@sbluemin/fleet-infra/settings`
+- `@dotobokuri/fleet-infra`
+- `@dotobokuri/fleet-infra/agent`
+- `@dotobokuri/fleet-infra/auth`
+- `@dotobokuri/fleet-infra/data-dir`
+- `@dotobokuri/fleet-infra/log`
+- `@dotobokuri/fleet-infra/settings`
 
 Do not add individual deep source-file exports without an explicit public API decision.
 
 ## Dependency Boundary
 
 - This package must stay host-agnostic.
-- It may depend on `@sbluemin/fleet-unified-agent` for shared CLI type definitions.
-- It may depend on `@sbluemin/fleet-mcp-server` for generic MCP registry/server types and executor MCP routing.
-- It must not import `@sbluemin/fleet-agent`, `fleet-carriers`, host UI/runtime packages, or engine packages.
+- It may depend on `@dotobokuri/fleet-unified-agent` for shared CLI type definitions.
+- It may depend on `@dotobokuri/fleet-mcp-server` for generic MCP registry/server types and executor MCP routing.
+- It must not import `@dotobokuri/fleet-agent`, `fleet-carriers`, host UI/runtime packages, or engine packages.
 - Relative imports inside `src/` must stay within `packages/fleet-infra/src/**`.
 - `ExecutorPort` has exactly two methods: `getCarrierExternalMcpServerIds` and `getExecutorMcpTools`; lookup before fleet-agent Composition Root registration must hard throw.
 

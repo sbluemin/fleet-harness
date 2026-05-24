@@ -1,7 +1,7 @@
 import {
   type AgentToolCtx,
   type AgentToolSpec,
-} from "@sbluemin/fleet-mcp-server";
+} from "@dotobokuri/fleet-mcp-server";
 
 import { buildBriefingToolConfig } from "./tools/briefing.js";
 import { buildCompileSourceToolConfig } from "./tools/compile-source.js";

@@ -1,5 +1,5 @@
-import { createKeybindingRegistry, type KeybindingDefinition, type RoutedMouseInput } from "@sbluemin/fleet-tui/input";
-import { createCsiUInputNormalizer } from "@sbluemin/fleet-tui/pty";
+import { createKeybindingRegistry, type KeybindingDefinition, type RoutedMouseInput } from "@dotobokuri/fleet-tui/input";
+import { createCsiUInputNormalizer } from "@dotobokuri/fleet-tui/pty";
 import { describe, expect, it } from "vitest";
 
 import { createDedicatedMouseRouter, createFleetHostInputKeybindingConfig } from "../src/app.js";

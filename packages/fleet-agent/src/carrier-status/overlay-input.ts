@@ -1,4 +1,4 @@
-import { matchesKey } from "@sbluemin/fleet-tui/pty";
+import { matchesKey } from "@dotobokuri/fleet-tui/pty";
 
 import type { RenameState } from "./overlay-types.js";
 import type { OverlayState } from "./types.js";

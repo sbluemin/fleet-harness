@@ -1,4 +1,4 @@
-import type { McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
+import type { McpRouterRuntime } from "@dotobokuri/fleet-mcp-server";
 
 import type { AgentToolSpec } from "./types.js";
 

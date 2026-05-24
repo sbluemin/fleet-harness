@@ -1,4 +1,4 @@
-import { getRegisteredOrder, type CarrierRuntime } from "@sbluemin/fleet-carriers";
+import { getRegisteredOrder, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
 
 import { getActiveProtocol } from "../admiral/protocols/index.js";
 

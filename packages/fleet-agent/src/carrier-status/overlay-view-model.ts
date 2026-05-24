@@ -7,8 +7,8 @@ import {
   readStatesSnapshot,
   resolveCarrierDisplayName,
   type CarrierRuntime,
-} from "@sbluemin/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@sbluemin/fleet-infra/agent";
+} from "@dotobokuri/fleet-carriers";
+import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 
 import type { GroupedEntries, StatusOverlayViewModel } from "./overlay-types.js";
 import type { CarrierCliType, CarrierStatusEntry, CliModelInfo, FleetStoreSnapshot } from "./types.js";

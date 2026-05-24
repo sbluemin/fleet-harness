@@ -3,13 +3,13 @@ import type {
   CarrierRuntime,
   TrackMeta,
   TrackStatus,
-} from "@sbluemin/fleet-carriers";
+} from "@dotobokuri/fleet-carriers";
 import {
   getActiveBackgroundJobCount,
   getRegisteredOrder,
-} from "@sbluemin/fleet-carriers";
-import { getSessionIdFor as getAgentSessionIdFor } from "@sbluemin/fleet-infra/agent";
-import type { KeyboardProtocolState } from "@sbluemin/fleet-tui/pty";
+} from "@dotobokuri/fleet-carriers";
+import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/fleet-infra/agent";
+import type { KeyboardProtocolState } from "@dotobokuri/fleet-tui/pty";
 
 import {
   ANIM_INTERVAL_MS,
