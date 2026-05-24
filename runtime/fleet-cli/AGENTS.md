@@ -4,9 +4,9 @@
 
 ## Package Identity & Boundary
 
-This package owns the local host assembly for the Dedicated CLI PTY, Fleet PTY lower pane, consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy, and owns Grand Fleet policy modules.
+This package owns the local host assembly for the Dedicated CLI PTY and Fleet PTY lower pane, and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
 
-- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, mission-control domain wiring, panel host callback, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Dedicated CLI viewport, Fleet's CLI Composition Root, and `src/grand-fleet/**`.
+- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, mission-control domain wiring, panel host callback, dedicated CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Dedicated CLI viewport, and Fleet's CLI Composition Root.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
 - **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session/settings infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 

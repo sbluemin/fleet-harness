@@ -10,7 +10,7 @@ The Fleet codebase is built on **five core principles**. Every contribution and 
 
 The final Fleet graph is layered and enforced by build/grep gates:
 
-- `fleet-cli` owns host assembly, consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy, and owns `src/grand-fleet/**` Grand Fleet policy.
+- `fleet-cli` owns host assembly and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
 - `fleet-cli` assembles `fleet-infra`, `fleet-carriers`, and `fleet-mcp-server` through direct leaf service calls.
 - `fleet-cli` consumes `fleet-admiral`, `fleet-carriers`, `fleet-infra`, and `fleet-mcp-server` through public package surfaces only.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-cli` side.
