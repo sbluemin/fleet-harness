@@ -11,6 +11,10 @@
   "bin": {
     "fleet-wiki": "./dist/cli.mjs"
   },
+  "exports": {
+    "./cli": "./dist/cli.mjs",
+    "./dist/cli.mjs": "./dist/cli.mjs"
+  },
   "files": [
     "dist",
     "AGENTS.md"
@@ -21,6 +25,7 @@
   "scripts": {
     "build": "tsup && vite build --config client/vite.config.ts",
     "dev:client": "vite --config client/vite.config.ts",
+    "publish:npm": "node ../../scripts/publish-fleet-wiki-web.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
   },

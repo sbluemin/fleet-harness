@@ -14,8 +14,7 @@
     "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && pnpm -r build"
   },
   "bin": {
-    "fleet": "./packages/fleet-agent/bin/fleet",
-    "fleet-wiki": "./packages/fleet-wiki-web/dist/cli.mjs"
+    "fleet": "./packages/fleet-agent/bin/fleet"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

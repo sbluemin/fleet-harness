@@ -15,6 +15,7 @@ Usage:
   fleet auth login [claude-zai|claude-kimi]
   fleet auth list
   fleet auth logout [claude-zai|claude-kimi]
+  fleet wiki [--port <port>] [--stop] [--help]
 
 Fleet Agent Options:
   -h, --help          Show this help message and exit.
