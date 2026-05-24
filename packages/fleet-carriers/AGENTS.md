@@ -18,7 +18,7 @@
 ## Must Not Own
 
 - Host runtime wiring, message renderers, UI components, or host adapters
-- `fleet-admiral` protocol/admiralty policy implementation
+- `fleet-admiral` protocol policy implementation
 - Raw filesystem, process, network, or settings I/O beyond carrier-owned state-store gates
 
 ## Dependency Rules

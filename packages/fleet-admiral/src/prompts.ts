@@ -9,11 +9,10 @@
  */
 
 import { buildCarrierRoster, getRegisteredOrder, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
-import type { McpToolRegistry } from "@dotobokuri/fleet-mcp-server";
+import { type McpToolRegistry, renderAgentToolDoctrineTag } from "@dotobokuri/fleet-mcp-server";
 
 import { FLEET_ACTION_PROMPT } from "./protocols/index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
-import { getAllAgentTools, renderAgentToolDoctrineTag } from "./tools.js";
 
 // ─────────────────────────────────────────────────────────
 // 타입
@@ -151,7 +150,7 @@ export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boo
 
   // ── 5. 등록된 도구 가이드라인 manifest ──
   for (const registry of deps.mcpRegistry) {
-    for (const spec of getAllAgentTools(registry)) {
+    for (const spec of registry.getAllAgentTools()) {
       parts.push(renderAgentToolDoctrineTag(spec));
     }
   }

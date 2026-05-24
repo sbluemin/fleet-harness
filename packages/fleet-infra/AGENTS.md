@@ -14,10 +14,10 @@
 
 `fleet-infra` is the bottom layer of the DI graph and the only package in the carrier runtime chain that may own generic runtime I/O gateways.
 
-- The DI layer order is one-way: `fleet-cli` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
+- The DI layer order is one-way: `fleet-cli` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
 - `createInfraServices(deps)` is the public construction boundary for infrastructure services.
 - Filesystem, auth storage, data-dir resolution, runtime log persistence, settings storage, process-safe executor/session infrastructure, and generic MCP routing belong here.
-- Higher layers must receive infra capabilities as explicit dependencies; `fleet-infra` must not look up host, carrier, admiral, or admiralty services.
+- Higher layers must receive infra capabilities as explicit dependencies; `fleet-infra` must not look up host, carrier, or admiral services.
 - Keep Fleet-domain policy out of this package. It provides gateways and durable runtime primitives, not carrier persona, admiral policy, or host UI behavior.
 
 ## Public Surface

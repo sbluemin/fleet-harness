@@ -3,14 +3,7 @@ import {
   buildCarrierJobsToolSpec,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
-import {
-  type McpToolRegistry,
-  renderAgentToolDoctrineTag,
-} from "@dotobokuri/fleet-mcp-server";
-
-import type { AgentToolSpec } from "./types.js";
-
-export { renderAgentToolDoctrineTag };
+import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/fleet-mcp-server";
 
 export const CARRIER_MCP_SERVER_NAME = "fleet-carriers";
 export const WIKI_MCP_SERVER_NAME = "fleet-wiki";
@@ -37,10 +30,6 @@ export function registerAgentToolDefaults(registry: McpToolRegistry, carrierRunt
   registry.registerAgentTool(buildCarrierJobsToolSpec());
 }
 
-export function getAllAgentTools(registry: McpToolRegistry): AgentToolSpec[] {
-  return registry.getAllAgentTools();
-}
-
 export function getExecutorMcpTools(
   registry: McpToolRegistry,
   carrierRuntime: CarrierRuntime,
@@ -50,8 +39,4 @@ export function getExecutorMcpTools(
     ? carrierRuntime.registry.getState().modes.get(carrierId)?.config.carrierMetadata?.allowedExecutorTools ?? []
     : [];
   return registry.getExecutorMcpToolsForCarrier(carrierId, metadataIds);
-}
-
-export function clearAllDefaultTools(registry: McpToolRegistry): void {
-  registry.clearAllDefaultTools();
 }

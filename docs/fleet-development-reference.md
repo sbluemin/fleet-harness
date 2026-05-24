@@ -6,7 +6,7 @@ This guide explains how Fleet development is organized.
 
 Fleet development follows a hard one-way dependency graph:
 
-- `runtime/fleet-cli` — sole CLI Composition Root, host adapter, absorbed Admiral policy, and absorbed Grand Fleet policy.
+- `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral` and owns Grand Fleet policy.
 - `packages/fleet-carriers` — carrier runtime, personas, jobs, and carrier state.
 - `packages/fleet-infra` — host-agnostic infrastructure and I/O gateways.
 - `packages/fleet-mcp-server` — generic MCP server, registry, routing, and tool snapshots.

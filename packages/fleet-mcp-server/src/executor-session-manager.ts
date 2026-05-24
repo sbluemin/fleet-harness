@@ -1,49 +1,50 @@
 import crypto from "node:crypto";
 
-import type { AgentToolSpec, McpRouterRuntime } from "@dotobokuri/fleet-mcp-server";
 import {
   cleanupExecutorSession,
   installExecutorToolCallRouter,
+  type McpRouterRuntime,
   registerExecutorSessionTools,
-} from "@dotobokuri/fleet-mcp-server";
+} from "./mcp-router.js";
+import type { AgentToolSpec } from "./types.js";
 
-export interface DedicatedMcpServerEndpoint {
+export interface ExecutorServerEndpoint {
   readonly name: string;
   readonly url: string;
 }
 
-export interface DedicatedMcpEndpoint {
-  readonly servers: readonly DedicatedMcpServerEndpoint[];
+export interface ExecutorEndpoint {
+  readonly servers: readonly ExecutorServerEndpoint[];
 }
 
-export interface DedicatedMcpSessionRequest {
+export interface ExecutorSessionRequest {
   readonly label: string;
   readonly cwd: string;
   readonly signal?: AbortSignal;
 }
 
-export interface DedicatedMcpSessionPort {
-  getEndpoint(): Promise<DedicatedMcpEndpoint>;
-  issueSessionToken(request: DedicatedMcpSessionRequest): readonly DedicatedMcpServerToken[];
+export interface ExecutorSessionManager {
+  getEndpoint(): Promise<ExecutorEndpoint>;
+  issueSessionToken(request: ExecutorSessionRequest): readonly ExecutorServerToken[];
   cleanup(): void;
 }
 
-export interface DedicatedMcpServerToken {
+export interface ExecutorServerToken {
   readonly name: string;
   readonly token: string;
 }
 
-export interface DedicatedMcpRuntime {
+export interface ExecutorRuntime {
   readonly name: string;
   readonly runtime: McpRouterRuntime;
 }
 
-export interface DedicatedMcpSessionDeps {
-  readonly runtimes: readonly DedicatedMcpRuntime[];
+export interface ExecutorSessionManagerDeps {
+  readonly runtimes: readonly ExecutorRuntime[];
 }
 
-export function createDedicatedMcpSession(deps: DedicatedMcpSessionDeps): DedicatedMcpSessionPort {
-  const sessionTokensByLabel = new Map<string, readonly DedicatedMcpServerToken[]>();
+export function createExecutorSessionManager(deps: ExecutorSessionManagerDeps): ExecutorSessionManager {
+  const sessionTokensByLabel = new Map<string, readonly ExecutorServerToken[]>();
 
   return {
     async getEndpoint() {
@@ -60,7 +61,7 @@ export function createDedicatedMcpSession(deps: DedicatedMcpSessionDeps): Dedica
     },
     cleanup() {
       for (const tokens of sessionTokensByLabel.values()) {
-        cleanupDedicatedMcpServerTokens(deps, tokens);
+        cleanupExecutorServerTokens(deps, tokens);
       }
       sessionTokensByLabel.clear();
     },
@@ -68,36 +69,36 @@ export function createDedicatedMcpSession(deps: DedicatedMcpSessionDeps): Dedica
 }
 
 function issueSessionToken(
-  deps: DedicatedMcpSessionDeps,
-  sessionTokensByLabel: Map<string, readonly DedicatedMcpServerToken[]>,
-  request: DedicatedMcpSessionRequest,
-): readonly DedicatedMcpServerToken[] {
+  deps: ExecutorSessionManagerDeps,
+  sessionTokensByLabel: Map<string, readonly ExecutorServerToken[]>,
+  request: ExecutorSessionRequest,
+): readonly ExecutorServerToken[] {
   const label = request.label.trim();
   const cwd = request.cwd.trim();
   if (!label) {
-    throw new Error("Dedicated MCP session label is required");
+    throw new Error("Executor session label is required");
   }
   if (!cwd) {
-    throw new Error("Dedicated MCP session cwd is required");
+    throw new Error("Executor session cwd is required");
   }
 
   const previousTokens = sessionTokensByLabel.get(label);
   if (previousTokens) {
-    cleanupDedicatedMcpServerTokens(deps, previousTokens);
+    cleanupExecutorServerTokens(deps, previousTokens);
   }
 
-  const tokens: DedicatedMcpServerToken[] = [];
+  const tokens: ExecutorServerToken[] = [];
   try {
     for (const { name, runtime } of deps.runtimes) {
       const tools = runtime.registry.getAllAgentTools();
-      assertNonEmptyDedicatedTools(name, tools);
+      assertNonEmptyExecutorTools(name, tools);
       const token = crypto.randomUUID();
       registerExecutorSessionTools(runtime, token, tools);
       installExecutorToolCallRouter(runtime, token, { cwd, signal: request.signal });
       tokens.push({ name, token });
     }
   } catch (error) {
-    cleanupDedicatedMcpServerTokens(deps, tokens);
+    cleanupExecutorServerTokens(deps, tokens);
     throw error;
   }
 
@@ -105,9 +106,9 @@ function issueSessionToken(
   return tokens;
 }
 
-function cleanupDedicatedMcpServerTokens(
-  deps: DedicatedMcpSessionDeps,
-  tokens: readonly DedicatedMcpServerToken[],
+function cleanupExecutorServerTokens(
+  deps: ExecutorSessionManagerDeps,
+  tokens: readonly ExecutorServerToken[],
 ): void {
   for (const { name, token } of tokens) {
     const runtime = deps.runtimes.find((entry) => entry.name === name)?.runtime;
@@ -115,11 +116,11 @@ function cleanupDedicatedMcpServerTokens(
   }
 }
 
-function assertNonEmptyDedicatedTools(
+function assertNonEmptyExecutorTools(
   serverName: string,
   tools: readonly AgentToolSpec[],
 ): void {
   if (tools.length === 0) {
-    throw new Error(`Dedicated MCP session requires a non-empty tool snapshot for ${serverName}`);
+    throw new Error(`Executor session requires a non-empty tool snapshot for ${serverName}`);
   }
 }

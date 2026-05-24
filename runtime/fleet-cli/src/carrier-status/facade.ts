@@ -13,7 +13,7 @@ import {
   SYM_INDICATOR as CORE_SYM_INDICATOR,
   SYM_THINKING as CORE_SYM_THINKING,
   TASKFORCE_BADGE_COLOR as CORE_TASKFORCE_BADGE_COLOR,
-} from "../admiral/constants.js";
+} from "./constants.js";
 
 export type { FleetStoreSnapshot };
 

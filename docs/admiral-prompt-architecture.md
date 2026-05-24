@@ -41,7 +41,7 @@ guide, and not a Chronicle-managed asset.
 
 ## 2. System Prompt Shape
 
-`buildSystemPrompt()` in `runtime/fleet-cli/src/admiral/prompts.ts` assembles
+`buildSystemPrompt()` in `packages/fleet-admiral/src/prompts.ts` assembles
 the Admiral prompt. The static prompt includes:
 
 - `FLEET_PREAMBLE`
@@ -65,7 +65,7 @@ It also does not include a runtime-context tag section.
 
 Runtime state is read through direct owners:
 
-- Protocol state: `runtime/fleet-cli/src/admiral/protocols/**`
+- Protocol state: `packages/fleet-admiral/src/protocols/**`
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store and job stream state: `@dotobokuri/fleet-carriers`
 - Executor/session/model state: `@dotobokuri/fleet-infra/agent`

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createSystemPromptBuilder } from "../src/admiral/prompts.js";
+import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import { buildClaudeNativeArgs } from "../src/dedicated-cli/builders/claude.js";
 import { buildCodexNativeArgs } from "../src/dedicated-cli/builders/codex.js";
 import type { DedicatedCliInjectionContext } from "../src/dedicated-cli/types.js";

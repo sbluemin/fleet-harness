@@ -1,6 +1,6 @@
 # Protocols Doctrine
 
-`runtime/fleet-cli/src/admiral/protocols/` owns the host agent's prompt policy. fleet-harness ships exactly **one** operating protocol — the Fleet Action Protocol — and it is immutable: there is no catalog, no registry, no switching API, and no settings key for selecting a protocol. The protocol body is hard-wired into the system prompt at build time. Any new injectable composition must use explicit `create*(deps): Interface` pure factories and must not introduce DI containers or frameworks.
+`packages/fleet-admiral/src/protocols/` owns the Admiral prompt protocol policy. fleet-harness ships exactly **one** operating protocol — the Fleet Action Protocol — and it is immutable: there is no catalog, no registry, no switching API, and no settings key for selecting a protocol. The protocol body is hard-wired into the system prompt at build time. Any new injectable composition must use explicit `create*(deps): Interface` pure factories and must not introduce DI containers or frameworks.
 
 ## Standing Orders
 

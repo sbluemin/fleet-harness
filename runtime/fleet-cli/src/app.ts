@@ -22,6 +22,8 @@ import {
   createCsiUInputNormalizer,
   type TuiPtyManager,
 } from "./controls/index.js";
+import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
 import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";
@@ -30,7 +32,6 @@ import { getDedicatedCliMetadata, resolveDedicatedCliId, resolveDedicatedCliProf
 import { createMissionControlController } from "./mission-control/controller.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
-import { createSystemPromptBuilder } from "./admiral/prompts.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
 
 export interface RunAppOptions {

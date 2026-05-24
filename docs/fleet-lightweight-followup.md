@@ -4,7 +4,7 @@
 
 Fleet now uses explicit package ownership without standalone Admiral compatibility packages.
 
-- `runtime/fleet-cli` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, concrete runtime assembly, absorbed Admiral policy, and absorbed Grand Fleet policy.
+- `runtime/fleet-cli` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, and concrete runtime assembly; it consumes Admiral policy from `@dotobokuri/fleet-admiral` and owns Grand Fleet policy.
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, and carrier state.
 - `packages/fleet-infra` owns host-agnostic infrastructure and I/O gateways.
 - `packages/fleet-mcp-server` owns generic MCP registry/server behavior.

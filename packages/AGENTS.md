@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-tui` (generic TUI engine), `fleet-cli` (primary CLI host), `fleet-wiki`, and `fleet-wiki-ui`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-admiral` (Admiral prompt and Fleet tool policy package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-tui` (generic TUI engine), `fleet-cli` (primary CLI host), `fleet-wiki`, and `fleet-wiki-ui`.
 
 ## Architecture Philosophy
 
@@ -10,9 +10,9 @@ The Fleet codebase is built on **five core principles**. Every contribution and 
 
 The final Fleet graph is layered and enforced by build/grep gates:
 
-- `fleet-cli` owns host assembly plus absorbed `src/admiral/**` single-fleet policy and `src/grand-fleet/**` Grand Fleet policy.
+- `fleet-cli` owns host assembly, consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy, and owns `src/grand-fleet/**` Grand Fleet policy.
 - `fleet-cli` assembles `fleet-infra`, `fleet-carriers`, and `fleet-mcp-server` through direct leaf service calls.
-- `fleet-cli` consumes `fleet-carriers`, `fleet-infra`, and `fleet-mcp-server` through public package surfaces only.
+- `fleet-cli` consumes `fleet-admiral`, `fleet-carriers`, `fleet-infra`, and `fleet-mcp-server` through public package surfaces only.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-cli` side.
 - Mixed modules must keep host adapters in `fleet-cli` and domain policy in the owning Fleet package.
 
@@ -36,14 +36,14 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Track status enum | `packages/fleet-infra/src/agent/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | Two independent HTTP servers (`fleet-carriers` and `fleet-wiki`), each with per-session Bearer tokens and FIFO routing isolated by token. |
 | CLI provider catalog | `@dotobokuri/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
-| Fleet tool catalog | `runtime/fleet-cli/src/admiral/tools.ts` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
-| Executor MCP tool exposure | `runtime/fleet-cli/src/admiral/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
+| Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
+| Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-cli` registers the two-method `ExecutorPort` at boot. |
 | Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, detached job infrastructure, carrier jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline
 
-Consumers use public package root barrels: `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/fleet-infra` for infrastructure, and `@dotobokuri/fleet-mcp-server` for generic MCP registry/server APIs. `fleet-cli` imports its absorbed policy modules through package-local `.js` relative imports. The implementation is re-exported from `@dotobokuri/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
+Consumers use public package root barrels: `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/fleet-infra` for infrastructure, and `@dotobokuri/fleet-mcp-server` for generic MCP registry/server APIs. The implementation is re-exported from `@dotobokuri/fleet-infra/agent`; internal helpers under `packages/fleet-infra/src/agent/internal/` are never consumer imports.
 
 ### 5. DI Factory Discipline
 
@@ -63,7 +63,7 @@ createThing(deps): ThingInterface
 - `globalThis.<anything>` or module-level mutable singletons for shared runtime state — use explicit service instances returned by `create*(deps)` factories instead.
 - Push-style "ports" passed into tool execution. Tools depend on explicit Fleet service APIs directly.
 - `on*` callback parameters threaded through Fleet public APIs, except executor callback options owned by `executeWithPool` / `executeOneShot`.
-- Builder functions injected by hosts. Prompt assembly is `fleet-cli/src/admiral` responsibility; host adapters pass raw `userRequest` + optional `history`.
+- Builder functions injected by hosts. Prompt assembly is `@dotobokuri/fleet-admiral` responsibility; host adapters pass raw `userRequest` + optional `history`.
 - `fleet-carriers` importing upper-layer packages; dependencies flow one way from `fleet-cli` down to `fleet-infra`.
 - DI containers, decorator-based injection, and service-locator frameworks are forbidden; use explicit `create*(deps): Interface` factories instead.
 

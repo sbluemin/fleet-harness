@@ -14,7 +14,7 @@ import type { KeyboardProtocolState } from "../controls/index.js";
 import {
   ANIM_INTERVAL_MS,
   DEFAULT_BODY_H,
-} from "../admiral/constants.js";
+} from "./constants.js";
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
 
 export interface FooterModelInfo {

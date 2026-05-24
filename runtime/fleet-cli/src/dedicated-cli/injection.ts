@@ -2,7 +2,8 @@ import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { DedicatedMcpSessionPort } from "../admiral/mcp.js";
+import type { ExecutorSessionManager } from "@dotobokuri/fleet-mcp-server";
+
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getDedicatedCliInjectionCapability } from "./capabilities.js";
@@ -10,7 +11,7 @@ import type { DedicatedCliInjectionContext, DedicatedCliProfile } from "./types.
 
 export interface InjectDedicatedCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
-  readonly dedicatedMcpSession: DedicatedMcpSessionPort;
+  readonly dedicatedMcpSession: ExecutorSessionManager;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
 }
