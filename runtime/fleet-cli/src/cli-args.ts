@@ -8,6 +8,8 @@ export interface FleetCliOptions {
   readonly enableMetaphor: boolean;
 }
 
+const HELP_HINT = "Run 'fleet --help' for usage.";
+
 export const FLEET_HELP_TEXT = `fleet — Fleet Harness
 
 Usage:
@@ -16,6 +18,10 @@ Usage:
   fleet auth list
   fleet auth logout [claude-zai|claude-kimi]
   fleet wiki [--port <port>] [--stop] [--help]
+
+Commands:
+  auth                Manage Fleet authentication.
+  wiki                Run Fleet Wiki.
 
 Fleet Agent Options:
   -h, --help          Show this help message and exit.
@@ -66,9 +72,15 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       replaceSystemPrompt = true;
     } else if (arg === "--enable-metaphor" || arg === "-em") {
       enableMetaphor = true;
+    } else {
+      throw new Error(formatUnknownFleetOption(arg));
     }
   }
   return { cliId, cursorSync, help, model, native, replaceSystemPrompt, enableMetaphor };
+}
+
+function formatUnknownFleetOption(option: string): string {
+  return `Unknown fleet option: ${option}\n${HELP_HINT}`;
 }
 
 function parseCursorSyncEnv(value: string | undefined): boolean {
