@@ -5,8 +5,8 @@ packages:
   - "packages/fleet-carriers"
   - "packages/fleet-tui"
   - "packages/fleet-wiki"
-  - "packages/fleet-wiki-web"
-  - "packages/fleet-agent"
+  - "runtime/fleet-wiki-ui"
+  - "runtime/fleet-cli"
 allowBuilds:
   '@google/genai': true
   esbuild: true

@@ -5,11 +5,11 @@
  */
 
 import { Type } from "typebox";
-import { getEffort, type CliType } from "@sbluemin/fleet-unified-agent";
+import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
-import type { AgentToolSpec } from "@sbluemin/fleet-mcp-server";
+import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../job/index.js";
-import type { LogOptions } from "@sbluemin/fleet-infra/log";
+import type { LogOptions } from "@dotobokuri/fleet-infra/log";
 import type { ModelEffort } from "./overlay-types.js";
 
 import {
@@ -24,14 +24,14 @@ import {
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
 } from "../job/index.js";
-import { getLogAPI } from "@sbluemin/fleet-infra/log";
+import { getLogAPI } from "@dotobokuri/fleet-infra/log";
 import {
   emitStreamEvent,
   type CarrierJobStatus,
   type TrackMeta,
   type TrackStatus,
 } from "../events/stream-events.js";
-import { executeWithPool } from "@sbluemin/fleet-infra/agent";
+import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
   loadModels,

@@ -1,4 +1,4 @@
-import type { McpRouterRuntime } from "@sbluemin/fleet-mcp-server";
+import type { McpRouterRuntime } from "@dotobokuri/fleet-mcp-server";
 
 import type { AgentToolSpec } from "./types.js";
 
@@ -23,7 +23,7 @@ export function createExecutorPortRuntime(): ExecutorPortRuntime {
 
   function getPort(): ExecutorPort {
     if (!portRef) {
-      throw new Error("Fleet agent executor port is not registered. Boot the fleet-agent Composition Root before executor use.");
+      throw new Error("Fleet agent executor port is not registered. Boot the fleet-cli Composition Root before executor use.");
     }
 
     return portRef;

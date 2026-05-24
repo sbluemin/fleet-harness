@@ -1,0 +1,113 @@
+name: Stable Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: stable-release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHA=$(git rev-parse HEAD)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check release tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Missing release tag: $TAG"
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish fleet-wiki-ui
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/publish-fleet-wiki-ui.mjs --tag=latest --version=$VERSION
+
+      - name: Publish fleet-cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/publish-fleet-cli.mjs --tag=latest --version=$VERSION --wiki-web-version=$VERSION
+
+      - name: Write release notes file
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const version = process.env.VERSION;
+          const marker = `## [${version}]`;
+          const start = changelog.indexOf(marker);
+
+          if (start === -1) {
+            throw new Error(`Unable to find changelog section for ${version}`);
+          }
+
+          const bodyStart = changelog.indexOf('\n', start);
+          const nextHeader = changelog.indexOf('\n## [', bodyStart + 1);
+          const body = changelog.slice(bodyStart + 1, nextHeader === -1 ? changelog.length : nextHeader).trim();
+          const notesPath = 'release-notes.md';
+          const notes = `${body}\n\n---\n\n_Additional GitHub-generated release notes are appended below._\n`;
+
+          fs.writeFileSync(notesPath, notes);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `notes_path=${notesPath}\n`);
+          NODE
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          NOTES_PATH: ${{ steps.notes.outputs.notes_path }}
+          SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Treating as success."
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --target "$SHA" \
+            --notes-file "$NOTES_PATH" \
+            --generate-notes

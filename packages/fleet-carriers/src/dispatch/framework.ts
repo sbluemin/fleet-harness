@@ -10,7 +10,7 @@
  *  - 렌더러 등록 (커스텀 or 기본)
  */
 
-import type { CliType } from "@sbluemin/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/fleet-unified-agent";
 import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,

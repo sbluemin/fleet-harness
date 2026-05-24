@@ -28,52 +28,15 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
-  packages/fleet-agent:
-    dependencies:
-      '@clack/prompts':
-        specifier: 1.4.0
-        version: 1.4.0
-      '@sbluemin/fleet-carriers':
-        specifier: workspace:*
-        version: link:../fleet-carriers
-      '@sbluemin/fleet-infra':
-        specifier: workspace:*
-        version: link:../fleet-infra
-      '@sbluemin/fleet-mcp-server':
-        specifier: workspace:*
-        version: link:../fleet-mcp-server
-      '@sbluemin/fleet-tui':
-        specifier: workspace:../fleet-tui
-        version: link:../fleet-tui
-      '@sbluemin/fleet-wiki':
-        specifier: workspace:*
-        version: link:../fleet-wiki
-      '@sbluemin/fleet-wiki-web':
-        specifier: workspace:*
-        version: link:../fleet-wiki-web
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      tsx:
-        specifier: ^4.20.3
-        version: 4.21.0
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.0.13
-        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
-
   packages/fleet-carriers:
     dependencies:
-      '@sbluemin/fleet-infra':
+      '@dotobokuri/fleet-infra':
         specifier: workspace:*
         version: link:../fleet-infra
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
-      '@sbluemin/fleet-unified-agent':
+      '@dotobokuri/fleet-unified-agent':
         specifier: workspace:*
         version: link:../unified-agent
       typebox:
@@ -95,10 +58,10 @@ importers:
 
   packages/fleet-infra:
     dependencies:
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
-      '@sbluemin/fleet-unified-agent':
+      '@dotobokuri/fleet-unified-agent':
         specifier: workspace:*
         version: link:../unified-agent
     devDependencies:
@@ -148,7 +111,7 @@ importers:
 
   packages/fleet-wiki:
     dependencies:
-      '@sbluemin/fleet-mcp-server':
+      '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../fleet-mcp-server
       typebox:
@@ -168,11 +131,73 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.12.2)(jiti@2.7.0)(jsdom@29.1.1(canvas@3.2.3))(tsx@4.21.0)(yaml@2.8.3)
 
-  packages/fleet-wiki-web:
+  packages/unified-agent:
     dependencies:
-      '@sbluemin/fleet-wiki':
+      '@agentclientprotocol/sdk':
+        specifier: ^0.21.0
+        version: 0.21.0(zod@4.4.1)
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@22.19.17)(jiti@2.7.0)(jsdom@29.1.1(canvas@3.2.3))(tsx@4.21.0)(yaml@2.8.3)
+
+  runtime/fleet-cli:
+    dependencies:
+      '@clack/prompts':
+        specifier: 1.4.0
+        version: 1.4.0
+      '@dotobokuri/fleet-carriers':
         specifier: workspace:*
-        version: link:../fleet-wiki
+        version: link:../../packages/fleet-carriers
+      '@dotobokuri/fleet-infra':
+        specifier: workspace:*
+        version: link:../../packages/fleet-infra
+      '@dotobokuri/fleet-mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/fleet-mcp-server
+      '@dotobokuri/fleet-tui':
+        specifier: workspace:*
+        version: link:../../packages/fleet-tui
+      '@dotobokuri/fleet-wiki':
+        specifier: workspace:*
+        version: link:../../packages/fleet-wiki
+      '@dotobokuri/fleet-wiki-ui':
+        specifier: workspace:*
+        version: link:../fleet-wiki-ui
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
+      tsx:
+        specifier: ^4.20.3
+        version: 4.21.0
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  runtime/fleet-wiki-ui:
+    dependencies:
+      '@dotobokuri/fleet-wiki':
+        specifier: workspace:*
+        version: link:../../packages/fleet-wiki
       dompurify:
         specifier: ^3.4.2
         version: 3.4.2
@@ -213,28 +238,6 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.12.2)(jiti@2.7.0)(jsdom@29.1.1(canvas@3.2.3))(tsx@4.21.0)(yaml@2.8.3)
-
-  packages/unified-agent:
-    dependencies:
-      '@agentclientprotocol/sdk':
-        specifier: ^0.21.0
-        version: 0.21.0(zod@4.4.1)
-      picocolors:
-        specifier: ^1.1.1
-        version: 1.1.1
-      zod:
-        specifier: ^4.3.6
-        version: 4.4.1
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.17
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.4(@types/node@22.19.17)(jiti@2.7.0)(jsdom@29.1.1(canvas@3.2.3))(tsx@4.21.0)(yaml@2.8.3)
 
 packages:
 

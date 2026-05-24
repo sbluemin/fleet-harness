@@ -2,76 +2,70 @@
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) v18+
-- [pnpm](https://pnpm.io/). The repo pins a version via the `packageManager` field; enable [Corepack](https://nodejs.org/api/corepack.html) once (`corepack enable`) and it will be selected automatically. Otherwise install pnpm globally with `npm install -g pnpm`.
-- Authenticated [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), and [Gemini CLI](https://github.com/google-gemini/gemini-cli) on PATH.
+- [Node.js](https://nodejs.org/) v20+
+- Authenticated [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli) on PATH
 
-## 1. Clone
+## Install
 
-```bash
-git clone https://github.com/sbluemin/fleet-harness.git
-cd fleet-harness
-```
+### 1. Clean up legacy links
 
-## 2. Install
+Previous installations may have registered `fleet` or `fleet-wiki` via `pnpm link --global`. These must be removed before installing the npm package to avoid `EEXIST` conflicts.
+
+Check and remove:
 
 ```bash
-# One-time per machine: configure pnpm's global bin directory and add it to PATH.
-# Skip if PNPM_HOME is already set.
-pnpm setup
+# Check if a pnpm global link exists
+pnpm ls -g --depth=0 | grep -E 'fleet-harness|fleet-cli|pi-coding-agent'
 
-# Install workspace dependencies. The root postinstall runs `pnpm -r build`
-# topologically across the workspace (unified-agent, fleet-infra, fleet-carriers,
-# fleet-tui, fleet-wiki, fleet-wiki-web, fleet-agent).
-pnpm install
+# If found, unlink from the source repo root
+cd <path-to-fleet-harness-or-pi-coding-agent-repo>
+pnpm unlink --global
 
-# One-time per machine: approve native postinstall scripts. Required by
-# node-pty, esbuild, koffi, protobufjs, and @google/genai. The decision is
-# persisted in `pnpm-workspace.yaml` under `allowBuilds`.
-pnpm approve-builds --all
-
-# Register the global commands `fleet` and `fleet-wiki` from this checkout.
-pnpm link --global
-
-# Register `ait`, the unified-agent CLI used for provider diagnostics.
-pnpm --filter @sbluemin/fleet-unified-agent link --global
+# Verify the fleet command is no longer linked
+which fleet && npm rm -g fleet || true
 ```
 
-## 3. Verify
+If `which fleet` still returns a path after unlinking, remove it manually:
+
+```bash
+rm "$(which fleet)"
+```
+
+### 2. Choose release channel
+
+Ask the user which release channel they prefer before running the install command:
+
+- **stable** (latest) — production-ready, published from the `main` branch.
+- **canary** — latest development build, published from the `canary` branch. May contain breaking changes.
+
+```bash
+# stable
+npm install -g @dotobokuri/fleet-cli
+
+# canary
+npm install -g @dotobokuri/fleet-cli@canary
+```
+
+## Verify
 
 ```bash
 fleet --help
-ait --help
+fleet wiki --help
 ```
 
-Launch the TUI with `fleet`. The window is a permanent two-pane layout: a dedicated CLI on top, the Fleet PTY on the bottom.
+## Post-Install Warning
 
-Key bindings:
+After installation, warn the user:
 
-- `Ctrl+T` — toggle between **MIRROR** (Fleet PTY mirrors keystrokes to the dedicated CLI) and **DEDICATED** (dedicated CLI takes exclusive focus).
-- `Alt+O` — open the Carrier Status overlay (configure CLI backends, models, effort, Task Force).
-- `Ctrl+C` — exit.
+> **Breaking change**: This version has removed the legacy `pi-coding-agent` foundation. Conversation history and session data from previous source-based installations **cannot be recovered**.
 
-`fleet` flags:
+If the user needs to access previous conversations, guide them to:
 
-- `-h, --help` — print usage and exit.
-- `-c, --cli <claude|codex>` — select the embedded CLI. Default `claude`; env override `FLEET_DEDICATED_CLI`.
-- `-n, --native` — run the dedicated CLI without injecting the Fleet system prompt; the Fleet Action Protocol label is hidden in the Fleet PTY (the divider line is preserved).
-
-## Troubleshooting
-
-- **Blocked native build scripts** — rerun `pnpm approve-builds --all`, then `pnpm install`.
-- **`ERR_PNPM_OUTDATED_LOCKFILE` in CI** — `pnpm install --no-frozen-lockfile` locally, commit the updated `pnpm-lock.yaml`, rerun CI.
-- **`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`** — rerun with `CI=true pnpm install`.
-- **Workspace package not resolved during build** — confirm the consumer lists it as `workspace:*` in `dependencies`, then `pnpm install` again.
-
-## Fleet Wiki (optional)
-
-The Fleet Wiki web UI browses the `.fleet/knowledge/` store of the current working directory.
-
-```bash
-cd <workspace-with-.fleet/knowledge>
-fleet-wiki   # opens http://127.0.0.1:<port> in the system browser
-```
-
-If the directory has no `.fleet/knowledge/`, the CLI exits with a Korean message (`.fleet/knowledge 디렉토리를 찾을 수 없습니다.`); run from a workspace that has the store, or from this repo's root, which ships built-in guides (Fleet overview, Carrier Status usage, fleet-wiki usage).
+1. Uninstall the npm version: `npm uninstall -g @dotobokuri/fleet-cli`
+2. Clone and checkout the last compatible version:
+   ```bash
+   git clone https://github.com/sbluemin/fleet-harness.git
+   cd fleet-harness
+   git checkout v0.21.0
+   ```
+3. Follow the `SETUP.md` in the checked-out v0.21.0 tag to complete installation.

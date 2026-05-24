@@ -3,10 +3,10 @@ name: Auto Release
 on:
   push:
     branches:
-      - main
+      - canary
 
 concurrency:
-  group: auto-release-main
+  group: auto-release-canary
   cancel-in-progress: false
 
 permissions:
@@ -24,10 +24,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync to latest main
+      - name: Sync to latest canary
         run: |
-          git fetch origin main --tags
-          git checkout -B main origin/main
+          git fetch origin canary --tags
+          git checkout -B canary origin/canary
 
       - name: Stop on release commit
         id: guard
@@ -196,6 +196,36 @@ jobs:
           console.log(`OK: ${checked} package.json file(s) synced to ${expected}`);
           NODE
 
+      - name: Setup pnpm
+        if: steps.version.outputs.should_release == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        if: steps.version.outputs.should_release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        if: steps.version.outputs.should_release == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish fleet-wiki-ui
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-wiki-ui.mjs --tag=canary --version=$NEXT_VERSION
+
+      - name: Publish fleet-cli
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-cli.mjs --tag=canary --version=$NEXT_VERSION --wiki-web-version=$NEXT_VERSION
+
       - name: Commit release changes
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
@@ -206,13 +236,13 @@ jobs:
           git add CHANGELOG.md
           git ls-files | grep -E '(^|/)package\.json$' | xargs git add
           git commit -m "chore(release): $NEXT_TAG [skip ci]"
-          git push origin HEAD:main
+          git push origin HEAD:canary
 
-      - name: Sync release commit from main
+      - name: Sync release commit from canary
         if: steps.version.outputs.should_release == 'true'
         run: |
-          git fetch origin main --tags
-          git checkout -B main origin/main
+          git fetch origin canary --tags
+          git checkout -B canary origin/canary
 
       - name: Resolve release commit
         if: steps.version.outputs.should_release == 'true'
@@ -220,66 +250,15 @@ jobs:
         run: |
           echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Write release notes file
-        if: steps.version.outputs.should_release == 'true'
-        id: notes
-        env:
-          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-
-          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-          const version = process.env.NEXT_VERSION;
-          const marker = `## [${version}]`;
-          const start = changelog.indexOf(marker);
-
-          if (start === -1) {
-            throw new Error(`Unable to find changelog section for ${version}`);
-          }
-
-          const bodyStart = changelog.indexOf('\n', start);
-          const nextHeader = changelog.indexOf('\n## [', bodyStart + 1);
-          const body = changelog.slice(bodyStart + 1, nextHeader === -1 ? changelog.length : nextHeader).trim();
-          const notesPath = 'release-notes.md';
-          const notes = `${body}\n\n---\n\n_Additional GitHub-generated release notes are appended below._\n`;
-
-          fs.writeFileSync(notesPath, notes);
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `notes_path=${notesPath}\n`);
-          NODE
-
-      - name: Create GitHub Release
+      - name: Create release tag
         if: steps.version.outputs.should_release == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          LATEST_TAG: ${{ steps.version.outputs.latest_tag }}
           NEXT_TAG: ${{ steps.version.outputs.next_tag }}
-          NOTES_PATH: ${{ steps.notes.outputs.notes_path }}
           RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
         run: |
-          release_args=()
-          if [ -n "$LATEST_TAG" ]; then
-            release_args+=(--notes-start-tag "$LATEST_TAG")
-          fi
-
-          if gh release view "$NEXT_TAG" >/dev/null 2>&1; then
-            echo "Release $NEXT_TAG already exists. Treating as success."
-            exit 0
-          fi
-
           if git rev-parse "refs/tags/$NEXT_TAG" >/dev/null 2>&1; then
-            gh release create "$NEXT_TAG" \
-              --title "$NEXT_TAG" \
-              --target "$RELEASE_SHA" \
-              --notes-file "$NOTES_PATH" \
-              --generate-notes \
-              "${release_args[@]}"
+            echo "Tag $NEXT_TAG already exists. Treating as success."
             exit 0
           fi
-
-          gh release create "$NEXT_TAG" \
-            --title "$NEXT_TAG" \
-            --target "$RELEASE_SHA" \
-            --notes-file "$NOTES_PATH" \
-            --generate-notes \
-            "${release_args[@]}"
+          git tag "$NEXT_TAG" "$RELEASE_SHA"
+          git push origin "$NEXT_TAG"

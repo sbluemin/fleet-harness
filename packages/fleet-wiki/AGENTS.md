@@ -1,24 +1,24 @@
 # fleet-wiki Doctrine
 
-`packages/fleet-wiki` is a workspace package dedicated to the LLM-Wiki domain. It depends on `@sbluemin/fleet-mcp-server` for agent tool types/registration and owns the memory store, briefing, dry-dock, patch queue/ingest tool builder, safety policy, path resolution, and Fleet Wiki agent tool self-registration.
+`packages/fleet-wiki` is a workspace package dedicated to the LLM-Wiki domain. It depends on `@dotobokuri/fleet-mcp-server` for agent tool types/registration and owns the memory store, briefing, dry-dock, patch queue/ingest tool builder, safety policy, path resolution, and Fleet Wiki agent tool self-registration.
 
 ## Owns
 
 - Pure LLM-Wiki domain logic and types under `src/`
 - Single public subpath `./`
 - LLM-Wiki package-specific validation under `tests/`
-- `@sbluemin/fleet-mcp-server` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 4종 `drydock` / `ingest` / `patch_edit` / `query`는 chronicle 전용으로 제한 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
+- `@dotobokuri/fleet-mcp-server` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 4종 `drydock` / `ingest` / `patch_edit` / `query`는 chronicle 전용으로 제한 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
 
 ## Must Not Own
 
-- Imports of other workspace packages (except `@sbluemin/fleet-mcp-server` as noted below)
+- Imports of other workspace packages (except `@dotobokuri/fleet-mcp-server` as noted below)
 - Imports of `@anthropic-ai/*`
 - UI registration or host-specific adapter code
 
 ## Dependency Rules
 
-- `@sbluemin/fleet-mcp-server`에 한해 도구 타입/등록 의존이 허용됨.
-- 다른 워크스페이스 패키지(`@sbluemin/fleet-*` 엔진 포함) 및 `@anthropic-ai/*` 의존은 여전히 금지.
+- `@dotobokuri/fleet-mcp-server`에 한해 도구 타입/등록 의존이 허용됨.
+- 다른 워크스페이스 패키지(`@dotobokuri/fleet-*` 엔진 포함) 및 `@anthropic-ai/*` 의존은 여전히 금지.
 - 순환 의존성은 금지.
 
 ## Tools

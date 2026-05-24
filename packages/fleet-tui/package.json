@@ -1,6 +1,6 @@
 {
-  "name": "@sbluemin/fleet-tui",
-  "version": "0.21.0",
+  "name": "@dotobokuri/fleet-tui",
+  "version": "0.22.1",
   "private": true,
   "type": "module",
   "files": ["dist", "AGENTS.md", "README.md"],

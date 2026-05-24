@@ -32,7 +32,7 @@ Fleet was built to remove that friction without sacrificing what makes each CLI 
 A 4-tier command structure maps users, orchestrators, and agents into clear roles:
 
 - **Admiral of the Navy** — The user. Sets strategy and gives orders.
-- **Fleet Admiral** — Multi-fleet orchestrator policy now hosted inside `fleet-agent`.
+- **Fleet Admiral** — Multi-fleet orchestrator policy now hosted inside `fleet-cli`.
 - **Admiral** — A workspace agent instance. Plans and dispatches Carriers.
 - **Captain** — The commander persona of a Carrier agent.
 
@@ -58,8 +58,6 @@ Eight built-in Carriers, each with a distinct operational role:
 ### Multi-LLM Orchestration
 
 Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
-
-<img src=".github/handoff.png" alt="Multi-LLM Orchestration" width="100%" />
 
 | CLI | Provider | Protocol | Key Capabilities |
 |-----|----------|----------|------------------|
@@ -98,7 +96,7 @@ After `pnpm link --global` (see [SETUP.md](SETUP.md)), global commands are avail
 
 | Command | Description |
 |---------|-------------|
-| `fleet` | Launch standard Fleet mode (via `packages/fleet-agent/bin/fleet`) |
+| `fleet` | Launch standard Fleet mode (via `runtime/fleet-cli/bin/fleet`) |
 | `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
 
 ## Setup

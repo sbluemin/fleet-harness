@@ -4,7 +4,7 @@
  * 사용자 workspace 설정이 아니라 소스 코드가 소유하는 allowlist resolver다.
  */
 
-import type { McpServerConfig } from "@sbluemin/fleet-unified-agent";
+import type { McpServerConfig } from "@dotobokuri/fleet-unified-agent";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types / Interfaces

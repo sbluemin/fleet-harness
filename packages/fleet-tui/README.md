@@ -1,4 +1,4 @@
-# @sbluemin/fleet-tui
+# @dotobokuri/fleet-tui
 
 Fleet-specific generic TUI engine for terminal rendering, input routing, PTY infrastructure, Fleet PTY overlays, and permanent vertical two-pane negotiation.
 
@@ -6,11 +6,11 @@ Fleet-specific generic TUI engine for terminal rendering, input routing, PTY inf
 
 Use the documented subpath exports:
 
-- `@sbluemin/fleet-tui/core`
-- `@sbluemin/fleet-tui/layout`
-- `@sbluemin/fleet-tui/primitives`
-- `@sbluemin/fleet-tui/input`
-- `@sbluemin/fleet-tui/pty`
+- `@dotobokuri/fleet-tui/core`
+- `@dotobokuri/fleet-tui/layout`
+- `@dotobokuri/fleet-tui/primitives`
+- `@dotobokuri/fleet-tui/input`
+- `@dotobokuri/fleet-tui/pty`
 
 The root package export is intentionally narrow and reserved for shared types/constants. Do not import from package `/src/*`, package `/dist/*`, or undocumented file-level subpaths.
 

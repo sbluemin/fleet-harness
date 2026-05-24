@@ -2,7 +2,7 @@ import {
   getEffort,
   getProviderModels,
   type CliType,
-} from "@sbluemin/fleet-unified-agent";
+} from "@dotobokuri/fleet-unified-agent";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../dispatch/types.js";
 import { loadModels } from "./models.js";
 import { updateStates } from "./state-io.js";

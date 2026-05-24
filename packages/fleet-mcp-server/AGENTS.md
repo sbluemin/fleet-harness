@@ -13,14 +13,14 @@
 ## Must Not Own
 
 - Fleet carrier framework, carrier metadata lookup, persona registration, default Fleet tool builders, prompt assembly, or host UI
-- Imports from any `@sbluemin/fleet-*` workspace package
+- Imports from any `@dotobokuri/fleet-*` workspace package
 - Imports from Fleet engine packages, Anthropic packages, or `@modelcontextprotocol/*` unless an Admiral-approved plan explicitly changes this package boundary
 
 ## Import Boundaries
 
 - This package may use Node built-ins such as `node:http` and `node:crypto`.
-- This package must remain a dependency leaf relative to Fleet workspace packages: no `@sbluemin/fleet-*` runtime, dev, test, or source imports.
-- Consumers import through the root package entry `@sbluemin/fleet-mcp-server`; do not add public subpath exports without an explicit plan requirement.
+- This package must remain a dependency leaf relative to Fleet workspace packages: no `@dotobokuri/fleet-*` runtime, dev, test, or source imports.
+- Consumers import through the root package entry `@dotobokuri/fleet-mcp-server`; do not add public subpath exports without an explicit plan requirement.
 
 ## TypeScript File Structure
 

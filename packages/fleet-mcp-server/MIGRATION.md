@@ -1,16 +1,16 @@
-# Migration Guide: @sbluemin/fleet-mcp-server
+# Migration Guide: @dotobokuri/fleet-mcp-server
 
-This guide outlines the steps to migrate from the internal `fleet-admiral` tool registry and MCP logic to the standalone `@sbluemin/fleet-mcp-server` package.
+This guide outlines the steps to migrate from the internal `fleet-admiral` tool registry and MCP logic to the standalone `@dotobokuri/fleet-mcp-server` package.
 
 ## Context
 
-The MCP server and tool registry internals have been extracted from `packages/fleet-admiral` into a dedicated leaf package, `@sbluemin/fleet-mcp-server`. This move enforces a clean boundary between the Fleet domain and the MCP transport layer.
+The MCP server and tool registry internals have been extracted from `packages/fleet-admiral` into a dedicated leaf package, `@dotobokuri/fleet-mcp-server`. This move enforces a clean boundary between the Fleet domain and the MCP transport layer.
 
 ## Key Changes
 
 ### 1. Import Path Migration
 
-All generic MCP types, registry functions, and server lifecycle methods must now be imported from `@sbluemin/fleet-mcp-server`.
+All generic MCP types, registry functions, and server lifecycle methods must now be imported from `@dotobokuri/fleet-mcp-server`.
 
 **Before:**
 ```typescript
@@ -20,7 +20,7 @@ import { AgentToolSpec } from "./admiral/agent/types.js";
 
 **After:**
 ```typescript
-import { registerAgentTool, AgentToolSpec } from "@sbluemin/fleet-mcp-server";
+import { registerAgentTool, AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
 ```
 
 ### 2. SSoT for Tool Specs
@@ -47,7 +47,7 @@ The new package introduces strict hardening policies that were previously loosel
 
 ## Migration Steps
 
-1. **Update `package.json`**: Add `@sbluemin/fleet-mcp-server` to your workspace dependencies (typically via `pnpm add -w @sbluemin/fleet-mcp-server` or linking in `pnpm-workspace.yaml`).
+1. **Update `package.json`**: Add `@dotobokuri/fleet-mcp-server` to your workspace dependencies (typically via `pnpm add -w @dotobokuri/fleet-mcp-server` or linking in `pnpm-workspace.yaml`).
 2. **Search and Replace Imports**: Update all import references pointing to legacy `fleet-admiral` registry files (e.g., `admiral/agent/tools.ts`, `infra/tool-registry/*`).
 3. **Verify Tool Specs**: Ensure all `AgentToolSpec` objects have a valid `id` and `tag`.
 4. **Audit Resolution Logic**: If you were manually resolving tool calls, ensure your logic honors the FIFO invariant.

@@ -5,7 +5,7 @@
  * 공개 타입 및 내부 상태 타입을 정의합니다.
  */
 
-import { CLI_BACKENDS, type CliType } from "@sbluemin/fleet-unified-agent";
+import { CLI_BACKENDS, type CliType } from "@dotobokuri/fleet-unified-agent";
 export type {
   BatchCliChoice,
   CarrierCliType,

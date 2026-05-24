@@ -1,5 +1,5 @@
-import { CLI_BACKENDS, getProviderModels } from "@sbluemin/fleet-unified-agent";
-import type { CliType } from "@sbluemin/fleet-unified-agent";
+import { CLI_BACKENDS, getProviderModels } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/fleet-unified-agent";
 import type { RequestBlock } from "./dispatch/types.js";
 
 export const CLI_PROVIDER_DISPLAY_NAMES: Record<CliType, string> = Object.fromEntries(

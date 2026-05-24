@@ -1,11 +1,11 @@
 /**
- * @sbluemin/fleet-unified-agent
+ * @dotobokuri/fleet-unified-agent
  * Codex CLI, Claude Code 통합 SDK
  * 공식 ACP SDK (@agentclientprotocol/sdk) 기반
  *
  * @example
  * ```typescript
- * import { UnifiedAgent } from '@sbluemin/fleet-unified-agent';
+ * import { UnifiedAgent } from '@dotobokuri/fleet-unified-agent';
  *
  * const client = await UnifiedAgent.build({ cli: 'claude' });
  * client.on('messageChunk', (text) => process.stdout.write(text));

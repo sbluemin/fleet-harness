@@ -6,16 +6,16 @@ This guide explains how Fleet development is organized.
 
 Fleet development follows a hard one-way dependency graph:
 
-- `packages/fleet-agent` — sole CLI Composition Root, host adapter, absorbed Admiral policy, and absorbed Grand Fleet policy.
+- `runtime/fleet-cli` — sole CLI Composition Root, host adapter, absorbed Admiral policy, and absorbed Grand Fleet policy.
 - `packages/fleet-carriers` — carrier runtime, personas, jobs, and carrier state.
 - `packages/fleet-infra` — host-agnostic infrastructure and I/O gateways.
 - `packages/fleet-mcp-server` — generic MCP server, registry, routing, and tool snapshots.
-- `packages/fleet-wiki` and `packages/fleet-wiki-web` — Fleet knowledge package and web UI.
+- `packages/fleet-wiki` and `runtime/fleet-wiki-ui` — Fleet knowledge package and web UI.
 - `packages/unified-agent` — independent execution engine client package.
 
 ## 2. Where New Work Goes
 
-### 2.1 `packages/fleet-agent`
+### 2.1 `runtime/fleet-cli`
 
 Put code here when it requires terminal rendering, CLI process lifecycle management, host input routing, concrete service assembly, Admiral prompt/protocol/tool policy, or Grand Fleet coordination helpers.
 
@@ -33,8 +33,8 @@ Put code here when it owns generic MCP registry/server behavior, token isolation
 
 ## 3. Import Rules
 
-- `fleet-agent` assembles concrete services through explicit leaf package calls.
-- Lower packages must not import `fleet-agent` or any package above them in the dependency graph.
+- `fleet-cli` assembles concrete services through explicit leaf package calls.
+- Lower packages must not import `fleet-cli` or any package above them in the dependency graph.
 - Consumers use public package exports only.
 - Do not deep-import `src/**` or `internal/**` across package boundaries.
 
