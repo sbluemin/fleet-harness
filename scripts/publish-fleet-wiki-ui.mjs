@@ -20,7 +20,8 @@ const targetVersion = version ?? JSON.parse(original).version;
 
 try {
   execSync(`npm view ${pkgName}@${targetVersion} version`, { stdio: "pipe" });
-  console.log(`${pkgName}@${targetVersion} already published. Skipping.`);
+  console.log(`${pkgName}@${targetVersion} already published. Updating dist-tag to ${tag}.`);
+  execSync(`npm dist-tag add ${pkgName}@${targetVersion} ${tag}`, { stdio: "inherit" });
   process.exit(0);
 } catch {}
 
