@@ -30,7 +30,7 @@ const EXPECTED_CARRIER_TOOL_IDS = [
   "carrier_jobs",
 ] as const;
 
-describe("fleet-cli dedicated CLI MCP registration", () => {
+describe("fleet-cli agent CLI MCP registration", () => {
   let lifecycle: FleetRuntimeLifecycle | undefined;
 
   afterEach(async () => {

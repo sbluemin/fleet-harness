@@ -296,7 +296,7 @@ describe("Mission Control controller", () => {
     expect(controller.getState().kind).toBe("active");
   });
 
-  it("preserves dedicated CLI resolver precedence for Mission Control defaults", () => {
+  it("preserves agent CLI resolver precedence for Mission Control defaults", () => {
     expect(resolveAgentCliId({ FLEET_DEDICATED_CLI: "codex" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
     expect(resolveAgentCliId({ FLEET_DEDICATED_CLI: "claude-zai" })).toBe("claude-zai");
   });

@@ -20,7 +20,7 @@ vi.mock("@dotobokuri/fleet-infra/auth", () => ({
 
 const tempRoots: string[] = [];
 
-describe("dedicated CLI catalog", () => {
+describe("agent CLI catalog", () => {
   beforeEach(() => {
     mocks.resolveAuthEnvMock.mockResolvedValue({
       ANTHROPIC_AUTH_TOKEN: "variant-token",
@@ -96,7 +96,7 @@ describe("dedicated CLI catalog", () => {
     expect(process.env).toEqual(before);
   });
 
-  it("forwards model values into dedicated CLI profile args", async () => {
+  it("forwards model values into agent CLI profile args", async () => {
     const env = createEnvWithBins();
 
     const profile = await resolveAgentCliProfile(env, "/tmp", { cliId: "codex", model: "gpt-5.2" });

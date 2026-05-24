@@ -39,7 +39,7 @@ const ACTION_KEYS = {
 };
 
 /**
- * Creates a Mission Control controller that hosts the Dedicated CLI PTY and manages panel lifecycle.
+ * Creates a Mission Control controller that hosts the Agent CLI PTY and manages panel lifecycle.
  * Input is routed to the active panel first when one is open; otherwise it falls through to the
  * child PTY or Mission Control control UI.
  */
