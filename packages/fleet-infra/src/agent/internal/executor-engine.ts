@@ -24,6 +24,7 @@ import {
 
 import {
   cleanupExecutorSession as cleanupExecutorMcpSession,
+  convertToolSchema,
   detachExecutorMcpForReuse as detachExecutorMcpForSessionReuse,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
@@ -76,6 +77,7 @@ interface PooledClient {
   sessionId?: string;
   mcpSessionTokens?: readonly ExecutorMcpSessionToken[];
   builtinExternalMcpSignature?: string;
+  internalExecutorMcpSignature?: string;
 }
 
 interface LaunchConfig {
@@ -165,6 +167,7 @@ function registerActiveExecutorSessionTools(
 export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
   const { poolKey, carrierId, cliType, request, cwd, signal } = opts;
   const builtinExternalMcpSignature = buildBuiltinExternalMcpSignature(carrierId);
+  const internalExecutorMcpSignature = buildInternalExecutorMcpSignature(carrierId);
 
   let responseText = "";
   let thoughtText = "";
@@ -187,6 +190,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     if (poolEntry.busy) {
       poolEntry = undefined;
       isTemporary = true;
+      reconnectSessionId = undefined;
     } else if (!isClientAlive(poolEntry.client)) {
       if (poolEntry.mcpSessionTokens) {
         cleanupExecutorSessions(poolEntry.mcpSessionTokens);
@@ -197,6 +201,10 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       poolEntry = undefined;
     } else if (poolEntry.builtinExternalMcpSignature !== builtinExternalMcpSignature) {
       // ACP mcpServers는 session/new 시점 snapshot — drift 감지 시 reconnect.
+      await discardPoolEntry(poolKey, poolEntry);
+      poolEntry = undefined;
+    } else if (poolEntry.internalExecutorMcpSignature !== internalExecutorMcpSignature) {
+      // Internal executor MCP tools도 connect-time snapshot이므로 whitelist/schema drift 시 reconnect.
       await discardPoolEntry(poolKey, poolEntry);
       poolEntry = undefined;
     } else if (hasSystemPromptDrift(poolEntry.client, opts.connectSystemPrompt ?? null)) {
@@ -214,7 +222,13 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   } else {
     client = await buildProviderClient({ cli: cliType });
     if (!isTemporary) {
-      const newEntry: PooledClient = { client, busy: true, sessionId: reconnectSessionId, builtinExternalMcpSignature };
+      const newEntry: PooledClient = {
+        client,
+        busy: true,
+        sessionId: reconnectSessionId,
+        builtinExternalMcpSignature,
+        internalExecutorMcpSignature,
+      };
       clientPool.set(poolKey, newEntry);
       poolEntry = newEntry;
       client.on("exit", () => {
@@ -371,7 +385,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         client = await buildProviderClient({ cli: cliType });
         detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
         if (!isTemporary) {
-          poolEntry = { client, busy: true, builtinExternalMcpSignature };
+          poolEntry = { client, busy: true, builtinExternalMcpSignature, internalExecutorMcpSignature };
           clientPool.set(poolKey, poolEntry);
           client.on("exit", () => {
             const current = clientPool.get(poolKey);
@@ -654,7 +668,18 @@ export function engineCleanIdle(): void {
 
 /** connections.ts에서 호출 — 살아 있는 풀 엔트리의 sessionId 조회 */
 export function engineGetPooledSessionId(poolKey: string): string | undefined {
-  return clientPool.get(poolKey)?.sessionId;
+  const entry = clientPool.get(poolKey);
+  if (!entry) return undefined;
+  if (!isClientAlive(entry.client)) {
+    if (entry.busy) return undefined;
+    if (entry.mcpSessionTokens) {
+      cleanupExecutorSessions(entry.mcpSessionTokens);
+      entry.mcpSessionTokens = undefined;
+    }
+    clientPool.delete(poolKey);
+    return undefined;
+  }
+  return entry.sessionId;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1001,4 +1026,35 @@ export function assertInternalMcpTokensNotShared(
 function buildBuiltinExternalMcpSignature(carrierId?: string): string {
   const ids = [...getAllowedBuiltinExternalMcpServerIds(carrierId)].sort();
   return createHash("sha256").update(ids.join("\0")).digest("hex");
+}
+
+function buildInternalExecutorMcpSignature(carrierId?: string): string {
+  const entries: string[] = [];
+
+  for (const { name } of executorPortRuntime.getExecutorMcpRouterRuntimes()) {
+    const specs = executorPortRuntime.getExecutorMcpTools(name, carrierId);
+    if (specs.length === 0) continue;
+    for (const spec of specs) {
+      entries.push(`${name}\0${spec.id}\0${stableStringify(convertToolSchema(spec.parameters))}`);
+    }
+  }
+
+  entries.sort();
+  return createHash("sha256").update(entries.join("\0")).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
 }

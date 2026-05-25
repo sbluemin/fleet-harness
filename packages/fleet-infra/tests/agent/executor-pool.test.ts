@@ -8,6 +8,11 @@ import type {
   AcpContentBlock,
   UnifiedClientOptions,
 } from "@dotobokuri/fleet-unified-agent";
+import {
+  createMcpToolSnapshotStore,
+  type AgentToolSpec,
+  type McpRouterRuntime,
+} from "@dotobokuri/fleet-mcp-server";
 
 const buildMock = vi.fn();
 
@@ -24,7 +29,7 @@ vi.mock("@dotobokuri/fleet-unified-agent", async (importOriginal) => {
   };
 });
 
-const { executeOneShot, executeWithPool, disconnectAll } = await import("../../src/agent/index.js");
+const { executeOneShot, executeWithPool, disconnectAll, getSessionIdFor } = await import("../../src/agent/index.js");
 const { executorPortRuntime } = await import("../../src/agent/executor-port.js");
 
 class FakeClient extends EventEmitter implements IUnifiedAgentClient {
@@ -36,10 +41,12 @@ class FakeClient extends EventEmitter implements IUnifiedAgentClient {
   sessionId: string | undefined;
   currentSystemPrompt: string | undefined;
   nextConnectError: Error | undefined;
+  connectGate: Promise<void> | undefined;
   sendGate: Promise<void> | undefined;
 
   async connect(options: UnifiedClientOptions): Promise<ConnectResult> {
     this.connectCalls.push({ ...options });
+    await this.connectGate;
     if (this.nextConnectError) {
       const err = this.nextConnectError;
       this.nextConnectError = undefined;
@@ -157,6 +164,7 @@ describe("executeWithPool in-memory reuse", () => {
 
     expect(second.status).toBe("done");
     expect(buildMock).toHaveBeenCalledTimes(2);
+    expect(fakeClients[1]!.connectCalls[0]!.sessionId).toBeUndefined();
     expect(fakeClients[1]!.messages).toEqual(["second"]);
     expect(fakeClients[1]!.disconnectCount).toBe(1);
 
@@ -190,6 +198,52 @@ describe("executeWithPool in-memory reuse", () => {
     expect(fakeClients[0]!.disconnectCount).toBe(1);
   });
 
+  it("internal executor MCP tool whitelist shrink는 pooled client를 재사용하지 않는다", async () => {
+    const runtime = createFakeMcpRuntime();
+    let executorTools: readonly AgentToolSpec[] = [buildToolSpec("carrier_jobs")];
+    executorPortRuntime.register({
+      getCarrierExternalMcpServerIds: () => [],
+      getExecutorMcpRouterRuntimes: () => [{ name: "fleet-carriers", runtime }],
+      getExecutorMcpTools: () => executorTools,
+    });
+
+    await executeWithPool(buildOptions("first"));
+    const firstToken = extractMcpToken(fakeClients[0]!.connectCalls[0]!);
+
+    expect(runtime.snapshotStore.getToolNamesForSession(firstToken)).toEqual(new Set(["carrier_jobs"]));
+
+    executorTools = [];
+    await executeWithPool(buildOptions("second"));
+
+    expect(buildMock).toHaveBeenCalledTimes(2);
+    expect(fakeClients[0]!.disconnectCount).toBe(1);
+    expect(runtime.snapshotStore.getToolNamesForSession(firstToken)).toEqual(new Set());
+    expect(fakeClients[1]!.connectCalls[0]!.mcpServers).toBeUndefined();
+    expect(fakeClients[1]!.messages).toEqual(["second"]);
+  });
+
+  it("internal executor MCP tool schema drift는 pooled client를 재사용하지 않는다", async () => {
+    const runtime = createFakeMcpRuntime();
+    let executorTools: readonly AgentToolSpec[] = [
+      buildToolSpec("carrier_jobs", { type: "object", properties: { action: { type: "string" } } }),
+    ];
+    executorPortRuntime.register({
+      getCarrierExternalMcpServerIds: () => [],
+      getExecutorMcpRouterRuntimes: () => [{ name: "fleet-carriers", runtime }],
+      getExecutorMcpTools: () => executorTools,
+    });
+
+    await executeWithPool(buildOptions("first"));
+    executorTools = [
+      buildToolSpec("carrier_jobs", { type: "object", properties: { job_id: { type: "string" } } }),
+    ];
+    await executeWithPool(buildOptions("second"));
+
+    expect(buildMock).toHaveBeenCalledTimes(2);
+    expect(fakeClients[0]!.disconnectCount).toBe(1);
+    expect(fakeClients[1]!.messages).toEqual(["second"]);
+  });
+
   it("dead-session resume 실패는 durable store 없이 sessionId를 지우고 재시도한다", async () => {
     await executeWithPool(buildOptions("first"));
     fakeClients[0]!.state = "disconnected";
@@ -206,6 +260,45 @@ describe("executeWithPool in-memory reuse", () => {
     expect(fakeClients[1]!.connectCalls[0]!.sessionId).toBe("session-1");
     expect(fakeClients[2]!.connectCalls[0]!.sessionId).toBeUndefined();
     expect(fakeClients[2]!.messages).toEqual(["second"]);
+  });
+
+  it("getSessionIdFor는 stale pooled client를 제거하고 undefined를 반환한다", async () => {
+    await executeWithPool(buildOptions("first"));
+    fakeClients[0]!.state = "disconnected";
+
+    expect(getSessionIdFor("carrier-a")).toBeUndefined();
+
+    await executeWithPool(buildOptions("second"));
+
+    expect(buildMock).toHaveBeenCalledTimes(2);
+    expect(fakeClients[1]!.connectCalls[0]!.sessionId).toBeUndefined();
+    expect(fakeClients[1]!.messages).toEqual(["second"]);
+  });
+
+  it("getSessionIdFor는 busy connecting entry를 제거하지 않는다", async () => {
+    let releaseConnect!: () => void;
+    buildMock.mockImplementation(() => {
+      const client = new FakeClient();
+      fakeClients.push(client);
+      if (fakeClients.length === 1) {
+        client.connectGate = new Promise<void>((resolve) => {
+          releaseConnect = resolve;
+        });
+      }
+      return Promise.resolve(client);
+    });
+
+    const first = executeWithPool(buildOptions("first"));
+    await vi.waitFor(() => expect(fakeClients[0]?.connectCalls).toHaveLength(1));
+
+    expect(getSessionIdFor("carrier-a")).toBeUndefined();
+
+    releaseConnect();
+    await first;
+    await executeWithPool(buildOptions("second"));
+
+    expect(buildMock).toHaveBeenCalledTimes(1);
+    expect(fakeClients[0]!.messages).toEqual(["first", "second"]);
   });
 
   it("executeOneShot은 fresh client를 만들고 매번 disconnect한다", async () => {
@@ -230,4 +323,43 @@ function buildOptions(
     cwd: process.cwd(),
     ...overrides,
   };
+}
+
+function buildToolSpec(id: string, parameters: unknown = { type: "object", properties: {} }): AgentToolSpec {
+  return {
+    id,
+    tag: id,
+    title: id,
+    description: `${id} description`,
+    promptSnippet: `${id} prompt`,
+    whenToUse: [],
+    whenNotToUse: [],
+    usageGuidelines: [],
+    parameters,
+    execute: () => Promise.resolve({ content: [{ type: "text", text: "ok" }], isError: false }),
+  };
+}
+
+function createFakeMcpRuntime(): McpRouterRuntime {
+  const snapshotStore = createMcpToolSnapshotStore();
+  return {
+    snapshotStore,
+    registry: {
+      invoke: () => Promise.resolve({ content: [{ type: "text", text: "ok" }], isError: false }),
+    },
+    server: {
+      start: () => Promise.resolve("http://127.0.0.1:54321/mcp"),
+      stop: () => Promise.resolve(),
+      setOnToolCallArrived: () => {},
+      resolveNextToolCall: () => {},
+      hasPendingToolCall: () => false,
+      clearPendingForSession: () => {},
+    },
+  } as unknown as McpRouterRuntime;
+}
+
+function extractMcpToken(connectOptions: UnifiedClientOptions): string {
+  const headerValue = connectOptions.mcpServers?.[0]?.headers?.find((header) => header.name === "Authorization")?.value;
+  expect(headerValue).toMatch(/^Bearer /);
+  return headerValue!.replace(/^Bearer /, "");
 }
