@@ -1,25 +1,14 @@
+import { CLI_BACKENDS, type CliType, type HealthStatus, type ProviderKey } from "@dotobokuri/fleet-unified-agent";
+import type { TrackStatus } from "@dotobokuri/fleet-infra";
+
+export type { TrackStatus } from "@dotobokuri/fleet-infra";
+
 /**
  * fleet/carrier/types.ts — Carrier 프레임워크 타입 정의
  *
  * 외부 확장이 커스텀 Carrier를 등록할 때 사용하는
  * 공개 타입 및 내부 상태 타입을 정의합니다.
  */
-
-import { CLI_BACKENDS, type CliType } from "@dotobokuri/fleet-unified-agent";
-export type {
-  BatchCliChoice,
-  CarrierCliType,
-  CarrierOverlayCallbacks,
-  CarrierStatusEntry,
-  CliModelInfo,
-  CliTypeChangeSettledResult,
-  CliServiceSnapshot,
-  CliTypeChangeResult,
-  CliTypeChoice,
-  ModelSelection,
-  OverlayState,
-  ResolvedCliSelection,
-} from "./overlay-types.js";
 
 // ─── Carrier 카테고리 ─────────────────────────────────────
 
@@ -80,16 +69,6 @@ export interface CarrierMetadata {
 
 // ─── 공개 타입 ───────────────────────────────────────────
 
-// ─── Carrier ID 검증 상수 ─────────────────────────────────
-
-/** 도구 네임스페이스 충돌 방지를 위한 예약 ID */
-export const RESERVED_CARRIER_IDS = new Set(["jobs", "taskforce"]);
-
-/** Carrier ID 허용 형식: 소문자 시작, 소문자/숫자/밑줄만 허용 */
-export const CARRIER_ID_FORMAT_REGEX = /^[a-z][a-z0-9_]*$/;
-
-// ─── 공개 타입 ───────────────────────────────────────────
-
 export interface CarrierConfig {
   /** 고유 식별자 (carrierId) → 메시지 `{id}-user/{id}-response`, 풀/세션 키 */
   id: string;
@@ -130,9 +109,98 @@ export interface CarrierFrameworkState {
   registeredOrder: string[];
   /** 상태바 갱신 콜백 */
   statusUpdateCallbacks: Array<() => void>;
+  /** Carrier job stream 이벤트 핸들러 */
+  streamHandlers: Set<CarrierJobStreamHandler>;
   /** Task Force 설정이 완료된 carrier ID 집합 */
   taskforceConfiguredCarriers: Set<string>;
 }
+
+export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
+
+export type CarrierJobStatus = "done" | "error" | "aborted";
+
+export type TrackKind = "carrier" | "subtask" | "backend";
+
+export interface TrackMeta {
+  trackId: string;
+  streamKey: string;
+  displayCli: string;
+  displayName: string;
+  subtitle?: string;
+  kind: TrackKind;
+  runId?: string;
+}
+
+export type CarrierJobStreamEvent =
+  | {
+    type: "job:registered";
+    jobId: string;
+    kind: CarrierJobKind;
+    ownerCarrierId: string;
+    label: string;
+    startedAt: number;
+    activeJobToolCallId?: string;
+    tracks: TrackMeta[];
+  }
+  | {
+    type: "job:finalized";
+    jobId: string;
+    status: CarrierJobStatus;
+    finishedAt: number;
+    error?: string;
+    summary: string;
+    systemReminder?: string;
+  }
+  | {
+    type: "track:begin";
+    jobId: string;
+    trackId: string;
+    requestPreview?: string;
+  }
+  | {
+    type: "track:status";
+    jobId: string;
+    trackId: string;
+    status: TrackStatus;
+  }
+  | {
+    type: "track:runId";
+    jobId: string;
+    trackId: string;
+    runId: string;
+  }
+  | {
+    type: "track:text";
+    jobId: string;
+    trackId: string;
+    text: string;
+  }
+  | {
+    type: "track:thought";
+    jobId: string;
+    trackId: string;
+    text: string;
+  }
+  | {
+    type: "track:tool";
+    jobId: string;
+    trackId: string;
+    toolCallId?: string;
+    title: string;
+    status: string;
+  }
+  | {
+    type: "track:finalized";
+    jobId: string;
+    trackId: string;
+    status: TrackStatus;
+    error?: string;
+    sessionId?: string;
+    fallbackText?: string;
+    fallbackThought?: string;
+  };
+
+export type CarrierJobStreamHandler = (event: CarrierJobStreamEvent) => void;
 
 export type TaskForceCliType = CliType;
 
@@ -159,5 +227,116 @@ export interface TaskForceState {
   startedAt: number;
   finishedAt?: number;
 }
+
+export type CarrierCliType = ProviderKey;
+
+export interface ModelSelection {
+  model: string;
+  effort?: string;
+}
+
+export interface ModelEffort {
+  supported: boolean;
+  levels?: readonly string[];
+  default?: string;
+}
+
+export interface ModelInfo {
+  modelId: string;
+  name: string;
+  effort?: ModelEffort;
+}
+
+export interface CliModelInfo {
+  readonly [legacyField: string]: unknown;
+  defaultModel: string;
+  models: ModelInfo[];
+}
+
+export interface CliServiceSnapshot {
+  status: HealthStatus;
+}
+
+export interface ResolvedCliSelection {
+  model: string;
+  effort: string | null;
+  isDefault: boolean;
+}
+
+export interface CliTypeChangeResult {
+  carrierId: string;
+  newCliType: CarrierCliType;
+  selection: ResolvedCliSelection;
+}
+
+export interface CliTypeChangeSettledResult {
+  status: "fulfilled" | "rejected";
+  carrierId: string;
+  result?: CliTypeChangeResult;
+  error?: string;
+}
+
+export interface CarrierStatusEntry {
+  carrierId: string;
+  slot: number;
+  cliType: CarrierCliType;
+  defaultCliType: CarrierCliType;
+  displayName: string;
+  model: string;
+  isDefault: boolean;
+  effort: string | null;
+  role: string | null;
+  roleDescription: string | null;
+  taskForceBackendCount: number;
+  category?: CarrierCategory;
+}
+
+export interface CarrierStatusGroup {
+  header: string;
+  color: string;
+  providerKey: ProviderKey;
+  entries: CarrierStatusEntry[];
+}
+
+export interface CliTypeChoice {
+  value: CarrierCliType;
+  label: string;
+}
+
+export interface BatchCliChoice {
+  cliType: CarrierCliType;
+  label: string;
+  carrierCount: number;
+  status: HealthStatus;
+}
+
+export type OverlayState =
+  | { kind: "browse" }
+  | { kind: "model"; carrierId: string; choices: string[]; cursor: number }
+  | { kind: "effort"; carrierId: string; pendingModel: string; choices: string[]; cursor: number }
+  | { kind: "cliType"; carrierId: string; choices: CliTypeChoice[]; cursor: number }
+  | { kind: "batchFrom"; choices: BatchCliChoice[]; cursor: number }
+  | { kind: "batchTo"; fromCli: CarrierCliType; choices: BatchCliChoice[]; cursor: number }
+  | { kind: "saving" };
+
+export interface CarrierOverlayCallbacks {
+  getEntries(): CarrierStatusEntry[];
+  changeCliType(carrierId: string, newCliType: CarrierCliType): Promise<ResolvedCliSelection>;
+  changeCliTypes(updates: Array<{ carrierId: string; newCliType: CarrierCliType }>): Promise<CliTypeChangeSettledResult[]>;
+  resetCliTypesToDefault(): Promise<CliTypeChangeSettledResult[]>;
+  saveModelSelection(carrierId: string, selection: ModelSelection): Promise<void>;
+  openTaskForce(carrierId: string): void;
+  getAvailableModels(cliType: CarrierCliType): CliModelInfo;
+  getServiceSnapshots(): Map<CarrierCliType, CliServiceSnapshot>;
+  getDefaultCliType(): CarrierCliType;
+}
+
+// ─── Carrier ID 검증 상수 ─────────────────────────────────
+
+/** 도구 네임스페이스 충돌 방지를 위한 예약 ID */
+export const RESERVED_CARRIER_IDS = new Set(["jobs", "taskforce"]);
+
+/** Carrier ID 허용 형식: 소문자 시작, 소문자/숫자/밑줄만 허용 */
+export const CARRIER_ID_FORMAT_REGEX = /^[a-z][a-z0-9_]*$/;
 
 export const TASKFORCE_CLI_TYPES = Object.keys(CLI_BACKENDS) as CliType[];

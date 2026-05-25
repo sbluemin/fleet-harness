@@ -3,14 +3,17 @@ id: "guide-001-fleet-harness-overview"
 title: "Guide - 001 fleet-harness 소개"
 tags: ["guide", "fleet-harness", "overview", "onboarding", "current"]
 created: "2026-05-07T15:44:30.628Z"
-updated: "2026-05-23T14:46:55.449Z"
-version: 7
-rawSourceRef: "raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md"
-rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md\"},{\"ref\":\"raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"f2083507\"},{\"ref\":\"raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"c0ca2e83\"}]"
+updated: "2026-05-24T07:56:24.926Z"
+version: 8
+rawSourceRef: "raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md"
+template_id: "guide"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-07-guide-001-fleet-harness-overview-source-565723ea.md\"},{\"ref\":\"raw/2026-05-19-guide-001-fleet-harness-overview-source-f2083507.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"f2083507\"},{\"ref\":\"raw/2026-05-23-guide-001-fleet-harness-overview-source-c0ca2e83.md\",\"title\":\"Guide - 001 fleet-harness 소개\",\"hash\":\"c0ca2e83\"},{\"ref\":\"raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md\",\"title\":\"guide-001 Alt+1 residual fix — single immutable protocol\",\"hash\":\"1544a6b5\"}]"
 ---
 # fleet-harness 소개
 
-fleet-harness는 멀티-LLM 오케스트레이션 키트다. Claude Code, Codex CLI 등 강력한 CLI AI 도구 8개를 **단일 인터페이스**에서 지휘한다.
+## Overview
+
+fleet-harness는 Claude Code, Codex CLI 등 8개의 CLI AI 도구를 단일 인터페이스에서 지휘하는 멀티-LLM 오케스트레이션 키트다. 모든 작업은 단일·불변 Fleet Action Protocol을 따르며, Admiral이 캐리어를 라우팅·합성한다.
 
 ---
 
@@ -97,7 +100,7 @@ fleet-harness는 용도에 따라 2개의 CLI 진입점과 개발용 스크립�
 7. 문서 업데이트
 ```
 
-Alt+1로 Fleet Action Protocol을 활성화한다. Editor 상단 테두리에 ⚓ Fleet Action 라벨이 표시된다.
+Fleet Action Protocol은 fleet-harness의 **단일·불변** 운영 프로토콜로 항상 활성 상태이며, 별도의 활성화·전환 절차가 없다. Editor 상단 테두리에는 ⚓ Fleet Action Protocol 라벨이 컴파일 시간 상수로 고정 표시된다. 결정의 WHY는 [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] 참조.
 
 ---
 
@@ -105,7 +108,6 @@ Alt+1로 Fleet Action Protocol을 활성화한다. Editor 상단 테두리에 �
 
 | 키 | 기능 |
 |---|---|
-| Alt+1 | Fleet Action Protocol 전환 |
 | Alt+O | Carrier Status 오버레이 (캐리어 설정) |
 | Alt+P | Agent Panel 표시/숨김 |
 | Alt+T | Bridge 모드 (단일 캐리어 직접 쉘) |
@@ -125,7 +127,8 @@ Alt+1로 Fleet Action Protocol을 활성화한다. Editor 상단 테두리에 �
 
 ---
 
-## 관련 항목
+## Related
 
 - [[wiki:guide-002-carrier-status]] — Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — fleet-wiki 사용법
+- [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — Admiral Protocol 단일·불변 정책 결정 history

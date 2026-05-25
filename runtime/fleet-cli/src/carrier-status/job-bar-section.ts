@@ -1,4 +1,4 @@
-import type { Component, FleetPtySection } from "@dotobokuri/fleet-tui/pty";
+import type { Component, FleetPtySection } from "../controls/index.js";
 
 import { renderCarrierJobHud, renderCarrierJobHudStrip } from "./job-bar-renderer.js";
 import type { JobBarState } from "./job-bar-state.js";
@@ -30,6 +30,7 @@ class JobBarStripSection implements Component {
       frame: state.frame,
       jobs: this.jobBarState.getActiveJobs(),
       keyboardProtocol: this.jobBarState.getKeyboardProtocol?.(),
+      pendingExitWarning: this.jobBarState.getPendingExitWarning(),
       runs: this.jobBarState.getPanelRuns(),
       width,
     });

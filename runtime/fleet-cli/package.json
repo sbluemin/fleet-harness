@@ -1,6 +1,16 @@
 {
   "name": "@dotobokuri/fleet-cli",
   "version": "0.22.1",
+  "description": "Fleet CLI — a multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "runtime/fleet-cli"
+  },
+  "homepage": "https://github.com/sbluemin/fleet-harness#readme",
+  "bugs": {
+    "url": "https://github.com/sbluemin/fleet-harness/issues"
+  },
   "private": true,
   "type": "module",
   "bin": {
@@ -9,7 +19,8 @@
   "files": [
     "dist",
     "bin",
-    "postinstall.mjs"
+    "postinstall.mjs",
+    "README.md"
   ],
   "scripts": {
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
@@ -22,12 +33,15 @@
   },
   "dependencies": {
     "@clack/prompts": "1.4.0",
+    "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*",
     "@dotobokuri/fleet-infra": "workspace:*",
     "@dotobokuri/fleet-mcp-server": "workspace:*",
     "@dotobokuri/fleet-tui": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
-    "@dotobokuri/fleet-wiki-ui": "workspace:*"
+    "@dotobokuri/fleet-wiki-ui": "workspace:*",
+    "@xterm/headless": "^5.5.0",
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

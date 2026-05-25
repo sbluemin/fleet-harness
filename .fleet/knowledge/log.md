@@ -2536,3 +2536,416 @@
 - result: `accepted`
 - target: `wiki/guide-003-fleet-wiki.md`
 
+## 2026-05-24T07:48:14.665Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `10`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-24T07:48:14.697Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `10`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-24T07:51:25.140Z — raw source added
+
+- id: `prd-admiral-protocol-single-immutable-fleet-action-source`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화`
+
+## 2026-05-24T07:51:25.142Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T07-51-25-117Z-8bd4ce8b`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+- warning_count: `0`
+
+## 2026-05-24T07:53:03.051Z — index rebuilt
+
+- entry_count: `15`
+
+## 2026-05-24T07:53:03.053Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T07-51-25-117Z-8bd4ce8b`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-b0ee5e98.md`
+- result: `accepted`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+
+## 2026-05-24T07:54:50.821Z — raw source added
+
+- id: `prd-admiral-protocol-single-immutable-fleet-action-source`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `PRD body fix — strip duplicated frontmatter`
+
+## 2026-05-24T07:54:50.824Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-54-50-816Z-d1ccca9d`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+- warning_count: `0`
+
+## 2026-05-24T07:55:54.509Z — index rebuilt
+
+- entry_count: `15`
+
+## 2026-05-24T07:55:54.511Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-54-50-816Z-d1ccca9d`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-admiral-protocol-single-immutable-fleet-action-source-8a31833c.md`
+- result: `accepted`
+- target: `wiki/prd-admiral-protocol-single-immutable-fleet-action.md`
+
+## 2026-05-24T07:56:24.948Z — raw source added
+
+- id: `guide-001-fleet-harness-overview-source`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `guide-001 Alt+1 residual fix — single immutable protocol`
+
+## 2026-05-24T07:56:24.951Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-56-24-926Z-0e167208`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+- warning_count: `0`
+
+## 2026-05-24T07:56:33.595Z — index rebuilt
+
+- entry_count: `15`
+
+## 2026-05-24T07:56:33.596Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-24T07-56-24-926Z-0e167208`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-guide-001-fleet-harness-overview-source-1544a6b5.md`
+- result: `accepted`
+- target: `wiki/guide-001-fleet-harness-overview.md`
+
+## 2026-05-24T07:56:43.057Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:10:46.163Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:11:20.623Z — raw source added
+
+- id: `prd-tui-cli-bay-source`
+- raw_source_ref: `raw/2026-05-24-prd-tui-cli-bay-source-388a12f5.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `Conversation brief: CLI Bay MVP product direction`
+
+## 2026-05-24T11:11:20.625Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-tui-cli-bay-source-388a12f5.md`
+- target: `wiki/prd-tui-cli-bay.md`
+- warning_count: `0`
+
+## 2026-05-24T11:11:29.114Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:12:45.174Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `title, confidence, body, updated, summary`
+- next_hash: `1c65a2f3`
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- previous_hash: `f6fd8830`
+- target: `wiki/prd-tui-cli-bay.md`
+
+## 2026-05-24T11:12:49.237Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T11:15:55.245Z — patch edited
+
+- body_replacements: `11`
+- changed_fields: `title, body, updated, summary`
+- next_hash: `cfb7a7a6`
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- previous_hash: `1c65a2f3`
+- target: `wiki/prd-tui-cli-bay.md`
+
+## 2026-05-24T11:19:31.417Z — patch rejected
+
+- patch_id: `2026-05-24T11-11-20-616Z-11aded11`
+- patch_set_id: `null`
+- reason: `제품명이 Mission Control로 확정되어 기존 prd-tui-cli-bay ID와 제목이 PRD 명명 규칙 및 제품명과 불일치함`
+- result: `rejected`
+
+## 2026-05-24T11:19:54.449Z — raw source added
+
+- id: `prd-tui-mission-control-source`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Conversation brief: Mission Control MVP product direction`
+
+## 2026-05-24T11:19:54.452Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T11-19-54-420Z-dc20c031`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- target: `wiki/prd-tui-mission-control.md`
+- warning_count: `0`
+
+## 2026-05-24T11:19:56.206Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-24T16:36:37.975Z — index rebuilt
+
+- entry_count: `16`
+
+## 2026-05-24T16:36:37.976Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-24T11-19-54-420Z-dc20c031`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-24-prd-tui-mission-control-source-f512572c.md`
+- result: `accepted`
+- target: `wiki/prd-tui-mission-control.md`
+
+## 2026-05-25T04:03:25.494Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `8`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-25T04:05:11.580Z — raw source added
+
+- id: `prd-cli-argv-to-preset-source`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- source_type: `inline`
+- tag_count: `9`
+- title: `prd-cli-argv-to-preset`
+
+## 2026-05-25T04:05:11.600Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T04-05-11-571Z-fa78df67`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- target: `wiki/prd-cli-argv-to-preset.md`
+- warning_count: `0`
+
+## 2026-05-25T04:06:59.877Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `0c977e1e`
+- patch_id: `2026-05-25T04-05-11-571Z-fa78df67`
+- previous_hash: `dce4b150`
+- target: `wiki/prd-cli-argv-to-preset.md`
+
+## 2026-05-25T04:07:32.404Z — index rebuilt
+
+- entry_count: `17`
+
+## 2026-05-25T04:07:32.405Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T04-05-11-571Z-fa78df67`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- result: `accepted`
+- target: `wiki/prd-cli-argv-to-preset.md`
+
+## 2026-05-25T04:14:26.144Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `8`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-25T04:22:20.343Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T04:28:05.907Z — raw source added
+
+- id: `prd-wiki-template-schema-source`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- source_type: `inline`
+- tag_count: `0`
+- title: `PRD: Fleet Wiki 템플릿 기반 스키마 검증`
+
+## 2026-05-25T04:28:05.910Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-25T04-28-05-901Z-24e62c2d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- target: `wiki/prd-wiki-template-schema.md`
+- warning_count: `1`
+
+## 2026-05-25T04:49:37.222Z — index rebuilt
+
+- entry_count: `17`
+
+## 2026-05-25T04:49:37.224Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-25T04-28-05-901Z-24e62c2d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- result: `accepted`
+- target: `wiki/prd-wiki-template-schema.md`
+
+## 2026-05-25T05:38:52.600Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T05:40:19.858Z — raw source added
+
+- id: `prd-fleet-menu-t3-full-source`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
+- source_type: `inline`
+- tag_count: `9`
+- title: `PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)`
+
+## 2026-05-25T05:40:19.860Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T05-40-19-839Z-8fc54334`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
+- target: `wiki/prd-fleet-menu-t3-full.md`
+- warning_count: `0`
+
+## 2026-05-25T05:43:08.343Z — index rebuilt
+
+- entry_count: `18`
+
+## 2026-05-25T05:43:08.344Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T05-40-19-839Z-8fc54334`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-menu-t3-full.md`
+
+## 2026-05-25T08:50:42.777Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T08:53:07.549Z — raw source added
+
+- id: `prd-fleet-cli-update-mechanism-source`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘`
+
+## 2026-05-25T08:53:07.553Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T08-53-07-523Z-a1ec0bd2`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- target: `wiki/prd-fleet-cli-update-mechanism.md`
+- warning_count: `0`
+
+## 2026-05-25T08:54:05.442Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `confidence, body, updated`
+- next_hash: `79aaabc3`
+- patch_id: `2026-05-25T08-53-07-523Z-a1ec0bd2`
+- previous_hash: `5e49a964`
+- target: `wiki/prd-fleet-cli-update-mechanism.md`
+
+## 2026-05-25T09:19:32.839Z — index rebuilt
+
+- entry_count: `19`
+
+## 2026-05-25T09:19:32.840Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T08-53-07-523Z-a1ec0bd2`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-cli-update-mechanism.md`
+

@@ -1,60 +1,64 @@
 import { attachInputStream, LocalTui } from "@dotobokuri/fleet-tui/core";
+import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+import { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
 import {
   assertInputContract,
+  createCursorPolicySync,
+  createDedicatedMouseRouter,
+  createFleetPtyApi,
+  createFleetPtyViewport,
   createInputKeybindingConfig,
   createInputRouter,
   createKeybindingRegistry,
   createProgrammaticInput,
-  encodeSgrMouseInput,
-  type InputKeybindingConfig,
-  type KeybindingDefinition,
-  type KeybindingRegistration,
-  type RoutedMouseInput,
-} from "@dotobokuri/fleet-tui/input";
-import {
-  createCsiUInputNormalizer,
-  createFleetPtyApi,
   createPtyHost,
+  createRenderScheduler,
   createTuiPtyManager,
   KITTY_DISABLE,
   KITTY_ENABLE,
-  PtyView,
-  type Component,
-  type FleetPtyApi,
+  toggleFleetInputMode,
+  type InputKeybindingConfig,
+  type KeybindingDefinition,
+  type KeybindingRegistration,
   type PtyHost,
+  createCsiUInputNormalizer,
   type TuiPtyManager,
-} from "@dotobokuri/fleet-tui/pty";
+} from "./controls/index.js";
+
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
+import { createJobBarSections } from "./carrier-status/job-bar-section.js";
 import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";
-import { toggleFleetInputMode } from "./controls/modes.js";
-import { injectDedicatedCliProfile } from "./dedicated-cli/injection.js";
-import { resolveDedicatedCliProfile } from "./dedicated-cli/registry.js";
-import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
-import { createSystemPromptBuilder } from "./admiral/prompts.js";
+import { injectAgentCliProfile } from "./agent-cli/injection.js";
+import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
+import type { FleetCliOptions } from "./cli-args.js";
+import { createMissionControlController } from "./mission-control/controller.js";
+import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-control/loaded-counts.js";
+import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
+import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
+import { createDefaultFleetPtyComponent } from "./sections/default-sections.js";
+import { FleetStatusSection } from "./sections/fleet-status-section.js";
+import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
+import type { ResolvedSessionOptions, SessionOptions } from "./mission-control/options/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
+import { checkForUpdate } from "./update/check.js";
 
 export interface RunAppOptions {
-  readonly cliId?: string;
   readonly cursorSync?: boolean;
-  readonly model?: string;
-  readonly native?: boolean;
-  readonly replaceSystemPrompt?: boolean;
-  readonly enableMetaphor?: boolean;
+  readonly argvOptions?: FleetCliOptions;
 }
 
-type FleetInputMode = "MIRROR" | "DEDICATED";
-type RenderCallback = () => void;
-type RenderScheduler = (afterRender?: RenderCallback) => void;
 type FleetHostKeybindingHandlers = Record<string, () => void>;
+type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "cliOptions" | "defaultCliId" | "resolveProfile">;
 
-interface RenderSchedulerUi {
-  requestRender(force?: boolean, afterRender?: RenderCallback): void;
+export interface CreateMissionControlProfileConfigOptions {
+  readonly env: NodeJS.ProcessEnv;
+  readonly invocationCwd: string;
 }
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
-const RENDER_THROTTLE_MS = 16;
-
+const DOUBLE_TAP_WINDOW_MS = 2_000;
+const INTERRUPT_DEDUPE_WINDOW_MS = 100;
 const DEFAULT_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "host-exit", key: "\x11", label: "Ctrl+Q" },
   { action: "host-interrupt", key: "\x03", label: "Ctrl+C" },
@@ -67,76 +71,145 @@ const STANDARD_KEYBOARD_PROTOCOL_STATE = {
   childRequested: false,
   effectiveMode: "passthrough" as const,
 };
-const STANDARD_MOUSE_PROTOCOL_STATE = {
-  activeEncoding: "default" as const,
-  activeProtocol: "none" as const,
-  mouseTrackingEnabled: false,
-};
-const WHEEL_SCROLL_LINES = 3;
+export function createMissionControlProfileConfig(
+  options: CreateMissionControlProfileConfigOptions,
+): MissionControlProfileConfig {
+  return {
+    cliOptions: getAgentCliMetadata(),
+    defaultCliId: resolveAgentCliId(options.env),
+    resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
+      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: launchOptions?.model }),
+  };
+}
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
-  const cliId = options.cliId;
-  const cursorSync = options.cursorSync !== false;
-  const model = options.model;
-  const native = options.native ?? false;
-  const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
-  const enableMetaphor = options.enableMetaphor ?? false;
   const runtimeLifecycle = createFleetRuntimeLifecycle();
   const runtime = await runtimeLifecycle.start();
-  const ui = new LocalTui({ cursorSyncEnabled: cursorSync });
-  const ptyView = new PtyView(ui.columns, 0);
+  const argvOptions = options.argvOptions ?? createRunAppArgOptions(options);
+  const sessionOptionsRuntime = createSessionOptionsRuntime({
+    argv: argvOptions,
+    defaults: {
+      cliId: getDefaultAgentCliId(),
+      cursorSync: true,
+      enableMetaphor: false,
+      native: false,
+      replaceSystemPrompt: true,
+    },
+    env: process.env,
+    parseCliId: parseAgentCliId,
+    presetService: runtime.infraServices.presetService,
+  });
+  const initialSessionOptions = sessionOptionsRuntime.getResolved().values;
+  const cliId = initialSessionOptions.cliId;
+  const ui = new LocalTui({ cursorSyncEnabled: true });
   let ptyManager: TuiPtyManager | undefined;
   let modeToggleSuppressed = false;
   let syncCursorPolicy = () => {};
   let sendCarrierResultReminder = (_text: string) => {};
   const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
-  const baseProfile = await resolveDedicatedCliProfile(process.env, resolveInvocationCwd(), { cliId, model });
-  const currentProfile = native
-    ? baseProfile
-    : await injectDedicatedCliProfile(baseProfile, {
-        buildSystemPrompt: createSystemPromptBuilder({
-          carrierRuntime: runtime.carrierRuntime,
-          mcpRegistry: runtime.mcpRegistry,
-        }).build,
-        dedicatedMcpSession: runtime.dedicatedMcpSession,
-        replaceSystemPrompt,
-        enableMetaphor,
-      });
-  const ptyHost = createPtyHost({
-    profile: currentProfile,
+  const buildSystemPrompt = createSystemPromptBuilder({
+    carrierRuntime: runtime.carrierRuntime,
+    mcpRegistry: runtime.mcpRegistry,
+  }).build;
+  const invocationCwd = resolveInvocationCwd();
+  const missionControlProfileConfig = createMissionControlProfileConfig({
+    env: process.env,
+    invocationCwd,
   });
+  const optionChips = createMissionControlOptionChips(sessionOptionsRuntime.getResolved());
+  // Composition root에서 실제 Fleet Wiki daemon helper를 쓰는 기본 컨트롤러를 고정한다.
+  const wikiController = createWikiProcessController({
+    cwd: invocationCwd,
+    onChange: () => {
+      ptyManager?.requestResize("programmatic");
+      scheduleRender();
+    },
+  });
+  const release = readFleetCliRelease();
+  const missionControl = createMissionControlController({
+    ...missionControlProfileConfig,
+    defaultCliId: cliId,
+    cliOptions: missionControlProfileConfig.cliOptions.map((entry) => ({
+      ...entry,
+      optionChips: entry.id === cliId ? optionChips : [],
+    })),
+    createPtyHost: (profile) => createPtyHost({ profile }),
+    injectProfile: (profile, launchOptions) =>
+      (launchOptions ?? sessionOptionsRuntime.getDraft()).native
+        ? Promise.resolve(profile)
+        : injectAgentCliProfile(profile, {
+            buildSystemPrompt,
+            dedicatedMcpSession: runtime.dedicatedMcpSession,
+            enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+            replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
+          }),
+    loadedCounts: discoverMissionControlCounts({ invocationCwd }),
+    onExitFleet: () => stop(),
+    onRenderRequest: () => {
+      ptyManager?.requestResize("programmatic");
+      scheduleRender();
+    },
+    env: process.env,
+    invocationCwd,
+    presetService: runtime.infraServices.presetService,
+    readRecentLogFiles,
+    release,
+    sessionOptions: sessionOptionsRuntime,
+    wikiController,
+  });
+  checkForUpdate(release)
+    .then((latestVersion) => {
+      if (latestVersion !== undefined) {
+        missionControl.setRelease({ ...release, latestVersion });
+      }
+    })
+    .catch(() => {});
   const jobBarState = createJobBarState({
     carrierRuntime: runtime.carrierRuntime,
-    getKeyboardProtocol: () => ptyHost.getKeyboardProtocol?.() ?? STANDARD_KEYBOARD_PROTOCOL_STATE,
+    getKeyboardProtocol: () => missionControl.ptyHost.getKeyboardProtocol?.() ?? STANDARD_KEYBOARD_PROTOCOL_STATE,
     onCarrierResultReminder: (text) => sendCarrierResultReminder(sanitizeCarrierResultReminder(text)),
     onRenderRequest: () => {
       ptyManager?.requestResize("programmatic");
       scheduleRender();
     },
   });
-  const sections = createDefaultFleetPtySections({ jobBarState, native });
+  const sections = [
+    { component: new FleetStatusSection({ getNative: () => sessionOptionsRuntime.getDraft().native }), id: "fleet-status-section" },
+    ...createJobBarSections(jobBarState),
+  ];
   const fleetPty = createFleetPtyApi({
     defaultComponent: createDefaultFleetPtyComponent(sections),
     sections,
   }, {
     addInputListener: (listener) => ui.addInputListener(listener),
     getColumns: () => ui.columns,
-    getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - ptyView.maxRows),
+    getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - missionControl.ptyView.maxRows),
     requestResize: () => ptyManager?.requestResize("fleet-overlay"),
     requestRender: scheduleRender,
   });
   ptyManager = createTuiPtyManager({
     fleetPty,
-    ptyHost,
-    ptyView,
+    ptyHost: missionControl.ptyHost,
+    ptyView: missionControl.ptyView,
     refreshSize: (size) => ui.refreshSize(size),
     requestRender: scheduleRender,
   });
-  const programmaticInput = createProgrammaticInput(ptyHost, currentProfile);
-  sendCarrierResultReminder = (text) => programmaticInput.sendMessage(text);
+  sendCarrierResultReminder = (text) => {
+    const activeProfile = missionControl.getActiveProfile();
+    if (activeProfile === undefined) {
+      return;
+    }
+    createProgrammaticInput({
+      ...missionControl.ptyHost,
+      write: (data) => missionControl.writeChildInput(data),
+    }, activeProfile).sendMessage(text);
+  };
   let unsubscribeJobBar = () => {};
   let stopping = false;
   let disposeInputStream = () => {};
+  let interruptWarningStartedAt = 0;
+  let lastInterruptHandledAt = 0;
+  let interruptWarningTimer: ReturnType<typeof setTimeout> | undefined;
   const resize = () => ptyManager?.requestResize("terminal-resize");
   const stop = () => {
     if (stopping) {
@@ -144,7 +217,36 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       return;
     }
     stopping = true;
-    stopApp(ui, ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle);
+    clearInterruptWarningTimer();
+    jobBarState.setPendingExitWarning(false);
+    stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle);
+  };
+  const requestInterrupt = () => {
+    const now = Date.now();
+    if (now - lastInterruptHandledAt <= INTERRUPT_DEDUPE_WINDOW_MS) {
+      return;
+    }
+    lastInterruptHandledAt = now;
+
+    if (interruptWarningStartedAt !== 0 && now - interruptWarningStartedAt <= DOUBLE_TAP_WINDOW_MS) {
+      stop();
+      return;
+    }
+
+    interruptWarningStartedAt = now;
+    jobBarState.setPendingExitWarning(true);
+    clearInterruptWarningTimer();
+    interruptWarningTimer = setTimeout(() => {
+      interruptWarningStartedAt = 0;
+      interruptWarningTimer = undefined;
+      jobBarState.setPendingExitWarning(false);
+    }, DOUBLE_TAP_WINDOW_MS);
+    interruptWarningTimer.unref?.();
+  };
+  const clearInterruptWarningTimer = () => {
+    if (interruptWarningTimer === undefined) return;
+    clearTimeout(interruptWarningTimer);
+    interruptWarningTimer = undefined;
   };
   const handleModeToggleCursorSuppression = () => {
     modeToggleSuppressed = true;
@@ -159,11 +261,20 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const keybindings = createFleetHostInputKeybindingConfig({
     definitions: fleetKeybindings.list(),
     handlers: {
-      "carrier-status": createCarrierStatusKeybindingHandler({ carrierRuntime: runtime.carrierRuntime, fleetPty }),
+      "carrier-status": createCarrierStatusKeybindingHandler({
+        carrierRuntime: runtime.carrierRuntime,
+        missionControl: {
+          closePanel: missionControl.closePanel,
+          hasActivePanel: missionControl.hasActivePanel,
+          openPanel: missionControl.openPanel,
+          requestRender: scheduleRender,
+        },
+      }),
       "host-exit": stop,
-      "host-interrupt": stop,
+      "host-interrupt": requestInterrupt,
       "mode-toggle": handleModeToggleCursorSuppression,
     },
+    routeHostInterruptThroughHandler: true,
   });
   const csiUNormalizer = createCsiUInputNormalizer({
     csiUMap: fleetKeybindings.createCsiUNormalizationMap(),
@@ -172,8 +283,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     getLayout: () =>
       ptyManager?.getCurrentRequest() ?? {
         columns: ui.columns,
-        dedicatedRows: ptyView.maxRows,
-        fleetRows: Math.max(0, ui.rows - ptyView.maxRows),
+        dedicatedRows: missionControl.ptyView.maxRows,
+        fleetRows: Math.max(0, ui.rows - missionControl.ptyView.maxRows),
         totalRows: ui.rows,
       },
     initialMode: "MIRROR",
@@ -181,40 +292,45 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     onExit: stop,
     onModeChange: handleModeToggleCursorSuppression,
     routeDedicatedMouse: createDedicatedMouseRouter({
-      ptyHost,
-      ptyView,
+      ptyHost: missionControl.ptyHost,
+      ptyView: missionControl.ptyView,
       requestRender: scheduleRender,
     }),
     routeFleetInput: (data) => fleetPty.dispatchInput(data),
     routeFleetMouse: (event) => fleetPty.dispatchMouse(event),
     toggleMode: toggleFleetInputMode,
-    writeDedicated: (data) => ptyHost.write(data),
+    writeDedicated: (data) => missionControl.ptyHost.write(data),
   });
   syncCursorPolicy = createCursorPolicySync({
-    cursorSync,
+    cursorSync: true,
     fleetPty,
     getMode: router.getMode,
+    hasActiveMissionControlPanel: missionControl.hasActivePanel,
     isModeToggleSuppressed: () => modeToggleSuppressed,
-    ptyView,
+    ptyView: missionControl.ptyView,
     ui,
   });
+  const staticCursorPolicySync = syncCursorPolicy;
+  syncCursorPolicy = () => {
+    if (!sessionOptionsRuntime.getDraft().cursorSync) {
+      ui.setCursorAnchorTarget(undefined);
+      return;
+    }
+    staticCursorPolicySync();
+  };
 
-  ui.setChildren([ptyView, createFleetPtyViewport(fleetPty)]);
+  ui.setChildren([missionControl.component, createFleetPtyViewport(fleetPty)]);
   syncCursorPolicy();
   unsubscribeJobBar = subscribeJobBar({
     jobBarState,
   });
   assertInputContract(keybindings);
-  const initialResize = ptyManager.requestResize("initial");
+  ptyManager.requestResize("initial");
   ui.addInputListener((data) => router.route(csiUNormalizer.normalize(data)));
-  ptyHost.start({ cols: ui.columns, rows: initialResize.dedicatedRows });
-  ptyHost.onData((chunk) => {
-    ptyView.append(chunk, scheduleRender);
-  });
 
   process.stdout.on("resize", resize);
   process.on("SIGWINCH", resize);
-  process.on("SIGINT", stop);
+  process.on("SIGINT", requestInterrupt);
   process.on("SIGTERM", stop);
 
   const disableKeyboardProtocol = () => process.stdout.write(KITTY_DISABLE);
@@ -225,18 +341,46 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   disposeInputStream = attachInputStream(ui);
 }
 
+function createMissionControlOptionChips(resolved: ResolvedSessionOptions): string[] {
+  const { sources, values } = resolved;
+  const star = (source: string) => source === "arg" ? "*" : "";
+  return [
+    values.native ? `Native${star(sources.native)}` : `Fleet prompt${star(sources.native)}`,
+    values.replaceSystemPrompt ? `Replace${star(sources.replaceSystemPrompt)}` : `Append${star(sources.replaceSystemPrompt)}`,
+    values.enableMetaphor ? `Metaphor${star(sources.enableMetaphor)}` : undefined,
+    values.model ? values.model : undefined,
+    values.cursorSync ? undefined : `Cursor off${star(sources.cursorSync)}`,
+  ].filter((chip): chip is string => chip !== undefined);
+}
+
+function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
+  return {
+    argvOverrides: {
+      cursorSync: options.cursorSync === false,
+    },
+    cursorSync: options.cursorSync !== false,
+    help: false,
+  };
+}
+
 export function createFleetHostInputKeybindingConfig(options: {
   readonly definitions: readonly KeybindingDefinition[];
   readonly handlers: FleetHostKeybindingHandlers;
+  readonly routeHostInterruptThroughHandler?: boolean;
 }): InputKeybindingConfig {
+  const routeHostInterruptThroughHandler = options.routeHostInterruptThroughHandler === true;
   const exitKeys = options.definitions
-    .filter((definition) => definition.action === "host-exit" || definition.action === "host-interrupt")
+    .filter((definition) =>
+      definition.action === "host-exit" ||
+      (!routeHostInterruptThroughHandler && definition.action === "host-interrupt")
+    )
     .map((definition) => definition.key);
   const modeToggleKeys = options.definitions
     .filter((definition) => definition.action === "mode-toggle")
     .map((definition) => definition.key);
   const registeredKeybindings = options.definitions
-    .filter((definition) => definition.action !== "host-exit" && definition.action !== "host-interrupt" && definition.action !== "mode-toggle")
+    .filter((definition) => definition.action !== "host-exit" && definition.action !== "mode-toggle")
+    .filter((definition) => routeHostInterruptThroughHandler || definition.action !== "host-interrupt")
     .map((definition): KeybindingRegistration => {
       const handler = options.handlers[definition.action];
       if (handler === undefined) {
@@ -257,97 +401,8 @@ export function createFleetHostInputKeybindingConfig(options: {
   });
 }
 
-export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () => void): RenderScheduler {
-  let renderPending = false;
-  let afterRenderCallbacks: RenderCallback[] = [];
-  return (afterRender?: RenderCallback) => {
-    if (afterRender !== undefined) {
-      afterRenderCallbacks.push(afterRender);
-    }
-
-    if (renderPending) {
-      return;
-    }
-
-    renderPending = true;
-    setTimeout(() => {
-      renderPending = false;
-      const callbacks = afterRenderCallbacks;
-      afterRenderCallbacks = [];
-      beforeRender();
-      ui.requestRender(false, () => {
-        for (const callback of callbacks) {
-          callback();
-        }
-      });
-    }, RENDER_THROTTLE_MS);
-  };
-}
-
-export function createDedicatedMouseRouter(options: {
-  readonly ptyHost: Pick<PtyHost, "getMouseProtocol" | "write">;
-  readonly ptyView: Pick<PtyView, "isAlternateBufferActive" | "scrollLines">;
-  readonly requestRender: () => void;
-}): (event: RoutedMouseInput) => boolean {
-  return (event) => {
-    const mouseProtocol = options.ptyHost.getMouseProtocol?.() ?? STANDARD_MOUSE_PROTOCOL_STATE;
-    if (mouseProtocol.mouseTrackingEnabled) {
-      options.ptyHost.write(encodeSgrMouseInput(event, { column: event.localColumn, row: event.localRow }));
-      return true;
-    }
-
-    if (event.wheelDirection === null) {
-      return true;
-    }
-
-    if (options.ptyView.isAlternateBufferActive()) {
-      options.ptyHost.write(event.wheelDirection === "up" ? "\x1b[A" : "\x1b[B");
-      return true;
-    }
-
-    const delta = event.wheelDirection === "up" ? -WHEEL_SCROLL_LINES : WHEEL_SCROLL_LINES;
-    if (options.ptyView.scrollLines(delta)) {
-      options.requestRender();
-    }
-    return true;
-  };
-}
-
-function createFleetPtyViewport(fleetPty: FleetPtyApi): Component {
-  return {
-    handleInput(data: string): void {
-      fleetPty.dispatchInput(data);
-    },
-    invalidate(): void {
-      fleetPty.getCurrentRegion().component.invalidate();
-    },
-    render(width: number): string[] {
-      return fleetPty.getCurrentRegion().component.render(width);
-    },
-  };
-}
-
 function resolveInvocationCwd(): string {
   return process.env.INIT_CWD || process.cwd();
-}
-
-function createCursorPolicySync(options: {
-  readonly cursorSync: boolean;
-  readonly fleetPty: FleetPtyApi;
-  readonly getMode: () => FleetInputMode;
-  readonly isModeToggleSuppressed: () => boolean;
-  readonly ptyView: PtyView;
-  readonly ui: LocalTui;
-}): () => void {
-  return () => {
-    if (!options.cursorSync || options.isModeToggleSuppressed() || options.fleetPty.hasActiveOverlay()) {
-      options.ui.setCursorAnchorTarget(undefined);
-      return;
-    }
-
-    const mode = options.getMode();
-    options.ui.setCursorAnchorTarget(mode === "MIRROR" || mode === "DEDICATED" ? options.ptyView : undefined);
-  };
 }
 
 function stopApp(

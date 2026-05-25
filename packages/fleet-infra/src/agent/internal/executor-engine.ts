@@ -24,6 +24,7 @@ import {
 
 import {
   cleanupExecutorSession as cleanupExecutorMcpSession,
+  convertToolSchema,
   detachExecutorMcpForReuse as detachExecutorMcpForSessionReuse,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
@@ -36,11 +37,7 @@ import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
 import type { TrackStatus } from "../types.js";
 import { resolveAuthEnv } from "../../auth/index.js";
 import { getLogAPI } from "../../log/index.js";
-import {
-  sessionRuntime,
-  classifyResumeFailure,
-  type SessionMappingCommitToken,
-} from "./session-runtime.js";
+import { classifyResumeFailure } from "./session-errors.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -77,10 +74,10 @@ export type ExecResult = {
 interface PooledClient {
   client: IUnifiedAgentClient;
   busy: boolean;
-  ownerToken?: SessionMappingCommitToken;
   sessionId?: string;
   mcpSessionTokens?: readonly ExecutorMcpSessionToken[];
   builtinExternalMcpSignature?: string;
+  internalExecutorMcpSignature?: string;
 }
 
 interface LaunchConfig {
@@ -117,14 +114,13 @@ type EffortResolution =
 
 const CLIENT_INFO = { name: "fleet-unified-agent", version: "1.0.0" } as const;
 const MAX_TOOL_CALLS_TO_KEEP = 30;
-const EMPTY_BUILTIN_EXTERNAL_MCP_SIGNATURE = createHash("sha256").update("").digest("hex");
 const INTERNAL_MCP_SERVER_NAMES = new Set(["fleet-carriers", "fleet-wiki"]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Module-level pool (globalThis 대체)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const clientPool = new Map<string, PooledClient>();
+const clientPool = new Map<string, PooledClient[]>();
 const launchConfigs = new Map<string, LaunchConfig>();
 
 function getMcpRouterRuntime(serverName: string): McpRouterRuntime | undefined {
@@ -170,10 +166,8 @@ function registerActiveExecutorSessionTools(
 
 export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecResult> {
   const { poolKey, carrierId, cliType, request, cwd, signal } = opts;
-  const store = sessionRuntime.getCarrierSessionStore();
-  const commitToken = sessionRuntime.captureSessionMappingCommitToken();
   const builtinExternalMcpSignature = buildBuiltinExternalMcpSignature(carrierId);
-  const sessionPoolKey = buildSessionPoolKey(poolKey, builtinExternalMcpSignature);
+  const internalExecutorMcpSignature = buildInternalExecutorMcpSignature(carrierId);
 
   let responseText = "";
   let thoughtText = "";
@@ -183,36 +177,47 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   let aborted = false;
   let isLivePrompt = false;
   let promptHandedOff = false;
-  let durableCommittedAfterSend = false;
   let sessionId: string | undefined;
   let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
 
   opts.onStatusChange?.("conn");
 
-  let poolEntry = clientPool.get(poolKey);
-  let isTemporary = false;
+  const entries = clientPool.get(poolKey) ?? [];
+  let poolEntry: PooledClient | undefined;
+  let reconnectSessionId: string | undefined;
 
-  if (poolEntry) {
-    if (poolEntry.busy) {
-      poolEntry = undefined;
-      isTemporary = true;
-    } else if (!isClientAlive(poolEntry.client)) {
-      if (poolEntry.mcpSessionTokens) {
-        cleanupExecutorSessions(poolEntry.mcpSessionTokens);
-        poolEntry.mcpSessionTokens = undefined;
-      }
-      clientPool.delete(poolKey);
-      poolEntry = undefined;
-    } else if (!sameSessionMappingOwner(poolEntry.ownerToken, commitToken)) {
-      await discardPoolEntry(poolKey, poolEntry);
-      poolEntry = undefined;
-    } else if (poolEntry.builtinExternalMcpSignature !== builtinExternalMcpSignature) {
-      // ACP mcpServers는 session/new 시점 snapshot — drift 감지 시 reconnect.
-      store.clear(sessionPoolKey);
-      sessionRuntime.flushSessionMappings();
-      await discardPoolEntry(poolKey, poolEntry);
-      poolEntry = undefined;
+  // 기존 entries에서 사용 가능한 entry를 찾고, dead/drifted entry는 정리한다.
+  const retained: PooledClient[] = [];
+  for (const entry of entries) {
+    if (entry.busy) {
+      retained.push(entry);
+      continue;
     }
+    if (!isClientAlive(entry.client)) {
+      reconnectSessionId = entry.sessionId ?? reconnectSessionId;
+      if (entry.mcpSessionTokens) {
+        cleanupExecutorSessions(entry.mcpSessionTokens);
+      }
+      entry.client.removeAllListeners();
+      continue;
+    }
+    if (entry.builtinExternalMcpSignature !== builtinExternalMcpSignature) {
+      await discardSingleEntry(entry);
+      continue;
+    }
+    if (entry.internalExecutorMcpSignature !== internalExecutorMcpSignature) {
+      await discardSingleEntry(entry);
+      continue;
+    }
+    if (hasSystemPromptDrift(entry.client, opts.connectSystemPrompt ?? null)) {
+      debugSystemPromptDrift("executeWithPool", poolKey, cliType);
+      await discardSingleEntry(entry);
+      continue;
+    }
+    if (!poolEntry) {
+      poolEntry = entry;
+    }
+    retained.push(entry);
   }
 
   let client: IUnifiedAgentClient;
@@ -220,36 +225,29 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   if (poolEntry) {
     client = poolEntry.client;
     poolEntry.busy = true;
+    // retained 배열에 이미 포함된 상태
   } else {
     client = await buildProviderClient({ cli: cliType });
-    if (!isTemporary) {
-      const newEntry: PooledClient = { client, busy: true, builtinExternalMcpSignature };
-      clientPool.set(poolKey, newEntry);
-      poolEntry = newEntry;
-      client.on("exit", () => {
-        const current = clientPool.get(poolKey);
-        if (current?.client === client) {
-          if (current.mcpSessionTokens) {
-            cleanupExecutorSessions(current.mcpSessionTokens);
-            current.mcpSessionTokens = undefined;
-          }
-          clientPool.delete(poolKey);
-        }
-      });
-    }
+    poolEntry = {
+      client,
+      busy: true,
+      sessionId: reconnectSessionId,
+      builtinExternalMcpSignature,
+      internalExecutorMcpSignature,
+    };
+    retained.push(poolEntry);
+    client.on("exit", () => {
+      removeEntryFromPool(poolKey, client);
+    });
+  }
+
+  if (retained.length === 0) {
+    clientPool.delete(poolKey);
+  } else {
+    clientPool.set(poolKey, retained);
   }
 
   let detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
-
-  const cleanupTemporary = async () => {
-    if (!isTemporary) return;
-    if (activeMcpTokens) {
-      cleanupExecutorSessions(activeMcpTokens);
-      activeMcpTokens = undefined;
-    }
-    try { await client.disconnect(); } catch { /* 정리 실패 무시 */ }
-    client.removeAllListeners();
-  };
 
   const onAbort = () => {
     if (aborted) return;
@@ -258,14 +256,13 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     opts.onStatusChange?.("aborted");
     void Promise.allSettled([
       client.cancelPrompt(),
-      isTemporary ? cleanupTemporary() : disconnectFromPool(poolKey, client),
+      removeAndDisconnectEntry(poolKey, client),
     ]);
   };
 
   if (signal?.aborted) {
     detachStderr();
     if (poolEntry) poolEntry.busy = false;
-    if (isTemporary) await cleanupTemporary();
     return { responseText: "", thoughtText: "", toolCalls: [], status: "aborted" };
   }
 
@@ -337,21 +334,6 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   try {
     let needsConnect = !isClientAlive(client);
 
-    if (!needsConnect && hasSystemPromptDrift(client, opts.connectSystemPrompt ?? null)) {
-      debugSystemPromptDrift("executeWithPool", poolKey, cliType);
-      store.clear(sessionPoolKey);
-      sessionRuntime.flushSessionMappings();
-      if (poolEntry) {
-        if (poolEntry.mcpSessionTokens) {
-          cleanupExecutorSessions(poolEntry.mcpSessionTokens);
-          poolEntry.mcpSessionTokens = undefined;
-        }
-        delete poolEntry.sessionId;
-      }
-      await client.disconnect();
-      needsConnect = true;
-    }
-
     if (needsConnect) {
       const mcpSetup = await setupExecutorMcp(cwd, signal, carrierId);
       if (mcpSetup?.tokens) activeMcpTokens = mcpSetup.tokens;
@@ -364,7 +346,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         effort: effortResolution.effort,
       }, opts.connectSystemPrompt ?? null, mcpSetup?.mcpServers);
 
-      const savedSessionId = store.get(sessionPoolKey) ?? poolEntry?.sessionId;
+      const savedSessionId = poolEntry?.sessionId ?? reconnectSessionId;
       if (savedSessionId) connectOpts.sessionId = savedSessionId;
 
       let connectResult: ConnectResult;
@@ -380,8 +362,6 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
           connectError instanceof Error ? connectError.message : connectError,
         );
 
-        store.clear(sessionPoolKey);
-        sessionRuntime.flushSessionMappings();
         if (poolEntry) delete poolEntry.sessionId;
         delete connectOpts.sessionId;
 
@@ -396,20 +376,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
         detachStderr();
         client = await buildProviderClient({ cli: cliType });
         detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
-        if (!isTemporary) {
-          poolEntry = { client, busy: true, builtinExternalMcpSignature };
-          clientPool.set(poolKey, poolEntry);
-          client.on("exit", () => {
-            const current = clientPool.get(poolKey);
-            if (current?.client === client) {
-              if (current.mcpSessionTokens) {
-                cleanupExecutorSessions(current.mcpSessionTokens);
-                current.mcpSessionTokens = undefined;
-              }
-              clientPool.delete(poolKey);
-            }
-          });
-        }
+        replaceEntryClient(poolKey, poolEntry!, client, builtinExternalMcpSignature, internalExecutorMcpSignature);
         attachListeners();
 
         const retryMcpSetup = await setupExecutorMcp(cwd, signal, carrierId);
@@ -425,13 +392,8 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
       sessionId = connectResult.session?.sessionId ?? undefined;
 
-      if (!isTemporary && sessionId && poolEntry) {
-        const mapped = store.set(sessionPoolKey, sessionId, commitToken);
-        recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, mapped);
-        if (!mapped) {
-          poolEntry = undefined;
-          isTemporary = true;
-        }
+      if (sessionId && poolEntry) {
+        poolEntry.sessionId = sessionId;
       }
 
       if (activeMcpTokens) {
@@ -445,13 +407,8 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
       const info = client.getConnectionInfo();
       sessionId = info.sessionId ?? undefined;
 
-      if (!isTemporary && sessionId && poolEntry) {
-        const mapped = store.set(sessionPoolKey, sessionId, commitToken);
-        recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, mapped);
-        if (!mapped) {
-          poolEntry = undefined;
-          isTemporary = true;
-        }
+      if (sessionId && poolEntry) {
+        poolEntry.sessionId = sessionId;
       }
 
       const model = resolveModel(poolKey, cliType, opts.model);
@@ -485,16 +442,8 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     if (postSendInfo.sessionId && postSendInfo.sessionId !== sessionId) {
       sessionId = postSendInfo.sessionId;
     }
-    if (!isTemporary && sessionId) {
-      durableCommittedAfterSend = store.commitSet(sessionPoolKey, sessionId, commitToken);
-      if (durableCommittedAfterSend) {
-        if (poolEntry) recordPoolSessionMapping(poolKey, poolEntry, sessionId, commitToken, true);
-        sessionRuntime.flushSessionMappings(commitToken);
-      } else if (poolEntry) {
-        await discardPoolEntry(poolKey, poolEntry);
-        poolEntry = undefined;
-        isTemporary = true;
-      }
+    if (sessionId && poolEntry) {
+      poolEntry.sessionId = sessionId;
     }
 
     if (!aborted) {
@@ -515,30 +464,21 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     detachStderr();
     if (poolEntry) poolEntry.busy = false;
 
-    if (promptHandedOff && !isTemporary && !durableCommittedAfterSend) {
+    if (promptHandedOff) {
       const finalSessionId = client.getConnectionInfo().sessionId ?? sessionId;
       if (finalSessionId) {
         sessionId = finalSessionId;
-        if (store.commitSet(sessionPoolKey, finalSessionId, commitToken)) {
-          if (poolEntry) recordPoolSessionMapping(poolKey, poolEntry, finalSessionId, commitToken, true);
-          sessionRuntime.flushSessionMappings(commitToken);
-        } else if (poolEntry) {
-          await discardPoolEntry(poolKey, poolEntry);
-          poolEntry = undefined;
-          isTemporary = true;
-        }
+        if (poolEntry) poolEntry.sessionId = finalSessionId;
       }
     }
 
-    if (!isTemporary && activeMcpTokens) {
+    if (activeMcpTokens) {
       if (poolEntry?.mcpSessionTokens === activeMcpTokens) {
         detachExecutorMcpForReuse(activeMcpTokens);
       } else {
         cleanupExecutorSessions(activeMcpTokens);
       }
     }
-
-    await cleanupTemporary();
   }
 
   return { responseText, thoughtText, toolCalls, status, error, sessionId };
@@ -659,48 +599,92 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
   return { responseText, thoughtText, toolCalls, status, error, sessionId };
 }
 
-/** connections.ts에서 호출 — 특정 풀 엔트리 종료 */
+/** connections.ts에서 호출 — 특정 풀 키의 모든 엔트리 종료 */
 export async function engineDisconnect(poolKey: string): Promise<boolean> {
-  const entry = clientPool.get(poolKey);
-  if (!entry) return false;
+  const entries = clientPool.get(poolKey);
+  if (!entries || entries.length === 0) return false;
   clientPool.delete(poolKey);
-  entry.busy = false;
-  if (entry.mcpSessionTokens) {
-    cleanupExecutorSessions(entry.mcpSessionTokens);
-    entry.mcpSessionTokens = undefined;
+  const promises: Promise<void>[] = [];
+  for (const entry of entries) {
+    entry.busy = false;
+    if (entry.mcpSessionTokens) {
+      cleanupExecutorSessions(entry.mcpSessionTokens);
+      entry.mcpSessionTokens = undefined;
+    }
+    promises.push(entry.client.disconnect().catch(() => { }));
+    entry.client.removeAllListeners();
   }
-  try { await entry.client.disconnect(); } catch { /* 강제 정리 경로 */ }
-  entry.client.removeAllListeners();
+  await Promise.allSettled(promises);
   return true;
 }
 
 /** connections.ts에서 호출 — 전체 풀 정리 */
 export async function engineDisconnectAll(): Promise<void> {
   const promises: Promise<void>[] = [];
-  for (const [, entry] of clientPool) {
-    if (entry.mcpSessionTokens) {
-      cleanupExecutorSessions(entry.mcpSessionTokens);
-      entry.mcpSessionTokens = undefined;
+  for (const [, entries] of clientPool) {
+    for (const entry of entries) {
+      if (entry.mcpSessionTokens) {
+        cleanupExecutorSessions(entry.mcpSessionTokens);
+        entry.mcpSessionTokens = undefined;
+      }
+      promises.push(entry.client.disconnect().catch(() => { }));
     }
-    promises.push(entry.client.disconnect().catch(() => { }));
   }
   await Promise.allSettled(promises);
   clientPool.clear();
   launchConfigs.clear();
 }
 
-/** connections.ts에서 호출 — busy가 아닌 클라이언트 정리 */
+/** connections.ts에서 호출 — busy가 아닌 클라이언트 정리 (풀 축소) */
 export function engineCleanIdle(): void {
-  for (const [key, entry] of clientPool) {
-    if (!entry.busy) {
+  for (const [key, entries] of clientPool) {
+    const active = entries.filter((entry) => {
+      if (entry.busy) return true;
       if (entry.mcpSessionTokens) {
         cleanupExecutorSessions(entry.mcpSessionTokens);
         entry.mcpSessionTokens = undefined;
       }
       entry.client.disconnect().catch(() => { });
+      entry.client.removeAllListeners();
+      return false;
+    });
+    if (active.length === 0) {
       clientPool.delete(key);
+    } else {
+      clientPool.set(key, active);
     }
   }
+}
+
+/** connections.ts에서 호출 — 살아 있는 풀 엔트리의 sessionId 조회 */
+export function engineGetPooledSessionId(poolKey: string): string | undefined {
+  const entries = clientPool.get(poolKey);
+  if (!entries || entries.length === 0) return undefined;
+  for (const entry of entries) {
+    if (!isClientAlive(entry.client)) {
+      if (entry.busy) continue;
+      continue;
+    }
+    if (entry.sessionId) return entry.sessionId;
+  }
+  // 살아 있는 entry가 없으면 dead non-busy entries 정리
+  const alive = entries.filter((entry) => {
+    if (entry.busy) return true;
+    if (!isClientAlive(entry.client)) {
+      if (entry.mcpSessionTokens) {
+        cleanupExecutorSessions(entry.mcpSessionTokens);
+      }
+      entry.client.removeAllListeners();
+      return false;
+    }
+    return true;
+  });
+  if (alive.length === 0) {
+    clientPool.delete(poolKey);
+  } else if (alive.length !== entries.length) {
+    clientPool.set(poolKey, alive);
+  }
+  return undefined;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -775,62 +759,64 @@ function setLaunchConfig(poolKey: string, model: string, effort: string | null |
   launchConfigs.set(poolKey, next);
 }
 
-function recordPoolSessionMapping(
-  poolKey: string,
-  entry: PooledClient,
-  sessionId: string,
-  ownerToken: SessionMappingCommitToken | undefined,
-  mapped: boolean,
-): void {
-  if (!mapped || !ownerToken) {
-    clientPool.delete(poolKey);
-    if (entry.mcpSessionTokens) {
-      cleanupExecutorSessions(entry.mcpSessionTokens);
-      entry.mcpSessionTokens = undefined;
-    }
-    delete entry.ownerToken;
-    delete entry.sessionId;
-    return;
-  }
-  entry.ownerToken = ownerToken;
-  entry.sessionId = sessionId;
-}
-
-function sameSessionMappingOwner(
-  left: SessionMappingCommitToken | undefined,
-  right: SessionMappingCommitToken | undefined,
-): boolean {
-  return !!left && !!right && left.port === right.port && left.sessionId === right.sessionId;
-}
-
-async function discardPoolEntry(poolKey: string, entry: PooledClient): Promise<void> {
-  const current = clientPool.get(poolKey);
-  if (current === entry) {
-    clientPool.delete(poolKey);
-  }
+async function discardSingleEntry(entry: PooledClient): Promise<void> {
   entry.busy = false;
   if (entry.mcpSessionTokens) {
     cleanupExecutorSessions(entry.mcpSessionTokens);
     entry.mcpSessionTokens = undefined;
   }
-  delete entry.ownerToken;
   delete entry.sessionId;
   try { await entry.client.disconnect(); } catch { /* 정리 실패 무시 */ }
   entry.client.removeAllListeners();
 }
 
-async function disconnectFromPool(poolKey: string, client: IUnifiedAgentClient): Promise<boolean> {
-  const entry = clientPool.get(poolKey);
-  if (!entry || entry.client !== client) return false;
-  clientPool.delete(poolKey);
+function removeEntryFromPool(poolKey: string, client: IUnifiedAgentClient): void {
+  const entries = clientPool.get(poolKey);
+  if (!entries) return;
+  const idx = entries.findIndex((e) => e.client === client);
+  if (idx < 0) return;
+  const entry = entries[idx]!;
+  if (entry.mcpSessionTokens) {
+    cleanupExecutorSessions(entry.mcpSessionTokens);
+    entry.mcpSessionTokens = undefined;
+  }
+  entries.splice(idx, 1);
+  if (entries.length === 0) clientPool.delete(poolKey);
+}
+
+async function removeAndDisconnectEntry(poolKey: string, client: IUnifiedAgentClient): Promise<void> {
+  const entries = clientPool.get(poolKey);
+  if (!entries) return;
+  const idx = entries.findIndex((e) => e.client === client);
+  if (idx < 0) return;
+  const entry = entries[idx]!;
   entry.busy = false;
   if (entry.mcpSessionTokens) {
     cleanupExecutorSessions(entry.mcpSessionTokens);
     entry.mcpSessionTokens = undefined;
   }
-  try { await entry.client.disconnect(); } catch { /* 정리 실패 무시 */ }
+  entries.splice(idx, 1);
+  if (entries.length === 0) clientPool.delete(poolKey);
+  try { await client.disconnect(); } catch { /* 정리 실패 무시 */ }
+  client.removeAllListeners();
+}
+
+function replaceEntryClient(
+  poolKey: string,
+  entry: PooledClient,
+  newClient: IUnifiedAgentClient,
+  builtinExternalMcpSignature: string,
+  internalExecutorMcpSignature: string,
+): void {
   entry.client.removeAllListeners();
-  return true;
+  entry.client = newClient;
+  entry.builtinExternalMcpSignature = builtinExternalMcpSignature;
+  entry.internalExecutorMcpSignature = internalExecutorMcpSignature;
+  delete entry.sessionId;
+  entry.mcpSessionTokens = undefined;
+  newClient.on("exit", () => {
+    removeEntryFromPool(poolKey, newClient);
+  });
 }
 
 function isClientAlive(client: IUnifiedAgentClient): boolean {
@@ -1078,7 +1064,33 @@ function buildBuiltinExternalMcpSignature(carrierId?: string): string {
   return createHash("sha256").update(ids.join("\0")).digest("hex");
 }
 
-function buildSessionPoolKey(poolKey: string, builtinExternalMcpSignature: string): string {
-  if (builtinExternalMcpSignature === EMPTY_BUILTIN_EXTERNAL_MCP_SIGNATURE) return poolKey;
-  return `${poolKey}#builtinExternalMcp=${builtinExternalMcpSignature}`;
+function buildInternalExecutorMcpSignature(carrierId?: string): string {
+  const entries: string[] = [];
+
+  for (const { name } of executorPortRuntime.getExecutorMcpRouterRuntimes()) {
+    const specs = executorPortRuntime.getExecutorMcpTools(name, carrierId);
+    if (specs.length === 0) continue;
+    for (const spec of specs) {
+      entries.push(`${name}\0${spec.id}\0${stableStringify(convertToolSchema(spec.parameters))}`);
+    }
+  }
+
+  entries.sort();
+  return createHash("sha256").update(entries.join("\0")).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
 }

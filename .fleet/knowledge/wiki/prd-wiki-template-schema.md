@@ -1,12 +1,13 @@
 ---
 id: "prd-wiki-template-schema"
 title: "PRD: Fleet Wiki 템플릿 기반 스키마 검증"
-tags: ["wiki", "schema", "template", "validation", "ingest", "fleet-wiki"]
+tags: []
 created: "2026-05-23T16:29:50.341Z"
-updated: "2026-05-23T16:29:50.341Z"
-version: 1
-rawSourceRef: "raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md"
-rawSourceRefs: "[{\"ref\":\"raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md\",\"title\":\"PRD: Fleet Wiki 템플릿 기반 스키마 검증\",\"hash\":\"3df9cf29\"}]"
+updated: "2026-05-25T04:28:05.901Z"
+version: 2
+rawSourceRef: "raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md"
+template_id: "prd"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md\",\"title\":\"PRD: Fleet Wiki 템플릿 기반 스키마 검증\",\"hash\":\"3df9cf29\"},{\"ref\":\"raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md\",\"title\":\"PRD: Fleet Wiki 템플릿 기반 스키마 검증\",\"hash\":\"4f7b8d8f\"}]"
 ---
 ## Overview
 
@@ -30,7 +31,7 @@ fleet-wiki의 단일 `wiki-schema.md` 기반 body section 가이드를 **문서 
 - `applyPatch()` 승인 경로에서도 동일한 `validateTemplateCompliance()` barrier를 적용하여 우회를 차단한다.
 - `wiki_orient`가 워크스페이스의 N개 템플릿을 AI에게 전달하여 문서 작성 전 템플릿 선택 근거를 제공한다.
 - `schema.ts`를 템플릿 Registry의 Single Source of Truth(SSoT)로 승격한다.
-- 부트스트랩 시 `template-prd.md`와 `template-guide.md`를 기본 제공한다.
+- 부트스트랩 시 `template-prd.md`를 기본 제공한다.
 - 사용자가 `template-` 프리픽스 컨벤션만 준수하면 자유롭게 템플릿을 확장할 수 있도록 한다.
 
 ## Non-Goals
@@ -47,9 +48,9 @@ fleet-wiki의 단일 `wiki-schema.md` 기반 body section 가이드를 **문서 
 - AI(Chronicle 등)로서, `wiki_ingest` 호출 시 `template_id`를 지정하면, 본문이 해당 템플릿의 필수 섹션을 모두 포함하는지 결정론적으로 검증받아, 누락 시 구체적인 에러 메시지를 받을 수 있다.
 - AI로서, 템플릿에 정의된 프론트매터 기본값을 참고하여 entry 작성 시 적절한 프론트매터를 구성할 수 있다. 이 기본값은 `wiki-schema.md`의 공통 정의를 override한다.
 - AI로서, `template_id`를 명시하지 않아도 기존 entry의 `templateId` 또는 filename prefix 기반으로 적절한 템플릿이 추론되어, 하위 호환성이 유지된다.
-- 사용자로서, `.fleet/knowledge/schema/` 폴더에 `template-adr.md` 같은 커스텀 템플릿을 추가하면, 별도 코드 수정 없이 `wiki_ingest`와 `wiki_orient`가 이를 자동으로 인식한다.
-- 사용자로서, `wiki_patch_edit`으로 body를 수정한 뒤 approve해도, 승인 시점에 템플릿 검증이 재실행되어 섹션 누락 entry가 승인되지 않는다.
-- 사용자로서, Fleet 초기화 시 `template-prd.md`와 `template-guide.md`가 자동 생성되어 즉시 활용할 수 있다.
+- 사용자로서, `.fleet/knowledge/schema/` 폴터에 `template-adr.md` 같은 커스텀 템플릿을 추가하면, 별도 코드 수정 없이 `wiki_ingest`와 `wiki_orient`가 이를 자동으로 인식한다.
+- 사용자로서, `wiki_patch_edit`으로 body를 수정한 뒤 approve필도, 승인 시점에 템플릿 검증이 재실행되어 섹션 누락 entry가 승인되지 않는다.
+- 사용자로서, Fleet 초기화 시 `template-prd.md`가 자동 생성되어 즉시 활용할 수 있다.
 
 ## Functional Requirements
 
@@ -70,9 +71,6 @@ flowchart TD
         B2 --> B3{template-prd.md\n존재?}
         B3 -->|NO| B4[DEFAULT_TEMPLATE_PRD\n기반 생성]
         B3 -->|YES| B5[skip]
-        B2 --> B6{template-guide.md\n존재?}
-        B6 -->|NO| B7[DEFAULT_TEMPLATE_GUIDE\n기반 생성]
-        B6 -->|YES| B8[skip]
     end
 
     subgraph ORIENT["② Orient — 템플릿 디스커버리"]
@@ -147,8 +145,8 @@ flowchart TD
 ### schema.ts — 템플릿 Registry SSoT 승격
 
 - `DEFAULT_WORKSPACE_WIKI_SCHEMA`에서 9개 body section 정의를 제거하고, 공통 규칙만 보존
-- `DEFAULT_TEMPLATE_PRD`, `DEFAULT_TEMPLATE_GUIDE` 상수를 신설하여 기본 템플릿 내용(프론트매터 기본값 + 섹션) 정의
-- `ensureWorkspaceSchema()` 확장: `template-prd.md`, `template-guide.md` 존재 여부 확인 후 부재 시 기본 생성
+- `DEFAULT_TEMPLATE_PRD` 상수를 신설하여 기본 템플릿 내용(프론트매터 기본값 + 섹션) 정의
+- `ensureWorkspaceSchema()` 확장: `template-prd.md` 존재 여부 확인 후 부재 시 기본 생성
 - 런타임 `scanTemplates()` 함수 신설: `.fleet/knowledge/schema/template-*.md` glob 스캔 → `{ id, frontmatter, sections }[]` 반환
 
 ### template_id resolver 순서
@@ -194,9 +192,8 @@ flowchart TD
 
 ### 부트스트랩 변경
 
-- `ensureWorkspaceSchema()`에서 `template-prd.md`, `template-guide.md` 존재 여부 확인 후 부재 시 기본 생성
-- `DEFAULT_TEMPLATE_PRD`: 프론트매터(lifecycle 등 PRD 기본값) + Overview, Problem, Goals, Non-Goals, User Stories, Functional Requirements, Acceptance Criteria, Open Questions, Related
-- `DEFAULT_TEMPLATE_GUIDE`: 프론트매터(guide 기본값) + Overview, Related
+- `ensureWorkspaceSchema()`에서 `template-prd.md` 존재 여부 확인 후 부재 시 기본 생성
+- `DEFAULT_TEMPLATE_PRD`: 프론트매터(template_id, description, title 규약 — `PRD: {feature summary}`) + COMPOSER GUIDANCE 주석(title format / no duplicate frontmatter in body / body start) + Overview, Problem, Goals, Non-Goals, User Stories, Functional Requirements, Acceptance Criteria, Open Questions, Related
 
 ### drydock 린트 확장
 
@@ -218,7 +215,7 @@ flowchart TD
 
 ## Acceptance Criteria
 
-- [ ] `template-prd.md`, `template-guide.md`가 부트스트랩 시 자동 생성된다.
+- [ ] `template-prd.md`가 부트스트랩 시 자동 생성된다.
 - [ ] 템플릿 파일은 프론트매터(선택)와 body 섹션(필수)을 모두 포함할 수 있다.
 - [ ] 템플릿 프론트매터는 `wiki-schema.md`의 공통 정의를 override하며, AI 가이드라인으로 제공된다.
 - [ ] 사용자가 `template-*.md` 파일을 추가하면 `wiki_orient`와 `wiki_ingest`가 자동 인식한다.

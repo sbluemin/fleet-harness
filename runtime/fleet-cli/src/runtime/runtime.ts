@@ -2,29 +2,30 @@ import os from "node:os";
 import path from "node:path";
 
 import { createCarrierRuntime, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import {
+	CARRIER_MCP_SERVER_NAME,
+	getExecutorMcpTools,
+	registerAgentToolDefaults,
+	WIKI_MCP_SERVER_NAME,
+} from "@dotobokuri/fleet-admiral";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
 import {
 	createMcpServer,
 	createMcpToolRegistry,
 	createMcpToolSnapshotStore,
+	createExecutorSessionManager,
+	type ExecutorSessionManager,
 	type McpServer,
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
 } from "@dotobokuri/fleet-mcp-server";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
-import { createDedicatedMcpSession, type DedicatedMcpSessionPort } from "../admiral/mcp.js";
-import {
-	CARRIER_MCP_SERVER_NAME,
-	getExecutorMcpTools,
-	registerAgentToolDefaults,
-	WIKI_MCP_SERVER_NAME,
-} from "../admiral/tools.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 
 export interface RuntimeServices {
 	readonly carrierRuntime: CarrierRuntime;
-	readonly dedicatedMcpSession: DedicatedMcpSessionPort;
+	readonly dedicatedMcpSession: ExecutorSessionManager;
 	readonly infraServices: InfraServices;
 	readonly mcpRegistry: readonly McpToolRegistry[];
 }
@@ -82,7 +83,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const dataDir = deps.dataDir ?? path.join(os.homedir(), ".fleet");
 	const infraServices = createInfraServices();
 	const mcpRuntimes = createRuntimeMcpServices();
-	const carrierRuntime = createCarrierRuntime({ config: {} });
+	const carrierRuntime = createCarrierRuntime();
 
 	infraServices.executorPortRuntime.register({
 		getCarrierExternalMcpServerIds(carrierId) {
@@ -121,7 +122,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			];
 		},
 	});
-	infraServices.sessionRuntime.initRuntime(dataDir);
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
 	const settings = infraServices.settings.create();
@@ -143,7 +143,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec);
 		}
 	}
-	const dedicatedMcpSession = createDedicatedMcpSession({
+	const dedicatedMcpSession = createExecutorSessionManager({
 		runtimes: [
 			{
 				name: mcpRuntimes.carriers.name,

@@ -10,18 +10,28 @@
  *  - 렌더러 등록 (커스텀 or 기본)
  */
 
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
+import { getLogAPI, type LogOptions } from "@dotobokuri/fleet-infra/log";
 import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,
   CARRIER_RGBS,
   CLI_DISPLAY_NAMES,
 } from "../constants.js";
-import { loadCarrierDisplayNames, resolveCarrierCliType as resolveCarrierCliTypeFromStore } from "../store/index.js";
+import {
+  loadCarrierDisplayNames,
+  resolveCarrierCliType as resolveCarrierCliTypeFromStore,
+  sanitizeCarrierDisplayName,
+} from "../store/index.js";
 
 import type {
   CarrierConfig,
   CarrierFrameworkState,
+  CarrierJobStatus,
+  CarrierJobStreamEvent,
+  CarrierJobStreamHandler,
+  ModelEffort,
+  TrackStatus,
 } from "./types.js";
 import {
   CARRIER_ID_FORMAT_REGEX,
@@ -42,6 +52,7 @@ export class CarrierRegistry {
     modes: new Map(),
     registeredOrder: [],
     statusUpdateCallbacks: [],
+    streamHandlers: new Set(),
     taskforceConfiguredCarriers: new Set(),
   };
 
@@ -53,6 +64,7 @@ export class CarrierRegistry {
     this.state.modes.clear();
     this.state.registeredOrder.splice(0);
     this.state.statusUpdateCallbacks.splice(0);
+    this.state.streamHandlers.clear();
     this.state.taskforceConfiguredCarriers.clear();
   }
 }
@@ -140,6 +152,33 @@ export function notifyStatusUpdate(registry: CarrierRegistry): void {
   const gs = registry.getState();
   for (const cb of gs.statusUpdateCallbacks) {
     try { cb(); } catch { /* 무시 */ }
+  }
+}
+
+/**
+ * Carrier job stream 이벤트 핸들러를 등록합니다.
+ */
+export function registerStreamHandler(registry: CarrierRegistry, handler: CarrierJobStreamHandler): () => void {
+  const gs = registry.getState();
+  gs.streamHandlers.add(handler);
+  return () => {
+    unregisterStreamHandler(registry, handler);
+  };
+}
+
+/**
+ * Carrier job stream 이벤트 핸들러를 해제합니다.
+ */
+export function unregisterStreamHandler(registry: CarrierRegistry, handler: CarrierJobStreamHandler): void {
+  registry.getState().streamHandlers.delete(handler);
+}
+
+/**
+ * 등록된 모든 Carrier job stream 이벤트 핸들러를 호출합니다.
+ */
+export function emitStreamEvent(registry: CarrierRegistry, event: CarrierJobStreamEvent): void {
+  for (const handler of registry.getState().streamHandlers) {
+    handler(event);
   }
 }
 
@@ -248,8 +287,9 @@ export function resolveCarrierDisplayName(registry: CarrierRegistry, carrierId: 
 /** carrierId 기준으로 persisted override를 제외한 source-default 표시 이름을 반환합니다. */
 export function getCarrierSourceDisplayName(registry: CarrierRegistry, carrierId: string): string {
   const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
-  return carrierConfig?.displayName
-    ?? CLI_DISPLAY_NAMES[carrierId]
+  return sanitizeCarrierDisplayName(carrierConfig?.displayName)
+    ?? sanitizeCarrierDisplayName(CLI_DISPLAY_NAMES[carrierId])
+    ?? sanitizeCarrierDisplayName(carrierId)
     ?? carrierId;
 }
 
@@ -271,4 +311,51 @@ export function clearRegisteredCarriers(registry: CarrierRegistry): void {
 
 export function resetCarrierRegistryForTests(registry: CarrierRegistry): void {
   clearRegisteredCarriers(registry);
+}
+
+export function resolveValidatedEffort(
+  cliType: CliType,
+  modelId: string | undefined,
+  effort: string | undefined,
+): string | undefined {
+  if (!modelId || !effort) return undefined;
+  const modelEffort = getModelEffort(cliType, modelId);
+  if (!modelEffort?.levels?.includes(effort)) return undefined;
+  return effort;
+}
+
+export function toCarrierJobStatus(status: TrackStatus): CarrierJobStatus {
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "error";
+}
+
+export function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "err";
+}
+
+export function logDebug(category: string, message: string, options?: unknown): void {
+  getLogAPI().debug(category, message, options as LogOptions | undefined);
+}
+
+function getModelEffort(
+  cliType: CliType,
+  modelId: string,
+): ModelEffort | null {
+  return normalizeEffort(getEffort(cliType, modelId));
+}
+
+function normalizeEffort(
+  effort: ModelEffort,
+): ModelEffort | null {
+  if (!effort.supported) return null;
+  const levels = effort.levels ?? [];
+  if (levels.length === 0) return null;
+  return {
+    supported: true,
+    levels,
+    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
+  };
 }

@@ -9,7 +9,7 @@ import type {
   CliTypeChangeSettledResult,
   ModelSelection,
   ResolvedCliSelection,
-} from "./overlay-types.js";
+} from "./types.js";
 
 interface StoredCliSelection {
   model?: string;

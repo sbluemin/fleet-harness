@@ -22,7 +22,6 @@
 <!-- Which areas does this touch? -->
 - [ ] `extensions/core`
 - [ ] `extensions/fleet` (Admiral / Bridge / Carriers)
-- [ ] `extensions/grand-fleet`
 - [ ] `extensions/boot`
 - [ ] `extensions/diagnostics`
 - [ ] `extensions/metaphor`

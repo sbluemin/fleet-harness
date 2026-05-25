@@ -9,7 +9,7 @@
       "onboarding",
       "current"
     ],
-    "updated": "2026-05-23T14:46:55.449Z"
+    "updated": "2026-05-24T07:56:24.926Z"
   },
   "guide-002-carrier-status": {
     "path": "wiki/guide-002-carrier-status.md",
@@ -35,6 +35,18 @@
       "current"
     ],
     "updated": "2026-05-23T17:37:53.758Z"
+  },
+  "prd-admiral-protocol-single-immutable-fleet-action": {
+    "path": "wiki/prd-admiral-protocol-single-immutable-fleet-action.md",
+    "title": "PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화",
+    "tags": [
+      "admiral",
+      "protocols",
+      "doctrine",
+      "decision-history",
+      "cognitive-debt"
+    ],
+    "updated": "2026-05-24T07:54:50.816Z"
   },
   "prd-agent-core-model-bypass": {
     "path": "wiki/prd-agent-core-model-bypass.md",
@@ -76,6 +88,22 @@
       "dependency-injection"
     ],
     "updated": "2026-05-23T07:54:10.365Z"
+  },
+  "prd-cli-argv-to-preset": {
+    "path": "wiki/prd-cli-argv-to-preset.md",
+    "title": "PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환",
+    "tags": [
+      "prd",
+      "cli",
+      "ux",
+      "preset",
+      "fleet-infra",
+      "argv",
+      "override-model",
+      "fleet-cli",
+      "decision-history"
+    ],
+    "updated": "2026-05-25T04:06:59.871Z"
   },
   "prd-core-dismantling-di-architecture": {
     "path": "wiki/prd-core-dismantling-di-architecture.md",
@@ -119,6 +147,37 @@
     ],
     "updated": "2026-05-23T12:39:41.016Z"
   },
+  "prd-fleet-cli-update-mechanism": {
+    "path": "wiki/prd-fleet-cli-update-mechanism.md",
+    "title": "PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘",
+    "tags": [
+      "fleet-cli",
+      "update",
+      "npm",
+      "mission-control",
+      "prd",
+      "decision-history",
+      "cognitive-debt"
+    ],
+    "updated": "2026-05-25T08:54:05.439Z",
+    "confidence": "high"
+  },
+  "prd-fleet-menu-t3-full": {
+    "path": "wiki/prd-fleet-menu-t3-full.md",
+    "title": "PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)",
+    "tags": [
+      "prd",
+      "fleet-menu",
+      "mission-control",
+      "panel-stack",
+      "auth",
+      "wiki-server",
+      "diagnostics",
+      "about",
+      "fleet-infra-log"
+    ],
+    "updated": "2026-05-25T05:40:19.839Z"
+  },
   "prd-infra-agent-executor-migration": {
     "path": "wiki/prd-infra-agent-executor-migration.md",
     "title": "PRD: Agent Executor 엔진의 인프라 계층 이전",
@@ -159,6 +218,19 @@
     ],
     "updated": "2026-05-23T14:44:24.303Z"
   },
+  "prd-tui-mission-control": {
+    "path": "wiki/prd-tui-mission-control.md",
+    "title": "PRD: 전용 CLI Mission Control 도입",
+    "tags": [
+      "fleet-tui",
+      "fleet-agent",
+      "dedicated-cli",
+      "mission-control",
+      "region-stack",
+      "ux"
+    ],
+    "updated": "2026-05-24T11:19:54.420Z"
+  },
   "prd-tui-mouse-scroll-hybrid-routing": {
     "path": "wiki/prd-tui-mouse-scroll-hybrid-routing.md",
     "title": "PRD: Fleet TUI Mouse Scroll Hybrid Routing",
@@ -175,14 +247,7 @@
   "prd-wiki-template-schema": {
     "path": "wiki/prd-wiki-template-schema.md",
     "title": "PRD: Fleet Wiki 템플릿 기반 스키마 검증",
-    "tags": [
-      "wiki",
-      "schema",
-      "template",
-      "validation",
-      "ingest",
-      "fleet-wiki"
-    ],
-    "updated": "2026-05-23T16:29:50.341Z"
+    "tags": [],
+    "updated": "2026-05-25T04:28:05.901Z"
   }
 }

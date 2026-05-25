@@ -58,6 +58,20 @@ export interface LogSettings {
   disabledCategories?: string[];
 }
 
+export interface ReadRecentLogFilesOptions {
+  readonly category?: string;
+  readonly limit: number;
+}
+
+export interface RecentLogFile {
+  readonly category: string;
+  readonly fileName: string;
+  readonly lines: readonly string[];
+  readonly mtimeMs: number;
+  readonly sizeBytes: number;
+  readonly truncated: boolean;
+}
+
 /** core-log가 globalThis를 통해 제공하는 API */
 export interface CoreLogAPI {
   /** 디버그 로그 기록 */

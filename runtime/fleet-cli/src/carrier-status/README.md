@@ -1,12 +1,12 @@
 # Carrier Status
 
-Carrier status overlay domain for Fleet Agent.
+Carrier Status panel domain for Fleet Agent.
 
-This domain imports public Fleet package facades directly and consumes Fleet PTY only through `@dotobokuri/fleet-tui/pty`.
+Carrier Status opens from `Alt+O` as a Mission Control-hosted panel in the upper interaction layer. The lower Fleet PTY keeps the Job Bar HUD and non-interactive sections.
 
-Infrastructure substitutions are intentionally narrow: legacy UI components become `fleetPty.custom`, Fleet TUI component/key/width helpers come from `@dotobokuri/fleet-tui/pty`.
+This domain imports public Fleet package facades directly and consumes Fleet TUI component/key/width helpers through `../controls/index.js`.
 
-Keybindings are registered via `@dotobokuri/fleet-tui/input`.
+Keybindings are registered via `../controls/index.js`.
 
 Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `c`, `N`, `C`, `R`.
 

@@ -1,4 +1,4 @@
-import { matchesKey } from "@dotobokuri/fleet-tui/pty";
+import { matchesKey } from "../controls/index.js";
 
 import type { RenameState } from "./overlay-types.js";
 import type { OverlayState } from "./types.js";

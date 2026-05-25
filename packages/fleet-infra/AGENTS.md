@@ -5,19 +5,20 @@
 ## Owns
 
 - `auth/` — CLI auth provider mapping, storage, migration, validation, and user-facing auth messages.
-- `agent/` — executor runtime engine, pool/session persistence, provider/model codec, `TrackStatus` SSoT, builtin external MCP catalog, and the two-method `ExecutorPort`.
+- `agent/` — executor runtime engine, in-memory client pool, provider/model codec, `TrackStatus` SSoT, builtin external MCP catalog, and the two-method `ExecutorPort`.
 - `data-dir/` — Fleet data directory resolution and legacy migration.
 - `log/` — runtime log store and log entry contracts.
+- `preset/` — host-agnostic user preset I/O for CLI startup defaults.
 - `settings/` — settings store, runtime singleton, and settings service.
 
 ## I/O Gateway Contract
 
 `fleet-infra` is the bottom layer of the DI graph and the only package in the carrier runtime chain that may own generic runtime I/O gateways.
 
-- The DI layer order is one-way: `fleet-cli` -> `fleet-admiralty` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
+- The DI layer order is one-way: `fleet-cli` -> `fleet-admiral` -> `fleet-carriers` -> `fleet-infra`.
 - `createInfraServices(deps)` is the public construction boundary for infrastructure services.
-- Filesystem, auth storage, data-dir resolution, runtime log persistence, settings storage, process-safe executor/session infrastructure, and generic MCP routing belong here.
-- Higher layers must receive infra capabilities as explicit dependencies; `fleet-infra` must not look up host, carrier, admiral, or admiralty services.
+- Filesystem, auth storage, data-dir resolution, runtime log persistence, settings storage, in-process executor pool infrastructure, and generic MCP routing belong here.
+- Higher layers must receive infra capabilities as explicit dependencies; `fleet-infra` must not look up host, carrier, or admiral services.
 - Keep Fleet-domain policy out of this package. It provides gateways and durable runtime primitives, not carrier persona, admiral policy, or host UI behavior.
 
 ## Public Surface
@@ -29,6 +30,7 @@ Consumers use the package root or documented subdomain barrels only:
 - `@dotobokuri/fleet-infra/auth`
 - `@dotobokuri/fleet-infra/data-dir`
 - `@dotobokuri/fleet-infra/log`
+- `@dotobokuri/fleet-infra/preset`
 - `@dotobokuri/fleet-infra/settings`
 
 Do not add individual deep source-file exports without an explicit public API decision.

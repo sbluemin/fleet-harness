@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FLEET_HELP_TEXT, parseFleetCliOptions } from "../src/cli-args.js";
+import { buildFleetHelpText, parseFleetCliOptions } from "../src/cli-args.js";
 
 describe("fleet CLI args", () => {
   it("enables cursor sync by default", () => {
@@ -9,58 +9,6 @@ describe("fleet CLI args", () => {
 
   it("parses the cursor sync disable flag", () => {
     expect(parseFleetCliOptions(["--disable-cursor-sync"], {}).cursorSync).toBe(false);
-  });
-
-  it("parses --model with a separate value", () => {
-    expect(parseFleetCliOptions(["--model", "opus"], {}).model).toBe("opus");
-  });
-
-  it("parses --model=value", () => {
-    expect(parseFleetCliOptions(["--model=sonnet"], {}).model).toBe("sonnet");
-  });
-
-  it("consumes model values that look like native flags", () => {
-    const options = parseFleetCliOptions(["--model", "-n"], {});
-
-    expect(options.model).toBe("-n");
-    expect(options.native).toBe(false);
-  });
-
-  it("consumes model values that look like help flags", () => {
-    const options = parseFleetCliOptions(["--model", "--help"], {});
-
-    expect(options.model).toBe("--help");
-    expect(options.help).toBe(false);
-  });
-
-  it("consumes model values that look like CLI selectors", () => {
-    const options = parseFleetCliOptions(["--model", "--cli=claude"], {});
-
-    expect(options.model).toBe("--cli=claude");
-    expect(options.cliId).toBeUndefined();
-  });
-
-  it("parses separate and equals model values equivalently", () => {
-    expect(parseFleetCliOptions(["--model=X"], {}).model).toBe("X");
-    expect(parseFleetCliOptions(["--model", "X"], {}).model).toBe("X");
-  });
-
-  it("consumes CLI selector values that look like native flags", () => {
-    const options = parseFleetCliOptions(["--cli", "-n"], {});
-
-    expect(options.cliId).toBe("-n");
-    expect(options.native).toBe(false);
-  });
-
-  it("parses CLI selector forms", () => {
-    expect(parseFleetCliOptions(["--cli", "claude"], {}).cliId).toBe("claude");
-    expect(parseFleetCliOptions(["-c", "codex"], {}).cliId).toBe("codex");
-    expect(parseFleetCliOptions(["--cli=claude-kimi"], {}).cliId).toBe("claude-kimi");
-    expect(parseFleetCliOptions(["-c=claude-zai"], {}).cliId).toBe("claude-zai");
-  });
-
-  it("leaves model undefined when omitted", () => {
-    expect(parseFleetCliOptions([], {}).model).toBeUndefined();
   });
 
   it("parses the cursor sync environment off-switch without mutating process.env", () => {
@@ -73,9 +21,21 @@ describe("fleet CLI args", () => {
   });
 
   it("documents the cursor sync disable flag in help text", () => {
-    expect(FLEET_HELP_TEXT).toContain("Fleet Agent Options:");
-    expect(FLEET_HELP_TEXT).toContain("Underlying CLI Options (forwarded to selected CLI):");
-    expect(FLEET_HELP_TEXT).toContain("--disable-cursor-sync");
-    expect(FLEET_HELP_TEXT).toContain("--model <name>");
+    const helpText = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "0.0.0-test", channel: "stable" } });
+
+    expect(helpText).toContain("Fleet Harness");
+    expect(helpText).toContain("USAGE");
+    expect(helpText).toContain("COMMANDS");
+    expect(helpText).toContain("OPTIONS");
+    expect(helpText).toContain("auth");
+    expect(helpText).toContain("wiki");
+    expect(helpText).toContain("-h, --help");
+    expect(helpText).toContain("--disable-cursor-sync");
+    expect(helpText).not.toContain("\x1b[");
+    expect(helpText).not.toContain("fleet —");
+  });
+
+  it("rejects unknown flags", () => {
+    expect(() => parseFleetCliOptions(["--unknown"], {})).toThrow("Unknown fleet option: --unknown");
   });
 });

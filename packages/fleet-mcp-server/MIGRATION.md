@@ -14,8 +14,8 @@ All generic MCP types, registry functions, and server lifecycle methods must now
 
 **Before:**
 ```typescript
-import { registerAgentTool } from "./admiral/agent/tools.js";
-import { AgentToolSpec } from "./admiral/agent/types.js";
+import { registerAgentTool } from "./legacy/agent/tools.js";
+import { AgentToolSpec } from "./legacy/agent/types.js";
 ```
 
 **After:**

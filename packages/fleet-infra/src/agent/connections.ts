@@ -6,11 +6,11 @@
  * imports → types/interfaces → constants → functions 순서 준수.
  */
 
-import { sessionRuntime } from "./internal/session-runtime.js";
 import {
   engineDisconnect,
   engineDisconnectAll,
   engineCleanIdle,
+  engineGetPooledSessionId,
 } from "./internal/executor-engine.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -19,7 +19,7 @@ import {
 
 /** poolKey의 ACP sessionId 조회 */
 export function getSessionIdFor(poolKey: string): string | undefined {
-  return sessionRuntime.getCarrierSessionStore().get(poolKey);
+  return engineGetPooledSessionId(poolKey);
 }
 
 /** poolKey의 executor 풀 클라이언트 종료 */

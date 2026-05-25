@@ -1,11 +1,24 @@
-<div align="center">
-    <h1>Fleet</h1>
-    <img src=".github/logo.png" alt="fleet" width="640" />
-    <h3><em>One Fleet. All LLMs.</em></h3>
-</div>
+<p align="center">
+  <br/>
+  ⚓ ─────────── ⚓
+  <br/><br/>
+  <img src=".github/logo.png" width="520" alt="fleet" />
+  <br/><br/>
+  <strong>F L E E T</strong>
+  <br/>
+  <em>One Fleet. All LLMs.</em>
+  <br/><br/>
+  ⚓ ─────────── ⚓
+  <br/>
+</p>
 
 <p align="center">
-    <strong>A multi-LLM orchestration kit that operates Claude Code, Codex CLI, and Gemini CLI through a single unified interface — using native CLIs directly, no API wrapping or proxying.</strong>
+    <strong>A multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface — using native CLIs directly, no API wrapping or proxying.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-cli"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=blue" alt="npm"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
 <p align="center">
@@ -21,7 +34,7 @@
 
 ## Motivation
 
-Every frontier CLI — Claude Code, Codex, Gemini, OpenCode — ships with an agent loop tuned specifically for its underlying model. Claude's loop is built for deep reasoning and tool orchestration. Codex optimizes for rapid code generation and iterative execution. Gemini leverages enormous context windows for research and synthesis. OpenCode unifies multiple models under one adaptive loop. These are not thin API wrappers; they are full-fledged, model-native agent runtimes refined by their creators.
+Every frontier CLI — Claude Code, Codex, OpenCode, Cursor — ships with an agent loop tuned specifically for its underlying model. Claude's loop is built for deep reasoning and tool orchestration. Codex optimizes for rapid code generation and iterative execution. OpenCode unifies multiple models under one adaptive loop. Cursor routes between multiple frontier models within a single agent loop. These are not thin API wrappers; they are full-fledged, model-native agent runtimes refined by their creators.
 
 The problem is that they all live in separate terminals. To combine their strengths on a single task, you must copy context between windows, manually sync state, and context-switch across different interaction patterns. The friction of multi-tool coordination often forces you to settle for a single CLI, leaving the unique capabilities of the others on the table.
 
@@ -57,14 +70,16 @@ Eight built-in Carriers, each with a distinct operational role:
 
 ### Multi-LLM Orchestration
 
-Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP or App Server), giving you the full native capabilities of each tool within a unified command structure.
+Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP), giving you the full native capabilities of each tool within a unified command structure.
 
 | CLI | Provider | Protocol | Key Capabilities |
 |-----|----------|----------|------------------|
 | **Claude Code** | Anthropic | ACP | Deep reasoning, architecture judgment |
-| **Codex CLI** | OpenAI | App Server | Fast code generation, multi-wave execution |
-| **Gemini CLI** | Google | ACP | Large-context analysis, research |
+| **Claude Code (Z.AI GLM)** | Z.AI | ACP | Claude bridge to GLM-5 series |
+| **Claude Code (Moonshot Kimi)** | Moonshot | ACP | Claude bridge to Kimi K2 series |
+| **Codex CLI** | OpenAI | ACP | Fast code generation, multi-wave execution |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
+| **Cursor Agent** | Cursor | ACP | Multi-model routing across frontier models |
 
 Every carrier runs in parallel under a single command structure, with unified progress tracking so you always know the status of the entire fleet. Fine-tune each carrier independently — select models, set reasoning levels, and adjust parameters without leaving the fleet interface. Fleet Action provides the autonomous operating framework for routing, delegation, review, and documentation.
 

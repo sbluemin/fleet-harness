@@ -1,74 +1,134 @@
+import {
+  ANSI_BOLD,
+  ANSI_DIM,
+  ANSI_RESET,
+  ASCII_FLEET_BANNER,
+  FLEET_ACCENT,
+  FLEET_COMMAND,
+  FLEET_OPTION,
+  GRADIENT_COLORS,
+} from "./cli-style.js";
+import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
+
 export interface FleetCliOptions {
-  readonly cliId?: string;
   readonly cursorSync: boolean;
+  readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
-  readonly model?: string;
-  readonly native: boolean;
-  readonly replaceSystemPrompt: boolean;
-  readonly enableMetaphor: boolean;
 }
 
-export const FLEET_HELP_TEXT = `fleet — Fleet Harness
+export interface FleetCliArgOverrides {
+  readonly cursorSync: boolean;
+}
 
-Usage:
-  fleet [options]
-  fleet auth login [claude-zai|claude-kimi]
-  fleet auth list
-  fleet auth logout [claude-zai|claude-kimi]
-  fleet wiki [--port <port>] [--stop] [--help]
+export interface BuildFleetHelpTextOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly isTTY?: boolean;
+  readonly release?: FleetCliRelease;
+}
 
-Fleet Agent Options:
-  -h, --help          Show this help message and exit.
-  -c, --cli <id>      Select the dedicated CLI to embed (claude | claude-zai | claude-kimi | codex).
-                      Default: claude. Env override: FLEET_DEDICATED_CLI.
-  -n, --native        Run the dedicated CLI in native mode: do not inject
-                      the Fleet system prompt and hide the Fleet Action
-                      Protocol label from the Fleet PTY (divider preserved).
-  --disable-cursor-sync
-                      Disable outer-terminal cursor projection for terminals
-                      with problematic IME cursor anchoring.
-  -rsp, --replace-system-prompt  Replace the Claude system prompt instead of appending it.
-  -em, --enable-metaphor         Enable the fleet-world tone overlay in the injected system prompt.
+type MutableFleetCliArgOverrides = {
+  -readonly [Key in keyof FleetCliArgOverrides]: FleetCliArgOverrides[Key];
+};
 
-Underlying CLI Options (forwarded to selected CLI):
-  --model <name>      Forward the model name to the selected dedicated CLI.
-`;
+const HELP_BANNER_INDENT = "  ";
+const HELP_HINT = "Run 'fleet --help' for usage.";
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
-  let cliId: string | undefined;
   let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
   let help = false;
-  let model: string | undefined;
-  let native = false;
-  let replaceSystemPrompt = false;
-  let enableMetaphor = false;
+  const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       help = true;
-    } else if (arg === "--cli" || arg === "-c") {
-      cliId = argv[index + 1];
-      index += 1;
-    } else if (arg.startsWith("--cli=")) {
-      cliId = arg.slice("--cli=".length);
-    } else if (arg.startsWith("-c=")) {
-      cliId = arg.slice("-c=".length);
-    } else if (arg === "--model") {
-      model = argv[index + 1];
-      index += 1;
-    } else if (arg.startsWith("--model=")) {
-      model = arg.slice("--model=".length);
-    } else if (arg === "--native" || arg === "-n") {
-      native = true;
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
-    } else if (arg === "--replace-system-prompt" || arg === "-rsp") {
-      replaceSystemPrompt = true;
-    } else if (arg === "--enable-metaphor" || arg === "-em") {
-      enableMetaphor = true;
+      argvOverrides.cursorSync = true;
+    } else {
+      throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cliId, cursorSync, help, model, native, replaceSystemPrompt, enableMetaphor };
+  return { cursorSync, argvOverrides, help };
+}
+
+export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
+  const release = options.release ?? readFleetCliRelease();
+  const colorEnabled = resolveColorEnabled(options);
+  const subtitle = `Fleet Harness · ${release.version} · ${release.channel}`;
+  const lines = [
+    ...ASCII_FLEET_BANNER.map(
+      (line, index) => `${HELP_BANNER_INDENT}${paintLine(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+    ),
+    dim(subtitle, colorEnabled),
+    "",
+    section("USAGE", colorEnabled),
+    `  ${command("fleet", colorEnabled)} ${dim("[options]", colorEnabled)}`,
+    `  ${command("fleet auth", colorEnabled)} ${dim("<login|list|logout> [claude-zai|claude-kimi]", colorEnabled)}`,
+    `  ${command("fleet wiki", colorEnabled)} ${dim("[--port <port>] [--stop] [--help]", colorEnabled)}`,
+    `  ${command("fleet update", colorEnabled)}`,
+    "",
+    section("COMMANDS", colorEnabled),
+    `  ${command("auth", colorEnabled)}                ${dim("Manage Fleet authentication.", colorEnabled)}`,
+    `  ${command("wiki", colorEnabled)}                ${dim("Run Fleet Wiki.", colorEnabled)}`,
+    `  ${command("update", colorEnabled)}              ${dim("Update Fleet CLI packages.", colorEnabled)}`,
+    "",
+    section("OPTIONS", colorEnabled),
+    `  ${option("-h, --help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
+    `  ${option("--disable-cursor-sync", colorEnabled)}`,
+    `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
+    `                      ${dim("with problematic IME cursor anchoring.", colorEnabled)}`,
+    "",
+  ];
+  const text = `${lines.join("\n")}`;
+  return colorEnabled ? text : stripAnsi(text);
+}
+
+function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
+  return {
+    cursorSync: false,
+  };
+}
+
+function formatUnknownFleetOption(option: string): string {
+  return `Unknown fleet option: ${option}\n${HELP_HINT}`;
+}
+
+function resolveColorEnabled(options: BuildFleetHelpTextOptions): boolean {
+  const env = options.env ?? process.env;
+  const isTTY = options.isTTY ?? process.stdout.isTTY;
+  return isTTY === true && env.NO_COLOR === undefined;
+}
+
+function section(text: string, colorEnabled: boolean): string {
+  return paint(`${ANSI_BOLD}${FLEET_ACCENT}`, text, colorEnabled);
+}
+
+function command(text: string, colorEnabled: boolean): string {
+  return paint(FLEET_COMMAND, text, colorEnabled);
+}
+
+function option(text: string, colorEnabled: boolean): string {
+  return paint(FLEET_OPTION, text, colorEnabled);
+}
+
+function dim(text: string, colorEnabled: boolean): string {
+  return paint(ANSI_DIM, text, colorEnabled);
+}
+
+function paintLine(color: string, text: string, colorEnabled: boolean): string {
+  return paint(color, text, colorEnabled);
+}
+
+function paint(color: string, text: string, colorEnabled: boolean): string {
+  if (!colorEnabled) {
+    return text;
+  }
+  return `${color}${text}${ANSI_RESET}`;
+}
+
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, "");
 }
 
 function parseCursorSyncEnv(value: string | undefined): boolean {

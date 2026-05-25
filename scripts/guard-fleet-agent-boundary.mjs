@@ -35,14 +35,14 @@ const allowedDocPhrases = [
 
 const findings = [];
 const forbiddenFleetTuiDeepImport =
-  /from\s+["']@dotobokuri\/fleet-tui\/(?!(?:core|layout|primitives|input|pty)["'])(?:src|dist|[^"']+)["']/;
+  /from\s+["']@dotobokuri\/fleet-tui\/(?!(?:core|components|layout|primitives)["'])(?:src|dist|[^"']+)["']/;
 const forbiddenFleetTuiSrcDistImport = /from\s+["']@dotobokuri\/fleet-tui\/(?:src|dist)(?:\/|["'])/;
 const oldInputPathReference =
-  /(?:src\/input|from\s+["'][^"']*(?:\.\/input|\.\.\/input|input\/modes)[^"']*["'])/;
+  /(?:src\/input|from\s+["'][^"']*input\/modes[^"']*["'])/;
 const oldLocalTuiImport = /from\s+["'][^"']*\.{1,2}\/tui\/[^"']*["']/;
 const oldSrcTuiReference = /src\/tui/;
 const fleetTuiImport = /from\s+["'](@dotobokuri\/fleet-tui(?:\/[^"']+)?)["']/;
-const allowedDomainFleetTuiImport = /^@dotobokuri\/fleet-tui\/(?:input|pty)$/;
+const allowedDomainFleetTuiImport = /^@dotobokuri\/fleet-tui\/(?:core|components|layout|primitives)$/;
 
 for (const file of listFiles(scanRoots)) {
   const text = readFileSync(file, "utf8");
@@ -77,7 +77,7 @@ for (const file of listFiles(scanRoots)) {
     lines.forEach((line, index) => {
       const match = fleetTuiImport.exec(line);
       if (match && !allowedDomainFleetTuiImport.test(match[1])) {
-        findings.push(`${path.relative(root, file)}:${index + 1}: controls/sections/carrier-status may import only @dotobokuri/fleet-tui/input or @dotobokuri/fleet-tui/pty: ${line}`);
+        findings.push(`${path.relative(root, file)}:${index + 1}: controls/sections/carrier-status may import only primitive @dotobokuri/fleet-tui subpaths: ${line}`);
       }
     });
   }

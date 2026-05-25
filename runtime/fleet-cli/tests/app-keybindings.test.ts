@@ -1,8 +1,9 @@
-import { createKeybindingRegistry, type KeybindingDefinition, type RoutedMouseInput } from "@dotobokuri/fleet-tui/input";
-import { createCsiUInputNormalizer } from "@dotobokuri/fleet-tui/pty";
+import { createKeybindingRegistry, type KeybindingDefinition, type RoutedMouseInput } from "../src/controls/index.js";
+import { createCsiUInputNormalizer } from "../src/controls/index.js";
 import { describe, expect, it } from "vitest";
 
-import { createDedicatedMouseRouter, createFleetHostInputKeybindingConfig } from "../src/app.js";
+import { createFleetHostInputKeybindingConfig } from "../src/app.js";
+import { createDedicatedMouseRouter } from "../src/controls/index.js";
 
 const TEST_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "host-exit", key: "\x11" },

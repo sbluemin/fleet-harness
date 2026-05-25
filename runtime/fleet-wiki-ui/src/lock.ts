@@ -12,6 +12,11 @@ export interface FleetWikiLock {
   token: string;
 }
 
+export interface ProcessLiveness {
+  alive: boolean;
+  restricted: boolean;
+}
+
 export class LockExistsError extends Error {
   constructor(public readonly lockPath: string) {
     super(`lock already exists: ${lockPath}`);
@@ -90,11 +95,21 @@ export async function removeLockFile(filePath: string): Promise<void> {
 }
 
 export function isProcessAlive(pid: number): boolean {
+  return isProcessAliveWithStatus(pid).alive;
+}
+
+export function isProcessAliveWithStatus(pid: number): ProcessLiveness {
   try {
     process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+    return { alive: true, restricted: false };
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ESRCH") {
+      return { alive: false, restricted: false };
+    }
+    if (isNodeError(error) && error.code === "EPERM") {
+      return { alive: true, restricted: true };
+    }
+    throw error;
   }
 }
 

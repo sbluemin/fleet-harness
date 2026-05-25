@@ -3,8 +3,10 @@ import { createRequire } from "node:module";
 
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
-import { FLEET_HELP_TEXT, parseFleetCliOptions } from "./cli-args.js";
+import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
+import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
+const HELP_HINT = "Run 'fleet --help' for usage.";
 const require = createRequire(import.meta.url);
 const argv = process.argv.slice(2);
 
@@ -42,22 +44,41 @@ if (argv[0] === "wiki") {
   process.exit(status);
 }
 
-const options = parseFleetCliOptions(argv, process.env);
+if (argv[0] === "update") {
+  const status = await dispatchUpdateCommand(argv, {
+    stdout: process.stdout,
+    stderr: process.stderr,
+  });
+  process.exit(status);
+}
+
+if (argv[0] && !argv[0].startsWith("-")) {
+  process.stderr.write(`Unknown fleet command: ${argv[0]}\n${HELP_HINT}\n`);
+  process.exit(1);
+}
+
+const options = parseFleetCliOptionsOrExit(argv);
 
 if (options.help) {
-  process.stdout.write(FLEET_HELP_TEXT);
+  process.stdout.write(buildFleetHelpText());
   process.exit(0);
 }
 
 runApp({
-  cliId: options.cliId,
+  argvOptions: options,
   cursorSync: options.cursorSync,
-  model: options.model,
-  native: options.native,
-  replaceSystemPrompt: options.replaceSystemPrompt,
-  enableMetaphor: options.enableMetaphor,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`${message}\n`);
   process.exit(1);
 });
+
+function parseFleetCliOptionsOrExit(argv: readonly string[]): ReturnType<typeof parseFleetCliOptions> {
+  try {
+    return parseFleetCliOptions(argv, process.env);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exit(1);
+  }
+}
