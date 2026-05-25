@@ -143,7 +143,7 @@ describe("executeWithPool in-memory reuse", () => {
     expect(fakeClients[0]!.messages).toEqual(["first", "second"]);
   });
 
-  it("busy entry는 임시 client를 사용하고 정리하며 기존 entry를 보존한다", async () => {
+  it("busy entry가 있으면 풀을 확장하고, 이후 두 entry 모두 재사���한다", async () => {
     let releaseFirst!: () => void;
     buildMock.mockImplementation(() => {
       const client = new FakeClient();
@@ -164,13 +164,45 @@ describe("executeWithPool in-memory reuse", () => {
 
     expect(second.status).toBe("done");
     expect(buildMock).toHaveBeenCalledTimes(2);
-    expect(fakeClients[1]!.connectCalls[0]!.sessionId).toBeUndefined();
     expect(fakeClients[1]!.messages).toEqual(["second"]);
-    expect(fakeClients[1]!.disconnectCount).toBe(1);
+    // 확장된 두 번째 entry는 disconnect 되지 않고 풀에 유지된다
+    expect(fakeClients[1]!.disconnectCount).toBe(0);
 
+    // 이후 호출은 기존 entry 중 하나를 재사용한��
     await executeWithPool(buildOptions("third"));
     expect(buildMock).toHaveBeenCalledTimes(2);
     expect(fakeClients[0]!.messages).toEqual(["first", "third"]);
+  });
+
+  it("동시에 busy인 풀을 확장한 뒤, 모두 idle이면 cleanIdle로 축소한다", async () => {
+    const { cleanIdle } = await import("../../src/agent/index.js");
+    let releaseFirst!: () => void;
+    buildMock.mockImplementation(() => {
+      const client = new FakeClient();
+      fakeClients.push(client);
+      if (fakeClients.length === 1) {
+        client.sendGate = new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return Promise.resolve(client);
+    });
+
+    const first = executeWithPool(buildOptions("first"));
+    await vi.waitFor(() => expect(fakeClients[0]?.messages).toEqual(["first"]));
+    await executeWithPool(buildOptions("second"));
+    releaseFirst();
+    await first;
+
+    expect(buildMock).toHaveBeenCalledTimes(2);
+    // 둘 다 idle 상태 — cleanIdle 호출 시 모두 정리
+    cleanIdle();
+    expect(fakeClients[0]!.disconnectCount).toBe(1);
+    expect(fakeClients[1]!.disconnectCount).toBe(1);
+
+    // 풀이 비었으므로 새 client 생성
+    await executeWithPool(buildOptions("fourth"));
+    expect(buildMock).toHaveBeenCalledTimes(3);
   });
 
   it("system prompt drift는 live entry를 폐기하고 새 client를 만든다", async () => {
