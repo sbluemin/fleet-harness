@@ -130,7 +130,7 @@ function makeAgentCliInjectionContext(): AgentCliInjectionContext {
         bearerToken: "wiki-token",
       },
     ],
-    replaceSystemPrompt: false,
+    replaceSystemPrompt: true,
     systemPromptFile: "/tmp/fleet-system-prompt.md",
   };
 }

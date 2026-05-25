@@ -1,18 +1,14 @@
 export interface FleetCliOptions {
-  readonly cliId?: string;
   readonly cursorSync: boolean;
   readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
-  readonly model?: string;
   readonly native: boolean;
   readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
 
 export interface FleetCliArgOverrides {
-  readonly cliId: boolean;
   readonly cursorSync: boolean;
-  readonly model: boolean;
   readonly native: boolean;
   readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
@@ -39,51 +35,27 @@ Commands:
 
 Fleet Agent Options:
   -h, --help          Show this help message and exit.
-  -c, --cli <id>      Select the agent CLI to embed (claude | claude-zai | claude-kimi | codex).
-                      Default: claude. Env override: FLEET_AGENT_CLI.
   -n, --native        Run the agent CLI in native mode: do not inject
                       the Fleet system prompt and hide the Fleet Action
                       Protocol label from the Fleet PTY (divider preserved).
   --disable-cursor-sync
                       Disable outer-terminal cursor projection for terminals
                       with problematic IME cursor anchoring.
-  -rsp, --replace-system-prompt  Replace the Claude system prompt instead of appending it.
+  -rsp, --replace-system-prompt  Toggle system prompt to append mode (default: replace).
   -em, --enable-metaphor         Enable the fleet-world tone overlay in the injected system prompt.
-
-Underlying CLI Options (forwarded to selected CLI):
-  --model <name>      Forward the model name to the selected agent CLI.
 `;
 
 export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
-  let cliId: string | undefined;
   let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
   let help = false;
-  let model: string | undefined;
   let native = false;
-  let replaceSystemPrompt = false;
+  let replaceSystemPrompt = true;
   let enableMetaphor = false;
   const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       help = true;
-    } else if (arg === "--cli" || arg === "-c") {
-      cliId = argv[index + 1];
-      argvOverrides.cliId = true;
-      index += 1;
-    } else if (arg.startsWith("--cli=")) {
-      cliId = arg.slice("--cli=".length);
-      argvOverrides.cliId = true;
-    } else if (arg.startsWith("-c=")) {
-      cliId = arg.slice("-c=".length);
-      argvOverrides.cliId = true;
-    } else if (arg === "--model") {
-      model = argv[index + 1];
-      argvOverrides.model = true;
-      index += 1;
-    } else if (arg.startsWith("--model=")) {
-      model = arg.slice("--model=".length);
-      argvOverrides.model = true;
     } else if (arg === "--native" || arg === "-n") {
       native = true;
       argvOverrides.native = true;
@@ -91,7 +63,7 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       cursorSync = false;
       argvOverrides.cursorSync = true;
     } else if (arg === "--replace-system-prompt" || arg === "-rsp") {
-      replaceSystemPrompt = true;
+      replaceSystemPrompt = false;
       argvOverrides.replaceSystemPrompt = true;
     } else if (arg === "--enable-metaphor" || arg === "-em") {
       enableMetaphor = true;
@@ -100,14 +72,12 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cliId, cursorSync, argvOverrides, help, model, native, replaceSystemPrompt, enableMetaphor };
+  return { cursorSync, argvOverrides, help, native, replaceSystemPrompt, enableMetaphor };
 }
 
 function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
   return {
-    cliId: false,
     cursorSync: false,
-    model: false,
     native: false,
     replaceSystemPrompt: false,
     enableMetaphor: false,

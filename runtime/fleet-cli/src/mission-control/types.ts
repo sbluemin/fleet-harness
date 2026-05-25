@@ -5,7 +5,7 @@ import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 import type { PtyView } from "../controls/terminal-view.js";
-import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../session-options/types.js";
+import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "./options/types.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
 import type { WikiProcessController } from "./menu/wiki-panel.js";
 
@@ -83,7 +83,6 @@ export interface CreateMissionControlControllerOptions {
 }
 
 export interface MissionControlOptionDrawerState {
-  readonly editingModel?: string;
   readonly saveError?: string;
   readonly selectedRow: number;
   readonly resolved: ResolvedSessionOptions;

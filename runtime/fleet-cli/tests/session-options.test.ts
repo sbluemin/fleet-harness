@@ -2,22 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import { parseAgentCliId } from "../src/agent-cli/registry.js";
 import { parseFleetCliOptions } from "../src/cli-args.js";
-import { resolveSessionOptions } from "../src/session-options/resolver.js";
-import { createSessionOptionsRuntime } from "../src/session-options/runtime.js";
-import type { SessionOptions } from "../src/session-options/types.js";
+import { resolveSessionOptions } from "../src/mission-control/options/resolver.js";
+import { createSessionOptionsRuntime } from "../src/mission-control/options/runtime.js";
+import type { SessionOptions } from "../src/mission-control/options/types.js";
 
 const DEFAULTS: SessionOptions = {
   cliId: "claude",
   cursorSync: true,
   enableMetaphor: false,
   native: false,
-  replaceSystemPrompt: false,
+  replaceSystemPrompt: true,
 };
 
 describe("session options resolver", () => {
   it("resolves argv over env over preset over defaults", () => {
     const resolved = resolveSessionOptions({
-      argv: parseFleetCliOptions(["-c", "codex", "--model", "arg-model", "-n", "-rsp", "-em", "--disable-cursor-sync"], {}),
+      argv: parseFleetCliOptions(["-n", "-rsp", "-em", "--disable-cursor-sync"], {}),
+      cliIdOverride: "codex",
       defaults: DEFAULTS,
       env: {
         FLEET_AGENT_CLI: "claude-kimi",
@@ -46,15 +47,15 @@ describe("session options resolver", () => {
       cliId: "codex",
       cursorSync: false,
       enableMetaphor: true,
-      model: "arg-model",
+      model: "preset-model",
       native: true,
-      replaceSystemPrompt: true,
+      replaceSystemPrompt: false,
     });
     expect(resolved.sources).toEqual({
       cliId: "arg",
       cursorSync: "arg",
       enableMetaphor: "arg",
-      model: "arg",
+      model: "preset",
       native: "arg",
       replaceSystemPrompt: "arg",
     });
@@ -96,7 +97,7 @@ describe("session options resolver", () => {
     });
   });
 
-  it("ignores invalid preset default CLI IDs while keeping argv and env strict", () => {
+  it("ignores invalid preset default CLI IDs", () => {
     const presetResolved = resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
@@ -107,13 +108,9 @@ describe("session options resolver", () => {
 
     expect(presetResolved.values.cliId).toBe("claude");
     expect(presetResolved.sources.cliId).toBe("default");
-    expect(() => resolveSessionOptions({
-      argv: parseFleetCliOptions(["-c", "evil"], {}),
-      defaults: DEFAULTS,
-      env: {},
-      parseCliId: parseAgentCliId,
-      preset: { version: 1, byCli: {} },
-    })).toThrow('Unsupported agent CLI "evil"');
+  });
+
+  it("rejects invalid env CLI IDs", () => {
     expect(() => resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
@@ -142,7 +139,7 @@ describe("session options runtime", () => {
   it("saves only when S promotion path calls saveDraft", async () => {
     const calls: unknown[] = [];
     const runtime = createSessionOptionsRuntime({
-      argv: parseFleetCliOptions(["--model", "argv-model"], {}),
+      argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: {},
       parseCliId: parseAgentCliId,
@@ -175,7 +172,7 @@ describe("session options runtime", () => {
         enableMetaphor: false,
         model: "draft-model",
         native: false,
-        replaceSystemPrompt: false,
+        replaceSystemPrompt: true,
       },
     }]);
   });
@@ -267,9 +264,9 @@ describe("session options runtime", () => {
     });
   });
 
-  it("R reset clears transient argv override view", () => {
+  it("R reset clears transient override view", () => {
     const runtime = createSessionOptionsRuntime({
-      argv: parseFleetCliOptions(["-c", "codex", "--model", "argv-model"], {}),
+      argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: {},
       parseCliId: parseAgentCliId,
@@ -283,7 +280,8 @@ describe("session options runtime", () => {
       },
     });
 
-    expect(runtime.getResolved().values).toMatchObject({ cliId: "codex", model: "argv-model" });
+    runtime.setModel("session-model");
+    expect(runtime.getResolved().values).toMatchObject({ model: "session-model" });
     runtime.resetOverrides();
     expect(runtime.getResolved().values).toMatchObject({ cliId: "claude", model: "preset-model" });
   });

@@ -35,7 +35,7 @@ export async function injectAgentCliProfile(
   const context: AgentCliInjectionContext = {
     cliId: profile.id,
     mcpServers: buildAgentCliMcpServerConfigs(endpoint.servers, tokens),
-    replaceSystemPrompt: options.replaceSystemPrompt ?? false,
+    replaceSystemPrompt: options.replaceSystemPrompt ?? true,
     systemPromptFile,
   };
   const injectedArgs = buildAgentCliArgs(capability.builderId, context);

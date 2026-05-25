@@ -43,8 +43,7 @@ const ACTION_KEYS = {
   vimDown: "j",
   vimUp: "k",
 };
-const OPTION_DRAWER_ROW_COUNT = 5;
-const MODEL_ROW_INDEX = 3;
+const OPTION_DRAWER_ROW_COUNT = 4;
 const FLEET_MENU_ITEMS = ["Authentication", "Wiki Server", "Diagnostics", "About"] as const;
 
 /**
@@ -94,7 +93,7 @@ export function createMissionControlController(options: CreateMissionControlCont
             cliOptions,
             lastExit,
             loadedCounts: options.loadedCounts,
-            optionDrawer: options.sessionOptions ? { editingModel, saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
+            optionDrawer: options.sessionOptions ? { saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
             panelLines: activePanel.component.render(width),
             release: options.release,
             selectedCliId,
@@ -108,9 +107,10 @@ export function createMissionControlController(options: CreateMissionControlCont
       }
       return normalizeRenderedRows(renderMissionControl(width, {
         cliOptions,
+        editingModel,
         lastExit,
         loadedCounts: options.loadedCounts,
-        optionDrawer: options.sessionOptions ? { editingModel, saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
+        optionDrawer: options.sessionOptions ? { saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
         overlay,
         release: options.release,
         selectedCliId,
@@ -236,6 +236,11 @@ export function createMissionControlController(options: CreateMissionControlCont
       return;
     }
 
+    if (editingModel !== undefined) {
+      handleModelEditInput(data);
+      return;
+    }
+
     if (overlay !== undefined) {
       handleOverlayInput(data);
       return;
@@ -249,6 +254,12 @@ export function createMissionControlController(options: CreateMissionControlCont
 
     if (data === "m") {
       openFleetMenu();
+      options.onRenderRequest();
+      return;
+    }
+
+    if (matchesKey(data, "right") && options.sessionOptions !== undefined) {
+      editingModel = options.sessionOptions.getDraft().model ?? "";
       options.onRenderRequest();
       return;
     }
@@ -279,13 +290,7 @@ export function createMissionControlController(options: CreateMissionControlCont
   }
 
   function handleOverlayInput(data: string): void {
-    if (overlay === "options" && editingModel !== undefined) {
-      handleModelEditInput(data);
-      return;
-    }
-
     if (matchesKey(data, "escape")) {
-      editingModel = undefined;
       overlay = undefined;
       options.onRenderRequest();
       return;
@@ -306,12 +311,6 @@ export function createMissionControlController(options: CreateMissionControlCont
     if (data === " ") {
       updateDrawerRowBySpace();
       saveError = undefined;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (isEnterInput(data) && drawerRow === MODEL_ROW_INDEX) {
-      editingModel = options.sessionOptions?.getDraft().model ?? "";
       options.onRenderRequest();
       return;
     }
@@ -381,7 +380,7 @@ export function createMissionControlController(options: CreateMissionControlCont
       case 2:
         options.sessionOptions?.toggleEnableMetaphor();
         return;
-      case 4:
+      case 3:
         options.sessionOptions?.toggleCursorSync();
         return;
       default:

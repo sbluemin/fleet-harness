@@ -79,10 +79,8 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
       argv: {
         ...options.argv,
         argvOverrides: {
-          cliId: false,
           cursorSync: false,
           enableMetaphor: false,
-          model: false,
           native: false,
           replaceSystemPrompt: false,
         },
@@ -96,14 +94,8 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
 
   function resolveForCli(cliId: SessionOptions["cliId"]): ResolvedSessionOptions {
     return resolveSessionOptions({
-      argv: {
-        ...options.argv,
-        argvOverrides: {
-          ...options.argv.argvOverrides,
-          cliId: true,
-        },
-        cliId,
-      },
+      argv: options.argv,
+      cliIdOverride: cliId,
       defaults: {
         ...options.defaults,
         cliId,

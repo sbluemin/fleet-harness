@@ -6,12 +6,11 @@ const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
 export function resolveSessionOptions(input: SessionOptionsResolverInput): ResolvedSessionOptions {
-  const argvCliId = input.argv.argvOverrides.cliId ? input.parseCliId(input.argv.cliId) : undefined;
   const envCliId = input.parseCliId(input.env.FLEET_AGENT_CLI);
   const presetDefaultCliId = parsePresetCliId(input.parseCliId, input.preset.defaultCliId);
-  const cliId = argvCliId ?? envCliId ?? presetDefaultCliId ?? input.defaults.cliId;
+  const cliId = input.cliIdOverride ?? envCliId ?? presetDefaultCliId ?? input.defaults.cliId;
   const cliIdSource = sourceOf(
-    argvCliId !== undefined,
+    input.cliIdOverride !== undefined,
     envCliId !== undefined,
     presetDefaultCliId !== undefined,
   );
@@ -21,7 +20,7 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
     values: {
       cliId,
       model: chooseString({
-        arg: input.argv.argvOverrides.model ? input.argv.model : undefined,
+        arg: undefined,
         env: undefined,
         preset: cliPreset.model,
         fallback: input.defaults.model,
@@ -53,7 +52,7 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
     },
     sources: {
       cliId: cliIdSource,
-      model: chooseString({ arg: input.argv.argvOverrides.model ? input.argv.model : undefined, env: undefined, preset: cliPreset.model, fallback: input.defaults.model }).source,
+      model: chooseString({ arg: undefined, env: undefined, preset: cliPreset.model, fallback: input.defaults.model }).source,
       native: chooseBoolean({ arg: input.argv.argvOverrides.native ? input.argv.native : undefined, env: parseBooleanEnv(input.env.FLEET_NATIVE), preset: cliPreset.native, fallback: input.defaults.native }).source,
       replaceSystemPrompt: chooseBoolean({ arg: input.argv.argvOverrides.replaceSystemPrompt ? input.argv.replaceSystemPrompt : undefined, env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT), preset: cliPreset.replaceSystemPrompt, fallback: input.defaults.replaceSystemPrompt }).source,
       enableMetaphor: chooseBoolean({ arg: input.argv.argvOverrides.enableMetaphor ? input.argv.enableMetaphor : undefined, env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR), preset: cliPreset.enableMetaphor, fallback: input.defaults.enableMetaphor }).source,

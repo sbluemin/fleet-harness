@@ -1,7 +1,7 @@
 import type { FleetCliPreset, FleetPresetData, PresetService, PresetSourceLabel } from "@dotobokuri/fleet-infra/preset";
 
-import type { AgentCliId } from "../agent-cli/types.js";
-import type { FleetCliOptions } from "../cli-args.js";
+import type { AgentCliId } from "../../agent-cli/types.js";
+import type { FleetCliOptions } from "../../cli-args.js";
 
 export type SessionOptionSource = PresetSourceLabel | "session";
 
@@ -21,6 +21,7 @@ export interface ResolvedSessionOptions {
 
 export interface SessionOptionsResolverInput {
   readonly argv: FleetCliOptions;
+  readonly cliIdOverride?: AgentCliId;
   readonly env: NodeJS.ProcessEnv;
   readonly preset: FleetPresetData;
   readonly defaults: SessionOptions;

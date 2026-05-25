@@ -8,6 +8,7 @@ import { buildFleetBanner, centerText, FLEET_ACCENT } from "./welcome.js";
 
 interface MissionControlRenderOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
+  readonly editingModel?: string;
   readonly fleetMenu?: MissionControlFleetMenuState;
   readonly lastExit: PtyExitEvent | undefined;
   readonly loadedCounts: MissionControlCounts | undefined;
@@ -100,6 +101,15 @@ export function renderMissionControl(width: number, options: MissionControlRende
       selected: entry.id === options.selectedCliId,
     }));
   }
+
+  if (options.editingModel !== undefined) {
+    lines.push("");
+    lines.push(centerText(`Model: ${formatModelEditValue(options.editingModel)}`, innerWidth));
+    lines.push("");
+    lines.push(centerText(STYLE.dim("Enter confirm  Esc cancel"), innerWidth));
+    return lines;
+  }
+
   lines.push("");
 
   const countsLine = renderCountsLine(options.loadedCounts, options.release, innerWidth);
@@ -171,8 +181,8 @@ function renderFooterHint(state: MissionControlStateKind, innerWidth: number): s
   const hint = state === "launching"
     ? "Starting... please wait"
     : state === "ended" || state === "failed"
-      ? "R relaunch  C choose CLI  O options  M menu  X exit Fleet"
-      : "↑↓/j/k select  Enter start  O options  M menu  X exit Fleet";
+      ? "R relaunch  C choose CLI  → model  O options  M menu  X exit Fleet"
+      : "↑↓/j/k select  Enter start  → model  O options  M menu  X exit Fleet";
   return centerText(STYLE.dim(hint), innerWidth);
 }
 
@@ -184,8 +194,7 @@ function renderOptionsDrawer(innerWidth: number, drawer: MissionControlOptionDra
     formatOptionDrawerRow(drawer.selectedRow === 0, "Mode", values.native ? "Native" : "Fleet prompt", sources.native, "[Space]"),
     formatOptionDrawerRow(drawer.selectedRow === 1, "System prompt", values.native ? "Native" : values.replaceSystemPrompt ? "Replace" : "Append", systemPromptSource, "[Space]"),
     formatOptionDrawerRow(drawer.selectedRow === 2, "Metaphor", values.enableMetaphor ? "Enabled" : "Off", sources.enableMetaphor, "[Space]"),
-    formatOptionDrawerRow(drawer.selectedRow === 3, "Model", drawer.editingModel !== undefined ? formatModelEditValue(drawer.editingModel) : values.model ?? "Default", sources.model, "[Enter]"),
-    formatOptionDrawerRow(drawer.selectedRow === 4, "Cursor sync", values.cursorSync ? "Enabled" : "Off", sources.cursorSync, "[Space]"),
+    formatOptionDrawerRow(drawer.selectedRow === 3, "Cursor sync", values.cursorSync ? "Enabled" : "Off", sources.cursorSync, "[Space]"),
   ];
   return [
     centerText(STYLE.accent("Options"), innerWidth),
@@ -193,7 +202,7 @@ function renderOptionsDrawer(innerWidth: number, drawer: MissionControlOptionDra
     ...rows.map((row) => centerText(row, innerWidth)),
     ...(drawer.saveError ? ["", centerText(STYLE.error(`Save failed: ${drawer.saveError}`), innerWidth)] : []),
     "",
-    centerText(STYLE.dim("↑↓ select  Space toggle  Enter edit  S save  R reset  Esc close"), innerWidth),
+    centerText(STYLE.dim("↑↓ select  Space toggle  S save  R reset  Esc close"), innerWidth),
   ];
 }
 

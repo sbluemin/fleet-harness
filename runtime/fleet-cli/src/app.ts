@@ -37,15 +37,13 @@ import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-con
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createDefaultFleetPtyComponent } from "./sections/default-sections.js";
 import { FleetStatusSection } from "./sections/fleet-status-section.js";
-import { createSessionOptionsRuntime } from "./session-options/runtime.js";
-import type { ResolvedSessionOptions, SessionOptions } from "./session-options/types.js";
+import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
+import type { ResolvedSessionOptions, SessionOptions } from "./mission-control/options/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
 
 export interface RunAppOptions {
-  readonly cliId?: string;
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
-  readonly model?: string;
   readonly native?: boolean;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
@@ -55,10 +53,8 @@ type FleetHostKeybindingHandlers = Record<string, () => void>;
 type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "cliOptions" | "defaultCliId" | "resolveProfile">;
 
 export interface CreateMissionControlProfileConfigOptions {
-  readonly cliId?: string;
   readonly env: NodeJS.ProcessEnv;
   readonly invocationCwd: string;
-  readonly model?: string;
 }
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
@@ -81,9 +77,9 @@ export function createMissionControlProfileConfig(
 ): MissionControlProfileConfig {
   return {
     cliOptions: getAgentCliMetadata(),
-    defaultCliId: resolveAgentCliId(options.env, { cliId: options.cliId }),
+    defaultCliId: resolveAgentCliId(options.env),
     resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
-      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: launchOptions?.model ?? options.model }),
+      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: launchOptions?.model }),
   };
 }
 
@@ -98,7 +94,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       cursorSync: true,
       enableMetaphor: false,
       native: false,
-      replaceSystemPrompt: false,
+      replaceSystemPrompt: true,
     },
     env: process.env,
     parseCliId: parseAgentCliId,
@@ -118,14 +114,13 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   }).build;
   const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({
-    cliId,
     env: process.env,
     invocationCwd,
-    model: initialSessionOptions.model,
   });
   const optionChips = createMissionControlOptionChips(sessionOptionsRuntime.getResolved());
   const missionControl = createMissionControlController({
     ...missionControlProfileConfig,
+    defaultCliId: cliId,
     cliOptions: missionControlProfileConfig.cliOptions.map((entry) => ({
       ...entry,
       optionChips: entry.id === cliId ? optionChips : [],
@@ -337,7 +332,7 @@ function createMissionControlOptionChips(resolved: ResolvedSessionOptions): stri
     values.native ? `Native${star(sources.native)}` : `Fleet prompt${star(sources.native)}`,
     values.replaceSystemPrompt ? `Replace${star(sources.replaceSystemPrompt)}` : `Append${star(sources.replaceSystemPrompt)}`,
     values.enableMetaphor ? `Metaphor${star(sources.enableMetaphor)}` : undefined,
-    values.model ? `${values.model}${star(sources.model)}` : undefined,
+    values.model ? values.model : undefined,
     values.cursorSync ? undefined : `Cursor off${star(sources.cursorSync)}`,
   ].filter((chip): chip is string => chip !== undefined);
 }
@@ -345,20 +340,16 @@ function createMissionControlOptionChips(resolved: ResolvedSessionOptions): stri
 function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
   return {
     argvOverrides: {
-      cliId: options.cliId !== undefined,
       cursorSync: options.cursorSync === false,
       enableMetaphor: options.enableMetaphor === true,
-      model: options.model !== undefined,
       native: options.native === true,
       replaceSystemPrompt: options.replaceSystemPrompt === true,
     },
-    cliId: options.cliId,
     cursorSync: options.cursorSync !== false,
     enableMetaphor: options.enableMetaphor ?? false,
     help: false,
-    model: options.model,
     native: options.native ?? false,
-    replaceSystemPrompt: options.replaceSystemPrompt ?? false,
+    replaceSystemPrompt: options.replaceSystemPrompt ?? true,
   };
 }
 

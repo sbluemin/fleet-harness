@@ -18,7 +18,7 @@ import type { AgentCliId, AgentCliProfile } from "../src/agent-cli/types.js";
 import { createWikiProcessController } from "../src/mission-control/menu/wiki-panel.js";
 import type { WikiProcessController, WikiServerStatus } from "../src/mission-control/menu/wiki-panel.js";
 import type { FleetCliRelease, MissionControlCounts } from "../src/mission-control/types.js";
-import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../src/session-options/types.js";
+import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../src/mission-control/options/types.js";
 
 interface FakeHost extends PtyHost {
   readonly writes: string[];
@@ -65,7 +65,7 @@ describe("Mission Control controller", () => {
     expect(controller.getState().kind).toBe("idle");
     expect(renderPlain(controller)).toContain("Choose an Agent CLI");
     expect(renderPlain(controller)).toContain("▸ 1. Claude");
-    expect(renderPlain(controller)).toContain("↑↓/j/k select  Enter start  O options  M menu  X exit Fleet");
+    expect(renderPlain(controller)).toContain("↑↓/j/k select  Enter start  → model  O options  M menu  X exit Fleet");
     expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;254;188;56m");
     expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;255;149;0m");
   });
@@ -136,7 +136,7 @@ describe("Mission Control controller", () => {
 
     expect(plainOutput).toContain("Replace*");
     expect(plainOutput).toContain("opus-4-7");
-    expect(plainOutput).not.toMatch(/-rsp|-em|--model|--disable-cursor-sync|--native|--cli|-c|-n/);
+    expect(plainOutput).not.toMatch(/-rsp|-em|--disable-cursor-sync|--native|-n/);
   });
 
   it("opens options drawer and fleet menu from welcome without launching", () => {
@@ -150,7 +150,7 @@ describe("Mission Control controller", () => {
     expect(optionsOutput).toContain("████ █    ████ ████ ███");
     expect(optionsOutput).toContain("Options");
     expect(optionsOutput).toContain("preset");
-    expect(optionsOutput).toContain("↑↓ select  Space toggle  Enter edit  S save  R reset  Esc close");
+    expect(optionsOutput).toContain("↑↓ select  Space toggle  S save  R reset  Esc close");
     controller.ptyHost.write("\x1b");
     controller.ptyHost.write("m");
     expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("Fleet Menu");
@@ -221,16 +221,15 @@ describe("Mission Control controller", () => {
       { label: "Mode", value: "Fleet prompt", source: "default" },
       { label: "System prompt", value: "Replace", source: "preset" },
       { label: "Metaphor", value: "Off", source: "default" },
-      { label: "Model", value: "preset-model", source: "preset" },
       { label: "Cursor sync", value: "Enabled", source: "env" },
     ].map((expected) => {
       const row = lines.find((line) => line.includes(expected.label) && line.includes(expected.value) && line.includes(expected.source));
       expect(row).toBeDefined();
       return row ?? "";
     });
-    const labelStarts = rows.map((row, index) => row.indexOf(["Mode", "System prompt", "Metaphor", "Model", "Cursor sync"][index] ?? ""));
-    const valueStarts = rows.map((row, index) => row.indexOf(["Fleet prompt", "Replace", "Off", "preset-model", "Enabled"][index] ?? ""));
-    const sourceStarts = rows.map((row, index) => row.lastIndexOf(["default", "preset", "default", "preset", "env"][index] ?? ""));
+    const labelStarts = rows.map((row, index) => row.indexOf(["Mode", "System prompt", "Metaphor", "Cursor sync"][index] ?? ""));
+    const valueStarts = rows.map((row, index) => row.indexOf(["Fleet prompt", "Replace", "Off", "Enabled"][index] ?? ""));
+    const sourceStarts = rows.map((row, index) => row.lastIndexOf(["default", "preset", "default", "env"][index] ?? ""));
 
     expect(new Set(labelStarts).size).toBe(1);
     expect(new Set(valueStarts).size).toBe(1);
@@ -238,7 +237,6 @@ describe("Mission Control controller", () => {
     expect(rows[0]?.slice((labelStarts[0] ?? 0) - 2, labelStarts[0])).toBe("  ");
     expect(rows[2]?.slice((labelStarts[2] ?? 0) - 2, labelStarts[2])).toBe("▸ ");
     expect(rows[2]).toContain("[Space]");
-    expect(rows[3]).not.toContain("[Enter]");
   });
 
   it("routes S save and R reset in the options drawer", () => {
@@ -290,53 +288,41 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toMatch(/Metaphor\s+Enabled\s+session\s+\[Space\]/);
 
     controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write(" ");
     expect(renderPlain(controller)).toMatch(/Cursor sync\s+Off\s+session\s+\[Space\]/);
     expect(sessionOptions.calls).toEqual(["toggleNative", "toggleEnableMetaphor", "toggleCursorSync"]);
   });
 
-  it("edits model with Enter text input and blocks navigation while editing", () => {
+  it("edits model with → arrow key and blocks navigation while editing", () => {
     const sessionOptions = createFakeSessionOptionsRuntime();
     const controller = createTestController({ sessionOptions });
 
-    controller.ptyHost.write("o");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toMatch(/Model\s+preset-model\|\s+preset\s+\[Enter\]/);
+    controller.ptyHost.write("\x1b[C");
+    expect(renderPlain(controller)).toContain("Model: preset-model|");
 
     controller.ptyHost.write("\x7f");
     controller.ptyHost.write("-x");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toMatch(/Model\s+preset-mode-xj\|\s+preset\s+\[Enter\]/);
+    expect(renderPlain(controller)).toContain("Model: preset-mode-xj|");
 
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toMatch(/Model\s+preset-mode-xj\s+session\s+\[Enter\]/);
-    expect(renderPlain(controller)).not.toContain("▸ Cursor sync");
+    expect(renderPlain(controller)).not.toContain("Model:");
+    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
     expect(sessionOptions.calls).toEqual(["setModel:preset-mode-xj"]);
   });
 
-  it("cancels model edit with Esc before closing the drawer", () => {
+  it("cancels model edit with Esc without affecting the CLI selection", () => {
     const sessionOptions = createFakeSessionOptionsRuntime();
     const controller = createTestController({ sessionOptions });
 
-    controller.ptyHost.write("o");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\x1b[C");
     controller.ptyHost.write("draft");
     controller.ptyHost.write("\x1b");
 
-    expect(renderPlain(controller)).toContain("Options");
-    expect(renderPlain(controller)).toMatch(/Model\s+preset-model\s+preset\s+\[Enter\]/);
+    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
+    expect(renderPlain(controller)).not.toContain("Model:");
     expect(sessionOptions.calls).toEqual([]);
-
-    controller.ptyHost.write("\x1b");
-    expect(renderPlain(controller)).not.toContain("Options");
   });
 
   it("moves fleet menu selection with arrows and vim keys without launching", async () => {
@@ -898,16 +884,14 @@ describe("Mission Control controller", () => {
 
   it("builds app-level profile config with registry parity", async () => {
     const config = createMissionControlProfileConfig({
-      cliId: "claude-kimi",
       env: {
         CODEX_BIN: process.execPath,
         FLEET_AGENT_CLI: "codex",
       },
       invocationCwd: "/tmp/mission-control",
-      model: "gpt-test",
     });
 
-    expect(config.defaultCliId).toBe("claude-kimi");
+    expect(config.defaultCliId).toBe("codex");
     expect(config.cliOptions).toEqual(expect.arrayContaining([
       { id: "claude-zai", label: "Claude Z.AI" },
       { id: "claude-kimi", label: "Claude Kimi" },
@@ -918,7 +902,7 @@ describe("Mission Control controller", () => {
     expect(profile.id).toBe("codex");
     expect(profile.bin).toBe(process.execPath);
     expect(profile.cwd).toBe("/tmp/mission-control");
-    expect(profile.args).toEqual(["--model", "gpt-test"]);
+    expect(profile.args).toEqual([]);
 
     const launchProfile = await config.resolveProfile("codex", {
       cliId: "codex",
