@@ -35,7 +35,6 @@ Only the permanent vertical two-pane layout is allowed:
 - **Render coordination**: `src/controls/render.ts` owns host render scheduling, cursor policy sync, viewport adapter, and mouse-to-PTY routing helpers.
 - **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
 - **Controls barrel**: `src/controls/index.ts` is package-local only; it is not a public workspace surface.
-- **Host control policy**: `src/controls/modes.ts` may remain as a tiny mode toggle compatibility source.
 
 ## Input & Mode Logic
 

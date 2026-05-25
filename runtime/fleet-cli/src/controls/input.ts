@@ -1,4 +1,4 @@
-import type { PtyHost } from "./types.js";
+import type { FleetInputMode, PtyHost } from "./types.js";
 
 type InputToken = string;
 export type InputAction = string;
@@ -279,6 +279,10 @@ export function createInputKeybindingConfig(deps: CreateInputKeybindingConfigDep
 
 export function assertInputContract(keybindings: InputKeybindingConfig): void {
   assertNoDuplicateKeybindings(keybindings);
+}
+
+export function toggleFleetInputMode(mode: FleetInputMode): FleetInputMode {
+  return mode === "MIRROR" ? "DEDICATED" : "MIRROR";
 }
 
 export function createProgrammaticInput(ptyHost: PtyHost, profile: ProgrammaticInputProfile): ProgrammaticInput {

@@ -9,6 +9,5 @@ Host-specific controls for the Fleet CLI runtime.
 - `panels.ts` owns lower-pane sections, overlays, theme/key helpers, desired-height adapters, and the panel API.
 - `render.ts` owns render scheduling, cursor policy sync, viewport adaptation, and mouse-to-PTY routing.
 - `index.ts` is a package-local barrel for `runtime/fleet-cli` consumers.
-- `modes.ts` remains a tiny MIRROR/DEDICATED mode toggle source.
 
 Do not introduce MVC directories, state-machine frameworks, ports layers, service locators, DI containers, or new workspace packages for this controls layer.
