@@ -41,6 +41,7 @@ import { FleetStatusSection } from "./sections/fleet-status-section.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
 import type { ResolvedSessionOptions, SessionOptions } from "./mission-control/options/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
+import { checkForUpdate } from "./update/check.js";
 
 export interface RunAppOptions {
   readonly cursorSync?: boolean;
@@ -124,6 +125,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       scheduleRender();
     },
   });
+  const release = readFleetCliRelease();
   const missionControl = createMissionControlController({
     ...missionControlProfileConfig,
     defaultCliId: cliId,
@@ -151,10 +153,17 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     invocationCwd,
     presetService: runtime.infraServices.presetService,
     readRecentLogFiles,
-    release: readFleetCliRelease(),
+    release,
     sessionOptions: sessionOptionsRuntime,
     wikiController,
   });
+  checkForUpdate(release)
+    .then((latestVersion) => {
+      if (latestVersion !== undefined) {
+        missionControl.setRelease({ ...release, latestVersion });
+      }
+    })
+    .catch(() => {});
   const jobBarState = createJobBarState({
     carrierRuntime: runtime.carrierRuntime,
     getKeyboardProtocol: () => missionControl.ptyHost.getKeyboardProtocol?.() ?? STANDARD_KEYBOARD_PROTOCOL_STATE,

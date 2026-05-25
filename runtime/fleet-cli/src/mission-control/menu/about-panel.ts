@@ -5,7 +5,7 @@ import { renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stac
 
 export interface AboutPanelDeps {
   readonly counts?: MissionControlCounts;
-  readonly release?: FleetCliRelease;
+  readonly getRelease: () => FleetCliRelease | undefined;
   readonly stack: PanelStack;
 }
 
@@ -14,7 +14,7 @@ export function createAboutPanel(deps: AboutPanelDeps): MenuPanel {
     id: "fleet-menu:about",
     title: "About",
     render({ width }): readonly string[] {
-      const release = deps.release;
+      const release = deps.getRelease();
       const counts = deps.counts;
       return [
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),

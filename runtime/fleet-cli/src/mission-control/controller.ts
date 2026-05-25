@@ -24,6 +24,10 @@ interface ActivePty {
   readonly view: PtyView;
 }
 
+type MissionControlControllerWithReleaseSetter = MissionControlController & {
+  readonly setRelease: (release: NonNullable<CreateMissionControlControllerOptions["release"]>) => void;
+};
+
 const EMPTY_KEYBOARD_PROTOCOL_STATE: KeyboardProtocolState = {
   childRequested: false,
   effectiveMode: "passthrough",
@@ -51,7 +55,7 @@ const FLEET_MENU_ITEMS = ["Authentication", "Wiki Server", "Diagnostics", "About
  * Input is routed to the active panel first when one is open; otherwise it falls through to the
  * child PTY or Mission Control control UI.
  */
-export function createMissionControlController(options: CreateMissionControlControllerOptions): MissionControlController {
+export function createMissionControlController(options: CreateMissionControlControllerOptions): MissionControlControllerWithReleaseSetter {
   const cliOptions = options.cliOptions.length > 0 ? [...options.cliOptions] : [{ id: options.defaultCliId, label: options.defaultCliId }];
   let selectedCliId = cliOptions.some((entry) => entry.id === options.defaultCliId) ? options.defaultCliId : cliOptions[0]?.id ?? options.defaultCliId;
   let state: MissionControlStateKind = "idle";
@@ -65,6 +69,7 @@ export function createMissionControlController(options: CreateMissionControlCont
   let cols = 80;
   let rows = 0;
   let suppressNextExit = false;
+  let release = options.release;
 
   const component: MissionControlPtyView = {
     get maxRows() {
@@ -95,7 +100,7 @@ export function createMissionControlController(options: CreateMissionControlCont
             loadedCounts: options.loadedCounts,
             optionDrawer: options.sessionOptions ? { saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
             panelLines: activePanel.component.render(width),
-            release: options.release,
+            release,
             selectedCliId,
             state,
           }), rows);
@@ -112,7 +117,7 @@ export function createMissionControlController(options: CreateMissionControlCont
         loadedCounts: options.loadedCounts,
         optionDrawer: options.sessionOptions ? { saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
         overlay,
-        release: options.release,
+        release,
         selectedCliId,
         state,
       }), rows);
@@ -169,6 +174,7 @@ export function createMissionControlController(options: CreateMissionControlCont
     openPanel,
     ptyHost,
     ptyView: component,
+    setRelease,
     writeChildInput,
   };
 
@@ -190,6 +196,11 @@ export function createMissionControlController(options: CreateMissionControlCont
     const panel = activePanel;
     activePanel = undefined;
     panel.dispose?.();
+    options.onRenderRequest();
+  }
+
+  function setRelease(nextRelease: NonNullable<CreateMissionControlControllerOptions["release"]>): void {
+    release = nextRelease;
     options.onRenderRequest();
   }
 
@@ -459,7 +470,7 @@ export function createMissionControlController(options: CreateMissionControlCont
         }
         currentStack.push(createAboutPanel({
           counts: options.loadedCounts,
-          release: options.release,
+          getRelease: () => release,
           stack: currentStack,
         }));
       },

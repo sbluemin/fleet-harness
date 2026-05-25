@@ -115,6 +115,10 @@ export function renderMissionControl(width: number, options: MissionControlRende
   const countsLine = renderCountsLine(options.loadedCounts, options.release, innerWidth);
   if (countsLine !== undefined) {
     lines.push(countsLine);
+    const updateLine = renderUpdateLine(options.release, innerWidth);
+    if (updateLine !== undefined) {
+      lines.push(updateLine);
+    }
     lines.push("");
   }
 
@@ -175,6 +179,14 @@ function renderCountsLine(
   }
   const separator = STYLE.dim(COUNT_SEPARATOR);
   return centerText(segments.join(separator), innerWidth);
+}
+
+function renderUpdateLine(release: FleetCliRelease | undefined, innerWidth: number): string | undefined {
+  if (release?.latestVersion === undefined || release.latestVersion === release.version) {
+    return undefined;
+  }
+  const channel = release.channel === "canary" ? "canary" : "latest";
+  return centerText(STYLE.warning(`◆ Update available — v${release.latestVersion} (${channel})`), innerWidth);
 }
 
 function renderFooterHint(state: MissionControlStateKind, innerWidth: number): string {

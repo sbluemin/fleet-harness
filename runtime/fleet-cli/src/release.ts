@@ -4,6 +4,7 @@ export type FleetCliChannel = "stable" | "canary" | "local";
 
 export interface FleetCliRelease {
   readonly channel: FleetCliChannel;
+  readonly latestVersion?: string;
   readonly version: string;
 }
 

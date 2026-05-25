@@ -10,6 +10,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [agent-core] Added native Mission Control Fleet Menu panels for authentication, wiki server control, diagnostics, and about information.
 - Added persistent Fleet CLI startup presets with Mission Control option editing and explicit save/reset controls.
 - [core] Added double-tap Ctrl+C confirmation before exiting the fleet CLI.
+- [core] Mission Control now checks the npm registry asynchronously for the latest version on the user's channel and surfaces an update-available notice on the welcome screen.
+- [core] Added `fleet update` subcommand that auto-detects global installation, determines the package manager, and upgrades both `fleet-cli` and `fleet-wiki-ui` together; falls back to printing the install command when the installation scope cannot be confirmed.
 
 ### Changed
 - [agent-core] Changed Carrier Status to open as a Mission Control panel while preserving active Agent CLI input pass-through.

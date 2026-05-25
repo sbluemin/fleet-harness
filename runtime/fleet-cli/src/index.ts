@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
+import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
 const require = createRequire(import.meta.url);
@@ -39,6 +40,14 @@ if (argv[0] === "wiki") {
       }
       resolve(0);
     });
+  });
+  process.exit(status);
+}
+
+if (argv[0] === "update") {
+  const status = await dispatchUpdateCommand(argv, {
+    stdout: process.stdout,
+    stderr: process.stderr,
   });
   process.exit(status);
 }
