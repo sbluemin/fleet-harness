@@ -1,23 +1,37 @@
 {
   "name": "@dotobokuri/fleet-wiki-ui",
   "version": "0.22.1",
+  "description": "Fleet Wiki UI — standalone web surface and per-user local daemon for browsing Fleet Wiki workspaces.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
     "directory": "runtime/fleet-wiki-ui"
   },
+  "homepage": "https://github.com/sbluemin/fleet-harness#readme",
+  "bugs": {
+    "url": "https://github.com/sbluemin/fleet-harness/issues"
+  },
   "private": true,
   "type": "module",
+  "main": "./dist/cli.mjs",
+  "types": "./dist/cli.d.ts",
   "bin": {
     "fleet-wiki": "./dist/cli.mjs"
   },
   "exports": {
-    "./cli": "./dist/cli.mjs",
-    "./dist/cli.mjs": "./dist/cli.mjs"
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.mjs"
+    },
+    "./dist/cli.mjs": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.mjs"
+    }
   },
   "files": [
     "dist",
-    "AGENTS.md"
+    "AGENTS.md",
+    "README.md"
   ],
   "engines": {
     "node": ">=20.19.0"

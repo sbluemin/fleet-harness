@@ -1,6 +1,16 @@
 {
   "name": "@dotobokuri/fleet-cli",
   "version": "0.22.1",
+  "description": "Fleet CLI — a multi-LLM orchestration kit that operates Claude Code, Codex CLI, and Gemini CLI through a single unified interface.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "runtime/fleet-cli"
+  },
+  "homepage": "https://github.com/sbluemin/fleet-harness#readme",
+  "bugs": {
+    "url": "https://github.com/sbluemin/fleet-harness/issues"
+  },
   "private": true,
   "type": "module",
   "bin": {
@@ -9,7 +19,8 @@
   "files": [
     "dist",
     "bin",
-    "postinstall.mjs"
+    "postinstall.mjs",
+    "README.md"
   ],
   "scripts": {
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
