@@ -89,6 +89,22 @@
     ],
     "updated": "2026-05-23T07:54:10.365Z"
   },
+  "prd-cli-argv-to-preset": {
+    "path": "wiki/prd-cli-argv-to-preset.md",
+    "title": "PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환",
+    "tags": [
+      "prd",
+      "cli",
+      "ux",
+      "preset",
+      "fleet-infra",
+      "argv",
+      "override-model",
+      "fleet-cli",
+      "decision-history"
+    ],
+    "updated": "2026-05-25T04:06:59.871Z"
+  },
   "prd-core-dismantling-di-architecture": {
     "path": "wiki/prd-core-dismantling-di-architecture.md",
     "title": "PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립",
@@ -200,14 +216,7 @@
   "prd-wiki-template-schema": {
     "path": "wiki/prd-wiki-template-schema.md",
     "title": "PRD: Fleet Wiki 템플릿 기반 스키마 검증",
-    "tags": [
-      "wiki",
-      "schema",
-      "template",
-      "validation",
-      "ingest",
-      "fleet-wiki"
-    ],
-    "updated": "2026-05-23T16:29:50.341Z"
+    "tags": [],
+    "updated": "2026-05-25T04:28:05.901Z"
   }
 }

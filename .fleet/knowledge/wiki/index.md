@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `16`
+- total_entries: `17`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -76,6 +76,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
 - raw_source_refs: `raw/2026-05-23-prd-carrier-runtime-migration-source-b208b642.md, raw/2026-05-23-prd-carrier-runtime-migration-source-6aa1865a.md`
+
+### prd-cli-argv-to-preset
+
+- title: `PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환`
+- path: `wiki/prd-cli-argv-to-preset.md`
+- tags: `prd, cli, ux, preset, fleet-infra, argv, override-model, fleet-cli, decision-history`
+- updated: `2026-05-25T04:06:59.871Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- raw_source_refs: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
 
 ### prd-core-dismantling-di-architecture
 
@@ -161,11 +171,11 @@
 
 - title: `PRD: Fleet Wiki 템플릿 기반 스키마 검증`
 - path: `wiki/prd-wiki-template-schema.md`
-- tags: `wiki, schema, template, validation, ingest, fleet-wiki`
-- updated: `2026-05-23T16:29:50.341Z`
+- tags: `(none)`
+- updated: `2026-05-25T04:28:05.901Z`
 - summary: `## Overview`
-- raw_source_ref: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
-- raw_source_refs: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- raw_source_refs: `raw/2026-05-23-prd-wiki-template-schema-source-3df9cf29.md, raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
 
 ## Tags
 
@@ -192,6 +202,10 @@
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
 
+### argv
+
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+
 ### carrier
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
@@ -204,6 +218,10 @@
 ### carrier-status
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
+
+### cli
+
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 
 ### cli-options
 
@@ -226,6 +244,7 @@
 ### decision-history
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 
 ### dedicated-cli
 
@@ -269,6 +288,10 @@
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 
+### fleet-cli
+
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+
 ### fleet-core
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
@@ -284,6 +307,7 @@
 ### fleet-infra
 
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
@@ -302,7 +326,6 @@
 ### fleet-wiki
 
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
-- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### fleet-wiki-web
 
@@ -313,10 +336,6 @@
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
-
-### ingest
-
-- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### keybind
 
@@ -352,6 +371,10 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 
+### override-model
+
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+
 ### overview
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
@@ -373,6 +396,14 @@
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
+### prd
+
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+
+### preset
+
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+
 ### protocols
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
@@ -380,10 +411,6 @@
 ### region-stack
 
 - [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
-
-### schema
-
-- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### scroll
 
@@ -403,26 +430,19 @@
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 
-### template
-
-- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
-
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
 
 ### ux
 
+- [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
-
-### validation
-
-- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
-
-### wiki
-
-- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증
 
 ### workflow
 
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### (untagged)
+
+- [[wiki:prd-wiki-template-schema]] — PRD: Fleet Wiki 템플릿 기반 스키마 검증

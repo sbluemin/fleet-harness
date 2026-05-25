@@ -2763,3 +2763,100 @@
 - result: `accepted`
 - target: `wiki/prd-tui-mission-control.md`
 
+## 2026-05-25T04:03:25.494Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `8`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-25T04:05:11.580Z — raw source added
+
+- id: `prd-cli-argv-to-preset-source`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- source_type: `inline`
+- tag_count: `9`
+- title: `prd-cli-argv-to-preset`
+
+## 2026-05-25T04:05:11.600Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T04-05-11-571Z-fa78df67`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- target: `wiki/prd-cli-argv-to-preset.md`
+- warning_count: `0`
+
+## 2026-05-25T04:06:59.877Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `0c977e1e`
+- patch_id: `2026-05-25T04-05-11-571Z-fa78df67`
+- previous_hash: `dce4b150`
+- target: `wiki/prd-cli-argv-to-preset.md`
+
+## 2026-05-25T04:07:32.404Z — index rebuilt
+
+- entry_count: `17`
+
+## 2026-05-25T04:07:32.405Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T04-05-11-571Z-fa78df67`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-05-25-prd-cli-argv-to-preset-source-f74aa089.md`
+- result: `accepted`
+- target: `wiki/prd-cli-argv-to-preset.md`
+
+## 2026-05-25T04:14:26.144Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `8`
+- ok: `true`
+- warning_count: `6`
+
+## 2026-05-25T04:22:20.343Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T04:28:05.907Z — raw source added
+
+- id: `prd-wiki-template-schema-source`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- source_type: `inline`
+- tag_count: `0`
+- title: `PRD: Fleet Wiki 템플릿 기반 스키마 검증`
+
+## 2026-05-25T04:28:05.910Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-05-25T04-28-05-901Z-24e62c2d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- target: `wiki/prd-wiki-template-schema.md`
+- warning_count: `1`
+
+## 2026-05-25T04:49:37.222Z — index rebuilt
+
+- entry_count: `17`
+
+## 2026-05-25T04:49:37.224Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-05-25T04-28-05-901Z-24e62c2d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-wiki-template-schema-source-4f7b8d8f.md`
+- result: `accepted`
+- target: `wiki/prd-wiki-template-schema.md`
+
