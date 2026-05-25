@@ -322,9 +322,21 @@ function prependExitWarning(line: string, width: number, pending: boolean): stri
   if (!pending) return line;
   const warning = formatExitWarning();
   const warningWidth = visibleWidth(warning);
+  const trimmed = line.trimStart();
+  const leftPadding = visibleWidth(line) - visibleWidth(trimmed);
+
+  // 좌측 패딩이 경고 + 1칸 간격을 수용할 수 있으면 패딩 자리에 경고를 덮어써서
+  // 캐리어 로스터의 중앙정렬 상태를 유지한다.
+  if (leftPadding >= warningWidth + 1) {
+    const remainingPad = leftPadding - warningWidth;
+    return truncateToWidth(`${warning}${" ".repeat(remainingPad)}${trimmed}`, width);
+  }
+
+  // 좌측 패딩이 부족한 극단적 경우(로스터가 폭의 대부분을 차지)에만
+  // 기존처럼 좌측 정렬 fallback으로 경고와 로스터를 모두 노출한다.
   const gapWidth = warningWidth < width ? 1 : 0;
   const contentWidth = Math.max(0, width - warningWidth - gapWidth);
-  const content = truncateToWidth(line.trimStart(), contentWidth);
+  const content = truncateToWidth(trimmed, contentWidth);
   const gap = gapWidth === 1 && visibleWidth(content) > 0 ? " " : "";
   return truncateToWidth(`${warning}${gap}${content}`, width);
 }
