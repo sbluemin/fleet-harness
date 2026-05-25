@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
-import { FLEET_HELP_TEXT, parseFleetCliOptions } from "./cli-args.js";
+import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
 const require = createRequire(import.meta.url);
@@ -51,7 +51,7 @@ if (argv[0] && !argv[0].startsWith("-")) {
 const options = parseFleetCliOptionsOrExit(argv);
 
 if (options.help) {
-  process.stdout.write(FLEET_HELP_TEXT);
+  process.stdout.write(buildFleetHelpText());
   process.exit(0);
 }
 

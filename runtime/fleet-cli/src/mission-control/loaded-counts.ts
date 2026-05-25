@@ -1,16 +1,11 @@
 import { existsSync, readdirSync, statSync, type Dirent } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
 
 import { DEFAULT_CARRIER_PERSONAS } from "@dotobokuri/fleet-carriers";
 import { resolveMemoryPaths } from "@dotobokuri/fleet-wiki";
 
-export type FleetCliChannel = "stable" | "canary" | "local";
-
-export interface FleetCliRelease {
-  readonly channel: FleetCliChannel;
-  readonly version: string;
-}
+export type { FleetCliChannel, FleetCliRelease } from "../release.js";
+export { readFleetCliRelease } from "../release.js";
 
 export interface MissionControlCounts {
   readonly carriers: number;
@@ -32,16 +27,6 @@ export function discoverMissionControlCounts(options: DiscoverMissionControlCoun
     queuedPatches: countQueuedPatches(paths.queueDir),
     wikiEntries: countMarkdownFilesRecursively(paths.wikiDir, true),
   };
-}
-
-export function readFleetCliRelease(): FleetCliRelease {
-  const requireFromHere = createRequire(import.meta.url);
-  const pkg = requireFromHere("../../package.json") as { private?: boolean; version?: string };
-  const version = pkg.version ?? "";
-  if (pkg.private === true) {
-    return { channel: "local", version };
-  }
-  return { channel: version.includes("-") ? "canary" : "stable", version };
 }
 
 function countQueuedPatches(queueDir: string): number {

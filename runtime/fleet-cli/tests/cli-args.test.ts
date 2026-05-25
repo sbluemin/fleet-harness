@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FLEET_HELP_TEXT, parseFleetCliOptions } from "../src/cli-args.js";
+import { buildFleetHelpText, parseFleetCliOptions } from "../src/cli-args.js";
 
 describe("fleet CLI args", () => {
   it("enables cursor sync by default", () => {
@@ -21,8 +21,18 @@ describe("fleet CLI args", () => {
   });
 
   it("documents the cursor sync disable flag in help text", () => {
-    expect(FLEET_HELP_TEXT).toContain("Fleet Agent Options:");
-    expect(FLEET_HELP_TEXT).toContain("--disable-cursor-sync");
+    const helpText = buildFleetHelpText({ env: { NO_COLOR: "1" }, isTTY: true, release: { version: "0.0.0-test", channel: "stable" } });
+
+    expect(helpText).toContain("Fleet Harness");
+    expect(helpText).toContain("USAGE");
+    expect(helpText).toContain("COMMANDS");
+    expect(helpText).toContain("OPTIONS");
+    expect(helpText).toContain("auth");
+    expect(helpText).toContain("wiki");
+    expect(helpText).toContain("-h, --help");
+    expect(helpText).toContain("--disable-cursor-sync");
+    expect(helpText).not.toContain("\x1b[");
+    expect(helpText).not.toContain("fleet —");
   });
 
   it("rejects unknown flags", () => {
