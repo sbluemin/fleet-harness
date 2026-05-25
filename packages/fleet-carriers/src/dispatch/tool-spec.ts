@@ -8,50 +8,39 @@ import { Type } from "typebox";
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
 import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
-import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../jobs/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, CarrierJobSummary } from "../jobs/types.js";
+import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type { LogOptions } from "@dotobokuri/fleet-infra/log";
-import type { ModelEffort } from "./overlay-types.js";
+import type {
+  CarrierJobStatus,
+  CarrierMetadata,
+  ModelEffort,
+  RequestBlock,
+  TrackMeta,
+  TrackStatus,
+} from "./types.js";
 
-import {
-  appendBlock,
-  buildCarrierResultSystemReminder,
-  buildCarrierJobId,
-  finalizeDetachedJob,
-  launchResponseResult,
-  sanitizeChunk,
-  sanitizeToolLabel,
-  startDetachedJob,
-  toMessageArchiveBlock,
-  toThoughtArchiveBlock,
-} from "../jobs/index.js";
+import { appendBlock, toMessageArchiveBlock, toThoughtArchiveBlock } from "../jobs/archive.js";
+import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
+import { launchResponseResult } from "../jobs/lifecycle.js";
+import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
+import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
+import { buildCarrierJobId } from "../jobs/types.js";
 import { getLogAPI } from "@dotobokuri/fleet-infra/log";
-import {
-  emitStreamEvent,
-  type CarrierJobStatus,
-  type TrackMeta,
-  type TrackStatus,
-} from "../stream/stream-events.js";
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
   loadModels,
 } from "../store/index.js";
-import { launchTaskForceJob } from "./taskforce-launch.js";
-import {
-  buildCarrierSystemPrompt,
-  CARRIER_REQUEST_BREVITY_GUIDELINE,
-} from "./prompts.js";
+import { launchTaskForceJob } from "./taskforce.js";
 import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
+  emitStreamEvent,
   resolveCarrierCliType,
   resolveCarrierDisplayName,
   type CarrierRegistry,
 } from "./framework.js";
-import { validateRequiredRequestBlocks } from "./request-blocks.js";
-import {
-  buildSortieJobSummary,
-} from "./sortie-helpers.js";
 
 // ═════════════════════════════════════════════════════════
 // Types / Interfaces
@@ -287,7 +276,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
       summary,
       permit: opts.permit,
     });
-    emitStreamEvent({
+    emitStreamEvent(opts.registry, {
       type: "job:finalized",
       jobId: opts.jobId,
       status: finalStatus,
@@ -329,7 +318,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
     { hideFromFooter: true, category: "prompt" },
   );
 
-  emitStreamEvent({
+  emitStreamEvent(opts.registry, {
     type: "track:begin",
     jobId: opts.jobId,
     trackId: opts.carrierId,
@@ -351,27 +340,27 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
         sessionId = info.sessionId;
       },
       onStatusChange: (status) => {
-        emitStreamEvent({ type: "track:status", jobId: opts.jobId, trackId: opts.carrierId, status });
+        emitStreamEvent(opts.registry, { type: "track:status", jobId: opts.jobId, trackId: opts.carrierId, status });
       },
       onMessageChunk: (text) => {
         const cleanText = sanitizeChunk(text);
         appendBlock(opts.jobId, toMessageArchiveBlock(opts.carrierId, text));
-        emitStreamEvent({ type: "track:text", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
+        emitStreamEvent(opts.registry, { type: "track:text", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
       },
       onThoughtChunk: (text) => {
         const cleanText = sanitizeChunk(text);
         appendBlock(opts.jobId, toThoughtArchiveBlock(opts.carrierId, text));
-        emitStreamEvent({ type: "track:thought", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
+        emitStreamEvent(opts.registry, { type: "track:thought", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
       },
       onToolCall: (toolTitle, toolStatus, _rawOutput, toolCallId) => {
         const title = sanitizeToolLabel(toolTitle);
         const status = sanitizeToolLabel(toolStatus);
         logDebug(CARRIER_LOG_CATEGORY_STREAM, `carrier=${opts.carrierId} type=toolCall title=${title} status=${status}`, { hideFromFooter: true });
-        emitStreamEvent({ type: "track:tool", jobId: opts.jobId, trackId: opts.carrierId, title, status, toolCallId });
+        emitStreamEvent(opts.registry, { type: "track:tool", jobId: opts.jobId, trackId: opts.carrierId, title, status, toolCallId });
       },
     });
     const finalStatus = toCarrierJobStatus(execResult.status);
-    emitStreamEvent({
+    emitStreamEvent(opts.registry, {
       type: "track:finalized",
       jobId: opts.jobId,
       trackId: opts.carrierId,
@@ -394,7 +383,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    emitStreamEvent({
+    emitStreamEvent(opts.registry, {
       type: "track:finalized",
       jobId: opts.jobId,
       trackId: opts.carrierId,
@@ -423,7 +412,7 @@ function emitJobRegistered(
     kind: "carrier",
     runId,
   }];
-  emitStreamEvent({
+  emitStreamEvent(registry, {
     type: "job:registered",
     jobId,
     kind: "carrier",
@@ -497,4 +486,244 @@ function normalizeEffort(
 
 function logDebug(category: string, message: string, options?: unknown): void {
   getLogAPI().debug(category, message, options as LogOptions | undefined);
+}
+
+// ─────────────────────────────────────────────────────────
+// 타입
+// ─────────────────────────────────────────────────────────
+
+/** 검증 성공 결과 */
+export interface RequiredBlockValidationOk {
+  ok: true;
+}
+
+/** 검증 실패 결과 */
+export interface RequiredBlockValidationFail {
+  ok: false;
+  missing: string[];
+  error: string;
+}
+
+export type RequiredBlockValidationResult =
+  | RequiredBlockValidationOk
+  | RequiredBlockValidationFail;
+
+// ─────────────────────────────────────────────────────────
+// 함수
+// ─────────────────────────────────────────────────────────
+
+/**
+ * 필수 requestBlock이 request 텍스트에 정상적으로 존재하는지 검사합니다.
+ *
+ * opening tag, closing tag, 비어 있지 않은 본문을 모두 확인합니다.
+ * 속성이 포함된 태그도 허용합니다: `<plan_file source="kirov">...</plan_file>`
+ *
+ * @param meta carrier 메타데이터
+ * @param request 사용자 요청 텍스트
+ * @param carrierId 검증 실패 시 에러 메시지에 포함할 carrier 식별자
+ */
+export function validateRequiredRequestBlocks(
+  meta: CarrierMetadata,
+  request: string,
+  carrierId: string,
+): RequiredBlockValidationResult {
+  const required = meta.requestBlocks.filter((b) => b.required);
+  if (required.length === 0) return { ok: true };
+
+  const missing: string[] = [];
+  const details: string[] = [];
+
+  for (const block of required) {
+    const escaped = escapeRegExp(block.tag);
+    const regex = new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)</${escaped}>`);
+    const match = regex.exec(request);
+    if (!match) {
+      missing.push(block.tag);
+      details.push(`<${block.tag}> (missing closing tag)`);
+    } else if (!match[1]?.trim()) {
+      missing.push(block.tag);
+      details.push(`<${block.tag}> (empty body)`);
+    }
+  }
+
+  if (missing.length === 0) return { ok: true };
+
+  return {
+    ok: false,
+    missing,
+    error:
+      `Missing required request block(s) for carrier "${carrierId}": ${details.join(", ")}.` +
+      ` Include the required tag(s) in the request and resubmit.`,
+  };
+}
+
+/** 정규식 특수문자를 이스케이프합니다 */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
+
+/** carrier_dispatch request brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
+export const CARRIER_REQUEST_BREVITY_GUIDELINE =
+  `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
+  ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request.` +
+  ` When referencing prior carrier work, pass the job_id(s) via <prior_jobs> instead of paraphrasing their output` +
+  ` — the carrier will self-fetch full results using carrier_jobs(action:"result", format:"full", job_id:...).` +
+  ` If archive content has expired (full_invalidated true / TTL exceeded), the carrier falls back to` +
+  ` carrier_jobs(action:"result", format:"summary", job_id:...) to retrieve the summary.`;
+
+// ═════════════════════════════════════════════════════════
+// Types / Interfaces
+// ═════════════════════════════════════════════════════════
+
+/** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
+export interface CarrierRosterOptions {
+  /** 로스터 섹션 제목 (기본: "## Available Carriers") */
+  heading?: string;
+  /** 로스터 본문 앞에 추가할 안내 라인들 */
+  preambleLines?: string[];
+  /** 특정 carrierId에 대해 로스터 엔트리 뒤에 추가할 라인 생성기 */
+  extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
+}
+
+// ═════════════════════════════════════════════════════════
+// 캐리어 시스템 프롬프트 (Tier 2)
+// ═════════════════════════════════════════════════════════
+
+export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
+  const parts: string[] = [CARRIER_FLEET_BACKGROUND];
+
+  if (metadata) {
+    parts.push(`<your_identity>\n${metadata.title}\n${metadata.summary}\n</your_identity>`);
+
+    if (metadata.permissions.length > 0) {
+      const body = metadata.permissions.map((item) => `- ${item}`).join("\n");
+      parts.push(`<your_permissions>\n${body}\n</your_permissions>`);
+    }
+
+    const principles = metadata.principles ?? [];
+    if (principles.length > 0) {
+      const body = principles.map((item) => `- ${item}`).join("\n");
+      parts.push(`<your_principles>\n${body}\n</your_principles>`);
+    }
+
+    if (metadata.outputFormat) {
+      parts.push(`<output_format>\n${metadata.outputFormat.trim()}\n</output_format>`);
+    }
+  }
+
+  return parts.join("\n\n");
+}
+
+// ═════════════════════════════════════════════════════════
+// 로스터 렌더링
+// ═════════════════════════════════════════════════════════
+
+export function buildCarrierRoster(
+  registry: CarrierRegistry,
+  carrierIds: string[],
+  options?: CarrierRosterOptions,
+): string {
+  const { heading, preambleLines, extraLines } = options ?? {};
+  const lines: string[] = [];
+
+  lines.push(heading ?? `## Available Carriers`);
+  if (preambleLines) {
+    for (const p of preambleLines) lines.push(p);
+  }
+
+  for (const carrierId of carrierIds) {
+    const config = getRegisteredCarrierConfig(registry, carrierId);
+    if (!config) continue;
+
+    const meta = config.carrierMetadata;
+    if (!meta) {
+      lines.push(`- **${carrierId}** (${config.displayName}): Delegate tasks to ${config.displayName}.`);
+      lines.push(`  carrier_id: "${carrierId}"`);
+      if (extraLines) {
+        const extras = extraLines(carrierId, undefined);
+        for (const e of extras) lines.push(e);
+      }
+      continue;
+    }
+
+    const name = config.displayName;
+    lines.push(`- **${carrierId}** (${name} · ${meta.title}): ${meta.summary}`);
+    lines.push(`  carrier_id: "${carrierId}"`);
+    lines.push(`  Use for: ${meta.whenToUse.join(", ")}.`);
+    if (meta.whenNotToUse.length > 0) {
+      lines.push(`  NOT for:`);
+      for (const item of meta.whenNotToUse) {
+        lines.push(`    - ${item}`);
+      }
+    }
+    const blockLines = formatRequestBlocksGuide(meta);
+    if (blockLines.length > 0) {
+      lines.push(`  Request blocks — wrap content in these (? = optional):`);
+      lines.push(...blockLines);
+    }
+    if (extraLines) {
+      const extras = extraLines(carrierId, meta);
+      for (const e of extras) lines.push(e);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
+  const allBlocks: RequestBlock[] = [...meta.requestBlocks];
+  if (allBlocks.length === 0) return [];
+  return allBlocks.map((b) => {
+    const sig = b.required ? `<${b.tag}>` : `<${b.tag}?>`;
+    const label = b.required ? "required" : "optional";
+    return `  - ${sig} ${label}: ${b.hint}`;
+  });
+}
+
+export interface CarrierSortieOutcome {
+  readonly carrierId: string;
+  readonly status: "done" | "error" | "aborted";
+}
+
+export function computeSortieFinalStatus(results: readonly CarrierSortieOutcome[]): StoredCarrierJobStatus {
+  if (results.some((result) => result.status === "aborted")) return "aborted";
+  if (results.some((result) => result.status === "error")) return "error";
+  return "done";
+}
+
+export function buildSortieSummaryText(
+  status: StoredCarrierJobStatus,
+  successCount: number,
+  failureCount: number,
+  error?: string,
+): string {
+  if (status === "aborted") return `carrier job aborted: ${successCount} done, ${failureCount} failed`;
+  if (error) return `carrier job failed: ${error}`;
+  return `carrier job completed: ${successCount} done, ${failureCount} failed`;
+}
+
+export function buildSortieJobSummary(
+  jobId: string,
+  startedAt: number,
+  finishedAt: number,
+  assignments: readonly { carrier: string; request: string }[],
+  results: readonly CarrierSortieOutcome[],
+  status: StoredCarrierJobStatus,
+  error: string | undefined,
+  tool: string,
+): CarrierJobSummary {
+  const successCount = results.filter((result) => result.status === "done").length;
+  const failureCount = results.length - successCount;
+  return {
+    jobId,
+    tool: tool as CarrierJobSummary["tool"],
+    status,
+    summary: buildSortieSummaryText(status, successCount, failureCount, error),
+    startedAt,
+    finishedAt,
+    carriers: assignments.map((assignment) => assignment.carrier),
+    error,
+  };
 }

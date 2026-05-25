@@ -7,53 +7,36 @@
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
 import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
-import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../jobs/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, CarrierJobSummary } from "../jobs/types.js";
+import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type { LogOptions } from "@dotobokuri/fleet-infra/log";
 import type { ExecResult } from "@dotobokuri/fleet-infra/agent";
-import type { ModelEffort } from "./overlay-types.js";
+import type { CarrierJobStatus, ModelEffort, TrackMeta, TrackStatus } from "./types.js";
 
 import {
   CLI_DISPLAY_NAMES,
 } from "../constants.js";
-import {
-  appendBlock,
-  buildCarrierJobId,
-  buildCarrierResultSystemReminder,
-  finalizeDetachedJob,
-  launchResponseResult,
-  sanitizeChunk,
-  sanitizeToolLabel,
-  startDetachedJob,
-  toMessageArchiveBlock,
-  toThoughtArchiveBlock,
-} from "../jobs/index.js";
+import { appendBlock, toMessageArchiveBlock, toThoughtArchiveBlock } from "../jobs/archive.js";
+import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
+import { finalizeDetachedJob, launchResponseResult, startDetachedJob } from "../jobs/lifecycle.js";
+import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
+import { buildCarrierJobId } from "../jobs/types.js";
 import { getLogAPI } from "@dotobokuri/fleet-infra/log";
-import { executeOneShot } from "@dotobokuri/fleet-infra/agent";
+import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   emitStreamEvent,
-  type CarrierJobStatus,
-  type TrackMeta,
-  type TrackStatus,
-} from "../stream/stream-events.js";
-import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   resolveCarrierDisplayName,
   type CarrierRegistry,
 } from "./framework.js";
-import { buildCarrierSystemPrompt } from "./prompts.js";
+import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./tool-spec.js";
 import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
 } from "../store/index.js";
 import {
-  assertTaskForceBackendCount,
-  buildTaskForceJobSummary,
-  buildTaskForceRequestKey,
-  computeTaskForceFinalStatus,
-  validateTaskForceRequestBlocks,
-} from "./taskforce-helpers.js";
-import {
+  type CarrierMetadata,
   type TaskForceCliType,
   type TaskForceResult,
   type TaskForceState,
@@ -196,7 +179,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
       summary,
       permit: opts.permit,
     });
-    emitStreamEvent({
+    emitStreamEvent(opts.registry, {
       type: "job:finalized",
       jobId: opts.jobId,
       status: finalStatus,
@@ -263,7 +246,8 @@ async function runTaskForceBackend(
 ): Promise<TaskForceResult> {
   const execStartedAt = Date.now();
   const progress = state.backends.get(cliType)!;
-  const syntheticId = buildTaskForceScopedRunId(requestKey, cliType);
+  const poolKey = buildTaskForceRunId(carrierId, cliType);
+  const streamKey = buildTaskForceScopedRunId(requestKey, cliType);
   const modelConfig = getRequiredTaskForceModelConfig(carrierId, cliType);
   const effort = resolveValidatedEffort(cliType as CliType, modelConfig.model, modelConfig.effort);
   const trackId = `${jobId}:${cliType}`;
@@ -271,7 +255,7 @@ async function runTaskForceBackend(
   logDebug(
     TASKFORCE_LOG_CATEGORY_DISPATCH,
     [
-      `carrier=${carrierId} backend=${cliType} model=${modelConfig.model ?? cliType} promptChars=${request.length} run=${syntheticId}`,
+      `carrier=${carrierId} backend=${cliType} model=${modelConfig.model ?? cliType} promptChars=${request.length} pool=${poolKey} stream=${streamKey}`,
       "----- BEGIN REQUEST -----",
       request,
       "----- END REQUEST -----",
@@ -279,7 +263,7 @@ async function runTaskForceBackend(
     { hideFromFooter: true, category: "prompt" },
   );
 
-  emitStreamEvent({
+  emitStreamEvent(registry, {
     type: "track:begin",
     jobId,
     trackId,
@@ -287,8 +271,8 @@ async function runTaskForceBackend(
   });
 
   try {
-    const result = await executeOneShot({
-      poolKey: syntheticId,
+    const result = await executeWithPool({
+      poolKey,
       carrierId,
       cliType: cliType as CliType,
       request,
@@ -298,20 +282,20 @@ async function runTaskForceBackend(
       connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(registry, carrierId)?.carrierMetadata),
       signal,
       onStatusChange: (status) => {
-        emitTrackStatus(jobId, trackId, status);
+        emitTrackStatus(registry, jobId, trackId, status);
       },
       onMessageChunk: (text) => {
         progress.status = "streaming";
         progress.lineCount++;
         const cleanText = sanitizeChunk(text);
         appendBlock(jobId, toMessageArchiveBlock(carrierId, text, cliType));
-        emitStreamEvent({ type: "track:text", jobId, trackId, text: cleanText });
+        emitStreamEvent(registry, { type: "track:text", jobId, trackId, text: cleanText });
       },
       onThoughtChunk: (text) => {
         const cleanText = sanitizeChunk(text);
         appendBlock(jobId, toThoughtArchiveBlock(carrierId, text, cliType));
         logDebug(TASKFORCE_LOG_CATEGORY_STREAM, `carrier=${carrierId} backend=${cliType} type=thought\n${cleanText}`, { hideFromFooter: true });
-        emitStreamEvent({ type: "track:thought", jobId, trackId, text: cleanText });
+        emitStreamEvent(registry, { type: "track:thought", jobId, trackId, text: cleanText });
       },
       onToolCall: (title, status, _rawOutput, toolCallId) => {
         progress.status = "streaming";
@@ -319,12 +303,12 @@ async function runTaskForceBackend(
         const cleanTitle = sanitizeToolLabel(title);
         const cleanStatus = sanitizeToolLabel(status);
         logDebug(TASKFORCE_LOG_CATEGORY_STREAM, `carrier=${carrierId} backend=${cliType} type=toolCall title=${cleanTitle} status=${cleanStatus}`, { hideFromFooter: true });
-        emitStreamEvent({ type: "track:tool", jobId, trackId, title: cleanTitle, status: cleanStatus, toolCallId });
+        emitStreamEvent(registry, { type: "track:tool", jobId, trackId, title: cleanTitle, status: cleanStatus, toolCallId });
       },
     });
 
     progress.status = result.status === "done" ? "done" : "error";
-    emitTrackFinalized(jobId, trackId, result);
+    emitTrackFinalized(registry, jobId, trackId, result);
     logDebug(
       TASKFORCE_LOG_CATEGORY_EXEC,
       `carrier=${carrierId} backend=${cliType} success=${result.status === "done"} status=${result.status} elapsedMs=${Date.now() - execStartedAt}`,
@@ -332,7 +316,7 @@ async function runTaskForceBackend(
     return buildTaskForceResult(cliType, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    emitStreamEvent({ type: "track:finalized", jobId, trackId, status: "err", error: message });
+    emitStreamEvent(registry, { type: "track:finalized", jobId, trackId, status: "err", error: message });
     logDebug(
       TASKFORCE_LOG_CATEGORY_EXEC,
       `carrier=${carrierId} backend=${cliType} success=false status=error elapsedMs=${Date.now() - execStartedAt}`,
@@ -358,7 +342,7 @@ function emitTaskForceJobRegistered(
     subtitle: resolveCarrierDisplayName(registry, carrierId),
     kind: "backend",
   }));
-  emitStreamEvent({
+  emitStreamEvent(registry, {
     type: "job:registered",
     jobId,
     kind: "taskforce",
@@ -397,7 +381,7 @@ function collectTaskForceResults(
   });
 }
 
-function buildTaskForceErrorResult(cliType: TaskForceCliType, reason: unknown): TaskForceResult {
+export function buildTaskForceErrorResult(cliType: TaskForceCliType, reason: unknown): TaskForceResult {
   const errorMessage = sanitizeChunk(reason instanceof Error ? reason.message : String(reason));
   logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `backend=${cliType} message=${errorMessage}`);
   return {
@@ -445,13 +429,13 @@ function normalizeEffort(
   };
 }
 
-function emitTrackStatus(jobId: string, trackId: string, status: TrackStatus): void {
-  emitStreamEvent({ type: "track:status", jobId, trackId, status });
+function emitTrackStatus(registry: CarrierRegistry, jobId: string, trackId: string, status: TrackStatus): void {
+  emitStreamEvent(registry, { type: "track:status", jobId, trackId, status });
 }
 
-function emitTrackFinalized(jobId: string, trackId: string, result: ExecResult): void {
+function emitTrackFinalized(registry: CarrierRegistry, jobId: string, trackId: string, result: ExecResult): void {
   const status = toCarrierJobStatus(result.status);
-  emitStreamEvent({
+  emitStreamEvent(registry, {
     type: "track:finalized",
     jobId,
     trackId,
@@ -497,4 +481,90 @@ function clearTaskForceState(requestKey: string): void {
 
 function logDebug(category: string, message: string, options?: unknown): void {
   getLogAPI().debug(category, message, options as LogOptions | undefined);
+}
+
+export function assertTaskForceBackendCount(carrierId: string, backends: readonly TaskForceCliType[]): readonly TaskForceCliType[] {
+  if (backends.length >= 2) return backends;
+  throw new Error(
+    `Carrier ${formatCarrierIdForMessage(carrierId)} needs ≥2 configured Task Force backends, got ${backends.length}. ` +
+    `Open Carrier Status (Alt+O), select ${formatCarrierIdForMessage(carrierId)}, press T to add a backend.`,
+  );
+}
+
+export function buildTaskForceRequestKey(carrierId: string, request: string): string {
+  return JSON.stringify([carrierId, request.replace(/\r\n?/g, "\n").trim()]);
+}
+
+export function buildTaskForceRunId(carrierId: string, cliType: TaskForceCliType): string {
+  const encodedCarrierId = Buffer.from(carrierId, "utf-8").toString("base64url");
+  return `taskforce:${cliType}:${encodedCarrierId}`;
+}
+
+export function computeTaskForceFinalStatus(results: readonly TaskForceResult[]): StoredCarrierJobStatus {
+  if (results.some((result) => result.status === "aborted")) return "aborted";
+  if (results.some((result) => result.status === "error")) return "error";
+  return "done";
+}
+
+export function buildTaskForceSummaryText(
+  status: StoredCarrierJobStatus,
+  successCount: number,
+  failureCount: number,
+  error?: string,
+): string {
+  if (status === "aborted") return `carrier_dispatch taskforce aborted: ${successCount} done, ${failureCount} failed`;
+  if (error) return `carrier_dispatch taskforce failed: ${error}`;
+  return `carrier_dispatch taskforce completed: ${successCount} done, ${failureCount} failed`;
+}
+
+export function buildTaskForceJobSummary(
+  jobId: string,
+  startedAt: number,
+  finishedAt: number,
+  carrierId: string,
+  results: readonly TaskForceResult[],
+  status: StoredCarrierJobStatus,
+  toolName: `carrier_${string}`,
+  error?: string,
+): CarrierJobSummary {
+  const successCount = results.filter((result) => result.status === "done").length;
+  const failureCount = results.length - successCount;
+  return {
+    jobId,
+    tool: toolName,
+    status,
+    summary: buildTaskForceSummaryText(status, successCount, failureCount, error),
+    startedAt,
+    finishedAt,
+    carriers: [carrierId],
+    error,
+  };
+}
+
+export function sanitizeTaskForceChunk(text: string): string {
+  return text
+    .replace(/\r/g, "")
+    .replace(/\x1b\[\d*[ABCDEFGHJKST]/g, "")
+    .replace(/\x1b\[\d*;\d*[Hf]/g, "")
+    .replace(/\x1b\[(?:\??\d+[hl]|2J|K)/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+}
+
+export function sanitizeTaskForceToolLabel(text: string): string {
+  return sanitizeTaskForceChunk(text).replace(/\s+/g, " ").trim() || "(unnamed)";
+}
+
+/**
+ * taskforce request에 대해 필수 request-block 검증을 수행합니다.
+ *
+ * @returns 검증 실패 결과, 통과하면 null
+ */
+export function validateTaskForceRequestBlocks(
+  carrierId: string,
+  meta: CarrierMetadata,
+  request: string,
+): { error: string; missing: string[] } | null {
+  const result = validateRequiredRequestBlocks(meta, request, carrierId);
+  if (!result.ok) return { error: result.error, missing: result.missing };
+  return null;
 }

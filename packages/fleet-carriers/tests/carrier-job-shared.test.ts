@@ -1,27 +1,27 @@
 import { describe, expect, beforeEach, afterEach, it, vi } from "vitest";
 
 import { getActiveBackgroundJobCount as getActiveBackgroundJobCountFromRoot } from "../src/index.js";
-import { serializeJobArchive } from "../src/jobs/archive-serializer.js";
+import { serializeJobArchive } from "../src/jobs/archive.js";
 import {
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
   toToolCallArchiveBlock,
   redactSecrets,
-} from "../src/jobs/archive-block-converter.js";
+} from "../src/jobs/archive.js";
 import {
   acquireJobPermit,
   configureDetachedJobCap,
   listActiveJobs,
   resetJobConcurrencyForTest,
-} from "../src/jobs/concurrency-guard.js";
+} from "../src/jobs/lifecycle.js";
 import {
   cancelJob,
   hasJobCancelControllers,
   registerJobAbortController,
   resetJobCancelRegistryForTest,
   unregisterJobAbortControllers,
-} from "../src/jobs/job-cancel-registry.js";
-import { buildCarrierJobId, parseCarrierJobId } from "../src/jobs/job-id.js";
+} from "../src/jobs/lifecycle.js";
+import { buildCarrierJobId, parseCarrierJobId } from "../src/jobs/types.js";
 import {
   appendBlock,
   createJobArchive,
@@ -29,22 +29,22 @@ import {
   getFinalized,
   hasJobArchive,
   resetJobArchivesForTest,
-} from "../src/jobs/job-stream-archive.js";
-import type { CarrierJobRecord, CarrierJobSummary } from "../src/jobs/job-types.js";
+} from "../src/jobs/archive.js";
+import type { CarrierJobRecord, CarrierJobSummary } from "../src/jobs/types.js";
 import {
   CARRIER_JOB_TTL_MS,
   CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
   CARRIER_JOBS_GLOBAL_BYTE_CAP,
   CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
-} from "../src/jobs/job-types.js";
+} from "../src/jobs/types.js";
 import {
   configureJobSummaryCache,
   getJobSummary,
   listJobSummaries,
   putJobSummary,
   resetJobSummaryCacheForTest,
-} from "../src/jobs/lru-cache.js";
-import * as jobBarrel from "../src/jobs/index.js";
+} from "../src/jobs/dispatch.js";
+import * as jobBarrel from "../src/index.js";
 
 beforeEach(() => {
   resetJobArchivesForTest();

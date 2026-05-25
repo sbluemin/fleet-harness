@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type CarrierConfig,
   createCarrierRegistry,
+  emitStreamEvent,
   getCarrierSourceDisplayName,
   initStore,
   registerCarrier,
+  registerStreamHandler,
   resetStoreForTests,
   resolveCarrierDisplayName,
   updateCarrierDisplayName,
@@ -55,6 +57,24 @@ describe("carrier displayName resolution", () => {
 
     updateCarrierDisplayName("custom_alpha", "Alpha Prime", getCarrierSourceDisplayName(registry, "custom_alpha"));
     expect(resolveCarrierDisplayName(registry, "custom_alpha")).toBe("Alpha Prime");
+  });
+});
+
+describe("carrier stream handler registry", () => {
+  it("clears stream handlers with the carrier registry", () => {
+    const registry = createCarrierRegistry();
+    const events: string[] = [];
+    registerStreamHandler(registry, (event) => events.push(event.type));
+
+    registry.clear();
+    emitStreamEvent(registry, {
+      type: "track:text",
+      jobId: "carrier:call-1",
+      trackId: "genesis",
+      text: "ignored",
+    });
+
+    expect(events).toEqual([]);
   });
 });
 

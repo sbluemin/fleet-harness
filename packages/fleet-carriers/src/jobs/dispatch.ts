@@ -1,19 +1,236 @@
-import { serializeJobArchive } from "./archive-serializer.js";
-import { cancelJob } from "./job-cancel-registry.js";
-import { isCarrierJobId } from "./job-id.js";
-import { getActiveJob, listActiveJobs } from "./concurrency-guard.js";
-import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "./job-stream-archive.js";
-import { getJobSummary, listJobSummaries } from "./lru-cache.js";
-import {
-  CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
-  CARRIER_JOBS_GLOBAL_BYTE_CAP,
-  CARRIER_JOBS_PER_SUBOP_BYTE_CAP,
-  type ArchiveBlock,
-  type CarrierJobRecord,
-  type CarrierJobSummary,
-  type JobArchive,
-} from "./job-types.js";
-import type { CarrierJobsAvailability, CarrierJobsFormat, CarrierJobsParams } from "./types.js";
+import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
+
+import { Type, type TObject } from "typebox";
+
+import { getFinalized, hasFinalizedJobArchive, hasJobArchive, serializeJobArchive } from "./archive.js";
+import { cancelJob, getActiveJob, listActiveJobs } from "./lifecycle.js";
+import { isCarrierJobId, CARRIER_JOB_TTL_MS, CARRIER_JOBS_FULL_RESULT_BYTE_CAP, CARRIER_JOBS_GLOBAL_BYTE_CAP, CARRIER_JOBS_PER_SUBOP_BYTE_CAP, type ArchiveBlock, type CarrierJobRecord, type CarrierJobStatus, type CarrierJobSummary, type JobArchive, type CarrierJobsAvailability, type CarrierJobsFormat, type CarrierJobsParams } from "./types.js";
+
+interface SummaryCacheState {
+  entries: Map<string, CarrierJobSummary>;
+  maxEntries: number;
+  onEvict?: (jobId: string) => void;
+}
+
+export interface JobSummaryCache {
+  putJobSummary(summary: CarrierJobSummary, now?: number): void;
+  getJobSummary(jobId: string, now?: number): CarrierJobSummary | null;
+  listJobSummaries(now?: number): CarrierJobSummary[];
+  configureJobSummaryCache(maxEntries: number, onEvict?: (jobId: string) => void): void;
+  resetJobSummaryCacheForTest(): void;
+}
+
+const DEFAULT_MAX_ENTRIES = 50;
+
+const defaultJobSummaryCache = createJobSummaryCache();
+
+export function createJobSummaryCache(): JobSummaryCache {
+  const state: SummaryCacheState = {
+    entries: new Map(),
+    maxEntries: DEFAULT_MAX_ENTRIES,
+  };
+
+  function purgeExpiredSummaries(now: number): void {
+    for (const [jobId, entry] of state.entries) {
+      const anchor = entry.finishedAt ?? entry.startedAt;
+      if (anchor + CARRIER_JOB_TTL_MS <= now) {
+        state.entries.delete(jobId);
+        state.onEvict?.(jobId);
+      }
+    }
+  }
+
+  return {
+    putJobSummary(summary, now = Date.now()) {
+      purgeExpiredSummaries(now);
+      state.entries.delete(summary.jobId);
+      state.entries.set(summary.jobId, summary);
+      while (state.entries.size > state.maxEntries) {
+        const oldestKey = state.entries.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        state.entries.delete(oldestKey);
+        state.onEvict?.(oldestKey);
+      }
+    },
+    getJobSummary(jobId, now = Date.now()) {
+      purgeExpiredSummaries(now);
+      const entry = state.entries.get(jobId) ?? null;
+      if (!entry) return null;
+      state.entries.delete(jobId);
+      state.entries.set(jobId, entry);
+      return entry;
+    },
+    listJobSummaries(now = Date.now()) {
+      purgeExpiredSummaries(now);
+      return [...state.entries.values()].sort((a, b) => b.startedAt - a.startedAt);
+    },
+    configureJobSummaryCache(maxEntries, onEvict) {
+      state.maxEntries = maxEntries;
+      state.onEvict = onEvict;
+    },
+    resetJobSummaryCacheForTest() {
+      state.entries.clear();
+      state.maxEntries = DEFAULT_MAX_ENTRIES;
+      state.onEvict = undefined;
+    },
+  };
+}
+
+export function putJobSummary(summary: CarrierJobSummary, now = Date.now()): void {
+  defaultJobSummaryCache.putJobSummary(summary, now);
+}
+
+export function getJobSummary(jobId: string, now = Date.now()): CarrierJobSummary | null {
+  return defaultJobSummaryCache.getJobSummary(jobId, now);
+}
+
+export function listJobSummaries(now = Date.now()): CarrierJobSummary[] {
+  return defaultJobSummaryCache.listJobSummaries(now);
+}
+
+export function configureJobSummaryCache(maxEntries: number, onEvict?: (jobId: string) => void): void {
+  defaultJobSummaryCache.configureJobSummaryCache(maxEntries, onEvict);
+}
+
+export function resetJobSummaryCacheForTest(): void {
+  defaultJobSummaryCache.resetJobSummaryCacheForTest();
+}
+
+interface SystemReminderAttributes {
+  [key: string]: string;
+}
+
+export interface CarrierResultSystemReminderInput {
+  jobId: string;
+  kind: "carrier" | "taskforce";
+  status: CarrierJobStatus;
+  summary: CarrierJobSummary;
+  error?: string;
+  taskforceBackend?: string;
+  label?: string;
+}
+
+export const JOB_LAUNCH_NOTICE = [
+  "Job accepted from carrier_dispatch; result arrives later via carrier-completion follow-up push tagged [carrier:result].",
+  "Task Force is an execution mode of carrier_dispatch when the selected carrier is configured for it.",
+  "DO NOT poll carrier_jobs.",
+].join(" ");
+
+export const CARRIER_RESULT_PUSH_PREFIX = "[carrier:result]";
+
+const REMINDER_TEXT_LIMIT = 500;
+const REMINDER_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+const REMINDER_WHITESPACE = /\s+/g;
+
+export function formatLaunchResponseText(response: unknown, accepted: boolean): string {
+  const payload = JSON.stringify(response);
+  if (!accepted) return payload;
+  return JOB_LAUNCH_NOTICE + "\n" + payload;
+}
+
+export function buildCarrierResultSystemReminder(input: CarrierResultSystemReminderInput): string {
+  const lines = [`- ${input.jobId}: ${sanitizeReminderText(input.summary.summary)}`];
+  const metadata = [
+    `kind=${input.kind}`,
+    `status=${input.status}`,
+    input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
+    input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
+    input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+  if (metadata.length > 0) lines.push(`  ${metadata.join(" ")}`);
+  return wrapSystemReminder(`${CARRIER_RESULT_PUSH_PREFIX}\n${lines.join("\n")}`, { source: "carrier-completion" });
+}
+
+export function wrapSystemReminder(text: string, attrs?: SystemReminderAttributes): string {
+  const renderedAttrs = renderSystemReminderAttributes(attrs);
+  return `<system-reminder${renderedAttrs}>\n${text}\n</system-reminder>`;
+}
+
+function sanitizeReminderText(text: string): string {
+  return escapeXmlText(
+    text
+      .replace(REMINDER_CONTROL_CHARS, " ")
+      .replace(REMINDER_WHITESPACE, " ")
+      .trim()
+      .slice(0, REMINDER_TEXT_LIMIT),
+  );
+}
+
+function renderSystemReminderAttributes(attrs?: SystemReminderAttributes): string {
+  if (!attrs) return "";
+  const pairs = Object.entries(attrs);
+  if (pairs.length === 0) return "";
+  return pairs.map(([key, value]) => ` ${key}="${escapeXmlAttribute(value)}"`).join("");
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export const CARRIER_JOBS_DOCTRINE = {
+  id: "carrier_jobs",
+  tag: "carrier_jobs",
+  title: "carrier_jobs Tool Guidelines",
+  description:
+    `Lookup and control detached carrier jobs registered by carrier_dispatch.` +
+    ` This is not a delegation tool and not a polling tool; use it only to inspect archived output, cancel by job_id, or list jobs.`,
+  promptSnippet:
+    `carrier_jobs — Lookup/control detached carrier jobs: status, result, cancel, list.`,
+  whenToUse: [
+    `Use carrier_jobs when a follow-up push is missing, explicit job inspection is required, or the Admiral needs completion metadata, full archived output, cancellation, or a job list.`,
+    `Use action:"result" only after the job is finalized; full results remain repeatable for 3 hours.`,
+  ],
+  whenNotToUse: [
+    `Do not use carrier_jobs to delegate new work; use carrier_dispatch.`,
+    `Do not request results for active jobs. Results are finalized-only, read-many for 3 hours, and expire by TTL.`,
+    `Do not poll, wait-check, or call carrier_jobs merely to see whether a launched job is done; terminal results arrive through the [carrier:result] follow-up push.`,
+  ],
+  usageGuidelines: [
+    `carrier_jobs has exactly four actions: status, result, cancel, list.`,
+    `After launch, continue independent work if available; otherwise stop tool use and wait passively for the follow-up push instead of issuing status probes.`,
+    `Treat carrier_jobs as the fallback channel for missing pushes or explicit lookups, not as a polling loop.`,
+    `Results are finalized-only, read-many for 3h in process memory.`,
+    `Task Force dispatch full responses return results: { [cliType]: "..." }; non-Task-Force full responses still return full_result.`,
+    `carrier_jobs reads the process-memory summary cache and JobStreamArchive only. It never reads the Agent Panel stream-store.`,
+  ],
+};
+
+export function buildCarrierJobsSchema(): TObject {
+  return Type.Object({
+    action: Type.Unsafe<string>({
+      type: "string",
+      enum: ["status", "result", "cancel", "list"],
+      description: "Job action to perform.",
+    }),
+    job_id: Type.Optional(Type.String({
+      description: "Required for status, result, and cancel. Must be a prefixed job ID such as sortie:<toolCallId>.",
+    })),
+    format: Type.Optional(Type.Unsafe<string>({
+      type: "string",
+      enum: ["summary", "full"],
+      description: "Optional result detail level for renderers and result lookups.",
+    })),
+  });
+}
+
+export function buildCarrierJobsToolSpec(): AgentToolSpec {
+  return {
+    ...CARRIER_JOBS_DOCTRINE,
+    parameters: buildCarrierJobsSchema(),
+    async execute(args: unknown) {
+      const result = dispatchCarrierJobsAction(args as CarrierJobsParams);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        isError: false,
+        details: result,
+      };
+    },
+  };
+}
 
 export interface CarrierJobsResponse {
   action: string;

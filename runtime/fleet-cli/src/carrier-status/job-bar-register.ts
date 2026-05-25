@@ -1,5 +1,3 @@
-import { carrierJobs } from "@dotobokuri/fleet-carriers";
-
 import type { JobBarState } from "./job-bar-state.js";
 
 export interface JobBarRegistrationOptions {
@@ -11,7 +9,7 @@ const C1_BRACKETED_PASTE_END_MARKER = "\x9B201~";
 const CONTROL_CHARS_EXCEPT_INPUT_WHITESPACE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F]/g;
 
 export function subscribeJobBar(options: JobBarRegistrationOptions): () => void {
-  const unsubscribe = carrierJobs.streaming.register((event) => options.jobBarState.handleCarrierJobStreamEvent(event));
+  const unsubscribe = options.jobBarState.carrierRuntime.jobs.streaming.register((event) => options.jobBarState.handleCarrierJobStreamEvent(event));
 
   return () => {
     unsubscribe();

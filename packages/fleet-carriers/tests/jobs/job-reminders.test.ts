@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCarrierResultSystemReminder, type CarrierJobSummary } from "../../src/jobs/index.js";
+import { buildCarrierResultSystemReminder } from "../../src/jobs/dispatch.js";
+import type { CarrierJobSummary } from "../../src/jobs/types.js";
 
 const BASE_SUMMARY: CarrierJobSummary = {
   jobId: "sortie:1",

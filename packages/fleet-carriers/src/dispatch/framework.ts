@@ -26,6 +26,8 @@ import {
 import type {
   CarrierConfig,
   CarrierFrameworkState,
+  CarrierJobStreamEvent,
+  CarrierJobStreamHandler,
 } from "./types.js";
 import {
   CARRIER_ID_FORMAT_REGEX,
@@ -46,6 +48,7 @@ export class CarrierRegistry {
     modes: new Map(),
     registeredOrder: [],
     statusUpdateCallbacks: [],
+    streamHandlers: new Set(),
     taskforceConfiguredCarriers: new Set(),
   };
 
@@ -57,6 +60,7 @@ export class CarrierRegistry {
     this.state.modes.clear();
     this.state.registeredOrder.splice(0);
     this.state.statusUpdateCallbacks.splice(0);
+    this.state.streamHandlers.clear();
     this.state.taskforceConfiguredCarriers.clear();
   }
 }
@@ -144,6 +148,33 @@ export function notifyStatusUpdate(registry: CarrierRegistry): void {
   const gs = registry.getState();
   for (const cb of gs.statusUpdateCallbacks) {
     try { cb(); } catch { /* 무시 */ }
+  }
+}
+
+/**
+ * Carrier job stream 이벤트 핸들러를 등록합니다.
+ */
+export function registerStreamHandler(registry: CarrierRegistry, handler: CarrierJobStreamHandler): () => void {
+  const gs = registry.getState();
+  gs.streamHandlers.add(handler);
+  return () => {
+    unregisterStreamHandler(registry, handler);
+  };
+}
+
+/**
+ * Carrier job stream 이벤트 핸들러를 해제합니다.
+ */
+export function unregisterStreamHandler(registry: CarrierRegistry, handler: CarrierJobStreamHandler): void {
+  registry.getState().streamHandlers.delete(handler);
+}
+
+/**
+ * 등록된 모든 Carrier job stream 이벤트 핸들러를 호출합니다.
+ */
+export function emitStreamEvent(registry: CarrierRegistry, event: CarrierJobStreamEvent): void {
+  for (const handler of registry.getState().streamHandlers) {
+    handler(event);
   }
 }
 
