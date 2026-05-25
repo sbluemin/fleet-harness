@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-    <strong>A multi-LLM orchestration kit that operates Claude Code, Codex CLI, and Gemini CLI through a single unified interface — using native CLIs directly, no API wrapping or proxying.</strong>
+    <strong>A multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface — using native CLIs directly, no API wrapping or proxying.</strong>
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
 
 ## Motivation
 
-Every frontier CLI — Claude Code, Codex, Gemini, OpenCode — ships with an agent loop tuned specifically for its underlying model. Claude's loop is built for deep reasoning and tool orchestration. Codex optimizes for rapid code generation and iterative execution. Gemini leverages enormous context windows for research and synthesis. OpenCode unifies multiple models under one adaptive loop. These are not thin API wrappers; they are full-fledged, model-native agent runtimes refined by their creators.
+Every frontier CLI — Claude Code, Codex, OpenCode — ships with an agent loop tuned specifically for its underlying model. Claude's loop is built for deep reasoning and tool orchestration. Codex optimizes for rapid code generation and iterative execution. OpenCode unifies multiple models under one adaptive loop. These are not thin API wrappers; they are full-fledged, model-native agent runtimes refined by their creators.
 
 The problem is that they all live in separate terminals. To combine their strengths on a single task, you must copy context between windows, manually sync state, and context-switch across different interaction patterns. The friction of multi-tool coordination often forces you to settle for a single CLI, leaving the unique capabilities of the others on the table.
 
@@ -76,7 +76,6 @@ Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CL
 |-----|----------|----------|------------------|
 | **Claude Code** | Anthropic | ACP | Deep reasoning, architecture judgment |
 | **Codex CLI** | OpenAI | App Server | Fast code generation, multi-wave execution |
-| **Gemini CLI** | Google | ACP | Large-context analysis, research |
 | **OpenCode Go** | OpenCode | ACP | DeepSeek, GLM, Kimi, MiMo, MiniMax, Qwen |
 
 Every carrier runs in parallel under a single command structure, with unified progress tracking so you always know the status of the entire fleet. Fine-tune each carrier independently — select models, set reasoning levels, and adjust parameters without leaving the fleet interface. Fleet Action provides the autonomous operating framework for routing, delegation, review, and documentation.
