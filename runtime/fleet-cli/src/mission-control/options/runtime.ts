@@ -80,8 +80,6 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
         ...options.argv,
         argvOverrides: {
           cursorSync: false,
-          enableMetaphor: false,
-          native: false,
         },
       },
       defaults: options.defaults,

@@ -44,8 +44,6 @@ import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runti
 export interface RunAppOptions {
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
-  readonly native?: boolean;
-  readonly enableMetaphor?: boolean;
 }
 
 type FleetHostKeybindingHandlers = Record<string, () => void>;
@@ -340,13 +338,9 @@ function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
   return {
     argvOverrides: {
       cursorSync: options.cursorSync === false,
-      enableMetaphor: options.enableMetaphor === true,
-      native: options.native === true,
     },
     cursorSync: options.cursorSync !== false,
-    enableMetaphor: options.enableMetaphor ?? false,
     help: false,
-    native: options.native ?? false,
   };
 }
 

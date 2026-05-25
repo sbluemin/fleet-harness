@@ -15,16 +15,16 @@ const DEFAULTS: SessionOptions = {
 };
 
 describe("session options resolver", () => {
-  it("resolves argv over env over preset over defaults", () => {
+  it("resolves cli-arg, env, preset, and defaults in priority order", () => {
     const resolved = resolveSessionOptions({
-      argv: parseFleetCliOptions(["-n", "-rsp", "-em", "--disable-cursor-sync"], {}),
+      argv: parseFleetCliOptions(["--disable-cursor-sync"], {}),
       cliIdOverride: "codex",
       defaults: DEFAULTS,
       env: {
         FLEET_AGENT_CLI: "claude-kimi",
         FLEET_CURSOR_SYNC: "1",
-        FLEET_ENABLE_METAPHOR: "0",
-        FLEET_NATIVE: "0",
+        FLEET_ENABLE_METAPHOR: "1",
+        FLEET_NATIVE: "1",
         FLEET_REPLACE_SYSTEM_PROMPT: "0",
       },
       parseCliId: parseAgentCliId,
@@ -37,7 +37,7 @@ describe("session options resolver", () => {
             enableMetaphor: false,
             model: "preset-model",
             native: false,
-            replaceSystemPrompt: false,
+            replaceSystemPrompt: true,
           },
         },
       },
@@ -54,10 +54,10 @@ describe("session options resolver", () => {
     expect(resolved.sources).toEqual({
       cliId: "arg",
       cursorSync: "arg",
-      enableMetaphor: "arg",
+      enableMetaphor: "env",
       model: "preset",
-      native: "arg",
-      replaceSystemPrompt: "arg",
+      native: "env",
+      replaceSystemPrompt: "env",
     });
   });
 

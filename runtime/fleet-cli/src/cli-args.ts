@@ -5,14 +5,10 @@ export interface FleetCliOptions {
   readonly cursorSync: boolean;
   readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
-  readonly native: boolean;
-  readonly enableMetaphor: boolean;
 }
 
 export interface FleetCliArgOverrides {
   readonly cursorSync: boolean;
-  readonly native: boolean;
-  readonly enableMetaphor: boolean;
 }
 
 export interface BuildFleetHelpTextOptions {
@@ -39,27 +35,19 @@ const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
   let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
   let help = false;
-  let native = false;
-  let enableMetaphor = false;
   const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       help = true;
-    } else if (arg === "--native" || arg === "-n") {
-      native = true;
-      argvOverrides.native = true;
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
       argvOverrides.cursorSync = true;
-    } else if (arg === "--enable-metaphor" || arg === "-em") {
-      enableMetaphor = true;
-      argvOverrides.enableMetaphor = true;
     } else {
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cursorSync, argvOverrides, help, native, enableMetaphor };
+  return { cursorSync, argvOverrides, help };
 }
 
 export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
@@ -83,13 +71,9 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     "",
     section("OPTIONS", colorEnabled),
     `  ${option("-h, --help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
-    `  ${option("-n, --native", colorEnabled)}        ${dim("Run the agent CLI in native mode: do not inject", colorEnabled)}`,
-    `                      ${dim("the Fleet system prompt and hide the Fleet Action", colorEnabled)}`,
-    `                      ${dim("Protocol label from the Fleet PTY (divider preserved).", colorEnabled)}`,
     `  ${option("--disable-cursor-sync", colorEnabled)}`,
     `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
     `                      ${dim("with problematic IME cursor anchoring.", colorEnabled)}`,
-    `  ${option("-em, --enable-metaphor", colorEnabled)}         ${dim("Enable the fleet-world tone overlay in the injected system prompt.", colorEnabled)}`,
     "",
   ];
   const text = `${lines.join("\n")}`;
@@ -99,8 +83,6 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
 function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
   return {
     cursorSync: false,
-    native: false,
-    enableMetaphor: false,
   };
 }
 

@@ -58,8 +58,6 @@ if (options.help) {
 runApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
-  native: options.native,
-  enableMetaphor: options.enableMetaphor,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`${message}\n`);

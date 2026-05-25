@@ -27,8 +27,7 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
         preset: cliPreset.model,
         fallback: input.defaults.model,
       }).value,
-      native: chooseBoolean({
-        arg: input.argv.argvOverrides.native ? input.argv.native : undefined,
+      native: chooseBooleanWithoutArg({
         env: parseBooleanEnv(input.env.FLEET_NATIVE),
         preset: cliPreset.native,
         fallback: input.defaults.native,
@@ -38,8 +37,7 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
         preset: cliPreset.replaceSystemPrompt,
         fallback: input.defaults.replaceSystemPrompt,
       }).value,
-      enableMetaphor: chooseBoolean({
-        arg: input.argv.argvOverrides.enableMetaphor ? input.argv.enableMetaphor : undefined,
+      enableMetaphor: chooseBooleanWithoutArg({
         env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR),
         preset: cliPreset.enableMetaphor,
         fallback: input.defaults.enableMetaphor,
@@ -54,9 +52,9 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
     sources: {
       cliId: cliIdSource,
       model: chooseString({ arg: undefined, env: undefined, preset: cliPreset.model, fallback: input.defaults.model }).source,
-      native: chooseBoolean({ arg: input.argv.argvOverrides.native ? input.argv.native : undefined, env: parseBooleanEnv(input.env.FLEET_NATIVE), preset: cliPreset.native, fallback: input.defaults.native }).source,
+      native: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_NATIVE), preset: cliPreset.native, fallback: input.defaults.native }).source,
       replaceSystemPrompt: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT), preset: cliPreset.replaceSystemPrompt, fallback: input.defaults.replaceSystemPrompt }).source,
-      enableMetaphor: chooseBoolean({ arg: input.argv.argvOverrides.enableMetaphor ? input.argv.enableMetaphor : undefined, env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR), preset: cliPreset.enableMetaphor, fallback: input.defaults.enableMetaphor }).source,
+      enableMetaphor: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR), preset: cliPreset.enableMetaphor, fallback: input.defaults.enableMetaphor }).source,
       cursorSync: chooseBoolean({ arg: input.argv.argvOverrides.cursorSync ? input.argv.cursorSync : undefined, env: parseCursorSyncEnv(input.env.FLEET_CURSOR_SYNC), preset: cliPreset.cursorSync, fallback: input.defaults.cursorSync }).source,
     },
   };
