@@ -1,4 +1,5 @@
 import { CARRIER_COLORS } from "@dotobokuri/fleet-carriers";
+import { ANSI_RESET, paint as paintBranded } from "@dotobokuri/fleet-style";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";
@@ -22,7 +23,6 @@ interface MissionControlRenderOptions {
 
 type StatusTone = "dim" | "error" | "success" | "warning";
 
-const ANSI_RESET = "\x1b[0m";
 const SELECTED_MARKER = "▸";
 const IDLE_MARKER = " ";
 const CHOICE_INDENT = 4;
@@ -292,5 +292,5 @@ function padEndVisible(text: string, width: number): string {
 }
 
 function paint(code: string, text: string): string {
-  return `${code}${text}${ANSI_RESET}`;
+  return paintBranded(code, text, true);
 }

@@ -60,7 +60,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
   const lines = [
     ...ASCII_FLEET_BANNER.map(
       (line: string, index: number) =>
-        `${HELP_BANNER_INDENT}${paintLine(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+        `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
     ),
     dim(subtitle, colorEnabled),
     "",
@@ -94,10 +94,6 @@ function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
 
 function formatUnknownFleetOption(option: string): string {
   return `Unknown fleet option: ${option}\n${HELP_HINT}`;
-}
-
-function paintLine(color: string, text: string, colorEnabled: boolean): string {
-  return paint(color, text, colorEnabled);
 }
 
 function parseCursorSyncEnv(value: string | undefined): boolean {

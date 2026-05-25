@@ -11,7 +11,7 @@ export {
   moveCursorHome,
   moveCursorTo,
 } from "./ansi.js";
-export { colorize } from "./color.js";
+export { colorize, DIM_COLOR } from "./color.js";
 export { attachInputStream } from "./input-stream.js";
 export { LocalTui } from "./renderer.js";
 export type { LocalTuiOptions } from "./renderer.js";

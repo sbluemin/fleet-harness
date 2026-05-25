@@ -1,4 +1,6 @@
 import { FLEET_ACTION_COLOR, FLEET_ACTION_LABEL } from "@dotobokuri/fleet-admiral";
+import { paint } from "@dotobokuri/fleet-style";
+import { DIM_COLOR } from "@dotobokuri/fleet-tui/core";
 
 import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
 
@@ -7,8 +9,6 @@ export interface FleetStatusSectionOptions {
 	readonly native?: boolean;
 }
 
-const ANSI_RESET = "\x1b[0m";
-const DIM_COLOR = "\x1b[38;5;244m";
 const BORDER_CHAR = "─";
 const PROTOCOL_ICON = "⚓";
 
@@ -27,7 +27,7 @@ export class FleetStatusSection implements Component {
 
 function renderStatusLine(width: number, protocolColor: string, protocolLabel: string): string {
 	if (width <= 0) return "";
-	const centerBlock = colorize(` ${PROTOCOL_ICON} ${protocolLabel} `, protocolColor);
+	const centerBlock = paint(protocolColor, ` ${PROTOCOL_ICON} ${protocolLabel} `, true);
 	const centerWidth = visibleWidth(centerBlock);
 	if (centerWidth >= width) return truncateToWidth(centerBlock, width);
 
@@ -37,11 +37,7 @@ function renderStatusLine(width: number, protocolColor: string, protocolLabel: s
 	return renderBorder(leftWidth, protocolColor) + centerBlock + renderBorder(rightWidth, protocolColor);
 }
 
-function colorize(text: string, color: string): string {
-	return `${color}${text}${ANSI_RESET}`;
-}
-
 function renderBorder(width: number, color: string): string {
 	if (width <= 0) return "";
-	return colorize(BORDER_CHAR.repeat(width), color);
+	return paint(color, BORDER_CHAR.repeat(width), true);
 }
