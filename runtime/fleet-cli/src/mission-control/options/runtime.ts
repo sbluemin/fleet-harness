@@ -82,7 +82,6 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
           cursorSync: false,
           enableMetaphor: false,
           native: false,
-          replaceSystemPrompt: false,
         },
       },
       defaults: options.defaults,

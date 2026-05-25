@@ -59,7 +59,6 @@ runApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
   native: options.native,
-  replaceSystemPrompt: options.replaceSystemPrompt,
   enableMetaphor: options.enableMetaphor,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);

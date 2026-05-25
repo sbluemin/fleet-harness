@@ -6,14 +6,12 @@ export interface FleetCliOptions {
   readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
   readonly native: boolean;
-  readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
 
 export interface FleetCliArgOverrides {
   readonly cursorSync: boolean;
   readonly native: boolean;
-  readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
 
@@ -42,7 +40,6 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
   let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
   let help = false;
   let native = false;
-  let replaceSystemPrompt = true;
   let enableMetaphor = false;
   const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
@@ -55,9 +52,6 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
       argvOverrides.cursorSync = true;
-    } else if (arg === "--replace-system-prompt" || arg === "-rsp") {
-      replaceSystemPrompt = false;
-      argvOverrides.replaceSystemPrompt = true;
     } else if (arg === "--enable-metaphor" || arg === "-em") {
       enableMetaphor = true;
       argvOverrides.enableMetaphor = true;
@@ -65,7 +59,7 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cursorSync, argvOverrides, help, native, replaceSystemPrompt, enableMetaphor };
+  return { cursorSync, argvOverrides, help, native, enableMetaphor };
 }
 
 export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
@@ -95,7 +89,6 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     `  ${option("--disable-cursor-sync", colorEnabled)}`,
     `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
     `                      ${dim("with problematic IME cursor anchoring.", colorEnabled)}`,
-    `  ${option("-rsp, --replace-system-prompt", colorEnabled)}  ${dim("Toggle system prompt to append mode (default: replace).", colorEnabled)}`,
     `  ${option("-em, --enable-metaphor", colorEnabled)}         ${dim("Enable the fleet-world tone overlay in the injected system prompt.", colorEnabled)}`,
     "",
   ];
@@ -107,7 +100,6 @@ function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
   return {
     cursorSync: false,
     native: false,
-    replaceSystemPrompt: false,
     enableMetaphor: false,
   };
 }

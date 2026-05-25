@@ -45,7 +45,6 @@ export interface RunAppOptions {
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
   readonly native?: boolean;
-  readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
 }
 
@@ -343,13 +342,11 @@ function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
       cursorSync: options.cursorSync === false,
       enableMetaphor: options.enableMetaphor === true,
       native: options.native === true,
-      replaceSystemPrompt: options.replaceSystemPrompt === true,
     },
     cursorSync: options.cursorSync !== false,
     enableMetaphor: options.enableMetaphor ?? false,
     help: false,
     native: options.native ?? false,
-    replaceSystemPrompt: options.replaceSystemPrompt ?? true,
   };
 }
 

@@ -2,6 +2,8 @@ import type { FleetCliPreset } from "@dotobokuri/fleet-infra/preset";
 
 import type { SessionOptions, SessionOptionsResolverInput, ResolvedSessionOptions, SessionOptionSource } from "./types.js";
 
+type NonArgSessionOptionSource = Exclude<SessionOptionSource, "arg" | "session">;
+
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
@@ -31,8 +33,7 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
         preset: cliPreset.native,
         fallback: input.defaults.native,
       }).value,
-      replaceSystemPrompt: chooseBoolean({
-        arg: input.argv.argvOverrides.replaceSystemPrompt ? input.argv.replaceSystemPrompt : undefined,
+      replaceSystemPrompt: chooseBooleanWithoutArg({
         env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT),
         preset: cliPreset.replaceSystemPrompt,
         fallback: input.defaults.replaceSystemPrompt,
@@ -54,7 +55,7 @@ export function resolveSessionOptions(input: SessionOptionsResolverInput): Resol
       cliId: cliIdSource,
       model: chooseString({ arg: undefined, env: undefined, preset: cliPreset.model, fallback: input.defaults.model }).source,
       native: chooseBoolean({ arg: input.argv.argvOverrides.native ? input.argv.native : undefined, env: parseBooleanEnv(input.env.FLEET_NATIVE), preset: cliPreset.native, fallback: input.defaults.native }).source,
-      replaceSystemPrompt: chooseBoolean({ arg: input.argv.argvOverrides.replaceSystemPrompt ? input.argv.replaceSystemPrompt : undefined, env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT), preset: cliPreset.replaceSystemPrompt, fallback: input.defaults.replaceSystemPrompt }).source,
+      replaceSystemPrompt: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT), preset: cliPreset.replaceSystemPrompt, fallback: input.defaults.replaceSystemPrompt }).source,
       enableMetaphor: chooseBoolean({ arg: input.argv.argvOverrides.enableMetaphor ? input.argv.enableMetaphor : undefined, env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR), preset: cliPreset.enableMetaphor, fallback: input.defaults.enableMetaphor }).source,
       cursorSync: chooseBoolean({ arg: input.argv.argvOverrides.cursorSync ? input.argv.cursorSync : undefined, env: parseCursorSyncEnv(input.env.FLEET_CURSOR_SYNC), preset: cliPreset.cursorSync, fallback: input.defaults.cursorSync }).source,
     },
@@ -78,6 +79,16 @@ function chooseBoolean(options: {
   readonly fallback: boolean;
 }): { readonly value: boolean; readonly source: SessionOptionSource } {
   if (options.arg !== undefined) return { value: options.arg, source: "arg" };
+  if (options.env !== undefined) return { value: options.env, source: "env" };
+  if (options.preset !== undefined) return { value: options.preset, source: "preset" };
+  return { value: options.fallback, source: "default" };
+}
+
+function chooseBooleanWithoutArg(options: {
+  readonly env: boolean | undefined;
+  readonly preset: boolean | undefined;
+  readonly fallback: boolean;
+}): { readonly value: boolean; readonly source: NonArgSessionOptionSource } {
   if (options.env !== undefined) return { value: options.env, source: "env" };
   if (options.preset !== undefined) return { value: options.preset, source: "preset" };
   return { value: options.fallback, source: "default" };
