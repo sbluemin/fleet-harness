@@ -2900,3 +2900,52 @@
 - result: `accepted`
 - target: `wiki/prd-fleet-menu-t3-full.md`
 
+## 2026-05-25T08:50:42.777Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T08:53:07.549Z — raw source added
+
+- id: `prd-fleet-cli-update-mechanism-source`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘`
+
+## 2026-05-25T08:53:07.553Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T08-53-07-523Z-a1ec0bd2`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- target: `wiki/prd-fleet-cli-update-mechanism.md`
+- warning_count: `0`
+
+## 2026-05-25T08:54:05.442Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `confidence, body, updated`
+- next_hash: `79aaabc3`
+- patch_id: `2026-05-25T08-53-07-523Z-a1ec0bd2`
+- previous_hash: `5e49a964`
+- target: `wiki/prd-fleet-cli-update-mechanism.md`
+
+## 2026-05-25T09:19:32.839Z — index rebuilt
+
+- entry_count: `19`
+
+## 2026-05-25T09:19:32.840Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T08-53-07-523Z-a1ec0bd2`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-cli-update-mechanism.md`
+

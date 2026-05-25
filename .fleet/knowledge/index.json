@@ -147,6 +147,21 @@
     ],
     "updated": "2026-05-23T12:39:41.016Z"
   },
+  "prd-fleet-cli-update-mechanism": {
+    "path": "wiki/prd-fleet-cli-update-mechanism.md",
+    "title": "PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘",
+    "tags": [
+      "fleet-cli",
+      "update",
+      "npm",
+      "mission-control",
+      "prd",
+      "decision-history",
+      "cognitive-debt"
+    ],
+    "updated": "2026-05-25T08:54:05.439Z",
+    "confidence": "high"
+  },
   "prd-fleet-menu-t3-full": {
     "path": "wiki/prd-fleet-menu-t3-full.md",
     "title": "PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)",

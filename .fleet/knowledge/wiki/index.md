@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `18`
+- total_entries: `19`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -116,6 +116,17 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
 - raw_source_refs: `raw/2026-05-23-prd-fleet-agent-composition-root-consolidation-source-8d7d8d61.md`
+
+### prd-fleet-cli-update-mechanism
+
+- title: `PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘`
+- path: `wiki/prd-fleet-cli-update-mechanism.md`
+- tags: `fleet-cli, update, npm, mission-control, prd, decision-history, cognitive-debt`
+- updated: `2026-05-25T08:54:05.439Z`
+- confidence: `high`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
+- raw_source_refs: `raw/2026-05-25-prd-fleet-cli-update-mechanism-source-c2b03b04.md`
 
 ### prd-fleet-menu-t3-full
 
@@ -248,6 +259,7 @@
 ### cognitive-debt
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
 ### composition-root
 
@@ -263,6 +275,7 @@
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
 ### dedicated-cli
 
@@ -313,6 +326,7 @@
 ### fleet-cli
 
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
 ### fleet-core
 
@@ -385,6 +399,7 @@
 
 ### mission-control
 
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
 - [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 
@@ -395,6 +410,10 @@
 ### mouse-protocol
 
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
+
+### npm
+
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
 ### onboarding
 
@@ -434,6 +453,7 @@
 ### prd
 
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
 
 ### preset
@@ -469,6 +489,10 @@
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### update
+
+- [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
 ### ux
 
