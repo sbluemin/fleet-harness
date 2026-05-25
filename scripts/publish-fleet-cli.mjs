@@ -20,6 +20,7 @@ const wikiWebRange = wikiWebVersion
 const EXTERNAL_DEPS = {
   "@clack/prompts": "1.4.0",
   "@dotobokuri/fleet-wiki-ui": wikiWebRange,
+  "@xterm/headless": "^5.5.0",
   "node-pty": "^1.0.0",
 };
 
