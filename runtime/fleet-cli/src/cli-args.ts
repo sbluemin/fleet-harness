@@ -1,4 +1,13 @@
-import { ANSI_BOLD, ANSI_DIM, ANSI_RESET, FLEET_ACCENT, FLEET_COMMAND, FLEET_OPTION, GRADIENT_COLORS } from "./cli-style.js";
+import {
+  ANSI_BOLD,
+  ANSI_DIM,
+  ANSI_RESET,
+  ASCII_FLEET_BANNER,
+  FLEET_ACCENT,
+  FLEET_COMMAND,
+  FLEET_OPTION,
+  GRADIENT_COLORS,
+} from "./cli-style.js";
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {
@@ -21,14 +30,7 @@ type MutableFleetCliArgOverrides = {
   -readonly [Key in keyof FleetCliArgOverrides]: FleetCliArgOverrides[Key];
 };
 
-const ASCII_FLEET_BANNER: readonly string[] = [
-  "  ███████╗██╗     ███████╗███████╗████████╗",
-  "  ██╔════╝██║     ██╔════╝██╔════╝╚══██╔══╝",
-  "  █████╗  ██║     █████╗  █████╗     ██║",
-  "  ██╔══╝  ██║     ██╔══╝  ██╔══╝     ██║",
-  "  ██║     ███████╗███████╗███████╗   ██║",
-  "  ╚═╝     ╚══════╝╚══════╝╚══════╝   ╚═╝",
-];
+const HELP_BANNER_INDENT = "  ";
 const HELP_HINT = "Run 'fleet --help' for usage.";
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
@@ -55,7 +57,9 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
   const colorEnabled = resolveColorEnabled(options);
   const subtitle = `Fleet Harness · ${release.version} · ${release.channel}`;
   const lines = [
-    ...ASCII_FLEET_BANNER.map((line, index) => paintLine(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)),
+    ...ASCII_FLEET_BANNER.map(
+      (line, index) => `${HELP_BANNER_INDENT}${paintLine(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+    ),
     dim(subtitle, colorEnabled),
     "",
     section("USAGE", colorEnabled),
