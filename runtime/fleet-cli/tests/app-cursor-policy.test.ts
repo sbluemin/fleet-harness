@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCursorPolicySync, createRenderScheduler } from "../src/controls/index.js";
+import { FleetStatusSection } from "../src/sections/fleet-status-section.js";
 
 const HIDDEN_CURSOR_FRAME = "\x1b[?25l";
 const RENDER_THROTTLE_MS = 16;
@@ -74,4 +75,19 @@ describe("app cursor policy", () => {
 
     expect(cursorTarget).toBeUndefined();
   });
+
+  it("re-reads native status when rendering the Fleet status section", () => {
+    let native = false;
+    const section = new FleetStatusSection({ getNative: () => native });
+
+    expect(stripAnsi(section.render(80).join("\n"))).toContain("⚓ Fleet");
+
+    native = true;
+
+    expect(stripAnsi(section.render(80).join("\n"))).not.toContain("Fleet Action Protocol");
+  });
 });
+
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+}

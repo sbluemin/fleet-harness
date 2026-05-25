@@ -28,6 +28,7 @@ Only the permanent vertical two-pane layout is allowed:
 - **Agent CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
 - **Fleet PTY**: Lower pane.
 - **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Status) while they are active.
+- **Session Options**: CLI startup arguments are one-shot overrides. Mission Control owns the interactive option state, and only the Options Drawer `S` action may persist defaults through `fleet-infra/preset`.
 - **Shared PTY negotiation**: `src/controls/pty.ts` owns host resize negotiation over `@dotobokuri/fleet-tui/layout` primitives.
 - **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Agent CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
 - **Input runtime**: `src/controls/input.ts` owns host keyboard routing, keybinding helpers, mouse parsing, and programmatic PTY input.

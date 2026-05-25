@@ -1,4 +1,6 @@
 import { attachInputStream, LocalTui } from "@dotobokuri/fleet-tui/core";
+import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+import { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
 import {
   assertInputContract,
   createCursorPolicySync,
@@ -22,22 +24,27 @@ import {
   createCsiUInputNormalizer,
   type TuiPtyManager,
 } from "./controls/index.js";
-import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
+import { createJobBarSections } from "./carrier-status/job-bar-section.js";
 import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";
 import { injectAgentCliProfile } from "./agent-cli/injection.js";
-import { getAgentCliMetadata, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
+import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
+import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-control/loaded-counts.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
-import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
+import { createDefaultFleetPtyComponent } from "./sections/default-sections.js";
+import { FleetStatusSection } from "./sections/fleet-status-section.js";
+import { createSessionOptionsRuntime } from "./session-options/runtime.js";
+import type { ResolvedSessionOptions, SessionOptions } from "./session-options/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
 
 export interface RunAppOptions {
   readonly cliId?: string;
   readonly cursorSync?: boolean;
+  readonly argvOptions?: FleetCliOptions;
   readonly model?: string;
   readonly native?: boolean;
   readonly replaceSystemPrompt?: boolean;
@@ -75,21 +82,31 @@ export function createMissionControlProfileConfig(
   return {
     cliOptions: getAgentCliMetadata(),
     defaultCliId: resolveAgentCliId(options.env, { cliId: options.cliId }),
-    resolveProfile: (selectedCliId) =>
-      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: options.model }),
+    resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
+      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: launchOptions?.model ?? options.model }),
   };
 }
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
-  const cliId = options.cliId;
-  const cursorSync = options.cursorSync !== false;
-  const model = options.model;
-  const native = options.native ?? false;
-  const replaceSystemPrompt = options.replaceSystemPrompt ?? false;
-  const enableMetaphor = options.enableMetaphor ?? false;
   const runtimeLifecycle = createFleetRuntimeLifecycle();
   const runtime = await runtimeLifecycle.start();
-  const ui = new LocalTui({ cursorSyncEnabled: cursorSync });
+  const argvOptions = options.argvOptions ?? createRunAppArgOptions(options);
+  const sessionOptionsRuntime = createSessionOptionsRuntime({
+    argv: argvOptions,
+    defaults: {
+      cliId: getDefaultAgentCliId(),
+      cursorSync: true,
+      enableMetaphor: false,
+      native: false,
+      replaceSystemPrompt: false,
+    },
+    env: process.env,
+    parseCliId: parseAgentCliId,
+    presetService: runtime.infraServices.presetService,
+  });
+  const initialSessionOptions = sessionOptionsRuntime.getResolved().values;
+  const cliId = initialSessionOptions.cliId;
+  const ui = new LocalTui({ cursorSyncEnabled: true });
   let ptyManager: TuiPtyManager | undefined;
   let modeToggleSuppressed = false;
   let syncCursorPolicy = () => {};
@@ -104,19 +121,24 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     cliId,
     env: process.env,
     invocationCwd,
-    model,
+    model: initialSessionOptions.model,
   });
+  const optionChips = createMissionControlOptionChips(sessionOptionsRuntime.getResolved());
   const missionControl = createMissionControlController({
     ...missionControlProfileConfig,
+    cliOptions: missionControlProfileConfig.cliOptions.map((entry) => ({
+      ...entry,
+      optionChips: entry.id === cliId ? optionChips : [],
+    })),
     createPtyHost: (profile) => createPtyHost({ profile }),
-    injectProfile: (profile) =>
-      native
+    injectProfile: (profile, launchOptions) =>
+      (launchOptions ?? sessionOptionsRuntime.getDraft()).native
         ? Promise.resolve(profile)
         : injectAgentCliProfile(profile, {
             buildSystemPrompt,
             dedicatedMcpSession: runtime.dedicatedMcpSession,
-            enableMetaphor,
-            replaceSystemPrompt,
+            enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+            replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
           }),
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
     onExitFleet: () => stop(),
@@ -124,7 +146,12 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       ptyManager?.requestResize("programmatic");
       scheduleRender();
     },
+    env: process.env,
+    invocationCwd,
+    presetService: runtime.infraServices.presetService,
+    readRecentLogFiles,
     release: readFleetCliRelease(),
+    sessionOptions: sessionOptionsRuntime,
   });
   const jobBarState = createJobBarState({
     carrierRuntime: runtime.carrierRuntime,
@@ -135,7 +162,10 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       scheduleRender();
     },
   });
-  const sections = createDefaultFleetPtySections({ jobBarState, native });
+  const sections = [
+    { component: new FleetStatusSection({ getNative: () => sessionOptionsRuntime.getDraft().native }), id: "fleet-status-section" },
+    ...createJobBarSections(jobBarState),
+  ];
   const fleetPty = createFleetPtyApi({
     defaultComponent: createDefaultFleetPtyComponent(sections),
     sections,
@@ -261,7 +291,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     writeDedicated: (data) => missionControl.ptyHost.write(data),
   });
   syncCursorPolicy = createCursorPolicySync({
-    cursorSync,
+    cursorSync: true,
     fleetPty,
     getMode: router.getMode,
     hasActiveMissionControlPanel: missionControl.hasActivePanel,
@@ -269,6 +299,14 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     ptyView: missionControl.ptyView,
     ui,
   });
+  const staticCursorPolicySync = syncCursorPolicy;
+  syncCursorPolicy = () => {
+    if (!sessionOptionsRuntime.getDraft().cursorSync) {
+      ui.setCursorAnchorTarget(undefined);
+      return;
+    }
+    staticCursorPolicySync();
+  };
 
   ui.setChildren([missionControl.component, createFleetPtyViewport(fleetPty)]);
   syncCursorPolicy();
@@ -290,6 +328,38 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   ui.start();
   process.stdout.write(KITTY_ENABLE);
   disposeInputStream = attachInputStream(ui);
+}
+
+function createMissionControlOptionChips(resolved: ResolvedSessionOptions): string[] {
+  const { sources, values } = resolved;
+  const star = (source: string) => source === "arg" ? "*" : "";
+  return [
+    values.native ? `Native${star(sources.native)}` : `Fleet prompt${star(sources.native)}`,
+    values.replaceSystemPrompt ? `Replace${star(sources.replaceSystemPrompt)}` : `Append${star(sources.replaceSystemPrompt)}`,
+    values.enableMetaphor ? `Metaphor${star(sources.enableMetaphor)}` : undefined,
+    values.model ? `${values.model}${star(sources.model)}` : undefined,
+    values.cursorSync ? undefined : `Cursor off${star(sources.cursorSync)}`,
+  ].filter((chip): chip is string => chip !== undefined);
+}
+
+function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
+  return {
+    argvOverrides: {
+      cliId: options.cliId !== undefined,
+      cursorSync: options.cursorSync === false,
+      enableMetaphor: options.enableMetaphor === true,
+      model: options.model !== undefined,
+      native: options.native === true,
+      replaceSystemPrompt: options.replaceSystemPrompt === true,
+    },
+    cliId: options.cliId,
+    cursorSync: options.cursorSync !== false,
+    enableMetaphor: options.enableMetaphor ?? false,
+    help: false,
+    model: options.model,
+    native: options.native ?? false,
+    replaceSystemPrompt: options.replaceSystemPrompt ?? false,
+  };
 }
 
 export function createFleetHostInputKeybindingConfig(options: {

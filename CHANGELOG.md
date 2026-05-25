@@ -7,6 +7,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [agent-core] Added Mission Control for starting or relaunching the upper Agent CLI after exit.
+- [agent-core] Added native Mission Control Fleet Menu panels for authentication, wiki server control, diagnostics, and about information.
+- Added persistent Fleet CLI startup presets with Mission Control option editing and explicit save/reset controls.
 - [core] Added double-tap Ctrl+C confirmation before exiting the fleet CLI.
 
 ### Changed

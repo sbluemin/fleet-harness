@@ -1,15 +1,23 @@
-import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
+import type { AuthService } from "@dotobokuri/fleet-infra/auth";
+import type { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
+import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
+import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 import type { PtyView } from "../controls/terminal-view.js";
+import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../session-options/types.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
+import type { WikiProcessController } from "./menu/wiki-panel.js";
 
 export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" | "failed";
 
 export interface MissionControlCliOption {
   readonly id: AgentCliId;
   readonly label: string;
+  readonly optionChips?: readonly string[];
 }
+
+export type MissionControlOverlay = "options" | "fleet-menu";
 
 export type { FleetCliRelease, MissionControlCounts };
 
@@ -56,13 +64,31 @@ export interface MissionControlPtyView extends Component {
 
 export interface CreateMissionControlControllerOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
+  readonly authService?: AuthService;
   readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
   readonly createPtyView?: (cols: number, rows: number) => PtyView;
   readonly defaultCliId: AgentCliId;
-  readonly injectProfile: (profile: AgentCliProfile) => Promise<AgentCliProfile>;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly injectProfile: (profile: AgentCliProfile, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
+  readonly invocationCwd?: string;
   readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet: () => void;
   readonly onRenderRequest: () => void;
+  readonly presetService?: PresetService;
+  readonly readRecentLogFiles?: typeof readRecentLogFiles;
   readonly release?: FleetCliRelease;
-  readonly resolveProfile: (cliId: AgentCliId) => Promise<AgentCliProfile>;
+  readonly resolveProfile: (cliId: AgentCliId, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
+  readonly sessionOptions?: SessionOptionsRuntime;
+  readonly wikiController?: WikiProcessController;
+}
+
+export interface MissionControlOptionDrawerState {
+  readonly editingModel?: string;
+  readonly saveError?: string;
+  readonly selectedRow: number;
+  readonly resolved: ResolvedSessionOptions;
+}
+
+export interface MissionControlFleetMenuState {
+  readonly selectedIndex: number;
 }

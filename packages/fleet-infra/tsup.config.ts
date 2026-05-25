@@ -7,6 +7,7 @@ export default defineConfig({
     auth: "src/auth/index.ts",
     "data-dir": "src/data-dir/index.ts",
     log: "src/log/index.ts",
+    preset: "src/preset/index.ts",
     settings: "src/settings/index.ts"
   },
   format: ["esm", "cjs"],

@@ -35,6 +35,14 @@ export function resolveAgentCliId(env: NodeJS.ProcessEnv, options: ResolveAgentC
   return parseEnvCliId(options.cliId) ?? parseEnvCliId(env.FLEET_AGENT_CLI) ?? DEFAULT_CLI_ID;
 }
 
+export function parseAgentCliId(value: string | undefined): AgentCliId | undefined {
+  return parseEnvCliId(value);
+}
+
+export function getDefaultAgentCliId(): AgentCliId {
+  return DEFAULT_CLI_ID;
+}
+
 export function getAgentCliIds(): AgentCliId[] {
   return Object.keys(DEFINITIONS) as AgentCliId[];
 }
@@ -51,7 +59,7 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
     return undefined;
   }
 
-  if (value in DEFINITIONS) {
+  if (Object.hasOwn(DEFINITIONS, value)) {
     return value as AgentCliId;
   }
 

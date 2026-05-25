@@ -45,6 +45,11 @@
       "import": "./dist/log.js",
       "require": "./dist/log.cjs"
     },
+    "./preset": {
+      "types": "./dist/preset/index.d.ts",
+      "import": "./dist/preset.js",
+      "require": "./dist/preset.cjs"
+    },
     "./settings": {
       "types": "./dist/settings/index.d.ts",
       "import": "./dist/settings.js",
@@ -57,6 +62,7 @@
       "auth": ["dist/auth/index.d.ts"],
       "data-dir": ["dist/data-dir/index.d.ts"],
       "log": ["dist/log/index.d.ts"],
+      "preset": ["dist/preset/index.d.ts"],
       "settings": ["dist/settings/index.d.ts"]
     }
   },

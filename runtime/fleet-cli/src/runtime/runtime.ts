@@ -83,7 +83,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const dataDir = deps.dataDir ?? path.join(os.homedir(), ".fleet");
 	const infraServices = createInfraServices();
 	const mcpRuntimes = createRuntimeMcpServices();
-	const carrierRuntime = createCarrierRuntime({ config: {} });
+	const carrierRuntime = createCarrierRuntime();
 
 	infraServices.executorPortRuntime.register({
 		getCarrierExternalMcpServerIds(carrierId) {

@@ -1,8 +1,9 @@
-import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
-
 import { FLEET_ACTION_COLOR, FLEET_ACTION_LABEL } from "@dotobokuri/fleet-admiral";
 
+import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
+
 export interface FleetStatusSectionOptions {
+	readonly getNative?: () => boolean;
 	readonly native?: boolean;
 }
 
@@ -17,7 +18,7 @@ export class FleetStatusSection implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		if (this.options.native) {
+		if (this.options.getNative?.() ?? this.options.native) {
 			return [renderBorder(width, DIM_COLOR)];
 		}
 		return [renderStatusLine(width, FLEET_ACTION_COLOR, FLEET_ACTION_LABEL)];

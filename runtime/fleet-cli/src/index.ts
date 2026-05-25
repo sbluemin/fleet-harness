@@ -56,6 +56,7 @@ if (options.help) {
 }
 
 runApp({
+  argvOptions: options,
   cliId: options.cliId,
   cursorSync: options.cursorSync,
   model: options.model,

@@ -3,15 +3,19 @@ import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } 
 
 import type { AgentCliId } from "../agent-cli/types.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
-import type { MissionControlCliOption, MissionControlStateKind } from "./types.js";
+import type { MissionControlCliOption, MissionControlFleetMenuState, MissionControlOptionDrawerState, MissionControlOverlay, MissionControlStateKind } from "./types.js";
 import { buildFleetBanner, centerText, FLEET_ACCENT } from "./welcome.js";
 
 interface MissionControlRenderOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
+  readonly fleetMenu?: MissionControlFleetMenuState;
   readonly lastExit: PtyExitEvent | undefined;
   readonly loadedCounts: MissionControlCounts | undefined;
+  readonly panelLines?: readonly string[];
   readonly release: FleetCliRelease | undefined;
   readonly selectedCliId: AgentCliId;
+  readonly overlay?: MissionControlOverlay;
+  readonly optionDrawer?: MissionControlOptionDrawerState;
   readonly state: MissionControlStateKind;
 }
 
@@ -22,6 +26,16 @@ const SELECTED_MARKER = "▸";
 const IDLE_MARKER = " ";
 const CHOICE_INDENT = 4;
 const COUNT_SEPARATOR = "  ·  ";
+const OPTION_DRAWER_LABEL_WIDTH = 13;
+const OPTION_DRAWER_VALUE_WIDTH = 18;
+const OPTION_DRAWER_SOURCE_WIDTH = 7;
+const OPTION_DRAWER_HINT_WIDTH = 8;
+const FLEET_MENU_ITEMS: readonly string[] = [
+  "Authentication",
+  "Wiki Server",
+  "Diagnostics",
+  "About",
+];
 
 export const MISSION_CONTROL_THEME: FleetPtyTheme = {
   accent: (text) => paint(FLEET_ACCENT, text),
@@ -59,8 +73,23 @@ export function renderMissionControl(width: number, options: MissionControlRende
     lines.push("");
   }
 
+  if (options.panelLines !== undefined) {
+    lines.push(...options.panelLines);
+    return lines;
+  }
+
   lines.push(renderStatusLine(options.state, options.lastExit, innerWidth));
   lines.push("");
+
+  if (options.overlay === "options" && options.optionDrawer !== undefined) {
+    lines.push(...renderOptionsDrawer(innerWidth, options.optionDrawer));
+    return lines;
+  }
+
+  if (options.overlay === "fleet-menu") {
+    lines.push(...renderFleetMenu(innerWidth, options.fleetMenu ?? { selectedIndex: 0 }));
+    return lines;
+  }
 
   for (const [index, entry] of options.cliOptions.entries()) {
     lines.push(renderChoiceLine({
@@ -98,9 +127,12 @@ function renderChoiceLine(options: {
   const marker = options.selected ? STYLE.accent(SELECTED_MARKER) : STYLE.dim(IDLE_MARKER);
   const number = STYLE.muted(`${options.index + 1}.`);
   const label = colorizeProvider(options.entry.id, options.entry.label);
+  const chips = options.entry.optionChips && options.entry.optionChips.length > 0
+    ? STYLE.dim(`  [${options.entry.optionChips.join(" · ")}]`)
+    : "";
   const prefix = `${" ".repeat(options.leftPad)}${marker} ${number} `;
   const remaining = Math.max(0, options.innerWidth - visibleWidth(prefix));
-  return `${prefix}${truncateToWidth(label, remaining)}`;
+  return `${prefix}${truncateToWidth(`${label}${chips}`, remaining)}`;
 }
 
 function renderCountsLine(
@@ -139,9 +171,40 @@ function renderFooterHint(state: MissionControlStateKind, innerWidth: number): s
   const hint = state === "launching"
     ? "Starting... please wait"
     : state === "ended" || state === "failed"
-      ? "R relaunch  C choose CLI  X exit Fleet"
-      : "↑↓/j/k select  Enter start  1-9 quick pick  X exit Fleet";
+      ? "R relaunch  C choose CLI  O options  M menu  X exit Fleet"
+      : "↑↓/j/k select  Enter start  O options  M menu  X exit Fleet";
   return centerText(STYLE.dim(hint), innerWidth);
+}
+
+function renderOptionsDrawer(innerWidth: number, drawer: MissionControlOptionDrawerState): string[] {
+  const values = drawer.resolved.values;
+  const sources = drawer.resolved.sources;
+  const systemPromptSource = values.native ? sources.native : sources.replaceSystemPrompt;
+  const rows = [
+    formatOptionDrawerRow(drawer.selectedRow === 0, "Mode", values.native ? "Native" : "Fleet prompt", sources.native, "[Space]"),
+    formatOptionDrawerRow(drawer.selectedRow === 1, "System prompt", values.native ? "Native" : values.replaceSystemPrompt ? "Replace" : "Append", systemPromptSource, "[Space]"),
+    formatOptionDrawerRow(drawer.selectedRow === 2, "Metaphor", values.enableMetaphor ? "Enabled" : "Off", sources.enableMetaphor, "[Space]"),
+    formatOptionDrawerRow(drawer.selectedRow === 3, "Model", drawer.editingModel !== undefined ? formatModelEditValue(drawer.editingModel) : values.model ?? "Default", sources.model, "[Enter]"),
+    formatOptionDrawerRow(drawer.selectedRow === 4, "Cursor sync", values.cursorSync ? "Enabled" : "Off", sources.cursorSync, "[Space]"),
+  ];
+  return [
+    centerText(STYLE.accent("Options"), innerWidth),
+    "",
+    ...rows.map((row) => centerText(row, innerWidth)),
+    ...(drawer.saveError ? ["", centerText(STYLE.error(`Save failed: ${drawer.saveError}`), innerWidth)] : []),
+    "",
+    centerText(STYLE.dim("↑↓ select  Space toggle  Enter edit  S save  R reset  Esc close"), innerWidth),
+  ];
+}
+
+function renderFleetMenu(innerWidth: number, menu: MissionControlFleetMenuState): string[] {
+  return [
+    centerText(STYLE.accent("Fleet Menu"), innerWidth),
+    "",
+    ...FLEET_MENU_ITEMS.map((item, index) => centerText(formatMenuRow(index === menu.selectedIndex, item), innerWidth)),
+    "",
+    centerText(STYLE.dim("Enter open  Esc close"), innerWidth),
+  ];
 }
 
 function getStatusText(state: MissionControlStateKind, event: PtyExitEvent | undefined): { readonly text: string; readonly tone: StatusTone } {
@@ -189,6 +252,25 @@ function computeChoiceWidth(cliOptions: readonly MissionControlCliOption[]): num
     }
   }
   return CHOICE_INDENT + maxLabelWidth;
+}
+
+function formatOptionDrawerRow(selected: boolean, label: string, value: string, source: string, hint: string): string {
+  const prefix = selected ? `${SELECTED_MARKER} ` : "  ";
+  const selectedHint = selected ? hint : "";
+  return `${prefix}${padEndVisible(label, OPTION_DRAWER_LABEL_WIDTH)}  ${padEndVisible(value, OPTION_DRAWER_VALUE_WIDTH)}  ${padEndVisible(source, OPTION_DRAWER_SOURCE_WIDTH)}  ${padEndVisible(selectedHint, OPTION_DRAWER_HINT_WIDTH)}`;
+}
+
+function formatMenuRow(selected: boolean, label: string): string {
+  return `${selected ? SELECTED_MARKER : " "} ${label}`;
+}
+
+function formatModelEditValue(value: string): string {
+  return `${value}|`;
+}
+
+function padEndVisible(text: string, width: number): string {
+  const truncated = truncateToWidth(text, width);
+  return `${truncated}${" ".repeat(Math.max(0, width - visibleWidth(truncated)))}`;
 }
 
 function paint(code: string, text: string): string {

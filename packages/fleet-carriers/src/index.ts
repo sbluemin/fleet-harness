@@ -64,11 +64,7 @@ export interface CarrierRuntime {
   registerCarrierDefaults(): void;
 }
 
-export interface CarrierRuntimeDeps {
-  readonly config?: Record<string, never>;
-}
-
-export function createCarrierRuntime(_deps: CarrierRuntimeDeps = {}): CarrierRuntime {
+export function createCarrierRuntime(): CarrierRuntime {
   const registry = createCarrierRegistry();
   return {
     registry,

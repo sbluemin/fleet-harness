@@ -8,6 +8,7 @@
 - `agent/` — executor runtime engine, pool/session persistence, provider/model codec, `TrackStatus` SSoT, builtin external MCP catalog, and the two-method `ExecutorPort`.
 - `data-dir/` — Fleet data directory resolution and legacy migration.
 - `log/` — runtime log store and log entry contracts.
+- `preset/` — host-agnostic user preset I/O for CLI startup defaults.
 - `settings/` — settings store, runtime singleton, and settings service.
 
 ## I/O Gateway Contract
@@ -29,6 +30,7 @@ Consumers use the package root or documented subdomain barrels only:
 - `@dotobokuri/fleet-infra/auth`
 - `@dotobokuri/fleet-infra/data-dir`
 - `@dotobokuri/fleet-infra/log`
+- `@dotobokuri/fleet-infra/preset`
 - `@dotobokuri/fleet-infra/settings`
 
 Do not add individual deep source-file exports without an explicit public API decision.

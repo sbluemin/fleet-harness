@@ -147,6 +147,22 @@
     ],
     "updated": "2026-05-23T12:39:41.016Z"
   },
+  "prd-fleet-menu-t3-full": {
+    "path": "wiki/prd-fleet-menu-t3-full.md",
+    "title": "PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)",
+    "tags": [
+      "prd",
+      "fleet-menu",
+      "mission-control",
+      "panel-stack",
+      "auth",
+      "wiki-server",
+      "diagnostics",
+      "about",
+      "fleet-infra-log"
+    ],
+    "updated": "2026-05-25T05:40:19.839Z"
+  },
   "prd-infra-agent-executor-migration": {
     "path": "wiki/prd-infra-agent-executor-migration.md",
     "title": "PRD: Agent Executor 엔진의 인프라 계층 이전",

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAgentCliInjectionCapability } from "../../src/agent-cli/capabilities.js";
 import {
   getAgentCliIds,
+  parseAgentCliId,
   resolveAgentCliProfile,
 } from "../../src/agent-cli/registry.js";
 
@@ -56,6 +57,12 @@ describe("agent CLI catalog", () => {
     await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "claude-zai" }, "/tmp")).resolves.toMatchObject({
       id: "claude-zai",
     });
+  });
+
+  it("rejects inherited object keys as CLI IDs", () => {
+    for (const cliId of ["toString", "constructor", "__proto__"]) {
+      expect(() => parseAgentCliId(cliId)).toThrow(`Unsupported agent CLI "${cliId}"`);
+    }
   });
 
   it("shares Claude-family terminal and message policy", async () => {

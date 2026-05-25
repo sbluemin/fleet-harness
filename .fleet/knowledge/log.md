@@ -2860,3 +2860,43 @@
 - result: `accepted`
 - target: `wiki/prd-wiki-template-schema.md`
 
+## 2026-05-25T05:38:52.600Z — drydock run
+
+- error_count: `0`
+- info_count: `2`
+- issue_count: `9`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T05:40:19.858Z — raw source added
+
+- id: `prd-fleet-menu-t3-full-source`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
+- source_type: `inline`
+- tag_count: `9`
+- title: `PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)`
+
+## 2026-05-25T05:40:19.860Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T05-40-19-839Z-8fc54334`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
+- target: `wiki/prd-fleet-menu-t3-full.md`
+- warning_count: `0`
+
+## 2026-05-25T05:43:08.343Z — index rebuilt
+
+- entry_count: `18`
+
+## 2026-05-25T05:43:08.344Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T05-40-19-839Z-8fc54334`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-menu-t3-full.md`
+

@@ -1,12 +1,26 @@
 export interface FleetCliOptions {
   readonly cliId?: string;
   readonly cursorSync: boolean;
+  readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
   readonly model?: string;
   readonly native: boolean;
   readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
+
+export interface FleetCliArgOverrides {
+  readonly cliId: boolean;
+  readonly cursorSync: boolean;
+  readonly model: boolean;
+  readonly native: boolean;
+  readonly replaceSystemPrompt: boolean;
+  readonly enableMetaphor: boolean;
+}
+
+type MutableFleetCliArgOverrides = {
+  -readonly [Key in keyof FleetCliArgOverrides]: FleetCliArgOverrides[Key];
+};
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
 
@@ -48,35 +62,56 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
   let native = false;
   let replaceSystemPrompt = false;
   let enableMetaphor = false;
+  const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       help = true;
     } else if (arg === "--cli" || arg === "-c") {
       cliId = argv[index + 1];
+      argvOverrides.cliId = true;
       index += 1;
     } else if (arg.startsWith("--cli=")) {
       cliId = arg.slice("--cli=".length);
+      argvOverrides.cliId = true;
     } else if (arg.startsWith("-c=")) {
       cliId = arg.slice("-c=".length);
+      argvOverrides.cliId = true;
     } else if (arg === "--model") {
       model = argv[index + 1];
+      argvOverrides.model = true;
       index += 1;
     } else if (arg.startsWith("--model=")) {
       model = arg.slice("--model=".length);
+      argvOverrides.model = true;
     } else if (arg === "--native" || arg === "-n") {
       native = true;
+      argvOverrides.native = true;
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
+      argvOverrides.cursorSync = true;
     } else if (arg === "--replace-system-prompt" || arg === "-rsp") {
       replaceSystemPrompt = true;
+      argvOverrides.replaceSystemPrompt = true;
     } else if (arg === "--enable-metaphor" || arg === "-em") {
       enableMetaphor = true;
+      argvOverrides.enableMetaphor = true;
     } else {
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cliId, cursorSync, help, model, native, replaceSystemPrompt, enableMetaphor };
+  return { cliId, cursorSync, argvOverrides, help, model, native, replaceSystemPrompt, enableMetaphor };
+}
+
+function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
+  return {
+    cliId: false,
+    cursorSync: false,
+    model: false,
+    native: false,
+    replaceSystemPrompt: false,
+    enableMetaphor: false,
+  };
 }
 
 function formatUnknownFleetOption(option: string): string {
