@@ -32,7 +32,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 
 | Concept | Owner | Rationale |
 |---------|-------|-----------|
-| Session persistence (carrier → ACP sessionId mappings as JSONL custom entries) | `packages/fleet-infra/src/agent/internal/session-runtime.ts` | Resume/restore semantics backed by JSONL custom entries with the `fleet/carrier-session` customType. |
+| Carrier session reuse | `packages/fleet-infra/src/agent/internal/executor-engine.ts` | Live carrier session reuse is in-process executor pool state keyed by `poolKey`; it is not persisted through JSONL custom entries or host adapters. |
 | Track status enum | `packages/fleet-infra/src/agent/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | Two independent HTTP servers (`fleet-carriers` and `fleet-wiki`), each with per-session Bearer tokens and FIFO routing isolated by token. |
 | CLI provider catalog | `@dotobokuri/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |

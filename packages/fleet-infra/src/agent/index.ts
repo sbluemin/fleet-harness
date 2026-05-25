@@ -10,7 +10,7 @@ export type {
   ExecutorPortRuntime,
 } from "./executor-port.js";
 export type { ExecuteOptions, ExecResult } from "./executor.js";
-export type { SessionPersistencePort, SessionRuntime } from "./internal/session-runtime.js";
+export type { ResumeFailureKind } from "./internal/session-errors.js";
 export type {
   SelectableThinkingLevel,
   CliCapability,
@@ -41,9 +41,6 @@ export {
   executeOneShot,
 } from "./executor.js";
 export {
-  createSessionRuntime,
-  sessionRuntime,
   classifyResumeFailure,
   isDeadSessionError,
-  CARRIER_SESSION_CUSTOM_TYPE,
-} from "./internal/session-runtime.js";
+} from "./internal/session-errors.js";

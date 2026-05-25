@@ -3,7 +3,7 @@ import {
   getProviderModels,
   type CliType,
 } from "@dotobokuri/fleet-unified-agent";
-import { disconnect, sessionRuntime } from "@dotobokuri/fleet-infra/agent";
+import { disconnect } from "@dotobokuri/fleet-infra/agent";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 import type {
   FleetStoreSnapshot,
@@ -67,9 +67,7 @@ export function loadModels(cliTypesByCarrier?: Record<string, CliType>): Selecte
 }
 
 /**
- * Carrier의 모델 설정을 변경하고 세션을 무효화합니다.
- * 원자적 연산: save → session clear → disconnect
- * clear 먼저: executor가 stale sessionId로 resume 시도하는 창 제거
+ * Carrier의 모델 설정을 변경하고 live pool을 무효화합니다.
  */
 export async function updateModelSelection(
   carrierId: string,
@@ -84,8 +82,6 @@ export async function updateModelSelection(
     };
     states.models = { ...states.models, [carrierId]: merged };
   });
-  sessionRuntime.getCarrierSessionStore().clear(carrierId);
-  sessionRuntime.flushSessionMappings();
   await disconnect(carrierId);
 }
 

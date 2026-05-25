@@ -6,9 +6,7 @@ import * as preset from "./preset/index.js";
 import { settings } from "./settings/index.js";
 import {
   executorPortRuntime,
-  sessionRuntime,
   type ExecutorPortRuntime,
-  type SessionRuntime,
 } from "./agent/index.js";
 import { createCoreLogStore, type CoreLogStore } from "./log/store.js";
 import { createPresetService, type PresetService } from "./preset/index.js";
@@ -23,7 +21,6 @@ export interface InfraServices {
   settings: typeof settings;
   executorPortRuntime: ExecutorPortRuntime;
   settingsRuntime: SettingsRuntime;
-  sessionRuntime: SessionRuntime;
   coreLogStore: CoreLogStore;
   presetService: PresetService;
 }
@@ -59,7 +56,6 @@ export function createInfraServices(_deps: InfraServicesDeps = {}): InfraService
     settings,
     executorPortRuntime,
     settingsRuntime,
-    sessionRuntime,
     coreLogStore: createCoreLogStore({ settingsRuntime }),
     presetService,
   };

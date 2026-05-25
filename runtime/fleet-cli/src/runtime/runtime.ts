@@ -122,7 +122,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			];
 		},
 	});
-	infraServices.sessionRuntime.initRuntime(dataDir);
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
 	const settings = infraServices.settings.create();
