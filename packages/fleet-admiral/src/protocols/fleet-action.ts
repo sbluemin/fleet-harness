@@ -87,7 +87,7 @@ Triggered when the task involves structural changes, new modules, cross-layer de
 
 ### Phase 3 — Work Plan
 
-**Entry Gate.** Apply the Context Confidence Standing Order before commencing planning. Default threshold is ${"`"}sufficient${"`"}; require ${"`"}complete${"`"} when the task involves structural or architectural changes, multi-carrier coordination, cross-module modifications, doctrine or prompt-policy edits, or irreversible operations. Output the evidence checklist before declaring the confidence level. Gate failure triggers Phase 1 re-entry scoped to unresolved blocking gaps — do not lower the threshold to pass the gate.
+**Entry Gate.** Apply the Context Confidence Standing Order before commencing planning. Required threshold is ${"`"}complete${"`"} — all blocking gaps AND all confirmatory gaps must be resolved before planning commences, regardless of task size or planning depth. Output the evidence checklist before declaring the confidence level. Gate failure triggers Phase 1 re-entry scoped to unresolved blocking gaps — do not lower the threshold to pass the gate.
 
 Choose planning depth proportional to task complexity:
 

@@ -16,7 +16,7 @@ export const CONTEXT_CONFIDENCE: StandingOrder = {
   name: "Context Confidence",
   prompt: String.raw`## Context Confidence Standing Order
 
-Decision phases (typically Work Plan) require sufficient evidence before commencing. This Standing Order owns the operational definition, evaluation procedure, and re-entry mechanism for the Context Confidence metric; Protocols are responsible for invoking it at their phase boundaries.
+Decision phases (typically Work Plan) require strong evidence before commencing — the Fleet Action Protocol's Work Plan phase in particular requires ${"`"}complete${"`"} confidence unconditionally. This Standing Order owns the operational definition, evaluation procedure, and re-entry mechanism for the Context Confidence metric; Protocols are responsible for invoking it at their phase boundaries.
 
 ### Confidence Levels (operational definition)
 
@@ -50,6 +50,8 @@ Protocols invoke this Standing Order at decision boundaries by stating:
 Threshold selection follows proportionality:
 - **${"`"}sufficient${"`"}** is the default threshold.
 - **${"`"}complete${"`"}** is required when the upcoming work involves: structural or architectural changes, multi-carrier coordination, cross-module modifications, doctrine or prompt-policy edits, or irreversible operations.
+
+> Note: The Fleet Action Protocol's Work Plan phase overrides this default and unconditionally requires ${"`"}complete${"`"}.
 
 ### Re-entry Mechanism (gate failure)
 
