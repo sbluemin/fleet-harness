@@ -10,7 +10,8 @@
  *  - 렌더러 등록 (커스텀 or 기본)
  */
 
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
+import { getLogAPI, type LogOptions } from "@dotobokuri/fleet-infra/log";
 import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,
@@ -26,8 +27,11 @@ import {
 import type {
   CarrierConfig,
   CarrierFrameworkState,
+  CarrierJobStatus,
   CarrierJobStreamEvent,
   CarrierJobStreamHandler,
+  ModelEffort,
+  TrackStatus,
 } from "./types.js";
 import {
   CARRIER_ID_FORMAT_REGEX,
@@ -307,4 +311,51 @@ export function clearRegisteredCarriers(registry: CarrierRegistry): void {
 
 export function resetCarrierRegistryForTests(registry: CarrierRegistry): void {
   clearRegisteredCarriers(registry);
+}
+
+export function resolveValidatedEffort(
+  cliType: CliType,
+  modelId: string | undefined,
+  effort: string | undefined,
+): string | undefined {
+  if (!modelId || !effort) return undefined;
+  const modelEffort = getModelEffort(cliType, modelId);
+  if (!modelEffort?.levels?.includes(effort)) return undefined;
+  return effort;
+}
+
+export function toCarrierJobStatus(status: TrackStatus): CarrierJobStatus {
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "error";
+}
+
+export function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
+  if (status === "done") return "done";
+  if (status === "aborted") return "aborted";
+  return "err";
+}
+
+export function logDebug(category: string, message: string, options?: unknown): void {
+  getLogAPI().debug(category, message, options as LogOptions | undefined);
+}
+
+function getModelEffort(
+  cliType: CliType,
+  modelId: string,
+): ModelEffort | null {
+  return normalizeEffort(getEffort(cliType, modelId));
+}
+
+function normalizeEffort(
+  effort: ModelEffort,
+): ModelEffort | null {
+  if (!effort.supported) return null;
+  const levels = effort.levels ?? [];
+  if (levels.length === 0) return null;
+  return {
+    supported: true,
+    levels,
+    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
+  };
 }

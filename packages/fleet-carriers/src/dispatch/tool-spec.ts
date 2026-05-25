@@ -5,28 +5,24 @@
  */
 
 import { Type } from "typebox";
-import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/fleet-unified-agent";
 
 import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
-import type { CarrierJobStatus as StoredCarrierJobStatus, CarrierJobSummary } from "../jobs/types.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
-import type { LogOptions } from "@dotobokuri/fleet-infra/log";
 import type {
   CarrierJobStatus,
   CarrierMetadata,
-  ModelEffort,
   RequestBlock,
   TrackMeta,
-  TrackStatus,
 } from "./types.js";
 
-import { appendBlock, toMessageArchiveBlock, toThoughtArchiveBlock } from "../jobs/archive.js";
+import { appendBlock, toArchiveBlock } from "../jobs/archive.js";
 import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { launchResponseResult } from "../jobs/lifecycle.js";
 import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
-import { buildCarrierJobId } from "../jobs/types.js";
-import { getLogAPI } from "@dotobokuri/fleet-infra/log";
+import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
@@ -37,8 +33,12 @@ import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   emitStreamEvent,
+  logDebug,
   resolveCarrierCliType,
   resolveCarrierDisplayName,
+  resolveValidatedEffort,
+  toCarrierJobStatus,
+  toTrackFinalStatus,
   type CarrierRegistry,
 } from "./framework.js";
 
@@ -70,6 +70,37 @@ interface CarrierBackgroundOptions {
   toolName: `carrier_${string}`;
 }
 
+/** 검증 성공 결과 */
+export interface RequiredBlockValidationOk {
+  ok: true;
+}
+
+/** 검증 실패 결과 */
+export interface RequiredBlockValidationFail {
+  ok: false;
+  missing: string[];
+  error: string;
+}
+
+export type RequiredBlockValidationResult =
+  | RequiredBlockValidationOk
+  | RequiredBlockValidationFail;
+
+/** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
+export interface CarrierRosterOptions {
+  /** 로스터 섹션 제목 (기본: "## Available Carriers") */
+  heading?: string;
+  /** 로스터 본문 앞에 추가할 안내 라인들 */
+  preambleLines?: string[];
+  /** 특정 carrierId에 대해 로스터 엔트리 뒤에 추가할 라인 생성기 */
+  extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
+}
+
+export interface CarrierSortieOutcome {
+  readonly carrierId: string;
+  readonly status: "done" | "error" | "aborted";
+}
+
 // ═════════════════════════════════════════════════════════
 // Constants
 // ═════════════════════════════════════════════════════════
@@ -80,6 +111,16 @@ const CARRIER_LOG_CATEGORY_STREAM = "fleet-carrier:stream";
 const CARRIER_LOG_CATEGORY_EXEC = "fleet-carrier:exec";
 const CARRIER_LOG_CATEGORY_RESULT = "fleet-carrier:result";
 const CARRIER_LOG_CATEGORY_ERROR = "fleet-carrier:error";
+const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
+
+/** carrier_dispatch request brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
+export const CARRIER_REQUEST_BREVITY_GUIDELINE =
+  `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
+  ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request.` +
+  ` When referencing prior carrier work, pass the job_id(s) via <prior_jobs> instead of paraphrasing their output` +
+  ` — the carrier will self-fetch full results using carrier_jobs(action:"result", format:"full", job_id:...).` +
+  ` If archive content has expired (full_invalidated true / TTL exceeded), the carrier falls back to` +
+  ` carrier_jobs(action:"result", format:"summary", job_id:...) to retrieve the summary.`;
 
 // ═════════════════════════════════════════════════════════
 // 공개 빌더
@@ -264,10 +305,17 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
     const results = result
       ? [result]
       : [{ carrierId: opts.carrierId, displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId), status: "error" as CarrierJobStatus, responseText: finalError ?? "Unknown error", error: finalError }];
-    const summary = buildSortieJobSummary(
-      opts.jobId, opts.startedAt, finishedAt,
-      assignments, results, finalStatus as StoredCarrierJobStatus, finalError, opts.toolName,
-    );
+    const summary = buildJobSummary({
+      jobId: opts.jobId,
+      startedAt: opts.startedAt,
+      finishedAt,
+      carriers: assignments.map((assignment) => assignment.carrier),
+      results,
+      status: finalStatus as StoredCarrierJobStatus,
+      error: finalError,
+      tool: opts.toolName,
+      prefix: "carrier job",
+    });
     finalizeDetachedJob({
       jobId: opts.jobId,
       status: finalStatus,
@@ -344,12 +392,12 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       },
       onMessageChunk: (text) => {
         const cleanText = sanitizeChunk(text);
-        appendBlock(opts.jobId, toMessageArchiveBlock(opts.carrierId, text));
+        appendBlock(opts.jobId, toArchiveBlock("text", opts.carrierId, text));
         emitStreamEvent(opts.registry, { type: "track:text", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
       },
       onThoughtChunk: (text) => {
         const cleanText = sanitizeChunk(text);
-        appendBlock(opts.jobId, toThoughtArchiveBlock(opts.carrierId, text));
+        appendBlock(opts.jobId, toArchiveBlock("thought", opts.carrierId, text));
         emitStreamEvent(opts.registry, { type: "track:thought", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
       },
       onToolCall: (toolTitle, toolStatus, _rawOutput, toolCallId) => {
@@ -424,18 +472,6 @@ function emitJobRegistered(
   });
 }
 
-function toCarrierJobStatus(status: TrackStatus): CarrierJobStatus {
-  if (status === "done") return "done";
-  if (status === "aborted") return "aborted";
-  return "error";
-}
-
-function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
-  if (status === "done") return "done";
-  if (status === "aborted") return "aborted";
-  return "err";
-}
-
 function buildCarrierDispatchRunId(jobId: string, carrierId: string): string {
   return `${jobId}:${carrierId}`;
 }
@@ -452,65 +488,6 @@ function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; r
     obj.request.trim().length > 0
   );
 }
-
-function resolveValidatedEffort(
-  cliType: CliType,
-  modelId: string | undefined,
-  effort: string | undefined,
-): string | undefined {
-  if (!modelId || !effort) return undefined;
-  const modelEffort = getModelEffort(cliType, modelId);
-  if (!modelEffort?.levels?.includes(effort)) return undefined;
-  return effort;
-}
-
-function getModelEffort(
-  cliType: CliType,
-  modelId: string,
-): ModelEffort | null {
-  return normalizeEffort(getEffort(cliType, modelId));
-}
-
-function normalizeEffort(
-  effort: ModelEffort,
-): ModelEffort | null {
-  if (!effort.supported) return null;
-  const levels = effort.levels ?? [];
-  if (levels.length === 0) return null;
-  return {
-    supported: true,
-    levels,
-    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
-  };
-}
-
-function logDebug(category: string, message: string, options?: unknown): void {
-  getLogAPI().debug(category, message, options as LogOptions | undefined);
-}
-
-// ─────────────────────────────────────────────────────────
-// 타입
-// ─────────────────────────────────────────────────────────
-
-/** 검증 성공 결과 */
-export interface RequiredBlockValidationOk {
-  ok: true;
-}
-
-/** 검증 실패 결과 */
-export interface RequiredBlockValidationFail {
-  ok: false;
-  missing: string[];
-  error: string;
-}
-
-export type RequiredBlockValidationResult =
-  | RequiredBlockValidationOk
-  | RequiredBlockValidationFail;
-
-// ─────────────────────────────────────────────────────────
-// 함수
-// ─────────────────────────────────────────────────────────
 
 /**
  * 필수 requestBlock이 request 텍스트에 정상적으로 존재하는지 검사합니다.
@@ -560,31 +537,6 @@ export function validateRequiredRequestBlocks(
 /** 정규식 특수문자를 이스케이프합니다 */
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
-
-/** carrier_dispatch request brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
-export const CARRIER_REQUEST_BREVITY_GUIDELINE =
-  `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
-  ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request.` +
-  ` When referencing prior carrier work, pass the job_id(s) via <prior_jobs> instead of paraphrasing their output` +
-  ` — the carrier will self-fetch full results using carrier_jobs(action:"result", format:"full", job_id:...).` +
-  ` If archive content has expired (full_invalidated true / TTL exceeded), the carrier falls back to` +
-  ` carrier_jobs(action:"result", format:"summary", job_id:...) to retrieve the summary.`;
-
-// ═════════════════════════════════════════════════════════
-// Types / Interfaces
-// ═════════════════════════════════════════════════════════
-
-/** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
-export interface CarrierRosterOptions {
-  /** 로스터 섹션 제목 (기본: "## Available Carriers") */
-  heading?: string;
-  /** 로스터 본문 앞에 추가할 안내 라인들 */
-  preambleLines?: string[];
-  /** 특정 carrierId에 대해 로스터 엔트리 뒤에 추가할 라인 생성기 */
-  extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
 }
 
 // ═════════════════════════════════════════════════════════
@@ -682,48 +634,4 @@ export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
   });
 }
 
-export interface CarrierSortieOutcome {
-  readonly carrierId: string;
-  readonly status: "done" | "error" | "aborted";
-}
-
-export function computeSortieFinalStatus(results: readonly CarrierSortieOutcome[]): StoredCarrierJobStatus {
-  if (results.some((result) => result.status === "aborted")) return "aborted";
-  if (results.some((result) => result.status === "error")) return "error";
-  return "done";
-}
-
-export function buildSortieSummaryText(
-  status: StoredCarrierJobStatus,
-  successCount: number,
-  failureCount: number,
-  error?: string,
-): string {
-  if (status === "aborted") return `carrier job aborted: ${successCount} done, ${failureCount} failed`;
-  if (error) return `carrier job failed: ${error}`;
-  return `carrier job completed: ${successCount} done, ${failureCount} failed`;
-}
-
-export function buildSortieJobSummary(
-  jobId: string,
-  startedAt: number,
-  finishedAt: number,
-  assignments: readonly { carrier: string; request: string }[],
-  results: readonly CarrierSortieOutcome[],
-  status: StoredCarrierJobStatus,
-  error: string | undefined,
-  tool: string,
-): CarrierJobSummary {
-  const successCount = results.filter((result) => result.status === "done").length;
-  const failureCount = results.length - successCount;
-  return {
-    jobId,
-    tool: tool as CarrierJobSummary["tool"],
-    status,
-    summary: buildSortieSummaryText(status, successCount, failureCount, error),
-    startedAt,
-    finishedAt,
-    carriers: assignments.map((assignment) => assignment.carrier),
-    error,
-  };
-}
+export { buildJobSummary as buildSortieJobSummary, computeFinalStatus as computeSortieFinalStatus };

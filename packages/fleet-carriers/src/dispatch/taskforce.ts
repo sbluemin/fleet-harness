@@ -4,30 +4,32 @@
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
 
-import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/fleet-unified-agent";
 
 import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
-import type { CarrierJobStatus as StoredCarrierJobStatus, CarrierJobSummary } from "../jobs/types.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
-import type { LogOptions } from "@dotobokuri/fleet-infra/log";
 import type { ExecResult } from "@dotobokuri/fleet-infra/agent";
-import type { CarrierJobStatus, ModelEffort, TrackMeta, TrackStatus } from "./types.js";
+import type { CarrierJobStatus, TrackMeta, TrackStatus } from "./types.js";
 
 import {
   CLI_DISPLAY_NAMES,
 } from "../constants.js";
-import { appendBlock, toMessageArchiveBlock, toThoughtArchiveBlock } from "../jobs/archive.js";
+import { appendBlock, toArchiveBlock } from "../jobs/archive.js";
 import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { finalizeDetachedJob, launchResponseResult, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
-import { buildCarrierJobId } from "../jobs/types.js";
-import { getLogAPI } from "@dotobokuri/fleet-infra/log";
+import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   emitStreamEvent,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
+  logDebug,
   resolveCarrierDisplayName,
+  resolveValidatedEffort,
+  toCarrierJobStatus,
+  toTrackFinalStatus,
   type CarrierRegistry,
 } from "./framework.js";
 import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./tool-spec.js";
@@ -36,7 +38,6 @@ import {
   getTaskForceModelConfig,
 } from "../store/index.js";
 import {
-  type CarrierMetadata,
   type TaskForceCliType,
   type TaskForceResult,
   type TaskForceState,
@@ -96,12 +97,12 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
   // 필수 request-block 검증은 carrier_dispatch와 동일한 hard-error 타이밍을 유지합니다.
   const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
   if (carrierConfig?.carrierMetadata) {
-    const blockValidation = validateTaskForceRequestBlocks(
-      carrierId,
+    const blockValidation = validateRequiredRequestBlocks(
       carrierConfig.carrierMetadata,
       request,
+      carrierId,
     );
-    if (blockValidation) {
+    if (!blockValidation.ok) {
       logDebug(
         TASKFORCE_LOG_CATEGORY_ERROR,
         `request-block validation failed carrier=${carrierId} missing=${blockValidation.missing.join(",")}`,
@@ -160,7 +161,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
     );
     opts.state.finishedAt = Date.now();
     results = collectTaskForceResults(settledResults, opts.activeBackends);
-    finalStatus = computeTaskForceFinalStatus(results) as CarrierJobStatus;
+    finalStatus = computeFinalStatus(results) as CarrierJobStatus;
     logDebug(
       TASKFORCE_LOG_CATEGORY_RESULT,
       `carrier=${opts.carrierId} success=${results.filter((r) => r.status === "done").length} failure=${results.filter((r) => r.status !== "done").length}`,
@@ -170,7 +171,17 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
     finalError = error instanceof Error ? error.message : String(error);
   } finally {
     const finishedAt = Date.now();
-    const summary = buildTaskForceJobSummary(opts.jobId, opts.startedAt, finishedAt, opts.carrierId, results, finalStatus as StoredCarrierJobStatus, opts.toolName, finalError);
+    const summary = buildJobSummary({
+      jobId: opts.jobId,
+      startedAt: opts.startedAt,
+      finishedAt,
+      carriers: [opts.carrierId],
+      results,
+      status: finalStatus as StoredCarrierJobStatus,
+      error: finalError,
+      tool: opts.toolName,
+      prefix: "carrier_dispatch taskforce",
+    });
     finalizeDetachedJob({
       jobId: opts.jobId,
       status: finalStatus,
@@ -288,12 +299,12 @@ async function runTaskForceBackend(
         progress.status = "streaming";
         progress.lineCount++;
         const cleanText = sanitizeChunk(text);
-        appendBlock(jobId, toMessageArchiveBlock(carrierId, text, cliType));
+        appendBlock(jobId, toArchiveBlock("text", carrierId, text, cliType));
         emitStreamEvent(registry, { type: "track:text", jobId, trackId, text: cleanText });
       },
       onThoughtChunk: (text) => {
         const cleanText = sanitizeChunk(text);
-        appendBlock(jobId, toThoughtArchiveBlock(carrierId, text, cliType));
+        appendBlock(jobId, toArchiveBlock("thought", carrierId, text, cliType));
         logDebug(TASKFORCE_LOG_CATEGORY_STREAM, `carrier=${carrierId} backend=${cliType} type=thought\n${cleanText}`, { hideFromFooter: true });
         emitStreamEvent(registry, { type: "track:thought", jobId, trackId, text: cleanText });
       },
@@ -398,37 +409,6 @@ function buildTaskForceScopedRunId(requestKey: string, cliType: TaskForceCliType
   return `taskforce:${cliType}:${encodedRequestKey}`;
 }
 
-function resolveValidatedEffort(
-  cliType: CliType,
-  modelId: string | undefined,
-  effort: string | undefined,
-): string | undefined {
-  if (!modelId || !effort) return undefined;
-  const modelEffort = getModelEffort(cliType, modelId);
-  if (!modelEffort?.levels?.includes(effort)) return undefined;
-  return effort;
-}
-
-function getModelEffort(
-  cliType: CliType,
-  modelId: string,
-): ModelEffort | null {
-  return normalizeEffort(getEffort(cliType, modelId));
-}
-
-function normalizeEffort(
-  effort: ModelEffort,
-): ModelEffort | null {
-  if (!effort.supported) return null;
-  const levels = effort.levels ?? [];
-  if (levels.length === 0) return null;
-  return {
-    supported: true,
-    levels,
-    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
-  };
-}
-
 function emitTrackStatus(registry: CarrierRegistry, jobId: string, trackId: string, status: TrackStatus): void {
   emitStreamEvent(registry, { type: "track:status", jobId, trackId, status });
 }
@@ -444,18 +424,6 @@ function emitTrackFinalized(registry: CarrierRegistry, jobId: string, trackId: s
     fallbackText: sanitizeChunk(result.responseText),
     fallbackThought: sanitizeChunk(result.thoughtText),
   });
-}
-
-function toCarrierJobStatus(status: TrackStatus): CarrierJobStatus {
-  if (status === "done") return "done";
-  if (status === "aborted") return "aborted";
-  return "error";
-}
-
-function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
-  if (status === "done") return "done";
-  if (status === "aborted") return "aborted";
-  return "err";
 }
 
 function initTaskForceState(
@@ -479,10 +447,6 @@ function clearTaskForceState(requestKey: string): void {
   taskForceStateStore.delete(requestKey);
 }
 
-function logDebug(category: string, message: string, options?: unknown): void {
-  getLogAPI().debug(category, message, options as LogOptions | undefined);
-}
-
 export function assertTaskForceBackendCount(carrierId: string, backends: readonly TaskForceCliType[]): readonly TaskForceCliType[] {
   if (backends.length >= 2) return backends;
   throw new Error(
@@ -500,71 +464,4 @@ export function buildTaskForceRunId(carrierId: string, cliType: TaskForceCliType
   return `taskforce:${cliType}:${encodedCarrierId}`;
 }
 
-export function computeTaskForceFinalStatus(results: readonly TaskForceResult[]): StoredCarrierJobStatus {
-  if (results.some((result) => result.status === "aborted")) return "aborted";
-  if (results.some((result) => result.status === "error")) return "error";
-  return "done";
-}
-
-export function buildTaskForceSummaryText(
-  status: StoredCarrierJobStatus,
-  successCount: number,
-  failureCount: number,
-  error?: string,
-): string {
-  if (status === "aborted") return `carrier_dispatch taskforce aborted: ${successCount} done, ${failureCount} failed`;
-  if (error) return `carrier_dispatch taskforce failed: ${error}`;
-  return `carrier_dispatch taskforce completed: ${successCount} done, ${failureCount} failed`;
-}
-
-export function buildTaskForceJobSummary(
-  jobId: string,
-  startedAt: number,
-  finishedAt: number,
-  carrierId: string,
-  results: readonly TaskForceResult[],
-  status: StoredCarrierJobStatus,
-  toolName: `carrier_${string}`,
-  error?: string,
-): CarrierJobSummary {
-  const successCount = results.filter((result) => result.status === "done").length;
-  const failureCount = results.length - successCount;
-  return {
-    jobId,
-    tool: toolName,
-    status,
-    summary: buildTaskForceSummaryText(status, successCount, failureCount, error),
-    startedAt,
-    finishedAt,
-    carriers: [carrierId],
-    error,
-  };
-}
-
-export function sanitizeTaskForceChunk(text: string): string {
-  return text
-    .replace(/\r/g, "")
-    .replace(/\x1b\[\d*[ABCDEFGHJKST]/g, "")
-    .replace(/\x1b\[\d*;\d*[Hf]/g, "")
-    .replace(/\x1b\[(?:\??\d+[hl]|2J|K)/g, "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
-}
-
-export function sanitizeTaskForceToolLabel(text: string): string {
-  return sanitizeTaskForceChunk(text).replace(/\s+/g, " ").trim() || "(unnamed)";
-}
-
-/**
- * taskforce request에 대해 필수 request-block 검증을 수행합니다.
- *
- * @returns 검증 실패 결과, 통과하면 null
- */
-export function validateTaskForceRequestBlocks(
-  carrierId: string,
-  meta: CarrierMetadata,
-  request: string,
-): { error: string; missing: string[] } | null {
-  const result = validateRequiredRequestBlocks(meta, request, carrierId);
-  if (!result.ok) return { error: result.error, missing: result.missing };
-  return null;
-}
+export { buildJobSummary as buildTaskForceJobSummary, computeFinalStatus as computeTaskForceFinalStatus };

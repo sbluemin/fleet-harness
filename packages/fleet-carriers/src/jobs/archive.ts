@@ -6,6 +6,17 @@ export interface SerializeJobArchiveOptions {
 }
 
 const HEAD_BYTE_RATIO = 0.25;
+const MAX_TEXT_CHARS = 24_000;
+const MAX_RAW_OUTPUT_CHARS = 12_000;
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
+const CONTROL_PATTERN = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+const SECRET_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: "aws_access_key", pattern: /AKIA[0-9A-Z]{16}/g },
+  { label: "jwt", pattern: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g },
+  { label: "github_token", pattern: /gh[psour]_[A-Za-z0-9]{36}/g },
+  { label: "generic_secret", pattern: /\b[A-Z_]+_(?:KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*[^\s]*[^\s-](?=\s|$)/g },
+  { label: "pem_private_key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/g },
+];
 
 export function serializeJobArchive(archive: JobArchive, opts?: SerializeJobArchiveOptions): string {
   const blocks = archive.truncated
@@ -340,21 +351,15 @@ function byteLength(value: string): number {
   return Buffer.byteLength(value, "utf8");
 }
 
-const MAX_TEXT_CHARS = 24_000;
-const MAX_RAW_OUTPUT_CHARS = 12_000;
-const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
-const CONTROL_PATTERN = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
-const SECRET_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
-  { label: "aws_access_key", pattern: /AKIA[0-9A-Z]{16}/g },
-  { label: "jwt", pattern: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g },
-  { label: "github_token", pattern: /gh[psour]_[A-Za-z0-9]{36}/g },
-  { label: "generic_secret", pattern: /\b[A-Z_]+_(?:KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*[^\s]*[^\s-](?=\s|$)/g },
-  { label: "pem_private_key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/g },
-];
-
-export function toMessageArchiveBlock(source: string, text: string, label?: string, timestamp = Date.now()): ArchiveBlock {
+export function toArchiveBlock(
+  kind: "text" | "thought",
+  source: string,
+  text: string,
+  label?: string,
+  timestamp = Date.now(),
+): ArchiveBlock {
   return {
-    kind: "text",
+    kind,
     timestamp,
     source: sanitizeArchiveText(source, 400),
     label: label ? sanitizeArchiveText(label, 400) : undefined,
@@ -362,14 +367,12 @@ export function toMessageArchiveBlock(source: string, text: string, label?: stri
   };
 }
 
+export function toMessageArchiveBlock(source: string, text: string, label?: string, timestamp = Date.now()): ArchiveBlock {
+  return toArchiveBlock("text", source, text, label, timestamp);
+}
+
 export function toThoughtArchiveBlock(source: string, text: string, label?: string, timestamp = Date.now()): ArchiveBlock {
-  return {
-    kind: "thought",
-    timestamp,
-    source: sanitizeArchiveText(source, 400),
-    label: label ? sanitizeArchiveText(label, 400) : undefined,
-    text: sanitizeArchiveText(text, MAX_TEXT_CHARS),
-  };
+  return toArchiveBlock("thought", source, text, label, timestamp);
 }
 
 export function toToolCallArchiveBlock(

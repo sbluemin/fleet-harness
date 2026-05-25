@@ -91,14 +91,8 @@ export const dispatch = {
   framework: dispatchFramework,
   statusOverlayController: dispatchStatusOverlay,
   taskforce: dispatchTaskforce,
-  taskforceLaunch: dispatchTaskforce,
-  taskforceHelpers: dispatchTaskforce,
   toolSpec: dispatchToolSpec,
-  prompts: dispatchToolSpec,
-  requestBlocks: dispatchToolSpec,
-  sortieExecute: dispatchToolSpec,
   types: dispatchTypes,
-  overlayTypes: dispatchTypes,
   buildToolSpecs: dispatchToolSpec.buildCarrierDispatchToolSpec,
 };
 
@@ -118,17 +112,7 @@ export const jobs = {
   lifecycle: jobLifecycle,
   sanitize: jobSanitize,
   types: jobTypes,
-  archiveBlockConverter: jobArchive,
-  archiveSerializer: jobArchive,
-  jobStreamArchive: jobArchive,
-  detachedJobLifecycle: jobLifecycle,
-  concurrencyGuard: jobLifecycle,
-  jobCancelRegistry: jobLifecycle,
-  abortSignals: jobLifecycle,
-  jobId: jobTypes,
   jobTypes,
-  lruCache: jobDispatch,
-  jobReminders: jobDispatch,
   prompts: jobDispatch,
   buildToolSpec: jobDispatch.buildCarrierJobsToolSpec,
   configureJobSummaryCache: jobDispatch.configureJobSummaryCache,
@@ -138,7 +122,6 @@ export const jobs = {
   onActiveJobCountChange: jobLifecycle.onActiveJobCountChange,
   resetJobConcurrencyForTest: jobLifecycle.resetJobConcurrencyForTest,
   streaming: {
-    ...stream,
     register: dispatchFramework.registerStreamHandler,
     unregister: dispatchFramework.unregisterStreamHandler,
     emit: dispatchFramework.emitStreamEvent,
@@ -166,15 +149,6 @@ export function createCarrierRuntime(): CarrierRuntime {
 
 function createBoundCarrierStream(registry: CarrierRegistry) {
   return {
-    emitStreamEvent(event: dispatchTypes.CarrierJobStreamEvent): void {
-      dispatchFramework.emitStreamEvent(registry, event);
-    },
-    registerStreamHandler(handler: dispatchTypes.CarrierJobStreamHandler): () => void {
-      return dispatchFramework.registerStreamHandler(registry, handler);
-    },
-    unregisterStreamHandler(handler: dispatchTypes.CarrierJobStreamHandler): void {
-      dispatchFramework.unregisterStreamHandler(registry, handler);
-    },
     register(handler: dispatchTypes.CarrierJobStreamHandler): () => void {
       return dispatchFramework.registerStreamHandler(registry, handler);
     },

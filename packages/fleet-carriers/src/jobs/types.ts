@@ -64,11 +64,6 @@ export interface CarrierJobLaunchResponse {
   error?: string;
 }
 
-export const CARRIER_JOB_TTL_MS = 3 * 60 * 60 * 1000;
-export const CARRIER_JOBS_FULL_RESULT_BYTE_CAP = 20_000;
-export const CARRIER_JOBS_PER_SUBOP_BYTE_CAP = 20_000;
-export const CARRIER_JOBS_GLOBAL_BYTE_CAP = 60_000;
-
 export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
 
 export interface ParsedCarrierJobId {
@@ -76,7 +71,49 @@ export interface ParsedCarrierJobId {
   toolCallId: string;
 }
 
+export interface FinalStatusInput {
+  readonly status: "done" | "error" | "aborted";
+}
+
+export interface JobSummaryOptions {
+  readonly jobId: string;
+  readonly startedAt: number;
+  readonly finishedAt: number;
+  readonly carriers: readonly string[];
+  readonly results: readonly FinalStatusInput[];
+  readonly status: CarrierJobStatus;
+  readonly error?: string;
+  readonly tool: `carrier_${string}`;
+  readonly prefix: string;
+}
+
+export const CARRIER_JOB_TTL_MS = 3 * 60 * 60 * 1000;
+export const CARRIER_JOBS_FULL_RESULT_BYTE_CAP = 20_000;
+export const CARRIER_JOBS_PER_SUBOP_BYTE_CAP = 20_000;
+export const CARRIER_JOBS_GLOBAL_BYTE_CAP = 60_000;
+
 const JOB_PREFIXES = new Set<CarrierJobKind>(["carrier", "sortie", "taskforce"]);
+
+export function computeFinalStatus(results: readonly FinalStatusInput[]): CarrierJobStatus {
+  if (results.some((result) => result.status === "aborted")) return "aborted";
+  if (results.some((result) => result.status === "error")) return "error";
+  return "done";
+}
+
+export function buildJobSummary(options: JobSummaryOptions): CarrierJobSummary {
+  const successCount = options.results.filter((result) => result.status === "done").length;
+  const failureCount = options.results.length - successCount;
+  return {
+    jobId: options.jobId,
+    tool: options.tool,
+    status: options.status,
+    summary: buildJobSummaryText(options.prefix, options.status, successCount, failureCount, options.error),
+    startedAt: options.startedAt,
+    finishedAt: options.finishedAt,
+    carriers: [...options.carriers],
+    error: options.error,
+  };
+}
 
 export function buildCarrierJobId(kind: CarrierJobKind, toolCallId: string): string {
   if (!JOB_PREFIXES.has(kind)) {
@@ -101,4 +138,16 @@ export function parseCarrierJobId(jobId: string): ParsedCarrierJobId | null {
 
 export function isCarrierJobId(jobId: string): boolean {
   return parseCarrierJobId(jobId) !== null;
+}
+
+function buildJobSummaryText(
+  prefix: string,
+  status: CarrierJobStatus,
+  successCount: number,
+  failureCount: number,
+  error?: string,
+): string {
+  if (status === "aborted") return `${prefix} aborted: ${successCount} done, ${failureCount} failed`;
+  if (error) return `${prefix} failed: ${error}`;
+  return `${prefix} completed: ${successCount} done, ${failureCount} failed`;
 }
