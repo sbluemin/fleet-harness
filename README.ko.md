@@ -1,11 +1,24 @@
-<div align="center">
-    <h1>Fleet</h1>
-    <img src=".github/logo.png" alt="fleet" width="640" />
-    <h3><em>One Fleet. All LLMs.</em></h3>
-</div>
+<p align="center">
+  <br/>
+  ⚓ ─────────── ⚓
+  <br/><br/>
+  <img src=".github/logo.png" width="520" alt="fleet" />
+  <br/><br/>
+  <strong>F L E E T</strong>
+  <br/>
+  <em>One Fleet. All LLMs.</em>
+  <br/><br/>
+  ⚓ ─────────── ⚓
+  <br/>
+</p>
 
 <p align="center">
     <strong>Claude Code, Codex CLI, Gemini CLI를 하나의 통합 인터페이스로 운용하는 멀티 LLM 오케스트레이션 킷 — 네이티브 CLI를 직접 사용하며, API 래핑이나 프록싱 없음.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@dotobokuri/fleet-cli"><img src="https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=blue" alt="npm"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
 <p align="center">
