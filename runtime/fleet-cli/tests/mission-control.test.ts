@@ -36,18 +36,17 @@ const ALL_CLI_OPTIONS = getAgentCliMetadata();
 const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 const RAW_ANSI_PATTERN = /\x1b/;
 const LONG_ANSI_CJK_LABEL = "\x1b[1mClaude超長プロバイダー名終端ラベル\x1b[0m";
-const TEST_ROWS = 12;
+const TEST_ROWS = 16;
 
 describe("Mission Control controller", () => {
   it("renders idle selection before launch", () => {
     const controller = createTestController();
 
     expect(controller.getState().kind).toBe("idle");
-    expect(renderPlain(controller)).toContain("Mission Control");
-    expect(renderPlain(controller)).toContain("Choose a CLI");
+    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
     expect(renderPlain(controller)).toContain("▸ 1. Claude");
     expect(renderPlain(controller)).toContain("↑↓/j/k select  Enter start  1-9 quick pick  X exit Fleet");
-    expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;100;180;255m");
+    expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;254;188;56m");
     expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;255;149;0m");
   });
 
@@ -58,7 +57,7 @@ describe("Mission Control controller", () => {
     const lines = controller.component.render(80);
 
     expect(lines).toHaveLength(21);
-    expect(stripAnsi(lines.join("\n"))).toContain("Mission Control");
+    expect(stripAnsi(lines.join("\n"))).toContain("Choose an Agent CLI");
     expect(lines.at(-1)).toBe("");
   });
 
@@ -72,6 +71,8 @@ describe("Mission Control controller", () => {
       const lines = renderMissionControl(width, {
         cliOptions,
         lastExit: undefined,
+        loadedCounts: undefined,
+        release: undefined,
         selectedCliId: "claude",
         state: "idle",
       });
@@ -82,6 +83,57 @@ describe("Mission Control controller", () => {
       expect(plainOutput).not.toContain("終端ラベル");
       expect(lines.every((line) => !RAW_ANSI_PATTERN.test(stripAnsi(line)))).toBe(true);
     }
+  });
+
+  it("includes carrier/wiki/queue counts and stable channel readout", () => {
+    const lines = renderMissionControl(80, {
+      cliOptions: CLI_OPTIONS,
+      lastExit: undefined,
+      loadedCounts: { carriers: 8, queuedPatches: 3, wikiEntries: 17 },
+      release: { channel: "stable", version: "0.22.1" },
+      selectedCliId: "claude",
+      state: "idle",
+    });
+    const plainOutput = stripAnsi(lines.join("\n"));
+
+    expect(plainOutput).toContain("8 carriers");
+    expect(plainOutput).toContain("17 wiki entries");
+    expect(plainOutput).toContain("3 queued");
+    expect(plainOutput).toContain("v0.22.1");
+    expect(plainOutput).toContain("stable");
+  });
+
+  it("labels prerelease versions as canary in the readout", () => {
+    const lines = renderMissionControl(80, {
+      cliOptions: CLI_OPTIONS,
+      lastExit: undefined,
+      loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
+      release: { channel: "canary", version: "0.22.2-canary.20260524" },
+      selectedCliId: "claude",
+      state: "idle",
+    });
+    const plainOutput = stripAnsi(lines.join("\n"));
+
+    expect(plainOutput).toContain("v0.22.2-canary.20260524");
+    expect(plainOutput).toContain("canary");
+    expect(plainOutput).not.toContain("queued");
+  });
+
+  it("labels unpublished working copies as local in the readout", () => {
+    const lines = renderMissionControl(80, {
+      cliOptions: CLI_OPTIONS,
+      lastExit: undefined,
+      loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
+      release: { channel: "local", version: "0.22.1" },
+      selectedCliId: "claude",
+      state: "idle",
+    });
+    const plainOutput = stripAnsi(lines.join("\n"));
+
+    expect(plainOutput).toContain("v0.22.1");
+    expect(plainOutput).toContain("local");
+    expect(plainOutput).not.toContain("stable");
+    expect(plainOutput).not.toContain("canary");
   });
 
   it("launches the selected CLI and forwards active input", async () => {

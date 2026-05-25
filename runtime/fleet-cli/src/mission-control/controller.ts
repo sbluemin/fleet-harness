@@ -84,6 +84,8 @@ export function createMissionControlController(options: CreateMissionControlCont
       return normalizeRenderedRows(renderMissionControl(width, {
         cliOptions,
         lastExit,
+        loadedCounts: options.loadedCounts,
+        release: options.release,
         selectedCliId,
         state,
       }), rows);

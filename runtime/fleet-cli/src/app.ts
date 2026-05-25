@@ -30,6 +30,7 @@ import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.
 import { injectAgentCliProfile } from "./agent-cli/injection.js";
 import { getAgentCliMetadata, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import { createMissionControlController } from "./mission-control/controller.js";
+import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-control/loaded-counts.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createDefaultFleetPtyComponent, createDefaultFleetPtySections } from "./sections/default-sections.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
@@ -96,10 +97,11 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     carrierRuntime: runtime.carrierRuntime,
     mcpRegistry: runtime.mcpRegistry,
   }).build;
+  const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({
     cliId,
     env: process.env,
-    invocationCwd: resolveInvocationCwd(),
+    invocationCwd,
     model,
   });
   const missionControl = createMissionControlController({
@@ -114,11 +116,13 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             enableMetaphor,
             replaceSystemPrompt,
           }),
+    loadedCounts: discoverMissionControlCounts({ invocationCwd }),
     onExitFleet: () => stop(),
     onRenderRequest: () => {
       ptyManager?.requestResize("programmatic");
       scheduleRender();
     },
+    release: readFleetCliRelease(),
   });
   const jobBarState = createJobBarState({
     carrierRuntime: runtime.carrierRuntime,

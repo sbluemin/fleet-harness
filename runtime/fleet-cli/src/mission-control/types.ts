@@ -2,6 +2,7 @@ import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../cont
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { PtyView } from "../controls/terminal-view.js";
+import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
 
 export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" | "failed";
 
@@ -9,6 +10,8 @@ export interface MissionControlCliOption {
   readonly id: AgentCliId;
   readonly label: string;
 }
+
+export type { FleetCliRelease, MissionControlCounts };
 
 export interface MissionControlStateSnapshot {
   readonly cliId: AgentCliId;
@@ -57,7 +60,9 @@ export interface CreateMissionControlControllerOptions {
   readonly createPtyView?: (cols: number, rows: number) => PtyView;
   readonly defaultCliId: AgentCliId;
   readonly injectProfile: (profile: AgentCliProfile) => Promise<AgentCliProfile>;
+  readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet: () => void;
   readonly onRenderRequest: () => void;
+  readonly release?: FleetCliRelease;
   readonly resolveProfile: (cliId: AgentCliId) => Promise<AgentCliProfile>;
 }
