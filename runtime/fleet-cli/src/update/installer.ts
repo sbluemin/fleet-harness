@@ -68,11 +68,26 @@ function detectGlobalRoot(command: "npm" | "pnpm", packageRoot: string): { reado
   try {
     const globalRoot = execFileSync(command, ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     const resolvedRoot = normalizePath(realpathSync(path.resolve(globalRoot)));
+    // 직접 경로 포함 확인 (npm 표준 레이아웃)
     if (isPathInside(normalizePath(packageRoot), resolvedRoot)) {
       if (!canWrite(resolvedRoot)) {
         return { manager: undefined, reason: "permission" };
       }
       return { manager: { command, globalRoot: resolvedRoot }, reason: undefined };
+    }
+    // pnpm 심링크 레이아웃 대응: 글로벌 루트 아래 패키지 심링크가
+    // 현재 패키지 경로로 resolve 되는지 역추적
+    const expectedPkgDir = path.join(globalRoot, FLEET_CLI_PACKAGE_NAME);
+    try {
+      const resolvedPkgDir = normalizePath(realpathSync(expectedPkgDir));
+      if (resolvedPkgDir === normalizePath(packageRoot)) {
+        if (!canWrite(resolvedRoot)) {
+          return { manager: undefined, reason: "permission" };
+        }
+        return { manager: { command, globalRoot: resolvedRoot }, reason: undefined };
+      }
+    } catch {
+      // 글로벌 루트에 패키지가 없으면 무시
     }
   } catch {
     return undefined;
