@@ -3,7 +3,7 @@
 > **A Multi-LLM Orchestration Kit**
 >
 > A standalone multi-LLM orchestration kit.
-> The core purpose is to operate 8 carriers — Claude Code and Codex CLI — through a single unified interface.
+> The core purpose is to operate 8 carriers — Claude Code, Codex CLI, and Cursor Agent — through a single unified interface.
 
 ## Structure
 
