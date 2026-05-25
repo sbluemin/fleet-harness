@@ -55,6 +55,8 @@ export interface CreateMissionControlProfileConfigOptions {
 }
 
 const SHUTDOWN_TIMEOUT_MS = 3_000;
+const DOUBLE_TAP_WINDOW_MS = 2_000;
+const INTERRUPT_DEDUPE_WINDOW_MS = 100;
 const DEFAULT_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "host-exit", key: "\x11", label: "Ctrl+Q" },
   { action: "host-interrupt", key: "\x03", label: "Ctrl+C" },
@@ -164,6 +166,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   let unsubscribeJobBar = () => {};
   let stopping = false;
   let disposeInputStream = () => {};
+  let interruptWarningStartedAt = 0;
+  let lastInterruptHandledAt = 0;
+  let interruptWarningTimer: ReturnType<typeof setTimeout> | undefined;
   const resize = () => ptyManager?.requestResize("terminal-resize");
   const stop = () => {
     if (stopping) {
@@ -171,7 +176,36 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       return;
     }
     stopping = true;
+    clearInterruptWarningTimer();
+    jobBarState.setPendingExitWarning(false);
     stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle);
+  };
+  const requestInterrupt = () => {
+    const now = Date.now();
+    if (now - lastInterruptHandledAt <= INTERRUPT_DEDUPE_WINDOW_MS) {
+      return;
+    }
+    lastInterruptHandledAt = now;
+
+    if (interruptWarningStartedAt !== 0 && now - interruptWarningStartedAt <= DOUBLE_TAP_WINDOW_MS) {
+      stop();
+      return;
+    }
+
+    interruptWarningStartedAt = now;
+    jobBarState.setPendingExitWarning(true);
+    clearInterruptWarningTimer();
+    interruptWarningTimer = setTimeout(() => {
+      interruptWarningStartedAt = 0;
+      interruptWarningTimer = undefined;
+      jobBarState.setPendingExitWarning(false);
+    }, DOUBLE_TAP_WINDOW_MS);
+    interruptWarningTimer.unref?.();
+  };
+  const clearInterruptWarningTimer = () => {
+    if (interruptWarningTimer === undefined) return;
+    clearTimeout(interruptWarningTimer);
+    interruptWarningTimer = undefined;
   };
   const handleModeToggleCursorSuppression = () => {
     modeToggleSuppressed = true;
@@ -196,9 +230,10 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         },
       }),
       "host-exit": stop,
-      "host-interrupt": stop,
+      "host-interrupt": requestInterrupt,
       "mode-toggle": handleModeToggleCursorSuppression,
     },
+    routeHostInterruptThroughHandler: true,
   });
   const csiUNormalizer = createCsiUInputNormalizer({
     csiUMap: fleetKeybindings.createCsiUNormalizationMap(),
@@ -246,7 +281,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
 
   process.stdout.on("resize", resize);
   process.on("SIGWINCH", resize);
-  process.on("SIGINT", stop);
+  process.on("SIGINT", requestInterrupt);
   process.on("SIGTERM", stop);
 
   const disableKeyboardProtocol = () => process.stdout.write(KITTY_DISABLE);
@@ -260,15 +295,21 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
 export function createFleetHostInputKeybindingConfig(options: {
   readonly definitions: readonly KeybindingDefinition[];
   readonly handlers: FleetHostKeybindingHandlers;
+  readonly routeHostInterruptThroughHandler?: boolean;
 }): InputKeybindingConfig {
+  const routeHostInterruptThroughHandler = options.routeHostInterruptThroughHandler === true;
   const exitKeys = options.definitions
-    .filter((definition) => definition.action === "host-exit" || definition.action === "host-interrupt")
+    .filter((definition) =>
+      definition.action === "host-exit" ||
+      (!routeHostInterruptThroughHandler && definition.action === "host-interrupt")
+    )
     .map((definition) => definition.key);
   const modeToggleKeys = options.definitions
     .filter((definition) => definition.action === "mode-toggle")
     .map((definition) => definition.key);
   const registeredKeybindings = options.definitions
-    .filter((definition) => definition.action !== "host-exit" && definition.action !== "host-interrupt" && definition.action !== "mode-toggle")
+    .filter((definition) => definition.action !== "host-exit" && definition.action !== "mode-toggle")
+    .filter((definition) => routeHostInterruptThroughHandler || definition.action !== "host-interrupt")
     .map((definition): KeybindingRegistration => {
       const handler = options.handlers[definition.action];
       if (handler === undefined) {

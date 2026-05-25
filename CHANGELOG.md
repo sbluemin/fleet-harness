@@ -7,6 +7,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [agent-core] Added Mission Control for starting or relaunching the upper Agent CLI after exit.
+- [core] Added double-tap Ctrl+C confirmation before exiting the fleet CLI.
 
 ### Changed
 - [agent-core] Changed Carrier Status to open as a Mission Control panel while preserving active Agent CLI input pass-through.

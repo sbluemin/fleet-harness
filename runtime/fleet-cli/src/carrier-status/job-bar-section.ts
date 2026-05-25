@@ -30,6 +30,7 @@ class JobBarStripSection implements Component {
       frame: state.frame,
       jobs: this.jobBarState.getActiveJobs(),
       keyboardProtocol: this.jobBarState.getKeyboardProtocol?.(),
+      pendingExitWarning: this.jobBarState.getPendingExitWarning(),
       runs: this.jobBarState.getPanelRuns(),
       width,
     });

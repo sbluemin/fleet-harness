@@ -35,6 +35,7 @@ export interface CarrierJobHudRenderOptions {
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
   readonly keyboardProtocol?: KeyboardProtocolState;
+  readonly pendingExitWarning?: boolean;
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
   readonly width: number;
@@ -65,6 +66,7 @@ const HUD_CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const HUD_LINE_BREAKS = /[\r\n]+/g;
 const HUD_MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
 const DEFAULT_SAFE_LABEL = "(unnamed)";
+const EXIT_WARNING_TEXT = "Press Ctrl+C again to exit";
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
   sortie: "Sortie",
@@ -83,8 +85,15 @@ export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string
 
 export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): string[] {
   const carriers = buildCarrierTiles(options.carrierRuntime, getActiveJobs(options.jobs));
-  if (carriers.length === 0) return [];
-  return renderCarrierHudStrip(options.width, carriers, options.frame, options.theme, options.keyboardProtocol);
+  if (carriers.length === 0 && options.pendingExitWarning !== true) return [];
+  return renderCarrierHudStrip(
+    options.width,
+    carriers,
+    options.frame,
+    options.theme,
+    options.keyboardProtocol,
+    options.pendingExitWarning === true,
+  );
 }
 
 export function waveText(
@@ -180,10 +189,12 @@ function renderCarrierHudStrip(
   frame: number,
   theme: FleetPtyTheme | undefined,
   keyboardProtocol: KeyboardProtocolState | undefined,
+  pendingExitWarning: boolean,
 ): string[] {
   const tiles = carriers.map((carrier) => formatCarrierTile(carrier, frame));
   const line = centerLine(tiles.join(tileSeparator(theme)), width);
-  return [appendProtocolIndicator(line, width, keyboardProtocol)];
+  const warnedLine = prependExitWarning(line, width, pendingExitWarning);
+  return [appendProtocolIndicator(warnedLine, width, keyboardProtocol)];
 }
 
 function appendWidgetJobSummary(
@@ -304,7 +315,22 @@ function appendProtocolIndicator(line: string, width: number, state: KeyboardPro
   const indicatorWidth = visibleWidth(indicator);
   const content = truncateToWidth(line, Math.max(0, width - indicatorWidth));
   const padding = Math.max(0, width - visibleWidth(content) - indicatorWidth);
-  return `${content}${" ".repeat(padding)}${indicator}`;
+  return truncateToWidth(`${content}${" ".repeat(padding)}${indicator}`, width);
+}
+
+function prependExitWarning(line: string, width: number, pending: boolean): string {
+  if (!pending) return line;
+  const warning = formatExitWarning();
+  const warningWidth = visibleWidth(warning);
+  const gapWidth = warningWidth < width ? 1 : 0;
+  const contentWidth = Math.max(0, width - warningWidth - gapWidth);
+  const content = truncateToWidth(line.trimStart(), contentWidth);
+  const gap = gapWidth === 1 && visibleWidth(content) > 0 ? " " : "";
+  return truncateToWidth(`${warning}${gap}${content}`, width);
+}
+
+function formatExitWarning(): string {
+  return `${PANEL_DIM_COLOR()}${EXIT_WARNING_TEXT}${ANSI_RESET}`;
 }
 
 function formatProtocolIndicator(state: KeyboardProtocolState): string {
