@@ -32,6 +32,21 @@
   <img src=".github/fleet-harness.gif" alt="fleet demo" width="640" />
 </div>
 
+## Quick Start
+
+Install the Fleet CLI globally via npm and launch it:
+
+```bash
+npm install -g @dotobokuri/fleet-cli
+fleet
+```
+
+See [SETUP.md](SETUP.md) for step-by-step instructions.
+
+> **With an AI Agent** — Copy and paste into your LLM agent:
+>
+> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
+
 ## Motivation
 
 Every frontier CLI — Claude Code, Codex, OpenCode, Cursor — ships with an agent loop tuned specifically for its underlying model. Claude's loop is built for deep reasoning and tool orchestration. Codex optimizes for rapid code generation and iterative execution. OpenCode unifies multiple models under one adaptive loop. Cursor routes between multiple frontier models within a single agent loop. These are not thin API wrappers; they are full-fledged, model-native agent runtimes refined by their creators.
@@ -104,23 +119,6 @@ Deploy one carrier or an entire wing with a single command. Sortie supports fire
 #### Task Force
 
 Task Force runs the same mission across multiple CLI backends at once, then surfaces a cross-model consensus. Use it to validate critical decisions, compare how different models approach the same problem, and eliminate single-model blind spots before committing to a course of action.
-
-## Commands
-
-After `pnpm link --global` (see [SETUP.md](SETUP.md)), global commands are available:
-
-| Command | Description |
-|---------|-------------|
-| `fleet` | Launch standard Fleet mode (via `runtime/fleet-cli/bin/fleet`) |
-| `fleet-wiki` | Launch the Fleet Wiki web UI for the current workspace |
-
-## Setup
-
-See [SETUP.md](SETUP.md) for step-by-step instructions.
-
-> **Quick Start with AI Agent** — Copy and paste into your LLM agent:
->
-> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
 
 ## Documentation
 

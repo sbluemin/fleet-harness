@@ -10,42 +10,198 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve release version
+      - name: Sync to latest main
+        run: |
+          git fetch origin main --tags
+          git checkout -B main origin/main
+
+      - name: Stop on release commit
+        id: guard
+        env:
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          if printf '%s' "$HEAD_MESSAGE" | head -1 | grep -Fq 'chore(release):'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve next version
+        if: steps.guard.outputs.skip == 'false'
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          SHA=$(git rev-parse HEAD)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-
-      - name: Check release tag
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null
-          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
-          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Missing release tag: $TAG"
-            exit 1
+          latest_tag=$(git tag --list 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          if [ -n "$latest_tag" ]; then
+            range="$latest_tag..HEAD"
+            log_output=$(git log --format=%B "$range")
+            commit_count=$(git rev-list --count "$range")
+            version_source="${latest_tag#v}"
+          else
+            range="HEAD"
+            log_output=$(git log --format=%B)
+            commit_count=$(git rev-list --count HEAD)
+            version_source=$(node -p "require('./package.json').version")
           fi
 
+          if [ "$commit_count" -eq 0 ]; then
+            echo "No commits since latest tag. Skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          bump="patch"
+          if printf '%s\n' "$log_output" | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
+            bump="minor"
+          fi
+
+          next_version=$(node -e "
+            const [major, minor, patch] = process.argv[1].split('.').map(Number);
+            const bump = process.argv[2];
+            const next = { minor: [major, minor + 1, 0], patch: [major, minor, patch + 1] }[bump];
+            console.log(next.join('.'));
+          " "$version_source" "$bump")
+
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          echo "current_version=$version_source" >> "$GITHUB_OUTPUT"
+          echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
+          echo "next_tag=v$next_version" >> "$GITHUB_OUTPUT"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing release commit
+        if: steps.version.outputs.should_release == 'true'
+        id: release_state
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          if [ "$package_version" = "$NEXT_VERSION" ] && grep -Eq "^## \\[$NEXT_VERSION\\]" CHANGELOG.md; then
+            echo "release_committed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_committed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update version and changelog
+        if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          # 루트 + 모든 워크스페이스 package.json의 version 필드를 동시에 갱신.
+          # 들여쓰기/포맷 보존을 위해 JSON.stringify 대신 정규식 치환을 사용한다.
+          node <<'NODE'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          const nextVersion = process.env.NEXT_VERSION;
+          const tracked = execSync('git ls-files', { encoding: 'utf8' })
+            .split('\n')
+            .filter(Boolean);
+          const files = tracked.filter((f) => f === 'package.json' || f.endsWith('/package.json'));
+          for (const file of files) {
+            const raw = fs.readFileSync(file, 'utf8');
+            // 루트 레벨의 첫 "version" 필드만 치환한다 (각 package.json에서 1회만 등장).
+            const updated = raw.replace(/("version":\s*")[^"]+(")/, `$1${nextVersion}$2`);
+            if (updated !== raw) {
+              fs.writeFileSync(file, updated);
+            }
+          }
+          NODE
+
+          RELEASE_DATE=$(date -u +%F)
+          export RELEASE_DATE
+
+          node <<'NODE'
+          const fs = require('fs');
+
+          const changelogPath = 'CHANGELOG.md';
+          const nextVersion = process.env.NEXT_VERSION;
+          const releaseDate = process.env.RELEASE_DATE;
+          const content = fs.readFileSync(changelogPath, 'utf8');
+          const unreleasedHeader = '## [Unreleased]';
+          const unreleasedIndex = content.indexOf(unreleasedHeader);
+
+          if (unreleasedIndex === -1) {
+            throw new Error('Missing [Unreleased] section in CHANGELOG.md');
+          }
+
+          const afterHeaderIndex = content.indexOf('\n', unreleasedIndex);
+          if (afterHeaderIndex === -1) {
+            throw new Error('Malformed [Unreleased] section in CHANGELOG.md');
+          }
+
+          const nextSectionIndex = content.indexOf('\n## [', afterHeaderIndex + 1);
+          const unreleasedBody = content.slice(afterHeaderIndex + 1, nextSectionIndex === -1 ? content.length : nextSectionIndex);
+          const trimmedBody = unreleasedBody.replace(/^\n+|\n+$/g, '');
+          const releaseHeader = `## [${nextVersion}] - ${releaseDate}`;
+          const releaseBody = trimmedBody.trim() ? trimmedBody : `Release v${nextVersion}`;
+          const replacement = `${unreleasedHeader}\n\n${releaseHeader}\n\n${releaseBody}\n\n`;
+          const updated = `${content.slice(0, unreleasedIndex)}${replacement}${nextSectionIndex === -1 ? '' : content.slice(nextSectionIndex + 1)}`;
+
+          fs.writeFileSync(changelogPath, updated);
+          NODE
+
+      - name: Verify workspace version sync
+        if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
+        env:
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          # 모든 tracked package.json이 NEXT_VERSION으로 통일되었는지 JSON parse로 사후 검증.
+          # 정규식 치환이 누락한 비표준 포맷이나 새 패키지의 silent drift를 잡아낸다.
+          node <<'NODE'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          const expected = process.env.NEXT_VERSION;
+          const tracked = execSync('git ls-files', { encoding: 'utf8' })
+            .split('\n')
+            .filter(Boolean);
+          const files = tracked.filter((f) => f === 'package.json' || f.endsWith('/package.json'));
+          const offenders = [];
+          let checked = 0;
+          for (const file of files) {
+            let pkg;
+            try {
+              pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+            } catch (err) {
+              offenders.push(`${file} → parse error: ${err.message}`);
+              continue;
+            }
+            if (typeof pkg.version !== 'string') {
+              // version 필드가 없는 워크스페이스 root manifest 등은 sync 대상이 아니다.
+              console.log(`skipped ${file}: no version field`);
+              continue;
+            }
+            checked++;
+            if (pkg.version !== expected) {
+              offenders.push(`${file} → version=${pkg.version} (expected ${expected})`);
+            }
+          }
+          if (offenders.length > 0) {
+            console.error('Workspace version sync failed:');
+            for (const line of offenders) console.error(`  ${line}`);
+            process.exit(1);
+          }
+          console.log(`OK: ${checked} package.json file(s) synced to ${expected}`);
+          NODE
+
       - name: Setup pnpm
+        if: steps.version.outputs.should_release == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node
+        if: steps.version.outputs.should_release == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -53,30 +209,71 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
+        if: steps.version.outputs.should_release == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Publish fleet-wiki-ui
+        if: steps.version.outputs.should_release == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: node scripts/publish-fleet-wiki-ui.mjs --tag=latest --version=$VERSION
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-wiki-ui.mjs --tag=latest --version=$NEXT_VERSION
 
       - name: Publish fleet-cli
+        if: steps.version.outputs.should_release == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: node scripts/publish-fleet-cli.mjs --tag=latest --version=$VERSION --wiki-web-version=$VERSION
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-cli.mjs --tag=latest --version=$NEXT_VERSION --wiki-web-version=$NEXT_VERSION
+
+      - name: Commit release changes
+        if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git ls-files | grep -E '(^|/)package\.json$' | xargs git add
+          git commit -m "chore(release): $NEXT_TAG"
+          git push origin HEAD:main
+
+      - name: Sync release commit from main
+        if: steps.version.outputs.should_release == 'true'
+        run: |
+          git fetch origin main --tags
+          git checkout -B main origin/main
+
+      - name: Resolve release commit
+        if: steps.version.outputs.should_release == 'true'
+        id: release
+        run: |
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create release tag
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: |
+          if git rev-parse "refs/tags/$NEXT_TAG" >/dev/null 2>&1; then
+            echo "Tag $NEXT_TAG already exists. Treating as success."
+          else
+            git tag "$NEXT_TAG" "$RELEASE_SHA"
+            git push origin "$NEXT_TAG"
+          fi
 
       - name: Write release notes file
+        if: steps.version.outputs.should_release == 'true'
         id: notes
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
         run: |
           node <<'NODE'
           const fs = require('fs');
 
           const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-          const version = process.env.VERSION;
+          const version = process.env.NEXT_VERSION;
           const marker = `## [${version}]`;
           const start = changelog.indexOf(marker);
 
@@ -95,19 +292,20 @@ jobs:
           NODE
 
       - name: Create GitHub Release
+        if: steps.version.outputs.should_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
           NOTES_PATH: ${{ steps.notes.outputs.notes_path }}
-          SHA: ${{ steps.version.outputs.sha }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists. Treating as success."
+          if gh release view "$NEXT_TAG" >/dev/null 2>&1; then
+            echo "Release $NEXT_TAG already exists. Treating as success."
             exit 0
           fi
 
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --target "$SHA" \
+          gh release create "$NEXT_TAG" \
+            --title "$NEXT_TAG" \
+            --target "$RELEASE_SHA" \
             --notes-file "$NOTES_PATH" \
             --generate-notes

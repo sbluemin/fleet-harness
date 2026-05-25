@@ -1,4 +1,4 @@
-export type UpdateChannel = "latest" | "canary";
+export type UpdateChannel = "latest";
 
 interface NpmPackageMetadata {
   readonly "dist-tags"?: Partial<Record<UpdateChannel, string>>;

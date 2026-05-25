@@ -32,6 +32,21 @@
   <img src=".github/fleet-harness.gif" alt="fleet demo" width="640" />
 </div>
 
+## 빠른 시작
+
+npm으로 Fleet CLI를 전역 설치하고 실행하세요:
+
+```bash
+npm install -g @dotobokuri/fleet-cli
+fleet
+```
+
+자세한 설치 방법은 [SETUP.md](SETUP.md)를 참조하세요.
+
+> **AI 에이전트 이용** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
+>
+> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
+
 ## 동기
 
 Claude Code, Codex, OpenCode, Cursor와 같은 모든 프론티어 CLI는 각자의 기반 모델에 최적화된 에이전트 루프를 탑재하고 있습니다. Claude의 루프는 심층 추론과 도구 오케스트레이션을 위해 설계되었고, Codex는 빠른 코드 생성과 반복 실행에 최적화되어 있습니다. OpenCode는 여러 모델을 하나의 적응형 루프 아래 통합합니다. Cursor는 단일 에이전트 루프 안에서 여러 프론티어 모델을 라우팅합니다. 이들은 얇은 API 래퍼가 아니라, 각 제작사가 세밀하게 다듬은 완전한 모델-네이티브 에이전트 런타임입니다.
@@ -104,23 +119,6 @@ Carrier 계층은 함대의 실행 엔진입니다. 단일 에이전트가 필�
 #### Task Force
 
 Task Force는 동일한 임무를 여러 CLI 백엔드에서 동시에 실행한 뒤 교차 모델 합의를 도출합니다. 중요한 결정의 검증, 동일한 문제에 대해 각 모델이 어떻게 접근하는지 비교, 그리고 단일 모델의 사각지대를 실행 전에 제거하는 데 활용하세요.
-
-## 명령어
-
-`pnpm link --global` 실행 후 ([SETUP.md](SETUP.md) 참조), 전역 명령어를 사용할 수 있습니다:
-
-| 명령어 | 설명 |
-|--------|------|
-| `fleet` | 표준 Fleet 모드 실행 |
-| `fleet-wiki` | 현재 워크스페이스용 Fleet Wiki 웹 UI 실행 |
-
-## 설치
-
-자세한 설치 방법은 [SETUP.md](SETUP.md)를 참조하세요.
-
-> **AI 에이전트로 빠른 시작** — 아래를 LLM 에이전트에 복사하여 붙여넣으세요:
->
-> Install and configure Fleet by following the instructions here: `https://raw.githubusercontent.com/sbluemin/fleet-harness/main/SETUP.md`
 
 ## 문서
 

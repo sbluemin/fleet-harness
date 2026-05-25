@@ -652,22 +652,6 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("Docs: (configured later)");
   });
 
-  it("labels prerelease versions as canary in the readout", () => {
-    const lines = renderMissionControl(80, {
-      cliOptions: CLI_OPTIONS,
-      lastExit: undefined,
-      loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
-      release: { channel: "canary", version: "0.22.2-canary.20260524" },
-      selectedCliId: "claude",
-      state: "idle",
-    });
-    const plainOutput = stripAnsi(lines.join("\n"));
-
-    expect(plainOutput).toContain("v0.22.2-canary.20260524");
-    expect(plainOutput).toContain("canary");
-    expect(plainOutput).not.toContain("queued");
-  });
-
   it("labels unpublished working copies as local in the readout", () => {
     const lines = renderMissionControl(80, {
       cliOptions: CLI_OPTIONS,
@@ -682,7 +666,6 @@ describe("Mission Control controller", () => {
     expect(plainOutput).toContain("v0.22.1");
     expect(plainOutput).toContain("local");
     expect(plainOutput).not.toContain("stable");
-    expect(plainOutput).not.toContain("canary");
   });
 
   it("launches the selected CLI and forwards active input", async () => {

@@ -169,9 +169,7 @@ function renderCountsLine(
   if (release !== undefined && release.version.length > 0) {
     const channelLabel = release.channel === "stable"
       ? STYLE.success("stable")
-      : release.channel === "canary"
-        ? STYLE.warning("canary")
-        : STYLE.dim("local");
+      : STYLE.dim("local");
     segments.push(`${STYLE.dim(`v${release.version}`)} ${STYLE.dim("·")} ${channelLabel}`);
   }
   if (segments.length === 0) {
@@ -185,8 +183,7 @@ function renderUpdateLine(release: FleetCliRelease | undefined, innerWidth: numb
   if (release?.latestVersion === undefined || release.latestVersion === release.version) {
     return undefined;
   }
-  const channel = release.channel === "canary" ? "canary" : "latest";
-  return centerText(STYLE.warning(`◆ Update available — v${release.latestVersion} (${channel})`), innerWidth);
+  return centerText(STYLE.warning(`◆ Update available — v${release.latestVersion} (latest)`), innerWidth);
 }
 
 function renderFooterHint(state: MissionControlStateKind, innerWidth: number): string {

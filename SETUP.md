@@ -31,19 +31,12 @@ If `which fleet` still returns a path after unlinking, remove it manually:
 rm "$(which fleet)"
 ```
 
-### 2. Choose release channel
+### 2. Install the stable release
 
-Ask the user which release channel they prefer before running the install command:
-
-- **stable** (latest) — production-ready, published from the `main` branch.
-- **canary** — latest development build, published from the `canary` branch. May contain breaking changes.
+The Fleet CLI is published to npm under the `latest` dist-tag from the `main` branch.
 
 ```bash
-# stable
 npm install -g @dotobokuri/fleet-cli
-
-# canary
-npm install -g @dotobokuri/fleet-cli@canary
 ```
 
 ## Verify
