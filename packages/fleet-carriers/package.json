@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-carriers",
-  "version": "0.22.2",
+  "version": "1.0.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
