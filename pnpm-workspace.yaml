@@ -4,6 +4,7 @@ packages:
   - "packages/fleet-mcp-server"
   - "packages/fleet-admiral"
   - "packages/fleet-carriers"
+  - "packages/fleet-style"
   - "packages/fleet-tui"
   - "packages/fleet-wiki"
   - "runtime/fleet-wiki-ui"

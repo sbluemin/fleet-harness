@@ -5,6 +5,19 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  ASCII_FLEET_BANNER,
+  FLEET_COMMAND,
+  GRADIENT_COLORS,
+  command,
+  dim,
+  option,
+  paint,
+  resolveColorEnabled,
+  section,
+  stripAnsi,
+} from "@dotobokuri/fleet-style";
+
 import { openBrowser } from "./browser.js";
 import { isProcessAlive, isProcessAliveWithStatus, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
 import type { FleetWikiLock } from "./lock.js";
@@ -33,6 +46,12 @@ interface CliArgs {
   port?: number;
 }
 
+export interface BuildWikiHelpTextOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly isTTY?: boolean;
+  readonly release?: string;
+}
+
 export interface OpenFleetWikiWorkspaceOptions {
   readonly cwd: string;
   readonly host?: string;
@@ -56,29 +75,8 @@ const HEALTH_TIMEOUT_MS = 5000;
 const HEALTH_INTERVAL_MS = 150;
 const TRAMPOLINE_ENV = "FLEET_WIKI_TRAMPOLINED";
 const SIGNAL_EXIT_FALLBACK_MS = 1000;
-
-const HELP_TEXT = [
-  "Fleet Wiki 웹서버 실행/종료 도구",
-  "",
-  "사용법:",
-  "  fleet-wiki [--port <port>]",
-  "  fleet-wiki --stop",
-  "  fleet-wiki --help",
-  "",
-  "옵션:",
-  "  --port <port>   서버 포트를 지정합니다.",
-  "  --stop          사용자 Fleet Wiki daemon 전체를 종료합니다.",
-  "  --help          이 도움말을 출력합니다.",
-  "",
-  "환경변수:",
-  "  FLEET_WIKI_PORT             기본 포트를 지정합니다.",
-  "  FLEET_WIKI_NO_AUTO_RESTART  기존 서버 자동 재시작을 비활성화합니다.",
-  "",
-  "예시:",
-  "  fleet-wiki",
-  "  FLEET_WIKI_PORT=4040 fleet-wiki",
-  "  fleet-wiki --stop",
-].join("\n");
+const HELP_BANNER_INDENT = "  ";
+const DEFAULT_HELP_RELEASE = "local";
 
 export function parseCliArgs(argv: string[]): CliArgs {
   const result: CliArgs = { mode: "run" };
@@ -98,7 +96,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
       i += 1;
       const port = Number(raw);
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-        process.stderr.write(`--port 값이 올바르지 않습니다: ${raw}\n`);
+        process.stderr.write(`Invalid --port value: ${raw}\n`);
         process.exit(1);
         return result;
       }
@@ -107,18 +105,50 @@ export function parseCliArgs(argv: string[]): CliArgs {
       const raw = arg.slice("--port=".length);
       const port = Number(raw);
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-        process.stderr.write(`--port 값이 올바르지 않습니다: ${raw}\n`);
+        process.stderr.write(`Invalid --port value: ${raw}\n`);
         process.exit(1);
         return result;
       }
       result.port = port;
     } else if (arg.startsWith("--")) {
-      process.stderr.write(`알 수 없는 옵션: ${arg}\n`);
+      process.stderr.write(`Unknown option: ${arg}\n`);
       process.exit(1);
       return result;
     }
   }
   return result;
+}
+
+export function buildWikiHelpText(options: BuildWikiHelpTextOptions = {}): string {
+  const colorEnabled = resolveColorEnabled(options);
+  const subtitle = `Fleet Wiki · ${options.release ?? DEFAULT_HELP_RELEASE}`;
+  const lines = [
+    ...ASCII_FLEET_BANNER.map(
+      (line, index) => `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+    ),
+    dim(subtitle, colorEnabled),
+    "",
+    section("USAGE", colorEnabled),
+    `  ${command("fleet wiki", colorEnabled)} ${dim("[--port <port>] [--stop] [--help]", colorEnabled)}`,
+    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-wiki", colorEnabled)} ${dim("[--port <port>]", colorEnabled)}`,
+    "",
+    section("OPTIONS", colorEnabled),
+    `  ${option("--port <port>", colorEnabled)}   ${dim("Set the local Fleet Wiki daemon port.", colorEnabled)}`,
+    `  ${option("--stop", colorEnabled)}          ${dim("Stop the user's Fleet Wiki daemon.", colorEnabled)}`,
+    `  ${option("--help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
+    "",
+    section("ENVIRONMENT", colorEnabled),
+    `  ${option("FLEET_WIKI_PORT", colorEnabled)}             ${dim("Set the default port.", colorEnabled)}`,
+    `  ${option("FLEET_WIKI_NO_AUTO_RESTART", colorEnabled)}  ${dim("Disable automatic restart of stale daemons.", colorEnabled)}`,
+    "",
+    section("EXAMPLES", colorEnabled),
+    `  ${command("fleet wiki", colorEnabled)}`,
+    `  FLEET_WIKI_PORT=4040 ${command("fleet wiki", colorEnabled)}`,
+    `  ${command("fleet wiki --stop", colorEnabled)}`,
+    "",
+  ];
+  const text = lines.join("\n");
+  return colorEnabled ? text : stripAnsi(text);
 }
 
 export function evaluateRestartDecision(
@@ -263,7 +293,7 @@ async function directoryExists(dirPath: string): Promise<boolean> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`${HELP_TEXT}\n`);
+  process.stdout.write(buildWikiHelpText({ env: process.env, isTTY: process.stdout.isTTY }));
 }
 
 async function ensureServer(cwd: string, lockPath: string, host: string, port: number): Promise<FleetWikiLock> {

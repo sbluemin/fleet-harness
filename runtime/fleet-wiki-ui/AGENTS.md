@@ -17,7 +17,7 @@
 
 ## Dependency Rules
 
-- Runtime dependencies should remain limited to `@dotobokuri/fleet-wiki`, `marked`, `highlight.js`, `dompurify`, and `mermaid`. `mermaid` is loaded only via dynamic `import("mermaid")` inside `client/src/markdown/diagrams.ts`; no other module may statically import it.
+- Runtime dependencies should remain limited to `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-style` (for the CLI help renderer only), `marked`, `highlight.js`, `dompurify`, and `mermaid`. `mermaid` is loaded only via dynamic `import("mermaid")` inside `client/src/markdown/diagrams.ts`; no other module may statically import it.
 - HTTP serving must use Node.js built-in modules.
 - Browser launch must use OS-level commands via `child_process.spawn`; do not add an `open` dependency.
 - Markdown parsing must reuse `@dotobokuri/fleet-wiki` public behavior where available; package-local parsing is forbidden.

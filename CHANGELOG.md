@@ -8,6 +8,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - [core] Consolidated the release pipeline onto the `main` branch: stable releases now run automatic version bumping, CHANGELOG promotion, npm publish, and GitHub Release creation in a single workflow triggered by pushes to `main`.
 - [core] Mission Control welcome readout now labels published builds uniformly as `stable`; unpublished working copies remain labeled as `local`.
+- [core] Extracted shared Fleet help banner and terminal style tokens into a zero-dependency workspace package while preserving top-level help output.
+- [wiki-web] Aligned `fleet wiki --help` with the Fleet-branded English help style and primary `fleet wiki` command spelling.
 
 ### Removed
 - [core] Removed the `canary` npm dist-tag and the auto-publish workflow that fired on every push to the `canary` branch. The `canary` branch is retained as the PR integration target but no longer publishes any artifacts.
