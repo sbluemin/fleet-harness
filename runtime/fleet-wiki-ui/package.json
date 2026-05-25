@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-wiki-ui",
-  "version": "0.22.1",
+  "version": "0.22.2",
   "description": "Fleet Wiki UI — standalone web surface and per-user local daemon for browsing Fleet Wiki workspaces.",
   "repository": {
     "type": "git",

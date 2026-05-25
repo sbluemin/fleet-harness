@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-05-25
+
 ### Added
 - [agent-core] Added Mission Control for starting or relaunching the upper Agent CLI after exit.
 - [agent-core] Added native Mission Control Fleet Menu panels for authentication, wiki server control, diagnostics, and about information.
