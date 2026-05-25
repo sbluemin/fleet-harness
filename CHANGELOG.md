@@ -21,9 +21,11 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [mcp-server] Added `createExecutorSessionManager(deps)` factory and `Executor*` session types; the multi-runtime MCP session lifecycle helper formerly named `createDedicatedMcpSession` is now owned by the generic MCP server package.
 - [core] Unified `fleet-carriers` internal module topology into `personas/`, `store/`, `dispatch/`, `stream/`, and `jobs/`; removed obsolete `job/` and `events/` directory split.
 - [core] Unified the Mission Control welcome banner with the `fleet --help` ASCII banner so both surfaces share a single Fleet wordmark.
+- [core][wiki-web] Wiki Server panel now reuses an existing healthy background daemon, opens the browser on Enter in any state (start or reopen), exposes daemon stop on the dedicated `S` shortcut, and aligns its default port with the `fleet wiki` CLI.
 
 ### Fixed
 - [agent-core] Fixed executor pool busy session isolation, stale pooled client lookup, and internal MCP tool signature drift.
+- [core][wiki-web] Fixed Wiki Server panel failing silently when a previous daemon held the lock, mis-reporting running daemons as stopped on panel re-entry, and swallowing permission errors during daemon shutdown.
 
 ### Removed
 - Removed unused carrier runtime, TUI primitive, and agent model helper APIs that were no longer consumed by workspace packages.

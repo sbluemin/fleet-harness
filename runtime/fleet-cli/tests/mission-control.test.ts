@@ -1,9 +1,3 @@
-import { EventEmitter } from "node:events";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import type { ChildProcess } from "node:child_process";
-
 import { describe, expect, it } from "vitest";
 import type { RecentLogFile, ReadRecentLogFilesOptions } from "@dotobokuri/fleet-infra/log";
 
@@ -394,7 +388,7 @@ describe("Mission Control controller", () => {
     expect(hosts).toEqual([]);
   });
 
-  it("toggles wiki server with the injected detached controller and validates port modal", () => {
+  it("opens wiki server on Enter regardless of state and stops only on S shortcut", () => {
     const wikiController = createFakeWikiController();
     const controller = createTestController({ wikiController });
 
@@ -404,9 +398,24 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("Wiki Server");
     expect(renderPlain(controller)).toContain("stopped");
 
+    // stopped → Enter → start() 호출, daemon spawn + 브라우저 오픈
     controller.ptyHost.write("\r");
     expect(wikiController.calls).toEqual(["start"]);
-    expect(renderPlain(controller)).toContain("running :4399");
+    expect(renderPlain(controller)).toContain("running 127.0.0.1:4399");
+
+    // running → Enter는 stop이 아니라 start()를 한 번 더 호출해 helper로 브라우저 재오픈
+    controller.ptyHost.write("\r");
+    expect(wikiController.calls).toEqual(["start", "start"]);
+    expect(renderPlain(controller)).toContain("running 127.0.0.1:4399");
+
+    // running → S 단축키로만 명시적 stop
+    controller.ptyHost.write("S");
+    expect(wikiController.calls).toEqual(["start", "start", "stop"]);
+    expect(renderPlain(controller)).toContain("stopped");
+
+    // stopped → S는 무시 (no-op)
+    controller.ptyHost.write("s");
+    expect(wikiController.calls).toEqual(["start", "start", "stop"]);
 
     controller.ptyHost.write("P");
     controller.ptyHost.write("\x7f");
@@ -521,39 +530,109 @@ describe("Mission Control controller", () => {
     expect(renderRequests).toBeGreaterThan(beforeSubmit);
   });
 
-  it("updates wiki running status from the ready lock port", async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-wiki-lock-"));
-    const lockPath = path.join(tempDir, "fleet-wiki-daemon.lock");
+  it("detects an existing wiki daemon during controller initialization", async () => {
     let renderRequests = 0;
-    const child = createFakeChildProcess(12345);
     const controller = createWikiProcessController({
       cwd: "/tmp/wiki",
-      lockPath,
       onChange: () => {
         renderRequests += 1;
       },
-      spawnProcess: () => child,
-    });
-
-    try {
-      controller.start();
-      expect(controller.getStatus()).toEqual({ state: "starting", port: 4399, pid: 12345 });
-      fs.writeFileSync(lockPath, JSON.stringify({
+      probe: async () => ({
         host: "127.0.0.1",
         pid: 12345,
         port: 4400,
-        startedAt: new Date().toISOString(),
-        token: "token",
-      }), "utf8");
-      await waitForTimer();
-      await waitForTimer();
+        url: "http://127.0.0.1:4400",
+      }),
+    });
 
-      expect(controller.getStatus()).toEqual({ state: "running", port: 4400, pid: 12345 });
-      expect(renderRequests).toBeGreaterThan(1);
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      controller.stop();
-    }
+    expect(controller.getStatus()).toEqual({ state: "stopped" });
+    await waitForAsyncLaunch();
+
+    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
+    expect(controller.getPort()).toBe(4400);
+    expect(renderRequests).toBe(1);
+  });
+
+  it("keeps wiki stopped when initial daemon probe is empty", async () => {
+    let renderRequests = 0;
+    const controller = createWikiProcessController({
+      cwd: "/tmp/wiki",
+      onChange: () => {
+        renderRequests += 1;
+      },
+      probe: async () => null,
+    });
+
+    await waitForAsyncLaunch();
+
+    expect(controller.getStatus()).toEqual({ state: "stopped" });
+    expect(renderRequests).toBe(0);
+  });
+
+  it("updates wiki running status from the helper result port", async () => {
+    let renderRequests = 0;
+    let stopCalls = 0;
+    const controller = createWikiProcessController({
+      cwd: "/tmp/wiki",
+      onChange: () => {
+        renderRequests += 1;
+      },
+      openWorkspace: async () => ({
+        host: "127.0.0.1",
+        pid: 12345,
+        port: 4400,
+        url: "http://127.0.0.1:4400/w/test/",
+      }),
+      probe: async () => null,
+      stopDaemon: async () => {
+        stopCalls += 1;
+      },
+    });
+
+    controller.start();
+    expect(controller.getStatus()).toEqual({ state: "starting", port: 3737 });
+    await waitForAsyncLaunch();
+
+    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
+    expect(controller.getPort()).toBe(4400);
+    expect(renderRequests).toBeGreaterThan(1);
+
+    controller.stop();
+    await waitForAsyncLaunch();
+
+    expect(stopCalls).toBe(1);
+    expect(controller.getStatus()).toEqual({ state: "stopped" });
+  });
+
+  it("re-invokes openWorkspace on start when already running without flickering to starting", async () => {
+    let openCalls = 0;
+    const controller = createWikiProcessController({
+      cwd: "/tmp/wiki",
+      onChange: () => {},
+      openWorkspace: async () => {
+        openCalls += 1;
+        return {
+          host: "127.0.0.1",
+          pid: 12345,
+          port: 4400,
+          url: "http://127.0.0.1:4400/w/test/",
+        };
+      },
+      probe: async () => null,
+      stopDaemon: async () => {},
+    });
+
+    controller.start();
+    await waitForAsyncLaunch();
+    expect(openCalls).toBe(1);
+    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
+
+    // running 상태에서 start()를 다시 호출 — starting으로의 깜빡임 없이 helper만 다시 invoke
+    controller.start();
+    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
+    await waitForAsyncLaunch();
+    expect(openCalls).toBe(2);
+    expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
   });
 
   it("renders about panel with counts and placeholder docs link", () => {
@@ -1166,16 +1245,6 @@ function createFakeHost(): FakeHost {
   };
 }
 
-function createFakeChildProcess(pid: number): ChildProcess {
-  const child = new EventEmitter() as ChildProcess;
-  Object.assign(child, {
-    kill: () => true,
-    pid,
-    unref: () => child,
-  });
-  return child;
-}
-
 function renderPlain(controller: ReturnType<typeof createTestController>): string {
   return stripAnsi(controller.component.render(80).join("\n"));
 }
@@ -1191,8 +1260,4 @@ function countOccurrences(text: string, needle: string): number {
 async function waitForAsyncLaunch(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
-}
-
-async function waitForTimer(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 120));
 }

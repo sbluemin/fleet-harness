@@ -34,6 +34,7 @@ import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgen
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-control/loaded-counts.js";
+import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createDefaultFleetPtyComponent } from "./sections/default-sections.js";
 import { FleetStatusSection } from "./sections/fleet-status-section.js";
@@ -115,6 +116,14 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     invocationCwd,
   });
   const optionChips = createMissionControlOptionChips(sessionOptionsRuntime.getResolved());
+  // Composition root에서 실제 Fleet Wiki daemon helper를 쓰는 기본 컨트롤러를 고정한다.
+  const wikiController = createWikiProcessController({
+    cwd: invocationCwd,
+    onChange: () => {
+      ptyManager?.requestResize("programmatic");
+      scheduleRender();
+    },
+  });
   const missionControl = createMissionControlController({
     ...missionControlProfileConfig,
     defaultCliId: cliId,
@@ -144,6 +153,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     readRecentLogFiles,
     release: readFleetCliRelease(),
     sessionOptions: sessionOptionsRuntime,
+    wikiController,
   });
   const jobBarState = createJobBarState({
     carrierRuntime: runtime.carrierRuntime,

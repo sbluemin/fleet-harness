@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { openBrowser } from "./browser.js";
-import { isProcessAlive, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
+import { isProcessAlive, isProcessAliveWithStatus, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
 import type { FleetWikiLock } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";
 import { isLockTrustworthyForRestart, isStaleLock } from "./stale.js";
@@ -31,6 +31,23 @@ export interface HealthyLockTrustDecision {
 interface CliArgs {
   mode: CliMode;
   port?: number;
+}
+
+export interface OpenFleetWikiWorkspaceOptions {
+  readonly cwd: string;
+  readonly host?: string;
+  readonly port?: number;
+}
+
+export interface OpenFleetWikiWorkspaceResult {
+  readonly host: string;
+  readonly pid: number;
+  readonly port: number;
+  readonly url: string;
+}
+
+export interface ProbeFleetWikiDaemonOptions {
+  readonly cwd: string;
 }
 
 const DEFAULT_PORT = 3737;
@@ -138,6 +155,44 @@ export function evaluateHealthyLockTrust(
   return trust.trusted ? { trusted: true } : { trusted: false, reason: trust.reason };
 }
 
+export async function openFleetWikiWorkspace(
+  options: OpenFleetWikiWorkspaceOptions,
+): Promise<OpenFleetWikiWorkspaceResult> {
+  const cwd = path.resolve(options.cwd);
+  const paths = resolveWorkspaceMemoryPaths(cwd);
+  if (!(await directoryExists(paths.root))) {
+    throw new Error("`.fleet/knowledge` 디렉토리를 찾을 수 없습니다. 워크스페이스 루트에서 실행하세요.");
+  }
+
+  const host = options.host ?? DEFAULT_HOST;
+  const port = options.port ?? configuredPort();
+  const lockPath = lockFilePath();
+  const lock = await ensureServer(cwd, lockPath, host, port);
+  const workspace = await registerWorkspace(lock, cwd);
+  const url = `${serverUrl(lock.host, lock.port)}${workspace.urlPath}`;
+  await openBrowser(url);
+  return { host: lock.host, pid: lock.pid, port: lock.port, url };
+}
+
+export async function probeFleetWikiDaemon(
+  _options: ProbeFleetWikiDaemonOptions,
+): Promise<OpenFleetWikiWorkspaceResult | null> {
+  const lock = await readLockFile(lockFilePath());
+  if (!lock) {
+    return null;
+  }
+  const health = await healthCheck(lock);
+  if (!health.ok) {
+    return null;
+  }
+  return {
+    host: lock.host,
+    pid: lock.pid,
+    port: lock.port,
+    url: serverUrl(lock.host, lock.port),
+  };
+}
+
 export async function main(): Promise<void> {
   const cliArgs = parseCliArgs(process.argv.slice(2));
   if (cliArgs.mode === "help") {
@@ -151,19 +206,7 @@ export async function main(): Promise<void> {
     return;
   }
 
-  const paths = resolveWorkspaceMemoryPaths(cwd);
-  if (!(await directoryExists(paths.root))) {
-    console.error("`.fleet/knowledge` 디렉토리를 찾을 수 없습니다. 워크스페이스 루트에서 실행하세요.");
-    process.exitCode = 1;
-    return;
-  }
-
-  const host = DEFAULT_HOST;
-  const port = cliArgs.port ?? configuredPort();
-  const lockPath = lockFilePath();
-  const lock = await ensureServer(cwd, lockPath, host, port);
-  const workspace = await registerWorkspace(lock, cwd);
-  await openBrowser(`${serverUrl(lock.host, lock.port)}${workspace.urlPath}`);
+  await openFleetWikiWorkspace({ cwd, port: cliArgs.port });
 }
 
 export function findLocalCliMjs(cwd: string): string | null {
@@ -181,19 +224,7 @@ export function findLocalCliMjs(cwd: string): string | null {
   }
 }
 
-async function directoryExists(dirPath: string): Promise<boolean> {
-  try {
-    return (await stat(dirPath)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function printHelp(): void {
-  process.stdout.write(`${HELP_TEXT}\n`);
-}
-
-async function stopDaemon(): Promise<void> {
+export async function stopDaemon(): Promise<void> {
   const lockPath = lockFilePath();
   const lock = await readLockFile(lockPath);
   if (!lock) {
@@ -201,11 +232,7 @@ async function stopDaemon(): Promise<void> {
     return;
   }
   if (!Number.isInteger(lock.pid) || lock.pid <= 1) {
-    process.stderr.write(
-      `lock에 비정상 PID가 기록되어 있습니다(pid=${String(lock.pid)}). 안전을 위해 종료를 건너뜁니다.\n`,
-    );
-    process.exit(1);
-    return;
+    throw new Error(`lock에 비정상 PID가 기록되어 있습니다(pid=${String(lock.pid)}). 안전을 위해 종료를 건너뜁니다.`);
   }
   if (!isProcessAlive(lock.pid)) {
     await removeLockFile(lockPath);
@@ -217,6 +244,26 @@ async function stopDaemon(): Promise<void> {
     throw new Error(`Fleet Wiki daemon(pid=${lock.pid})을 종료하지 못했습니다.`);
   }
   await removeLockFile(lockPath);
+}
+
+export function formatHostForUrl(host: string): string {
+  return net.isIPv6(host) ? `[${host}]` : host;
+}
+
+export function serverUrl(host: string, port: number): string {
+  return `http://${formatHostForUrl(host)}:${port}`;
+}
+
+async function directoryExists(dirPath: string): Promise<boolean> {
+  try {
+    return (await stat(dirPath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function printHelp(): void {
+  process.stdout.write(`${HELP_TEXT}\n`);
 }
 
 async function ensureServer(cwd: string, lockPath: string, host: string, port: number): Promise<FleetWikiLock> {
@@ -341,24 +388,33 @@ function configuredPort(): number {
   return port;
 }
 
-export function formatHostForUrl(host: string): string {
-  return net.isIPv6(host) ? `[${host}]` : host;
-}
-
-export function serverUrl(host: string, port: number): string {
-  return `http://${formatHostForUrl(host)}:${port}`;
-}
-
 async function killServer(pid: number): Promise<void> {
-  try { process.kill(pid, "SIGTERM"); } catch { return; }
+  if (!signalProcess(pid, "SIGTERM")) {
+    return;
+  }
   await sleep(200);
-  if (isProcessAlive(pid)) {
-    try { process.kill(pid, "SIGKILL"); } catch { /* 이미 종료됨 */ }
+  if (isProcessAliveWithStatus(pid).alive) {
+    signalProcess(pid, "SIGKILL");
   }
 }
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function signalProcess(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ESRCH") {
+      return false;
+    }
+    if (isNodeError(error) && error.code === "EPERM") {
+      throw new Error(`Fleet Wiki daemon(pid=${pid})에 ${signal} 권한이 없습니다.`);
+    }
+    throw error;
+  }
 }
 
 function maybeTrampolineToLocalCli(): void {
@@ -409,6 +465,10 @@ function gitCommonDir(cwd: string): string | null {
     return null;
   }
   return path.resolve(cwd, rawCommonDir);
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

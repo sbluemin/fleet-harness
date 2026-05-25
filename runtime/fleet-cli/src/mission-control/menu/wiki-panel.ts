@@ -1,8 +1,9 @@
-import * as fs from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
-import { createRequire } from "node:module";
-import * as os from "node:os";
-import * as path from "node:path";
+import {
+  openFleetWikiWorkspace,
+  probeFleetWikiDaemon,
+  stopDaemon as stopFleetWikiDaemon,
+} from "@dotobokuri/fleet-wiki-ui/cli";
+import type { OpenFleetWikiWorkspaceResult } from "@dotobokuri/fleet-wiki-ui/cli";
 
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
@@ -24,116 +25,101 @@ export interface WikiPanelDeps {
   readonly wiki?: WikiProcessController;
 }
 
+export interface CreateWikiProcessControllerOptions {
+  readonly cwd: string;
+  readonly onChange: () => void;
+  readonly openWorkspace?: (options: {
+    readonly cwd: string;
+    readonly port?: number;
+  }) => Promise<OpenFleetWikiWorkspaceResult>;
+  readonly probe?: (options: {
+    readonly cwd: string;
+  }) => Promise<OpenFleetWikiWorkspaceResult | null>;
+  readonly stopDaemon?: () => Promise<void>;
+}
+
 export type WikiServerStatus =
   | { readonly state: "stopped"; readonly message?: string }
   | { readonly state: "starting"; readonly port: number; readonly pid?: number }
-  | { readonly state: "running"; readonly port: number; readonly pid?: number }
+  | { readonly state: "running"; readonly host?: string; readonly port: number; readonly pid?: number }
   | { readonly state: "error"; readonly message: string };
 
-const DEFAULT_WIKI_PORT = 4399;
-const LOCK_POLL_INTERVAL_MS = 100;
-const LOCK_POLL_ATTEMPTS = 50;
-const require = createRequire(import.meta.url);
+const DEFAULT_WIKI_PORT = 3737;
 
-export function createWikiProcessController(options: {
-  readonly cwd: string;
-  readonly lockPath?: string;
-  readonly onChange: () => void;
-  readonly spawnProcess?: (port: number) => ChildProcess;
-}): WikiProcessController {
-  let child: ChildProcess | undefined;
+export function createWikiProcessController(options: CreateWikiProcessControllerOptions): WikiProcessController {
   let port = DEFAULT_WIKI_PORT;
   let status: WikiServerStatus = { state: "stopped" };
-  let lockPollTimer: NodeJS.Timeout | undefined;
+  let requestId = 0;
+  const openWorkspace = options.openWorkspace ?? openFleetWikiWorkspace;
+  const probe = options.probe ?? probeFleetWikiDaemon;
+  const stopDaemon = options.stopDaemon ?? stopFleetWikiDaemon;
+
+  void (async () => {
+    try {
+      const currentRequestId = requestId;
+      const result = await probe({ cwd: options.cwd });
+      if (requestId !== currentRequestId || status.state !== "stopped" || result === null) {
+        return;
+      }
+      port = result.port;
+      status = { state: "running", host: result.host, port: result.port, pid: result.pid };
+      options.onChange();
+    } catch {
+      // 초기 probe 실패는 UX 노이즈를 피하고 다음 Enter의 helper 흐름에 맡긴다.
+    }
+  })();
 
   return {
-    getPort: () => port,
+    getPort: () => status.state === "running" ? status.port : port,
     getStatus: () => status,
     setPort: (nextPort) => {
       port = nextPort;
     },
     start(): void {
-      if (child !== undefined) {
+      // starting 상태에서는 helper 호출이 이미 진행 중이므로 중복 dispatch를 막는다.
+      // running 상태에서는 helper를 다시 호출해 healthy daemon을 재사용하면서 브라우저만 다시 연다.
+      if (status.state === "starting") {
         return;
       }
-      try {
-        const lockPath = options.lockPath ?? resolveWikiLockPath();
-        const args = ["--cwd", options.cwd, "--lock", lockPath, "--port", String(port)];
-        const nextChild = options.spawnProcess?.(port) ?? spawn(process.execPath, [resolveWikiServerPath(), ...args], {
-          cwd: options.cwd,
-          detached: true,
-          shell: false,
-          stdio: "ignore",
-        });
-        child = nextChild;
-        child.unref();
-        status = { state: "starting", port, pid: child.pid };
-        pollLockForReady(nextChild, lockPath, 0);
-        child.once("exit", () => {
-          if (child === nextChild) {
-            clearLockPoll();
-            child = undefined;
-            status = { state: "stopped" };
-            options.onChange();
-          }
-        });
-        child.once("error", (error) => {
-          if (child === nextChild) {
-            clearLockPoll();
-            child = undefined;
-            status = { state: "error", message: error.message };
-            options.onChange();
-          }
-        });
-      } catch (error: unknown) {
-        status = { state: "error", message: formatError(error) };
+      const currentRequestId = ++requestId;
+      const wasRunning = status.state === "running";
+      if (!wasRunning) {
+        // stopped/error에서만 시각적으로 starting으로 전환한다. running에서는 깜빡임을 피한다.
+        status = { state: "starting", port };
+        options.onChange();
       }
-      options.onChange();
+
+      void (async () => {
+        try {
+          // 테스트는 daemon 프로세스를 띄우지 않고 helper 경계만 대체한다.
+          const result = await openWorkspace({ cwd: options.cwd, port });
+          if (requestId !== currentRequestId) return;
+          port = result.port;
+          status = { state: "running", host: result.host, port: result.port, pid: result.pid };
+        } catch (error: unknown) {
+          if (requestId !== currentRequestId) return;
+          status = { state: "error", message: formatError(error) };
+        }
+        options.onChange();
+      })();
     },
     stop(): void {
-      if (child === undefined) {
-        clearLockPoll();
-        status = { state: "stopped" };
+      const currentRequestId = ++requestId;
+      void (async () => {
+        try {
+          await stopDaemon();
+          if (requestId !== currentRequestId) return;
+          status = { state: "stopped" };
+        } catch (error: unknown) {
+          if (requestId !== currentRequestId) return;
+          status = { state: "error", message: formatError(error) };
+        }
         options.onChange();
-        return;
-      }
-      child.kill();
-      child = undefined;
-      clearLockPoll();
+      })();
       status = { state: "stopped" };
       options.onChange();
     },
   };
-
-  function pollLockForReady(expectedChild: ChildProcess, lockPath: string, attempt: number): void {
-    clearLockPoll();
-    const lock = readWikiLock(lockPath);
-    if (child === expectedChild && lock !== null && lock.pid === expectedChild.pid) {
-      status = { state: "running", port: lock.port, pid: expectedChild.pid };
-      options.onChange();
-      return;
-    }
-    if (attempt >= LOCK_POLL_ATTEMPTS) {
-      if (child === expectedChild) {
-        status = { state: "error", message: "Wiki server did not report a ready port." };
-        child = undefined;
-        expectedChild.kill();
-        options.onChange();
-      }
-      return;
-    }
-    lockPollTimer = setTimeout(() => {
-      pollLockForReady(expectedChild, lockPath, attempt + 1);
-    }, LOCK_POLL_INTERVAL_MS);
-    lockPollTimer.unref();
-  }
-
-  function clearLockPoll(): void {
-    if (lockPollTimer !== undefined) {
-      clearTimeout(lockPollTimer);
-      lockPollTimer = undefined;
-    }
-  }
 }
 
 export function createWikiPanel(deps: WikiPanelDeps): MenuPanel {
@@ -144,11 +130,17 @@ export function createWikiPanel(deps: WikiPanelDeps): MenuPanel {
     title: "Wiki Server",
     handleInput(data: string): boolean {
       if (isEnter(data)) {
+        // Enter는 상태 무관 항상 helper를 호출한다.
+        // stopped/error → spawn + 브라우저 오픈, running → 기존 daemon 재사용 + 브라우저 재오픈.
+        // stop은 별도 S 단축키로 분리되어 Enter가 실수로 daemon을 내리는 일을 막는다.
+        wiki.start();
+        return true;
+      }
+      if (data === "S" || data === "s") {
+        // 명시적 stop 단축키 — running/starting에서만 의미. 그 외 상태에서는 no-op.
         const status = wiki.getStatus();
-        if (status.state === "running") {
+        if (status.state === "running" || status.state === "starting") {
           wiki.stop();
-        } else {
-          wiki.start();
         }
         return true;
       }
@@ -184,23 +176,10 @@ export function createWikiPanel(deps: WikiPanelDeps): MenuPanel {
         "",
         centerText(MISSION_CONTROL_THEME.dim("External fleet wiki processes are not managed here."), width),
         "",
-        centerText(MISSION_CONTROL_THEME.dim("Enter start or stop  P port  Esc back"), width),
+        centerText(MISSION_CONTROL_THEME.dim("Enter open  S stop  P port  Esc back"), width),
       ];
     },
   };
-}
-
-function resolveWikiServerPath(): string {
-  return path.join(path.dirname(require.resolve("@dotobokuri/fleet-wiki-ui/dist/cli.mjs")), "server.mjs");
-}
-
-function resolveWikiLockPath(): string {
-  return path.join("/tmp", `fleet-wiki-${userLockOwner()}`, "fleet-wiki-daemon.lock");
-}
-
-function userLockOwner(): string {
-  const info = os.userInfo();
-  return String(info.uid ?? info.username).replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
 function validatePort(value: string): string | undefined {
@@ -216,7 +195,9 @@ function formatStatus(status: WikiServerStatus): string {
     return MISSION_CONTROL_THEME.warning(`starting :${status.port}`);
   }
   if (status.state === "running") {
-    return MISSION_CONTROL_THEME.success(`running :${status.port}`);
+    const host = status.host ?? "127.0.0.1";
+    const pid = status.pid === undefined ? "" : ` pid ${status.pid}`;
+    return MISSION_CONTROL_THEME.success(`running ${host}:${status.port}${pid}`);
   }
   if (status.state === "error") {
     return MISSION_CONTROL_THEME.error(status.message);
@@ -226,20 +207,4 @@ function formatStatus(status: WikiServerStatus): string {
 
 function formatError(error: unknown): string {
   return error instanceof Error && error.message.length > 0 ? error.message : "Wiki server failed.";
-}
-
-function readWikiLock(lockPath: string): { readonly pid: number; readonly port: number } | null {
-  try {
-    if (fs.lstatSync(lockPath).isSymbolicLink()) return null;
-    const raw = fs.readFileSync(lockPath, "utf8");
-    const parsed = JSON.parse(raw) as { readonly pid?: unknown; readonly port?: unknown };
-    const pid = parsed.pid;
-    const port = parsed.port;
-    if (typeof pid !== "number" || typeof port !== "number") return null;
-    if (!Number.isInteger(pid) || !Number.isInteger(port)) return null;
-    if (port < 1024 || port > 65535) return null;
-    return { pid, port };
-  } catch {
-    return null;
-  }
 }
