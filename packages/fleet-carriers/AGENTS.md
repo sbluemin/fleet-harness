@@ -33,7 +33,7 @@
 ## Testing Doctrine
 
 - Use `clearRegisteredCarriers()` / `resetCarrierRegistryForTests()` for dispatch framework isolation.
-- Use `clearStreamHandlers()` for event registry isolation.
+- Unregister stream event handlers returned from `registerStreamHandler()` for event registry isolation.
 - Use `resetStoreForTests()` plus `initStore(tempDir)` for store isolation.
 
 ## TypeScript File Structure

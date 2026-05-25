@@ -23,11 +23,7 @@ export * from "./events/index.js";
 export {
   initStore,
   loadModels,
-  saveModels,
-  seedDefaultModels,
   updateModelSelection,
-  updateAllModelSelections,
-  reconcileActiveModelSelections,
   getPerCliSettings,
   savePerCliSettings,
   getTaskForceModelConfig,

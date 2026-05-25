@@ -6,7 +6,7 @@
 
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
-import type { AgentToolCtx, AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../job/index.js";
 import type { LogOptions } from "@dotobokuri/fleet-infra/log";
 import type { ExecResult } from "@dotobokuri/fleet-infra/agent";
@@ -93,8 +93,6 @@ const TASKFORCE_LOG_CATEGORY_EXEC = "fleet-taskforce:exec";
 const TASKFORCE_LOG_CATEGORY_RESULT = "fleet-taskforce:result";
 const TASKFORCE_LOG_CATEGORY_ERROR = "fleet-taskforce:error";
 const taskForceStateStore = new Map<string, TaskForceState>();
-
-export const buildTaskForceToolSpec: () => AgentToolSpec | null = () => null;
 
 export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
   const { registry, carrierId, request, label, startedAt, toolName, ctx } = options;

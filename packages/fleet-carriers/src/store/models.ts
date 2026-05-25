@@ -66,45 +66,6 @@ export function loadModels(cliTypesByCarrier?: Record<string, CliType>): Selecte
   return sanitizeSelectedModelsConfig(readStatesSnapshot().models);
 }
 
-/** 모델 설정을 저장합니다. */
-export function saveModels(config: SelectedModelsConfig): void {
-  updateStates((states) => {
-    states.models = sanitizeSelectedModelsConfig(config);
-  });
-}
-
-/**
- * states.json에 모델 엔트리가 없는 캐리어에 대해 defaultModel로 초기 시딩합니다.
- * 세션 무효화는 수행하지 않습니다 (부팅 시 1회만 실행).
- *
- * @returns 실제로 states.json이 갱신되었는지 여부
- */
-export function seedDefaultModels(
-  defaultsByCarrier: Record<string, { cliType: CliType; defaultModel?: string; defaultEffort?: string }>,
-): boolean {
-  const entries = Object.entries(defaultsByCarrier);
-  if (entries.length === 0) return false;
-
-  let changed = false;
-  updateStates((states) => {
-    const models = sanitizeSelectedModelsConfig(states.models);
-
-    for (const [carrierId, { cliType, defaultModel, defaultEffort }] of entries) {
-      const existing = models[carrierId];
-      if (existing && existing.model) continue;
-      const model = defaultModel ?? getProviderModels(cliType)?.defaultModel;
-      if (!model) continue;
-      const next: ModelSelection = { ...existing, model };
-      if (defaultEffort && !existing?.effort) next.effort = defaultEffort;
-      models[carrierId] = next;
-      changed = true;
-    }
-
-    if (changed) states.models = models;
-  });
-  return changed;
-}
-
 /**
  * Carrier의 모델 설정을 변경하고 세션을 무효화합니다.
  * 원자적 연산: save → session clear → disconnect
@@ -126,70 +87,6 @@ export async function updateModelSelection(
   sessionRuntime.getCarrierSessionStore().clear(carrierId);
   sessionRuntime.flushSessionMappings();
   await disconnect(carrierId);
-}
-
-/**
- * 전체 모델 설정을 교체하고 변경된 키의 세션을 무효화합니다.
- * 원자적 연산: save → session clear all → disconnect all
- */
-export async function updateAllModelSelections(
-  config: SelectedModelsConfig,
-): Promise<void> {
-  saveModels(config);
-  const keys = Object.keys(config);
-  const sessionStore = sessionRuntime.getCarrierSessionStore();
-  for (const key of keys) {
-    sessionStore.clear(key);
-  }
-  sessionRuntime.flushSessionMappings();
-  await Promise.allSettled(keys.map((key) => disconnect(key)));
-}
-
-/**
- * 현재 carrier별 cliType에 맞춰 활성 모델 선택을 재정렬합니다.
- *
- * /reload 후 carrier의 cliType이 복원되어도 top-level models 엔트리가
- * 이전 CLI 기준 값으로 남아 있을 수 있으므로, 현재 cliType 기준 유효한
- * model/effort/budget/direct 조합으로 정규화합니다.
- *
- * - 현재 top-level 선택이 새 cliType에 유효하면 그대로 유지
- * - 아니면 perCliSettings[cliType]를 사용
- * - 그것도 없으면 provider 기본값으로 폴백
- *
- * taskforce/perCliSettings는 보존하며 세션 무효화는 수행하지 않습니다.
- *
- * @returns 실제로 states.json이 갱신되었는지 여부
- */
-export function reconcileActiveModelSelections(
-  cliTypesByCarrier: Record<string, CliType>,
-): boolean {
-  if (Object.keys(cliTypesByCarrier).length === 0) return false;
-
-  let changed = false;
-  updateStates((states) => {
-    const models = sanitizeSelectedModelsConfig(states.models);
-
-    for (const [carrierId, cliType] of Object.entries(cliTypesByCarrier)) {
-      const current = models[carrierId];
-      if (!current) continue;
-
-      const resolved = resolveSelectionForCliType(current, cliType);
-      if (!resolved) continue;
-
-      if (!isSameResolvedSelection(current, resolved)) {
-        const next: ModelSelection = { model: resolved.model };
-        if (resolved.direct !== undefined) next.direct = resolved.direct;
-        if (resolved.effort !== undefined) next.effort = resolved.effort;
-        if (current.taskforce) next.taskforce = current.taskforce;
-        if (current.perCliSettings) next.perCliSettings = current.perCliSettings;
-        models[carrierId] = next;
-        changed = true;
-      }
-    }
-
-    if (changed) states.models = models;
-  });
-  return changed;
 }
 
 /**
@@ -408,15 +305,6 @@ function buildHealedModels(
     };
   }
   return next;
-}
-
-function isSameResolvedSelection(
-  current: ModelSelection,
-  resolved: ModelSelection,
-): boolean {
-  return current.model === resolved.model
-    && current.effort === resolved.effort
-    && current.direct === resolved.direct;
 }
 
 function sanitizeTaskForceSelection(value: unknown): TaskForceSelection | null {

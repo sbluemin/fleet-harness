@@ -107,7 +107,3 @@ export function emitStreamEvent(event: CarrierJobStreamEvent): void {
     handler(event);
   }
 }
-
-export function clearStreamHandlers(): void {
-  streamHandlers.clear();
-}

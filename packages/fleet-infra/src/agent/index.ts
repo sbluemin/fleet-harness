@@ -12,8 +12,6 @@ export type {
 export type { ExecuteOptions, ExecResult } from "./executor.js";
 export type { SessionPersistencePort, SessionRuntime } from "./internal/session-runtime.js";
 export type {
-  ParsedModelId,
-  ProviderInfo,
   SelectableThinkingLevel,
   CliCapability,
 } from "./models.js";
@@ -22,19 +20,11 @@ export {
   executorPortRuntime,
 } from "./executor-port.js";
 export {
-  parseModelId,
-  buildModelId,
   buildProviderId,
-  getProviderIds,
-  isFleetProviderId,
-  parseProviderId,
-  listProviders,
   getCliModels,
   getCliEffortLevels,
-  getSelectableThinkingLevels,
   SELECTABLE_THINKING_LEVELS,
   DEFAULT_BRIDGE_SCOPE,
-  hashSystemPrompt,
   CLI_CAPABILITIES,
 } from "./models.js";
 export {
