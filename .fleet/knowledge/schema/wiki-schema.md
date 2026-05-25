@@ -36,7 +36,7 @@ Every wiki entry must include frontmatter in YAML format.
 - Template frontmatter is guidance only and is not deterministically enforced.
 - Every level-2 heading (`## Heading`) in the selected template is a required entry body section.
 - Validation uses subset semantics: required template sections must exist in the entry body, order is ignored, and extra entry sections are allowed.
-- Default templates are `template-prd.md` and `template-guide.md`.
+- The default template is `template-prd.md`. Users may add custom templates with the `template-` prefix.
 
 ## Prohibited Content
 
