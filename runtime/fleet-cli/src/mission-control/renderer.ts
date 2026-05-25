@@ -1,5 +1,5 @@
 import { CARRIER_COLORS } from "@dotobokuri/fleet-carriers";
-import { ANSI_RESET, paint as paintBranded } from "@dotobokuri/fleet-style";
+import { ANSI_RESET, paint as paintBranded } from "@dotobokuri/fleet-tui/style";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";

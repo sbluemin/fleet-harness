@@ -1,6 +1,6 @@
 import { FLEET_ACTION_COLOR, FLEET_ACTION_LABEL } from "@dotobokuri/fleet-admiral";
-import { paint } from "@dotobokuri/fleet-style";
 import { DIM_COLOR } from "@dotobokuri/fleet-tui/core";
+import { paint } from "@dotobokuri/fleet-tui/style";
 
 import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
 

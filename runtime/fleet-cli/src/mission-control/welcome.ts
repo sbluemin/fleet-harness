@@ -1,4 +1,4 @@
-import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_COLORS } from "@dotobokuri/fleet-style";
+import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_COLORS } from "@dotobokuri/fleet-tui/style";
 
 import { truncateToWidth, visibleWidth } from "../controls/index.js";
 

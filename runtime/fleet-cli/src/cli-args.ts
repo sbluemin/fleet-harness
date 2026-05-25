@@ -9,7 +9,7 @@ import {
   resolveColorEnabled,
   section,
   stripAnsi,
-} from "@dotobokuri/fleet-style";
+} from "@dotobokuri/fleet-tui/style";
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {

@@ -35,14 +35,14 @@ const allowedDocPhrases = [
 
 const findings = [];
 const forbiddenFleetTuiDeepImport =
-  /from\s+["']@dotobokuri\/fleet-tui\/(?!(?:core|components|layout|primitives)["'])(?:src|dist|[^"']+)["']/;
+  /from\s+["']@dotobokuri\/fleet-tui\/(?!(?:core|components|layout|primitives|style)["'])(?:src|dist|[^"']+)["']/;
 const forbiddenFleetTuiSrcDistImport = /from\s+["']@dotobokuri\/fleet-tui\/(?:src|dist)(?:\/|["'])/;
 const oldInputPathReference =
   /(?:src\/input|from\s+["'][^"']*input\/modes[^"']*["'])/;
 const oldLocalTuiImport = /from\s+["'][^"']*\.{1,2}\/tui\/[^"']*["']/;
 const oldSrcTuiReference = /src\/tui/;
 const fleetTuiImport = /from\s+["'](@dotobokuri\/fleet-tui(?:\/[^"']+)?)["']/;
-const allowedDomainFleetTuiImport = /^@dotobokuri\/fleet-tui\/(?:core|components|layout|primitives)$/;
+const allowedDomainFleetTuiImport = /^@dotobokuri\/fleet-tui\/(?:core|components|layout|primitives|style)$/;
 
 for (const file of listFiles(scanRoots)) {
   const text = readFileSync(file, "utf8");
