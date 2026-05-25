@@ -1,5 +1,5 @@
 import { CLI_DISPLAY_NAMES } from "../constants.js";
-import type { CarrierJobStatus, CarrierJobSummary } from "../job/index.js";
+import type { CarrierJobStatus, CarrierJobSummary } from "../jobs/index.js";
 import type { CarrierMetadata } from "./types.js";
 import { validateRequiredRequestBlocks } from "./request-blocks.js";
 import type { TaskForceCliType, TaskForceResult } from "./types.js";

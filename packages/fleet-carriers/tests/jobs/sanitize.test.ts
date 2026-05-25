@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeChunk, sanitizeToolBlockLabel, sanitizeToolLabel } from "../../src/job/index.js";
+import { sanitizeChunk, sanitizeToolBlockLabel, sanitizeToolLabel } from "../../src/jobs/index.js";
 
 describe("carrier job sanitizers", () => {
   it("removes terminal controls from stream chunks while preserving LF structure", () => {

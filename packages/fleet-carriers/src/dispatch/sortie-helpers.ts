@@ -1,4 +1,4 @@
-import type { CarrierJobStatus, CarrierJobSummary } from "../job/index.js";
+import type { CarrierJobStatus, CarrierJobSummary } from "../jobs/index.js";
 
 export interface CarrierSortieOutcome {
   readonly carrierId: string;

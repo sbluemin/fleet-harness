@@ -1,9 +1,9 @@
-import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "../job/index.js";
-import { cancelJob } from "../job/index.js";
-import { getActiveJob, listActiveJobs } from "../job/index.js";
-import { isCarrierJobId } from "../job/index.js";
-import { serializeJobArchive } from "../job/index.js";
-import { getJobSummary, listJobSummaries } from "../job/index.js";
+import { serializeJobArchive } from "./archive-serializer.js";
+import { cancelJob } from "./job-cancel-registry.js";
+import { isCarrierJobId } from "./job-id.js";
+import { getActiveJob, listActiveJobs } from "./concurrency-guard.js";
+import { getFinalized, hasFinalizedJobArchive, hasJobArchive } from "./job-stream-archive.js";
+import { getJobSummary, listJobSummaries } from "./lru-cache.js";
 import {
   CARRIER_JOBS_FULL_RESULT_BYTE_CAP,
   CARRIER_JOBS_GLOBAL_BYTE_CAP,
@@ -12,7 +12,7 @@ import {
   type CarrierJobRecord,
   type CarrierJobSummary,
   type JobArchive,
-} from "../job/index.js";
+} from "./job-types.js";
 import type { CarrierJobsAvailability, CarrierJobsFormat, CarrierJobsParams } from "./types.js";
 
 export interface CarrierJobsResponse {

@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 
 import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
-import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../job/index.js";
+import type { CarrierJobStatus as StoredCarrierJobStatus, JobPermitAccepted } from "../jobs/index.js";
 import type { LogOptions } from "@dotobokuri/fleet-infra/log";
 import type { ModelEffort } from "./overlay-types.js";
 
@@ -23,14 +23,14 @@ import {
   startDetachedJob,
   toMessageArchiveBlock,
   toThoughtArchiveBlock,
-} from "../job/index.js";
+} from "../jobs/index.js";
 import { getLogAPI } from "@dotobokuri/fleet-infra/log";
 import {
   emitStreamEvent,
   type CarrierJobStatus,
   type TrackMeta,
   type TrackStatus,
-} from "../events/stream-events.js";
+} from "../stream/stream-events.js";
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
