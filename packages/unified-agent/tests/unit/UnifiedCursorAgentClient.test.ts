@@ -161,6 +161,35 @@ describe('UnifiedCursorAgentClient', () => {
     expect(capturedModels).toEqual(['gemini-3-flash']);
   });
 
+  it('setConfigOption("model")은 Composer 2.5 모델로 재연결한다', async () => {
+    const client = new UnifiedCursorAgentClient();
+    const internals = client as unknown as CursorClientInternals;
+    const capturedModels: string[] = [];
+
+    internals.connection = {};
+    internals.sessionId = 'old-session';
+    internals.currentConnectOptions = {
+      cli: 'cursor',
+      cwd: '/tmp/workspace',
+      model: 'auto',
+    };
+
+    client.connect = async (options: UnifiedClientOptions): Promise<ConnectResult> => {
+      if (options.model) {
+        capturedModels.push(options.model);
+      }
+      return {
+        cli: 'cursor',
+        protocol: 'acp',
+        session: { sessionId: 'new-session' },
+      };
+    };
+
+    await client.setConfigOption('model', 'composer-2.5');
+
+    expect(capturedModels).toEqual(['composer-2.5']);
+  });
+
   it('setConfigOption("effort")는 현재 모델을 보존하고 새 effort로 재연결한다', async () => {
     const client = new UnifiedCursorAgentClient();
     const internals = client as unknown as CursorClientInternals;

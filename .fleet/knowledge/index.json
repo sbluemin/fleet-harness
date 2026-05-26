@@ -36,6 +36,18 @@
     ],
     "updated": "2026-05-23T17:37:53.758Z"
   },
+  "guide-unified-agent-cursor-composer-25": {
+    "path": "wiki/guide-unified-agent-cursor-composer-25.md",
+    "title": "Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결",
+    "tags": [
+      "unified-agent",
+      "cursor",
+      "composer-2.5",
+      "acp",
+      "models"
+    ],
+    "updated": "2026-05-26T14:37:03.523Z"
+  },
   "prd-admiral-protocol-single-immutable-fleet-action": {
     "path": "wiki/prd-admiral-protocol-single-immutable-fleet-action.md",
     "title": "PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화",
