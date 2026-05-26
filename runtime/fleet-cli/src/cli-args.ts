@@ -14,6 +14,7 @@ import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {
   readonly cursorSync: boolean;
+  readonly cursorSyncExplicitlyEnabled: boolean;
   readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
 }
@@ -32,11 +33,15 @@ type MutableFleetCliArgOverrides = {
   -readonly [Key in keyof FleetCliArgOverrides]: FleetCliArgOverrides[Key];
 };
 
+const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 const HELP_BANNER_INDENT = "  ";
 const HELP_HINT = "Run 'fleet --help' for usage.";
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 
 export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
-  let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
+  const cursorSyncEnv = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
+  let cursorSync = cursorSyncEnv.value;
+  let cursorSyncExplicitlyEnabled = cursorSyncEnv.explicitlyEnabled;
   let help = false;
   const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
@@ -45,12 +50,13 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       help = true;
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
+      cursorSyncExplicitlyEnabled = false;
       argvOverrides.cursorSync = true;
     } else {
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cursorSync, argvOverrides, help };
+  return { cursorSync, cursorSyncExplicitlyEnabled, argvOverrides, help };
 }
 
 export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
@@ -80,6 +86,8 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     `  ${option("--disable-cursor-sync", colorEnabled)}`,
     `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
     `                      ${dim("with problematic IME cursor anchoring.", colorEnabled)}`,
+    `                      ${dim("Claude Code on Windows defaults to disabled; set", colorEnabled)}`,
+    `                      ${dim("FLEET_CURSOR_SYNC=1 to override.", colorEnabled)}`,
     "",
   ];
   const text = `${lines.join("\n")}`;
@@ -96,11 +104,19 @@ function formatUnknownFleetOption(option: string): string {
   return `Unknown fleet option: ${option}\n${HELP_HINT}`;
 }
 
-function parseCursorSyncEnv(value: string | undefined): boolean {
+function parseCursorSyncEnv(value: string | undefined): { readonly explicitlyEnabled: boolean; readonly value: boolean } {
   if (value === undefined) {
-    return true;
+    return { explicitlyEnabled: false, value: true };
   }
 
   const normalized = value.trim().toLowerCase();
-  return normalized !== "0" && normalized !== "false";
+  if (TRUE_VALUES.has(normalized)) {
+    return { explicitlyEnabled: true, value: true };
+  }
+
+  if (FALSE_VALUES.has(normalized)) {
+    return { explicitlyEnabled: false, value: false };
+  }
+
+  return { explicitlyEnabled: false, value: true };
 }

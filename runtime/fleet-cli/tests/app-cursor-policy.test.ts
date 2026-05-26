@@ -14,6 +14,7 @@ describe("app cursor policy", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("keeps mode-toggle cursor suppression through exactly one flushed render", async () => {
@@ -76,6 +77,51 @@ describe("app cursor policy", () => {
     expect(cursorTarget).toBeUndefined();
   });
 
+  it("clears cursor target for Claude Code on native Windows by default", () => {
+    mockPlatform("win32");
+    const ptyView = {};
+    const cursorTarget = runCursorPolicy({
+      getActiveAgentProfileId: () => "claude",
+      ptyView,
+    });
+
+    expect(cursorTarget()).toBeUndefined();
+  });
+
+  it("keeps cursor target for Claude Code outside native Windows", () => {
+    mockPlatform("linux");
+    const ptyView = {};
+    const cursorTarget = runCursorPolicy({
+      getActiveAgentProfileId: () => "claude",
+      ptyView,
+    });
+
+    expect(cursorTarget()).toBe(ptyView);
+  });
+
+  it("keeps cursor target for Codex on native Windows", () => {
+    mockPlatform("win32");
+    const ptyView = {};
+    const cursorTarget = runCursorPolicy({
+      getActiveAgentProfileId: () => "codex",
+      ptyView,
+    });
+
+    expect(cursorTarget()).toBe(ptyView);
+  });
+
+  it("keeps cursor target for Claude Code on native Windows when cursor sync is explicitly enabled", () => {
+    mockPlatform("win32");
+    const ptyView = {};
+    const cursorTarget = runCursorPolicy({
+      cursorSyncExplicitlyEnabled: true,
+      getActiveAgentProfileId: () => "claude",
+      ptyView,
+    });
+
+    expect(cursorTarget()).toBe(ptyView);
+  });
+
   it("re-reads native status when rendering the Fleet status section", () => {
     let native = false;
     const section = new FleetStatusSection({ getNative: () => native });
@@ -87,6 +133,37 @@ describe("app cursor policy", () => {
     expect(stripAnsi(section.render(80).join("\n"))).not.toContain("Fleet Action Protocol");
   });
 });
+
+function runCursorPolicy(options: {
+  readonly cursorSyncExplicitlyEnabled?: boolean;
+  readonly getActiveAgentProfileId?: () => "claude" | "claude-zai" | "claude-kimi" | "codex" | undefined;
+  readonly ptyView: unknown;
+}): () => unknown {
+  let cursorTarget: unknown = "visible";
+  const syncCursorPolicy = createCursorPolicySync({
+    cursorSync: true,
+    cursorSyncExplicitlyEnabled: options.cursorSyncExplicitlyEnabled,
+    fleetPty: { hasActiveOverlay: () => false },
+    getActiveAgentProfileId: options.getActiveAgentProfileId,
+    getMode: () => "DEDICATED",
+    hasActiveMissionControlPanel: () => false,
+    isModeToggleSuppressed: () => false,
+    ptyView: options.ptyView,
+    ui: {
+      setCursorAnchorTarget(target: unknown): void {
+        cursorTarget = target;
+      },
+    },
+  } as never);
+
+  syncCursorPolicy();
+
+  return () => cursorTarget;
+}
+
+function mockPlatform(platform: NodeJS.Platform): void {
+  vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+}
 
 function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");

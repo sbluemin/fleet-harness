@@ -212,7 +212,8 @@ export function projectLogicalCursor(terminal: XtermTerminal, width: number): Cu
     };
   }
 
-  const column = Math.min(projectLineColumn(line, cursor.x, terminal.cols), width - 1);
+  const cursorIndex = getProjectedCursorIndex(line, cursor.x, terminal.cols);
+  const column = Math.min(projectLineColumn(line, cursorIndex, terminal.cols), width - 1);
   return {
     column,
     row,
@@ -224,8 +225,9 @@ function renderLine(line: NonNullable<ReturnType<XtermTerminal["buffer"]["active
   let rendered = "";
   let activeStyle = DEFAULT_STYLE;
   let hasStyle = false;
+  const effectiveCols = getProjectedCursorIndex(line, cols, cols);
 
-  for (let index = 0; index < cols; index += 1) {
+  for (let index = 0; index < effectiveCols; index += 1) {
     const cell = line.getCell(index);
     if (!cell || cell.getWidth() === 0) {
       continue;
@@ -265,6 +267,35 @@ function projectLineColumn(
   }
 
   return Math.max(0, visibleWidth(prefix));
+}
+
+function getProjectedCursorIndex(
+  line: NonNullable<ReturnType<XtermTerminal["buffer"]["active"]["getLine"]>>,
+  cursorX: number,
+  cols: number,
+): number {
+  if (cursorX < cols - 1) {
+    return cursorX;
+  }
+
+  for (let index = Math.min(cursorX, cols) - 1; index >= 0; index -= 1) {
+    const cell = line.getCell(index);
+    if (!cell || cell.getWidth() === 0) {
+      continue;
+    }
+
+    if (isDefaultPaddingCell(cell)) {
+      continue;
+    }
+
+    return index + 1;
+  }
+
+  return 0;
+}
+
+function isDefaultPaddingCell(cell: IBufferCell): boolean {
+  return cell.isAttributeDefault() && (cell.getCode() === 32 || (cell.getCode() === 0 && cell.getChars() === ""));
 }
 
 function getCellStyle(cell: IBufferCell): CellStyle {

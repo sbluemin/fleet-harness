@@ -303,7 +303,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   });
   syncCursorPolicy = createCursorPolicySync({
     cursorSync: true,
+    cursorSyncExplicitlyEnabled: argvOptions.cursorSyncExplicitlyEnabled,
     fleetPty,
+    getActiveAgentProfileId: () => missionControl.getActiveProfile()?.id,
     getMode: router.getMode,
     hasActiveMissionControlPanel: missionControl.hasActivePanel,
     isModeToggleSuppressed: () => modeToggleSuppressed,
@@ -359,6 +361,7 @@ function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
       cursorSync: options.cursorSync === false,
     },
     cursorSync: options.cursorSync !== false,
+    cursorSyncExplicitlyEnabled: false,
     help: false,
   };
 }

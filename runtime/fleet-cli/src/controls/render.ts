@@ -1,5 +1,6 @@
 import { LocalTui } from "@dotobokuri/fleet-tui/core";
 
+import type { AgentCliId } from "../agent-cli/types.js";
 import type { Component, FleetInputMode, FleetPtyApi, PtyHost, RoutedMouseInput } from "./types.js";
 import { encodeSgrMouseInput } from "./input.js";
 
@@ -16,6 +17,7 @@ interface MissionControlPtyView {
 }
 
 const RENDER_THROTTLE_MS = 16;
+const CLAUDE_CODE_AGENT_IDS = new Set<AgentCliId>(["claude", "claude-zai", "claude-kimi"]);
 const STANDARD_MOUSE_PROTOCOL_STATE = {
   activeEncoding: "default" as const,
   activeProtocol: "none" as const,
@@ -95,7 +97,9 @@ export function createFleetPtyViewport(fleetPty: FleetPtyApi): Component {
 
 export function createCursorPolicySync(options: {
   readonly cursorSync: boolean;
+  readonly cursorSyncExplicitlyEnabled?: boolean;
   readonly fleetPty: FleetPtyApi;
+  readonly getActiveAgentProfileId?: () => AgentCliId | undefined;
   readonly getMode: () => FleetInputMode;
   readonly hasActiveMissionControlPanel: () => boolean;
   readonly isModeToggleSuppressed: () => boolean;
@@ -108,6 +112,7 @@ export function createCursorPolicySync(options: {
       || options.isModeToggleSuppressed()
       || options.hasActiveMissionControlPanel()
       || options.fleetPty.hasActiveOverlay()
+      || shouldAutoDisableCursorSync(options.getActiveAgentProfileId?.(), options.cursorSyncExplicitlyEnabled === true)
     ) {
       options.ui.setCursorAnchorTarget(undefined);
       return;
@@ -116,4 +121,11 @@ export function createCursorPolicySync(options: {
     const mode = options.getMode();
     options.ui.setCursorAnchorTarget(mode === "MIRROR" || mode === "DEDICATED" ? options.ptyView : undefined);
   };
+}
+
+export function shouldAutoDisableCursorSync(
+  profileId: AgentCliId | undefined,
+  cursorSyncExplicitlyEnabled = false,
+): boolean {
+  return process.platform === "win32" && !cursorSyncExplicitlyEnabled && profileId !== undefined && CLAUDE_CODE_AGENT_IDS.has(profileId);
 }
