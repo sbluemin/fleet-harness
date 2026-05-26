@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-admiral` (Admiral prompt and Fleet tool policy package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-tui` (generic TUI engine), `fleet-cli` (primary CLI host), `fleet-wiki`, and `fleet-wiki-ui`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-admiral` (Admiral prompt and Fleet tool policy package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-tui` (Fleet TUI engine and shared brand-style hub, exposing `./core`, `./components`, `./layout`, `./primitives`, and `./style`), `fleet-cli` (primary CLI host), `fleet-wiki`, and `fleet-wiki-ui`.
 
 ## Architecture Philosophy
 

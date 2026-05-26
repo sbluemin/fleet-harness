@@ -29,6 +29,10 @@
     "./primitives": {
       "types": "./dist/primitives/index.d.ts",
       "import": "./dist/primitives/index.js"
+    },
+    "./style": {
+      "types": "./dist/style/index.d.ts",
+      "import": "./dist/style/index.js"
     }
   },
   "devDependencies": {

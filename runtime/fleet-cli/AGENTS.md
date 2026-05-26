@@ -8,7 +8,7 @@ This package owns the local host assembly for the Agent CLI PTY and Fleet PTY lo
 
 - **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-status domain wiring, mission-control domain wiring, panel host callback, agent CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Agent CLI viewport, in-process update subsystem (`src/update/**`), and Fleet's CLI Composition Root.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
-- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session/settings infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
+- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session/settings infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui` (including the `./style` subpath for shared CLI/help brand style assets), `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 
 Direct dependencies on execution-engine packages are generally forbidden. Execution and model catalog access flow through `fleet-infra` and the Fleet orchestration packages. The Job Bar functionality is fully integrated into `fleet-cli`.
 

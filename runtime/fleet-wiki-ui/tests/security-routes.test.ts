@@ -1,12 +1,15 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import type { ServerResponse } from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 
-import { startFleetWikiServer } from "../src/server.js";
+import { handleApiRequest, isLoopbackRemoteAddress } from "../src/routes.js";
+import { buildAllowedAccessSets, startFleetWikiServer } from "../src/server.js";
 
 let server: Server | null = null;
 let baseUrl = "";
@@ -85,6 +88,49 @@ describe("security routes", () => {
     const response = await fetch(`${baseUrl}/api/index`, { method: "POST" });
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("GET, HEAD");
+  });
+
+  it("rejects requests with a Host header outside the allowlist", async () => {
+    const response = await requestWithHost("/api/health", "attacker.example:3737");
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toContain("host_mismatch");
+  });
+
+  it("rejects absolute-form request targets before routing", async () => {
+    const response = await rawHttpRequest([
+      "GET http://attacker.example/api/health HTTP/1.1",
+      `Host: 127.0.0.1:${new URL(baseUrl).port}`,
+      "Connection: close",
+      "",
+      "",
+    ].join("\r\n"));
+    expect(response).toContain("403");
+    expect(response).toContain("host_mismatch");
+  });
+
+  it("rejects duplicate Host headers", async () => {
+    const response = await rawHttpRequest([
+      "GET /api/health HTTP/1.1",
+      `Host: 127.0.0.1:${new URL(baseUrl).port}`,
+      `Host: localhost:${new URL(baseUrl).port}`,
+      "Connection: close",
+      "",
+      "",
+    ].join("\r\n"));
+    expect(response).toContain("403");
+    expect(response).toContain("host_mismatch");
+  });
+
+  it("rejects IPv4-mapped Host headers", async () => {
+    const response = await rawHttpRequest([
+      "GET /api/health HTTP/1.1",
+      `Host: [::ffff:127.0.0.1]:${new URL(baseUrl).port}`,
+      "Connection: close",
+      "",
+      "",
+    ].join("\r\n"));
+    expect(response).toContain("403");
+    expect(response).toContain("host_mismatch");
   });
 
   it("converts malformed static URLs to 400", async () => {
@@ -428,13 +474,111 @@ describe("loopback-only origin check", () => {
     expect(statusCode).toBe(403);
   });
 
-  it("rejects direct non-loopback server host configuration", async () => {
-    await expect(startFleetWikiServer({
+  it("allows external host configuration and redacts health paths", async () => {
+    const external = await startFleetWikiServer({
       cwd: loopbackTempDir,
       lockPath: path.join(loopbackTempDir, "wildcard.lock"),
       port: 0,
       host: "0.0.0.0",
-    })).rejects.toThrow("127.0.0.1");
+    });
+    try {
+      const address = external.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`);
+      expect(response.status).toBe(200);
+      const body = await response.json() as Record<string, unknown>;
+      expect(body).toEqual({ ok: true, version: "0.0.0" });
+    } finally {
+      await new Promise<void>((resolve) => external.close(() => resolve()));
+    }
+  });
+
+  it("dual-listens explicit non-wildcard hosts with loopback on the same port", async () => {
+    const explicitHost = findNonLoopbackIpv4();
+    if (!explicitHost) return;
+    const external = await startFleetWikiServer({
+      cwd: loopbackTempDir,
+      lockPath: path.join(loopbackTempDir, "explicit-ip.lock"),
+      port: 0,
+      host: explicitHost,
+    });
+    try {
+      const address = external.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const primary = await fetch(`http://${explicitHost}:${port}/api/health`);
+      const loopback = await fetch(`http://127.0.0.1:${port}/api/health`);
+      const mismatchedHost = await requestRawHost(port, "203.0.113.10");
+
+      expect(primary.status).toBe(200);
+      expect(loopback.status).toBe(200);
+      expect(mismatchedHost.statusCode).toBe(403);
+      expect(mismatchedHost.body).toContain("host_mismatch");
+    } finally {
+      await new Promise<void>((resolve) => external.close(() => resolve()));
+    }
+  });
+
+  it("enumerates loopback and NIC hosts for wildcard binds", () => {
+    const access = buildAllowedAccessSets("0.0.0.0", 4242, {
+      en0: [
+        { address: "192.168.1.20", family: "IPv4", internal: false },
+        { address: "fe80::abcd", family: "IPv6", internal: false },
+        { address: "127.0.0.1", family: "IPv4", internal: true },
+      ],
+    } as never);
+    expect(access.allowedHosts).toEqual(new Set(["127.0.0.1", "::1", "192.168.1.20", "fe80::abcd"]));
+    expect(access.allowedOrigins.has("http://127.0.0.1:4242")).toBe(true);
+    expect(access.allowedOrigins.has("http://[::1]:4242")).toBe(true);
+    expect(access.allowedOrigins.has("http://192.168.1.20:4242")).toBe(true);
+    expect(access.allowedOrigins.has("http://[fe80::abcd]:4242")).toBe(true);
+    expect(access.externalMode).toBe(true);
+  });
+
+  it("treats expanded IPv6 wildcard as wildcard for access allowlists", () => {
+    const access = buildAllowedAccessSets("0:0:0:0:0:0:0:0", 4242, {
+      en0: [
+        { address: "192.168.1.20", family: "IPv4", internal: false },
+      ],
+    } as never);
+    expect(access.allowedOrigins.has("http://[::1]:4242")).toBe(true);
+    expect(access.allowedOrigins.has("http://192.168.1.20:4242")).toBe(true);
+    expect(access.allowedOrigins.has("http://[0:0:0:0:0:0:0:0]:4242")).toBe(false);
+  });
+
+  it("adds loopback to explicit non-wildcard access allowlists", () => {
+    const access = buildAllowedAccessSets("192.168.1.50", 4242);
+    expect(access.allowedHosts).toEqual(new Set(["192.168.1.50", "127.0.0.1"]));
+    expect(access.allowedOrigins.has("http://192.168.1.50:4242")).toBe(true);
+    expect(access.allowedOrigins.has("http://127.0.0.1:4242")).toBe(true);
+  });
+
+  it("normalizes IPv4-mapped IPv6 loopback remote addresses", () => {
+    expect(isLoopbackRemoteAddress("127.0.0.1")).toBe(true);
+    expect(isLoopbackRemoteAddress("::1")).toBe(true);
+    expect(isLoopbackRemoteAddress("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopbackRemoteAddress("::ffff:192.168.1.10")).toBe(false);
+  });
+
+  it("rejects non-loopback admin registration before bearer auth", async () => {
+    const response = createResponseRecorder();
+    await handleApiRequest(
+      createRouteRequest("/api/admin/workspaces", "POST", "192.168.1.10"),
+      response.response,
+      createMinimalRouteContext(),
+    );
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toContain("admin_loopback_only");
+  });
+
+  it("rejects non-loopback queue writes before Origin validation", async () => {
+    const response = createResponseRecorder();
+    await handleApiRequest(
+      createRouteRequest(`/api/queue/${VALID_PATCH_ID}/approve`, "POST", "192.168.1.10"),
+      response.response,
+      createMinimalRouteContext(),
+    );
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toContain("write_loopback_only");
   });
 });
 
@@ -454,6 +598,127 @@ async function writeEntry(wikiDir: string, id: string, title: string, body: stri
     ].join("\n"),
     "utf8",
   );
+}
+
+function requestWithHost(requestPath: string, hostHeader: string): Promise<{ statusCode: number; body: string }> {
+  const url = new URL(baseUrl);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: Number(url.port),
+        path: requestPath,
+        method: "GET",
+        headers: { Host: hostHeader },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => { body += chunk; });
+        res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, body }));
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+function rawHttpRequest(payload: string): Promise<string> {
+  const url = new URL(baseUrl);
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(url.port), "127.0.0.1", () => {
+      socket.write(payload);
+    });
+    let data = "";
+    socket.on("data", (chunk) => { data += chunk.toString("utf8"); });
+    socket.on("end", () => resolve(data));
+    socket.on("error", reject);
+  });
+}
+
+function requestRawHost(port: number, hostHeader: string): Promise<{ statusCode: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/health",
+        method: "GET",
+        headers: { Host: `${hostHeader}:${port}` },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => { body += chunk; });
+        res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, body }));
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+function findNonLoopbackIpv4(): string | null {
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv4" && !entry.internal) {
+        return entry.address;
+      }
+    }
+  }
+  return null;
+}
+
+function createMinimalRouteContext(): Parameters<typeof handleApiRequest>[2] {
+  return {
+    cwd: tempDir || "/tmp/fleet-wiki-ui-test",
+    knowledgeRoot: path.join(tempDir || "/tmp/fleet-wiki-ui-test", ".fleet", "knowledge"),
+    paths: {
+      root: "",
+      wikiDir: "",
+      rawDir: "",
+      schemaDir: "",
+      queueDir: "",
+      archiveDir: "",
+      conflictsDir: "",
+      indexFile: "",
+    },
+    version: "0.0.0",
+    port: 3737,
+    host: "127.0.0.1",
+    workspaceId: "test-workspace",
+    allowedOrigins: new Set(["http://127.0.0.1:3737"]),
+    externalMode: false,
+    adminToken: "secret-token",
+    workspaces: {} as never,
+  };
+}
+
+function createResponseRecorder(): { response: ServerResponse; statusCode: number; body: string } {
+  const recorder = {
+    statusCode: 0,
+    body: "",
+    response: {
+      writeHead(statusCode: number) {
+        recorder.statusCode = statusCode;
+        return this;
+      },
+      end(chunk?: unknown) {
+        recorder.body += chunk === undefined ? "" : String(chunk);
+        return this;
+      },
+    } as unknown as ServerResponse,
+  };
+  return recorder;
+}
+
+function createRouteRequest(url: string, method: string, remoteAddress: string): Parameters<typeof handleApiRequest>[0] {
+  return {
+    headers: {},
+    method,
+    socket: { remoteAddress },
+    url,
+  } as Parameters<typeof handleApiRequest>[0];
 }
 
 async function writePatch(

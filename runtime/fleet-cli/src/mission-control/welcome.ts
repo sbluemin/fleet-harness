@@ -1,5 +1,6 @@
+import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_COLORS } from "@dotobokuri/fleet-tui/style";
+
 import { truncateToWidth, visibleWidth } from "../controls/index.js";
-import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_COLORS } from "../cli-style.js";
 
 const FLEET_BANNER: readonly string[] = ASCII_FLEET_BANNER;
 const BANNER_VISIBLE_WIDTH = visibleWidth(FLEET_BANNER[0] ?? "");

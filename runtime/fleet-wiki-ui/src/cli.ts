@@ -5,6 +5,19 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  ASCII_FLEET_BANNER,
+  FLEET_COMMAND,
+  GRADIENT_COLORS,
+  command,
+  dim,
+  option,
+  paint,
+  resolveColorEnabled,
+  section,
+  stripAnsi,
+} from "@dotobokuri/fleet-tui/style";
+
 import { openBrowser } from "./browser.js";
 import { isProcessAlive, isProcessAliveWithStatus, lockFilePath, readLockFile, removeLockFile } from "./lock.js";
 import type { FleetWikiLock } from "./lock.js";
@@ -30,7 +43,14 @@ export interface HealthyLockTrustDecision {
 
 interface CliArgs {
   mode: CliMode;
+  host?: string;
   port?: number;
+}
+
+export interface BuildWikiHelpTextOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly isTTY?: boolean;
+  readonly release?: string;
 }
 
 export interface OpenFleetWikiWorkspaceOptions {
@@ -56,29 +76,13 @@ const HEALTH_TIMEOUT_MS = 5000;
 const HEALTH_INTERVAL_MS = 150;
 const TRAMPOLINE_ENV = "FLEET_WIKI_TRAMPOLINED";
 const SIGNAL_EXIT_FALLBACK_MS = 1000;
-
-const HELP_TEXT = [
-  "Fleet Wiki 웹서버 실행/종료 도구",
-  "",
-  "사용법:",
-  "  fleet-wiki [--port <port>]",
-  "  fleet-wiki --stop",
-  "  fleet-wiki --help",
-  "",
-  "옵션:",
-  "  --port <port>   서버 포트를 지정합니다.",
-  "  --stop          사용자 Fleet Wiki daemon 전체를 종료합니다.",
-  "  --help          이 도움말을 출력합니다.",
-  "",
-  "환경변수:",
-  "  FLEET_WIKI_PORT             기본 포트를 지정합니다.",
-  "  FLEET_WIKI_NO_AUTO_RESTART  기존 서버 자동 재시작을 비활성화합니다.",
-  "",
-  "예시:",
-  "  fleet-wiki",
-  "  FLEET_WIKI_PORT=4040 fleet-wiki",
-  "  fleet-wiki --stop",
-].join("\n");
+const HELP_BANNER_INDENT = "  ";
+const DEFAULT_HELP_RELEASE = "local";
+const RFC1123_HOSTNAME = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+const IPV4_WILDCARD_HOST = "0.0.0.0";
+const IPV4_LOOPBACK_HOST = "127.0.0.1";
+const IPV6_WILDCARD_HOSTS = new Set(["::", "0:0:0:0:0:0:0:0"]);
+const IPV6_LOOPBACK_HOST = "::1";
 
 export function parseCliArgs(argv: string[]): CliArgs {
   const result: CliArgs = { mode: "run" };
@@ -98,27 +102,73 @@ export function parseCliArgs(argv: string[]): CliArgs {
       i += 1;
       const port = Number(raw);
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-        process.stderr.write(`--port 값이 올바르지 않습니다: ${raw}\n`);
+        process.stderr.write(`Invalid --port value: ${raw}\n`);
         process.exit(1);
         return result;
       }
       result.port = port;
+    } else if (arg === "--host") {
+      const raw = argv[i + 1];
+      if (!raw || raw.startsWith("--")) {
+        process.stderr.write("--host requires a value\n");
+        process.exit(1);
+        return result;
+      }
+      i += 1;
+      result.host = parseHostValue(raw);
     } else if (arg.startsWith("--port=")) {
       const raw = arg.slice("--port=".length);
       const port = Number(raw);
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-        process.stderr.write(`--port 값이 올바르지 않습니다: ${raw}\n`);
+        process.stderr.write(`Invalid --port value: ${raw}\n`);
         process.exit(1);
         return result;
       }
       result.port = port;
+    } else if (arg.startsWith("--host=")) {
+      const raw = arg.slice("--host=".length);
+      result.host = parseHostValue(raw);
     } else if (arg.startsWith("--")) {
-      process.stderr.write(`알 수 없는 옵션: ${arg}\n`);
+      process.stderr.write(`Unknown option: ${arg}\n`);
       process.exit(1);
       return result;
     }
   }
   return result;
+}
+
+export function buildWikiHelpText(options: BuildWikiHelpTextOptions = {}): string {
+  const colorEnabled = resolveColorEnabled(options);
+  const subtitle = `Fleet Wiki · ${options.release ?? DEFAULT_HELP_RELEASE}`;
+  const lines = [
+    ...ASCII_FLEET_BANNER.map(
+      (line, index) => `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+    ),
+    dim(subtitle, colorEnabled),
+    "",
+    section("USAGE", colorEnabled),
+    `  ${command("fleet wiki", colorEnabled)} ${dim("[--host <addr>] [--port <port>] [--stop] [--help]", colorEnabled)}`,
+    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-wiki", colorEnabled)} ${dim("[--host <addr>] [--port <port>]", colorEnabled)}`,
+    "",
+    section("OPTIONS", colorEnabled),
+    `  ${option("--host <addr>", colorEnabled)}   ${dim("Bind the daemon to an IP or RFC1123 hostname; non-loopback hosts expose GET reads on the LAN.", colorEnabled)}`,
+    `  ${option("--port <port>", colorEnabled)}   ${dim("Set the local Fleet Wiki daemon port.", colorEnabled)}`,
+    `  ${option("--stop", colorEnabled)}          ${dim("Stop the user's Fleet Wiki daemon.", colorEnabled)}`,
+    `  ${option("--help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
+    "",
+    section("ENVIRONMENT", colorEnabled),
+    `  ${option("FLEET_WIKI_PORT", colorEnabled)}             ${dim("Set the default port.", colorEnabled)}`,
+    `  ${option("FLEET_WIKI_NO_AUTO_RESTART", colorEnabled)}  ${dim("Disable automatic restart of stale daemons.", colorEnabled)}`,
+    "",
+    section("EXAMPLES", colorEnabled),
+    `  ${command("fleet wiki", colorEnabled)}`,
+    `  ${command("fleet wiki --host 0.0.0.0", colorEnabled)} ${dim("# explicit LAN read-share; write/admin stay loopback-only", colorEnabled)}`,
+    `  FLEET_WIKI_PORT=4040 ${command("fleet wiki", colorEnabled)}`,
+    `  ${command("fleet wiki --stop", colorEnabled)}`,
+    "",
+  ];
+  const text = lines.join("\n");
+  return colorEnabled ? text : stripAnsi(text);
 }
 
 export function evaluateRestartDecision(
@@ -169,7 +219,7 @@ export async function openFleetWikiWorkspace(
   const lockPath = lockFilePath();
   const lock = await ensureServer(cwd, lockPath, host, port);
   const workspace = await registerWorkspace(lock, cwd);
-  const url = `${serverUrl(lock.host, lock.port)}${workspace.urlPath}`;
+  const url = `${serverUrl(resolveBrowserOpenHost(lock.host), lock.port)}${workspace.urlPath}`;
   await openBrowser(url);
   return { host: lock.host, pid: lock.pid, port: lock.port, url };
 }
@@ -189,7 +239,7 @@ export async function probeFleetWikiDaemon(
     host: lock.host,
     pid: lock.pid,
     port: lock.port,
-    url: serverUrl(lock.host, lock.port),
+    url: serverUrl(resolveBrowserOpenHost(lock.host), lock.port),
   };
 }
 
@@ -206,7 +256,7 @@ export async function main(): Promise<void> {
     return;
   }
 
-  await openFleetWikiWorkspace({ cwd, port: cliArgs.port });
+  await openFleetWikiWorkspace({ cwd, host: cliArgs.host, port: cliArgs.port });
 }
 
 export function findLocalCliMjs(cwd: string): string | null {
@@ -254,6 +304,19 @@ export function serverUrl(host: string, port: number): string {
   return `http://${formatHostForUrl(host)}:${port}`;
 }
 
+export function resolveLocalControlHost(bindHost: string): string {
+  if (bindHost === IPV4_WILDCARD_HOST) return IPV4_LOOPBACK_HOST;
+  if (IPV6_WILDCARD_HOSTS.has(bindHost)) return IPV6_LOOPBACK_HOST;
+  if (!isLoopbackHost(bindHost)) return IPV4_LOOPBACK_HOST;
+  return bindHost;
+}
+
+export function resolveBrowserOpenHost(bindHost: string): string {
+  if (bindHost === IPV4_WILDCARD_HOST) return IPV4_LOOPBACK_HOST;
+  if (IPV6_WILDCARD_HOSTS.has(bindHost)) return IPV6_LOOPBACK_HOST;
+  return bindHost;
+}
+
 async function directoryExists(dirPath: string): Promise<boolean> {
   try {
     return (await stat(dirPath)).isDirectory();
@@ -263,7 +326,7 @@ async function directoryExists(dirPath: string): Promise<boolean> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`${HELP_TEXT}\n`);
+  process.stdout.write(buildWikiHelpText({ env: process.env, isTTY: process.stdout.isTTY }));
 }
 
 async function ensureServer(cwd: string, lockPath: string, host: string, port: number): Promise<FleetWikiLock> {
@@ -299,15 +362,15 @@ async function ensureServer(cwd: string, lockPath: string, host: string, port: n
     if (existing) {
       await removeLockFile(lockPath);
     }
-    spawnDetachedServer(cwd, lockPath, port);
+    spawnDetachedServer(cwd, lockPath, host, port);
     return waitForHealthyLock(lockPath, { trust: "existing" }, host);
   }
   throw new Error("Fleet Wiki 서버 락을 획득하지 못했습니다.");
 }
 
-function spawnDetachedServer(cwd: string, lockPath: string, port: number): void {
+function spawnDetachedServer(cwd: string, lockPath: string, host: string, port: number): void {
   const serverPath = fileURLToPath(new URL("./server.mjs", import.meta.url));
-  const child = spawn(process.execPath, [serverPath, "--cwd", cwd, "--lock", lockPath, "--port", String(port)], {
+  const child = spawn(process.execPath, [serverPath, "--cwd", cwd, "--lock", lockPath, "--host", host, "--port", String(port)], {
     cwd,
     detached: true,
     stdio: "ignore",
@@ -340,7 +403,7 @@ async function waitForHealthyLock(lockPath: string, options: HealthyLockWaitOpti
 
 async function healthCheck(lock: FleetWikiLock): Promise<{ ok: boolean; cwd: string | null }> {
   try {
-    const response = await fetch(`${serverUrl(lock.host, lock.port)}/api/health`);
+    const response = await fetch(`${serverUrl(resolveLocalControlHost(lock.host), lock.port)}/api/health`);
     if (response.status !== 200) return { ok: false, cwd: null };
     const body = await response.json() as { ok?: boolean; cwd?: string };
     return { ok: body.ok === true, cwd: typeof body.cwd === "string" ? body.cwd : null };
@@ -360,7 +423,7 @@ async function isExistingDaemonStale(lock: FleetWikiLock): Promise<boolean> {
 }
 
 async function registerWorkspace(lock: FleetWikiLock, cwd: string): Promise<{ id: string; urlPath: string }> {
-  const response = await fetch(`${serverUrl(lock.host, lock.port)}/api/admin/workspaces`, {
+  const response = await fetch(`${serverUrl(resolveLocalControlHost(lock.host), lock.port)}/api/admin/workspaces`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${lock.token}`,
@@ -386,6 +449,25 @@ function configuredPort(): number {
     throw new Error(`FLEET_WIKI_PORT 값이 올바르지 않습니다: ${rawPort}`);
   }
   return port;
+}
+
+function parseHostValue(raw: string): string {
+  if (!isValidHostValue(raw)) {
+    process.stderr.write(`Invalid --host value: ${raw}\n`);
+    process.exit(1);
+    return raw;
+  }
+  return raw;
+}
+
+function isValidHostValue(raw: string): boolean {
+  if (!raw) return false;
+  if (net.isIP(raw) !== 0) return true;
+  return RFC1123_HOSTNAME.test(raw);
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === IPV4_LOOPBACK_HOST || host === IPV6_LOOPBACK_HOST || host === "localhost";
 }
 
 async function killServer(pid: number): Promise<void> {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { formatHostForUrl, parseCliArgs, serverUrl } from "../src/cli.js";
+import { formatHostForUrl, parseCliArgs, resolveBrowserOpenHost, resolveLocalControlHost, serverUrl } from "../src/cli.js";
 
 const originalExit = process.exit;
 const originalStderrWrite = process.stderr.write;
@@ -22,6 +22,14 @@ describe("parseCliArgs", () => {
 
   it("parses --port with equals syntax", () => {
     expect(parseCliArgs(["--port=9090"])).toEqual({ mode: "run", port: 9090 });
+  });
+
+  it("parses --host with space-separated value", () => {
+    expect(parseCliArgs(["--host", "0.0.0.0"])).toEqual({ mode: "run", host: "0.0.0.0" });
+  });
+
+  it("parses --host with equals syntax", () => {
+    expect(parseCliArgs(["--host=wiki-share.local"])).toEqual({ mode: "run", host: "wiki-share.local" });
   });
 
   it("parses --stop mode", () => {
@@ -50,13 +58,13 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs([])).toEqual({ mode: "run" });
   });
 
-  it("exits with error for removed --host option", () => {
+  it("exits with error for --host missing value", () => {
     parseCliArgs(["--host"]);
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  it("exits with error for removed --host equals option", () => {
-    parseCliArgs(["--host="]);
+  it("exits with error for invalid --host value", () => {
+    parseCliArgs(["--host=bad_host!"]);
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
@@ -120,5 +128,41 @@ describe("formatHostForUrl", () => {
 describe("serverUrl", () => {
   it("produces the loopback daemon URL", () => {
     expect(serverUrl("127.0.0.1", 3737)).toBe("http://127.0.0.1:3737");
+  });
+});
+
+describe("resolveLocalControlHost", () => {
+  it("canonicalizes IPv4 wildcard binds to IPv4 loopback", () => {
+    expect(resolveLocalControlHost("0.0.0.0")).toBe("127.0.0.1");
+  });
+
+  it("canonicalizes IPv6 wildcard binds to IPv6 loopback", () => {
+    expect(resolveLocalControlHost("::")).toBe("::1");
+    expect(resolveLocalControlHost("0:0:0:0:0:0:0:0")).toBe("::1");
+  });
+
+  it("canonicalizes non-loopback hosts to IPv4 loopback", () => {
+    expect(resolveLocalControlHost("192.168.1.50")).toBe("127.0.0.1");
+    expect(resolveLocalControlHost("wiki-share.local")).toBe("127.0.0.1");
+    expect(resolveLocalControlHost("fe80::abcd")).toBe("127.0.0.1");
+  });
+
+  it("preserves loopback hosts", () => {
+    expect(resolveLocalControlHost("127.0.0.1")).toBe("127.0.0.1");
+    expect(resolveLocalControlHost("::1")).toBe("::1");
+    expect(resolveLocalControlHost("localhost")).toBe("localhost");
+  });
+});
+
+describe("resolveBrowserOpenHost", () => {
+  it("canonicalizes wildcard binds for browser open URLs", () => {
+    expect(resolveBrowserOpenHost("0.0.0.0")).toBe("127.0.0.1");
+    expect(resolveBrowserOpenHost("::")).toBe("::1");
+    expect(resolveBrowserOpenHost("0:0:0:0:0:0:0:0")).toBe("::1");
+  });
+
+  it("preserves explicit non-wildcard hosts for browser open URLs", () => {
+    expect(resolveBrowserOpenHost("192.168.1.50")).toBe("192.168.1.50");
+    expect(resolveBrowserOpenHost("wiki-share.local")).toBe("wiki-share.local");
   });
 });

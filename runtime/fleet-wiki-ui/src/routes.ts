@@ -33,6 +33,8 @@ interface RouteContext {
   port: number;
   host: string;
   workspaceId: string;
+  allowedOrigins: Set<string>;
+  externalMode: boolean;
   workspaces?: WorkspaceRegistry;
   adminToken?: string;
 }
@@ -92,6 +94,7 @@ const MAX_POST_BODY_BYTES = 1024;
 const MAX_REASON_LENGTH = 256;
 const MAX_LOG_LIMIT = 100;
 const DEFAULT_LOG_LIMIT = 20;
+const BODY_TOO_LARGE = Symbol("too_large");
 
 const PATCH_ERROR_MAP: ReadonlyArray<[string | ((m: string) => boolean), number, string]> = [
   ["patch is not pending", 409, "patch_not_pending"],
@@ -153,13 +156,20 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
   return true;
 }
 
+export function isLoopbackRemoteAddress(address: string | undefined): boolean {
+  const normalized = normalizeRemoteAddress(address);
+  return normalized === "127.0.0.1" || normalized === "::1";
+}
+
 async function routeGet(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
   if (url.pathname === "/api/health") {
     sendJson(response, 200, {
       ok: true,
       version: context.version,
-      cwd: context.cwd,
-      knowledgeRoot: context.knowledgeRoot,
+      ...(context.externalMode ? {} : {
+        cwd: context.cwd,
+        knowledgeRoot: context.knowledgeRoot,
+      }),
     });
     return;
   }
@@ -404,8 +414,13 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
     return;
   }
 
+  if (!isLoopbackRemoteAddress(request.socket.remoteAddress)) {
+    sendJson(response, 403, { error: "write_loopback_only" });
+    return;
+  }
+
   const originHeader = request.headers.origin;
-  if (!originHeader || !isOriginAllowed(originHeader, context.host, context.port)) {
+  if (!originHeader || !isOriginAllowed(originHeader, context.allowedOrigins, context.port)) {
     sendJson(response, 403, { error: "origin_mismatch" });
     return;
   }
@@ -438,6 +453,10 @@ async function routeAdminWorkspaceRegistration(
 ): Promise<void> {
   if (!context.workspaces || !context.adminToken) {
     sendJson(response, 404, { error: "not_found" });
+    return;
+  }
+  if (!isLoopbackRemoteAddress(request.socket.remoteAddress)) {
+    sendJson(response, 403, { error: "admin_loopback_only" });
     return;
   }
   if (!hasAdminBearer(request, context.adminToken)) {
@@ -532,16 +551,6 @@ async function runPatchAction(
   }
 }
 
-function mapPatchError(message: string): { status: number; error: string } | null {
-  for (const [matcher, status, error] of PATCH_ERROR_MAP) {
-    const matches = typeof matcher === "string" ? message === matcher : matcher(message);
-    if (matches) return { status, error };
-  }
-  return null;
-}
-
-const BODY_TOO_LARGE = Symbol("too_large");
-
 async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
@@ -560,7 +569,15 @@ async function readRequestBody(request: IncomingMessage): Promise<string | null 
   });
 }
 
-function isOriginAllowed(origin: string, serverHost: string, serverPort: number): boolean {
+function mapPatchError(message: string): { status: number; error: string } | null {
+  for (const [matcher, status, error] of PATCH_ERROR_MAP) {
+    const matches = typeof matcher === "string" ? message === matcher : matcher(message);
+    if (matches) return { status, error };
+  }
+  return null;
+}
+
+function isOriginAllowed(origin: string, allowedOrigins: Set<string>, serverPort: number): boolean {
   let parsed: URL;
   try {
     parsed = new URL(origin);
@@ -569,8 +586,9 @@ function isOriginAllowed(origin: string, serverHost: string, serverPort: number)
   }
   if (parsed.protocol !== "http:") return false;
   if (Number(parsed.port) !== serverPort) return false;
-  const hostForCompare = net.isIPv6(serverHost) ? `[${serverHost}]` : serverHost;
-  return parsed.hostname === hostForCompare || parsed.host === hostForCompare;
+  const normalizedHost = normalizeOriginHostname(parsed.hostname);
+  if (!normalizedHost) return false;
+  return allowedOrigins.has(`http://${net.isIP(normalizedHost) === 6 ? `[${normalizedHost}]` : normalizedHost}:${serverPort}`);
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
@@ -599,6 +617,31 @@ function validSearch(query: string, tags: string[]): boolean {
 
 function isSafeConflictId(id: string): boolean {
   return SAFE_CONFLICT_ID.test(id) && !id.includes("/") && !id.includes("\\") && !id.includes("..") && !id.includes("\0");
+}
+
+function normalizeOriginHostname(hostname: string): string | null {
+  const unbracketed = stripIpv6Brackets(hostname).toLowerCase();
+  if (unbracketed.includes("%")) return null;
+  if (unbracketed.startsWith("::ffff:")) return null;
+  if (net.isIP(unbracketed) === 6) {
+    try {
+      return stripIpv6Brackets(new URL(`http://[${unbracketed}]:1`).hostname).toLowerCase();
+    } catch {
+      return null;
+    }
+  }
+  return unbracketed;
+}
+
+function normalizeRemoteAddress(address: string | undefined): string | null {
+  if (!address) return null;
+  const normalized = stripIpv6Brackets(address).toLowerCase();
+  if (normalized === "::ffff:127.0.0.1") return "127.0.0.1";
+  return normalized;
+}
+
+function stripIpv6Brackets(host: string): string {
+  return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 }
 
 function resolveSafeConflictDir(id: string, paths: MemoryPaths): string | null {

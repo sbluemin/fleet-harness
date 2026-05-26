@@ -93,11 +93,10 @@ describe("isLockTrustworthyForRestart", () => {
     expect(result.reason).toMatch(/host/);
   });
 
-  it("returns trusted=false for non-loopback lock host even when currentHost matches", () => {
+  it("returns trusted=true for non-loopback lock host when currentHost matches", () => {
     const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
     const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", "0.0.0.0");
-    expect(result.trusted).toBe(false);
-    expect(result.reason).toMatch(/host/);
+    expect(result.trusted).toBe(true);
   });
 
   it("allows legacy lock (no host field) when currentHost is default", () => {
@@ -105,10 +104,9 @@ describe("isLockTrustworthyForRestart", () => {
     expect(result.trusted).toBe(true);
   });
 
-  it("rejects non-loopback lock host when currentHost is undefined", () => {
+  it("trusts explicit non-loopback lock host when currentHost is undefined", () => {
     const lockWithHost: FleetWikiLock = { ...VALID_LOCK, host: "0.0.0.0" };
     const result = isLockTrustworthyForRestart(lockWithHost, "/workspace", "/workspace", undefined);
-    expect(result.trusted).toBe(false);
-    expect(result.reason).toMatch(/host/);
+    expect(result.trusted).toBe(true);
   });
 });

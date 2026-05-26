@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { acquireLockFile, ensureLockDirectory, lockDirectoryPath, LockExistsError, removeSymbolicLock } from "../src/lock.js";
 import type { FleetWikiLock } from "../src/lock.js";
+import { isLockTrustworthyForRestart } from "../src/stale.js";
 
 const LOCK: FleetWikiLock = {
   pid: process.pid,
@@ -46,5 +47,18 @@ describe("security lock", () => {
     await expect(acquireLockFile(lockPath, LOCK)).resolves.toBeUndefined();
     expect((await lstat(lockPath)).isSymbolicLink()).toBe(false);
     await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("trusts matching non-default host locks for restart", () => {
+    const lock = { ...LOCK, host: "0.0.0.0" };
+    expect(isLockTrustworthyForRestart(lock, "", null, "0.0.0.0")).toEqual({ trusted: true });
+  });
+
+  it("rejects host drift between lock and current host", () => {
+    const lock = { ...LOCK, host: "0.0.0.0" };
+    expect(isLockTrustworthyForRestart(lock, "", null, "127.0.0.1")).toMatchObject({
+      trusted: false,
+      reason: "host 불일치(lock=0.0.0.0, current=127.0.0.1)",
+    });
   });
 });

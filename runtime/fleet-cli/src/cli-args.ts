@@ -1,13 +1,15 @@
 import {
-  ANSI_BOLD,
-  ANSI_DIM,
-  ANSI_RESET,
   ASCII_FLEET_BANNER,
-  FLEET_ACCENT,
   FLEET_COMMAND,
-  FLEET_OPTION,
   GRADIENT_COLORS,
-} from "./cli-style.js";
+  command,
+  dim,
+  option,
+  paint,
+  resolveColorEnabled,
+  section,
+  stripAnsi,
+} from "@dotobokuri/fleet-tui/style";
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {
@@ -32,7 +34,6 @@ type MutableFleetCliArgOverrides = {
 
 const HELP_BANNER_INDENT = "  ";
 const HELP_HINT = "Run 'fleet --help' for usage.";
-const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): FleetCliOptions {
   let cursorSync = parseCursorSyncEnv(env.FLEET_CURSOR_SYNC);
@@ -58,14 +59,15 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
   const subtitle = `Fleet Harness · ${release.version} · ${release.channel}`;
   const lines = [
     ...ASCII_FLEET_BANNER.map(
-      (line, index) => `${HELP_BANNER_INDENT}${paintLine(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+      (line: string, index: number) =>
+        `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
     ),
     dim(subtitle, colorEnabled),
     "",
     section("USAGE", colorEnabled),
     `  ${command("fleet", colorEnabled)} ${dim("[options]", colorEnabled)}`,
     `  ${command("fleet auth", colorEnabled)} ${dim("<login|list|logout> [claude-zai|claude-kimi]", colorEnabled)}`,
-    `  ${command("fleet wiki", colorEnabled)} ${dim("[--port <port>] [--stop] [--help]", colorEnabled)}`,
+    `  ${command("fleet wiki", colorEnabled)} ${dim("[--host <addr>] [--port <port>] [--stop] [--help]", colorEnabled)}`,
     `  ${command("fleet update", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
@@ -92,43 +94,6 @@ function createEmptyArgOverrides(): MutableFleetCliArgOverrides {
 
 function formatUnknownFleetOption(option: string): string {
   return `Unknown fleet option: ${option}\n${HELP_HINT}`;
-}
-
-function resolveColorEnabled(options: BuildFleetHelpTextOptions): boolean {
-  const env = options.env ?? process.env;
-  const isTTY = options.isTTY ?? process.stdout.isTTY;
-  return isTTY === true && env.NO_COLOR === undefined;
-}
-
-function section(text: string, colorEnabled: boolean): string {
-  return paint(`${ANSI_BOLD}${FLEET_ACCENT}`, text, colorEnabled);
-}
-
-function command(text: string, colorEnabled: boolean): string {
-  return paint(FLEET_COMMAND, text, colorEnabled);
-}
-
-function option(text: string, colorEnabled: boolean): string {
-  return paint(FLEET_OPTION, text, colorEnabled);
-}
-
-function dim(text: string, colorEnabled: boolean): string {
-  return paint(ANSI_DIM, text, colorEnabled);
-}
-
-function paintLine(color: string, text: string, colorEnabled: boolean): string {
-  return paint(color, text, colorEnabled);
-}
-
-function paint(color: string, text: string, colorEnabled: boolean): string {
-  if (!colorEnabled) {
-    return text;
-  }
-  return `${color}${text}${ANSI_RESET}`;
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(ANSI_PATTERN, "");
 }
 
 function parseCursorSyncEnv(value: string | undefined): boolean {

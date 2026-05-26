@@ -219,6 +219,9 @@ importers:
 
   runtime/fleet-wiki-ui:
     dependencies:
+      '@dotobokuri/fleet-tui':
+        specifier: workspace:*
+        version: link:../../packages/fleet-tui
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
