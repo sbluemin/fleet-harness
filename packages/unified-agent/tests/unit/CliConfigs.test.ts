@@ -54,6 +54,17 @@ describe('CliConfigs', () => {
       expect(config.useNpx).toBe(false);
     });
 
+    it('Cursor Composer 2.5 Fast 모델은 modelId 그대로 spawn한다', () => {
+      const config = createSpawnConfig('cursor', {
+        cwd: '/tmp/workspace',
+        model: 'composer-2.5-fast',
+      });
+
+      expect(config.command).toBe('cursor-agent');
+      expect(config.args).toEqual(['--model', 'composer-2.5-fast', 'acp']);
+      expect(config.useNpx).toBe(false);
+    });
+
     it('Cursor Opus thinking 모델은 effort를 반영한 CLI 모델 ID로 spawn한다', () => {
       const config = createSpawnConfig('cursor', {
         cwd: '/tmp/workspace',

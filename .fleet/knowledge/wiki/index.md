@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `19`
+- total_entries: `20`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -37,6 +37,16 @@
 - summary: `## Overview`
 - raw_source_ref: `raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
 - raw_source_refs: `raw/2026-05-07-guide-003-fleet-wiki-source-fc55d1b9.md, raw/2026-05-23-guide-003-fleet-wiki-source-d740bf60.md, raw/2026-05-23-guide-003-fleet-wiki-source-77439d0c.md`
+
+### guide-unified-agent-cursor-composer-25
+
+- title: `Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결`
+- path: `wiki/guide-unified-agent-cursor-composer-25.md`
+- tags: `unified-agent, cursor, composer-2.5, acp, models`
+- updated: `2026-05-26T14:37:03.523Z`
+- summary: `---`
+- raw_source_ref: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
+- raw_source_refs: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
 
 ### prd-admiral-protocol-single-immutable-fleet-action
 
@@ -204,6 +214,10 @@
 
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
 
+### acp
+
+- [[wiki:guide-unified-agent-cursor-composer-25]] — Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
+
 ### admiral
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
@@ -261,6 +275,10 @@
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
+### composer-2.5
+
+- [[wiki:guide-unified-agent-cursor-composer-25]] — Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
+
 ### composition-root
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
@@ -270,6 +288,10 @@
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+
+### cursor
+
+- [[wiki:guide-unified-agent-cursor-composer-25]] — Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
 
 ### decision-history
 
@@ -407,6 +429,10 @@
 
 - [[wiki:prd-agent-core-model-bypass]] — PRD: fleet-agent --model 옵션과 forwarded 카테고리 도입
 
+### models
+
+- [[wiki:guide-unified-agent-cursor-composer-25]] — Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
+
 ### mouse-protocol
 
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
@@ -489,6 +515,10 @@
 ### tool-scoping
 
 - [[wiki:prd-carrier-persona-extraction]] — PRD: 캐리어 페르소나 외부화 및 선언적 도구 스코핑
+
+### unified-agent
+
+- [[wiki:guide-unified-agent-cursor-composer-25]] — Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
 
 ### update
 

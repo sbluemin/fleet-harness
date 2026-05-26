@@ -26,6 +26,8 @@ describe('ModelRegistry', () => {
     expect(provider.defaultModel).toBe('auto');
     expect(modelIds).toEqual([
       'auto',
+      'composer-2.5-fast',
+      'composer-2.5',
       'gemini-3.1-pro',
       'gemini-3-flash',
       'gemini-3.5-flash',

@@ -2949,3 +2949,78 @@
 - result: `accepted`
 - target: `wiki/prd-fleet-cli-update-mechanism.md`
 
+## 2026-05-25T14:38:27.180Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `10`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-25T14:40:55.535Z — raw source added
+
+- id: `guide-004-cli-subagent-injection-source`
+- raw_source_ref: `raw/2026-05-25-guide-004-cli-subagent-injection-source-ab971090.md`
+- source_type: `inline`
+- tag_count: `10`
+- title: `cli-subagent-injection-research-2026-05-25.md`
+
+## 2026-05-25T14:40:55.538Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-25T14-40-55-506Z-5feb76e8`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-25-guide-004-cli-subagent-injection-source-ab971090.md`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+- warning_count: `0`
+
+## 2026-05-26T14:34:40.083Z — drydock run
+
+- error_count: `0`
+- info_count: `3`
+- issue_count: `10`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-26T14:36:11.260Z — raw source added
+
+- id: `guide-unified-agent-cursor-composer-25-source`
+- raw_source_ref: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결`
+
+## 2026-05-26T14:36:11.264Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-26T14-36-11-226Z-274f569d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
+- target: `wiki/guide-unified-agent-cursor-composer-25.md`
+- warning_count: `0`
+
+## 2026-05-26T14:37:03.527Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `dfd45e3c`
+- patch_id: `2026-05-26T14-36-11-226Z-274f569d`
+- previous_hash: `f46be272`
+- target: `wiki/guide-unified-agent-cursor-composer-25.md`
+
+## 2026-05-26T14:37:07.814Z — index rebuilt
+
+- entry_count: `20`
+
+## 2026-05-26T14:37:07.816Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-26T14-36-11-226Z-274f569d`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
+- result: `accepted`
+- target: `wiki/guide-unified-agent-cursor-composer-25.md`
+
