@@ -78,11 +78,11 @@ describe("evaluateRestartDecision", () => {
     expect(result.reason).toMatch(/host/);
   });
 
-  it("returns mode=abort for non-loopback lock host even when requested host matches", () => {
+  it("returns mode=reuse for non-loopback lock host when requested host matches", () => {
     const lockWithHost: FleetWikiLock = { ...TRUSTED_LOCK, host: "0.0.0.0" };
     const result = evaluateRestartDecision(lockWithHost, "/workspace", HEALTH_OK, false, "0.0.0.0");
-    expect(result.mode).toBe("abort");
-    expect(result.reason).toMatch(/host/);
+    expect(result.mode).toBe("reuse");
+    expect(result.reason).toBeUndefined();
   });
 
 });

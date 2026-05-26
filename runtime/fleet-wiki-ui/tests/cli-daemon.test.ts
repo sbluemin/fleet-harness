@@ -76,10 +76,11 @@ describe("cli daemon lifecycle", () => {
     const childArgv = argv as string[];
     expect(childArgv).toContain("--cwd");
     expect(childArgv).toContain("--lock");
+    expect(childArgv).toContain("--host");
     expect(childArgv).toContain("--port");
     expect(childArgv).not.toContain("--token");
     expect(childArgv).not.toContain("server-made-token");
-    expect(childArgv).not.toContain("--host");
+    expect(childArgv).toContain("127.0.0.1");
     expect(openBrowser).toHaveBeenCalledWith("http://127.0.0.1:3737/w/def456abc123/");
     await rm(cwd, { recursive: true, force: true });
   });
@@ -129,6 +130,167 @@ describe("cli daemon lifecycle", () => {
     await main();
 
     expect(openBrowser).toHaveBeenCalledWith("http://127.0.0.1:3737/w/abc123def456/");
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("uses loopback control URLs for wildcard bind locks", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-cli-daemon-wildcard-"));
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    process.chdir(cwd);
+    process.argv = ["node", "fleet-wiki", "--host", "0.0.0.0"];
+
+    const spawnMock = vi.fn((..._args: unknown[]) => ({ unref: vi.fn() }));
+    vi.doMock("node:child_process", async () => {
+      const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+      return { ...actual, spawn: spawnMock };
+    });
+
+    const fetchedUrls: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      fetchedUrls.push(url);
+      if (url === "http://127.0.0.1:3737/api/health") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url === "http://127.0.0.1:3737/api/admin/workspaces") {
+        expect(init?.method).toBe("POST");
+        return new Response(JSON.stringify({ workspace: { id: "wild456abc123", urlPath: "/w/wild456abc123/" } }), { status: 200 });
+      }
+      return new Response("blocked", { status: 403 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const openBrowser = vi.fn(async () => undefined);
+    vi.doMock("../src/browser.js", () => ({ openBrowser }));
+    vi.doMock("../src/lock.js", async () => {
+      const actual = await vi.importActual<typeof import("../src/lock.js")>("../src/lock.js");
+      let reads = 0;
+      return {
+        ...actual,
+        readLockFile: vi.fn(async () => {
+          reads += 1;
+          if (reads === 1) return null;
+          return {
+            pid: process.pid,
+            port: 3737,
+            host: "0.0.0.0",
+            startedAt: "2026-05-19T00:00:00.000Z",
+            token: "server-made-token",
+          };
+        }),
+        isProcessAlive: vi.fn(() => true),
+        removeLockFile: vi.fn(),
+      };
+    });
+
+    const { main } = await import("../src/cli.js");
+    await main();
+
+    const argv = spawnMock.mock.calls[0]?.[1] as string[];
+    expect(argv).toContain("--host");
+    expect(argv).toContain("0.0.0.0");
+    expect(fetchedUrls).toEqual([
+      "http://127.0.0.1:3737/api/health",
+      "http://127.0.0.1:3737/api/admin/workspaces",
+    ]);
+    expect(openBrowser).toHaveBeenCalledWith("http://127.0.0.1:3737/w/wild456abc123/");
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("uses IPv6 loopback control URLs for IPv6 wildcard bind locks", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-cli-daemon-ipv6-wildcard-"));
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    process.chdir(cwd);
+    process.argv = ["node", "fleet-wiki", "--host", "::"];
+    process.env.FLEET_WIKI_NO_AUTO_RESTART = "1";
+
+    const fetchedUrls: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      fetchedUrls.push(url);
+      if (url === "http://[::1]:3737/api/health") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url === "http://[::1]:3737/api/admin/workspaces") {
+        return new Response(JSON.stringify({ workspace: { id: "ipv6wildabc123", urlPath: "/w/ipv6wildabc123/" } }), { status: 200 });
+      }
+      return new Response("blocked", { status: 403 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const openBrowser = vi.fn(async () => undefined);
+    vi.doMock("../src/browser.js", () => ({ openBrowser }));
+    vi.doMock("../src/lock.js", async () => {
+      const actual = await vi.importActual<typeof import("../src/lock.js")>("../src/lock.js");
+      return {
+        ...actual,
+        readLockFile: vi.fn(async () => ({
+          pid: process.pid,
+          port: 3737,
+          host: "::",
+          startedAt: "2026-05-19T00:00:00.000Z",
+          token: "daemon-token",
+        })),
+        isProcessAlive: vi.fn(() => true),
+        removeLockFile: vi.fn(),
+      };
+    });
+
+    const { main } = await import("../src/cli.js");
+    await main();
+
+    expect(fetchedUrls).toEqual([
+      "http://[::1]:3737/api/health",
+      "http://[::1]:3737/api/admin/workspaces",
+    ]);
+    expect(openBrowser).toHaveBeenCalledWith("http://[::1]:3737/w/ipv6wildabc123/");
+    await rm(cwd, { recursive: true, force: true });
+  });
+
+  it("uses loopback control URLs but preserves explicit browser host", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "fleet-wiki-cli-daemon-explicit-host-"));
+    await mkdir(path.join(cwd, ".fleet", "knowledge"), { recursive: true });
+    process.chdir(cwd);
+    process.argv = ["node", "fleet-wiki", "--host", "192.168.1.50"];
+    process.env.FLEET_WIKI_NO_AUTO_RESTART = "1";
+
+    const fetchedUrls: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      fetchedUrls.push(url);
+      if (url === "http://127.0.0.1:3737/api/health") {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url === "http://127.0.0.1:3737/api/admin/workspaces") {
+        return new Response(JSON.stringify({ workspace: { id: "lanhostabc123", urlPath: "/w/lanhostabc123/" } }), { status: 200 });
+      }
+      return new Response("blocked", { status: 403 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const openBrowser = vi.fn(async () => undefined);
+    vi.doMock("../src/browser.js", () => ({ openBrowser }));
+    vi.doMock("../src/lock.js", async () => {
+      const actual = await vi.importActual<typeof import("../src/lock.js")>("../src/lock.js");
+      return {
+        ...actual,
+        readLockFile: vi.fn(async () => ({
+          pid: process.pid,
+          port: 3737,
+          host: "192.168.1.50",
+          startedAt: "2026-05-19T00:00:00.000Z",
+          token: "daemon-token",
+        })),
+        isProcessAlive: vi.fn(() => true),
+        removeLockFile: vi.fn(),
+      };
+    });
+
+    const { main } = await import("../src/cli.js");
+    await main();
+
+    expect(fetchedUrls).toEqual([
+      "http://127.0.0.1:3737/api/health",
+      "http://127.0.0.1:3737/api/admin/workspaces",
+    ]);
+    expect(openBrowser).toHaveBeenCalledWith("http://192.168.1.50:3737/w/lanhostabc123/");
     await rm(cwd, { recursive: true, force: true });
   });
 });

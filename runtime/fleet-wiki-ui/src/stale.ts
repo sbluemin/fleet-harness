@@ -25,9 +25,6 @@ export function isLockTrustworthyForRestart(
   if (!Number.isInteger(lock.pid) || lock.pid <= 1) {
     return { trusted: false, reason: `pid 검증 실패(${lock.pid})` };
   }
-  if (lock.host !== undefined && lock.host !== DEFAULT_HOST) {
-    return { trusted: false, reason: `host 불일치(lock=${lock.host}, current=${DEFAULT_HOST})` };
-  }
   if (lock.host !== undefined && currentHost !== undefined && lock.host !== currentHost) {
     return { trusted: false, reason: `host 불일치(lock=${lock.host}, current=${currentHost})` };
   }
