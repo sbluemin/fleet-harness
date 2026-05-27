@@ -24,21 +24,21 @@ import {
   matchesKey,
   type Component,
   type Focusable,
-} from "../controls/index.js";
+} from "../../controls/index.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
-import { handleCarrierStatusOverlayInput } from "./overlay-input.js";
+import { handleCarrierStatusOverlayInput } from "./input.js";
 import {
   clampCarrierStatusOverlayRows,
   estimateCarrierStatusRows,
   renderCarrierStatusOverlay,
-} from "./overlay-renderer.js";
-import type { CarrierStatusOverlayOptions, EntrySnapshot, RenameState } from "./overlay-types.js";
+} from "./renderer.js";
+import type { CarrierStatusOverlayOptions, EntrySnapshot, RenameState } from "./render-types.js";
 import {
   buildStatusEntries,
   buildStatusOverlayViewModel,
   resolveSelectedCarrierId,
-} from "./overlay-view-model.js";
+} from "./view-model.js";
 import type {
   BatchCliChoice,
   CarrierCliType,
@@ -52,8 +52,6 @@ import type {
   ResolvedCliSelection,
 } from "./types.js";
 
-const CARRIER_STATUS_FRAME_ROWS = 3;
-const CARRIER_STATUS_EXTRA_BODY_ROWS = 6;
 export class CarrierStatusOverlay implements Component, Focusable {
   public focused = false;
   private expandedCarrierId: string | null = null;
@@ -96,7 +94,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
   desiredHeight(maxRows: number): number | undefined {
     return clampCarrierStatusOverlayRows(
       maxRows,
-      estimateCarrierStatusRows(this.getRenderModel(), this.getRenderDeps()) + CARRIER_STATUS_EXTRA_BODY_ROWS + CARRIER_STATUS_FRAME_ROWS,
+      estimateCarrierStatusRows(this.getRenderModel(), this.getRenderDeps()) + 4,
     );
   }
 
@@ -423,7 +421,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private handleRenameInput(data: string): void {
     if (!this.renameState) return;
-    if (matchesKey(data, "escape") || matchesKey(data, "alt+o")) {
+    if (matchesKey(data, "escape")) {
       this.cancelEdit();
       return;
     }
@@ -485,8 +483,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
   private openTaskForce(): void {
     const entry = this.getSelectedEntry();
     if (!entry) return;
-    this.options.done();
-    this.options.openTaskForceConfig({
+    this.options.openTaskForcePanel({
       carrierDisplayName: entry.displayName,
       carrierId: entry.carrierId,
     });

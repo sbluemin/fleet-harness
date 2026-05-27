@@ -2,7 +2,7 @@
 
 Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane and serves as the Fleet product's main screen while idle.
 
-Mission Control owns the launch menu for selecting an Agent CLI, startup option editing, the active PTY session lifecycle, and a panel host API that temporarily yields the upper pane to interactive panels (e.g., Carrier Status) while they are active. The idle launcher renders a borderless Fleet-branded welcome (gradient banner, amber accent, centered carrier/wiki/queue readout, version with stable/local channel label, option chips, and a centered shortcut hint) so the upper pane feels native to the TUI rather than framed as a dialog.
+Mission Control owns the launch menu for selecting an Agent CLI, startup option editing, the active PTY session lifecycle, and a panel host API that temporarily yields the upper pane to interactive panels (e.g., Carrier Roster) while they are active. The idle launcher renders a borderless Fleet-branded welcome (gradient banner, amber accent, centered carrier/wiki/queue readout, version with stable/local channel label, option chips, and a centered shortcut hint) so the upper pane feels native to the TUI rather than framed as a dialog.
 
 ## Architecture
 

@@ -50,6 +50,7 @@ const ALL_CLI_OPTIONS = getAgentCliMetadata();
 const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 const RAW_ANSI_PATTERN = /\x1b/;
 const LONG_ANSI_CJK_LABEL = "\x1b[1mClaude超長プロバイダー名終端ラベル\x1b[0m";
+const FLEET_BANNER_SAMPLE = "███████╗██╗     ███████╗███████╗████████╗";
 const TEST_ROWS = 24;
 
 describe("Mission Control controller", () => {
@@ -59,7 +60,7 @@ describe("Mission Control controller", () => {
     expect(controller.getState().kind).toBe("idle");
     expect(renderPlain(controller)).toContain("Choose an Agent CLI");
     expect(renderPlain(controller)).toContain("▸ 1. Claude");
-    expect(renderPlain(controller)).toContain("↑↓/j/k select  Enter start  → model  O options  M menu  X exit Fleet");
+    expect(renderPlain(controller)).toContain("↑↓/j/k select  Enter start  c choose CLI  C Carrier Roster  → model  O options");
     expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;254;188;56m");
     expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;255;149;0m");
   });
@@ -141,7 +142,7 @@ describe("Mission Control controller", () => {
 
     controller.ptyHost.write("o");
     const optionsOutput = stripAnsi(controller.component.render(100).join("\n"));
-    expect(optionsOutput).toContain("████ █    ████ ████ ███");
+    expect(optionsOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(optionsOutput).toContain("Options");
     expect(optionsOutput).toContain("preset");
     expect(optionsOutput).toContain("↑↓ select  Space toggle  S save  R reset  Esc close");
@@ -160,7 +161,7 @@ describe("Mission Control controller", () => {
     const plainOutput = stripAnsi(output);
 
     expect(countOccurrences(plainOutput, "Fleet Menu")).toBe(1);
-    expect(plainOutput).toContain("████ █    ████ ████ ███");
+    expect(plainOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(plainOutput).not.toContain("███ FLEET ███");
     expect(output).toContain("\x1b[38;2;254;188;56mFleet Menu\x1b[0m");
   });
@@ -173,7 +174,7 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\r");
     const plainOutput = stripAnsi(controller.component.render(100).join("\n"));
 
-    expect(plainOutput).toContain("████ █    ████ ████ ███");
+    expect(plainOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(plainOutput).not.toContain("███ FLEET ███");
     expect(plainOutput).toContain("Fleet Menu / Authentication");
     expect(plainOutput).toContain("Authentication");
@@ -683,23 +684,23 @@ describe("Mission Control controller", () => {
   it("routes active input to an open Mission Control panel before the child PTY", async () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ hosts });
-    const panel = createFakePanel("Carrier Status");
+    const panel = createFakePanel("Custom Panel");
 
     await controller.launchSelected();
-    controller.openPanel({ component: panel, id: "carrier-status" });
+    controller.openPanel({ component: panel, id: "custom-panel" });
     controller.ptyHost.write("j");
 
     expect(controller.hasActivePanel()).toBe(true);
     expect(panel.inputs).toEqual(["j"]);
     expect(hosts[0]?.writes).toEqual([]);
     expect(controller.component.render(80)).toHaveLength(TEST_ROWS);
-    expect(renderPlain(controller)).toContain("Carrier Status");
+    expect(renderPlain(controller)).toContain("Custom Panel");
   });
 
   it("slices oversized Mission Control panel output to the allocated rows", () => {
     const controller = createTestController();
-    const panel = createFakePanel("Carrier Status", [
-      "Carrier Status",
+    const panel = createFakePanel("Custom Panel", [
+      "Custom Panel",
       "row 1",
       "row 2",
       "row 3",
@@ -708,19 +709,19 @@ describe("Mission Control controller", () => {
     ]);
 
     controller.ptyView.resize(80, 3);
-    controller.openPanel({ component: panel, id: "carrier-status" });
+    controller.openPanel({ component: panel, id: "custom-panel" });
     const lines = controller.component.render(80);
 
-    expect(lines).toEqual(["Carrier Status", "row 1", "row 2"]);
+    expect(lines).toEqual(["Custom Panel", "row 1", "row 2"]);
   });
 
   it("routes programmatic child reminders directly to the child PTY while a panel is active", async () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ hosts });
-    const panel = createFakePanel("Carrier Status");
+    const panel = createFakePanel("Custom Panel");
 
     await controller.launchSelected();
-    controller.openPanel({ component: panel, id: "carrier-status" });
+    controller.openPanel({ component: panel, id: "custom-panel" });
     createProgrammaticInput({
       ...controller.ptyHost,
       write: (data) => controller.writeChildInput(data),
@@ -733,10 +734,10 @@ describe("Mission Control controller", () => {
   it("restores active child PTY pass-through after closing a Mission Control panel", async () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ hosts });
-    const panel = createFakePanel("Carrier Status");
+    const panel = createFakePanel("Custom Panel");
 
     await controller.launchSelected();
-    controller.openPanel({ component: panel, id: "carrier-status" });
+    controller.openPanel({ component: panel, id: "custom-panel" });
     controller.ptyHost.write("k");
     controller.closePanel();
     controller.ptyHost.write("hello");
@@ -761,9 +762,9 @@ describe("Mission Control controller", () => {
         renderRequests += 1;
       },
     });
-    const panel = createFakePanel("Carrier Status");
+    const panel = createFakePanel("Custom Panel");
 
-    controller.openPanel({ component: panel, id: "carrier-status" });
+    controller.openPanel({ component: panel, id: "custom-panel" });
     controller.closePanel();
 
     expect(renderRequests).toBe(2);
@@ -771,10 +772,10 @@ describe("Mission Control controller", () => {
 
   it("clears the Mission Control cursor anchor while a panel is active", async () => {
     const controller = createTestController();
-    const panel = createFakePanel("Carrier Status");
+    const panel = createFakePanel("Custom Panel");
 
     await controller.launchSelected();
-    controller.openPanel({ component: panel, id: "carrier-status" });
+    controller.openPanel({ component: panel, id: "custom-panel" });
 
     expect(controller.component.getCursorAnchor?.(80)).toBeNull();
   });

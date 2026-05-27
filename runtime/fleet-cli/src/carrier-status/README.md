@@ -1,15 +1,18 @@
 # Carrier Status
 
-Carrier Status panel domain for Fleet Agent.
+Job Bar domain for Fleet CLI carrier activity.
 
-Carrier Status opens from `Alt+O` as a Mission Control-hosted panel in the upper interaction layer. The lower Fleet PTY keeps the Job Bar HUD and non-interactive sections.
+`carrier-status/` now owns only the Job Bar files that render and update the lower Fleet PTY carrier activity HUD.
 
-This domain imports public Fleet package facades directly and consumes Fleet TUI component/key/width helpers through `../controls/index.js`.
+The interactive Carrier Roster lives under `../mission-control/carrier-roster/` and opens from Mission Control with `C`.
 
-Keybindings are registered via `../controls/index.js`.
+Files intentionally left here:
 
-Keys: `Esc`, `Up`, `Down`, `Enter`, `Tab`, `t`, `c`, `N`, `C`, `R`.
-
-Edit modes: model dropdown, effort dropdown, CLI type dropdown, batch CLI FROM/TO, rename editor, reset CLI, and TaskForce backend model/effort/reset.
-
-Smoke path: `Alt+O -> Enter -> Enter -> Enter -> c -> C -> N -> t -> Enter -> Enter -> r -> Esc`.
+- `job-bar-register.ts`
+- `job-bar-renderer.ts`
+- `job-bar-section.ts`
+- `job-bar-state.ts`
+- `job-bar-view-model.ts`
+- `carrier-helpers.ts`
+- `constants.ts`
+- `facade.ts`

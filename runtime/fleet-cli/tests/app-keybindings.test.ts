@@ -9,7 +9,6 @@ const TEST_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "host-exit", key: "\x11" },
   { action: "host-interrupt", key: "\x03" },
   { action: "mode-toggle", key: "\x14" },
-  { action: "carrier-status", key: "\x1bo", normalizationAliases: ["\x1bO"] },
 ];
 
 describe("app keybinding composition", () => {
@@ -19,7 +18,6 @@ describe("app keybinding composition", () => {
     const keybindings = createFleetHostInputKeybindingConfig({
       definitions: registry.list(),
       handlers: {
-        "carrier-status": () => events.push("carrier-status"),
         "host-exit": () => events.push("exit"),
         "host-interrupt": () => events.push("interrupt"),
         "mode-toggle": () => events.push("mode-toggle"),
@@ -29,17 +27,16 @@ describe("app keybinding composition", () => {
     expect(keybindings.exitKeys.has("\x03")).toBe(true);
     expect(keybindings.exitKeys.has("\x11")).toBe(true);
     expect(keybindings.modeToggleKeys.has("\x14")).toBe(true);
-    expect(keybindings.dispatch("\x1bo")).toBe(true);
-    expect(events).toEqual(["carrier-status"]);
+    expect(keybindings.dispatch("\x1bo")).toBe(false);
+    expect(events).toEqual([]);
   });
 
-  it("normalizes CSI-u Alt+O to Carrier Status without activating Alt+Shift+O", () => {
+  it("does not dispatch removed Alt+O host bindings", () => {
     const events: string[] = [];
     const registry = createKeybindingRegistry({ definitions: TEST_HOST_KEYBINDINGS });
     const keybindings = createFleetHostInputKeybindingConfig({
       definitions: registry.list(),
       handlers: {
-        "carrier-status": () => events.push("carrier-status"),
         "host-exit": () => events.push("exit"),
         "host-interrupt": () => events.push("interrupt"),
         "mode-toggle": () => events.push("mode-toggle"),
@@ -49,9 +46,11 @@ describe("app keybinding composition", () => {
       csiUMap: registry.createCsiUNormalizationMap(),
     });
 
-    expect(keybindings.dispatch(normalizer.normalize("\x1b[111;3u"))).toBe(true);
+    expect(keybindings.dispatch("\x1bo")).toBe(false);
+    expect(keybindings.dispatch("\x1bO")).toBe(false);
+    expect(keybindings.dispatch(normalizer.normalize("\x1b[111;3u"))).toBe(false);
     expect(keybindings.dispatch(normalizer.normalize("\x1b[79;3u"))).toBe(false);
-    expect(events).toEqual(["carrier-status"]);
+    expect(events).toEqual([]);
   });
 });
 

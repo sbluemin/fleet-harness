@@ -97,9 +97,6 @@ export interface FleetPtyCustomOptions {
 }
 
 export interface FleetPtyKeyFacade {
-  readonly Key: {
-    readonly alt: (key: "o") => KeyId;
-  };
   readonly matchesKey: (data: string, keyId: KeyId) => boolean;
 }
 
@@ -191,7 +188,6 @@ export type RoutedMouseInput = SgrMouseInput & {
 };
 
 export type KeyId =
-  | "alt+o"
   | "backspace"
   | "down"
   | "end"

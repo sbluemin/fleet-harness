@@ -12,7 +12,7 @@ import {
   resetStoreForTests,
 } from "@dotobokuri/fleet-carriers";
 
-import { buildStatusEntries } from "../src/carrier-status/overlay-view-model.js";
+import { buildStatusEntries } from "../src/mission-control/carrier-roster/view-model.js";
 
 let tempDir: string | null = null;
 

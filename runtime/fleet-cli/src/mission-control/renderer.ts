@@ -190,8 +190,8 @@ function renderFooterHint(state: MissionControlStateKind, innerWidth: number): s
   const hint = state === "launching"
     ? "Starting... please wait"
     : state === "ended" || state === "failed"
-      ? "R relaunch  C choose CLI  → model  O options  M menu  X exit Fleet"
-      : "↑↓/j/k select  Enter start  → model  O options  M menu  X exit Fleet";
+      ? "R relaunch  c choose CLI  C Carrier Roster  → model  O options  M menu  X exit Fleet"
+      : "↑↓/j/k select  Enter start  c choose CLI  C Carrier Roster  → model  O options  M menu  X exit Fleet";
   return centerText(STYLE.dim(hint), innerWidth);
 }
 

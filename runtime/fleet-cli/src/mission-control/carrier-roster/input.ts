@@ -1,6 +1,6 @@
-import { matchesKey } from "../controls/index.js";
+import { matchesKey } from "../../controls/index.js";
 
-import type { RenameState } from "./overlay-types.js";
+import type { RenameState } from "./render-types.js";
 import type { OverlayState } from "./types.js";
 
 export interface CarrierStatusInputController {
@@ -40,7 +40,7 @@ export function handleCarrierStatusOverlayInput(
     return;
   }
 
-  if (matchesKey(data, "escape") || matchesKey(data, "alt+o")) {
+  if (matchesKey(data, "escape")) {
     if (inputState.state.kind === "browse") {
       controller.done();
     } else {

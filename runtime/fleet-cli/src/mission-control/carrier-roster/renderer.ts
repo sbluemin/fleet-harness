@@ -4,19 +4,14 @@ import {
   CLI_DISPLAY_NAMES,
 } from "@dotobokuri/fleet-carriers";
 import {
-  createOverlayFrame,
+  truncateToWidth,
   visibleWidth,
   type FleetPtyTheme,
-} from "../controls/index.js";
+} from "../../controls/index.js";
+import { centerText } from "../welcome.js";
 
-import type { RenameState, StatusOverlayViewModel } from "./overlay-types.js";
+import type { RenameState, StatusOverlayViewModel } from "./render-types.js";
 import type { BatchCliChoice, CarrierCliType, CarrierStatusEntry, CliModelInfo, OverlayState } from "./types.js";
-
-const ANSI_RESET = "\x1b[0m";
-const SLOT_WIDTH = 4;
-const NAME_WIDTH = 12;
-const CARRIER_STATUS_FRAME_ROWS = 3;
-const CARRIER_STATUS_EXTRA_BODY_ROWS = 6;
 
 export interface CarrierStatusRenderModel {
   readonly expandedCarrierId: string | null;
@@ -34,55 +29,72 @@ export interface CarrierStatusRenderDeps {
   readonly theme: FleetPtyTheme;
 }
 
+interface CarrierRosterCellLine {
+  readonly bg?: string;
+  readonly text: string;
+}
+
+type CarrierRosterDisplayLine =
+  | { readonly kind: "blank" }
+  | { readonly kind: "cell"; readonly line: CarrierRosterCellLine }
+  | { readonly kind: "center"; readonly text: string };
+
+const ANSI_RESET = "\x1b[0m";
+const INDENT = "    ";
+const SLOT_WIDTH = 4;
+const NAME_WIDTH = 12;
+const MIN_CELL_WIDTH = 40;
+
 export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRenderModel, deps: CarrierStatusRenderDeps): string[] {
-  const body: Array<string | { bg?: string; text: string }> = [];
+  const body: CarrierRosterDisplayLine[] = [
+    { kind: "center", text: deps.theme.accent("Carrier Roster") },
+    { kind: "blank" },
+  ];
 
   if (model.state.kind === "batchFrom" || model.state.kind === "batchTo") {
-    body.push(...buildBatchCliPanelLines(model.state, deps), "");
+    body.push(...buildBatchCliPanelLines(model.state, deps).map(toCellLine), { kind: "blank" });
   }
 
   for (let gi = 0; gi < model.viewModel.groupedEntries.length; gi++) {
     const group = model.viewModel.groupedEntries[gi]!;
-    body.push(`  ${group.color}◇${ANSI_RESET} ${group.color}${group.header}${ANSI_RESET}`);
+    body.push(toCellLine(`${group.color}◇${ANSI_RESET} ${group.color}${group.header}${ANSI_RESET}`), { kind: "blank" });
 
     for (const entry of group.entries) {
       const isSelected = entry.carrierId === model.viewModel.selectedCarrierId;
       body.push({
-        bg: isSelected ? getEntryBgColor(entry.cliType) : undefined,
-        text: renderEntryLine(entry, isSelected, deps),
+        kind: "cell",
+        line: {
+          bg: isSelected ? getEntryBgColor(entry.cliType) : undefined,
+          text: withIndent(renderEntryLine(entry, isSelected, deps)),
+        },
       });
 
       if (isSelected && shouldRenderEntryEditor(model.state, entry.carrierId)) {
-        body.push(...buildEntryEditorLines(entry, model.state, deps));
+        body.push(...buildEntryEditorLines(entry, model.state, deps).map(toIndentedCellLine));
       }
 
       if (isSelected && model.renameState?.carrierId === entry.carrierId) {
-        body.push(...buildRenameEditorLines(model.renameState, deps.theme));
+        body.push(...buildRenameEditorLines(model.renameState, deps.theme).map(toIndentedCellLine));
       }
 
       if (isSelected && model.expandedCarrierId === entry.carrierId) {
-        body.push(...buildDetailRows(entry, Math.max(20, width - 8), deps));
+        body.push(...buildDetailRows(entry, Math.max(20, width - 8), deps).map(toIndentedCellLine));
       }
     }
 
     if (gi < model.viewModel.groupedEntries.length - 1) {
-      body.push("");
+      body.push({ kind: "blank" });
     }
   }
 
-  body.push("");
+  body.push({ kind: "blank" });
   if (model.feedbackMessage) {
     const tone = model.feedbackMessage.startsWith("저장 실패") ? deps.theme.warning : deps.theme.accent;
-    body.push(tone(model.feedbackMessage), "");
+    body.push({ kind: "center", text: tone(model.feedbackMessage) }, { kind: "blank" });
   }
 
-  return createOverlayFrame({
-    body,
-    footer: getFooterHint(model),
-    theme: deps.theme,
-    title: "Carrier Status",
-    width,
-  });
+  body.push({ kind: "center", text: deps.theme.dim(getFooterHint(model)) });
+  return renderDisplayLines(body, width);
 }
 
 export function estimateCarrierStatusRows(
@@ -91,7 +103,7 @@ export function estimateCarrierStatusRows(
 ): number {
   let rows = 0;
   for (const group of model.viewModel.groupedEntries) {
-    rows += 2 + group.entries.length;
+    rows += 3 + group.entries.length;
   }
   if (model.state.kind === "batchFrom" || model.state.kind === "batchTo") {
     rows += buildBatchCliPanelLines(model.state, deps).length + 1;
@@ -128,6 +140,50 @@ function buildBatchCliPanelLines(state: OverlayState, deps: CarrierStatusRenderD
     lines.push(choice.carrierCount === 0 && state.kind === "batchFrom" ? deps.theme.dim(content) : content);
   }
   return lines;
+}
+
+function renderDisplayLines(lines: readonly CarrierRosterDisplayLine[], width: number): string[] {
+  const cellWidth = resolveCellWidth(lines);
+  return lines.map((line) => {
+    if (line.kind === "blank") {
+      return "";
+    }
+    if (line.kind === "center") {
+      return centerText(line.text, width);
+    }
+    return centerText(renderCellLine(line.line, cellWidth), width);
+  });
+}
+
+function resolveCellWidth(lines: readonly CarrierRosterDisplayLine[]): number {
+  const lineWidths = lines
+    .filter((line): line is Extract<CarrierRosterDisplayLine, { readonly kind: "cell" }> => line.kind === "cell")
+    .map((line) => visibleWidth(line.line.text));
+  return Math.max(MIN_CELL_WIDTH, ...lineWidths);
+}
+
+function renderCellLine(line: CarrierRosterCellLine, cellWidth: number): string {
+  const padded = padEndVisible(truncateToWidth(line.text, cellWidth), cellWidth);
+  return applyLineBg(padded, line.bg);
+}
+
+function toCellLine(text: string): CarrierRosterDisplayLine {
+  return {
+    kind: "cell",
+    line: { text },
+  };
+}
+
+function toIndentedCellLine(text: string): CarrierRosterDisplayLine {
+  return toCellLine(withIndent(text));
+}
+
+function withIndent(text: string): string {
+  return `${INDENT}${text}`;
+}
+
+function padEndVisible(text: string, width: number): string {
+  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
 function buildDetailRows(entry: CarrierStatusEntry, innerWidth: number, deps: CarrierStatusRenderDeps): string[] {
@@ -253,7 +309,12 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const tfTag = entry.taskForceBackendCount >= 2
     ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  return `  ${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${tfTag}`;
+  return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${tfTag}`;
+}
+
+function applyLineBg(line: string, bg: string | undefined): string {
+  if (!bg) return line;
+  return `${bg}${line.replaceAll(ANSI_RESET, `${ANSI_RESET}${bg}`)}${ANSI_RESET}`;
 }
 
 function shouldRenderEntryEditor(state: OverlayState, carrierId: string): boolean {

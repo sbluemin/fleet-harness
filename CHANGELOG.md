@@ -5,6 +5,12 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+- [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
+
+### Removed
+- [core] Removed the `Alt+O` host shortcut for opening carrier configuration.
+
 ## [1.0.2] - 2026-05-26
 
 ### Added

@@ -11,7 +11,7 @@ import {
 import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 
-import type { GroupedEntries, StatusOverlayViewModel } from "./overlay-types.js";
+import type { GroupedEntries, StatusOverlayViewModel } from "./render-types.js";
 import type { CarrierCliType, CarrierStatusEntry, CliModelInfo, FleetStoreSnapshot } from "./types.js";
 
 const ANSI_DIM = "\x1b[38;2;100;100;100m";

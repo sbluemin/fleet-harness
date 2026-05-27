@@ -2,6 +2,7 @@ import { matchesKey, type Component, type KeyboardProtocolState, type MouseProto
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
+import { createCarrierRosterPanel } from "./carrier-roster/register.js";
 import { createAboutPanel } from "./menu/about-panel.js";
 import { createAuthPanel } from "./menu/auth-panel.js";
 import { createDiagnosticsPanel } from "./menu/diagnostics-panel.js";
@@ -93,7 +94,7 @@ export function createMissionControlController(options: CreateMissionControlCont
     },
     render(width: number): string[] {
       if (activePanel !== undefined) {
-        if (activePanel.id === "fleet-menu") {
+        if (activePanel.id === "fleet-menu" || activePanel.id === "carrier-roster") {
           return normalizeRenderedRows(renderMissionControl(width, {
             cliOptions,
             lastExit,
@@ -171,6 +172,7 @@ export function createMissionControlController(options: CreateMissionControlCont
     hasActivePanel: () => activePanel !== undefined,
     kill: () => ptyHost.kill(),
     launchSelected,
+    openCarrierRoster,
     openPanel,
     ptyHost,
     ptyView: component,
@@ -265,6 +267,12 @@ export function createMissionControlController(options: CreateMissionControlCont
 
     if (data === "m") {
       openFleetMenu();
+      options.onRenderRequest();
+      return;
+    }
+
+    if (data === "C") {
+      openCarrierRoster();
       options.onRenderRequest();
       return;
     }
@@ -481,6 +489,26 @@ export function createMissionControlController(options: CreateMissionControlCont
       onRenderRequest: options.onRenderRequest,
     });
     openPanel({ component: stack.component, id: "fleet-menu" });
+  }
+
+  function openCarrierRoster(): void {
+    const carrierRuntime = options.carrierRuntime;
+    if (carrierRuntime === undefined) {
+      return;
+    }
+    let stack: PanelStack;
+    const root = createCarrierRosterPanel({
+      carrierRuntime,
+      closePanel,
+      getStack: () => stack,
+      requestRender: options.onRenderRequest,
+    });
+    stack = createPanelStack({
+      root,
+      onEmpty: closePanel,
+      onRenderRequest: options.onRenderRequest,
+    });
+    openPanel({ component: stack.component, id: "carrier-roster" });
   }
 
   /** Writes data directly to the active child PTY, bypassing panel input routing. */

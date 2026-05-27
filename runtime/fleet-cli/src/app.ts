@@ -28,7 +28,6 @@ import {
 import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
 import { createJobBarState } from "./carrier-status/job-bar-state.js";
 import { createJobBarSections } from "./carrier-status/job-bar-section.js";
-import { createCarrierStatusKeybindingHandler } from "./carrier-status/register.js";
 import { injectAgentCliProfile } from "./agent-cli/injection.js";
 import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import type { FleetCliOptions } from "./cli-args.js";
@@ -63,7 +62,6 @@ const DEFAULT_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "host-exit", key: "\x11", label: "Ctrl+Q" },
   { action: "host-interrupt", key: "\x03", label: "Ctrl+C" },
   { action: "mode-toggle", key: "\x14", label: "Ctrl+T" },
-  { action: "carrier-status", key: "\x1bo", label: "Alt+O", normalizationAliases: ["\x1bO"] },
 ];
 
 const STANDARD_KEYBOARD_PROTOCOL_STATE = {
@@ -133,6 +131,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       ...entry,
       optionChips: entry.id === cliId ? optionChips : [],
     })),
+    carrierRuntime: runtime.carrierRuntime,
     createPtyHost: (profile) => createPtyHost({ profile }),
     injectProfile: (profile, launchOptions) =>
       (launchOptions ?? sessionOptionsRuntime.getDraft()).native
@@ -261,15 +260,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const keybindings = createFleetHostInputKeybindingConfig({
     definitions: fleetKeybindings.list(),
     handlers: {
-      "carrier-status": createCarrierStatusKeybindingHandler({
-        carrierRuntime: runtime.carrierRuntime,
-        missionControl: {
-          closePanel: missionControl.closePanel,
-          hasActivePanel: missionControl.hasActivePanel,
-          openPanel: missionControl.openPanel,
-          requestRender: scheduleRender,
-        },
-      }),
       "host-exit": stop,
       "host-interrupt": requestInterrupt,
       "mode-toggle": handleModeToggleCursorSuppression,

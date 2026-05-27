@@ -1,19 +1,11 @@
 import type {
   CarrierCategory,
-  CarrierRuntime,
   FleetStoreSnapshot,
   TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
 
-import type { MissionControlPanelHost } from "../mission-control/types.js";
-
 export type CarrierCliType = TaskForceCliType;
 export type { FleetStoreSnapshot };
-
-export interface CarrierStatusContext {
-  readonly carrierRuntime: CarrierRuntime;
-  readonly missionControl: MissionControlPanelHost;
-}
 
 export interface ModelSelection {
   effort?: string;

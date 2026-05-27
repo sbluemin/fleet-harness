@@ -1,9 +1,9 @@
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
-import type { FleetPtyTheme } from "../controls/index.js";
+import type { FleetPtyTheme } from "../../controls/index.js";
 
 import type { CarrierCliType, CarrierStatusEntry } from "./types.js";
 
-export interface OpenTaskForceConfigOptions {
+export interface OpenTaskForcePanelOptions {
   readonly carrierDisplayName: string;
   readonly carrierId: string;
 }
@@ -11,7 +11,7 @@ export interface OpenTaskForceConfigOptions {
 export interface CarrierStatusOverlayOptions {
   readonly carrierRuntime: CarrierRuntime;
   readonly done: () => void;
-  readonly openTaskForceConfig: (options: OpenTaskForceConfigOptions) => void;
+  readonly openTaskForcePanel: (options: OpenTaskForcePanelOptions) => void;
   readonly requestRender: () => void;
   readonly theme: FleetPtyTheme;
 }

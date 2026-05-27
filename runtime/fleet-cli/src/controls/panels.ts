@@ -1,4 +1,4 @@
-import { centerLine, fitLine, truncateToWidth, visibleWidth } from "@dotobokuri/fleet-tui/primitives";
+import { centerLine, truncateToWidth, visibleWidth } from "@dotobokuri/fleet-tui/primitives";
 import type { Focusable } from "@dotobokuri/fleet-tui/components";
 
 import type {
@@ -17,7 +17,7 @@ import type {
   Component,
 } from "./types.js";
 
-export { centerLine, fitLine, truncateToWidth, visibleWidth };
+export { centerLine, truncateToWidth, visibleWidth };
 export type { Component, Focusable };
 export type {
   FleetPtyApi,
@@ -43,27 +43,7 @@ interface RegionStack {
   readonly replace: (region: FleetPtyRegion) => FleetPtyRegion;
 }
 
-export interface OverlayFrameOptions {
-  readonly body: readonly OverlayFrameBodyLine[];
-  readonly footer?: string;
-  readonly theme: FleetPtyTheme;
-  readonly title: string;
-  readonly width: number;
-}
-
-export type OverlayFrameBodyLine = string | {
-  readonly bg?: string;
-  readonly text: string;
-};
-
-export const Key = {
-  alt(key: "o"): KeyId {
-    return `alt+${key}` as KeyId;
-  },
-} as const;
-
 const KEY_SEQUENCES: Record<KeyId, readonly string[]> = {
-  "alt+o": ["\x1bo", "\x1bO"],
   backspace: ["\x7f", "\b", "\x1b[127u"],
   down: ["\x1b[B", "\x1bOB"],
   end: ["\x1b[F", "\x1b[4~", "\x1b[8~"],
@@ -92,16 +72,6 @@ const BG: Record<FleetPtyBgColor, string> = {
   selected: "\x1b[48;5;24m",
 };
 const RESET = "\x1b[0m";
-const BORDER = {
-  bottomLeft: "╰",
-  bottomRight: "╯",
-  h: "─",
-  topLeft: "╭",
-  topRight: "╮",
-  vertical: "│",
-} as const;
-const MIN_FRAME_WIDTH = 24;
-
 export function createFleetPtyApi(
   options: CreateFleetPtyApiOptions,
   localUiOptions: FleetPtyLocalUiOptions,
@@ -144,7 +114,7 @@ export function createFleetPtyApi(
         const done = (result: unknown) => finish(result, true);
 
         closeActive = () => done(undefined);
-        Promise.resolve(factory(localUi, theme, { Key, matchesKey }, done))
+        Promise.resolve(factory(localUi, theme, { matchesKey }, done))
           .then((component) => {
             mounted = true;
             overlays.mount({ component, id: "custom-overlay" });
@@ -268,24 +238,6 @@ export function isPrintable(data: string): boolean {
   return data.length > 0 && !data.startsWith("\x1b") && !/[\x00-\x1f\x7f]/.test(data);
 }
 
-export function createOverlayFrame(options: OverlayFrameOptions): string[] {
-  const width = Math.max(MIN_FRAME_WIDTH, options.width);
-  const innerWidth = Math.max(0, width - 4);
-  const title = ` ${truncateToWidth(options.title, innerWidth)} `;
-  const topFill = Math.max(0, width - 2 - visibleWidth(title));
-  const leftFill = Math.floor(topFill / 2);
-  const rightFill = topFill - leftFill;
-  const top = options.theme.border(`${BORDER.topLeft}${BORDER.h.repeat(leftFill)}${title}${BORDER.h.repeat(rightFill)}${BORDER.topRight}`);
-  const body = options.body.map((line) => frameBodyLine(line, innerWidth, options.theme));
-  const footer = options.footer ? [frameBodyLine(options.theme.dim(options.footer), innerWidth, options.theme)] : [];
-  const bottom = options.theme.border(`${BORDER.bottomLeft}${BORDER.h.repeat(Math.max(0, width - 2))}${BORDER.bottomRight}`);
-  return [top, ...body, ...footer, bottom];
-}
-
-export function resolveOverlayFrameWidth(width: number): number {
-  return Math.max(MIN_FRAME_WIDTH, width);
-}
-
 function notifyLayoutChange(localUi: FleetPtyLocalUi): void {
   localUi.requestResize();
   localUi.requestRender();
@@ -350,12 +302,4 @@ function createRegionStack(defaultRegion: FleetPtyRegion): RegionStack {
 
 function setFocused(region: FleetPtyRegion | undefined, focused: boolean): void {
   region?.component.setFocus?.(focused);
-}
-
-function frameBodyLine(line: OverlayFrameBodyLine, innerWidth: number, theme: FleetPtyTheme): string {
-  const text = typeof line === "string" ? line : line.text;
-  const bg = typeof line === "string" ? undefined : line.bg;
-  const fitted = fitLine(text, innerWidth);
-  const wrapped = bg ? `${bg}${fitted.replaceAll("\x1b[0m", `\x1b[0m${bg}`)}\x1b[0m` : fitted;
-  return `${theme.border(BORDER.vertical)} ${wrapped} ${theme.border(BORDER.vertical)}`;
 }

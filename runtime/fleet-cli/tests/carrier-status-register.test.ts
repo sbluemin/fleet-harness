@@ -1,98 +1,128 @@
-import type { Component } from "../src/controls/index.js";
+import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { describe, expect, it, vi } from "vitest";
 
-import { createCarrierStatusKeybindingHandler } from "../src/carrier-status/register.js";
-import type { CarrierStatusContext } from "../src/carrier-status/types.js";
-import type { MissionControlPanel, MissionControlPanelHost } from "../src/mission-control/types.js";
+import type { PtyHost, PtyLaunchProfile } from "../src/controls/index.js";
+import { createMissionControlController } from "../src/mission-control/controller.js";
 
-vi.mock("../src/carrier-status/overlay.js", () => ({
-  CarrierStatusOverlay: class FakeCarrierStatusOverlay implements Component {
-    constructor(public readonly options: Record<string, unknown>) {}
+vi.mock("../src/mission-control/carrier-roster/panel.js", () => ({
+  CarrierStatusOverlay: class FakeCarrierStatusOverlay {
+    constructor(private readonly options: {
+      readonly done: () => void;
+      readonly openTaskForcePanel: (options: { readonly carrierDisplayName: string; readonly carrierId: string }) => void;
+    }) {}
+
+    handleInput(data: string): void {
+      if (data === "t") {
+        this.options.openTaskForcePanel({ carrierDisplayName: "Ohio", carrierId: "ohio" });
+        return;
+      }
+      if (data === "\x1b") {
+        this.options.done();
+      }
+    }
 
     invalidate(): void {}
 
     render(): string[] {
-      return ["Carrier Status"];
+      return ["Carrier Roster"];
     }
   },
 }));
 
-vi.mock("../src/carrier-status/taskforce-overlay.js", () => ({
-  TaskForceConfigOverlay: class FakeTaskForceConfigOverlay implements Component {
-    constructor(public readonly options: Record<string, unknown>) {}
-
-    invalidate(): void {}
-
-    render(): string[] {
-      return ["Task Force Config"];
-    }
-  },
+vi.mock("../src/mission-control/carrier-roster/taskforce-panel.js", () => ({
+  createTaskForcePanel: (options: { readonly done: () => void }) => ({
+    id: "carrier-roster:taskforce",
+    title: "TaskForce",
+    handleInput(data: string): boolean {
+      if (data === "\x1b") {
+        options.done();
+        return true;
+      }
+      return false;
+    },
+    render(): readonly string[] {
+      return ["Carrier Roster / TaskForce", "Task Force Config"];
+    },
+  }),
 }));
 
-describe("Carrier Status Mission Control registration", () => {
-  it("opens Carrier Status as a Mission Control panel from Alt+O", () => {
-    const opened: MissionControlPanel[] = [];
-    const ctx = createContext({
-      openPanel: (panel) => opened.push(panel),
+describe("Carrier Roster Mission Control registration", () => {
+  it("opens Carrier Roster from uppercase C through Mission Control", () => {
+    const renderRequests: string[] = [];
+    const controller = createTestController({
+      onRenderRequest: () => renderRequests.push("render"),
     });
-    const handler = createCarrierStatusKeybindingHandler(ctx);
 
-    handler();
+    expect(renderPlain(controller.component.render(80))).toContain("c choose CLI  C Carrier Roster");
 
-    expect(opened).toHaveLength(1);
-    expect(opened[0]?.id).toBe("carrier-status");
-    expect(opened[0]?.component.render(80)).toEqual(["Carrier Status"]);
+    controller.ptyHost.write("C");
+
+    expect(controller.hasActivePanel()).toBe(true);
+    expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster");
+    expect(renderRequests).toHaveLength(2);
   });
 
-  it("closes the active Mission Control panel when Alt+O is pressed again", () => {
-    let closeCount = 0;
-    const opened: MissionControlPanel[] = [];
-    const ctx = createContext({
-      closePanel: () => {
-        closeCount += 1;
-      },
-      hasActivePanel: () => opened.length > 0,
-      openPanel: (panel) => opened.push(panel),
-    });
-    const handler = createCarrierStatusKeybindingHandler(ctx);
+  it("keeps lowercase c scoped to choose CLI instead of opening Carrier Roster", () => {
+    const controller = createTestController();
 
-    handler();
-    handler();
+    controller.ptyHost.write("c");
 
-    expect(opened).toHaveLength(1);
-    expect(closeCount).toBe(1);
+    expect(controller.hasActivePanel()).toBe(false);
+    expect(renderPlain(controller.component.render(80))).toContain("Choose an Agent CLI");
   });
 
-  it("replaces Carrier Status with a Mission Control-hosted TaskForce panel", () => {
-    const opened: MissionControlPanel[] = [];
-    const ctx = createContext({
-      openPanel: (panel) => opened.push(panel),
-    });
-    const handler = createCarrierStatusKeybindingHandler(ctx);
+  it("pushes TaskForce config inside the Carrier Roster panel stack", () => {
+    const controller = createTestController();
 
-    handler();
-    const carrierStatus = opened[0]?.component as Component & {
-      readonly options: {
-        readonly openTaskForceConfig: (options: { readonly carrierDisplayName: string; readonly carrierId: string }) => void;
-      };
-    };
-    carrierStatus.options.openTaskForceConfig({ carrierDisplayName: "Ohio", carrierId: "ohio" });
+    controller.ptyHost.write("C");
+    controller.ptyHost.write("t");
 
-    expect(opened.map((panel) => panel.id)).toEqual(["carrier-status", "taskforce-config"]);
-    expect(opened[1]?.component.render(80)).toEqual(["Task Force Config"]);
+    expect(controller.hasActivePanel()).toBe(true);
+    expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster / TaskForce");
+    expect(renderPlain(controller.component.render(80))).toContain("Task Force Config");
+
+    controller.ptyHost.write("\x1b");
+
+    expect(controller.hasActivePanel()).toBe(true);
+    expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster");
+    expect(renderPlain(controller.component.render(80))).not.toContain("Task Force Config");
   });
 });
 
-function createContext(overrides: Partial<MissionControlPanelHost> = {}): CarrierStatusContext {
-  const host: MissionControlPanelHost = {
-    closePanel: () => undefined,
-    hasActivePanel: () => false,
-    openPanel: () => undefined,
-    requestRender: () => undefined,
-    ...overrides,
-  };
+function createTestController(options: { readonly onRenderRequest?: () => void } = {}) {
+  const controller = createMissionControlController({
+    carrierRuntime: { registry: {} } as CarrierRuntime,
+    cliOptions: [{ id: "claude", label: "Claude" }],
+    createPtyHost: (_profile: PtyLaunchProfile) => createFakeHost(),
+    defaultCliId: "claude",
+    injectProfile: (profile) => Promise.resolve(profile),
+    onExitFleet: () => undefined,
+    onRenderRequest: options.onRenderRequest ?? (() => undefined),
+    resolveProfile: () => Promise.resolve({
+      args: [],
+      bin: "test",
+      cwd: "/tmp",
+      env: {},
+      id: "claude",
+      label: "Claude",
+      terminalName: "xterm-256color",
+    }),
+  });
+  controller.ptyView.resize(80, 24);
+  return controller;
+}
+
+function createFakeHost(): PtyHost {
   return {
-    carrierRuntime: { registry: {} } as CarrierStatusContext["carrierRuntime"],
-    missionControl: host,
+    kill: () => undefined,
+    onData: () => undefined,
+    onExit: () => undefined,
+    resize: () => undefined,
+    start: () => undefined,
+    write: () => undefined,
   };
+}
+
+function renderPlain(lines: readonly string[]): string {
+  return lines.join("\n").replaceAll(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
 }

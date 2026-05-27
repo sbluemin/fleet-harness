@@ -1,4 +1,5 @@
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
+import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import type { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
 import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
@@ -37,6 +38,7 @@ export interface MissionControlController {
   readonly hasActivePanel: () => boolean;
   readonly kill: () => void;
   readonly launchSelected: () => Promise<void>;
+  readonly openCarrierRoster: () => void;
   readonly openPanel: (panel: MissionControlPanel) => void;
   /** Programmatic input path that writes directly to the active child PTY, bypassing panel routing. */
   readonly writeChildInput: (data: string) => void;
@@ -65,6 +67,7 @@ export interface MissionControlPtyView extends Component {
 export interface CreateMissionControlControllerOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
   readonly authService?: AuthService;
+  readonly carrierRuntime?: CarrierRuntime;
   readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
   readonly createPtyView?: (cols: number, rows: number) => PtyView;
   readonly defaultCliId: AgentCliId;

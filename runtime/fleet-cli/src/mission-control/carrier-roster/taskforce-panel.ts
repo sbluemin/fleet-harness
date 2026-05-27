@@ -16,12 +16,15 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 import {
-  createOverlayFrame,
   matchesKey,
+  truncateToWidth,
+  visibleWidth,
   type Component,
   type FleetPtyTheme,
   type Focusable,
-} from "../controls/index.js";
+} from "../../controls/index.js";
+import type { MenuPanel } from "../menu/panel-stack.js";
+import { centerText } from "../welcome.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
 import type {
@@ -42,13 +45,24 @@ export interface TaskForceOverlayOptions {
 
 type TaskForceMode = "browse" | "effort" | "model" | "saving";
 
+interface TaskForceCellLine {
+  readonly bg?: string;
+  readonly text: string;
+}
+
+type TaskForceDisplayLine =
+  | { readonly kind: "blank" }
+  | { readonly kind: "cell"; readonly line: TaskForceCellLine }
+  | { readonly kind: "center"; readonly text: string };
+
 const ANSI_RESET = "\x1b[0m";
 const ANSI_DIM = "\x1b[38;2;120;120;120m";
 const ANSI_ACCENT = "\x1b[38;2;100;180;255m";
-const TASKFORCE_FRAME_ROWS = 3;
-const TASKFORCE_EXTRA_BODY_ROWS = 4;
+const INDENT = "    ";
+const TASKFORCE_EXTRA_BODY_ROWS = 5;
+const MIN_CELL_WIDTH = 40;
 
-export class TaskForceConfigOverlay implements Component, Focusable {
+export class RosterTaskForcePanelSurface implements Component, Focusable {
   public focused = false;
   private editCursor = 0;
   private feedbackMessage: string | null = null;
@@ -99,18 +113,25 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   desiredHeight(maxRows: number): number | undefined {
     const selected = this.getSelectedEntry();
     const editRows = selected && (this.mode === "model" || this.mode === "effort") ? this.getEditOptions(selected).length : 0;
-    return clampOverlayRows(maxRows, this.buildBackendEntries().length + editRows + TASKFORCE_EXTRA_BODY_ROWS + TASKFORCE_FRAME_ROWS);
+    return clampOverlayRows(maxRows, this.buildBackendEntries().length + editRows + TASKFORCE_EXTRA_BODY_ROWS);
   }
 
   render(width: number): string[] {
-    const body: Array<string | { bg?: string; text: string }> = [""];
+    const body: TaskForceDisplayLine[] = [
+      { kind: "center", text: this.options.theme.dim("Carrier Roster / TaskForce") },
+      { kind: "center", text: this.options.theme.accent(`TaskForce - ${this.options.carrierDisplayName}`) },
+      { kind: "blank" },
+    ];
     const entries = this.buildBackendEntries();
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]!;
       const isSelected = i === this.selectedIndex;
       body.push({
-        bg: isSelected ? CARRIER_BG_COLORS[entry.cliType] : undefined,
-        text: this.renderEntryLine(entry, isSelected),
+        kind: "cell",
+        line: {
+          bg: isSelected ? CARRIER_BG_COLORS[entry.cliType] : undefined,
+          text: withIndent(this.renderEntryLine(entry, isSelected)),
+        },
       });
 
       if (isSelected && this.mode === "model") {
@@ -119,7 +140,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
           const model = models[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = model.modelId === entry.model ? "●" : "○";
-          body.push(`      ${cursor} ${marker} ${model.name ?? model.modelId}`);
+          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${model.name ?? model.modelId}`));
         }
       }
 
@@ -129,24 +150,19 @@ export class TaskForceConfigOverlay implements Component, Focusable {
           const level = effortLevels[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = level === (entry.effort ?? "") ? "●" : "○";
-          body.push(`      ${cursor} ${marker} ${level}`);
+          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${level}`));
         }
       }
     }
 
-    body.push("");
+    body.push({ kind: "blank" });
     if (this.feedbackMessage) {
       const color = this.feedbackMessage.startsWith("저장 실패") ? this.options.theme.warning : this.options.theme.accent;
-      body.push(color(this.feedbackMessage), "");
+      body.push({ kind: "center", text: color(this.feedbackMessage) }, { kind: "blank" });
     }
 
-    return createOverlayFrame({
-      body,
-      footer: this.getFooterHint(),
-      theme: this.options.theme,
-      title: `Task Force Config - ${this.options.carrierDisplayName}`,
-      width,
-    });
+    body.push({ kind: "center", text: this.options.theme.dim(this.getFooterHint()) });
+    return renderDisplayLines(body, width);
   }
 
   private buildBackendEntries(): TaskForceEntry[] {
@@ -383,7 +399,7 @@ export class TaskForceConfigOverlay implements Component, Focusable {
 
   private getFooterHint(): string {
     if (this.mode === "saving") return "저장 중...";
-    if (this.mode === "browse") return "↑↓ select  Enter edit  r reset  Esc close";
+    if (this.mode === "browse") return "↑↓ select  Enter edit  r reset  Esc back";
     return "↑↓ select  Enter confirm  Esc cancel";
   }
 
@@ -398,6 +414,21 @@ export class TaskForceConfigOverlay implements Component, Focusable {
   }
 }
 
+export function createTaskForcePanel(options: TaskForceOverlayOptions): MenuPanel {
+  const component = new RosterTaskForcePanelSurface(options);
+  return {
+    id: "carrier-roster:taskforce",
+    title: "TaskForce",
+    handleInput(data): boolean {
+      component.handleInput(data);
+      return true;
+    },
+    render({ width }): readonly string[] {
+      return component.render(width);
+    },
+  };
+}
+
 function syncConfiguredTaskForceCarriers(carrierRuntime: CarrierRuntime): void {
   const registry = carrierRuntime.registry;
   const registeredOrder = getRegisteredOrder(registry);
@@ -408,6 +439,55 @@ function syncConfiguredTaskForceCarriers(carrierRuntime: CarrierRuntime): void {
 
 function clampOverlayRows(maxRows: number, cardRows: number): number {
   return Math.min(Math.max(0, maxRows), Math.max(0, cardRows));
+}
+
+function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: number): string[] {
+  const cellWidth = resolveCellWidth(lines);
+  return lines.map((line) => {
+    if (line.kind === "blank") {
+      return "";
+    }
+    if (line.kind === "center") {
+      return centerText(line.text, width);
+    }
+    return centerText(renderCellLine(line.line, cellWidth), width);
+  });
+}
+
+function resolveCellWidth(lines: readonly TaskForceDisplayLine[]): number {
+  const lineWidths = lines
+    .filter((line): line is Extract<TaskForceDisplayLine, { readonly kind: "cell" }> => line.kind === "cell")
+    .map((line) => visibleWidth(line.line.text));
+  return Math.max(MIN_CELL_WIDTH, ...lineWidths);
+}
+
+function renderCellLine(line: TaskForceCellLine, cellWidth: number): string {
+  const padded = padEndVisible(truncateToWidth(line.text, cellWidth), cellWidth);
+  return applyLineBg(padded, line.bg);
+}
+
+function toCellLine(text: string): TaskForceDisplayLine {
+  return {
+    kind: "cell",
+    line: { text },
+  };
+}
+
+function toIndentedCellLine(text: string): TaskForceDisplayLine {
+  return toCellLine(withIndent(text));
+}
+
+function withIndent(text: string): string {
+  return `${INDENT}${text}`;
+}
+
+function padEndVisible(text: string, width: number): string {
+  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
+}
+
+function applyLineBg(line: string, bg: string | undefined): string {
+  if (!bg) return line;
+  return `${bg}${line.replaceAll(ANSI_RESET, `${ANSI_RESET}${bg}`)}${ANSI_RESET}`;
 }
 
 function errorMessage(error: unknown): string {
