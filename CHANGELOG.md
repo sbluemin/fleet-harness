@@ -8,6 +8,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
 
+### Fixed
+- [core] Enabled Agent CLI app-mouse drag forwarding while preserving existing Fleet scroll fallback behavior.
+
 ### Removed
 - [core] Removed the `Alt+O` host shortcut for opening carrier configuration.
 

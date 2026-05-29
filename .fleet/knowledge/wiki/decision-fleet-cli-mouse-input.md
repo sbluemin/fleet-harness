@@ -1,0 +1,64 @@
+---
+id: "decision-fleet-cli-mouse-input"
+title: "fleet-cli 마우스 입력 아키텍처 결정 히스토리"
+tags: ["decision-history", "fleet-cli", "mouse-input", "controls", "cognitive-debt"]
+created: "2026-05-29T02:47:01.251Z"
+updated: "2026-05-29T02:48:39.049Z"
+version: 1
+rawSourceRef: "raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md\",\"title\":\"fleet-cli 마우스 입력 아키텍처 결정 히스토리\",\"hash\":\"bc472929\"}]"
+---
+## 개요
+
+합성(composited) 터미널 창(dedicated pane + fleet pane)에서 **마우스 휠 스크롤**과 **드래그 선택**은 단일 외부 터미널의 마우스 모드 정책 안에서 양립할 수 없는 상반된 요구를 만든다. 본 문서는 이 트레이드오프를 해소한 아키텍처 결정의 전후 맥락을 기록한다.
+
+## 문제
+
+- **휠 스크롤**은 호스트(Fleet TUI)가 뷰포트를 직접 조작하거나, 자식 PTY가 대체 화면(alt buffer)일 때 화살표 키로 변환해 전달해야 한다. 이를 위해서는 **외부 터미널의 마우스 캡처(모드 ON)**가 필요하다.
+- **드래그 선택**은 외부 터미널의 네이티브 선택(native selection)을 이용하거나, 호스트가 직접 selection state를 구현해야 한다. 이를 위해서는 **마우스 캡처 OFF**이거나 호스트측 copy-mode가 필요하다.
+- baseline(`ca67779b`)에서는 외부 터미널에 `?1000h` + `?1006h`(버튼 이벤트 + SGR 인코딩)만 설정하여 **휠 스크롤은 동작하지만 드래그 선택은 구조적으로 불가능**했다.
+
+## 검토한 옵션
+
+### 옵션 A: 호스트측 라우터 (스크롤만 보존)
+
+- 현행(`ca67779b`)과 동일. 휠은 호스트가 소비하고, 버튼 클릭/드래그는 silent consume.
+- **반려**: 사용자가 자식 애플리케이션(Claude `/tui` 등) 내에서 드래그 선택을 기대함.
+
+### 옵션 B: 호스트 copy-mode
+
+- 호스트가 직접 selection state를 들고, rendered viewport에서 plain text를 추출해 clipboard로 복사하는 방식.
+- tmux copy-mode 수준의 구현은 wrapped line, wide char, ANSI style, scrollback, 다중 pane overlay, OS별 clipboard 통합까지 떠안아야 함.
+- **반려**: 빙산. MVP 범위를 훨씬 벗어나며 회귀 면적이 거대.
+
+### 옵션 C: app-mouse raw-forward (채택)
+
+- 외부 터미널을 `?1000h` + `?1002h` + `?1006h`(버튼 + 모션 + SGR)로 확장하여, 자식 PTY가 app-mouse를 요청할 경우 모든 마우스 이벤트를 로컬 좌표로 변환해 raw-forward.
+- 자식이 app-mouse를 사용하지 않으면 현행 휠 스크롤 폰백을 그대로 보존.
+- **채택**.
+
+## 결정 근거
+
+1. **Standalone 실증**: fleet 없이 Claude `/tui`를 직접 실행했을 때 마우스 드래그 선택이 정상 동작함을 확인. 드래그는 motion 리포팅(`?1002h`/`?1003h`)을 전제하므로 Claude가 app-mouse(드래그 포함)를 **자체적으로 소비**한다고 추론했고, 최종적으로 실 터미널(tmux 안팎) smoke로 검증해 ground-truth를 닫았다. (별도 DECSET 캡처 트레이스는 돌리지 않음.)
+2. **사용자 선호**: 사용자는 "host가 selection을 대신 해 주는" 모델보다 **자식이 직접 마우스를 소유하는** 모델을 선호함.
+3. **구현 복잡도**: C는 기존 `encodeSgrMouseInput` + `routeDedicatedMouse` 경로에 `?1002h` 한 비트를 추가하고 버튼-모션 이벤트를 forward하는 것으로 해결. B는 별도의 selection engine, clipboard 통합, rendering이 필요.
+
+## 구현 요약
+
+- **외부 터미널 마우스 모드**: `?1000h` + `?1002h` + `?1006h`로 확장(기존 `?1000h` + `?1006h`에서 motion 캡처 추가).
+- **자식 PTY raw-forward**: 자식이 motion-capable app-mouse를 요청(`mouseTrackingEnabled`)하면, 버튼 누름/모션/뗌 모두를 SGR로 re-encode해 자식에 전달.
+- **폰백 보존**: 자식이 app-mouse를 요청하지 않으면 휠은 기존 로직(xterm-headless viewport scroll / alt-buffer 화살표 키)을 그대로 유지.
+- **구조적 리팩터링**: 마우스 파싱/인코딩/라우팅을 `src/controls/mouse/` 서브시스템으로 분리하여 `pty.ts`/`input.ts`/`render.ts`의 SRP 위반을 해소.
+
+## 교훈
+
+> **"자동 테스트 통과 ≠ 실 동작; 마우스/입력은 실 터미널(tmux 안팎) 검증이 유일한 판정."**
+
+- 마우스 프로토콜은 SGR 바이트 시퀀스가 각 터미널 에뮬레이터(iTerm2, Windows Terminal, tmux, VS Code 터미널)에서 다른 해석을 받을 수 있다.
+- `?1002h` 추가로 인한 motion 이벤트 폭증이 render scheduler에 미치는 영향은 실제 tmux 세션 내/외에서 측정해야 알 수 있다.
+- 단위 테스트는 토큰 파싱과 라우팅 분기를 검증할 수 있으나, end-to-end 동작은 반드시 실제 터미널 환경에서 확인해야 한다.
+
+## 관련 항목
+
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — Fleet TUI Mouse Scroll Hybrid Routing (기존 휠 라우팅 설계)
+- [[wiki:prd-tui-keyboard-protocol-architecture]] — Fleet TUI Keyboard Protocol & Keybinding Registry Architecture (입력 라우팅 전반)

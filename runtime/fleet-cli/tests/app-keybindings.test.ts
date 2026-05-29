@@ -120,6 +120,33 @@ describe("dedicated mouse routing composition", () => {
 
     expect(writes).toEqual(["\x1b[<64;4;2M"]);
   });
+
+  it("forwards press, motion, release, and wheel events with local coordinates for app-mouse children", () => {
+    const writes: string[] = [];
+    const routeMouse = createDedicatedMouseRouter({
+      ptyHost: {
+        getMouseProtocol: () => ({ activeEncoding: "sgr", activeProtocol: "drag", dragTrackingEnabled: true, mouseTrackingEnabled: true }),
+        write: (data) => writes.push(data),
+      },
+      ptyView: {
+        isAlternateBufferActive: () => false,
+        scrollLines: () => false,
+      },
+      requestRender: () => undefined,
+    });
+
+    routeMouse(mouseEvent({ buttonCode: 0, final: "M", localColumn: 2, localRow: 3, raw: "\x1b[<0;10;11M", wheelDirection: null }));
+    routeMouse(mouseEvent({ buttonCode: 32, final: "M", localColumn: 3, localRow: 4, raw: "\x1b[<32;10;11M", wheelDirection: null }));
+    routeMouse(mouseEvent({ buttonCode: 0, final: "m", localColumn: 4, localRow: 5, raw: "\x1b[<0;10;11m", wheelDirection: null }));
+    routeMouse(mouseEvent({ buttonCode: 64, final: "M", localColumn: 5, localRow: 6, raw: "\x1b[<64;10;11M", wheelDirection: "up" }));
+
+    expect(writes).toEqual([
+      "\x1b[<0;2;3M",
+      "\x1b[<32;3;4M",
+      "\x1b[<0;4;5m",
+      "\x1b[<64;5;6M",
+    ]);
+  });
 });
 
 function mouseEvent(overrides: Partial<RoutedMouseInput> = {}): RoutedMouseInput {

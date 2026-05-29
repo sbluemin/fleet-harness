@@ -61,8 +61,10 @@ describe("LocalTui", () => {
     tui.stop();
 
     assert.equal(countWrites("\x1b[?1000h"), 1);
+    assert.equal(countWrites("\x1b[?1002h"), 1);
     assert.equal(countWrites("\x1b[?1006h"), 1);
     assert.equal(countWrites("\x1b[?1006l"), 1);
+    assert.equal(countWrites("\x1b[?1002l"), 1);
     assert.equal(countWrites("\x1b[?1000l"), 1);
   });
 
@@ -324,7 +326,7 @@ describe("LocalTui", () => {
       assert.equal(externalSigintCalls, 1);
       assert.equal(killCalls, 0);
       assert.equal(writes.join("").includes("\x1b[?1049l"), true);
-      assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1000l"), true);
+      assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"), true);
     } finally {
       process.removeListener("SIGINT", externalSigintHandler);
       tui.stop();
@@ -345,7 +347,7 @@ describe("LocalTui", () => {
 
     assert.deepEqual(killSignals, ["SIGTERM"]);
     assert.equal(writes.join("").includes("\x1b[?1049l"), true);
-    assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1000l"), true);
+    assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"), true);
     tui.stop();
   });
 
@@ -370,6 +372,7 @@ describe("LocalTui", () => {
 
     assert.equal(countWrites("\x1b[?25h"), 1);
     assert.equal(countWrites("\x1b[?1006l"), 1);
+    assert.equal(countWrites("\x1b[?1002l"), 1);
     assert.equal(countWrites("\x1b[?1000l"), 1);
     assert.equal(countWrites("\x1b[?1049l"), 1);
     assert.equal(process.listenerCount("SIGINT"), initialSigintListeners);

@@ -2,11 +2,21 @@
 
 ## Summary
 
-- total_entries: `20`
+- total_entries: `21`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
 ## Entries
+
+### decision-fleet-cli-mouse-input
+
+- title: `fleet-cli 마우스 입력 아키텍처 결정 히스토리`
+- path: `wiki/decision-fleet-cli-mouse-input.md`
+- tags: `decision-history, fleet-cli, mouse-input, controls, cognitive-debt`
+- updated: `2026-05-29T02:48:39.049Z`
+- summary: `## 개요`
+- raw_source_ref: `raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md`
+- raw_source_refs: `raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md`
 
 ### guide-001-fleet-harness-overview
 
@@ -272,6 +282,7 @@
 
 ### cognitive-debt
 
+- [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
@@ -282,6 +293,10 @@
 ### composition-root
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
+
+### controls
+
+- [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 
 ### current
 
@@ -295,6 +310,7 @@
 
 ### decision-history
 
+- [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
@@ -347,6 +363,7 @@
 
 ### fleet-cli
 
+- [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 
@@ -432,6 +449,10 @@
 ### models
 
 - [[wiki:guide-unified-agent-cursor-composer-25]] — Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
+
+### mouse-input
+
+- [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 
 ### mouse-protocol
 

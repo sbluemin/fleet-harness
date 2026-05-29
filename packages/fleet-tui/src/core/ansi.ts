@@ -10,6 +10,8 @@ export const ANSI_ENTER_ALT_SCREEN = "\x1b[?1049h";
 export const ANSI_EXIT_ALT_SCREEN = "\x1b[?1049l";
 export const ANSI_ENABLE_VT200_MOUSE = "\x1b[?1000h";
 export const ANSI_DISABLE_VT200_MOUSE = "\x1b[?1000l";
+export const ANSI_ENABLE_BUTTON_MOTION_MOUSE = "\x1b[?1002h";
+export const ANSI_DISABLE_BUTTON_MOTION_MOUSE = "\x1b[?1002l";
 export const ANSI_ENABLE_SGR_MOUSE = "\x1b[?1006h";
 export const ANSI_DISABLE_SGR_MOUSE = "\x1b[?1006l";
 
@@ -46,9 +48,9 @@ export function exitAltScreen(): string {
 }
 
 export function enableSgrMouse(): string {
-  return `${ANSI_ENABLE_VT200_MOUSE}${ANSI_ENABLE_SGR_MOUSE}`;
+  return `${ANSI_ENABLE_VT200_MOUSE}${ANSI_ENABLE_BUTTON_MOTION_MOUSE}${ANSI_ENABLE_SGR_MOUSE}`;
 }
 
 export function disableSgrMouse(): string {
-  return `${ANSI_DISABLE_SGR_MOUSE}${ANSI_DISABLE_VT200_MOUSE}`;
+  return `${ANSI_DISABLE_SGR_MOUSE}${ANSI_DISABLE_BUTTON_MOTION_MOUSE}${ANSI_DISABLE_VT200_MOUSE}`;
 }

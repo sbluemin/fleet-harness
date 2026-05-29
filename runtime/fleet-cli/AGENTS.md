@@ -29,13 +29,14 @@ Only the permanent vertical two-pane layout is allowed:
 - **Fleet PTY**: Lower pane.
 - **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Status) while they are active.
 - **Session Options**: Owned by `src/mission-control/options/`. Mission Control owns the interactive option state; the Options Drawer (`O`) edits boolean flags and `S` persists defaults through `fleet-infra/preset`. Model editing is handled inline via `→` arrow key in the idle CLI selection view, not in the Options Drawer.
-- **Shared PTY negotiation**: `src/controls/pty.ts` owns host resize negotiation over `@dotobokuri/fleet-tui/layout` primitives.
+- **Shared PTY negotiation**: `src/controls/pty.ts` is a compatibility facade; actual PTY responsibilities live in `src/controls/pty/{shell,keyboard,csi-u,host,resize}.ts`. `pty/resize.ts` owns host resize negotiation over `@dotobokuri/fleet-tui/layout` primitives.
 - **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Agent CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
-- **Input runtime**: `src/controls/input.ts` owns host keyboard routing, keybinding helpers, mouse parsing, and programmatic PTY input.
+- **Mouse runtime**: `src/controls/mouse/{parser,protocol,router}.ts` own SGR mouse parse/encode, DEC private mouse protocol state (including drag tracking), pane hit-testing, app-mouse forwarding, and scroll fallback.
+- **Input runtime**: `src/controls/input.ts` is a compatibility facade; actual input responsibilities live in `src/controls/input/{keybindings,router,programmatic,contract}.ts`. `input/router.ts` owns host keyboard routing, `input/keybindings.ts` owns keybinding registry/config, `input/programmatic.ts` owns programmatic PTY input, and `input/contract.ts` owns input contract/predicates.
 - **Panel runtime**: `src/controls/panels.ts` owns lower-pane panel API, overlays, sections, theme/key helpers, and desired-height adapters.
-- **Render coordination**: `src/controls/render.ts` owns host render scheduling, cursor policy sync, viewport adapter, and mouse-to-PTY routing helpers.
+- **Render coordination**: `src/controls/render.ts` owns host render scheduling, cursor policy sync, and viewport adapter.
 - **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
-- **Controls barrel**: `src/controls/index.ts` is package-local only; it is not a public workspace surface.
+- **Controls barrel**: `src/controls/index.ts` is an explicit package-local barrel; it is not a public workspace surface.
 
 ## Input & Mode Logic
 
@@ -43,6 +44,7 @@ Only the permanent vertical two-pane layout is allowed:
 - `DEDICATED` mode gives exclusive control to the Agent CLI PTY.
 - `Ctrl+T` toggles between modes.
 - The Fleet PTY owns no visible text input.
+- **Mouse forwarding (Option C)**: Outer terminal motion is enabled via `?1000h?1002h?1006h`. When the active child is in app-mouse mode, press/motion/release/wheel events are forwarded as raw SGR sequences in local coordinates. Non-app-mouse events fall back to viewport scrollback or alt-buffer arrow navigation.
 
 ## Host Cursor Policy
 

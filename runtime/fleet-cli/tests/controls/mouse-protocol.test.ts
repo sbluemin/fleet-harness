@@ -11,6 +11,7 @@ describe("mouse protocol", () => {
     assert.deepEqual(protocol.getState(), {
       activeEncoding: "sgr",
       activeProtocol: "vt200",
+      dragTrackingEnabled: false,
       mouseTrackingEnabled: true,
     });
 
@@ -18,6 +19,7 @@ describe("mouse protocol", () => {
     assert.deepEqual(protocol.getState(), {
       activeEncoding: "default",
       activeProtocol: "vt200",
+      dragTrackingEnabled: false,
       mouseTrackingEnabled: false,
     });
   });
@@ -30,6 +32,7 @@ describe("mouse protocol", () => {
     assert.deepEqual(protocol.getState(), {
       activeEncoding: "sgr",
       activeProtocol: "drag",
+      dragTrackingEnabled: true,
       mouseTrackingEnabled: true,
     });
   });
@@ -48,5 +51,35 @@ describe("mouse protocol", () => {
 
     protocol.detectChildRequest("\x1b[?1000l");
     assert.equal(protocol.getState().mouseTrackingEnabled, false);
+  });
+
+  it("detects drag-capable mouse protocols only with SGR encoding", () => {
+    const protocol = createMouseProtocol();
+
+    protocol.detectChildRequest("\x1b[?1000h\x1b[?1006h");
+    assert.equal(protocol.getState().dragTrackingEnabled, false);
+
+    protocol.detectChildRequest("\x1b[?1002h");
+    assert.equal(protocol.getState().dragTrackingEnabled, true);
+
+    protocol.detectChildRequest("\x1b[?1006l");
+    assert.equal(protocol.getState().dragTrackingEnabled, false);
+
+    protocol.detectChildRequest("\x1b[?1003h\x1b[?1006h");
+    assert.equal(protocol.getState().dragTrackingEnabled, true);
+  });
+
+  it("keeps remaining active modes after mixed protocol disables", () => {
+    const protocol = createMouseProtocol();
+
+    protocol.detectChildRequest("\x1b[?1000h\x1b[?1006h\x1b[?1002h");
+    protocol.detectChildRequest("\x1b[?1002l");
+
+    assert.deepEqual(protocol.getState(), {
+      activeEncoding: "sgr",
+      activeProtocol: "vt200",
+      dragTrackingEnabled: false,
+      mouseTrackingEnabled: true,
+    });
   });
 });

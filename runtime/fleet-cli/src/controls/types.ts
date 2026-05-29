@@ -1,14 +1,14 @@
 import type { Component as PrimitiveComponent, TerminalSize } from "@dotobokuri/fleet-tui/components";
 import type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "@dotobokuri/fleet-tui/layout";
+import type { RoutedMouseInput } from "./mouse/parser.js";
 
 export type FleetInputMode = "MIRROR" | "DEDICATED";
-
-export type KeyboardProtocolMode = "standard" | "enhanced";
 
 export type MouseProtocolName = "none" | "x10" | "vt200" | "drag" | "any";
 export type MouseEncodingName = "default" | "sgr" | "sgr-pixels";
 
 export type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest };
+export type { InputRouterLayout, MouseWheelDirection, RoutedMouseInput, SgrMouseInput } from "./mouse/parser.js";
 
 export interface KeyboardProtocolState {
   readonly outerEnabled: boolean;
@@ -19,6 +19,7 @@ export interface KeyboardProtocolState {
 export interface MouseProtocolState {
   readonly activeProtocol: MouseProtocolName;
   readonly activeEncoding: MouseEncodingName;
+  readonly dragTrackingEnabled?: boolean;
   readonly mouseTrackingEnabled: boolean;
 }
 
@@ -156,35 +157,12 @@ export interface TuiPtyManager {
   readonly requestResize: (reason: ResizeReason, size?: TerminalSize) => ResizeRequest;
 }
 
-export interface SgrMouseInput {
-  readonly buttonCode: number;
-  readonly column: number;
-  readonly final: "M" | "m";
-  readonly raw: string;
-  readonly row: number;
-  readonly wheelDirection: MouseWheelDirection | null;
-}
-
-export type MouseWheelDirection = "up" | "down";
-
 export type Component = PrimitiveComponent & {
   readonly wantsKeyRelease?: boolean;
   desiredHeight?(maxRows: number): number | undefined;
   dispose?(): void;
   handleMouse?(event: RoutedMouseInput): boolean | void;
   setFocus?(focused: boolean): void;
-};
-
-export interface InputRouterLayout {
-  readonly columns: number;
-  readonly dedicatedRows: number;
-  readonly fleetRows: number;
-  readonly totalRows: number;
-}
-
-export type RoutedMouseInput = SgrMouseInput & {
-  readonly localColumn: number;
-  readonly localRow: number;
 };
 
 export type KeyId =

@@ -3024,3 +3024,52 @@
 - result: `accepted`
 - target: `wiki/guide-unified-agent-cursor-composer-25.md`
 
+## 2026-05-29T02:45:47.172Z — drydock run
+
+- error_count: `0`
+- info_count: `4`
+- issue_count: `11`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-29T02:47:01.266Z — raw source added
+
+- id: `decision-fleet-cli-mouse-input-source`
+- raw_source_ref: `raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `fleet-cli 마우스 입력 아키텍처 결정 히스토리`
+
+## 2026-05-29T02:47:01.268Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-29T02-47-01-251Z-c2813357`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md`
+- target: `wiki/decision-fleet-cli-mouse-input.md`
+- warning_count: `0`
+
+## 2026-05-29T02:48:39.053Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `2e2030d6`
+- patch_id: `2026-05-29T02-47-01-251Z-c2813357`
+- previous_hash: `1c7314f9`
+- target: `wiki/decision-fleet-cli-mouse-input.md`
+
+## 2026-05-29T02:48:43.670Z — index rebuilt
+
+- entry_count: `21`
+
+## 2026-05-29T02:48:43.672Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-29T02-47-01-251Z-c2813357`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-05-29-decision-fleet-cli-mouse-input-source-bc472929.md`
+- result: `accepted`
+- target: `wiki/decision-fleet-cli-mouse-input.md`
+

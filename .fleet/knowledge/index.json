@@ -1,4 +1,16 @@
 {
+  "decision-fleet-cli-mouse-input": {
+    "path": "wiki/decision-fleet-cli-mouse-input.md",
+    "title": "fleet-cli 마우스 입력 아키텍처 결정 히스토리",
+    "tags": [
+      "decision-history",
+      "fleet-cli",
+      "mouse-input",
+      "controls",
+      "cognitive-debt"
+    ],
+    "updated": "2026-05-29T02:48:39.049Z"
+  },
   "guide-001-fleet-harness-overview": {
     "path": "wiki/guide-001-fleet-harness-overview.md",
     "title": "Guide - 001 fleet-harness 소개",
