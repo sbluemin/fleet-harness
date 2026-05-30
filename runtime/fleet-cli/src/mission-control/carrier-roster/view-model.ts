@@ -5,6 +5,7 @@ import {
   getRegisteredOrder,
   loadModels,
   readStatesSnapshot,
+  readCarrierSubagentModeSnapshot,
   resolveCarrierDisplayName,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
@@ -99,6 +100,7 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
   const entries: CarrierStatusEntry[] = [];
   const registry = carrierRuntime.registry;
   const registeredOrder = getRegisteredOrder(registry);
+  const subagentModes = readCarrierSubagentModeSnapshot().carrierModes;
   const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(carrierRuntime, snapshot);
   loadModels(cliTypesByCarrier);
   const healedSnapshot = readStatesSnapshot();
@@ -124,6 +126,8 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
       role,
       roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
+      subagentMode: subagentModes[id] === "subagent",
+      subagentPendingRestart: subagentModes[id] === "subagent",
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
     });
   }

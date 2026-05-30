@@ -1,4 +1,10 @@
-import { getRegisteredOrder, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import {
+  CARRIER_COLORS,
+  CARRIER_RGBS,
+  getRegisteredOrder,
+  readCarrierSubagentModeSnapshot,
+  type CarrierRuntime,
+} from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "../controls/index.js";
 
 import {
@@ -67,6 +73,7 @@ const HUD_LINE_BREAKS = /[\r\n]+/g;
 const HUD_MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
 const DEFAULT_SAFE_LABEL = "(unnamed)";
 const EXIT_WARNING_TEXT = "Press Ctrl+C again to exit";
+const SUBAGENT_SIGNATURE_CLI_TYPE = "claude";
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
   sortie: "Sortie",
@@ -205,6 +212,7 @@ function appendWidgetJobSummary(
   frame: number,
   theme: FleetPtyTheme | undefined,
 ): void {
+  const subagentModes = readCarrierSubagentModeSnapshot().carrierModes;
   const groups = buildCarrierJobGroups(
     jobs,
     getRegisteredOrder(carrierRuntime.registry),
@@ -213,7 +221,7 @@ function appendWidgetJobSummary(
   for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
     const group = groups[groupIndex];
     if (!group || group.jobs.length === 0) continue;
-    const groupColor = resolveCarrierColor(carrierRuntime.registry, group.carrierId);
+    const groupColor = resolveJobBarCarrierColor(carrierRuntime, group.carrierId, subagentModes);
     lines.push(truncateToWidth(
       `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
@@ -224,18 +232,18 @@ function appendWidgetJobSummary(
       if (!job) continue;
       const isLastJob = jobIndex === group.jobs.length - 1;
       const jobBranch = isLastJob ? "└─" : "├─";
-      const jobColor = resolveCarrierColor(carrierRuntime.registry, job.ownerCarrierId);
+      const jobColor = resolveJobBarCarrierColor(carrierRuntime, job.ownerCarrierId, subagentModes);
       const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
         ? trackInlineBlock(job.tracks[0])
         : "";
       const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(carrierRuntime, job, frame)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(job, frame, jobColor)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
         width,
       ));
 
       if (shouldInlineSingleTrack(job)) continue;
-      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme);
+      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme, subagentModes);
     }
   }
 }
@@ -248,11 +256,12 @@ function appendTrackRows(
   jobColor: string,
   frame: number,
   theme: FleetPtyTheme | undefined,
+  subagentModes: Record<string, "subagent">,
 ): void {
   for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
     const track = job.tracks[trackIndex];
     if (!track) continue;
-    const trackColor = resolveCarrierColor(carrierRuntime.registry, track.displayCli) ?? jobColor;
+    const trackColor = resolveJobBarCarrierColor(carrierRuntime, track.displayCli, subagentModes) || jobColor;
     const icon = trackStatusIcon(track, frame, trackColor);
     const stats = widgetTrackStats(track);
     const inline = !track.isComplete ? trackInlineBlock(track) : "";
@@ -265,15 +274,16 @@ function appendTrackRows(
 
 function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly PanelJob[]): CarrierHudTile[] {
   const snapshot = readStatesSnapshot();
+  const subagentModes = readCarrierSubagentModeSnapshot().carrierModes;
   return getRegisteredOrder(carrierRuntime.registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
     return {
       activeJobCount: activeCarrierJobs.length,
       activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       carrierId,
-      color: resolveCarrierColor(carrierRuntime.registry, carrierId),
+      color: resolveJobBarCarrierColor(carrierRuntime, carrierId, subagentModes),
       displayName: resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
-      rgb: resolveCarrierRgb(carrierRuntime.registry, carrierId),
+      rgb: resolveJobBarCarrierRgb(carrierRuntime, carrierId, subagentModes),
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
     };
   });
@@ -399,9 +409,8 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function jobIcon(carrierRuntime: CarrierRuntime, job: PanelJobViewModel, frame: number): string {
+function jobIcon(job: PanelJobViewModel, frame: number, color: string): string {
   if (job.status === "active") {
-    const color = resolveCarrierColor(carrierRuntime.registry, job.ownerCarrierId);
     const frames = SPINNER_FRAMES();
     const spinner = frames[frame % frames.length] ?? "○";
     return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
@@ -418,6 +427,26 @@ function jobDisplayLabel(job: PanelJobViewModel): string {
 
 function shouldInlineSingleTrack(job: PanelJobViewModel): boolean {
   return job.kind === "carrier" && job.tracks.length === 1;
+}
+
+function resolveJobBarCarrierColor(
+  carrierRuntime: CarrierRuntime,
+  carrierId: string,
+  subagentModes: Record<string, "subagent">,
+): string {
+  if (subagentModes[carrierId] === "subagent") return CARRIER_COLORS[SUBAGENT_SIGNATURE_CLI_TYPE] ?? "";
+  return resolveCarrierColor(carrierRuntime.registry, carrierId);
+}
+
+function resolveJobBarCarrierRgb(
+  carrierRuntime: CarrierRuntime,
+  carrierId: string,
+  subagentModes: Record<string, "subagent">,
+): [number, number, number] {
+  if (subagentModes[carrierId] === "subagent") {
+    return CARRIER_RGBS[SUBAGENT_SIGNATURE_CLI_TYPE] ?? resolveCarrierRgb(carrierRuntime.registry, carrierId);
+  }
+  return resolveCarrierRgb(carrierRuntime.registry, carrierId);
 }
 
 function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: string): string {

@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [core] Added per-carrier Native(SubAgent) toggles for Claude-family dedicated CLI sessions.
+
 ### Changed
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
 

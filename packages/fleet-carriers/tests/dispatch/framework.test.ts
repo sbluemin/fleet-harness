@@ -7,6 +7,7 @@ import {
   type CarrierConfig,
   createCarrierRegistry,
   emitStreamEvent,
+  buildCarrierRoster,
   getCarrierSourceDisplayName,
   initStore,
   registerCarrier,
@@ -75,6 +76,23 @@ describe("carrier stream handler registry", () => {
     });
 
     expect(events).toEqual([]);
+  });
+});
+
+describe("carrier roster rendering", () => {
+  it("excludes requested carrier IDs from the normal carrier_dispatch roster", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("sentinel", "Sentinel"));
+
+    const roster = buildCarrierRoster(registry, ["ohio", "sentinel"], {
+      excludeCarrierIds: ["ohio"],
+    });
+
+    expect(roster).not.toContain("**ohio**");
+    expect(roster).not.toContain('carrier_id: "ohio"');
+    expect(roster).toContain("**sentinel**");
+    expect(roster).toContain('carrier_id: "sentinel"');
   });
 });
 

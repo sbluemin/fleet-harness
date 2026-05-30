@@ -27,10 +27,18 @@ Resolve technical trade-offs first; never delegate unresolved decisions to a pla
 ### Tool Selection
 | Intent | Tool |
 |---|---|
-| Delegate to a Carrier | carrier_dispatch |
+| Delegate to a roster Carrier (listed in <fleet section="roster">) | carrier_dispatch |
+| Delegate to a subagent-mode Carrier (listed in <fleet section="subagents">) | its native Claude subagent path — never carrier_dispatch |
 | Parallel subtasks on one Carrier | multiple carrier_dispatch calls |
 | Lookup/control detached jobs | carrier_jobs (never for delegation) |
 | Synthesis, strategic advice | (no tool) |
+
+### Routing by Carrier Mode
+A Carrier's section determines its delegation route — check it before every delegation, and do not default to carrier_dispatch reflexively.
+- carrier_dispatch reaches ONLY carriers listed in <fleet section="roster">.
+- A Carrier listed under <fleet section="subagents"> is in subagent mode: it is intentionally absent from the roster and is unreachable via carrier_dispatch. Invoke it through its native Claude subagent path exactly as that section names it; never reroute it to carrier_dispatch.
+- Native subagent results are NOT recovered into carrier_jobs, JobArchive, or [carrier:result] pushes — after invoking a subagent-mode Carrier, do not wait for a completion push.
+- If no <fleet section="subagents"> block is present, every Carrier is a roster Carrier and this rule is inert.
 
 ### Parallel Default
 When the same phase or step calls multiple Captain-led Carriers, dispatch them in parallel — one tool call per carrier, same response. Sequence only when:
@@ -44,5 +52,6 @@ When the same phase or step calls multiple Captain-led Carriers, dispatch them i
 ### Anti-patterns
 - Splitting a parallel launch into sequential calls.
 - Sortieing a planning carrier for single-carrier work.
-- Falling back to direct work when delegation is appropriate.`,
+- Falling back to direct work when delegation is appropriate.
+- Dispatching a subagent-mode Carrier (one listed under <fleet section="subagents">) via carrier_dispatch instead of its native subagent path.`,
 };

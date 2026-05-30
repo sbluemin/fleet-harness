@@ -88,6 +88,8 @@ export type RequiredBlockValidationResult =
 
 /** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
 export interface CarrierRosterOptions {
+  /** 로스터에서 제외할 carrier ID 목록 */
+  excludeCarrierIds?: readonly string[];
   /** 로스터 섹션 제목 (기본: "## Available Carriers") */
   heading?: string;
   /** 로스터 본문 앞에 추가할 안내 라인들 */
@@ -577,7 +579,8 @@ export function buildCarrierRoster(
   carrierIds: string[],
   options?: CarrierRosterOptions,
 ): string {
-  const { heading, preambleLines, extraLines } = options ?? {};
+  const { excludeCarrierIds, heading, preambleLines, extraLines } = options ?? {};
+  const excluded = new Set(excludeCarrierIds ?? []);
   const lines: string[] = [];
 
   lines.push(heading ?? `## Available Carriers`);
@@ -586,6 +589,7 @@ export function buildCarrierRoster(
   }
 
   for (const carrierId of carrierIds) {
+    if (excluded.has(carrierId)) continue;
     const config = getRegisteredCarrierConfig(registry, carrierId);
     if (!config) continue;
 

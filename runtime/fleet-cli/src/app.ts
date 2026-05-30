@@ -138,6 +138,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         ? Promise.resolve(profile)
         : injectAgentCliProfile(profile, {
             buildSystemPrompt,
+            carrierRuntime: runtime.carrierRuntime,
             dedicatedMcpSession: runtime.dedicatedMcpSession,
             enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
             replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,

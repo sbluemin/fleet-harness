@@ -1,6 +1,15 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
+import {
+  CARRIER_COLORS,
+  createCarrierRuntime,
+  initStore,
+  resetStoreForTests,
+  setCarrierSubagentMode,
+} from "@dotobokuri/fleet-carriers";
 
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
 import { renderBlockLines, renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
@@ -12,6 +21,9 @@ const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 afterEach(() => {
   currentJobBarState?.dispose();
   currentJobBarState = undefined;
+  resetStoreForTests();
+  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+  tempDir = null;
 });
 
 describe("job bar renderer", () => {
@@ -133,6 +145,17 @@ describe("job bar renderer", () => {
     expect(sections.map(desiredHeight)).toEqual([1, 0]);
   });
 
+  it("renders subagent-mode carriers with the Claude signature color in the Fleet PTY strip", () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-subagent-"));
+    initStore(tempDir);
+    setCarrierSubagentMode("ohio", true);
+    const state = createTestJobBarState();
+
+    const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
+
+    expect(line).toContain(`${CARRIER_COLORS.claude}Ohio`);
+  });
+
   it("shows strip and detail sections together when at least one job is active", () => {
     const state = createTestJobBarState();
     state.getPanelJobs().set("carrier:first", buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000));
@@ -144,6 +167,7 @@ describe("job bar renderer", () => {
 });
 
 let currentJobBarState: JobBarState | undefined;
+let tempDir: string | null = null;
 
 function createTestCarrierRuntime(): ReturnType<typeof createCarrierRuntime> {
   const runtime = createCarrierRuntime();

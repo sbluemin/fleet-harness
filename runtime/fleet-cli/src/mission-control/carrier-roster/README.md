@@ -6,4 +6,6 @@ Carrier Roster opens from the Mission Control idle/control surface with uppercas
 
 The TaskForce configuration surface is a Carrier Roster sub-panel pushed onto the same panel stack with `t`; `Esc` returns to the roster before closing the stack at the root.
 
+The in-panel `s` shortcut toggles per-carrier Native(SubAgent) startup state. The saved state applies to the next Claude-family dedicated CLI spawn and does not restart or mutate the currently running child process.
+
 The Job Bar remains in `../../carrier-status/` and is intentionally not imported from this directory.

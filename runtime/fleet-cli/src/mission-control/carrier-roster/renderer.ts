@@ -44,6 +44,7 @@ const INDENT = "    ";
 const SLOT_WIDTH = 4;
 const NAME_WIDTH = 12;
 const MIN_CELL_WIDTH = 40;
+const SUBAGENT_SIGNATURE_CLI_TYPE = "claude";
 
 export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRenderModel, deps: CarrierStatusRenderDeps): string[] {
   const body: CarrierRosterDisplayLine[] = [
@@ -64,7 +65,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
       body.push({
         kind: "cell",
         line: {
-          bg: isSelected ? getEntryBgColor(entry.cliType) : undefined,
+          bg: isSelected ? getEntryBgColorForEntry(entry) : undefined,
           text: withIndent(renderEntryLine(entry, isSelected, deps)),
         },
       });
@@ -210,7 +211,7 @@ function buildEntryEditorLines(entry: CarrierStatusEntry, state: OverlayState, d
   const currentValue = getEntryEditorCurrentValue(entry, state, deps);
   const cursor = "cursor" in state ? state.cursor : 0;
   return options.map((option, index) => {
-    const cursorToken = index === cursor ? `${getEntryColor(entry.cliType)}▸${ANSI_RESET}` : " ";
+    const cursorToken = index === cursor ? `${getCliEntryColor(entry.cliType)}▸${ANSI_RESET}` : " ";
     const marker = option.value === currentValue ? "●" : "○";
     return `      ${cursorToken} ${marker} ${option.label}`;
   });
@@ -271,7 +272,16 @@ function getEntryBgColor(cliType: CarrierCliType): string | undefined {
   return CARRIER_BG_COLORS[cliType];
 }
 
-function getEntryColor(cliType: CarrierCliType): string {
+function getEntryColor(entry: CarrierStatusEntry): string {
+  if (entry.subagentMode) return getSubagentSignatureColor();
+  return CARRIER_COLORS[entry.cliType] ?? "";
+}
+
+function getEntryBgColorForEntry(entry: CarrierStatusEntry): string | undefined {
+  return entry.subagentMode ? getSubagentSignatureBgColor() : getEntryBgColor(entry.cliType);
+}
+
+function getCliEntryColor(cliType: CarrierCliType): string {
   return CARRIER_COLORS[cliType] ?? "";
 }
 
@@ -279,10 +289,18 @@ function getCliDisplayName(cliType: string): string {
   return CLI_DISPLAY_NAMES[cliType] ?? cliType;
 }
 
+function getSubagentSignatureColor(): string {
+  return CARRIER_COLORS[SUBAGENT_SIGNATURE_CLI_TYPE] ?? "";
+}
+
+function getSubagentSignatureBgColor(): string | undefined {
+  return CARRIER_BG_COLORS[SUBAGENT_SIGNATURE_CLI_TYPE];
+}
+
 function getFooterHint(model: CarrierStatusRenderModel): string {
   if (model.renameState) return "이름 입력  Enter save  Esc cancel  Backspace delete  empty = reset";
   if (model.state.kind === "saving") return "저장 중...";
-  if (model.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  Tab  Esc";
+  if (model.state.kind === "browse") return "↑↓ select  Enter edit  s subagent  N rename  c cli  C batch  R reset  t tf  Tab  Esc";
   return "↑↓ select  Enter confirm  Esc cancel";
 }
 
@@ -298,7 +316,7 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const slotStr = `#${entry.slot}`;
   const slotPad = " ".repeat(Math.max(0, SLOT_WIDTH - slotStr.length));
   const namePad = " ".repeat(Math.max(0, NAME_WIDTH - visibleWidth(entry.displayName)));
-  const nameColor = getEntryColor(entry.cliType);
+  const nameColor = getEntryColor(entry);
   const selectedPrefix = isSelected ? `${nameColor}▸${ANSI_RESET}` : " ";
   const coloredName = `${nameColor}${entry.displayName}${ANSI_RESET}`;
   const modelLabel = getModelLabel(deps.getAvailableModels(entry.cliType), entry.model);
@@ -309,7 +327,10 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const tfTag = entry.taskForceBackendCount >= 2
     ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${tfTag}`;
+  const subagentTag = entry.subagentMode
+    ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}${entry.subagentPendingRestart ? dim("*") : ""}`
+    : "";
+  return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${subagentTag}${tfTag}`;
 }
 
 function applyLineBg(line: string, bg: string | undefined): string {

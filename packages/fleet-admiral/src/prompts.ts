@@ -8,7 +8,7 @@
  * 유일한 프로토콜 본문(Fleet Action Protocol)이 직접 인라인된다.
  */
 
-import { buildCarrierRoster, getRegisteredOrder, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import { buildCarrierRoster, getRegisteredOrder, type CarrierRuntime, type ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
 import { type McpToolRegistry, renderAgentToolDoctrineTag } from "@dotobokuri/fleet-mcp-server";
 
 import { FLEET_ACTION_PROMPT } from "./protocols/index.js";
@@ -19,7 +19,7 @@ import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 // ─────────────────────────────────────────────────────────
 
 export interface SystemPromptBuilder {
-  build(injectTone: boolean): string;
+  build(injectTone: boolean, claudeSubagents?: readonly ClaudeSubagentDefinition[]): string;
 }
 
 interface SystemPromptBuilderDeps {
@@ -111,13 +111,21 @@ Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. T
  */
 export function createSystemPromptBuilder(deps: SystemPromptBuilderDeps): SystemPromptBuilder {
   return {
-    build(injectTone) {
-      return buildSystemPrompt(deps, injectTone);
+    build(injectTone, claudeSubagents = []) {
+      return buildSystemPromptWithSubagents(deps, injectTone, claudeSubagents);
     },
   };
 }
 
 export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boolean): string {
+  return buildSystemPromptWithSubagents(deps, injectTone, []);
+}
+
+function buildSystemPromptWithSubagents(
+  deps: SystemPromptBuilderDeps,
+  injectTone: boolean,
+  claudeSubagents: readonly ClaudeSubagentDefinition[],
+): string {
   const parts: string[] = [];
 
   // ── 0. 서문 — 항상 최초 주입 ──
@@ -133,8 +141,17 @@ export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boo
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
   const carrierRuntime = deps.carrierRuntime;
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
-  if (carrierIds.length > 0) {
-    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
+  const subagentCarrierIds = claudeSubagents.map((subagent) => subagent.carrierId);
+  const rosterCarrierIds = carrierIds.filter((carrierId) => !subagentCarrierIds.includes(carrierId));
+  if (rosterCarrierIds.length > 0) {
+    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, {
+      excludeCarrierIds: subagentCarrierIds,
+      heading: "# Available Carriers",
+    })}\n</fleet>`);
+  }
+
+  if (claudeSubagents.length > 0) {
+    parts.push(`<fleet section="subagents">\n${buildNativeSubagentSection(claudeSubagents)}\n</fleet>`);
   }
 
   // ── 3. Fleet Action Protocol — 불변·유일 ──
@@ -156,4 +173,18 @@ export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boo
   }
 
   return parts.join("\n\n");
+}
+
+function buildNativeSubagentSection(subagents: readonly ClaudeSubagentDefinition[]): string {
+  const lines = [
+    "# Native Claude Subagents",
+    "The following Fleet carriers are exposed to this Claude-family dedicated CLI session as native Claude subagents.",
+    "This path coexists with Fleet `carrier_dispatch`; use either route according to the task.",
+    "Native subagent output is not recovered into Fleet `carrier_jobs`, JobArchive, stream events, or `[carrier:result]` reminders.",
+    "",
+  ];
+  for (const subagent of subagents) {
+    lines.push(`- ${subagent.carrierId}: invoke as \`${subagent.name}\` — ${subagent.description}`);
+  }
+  return lines.join("\n");
 }

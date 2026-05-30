@@ -14,6 +14,7 @@ import {
   resolveCarrierDisplayName,
   sanitizeCarrierDisplayName,
   savePerCliSettings,
+  setCarrierSubagentMode,
   updateCarrierCliType,
   updateCarrierDisplayName,
   updateModelSelection,
@@ -85,6 +86,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       startCliTypeEdit: () => this.startCliTypeEdit(),
       startModelEdit: () => this.startModelEdit(),
       startRenameEdit: () => this.startRenameEdit(),
+      toggleSubagentMode: () => this.toggleSubagentMode(),
       toggleDetails: () => this.toggleDetails(),
     });
   }
@@ -487,6 +489,18 @@ export class CarrierStatusOverlay implements Component, Focusable {
       carrierDisplayName: entry.displayName,
       carrierId: entry.carrierId,
     });
+  }
+
+  private toggleSubagentMode(): void {
+    const entry = this.getSelectedEntry();
+    if (!entry) return;
+    const enabled = !entry.subagentMode;
+    setCarrierSubagentMode(entry.carrierId, enabled);
+    notifyStatusUpdate(this.options.carrierRuntime.registry);
+    this.feedbackMessage = enabled
+      ? `${entry.displayName} Native(SubAgent) 활성화: 다음 Claude 계열 dedicated CLI 시작부터 적용됩니다.`
+      : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
+    this.options.requestRender();
   }
 
   private cancelEdit(): void {

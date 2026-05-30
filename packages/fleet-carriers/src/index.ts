@@ -11,12 +11,15 @@ import * as jobLifecycle from "./jobs/lifecycle.js";
 import * as jobSanitize from "./jobs/sanitize.js";
 import * as jobTypes from "./jobs/types.js";
 import * as carrierPersonas from "./personas/index.js";
+import * as carrierSubagents from "./subagents/index.js";
 import * as carrierStore from "./store/index.js";
 
 export { registerDefaultCarriers } from "./agent-specs.js";
 export * from "./constants.js";
 export * as personas from "./personas/index.js";
+export * as subagents from "./subagents/index.js";
 export * as store from "./store/index.js";
+export * from "./subagents/index.js";
 export * from "./dispatch/framework.js";
 export * from "./dispatch/status-overlay.js";
 export * from "./dispatch/taskforce.js";
@@ -58,6 +61,12 @@ export {
   updateCliTypeOverride,
   applyCliTypeModelSelectionUpdate,
   loadCarrierDisplayNames,
+  readCarrierSubagentModeSnapshot,
+  isCarrierSubagentModeEnabled,
+  setCarrierSubagentMode,
+  filterCarrierSubagentModesToRegisteredIds,
+  getEnabledCarrierSubagentIds,
+  getSubagentModeFilePath,
   updateCarrierDisplayName,
   normalizeCarrierDisplayNameInput,
   sanitizeCarrierDisplayName,
@@ -73,6 +82,8 @@ export type {
   FleetStoreSnapshot,
   FleetStoreWriteFingerprint,
   SelectedModelsConfig,
+  CarrierSubagentMode,
+  CarrierSubagentModeSnapshot,
 } from "./store/index.js";
 export * from "./personas/index.js";
 
@@ -81,6 +92,7 @@ export interface CarrierRuntime {
   dispatch: typeof dispatch;
   jobs: ReturnType<typeof createBoundCarrierJobs>;
   personas: typeof carrierPersonas;
+  subagents: typeof carrierSubagents;
   store: typeof carrierStore;
   stream: ReturnType<typeof createBoundCarrierStream>;
   registerCarrierDefaults(): void;
@@ -139,6 +151,7 @@ export function createCarrierRuntime(): CarrierRuntime {
     dispatch,
     jobs: boundCarrierJobs,
     personas: carrierPersonas,
+    subagents: carrierSubagents,
     store: carrierStore,
     stream: boundStream,
     registerCarrierDefaults() {

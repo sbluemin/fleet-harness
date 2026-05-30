@@ -1,3 +1,5 @@
+import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
+
 export type AgentCliId = "claude" | "claude-zai" | "claude-kimi" | "codex";
 
 export interface AgentCliProfile {
@@ -32,6 +34,7 @@ export interface AgentCliProfileOptions {
 }
 
 export interface AgentCliInjectionContext {
+  readonly claudeSubagents?: readonly ClaudeSubagentDefinition[];
   readonly cliId: AgentCliId;
   readonly replaceSystemPrompt: boolean;
   readonly systemPromptFile: string;

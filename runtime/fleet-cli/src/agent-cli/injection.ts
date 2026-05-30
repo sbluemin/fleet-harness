@@ -3,6 +3,15 @@ import os from "node:os";
 import path from "node:path";
 
 import type { ExecutorSessionManager } from "@dotobokuri/fleet-mcp-server";
+import {
+  buildClaudeSubagentDefinitions,
+  getCarrierConfig,
+  getEnabledCarrierSubagentIds,
+  getRegisteredOrder,
+  readCarrierSubagentModeSnapshot,
+  type CarrierRuntime,
+  type ClaudeSubagentDefinition,
+} from "@dotobokuri/fleet-carriers";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
@@ -10,7 +19,8 @@ import { getAgentCliInjectionCapability } from "./capabilities.js";
 import type { AgentCliInjectionContext, AgentCliProfile } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly buildSystemPrompt: (injectTone: boolean) => string;
+  readonly buildSystemPrompt: (injectTone: boolean, claudeSubagents?: readonly ClaudeSubagentDefinition[]) => string;
+  readonly carrierRuntime: CarrierRuntime;
   readonly dedicatedMcpSession: ExecutorSessionManager;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
@@ -31,8 +41,10 @@ export async function injectAgentCliProfile(
     cwd: profile.cwd,
     label: `agent:${profile.id}`,
   });
-  const systemPromptFile = writeSystemPromptFile(profile.id, options.buildSystemPrompt(injectTone));
+  const claudeSubagents = buildStartupClaudeSubagents(profile.id, options.carrierRuntime);
+  const systemPromptFile = writeSystemPromptFile(profile.id, options.buildSystemPrompt(injectTone, claudeSubagents));
   const context: AgentCliInjectionContext = {
+    claudeSubagents,
     cliId: profile.id,
     mcpServers: buildAgentCliMcpServerConfigs(endpoint.servers, tokens),
     replaceSystemPrompt: options.replaceSystemPrompt ?? true,
@@ -44,6 +56,24 @@ export async function injectAgentCliProfile(
     args: [...profile.args, ...injectedArgs],
     env: { ...profile.env },
   };
+}
+
+function buildStartupClaudeSubagents(
+  cliId: AgentCliProfile["id"],
+  carrierRuntime: CarrierRuntime,
+): ClaudeSubagentDefinition[] {
+  if (!isClaudeFamilyCli(cliId)) return [];
+  const carrierIds = getRegisteredOrder(carrierRuntime.registry);
+  const enabledCarrierIds = getEnabledCarrierSubagentIds(readCarrierSubagentModeSnapshot(), carrierIds);
+  if (enabledCarrierIds.length === 0) return [];
+  const carrierConfigs = carrierIds
+    .map((carrierId) => getCarrierConfig(carrierRuntime.registry, carrierId))
+    .filter((config): config is NonNullable<typeof config> => config !== undefined);
+  return buildClaudeSubagentDefinitions({ carrierConfigs, enabledCarrierIds });
+}
+
+function isClaudeFamilyCli(cliId: AgentCliProfile["id"]): boolean {
+  return cliId === "claude" || cliId === "claude-zai" || cliId === "claude-kimi";
 }
 
 function buildAgentCliMcpServerConfigs(

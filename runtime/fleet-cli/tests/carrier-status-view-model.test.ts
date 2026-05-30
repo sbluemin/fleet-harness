@@ -10,6 +10,7 @@ import {
   initStore,
   registerCarrier,
   resetStoreForTests,
+  setCarrierSubagentMode,
 } from "@dotobokuri/fleet-carriers";
 
 import { buildStatusEntries } from "../src/mission-control/carrier-roster/view-model.js";
@@ -59,9 +60,27 @@ describe("carrier status view model", () => {
     expect(entry?.role).toBe("Chief Engineer");
     expect(entry?.roleDescription).toBe("Chief Engineer - Full-stack implementation workhorse");
   });
+
+  it("reads subagent mode independently of carrier cliType", () => {
+    const runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createCarrierConfig({
+      summary: "Runs with Codex by default",
+      title: "Operator",
+    }, "codex"));
+    setCarrierSubagentMode("metadata_test", true);
+
+    const entry = buildStatusEntries(runtime)[0];
+
+    expect(entry?.cliType).toBe("codex");
+    expect(entry?.subagentMode).toBe(true);
+    expect(entry?.subagentPendingRestart).toBe(true);
+  });
 });
 
-function createCarrierConfig(metadata: Pick<CarrierMetadata, "summary" | "title">): CarrierConfig {
+function createCarrierConfig(
+  metadata: Pick<CarrierMetadata, "summary" | "title">,
+  cliType: CarrierConfig["cliType"] = "claude",
+): CarrierConfig {
   return {
     carrierMetadata: {
       allowedExecutorTools: [],
@@ -74,9 +93,9 @@ function createCarrierConfig(metadata: Pick<CarrierMetadata, "summary" | "title"
       whenToUse: [],
       ...metadata,
     },
-    cliType: "claude",
+    cliType,
     color: "",
-    defaultCliType: "claude",
+    defaultCliType: cliType,
     displayName: "Metadata Test",
     id: "metadata_test",
     slot: 1,
