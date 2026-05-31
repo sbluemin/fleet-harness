@@ -48,6 +48,26 @@
     ],
     "updated": "2026-05-23T17:37:53.758Z"
   },
+  "guide-004-cli-subagent-injection": {
+    "path": "wiki/guide-004-cli-subagent-injection.md",
+    "title": "Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안",
+    "tags": [
+      "guide",
+      "cli",
+      "sub-agent",
+      "native-subagent",
+      "claude-code",
+      "codex",
+      "opencode",
+      "spawn",
+      "comparison",
+      "fleet-cli",
+      "dedicated-cli",
+      "carrier",
+      "current"
+    ],
+    "updated": "2026-05-31T09:21:56.506Z"
+  },
   "guide-unified-agent-cursor-composer-25": {
     "path": "wiki/guide-unified-agent-cursor-composer-25.md",
     "title": "Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결",

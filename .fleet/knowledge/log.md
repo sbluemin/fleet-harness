@@ -3073,3 +3073,58 @@
 - result: `accepted`
 - target: `wiki/decision-fleet-cli-mouse-input.md`
 
+## 2026-05-31T09:19:39.452Z — drydock run
+
+- error_count: `0`
+- info_count: `5`
+- issue_count: `12`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-31T09:21:27.660Z — patch rejected
+
+- patch_id: `2026-05-25T14-40-55-506Z-5feb76e8`
+- patch_set_id: `null`
+- reason: `Superseded by updated Codex native subagent research: Codex custom roles require session-scoped role TOML plus spawn-time agents.<role>.config_file overrides, not inline developer_instructions.`
+- result: `rejected`
+
+## 2026-05-31T09:21:56.521Z — raw source added
+
+- id: `guide-004-cli-subagent-injection-source`
+- raw_source_ref: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md`
+- source_type: `inline`
+- tag_count: `13`
+- title: `Codex native subagent spawn-time research insights, 2026-05-31`
+
+## 2026-05-31T09:21:56.524Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-05-31T09-21-56-506Z-43b53880`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+- warning_count: `0`
+
+## 2026-05-31T09:21:59.123Z — drydock run
+
+- error_count: `0`
+- info_count: `5`
+- issue_count: `12`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-05-31T09:23:41.411Z — index rebuilt
+
+- entry_count: `22`
+
+## 2026-05-31T09:23:41.412Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-05-31T09-21-56-506Z-43b53880`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md`
+- result: `accepted`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+

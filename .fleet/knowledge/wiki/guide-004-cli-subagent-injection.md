@@ -1,0 +1,95 @@
+---
+id: "guide-004-cli-subagent-injection"
+title: "Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안"
+tags: ["guide", "cli", "sub-agent", "native-subagent", "claude-code", "codex", "opencode", "spawn", "comparison", "fleet-cli", "dedicated-cli", "carrier", "current"]
+created: "2026-05-31T09:21:56.506Z"
+updated: "2026-05-31T09:21:56.506Z"
+version: 1
+rawSourceRef: "raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md"
+rawSourceRefs: "[{\"ref\":\"raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md\",\"title\":\"Codex native subagent spawn-time research insights, 2026-05-31\",\"hash\":\"64d34adf\"}]"
+---
+# 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+
+## Overview
+
+Fleet이 Claude Code, Codex CLI, OpenCode 같은 외부 dedicated CLI를 spawn할 때 native subagent/persona를 주입하는 방법을 비교하고, Codex에 적용할 구현 방안을 정리한다.
+
+핵심 업데이트는 다음과 같다. Codex CLI 0.135.0 계열은 native `multi_agent`/`spawn_agent`를 지원하지만 Claude Code의 `--agents <JSON>` 같은 인라인 정의 플래그는 없다. Fleet이 Codex spawn 시점에 custom subagent 역할을 등록하려면 세션 범위 role TOML 파일을 만들고, Codex 실행 인자에 `-c agents.<role>.description=...` 및 `-c agents.<role>.config_file=/absolute/path/to/role.toml`을 주입해야 한다.
+
+## 결론 요약
+
+| 항목 | Claude Code | Codex CLI | OpenCode |
+|---|---|---|---|
+| 인라인 subagent 정의 | `--agents <JSON>` 지원 | 직접 인라인 정의 없음 | 직접 인라인 정의 없음 |
+| spawn 시점 커스텀 정의 | JSON 인자로 전달 | role TOML 파일 + `-c agents.<role>.config_file` | config/env 또는 파일 기반 |
+| 역할 호출 방식 | Task 도구의 subagent type | Codex 내부 `spawn_agent(agent_type=...)` | `--agent <name>` 이름 선택 |
+| Fleet 권장 패턴 | 기존 Claude native path 유지 | 세션 임시 TOML 생성 후 Codex argv에 config override 주입 | 별도 wave에서 env/config 기반 검토 |
+
+## Codex 적용 방안
+
+1. Fleet의 carrier/subagent 메타데이터를 Codex custom role 데이터로 변환한다.
+2. Codex dedicated CLI spawn 직전에 세션 범위 디렉터리를 만든다. 권장 위치는 workspace 내부 `.fleet/codex-agents/<session-id>/`이며 디렉터리 권한은 `0700`을 사용한다.
+3. 각 enabled Codex subagent에 대해 안정적인 role key를 만든다. 예: `fleet_ohio`, `fleet_sentinel`. role key는 dot path 파싱 문제를 피하도록 영문/숫자/underscore로 제한하고, Codex built-in role인 `default`, `explorer`, `worker`, `awaiter`와 충돌하지 않도록 항상 `fleet_` 접두사를 붙인다.
+4. role별 TOML 파일을 원자적으로 작성한다. 임시 파일에 쓰고 fsync 후 rename하며 파일 권한은 `0600`을 사용한다.
+5. role TOML에는 최소한 다음 필드를 둔다.
+
+```toml
+name = "fleet_ohio"
+description = "Ohio carrier role for Fleet native Codex subagents."
+developer_instructions = """
+Fleet carrier persona and operating guidance for Ohio.
+"""
+```
+
+6. Codex spawn argv에는 role descriptor와 role file path를 주입한다.
+
+```bash
+codex \
+  -c 'agents.fleet_ohio.description="Ohio carrier role for Fleet native Codex subagents."' \
+  -c 'agents.fleet_ohio.config_file="/abs/path/.fleet/codex-agents/<session-id>/fleet_ohio.toml"'
+```
+
+7. role TOML 파일은 Codex 프로세스/세션이 종료될 때까지 유지한다. 실제 `spawn_agent(agent_type="fleet_ohio")` 호출은 초기 프로세스 시작 이후에 발생할 수 있으므로, spawn 직후 바로 삭제하면 안 된다.
+8. 세션 종료 시 cleanup하고, Fleet 시작 시 `.fleet/codex-agents/`의 오래된 orphan 디렉터리를 sweep한다.
+9. 필요하면 `agents.max_threads`를 enabled role 수나 정책값에 맞춰 함께 조정한다. Codex의 Multi-Agent V1은 현재 기본 적용 대상으로 보고, V2는 별도 opt-in wave로 취급한다.
+
+## 왜 inline developer_instructions가 아닌가
+
+Codex의 `[agents.<role>]` registry entry는 role descriptor이다. 이 descriptor에는 `description`, `config_file`, `nickname_candidates` 정도만 두는 것이 확인된 경로이며, 실제 role prompt인 `developer_instructions`는 role TOML 파일 안에서 파싱된다. 따라서 `-c agents.<role>.developer_instructions=...` 같은 dotted override는 Fleet의 정식 등록 경로로 보지 않는다.
+
+즉 최종 패턴은 다음 두 단계다.
+
+1. 세션 임시 폴더에 subagent role TOML 파일을 만든다.
+2. Codex spawn 시점에 해당 TOML 파일의 절대 경로를 `agents.<role>.config_file`로 주입한다.
+
+## 패키지별 적용 경계
+
+- `packages/fleet-carriers`: carrier persona와 subagent metadata를 provider-neutral role model로 변환한다. 파일 생성과 Codex argv 조립은 담당하지 않는다.
+- `runtime/fleet-cli`: Codex dedicated CLI builder에서 temp role TOML lifecycle과 `-c agents.<role>.*` argv 주입을 담당한다.
+- `packages/fleet-admiral`: Claude 전용 문구를 provider-neutral native subagent 안내로 조정하고, native subagent carrier는 일반 Fleet roster와 중복 노출되지 않도록 유지한다.
+- `packages/unified-agent`: dedicated CLI wave와 분리한다. unified transport에서 Codex native subagent를 다룰지는 별도 설계 wave로 판단한다.
+
+## 안전 체크리스트
+
+- `config_file`은 절대 경로를 사용한다.
+- role key는 sanitize하고 `fleet_` 접두사를 붙인다.
+- role TOML의 `name`이 registry key와 불일치하지 않도록 검증한다.
+- temp dir은 workspace `.fleet/` 하위 세션 디렉터리를 사용하고 `~/.codex`나 project `.codex`를 오염시키지 않는다.
+- 파일은 `0700` 디렉터리와 `0600` 파일 권한으로 생성한다.
+- TOML write는 atomic write + fsync + rename을 사용한다.
+- Codex 세션 종료 전까지 role 파일을 유지한다.
+- Fleet `carrier_jobs` 결과 수집과 Codex 내부 native subagent 결과 수집은 같은 채널이 아니므로 혼동하지 않는다.
+
+## 검증 근거
+
+- 로컬 Codex CLI: `codex-cli 0.135.0`, `multi_agent stable true`, `multi_agent_v2 under development false`.
+- 공식 문서: `https://developers.openai.com/codex/subagents`.
+- upstream Codex source: `codex-rs/config/src/config_toml.rs`의 `AgentRoleToml`, `codex-rs/core/src/config/agent_roles.rs`의 role TOML 파서, `codex-rs/core/src/agent/role.rs`, `codex-rs/core/src/tools/handlers/multi_agents/spawn.rs`.
+- Fleet research jobs: `carrier:795b1505-fd5c-4150-8515-8628b3a3b757`, `carrier:2fcf044f-b691-4d88-9776-10e95ff0896f`, `carrier:b5f304be-ab55-4ea7-8d76-12c328adc062`.
+- Fleet review jobs: `taskforce:86aaeea8-2b3f-4538-9533-82a5c2611b0b`, `taskforce:0a53fd24-5104-4764-8a54-18a98d382f14`, `carrier:153a7bc7-3b5b-4b52-ba19-63c7485d7ceb`.
+
+## Related
+
+- [[wiki:prd-tui-mission-control]]
+- [[wiki:prd-agent-core-model-bypass]]
+- [[wiki:prd-carrier-persona-extraction]]
