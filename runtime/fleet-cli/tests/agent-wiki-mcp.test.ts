@@ -104,6 +104,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
       claudeSubagents: [
         {
           carrierId: "ohio",
+          color: "yellow" as const,
           description: "Ohio native subagent",
           name: "Ohio",
           prompt: "system prompt",
@@ -115,6 +116,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(claudeArgs.filter((arg) => arg === "--agents")).toHaveLength(1);
     expect(JSON.parse(claudeArgs[claudeArgs.indexOf("--agents") + 1]!)).toEqual({
       "Ohio": {
+        color: "yellow",
         description: "Ohio native subagent",
         prompt: "system prompt",
       },
@@ -172,6 +174,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(extractFleetSection(systemPrompt, "roster")).not.toContain("**ohio**");
     expect(extractFleetSection(systemPrompt, "roster")).not.toContain('carrier_id: "ohio"');
     expect(extractFleetSection(systemPrompt, "subagents")).toContain("- ohio: invoke as `Ohio`");
+    expect(extractFleetSection(systemPrompt, "subagents")).toContain("When invoking a native subagent, use the carrier's structured request blocks below and keep the request concise.");
+    expect(extractFleetSection(systemPrompt, "subagents")).toContain("Request blocks — wrap content in these (? = optional):");
+    expect(extractFleetSection(systemPrompt, "subagents")).toContain("<plan_file> required:");
   });
 
   it("renders original carrier ids separately from slugged native subagent invocation names", async () => {

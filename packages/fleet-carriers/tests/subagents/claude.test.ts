@@ -18,10 +18,11 @@ describe("Claude subagent conversion", () => {
     expect(definition.prompt).toContain("<your_permissions>");
     expect(definition.prompt).toContain("<output_format>");
     expect(definition.model).toBe("sonnet");
+    expect(definition.color).toBe("yellow");
     expect(definition).not.toHaveProperty("tools");
   });
 
-  it("includes enabled carriers without cliType filtering", () => {
+  it("includes enabled carriers with deterministic Claude colors and without cliType filtering", () => {
     const definitions = buildClaudeSubagentDefinitions({
       carrierConfigs: [
         createCarrierConfig("ohio", "codex"),
@@ -32,6 +33,23 @@ describe("Claude subagent conversion", () => {
 
     expect(definitions.map((definition) => definition.name)).toEqual(["Ohio", "Sentinel"]);
     expect(definitions.map((definition) => definition.carrierId)).toEqual(["ohio", "sentinel"]);
+    expect(definitions.map((definition) => definition.color)).toEqual(["yellow", "red"]);
+  });
+
+  it("maps every default carrier to a Claude 8-color enum value", () => {
+    const definitions = ["nimitz", "vanguard", "chronicle", "genesis", "kirov", "ohio", "sentinel", "tempest"]
+      .map((id) => buildClaudeSubagentDefinition(createCarrierConfig(id)));
+
+    expect(Object.fromEntries(definitions.map((definition) => [definition.carrierId, definition.color]))).toEqual({
+      nimitz: "blue",
+      vanguard: "cyan",
+      chronicle: "green",
+      genesis: "orange",
+      kirov: "purple",
+      ohio: "yellow",
+      sentinel: "red",
+      tempest: "pink",
+    });
   });
 });
 

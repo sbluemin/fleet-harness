@@ -1,8 +1,18 @@
 import { buildCarrierSystemPrompt } from "../dispatch/tool-spec.js";
 import type { CarrierConfig } from "../dispatch/types.js";
-import type { BuildClaudeSubagentDefinitionsOptions, ClaudeSubagentDefinition } from "./types.js";
+import type { BuildClaudeSubagentDefinitionsOptions, ClaudeSubagentColor, ClaudeSubagentDefinition } from "./types.js";
 
 const NAME_SEGMENT_SPLIT_PATTERN = /[^a-zA-Z0-9]+/;
+export const CLAUDE_SUBAGENT_COLORS: Readonly<Record<string, ClaudeSubagentColor>> = {
+  nimitz: "blue",
+  vanguard: "cyan",
+  chronicle: "green",
+  genesis: "orange",
+  kirov: "purple",
+  ohio: "yellow",
+  sentinel: "red",
+  tempest: "pink",
+};
 
 export function buildClaudeSubagentDefinitions(
   options: BuildClaudeSubagentDefinitionsOptions,
@@ -14,8 +24,10 @@ export function buildClaudeSubagentDefinitions(
 }
 
 export function buildClaudeSubagentDefinition(config: CarrierConfig): ClaudeSubagentDefinition {
+  const color = CLAUDE_SUBAGENT_COLORS[config.id];
   const definition: ClaudeSubagentDefinition = {
     carrierId: config.id,
+    ...(color ? { color } : {}),
     description: buildDescription(config),
     name: buildClaudeSubagentName(config.id),
     prompt: buildCarrierSystemPrompt(config.carrierMetadata),

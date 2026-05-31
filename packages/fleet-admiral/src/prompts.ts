@@ -8,7 +8,15 @@
  * 유일한 프로토콜 본문(Fleet Action Protocol)이 직접 인라인된다.
  */
 
-import { buildCarrierRoster, getRegisteredOrder, type CarrierRuntime, type ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
+import {
+  buildCarrierRoster,
+  formatRequestBlocksGuide,
+  getRegisteredCarrierConfig,
+  getRegisteredOrder,
+  type CarrierMetadata,
+  type CarrierRuntime,
+  type ClaudeSubagentDefinition,
+} from "@dotobokuri/fleet-carriers";
 import { type McpToolRegistry, renderAgentToolDoctrineTag } from "@dotobokuri/fleet-mcp-server";
 
 import { FLEET_ACTION_PROMPT } from "./protocols/index.js";
@@ -151,7 +159,15 @@ function buildSystemPromptWithSubagents(
   }
 
   if (claudeSubagents.length > 0) {
-    parts.push(`<fleet section="subagents">\n${buildNativeSubagentSection(claudeSubagents)}\n</fleet>`);
+    const metadataByCarrierId = new Map(
+      claudeSubagents
+        .map((subagent) => [
+          subagent.carrierId,
+          getRegisteredCarrierConfig(carrierRuntime.registry, subagent.carrierId)?.carrierMetadata,
+        ] as const)
+        .filter((entry): entry is readonly [string, CarrierMetadata] => Boolean(entry[1])),
+    );
+    parts.push(`<fleet section="subagents">\n${buildNativeSubagentSection(claudeSubagents, metadataByCarrierId)}\n</fleet>`);
   }
 
   // ── 3. Fleet Action Protocol — 불변·유일 ──
@@ -175,16 +191,26 @@ function buildSystemPromptWithSubagents(
   return parts.join("\n\n");
 }
 
-function buildNativeSubagentSection(subagents: readonly ClaudeSubagentDefinition[]): string {
+function buildNativeSubagentSection(
+  subagents: readonly ClaudeSubagentDefinition[],
+  metadataByCarrierId: ReadonlyMap<string, CarrierMetadata>,
+): string {
   const lines = [
     "# Native Claude Subagents",
     "The following Fleet carriers are exposed to this Claude-family dedicated CLI session as native Claude subagents.",
     "This path coexists with Fleet `carrier_dispatch`; use either route according to the task.",
     "Native subagent output is not recovered into Fleet `carrier_jobs`, JobArchive, stream events, or `[carrier:result]` reminders.",
+    "When invoking a native subagent, use the carrier's structured request blocks below and keep the request concise.",
     "",
   ];
   for (const subagent of subagents) {
     lines.push(`- ${subagent.carrierId}: invoke as \`${subagent.name}\` — ${subagent.description}`);
+    const metadata = metadataByCarrierId.get(subagent.carrierId);
+    const blockLines = metadata ? formatRequestBlocksGuide(metadata) : [];
+    if (blockLines.length > 0) {
+      lines.push("  Request blocks — wrap content in these (? = optional):");
+      lines.push(...blockLines);
+    }
   }
   return lines.join("\n");
 }
