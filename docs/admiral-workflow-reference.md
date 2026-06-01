@@ -50,4 +50,4 @@ Preserve:
 - Carrier completion push semantics.
 - Detached-job acceptance vs completion-push distinction.
 - MCP/provider FIFO and archive behavior.
-- Multi-instance state integrity for shared `states.json`.
+- Multi-instance state integrity for shared `carriers.json`.

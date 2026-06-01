@@ -7,7 +7,7 @@
  * 프레임워크가 자동 관리하는 것:
  *  - Carrier 상태 관리
  *  - 등록 순서/메타데이터 보관
- *  - 렌더러 등록 (커스텀 or 기본)
+ *  - slot 기반 등록 순서 관리
  */
 
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
@@ -19,8 +19,8 @@ import {
   CLI_DISPLAY_NAMES,
 } from "../constants.js";
 import {
-  loadCarrierDisplayNames,
-  resolveCarrierCliType as resolveCarrierCliTypeFromStore,
+  loadCarrierDisplayNameOverrides,
+  resolveAgentCliType as resolveAgentCliTypeFromStore,
   sanitizeCarrierDisplayName,
 } from "../store/index.js";
 
@@ -98,7 +98,7 @@ export function registerCarrier(
 
   const gs = registry.getState();
   const existingState = gs.modes.get(config.id);
-  const resolvedCliType = resolveCarrierCliTypeFromStore(config.id, config.defaultCliType);
+  const resolvedCliType = resolveAgentCliTypeFromStore(config.id, config.defaultCliType);
 
   // Carrier 상태 등록
   if (existingState) {
@@ -106,11 +106,10 @@ export function registerCarrier(
     existing.displayName = config.displayName;
     existing.slot = config.slot;
     existing.defaultCliType = config.defaultCliType;
-    existing.renderResponse = config.renderResponse;
-    existing.renderUser = config.renderUser;
-    existing.carrierMetadata = config.carrierMetadata;
     existing.defaultModel = config.defaultModel;
     existing.defaultEffort = config.defaultEffort;
+    existing.carrierMetadata = config.carrierMetadata;
+    existing.subagent = config.subagent;
     existing.color = config.color;
     existing.bgColor = config.bgColor;
     existing.color = CARRIER_COLORS[resolvedCliType] ?? "";
@@ -237,8 +236,8 @@ export function getRegisteredCarrierConfig(registry: CarrierRegistry, carrierId:
 
 export const getCarrierConfig = getRegisteredCarrierConfig;
 
-export function resolveCarrierCliType(carrierId: string, defaultCliType: CliType): CliType {
-  return resolveCarrierCliTypeFromStore(carrierId, defaultCliType);
+export function resolveAgentCliType(carrierId: string, defaultCliType: CliType): CliType {
+  return resolveAgentCliTypeFromStore(carrierId, defaultCliType);
 }
 
 /**
@@ -250,7 +249,7 @@ export function getAllCliTypes(registry: CarrierRegistry): CliType[] {
   const types = new Set<string>();
   for (const id of gs.registeredOrder) {
     const config = gs.modes.get(id)?.config;
-    const cliType = config ? resolveCarrierCliTypeFromStore(id, config.defaultCliType) : undefined;
+    const cliType = config ? resolveAgentCliTypeFromStore(id, config.defaultCliType) : undefined;
     if (cliType) types.add(cliType);
   }
   return [...types] as CliType[];
@@ -259,27 +258,27 @@ export function getAllCliTypes(registry: CarrierRegistry): CliType[] {
 /** carrierId 기준으로 전경(프레임) 색상을 반환합니다. */
 export function resolveCarrierColor(registry: CarrierRegistry, carrierId: string): string {
   const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
+  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CARRIER_COLORS[cliType] ?? "";
 }
 
 /** carrierId 기준으로 배경색을 반환합니다. */
 export function resolveCarrierBgColor(registry: CarrierRegistry, carrierId: string): string {
   const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
+  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CARRIER_BG_COLORS[cliType] ?? "";
 }
 
 /** carrierId 기준으로 파도 그라데이션용 RGB를 반환합니다. */
 export function resolveCarrierRgb(registry: CarrierRegistry, carrierId: string): [number, number, number] {
   const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
+  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CARRIER_RGBS[cliType] ?? DEFAULT_CARRIER_RGB;
 }
 
 /** carrierId 기준으로 carrier 표시 이름을 반환합니다. */
 export function resolveCarrierDisplayName(registry: CarrierRegistry, carrierId: string): string {
-  const persistedDisplayName = loadCarrierDisplayNames()[carrierId];
+  const persistedDisplayName = loadCarrierDisplayNameOverrides()[carrierId];
   if (persistedDisplayName) return persistedDisplayName;
   return getCarrierSourceDisplayName(registry, carrierId);
 }
@@ -296,7 +295,7 @@ export function getCarrierSourceDisplayName(registry: CarrierRegistry, carrierId
 /** carrierId 기준으로 실제 CLI 표시 이름을 반환합니다. */
 export function resolveCarrierCliDisplayName(registry: CarrierRegistry, carrierId: string): string {
   const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveCarrierCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
+  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
   return CLI_DISPLAY_NAMES[cliType] ?? cliType;
 }
 

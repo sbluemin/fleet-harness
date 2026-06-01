@@ -2,7 +2,7 @@ import {
   type CarrierRuntime,
   getConfiguredTaskForceCarrierIdsFromSnapshot,
   getRegisteredOrder,
-  readStatesSnapshot,
+  readCarriersSnapshot,
   setTaskForceConfiguredCarriers,
 } from "@dotobokuri/fleet-carriers";
 
@@ -11,7 +11,7 @@ export function reconcileRuntimeState(carrierRuntime: CarrierRuntime): void {
   setTaskForceConfiguredCarriers(
     registry,
     getConfiguredTaskForceCarrierIdsFromSnapshot(
-      readStatesSnapshot(),
+      readCarriersSnapshot(),
       getRegisteredOrder(registry),
     ),
   );

@@ -30,7 +30,7 @@ describe("session options resolver", () => {
       parseCliId: parseAgentCliId,
       preset: {
         version: 1,
-        defaultCliId: "claude-zai",
+        defaultCliId: "claude-kimi",
         byCli: {
           codex: {
             cursorSync: true,
@@ -65,13 +65,13 @@ describe("session options resolver", () => {
     const resolved = resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
-      env: { FLEET_AGENT_CLI: "codex", FLEET_CURSOR_SYNC: "0" },
+      env: { FLEET_AGENT_CLI: "claude-kimi", FLEET_CURSOR_SYNC: "0" },
       parseCliId: parseAgentCliId,
       preset: {
         version: 1,
-        defaultCliId: "claude-zai",
+        defaultCliId: "codex",
         byCli: {
-          codex: {
+          "claude-kimi": {
             enableMetaphor: true,
             model: "preset-model",
             native: true,
@@ -82,7 +82,7 @@ describe("session options resolver", () => {
     });
 
     expect(resolved.values).toEqual({
-      cliId: "codex",
+      cliId: "claude-kimi",
       cursorSync: false,
       enableMetaphor: true,
       model: "preset-model",

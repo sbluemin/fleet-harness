@@ -26,7 +26,8 @@ import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
-  loadModels,
+  isCarrierAgentModeSubagent,
+  loadCarrierStates,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
 import {
@@ -34,7 +35,7 @@ import {
   getRegisteredOrder,
   emitStreamEvent,
   logDebug,
-  resolveCarrierCliType,
+  resolveAgentCliType,
   resolveCarrierDisplayName,
   resolveValidatedEffort,
   toCarrierJobStatus,
@@ -88,6 +89,8 @@ export type RequiredBlockValidationResult =
 
 /** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
 export interface CarrierRosterOptions {
+  /** 로스터에서 제외할 carrier ID 목록 */
+  excludeCarrierIds?: readonly string[];
   /** 로스터 섹션 제목 (기본: "## Available Carriers") */
   heading?: string;
   /** 로스터 본문 앞에 추가할 안내 라인들 */
@@ -225,6 +228,16 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
 
       const metadata = config.carrierMetadata;
 
+      if (isCarrierAgentModeSubagent(carrierId, config.defaultAgentMode)) {
+        const displayName = resolveCarrierDisplayName(registry, carrierId);
+        logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier subagent mode enabled carrier=${carrierId}`);
+        return launchResponseResult({
+          job_id: jobId,
+          accepted: false,
+          error: `Carrier "${carrierId}" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "${displayName}".`,
+        });
+      }
+
       // 필수 request-block 검증
       if (metadata) {
         const blockValidation = validateRequiredRequestBlocks(metadata, request, carrierId);
@@ -348,11 +361,21 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   const execStartedAt = Date.now();
   const carrierConfig = getRegisteredCarrierConfig(opts.registry, opts.carrierId);
   const cliType = carrierConfig
-    ? resolveCarrierCliType(opts.carrierId, carrierConfig.defaultCliType)
+    ? resolveAgentCliType(opts.carrierId, carrierConfig.defaultCliType)
     : (opts.carrierId as CliType);
-  const modelConfig = loadModels({ [opts.carrierId]: cliType })[opts.carrierId];
-  const model = modelConfig?.model;
-  const effort = resolveValidatedEffort(cliType, model, modelConfig?.effort);
+  const modelConfig = loadCarrierStates({
+    [opts.carrierId]: carrierConfig
+      ? {
+        cliType,
+        ...(carrierConfig.defaultAgentMode ? { defaultAgentMode: carrierConfig.defaultAgentMode } : {}),
+        ...(carrierConfig.defaultEffort ? { defaultEffort: carrierConfig.defaultEffort } : {}),
+        ...(carrierConfig.defaultModel ? { defaultModel: carrierConfig.defaultModel } : {}),
+      }
+      : cliType,
+  })[opts.carrierId];
+  const agentCli = modelConfig?.agentCli[cliType];
+  const model = agentCli?.model;
+  const effort = resolveValidatedEffort(cliType, model, agentCli?.effort);
   let sessionId: string | undefined;
 
   logDebug(
@@ -577,7 +600,8 @@ export function buildCarrierRoster(
   carrierIds: string[],
   options?: CarrierRosterOptions,
 ): string {
-  const { heading, preambleLines, extraLines } = options ?? {};
+  const { excludeCarrierIds, heading, preambleLines, extraLines } = options ?? {};
+  const excluded = new Set(excludeCarrierIds ?? []);
   const lines: string[] = [];
 
   lines.push(heading ?? `## Available Carriers`);
@@ -586,6 +610,7 @@ export function buildCarrierRoster(
   }
 
   for (const carrierId of carrierIds) {
+    if (excluded.has(carrierId)) continue;
     const config = getRegisteredCarrierConfig(registry, carrierId);
     if (!config) continue;
 

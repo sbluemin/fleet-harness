@@ -5,9 +5,29 @@
  * Tempest carrier를 프레임워크에 등록합니다.
  */
 
-import type { CarrierMetadata } from "../dispatch/types.js";
+import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
 import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+
+export const TEMPEST_DEFAULTS: CarrierPersonaDefaults = {
+  id: "tempest",
+  displayName: "Tempest",
+  slot: 7,
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultAgentMode: "subagent",
+      defaultModel: "sonnet",
+      defaultEffort: "medium",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "medium" },
+        codex: { defaultModel: "gpt-5.4-mini", defaultEffort: "xhigh" },
+      },
+    },
+  },
+};
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──

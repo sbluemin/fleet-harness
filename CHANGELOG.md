@@ -5,14 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [core] Job-bar strip now shows an `[SA]` badge for carriers in Native(SubAgent) mode.
+- [core] Restored the `claude-kimi` dedicated Agent CLI profile for Claude-family native subagent sessions.
+- [core] Added per-carrier Native(SubAgent) toggles for Claude-family dedicated CLI sessions.
+- [core] Added per-carrier Claude Native(SubAgent) effort defaults to startup agent payloads.
+- [core] carrier_dispatch now rejects carriers in native subagent mode, returning an accepted:false response that instructs the host AI to invoke the carrier via its CLI's native subagent path instead.
+- [core] Codex dedicated CLI hosts now support Native(SubAgent) mode, running a toggled carrier as a native Codex subagent with its own model and reasoning effort.
+
 ### Changed
+- [core] TaskForce carrier job-bar labels, strip tiles, and header now render in the signature TaskForce blue while preserving per-backend row colors.
+- [core] Enabling Native(SubAgent) mode and committing a TaskForce config are now mutually exclusive, with a warning surfaced when one would overwrite the other.
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
+- [core] Moved default carrier persona settings into each persona module while preserving deterministic carrier registration order.
+- [core] Claude-family Agent CLI native subagents injected via `--agents` now default to `background: true` and run as background tasks.
 
 ### Fixed
 - [core] Enabled Agent CLI app-mouse drag forwarding while preserving existing Fleet scroll fallback behavior.
 
 ### Removed
 - [core] Removed the `Alt+O` host shortcut for opening carrier configuration.
+- [core] Removed legacy default persona registry exports and unused carrier config renderer hooks.
+- [core] Removed the `claude-zai` dedicated Agent CLI profile from the upper-pane selection; the underlying auth and provider backend remain supported.
+- [core] Removed the unused `@dotobokuri/fleet-infra/settings` package subpath along with dead settings.json persistence and adjacent log-injection code.
 
 ## [1.0.2] - 2026-05-26
 

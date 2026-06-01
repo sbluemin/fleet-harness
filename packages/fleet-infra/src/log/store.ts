@@ -2,22 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { getFleetDataDir } from "../data-dir/paths.js";
-import { settingsRuntime } from "../settings/runtime.js";
-import type { SettingsRuntime } from "../settings/runtime.js";
 import type { CoreLogAPI, LogCategoryMeta, LogEntry, LogLevel, LogSettings } from "./types.js";
 import { DEFAULT_LOG_CATEGORY, LOG_LEVEL_PRIORITY } from "./types.js";
 
-export interface CoreLogSettingsPort {
-  load<T = Record<string, unknown>>(sectionKey: string): T;
-  save(sectionKey: string, data: unknown): void;
-}
-
 export interface CoreLogStore {
-  setCoreLogSettingsPort(port: CoreLogSettingsPort | null): void;
   getLogAPI(): CoreLogAPI;
-  initLogAPI(api: CoreLogAPI): void;
-  loadSettings(): Required<LogSettings>;
-  saveSettings(settings: Partial<LogSettings>): void;
   registerCategory(meta: LogCategoryMeta): void;
   getRegisteredCategories(): LogCategoryMeta[];
   isCategoryRegistered(id: string): boolean;
@@ -29,25 +18,12 @@ export interface CoreLogStore {
   clearFileLogs(): void;
 }
 
-export interface CoreLogStoreDeps {
-  readonly settingsRuntime?: SettingsRuntime;
-}
-
-const SECTION_KEY = "core-log";
-const LEGACY_SECTION_KEY = "core-debug-log";
 const NOFOLLOW_FLAG = fs.constants.O_NOFOLLOW ?? 0;
 const NONBLOCK_FLAG = fs.constants.O_NONBLOCK ?? 0;
 const SECURE_DIR_MODE = 0o700;
 const RING_BUFFER_SIZE = 100;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:T|$)/;
 const UNKNOWN_LOG_DATE = "unknown-date";
-const DEFAULT_SETTINGS: Required<LogSettings> = {
-  enabled: false,
-  fileLog: true,
-  footerDisplay: true,
-  minLevel: "debug",
-  disabledCategories: [],
-};
 const NOOP_LOG_API: CoreLogAPI = {
   debug() {},
   info() {},
@@ -55,44 +31,15 @@ const NOOP_LOG_API: CoreLogAPI = {
   error() {},
   log() {},
   isEnabled: () => false,
-  setEnabled() {},
   getRecentLogs: () => [],
   registerCategory() {},
   getRegisteredCategories: () => [],
 };
 const defaultCoreLogStore = createCoreLogStore();
 
-export function createCoreLogStore(deps: CoreLogStoreDeps = {}): CoreLogStore {
+export function createCoreLogStore(): CoreLogStore {
   const ringBuffer: LogEntry[] = [];
   const categoryRegistry = new Map<string, LogCategoryMeta>();
-  let settingsPort: CoreLogSettingsPort | null = null;
-  let migrated = false;
-  let logApi: CoreLogAPI = NOOP_LOG_API;
-
-  function getSettingsPort(): CoreLogSettingsPort {
-    const api = settingsPort ?? deps.settingsRuntime?.get() ?? settingsRuntime.get();
-    if (!api) throw new Error("Settings API not available");
-    return api;
-  }
-
-  function ensureMigrated(): void {
-    if (migrated) return;
-
-    try {
-      const api = getSettingsPort();
-      migrated = true;
-      const newData = api.load<LogSettings>(SECTION_KEY);
-      if (newData && Object.keys(newData).length > 0) return;
-
-      const legacyData = api.load<LogSettings>(LEGACY_SECTION_KEY);
-      if (legacyData && Object.keys(legacyData).length > 0) {
-        api.save(SECTION_KEY, legacyData);
-        api.save(LEGACY_SECTION_KEY, {});
-      }
-    } catch {
-      // 마이그레이션 실패 시 무시
-    }
-  }
 
   function isCategoryRegistered(id: string): boolean {
     return categoryRegistry.has(id);
@@ -105,30 +52,8 @@ export function createCoreLogStore(deps: CoreLogStoreDeps = {}): CoreLogStore {
   });
 
   return {
-    setCoreLogSettingsPort(port) {
-      settingsPort = port;
-      migrated = false;
-    },
     getLogAPI() {
-      return logApi;
-    },
-    initLogAPI(api) {
-      logApi = api;
-    },
-    loadSettings() {
-      try {
-        ensureMigrated();
-        const raw = getSettingsPort().load<LogSettings>(SECTION_KEY);
-        return { ...DEFAULT_SETTINGS, ...raw };
-      } catch {
-        return { ...DEFAULT_SETTINGS };
-      }
-    },
-    saveSettings(settings) {
-      ensureMigrated();
-      const current = this.loadSettings();
-      const merged = { ...current, ...settings };
-      getSettingsPort().save(SECTION_KEY, merged);
+      return NOOP_LOG_API;
     },
     registerCategory(meta) {
       categoryRegistry.set(meta.id, meta);
@@ -190,24 +115,8 @@ export function createCoreLogStore(deps: CoreLogStoreDeps = {}): CoreLogStore {
   };
 }
 
-export function setCoreLogSettingsPort(port: CoreLogSettingsPort | null): void {
-  defaultCoreLogStore.setCoreLogSettingsPort(port);
-}
-
 export function getLogAPI(): CoreLogAPI {
   return defaultCoreLogStore.getLogAPI();
-}
-
-export function initLogAPI(api: CoreLogAPI): void {
-  defaultCoreLogStore.initLogAPI(api);
-}
-
-export function loadSettings(): Required<LogSettings> {
-  return defaultCoreLogStore.loadSettings();
-}
-
-export function saveSettings(settings: Partial<LogSettings>): void {
-  defaultCoreLogStore.saveSettings(settings);
 }
 
 export function registerCategory(meta: LogCategoryMeta): void {

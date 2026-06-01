@@ -11,12 +11,15 @@ import * as jobLifecycle from "./jobs/lifecycle.js";
 import * as jobSanitize from "./jobs/sanitize.js";
 import * as jobTypes from "./jobs/types.js";
 import * as carrierPersonas from "./personas/index.js";
+import * as carrierSubagents from "./subagents/index.js";
 import * as carrierStore from "./store/index.js";
 
-export { registerDefaultCarriers } from "./agent-specs.js";
+export { DEFAULT_CARRIER_COUNT, registerDefaultCarriers } from "./agent-specs.js";
 export * from "./constants.js";
 export * as personas from "./personas/index.js";
+export * as subagents from "./subagents/index.js";
 export * as store from "./store/index.js";
+export * from "./subagents/index.js";
 export * from "./dispatch/framework.js";
 export * from "./dispatch/status-overlay.js";
 export * from "./dispatch/taskforce.js";
@@ -43,36 +46,51 @@ export type {
 } from "./dispatch/types.js";
 export {
   initStore,
-  loadModels,
-  updateModelSelection,
-  getPerCliSettings,
-  savePerCliSettings,
+  loadCarrierStates,
+  updateAgentCliSelection,
+  getAgentCliSelection,
+  saveAgentCliSelection,
   getTaskForceModelConfig,
   updateTaskForceModelSelection,
   resetTaskForceModelSelection,
+  resetCarrierTaskForceConfig,
   getConfiguredTaskForceBackends,
   getConfiguredTaskForceBackendsFromSnapshot,
   getConfiguredTaskForceCarrierIds,
   getConfiguredTaskForceCarrierIdsFromSnapshot,
-  loadCliTypeOverrides,
-  updateCliTypeOverride,
-  applyCliTypeModelSelectionUpdate,
-  loadCarrierDisplayNames,
+  loadAgentCliTypeOverrides,
+  updateAgentCliTypeOverride,
+  applyAgentCliTypeSelectionUpdate,
+  loadCarrierDisplayNameOverrides,
+  readCarrierAgentModeSnapshot,
+  isCarrierAgentModeSubagent,
+  setCarrierAgentMode,
+  setCarrierAgentModeWithCodexRole,
+  ensureCodexSubagentRoleFile,
+  getCodexSubagentRoleFilePath,
+  serializeCodexSubagentRoleToml,
+  filterCarrierAgentModesToRegisteredIds,
+  getEnabledCarrierSubagentIds,
   updateCarrierDisplayName,
   normalizeCarrierDisplayNameInput,
   sanitizeCarrierDisplayName,
-  readStatesSnapshot,
-  getLastLocalStatesGeneration,
+  readCarriersSnapshot,
+  getLastLocalCarriersGeneration,
   getLastLocalWriteFingerprint,
-  getStatesFilePath,
-  updateStates,
+  getCarriersFilePath,
+  updateCarriers,
   withStoreLock,
   resetStoreForTests,
 } from "./store/index.js";
 export type {
+  AgentCliSelection,
+  CarrierAgentMode,
+  CarrierAgentModeSnapshot,
+  CarrierState,
   FleetStoreSnapshot,
   FleetStoreWriteFingerprint,
-  SelectedModelsConfig,
+  CarrierModelDefaults,
+  ResolvedCarrierState,
 } from "./store/index.js";
 export * from "./personas/index.js";
 
@@ -81,6 +99,7 @@ export interface CarrierRuntime {
   dispatch: typeof dispatch;
   jobs: ReturnType<typeof createBoundCarrierJobs>;
   personas: typeof carrierPersonas;
+  subagents: typeof carrierSubagents;
   store: typeof carrierStore;
   stream: ReturnType<typeof createBoundCarrierStream>;
   registerCarrierDefaults(): void;
@@ -139,6 +158,7 @@ export function createCarrierRuntime(): CarrierRuntime {
     dispatch,
     jobs: boundCarrierJobs,
     personas: carrierPersonas,
+    subagents: carrierSubagents,
     store: carrierStore,
     stream: boundStream,
     registerCarrierDefaults() {

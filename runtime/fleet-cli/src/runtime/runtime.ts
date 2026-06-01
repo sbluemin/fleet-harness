@@ -124,8 +124,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	});
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
-	const settings = infraServices.settings.create();
-	infraServices.settingsRuntime.init(settings);
 
 	registerAgentToolDefaults(mcpRuntimes.carriers.mcpRegistry, carrierRuntime);
 	for (const spec of getWikiToolSpecs()) {
@@ -190,7 +188,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 				mcpRuntimes.carriers.mcpServer.stop(),
 				mcpRuntimes.wiki.mcpServer.stop(),
 			]);
-			infraServices.settingsRuntime.reset(settings);
 		},
 	};
 }

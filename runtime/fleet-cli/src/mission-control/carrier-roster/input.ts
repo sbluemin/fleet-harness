@@ -20,6 +20,7 @@ export interface CarrierStatusInputController {
   readonly startCliTypeEdit: () => void;
   readonly startModelEdit: () => void;
   readonly startRenameEdit: () => void;
+  readonly toggleSubagentMode: () => void;
   readonly toggleDetails: () => void;
 }
 
@@ -68,6 +69,11 @@ export function handleCarrierStatusOverlayInput(
 
   if (inputState.state.kind === "browse" && matchesKey(data, "t")) {
     controller.openTaskForce();
+    return;
+  }
+
+  if (inputState.state.kind === "browse" && data === "s") {
+    controller.toggleSubagentMode();
     return;
   }
 

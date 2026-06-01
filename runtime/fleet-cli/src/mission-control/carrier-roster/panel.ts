@@ -2,21 +2,24 @@ import {
   CLI_DISPLAY_NAMES,
   StatusOverlayController,
   TASKFORCE_CLI_TYPES,
-  applyCliTypeModelSelectionUpdate,
+  applyAgentCliTypeSelectionUpdate,
   getCarrierSourceDisplayName,
-  getPerCliSettings,
+  getAgentCliSelection,
   getCarrierConfig,
   getRegisteredOrder,
-  loadModels,
+  loadCarrierStates,
   notifyStatusUpdate,
   normalizeCarrierDisplayNameInput,
-  resolveCarrierCliType,
+  resolveAgentCliType,
   resolveCarrierDisplayName,
+  resetCarrierTaskForceConfig,
   sanitizeCarrierDisplayName,
-  savePerCliSettings,
+  saveAgentCliSelection,
+  setCarrierAgentModeWithCodexRole,
+  updateAgentCliSelection,
   updateCarrierCliType,
   updateCarrierDisplayName,
-  updateModelSelection,
+  type AgentCliSelection,
 } from "@dotobokuri/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 import {
@@ -85,6 +88,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
       startCliTypeEdit: () => this.startCliTypeEdit(),
       startModelEdit: () => this.startModelEdit(),
       startRenameEdit: () => this.startRenameEdit(),
+      toggleSubagentMode: () => this.toggleSubagentMode(),
       toggleDetails: () => this.toggleDetails(),
     });
   }
@@ -239,7 +243,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.applyModelSelection(entry, selection);
     this.options.requestRender();
     try {
-      await updateModelSelection(entry.carrierId, selection);
+      await updateAgentCliSelection(entry.carrierId, entry.cliType, selection);
       notifyStatusUpdate(this.options.carrierRuntime.registry);
       this.feedbackMessage = `${entry.displayName} 모델 설정을 저장했습니다.`;
     } catch (error) {
@@ -489,6 +493,29 @@ export class CarrierStatusOverlay implements Component, Focusable {
     });
   }
 
+  private toggleSubagentMode(): void {
+    const entry = this.getSelectedEntry();
+    if (!entry) return;
+    const enabled = !entry.subagentMode;
+    const config = getCarrierConfig(this.options.carrierRuntime.registry, entry.carrierId);
+    if (!config) {
+      this.feedbackMessage = `저장 실패: ${entry.displayName} carrier metadata를 찾을 수 없습니다.`;
+      this.options.requestRender();
+      return;
+    }
+    const registeredCarrierIds = getRegisteredOrder(this.options.carrierRuntime.registry);
+    setCarrierAgentModeWithCodexRole(config, enabled, this.resolveCodexSubagentSettings(entry), { registeredCarrierIds });
+    const resetTaskForce = enabled ? resetCarrierTaskForceConfig(entry.carrierId) : false;
+    notifyStatusUpdate(this.options.carrierRuntime.registry);
+    const hostFamily = entry.cliType === "codex" ? "Codex 계열" : "Claude 계열";
+    this.feedbackMessage = enabled
+      ? resetTaskForce
+        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
+        : `${entry.displayName} Native(SubAgent) 활성화: 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
+      : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
+    this.options.requestRender();
+  }
+
   private cancelEdit(): void {
     this.renameState = null;
     this.state = { kind: "browse" };
@@ -520,6 +547,16 @@ export class CarrierStatusOverlay implements Component, Focusable {
       isDefault: entry.isDefault,
       model: entry.model,
     };
+  }
+
+  private resolveCodexSubagentSettings(entry: CarrierStatusEntry): AgentCliSelection | undefined {
+    if (entry.cliType === "codex") {
+      return {
+        effort: entry.effort ?? undefined,
+        model: entry.model,
+      };
+    }
+    return getAgentCliSelection(entry.carrierId, "codex");
   }
 
   private restoreEntrySnapshot(entry: CarrierStatusEntry, snapshot: EntrySnapshot): void {
@@ -556,7 +593,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private createStatusOverlayController(): InstanceType<typeof StatusOverlayController> {
     return new StatusOverlayController({
-      applyCliTypeModelSelectionUpdate: async (
+      applyAgentCliTypeSelectionUpdate: async (
         carrierId,
         newCliType,
         defaultCliType,
@@ -564,7 +601,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
         previousSelection,
         selection,
       ) => {
-        await applyCliTypeModelSelectionUpdate(
+        await applyAgentCliTypeSelectionUpdate(
           carrierId,
           newCliType,
           defaultCliType,
@@ -574,20 +611,23 @@ export class CarrierStatusOverlay implements Component, Focusable {
         );
       },
       getAvailableModels: (cliType) => this.getAvailableModels(cliType),
-      getCurrentModelSelection: (carrierId) => loadModels()[carrierId],
+      getCurrentModelSelection: (carrierId) => {
+        const entry = this.getEntryById(carrierId);
+        return entry ? { model: entry.model, effort: entry.effort ?? undefined } : undefined;
+      },
       getEffort: (cliType, modelId) => this.getModelEffort(cliType, modelId),
       getEntries: () => this.getEntries(),
-      getPerCliSettings: (carrierId, cliType) => getPerCliSettings(carrierId, cliType),
+      getAgentCliSelection: (carrierId, cliType) => getAgentCliSelection(carrierId, cliType),
       getCarrierConfig: (carrierId) => getCarrierConfig(this.options.carrierRuntime.registry, carrierId),
       getRegisteredOrder: () => getRegisteredOrder(this.options.carrierRuntime.registry),
       getResolvedCliType: (carrierId) => {
         const config = getCarrierConfig(this.options.carrierRuntime.registry, carrierId);
-        return config ? resolveCarrierCliType(carrierId, config.defaultCliType) : undefined;
+        return config ? resolveAgentCliType(carrierId, config.defaultCliType) : undefined;
       },
       notifyStatusUpdate: () => notifyStatusUpdate(this.options.carrierRuntime.registry),
       refreshAgentPanel: () => undefined,
-      savePerCliSettings: (carrierId, cliType, selection) => {
-        savePerCliSettings(carrierId, cliType, selection);
+      saveAgentCliSelection: (carrierId, cliType, selection) => {
+        saveAgentCliSelection(carrierId, cliType, selection);
       },
       syncModelConfig: () => undefined,
       updateCarrierCliType: (carrierId, cliType) => {

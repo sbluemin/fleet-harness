@@ -44,7 +44,7 @@ export interface LogCategoryMeta {
   description?: string;
 }
 
-/** 로그 설정 (settings.json 저장용) */
+/** 로그 기록 설정 */
 export interface LogSettings {
   /** 활성화 여부 (기본: false) */
   enabled?: boolean;
@@ -54,7 +54,7 @@ export interface LogSettings {
   footerDisplay?: boolean;
   /** 최소 로그 레벨 (기본: "debug") */
   minLevel?: LogLevel;
-  /** 비활성화된 카테고리 ID 목록 (settings.json 저장) */
+  /** 비활성화된 카테고리 ID 목록 */
   disabledCategories?: string[];
 }
 
@@ -86,8 +86,6 @@ export interface CoreLogAPI {
   log(level: LogLevel, source: string, message: string, options?: LogOptions): void;
   /** 현재 활성화 여부 */
   isEnabled(): boolean;
-  /** 활성화/비활성화 토글 */
-  setEnabled(enabled: boolean): void;
   /** 최근 로그 항목 조회 */
   getRecentLogs(count?: number): LogEntry[];
   /** 로그 카테고리 등록 */

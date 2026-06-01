@@ -4,16 +4,10 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CoreSettingsAPI, SectionDisplayConfig } from "../src/settings/index.js";
 import type { LogEntry } from "../src/log/types.js";
 import { DEFAULT_LOG_CATEGORY } from "../src/log/types.js";
 
-interface MemorySettingsAPI extends CoreSettingsAPI {
-  readonly data: Record<string, unknown>;
-}
-
 type LogStoreModule = typeof import("../src/log/store.js");
-type SettingsRuntimeModule = typeof import("../src/settings/runtime.js");
 type LogStore = ReturnType<LogStoreModule["createCoreLogStore"]>;
 
 const FILE_LOG_SETTINGS = {
@@ -44,50 +38,7 @@ afterEach(() => {
   cleanupFileLogTestArtifacts();
 });
 
-describe("core log settings store", () => {
-  it("saves through the runtime-owned settings service when no explicit port is set", async () => {
-    const { settingsRuntime, store } = await loadLogStoreModules();
-    const api = createMemorySettingsAPI();
-    settingsRuntime.init(api);
-
-    store.saveSettings({ enabled: true, minLevel: "warn" });
-
-    expect(api.data["core-log"]).toMatchObject({
-      enabled: true,
-      minLevel: "warn",
-      fileLog: true,
-      footerDisplay: true,
-      disabledCategories: [],
-    });
-    expect(store.loadSettings()).toMatchObject({
-      enabled: true,
-      minLevel: "warn",
-    });
-  });
-
-  it("keeps legacy migration available after an early load without settings service", async () => {
-    const { settingsRuntime, store } = await loadLogStoreModules();
-
-    expect(store.loadSettings()).toMatchObject({ enabled: false });
-
-    const api = createMemorySettingsAPI({
-      "core-debug-log": {
-        enabled: true,
-        minLevel: "error",
-      },
-    });
-    settingsRuntime.init(api);
-
-    store.saveSettings({ footerDisplay: false });
-
-    expect(api.data["core-log"]).toMatchObject({
-      enabled: true,
-      minLevel: "error",
-      footerDisplay: false,
-    });
-    expect(api.data["core-debug-log"]).toEqual({});
-  });
-
+describe("core log store", () => {
   it("keeps manipulated timestamp date segments inside the log directory", async () => {
     const { store } = await loadLogStoreModules();
     const { outsideLogFile, safeFallbackLogFile } = getFileLogTestPaths();
@@ -144,40 +95,11 @@ describe("core log settings store", () => {
 });
 
 async function loadLogStoreModules(): Promise<{
-  settingsRuntime: ReturnType<SettingsRuntimeModule["createSettingsRuntime"]>;
   store: LogStore;
 }> {
-  const [settingsRuntimeModule, storeModule] = await Promise.all([
-    import("../src/settings/runtime.js"),
-    import("../src/log/store.js"),
-  ]);
-  const settingsRuntime = settingsRuntimeModule.createSettingsRuntime();
-  const store = storeModule.createCoreLogStore({ settingsRuntime });
-  store.setCoreLogSettingsPort(null);
-  return { settingsRuntime, store };
-}
-
-function createMemorySettingsAPI(initial: Record<string, unknown> = {}): MemorySettingsAPI {
-  const data: Record<string, unknown> = { ...initial };
-  const sections = new Map<string, SectionDisplayConfig>();
-  return {
-    data,
-    load<T = Record<string, unknown>>(sectionKey: string): T {
-      return (data[sectionKey] ?? {}) as T;
-    },
-    save(sectionKey: string, value: unknown): void {
-      data[sectionKey] = value;
-    },
-    registerSection(config: SectionDisplayConfig): void {
-      sections.set(config.key, config);
-    },
-    unregisterSection(sectionKey: string): void {
-      sections.delete(sectionKey);
-    },
-    getSections(): SectionDisplayConfig[] {
-      return Array.from(sections.values());
-    },
-  };
+  const storeModule = await import("../src/log/store.js");
+  const store = storeModule.createCoreLogStore();
+  return { store };
 }
 
 function cleanupFileLogTestArtifacts(): void {

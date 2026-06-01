@@ -11,7 +11,7 @@ interface RenderSchedulerUi {
 }
 
 const RENDER_THROTTLE_MS = 16;
-const CLAUDE_CODE_AGENT_IDS = new Set<AgentCliId>(["claude", "claude-zai", "claude-kimi"]);
+const CLAUDE_CODE_AGENT_IDS = new Set<AgentCliId>(["claude", "claude-kimi"]);
 
 export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () => void): RenderScheduler {
   let renderPending = false;

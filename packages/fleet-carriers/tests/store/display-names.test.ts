@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   initStore,
-  loadCarrierDisplayNames,
+  loadCarrierDisplayNameOverrides,
   normalizeCarrierDisplayNameInput,
   resetStoreForTests,
   sanitizeCarrierDisplayName,
@@ -44,25 +44,25 @@ describe("carrier displayName sanitization", () => {
 
   it("drops persisted displayName overrides containing C1 controls", () => {
     writeStates({
-      carrierDisplayNames: {
-        genesis: `Genesis${C1_CSI}Prime`,
-        sentinel: "Sentinel Prime",
+      carriers: {
+        genesis: { displayName: `Genesis${C1_CSI}Prime` },
+        sentinel: { displayName: "Sentinel Prime" },
       },
     });
 
-    expect(loadCarrierDisplayNames()).toEqual({ sentinel: "Sentinel Prime" });
+    expect(loadCarrierDisplayNameOverrides()).toEqual({ sentinel: "Sentinel Prime" });
   });
 
   it("keeps delete semantics when a C1-tainted displayName is written", () => {
     updateCarrierDisplayName("genesis", "Genesis Prime", "Genesis");
-    expect(loadCarrierDisplayNames()).toEqual({ genesis: "Genesis Prime" });
+    expect(loadCarrierDisplayNameOverrides()).toEqual({ genesis: "Genesis Prime" });
 
     updateCarrierDisplayName("genesis", `Genesis${C1_CSI}Prime`, "Genesis");
-    expect(loadCarrierDisplayNames()).toEqual({});
+    expect(loadCarrierDisplayNameOverrides()).toEqual({});
   });
 });
 
 function writeStates(value: unknown): void {
   if (!tempDir) throw new Error("테스트 store가 초기화되지 않았습니다.");
-  fs.writeFileSync(path.join(tempDir, "states.json"), JSON.stringify(value), "utf-8");
+  fs.writeFileSync(path.join(tempDir, "carriers.json"), JSON.stringify(value), "utf-8");
 }

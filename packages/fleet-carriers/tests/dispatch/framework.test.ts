@@ -1,20 +1,38 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
+import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
 import {
+  buildCarrierDispatchToolSpec,
   type CarrierConfig,
   createCarrierRegistry,
   emitStreamEvent,
+  buildCarrierRoster,
   getCarrierSourceDisplayName,
   initStore,
   registerCarrier,
   registerStreamHandler,
   resetStoreForTests,
   resolveCarrierDisplayName,
+  setCarrierAgentMode,
   updateCarrierDisplayName,
 } from "../../src/index.js";
+
+interface CarrierDispatchToolResult {
+  details: unknown;
+  isError: boolean;
+}
+
+vi.mock("@dotobokuri/fleet-infra/agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dotobokuri/fleet-infra/agent")>();
+  return {
+    ...actual,
+    executeWithPool: vi.fn(),
+  };
+});
 
 const C1_CSI = "\u009b2J";
 
@@ -78,13 +96,235 @@ describe("carrier stream handler registry", () => {
   });
 });
 
+describe("carrier roster rendering", () => {
+  it("excludes requested carrier IDs from the normal carrier_dispatch roster", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    registerCarrier(registry, createConfig("sentinel", "Sentinel"));
+
+    const roster = buildCarrierRoster(registry, ["ohio", "sentinel"], {
+      excludeCarrierIds: ["ohio"],
+    });
+
+    expect(roster).not.toContain("**ohio**");
+    expect(roster).not.toContain('carrier_id: "ohio"');
+    expect(roster).toContain("**sentinel**");
+    expect(roster).toContain('carrier_id: "sentinel"');
+  });
+});
+
+describe("carrier_dispatch effort resolution", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-effort-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("uses carriers.json effort instead of the persona subagent defaultEffort", async () => {
+    writeStates({
+      carriers: {
+        ohio: {
+          agentCli: {
+            claude: {
+              model: "sonnet",
+              effort: "max",
+            },
+          },
+        },
+      },
+    });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      subagent: {
+        provider: "claude",
+        defaultModel: "sonnet",
+        defaultEffort: "low",
+      },
+    });
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const ctx: AgentToolCtx = {
+      cwd: "/tmp",
+      toolCallId: "dispatch-effort",
+    };
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check dispatch effort",
+      request: "Verify effort source.",
+    }, ctx);
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+      cliType: "claude",
+      model: "sonnet",
+      effort: "max",
+    }));
+  });
+
+  it("uses persona dispatch defaults when no model state exists", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      defaultEffort: "max",
+      defaultModel: "sonnet",
+    });
+    const tool = buildCarrierDispatchToolSpec(registry);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check dispatch defaults",
+      request: "Verify dispatch defaults.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-defaults",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+      cliType: "claude",
+      model: "sonnet",
+      effort: "max",
+    }));
+  });
+});
+
+describe("carrier_dispatch native subagent mode rejection", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-subagent-mode-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("rejects a carrier in native subagent mode with direct invocation guidance", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    setCarrierAgentMode("ohio", true);
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check subagent guard",
+      request: "Verify dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-subagent-mode",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-subagent-mode",
+      accepted: false,
+      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+    });
+    expect(result.isError).toBe(true);
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+
+  it("rejects a carrier whose persona default agentMode is native subagent", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, { ...createConfig("ohio", "Ohio"), defaultAgentMode: "subagent" });
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check default subagent guard",
+      request: "Verify dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-default-subagent-mode",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-default-subagent-mode",
+      accepted: false,
+      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+    });
+    expect(result.isError).toBe(true);
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+
+  it("rejects a subagent-mode carrier before Task Force auto-promotion", async () => {
+    writeStates({
+      carriers: {
+        ohio: {
+          agentMode: "subagent",
+          taskforce: {
+            claude: {
+              model: "sonnet",
+              effort: "medium",
+            },
+            codex: {
+              model: "gpt-5.4",
+              effort: "high",
+            },
+          },
+        },
+      },
+    });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check Task Force guard order",
+      request: "Verify dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-subagent-taskforce",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-subagent-taskforce",
+      accepted: false,
+      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+    });
+    expect(result.isError).toBe(true);
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+});
+
 function createConfig(id: string, displayName: string): CarrierConfig {
   return {
     id,
-    cliType: "claude",
     defaultCliType: "claude",
     slot: 1,
     displayName,
     color: "",
   };
+}
+
+function writeStates(value: unknown): void {
+  if (!tempDir) throw new Error("테스트 store가 초기화되지 않았습니다.");
+  fs.writeFileSync(path.join(tempDir, "carriers.json"), JSON.stringify(value), "utf-8");
 }

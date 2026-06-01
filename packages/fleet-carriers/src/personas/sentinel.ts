@@ -6,9 +6,29 @@
  * Raven(CVN-05) 역할을 흡수하여 QA와 보안을 통합 수행합니다.
  */
 
-import type { CarrierMetadata } from "../dispatch/types.js";
+import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
 import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+
+export const SENTINEL_DEFAULTS: CarrierPersonaDefaults = {
+  id: "sentinel",
+  displayName: "Sentinel",
+  slot: 5,
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultAgentMode: "subagent",
+      defaultModel: "sonnet",
+      defaultEffort: "max",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "xhigh" },
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "high" },
+      },
+    },
+  },
+};
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──

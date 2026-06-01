@@ -40,4 +40,4 @@ Put code here when it owns generic MCP registry/server behavior, token isolation
 
 ## 4. State Synchronization
 
-Fleet supports multiple concurrent instances sharing the same `states.json` file via a `_generation` token and file locks. Developers must avoid hidden process-global state and use explicit service instances plus pull-based resolvers.
+Fleet supports multiple concurrent instances sharing the same `carriers.json` file via a `_generation` token and file locks. Developers must avoid hidden process-global state and use explicit service instances plus pull-based resolvers.

@@ -1,7 +1,10 @@
 import { CLI_DISPLAY_NAMES } from "../constants.js";
-import { readStatesSnapshot, updateStates } from "./state-io.js";
+import {
+  CONTROL_AND_C1_CHAR_PATTERN,
+  sanitizeConfigKey,
+} from "./sanitize.js";
+import { readRawCarriers, updateCarriers } from "./state-io.js";
 
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const DISPLAY_NAME_BIDI_CONTROL_PATTERN = /[\u202A-\u202E\u2066-\u2069]/g;
 const DISPLAY_NAME_ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
 const DISPLAY_NAME_MAX_LENGTH = 50;
@@ -10,8 +13,12 @@ const DISPLAY_NAME_MAX_LENGTH = 50;
  * 디스크에서 carrier displayName 오버라이드 맵을 로드합니다.
  * 유효한 carrier ID와 displayName 값만 필터링하여 반환합니다.
  */
-export function loadCarrierDisplayNames(validIds?: Set<string>): Record<string, string> {
-  const displayNames = sanitizeCarrierDisplayNames(readStatesSnapshot().carrierDisplayNames);
+export function loadCarrierDisplayNameOverrides(validIds?: Set<string>): Record<string, string> {
+  const displayNames = Object.fromEntries(
+    Object.entries(readRawCarriers().carriers ?? {})
+      .filter(([, state]) => !!sanitizeCarrierDisplayName(state.displayName))
+      .map(([id, state]) => [id, sanitizeCarrierDisplayName(state.displayName)!]),
+  );
   if (!validIds) return displayNames;
   return Object.fromEntries(
     Object.entries(displayNames).filter(([id]) => validIds.has(id)),
@@ -26,7 +33,7 @@ export function updateCarrierDisplayName(
   displayName: string,
   sourceDefaultDisplayName: string,
 ): void {
-  const sanitizedCarrierId = sanitizeConfigKey(carrierId);
+  const sanitizedCarrierId = sanitizeConfigKey(carrierId, CONTROL_AND_C1_CHAR_PATTERN);
   if (!sanitizedCarrierId) return;
 
   const sanitizedDisplayName = sanitizeCarrierDisplayName(displayName);
@@ -34,25 +41,23 @@ export function updateCarrierDisplayName(
     ?? CLI_DISPLAY_NAMES[sanitizedCarrierId]
     ?? sanitizedCarrierId;
 
-  updateStates((states) => {
-    const displayNames = sanitizeCarrierDisplayNames(states.carrierDisplayNames);
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[sanitizedCarrierId] ?? {};
+    const next = { ...current };
     if (!sanitizedDisplayName || sanitizedDisplayName === sanitizedSourceDefault) {
-      delete displayNames[sanitizedCarrierId];
+      delete next.displayName;
     } else {
-      displayNames[sanitizedCarrierId] = sanitizedDisplayName;
+      next.displayName = sanitizedDisplayName;
     }
-
-    if (Object.keys(displayNames).length > 0) {
-      states.carrierDisplayNames = displayNames;
-    } else {
-      delete states.carrierDisplayNames;
-    }
+    carriers[sanitizedCarrierId] = next;
+    states.carriers = carriers;
   });
 }
 
 export function normalizeCarrierDisplayNameInput(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  if (CONTROL_CHAR_PATTERN.test(value)) return null;
+  if (CONTROL_AND_C1_CHAR_PATTERN.test(value)) return null;
 
   const normalized = value
     .replace(DISPLAY_NAME_BIDI_CONTROL_PATTERN, "")
@@ -69,26 +74,4 @@ export function sanitizeCarrierDisplayName(value: unknown): string | null {
   const trimmed = normalized.trim();
   if (!trimmed) return null;
   return trimmed;
-}
-
-function sanitizeCarrierDisplayNames(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  const result: Record<string, string> = {};
-  for (const [id, displayName] of Object.entries(value)) {
-    const sanitizedId = sanitizeConfigKey(id);
-    const sanitizedDisplayName = sanitizeCarrierDisplayName(displayName);
-    if (!sanitizedId || !sanitizedDisplayName) continue;
-    result[sanitizedId] = sanitizedDisplayName;
-  }
-  return result;
-}
-
-function sanitizeConfigKey(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

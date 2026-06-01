@@ -82,6 +82,7 @@ export function createMissionControlProfileConfig(
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const runtimeLifecycle = createFleetRuntimeLifecycle();
+  const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
   const argvOptions = options.argvOptions ?? createRunAppArgOptions(options);
   const sessionOptionsRuntime = createSessionOptionsRuntime({
@@ -138,8 +139,10 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
         ? Promise.resolve(profile)
         : injectAgentCliProfile(profile, {
             buildSystemPrompt,
+            carrierRuntime: runtime.carrierRuntime,
             dedicatedMcpSession: runtime.dedicatedMcpSession,
             enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+            onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
             replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
           }),
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
@@ -218,7 +221,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     stopping = true;
     clearInterruptWarningTimer();
     jobBarState.setPendingExitWarning(false);
-    stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle);
+    stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle, agentCliCleanupCallbacks);
   };
   const requestInterrupt = () => {
     const now = Date.now();
@@ -405,6 +408,7 @@ function stopApp(
   disposeInputStream: () => void,
   unsubscribeJobBar: () => void,
   runtimeLifecycle: FleetRuntimeLifecycle,
+  cleanupCallbacks: Iterable<() => void>,
 ): void {
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
@@ -412,6 +416,9 @@ function stopApp(
   unsubscribeJobBar();
   process.stdout.write(KITTY_DISABLE);
   ptyHost.kill();
+  for (const cleanup of cleanupCallbacks) {
+    cleanup();
+  }
   ui.stop();
   const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);
   timer.unref?.();

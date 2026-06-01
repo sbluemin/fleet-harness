@@ -2,7 +2,8 @@ import {
   CLI_DISPLAY_NAMES as CORE_CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES as CORE_TASKFORCE_CLI_TYPES,
   getConfiguredTaskForceBackendsFromSnapshot as getCoreConfiguredTaskForceBackendsFromSnapshot,
-  readStatesSnapshot as readCoreStatesSnapshot,
+  readCarriersSnapshot as readCoreStatesSnapshot,
+  type CarrierModelDefaults,
   type FleetStoreSnapshot,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
@@ -13,6 +14,7 @@ import {
   SYM_INDICATOR as CORE_SYM_INDICATOR,
   SYM_THINKING as CORE_SYM_THINKING,
   TASKFORCE_BADGE_COLOR as CORE_TASKFORCE_BADGE_COLOR,
+  TASKFORCE_BADGE_RGB as CORE_TASKFORCE_BADGE_RGB,
 } from "./constants.js";
 
 export type { FleetStoreSnapshot };
@@ -31,6 +33,10 @@ export function TASKFORCE_BADGE_COLOR(): string {
   return CORE_TASKFORCE_BADGE_COLOR;
 }
 
+export function TASKFORCE_BADGE_RGB(): [number, number, number] {
+  return CORE_TASKFORCE_BADGE_RGB;
+}
+
 export function SYM_INDICATOR(): string {
   return CORE_SYM_INDICATOR;
 }
@@ -47,8 +53,10 @@ export function TASKFORCE_CLI_TYPES(): readonly TaskForceCliType[] {
   return CORE_TASKFORCE_CLI_TYPES;
 }
 
-export function readStatesSnapshot(): FleetStoreSnapshot {
-  return readCoreStatesSnapshot();
+export function readCarriersSnapshot(
+  defaultsByCarrier?: Record<string, CarrierModelDefaults>,
+): FleetStoreSnapshot {
+  return readCoreStatesSnapshot(defaultsByCarrier);
 }
 
 export function getConfiguredTaskForceBackendsFromSnapshot(

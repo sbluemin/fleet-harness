@@ -1,0 +1,16 @@
+{
+  "id": "2026-06-01T14-32-45-800Z-aea1e552",
+  "status": "accepted",
+  "createdAt": "2026-06-01T14:32:45.800Z",
+  "baseCheckedAt": "2026-06-01T14:32:45.812Z",
+  "baseHash": "24af41f7",
+  "baseVersion": 2,
+  "rawSourceRef": "raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md",
+  "warnings": [],
+  "editedAt": "2026-06-01T14:35:35.364Z",
+  "editCount": 1,
+  "lastEditedBy": "admiral:review-gate",
+  "previousPatchHash": "ca1456f8",
+  "lastEditHash": "4a5d415f",
+  "decidedAt": "2026-06-01T14:35:39.725Z"
+}

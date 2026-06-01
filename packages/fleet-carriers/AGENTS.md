@@ -7,9 +7,10 @@
 - Default carrier persona metadata under `src/personas/`
 - Carrier runtime constants under `src/constants.ts`
 - Carrier runtime construction through `createCarrierRuntime(deps)`
-- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, and sortie helpers
+- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, native-subagent-mode rejection, request-block validation, status overlay, and sortie helpers
 - `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
-- `store/` — `states.json` carrier runtime persistence with `state-io.ts` as the single file-I/O and lock/update gate
+- `subagents/` — Claude-family and Codex subagent definition conversion derived from carrier metadata
+- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots, plus Codex subagent role file I/O under `codex-subagent-files.ts`; `state-io.ts` is the file-I/O gate and `store-lock.ts` is the shared directory-lock primitive; persona `defaultAgentMode` defaults to `"subagent"` for all built-in carriers, and the store treats `"cli"` as the system-wide fallback when absent; `store-lock.ts` has a known limitation where recovery-mutex is not implemented, so a brief lockDir vacancy window may exist under multi-recoverer contention — accepted as low-risk for local single-user dev tooling
 - `stream/` — carrier job stream event types and Set-based handler registry
 - Explicit default carrier registration via `registerDefaultCarriers()`
 - Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior

@@ -2,12 +2,15 @@ import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,
   CLI_DISPLAY_NAMES,
+  SUBAGENT_CARRIER_BG_COLOR,
+  SUBAGENT_CARRIER_COLOR,
 } from "@dotobokuri/fleet-carriers";
 import {
   truncateToWidth,
   visibleWidth,
   type FleetPtyTheme,
 } from "../../controls/index.js";
+import { TASKFORCE_BADGE_COLOR } from "../../carrier-status/constants.js";
 import { centerText } from "../welcome.js";
 
 import type { RenameState, StatusOverlayViewModel } from "./render-types.js";
@@ -64,7 +67,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
       body.push({
         kind: "cell",
         line: {
-          bg: isSelected ? getEntryBgColor(entry.cliType) : undefined,
+          bg: isSelected ? getEntryBgColorForEntry(entry) : undefined,
           text: withIndent(renderEntryLine(entry, isSelected, deps)),
         },
       });
@@ -89,7 +92,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
 
   body.push({ kind: "blank" });
   if (model.feedbackMessage) {
-    const tone = model.feedbackMessage.startsWith("저장 실패") ? deps.theme.warning : deps.theme.accent;
+    const tone = isWarningFeedback(model.feedbackMessage) ? deps.theme.warning : deps.theme.accent;
     body.push({ kind: "center", text: tone(model.feedbackMessage) }, { kind: "blank" });
   }
 
@@ -210,7 +213,7 @@ function buildEntryEditorLines(entry: CarrierStatusEntry, state: OverlayState, d
   const currentValue = getEntryEditorCurrentValue(entry, state, deps);
   const cursor = "cursor" in state ? state.cursor : 0;
   return options.map((option, index) => {
-    const cursorToken = index === cursor ? `${getEntryColor(entry.cliType)}▸${ANSI_RESET}` : " ";
+    const cursorToken = index === cursor ? `${getCliEntryColor(entry.cliType)}▸${ANSI_RESET}` : " ";
     const marker = option.value === currentValue ? "●" : "○";
     return `      ${cursorToken} ${marker} ${option.label}`;
   });
@@ -271,7 +274,21 @@ function getEntryBgColor(cliType: CarrierCliType): string | undefined {
   return CARRIER_BG_COLORS[cliType];
 }
 
-function getEntryColor(cliType: CarrierCliType): string {
+function isWarningFeedback(message: string): boolean {
+  return message.startsWith("저장 실패") || message.startsWith("경고:");
+}
+
+function getEntryColor(entry: CarrierStatusEntry): string {
+  if (entry.subagentMode) return getSubagentSignatureColor();
+  if (entry.taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
+  return CARRIER_COLORS[entry.cliType] ?? "";
+}
+
+function getEntryBgColorForEntry(entry: CarrierStatusEntry): string | undefined {
+  return entry.subagentMode ? getSubagentSignatureBgColor() : getEntryBgColor(entry.cliType);
+}
+
+function getCliEntryColor(cliType: CarrierCliType): string {
   return CARRIER_COLORS[cliType] ?? "";
 }
 
@@ -279,10 +296,18 @@ function getCliDisplayName(cliType: string): string {
   return CLI_DISPLAY_NAMES[cliType] ?? cliType;
 }
 
+function getSubagentSignatureColor(): string {
+  return SUBAGENT_CARRIER_COLOR;
+}
+
+function getSubagentSignatureBgColor(): string | undefined {
+  return SUBAGENT_CARRIER_BG_COLOR;
+}
+
 function getFooterHint(model: CarrierStatusRenderModel): string {
   if (model.renameState) return "이름 입력  Enter save  Esc cancel  Backspace delete  empty = reset";
   if (model.state.kind === "saving") return "저장 중...";
-  if (model.state.kind === "browse") return "↑↓ select  Enter edit  N rename  c cli  C batch  R reset  t tf  Tab  Esc";
+  if (model.state.kind === "browse") return "↑↓ select  Enter edit  s subagent  N rename  c cli  C batch  R reset  t tf  Tab  Esc";
   return "↑↓ select  Enter confirm  Esc cancel";
 }
 
@@ -298,7 +323,7 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const slotStr = `#${entry.slot}`;
   const slotPad = " ".repeat(Math.max(0, SLOT_WIDTH - slotStr.length));
   const namePad = " ".repeat(Math.max(0, NAME_WIDTH - visibleWidth(entry.displayName)));
-  const nameColor = getEntryColor(entry.cliType);
+  const nameColor = getEntryColor(entry);
   const selectedPrefix = isSelected ? `${nameColor}▸${ANSI_RESET}` : " ";
   const coloredName = `${nameColor}${entry.displayName}${ANSI_RESET}`;
   const modelLabel = getModelLabel(deps.getAvailableModels(entry.cliType), entry.model);
@@ -307,9 +332,12 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
   const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
   const tfTag = entry.taskForceBackendCount >= 2
-    ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
+    ? `  ${TASKFORCE_BADGE_COLOR}[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
-  return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${tfTag}`;
+  const subagentTag = entry.subagentMode
+    ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}${entry.subagentPendingRestart ? dim("*") : ""}`
+    : "";
+  return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${subagentTag}${tfTag}`;
 }
 
 function applyLineBg(line: string, bg: string | undefined): string {

@@ -8,7 +8,16 @@
  * 유일한 프로토콜 본문(Fleet Action Protocol)이 직접 인라인된다.
  */
 
-import { buildCarrierRoster, getRegisteredOrder, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
+import {
+  buildCarrierRoster,
+  formatRequestBlocksGuide,
+  getRegisteredCarrierConfig,
+  getRegisteredOrder,
+  type CarrierMetadata,
+  type CarrierRuntime,
+  type ClaudeSubagentDefinition,
+  type CodexSubagentRoleDefinition,
+} from "@dotobokuri/fleet-carriers";
 import { type McpToolRegistry, renderAgentToolDoctrineTag } from "@dotobokuri/fleet-mcp-server";
 
 import { FLEET_ACTION_PROMPT } from "./protocols/index.js";
@@ -19,13 +28,15 @@ import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 // ─────────────────────────────────────────────────────────
 
 export interface SystemPromptBuilder {
-  build(injectTone: boolean): string;
+  build(injectTone: boolean, nativeSubagents?: readonly NativeSubagentPromptDefinition[]): string;
 }
 
 interface SystemPromptBuilderDeps {
   readonly carrierRuntime: CarrierRuntime;
   readonly mcpRegistry: readonly McpToolRegistry[];
 }
+
+export type NativeSubagentPromptDefinition = ClaudeSubagentDefinition | CodexSubagentRoleDefinition;
 
 // ─────────────────────────────────────────────────────────
 // 상수
@@ -111,13 +122,21 @@ Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. T
  */
 export function createSystemPromptBuilder(deps: SystemPromptBuilderDeps): SystemPromptBuilder {
   return {
-    build(injectTone) {
-      return buildSystemPrompt(deps, injectTone);
+    build(injectTone, nativeSubagents = []) {
+      return buildSystemPromptWithSubagents(deps, injectTone, nativeSubagents);
     },
   };
 }
 
 export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boolean): string {
+  return buildSystemPromptWithSubagents(deps, injectTone, []);
+}
+
+function buildSystemPromptWithSubagents(
+  deps: SystemPromptBuilderDeps,
+  injectTone: boolean,
+  nativeSubagents: readonly NativeSubagentPromptDefinition[],
+): string {
   const parts: string[] = [];
 
   // ── 0. 서문 — 항상 최초 주입 ──
@@ -133,8 +152,25 @@ export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boo
   // ── 2. 캐리어 로스터 — 등록된 모든 캐리어의 Tier 1 메타데이터 (라우팅용) ──
   const carrierRuntime = deps.carrierRuntime;
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
-  if (carrierIds.length > 0) {
-    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, { heading: "# Available Carriers" })}\n</fleet>`);
+  const subagentCarrierIds = nativeSubagents.map((subagent) => subagent.carrierId);
+  const rosterCarrierIds = carrierIds.filter((carrierId) => !subagentCarrierIds.includes(carrierId));
+  if (rosterCarrierIds.length > 0) {
+    parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, {
+      excludeCarrierIds: subagentCarrierIds,
+      heading: "# Available Carriers",
+    })}\n</fleet>`);
+  }
+
+  if (nativeSubagents.length > 0) {
+    const metadataByCarrierId = new Map(
+      nativeSubagents
+        .map((subagent) => [
+          subagent.carrierId,
+          getRegisteredCarrierConfig(carrierRuntime.registry, subagent.carrierId)?.carrierMetadata,
+        ] as const)
+        .filter((entry): entry is readonly [string, CarrierMetadata] => Boolean(entry[1])),
+    );
+    parts.push(`<fleet section="subagents">\n${buildNativeSubagentSection(nativeSubagents, metadataByCarrierId)}\n</fleet>`);
   }
 
   // ── 3. Fleet Action Protocol — 불변·유일 ──
@@ -156,4 +192,40 @@ export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boo
   }
 
   return parts.join("\n\n");
+}
+
+function buildNativeSubagentSection(
+  subagents: readonly NativeSubagentPromptDefinition[],
+  metadataByCarrierId: ReadonlyMap<string, CarrierMetadata>,
+): string {
+  const host = isCodexSubagent(subagents[0]) ? "Codex" : "Claude";
+  const invocationKind = host === "Codex" ? "native Codex roles" : "native Claude subagents";
+  const lines = [
+    `# Native ${host} Subagents`,
+    `The following Fleet carriers are exposed to this ${host}-family dedicated CLI session as ${invocationKind}.`,
+    "This path coexists with Fleet `carrier_dispatch`; use either route according to the task.",
+    "Native subagent output is not recovered into Fleet `carrier_jobs`, JobArchive, stream events, or `[carrier:result]` reminders.",
+    "When invoking a native subagent, use the carrier's structured request blocks below and keep the request concise.",
+    "",
+  ];
+  for (const subagent of subagents) {
+    lines.push(`- ${subagent.carrierId}: invoke as \`${getNativeSubagentInvocationName(subagent)}\` — ${subagent.description}`);
+    const metadata = metadataByCarrierId.get(subagent.carrierId);
+    const blockLines = metadata ? formatRequestBlocksGuide(metadata) : [];
+    if (blockLines.length > 0) {
+      lines.push("  Request blocks — wrap content in these (? = optional):");
+      lines.push(...blockLines);
+    }
+  }
+  return lines.join("\n");
+}
+
+function getNativeSubagentInvocationName(subagent: NativeSubagentPromptDefinition): string {
+  return isCodexSubagent(subagent) ? subagent.roleKey : subagent.name;
+}
+
+function isCodexSubagent(
+  subagent: NativeSubagentPromptDefinition | undefined,
+): subagent is CodexSubagentRoleDefinition {
+  return Boolean(subagent && "roleKey" in subagent);
 }

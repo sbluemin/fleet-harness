@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 
-import { DEFAULT_CARRIER_PERSONAS } from "@dotobokuri/fleet-carriers";
+import { DEFAULT_CARRIER_COUNT } from "@dotobokuri/fleet-carriers";
 import { resolveMemoryPaths } from "@dotobokuri/fleet-wiki";
 
 export type { FleetCliChannel, FleetCliRelease } from "../release.js";
@@ -23,7 +23,7 @@ const QUEUE_PATCH_FILENAME = "patch.md";
 export function discoverMissionControlCounts(options: DiscoverMissionControlCountsOptions): MissionControlCounts {
   const paths = resolveMemoryPaths(options.invocationCwd);
   return {
-    carriers: DEFAULT_CARRIER_PERSONAS.length,
+    carriers: DEFAULT_CARRIER_COUNT,
     queuedPatches: countQueuedPatches(paths.queueDir),
     wikiEntries: countMarkdownFilesRecursively(paths.wikiDir, true),
   };

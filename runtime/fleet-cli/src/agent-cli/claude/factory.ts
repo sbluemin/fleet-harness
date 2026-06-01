@@ -5,9 +5,9 @@ import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../
 import { createClaudeEnv } from "./env.js";
 
 interface ClaudeFamilyCliFactoryOptions {
-  readonly id: Extract<AgentCliId, "claude" | "claude-zai" | "claude-kimi">;
+  readonly id: Extract<AgentCliId, "claude" | "claude-kimi">;
   readonly label: string;
-  readonly authCli?: Extract<AgentCliId, "claude-zai" | "claude-kimi">;
+  readonly authCli?: Extract<AgentCliId, "claude-kimi">;
 }
 
 export function createClaudeFamilyCliDefinition(

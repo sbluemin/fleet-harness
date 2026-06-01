@@ -43,6 +43,10 @@ export const CARRIER_BG_COLORS: Record<string, string> = Object.fromEntries(
   }),
 ) as Record<string, string>;
 
+export const SUBAGENT_CARRIER_RGB: [number, number, number] = [216, 100, 168];
+export const SUBAGENT_CARRIER_COLOR = rgb(...SUBAGENT_CARRIER_RGB);
+export const SUBAGENT_CARRIER_BG_COLOR = bgRgb(30, 14, 26);
+
 /**
  * Tier-2 carrier 원칙 SSoT — 모든 persona가 재사용하는 carrier_jobs 자기호출 교리.
  */

@@ -99,6 +99,17 @@ describe("app cursor policy", () => {
     expect(cursorTarget()).toBe(ptyView);
   });
 
+  it("clears cursor target for Claude Kimi on native Windows by default", () => {
+    mockPlatform("win32");
+    const ptyView = {};
+    const cursorTarget = runCursorPolicy({
+      getActiveAgentProfileId: () => "claude-kimi",
+      ptyView,
+    });
+
+    expect(cursorTarget()).toBeUndefined();
+  });
+
   it("keeps cursor target for Codex on native Windows", () => {
     mockPlatform("win32");
     const ptyView = {};
@@ -136,7 +147,7 @@ describe("app cursor policy", () => {
 
 function runCursorPolicy(options: {
   readonly cursorSyncExplicitlyEnabled?: boolean;
-  readonly getActiveAgentProfileId?: () => "claude" | "claude-zai" | "claude-kimi" | "codex" | undefined;
+  readonly getActiveAgentProfileId?: () => "claude" | "claude-kimi" | "codex" | undefined;
   readonly ptyView: unknown;
 }): () => unknown {
   let cursorTarget: unknown = "visible";

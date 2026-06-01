@@ -12,9 +12,13 @@ import type {
 } from "./types.js";
 
 interface StoredCliSelection {
-  model?: string;
+  model: string;
   effort?: string;
-  direct?: boolean;
+}
+
+interface PersonaCliDefaults {
+  defaultModel?: string;
+  defaultEffort?: string;
 }
 
 interface StatusOverlayControllerDeps {
@@ -22,19 +26,19 @@ interface StatusOverlayControllerDeps {
   getRegisteredOrder: () => string[];
   getCarrierConfig: (carrierId: string) => CarrierConfig | undefined;
   getResolvedCliType: (carrierId: string) => CarrierCliType | undefined;
-  getCurrentModelSelection: (carrierId: string) => (ModelSelection & { direct?: boolean }) | undefined;
+  getCurrentModelSelection: (carrierId: string) => ModelSelection | undefined;
   getAvailableModels: (cliType: CarrierCliType) => CliModelInfo;
   getEffort?: (cliType: CarrierCliType, modelId: string) => ModelEffort | null;
-  getPerCliSettings: (carrierId: string, cliType: CarrierCliType) => StoredCliSelection | undefined;
-  savePerCliSettings: (carrierId: string, cliType: CarrierCliType, selection: StoredCliSelection) => void;
+  getAgentCliSelection: (carrierId: string, cliType: CarrierCliType) => StoredCliSelection | undefined;
+  saveAgentCliSelection: (carrierId: string, cliType: CarrierCliType, selection: StoredCliSelection) => void;
   updateCarrierCliType: (carrierId: string, cliType: CarrierCliType) => void;
-  applyCliTypeModelSelectionUpdate: (
+  applyAgentCliTypeSelectionUpdate: (
     carrierId: string,
     newCliType: CarrierCliType,
     defaultCliType: CarrierCliType,
     previousCliType: CarrierCliType | null,
     previousSelection: StoredCliSelection | undefined,
-    selection: ModelSelection & { direct?: boolean },
+    selection: ModelSelection,
   ) => Promise<void>;
   refreshAgentPanel: () => void;
   syncModelConfig: () => void;
@@ -112,7 +116,6 @@ export class StatusOverlayController implements Pick<
         ? {
           model: previousTopLevelSelection.model,
           effort: previousTopLevelSelection.effort,
-          direct: previousTopLevelSelection.direct,
         }
         : undefined;
 
@@ -120,7 +123,7 @@ export class StatusOverlayController implements Pick<
       cliTypeChanged = true;
       this.deps.refreshAgentPanel();
       const resolved = this.resolveCliSelection(carrierId, newCliType);
-      await this.deps.applyCliTypeModelSelectionUpdate(
+      await this.deps.applyAgentCliTypeSelectionUpdate(
         carrierId,
         newCliType,
         defaultCliType ?? newCliType,
@@ -129,7 +132,6 @@ export class StatusOverlayController implements Pick<
         {
           model: resolved.model,
           effort: resolved.effort ?? undefined,
-          direct: this.deps.getPerCliSettings(carrierId, newCliType)?.direct,
         },
       );
       return {
@@ -150,15 +152,26 @@ export class StatusOverlayController implements Pick<
     carrierId: string,
     cliType: CarrierCliType,
   ): ResolvedCliSelection {
-    const saved = this.deps.getPerCliSettings(carrierId, cliType);
+    const saved = this.deps.getAgentCliSelection(carrierId, cliType);
+    const config = this.deps.getCarrierConfig(carrierId);
+    const personaDefaults = resolvePersonaCliDefaults(config, cliType);
     const provider = this.deps.getAvailableModels(cliType);
     const hasSavedModel = !!(saved?.model && provider.models.some((model) => model.modelId === saved.model));
-    const resolvedModel = hasSavedModel ? saved!.model! : provider.defaultModel;
+    const hasPersonaDefaultModel = !!(
+      personaDefaults.defaultModel && provider.models.some((model) => model.modelId === personaDefaults.defaultModel)
+    );
+    const resolvedModel = hasSavedModel
+      ? saved!.model!
+      : hasPersonaDefaultModel
+        ? personaDefaults.defaultModel!
+        : provider.defaultModel;
     const effort = this.getModelEffort(cliType, resolvedModel, provider);
     const effortLevels = effort?.levels ?? [];
     const defaultEffort = effort?.default ?? null;
     const resolvedEffort = saved?.effort && effortLevels.includes(saved.effort)
       ? saved.effort
+      : personaDefaults.defaultEffort && effortLevels.includes(personaDefaults.defaultEffort)
+        ? personaDefaults.defaultEffort
       : defaultEffort;
 
     return {
@@ -205,6 +218,21 @@ export class StatusOverlayController implements Pick<
     }
     return [...deduped.entries()].map(([carrierId, newCliType]) => ({ carrierId, newCliType }));
   }
+}
+
+function resolvePersonaCliDefaults(
+  config: CarrierConfig | undefined,
+  cliType: CarrierCliType,
+): PersonaCliDefaults {
+  if (!config) return {};
+  if (cliType === "codex") return config.subagent?.byHost?.codex ?? {};
+  if (cliType === "claude") {
+    return config.subagent?.byHost?.claude ?? {
+      ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+      ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
+    };
+  }
+  return {};
 }
 
 function normalizeEffort(

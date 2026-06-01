@@ -4,335 +4,153 @@ import {
   type CliType,
 } from "@dotobokuri/fleet-unified-agent";
 import { disconnect } from "@dotobokuri/fleet-infra/agent";
-import { readStatesSnapshot, updateStates } from "./state-io.js";
+
+import {
+  sanitizeAgentCli,
+  sanitizeAgentCliSelectionForCliType,
+  sanitizeConfigKey,
+} from "./sanitize.js";
+import { readRawCarriers, updateCarriers } from "./state-io.js";
 import type {
+  AgentCliConfig,
+  AgentCliSelection,
+  CarrierAgentMode,
+  CarrierState,
   FleetStoreSnapshot,
-  ModelSelection,
-  PerCliSettings,
-  SelectedModelsConfig,
-  TaskForceConfig,
-  TaskForceSelection,
+  ResolvedCarrierState,
 } from "./types.js";
 
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
-
-export { applyCliTypeModelSelectionUpdate } from "./cli-types.js";
-
-/** 현재 모델 설정을 로드합니다. */
-export function loadModels(cliTypesByCarrier?: Record<string, CliType>): SelectedModelsConfig {
-  if (!cliTypesByCarrier) {
-    return sanitizeSelectedModelsConfig(readStatesSnapshot().models);
-  }
-
-  const maxCasAttempts = 5;
-  for (let attempt = 0; attempt < maxCasAttempts; attempt++) {
-    const expectedGeneration = readStatesSnapshot().generation;
-    let abortedByConcurrentGeneration = false;
-
-    updateStates((states) => {
-      const diskGen = sanitizeGeneration(states._generation);
-      if (diskGen !== expectedGeneration) {
-        abortedByConcurrentGeneration = true;
-        return;
-      }
-
-      const currentModels = sanitizeSelectedModelsConfig(states.models);
-      const healedFull = buildHealedModels(currentModels, cliTypesByCarrier);
-      let next: SelectedModelsConfig = currentModels;
-      let changed = false;
-
-      for (const carrierId of Object.keys(cliTypesByCarrier)) {
-        const healed = healedFull[carrierId];
-        if (!healed) continue;
-        const cur = currentModels[carrierId];
-        if (JSON.stringify(cur) !== JSON.stringify(healed)) {
-          if (!changed) {
-            next = { ...currentModels };
-            changed = true;
-          }
-          next[carrierId] = healed;
-        }
-      }
-
-      if (!changed) return;
-      states.models = next;
-    });
-
-    if (!abortedByConcurrentGeneration) {
-      return sanitizeSelectedModelsConfig(readStatesSnapshot().models);
-    }
-  }
-
-  return sanitizeSelectedModelsConfig(readStatesSnapshot().models);
+export interface CarrierModelDefaults {
+  readonly cliType: CliType;
+  readonly defaultAgentMode?: CarrierAgentMode;
+  readonly defaultEffort?: string;
+  readonly defaultModel?: string;
 }
 
-/**
- * Carrier의 모델 설정을 변경하고 live pool을 무효화합니다.
- */
-export async function updateModelSelection(
+export { applyAgentCliTypeSelectionUpdate } from "./cli-types.js";
+
+export function loadCarrierStates(defaultsByCarrier?: Record<string, CliType | CarrierModelDefaults>): Record<string, ResolvedCarrierState> {
+  return buildHealedCarriers(defaultsByCarrier);
+}
+
+export async function updateAgentCliSelection(
   carrierId: string,
-  selection: ModelSelection,
+  cliType: CliType,
+  selection: AgentCliSelection,
 ): Promise<void> {
-  updateStates((states) => {
-    const existing = states.models?.[carrierId];
-    const merged: ModelSelection = {
-      ...selection,
-      taskforce: selection.taskforce ?? existing?.taskforce,
-      perCliSettings: selection.perCliSettings ?? existing?.perCliSettings,
+  const sanitizedCarrierId = sanitizeConfigKey(carrierId);
+  const sanitizedSelection = sanitizeAgentCliSelectionForCliType(cliType, selection);
+  if (!sanitizedCarrierId || !sanitizedSelection) return;
+
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[sanitizedCarrierId] ?? {};
+    carriers[sanitizedCarrierId] = {
+      ...current,
+      agentCli: {
+        ...sanitizeAgentCli(current.agentCli),
+        [cliType]: sanitizedSelection,
+      },
     };
-    states.models = { ...states.models, [carrierId]: merged };
+    states.carriers = carriers;
   });
-  await disconnect(carrierId);
+  await disconnect(sanitizedCarrierId);
 }
 
-/**
- * CLI별 설정 캐시에서 특정 CLI 타입의 설정을 반환합니다.
- */
-export function getPerCliSettings(
+export function getAgentCliSelection(
   carrierId: string,
-  cliType: string,
+  cliType: CliType,
   snapshot?: FleetStoreSnapshot,
-): PerCliSettings | undefined {
-  const config = snapshot?.models ? sanitizeSelectedModelsConfig(snapshot.models) : loadModels();
-  const perCli = config[carrierId]?.perCliSettings;
-  if (!perCli) return undefined;
-  return sanitizePerCliSettings(perCli[cliType]);
+): AgentCliSelection | undefined {
+  const selection = snapshot?.carriers[carrierId]?.agentCli[cliType]
+    ?? sanitizeAgentCli(readRawCarriers().carriers?.[carrierId]?.agentCli)[cliType];
+  return sanitizeAgentCliSelectionForCliType(cliType, selection);
 }
 
-/**
- * 현재 설정을 CLI별 설정 캐시에 저장합니다.
- * 원자적: read → merge → write (세션 무효화 없음)
- */
-export function savePerCliSettings(
+export function saveAgentCliSelection(
   carrierId: string,
-  cliType: string,
-  settings: PerCliSettings,
+  cliType: CliType,
+  selection: AgentCliSelection,
 ): void {
-  if (
-    settings.model === undefined &&
-    settings.effort === undefined &&
-    settings.direct === undefined
-  ) {
-    return;
-  }
+  const sanitizedCarrierId = sanitizeConfigKey(carrierId);
+  const sanitizedSelection = sanitizeAgentCliSelectionForCliType(cliType, selection);
+  if (!sanitizedCarrierId || !sanitizedSelection) return;
 
-  const sanitizedKey = sanitizeConfigKey(cliType);
-  if (!sanitizedKey) return;
-
-  updateStates((states) => {
-    if (!states.models) states.models = {};
-    if (!states.models[carrierId]) states.models[carrierId] = { model: "" };
-
-    const carrier = states.models[carrierId]!;
-    if (!carrier.perCliSettings) carrier.perCliSettings = {};
-    carrier.perCliSettings[sanitizedKey] = {
-      model: settings.model,
-      effort: settings.effort,
-      direct: settings.direct,
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[sanitizedCarrierId] ?? {};
+    carriers[sanitizedCarrierId] = {
+      ...current,
+      agentCli: {
+        ...sanitizeAgentCli(current.agentCli),
+        [cliType]: sanitizedSelection,
+      },
     };
+    states.carriers = carriers;
   });
 }
 
-function sanitizeSelectedModelsConfig(raw: unknown): SelectedModelsConfig {
-  if (!isRecord(raw)) return {};
-
-  const result: SelectedModelsConfig = {};
-
-  for (const [key, value] of Object.entries(raw)) {
-    const sanitizedKey = sanitizeConfigKey(key);
-    if (!sanitizedKey) continue;
-
-    if (typeof value === "string") {
-      const legacyModel = sanitizeFreeformText(value);
-      if (!legacyModel) continue;
-      result[sanitizedKey] = { model: legacyModel };
-      continue;
-    }
-
-    const sanitizedSelection = sanitizeModelSelection(value);
-    if (sanitizedSelection) {
-      result[sanitizedKey] = sanitizedSelection;
-    }
+export function buildHealedCarriers(
+  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
+): Record<string, ResolvedCarrierState> {
+  const raw = readRawCarriers();
+  const carrierIds = new Set([
+    ...Object.keys(raw.carriers ?? {}),
+    ...Object.keys(defaultsByCarrier),
+  ]);
+  const result: Record<string, ResolvedCarrierState> = {};
+  for (const carrierId of carrierIds) {
+    const state = raw.carriers?.[carrierId] ?? {};
+    const defaults = normalizeDefaults(defaultsByCarrier[carrierId]);
+    result[carrierId] = resolveCarrierState(state, defaults);
   }
-
   return result;
 }
 
-function sanitizeModelSelection(value: unknown): ModelSelection | null {
-  if (!isRecord(value)) return null;
-
-  const taskforce = sanitizeTaskforceConfig(value.taskforce);
-  const perCliSettings = sanitizeAllPerCliSettings(value.perCliSettings);
-  const model = sanitizeFreeformText(value.model);
-  if (!model && !taskforce && !perCliSettings) return null;
-
-  const result: ModelSelection = { model: model ?? "" };
-
-  if (typeof value.direct === "boolean") {
-    result.direct = value.direct;
-  }
-
-  const effort = sanitizeFreeformText(value.effort);
-  if (effort) {
-    result.effort = effort;
-  }
-
-  if (taskforce) {
-    result.taskforce = taskforce;
-  }
-
-  if (perCliSettings) {
-    result.perCliSettings = perCliSettings;
-  }
-
-  return result;
+export function resolveCarrierState(
+  state: CarrierState,
+  defaults?: CarrierModelDefaults,
+): ResolvedCarrierState {
+  const agentCliType = state.agentCliType ?? defaults?.cliType ?? "claude";
+  const agentCli = sanitizeAgentCli(state.agentCli);
+  const activeSelection = resolveSelectionForCliType(agentCli[agentCliType], agentCliType, defaults);
+  return {
+    agentMode: state.agentMode ?? defaults?.defaultAgentMode ?? "cli",
+    agentCliType,
+    agentCli: {
+      ...agentCli,
+      [agentCliType]: activeSelection,
+    },
+    taskforce: state.taskforce ?? {},
+    ...(state.displayName ? { displayName: state.displayName } : {}),
+  };
 }
 
-function sanitizePerCliSettings(value: unknown): PerCliSettings | undefined {
-  if (!isRecord(value)) return undefined;
-  const result: PerCliSettings = {};
-  let hasField = false;
-
-  const model = sanitizeFreeformText(value.model);
-  if (model) { result.model = model; hasField = true; }
-
-  const effort = sanitizeFreeformText(value.effort);
-  if (effort) { result.effort = effort; hasField = true; }
-
-  if (typeof value.direct === "boolean") { result.direct = value.direct; hasField = true; }
-
-  return hasField ? result : undefined;
-}
-
-function sanitizeAllPerCliSettings(
-  value: unknown,
-): Partial<Record<string, PerCliSettings>> | undefined {
-  if (!isRecord(value)) return undefined;
-
-  const result: Partial<Record<string, PerCliSettings>> = {};
-  let hasEntry = false;
-
-  for (const [key, entry] of Object.entries(value)) {
-    const sanitizedKey = sanitizeConfigKey(key);
-    if (!sanitizedKey) continue;
-    const sanitized = sanitizePerCliSettings(entry);
-    if (sanitized) {
-      result[sanitizedKey] = sanitized;
-      hasEntry = true;
-    }
-  }
-
-  return hasEntry ? result : undefined;
-}
-
-function sanitizeTaskforceConfig(value: unknown): TaskForceConfig | undefined {
-  if (!isRecord(value)) return undefined;
-
-  const taskforce: TaskForceConfig = {};
-  for (const [cliKey, cliValue] of Object.entries(value)) {
-    const sanitizedKey = sanitizeConfigKey(cliKey);
-    const sanitizedTaskforceSelection = sanitizeTaskForceSelection(cliValue);
-    if (sanitizedKey && sanitizedTaskforceSelection) {
-      (taskforce as Partial<Record<string, TaskForceSelection>>)[sanitizedKey] = sanitizedTaskforceSelection;
-    }
-  }
-
-  return Object.keys(taskforce).length > 0 ? taskforce : undefined;
+function normalizeDefaults(value: CliType | CarrierModelDefaults | undefined): CarrierModelDefaults | undefined {
+  if (!value) return undefined;
+  return typeof value === "string" ? { cliType: value } : value;
 }
 
 function resolveSelectionForCliType(
-  current: ModelSelection,
+  stored: AgentCliSelection | undefined,
   cliType: CliType,
-): ModelSelection | null {
+  defaults?: CarrierModelDefaults,
+): AgentCliSelection {
   const provider = getProviderModels(cliType);
   const allowedModels = new Set(provider.models.map((model) => model.modelId));
-  const saved = sanitizePerCliSettings(current.perCliSettings?.[cliType]);
-
-  const currentModelIsValid = allowedModels.has(current.model);
-  const savedModelIsValid = !!saved?.model && allowedModels.has(saved.model);
-  const model = currentModelIsValid
-    ? current.model
-    : savedModelIsValid
-      ? saved.model!
+  const defaultModelIsValid = !!defaults?.defaultModel && allowedModels.has(defaults.defaultModel);
+  const storedModelIsValid = !!stored?.model && allowedModels.has(stored.model);
+  const model = storedModelIsValid
+    ? stored!.model
+    : defaultModelIsValid
+      ? defaults!.defaultModel!
       : provider.defaultModel;
-
-  const result: ModelSelection = { model };
   const modelEffort = getEffort(cliType, model);
-
-  if (modelEffort.supported) {
-    const effort = currentModelIsValid && current.effort && modelEffort.levels.includes(current.effort)
-      ? current.effort
-      : !currentModelIsValid && savedModelIsValid && saved?.effort && modelEffort.levels.includes(saved.effort)
-        ? saved.effort
-        : modelEffort.default;
-
-    result.effort = effort;
-  }
-
-  if (current.direct !== undefined) {
-    result.direct = current.direct;
-  } else if (saved?.direct !== undefined) {
-    result.direct = saved.direct;
-  }
-
-  return result;
-}
-
-function buildHealedModels(
-  config: SelectedModelsConfig,
-  cliTypesByCarrier: Record<string, CliType>,
-): SelectedModelsConfig {
-  const next = structuredClone(config);
-  for (const [carrierId, cliType] of Object.entries(cliTypesByCarrier)) {
-    const provider = getProviderModels(cliType);
-    const current = next[carrierId];
-    if (!current) {
-      next[carrierId] = { model: provider.defaultModel };
-      continue;
-    }
-    const resolved = resolveSelectionForCliType(current, cliType);
-    if (!resolved) continue;
-    next[carrierId] = {
-      model: resolved.model,
-      ...(resolved.effort ? { effort: resolved.effort } : {}),
-      ...(resolved.direct !== undefined ? { direct: resolved.direct } : {}),
-      ...(current.taskforce ? { taskforce: current.taskforce } : {}),
-      ...(current.perCliSettings ? { perCliSettings: current.perCliSettings } : {}),
-    };
-  }
-  return next;
-}
-
-function sanitizeTaskForceSelection(value: unknown): TaskForceSelection | null {
-  if (!isRecord(value)) return null;
-  const model = sanitizeFreeformText(value.model);
-  if (!model) return null;
-
-  const result: TaskForceSelection = { model };
-  const effort = sanitizeFreeformText(value.effort);
-  if (effort) result.effort = effort;
-  if (typeof value.direct === "boolean") result.direct = value.direct;
-  return result;
-}
-
-function sanitizeGeneration(value: unknown): number {
-  if (!Number.isInteger(value) || (value as number) < 0) return 0;
-  return value as number;
-}
-
-function sanitizeConfigKey(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function sanitizeFreeformText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (!modelEffort.supported) return { model };
+  const effort = storedModelIsValid && stored?.effort && modelEffort.levels.includes(stored.effort)
+    ? stored.effort
+    : defaults?.defaultEffort && modelEffort.levels.includes(defaults.defaultEffort)
+      ? defaults.defaultEffort
+      : modelEffort.default;
+  return { model, effort };
 }
