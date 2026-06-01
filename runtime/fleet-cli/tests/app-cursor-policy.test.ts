@@ -136,7 +136,7 @@ describe("app cursor policy", () => {
 
 function runCursorPolicy(options: {
   readonly cursorSyncExplicitlyEnabled?: boolean;
-  readonly getActiveAgentProfileId?: () => "claude" | "claude-zai" | "claude-kimi" | "codex" | undefined;
+  readonly getActiveAgentProfileId?: () => "claude" | "codex" | undefined;
   readonly ptyView: unknown;
 }): () => unknown {
   let cursorTarget: unknown = "visible";

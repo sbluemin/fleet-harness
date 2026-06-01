@@ -21,7 +21,7 @@ describe("session options resolver", () => {
       cliIdOverride: "codex",
       defaults: DEFAULTS,
       env: {
-        FLEET_AGENT_CLI: "claude-kimi",
+        FLEET_AGENT_CLI: "claude",
         FLEET_CURSOR_SYNC: "1",
         FLEET_ENABLE_METAPHOR: "1",
         FLEET_NATIVE: "1",
@@ -30,7 +30,7 @@ describe("session options resolver", () => {
       parseCliId: parseAgentCliId,
       preset: {
         version: 1,
-        defaultCliId: "claude-zai",
+        defaultCliId: "codex",
         byCli: {
           codex: {
             cursorSync: true,
@@ -69,7 +69,7 @@ describe("session options resolver", () => {
       parseCliId: parseAgentCliId,
       preset: {
         version: 1,
-        defaultCliId: "claude-zai",
+        defaultCliId: "claude",
         byCli: {
           codex: {
             enableMetaphor: true,

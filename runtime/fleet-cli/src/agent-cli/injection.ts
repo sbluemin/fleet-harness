@@ -73,7 +73,7 @@ function buildStartupClaudeSubagents(
 }
 
 function isClaudeFamilyCli(cliId: AgentCliProfile["id"]): boolean {
-  return cliId === "claude" || cliId === "claude-zai" || cliId === "claude-kimi";
+  return cliId === "claude";
 }
 
 function buildAgentCliMcpServerConfigs(

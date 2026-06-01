@@ -892,19 +892,19 @@ describe("Mission Control controller", () => {
     });
 
     controller.ptyHost.write("\x1bOB");
-    expect(controller.getState().cliId).toBe("claude-zai");
+    expect(controller.getState().cliId).toBe("codex");
 
     controller.ptyHost.write("\x1b[B");
-    expect(controller.getState().cliId).toBe("claude-kimi");
+    expect(controller.getState().cliId).toBe("claude");
 
     controller.ptyHost.write("\x1b[A");
-    expect(controller.getState().cliId).toBe("claude-zai");
+    expect(controller.getState().cliId).toBe("codex");
 
     controller.ptyHost.write("k");
     expect(controller.getState().cliId).toBe("claude");
 
     controller.ptyHost.write("j");
-    expect(controller.getState().cliId).toBe("claude-zai");
+    expect(controller.getState().cliId).toBe("codex");
 
     controller.ptyHost.write("k");
     expect(controller.getState().cliId).toBe("claude");
@@ -921,28 +921,8 @@ describe("Mission Control controller", () => {
   });
 
   it("preserves agent CLI resolver precedence for Mission Control defaults", () => {
-    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "codex" }, { cliId: "claude-kimi" })).toBe("claude-kimi");
-    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "claude-zai" })).toBe("claude-zai");
-  });
-
-  it("keeps variant CLI selections instead of collapsing them to Claude", async () => {
-    const launched: AgentCliId[] = [];
-    const controller = createTestController({
-      cliOptions: ALL_CLI_OPTIONS,
-      defaultCliId: resolveAgentCliId({ FLEET_AGENT_CLI: "claude-zai" }),
-      resolveProfile: (cliId) => {
-        launched.push(cliId);
-        return Promise.resolve({ ...TEST_PROFILE, id: cliId, label: cliId });
-      },
-    });
-
-    expect(controller.getState().cliId).toBe("claude-zai");
-
-    controller.ptyHost.write("3");
-    await controller.launchSelected();
-
-    expect(launched).toEqual(["claude-kimi"]);
-    expect(controller.getState().cliId).toBe("claude-kimi");
+    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "claude" }, { cliId: "codex" })).toBe("codex");
+    expect(resolveAgentCliId({ FLEET_AGENT_CLI: "codex" })).toBe("codex");
   });
 
   it("builds app-level profile config with registry parity", async () => {
@@ -956,8 +936,8 @@ describe("Mission Control controller", () => {
 
     expect(config.defaultCliId).toBe("codex");
     expect(config.cliOptions).toEqual(expect.arrayContaining([
-      { id: "claude-zai", label: "Claude Z.AI" },
-      { id: "claude-kimi", label: "Claude Kimi" },
+      { id: "claude", label: "Claude" },
+      { id: "codex", label: "Codex" },
     ]));
 
     const profile = await config.resolveProfile("codex");

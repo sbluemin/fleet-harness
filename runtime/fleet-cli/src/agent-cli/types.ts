@@ -1,6 +1,6 @@
 import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
 
-export type AgentCliId = "claude" | "claude-zai" | "claude-kimi" | "codex";
+export type AgentCliId = "claude" | "codex";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;

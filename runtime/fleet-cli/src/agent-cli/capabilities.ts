@@ -5,14 +5,6 @@ export const AGENT_CLI_INJECTION_CAPABILITIES: Record<AgentCliId, AgentCliInject
     builderId: "claude-native",
     enabled: true,
   },
-  "claude-zai": {
-    builderId: "claude-native",
-    enabled: true,
-  },
-  "claude-kimi": {
-    builderId: "claude-native",
-    enabled: true,
-  },
   codex: {
     builderId: "codex-native",
     enabled: true,
