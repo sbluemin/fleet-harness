@@ -17,8 +17,14 @@ import {
   registerStreamHandler,
   resetStoreForTests,
   resolveCarrierDisplayName,
+  setCarrierSubagentMode,
   updateCarrierDisplayName,
 } from "../../src/index.js";
+
+interface CarrierDispatchToolResult {
+  details: unknown;
+  isError: boolean;
+}
 
 vi.mock("@dotobokuri/fleet-infra/agent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@dotobokuri/fleet-infra/agent")>();
@@ -165,6 +171,93 @@ describe("carrier_dispatch effort resolution", () => {
       model: "sonnet",
       effort: "max",
     }));
+  });
+});
+
+describe("carrier_dispatch native subagent mode rejection", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-subagent-mode-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("rejects a carrier in native subagent mode with direct invocation guidance", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    setCarrierSubagentMode("ohio", true);
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check subagent guard",
+      request: "Verify dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-subagent-mode",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-subagent-mode",
+      accepted: false,
+      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+    });
+    expect(result.isError).toBe(true);
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+
+  it("rejects a subagent-mode carrier before Task Force auto-promotion", async () => {
+    writeStates({
+      carrierModes: {
+        ohio: "subagent",
+      },
+      models: {
+        ohio: {
+          model: "sonnet",
+          taskforce: {
+            claude: {
+              model: "sonnet",
+              effort: "medium",
+            },
+            codex: {
+              model: "gpt-5.4",
+              effort: "high",
+            },
+          },
+        },
+      },
+    });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check Task Force guard order",
+      request: "Verify dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-subagent-taskforce",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-subagent-taskforce",
+      accepted: false,
+      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+    });
+    expect(result.isError).toBe(true);
+    expect(executeWithPool).not.toHaveBeenCalled();
   });
 });
 

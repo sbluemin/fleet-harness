@@ -26,6 +26,7 @@ import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
+  isCarrierSubagentModeEnabled,
   loadModels,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
@@ -226,6 +227,16 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
       }
 
       const metadata = config.carrierMetadata;
+
+      if (isCarrierSubagentModeEnabled(carrierId)) {
+        const displayName = resolveCarrierDisplayName(registry, carrierId);
+        logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier subagent mode enabled carrier=${carrierId}`);
+        return launchResponseResult({
+          job_id: jobId,
+          accepted: false,
+          error: `Carrier "${carrierId}" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "${displayName}".`,
+        });
+      }
 
       // 필수 request-block 검증
       if (metadata) {

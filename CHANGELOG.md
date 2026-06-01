@@ -8,6 +8,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - [core] Added per-carrier Native(SubAgent) toggles for Claude-family dedicated CLI sessions.
 - [core] Added per-carrier Claude Native(SubAgent) effort defaults to startup agent payloads.
+- [core] carrier_dispatch now rejects carriers in native subagent mode, returning an accepted:false response that instructs the host AI to invoke the carrier via its CLI's native subagent path instead.
 
 ### Changed
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
