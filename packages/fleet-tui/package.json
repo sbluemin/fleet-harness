@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-tui",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "files": ["dist", "AGENTS.md", "README.md"],

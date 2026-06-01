@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-01
+
 ### Added
 - [core] Job-bar strip now shows an `[SA]` badge for carriers in Native(SubAgent) mode.
 - [core] Restored the `claude-kimi` dedicated Agent CLI profile for Claude-family native subagent sessions.
