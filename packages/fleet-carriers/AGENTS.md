@@ -10,7 +10,7 @@
 - `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, request-block validation, status overlay, and sortie helpers
 - `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
 - `subagents/` — Claude-family subagent definition conversion derived from carrier metadata
-- `store/` — `states.json` carrier runtime persistence and `carrier-subagent.json` subagent-mode persistence, with `state-io.ts` as the file-I/O gate and `store-lock.ts` as the shared directory-lock primitive
+- `store/` — `states.json` carrier runtime persistence including subagent-mode state, with `state-io.ts` as the file-I/O gate and `store-lock.ts` as the shared directory-lock primitive
 - `stream/` — carrier job stream event types and Set-based handler registry
 - Explicit default carrier registration via `registerDefaultCarriers()`
 - Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior

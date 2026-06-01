@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { isRecord } from "./sanitize.js";
 import type { StoreLockOwner } from "./types.js";
 
 const LOCK_DIRNAME = "states.json.lock";
@@ -115,8 +116,4 @@ function sanitizeLockOwner(value: unknown): StoreLockOwner | null {
 
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

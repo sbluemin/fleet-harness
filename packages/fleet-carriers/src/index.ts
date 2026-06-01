@@ -66,7 +66,6 @@ export {
   setCarrierSubagentMode,
   filterCarrierSubagentModesToRegisteredIds,
   getEnabledCarrierSubagentIds,
-  getSubagentModeFilePath,
   updateCarrierDisplayName,
   normalizeCarrierDisplayNameInput,
   sanitizeCarrierDisplayName,

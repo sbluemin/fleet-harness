@@ -28,6 +28,8 @@ export type TaskForceSelection = Omit<ModelSelection, "taskforce">;
 
 export type TaskForceConfig = Partial<Record<TaskForceCliType, TaskForceSelection>>;
 
+export type CarrierSubagentMode = "subagent";
+
 /** states.json 통합 스키마 */
 export interface FleetStates {
   /** states.json write generation (watcher echo suppression용) */
@@ -38,6 +40,8 @@ export interface FleetStates {
   cliTypeOverrides?: Record<string, string>;
   /** carrier별 사용자 지정 표시 이름 오버라이드 */
   carrierDisplayNames?: Record<string, string>;
+  /** carrier별 subagent 모드 설정 */
+  carrierModes?: Record<string, CarrierSubagentMode>;
 }
 
 export interface StoreLockOwner {
@@ -51,6 +55,12 @@ export interface FleetStoreSnapshot {
   models: SelectedModelsConfig;
   cliTypeOverrides: Record<string, string>;
   carrierDisplayNames: Record<string, string>;
+  carrierModes: Record<string, CarrierSubagentMode>;
+}
+
+export interface CarrierSubagentModeSnapshot {
+  readonly carrierModes: Record<string, CarrierSubagentMode>;
+  readonly generation: number;
 }
 
 /** 로컬 프로세스가 직전에 기록한 states.json 지문(watcher echo 판별용, mtime+size 병합) */

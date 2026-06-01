@@ -5,6 +5,11 @@ import {
 } from "@dotobokuri/fleet-unified-agent";
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../dispatch/types.js";
 import { loadModels } from "./models.js";
+import {
+  isRecord,
+  sanitizeConfigKey,
+  sanitizeFreeformText,
+} from "./sanitize.js";
 import { updateStates } from "./state-io.js";
 import type {
   FleetStoreSnapshot,
@@ -13,8 +18,6 @@ import type {
   TaskForceConfig,
   TaskForceSelection,
 } from "./types.js";
-
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
 
 /**
  * Task Force 백엔드별 모델 설정을 반환합니다.
@@ -232,21 +235,4 @@ function toTaskForceCliType(value: string): TaskForceCliType {
 
 function isTaskForceCliType(value: string): value is TaskForceCliType {
   return TASKFORCE_CLI_TYPES.includes(value as CliType);
-}
-
-function sanitizeConfigKey(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function sanitizeFreeformText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

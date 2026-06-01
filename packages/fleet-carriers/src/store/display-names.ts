@@ -1,7 +1,11 @@
 import { CLI_DISPLAY_NAMES } from "../constants.js";
+import {
+  CONTROL_AND_C1_CHAR_PATTERN,
+  isRecord,
+  sanitizeConfigKey,
+} from "./sanitize.js";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const DISPLAY_NAME_BIDI_CONTROL_PATTERN = /[\u202A-\u202E\u2066-\u2069]/g;
 const DISPLAY_NAME_ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
 const DISPLAY_NAME_MAX_LENGTH = 50;
@@ -26,7 +30,7 @@ export function updateCarrierDisplayName(
   displayName: string,
   sourceDefaultDisplayName: string,
 ): void {
-  const sanitizedCarrierId = sanitizeConfigKey(carrierId);
+  const sanitizedCarrierId = sanitizeConfigKey(carrierId, CONTROL_AND_C1_CHAR_PATTERN);
   if (!sanitizedCarrierId) return;
 
   const sanitizedDisplayName = sanitizeCarrierDisplayName(displayName);
@@ -52,7 +56,7 @@ export function updateCarrierDisplayName(
 
 export function normalizeCarrierDisplayNameInput(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  if (CONTROL_CHAR_PATTERN.test(value)) return null;
+  if (CONTROL_AND_C1_CHAR_PATTERN.test(value)) return null;
 
   const normalized = value
     .replace(DISPLAY_NAME_BIDI_CONTROL_PATTERN, "")
@@ -75,20 +79,10 @@ function sanitizeCarrierDisplayNames(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
   const result: Record<string, string> = {};
   for (const [id, displayName] of Object.entries(value)) {
-    const sanitizedId = sanitizeConfigKey(id);
+    const sanitizedId = sanitizeConfigKey(id, CONTROL_AND_C1_CHAR_PATTERN);
     const sanitizedDisplayName = sanitizeCarrierDisplayName(displayName);
     if (!sanitizedId || !sanitizedDisplayName) continue;
     result[sanitizedId] = sanitizedDisplayName;
   }
   return result;
-}
-
-function sanitizeConfigKey(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

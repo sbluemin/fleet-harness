@@ -8,7 +8,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { initSubagentModeStore, resetSubagentModeStoreForTests } from "./subagent-mode.js";
+import {
+  isRecord,
+  sanitizeCarrierModes,
+  sanitizeConfigKey,
+  sanitizeFreeformText,
+  sanitizeGeneration,
+} from "./sanitize.js";
 import { withStoreDirectoryLock } from "./store-lock.js";
 import type {
   FleetStates,
@@ -25,8 +31,7 @@ interface StateIoRuntimeState {
 
 /** 통합 영속화 파일명 */
 const FILENAME = "states.json";
-
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
+const STALE_SUBAGENT_MODE_FILENAME = "carrier-subagent.json";
 
 /** 스토어 데이터 디렉토리 */
 const runtimeState: StateIoRuntimeState = {
@@ -42,14 +47,15 @@ const runtimeState: StateIoRuntimeState = {
 export function initStore(dir: string): void {
   runtimeState.storeDir = dir;
   fs.mkdirSync(dir, { recursive: true });
-  initSubagentModeStore(dir);
+  withStoreDirectoryLock(dir, () => {
+    unlinkStaleSubagentModeFile(dir);
+  });
 }
 
 export function resetStoreForTests(): void {
   runtimeState.storeDir = null;
   runtimeState.lastLocalWriteGeneration = 0;
   runtimeState.lastLocalWriteFingerprint = null;
-  resetSubagentModeStoreForTests();
 }
 
 export function readStatesSnapshot(): FleetStoreSnapshot {
@@ -59,6 +65,7 @@ export function readStatesSnapshot(): FleetStoreSnapshot {
     models: sanitizeModelsMap(states.models),
     cliTypeOverrides: sanitizeStringMap(states.cliTypeOverrides),
     carrierDisplayNames: sanitizeStringMap(states.carrierDisplayNames),
+    carrierModes: sanitizeCarrierModes(states.carrierModes),
   };
 }
 
@@ -137,17 +144,13 @@ function serializeFleetStates(states: FleetStates): FleetStates {
   if (states.models !== undefined) next.models = states.models;
   if (states.cliTypeOverrides !== undefined) next.cliTypeOverrides = states.cliTypeOverrides;
   if (states.carrierDisplayNames !== undefined) next.carrierDisplayNames = states.carrierDisplayNames;
+  if (states.carrierModes !== undefined) next.carrierModes = sanitizeCarrierModes(states.carrierModes);
   return next;
 }
 
 function buildTempPath(filePath: string): string {
   const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
   return `${filePath}.${suffix}.tmp`;
-}
-
-function sanitizeGeneration(value: unknown): number {
-  if (!Number.isInteger(value) || (value as number) < 0) return 0;
-  return value as number;
 }
 
 function sanitizeModelsMap(value: unknown): SelectedModelsConfig {
@@ -166,19 +169,10 @@ function sanitizeStringMap(value: unknown): Record<string, string> {
   return result;
 }
 
-function sanitizeConfigKey(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function sanitizeFreeformText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function unlinkStaleSubagentModeFile(dir: string): void {
+  try {
+    fs.unlinkSync(path.join(dir, STALE_SUBAGENT_MODE_FILENAME));
+  } catch {
+    // 미출시 파일 잔여물 정리만 시도합니다.
+  }
 }

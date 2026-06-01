@@ -1,5 +1,10 @@
 import { CLI_BACKENDS, type CliType } from "@dotobokuri/fleet-unified-agent";
 import { disconnect } from "@dotobokuri/fleet-infra/agent";
+import {
+  isRecord,
+  sanitizeConfigKey,
+  sanitizeFreeformText,
+} from "./sanitize.js";
 import { readStatesSnapshot, updateStates } from "./state-io.js";
 import type {
   ModelSelection,
@@ -8,8 +13,6 @@ import type {
   TaskForceConfig,
   TaskForceSelection,
 } from "./types.js";
-
-const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
 
 /** 유효한 cliType 값 집합 */
 const VALID_CLI_TYPES = new Set(Object.keys(CLI_BACKENDS));
@@ -224,21 +227,4 @@ function sanitizePerCliSettings(value: unknown): PerCliSettings | undefined {
   if (typeof value.direct === "boolean") { result.direct = value.direct; hasField = true; }
 
   return hasField ? result : undefined;
-}
-
-function sanitizeConfigKey(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function sanitizeFreeformText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || CONTROL_CHAR_PATTERN.test(trimmed)) return null;
-  return trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
