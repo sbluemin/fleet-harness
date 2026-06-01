@@ -13,8 +13,19 @@ export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
   id: "vanguard",
   displayName: "Vanguard",
   slot: 6,
-  defaultModel: "haiku",
-  defaultEffort: "low",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "haiku",
+      defaultEffort: "low",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "haiku", defaultEffort: "low" },
+        codex: { defaultModel: "gpt-5.4-mini", defaultEffort: "low" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

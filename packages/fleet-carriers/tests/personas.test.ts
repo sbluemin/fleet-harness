@@ -52,6 +52,28 @@ const EXPECTED_DEFAULTS = {
   ohio: { slot: 4, defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
+const EXPECTED_CLAUDE_SUBAGENT_DEFAULTS = {
+  genesis: { defaultModel: "sonnet", defaultEffort: "medium" },
+  kirov: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
+  nimitz: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
+  sentinel: { defaultModel: "sonnet", defaultEffort: "xhigh" },
+  vanguard: { defaultModel: "haiku", defaultEffort: "low" },
+  tempest: { defaultModel: "sonnet", defaultEffort: "medium" },
+  chronicle: { defaultModel: "sonnet", defaultEffort: "low" },
+  ohio: { defaultModel: "sonnet", defaultEffort: "low" },
+} as const;
+
+const EXPECTED_CODEX_PROVIDER_DEFAULTS = {
+  genesis: { defaultModel: "gpt-5.5", defaultEffort: "medium" },
+  kirov: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
+  nimitz: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
+  sentinel: { defaultModel: "gpt-5.5", defaultEffort: "high" },
+  vanguard: { defaultModel: "gpt-5.4-mini", defaultEffort: "low" },
+  tempest: { defaultModel: "gpt-5.4-mini", defaultEffort: "xhigh" },
+  chronicle: { defaultModel: "gpt-5.4", defaultEffort: "medium" },
+  ohio: { defaultModel: "gpt-5.5", defaultEffort: "low" },
+} as const;
+
 const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
   "wiki_briefing",
   "wiki_drydock",
@@ -132,8 +154,13 @@ describe("persona defaults", () => {
     for (const persona of DEFAULT_PERSONAS) {
       const id = persona.defaults.id as keyof typeof EXPECTED_DEFAULTS;
       expect(persona.defaults.slot).toBe(EXPECTED_DEFAULTS[id].slot);
-      expect(persona.defaults.defaultModel).toBe(EXPECTED_DEFAULTS[id].defaultModel);
-      expect(persona.defaults.defaultEffort).toBe(EXPECTED_DEFAULTS[id].defaultEffort);
+      expect(persona.defaults.agent.dispatch).toEqual({
+        defaultCliType: "claude",
+        defaultModel: EXPECTED_DEFAULTS[id].defaultModel,
+        defaultEffort: EXPECTED_DEFAULTS[id].defaultEffort,
+      });
+      expect(persona.defaults.agent.nativeSubagents?.byHost?.claude).toEqual(EXPECTED_CLAUDE_SUBAGENT_DEFAULTS[id]);
+      expect(persona.defaults.agent.nativeSubagents?.byHost?.codex).toEqual(EXPECTED_CODEX_PROVIDER_DEFAULTS[id]);
     }
   });
 
@@ -165,8 +192,20 @@ describe("explicit default registration", () => {
       expect(config?.carrierMetadata?.title).toBe(
         expected?.meta.title,
       );
-      expect(config?.subagent?.defaultModel).toBe(expected?.defaults.defaultModel);
-      expect(config?.subagent?.defaultEffort).toBe(expected?.defaults.defaultEffort);
+      expect(config?.defaultCliType).toBe(expected?.defaults.agent.dispatch.defaultCliType);
+      expect(config?.subagent?.defaultModel).toBe(expected?.defaults.agent.nativeSubagents?.byHost?.claude?.defaultModel);
+      expect(config?.subagent?.defaultEffort).toBe(expected?.defaults.agent.nativeSubagents?.byHost?.claude?.defaultEffort);
+    }
+  });
+
+  it("모든 기본 carrier가 Claude/Codex native subagent 기본값을 가진다", () => {
+    registerDefaultCarriers(registry);
+
+    for (const id of EXPECTED_IDS) {
+      const config = getRegisteredCarrierConfig(registry, id);
+
+      expect(config?.subagent?.byHost?.claude).toEqual(EXPECTED_CLAUDE_SUBAGENT_DEFAULTS[id]);
+      expect(config?.subagent?.byHost?.codex).toEqual(EXPECTED_CODEX_PROVIDER_DEFAULTS[id]);
     }
   });
 });

@@ -14,8 +14,19 @@ export const SENTINEL_DEFAULTS: CarrierPersonaDefaults = {
   id: "sentinel",
   displayName: "Sentinel",
   slot: 5,
-  defaultModel: "sonnet",
-  defaultEffort: "max",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "max",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "xhigh" },
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "high" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

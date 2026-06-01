@@ -1,4 +1,4 @@
-import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
+import type { ClaudeSubagentDefinition, CodexSubagentRoleDefinition } from "@dotobokuri/fleet-carriers";
 
 export type AgentCliId = "claude" | "codex";
 
@@ -36,9 +36,15 @@ export interface AgentCliProfileOptions {
 export interface AgentCliInjectionContext {
   readonly claudeSubagents?: readonly ClaudeSubagentDefinition[];
   readonly cliId: AgentCliId;
+  readonly codexSubagents?: readonly AgentCliCodexSubagentRole[];
   readonly replaceSystemPrompt: boolean;
   readonly systemPromptFile: string;
   readonly mcpServers: readonly AgentCliMcpServerConfig[];
+}
+
+export interface AgentCliCodexSubagentRole {
+  readonly definition: CodexSubagentRoleDefinition;
+  readonly configFile: string;
 }
 
 export interface AgentCliMcpServerConfig {

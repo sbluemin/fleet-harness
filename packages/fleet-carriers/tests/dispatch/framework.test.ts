@@ -172,6 +172,35 @@ describe("carrier_dispatch effort resolution", () => {
       effort: "max",
     }));
   });
+
+  it("uses persona dispatch defaults when no model state exists", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      defaultEffort: "max",
+      defaultModel: "sonnet",
+    });
+    const tool = buildCarrierDispatchToolSpec(registry);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check dispatch defaults",
+      request: "Verify dispatch defaults.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-defaults",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+      cliType: "claude",
+      model: "sonnet",
+      effort: "max",
+    }));
+  });
 });
 
 describe("carrier_dispatch native subagent mode rejection", () => {

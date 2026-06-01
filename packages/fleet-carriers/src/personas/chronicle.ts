@@ -13,8 +13,19 @@ export const CHRONICLE_DEFAULTS: CarrierPersonaDefaults = {
   id: "chronicle",
   displayName: "Chronicle",
   slot: 8,
-  defaultModel: "sonnet",
-  defaultEffort: "low",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "low",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "low" },
+        codex: { defaultModel: "gpt-5.4", defaultEffort: "medium" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

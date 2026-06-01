@@ -14,10 +14,11 @@ import {
   resolveCarrierDisplayName,
   sanitizeCarrierDisplayName,
   savePerCliSettings,
-  setCarrierSubagentMode,
+  setCarrierSubagentModeWithCodexRole,
   updateCarrierCliType,
   updateCarrierDisplayName,
   updateModelSelection,
+  type PerCliSettings,
 } from "@dotobokuri/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 import {
@@ -495,10 +496,18 @@ export class CarrierStatusOverlay implements Component, Focusable {
     const entry = this.getSelectedEntry();
     if (!entry) return;
     const enabled = !entry.subagentMode;
-    setCarrierSubagentMode(entry.carrierId, enabled);
+    const config = getCarrierConfig(this.options.carrierRuntime.registry, entry.carrierId);
+    if (!config) {
+      this.feedbackMessage = `저장 실패: ${entry.displayName} carrier metadata를 찾을 수 없습니다.`;
+      this.options.requestRender();
+      return;
+    }
+    const registeredCarrierIds = getRegisteredOrder(this.options.carrierRuntime.registry);
+    setCarrierSubagentModeWithCodexRole(config, enabled, this.resolveCodexSubagentSettings(entry), { registeredCarrierIds });
     notifyStatusUpdate(this.options.carrierRuntime.registry);
+    const hostFamily = entry.cliType === "codex" ? "Codex 계열" : "Claude 계열";
     this.feedbackMessage = enabled
-      ? `${entry.displayName} Native(SubAgent) 활성화: 다음 Claude 계열 dedicated CLI 시작부터 적용됩니다.`
+      ? `${entry.displayName} Native(SubAgent) 활성화: 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
       : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
     this.options.requestRender();
   }
@@ -534,6 +543,16 @@ export class CarrierStatusOverlay implements Component, Focusable {
       isDefault: entry.isDefault,
       model: entry.model,
     };
+  }
+
+  private resolveCodexSubagentSettings(entry: CarrierStatusEntry): PerCliSettings | undefined {
+    if (entry.cliType === "codex") {
+      return {
+        effort: entry.effort ?? undefined,
+        model: entry.model,
+      };
+    }
+    return getPerCliSettings(entry.carrierId, "codex");
   }
 
   private restoreEntrySnapshot(entry: CarrierStatusEntry, snapshot: EntrySnapshot): void {

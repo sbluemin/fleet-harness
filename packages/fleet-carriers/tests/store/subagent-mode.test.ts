@@ -10,6 +10,8 @@ import {
   readCarrierSubagentModeSnapshot,
   resetStoreForTests,
   setCarrierSubagentMode,
+  setCarrierSubagentModeWithCodexRole,
+  type CarrierConfig,
 } from "../../src/index.js";
 
 let tempDir: string | null = null;
@@ -66,6 +68,62 @@ describe("carrier subagent mode store", () => {
     expect(raw._generation).toBe(2);
   });
 
+  it("writes and removes derived Codex role files inside the store domain", () => {
+    setCarrierSubagentModeWithCodexRole(createCarrierConfig("ohio"), true, { model: "gpt-5.4", effort: "high" });
+    const roleFile = path.join(tempDir!, "codex-agents/ohio.toml");
+
+    expect(fs.existsSync(roleFile)).toBe(true);
+    expect(fs.readFileSync(roleFile, "utf8")).toContain('model_reasoning_effort = "high"');
+
+    setCarrierSubagentModeWithCodexRole(createCarrierConfig("ohio"), false);
+
+    expect(fs.existsSync(roleFile)).toBe(false);
+    expect(readCarrierSubagentModeSnapshot().carrierModes).toEqual({});
+  });
+
+  it("does not enable state when Codex role file write fails", () => {
+    expect(tempDir).toBeTruthy();
+    const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-codex-role-target-"));
+    fs.symlinkSync(targetDir, path.join(tempDir!, "codex-agents"), "dir");
+
+    expect(() => setCarrierSubagentModeWithCodexRole(createCarrierConfig("ohio"), true)).toThrow(/symlink/);
+    expect(readCarrierSubagentModeSnapshot().carrierModes).toEqual({});
+
+    fs.rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  it("keeps state enabled when Codex role file removal fails", () => {
+    setCarrierSubagentModeWithCodexRole(createCarrierConfig("ohio"), true);
+    const roleFile = path.join(tempDir!, "codex-agents/ohio.toml");
+    fs.rmSync(roleFile, { force: true });
+    fs.mkdirSync(roleFile);
+
+    expect(() => setCarrierSubagentModeWithCodexRole(createCarrierConfig("ohio"), false)).toThrow();
+    expect(readCarrierSubagentModeSnapshot().carrierModes).toEqual({ ohio: "subagent" });
+  });
+
+  it("rejects enabling when the candidate collides with an existing enabled Codex role key", () => {
+    setCarrierSubagentModeWithCodexRole(createCarrierConfig("fleet_vanguard"), true);
+    const roleFile = path.join(tempDir!, "codex-agents/vanguard.toml");
+    const before = fs.readFileSync(roleFile, "utf8");
+
+    expect(() => setCarrierSubagentModeWithCodexRole(createCarrierConfig("vanguard"), true)).toThrow(/role key collision/);
+    expect(readCarrierSubagentModeSnapshot().carrierModes).toEqual({ fleet_vanguard: "subagent" });
+    expect(fs.readFileSync(roleFile, "utf8")).toBe(before);
+  });
+
+  it("ignores unregistered stale carrier modes during role collision checks", () => {
+    setCarrierSubagentModeWithCodexRole(createCarrierConfig("fleet_vanguard"), true);
+    setCarrierSubagentModeWithCodexRole(createCarrierConfig("vanguard"), true, undefined, {
+      registeredCarrierIds: ["vanguard"],
+    });
+
+    expect(readCarrierSubagentModeSnapshot().carrierModes).toEqual({
+      fleet_vanguard: "subagent",
+      vanguard: "subagent",
+    });
+  });
+
   it("removes stale carrier-subagent.json on init without migration", () => {
     resetStoreForTests();
     expect(tempDir).toBeTruthy();
@@ -82,3 +140,29 @@ describe("carrier subagent mode store", () => {
     expect(readCarrierSubagentModeSnapshot().carrierModes).toEqual({});
   });
 });
+
+function createCarrierConfig(id: string): CarrierConfig {
+  return {
+    carrierMetadata: {
+      category: "operations",
+      outputFormat: "Report completion.",
+      permissions: ["Execute only the assigned wave."],
+      principles: ["Follow the plan."],
+      requestBlocks: [],
+      summary: "Multi-wave execution",
+      title: "Captain",
+      whenNotToUse: [],
+      whenToUse: ["plan-file execution"],
+    },
+    color: "",
+    defaultCliType: "claude",
+    displayName: id[0]!.toUpperCase() + id.slice(1),
+    id,
+    slot: 1,
+    subagent: {
+      byHost: {
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "low" },
+      },
+    },
+  };
+}

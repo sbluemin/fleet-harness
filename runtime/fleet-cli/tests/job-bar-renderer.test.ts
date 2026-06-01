@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  CARRIER_COLORS,
+  SUBAGENT_CARRIER_COLOR,
   createCarrierRuntime,
   initStore,
   resetStoreForTests,
@@ -145,7 +145,7 @@ describe("job bar renderer", () => {
     expect(sections.map(desiredHeight)).toEqual([1, 0]);
   });
 
-  it("renders subagent-mode carriers with the Claude signature color in the Fleet PTY strip", () => {
+  it("renders subagent-mode carriers with the neutral subagent signature color in the Fleet PTY strip", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-subagent-"));
     initStore(tempDir);
     setCarrierSubagentMode("ohio", true);
@@ -153,7 +153,7 @@ describe("job bar renderer", () => {
 
     const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
 
-    expect(line).toContain(`${CARRIER_COLORS.claude}Ohio`);
+    expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {

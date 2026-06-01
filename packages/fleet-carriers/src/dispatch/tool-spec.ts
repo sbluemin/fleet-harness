@@ -363,7 +363,15 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   const cliType = carrierConfig
     ? resolveCarrierCliType(opts.carrierId, carrierConfig.defaultCliType)
     : (opts.carrierId as CliType);
-  const modelConfig = loadModels({ [opts.carrierId]: cliType })[opts.carrierId];
+  const modelConfig = loadModels({
+    [opts.carrierId]: carrierConfig
+      ? {
+        cliType,
+        ...(carrierConfig.defaultEffort ? { defaultEffort: carrierConfig.defaultEffort } : {}),
+        ...(carrierConfig.defaultModel ? { defaultModel: carrierConfig.defaultModel } : {}),
+      }
+      : cliType,
+  })[opts.carrierId];
   const model = modelConfig?.model;
   const effort = resolveValidatedEffort(cliType, model, modelConfig?.effort);
   let sessionId: string | undefined;

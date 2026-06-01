@@ -64,6 +64,10 @@ export {
   readCarrierSubagentModeSnapshot,
   isCarrierSubagentModeEnabled,
   setCarrierSubagentMode,
+  setCarrierSubagentModeWithCodexRole,
+  ensureCodexSubagentRoleFile,
+  getCodexSubagentRoleFilePath,
+  serializeCodexSubagentRoleToml,
   filterCarrierSubagentModesToRegisteredIds,
   getEnabledCarrierSubagentIds,
   updateCarrierDisplayName,
@@ -80,9 +84,11 @@ export {
 export type {
   FleetStoreSnapshot,
   FleetStoreWriteFingerprint,
+  CarrierModelDefaults,
   SelectedModelsConfig,
   CarrierSubagentMode,
   CarrierSubagentModeSnapshot,
+  PerCliSettings,
 } from "./store/index.js";
 export * from "./personas/index.js";
 

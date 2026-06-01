@@ -13,8 +13,19 @@ export const GENESIS_DEFAULTS: CarrierPersonaDefaults = {
   id: "genesis",
   displayName: "Genesis",
   slot: 3,
-  defaultModel: "sonnet",
-  defaultEffort: "medium",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "medium",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "medium" },
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "medium" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

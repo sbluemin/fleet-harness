@@ -20,10 +20,16 @@ import type {
   TaskForceSelection,
 } from "./types.js";
 
+export interface CarrierModelDefaults {
+  readonly cliType: CliType;
+  readonly defaultEffort?: string;
+  readonly defaultModel?: string;
+}
+
 export { applyCliTypeModelSelectionUpdate } from "./cli-types.js";
 
 /** 현재 모델 설정을 로드합니다. */
-export function loadModels(cliTypesByCarrier?: Record<string, CliType>): SelectedModelsConfig {
+export function loadModels(cliTypesByCarrier?: Record<string, CliType | CarrierModelDefaults>): SelectedModelsConfig {
   if (!cliTypesByCarrier) {
     return sanitizeSelectedModelsConfig(readStatesSnapshot().models);
   }
@@ -247,10 +253,12 @@ function sanitizeTaskforceConfig(value: unknown): TaskForceConfig | undefined {
 function resolveSelectionForCliType(
   current: ModelSelection,
   cliType: CliType,
+  defaults?: CarrierModelDefaults,
 ): ModelSelection | null {
   const provider = getProviderModels(cliType);
   const allowedModels = new Set(provider.models.map((model) => model.modelId));
   const saved = sanitizePerCliSettings(current.perCliSettings?.[cliType]);
+  const defaultModelIsValid = !!defaults?.defaultModel && allowedModels.has(defaults.defaultModel);
 
   const currentModelIsValid = allowedModels.has(current.model);
   const savedModelIsValid = !!saved?.model && allowedModels.has(saved.model);
@@ -258,7 +266,9 @@ function resolveSelectionForCliType(
     ? current.model
     : savedModelIsValid
       ? saved.model!
-      : provider.defaultModel;
+      : defaultModelIsValid
+        ? defaults.defaultModel!
+        : provider.defaultModel;
 
   const result: ModelSelection = { model };
   const modelEffort = getEffort(cliType, model);
@@ -268,7 +278,9 @@ function resolveSelectionForCliType(
       ? current.effort
       : !currentModelIsValid && savedModelIsValid && saved?.effort && modelEffort.levels.includes(saved.effort)
         ? saved.effort
-        : modelEffort.default;
+        : defaults?.defaultEffort && modelEffort.levels.includes(defaults.defaultEffort)
+          ? defaults.defaultEffort
+          : modelEffort.default;
 
     result.effort = effort;
   }
@@ -284,17 +296,28 @@ function resolveSelectionForCliType(
 
 function buildHealedModels(
   config: SelectedModelsConfig,
-  cliTypesByCarrier: Record<string, CliType>,
+  cliTypesByCarrier: Record<string, CliType | CarrierModelDefaults>,
 ): SelectedModelsConfig {
   const next = structuredClone(config);
-  for (const [carrierId, cliType] of Object.entries(cliTypesByCarrier)) {
+  for (const [carrierId, cliTypeOrDefaults] of Object.entries(cliTypesByCarrier)) {
+    const cliType = typeof cliTypeOrDefaults === "string" ? cliTypeOrDefaults : cliTypeOrDefaults.cliType;
+    const defaults = typeof cliTypeOrDefaults === "string" ? undefined : cliTypeOrDefaults;
     const provider = getProviderModels(cliType);
     const current = next[carrierId];
     if (!current) {
-      next[carrierId] = { model: provider.defaultModel };
+      const defaultModel = defaults?.defaultModel && provider.models.some((model) => model.modelId === defaults.defaultModel)
+        ? defaults.defaultModel
+        : provider.defaultModel;
+      const effort = getEffort(cliType, defaultModel);
+      next[carrierId] = {
+        model: defaultModel,
+        ...(effort.supported && defaults?.defaultEffort && effort.levels.includes(defaults.defaultEffort)
+          ? { effort: defaults.defaultEffort }
+          : {}),
+      };
       continue;
     }
-    const resolved = resolveSelectionForCliType(current, cliType);
+    const resolved = resolveSelectionForCliType(current, cliType, defaults);
     if (!resolved) continue;
     next[carrierId] = {
       model: resolved.model,

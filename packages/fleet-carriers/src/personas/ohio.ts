@@ -13,8 +13,19 @@ export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
   id: "ohio",
   displayName: "Ohio",
   slot: 4,
-  defaultModel: "sonnet",
-  defaultEffort: "low",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "low",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "low" },
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "low" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

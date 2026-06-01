@@ -83,17 +83,47 @@ export interface CarrierCoreConfig {
 export interface CarrierCliConfig {
   /** 소스레벨 기본 CLI 타입 (사용자 변경과 무관하게 원본 유지) */
   defaultCliType: CliType;
+  /** dispatch/store가 사용하는 persona 소유 기본 모델 */
+  defaultModel?: string;
+  /** dispatch/store가 사용하는 persona 소유 기본 reasoning effort */
+  defaultEffort?: string;
   /** 에이전트 패널 프레임 색상 (ANSI) */
   color: string;
   /** 응답 배경색 (ANSI, 선택) */
   bgColor?: string;
 }
 
-export interface CarrierSubagentConfig {
-  /** Claude native subagent 전용 기본값. dispatch의 모델/effort 선택에는 사용하지 않는다. */
-  subagent?: {
-    readonly provider: "claude";
+export interface CarrierAgentProviderDefaults {
+  readonly defaultModel?: string;
+  readonly defaultEffort?: string;
+}
+
+export interface CarrierPersonaAgentDefaults {
+  readonly dispatch: {
+    readonly defaultCliType: CliType;
     readonly defaultModel?: string;
+    readonly defaultEffort?: string;
+  };
+  readonly nativeSubagents?: {
+    readonly byHost?: {
+      readonly claude?: CarrierAgentProviderDefaults;
+      readonly codex?: CarrierAgentProviderDefaults;
+    };
+  };
+}
+
+export interface CarrierSubagentConfig {
+  /** Native subagent 호스트별 기본값. dispatch의 모델/effort 선택에는 사용하지 않는다. */
+  subagent?: {
+    readonly byHost?: {
+      readonly claude?: CarrierAgentProviderDefaults;
+      readonly codex?: CarrierAgentProviderDefaults;
+    };
+    /** @deprecated byHost.claude를 사용한다. 기존 확장 호환용 읽기 필드. */
+    readonly provider?: "claude";
+    /** @deprecated byHost.claude.defaultModel을 사용한다. */
+    readonly defaultModel?: string;
+    /** @deprecated byHost.claude.defaultEffort를 사용한다. */
     readonly defaultEffort?: string;
   };
 }
@@ -102,8 +132,7 @@ export interface CarrierPersonaDefaults {
   readonly id: string;
   readonly displayName: string;
   readonly slot: number;
-  defaultModel?: string;
-  defaultEffort?: string;
+  readonly agent: CarrierPersonaAgentDefaults;
 }
 
 export type CarrierConfig = CarrierCoreConfig & CarrierCliConfig & CarrierSubagentConfig;

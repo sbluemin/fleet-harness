@@ -13,8 +13,19 @@ export const TEMPEST_DEFAULTS: CarrierPersonaDefaults = {
   id: "tempest",
   displayName: "Tempest",
   slot: 7,
-  defaultModel: "sonnet",
-  defaultEffort: "medium",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "medium",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "sonnet", defaultEffort: "medium" },
+        codex: { defaultModel: "gpt-5.4-mini", defaultEffort: "xhigh" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

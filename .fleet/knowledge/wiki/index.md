@@ -53,10 +53,10 @@
 - title: `Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안`
 - path: `wiki/guide-004-cli-subagent-injection.md`
 - tags: `guide, cli, sub-agent, native-subagent, claude-code, codex, opencode, spawn, comparison, fleet-cli, dedicated-cli, carrier, current`
-- updated: `2026-05-31T09:21:56.506Z`
+- updated: `2026-06-01T14:35:35.364Z`
 - summary: `# 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안`
-- raw_source_ref: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md`
-- raw_source_refs: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
+- raw_source_refs: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md, raw/2026-06-01-guide-004-cli-subagent-injection-source-89c3a393.md, raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
 
 ### guide-unified-agent-cursor-composer-25
 

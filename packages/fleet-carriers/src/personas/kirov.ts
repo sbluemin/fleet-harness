@@ -13,8 +13,19 @@ export const KIROV_DEFAULTS: CarrierPersonaDefaults = {
   id: "kirov",
   displayName: "Kirov",
   slot: 2,
-  defaultModel: "opus[1m]",
-  defaultEffort: "xhigh",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "opus[1m]",
+      defaultEffort: "xhigh",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

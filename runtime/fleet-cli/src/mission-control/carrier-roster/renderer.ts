@@ -2,6 +2,8 @@ import {
   CARRIER_BG_COLORS,
   CARRIER_COLORS,
   CLI_DISPLAY_NAMES,
+  SUBAGENT_CARRIER_BG_COLOR,
+  SUBAGENT_CARRIER_COLOR,
 } from "@dotobokuri/fleet-carriers";
 import {
   truncateToWidth,
@@ -44,7 +46,6 @@ const INDENT = "    ";
 const SLOT_WIDTH = 4;
 const NAME_WIDTH = 12;
 const MIN_CELL_WIDTH = 40;
-const SUBAGENT_SIGNATURE_CLI_TYPE = "claude";
 
 export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRenderModel, deps: CarrierStatusRenderDeps): string[] {
   const body: CarrierRosterDisplayLine[] = [
@@ -290,11 +291,11 @@ function getCliDisplayName(cliType: string): string {
 }
 
 function getSubagentSignatureColor(): string {
-  return CARRIER_COLORS[SUBAGENT_SIGNATURE_CLI_TYPE] ?? "";
+  return SUBAGENT_CARRIER_COLOR;
 }
 
 function getSubagentSignatureBgColor(): string | undefined {
-  return CARRIER_BG_COLORS[SUBAGENT_SIGNATURE_CLI_TYPE];
+  return SUBAGENT_CARRIER_BG_COLOR;
 }
 
 function getFooterHint(model: CarrierStatusRenderModel): string {

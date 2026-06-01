@@ -1,6 +1,6 @@
 import {
-  CARRIER_COLORS,
-  CARRIER_RGBS,
+  SUBAGENT_CARRIER_COLOR,
+  SUBAGENT_CARRIER_RGB,
   getRegisteredOrder,
   readCarrierSubagentModeSnapshot,
   type CarrierRuntime,
@@ -73,7 +73,6 @@ const HUD_LINE_BREAKS = /[\r\n]+/g;
 const HUD_MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
 const DEFAULT_SAFE_LABEL = "(unnamed)";
 const EXIT_WARNING_TEXT = "Press Ctrl+C again to exit";
-const SUBAGENT_SIGNATURE_CLI_TYPE = "claude";
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
   sortie: "Sortie",
@@ -434,7 +433,7 @@ function resolveJobBarCarrierColor(
   carrierId: string,
   subagentModes: Record<string, "subagent">,
 ): string {
-  if (subagentModes[carrierId] === "subagent") return CARRIER_COLORS[SUBAGENT_SIGNATURE_CLI_TYPE] ?? "";
+  if (subagentModes[carrierId] === "subagent") return SUBAGENT_CARRIER_COLOR;
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
 
@@ -444,7 +443,7 @@ function resolveJobBarCarrierRgb(
   subagentModes: Record<string, "subagent">,
 ): [number, number, number] {
   if (subagentModes[carrierId] === "subagent") {
-    return CARRIER_RGBS[SUBAGENT_SIGNATURE_CLI_TYPE] ?? resolveCarrierRgb(carrierRuntime.registry, carrierId);
+    return SUBAGENT_CARRIER_RGB;
   }
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
 }

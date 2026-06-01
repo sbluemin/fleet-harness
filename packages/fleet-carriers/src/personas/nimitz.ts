@@ -13,8 +13,19 @@ export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
   id: "nimitz",
   displayName: "Nimitz",
   slot: 1,
-  defaultModel: "opus[1m]",
-  defaultEffort: "max",
+  agent: {
+    dispatch: {
+      defaultCliType: "claude",
+      defaultModel: "opus[1m]",
+      defaultEffort: "max",
+    },
+    nativeSubagents: {
+      byHost: {
+        claude: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
+      },
+    },
+  },
 };
 
 export const CARRIER_METADATA: CarrierMetadata = {

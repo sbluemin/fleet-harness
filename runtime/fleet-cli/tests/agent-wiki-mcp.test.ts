@@ -1,9 +1,23 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
-import { buildClaudeSubagentDefinition, type CarrierConfig } from "@dotobokuri/fleet-carriers";
+import {
+  buildClaudeSubagentDefinition,
+  buildCodexSubagentDefinition,
+  createCarrierRuntime,
+  initStore,
+  resetStoreForTests,
+  setCarrierSubagentMode,
+  updateCliTypeOverride,
+  updateModelSelection,
+  type CarrierConfig,
+} from "@dotobokuri/fleet-carriers";
 import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
 import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
+import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
@@ -98,6 +112,78 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(codexConfigArgs).toContain('mcp_servers.fleet-wiki.url="http://127.0.0.1:1001/wiki"');
   });
 
+  it("writes injected system prompt files private and registers cleanup", async () => {
+    const cleanups: Array<() => void> = [];
+    const profile = await injectAgentCliProfile({
+      args: [],
+      bin: "claude",
+      cwd: process.cwd(),
+      env: {},
+      id: "claude",
+      label: "Claude",
+      terminalName: "claude",
+    }, {
+      buildSystemPrompt: () => "private fleet prompt",
+      carrierRuntime: createCarrierRuntime(),
+      dedicatedMcpSession: {
+        getEndpoint: async () => ({
+          servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+        }),
+        issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+      } as never,
+      onCleanup: (cleanup) => cleanups.push(cleanup),
+    });
+    const systemPromptFile = profile.args[profile.args.indexOf("--system-prompt-file") + 1]!;
+
+    expect(readFileSync(systemPromptFile, "utf8")).toBe("private fleet prompt");
+    expect(statSync(systemPromptFile).mode & 0o777).toBe(0o600);
+    expect(systemPromptFile).not.toBe(path.join(os.tmpdir(), "fleet-claude-system-prompt.md"));
+    expect(path.basename(systemPromptFile)).toBe("system-prompt.md");
+    expect(path.dirname(systemPromptFile)).toContain(path.join(os.tmpdir(), "fleet-claude-"));
+
+    cleanups.forEach((cleanup) => cleanup());
+
+    expect(existsSync(systemPromptFile)).toBe(false);
+  });
+
+  it("passes current effective Codex model settings into startup native roles", async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-startup-"));
+    initStore(tempDir);
+    try {
+      const runtime = createCarrierRuntime();
+      runtime.registerCarrierDefaults();
+      updateCliTypeOverride("ohio", "codex", "claude");
+      await updateModelSelection("ohio", { model: "gpt-5.4", effort: "high" });
+      setCarrierSubagentMode("ohio", true);
+
+      await injectAgentCliProfile({
+        args: [],
+        bin: "codex",
+        cwd: process.cwd(),
+        env: {},
+        id: "codex",
+        label: "Codex",
+        terminalName: "codex",
+      }, {
+        buildSystemPrompt: () => "fleet prompt",
+        carrierRuntime: runtime,
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({
+            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+          }),
+          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+        } as never,
+      });
+
+      const roleToml = readFileSync(path.join(tempDir, "codex-agents/ohio.toml"), "utf8");
+      expect(roleToml).toContain('model = "gpt-5.4"');
+      expect(roleToml).toContain('model_reasoning_effort = "high"');
+    } finally {
+      resetStoreForTests();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("serializes inline Claude subagent model and effort in the Claude --agents JSON payload", () => {
     const context = {
       ...makeAgentCliInjectionContext(),
@@ -129,6 +215,26 @@ describe("fleet-cli agent CLI MCP registration", () => {
       },
     });
     expect(buildCodexNativeArgs(context)).not.toContain("--agents");
+  });
+
+  it("serializes Codex native roles as agents config_file overrides", () => {
+    const context = {
+      ...makeAgentCliInjectionContext(),
+      codexSubagents: [
+        {
+          definition: buildCodexSubagentDefinition(createTestCarrierConfig("ohio")),
+          configFile: "/tmp/fleet-data/codex-agents/ohio.toml",
+        },
+      ],
+    };
+
+    const codexArgs = buildCodexNativeArgs(context);
+    const codexConfigArgs = codexArgs.filter((arg) => arg !== "-c");
+
+    expect(codexConfigArgs.some((arg) => arg.startsWith("agents.ohio.description="))).toBe(true);
+    expect(codexConfigArgs).toContain('agents.ohio.config_file="/tmp/fleet-data/codex-agents/ohio.toml"');
+    expect(codexConfigArgs.some((arg) => arg.includes("developer_instructions"))).toBe(false);
+    expect(codexConfigArgs.some((arg) => arg.includes("model_reasoning_effort"))).toBe(false);
   });
 
   it("keeps malicious Claude subagent metadata inside one parseable --agents argv", () => {
@@ -204,6 +310,20 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(subagentsSection).toContain("- foo_bar: invoke as `FooBar`");
     expect(subagentsSection).not.toContain("- FooBar: invoke as `FooBar`");
   });
+
+  it("renders Codex role keys in native subagent prompt guidance", async () => {
+    lifecycle = createFleetRuntimeLifecycle();
+    const runtime = await lifecycle.start();
+    const systemPrompt = createSystemPromptBuilder({
+      carrierRuntime: runtime.carrierRuntime,
+      mcpRegistry: runtime.mcpRegistry,
+    }).build(false, [buildCodexSubagentDefinition(createTestCarrierConfig("ohio"))]);
+    const subagentsSection = extractFleetSection(systemPrompt, "subagents");
+
+    expect(subagentsSection).toContain("# Native Codex Subagents");
+    expect(subagentsSection).toContain("- ohio: invoke as `ohio`");
+    expect(subagentsSection).toContain("Native subagent output is not recovered into Fleet `carrier_jobs`, JobArchive, stream events, or `[carrier:result]` reminders.");
+  });
 });
 
 async function listMcpTools(url: string, token: string): Promise<Set<string>> {
@@ -269,6 +389,32 @@ function makeMaliciousCarrierConfig(fixture: {
       requestBlocks: [],
       permissions: [],
       outputFormat: fixture.prompt,
+    },
+  };
+}
+
+function createTestCarrierConfig(id: string): CarrierConfig {
+  return {
+    carrierMetadata: {
+      category: "operations",
+      outputFormat: "Report completion.",
+      permissions: ["Execute only the assigned wave."],
+      principles: ["Follow the plan."],
+      requestBlocks: [],
+      summary: "Multi-wave execution",
+      title: "Captain",
+      whenNotToUse: [],
+      whenToUse: ["plan-file execution"],
+    },
+    color: "",
+    defaultCliType: "claude",
+    displayName: id[0]!.toUpperCase() + id.slice(1),
+    id,
+    slot: 1,
+    subagent: {
+      byHost: {
+        codex: { defaultModel: "gpt-5.5", defaultEffort: "low" },
+      },
     },
   };
 }

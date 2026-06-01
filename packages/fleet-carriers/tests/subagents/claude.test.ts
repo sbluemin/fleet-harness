@@ -23,6 +23,19 @@ describe("Claude subagent conversion", () => {
     expect(definition).not.toHaveProperty("tools");
   });
 
+  it("clamps Claude max effort to xhigh", () => {
+    const definition = buildClaudeSubagentDefinition({
+      ...createCarrierConfig("nimitz"),
+      subagent: {
+        byHost: {
+          claude: { defaultModel: "opus[1m]", defaultEffort: "max" },
+        },
+      },
+    });
+
+    expect(definition.effort).toBe("xhigh");
+  });
+
   it("includes enabled carriers with deterministic Claude colors and without cliType filtering", () => {
     const definitions = buildClaudeSubagentDefinitions({
       carrierConfigs: [
@@ -76,6 +89,16 @@ function createCarrierConfig(id: string, cliType: CarrierConfig["defaultCliType"
       provider: "claude",
       defaultModel: "sonnet",
       defaultEffort: "low",
+      byHost: {
+        claude: {
+          defaultModel: "sonnet",
+          defaultEffort: "low",
+        },
+        codex: {
+          defaultModel: "gpt-5.5",
+          defaultEffort: "low",
+        },
+      },
     },
   };
 }

@@ -28,8 +28,6 @@ interface DefaultCarrierRegistration {
   readonly metadata: CarrierMetadata;
 }
 
-const DEFAULT_CLI_TYPE = "claude";
-
 const DEFAULT_CARRIER_REGISTRATIONS: readonly DefaultCarrierRegistration[] = [
   { defaults: NIMITZ_DEFAULTS, metadata: NIMITZ_METADATA },
   { defaults: KIROV_DEFAULTS, metadata: KIROV_METADATA },
@@ -51,17 +49,25 @@ export function registerDefaultCarriers(registry: CarrierRegistry): void {
 
 function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): CarrierConfig {
   const { defaults, metadata } = registration;
+  const claudeSubagentDefaults = defaults.agent.nativeSubagents?.byHost?.claude;
+  const codexSubagentDefaults = defaults.agent.nativeSubagents?.byHost?.codex;
   return {
     id: defaults.id,
-    defaultCliType: DEFAULT_CLI_TYPE,
+    defaultCliType: defaults.agent.dispatch.defaultCliType,
+    defaultEffort: defaults.agent.dispatch.defaultEffort,
+    defaultModel: defaults.agent.dispatch.defaultModel,
     slot: defaults.slot,
     displayName: defaults.displayName,
     color: "",
     carrierMetadata: metadata,
     subagent: {
       provider: "claude",
-      defaultModel: defaults.defaultModel,
-      defaultEffort: defaults.defaultEffort,
+      defaultModel: claudeSubagentDefaults?.defaultModel,
+      defaultEffort: claudeSubagentDefaults?.defaultEffort,
+      byHost: {
+        claude: claudeSubagentDefaults,
+        codex: codexSubagentDefaults,
+      },
     },
   };
 }

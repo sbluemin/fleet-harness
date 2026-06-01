@@ -106,6 +106,8 @@ export function registerCarrier(
     existing.displayName = config.displayName;
     existing.slot = config.slot;
     existing.defaultCliType = config.defaultCliType;
+    existing.defaultModel = config.defaultModel;
+    existing.defaultEffort = config.defaultEffort;
     existing.carrierMetadata = config.carrierMetadata;
     existing.subagent = config.subagent;
     existing.color = config.color;

@@ -24,5 +24,14 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
       `${prefix}.tool_timeout_sec=${CODEX_TOOL_TIMEOUT_SEC}`,
     );
   }
+  for (const role of context.codexSubagents ?? []) {
+    const prefix = `agents.${role.definition.roleKey}`;
+    args.push(
+      "-c",
+      `${prefix}.description="${escapeTomlBasicString(role.definition.description)}"`,
+      "-c",
+      `${prefix}.config_file="${escapeTomlBasicString(role.configFile)}"`,
+    );
+  }
   return args;
 }

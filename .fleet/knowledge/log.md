@@ -3128,3 +3128,174 @@
 - result: `accepted`
 - target: `wiki/guide-004-cli-subagent-injection.md`
 
+## 2026-06-01T09:51:45.503Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T11:52:45.038Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T13:15:38.608Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T13:15:49.329Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T13:17:08.312Z — raw source added
+
+- id: `guide-004-cli-subagent-injection-source`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-3f39f045.md`
+- source_type: `inline`
+- tag_count: `13`
+- title: `Carrier doc sortie — guide-004 보정 근거, 2026-06-01`
+
+## 2026-06-01T13:17:08.315Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-06-01T13-17-08-299Z-bed601c0`
+- patch_set_id: `null`
+- proposer: `carrier`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-3f39f045.md`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+- warning_count: `0`
+
+## 2026-06-01T13:24:03.524Z — patch rejected
+
+- patch_id: `2026-06-01T13-17-08-299Z-bed601c0`
+- patch_set_id: `null`
+- reason: `Superseded: the fleet_ prefix was fully removed from Codex role keys (role key, TOML name, filename, and agents.<role>.* argv now use the bare carrier id, e.g. vanguard / vanguard.toml / agents.vanguard.*). guide-004 will be re-issued with the prefix-free contract plus the global ~/.fleet/codex-agents store, model/model_reasoning_effort serialization, native=true skip, and Rose/Magenta corrections.`
+- result: `rejected`
+
+## 2026-06-01T13:24:20.757Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T13:24:25.007Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T13:25:35.358Z — raw source added
+
+- id: `guide-004-cli-subagent-injection-source`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-89c3a393.md`
+- source_type: `inline`
+- tag_count: `13`
+- title: `Carrier doc sortie — guide-004 prefix-free contract 정합화 근거, 2026-06-01`
+
+## 2026-06-01T13:25:35.363Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-06-01T13-25-35-349Z-f661ea03`
+- patch_set_id: `null`
+- proposer: `carrier`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-89c3a393.md`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+- warning_count: `0`
+
+## 2026-06-01T13:25:40.060Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T13:27:38.314Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `9aeb0432`
+- patch_id: `2026-06-01T13-25-35-349Z-f661ea03`
+- previous_hash: `20e11a5d`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+
+## 2026-06-01T13:27:50.827Z — index rebuilt
+
+- entry_count: `22`
+
+## 2026-06-01T13:27:50.828Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-06-01T13-25-35-349Z-f661ea03`
+- patch_set_id: `null`
+- proposer: `carrier`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-89c3a393.md`
+- result: `accepted`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+
+## 2026-06-01T14:32:45.811Z — raw source added
+
+- id: `guide-004-cli-subagent-injection-source`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
+- source_type: `inline`
+- tag_count: `13`
+- title: `Carrier doc sortie — guide-004 Codex sidecar mechanism finalization, 2026-06-01`
+
+## 2026-06-01T14:32:45.821Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-06-01T14-32-45-800Z-aea1e552`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+- warning_count: `0`
+
+## 2026-06-01T14:33:50.395Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-01T14:35:35.368Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `4a5d415f`
+- patch_id: `2026-06-01T14-32-45-800Z-aea1e552`
+- previous_hash: `ca1456f8`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+
+## 2026-06-01T14:35:39.725Z — index rebuilt
+
+- entry_count: `22`
+
+## 2026-06-01T14:35:39.727Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-06-01T14-32-45-800Z-aea1e552`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
+- result: `accepted`
+- target: `wiki/guide-004-cli-subagent-injection.md`
+

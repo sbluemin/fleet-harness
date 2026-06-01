@@ -7,6 +7,7 @@ import {
   readStatesSnapshot,
   readCarrierSubagentModeSnapshot,
   resolveCarrierDisplayName,
+  type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers";
@@ -135,16 +136,20 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
   return entries;
 }
 
-function buildCliTypesByCarrierFromSnapshot(carrierRuntime: CarrierRuntime, snapshot: FleetStoreSnapshot): Record<string, CarrierCliType> {
+function buildCliTypesByCarrierFromSnapshot(carrierRuntime: CarrierRuntime, snapshot: FleetStoreSnapshot): Record<string, CarrierModelDefaults> {
   const registry = carrierRuntime.registry;
   return Object.fromEntries(
     getRegisteredOrder(registry)
-      .map((id): [string, CarrierCliType] | null => {
+      .map((id) => {
         const config = getCarrierConfig(registry, id);
         if (!config) return null;
-        return [id, cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType as CarrierCliType)];
+        return [id, {
+          cliType: cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType as CarrierCliType),
+          ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
+          ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+        }];
       })
-      .filter((entry): entry is [string, CarrierCliType] => entry !== null),
+      .filter((entry): entry is [string, CarrierModelDefaults] => entry !== null),
   );
 }
 
