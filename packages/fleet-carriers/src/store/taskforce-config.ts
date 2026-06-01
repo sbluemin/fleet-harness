@@ -73,6 +73,24 @@ export function resetTaskForceModelSelection(
   });
 }
 
+export function resetCarrierTaskForceConfig(carrierId: string): boolean {
+  const sanitizedCarrierId = sanitizeConfigKey(carrierId);
+  if (!sanitizedCarrierId) return false;
+  let removed = false;
+
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[sanitizedCarrierId];
+    if (!current?.taskforce) return;
+    carriers[sanitizedCarrierId] = { ...current };
+    delete carriers[sanitizedCarrierId].taskforce;
+    states.carriers = carriers;
+    removed = true;
+  });
+
+  return removed;
+}
+
 export function getConfiguredTaskForceBackends(carrierId: string): TaskForceCliType[] {
   return getConfiguredTaskForceBackendsInConfig(
     sanitizeTaskforce(readRawCarriers().carriers?.[carrierId]?.taskforce),

@@ -53,6 +53,7 @@ export {
   getTaskForceModelConfig,
   updateTaskForceModelSelection,
   resetTaskForceModelSelection,
+  resetCarrierTaskForceConfig,
   getConfiguredTaskForceBackends,
   getConfiguredTaskForceBackendsFromSnapshot,
   getConfiguredTaskForceCarrierIds,

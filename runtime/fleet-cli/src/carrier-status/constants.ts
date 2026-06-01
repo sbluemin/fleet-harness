@@ -23,7 +23,8 @@ export const PANEL_DIM_COLOR = "\x1b[38;2;160;150;180m";
 export const THINKING_COLOR = "\x1b[38;2;180;140;255m";
 export const TOOLS_COLOR = "\x1b[38;2;80;200;180m";
 export const SORTIE_SUMMARY_COLOR = TOOLS_COLOR;
-export const TASKFORCE_BADGE_COLOR = "\x1b[38;2;100;180;255m";
+export const TASKFORCE_BADGE_RGB: [number, number, number] = [100, 180, 255];
+export const TASKFORCE_BADGE_COLOR = `\x1b[38;2;${TASKFORCE_BADGE_RGB[0]};${TASKFORCE_BADGE_RGB[1]};${TASKFORCE_BADGE_RGB[2]}m`;
 
 export const SYM_INDICATOR = "⏺";
 export const SYM_RESULT = "⎿";

@@ -4,11 +4,15 @@ import {
   CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES,
   getConfiguredTaskForceCarrierIds,
+  getAgentCliSelection,
+  getCarrierConfig,
   getTaskForceModelConfig,
   getRegisteredOrder,
+  isCarrierAgentModeSubagent,
   notifyStatusUpdate,
   readCarriersSnapshot,
   resetTaskForceModelSelection,
+  setCarrierAgentModeWithCodexRole,
   setTaskForceConfiguredCarriers,
   updateTaskForceModelSelection,
   type CarrierRuntime,
@@ -157,7 +161,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
 
     body.push({ kind: "blank" });
     if (this.feedbackMessage) {
-      const color = this.feedbackMessage.startsWith("저장 실패") ? this.options.theme.warning : this.options.theme.accent;
+      const color = isWarningFeedback(this.feedbackMessage) ? this.options.theme.warning : this.options.theme.accent;
       body.push({ kind: "center", text: color(this.feedbackMessage) }, { kind: "blank" });
     }
 
@@ -284,8 +288,11 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     this.options.requestRender();
     try {
       updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
+      const disabledSubagent = this.disableSubagentModeForTaskForceCommit();
       syncConfiguredTaskForceCarriers(this.options.carrierRuntime);
-      this.feedbackMessage = `${entry.displayName} 설정을 저장했습니다.`;
+      this.feedbackMessage = disabledSubagent
+        ? `경고: ${this.options.carrierDisplayName} Native(SubAgent)를 해제하고 ${entry.displayName} Task Force 설정을 저장했습니다.`
+        : `${entry.displayName} 설정을 저장했습니다.`;
     } catch (error) {
       this.feedbackMessage = `저장 실패: ${errorMessage(error)}`;
     } finally {
@@ -298,6 +305,26 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     this.feedbackMessage = `저장 실패: ${message}`;
     this.resetEditState();
     this.options.requestRender();
+  }
+
+  private disableSubagentModeForTaskForceCommit(): boolean {
+    const config = getCarrierConfig(this.options.carrierRuntime.registry, this.options.carrierId);
+    if (!config) {
+      throw new Error(`${this.options.carrierDisplayName} carrier metadata를 찾을 수 없습니다.`);
+    }
+    if (!isCarrierAgentModeSubagent(this.options.carrierId, config.defaultAgentMode)) return false;
+    const registeredCarrierIds = getRegisteredOrder(this.options.carrierRuntime.registry);
+    setCarrierAgentModeWithCodexRole(config, false, this.resolveCodexSubagentSettings(), { registeredCarrierIds });
+    return true;
+  }
+
+  private resolveCodexSubagentSettings() {
+    const config = getCarrierConfig(this.options.carrierRuntime.registry, this.options.carrierId);
+    if (config?.defaultCliType === "codex") {
+      const provider = this.getAvailableModels("codex");
+      return { model: provider.defaultModel };
+    }
+    return getAgentCliSelection(this.options.carrierId, "codex");
   }
 
   private cancelEdit(): void {
@@ -488,6 +515,10 @@ function padEndVisible(text: string, width: number): string {
 function applyLineBg(line: string, bg: string | undefined): string {
   if (!bg) return line;
   return `${bg}${line.replaceAll(ANSI_RESET, `${ANSI_RESET}${bg}`)}${ANSI_RESET}`;
+}
+
+function isWarningFeedback(message: string): boolean {
+  return message.startsWith("저장 실패") || message.startsWith("경고:");
 }
 
 function errorMessage(error: unknown): string {

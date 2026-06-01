@@ -12,6 +12,7 @@ import {
   normalizeCarrierDisplayNameInput,
   resolveAgentCliType,
   resolveCarrierDisplayName,
+  resetCarrierTaskForceConfig,
   sanitizeCarrierDisplayName,
   saveAgentCliSelection,
   setCarrierAgentModeWithCodexRole,
@@ -504,10 +505,13 @@ export class CarrierStatusOverlay implements Component, Focusable {
     }
     const registeredCarrierIds = getRegisteredOrder(this.options.carrierRuntime.registry);
     setCarrierAgentModeWithCodexRole(config, enabled, this.resolveCodexSubagentSettings(entry), { registeredCarrierIds });
+    const resetTaskForce = enabled ? resetCarrierTaskForceConfig(entry.carrierId) : false;
     notifyStatusUpdate(this.options.carrierRuntime.registry);
     const hostFamily = entry.cliType === "codex" ? "Codex 계열" : "Claude 계열";
     this.feedbackMessage = enabled
-      ? `${entry.displayName} Native(SubAgent) 활성화: 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
+      ? resetTaskForce
+        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
+        : `${entry.displayName} Native(SubAgent) 활성화: 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
       : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
     this.options.requestRender();
   }

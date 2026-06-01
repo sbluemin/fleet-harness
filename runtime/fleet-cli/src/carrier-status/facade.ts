@@ -14,6 +14,7 @@ import {
   SYM_INDICATOR as CORE_SYM_INDICATOR,
   SYM_THINKING as CORE_SYM_THINKING,
   TASKFORCE_BADGE_COLOR as CORE_TASKFORCE_BADGE_COLOR,
+  TASKFORCE_BADGE_RGB as CORE_TASKFORCE_BADGE_RGB,
 } from "./constants.js";
 
 export type { FleetStoreSnapshot };
@@ -30,6 +31,10 @@ export function PANEL_DIM_COLOR(): string {
 
 export function TASKFORCE_BADGE_COLOR(): string {
   return CORE_TASKFORCE_BADGE_COLOR;
+}
+
+export function TASKFORCE_BADGE_RGB(): [number, number, number] {
+  return CORE_TASKFORCE_BADGE_RGB;
 }
 
 export function SYM_INDICATOR(): string {

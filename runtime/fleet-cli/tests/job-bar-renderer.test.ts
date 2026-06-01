@@ -4,14 +4,18 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  CARRIER_COLORS,
   SUBAGENT_CARRIER_COLOR,
   createCarrierRuntime,
   initStore,
   resetStoreForTests,
   setCarrierAgentMode,
+  updateTaskForceModelSelection,
 } from "@dotobokuri/fleet-carriers";
+import { getCliModels } from "@dotobokuri/fleet-infra/agent";
 
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
+import { TASKFORCE_BADGE_COLOR } from "../src/carrier-status/constants.js";
 import { renderBlockLines, renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
 import { createJobBarState, type JobBarState } from "../src/carrier-status/job-bar-state.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/carrier-status/job-bar-view-model.js";
@@ -156,6 +160,63 @@ describe("job bar renderer", () => {
     expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
   });
 
+  it("renders Task Force carrier strip, detail header, and job label in TF blue while preserving backend row colors", () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-taskforce-"));
+    initStore(tempDir);
+    setCarrierAgentMode("ohio", false, "subagent");
+    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
+    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
+    const runtime = createTestCarrierRuntime();
+    const state = createJobBarState({ carrierRuntime: runtime });
+    currentJobBarState = state;
+    state.getPanelJobs().set("taskforce:first", buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"));
+
+    const rendered = createJobBarSections(state).flatMap((section) => section.component.render(200)).join("\n");
+
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}O`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Carrier Ohio`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
+    expect(rendered).toContain(`${CARRIER_COLORS.claude}Claude Code with Anthropic`);
+    expect(rendered).toContain(`${CARRIER_COLORS.codex}OpenAI Codex CLI`);
+  });
+
+  it("shows an SA badge before TF badges for legacy SA plus TF strip state", () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-sa-tf-"));
+    initStore(tempDir);
+    setCarrierAgentMode("ohio", true);
+    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
+    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
+    const state = createTestJobBarState();
+
+    const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
+
+    expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
+    expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}[SA]`);
+    expect(line).toContain("[SA]\x1b[38;2;160;150;180m*");
+    expect(line).not.toContain("[TF:2]");
+  });
+
+  it("does not leak SA or TF colors into backend rows when displayCli collides with a carrier id", () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-displaycli-collision-"));
+    initStore(tempDir);
+    setCarrierAgentMode("ohio", false, "subagent");
+    updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
+    updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
+    const runtime = createTestCarrierRuntime();
+    const state = createJobBarState({ carrierRuntime: runtime });
+    currentJobBarState = state;
+    state.getPanelJobs().set("taskforce:collision", buildTaskForceJob("taskforce:collision", "ohio", "ohio", "codex"));
+
+    const rendered = createJobBarSections(state).flatMap((section) => section.component.render(200)).join("\n");
+    const backendLine = rendered.split("\n").find((line) => line.includes("Ohio") && line.includes("└─") && !line.includes("Taskforce"));
+
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
+    expect(backendLine).toContain(`${CARRIER_COLORS.claude}Ohio`);
+    expect(backendLine).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
+    expect(backendLine).not.toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
+  });
+
   it("shows strip and detail sections together when at least one job is active", () => {
     const state = createTestJobBarState();
     state.getPanelJobs().set("carrier:first", buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000));
@@ -202,6 +263,43 @@ function buildDispatchJob(jobId: string, runId: string, label: string, startedAt
       trackId: "genesis",
     }],
   };
+}
+
+function buildTaskForceJob(jobId: string, ownerCarrierId: string, firstCli: string, secondCli: string): PanelJob {
+  return {
+    jobId,
+    kind: "taskforce",
+    label: "Coordinate backends",
+    ownerCarrierId,
+    startedAt: 1000,
+    status: "active",
+    tracks: [
+      {
+        displayCli: firstCli,
+        displayName: firstCli,
+        kind: "backend",
+        runId: `${jobId}:${firstCli}`,
+        status: "stream",
+        streamKey: firstCli,
+        trackId: firstCli,
+      },
+      {
+        displayCli: secondCli,
+        displayName: secondCli,
+        kind: "backend",
+        runId: `${jobId}:${secondCli}`,
+        status: "stream",
+        streamKey: secondCli,
+        trackId: secondCli,
+      },
+    ],
+  };
+}
+
+function firstModel(cliType: "claude" | "codex"): string {
+  const model = getCliModels(cliType)[0]?.id;
+  if (!model) throw new Error(`No test model for ${cliType}`);
+  return model;
 }
 
 function stripAnsi(text: string): string {

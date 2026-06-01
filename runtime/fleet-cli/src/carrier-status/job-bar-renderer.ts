@@ -1,4 +1,5 @@
 import {
+  CARRIER_COLORS,
   SUBAGENT_CARRIER_COLOR,
   SUBAGENT_CARRIER_RGB,
   getCarrierConfig,
@@ -25,6 +26,7 @@ import {
   SYM_INDICATOR,
   SYM_THINKING,
   TASKFORCE_BADGE_COLOR,
+  TASKFORCE_BADGE_RGB,
 } from "./facade.js";
 import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
 import { buildCarrierJobGroups, buildPanelViewModel } from "./job-bar-view-model.js";
@@ -36,6 +38,8 @@ export interface CarrierHudTile {
   readonly color: string;
   readonly displayName: string;
   readonly rgb: [number, number, number];
+  readonly subagentMode: boolean;
+  readonly subagentPendingRestart: boolean;
   readonly taskForceBackendCount: number;
 }
 
@@ -223,7 +227,8 @@ function appendWidgetJobSummary(
   for (let groupIndex = 0; groupIndex < groups.length && lines.length < MAX_WIDGET_LINES; groupIndex++) {
     const group = groups[groupIndex];
     if (!group || group.jobs.length === 0) continue;
-    const groupColor = resolveJobBarCarrierColor(carrierRuntime, group.carrierId, subagentModes);
+    const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(readCarriersSnapshot(), group.carrierId).length;
+    const groupColor = resolveCarrierPresentationColor(carrierRuntime, group.carrierId, subagentModes, taskForceBackendCount);
     lines.push(truncateToWidth(
       `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
       width,
@@ -234,7 +239,7 @@ function appendWidgetJobSummary(
       if (!job) continue;
       const isLastJob = jobIndex === group.jobs.length - 1;
       const jobBranch = isLastJob ? "└─" : "├─";
-      const jobColor = resolveJobBarCarrierColor(carrierRuntime, job.ownerCarrierId, subagentModes);
+      const jobColor = resolveJobRowColor(carrierRuntime, job);
       const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
         ? trackInlineBlock(job.tracks[0])
         : "";
@@ -245,7 +250,7 @@ function appendWidgetJobSummary(
       ));
 
       if (shouldInlineSingleTrack(job)) continue;
-      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme, subagentModes);
+      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme);
     }
   }
 }
@@ -258,12 +263,11 @@ function appendTrackRows(
   jobColor: string,
   frame: number,
   theme: FleetPtyTheme | undefined,
-  subagentModes: Record<string, "subagent">,
 ): void {
   for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
     const track = job.tracks[trackIndex];
     if (!track) continue;
-    const trackColor = resolveJobBarCarrierColor(carrierRuntime, track.displayCli, subagentModes) || jobColor;
+    const trackColor = resolveBackendRowColor(carrierRuntime, track.displayCli, job.ownerCarrierId) || jobColor;
     const icon = trackStatusIcon(track, frame, trackColor);
     const stats = widgetTrackStats(track);
     const inline = !track.isComplete ? trackInlineBlock(track) : "";
@@ -279,14 +283,18 @@ function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly 
   const subagentModes = readCarrierAgentModeSnapshot(buildCarrierDefaults(carrierRuntime)).agentModes;
   return getRegisteredOrder(carrierRuntime.registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
+    const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length;
+    const subagentMode = subagentModes[carrierId] === "subagent";
     return {
       activeJobCount: activeCarrierJobs.length,
       activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       carrierId,
-      color: resolveJobBarCarrierColor(carrierRuntime, carrierId, subagentModes),
+      color: resolveCarrierPresentationColor(carrierRuntime, carrierId, subagentModes, taskForceBackendCount),
       displayName: resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
-      rgb: resolveJobBarCarrierRgb(carrierRuntime, carrierId, subagentModes),
-      taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(snapshot, carrierId).length,
+      rgb: resolveCarrierPresentationRgb(carrierRuntime, carrierId, subagentModes, taskForceBackendCount),
+      subagentMode,
+      subagentPendingRestart: subagentMode,
+      taskForceBackendCount,
     };
   });
 }
@@ -390,6 +398,10 @@ function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: strin
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
+  if (carrier.subagentMode) {
+    const pending = carrier.subagentPendingRestart ? `${PANEL_DIM_COLOR()}*${ANSI_RESET}` : "";
+    return ` ${SUBAGENT_CARRIER_COLOR}[SA]${pending}${ANSI_RESET}`;
+  }
   const tfBadge = carrier.taskForceBackendCount >= 2
     ? ` ${TASKFORCE_BADGE_COLOR()}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
@@ -448,24 +460,38 @@ function buildCarrierDefaults(carrierRuntime: CarrierRuntime): Record<string, Ca
   );
 }
 
-function resolveJobBarCarrierColor(
+function resolveCarrierPresentationColor(
   carrierRuntime: CarrierRuntime,
   carrierId: string,
   subagentModes: Record<string, "subagent">,
+  taskForceBackendCount: number,
 ): string {
   if (subagentModes[carrierId] === "subagent") return SUBAGENT_CARRIER_COLOR;
+  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR();
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
 
-function resolveJobBarCarrierRgb(
+function resolveCarrierPresentationRgb(
   carrierRuntime: CarrierRuntime,
   carrierId: string,
   subagentModes: Record<string, "subagent">,
+  taskForceBackendCount: number,
 ): [number, number, number] {
   if (subagentModes[carrierId] === "subagent") {
     return SUBAGENT_CARRIER_RGB;
   }
+  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB();
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
+}
+
+function resolveJobRowColor(carrierRuntime: CarrierRuntime, job: PanelJobViewModel): string {
+  if (job.kind === "taskforce") return TASKFORCE_BADGE_COLOR();
+  return resolveBackendRowColor(carrierRuntime, job.ownerCarrierId, job.ownerCarrierId);
+}
+
+function resolveBackendRowColor(carrierRuntime: CarrierRuntime, cliTypeOrCarrierId: string, fallbackCarrierId: string): string {
+  return CARRIER_COLORS[cliTypeOrCarrierId]
+    ?? resolveCarrierColor(carrierRuntime.registry, fallbackCarrierId);
 }
 
 function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: string): string {

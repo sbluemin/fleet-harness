@@ -10,6 +10,7 @@ import {
   visibleWidth,
   type FleetPtyTheme,
 } from "../../controls/index.js";
+import { TASKFORCE_BADGE_COLOR } from "../../carrier-status/constants.js";
 import { centerText } from "../welcome.js";
 
 import type { RenameState, StatusOverlayViewModel } from "./render-types.js";
@@ -91,7 +92,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
 
   body.push({ kind: "blank" });
   if (model.feedbackMessage) {
-    const tone = model.feedbackMessage.startsWith("저장 실패") ? deps.theme.warning : deps.theme.accent;
+    const tone = isWarningFeedback(model.feedbackMessage) ? deps.theme.warning : deps.theme.accent;
     body.push({ kind: "center", text: tone(model.feedbackMessage) }, { kind: "blank" });
   }
 
@@ -273,8 +274,13 @@ function getEntryBgColor(cliType: CarrierCliType): string | undefined {
   return CARRIER_BG_COLORS[cliType];
 }
 
+function isWarningFeedback(message: string): boolean {
+  return message.startsWith("저장 실패") || message.startsWith("경고:");
+}
+
 function getEntryColor(entry: CarrierStatusEntry): string {
   if (entry.subagentMode) return getSubagentSignatureColor();
+  if (entry.taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
   return CARRIER_COLORS[entry.cliType] ?? "";
 }
 
@@ -326,7 +332,7 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
   const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
   const tfTag = entry.taskForceBackendCount >= 2
-    ? `  \x1b[38;2;100;180;255m[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
+    ? `  ${TASKFORCE_BADGE_COLOR}[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   const subagentTag = entry.subagentMode
     ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}${entry.subagentPendingRestart ? dim("*") : ""}`
