@@ -45,7 +45,7 @@ describe("Codex subagent conversion", () => {
     const definitions = buildCodexSubagentDefinitions({
       carrierConfigs: [createCarrierConfig("tempest")],
       enabledCarrierIds: ["tempest"],
-      perCliSettingsByCarrierId: {
+      agentCliByCarrierId: {
         tempest: { model: "gpt-5.4", effort: "high" },
       },
     });

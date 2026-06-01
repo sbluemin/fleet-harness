@@ -156,6 +156,7 @@ describe("persona defaults", () => {
       expect(persona.defaults.slot).toBe(EXPECTED_DEFAULTS[id].slot);
       expect(persona.defaults.agent.dispatch).toEqual({
         defaultCliType: "claude",
+        defaultAgentMode: "subagent",
         defaultModel: EXPECTED_DEFAULTS[id].defaultModel,
         defaultEffort: EXPECTED_DEFAULTS[id].defaultEffort,
       });
@@ -193,6 +194,7 @@ describe("explicit default registration", () => {
         expected?.meta.title,
       );
       expect(config?.defaultCliType).toBe(expected?.defaults.agent.dispatch.defaultCliType);
+      expect(config?.defaultAgentMode).toBe("subagent");
       expect(config?.subagent?.defaultModel).toBe(expected?.defaults.agent.nativeSubagents?.byHost?.claude?.defaultModel);
       expect(config?.subagent?.defaultEffort).toBe(expected?.defaults.agent.nativeSubagents?.byHost?.claude?.defaultEffort);
     }

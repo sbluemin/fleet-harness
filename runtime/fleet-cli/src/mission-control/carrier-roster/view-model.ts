@@ -3,9 +3,9 @@ import {
   getCarrierConfig,
   getConfiguredTaskForceBackendsFromSnapshot,
   getRegisteredOrder,
-  loadModels,
-  readStatesSnapshot,
-  readCarrierSubagentModeSnapshot,
+  readCarriersSnapshot,
+  readCarrierAgentModeSnapshot,
+  resolveAgentCliType,
   resolveCarrierDisplayName,
   type CarrierModelDefaults,
   type CarrierRuntime,
@@ -33,7 +33,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 const ROLE_DESCRIPTION_SEPARATOR = " - ";
 
 export function buildStatusEntries(carrierRuntime: CarrierRuntime): CarrierStatusEntry[] {
-  const snapshot = readStatesSnapshot();
+  const snapshot = readCarriersSnapshot();
   return buildStatusEntriesFromSnapshot(carrierRuntime, snapshot);
 }
 
@@ -101,16 +101,15 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
   const entries: CarrierStatusEntry[] = [];
   const registry = carrierRuntime.registry;
   const registeredOrder = getRegisteredOrder(registry);
-  const subagentModes = readCarrierSubagentModeSnapshot().carrierModes;
   const cliTypesByCarrier = buildCliTypesByCarrierFromSnapshot(carrierRuntime, snapshot);
-  loadModels(cliTypesByCarrier);
-  const healedSnapshot = readStatesSnapshot();
+  const subagentModes = readCarrierAgentModeSnapshot(cliTypesByCarrier).agentModes;
+  const healedSnapshot = readCarriersSnapshot(cliTypesByCarrier);
 
   for (const id of registeredOrder) {
     const config = getCarrierConfig(registry, id);
     if (!config) continue;
     const cliType = cliTypeForCarrierFromSnapshot(healedSnapshot, id, config.defaultCliType as CarrierCliType);
-    const selection = healedSnapshot.models[id];
+    const selection = healedSnapshot.carriers[id]?.agentCli[cliType];
     const provider = getProviderModelsEquivalent(cliType);
     const meta = config.carrierMetadata;
     const role = sanitizeCarrierMetadataText(meta?.title);
@@ -143,14 +142,31 @@ function buildCliTypesByCarrierFromSnapshot(carrierRuntime: CarrierRuntime, snap
       .map((id) => {
         const config = getCarrierConfig(registry, id);
         if (!config) return null;
+        const cliType = resolveAgentCliType(id, config.defaultCliType) as CarrierCliType;
+        const cliDefaults = resolvePersonaCliDefaults(config, cliType);
         return [id, {
-          cliType: cliTypeForCarrierFromSnapshot(snapshot, id, config.defaultCliType as CarrierCliType),
-          ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
-          ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+          cliType,
+          ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
+          ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
+          ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
         }];
       })
       .filter((entry): entry is [string, CarrierModelDefaults] => entry !== null),
   );
+}
+
+function resolvePersonaCliDefaults(
+  config: NonNullable<ReturnType<typeof getCarrierConfig>>,
+  cliType: CarrierCliType,
+): { readonly defaultEffort?: string; readonly defaultModel?: string } {
+  if (cliType === "codex") return config.subagent?.byHost?.codex ?? {};
+  if (cliType === "claude") {
+    return config.subagent?.byHost?.claude ?? {
+      ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
+      ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+    };
+  }
+  return {};
 }
 
 function cliTypeForCarrierFromSnapshot(
@@ -158,7 +174,7 @@ function cliTypeForCarrierFromSnapshot(
   carrierId: string,
   defaultCliType: CarrierCliType,
 ): CarrierCliType {
-  return (snapshot.cliTypeOverrides[carrierId] as CarrierCliType | undefined) ?? defaultCliType;
+  return snapshot.carriers[carrierId]?.agentCliType ?? defaultCliType;
 }
 
 function getProviderModelsEquivalent(cliType: CarrierCliType): CliModelInfo {

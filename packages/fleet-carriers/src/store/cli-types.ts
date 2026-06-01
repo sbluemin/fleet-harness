@@ -1,230 +1,82 @@
 import { CLI_BACKENDS, type CliType } from "@dotobokuri/fleet-unified-agent";
 import { disconnect } from "@dotobokuri/fleet-infra/agent";
-import {
-  isRecord,
-  sanitizeConfigKey,
-  sanitizeFreeformText,
-} from "./sanitize.js";
-import { readStatesSnapshot, updateStates } from "./state-io.js";
-import type {
-  ModelSelection,
-  PerCliSettings,
-  SelectedModelsConfig,
-  TaskForceConfig,
-  TaskForceSelection,
-} from "./types.js";
 
-/** 유효한 cliType 값 집합 */
+import {
+  sanitizeAgentCli,
+  sanitizeAgentCliSelectionForCliType,
+  sanitizeAgentCliType,
+  sanitizeConfigKey,
+} from "./sanitize.js";
+import { readRawCarriers, updateCarriers } from "./state-io.js";
+import type { AgentCliSelection } from "./types.js";
+
 const VALID_CLI_TYPES = new Set(Object.keys(CLI_BACKENDS));
 
-/**
- * 디스크에서 cliType 오버라이드 맵을 로드합니다.
- * 유효한 carrier ID와 cliType 값만 필터링하여 반환합니다.
- */
-export function loadCliTypeOverrides(validIds?: Set<string>): Record<string, string> {
-  const overrides = readStatesSnapshot().cliTypeOverrides;
+export function loadAgentCliTypeOverrides(validIds?: Set<string>): Record<string, string> {
+  const carriers = readRawCarriers().carriers ?? {};
+  const overrides = Object.fromEntries(
+    Object.entries(carriers)
+      .filter(([, state]) => state.agentCliType)
+      .map(([id, state]) => [id, state.agentCliType!]),
+  );
   if (!validIds) return overrides;
   return Object.fromEntries(
     Object.entries(overrides).filter(([id]) => validIds.has(id)),
   );
 }
 
-/** 디스크의 carrier별 cliType override를 읽어 현재 등록에 사용할 CLI를 결정합니다. */
-export function resolveCarrierCliType(carrierId: string, defaultCliType: CliType): CliType {
-  const overrides = readStatesSnapshot().cliTypeOverrides;
-  return (overrides[carrierId] as CliType | undefined) ?? defaultCliType;
+export function resolveAgentCliType(carrierId: string, defaultCliType: CliType): CliType {
+  return readRawCarriers().carriers?.[carrierId]?.agentCliType ?? defaultCliType;
 }
 
-/**
- * 단일 carrier의 cliType 오버라이드를 저장하거나 기본값이면 제거합니다.
- */
-export function updateCliTypeOverride(
+export function updateAgentCliTypeOverride(
   carrierId: string,
   cliType: string,
   defaultCliType: string,
 ): void {
   const sanitizedCarrierId = sanitizeConfigKey(carrierId);
-  if (!sanitizedCarrierId) return;
-  if (!VALID_CLI_TYPES.has(cliType) || !VALID_CLI_TYPES.has(defaultCliType)) return;
+  const sanitizedCliType = sanitizeAgentCliType(cliType);
+  if (!sanitizedCarrierId || !sanitizedCliType || !VALID_CLI_TYPES.has(defaultCliType)) return;
 
-  updateStates((states) => {
-    const overrides = sanitizeCliTypeOverrides(states.cliTypeOverrides);
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[sanitizedCarrierId] ?? {};
     if (cliType === defaultCliType) {
-      delete overrides[sanitizedCarrierId];
+      const next = { ...current };
+      delete next.agentCliType;
+      carriers[sanitizedCarrierId] = next;
     } else {
-      overrides[sanitizedCarrierId] = cliType;
+      carriers[sanitizedCarrierId] = { ...current, agentCliType: sanitizedCliType };
     }
-    if (Object.keys(overrides).length > 0) {
-      states.cliTypeOverrides = overrides;
-    } else {
-      delete states.cliTypeOverrides;
-    }
+    states.carriers = carriers;
   });
 }
 
-export async function applyCliTypeModelSelectionUpdate(
+export async function applyAgentCliTypeSelectionUpdate(
   carrierId: string,
   nextCliType: CliType,
   defaultCliType: CliType,
   previousCliType: CliType | null,
-  previousSelection: PerCliSettings | undefined,
-  selection: ModelSelection,
+  previousSelection: AgentCliSelection | undefined,
+  selection: AgentCliSelection,
 ): Promise<void> {
-  updateStates((states) => {
-    const models = sanitizeSelectedModelsConfig(states.models);
-    const current = models[carrierId];
-    const perCliSettings = { ...(current?.perCliSettings ?? {}) };
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[carrierId] ?? {};
+    const agentCli = { ...sanitizeAgentCli(current.agentCli) };
     if (previousCliType && previousSelection) {
-      perCliSettings[previousCliType] = previousSelection;
+      const sanitizedPrevious = sanitizeAgentCliSelectionForCliType(previousCliType, previousSelection);
+      if (sanitizedPrevious) agentCli[previousCliType] = sanitizedPrevious;
     }
-    models[carrierId] = {
-      ...selection,
-      taskforce: current?.taskforce,
-      perCliSettings,
+    const sanitizedSelection = sanitizeAgentCliSelectionForCliType(nextCliType, selection);
+    if (sanitizedSelection) agentCli[nextCliType] = sanitizedSelection;
+    carriers[carrierId] = {
+      ...current,
+      ...(nextCliType === defaultCliType ? {} : { agentCliType: nextCliType }),
+      agentCli,
     };
-    states.models = models;
-
-    const overrides = sanitizeCliTypeOverrides(states.cliTypeOverrides);
-    if (nextCliType === defaultCliType) {
-      delete overrides[carrierId];
-    } else {
-      overrides[carrierId] = nextCliType;
-    }
-    if (Object.keys(overrides).length > 0) {
-      states.cliTypeOverrides = overrides;
-    } else {
-      delete states.cliTypeOverrides;
-    }
+    if (nextCliType === defaultCliType) delete carriers[carrierId].agentCliType;
+    states.carriers = carriers;
   });
   await disconnect(carrierId);
-}
-
-function sanitizeCliTypeOverrides(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  const result: Record<string, string> = {};
-  for (const [id, cliType] of Object.entries(value)) {
-    const sanitizedId = sanitizeConfigKey(id);
-    if (!sanitizedId || typeof cliType !== "string" || !VALID_CLI_TYPES.has(cliType)) continue;
-    result[sanitizedId] = cliType;
-  }
-  return result;
-}
-
-function sanitizeSelectedModelsConfig(raw: unknown): SelectedModelsConfig {
-  if (!isRecord(raw)) return {};
-
-  const result: SelectedModelsConfig = {};
-
-  for (const [key, value] of Object.entries(raw)) {
-    const sanitizedKey = sanitizeConfigKey(key);
-    if (!sanitizedKey) continue;
-
-    if (typeof value === "string") {
-      const legacyModel = sanitizeFreeformText(value);
-      if (!legacyModel) continue;
-      result[sanitizedKey] = { model: legacyModel };
-      continue;
-    }
-
-    const sanitizedSelection = sanitizeModelSelection(value);
-    if (sanitizedSelection) {
-      result[sanitizedKey] = sanitizedSelection;
-    }
-  }
-
-  return result;
-}
-
-function sanitizeModelSelection(value: unknown): ModelSelection | null {
-  if (!isRecord(value)) return null;
-
-  const taskforce = sanitizeTaskforceConfig(value.taskforce);
-  const perCliSettings = sanitizeAllPerCliSettings(value.perCliSettings);
-  const model = sanitizeFreeformText(value.model);
-  if (!model && !taskforce && !perCliSettings) return null;
-
-  const result: ModelSelection = { model: model ?? "" };
-
-  if (typeof value.direct === "boolean") {
-    result.direct = value.direct;
-  }
-
-  const effort = sanitizeFreeformText(value.effort);
-  if (effort) {
-    result.effort = effort;
-  }
-
-  if (taskforce) {
-    result.taskforce = taskforce;
-  }
-
-  if (perCliSettings) {
-    result.perCliSettings = perCliSettings;
-  }
-
-  return result;
-}
-
-function sanitizeTaskforceConfig(value: unknown): TaskForceConfig | undefined {
-  if (!isRecord(value)) return undefined;
-
-  const taskforce: TaskForceConfig = {};
-  for (const [cliKey, cliValue] of Object.entries(value)) {
-    const sanitizedKey = sanitizeConfigKey(cliKey);
-    const sanitizedTaskforceSelection = sanitizeTaskForceSelection(cliValue);
-    if (sanitizedKey && sanitizedTaskforceSelection) {
-      (taskforce as Partial<Record<string, TaskForceSelection>>)[sanitizedKey] = sanitizedTaskforceSelection;
-    }
-  }
-
-  return Object.keys(taskforce).length > 0 ? taskforce : undefined;
-}
-
-function sanitizeTaskForceSelection(value: unknown): TaskForceSelection | null {
-  if (!isRecord(value)) return null;
-  const model = sanitizeFreeformText(value.model);
-  if (!model) return null;
-
-  const result: TaskForceSelection = { model };
-  const effort = sanitizeFreeformText(value.effort);
-  if (effort) result.effort = effort;
-  if (typeof value.direct === "boolean") result.direct = value.direct;
-  return result;
-}
-
-function sanitizeAllPerCliSettings(
-  value: unknown,
-): Partial<Record<string, PerCliSettings>> | undefined {
-  if (!isRecord(value)) return undefined;
-
-  const result: Partial<Record<string, PerCliSettings>> = {};
-  let hasEntry = false;
-
-  for (const [key, entry] of Object.entries(value)) {
-    const sanitizedKey = sanitizeConfigKey(key);
-    if (!sanitizedKey) continue;
-    const sanitized = sanitizePerCliSettings(entry);
-    if (sanitized) {
-      result[sanitizedKey] = sanitized;
-      hasEntry = true;
-    }
-  }
-
-  return hasEntry ? result : undefined;
-}
-
-function sanitizePerCliSettings(value: unknown): PerCliSettings | undefined {
-  if (!isRecord(value)) return undefined;
-  const result: PerCliSettings = {};
-  let hasField = false;
-
-  const model = sanitizeFreeformText(value.model);
-  if (model) { result.model = model; hasField = true; }
-
-  const effort = sanitizeFreeformText(value.effort);
-  if (effort) { result.effort = effort; hasField = true; }
-
-  if (typeof value.direct === "boolean") { result.direct = value.direct; hasField = true; }
-
-  return hasField ? result : undefined;
 }

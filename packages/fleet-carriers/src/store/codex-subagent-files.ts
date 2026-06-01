@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { CodexSubagentRoleDefinition, CodexSubagentToml } from "../subagents/types.js";
-import { getStatesFilePath, withStoreLock } from "./state-io.js";
+import { getCarriersFilePath, withStoreLock } from "./state-io.js";
 
 export interface CodexSubagentRoleFile {
   readonly configFile: string;
@@ -84,7 +84,7 @@ export function serializeCodexSubagentRoleToml(toml: CodexSubagentToml): string 
 }
 
 function getCodexSubagentRootDir(): string | undefined {
-  const statesFilePath = getStatesFilePath();
+  const statesFilePath = getCarriersFilePath();
   return statesFilePath ? path.join(path.dirname(statesFilePath), CODEX_AGENTS_DIR_NAME) : undefined;
 }
 

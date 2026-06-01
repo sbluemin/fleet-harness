@@ -16,6 +16,7 @@ export const GENESIS_DEFAULTS: CarrierPersonaDefaults = {
   agent: {
     dispatch: {
       defaultCliType: "claude",
+      defaultAgentMode: "subagent",
       defaultModel: "sonnet",
       defaultEffort: "medium",
     },

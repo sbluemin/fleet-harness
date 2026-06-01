@@ -1,5 +1,5 @@
 import type { CarrierConfig } from "../dispatch/types.js";
-import type { PerCliSettings } from "../store/types.js";
+import type { AgentCliSelection } from "../store/types.js";
 
 export type { CarrierAgentProviderDefaults as ProviderSubagentDefaults } from "../dispatch/types.js";
 
@@ -49,5 +49,5 @@ export interface BuildClaudeSubagentDefinitionsOptions {
 export interface BuildCodexSubagentDefinitionsOptions {
   readonly carrierConfigs: readonly CarrierConfig[];
   readonly enabledCarrierIds: readonly string[];
-  readonly perCliSettingsByCarrierId?: Readonly<Record<string, PerCliSettings | undefined>>;
+  readonly agentCliByCarrierId?: Readonly<Record<string, AgentCliSelection | undefined>>;
 }

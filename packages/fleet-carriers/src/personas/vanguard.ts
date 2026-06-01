@@ -16,6 +16,7 @@ export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
   agent: {
     dispatch: {
       defaultCliType: "claude",
+      defaultAgentMode: "subagent",
       defaultModel: "haiku",
       defaultEffort: "low",
     },

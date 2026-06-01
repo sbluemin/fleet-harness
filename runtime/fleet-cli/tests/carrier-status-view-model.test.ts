@@ -10,7 +10,7 @@ import {
   initStore,
   registerCarrier,
   resetStoreForTests,
-  setCarrierSubagentMode,
+  setCarrierAgentMode,
 } from "@dotobokuri/fleet-carriers";
 
 import { buildStatusEntries } from "../src/mission-control/carrier-roster/view-model.js";
@@ -67,7 +67,7 @@ describe("carrier status view model", () => {
       summary: "Runs with Codex by default",
       title: "Operator",
     }, "codex"));
-    setCarrierSubagentMode("metadata_test", true);
+    setCarrierAgentMode("metadata_test", true);
 
     const entry = buildStatusEntries(runtime)[0];
 
@@ -75,11 +75,29 @@ describe("carrier status view model", () => {
     expect(entry?.subagentMode).toBe(true);
     expect(entry?.subagentPendingRestart).toBe(true);
   });
+
+  it("heals codex-only carriers with codex persona defaults", () => {
+    const runtime = createCarrierRuntime();
+    registerCarrier(runtime.registry, createCarrierConfig({
+      summary: "Runs with Codex defaults",
+      title: "Operator",
+    }, "codex", {
+      defaultEffort: "low",
+      defaultModel: "gpt-5.4-mini",
+    }));
+
+    const entry = buildStatusEntries(runtime)[0];
+
+    expect(entry?.cliType).toBe("codex");
+    expect(entry?.model).toBe("gpt-5.4-mini");
+    expect(entry?.effort).toBe("low");
+  });
 });
 
 function createCarrierConfig(
   metadata: Pick<CarrierMetadata, "summary" | "title">,
   cliType: CarrierConfig["defaultCliType"] = "claude",
+  codexDefaults?: { readonly defaultEffort: string; readonly defaultModel: string },
 ): CarrierConfig {
   return {
     carrierMetadata: {
@@ -98,5 +116,6 @@ function createCarrierConfig(
     displayName: "Metadata Test",
     id: "metadata_test",
     slot: 1,
+    ...(codexDefaults ? { subagent: { byHost: { codex: codexDefaults } } } : {}),
   };
 }

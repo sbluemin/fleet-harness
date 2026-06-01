@@ -12,7 +12,7 @@ export function buildCodexSubagentDefinitions(
   const enabled = new Set(options.enabledCarrierIds);
   const definitions = options.carrierConfigs
     .filter((config) => enabled.has(config.id))
-    .map((config) => buildCodexSubagentDefinition(config, options.perCliSettingsByCarrierId?.[config.id]));
+    .map((config) => buildCodexSubagentDefinition(config, options.agentCliByCarrierId?.[config.id]));
   assertUniqueCodexSubagentRoleKeys(definitions.map((definition) => definition.carrierId));
   return definitions;
 }

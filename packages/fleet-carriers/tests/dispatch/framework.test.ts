@@ -17,7 +17,7 @@ import {
   registerStreamHandler,
   resetStoreForTests,
   resolveCarrierDisplayName,
-  setCarrierSubagentMode,
+  setCarrierAgentMode,
   updateCarrierDisplayName,
 } from "../../src/index.js";
 
@@ -132,12 +132,16 @@ describe("carrier_dispatch effort resolution", () => {
     tempDir = null;
   });
 
-  it("uses states.json effort instead of the persona subagent defaultEffort", async () => {
+  it("uses carriers.json effort instead of the persona subagent defaultEffort", async () => {
     writeStates({
-      models: {
+      carriers: {
         ohio: {
-          model: "sonnet",
-          effort: "max",
+          agentCli: {
+            claude: {
+              model: "sonnet",
+              effort: "max",
+            },
+          },
         },
       },
     });
@@ -225,7 +229,7 @@ describe("carrier_dispatch native subagent mode rejection", () => {
   it("rejects a carrier in native subagent mode with direct invocation guidance", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
-    setCarrierSubagentMode("ohio", true);
+    setCarrierAgentMode("ohio", true);
 
     const tool = buildCarrierDispatchToolSpec(registry);
     const result = await tool.execute({
@@ -246,14 +250,34 @@ describe("carrier_dispatch native subagent mode rejection", () => {
     expect(executeWithPool).not.toHaveBeenCalled();
   });
 
+  it("rejects a carrier whose persona default agentMode is native subagent", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, { ...createConfig("ohio", "Ohio"), defaultAgentMode: "subagent" });
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check default subagent guard",
+      request: "Verify dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-default-subagent-mode",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-default-subagent-mode",
+      accepted: false,
+      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+    });
+    expect(result.isError).toBe(true);
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+
   it("rejects a subagent-mode carrier before Task Force auto-promotion", async () => {
     writeStates({
-      carrierModes: {
-        ohio: "subagent",
-      },
-      models: {
+      carriers: {
         ohio: {
-          model: "sonnet",
+          agentMode: "subagent",
           taskforce: {
             claude: {
               model: "sonnet",
@@ -302,5 +326,5 @@ function createConfig(id: string, displayName: string): CarrierConfig {
 
 function writeStates(value: unknown): void {
   if (!tempDir) throw new Error("테스트 store가 초기화되지 않았습니다.");
-  fs.writeFileSync(path.join(tempDir, "states.json"), JSON.stringify(value), "utf-8");
+  fs.writeFileSync(path.join(tempDir, "carriers.json"), JSON.stringify(value), "utf-8");
 }

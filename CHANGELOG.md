@@ -24,6 +24,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Removed the `Alt+O` host shortcut for opening carrier configuration.
 - [core] Removed legacy default persona registry exports and unused carrier config renderer hooks.
 - [core] Removed the `claude-zai` dedicated Agent CLI profile from the upper-pane selection; the underlying auth and provider backend remain supported.
+- [core] Removed the unused `@dotobokuri/fleet-infra/settings` package subpath along with dead settings.json persistence and adjacent log-injection code.
 
 ## [1.0.2] - 2026-05-26
 

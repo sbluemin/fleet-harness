@@ -1,56 +1,72 @@
-import { sanitizeCarrierModes, sanitizeConfigKey } from "./sanitize.js";
+import { sanitizeConfigKey } from "./sanitize.js";
 import { assertUniqueCodexSubagentRoleKeys, buildCodexSubagentDefinition } from "../subagents/codex.js";
 import { ensureCodexSubagentRoleFile, removeCodexSubagentRoleFile } from "./codex-subagent-files.js";
-import { readStatesSnapshot, updateStates } from "./state-io.js";
+import { buildHealedCarriers } from "./models.js";
+import { readRawCarriers, updateCarriers } from "./state-io.js";
 import type { CarrierConfig } from "../dispatch/types.js";
-import type { CarrierSubagentModeSnapshot, PerCliSettings } from "./types.js";
+import type { AgentCliSelection, CarrierAgentMode, CarrierAgentModeSnapshot } from "./types.js";
+import type { CarrierModelDefaults } from "./models.js";
 
-export interface SetCarrierSubagentModeWithCodexRoleOptions {
+export interface SetCarrierAgentModeWithCodexRoleOptions {
   readonly enabledCarrierIds?: readonly string[];
   readonly registeredCarrierIds?: readonly string[];
 }
 
-export function readCarrierSubagentModeSnapshot(): CarrierSubagentModeSnapshot {
-  const snapshot = readStatesSnapshot();
+export function readCarrierAgentModeSnapshot(
+  defaultsByCarrier: Record<string, CarrierModelDefaults> = {},
+): CarrierAgentModeSnapshot {
+  const raw = readRawCarriers();
+  const carriers = buildHealedCarriers(defaultsByCarrier);
   return {
-    carrierModes: snapshot.carrierModes,
-    generation: snapshot.generation,
+    agentModes: Object.fromEntries(
+      Object.entries(carriers)
+        .filter(([, state]) => state.agentMode === "subagent")
+        .map(([id]) => [id, "subagent" as const]),
+    ),
+    generation: raw._meta?.generation ?? 0,
   };
 }
 
-export function isCarrierSubagentModeEnabled(carrierId: string): boolean {
-  return readCarrierSubagentModeSnapshot().carrierModes[carrierId] === "subagent";
+export function isCarrierAgentModeSubagent(
+  carrierId: string,
+  defaultAgentMode: CarrierAgentMode = "cli",
+): boolean {
+  const rawMode = readRawCarriers().carriers?.[carrierId]?.agentMode;
+  return (rawMode ?? defaultAgentMode) === "subagent";
 }
 
-export function setCarrierSubagentMode(carrierId: string, enabled: boolean): void {
+export function setCarrierAgentMode(
+  carrierId: string,
+  enabled: boolean,
+  defaultAgentMode: CarrierAgentMode = "cli",
+): void {
   const sanitizedCarrierId = sanitizeConfigKey(carrierId);
   if (!sanitizedCarrierId) return;
+  const nextAgentMode: CarrierAgentMode = enabled ? "subagent" : "cli";
 
-  updateStates((states) => {
-    const carrierModes = { ...sanitizeCarrierModes(states.carrierModes) };
-    if (enabled) carrierModes[sanitizedCarrierId] = "subagent";
-    else delete carrierModes[sanitizedCarrierId];
-
-    if (Object.keys(carrierModes).length > 0) {
-      states.carrierModes = carrierModes;
-    } else {
-      delete states.carrierModes;
-    }
+  updateCarriers((states) => {
+    const carriers = { ...(states.carriers ?? {}) };
+    const current = carriers[sanitizedCarrierId] ?? {};
+    const next = { ...current };
+    if (nextAgentMode === defaultAgentMode) delete next.agentMode;
+    else next.agentMode = nextAgentMode;
+    carriers[sanitizedCarrierId] = next;
+    states.carriers = carriers;
   });
 }
 
-export function setCarrierSubagentModeWithCodexRole(
+export function setCarrierAgentModeWithCodexRole(
   config: CarrierConfig,
   enabled: boolean,
-  codexSettings?: PerCliSettings,
-  options?: SetCarrierSubagentModeWithCodexRoleOptions,
+  codexSettings?: AgentCliSelection,
+  options?: SetCarrierAgentModeWithCodexRoleOptions,
 ): void {
   const definition = buildCodexSubagentDefinition(config, codexSettings);
   if (enabled) {
     assertCodexSubagentRoleKeyDoesNotCollide(config.id, options);
     ensureCodexSubagentRoleFile(definition);
     try {
-      setCarrierSubagentMode(config.id, true);
+      setCarrierAgentMode(config.id, true, config.defaultAgentMode);
     } catch (error) {
       removeCodexSubagentRoleFile(definition.roleKey);
       throw error;
@@ -58,7 +74,7 @@ export function setCarrierSubagentModeWithCodexRole(
   } else {
     removeCodexSubagentRoleFile(definition.roleKey);
     try {
-      setCarrierSubagentMode(config.id, false);
+      setCarrierAgentMode(config.id, false, config.defaultAgentMode);
     } catch (error) {
       ensureCodexSubagentRoleFile(definition);
       throw error;
@@ -66,34 +82,34 @@ export function setCarrierSubagentModeWithCodexRole(
   }
 }
 
-export function filterCarrierSubagentModesToRegisteredIds(
-  snapshot: CarrierSubagentModeSnapshot,
+export function filterCarrierAgentModesToRegisteredIds(
+  snapshot: CarrierAgentModeSnapshot,
   registeredCarrierIds: readonly string[],
-): CarrierSubagentModeSnapshot {
+): CarrierAgentModeSnapshot {
   const allowed = new Set(registeredCarrierIds);
   return {
-    carrierModes: Object.fromEntries(
-      Object.entries(snapshot.carrierModes).filter(([carrierId]) => allowed.has(carrierId)),
+    agentModes: Object.fromEntries(
+      Object.entries(snapshot.agentModes).filter(([carrierId]) => allowed.has(carrierId)),
     ),
     generation: snapshot.generation,
   };
 }
 
 export function getEnabledCarrierSubagentIds(
-  snapshot: CarrierSubagentModeSnapshot,
+  snapshot: CarrierAgentModeSnapshot,
   registeredCarrierIds?: readonly string[],
 ): string[] {
   const filtered = registeredCarrierIds
-    ? filterCarrierSubagentModesToRegisteredIds(snapshot, registeredCarrierIds)
+    ? filterCarrierAgentModesToRegisteredIds(snapshot, registeredCarrierIds)
     : snapshot;
-  return Object.keys(filtered.carrierModes).sort();
+  return Object.keys(filtered.agentModes).sort();
 }
 
 function assertCodexSubagentRoleKeyDoesNotCollide(
   carrierId: string,
-  options?: SetCarrierSubagentModeWithCodexRoleOptions,
+  options?: SetCarrierAgentModeWithCodexRoleOptions,
 ): void {
   const enabledCarrierIds = options?.enabledCarrierIds
-    ?? getEnabledCarrierSubagentIds(readCarrierSubagentModeSnapshot(), options?.registeredCarrierIds);
+    ?? getEnabledCarrierSubagentIds(readCarrierAgentModeSnapshot(), options?.registeredCarrierIds);
   assertUniqueCodexSubagentRoleKeys([...new Set([...enabledCarrierIds, carrierId])]);
 }

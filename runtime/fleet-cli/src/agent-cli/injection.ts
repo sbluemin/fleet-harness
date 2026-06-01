@@ -9,18 +9,17 @@ import {
   ensureCodexSubagentRoleFile,
   getCarrierConfig,
   getEnabledCarrierSubagentIds,
-  getPerCliSettings,
+  getAgentCliSelection,
   getRegisteredOrder,
-  loadModels,
-  readCarrierSubagentModeSnapshot,
-  readStatesSnapshot,
-  resolveCarrierCliType,
+  readCarrierAgentModeSnapshot,
+  readCarriersSnapshot,
+  resolveAgentCliType,
   type CarrierConfig,
   type CarrierModelDefaults,
   type CarrierRuntime,
   type ClaudeSubagentDefinition,
   type CodexSubagentRoleDefinition,
-  type PerCliSettings,
+  type AgentCliSelection,
 } from "@dotobokuri/fleet-carriers";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
@@ -91,11 +90,17 @@ function buildStartupNativeSubagents(
   const host = getNativeSubagentHost(cliId);
   if (host === "none") return { host, definitions: [] };
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
-  const enabledCarrierIds = getEnabledCarrierSubagentIds(readCarrierSubagentModeSnapshot(), carrierIds);
-  if (enabledCarrierIds.length === 0) return { host, definitions: [] } as StartupNativeSubagents;
   const carrierConfigs = carrierIds
     .map((carrierId) => getCarrierConfig(carrierRuntime.registry, carrierId))
     .filter((config): config is NonNullable<typeof config> => config !== undefined);
+  const defaultsByCarrier = Object.fromEntries(
+    carrierConfigs.map((config) => [config.id, buildCarrierModelDefaults(config)]),
+  );
+  const enabledCarrierIds = getEnabledCarrierSubagentIds(
+    readCarrierAgentModeSnapshot(defaultsByCarrier),
+    carrierIds,
+  );
+  if (enabledCarrierIds.length === 0) return { host, definitions: [] } as StartupNativeSubagents;
   if (host === "claude") {
     return { host, definitions: buildClaudeSubagentDefinitions({ carrierConfigs, enabledCarrierIds }) };
   }
@@ -105,7 +110,7 @@ function buildStartupNativeSubagents(
     definitions: buildCodexSubagentDefinitions({
       carrierConfigs,
       enabledCarrierIds,
-      perCliSettingsByCarrierId: codexSettings,
+      agentCliByCarrierId: codexSettings,
     }),
   };
 }
@@ -165,42 +170,57 @@ function rmBestEffort(targetPath: string): void {
 function buildEffectiveCodexSettingsByCarrierId(
   carrierConfigs: readonly CarrierConfig[],
   enabledCarrierIds: readonly string[],
-): Record<string, PerCliSettings | undefined> {
+): Record<string, AgentCliSelection | undefined> {
   const enabled = new Set(enabledCarrierIds);
   const codexCliTypesByCarrier = Object.fromEntries(
     carrierConfigs
       .filter((config) => enabled.has(config.id))
       .map((config) => [config.id, buildCarrierModelDefaults(config)]),
   );
-  loadModels(codexCliTypesByCarrier);
-  const snapshot = readStatesSnapshot();
+  const snapshot = readCarriersSnapshot(codexCliTypesByCarrier);
   return Object.fromEntries(
     carrierConfigs
       .filter((config) => enabled.has(config.id))
       .map((config) => {
-        const cliType = resolveCarrierCliType(config.id, config.defaultCliType);
-        const selection = snapshot.models[config.id];
+        const cliType = resolveAgentCliType(config.id, config.defaultCliType);
+        const selection = snapshot.carriers[config.id]?.agentCli.codex;
         const settings = cliType === "codex" && selection
-          ? toPerCliSettings(selection)
-          : getPerCliSettings(config.id, "codex", snapshot);
+          ? toAgentCliSelection(selection)
+          : getAgentCliSelection(config.id, "codex", snapshot);
         return [config.id, settings];
       }),
   );
 }
 
 function buildCarrierModelDefaults(config: CarrierConfig): CarrierModelDefaults {
+  const cliType = resolveAgentCliType(config.id, config.defaultCliType);
+  const cliDefaults = resolvePersonaCliDefaults(config, cliType);
   return {
-    cliType: resolveCarrierCliType(config.id, config.defaultCliType),
-    ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
-    ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+    cliType,
+    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
+    ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
+    ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
   };
 }
 
-function toPerCliSettings(selection: { readonly direct?: boolean; readonly effort?: string; readonly model: string }): PerCliSettings {
+function resolvePersonaCliDefaults(
+  config: CarrierConfig,
+  cliType: ReturnType<typeof resolveAgentCliType>,
+): { readonly defaultEffort?: string; readonly defaultModel?: string } {
+  if (cliType === "codex") return config.subagent?.byHost?.codex ?? {};
+  if (cliType === "claude") {
+    return config.subagent?.byHost?.claude ?? {
+      ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
+      ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+    };
+  }
+  return {};
+}
+
+function toAgentCliSelection(selection: { readonly effort?: string; readonly model: string }): AgentCliSelection {
   return {
     model: selection.model,
     ...(selection.effort ? { effort: selection.effort } : {}),
-    ...(selection.direct !== undefined ? { direct: selection.direct } : {}),
   };
 }
 

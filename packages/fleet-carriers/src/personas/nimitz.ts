@@ -16,6 +16,7 @@ export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
   agent: {
     dispatch: {
       defaultCliType: "claude",
+      defaultAgentMode: "subagent",
       defaultModel: "opus[1m]",
       defaultEffort: "max",
     },

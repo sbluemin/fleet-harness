@@ -83,6 +83,8 @@ export interface CarrierCoreConfig {
 export interface CarrierCliConfig {
   /** 소스레벨 기본 CLI 타입 (사용자 변경과 무관하게 원본 유지) */
   defaultCliType: CliType;
+  /** 소스레벨 기본 agent 실행 모드 */
+  defaultAgentMode?: "cli" | "subagent";
   /** dispatch/store가 사용하는 persona 소유 기본 모델 */
   defaultModel?: string;
   /** dispatch/store가 사용하는 persona 소유 기본 reasoning effort */
@@ -101,6 +103,7 @@ export interface CarrierAgentProviderDefaults {
 export interface CarrierPersonaAgentDefaults {
   readonly dispatch: {
     readonly defaultCliType: CliType;
+    readonly defaultAgentMode?: "cli" | "subagent";
     readonly defaultModel?: string;
     readonly defaultEffort?: string;
   };

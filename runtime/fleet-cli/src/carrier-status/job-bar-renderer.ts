@@ -1,8 +1,11 @@
 import {
   SUBAGENT_CARRIER_COLOR,
   SUBAGENT_CARRIER_RGB,
+  getCarrierConfig,
   getRegisteredOrder,
-  readCarrierSubagentModeSnapshot,
+  readCarrierAgentModeSnapshot,
+  resolveAgentCliType,
+  type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "../controls/index.js";
@@ -17,7 +20,7 @@ import {
   CLI_DISPLAY_NAMES,
   getConfiguredTaskForceBackendsFromSnapshot,
   PANEL_DIM_COLOR,
-  readStatesSnapshot,
+  readCarriersSnapshot,
   SPINNER_FRAMES,
   SYM_INDICATOR,
   SYM_THINKING,
@@ -211,7 +214,7 @@ function appendWidgetJobSummary(
   frame: number,
   theme: FleetPtyTheme | undefined,
 ): void {
-  const subagentModes = readCarrierSubagentModeSnapshot().carrierModes;
+  const subagentModes = readCarrierAgentModeSnapshot(buildCarrierDefaults(carrierRuntime)).agentModes;
   const groups = buildCarrierJobGroups(
     jobs,
     getRegisteredOrder(carrierRuntime.registry),
@@ -272,8 +275,8 @@ function appendTrackRows(
 }
 
 function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly PanelJob[]): CarrierHudTile[] {
-  const snapshot = readStatesSnapshot();
-  const subagentModes = readCarrierSubagentModeSnapshot().carrierModes;
+  const snapshot = readCarriersSnapshot();
+  const subagentModes = readCarrierAgentModeSnapshot(buildCarrierDefaults(carrierRuntime)).agentModes;
   return getRegisteredOrder(carrierRuntime.registry).map((carrierId) => {
     const activeCarrierJobs = activeJobs.filter((job) => job.ownerCarrierId === carrierId);
     return {
@@ -426,6 +429,23 @@ function jobDisplayLabel(job: PanelJobViewModel): string {
 
 function shouldInlineSingleTrack(job: PanelJobViewModel): boolean {
   return job.kind === "carrier" && job.tracks.length === 1;
+}
+
+function buildCarrierDefaults(carrierRuntime: CarrierRuntime): Record<string, CarrierModelDefaults> {
+  return Object.fromEntries(
+    getRegisteredOrder(carrierRuntime.registry)
+      .map((carrierId) => {
+        const config = getCarrierConfig(carrierRuntime.registry, carrierId);
+        if (!config) return null;
+        return [carrierId, {
+          cliType: resolveAgentCliType(carrierId, config.defaultCliType),
+          ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
+          ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
+          ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
+        }];
+      })
+      .filter((entry): entry is [string, CarrierModelDefaults] => entry !== null),
+  );
 }
 
 function resolveJobBarCarrierColor(

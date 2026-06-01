@@ -16,6 +16,7 @@ export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
   agent: {
     dispatch: {
       defaultCliType: "claude",
+      defaultAgentMode: "subagent",
       defaultModel: "sonnet",
       defaultEffort: "low",
     },

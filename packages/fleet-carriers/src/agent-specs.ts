@@ -54,6 +54,7 @@ function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): Ca
   return {
     id: defaults.id,
     defaultCliType: defaults.agent.dispatch.defaultCliType,
+    defaultAgentMode: defaults.agent.dispatch.defaultAgentMode,
     defaultEffort: defaults.agent.dispatch.defaultEffort,
     defaultModel: defaults.agent.dispatch.defaultModel,
     slot: defaults.slot,

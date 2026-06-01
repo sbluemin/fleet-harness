@@ -1,26 +1,27 @@
-/**
- * fleet/shipyard/store.ts — Fleet 통합 영속 스토어
- *
- * 모든 fleet 영속 상태를 `states.json` 단일 파일로 일원화합니다.
- * 단일 게이트 I/O 패턴으로 race condition을 방지합니다.
- */
-
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
-  isRecord,
-  sanitizeCarrierModes,
-  sanitizeConfigKey,
-  sanitizeFreeformText,
+  getEffort,
+  getProviderModels,
+  type CliType,
+} from "@dotobokuri/fleet-unified-agent";
+
+import {
+  sanitizeAgentCli,
+  sanitizeAgentCliType,
+  sanitizeCarriersMap,
   sanitizeGeneration,
+  sanitizeTaskforce,
 } from "./sanitize.js";
 import { withStoreDirectoryLock } from "./store-lock.js";
+import type { CarrierModelDefaults } from "./models.js";
 import type {
-  FleetStates,
+  AgentCliSelection,
+  FleetCarriers,
   FleetStoreSnapshot,
   FleetStoreWriteFingerprint,
-  SelectedModelsConfig,
+  ResolvedCarrierState,
 } from "./types.js";
 
 interface StateIoRuntimeState {
@@ -29,21 +30,15 @@ interface StateIoRuntimeState {
   lastLocalWriteFingerprint: FleetStoreWriteFingerprint | null;
 }
 
-/** 통합 영속화 파일명 */
-const FILENAME = "states.json";
+const FILENAME = "carriers.json";
 const STALE_SUBAGENT_MODE_FILENAME = "carrier-subagent.json";
 
-/** 스토어 데이터 디렉토리 */
 const runtimeState: StateIoRuntimeState = {
   storeDir: null,
   lastLocalWriteGeneration: 0,
   lastLocalWriteFingerprint: null,
 };
 
-/**
- * Fleet 통합 스토어를 초기화합니다.
- * index.ts에서 initRuntime() 직후 1회 호출합니다.
- */
 export function initStore(dir: string): void {
   runtimeState.storeDir = dir;
   fs.mkdirSync(dir, { recursive: true });
@@ -58,39 +53,50 @@ export function resetStoreForTests(): void {
   runtimeState.lastLocalWriteFingerprint = null;
 }
 
-export function readStatesSnapshot(): FleetStoreSnapshot {
-  const states = readStates();
+export function readCarriersSnapshot(
+  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
+): FleetStoreSnapshot {
+  const raw = readCarriers();
+  const carrierIds = new Set([
+    ...Object.keys(raw.carriers ?? {}),
+    ...Object.keys(defaultsByCarrier),
+  ]);
   return {
-    generation: sanitizeGeneration(states._generation),
-    models: sanitizeModelsMap(states.models),
-    cliTypeOverrides: sanitizeStringMap(states.cliTypeOverrides),
-    carrierDisplayNames: sanitizeStringMap(states.carrierDisplayNames),
-    carrierModes: sanitizeCarrierModes(states.carrierModes),
+    generation: sanitizeGeneration(raw._meta?.generation),
+    carriers: Object.fromEntries([...carrierIds].map((carrierId) => [
+      carrierId,
+      resolveSnapshotCarrierState(raw.carriers?.[carrierId] ?? {}, normalizeDefaults(defaultsByCarrier[carrierId])),
+    ])),
   };
 }
 
-export function getLastLocalStatesGeneration(): number {
+export function readRawCarriers(): FleetCarriers {
+  return readCarriers();
+}
+
+export function getLastLocalCarriersGeneration(): number {
   return runtimeState.lastLocalWriteGeneration;
 }
 
-/** `writeStates` 직후 동기 stat으로 기록된 최신 로컬 write 지문(없으면 null) */
+/** `writeCarriers` 직후 동기 stat으로 기록된 최신 로컬 write 지문(없으면 null) */
 export function getLastLocalWriteFingerprint(): FleetStoreWriteFingerprint | null {
   return runtimeState.lastLocalWriteFingerprint;
 }
 
-export function getStatesFilePath(): string | null {
+export function getCarriersFilePath(): string | null {
   if (!runtimeState.storeDir) return null;
   return path.join(runtimeState.storeDir, FILENAME);
 }
 
-export function updateStates(mutator: (states: FleetStates) => void): void {
+export function updateCarriers(mutator: (states: FleetCarriers) => void): void {
   if (!runtimeState.storeDir) return;
   withStoreLock(() => {
-    const states = readStates();
-    const snapshot = structuredClone(states);
-    mutator(states);
-    if (JSON.stringify(snapshot) === JSON.stringify(states)) return;
-    writeStates(states);
+    const carriers = readCarriers();
+    const snapshot = structuredClone(carriers);
+    mutator(carriers);
+    if (JSON.stringify(snapshot) === JSON.stringify(carriers)) return;
+    // read-modify-write 전체가 directory lock 내부라 별도 CAS retry 없이 generation만 증가시킵니다.
+    writeCarriers(carriers);
   });
 }
 
@@ -98,21 +104,18 @@ export function withStoreLock<T>(operation: () => T): T {
   return withStoreDirectoryLock(runtimeState.storeDir, operation);
 }
 
-function readStates(): FleetStates {
+function readCarriers(): FleetCarriers {
   if (!runtimeState.storeDir) return {};
   const filePath = path.join(runtimeState.storeDir, FILENAME);
   try {
     if (!fs.existsSync(filePath)) return {};
-    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as FleetStates;
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return sanitizeFleetCarriers(parsed);
   } catch {
     return {};
   }
 }
 
-/**
- * writeStates rename 직후 동기 stat으로 (generation, mtime, size) 지문을 기록합니다.
- * mtime 정밀도 한계는 size와 함께 사용해 구분합니다.
- */
 function recordLastLocalWriteFingerprint(filePath: string, generation: number): void {
   try {
     const st = fs.statSync(filePath);
@@ -122,16 +125,16 @@ function recordLastLocalWriteFingerprint(filePath: string, generation: number): 
   }
 }
 
-function writeStates(s: FleetStates): void {
+function writeCarriers(s: FleetCarriers): void {
   if (!runtimeState.storeDir) throw new Error("Fleet store is not initialized.");
   fs.mkdirSync(runtimeState.storeDir, { recursive: true });
   const filePath = path.join(runtimeState.storeDir, FILENAME);
   const tmpPath = buildTempPath(filePath);
-  const next = serializeFleetStates(s);
+  const next = serializeFleetCarriers(s);
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
     fs.renameSync(tmpPath, filePath);
-    runtimeState.lastLocalWriteGeneration = next._generation ?? 0;
+    runtimeState.lastLocalWriteGeneration = next._meta?.generation ?? 0;
     recordLastLocalWriteFingerprint(filePath, runtimeState.lastLocalWriteGeneration);
   } catch (error) {
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
@@ -139,34 +142,74 @@ function writeStates(s: FleetStates): void {
   }
 }
 
-function serializeFleetStates(states: FleetStates): FleetStates {
-  const next: FleetStates = { _generation: sanitizeGeneration(states._generation) + 1 };
-  if (states.models !== undefined) next.models = states.models;
-  if (states.cliTypeOverrides !== undefined) next.cliTypeOverrides = states.cliTypeOverrides;
-  if (states.carrierDisplayNames !== undefined) next.carrierDisplayNames = states.carrierDisplayNames;
-  if (states.carrierModes !== undefined) next.carrierModes = sanitizeCarrierModes(states.carrierModes);
+function serializeFleetCarriers(states: FleetCarriers): FleetCarriers {
+  const next: FleetCarriers = {
+    _meta: { generation: sanitizeGeneration(states._meta?.generation) + 1 },
+  };
+  const carriers = sanitizeCarriersMap(states.carriers);
+  if (Object.keys(carriers).length > 0) next.carriers = carriers;
   return next;
+}
+
+function sanitizeFleetCarriers(value: unknown): FleetCarriers {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  const record = value as FleetCarriers;
+  return {
+    _meta: { generation: sanitizeGeneration(record._meta?.generation) },
+    carriers: sanitizeCarriersMap(record.carriers),
+  };
+}
+
+function normalizeDefaults(value: CliType | CarrierModelDefaults | undefined): CarrierModelDefaults | undefined {
+  if (!value) return undefined;
+  return typeof value === "string" ? { cliType: value } : value;
+}
+
+function resolveSnapshotCarrierState(
+  state: NonNullable<FleetCarriers["carriers"]>[string],
+  defaults?: CarrierModelDefaults,
+): ResolvedCarrierState {
+  const agentCliType = sanitizeAgentCliType(state.agentCliType) ?? defaults?.cliType ?? "claude";
+  const agentCli = sanitizeAgentCli(state.agentCli);
+  return {
+    agentMode: state.agentMode ?? defaults?.defaultAgentMode ?? "cli",
+    agentCliType,
+    agentCli: {
+      ...agentCli,
+      [agentCliType]: resolveSelectionForCliType(agentCli[agentCliType], agentCliType, defaults),
+    },
+    taskforce: sanitizeTaskforce(state.taskforce),
+    ...(state.displayName ? { displayName: state.displayName } : {}),
+  };
+}
+
+function resolveSelectionForCliType(
+  stored: AgentCliSelection | undefined,
+  cliType: CliType,
+  defaults?: CarrierModelDefaults,
+): AgentCliSelection {
+  const provider = getProviderModels(cliType);
+  const allowedModels = new Set(provider.models.map((model) => model.modelId));
+  const defaultModelIsValid = !!defaults?.defaultModel && allowedModels.has(defaults.defaultModel);
+  const storedModelIsValid = !!stored?.model && allowedModels.has(stored.model);
+  const model = storedModelIsValid
+    ? stored!.model
+    : defaultModelIsValid
+      ? defaults!.defaultModel!
+      : provider.defaultModel;
+  const modelEffort = getEffort(cliType, model);
+  if (!modelEffort.supported) return { model };
+  const effort = storedModelIsValid && stored?.effort && modelEffort.levels.includes(stored.effort)
+    ? stored.effort
+    : defaults?.defaultEffort && modelEffort.levels.includes(defaults.defaultEffort)
+      ? defaults.defaultEffort
+      : modelEffort.default;
+  return { model, effort };
 }
 
 function buildTempPath(filePath: string): string {
   const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
   return `${filePath}.${suffix}.tmp`;
-}
-
-function sanitizeModelsMap(value: unknown): SelectedModelsConfig {
-  if (!isRecord(value)) return {};
-  return value as SelectedModelsConfig;
-}
-
-function sanitizeStringMap(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    const sanitizedKey = sanitizeConfigKey(key);
-    const sanitizedValue = sanitizeFreeformText(entry);
-    if (sanitizedKey && sanitizedValue) result[sanitizedKey] = sanitizedValue;
-  }
-  return result;
 }
 
 function unlinkStaleSubagentModeFile(dir: string): void {

@@ -3,14 +3,11 @@ import { auth } from "./auth/index.js";
 import { dataDir } from "./data-dir/index.js";
 import { log } from "./log/index.js";
 import * as preset from "./preset/index.js";
-import { settings } from "./settings/index.js";
 import {
   executorPortRuntime,
   type ExecutorPortRuntime,
 } from "./agent/index.js";
-import { createCoreLogStore, type CoreLogStore } from "./log/store.js";
 import { createPresetService, type PresetService } from "./preset/index.js";
-import { createSettingsRuntime, type SettingsRuntime } from "./settings/runtime.js";
 
 export interface InfraServices {
   agent: typeof agent;
@@ -18,10 +15,7 @@ export interface InfraServices {
   dataDir: typeof dataDir;
   log: typeof log;
   preset: typeof preset;
-  settings: typeof settings;
   executorPortRuntime: ExecutorPortRuntime;
-  settingsRuntime: SettingsRuntime;
-  coreLogStore: CoreLogStore;
   presetService: PresetService;
 }
 
@@ -30,7 +24,6 @@ export interface InfraServicesDeps {}
 export * from "./agent/index.js";
 export * from "./auth/index.js";
 export * from "./data-dir/index.js";
-export * from "./settings/index.js";
 export * from "./log/index.js";
 export * from "./preset/index.js";
 
@@ -40,11 +33,9 @@ export const infra = {
   dataDir,
   log,
   preset,
-  settings,
 };
 
 export function createInfraServices(_deps: InfraServicesDeps = {}): InfraServices {
-  const settingsRuntime = createSettingsRuntime();
   const presetService = createPresetService();
 
   return {
@@ -53,10 +44,7 @@ export function createInfraServices(_deps: InfraServicesDeps = {}): InfraService
     dataDir,
     log,
     preset,
-    settings,
     executorPortRuntime,
-    settingsRuntime,
-    coreLogStore: createCoreLogStore({ settingsRuntime }),
     presetService,
   };
 }

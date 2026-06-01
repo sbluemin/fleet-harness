@@ -10,9 +10,9 @@ import {
   createCarrierRuntime,
   initStore,
   resetStoreForTests,
-  setCarrierSubagentMode,
-  updateCliTypeOverride,
-  updateModelSelection,
+  setCarrierAgentMode,
+  updateAgentCliTypeOverride,
+  updateAgentCliSelection,
   type CarrierConfig,
 } from "@dotobokuri/fleet-carriers";
 import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
@@ -152,9 +152,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
     try {
       const runtime = createCarrierRuntime();
       runtime.registerCarrierDefaults();
-      updateCliTypeOverride("ohio", "codex", "claude");
-      await updateModelSelection("ohio", { model: "gpt-5.4", effort: "high" });
-      setCarrierSubagentMode("ohio", true);
+      updateAgentCliTypeOverride("ohio", "codex", "claude");
+      await updateAgentCliSelection("ohio", "codex", { model: "gpt-5.4", effort: "high" });
+      setCarrierAgentMode("ohio", true);
 
       await injectAgentCliProfile({
         args: [],
@@ -178,6 +178,42 @@ describe("fleet-cli agent CLI MCP registration", () => {
       const roleToml = readFileSync(path.join(tempDir, "codex-agents/ohio.toml"), "utf8");
       expect(roleToml).toContain('model = "gpt-5.4"');
       expect(roleToml).toContain('model_reasoning_effort = "high"');
+    } finally {
+      resetStoreForTests();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("heals startup Codex roles from codex persona defaults when no codex model is stored", async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-default-startup-"));
+    initStore(tempDir);
+    try {
+      const runtime = createCarrierRuntime();
+      runtime.registerCarrierDefaults();
+      updateAgentCliTypeOverride("vanguard", "codex", "claude");
+
+      await injectAgentCliProfile({
+        args: [],
+        bin: "codex",
+        cwd: process.cwd(),
+        env: {},
+        id: "codex",
+        label: "Codex",
+        terminalName: "codex",
+      }, {
+        buildSystemPrompt: () => "fleet prompt",
+        carrierRuntime: runtime,
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({
+            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+          }),
+          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+        } as never,
+      });
+
+      const roleToml = readFileSync(path.join(tempDir, "codex-agents/vanguard.toml"), "utf8");
+      expect(roleToml).toContain('model = "gpt-5.4-mini"');
+      expect(roleToml).toContain('model_reasoning_effort = "low"');
     } finally {
       resetStoreForTests();
       rmSync(tempDir, { recursive: true, force: true });

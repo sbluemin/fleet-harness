@@ -7,7 +7,7 @@ import {
   getTaskForceModelConfig,
   getRegisteredOrder,
   notifyStatusUpdate,
-  readStatesSnapshot,
+  readCarriersSnapshot,
   resetTaskForceModelSelection,
   setTaskForceConfiguredCarriers,
   updateTaskForceModelSelection,
@@ -320,11 +320,11 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
   }
 
   private getBackendConfig(cliType: TaskForceCliType): { effort: string | null; isCustom: boolean; model: string } {
-    const snapshot = readStatesSnapshot();
+    const snapshot = readCarriersSnapshot();
     const provider = this.getAvailableModels(cliType);
     try {
       const config = getTaskForceModelConfig(this.options.carrierId, cliType, snapshot);
-      const isCustom = !!snapshot.models[this.options.carrierId]?.taskforce?.[cliType];
+      const isCustom = !!snapshot.carriers[this.options.carrierId]?.taskforce?.[cliType];
       return {
         effort: config?.effort ?? null,
         isCustom,

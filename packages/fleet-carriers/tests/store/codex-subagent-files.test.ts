@@ -11,7 +11,7 @@ import {
   initStore,
   resetStoreForTests,
   serializeCodexSubagentRoleToml,
-  setCarrierSubagentModeWithCodexRole,
+  setCarrierAgentModeWithCodexRole,
   type CarrierConfig,
 } from "../../src/index.js";
 import { getCodexSubagentInstructionsFilePath } from "../../src/store/codex-subagent-files.js";
@@ -134,7 +134,7 @@ describe("Codex subagent role file store", () => {
     mutableFs.unlinkSync = replacement;
     syncBuiltinESMExports();
     try {
-      expect(() => setCarrierSubagentModeWithCodexRole(createCarrierConfig("ohio"), false)).toThrow(/changed/);
+      expect(() => setCarrierAgentModeWithCodexRole(createCarrierConfig("ohio"), false)).toThrow(/changed/);
     } finally {
       mutableFs.unlinkSync = originalUnlinkSync as typeof fs.unlinkSync;
       syncBuiltinESMExports();
@@ -156,11 +156,11 @@ describe("Codex subagent role file store", () => {
     expect(secondPrepared.instructionsFile).toBe(firstPrepared.instructionsFile);
     expect(fs.readFileSync(secondPrepared.configFile, "utf8")).toContain('model = "gpt-5.4"');
 
-    setCarrierSubagentModeWithCodexRole(secondConfig, false);
+    setCarrierAgentModeWithCodexRole(secondConfig, false);
     expect(fs.existsSync(secondPrepared.configFile)).toBe(false);
     expect(fs.existsSync(secondPrepared.instructionsFile)).toBe(false);
     expect(fs.existsSync(path.join(tempDir!, "codex-agents"))).toBe(true);
-    expect(() => setCarrierSubagentModeWithCodexRole(secondConfig, false)).not.toThrow();
+    expect(() => setCarrierAgentModeWithCodexRole(secondConfig, false)).not.toThrow();
   });
 });
 

@@ -5,7 +5,12 @@ import * as path from "node:path";
 import { isRecord } from "./sanitize.js";
 import type { StoreLockOwner } from "./types.js";
 
-const LOCK_DIRNAME = "states.json.lock";
+interface LockSnapshot {
+  owner: StoreLockOwner | null;
+  mtimeMs: number;
+}
+
+const LOCK_DIRNAME = "carriers.json.lock";
 const LOCK_OWNER_FILENAME = "owner.json";
 const LOCK_RETRY_MS = 25;
 const LOCK_TIMEOUT_MS = 5000;
@@ -47,13 +52,45 @@ function releaseStoreLock(lockDir: string): void {
 
 function recoverStaleStoreLock(lockDir: string): void {
   try {
-    const owner = readLockOwner(lockDir);
-    if (!owner || !isRecoverableLockOwner(owner)) return;
-    fs.rmSync(lockDir, { recursive: true, force: true });
+    const initialSnapshot = readLockSnapshot(lockDir);
+    if (!isRecoverableLockSnapshot(initialSnapshot)) return;
+    // known-limitation: identity-check(S0/S1)는 잘못된 lock 삭제를 차단하지만,
+    // recovery-mutex가 없어 다중 복구자 경합 시 lockDir이 잠깐 비는 창이 잔존한다.
+    // 로컬 단일 사용자 dev 도구의 저위험 영역으로 의도적 수용(사용자 승인)한다.
+    const quarantineDir = buildQuarantinePath(lockDir);
+    try {
+      fs.renameSync(lockDir, quarantineDir);
+    } catch {
+      return;
+    }
+    try {
+      const quarantinedSnapshot = readLockSnapshot(quarantineDir);
+      if (sameLockSnapshot(initialSnapshot, quarantinedSnapshot) && isRecoverableLockSnapshot(quarantinedSnapshot)) {
+        fs.rmSync(quarantineDir, { recursive: true, force: true });
+      } else {
+        restoreQuarantinedLock(quarantineDir, lockDir);
+      }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") throw error;
+    }
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "ENOENT") throw error;
   }
+}
+
+function readLockSnapshot(lockDir: string): LockSnapshot {
+  const stat = fs.statSync(lockDir);
+  return {
+    owner: readLockOwner(lockDir),
+    mtimeMs: stat.mtimeMs,
+  };
+}
+
+function buildQuarantinePath(lockDir: string): string {
+  const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
+  return `${lockDir}.stale.${suffix}`;
 }
 
 function writeLockOwner(lockDir: string): void {
@@ -86,6 +123,26 @@ function isRecoverableLockOwner(owner: StoreLockOwner): boolean {
   if (owner.hostname !== os.hostname()) return false;
   if (Date.now() - owner.startedAt < STALE_LOCK_MS) return false;
   return !isProcessAlive(owner.pid);
+}
+
+function isRecoverableLockSnapshot(snapshot: LockSnapshot): boolean {
+  if (snapshot.owner) return isRecoverableLockOwner(snapshot.owner);
+  return Date.now() - snapshot.mtimeMs >= STALE_LOCK_MS;
+}
+
+function sameLockSnapshot(a: LockSnapshot, b: LockSnapshot): boolean {
+  if (!a.owner || !b.owner) return !a.owner && !b.owner && a.mtimeMs === b.mtimeMs;
+  return a.owner.pid === b.owner.pid
+    && a.owner.hostname === b.owner.hostname
+    && a.owner.startedAt === b.owner.startedAt;
+}
+
+function restoreQuarantinedLock(quarantineDir: string, lockDir: string): void {
+  try {
+    fs.renameSync(quarantineDir, lockDir);
+  } catch {
+    // identity 불일치 lock은 fresh일 수 있으므로 삭제하지 않습니다.
+  }
 }
 
 function isProcessAlive(pid: number): boolean {

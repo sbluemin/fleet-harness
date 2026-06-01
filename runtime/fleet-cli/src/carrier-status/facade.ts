@@ -2,7 +2,8 @@ import {
   CLI_DISPLAY_NAMES as CORE_CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES as CORE_TASKFORCE_CLI_TYPES,
   getConfiguredTaskForceBackendsFromSnapshot as getCoreConfiguredTaskForceBackendsFromSnapshot,
-  readStatesSnapshot as readCoreStatesSnapshot,
+  readCarriersSnapshot as readCoreStatesSnapshot,
+  type CarrierModelDefaults,
   type FleetStoreSnapshot,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
@@ -47,8 +48,10 @@ export function TASKFORCE_CLI_TYPES(): readonly TaskForceCliType[] {
   return CORE_TASKFORCE_CLI_TYPES;
 }
 
-export function readStatesSnapshot(): FleetStoreSnapshot {
-  return readCoreStatesSnapshot();
+export function readCarriersSnapshot(
+  defaultsByCarrier?: Record<string, CarrierModelDefaults>,
+): FleetStoreSnapshot {
+  return readCoreStatesSnapshot(defaultsByCarrier);
 }
 
 export function getConfiguredTaskForceBackendsFromSnapshot(

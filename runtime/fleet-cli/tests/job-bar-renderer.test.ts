@@ -8,7 +8,7 @@ import {
   createCarrierRuntime,
   initStore,
   resetStoreForTests,
-  setCarrierSubagentMode,
+  setCarrierAgentMode,
 } from "@dotobokuri/fleet-carriers";
 
 import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
@@ -148,7 +148,7 @@ describe("job bar renderer", () => {
   it("renders subagent-mode carriers with the neutral subagent signature color in the Fleet PTY strip", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-subagent-"));
     initStore(tempDir);
-    setCarrierSubagentMode("ohio", true);
+    setCarrierAgentMode("ohio", true);
     const state = createTestJobBarState();
 
     const line = createJobBarSections(state)[0]!.component.render(200).join("\n");

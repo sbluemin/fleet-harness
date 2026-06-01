@@ -26,8 +26,8 @@ import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import {
   getConfiguredTaskForceBackends,
-  isCarrierSubagentModeEnabled,
-  loadModels,
+  isCarrierAgentModeSubagent,
+  loadCarrierStates,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
 import {
@@ -35,7 +35,7 @@ import {
   getRegisteredOrder,
   emitStreamEvent,
   logDebug,
-  resolveCarrierCliType,
+  resolveAgentCliType,
   resolveCarrierDisplayName,
   resolveValidatedEffort,
   toCarrierJobStatus,
@@ -228,7 +228,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
 
       const metadata = config.carrierMetadata;
 
-      if (isCarrierSubagentModeEnabled(carrierId)) {
+      if (isCarrierAgentModeSubagent(carrierId, config.defaultAgentMode)) {
         const displayName = resolveCarrierDisplayName(registry, carrierId);
         logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier subagent mode enabled carrier=${carrierId}`);
         return launchResponseResult({
@@ -361,19 +361,21 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   const execStartedAt = Date.now();
   const carrierConfig = getRegisteredCarrierConfig(opts.registry, opts.carrierId);
   const cliType = carrierConfig
-    ? resolveCarrierCliType(opts.carrierId, carrierConfig.defaultCliType)
+    ? resolveAgentCliType(opts.carrierId, carrierConfig.defaultCliType)
     : (opts.carrierId as CliType);
-  const modelConfig = loadModels({
+  const modelConfig = loadCarrierStates({
     [opts.carrierId]: carrierConfig
       ? {
         cliType,
+        ...(carrierConfig.defaultAgentMode ? { defaultAgentMode: carrierConfig.defaultAgentMode } : {}),
         ...(carrierConfig.defaultEffort ? { defaultEffort: carrierConfig.defaultEffort } : {}),
         ...(carrierConfig.defaultModel ? { defaultModel: carrierConfig.defaultModel } : {}),
       }
       : cliType,
   })[opts.carrierId];
-  const model = modelConfig?.model;
-  const effort = resolveValidatedEffort(cliType, model, modelConfig?.effort);
+  const agentCli = modelConfig?.agentCli[cliType];
+  const model = agentCli?.model;
+  const effort = resolveValidatedEffort(cliType, model, agentCli?.effort);
   let sessionId: string | undefined;
 
   logDebug(
