@@ -5,9 +5,17 @@
  * Nimitz carrier를 프레임워크에 등록합니다.
  */
 
-import type { CarrierMetadata } from "../dispatch/types.js";
+import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
 import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+
+export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
+  id: "nimitz",
+  displayName: "Nimitz",
+  slot: 1,
+  defaultModel: "opus[1m]",
+  defaultEffort: "max",
+};
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──

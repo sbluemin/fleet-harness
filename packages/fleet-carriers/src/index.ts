@@ -14,7 +14,7 @@ import * as carrierPersonas from "./personas/index.js";
 import * as carrierSubagents from "./subagents/index.js";
 import * as carrierStore from "./store/index.js";
 
-export { registerDefaultCarriers } from "./agent-specs.js";
+export { DEFAULT_CARRIER_COUNT, registerDefaultCarriers } from "./agent-specs.js";
 export * from "./constants.js";
 export * as personas from "./personas/index.js";
 export * as subagents from "./subagents/index.js";

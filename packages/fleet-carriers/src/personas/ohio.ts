@@ -5,9 +5,17 @@
  * Ohio carrier를 프레임워크에 등록합니다.
  */
 
-import type { CarrierMetadata } from "../dispatch/types.js";
+import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
 import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+
+export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
+  id: "ohio",
+  displayName: "Ohio",
+  slot: 4,
+  defaultModel: "sonnet",
+  defaultEffort: "low",
+};
 
 export const CARRIER_METADATA: CarrierMetadata = {
   // ── Tier 1: Routing ──

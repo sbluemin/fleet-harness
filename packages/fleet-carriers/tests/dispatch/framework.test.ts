@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
+import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
 import {
+  buildCarrierDispatchToolSpec,
   type CarrierConfig,
   createCarrierRegistry,
   emitStreamEvent,
@@ -16,6 +19,14 @@ import {
   resolveCarrierDisplayName,
   updateCarrierDisplayName,
 } from "../../src/index.js";
+
+vi.mock("@dotobokuri/fleet-infra/agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dotobokuri/fleet-infra/agent")>();
+  return {
+    ...actual,
+    executeWithPool: vi.fn(),
+  };
+});
 
 const C1_CSI = "\u009b2J";
 
@@ -96,13 +107,78 @@ describe("carrier roster rendering", () => {
   });
 });
 
+describe("carrier_dispatch effort resolution", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-effort-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("uses states.json effort instead of the persona subagent defaultEffort", async () => {
+    writeStates({
+      models: {
+        ohio: {
+          model: "sonnet",
+          effort: "max",
+        },
+      },
+    });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      subagent: {
+        provider: "claude",
+        defaultModel: "sonnet",
+        defaultEffort: "low",
+      },
+    });
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const ctx: AgentToolCtx = {
+      cwd: "/tmp",
+      toolCallId: "dispatch-effort",
+    };
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check dispatch effort",
+      request: "Verify effort source.",
+    }, ctx);
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+      cliType: "claude",
+      model: "sonnet",
+      effort: "max",
+    }));
+  });
+});
+
 function createConfig(id: string, displayName: string): CarrierConfig {
   return {
     id,
-    cliType: "claude",
     defaultCliType: "claude",
     slot: 1,
     displayName,
     color: "",
   };
+}
+
+function writeStates(value: unknown): void {
+  if (!tempDir) throw new Error("테스트 store가 초기화되지 않았습니다.");
+  fs.writeFileSync(path.join(tempDir, "states.json"), JSON.stringify(value), "utf-8");
 }

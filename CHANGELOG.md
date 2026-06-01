@@ -7,15 +7,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [core] Added per-carrier Native(SubAgent) toggles for Claude-family dedicated CLI sessions.
+- [core] Added per-carrier Claude Native(SubAgent) effort defaults to startup agent payloads.
 
 ### Changed
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
+- [core] Moved default carrier persona settings into each persona module while preserving deterministic carrier registration order.
 
 ### Fixed
 - [core] Enabled Agent CLI app-mouse drag forwarding while preserving existing Fleet scroll fallback behavior.
 
 ### Removed
 - [core] Removed the `Alt+O` host shortcut for opening carrier configuration.
+- [core] Removed legacy default persona registry exports and unused carrier config renderer hooks.
 
 ## [1.0.2] - 2026-05-26
 

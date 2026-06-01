@@ -14,6 +14,7 @@ export interface ClaudeSubagentDefinition {
   readonly carrierId: string;
   readonly color?: ClaudeSubagentColor;
   readonly description: string;
+  readonly effort?: string;
   readonly model?: string;
   readonly name: string;
   readonly prompt: string;

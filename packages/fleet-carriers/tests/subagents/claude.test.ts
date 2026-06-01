@@ -18,6 +18,7 @@ describe("Claude subagent conversion", () => {
     expect(definition.prompt).toContain("<your_permissions>");
     expect(definition.prompt).toContain("<output_format>");
     expect(definition.model).toBe("sonnet");
+    expect(definition.effort).toBe("low");
     expect(definition.color).toBe("yellow");
     expect(definition).not.toHaveProperty("tools");
   });
@@ -53,7 +54,7 @@ describe("Claude subagent conversion", () => {
   });
 });
 
-function createCarrierConfig(id: string, cliType: CarrierConfig["cliType"] = "claude"): CarrierConfig {
+function createCarrierConfig(id: string, cliType: CarrierConfig["defaultCliType"] = "claude"): CarrierConfig {
   return {
     carrierMetadata: {
       category: "operations",
@@ -66,12 +67,15 @@ function createCarrierConfig(id: string, cliType: CarrierConfig["cliType"] = "cl
       whenNotToUse: [],
       whenToUse: ["plan-file execution"],
     },
-    cliType,
     color: "",
     defaultCliType: cliType,
-    defaultModel: "sonnet",
     displayName: id[0]!.toUpperCase() + id.slice(1),
     id,
     slot: 1,
+    subagent: {
+      provider: "claude",
+      defaultModel: "sonnet",
+      defaultEffort: "low",
+    },
   };
 }

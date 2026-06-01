@@ -79,7 +79,7 @@ describe("carrier status view model", () => {
 
 function createCarrierConfig(
   metadata: Pick<CarrierMetadata, "summary" | "title">,
-  cliType: CarrierConfig["cliType"] = "claude",
+  cliType: CarrierConfig["defaultCliType"] = "claude",
 ): CarrierConfig {
   return {
     carrierMetadata: {
@@ -93,7 +93,6 @@ function createCarrierConfig(
       whenToUse: [],
       ...metadata,
     },
-    cliType,
     color: "",
     defaultCliType: cliType,
     displayName: "Metadata Test",

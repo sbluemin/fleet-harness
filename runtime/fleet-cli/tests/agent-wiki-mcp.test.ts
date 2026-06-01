@@ -98,7 +98,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(codexConfigArgs).toContain('mcp_servers.fleet-wiki.url="http://127.0.0.1:1001/wiki"');
   });
 
-  it("adds inline Claude subagents only to the Claude native builder", () => {
+  it("serializes inline Claude subagent model and effort in the Claude --agents JSON payload", () => {
     const context = {
       ...makeAgentCliInjectionContext(),
       claudeSubagents: [
@@ -106,6 +106,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
           carrierId: "ohio",
           color: "yellow" as const,
           description: "Ohio native subagent",
+          effort: "low",
+          model: "sonnet",
           name: "Ohio",
           prompt: "system prompt",
         },
@@ -113,11 +115,15 @@ describe("fleet-cli agent CLI MCP registration", () => {
     };
 
     const claudeArgs = buildClaudeNativeArgs(context);
+    // 이 검증은 builder의 argv/JSON 직렬화 범위만 다룹니다.
+    // 실제 Claude CLI의 per-agent effort 수용성은 별도 수동 또는 smoke 검증이 필요합니다.
     expect(claudeArgs.filter((arg) => arg === "--agents")).toHaveLength(1);
     expect(JSON.parse(claudeArgs[claudeArgs.indexOf("--agents") + 1]!)).toEqual({
       "Ohio": {
         color: "yellow",
         description: "Ohio native subagent",
+        effort: "low",
+        model: "sonnet",
         prompt: "system prompt",
       },
     });
@@ -248,7 +254,6 @@ function makeMaliciousCarrierConfig(fixture: {
 }): CarrierConfig {
   return {
     id: 'malicious-"carrier"',
-    cliType: "claude",
     defaultCliType: "claude",
     slot: 1,
     displayName: fixture.displayName,

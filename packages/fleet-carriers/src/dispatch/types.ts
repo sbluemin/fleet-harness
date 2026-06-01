@@ -69,32 +69,44 @@ export interface CarrierMetadata {
 
 // ─── 공개 타입 ───────────────────────────────────────────
 
-export interface CarrierConfig {
+export interface CarrierCoreConfig {
   /** 고유 식별자 (carrierId) → 메시지 `{id}-user/{id}-response`, 풀/세션 키 */
   id: string;
-  /** 사용할 CLI 바이너리 타입 */
-  cliType: CliType;
-  /** 소스레벨 기본 CLI 타입 (사용자 변경과 무관하게 원본 유지) */
-  defaultCliType: CliType;
-  /** 정렬 및 표시용 슬롯 번호 (키바인딩에는 사용되지 않음) */
+  /** 정렬 및 HUD 표시용 슬롯 번호 (키바인딩에는 사용되지 않음) */
   slot: number;
   /** 표시 이름 */
   displayName: string;
+  /** carrier 메타데이터 (2-Tier: Routing + Composition) */
+  carrierMetadata?: CarrierMetadata;
+}
+
+export interface CarrierCliConfig {
+  /** 소스레벨 기본 CLI 타입 (사용자 변경과 무관하게 원본 유지) */
+  defaultCliType: CliType;
   /** 에이전트 패널 프레임 색상 (ANSI) */
   color: string;
   /** 응답 배경색 (ANSI, 선택) */
   bgColor?: string;
-  /** 커스텀 응답 렌더러 (없으면 기본 렌더러) */
-  renderResponse?: (...args: any[]) => any;
-  /** 커스텀 사용자 입력 렌더러 (없으면 기본 렌더러) */
-  renderUser?: (...args: any[]) => any;
-  /** carrier 메타데이터 (2-Tier: Routing + Composition) */
-  carrierMetadata?: CarrierMetadata;
-  /** 소스레벨 기본 모델 ID — states.json에 저장된 값이 없을 때 폴백 */
+}
+
+export interface CarrierSubagentConfig {
+  /** Claude native subagent 전용 기본값. dispatch의 모델/effort 선택에는 사용하지 않는다. */
+  subagent?: {
+    readonly provider: "claude";
+    readonly defaultModel?: string;
+    readonly defaultEffort?: string;
+  };
+}
+
+export interface CarrierPersonaDefaults {
+  readonly id: string;
+  readonly displayName: string;
+  readonly slot: number;
   defaultModel?: string;
-  /** 소스레벨 기본 추론 강도 — 신규 모델 엔트리 시딩 시에만 사용 */
   defaultEffort?: string;
 }
+
+export type CarrierConfig = CarrierCoreConfig & CarrierCliConfig & CarrierSubagentConfig;
 
 // ─── 내부 상태 타입 ──────────────────────────────────────
 

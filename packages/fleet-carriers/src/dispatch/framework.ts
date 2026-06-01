@@ -7,7 +7,7 @@
  * 프레임워크가 자동 관리하는 것:
  *  - Carrier 상태 관리
  *  - 등록 순서/메타데이터 보관
- *  - 렌더러 등록 (커스텀 or 기본)
+ *  - slot 기반 등록 순서 관리
  */
 
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
@@ -106,11 +106,8 @@ export function registerCarrier(
     existing.displayName = config.displayName;
     existing.slot = config.slot;
     existing.defaultCliType = config.defaultCliType;
-    existing.renderResponse = config.renderResponse;
-    existing.renderUser = config.renderUser;
     existing.carrierMetadata = config.carrierMetadata;
-    existing.defaultModel = config.defaultModel;
-    existing.defaultEffort = config.defaultEffort;
+    existing.subagent = config.subagent;
     existing.color = config.color;
     existing.bgColor = config.bgColor;
     existing.color = CARRIER_COLORS[resolvedCliType] ?? "";

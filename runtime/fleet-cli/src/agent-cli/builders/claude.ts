@@ -5,6 +5,7 @@ import type { AgentCliInjectionContext } from "../types.js";
 interface ClaudeNativeAgentPayload {
   readonly color?: ClaudeSubagentColor;
   readonly description: string;
+  readonly effort?: string;
   readonly model?: string;
   readonly prompt: string;
 }
@@ -45,6 +46,7 @@ function buildClaudeAgentsPayload(
       const payload: ClaudeNativeAgentPayload = {
         ...(subagent.color ? { color: subagent.color } : {}),
         description: subagent.description,
+        ...(subagent.effort ? { effort: subagent.effort } : {}),
         ...(subagent.model ? { model: subagent.model } : {}),
         prompt: subagent.prompt,
       };

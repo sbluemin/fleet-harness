@@ -29,12 +29,12 @@ export function buildClaudeSubagentDefinition(config: CarrierConfig): ClaudeSuba
     carrierId: config.id,
     ...(color ? { color } : {}),
     description: buildDescription(config),
+    ...(config.subagent?.defaultEffort ? { effort: config.subagent.defaultEffort } : {}),
+    ...(config.subagent?.defaultModel ? { model: config.subagent.defaultModel } : {}),
     name: buildClaudeSubagentName(config.id),
     prompt: buildCarrierSystemPrompt(config.carrierMetadata),
   };
-  return config.defaultModel
-    ? { ...definition, model: config.defaultModel }
-    : definition;
+  return definition;
 }
 
 // 캐리어 ID를 Claude 서브에이전트 주입 이름(prefix 없는 Upper Camel Case)으로 변환한다.
