@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAgentCliInjectionCapability } from "../../src/agent-cli/capabilities.js";
 import {
@@ -11,10 +11,26 @@ import {
   resolveAgentCliProfile,
 } from "../../src/agent-cli/registry.js";
 
+const mocks = vi.hoisted(() => ({
+  resolveAuthEnvMock: vi.fn(),
+}));
+
+vi.mock("@dotobokuri/fleet-infra/auth", () => ({
+  resolveAuthEnv: mocks.resolveAuthEnvMock,
+}));
+
 const tempRoots: string[] = [];
 
 describe("agent CLI catalog", () => {
+  beforeEach(() => {
+    mocks.resolveAuthEnvMock.mockResolvedValue({
+      ANTHROPIC_AUTH_TOKEN: "variant-token",
+      ANTHROPIC_BASE_URL: "https://example.invalid/anthropic",
+    });
+  });
+
   afterEach(() => {
+    vi.clearAllMocks();
     for (const tempRoot of tempRoots.splice(0)) {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -23,6 +39,7 @@ describe("agent CLI catalog", () => {
   it("includes dedicated Agent CLI profiles", () => {
     expect(getAgentCliIds()).toEqual([
       "claude",
+      "claude-kimi",
       "codex",
     ]);
   });
@@ -33,8 +50,11 @@ describe("agent CLI catalog", () => {
     await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "codex" })).resolves.toMatchObject({
       id: "codex",
     });
-    await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "claude" }, "/tmp")).resolves.toMatchObject({
-      id: "claude",
+    await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" })).resolves.toMatchObject({
+      id: "claude-kimi",
+    });
+    await expect(resolveAgentCliProfile({ ...env, FLEET_AGENT_CLI: "claude-kimi" }, "/tmp")).resolves.toMatchObject({
+      id: "claude-kimi",
     });
   });
 
@@ -44,9 +64,10 @@ describe("agent CLI catalog", () => {
     }
   });
 
-  it("keeps Claude terminal and message policy", async () => {
+  it("shares Claude-family terminal and message policy", async () => {
     const env = createEnvWithBins();
     const claude = await resolveAgentCliProfile(env, "/tmp", { cliId: "claude" });
+    const kimi = await resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" });
 
     expect(claude.terminalName).toBe("xterm-256color");
     expect(claude.messagePolicy).toEqual({
@@ -54,13 +75,32 @@ describe("agent CLI catalog", () => {
       lineTerminator: "\r",
       multilineStrategy: "paste-mode",
     });
+    expect(kimi.terminalName).toBe(claude.terminalName);
+    expect(kimi.messagePolicy).toEqual(claude.messagePolicy);
+  });
+
+  it("resolves Claude Kimi auth env before profile creation succeeds", async () => {
+    const env = createEnvWithBins();
+
+    const profile = await resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" });
+
+    expect(mocks.resolveAuthEnvMock).toHaveBeenCalledWith("claude-kimi");
+    expect(profile.env.ANTHROPIC_AUTH_TOKEN).toBe("variant-token");
+    expect(profile.env.ANTHROPIC_BASE_URL).toBe("https://example.invalid/anthropic");
+  });
+
+  it("fails before returning a Claude Kimi profile when auth resolution fails", async () => {
+    const env = createEnvWithBins();
+    mocks.resolveAuthEnvMock.mockRejectedValue(new Error("Validation failed"));
+
+    await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" })).rejects.toThrow("Validation failed");
   });
 
   it("does not mutate process.env while creating profiles", async () => {
     const env = createEnvWithBins();
     const before = { ...process.env };
 
-    await resolveAgentCliProfile(env, "/tmp", { cliId: "claude" });
+    await resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" });
 
     expect(process.env).toEqual(before);
   });
@@ -84,6 +124,10 @@ describe("agent CLI catalog", () => {
 
   it("uses native injection builders for dedicated profiles", () => {
     expect(getAgentCliInjectionCapability("claude")).toEqual({
+      builderId: "claude-native",
+      enabled: true,
+    });
+    expect(getAgentCliInjectionCapability("claude-kimi")).toEqual({
       builderId: "claude-native",
       enabled: true,
     });

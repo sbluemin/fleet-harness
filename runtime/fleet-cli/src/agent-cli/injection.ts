@@ -111,7 +111,7 @@ function buildStartupNativeSubagents(
 }
 
 function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeSubagents["host"] {
-  if (cliId === "claude") return "claude";
+  if (cliId === "claude" || cliId === "claude-kimi") return "claude";
   if (cliId === "codex") return "codex";
   return "none";
 }

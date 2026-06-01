@@ -6,6 +6,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- [core] Restored the `claude-kimi` dedicated Agent CLI profile for Claude-family native subagent sessions.
 - [core] Added per-carrier Native(SubAgent) toggles for Claude-family dedicated CLI sessions.
 - [core] Added per-carrier Claude Native(SubAgent) effort defaults to startup agent payloads.
 - [core] carrier_dispatch now rejects carriers in native subagent mode, returning an accepted:false response that instructs the host AI to invoke the carrier via its CLI's native subagent path instead.
@@ -22,7 +23,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Removed
 - [core] Removed the `Alt+O` host shortcut for opening carrier configuration.
 - [core] Removed legacy default persona registry exports and unused carrier config renderer hooks.
-- [core] Removed the `claude-zai` and `claude-kimi` dedicated Agent CLI profiles from the upper-pane selection; the underlying auth and provider backends remain supported.
+- [core] Removed the `claude-zai` dedicated Agent CLI profile from the upper-pane selection; the underlying auth and provider backend remain supported.
 
 ## [1.0.2] - 2026-05-26
 
