@@ -120,6 +120,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(claudeArgs.filter((arg) => arg === "--agents")).toHaveLength(1);
     expect(JSON.parse(claudeArgs[claudeArgs.indexOf("--agents") + 1]!)).toEqual({
       "Ohio": {
+        background: true,
         color: "yellow",
         description: "Ohio native subagent",
         effort: "low",
@@ -154,6 +155,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(claudeArgs.filter((arg) => arg === "--prompt-flag")).toHaveLength(0);
     expect(parsedPayload).toEqual({
       [definition.name]: {
+        background: true,
         description: definition.description,
         prompt: definition.prompt,
       },

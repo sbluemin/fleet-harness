@@ -3,6 +3,7 @@ import type { ClaudeSubagentColor } from "@dotobokuri/fleet-carriers";
 import type { AgentCliInjectionContext } from "../types.js";
 
 interface ClaudeNativeAgentPayload {
+  readonly background: boolean;
   readonly color?: ClaudeSubagentColor;
   readonly description: string;
   readonly effort?: string;
@@ -44,6 +45,7 @@ function buildClaudeAgentsPayload(
   return Object.fromEntries(
     subagents.map((subagent) => {
       const payload: ClaudeNativeAgentPayload = {
+        background: true,
         ...(subagent.color ? { color: subagent.color } : {}),
         description: subagent.description,
         ...(subagent.effort ? { effort: subagent.effort } : {}),

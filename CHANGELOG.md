@@ -12,6 +12,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
 - [core] Moved default carrier persona settings into each persona module while preserving deterministic carrier registration order.
+- [core] Claude-family Agent CLI native subagents injected via `--agents` now default to `background: true` and run as background tasks.
 
 ### Fixed
 - [core] Enabled Agent CLI app-mouse drag forwarding while preserving existing Fleet scroll fallback behavior.
