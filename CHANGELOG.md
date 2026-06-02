@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-02
+
 ### Changed
 - [core] Mission Control now uses a launcher-root and action-list navigation model with zero domain hotkeys across root and nested panels.
 - [core] Fleet gradient banner now animates with a right-to-left shimmer on inactive screens.
