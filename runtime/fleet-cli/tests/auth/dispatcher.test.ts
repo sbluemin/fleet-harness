@@ -55,7 +55,7 @@ describe("auth dispatcher", () => {
   it("prints help for fleet auth --help", async () => {
     const io = createIo();
 
-    await expect(dispatchAuthCommand(["auth", "--help"], io)).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "--help"], io, createDeps())).resolves.toBe(0);
 
     expect(io.stdout.output).toContain("fleet auth login");
   });
@@ -63,9 +63,9 @@ describe("auth dispatcher", () => {
   it("dispatches login without touching list or logout storage paths", async () => {
     const io = createIo();
 
-    await expect(dispatchAuthCommand(["auth", "login", "claude-zai"], io)).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "login", "claude-zai"], io, createDeps())).resolves.toBe(0);
 
-    expect(mocks.runAuthLoginFlowMock).toHaveBeenCalledWith(["claude-zai"], io);
+    expect(mocks.runAuthLoginFlowMock).toHaveBeenCalledWith(["claude-zai"], io, createDeps());
     expect(mocks.listProviderIdsMock).not.toHaveBeenCalled();
     expect(mocks.deleteApiKeyMock).not.toHaveBeenCalled();
   });
@@ -74,7 +74,7 @@ describe("auth dispatcher", () => {
     const io = createIo();
     mocks.listProviderIdsMock.mockResolvedValue(["Claude Code with Z.AI GLM"]);
 
-    await expect(dispatchAuthCommand(["auth", "list"], io)).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "list"], io, createDeps())).resolves.toBe(0);
 
     expect(io.stdout.output).toContain("Claude Code with Z.AI GLM");
     expect(io.stdout.output).not.toContain("secret");
@@ -83,7 +83,7 @@ describe("auth dispatcher", () => {
   it("prints the core empty-state message when no providers are configured", async () => {
     const io = createIo();
 
-    await expect(dispatchAuthCommand(["auth", "list"], io)).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "list"], io, createDeps())).resolves.toBe(0);
 
     expect(io.stdout.output).toContain("No auth tokens");
   });
@@ -91,7 +91,7 @@ describe("auth dispatcher", () => {
   it("logs out a selected provider", async () => {
     const io = createIo();
 
-    await expect(dispatchAuthCommand(["auth", "logout", "claude-kimi"], io)).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "logout", "claude-kimi"], io, createDeps())).resolves.toBe(0);
 
     expect(mocks.deleteApiKeyMock).toHaveBeenCalledWith("Claude Code with Moonshot Kimi");
     expect(io.stdout.output).toContain("Removed: Claude Code with Moonshot Kimi");
@@ -100,7 +100,7 @@ describe("auth dispatcher", () => {
   it("prompts for logout provider when no backend is supplied", async () => {
     const io = createIo();
 
-    await expect(dispatchAuthCommand(["auth", "logout"], io)).resolves.toBe(0);
+    await expect(dispatchAuthCommand(["auth", "logout"], io, createDeps())).resolves.toBe(0);
 
     expect(mocks.selectMock).toHaveBeenCalled();
     expect(mocks.deleteApiKeyMock).toHaveBeenCalledWith("Claude Code with Z.AI GLM");
@@ -109,7 +109,7 @@ describe("auth dispatcher", () => {
   it("rejects unknown subcommands", async () => {
     const io = createIo();
 
-    await expect(dispatchAuthCommand(["auth", "unknown"], io)).resolves.toBe(1);
+    await expect(dispatchAuthCommand(["auth", "unknown"], io, createDeps())).resolves.toBe(1);
 
     expect(io.stderr.output).toContain("Unknown fleet auth command");
   });
@@ -131,4 +131,13 @@ function createIo() {
     },
   };
   return { stdout, stderr };
+}
+
+function createDeps() {
+  return {
+    authService: {
+      deleteApiKey: mocks.deleteApiKeyMock,
+      listProviderIds: mocks.listProviderIdsMock,
+    },
+  };
 }

@@ -17,6 +17,8 @@ export {
   FLEET_COMMAND,
   FLEET_OPTION,
   GRADIENT_COLORS,
+  GRADIENT_RGBS,
+  type RgbTuple,
 } from "./palette.js";
 export {
   command,

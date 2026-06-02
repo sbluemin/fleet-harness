@@ -31,6 +31,7 @@ import type { CarrierStatusEntry } from "../src/mission-control/carrier-roster/t
 
 const THEME = {
   accent: (text: string) => `<accent>${text}</accent>`,
+  bg: (name: string, text: string) => `<${name}>${text}</${name}>`,
   dim: (text: string) => `<dim>${text}</dim>`,
   fg: (_token: string, text: string) => text,
   warning: (text: string) => `<warning>${text}</warning>`,
@@ -64,7 +65,7 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     });
 
     (overlay as unknown as { selectedCarrierId: string }).selectedCarrierId = "ohio";
-    overlay.handleInput("s");
+    openToggleNativeAction(overlay);
 
     expect(readCarriersSnapshot().carriers.ohio?.taskforce).toBeUndefined();
     expect(isCarrierAgentModeSubagent("ohio", getCarrierConfig(runtime.registry, "ohio")?.defaultAgentMode)).toBe(true);
@@ -87,7 +88,7 @@ describe("carrier roster SA/TF mutual exclusion", () => {
 
     (overlay as unknown as { selectedCarrierId: string }).selectedCarrierId = "ohio";
 
-    expect(() => overlay.handleInput("s")).toThrow(/Codex subagent root must not be a symlink/);
+    expect(() => openToggleNativeAction(overlay)).toThrow(/Codex subagent root must not be a symlink/);
     expect(readCarriersSnapshot().carriers.ohio?.taskforce?.claude?.model).toBe(firstModel("claude"));
     expect(readCarriersSnapshot().carriers.ohio?.taskforce?.codex?.model).toBe(firstModel("codex"));
     expect(isCarrierAgentModeSubagent("ohio", getCarrierConfig(runtime.registry, "ohio")?.defaultAgentMode)).toBe(false);
@@ -122,7 +123,7 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     expect(surface.render(140).join("\n")).toContain("<warning>경고:");
   });
 
-  it("preserves SA mode and saves TF config when SA cleanup fails after TF save", async () => {
+  it("disables SA mode and saves TF config when SA cleanup succeeds after TF save", async () => {
     setCarrierAgentMode("ohio", true);
     fs.symlinkSync(tempDir!, path.join(tempDir!, "codex-agents"), "dir");
     const runtime = createTestCarrierRuntime();
@@ -143,8 +144,28 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     }).commitSelection(entry, { model: entry.model });
 
     expect(readCarriersSnapshot().carriers.ohio?.taskforce?.codex?.model).toBe(entry.model);
-    expect(isCarrierAgentModeSubagent("ohio", config!.defaultAgentMode)).toBe(true);
-    expect(surface.render(140).join("\n")).toContain("<warning>저장 실패:");
+    expect(isCarrierAgentModeSubagent("ohio", config!.defaultAgentMode)).toBe(false);
+    expect(surface.render(140).join("\n")).toContain("<warning>경고:");
+  });
+
+  it("highlights TaskForce selectable backend, action, and model rows with selected bg", () => {
+    const runtime = createTestCarrierRuntime();
+    const surface = new RosterTaskForcePanelSurface({
+      carrierDisplayName: "Ohio",
+      carrierId: "ohio",
+      carrierRuntime: runtime,
+      done: vi.fn(),
+      requestRender: vi.fn(),
+      theme: THEME,
+    });
+
+    expect(findRenderedLine(surface.render(140).join("\n"), "Claude")).toContain("<selected>");
+
+    surface.handleInput("\r");
+    expect(findRenderedLine(surface.render(140).join("\n"), "Edit Model")).toContain("<selected>");
+
+    surface.handleInput("\r");
+    expect(findRenderedLine(surface.render(140).join("\n"), "▸")).toContain("<selected>");
   });
 });
 
@@ -167,6 +188,81 @@ describe("carrier roster renderer SA/TF colors", () => {
     expect(rendered).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
     expect(rendered).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
+  });
+
+  it("highlights carrier row and Carrier Actions action rows with selected bg", () => {
+    const entry = buildRosterEntry();
+    const rendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state: { cursor: 0, kind: "carrierActions" },
+    });
+
+    expect(findRenderedLine(rendered, "Ohio")).toContain("<selected>");
+    expect(findRenderedLine(rendered, "▸ Edit Model")).toContain("<selected>");
+  });
+
+  it("highlights Roster Actions virtual row and selected action with selected bg", () => {
+    const entry = buildRosterEntry();
+    const rendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: "__roster_actions__",
+      state: { cursor: 0, kind: "rosterActions" },
+    });
+
+    expect(findSelectedRenderedLine(rendered, "Roster Actions")).toContain("▸");
+    expect(findSelectedRenderedLine(rendered, "Batch CLI Switch")).toContain("▸");
+  });
+
+  it("highlights roster edit, rename, and batch cursor rows with selected bg", () => {
+    const entry = buildRosterEntry({ effort: "low" });
+    const modelRendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state: { carrierId: entry.carrierId, choices: [entry.model], cursor: 0, kind: "model" },
+    });
+    const effortRendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state: { carrierId: entry.carrierId, choices: ["low", "high"], cursor: 1, kind: "effort", pendingModel: entry.model },
+    });
+    const cliTypeRendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state: {
+        carrierId: entry.carrierId,
+        choices: [{ label: "Claude", value: "claude" }, { label: "Codex", value: "codex" }],
+        cursor: 1,
+        kind: "cliType",
+      },
+    });
+    const renameRendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: { carrierId: entry.carrierId, draft: "New Ohio" },
+      selectedCarrierId: entry.carrierId,
+      state: { kind: "browse" },
+    });
+    const batchRendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state: {
+        choices: [{ carrierCount: 1, cliType: "claude", label: "Claude (1 carrier)" }],
+        cursor: 0,
+        kind: "batchFrom",
+      },
+    });
+
+    expect(findSelectedRenderedLine(modelRendered, "●")).toContain("▸");
+    expect(findSelectedRenderedLine(effortRendered, "high")).toContain("▸");
+    expect(findSelectedRenderedLine(cliTypeRendered, "Codex")).toContain("▸");
+    expect(findSelectedRenderedLine(renameRendered, "New Ohio")).toContain("▸");
+    expect(findSelectedRenderedLine(batchRendered, "Claude")).toContain("▸");
   });
 });
 
@@ -207,11 +303,28 @@ function buildRosterEntry(overrides: Partial<CarrierStatusEntry> = {}): CarrierS
 }
 
 function renderRosterEntry(entry: CarrierStatusEntry): string {
-  return renderCarrierStatusOverlay(140, {
+  return renderRosterModel(entry, {
     expandedCarrierId: null,
-    feedbackMessage: null,
     renameState: null,
+    selectedCarrierId: entry.carrierId,
     state: { kind: "browse" },
+  });
+}
+
+function renderRosterModel(
+  entry: CarrierStatusEntry,
+  options: {
+    readonly expandedCarrierId: string | null;
+    readonly renameState: { readonly carrierId: string; readonly draft: string } | null;
+    readonly selectedCarrierId: string;
+    readonly state: Parameters<typeof renderCarrierStatusOverlay>[1]["state"];
+  },
+): string {
+  return renderCarrierStatusOverlay(140, {
+    expandedCarrierId: options.expandedCarrierId,
+    feedbackMessage: null,
+    renameState: options.renameState,
+    state: options.state,
     viewModel: {
       flatEntries: [entry],
       groupedEntries: [{
@@ -219,9 +332,17 @@ function renderRosterEntry(entry: CarrierStatusEntry): string {
         entries: [entry],
         header: "Operations",
       }],
-      selectedCarrierId: entry.carrierId,
+      selectedCarrierId: options.selectedCarrierId,
     },
   }, buildRosterRenderDeps()).join("\n");
+}
+
+function openToggleNativeAction(overlay: CarrierStatusOverlay): void {
+  overlay.handleInput("\r");
+  overlay.handleInput("\x1b[B");
+  overlay.handleInput("\x1b[B");
+  overlay.handleInput("\x1b[B");
+  overlay.handleInput("\r");
 }
 
 function buildRosterRenderDeps(): CarrierStatusRenderDeps {
@@ -234,9 +355,17 @@ function buildRosterRenderDeps(): CarrierStatusRenderDeps {
     }),
     getBatchCliChoices: () => [],
     getDefaultEffort: () => null,
-    getModelEffortLevels: () => [],
+    getModelEffortLevels: () => ["low", "high"],
     theme: THEME,
   };
+}
+
+function findRenderedLine(rendered: string, text: string): string {
+  return rendered.split("\n").find((line) => line.includes(text)) ?? "";
+}
+
+function findSelectedRenderedLine(rendered: string, text: string): string {
+  return rendered.split("\n").find((line) => line.includes("<selected>") && line.includes(text)) ?? "";
 }
 
 function firstModel(cliType: TaskForceCliType): string {

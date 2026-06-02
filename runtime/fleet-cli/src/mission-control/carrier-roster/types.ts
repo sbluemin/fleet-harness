@@ -79,6 +79,8 @@ export interface BatchCliChoice {
 
 export type OverlayState =
   | { readonly kind: "browse" }
+  | { readonly cursor: number; readonly kind: "carrierActions" }
+  | { readonly cursor: number; readonly kind: "rosterActions" }
   | { readonly carrierId: string; readonly choices: readonly string[]; readonly cursor: number; readonly kind: "model" }
   | { readonly carrierId: string; readonly choices: readonly string[]; readonly cursor: number; readonly kind: "effort"; readonly pendingModel: string }
   | { readonly carrierId: string; readonly choices: readonly CliTypeChoice[]; readonly cursor: number; readonly kind: "cliType" }

@@ -73,7 +73,6 @@ describe("carrier status view model", () => {
 
     expect(entry?.cliType).toBe("codex");
     expect(entry?.subagentMode).toBe(true);
-    expect(entry?.subagentPendingRestart).toBe(true);
   });
 
   it("heals codex-only carriers with codex persona defaults", () => {

@@ -19,17 +19,21 @@ export function createAboutPanel(deps: AboutPanelDeps): MenuPanel {
       return [
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Fleet"), width),
-        centerText(`Version: ${release?.version ?? "(local)"}`, width),
-        centerText(`Channel: ${release?.channel ?? "local"}`, width),
+        centerText(formatKeyValue("Version", release?.version ?? "(local)"), width),
+        centerText(formatKeyValue("Channel", release?.channel ?? "local"), width),
         "",
-        centerText(`Carriers: ${counts?.carriers ?? 0}`, width),
-        centerText(`Wiki entries: ${counts?.wikiEntries ?? 0}`, width),
-        centerText(`Queued patches: ${counts?.queuedPatches ?? 0}`, width),
-        centerText("Docs: (configured later)", width),
-        centerText(`Node: ${process.version}`, width),
+        centerText(formatKeyValue("Carriers", String(counts?.carriers ?? 0)), width),
+        centerText(formatKeyValue("Wiki entries", String(counts?.wikiEntries ?? 0)), width),
+        centerText(formatKeyValue("Queued patches", String(counts?.queuedPatches ?? 0)), width),
+        centerText(formatKeyValue("Docs", "(configured later)"), width),
+        centerText(formatKeyValue("Node", process.version), width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
       ];
     },
   };
+}
+
+function formatKeyValue(key: string, value: string): string {
+  return `${key}: ${MISSION_CONTROL_THEME.accent(value)}`;
 }

@@ -6,6 +6,11 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Changed
+- [core] Mission Control now uses a launcher-root and action-list navigation model with zero domain hotkeys across root and nested panels.
+- [core] Fleet gradient banner now animates with a right-to-left shimmer on inactive screens.
+- [core] Inactive Mission Control UI is vertically centered when content is shorter than allocated rows, while active Agent CLI PTY output remains top-aligned.
+- [core] Mission Control panels now share a consistent visual treatment with frame utilities, accent markers, and selected-row highlighting.
+- [core] Conditional actions are omitted from menus when unavailable instead of shown as disabled rows.
 - [core] Introduced a single durable-I/O primitive (`fs-store`) in `fleet-infra` that unifies atomic writes, advisory directory locks with quarantine-based stale recovery, and secure filesystem guards; preset, auth, and carriers storage now consume this primitive instead of maintaining independent implementations.
 - [core] Auth storage is now protected with atomic writes, directory lock, and 0600 file permissions, matching the security level of preset storage and resolving the prior sensitivity inversion.
 - [core] Auth service converted to a pure DI factory (`createAuthService({ authPath })`); module-level mutable singleton and `setAuthPath` removed.

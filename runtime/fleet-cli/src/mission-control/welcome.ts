@@ -1,4 +1,4 @@
-import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_COLORS } from "../styles/index.js";
+import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_RGBS, type RgbTuple } from "../styles/index.js";
 
 import { truncateToWidth, visibleWidth } from "../controls/index.js";
 
@@ -8,11 +8,11 @@ const BANNER_VISIBLE_WIDTH = visibleWidth(FLEET_BANNER[0] ?? "");
 export { FLEET_ACCENT };
 const FLEET_BANNER_MIN_WIDTH = BANNER_VISIBLE_WIDTH + 4;
 
-export function buildFleetBanner(innerWidth: number): string[] {
+export function buildFleetBanner(innerWidth: number, phase = 0): string[] {
   if (innerWidth < FLEET_BANNER_MIN_WIDTH) {
     return [];
   }
-  return FLEET_BANNER.map((line) => centerText(gradientLine(line), innerWidth));
+  return FLEET_BANNER.map((line) => centerText(gradientLine(line, phase), innerWidth));
 }
 
 export function centerText(text: string, width: number): string {
@@ -25,20 +25,48 @@ export function centerText(text: string, width: number): string {
   return `${" ".repeat(leftPad)}${text}${" ".repeat(rightPad)}`;
 }
 
-function gradientLine(line: string): string {
-  const step = Math.max(1, Math.floor(line.length / GRADIENT_COLORS.length));
+export function gradientLine(line: string, phase = 0): string {
+  if (GRADIENT_RGBS.length === 0) {
+    return line;
+  }
+
+  const gradientStep = Math.max(1, line.length / GRADIENT_RGBS.length);
   let result = "";
-  let colorIndex = 0;
   for (let index = 0; index < line.length; index += 1) {
-    if (index > 0 && index % step === 0 && colorIndex < GRADIENT_COLORS.length - 1) {
-      colorIndex += 1;
-    }
     const char = line[index] ?? "";
     if (char === " ") {
       result += char;
     } else {
-      result += `${GRADIENT_COLORS[colorIndex]}${char}${ANSI_RESET}`;
+      result += `${toRgbAnsi(interpolateGradient((index / gradientStep) - phase))}${char}${ANSI_RESET}`;
     }
   }
   return result;
+}
+
+function interpolateGradient(position: number): RgbTuple {
+  const wrappedPosition = positiveModulo(position, GRADIENT_RGBS.length);
+  const fromIndex = Math.floor(wrappedPosition);
+  const toIndex = (fromIndex + 1) % GRADIENT_RGBS.length;
+  const ratio = wrappedPosition - fromIndex;
+  return lerpRgb(GRADIENT_RGBS[fromIndex] ?? GRADIENT_RGBS[0] ?? [0, 255, 255], GRADIENT_RGBS[toIndex] ?? GRADIENT_RGBS[0] ?? [0, 255, 255], ratio);
+}
+
+function lerpRgb(from: RgbTuple, to: RgbTuple, ratio: number): RgbTuple {
+  return [
+    lerpChannel(from[0], to[0], ratio),
+    lerpChannel(from[1], to[1], ratio),
+    lerpChannel(from[2], to[2], ratio),
+  ];
+}
+
+function lerpChannel(from: number, to: number, ratio: number): number {
+  return Math.round(from + ((to - from) * ratio));
+}
+
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function toRgbAnsi([red, green, blue]: RgbTuple): string {
+  return `\x1b[38;2;${red};${green};${blue}m`;
 }

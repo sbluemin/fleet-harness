@@ -4,20 +4,17 @@ import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } 
 
 import type { AgentCliId } from "../agent-cli/types.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
-import type { MissionControlCliOption, MissionControlFleetMenuState, MissionControlOptionDrawerState, MissionControlOverlay, MissionControlStateKind } from "./types.js";
+import type { MissionControlCliOption, MissionControlStateKind } from "./types.js";
 import { buildFleetBanner, centerText, FLEET_ACCENT } from "./welcome.js";
 
 interface MissionControlRenderOptions {
+  readonly bannerPhase?: number;
   readonly cliOptions: readonly MissionControlCliOption[];
-  readonly editingModel?: string;
-  readonly fleetMenu?: MissionControlFleetMenuState;
   readonly lastExit: PtyExitEvent | undefined;
   readonly loadedCounts: MissionControlCounts | undefined;
   readonly panelLines?: readonly string[];
   readonly release: FleetCliRelease | undefined;
   readonly selectedCliId: AgentCliId;
-  readonly overlay?: MissionControlOverlay;
-  readonly optionDrawer?: MissionControlOptionDrawerState;
   readonly state: MissionControlStateKind;
 }
 
@@ -27,16 +24,6 @@ const SELECTED_MARKER = "▸";
 const IDLE_MARKER = " ";
 const CHOICE_INDENT = 4;
 const COUNT_SEPARATOR = "  ·  ";
-const OPTION_DRAWER_LABEL_WIDTH = 13;
-const OPTION_DRAWER_VALUE_WIDTH = 18;
-const OPTION_DRAWER_SOURCE_WIDTH = 7;
-const OPTION_DRAWER_HINT_WIDTH = 8;
-const FLEET_MENU_ITEMS: readonly string[] = [
-  "Authentication",
-  "Wiki Server",
-  "Diagnostics",
-  "About",
-];
 
 export const MISSION_CONTROL_THEME: FleetPtyTheme = {
   accent: (text) => paint(FLEET_ACCENT, text),
@@ -62,7 +49,7 @@ const STYLE: Record<StatusTone | "accent" | "muted", (text: string) => string> =
 
 export function renderMissionControl(width: number, options: MissionControlRenderOptions): string[] {
   const innerWidth = Math.max(0, width);
-  const banner = buildFleetBanner(innerWidth);
+  const banner = buildFleetBanner(innerWidth, options.bannerPhase ?? 0);
   const choiceWidth = computeChoiceWidth(options.cliOptions);
   const choiceLeftPad = Math.max(0, Math.floor((innerWidth - choiceWidth) / 2));
   const lines: string[] = [""];
@@ -82,16 +69,6 @@ export function renderMissionControl(width: number, options: MissionControlRende
   lines.push(renderStatusLine(options.state, options.lastExit, innerWidth));
   lines.push("");
 
-  if (options.overlay === "options" && options.optionDrawer !== undefined) {
-    lines.push(...renderOptionsDrawer(innerWidth, options.optionDrawer));
-    return lines;
-  }
-
-  if (options.overlay === "fleet-menu") {
-    lines.push(...renderFleetMenu(innerWidth, options.fleetMenu ?? { selectedIndex: 0 }));
-    return lines;
-  }
-
   for (const [index, entry] of options.cliOptions.entries()) {
     lines.push(renderChoiceLine({
       entry,
@@ -100,14 +77,6 @@ export function renderMissionControl(width: number, options: MissionControlRende
       leftPad: choiceLeftPad,
       selected: entry.id === options.selectedCliId,
     }));
-  }
-
-  if (options.editingModel !== undefined) {
-    lines.push("");
-    lines.push(centerText(`Model: ${formatModelEditValue(options.editingModel)}`, innerWidth));
-    lines.push("");
-    lines.push(centerText(STYLE.dim("Enter confirm  Esc cancel"), innerWidth));
-    return lines;
   }
 
   lines.push("");
@@ -190,39 +159,9 @@ function renderFooterHint(state: MissionControlStateKind, innerWidth: number): s
   const hint = state === "launching"
     ? "Starting... please wait"
     : state === "ended" || state === "failed"
-      ? "R relaunch  c choose CLI  C Carrier Roster  → model  O options  M menu  X exit Fleet"
-      : "↑↓/j/k select  Enter start  c choose CLI  C Carrier Roster  → model  O options  M menu  X exit Fleet";
+      ? "Use Launcher Root actions to relaunch, configure, or exit Fleet"
+      : "↑↓ select  Enter open";
   return centerText(STYLE.dim(hint), innerWidth);
-}
-
-function renderOptionsDrawer(innerWidth: number, drawer: MissionControlOptionDrawerState): string[] {
-  const values = drawer.resolved.values;
-  const sources = drawer.resolved.sources;
-  const systemPromptSource = values.native ? sources.native : sources.replaceSystemPrompt;
-  const rows = [
-    formatOptionDrawerRow(drawer.selectedRow === 0, "Mode", values.native ? "Native" : "Fleet prompt", sources.native, "[Space]"),
-    formatOptionDrawerRow(drawer.selectedRow === 1, "System prompt", values.native ? "Native" : values.replaceSystemPrompt ? "Replace" : "Append", systemPromptSource, "[Space]"),
-    formatOptionDrawerRow(drawer.selectedRow === 2, "Metaphor", values.enableMetaphor ? "Enabled" : "Off", sources.enableMetaphor, "[Space]"),
-    formatOptionDrawerRow(drawer.selectedRow === 3, "Cursor sync", values.cursorSync ? "Enabled" : "Off", sources.cursorSync, "[Space]"),
-  ];
-  return [
-    centerText(STYLE.accent("Options"), innerWidth),
-    "",
-    ...rows.map((row) => centerText(row, innerWidth)),
-    ...(drawer.saveError ? ["", centerText(STYLE.error(`Save failed: ${drawer.saveError}`), innerWidth)] : []),
-    "",
-    centerText(STYLE.dim("↑↓ select  Space toggle  S save  R reset  Esc close"), innerWidth),
-  ];
-}
-
-function renderFleetMenu(innerWidth: number, menu: MissionControlFleetMenuState): string[] {
-  return [
-    centerText(STYLE.accent("Fleet Menu"), innerWidth),
-    "",
-    ...FLEET_MENU_ITEMS.map((item, index) => centerText(formatMenuRow(index === menu.selectedIndex, item), innerWidth)),
-    "",
-    centerText(STYLE.dim("Enter open  Esc close"), innerWidth),
-  ];
 }
 
 function getStatusText(state: MissionControlStateKind, event: PtyExitEvent | undefined): { readonly text: string; readonly tone: StatusTone } {
@@ -270,25 +209,6 @@ function computeChoiceWidth(cliOptions: readonly MissionControlCliOption[]): num
     }
   }
   return CHOICE_INDENT + maxLabelWidth;
-}
-
-function formatOptionDrawerRow(selected: boolean, label: string, value: string, source: string, hint: string): string {
-  const prefix = selected ? `${SELECTED_MARKER} ` : "  ";
-  const selectedHint = selected ? hint : "";
-  return `${prefix}${padEndVisible(label, OPTION_DRAWER_LABEL_WIDTH)}  ${padEndVisible(value, OPTION_DRAWER_VALUE_WIDTH)}  ${padEndVisible(source, OPTION_DRAWER_SOURCE_WIDTH)}  ${padEndVisible(selectedHint, OPTION_DRAWER_HINT_WIDTH)}`;
-}
-
-function formatMenuRow(selected: boolean, label: string): string {
-  return `${selected ? SELECTED_MARKER : " "} ${label}`;
-}
-
-function formatModelEditValue(value: string): string {
-  return `${value}|`;
-}
-
-function padEndVisible(text: string, width: number): string {
-  const truncated = truncateToWidth(text, width);
-  return `${truncated}${" ".repeat(Math.max(0, width - visibleWidth(truncated)))}`;
 }
 
 function paint(code: string, text: string): string {

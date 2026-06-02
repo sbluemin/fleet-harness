@@ -50,7 +50,7 @@ describe("auth login flow", () => {
   it("validates before saving the selected provider key", async () => {
     const io = createIo();
 
-    await expect(runAuthLoginFlow(["claude-zai"], io)).resolves.toBe(0);
+    await expect(runAuthLoginFlow(["claude-zai"], io, createDeps())).resolves.toBe(0);
 
     expect(mocks.validateAuthKeyForCliMock).toHaveBeenCalledWith("claude-zai", "secret-token");
     expect(mocks.setApiKeyMock).toHaveBeenCalledWith("Claude Code with Z.AI GLM", "secret-token");
@@ -65,7 +65,7 @@ describe("auth login flow", () => {
       status: "success",
     });
 
-    await expect(runAuthLoginFlow([], io)).resolves.toBe(0);
+    await expect(runAuthLoginFlow([], io, createDeps())).resolves.toBe(0);
 
     expect(mocks.selectMock).toHaveBeenCalled();
     expect(mocks.validateAuthKeyForCliMock).toHaveBeenCalledWith("claude-kimi", "secret-token");
@@ -79,7 +79,7 @@ describe("auth login flow", () => {
       status: "forbidden",
     });
 
-    await expect(runAuthLoginFlow(["claude-zai"], io)).resolves.toBe(1);
+    await expect(runAuthLoginFlow(["claude-zai"], io, createDeps())).resolves.toBe(1);
 
     expect(mocks.setApiKeyMock).not.toHaveBeenCalled();
     expect(io.stderr.output).toContain("Validation failed");
@@ -89,7 +89,7 @@ describe("auth login flow", () => {
     const io = createIo();
     mocks.passwordMock.mockResolvedValue(Symbol.for("clack.cancel"));
 
-    await expect(runAuthLoginFlow(["claude-zai"], io)).resolves.toBe(1);
+    await expect(runAuthLoginFlow(["claude-zai"], io, createDeps())).resolves.toBe(1);
 
     expect(mocks.cancelMock).toHaveBeenCalled();
     expect(mocks.setApiKeyMock).not.toHaveBeenCalled();
@@ -112,4 +112,12 @@ function createIo() {
     },
   };
   return { stdout, stderr };
+}
+
+function createDeps() {
+  return {
+    authService: {
+      setApiKey: mocks.setApiKeyMock,
+    },
+  };
 }

@@ -1,39 +1,39 @@
 # Mission Control
 
-Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane and serves as the Fleet product's main screen while idle.
-
-Mission Control owns the launch menu for selecting an Agent CLI, startup option editing, the active PTY session lifecycle, and a panel host API that temporarily yields the upper pane to interactive panels (e.g., Carrier Roster) while they are active. The idle launcher renders a borderless Fleet-branded welcome (gradient banner, amber accent, centered carrier/wiki/queue readout, version with stable/local channel label, option chips, and a centered shortcut hint) so the upper pane feels native to the TUI rather than framed as a dialog.
+Upper interaction layer that hosts the Agent CLI PTY in the Fleet TUI upper pane and serves as the Fleet product's main launcher while idle, ended, or failed.
 
 ## Architecture
 
-- **`createMissionControlController(options)`** — Factory that returns a `MissionControlController` with a `component` (implements `MissionControlPtyView`), a `ptyHost`, and panel host methods.
-- **Panel Host API** — `openPanel(panel)`, `closePanel()`, and `hasActivePanel()`. When a panel is active, all operator input is routed to the panel component; when closed, input falls through to the underlying Agent CLI PTY or Mission Control control UI.
-- **`writeChildInput(data)`** — Programmatic input path that writes directly to the active child PTY, bypassing panel routing. Used by system reminders (e.g., carrier result notifications) that must reach the child process regardless of panel state.
-- **Input Routing Order** — `ptyHost.write(data)` checks `activePanel` first; if a panel is open, data is sent to `panel.component.handleInput`. Otherwise, data goes to the active child PTY (`active.host.write`) or Mission Control control input (`handleControlInput`).
-- **Options Drawer** — `o` opens editable boolean startup options (Mode, System prompt, Metaphor, Cursor sync), `S` persists the current draft to the preset store, and `R` discards the transient menu draft and re-resolves the view from `env > preset > default`. CLI argument overrides remain in effect for the current Fleet process and are not erased by `R`; argv values never persist automatically and only `S` writes to disk.
-- **Inline Model Edit** — `→` (right arrow) from the idle CLI selection opens an inline model text input below the CLI list. `Enter` confirms the model, `Esc` cancels. The model value is persisted through the same session options draft/save flow as the Options Drawer.
-- **Fleet Menu** — `m` opens a native Fleet Menu with Authentication, Wiki Server, Diagnostics, and About in that order. `Enter` opens the selected panel, breadcrumbs show the current depth, and `Esc` walks back one level at a time.
-- **Native Input Modals** — Fleet Menu panels use in-process text, numeric, password, and confirmation modals. Password fields render masked values and are handled without child CLI auth/input subprocesses.
-- **Diagnostics Boundary** — Diagnostics exposes read-only data/system views plus a confirmed preset reset. Cursor Sync remains owned by the Options Drawer and is not duplicated in Diagnostics.
-- **Cursor Suppression** — When a panel is active or the controller state is not `"active"`, `getCursorAnchor` returns `null` to suppress the outer-terminal cursor.
+- **Launcher Root** — The inactive control surface is a `PanelStack` root with `Start`, `Configure Carriers`, `Options`, `System Menu`, and `Exit Fleet`.
+- **Action-list navigation** — Mission Control panels use `↑↓`, `Enter`, and `Esc`. Domain hotkeys are intentionally not routed from the root or deep panels.
+- **`createActionListPanel()`** — Shared `MenuPanel` factory for row selection, conditional action filtering, breadcrumbs, status rows, and consistent footer behavior.
+- **Active PTY priority** — When `state === "active"` and a child PTY exists, input and render go to the child before panel/control UI: `active > panel > control`.
+- **Programmatic child input** — `writeChildInput(data)` writes directly to the active child PTY for system reminders even when a Mission Control panel exists.
+- **Start launch flow** — `Start` lists the configured Agent CLIs directly. `Enter` launches the selected CLI, and `→` edits the launch-time model override through `sessionOptions.setModel()`. It remains separate from Carrier Roster per-carrier model editing.
+- **Gradient shimmer** — The Fleet banner animates on inactive screens with a smooth right-to-left RGB-lerped shimmer over a ~4-second cycle and stops while the active Agent CLI PTY is running.
+- **Options** — Mode, System prompt, Metaphor, Cursor sync, Save defaults, and Reset overrides are action-list rows. `Enter` toggles, cycles, saves, or resets the selected row.
+- **System Menu** — Authentication, Wiki Server, Diagnostics, and About are reached through `System Menu`.
+- **Exit Fleet** — Exit is a Launcher Root action and is not duplicated in nested panels.
+- **Input modals** — Text, password, and numeric modals remain. Confirmation flows use action-list Confirm/Cancel panels.
 
-## State Machine
+## Visual System
 
-`MissionControlStateKind`: `idle` → `launching` → `active` → (`ended` | `failed`)
-
-- `idle`: CLI selection menu is shown.
-- `launching`: Profile resolution and PTY host creation are in progress.
-- `active`: Child PTY is running; input is forwarded to the child.
-- `ended` / `failed`: Child PTY exited; control UI is shown with relaunch/choose/exit options.
+- The Fleet gradient banner remains the first inactive Mission Control signal when width allows.
+- Selection uses an accent `▸` marker, accent text, and selected background treatment.
+- Marker meanings are stable: `▸` focus, `●` persisted/current choice, `○` unselected choice, `✓` configured/success, warning tone for errors.
+- Value accents are consistently applied to dynamic or actionable values in key-value rows across Mission Control panels.
+- Mission Control frame utilities must preserve visible width for ANSI and CJK text and must not depend on Mission Bridge or Job Bar internals.
+- Inactive Mission Control content is vertically centered only when shorter than the allocated rows. Active PTY output is top-aligned.
 
 ## Files
 
 | File | Responsibility |
 |------|--------------|
 | `types.ts` | `MissionControlController`, panel, host interfaces, and `MissionControlCounts` re-export. |
-| `controller.ts` | `createMissionControlController` factory, state machine, input routing, and panel lifecycle. |
-| `renderer.ts` | `renderMissionControl` — borderless, centered idle/ended/failed UI, option chips, and Options Drawer built from vertically stacked lines. Also exports `MISSION_CONTROL_THEME` for sibling Mission Control panels. |
-| `options/*` | Session option types, priority resolver (`env > preset > default`), and mutable runtime (draft/save/reset lifecycle, CLI selection re-resolution, inline model editing). |
-| `menu/*` | Fleet Menu panel stack, native input modal, Authentication, Wiki Server, Diagnostics, and About panel implementations. |
-| `welcome.ts` | Fleet banner ASCII, cyan→blue gradient, amber `FLEET_ACCENT`, and shared centering helper. |
-| `loaded-counts.ts` | `discoverMissionControlCounts` (carriers + wiki entries + queued patches) and `readFleetCliRelease` (version + local/stable channel — `pkg.private === true` ⇒ local, otherwise stable) for the welcome readout. |
+| `controller.ts` | Launcher lifecycle, active PTY priority, Start/Options/System Menu wiring, state machine, and panel lifecycle. |
+| `renderer.ts` | Shared Mission Control shell, Fleet banner/status readout, and theme export. |
+| `menu/action-list-panel.ts` | Standard action-list `MenuPanel` factory. |
+| `menu/input-modal.ts` | Text, password, and numeric input modal implementation. |
+| `menu/*` | Authentication, Wiki Server, Diagnostics, About, and shared panel stack implementations. |
+| `welcome.ts` | Fleet banner ASCII, RGB-lerped cyan to blue gradient, amber accent, and shared centering helper. |
+| `loaded-counts.ts` | Carrier/wiki/queue counts and Fleet CLI release readout. |

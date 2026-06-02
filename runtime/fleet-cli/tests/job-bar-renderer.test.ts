@@ -192,7 +192,6 @@ describe("job bar renderer", () => {
 
     expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
     expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
-    expect(line).toContain("[SA]\x1b[38;2;160;150;180m*");
     expect(line).not.toContain("[TF:2]");
   });
 

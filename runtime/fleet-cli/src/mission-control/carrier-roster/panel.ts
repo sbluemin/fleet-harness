@@ -55,6 +55,20 @@ import type {
   ResolvedCliSelection,
 } from "./types.js";
 
+const ROSTER_ACTIONS_ID = "__roster_actions__";
+const CARRIER_ACTION_LABELS = [
+  "Edit Model",
+  "Change CLI Type",
+  "Rename",
+  "Toggle Native(SubAgent)",
+  "Open TaskForce",
+  "Toggle Details",
+] as const;
+const ROSTER_ACTION_LABELS = [
+  "Batch CLI Switch",
+  "Reset CLI Types to Default",
+] as const;
+
 export class CarrierStatusOverlay implements Component, Focusable {
   public focused = false;
   private expandedCarrierId: string | null = null;
@@ -82,8 +96,10 @@ export class CarrierStatusOverlay implements Component, Focusable {
       handleRenameInput: (input) => this.handleRenameInput(input),
       moveEditCursor: (delta) => this.moveEditCursor(delta),
       moveSelection: (delta) => this.moveSelection(delta),
+      openActions: () => this.openActions(),
       openTaskForce: () => this.openTaskForce(),
       resetCliTypesToDefault: () => this.resetCliTypesToDefault(),
+      runAction: () => this.runAction(),
       startBatchCliFromEdit: () => this.startBatchCliFromEdit(),
       startCliTypeEdit: () => this.startCliTypeEdit(),
       startModelEdit: () => this.startModelEdit(),
@@ -115,6 +131,7 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getSelectedEntry(): CarrierStatusEntry | null {
+    if (this.selectedCarrierId === ROSTER_ACTIONS_ID) return null;
     const flatEntries = this.getFlatEntries();
     const selectedCarrierId = this.syncSelectedCarrierId(flatEntries);
     return selectedCarrierId ? flatEntries.find((entry) => entry.carrierId === selectedCarrierId) ?? null : null;
@@ -141,9 +158,13 @@ export class CarrierStatusOverlay implements Component, Focusable {
   }
 
   private getViewModel() {
+    const selectedVirtualRow = this.selectedCarrierId === ROSTER_ACTIONS_ID;
     const viewModel = buildStatusOverlayViewModel(this.getEntries(), this.selectedCarrierId);
-    this.selectedCarrierId = viewModel.selectedCarrierId;
-    return viewModel;
+    this.selectedCarrierId = selectedVirtualRow ? ROSTER_ACTIONS_ID : viewModel.selectedCarrierId;
+    return {
+      ...viewModel,
+      selectedCarrierId: this.selectedCarrierId,
+    };
   }
 
   private syncSelectedCarrierId(entries: readonly CarrierStatusEntry[]): string | null {
@@ -153,24 +174,95 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   private moveSelection(delta: number): void {
     const flatEntries = this.getFlatEntries();
-    if (flatEntries.length === 0) return;
-    const selectedCarrierId = this.syncSelectedCarrierId(flatEntries);
-    const currentIndex = Math.max(0, flatEntries.findIndex((entry) => entry.carrierId === selectedCarrierId));
-    this.selectedCarrierId = flatEntries[(currentIndex + delta + flatEntries.length) % flatEntries.length]!.carrierId;
+    const ids = [...flatEntries.map((entry) => entry.carrierId), ROSTER_ACTIONS_ID];
+    if (ids.length === 0) return;
+    const selectedCarrierId = this.selectedCarrierId === ROSTER_ACTIONS_ID ? ROSTER_ACTIONS_ID : this.syncSelectedCarrierId(flatEntries);
+    const currentIndex = Math.max(0, ids.findIndex((carrierId) => carrierId === selectedCarrierId));
+    this.selectedCarrierId = ids[(currentIndex + delta + ids.length) % ids.length] ?? null;
     this.feedbackMessage = null;
     this.options.requestRender();
   }
 
   private moveEditCursor(delta: number): void {
     const cursorState = this.state;
-    if (!("choices" in cursorState)) return;
-    const total = cursorState.choices.length;
+    const total = this.getActionCount(cursorState.kind);
+    if (total === 0 || !("cursor" in cursorState)) return;
     if (total === 0) return;
     this.state = {
       ...cursorState,
       cursor: (cursorState.cursor + delta + total) % total,
     };
     this.feedbackMessage = null;
+    this.options.requestRender();
+  }
+
+  private getActionCount(kind: OverlayState["kind"]): number {
+    if (kind === "carrierActions") return CARRIER_ACTION_LABELS.length;
+    if (kind === "rosterActions") return ROSTER_ACTION_LABELS.length;
+    const cursorState = this.state;
+    return "choices" in cursorState ? cursorState.choices.length : 0;
+  }
+
+  private openActions(): void {
+    if (this.selectedCarrierId === ROSTER_ACTIONS_ID) {
+      this.state = { cursor: 0, kind: "rosterActions" };
+      this.feedbackMessage = null;
+      this.options.requestRender();
+      return;
+    }
+    if (!this.getSelectedEntry()) return;
+    this.state = { cursor: 0, kind: "carrierActions" };
+    this.feedbackMessage = null;
+    this.options.requestRender();
+  }
+
+  private runAction(): void {
+    const cursorState = this.state;
+    if (cursorState.kind === "carrierActions") {
+      this.runCarrierAction(cursorState.cursor);
+      return;
+    }
+    if (cursorState.kind === "rosterActions") {
+      this.runRosterAction(cursorState.cursor);
+    }
+  }
+
+  private runCarrierAction(index: number): void {
+    this.state = { kind: "browse" };
+    switch (index) {
+      case 0:
+        this.startModelEdit();
+        return;
+      case 1:
+        this.startCliTypeEdit();
+        return;
+      case 2:
+        this.startRenameEdit();
+        return;
+      case 3:
+        this.toggleSubagentMode();
+        return;
+      case 4:
+        this.openTaskForce();
+        return;
+      case 5:
+        this.toggleDetails();
+        return;
+      default:
+        this.options.requestRender();
+    }
+  }
+
+  private runRosterAction(index: number): void {
+    this.state = { kind: "browse" };
+    if (index === 0) {
+      this.startBatchCliFromEdit();
+      return;
+    }
+    if (index === 1) {
+      this.resetCliTypesToDefault();
+      return;
+    }
     this.options.requestRender();
   }
 

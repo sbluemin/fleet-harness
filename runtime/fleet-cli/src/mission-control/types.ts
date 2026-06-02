@@ -5,7 +5,7 @@ import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 import type { PtyView } from "../controls/terminal-view.js";
-import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "./options/types.js";
+import type { SessionOptions, SessionOptionsRuntime } from "./options/types.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
 import type { WikiProcessController } from "./menu/wiki-panel.js";
 
@@ -16,8 +16,6 @@ export interface MissionControlCliOption {
   readonly label: string;
   readonly optionChips?: readonly string[];
 }
-
-export type MissionControlOverlay = "options" | "fleet-menu";
 
 export type { FleetCliRelease, MissionControlCounts };
 
@@ -32,6 +30,7 @@ export interface MissionControlController {
   readonly ptyHost: PtyHost;
   readonly ptyView: MissionControlPtyView;
   readonly closePanel: () => void;
+  readonly dispose: () => void;
   readonly getActiveProfile: () => AgentCliProfile | undefined;
   readonly getState: () => MissionControlStateSnapshot;
   readonly hasActivePanel: () => boolean;
@@ -80,15 +79,17 @@ export interface CreateMissionControlControllerOptions {
   readonly release?: FleetCliRelease;
   readonly resolveProfile: (cliId: AgentCliId, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;
+  readonly shimmer?: MissionControlShimmerOptions;
   readonly wikiController?: WikiProcessController;
 }
 
-export interface MissionControlOptionDrawerState {
-  readonly saveError?: string;
-  readonly selectedRow: number;
-  readonly resolved: ResolvedSessionOptions;
+export interface MissionControlShimmerOptions {
+  readonly clearInterval?: (timer: MissionControlShimmerTimer) => void;
+  readonly enabled?: boolean;
+  readonly intervalMs?: number;
+  readonly setInterval?: (callback: () => void, intervalMs: number) => MissionControlShimmerTimer;
 }
 
-export interface MissionControlFleetMenuState {
-  readonly selectedIndex: number;
+export interface MissionControlShimmerTimer {
+  unref?(): void;
 }

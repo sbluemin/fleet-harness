@@ -5,7 +5,7 @@ import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
-import { createInputModal } from "./input-modal.js";
+import { createActionListPanel } from "./action-list-panel.js";
 import { isDown, isEnter, isEscape, isUp, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stack.js";
 
 export interface DiagnosticsPanelDeps {
@@ -75,7 +75,7 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Diagnostics"), width),
         "",
-        ...ROOT_ROWS.map((row, index) => centerText(`${index === selected ? "▸" : " "} ${row}`, width)),
+        ...ROOT_ROWS.map((row, index) => centerText(formatRootRow(row, index === selected), width)),
         "",
         centerText(MISSION_CONTROL_THEME.dim("Enter open  Esc back"), width),
       ];
@@ -96,18 +96,30 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       view = "system";
       return;
     }
-    deps.stack.push(createInputModal({
+    deps.stack.push(createActionListPanel({
+      id: "diagnostics:reset-preset",
       title: "Reset Preset To Defaults",
-      message: "All CLI presets will be reset to defaults. Continue?",
-      mode: "confirm",
-      onRenderRequest: deps.onRenderRequest,
-      onCancel: () => {
+      statusLines: () => [MISSION_CONTROL_THEME.warning("All CLI presets will be reset to defaults. Continue?")],
+      onBack: () => {
         deps.stack.pop();
       },
-      onSubmit: () => {
-        resetPresets();
-        deps.stack.pop();
-      },
+      actions: [
+        {
+          id: "confirm",
+          label: "Confirm",
+          run: () => {
+            resetPresets();
+            deps.stack.pop();
+          },
+        },
+        {
+          id: "cancel",
+          label: "Cancel",
+          run: () => {
+            deps.stack.pop();
+          },
+        },
+      ],
     }));
   }
 
@@ -120,8 +132,8 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       centerText(MISSION_CONTROL_THEME.dim(`${renderBreadcrumbs(deps.stack.breadcrumbs())} / Data Dir`), width),
       centerText(MISSION_CONTROL_THEME.accent("Data Dir"), width),
       "",
-      centerText(`Root: ${cleanDataDir}`, width),
-      centerText(`Presets: ${sanitizeTerminalText(path.join(dataDir, "presets.json"))}`, width),
+      centerText(formatKeyValue("Root", cleanDataDir), width),
+      centerText(formatKeyValue("Presets", sanitizeTerminalText(path.join(dataDir, "presets.json"))), width),
       "",
       centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
     ];
@@ -133,11 +145,11 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       centerText(MISSION_CONTROL_THEME.dim(`${renderBreadcrumbs(deps.stack.breadcrumbs())} / System Info`), width),
       centerText(MISSION_CONTROL_THEME.accent("System Info"), width),
       "",
-      centerText(`Node: ${process.version}`, width),
-      centerText(`OS: ${os.platform()} ${os.release()} ${os.arch()}`, width),
-      centerText(`Shell: ${sanitizeTerminalText(deps.env.SHELL ?? "(unknown)")}`, width),
-      centerText(`Terminal: ${sanitizeTerminalText(deps.env.TERM ?? "(unknown)")}`, width),
-      centerText(`CWD: ${sanitizeTerminalText(deps.cwd)}`, width),
+      centerText(formatKeyValue("Node", process.version), width),
+      centerText(formatKeyValue("OS", `${os.platform()} ${os.release()} ${os.arch()}`), width),
+      centerText(formatKeyValue("Shell", sanitizeTerminalText(deps.env.SHELL ?? "(unknown)")), width),
+      centerText(formatKeyValue("Terminal", sanitizeTerminalText(deps.env.TERM ?? "(unknown)")), width),
+      centerText(formatKeyValue("CWD", sanitizeTerminalText(deps.cwd)), width),
       "",
       centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
     ];
@@ -155,6 +167,16 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
     message = MISSION_CONTROL_THEME.success("Preset defaults restored.");
   }
 
+}
+
+function formatKeyValue(key: string, value: string): string {
+  return `${key}: ${MISSION_CONTROL_THEME.accent(value)}`;
+}
+
+function formatRootRow(row: string, selected: boolean): string {
+  const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
+  const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(row)) : row;
+  return `${marker} ${label}`;
 }
 
 function safeValue(read: () => string): string {

@@ -7,6 +7,7 @@ import type { OpenFleetWikiWorkspaceResult } from "@dotobokuri/fleet-wiki-ui/cli
 
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
+import { createActionListPanel } from "./action-list-panel.js";
 import { createInputModal } from "./input-modal.js";
 import { isEnter, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stack.js";
 
@@ -130,36 +131,7 @@ export function createWikiPanel(deps: WikiPanelDeps): MenuPanel {
     title: "Wiki Server",
     handleInput(data: string): boolean {
       if (isEnter(data)) {
-        // Enter는 상태 무관 항상 helper를 호출한다.
-        // stopped/error → spawn + 브라우저 오픈, running → 기존 daemon 재사용 + 브라우저 재오픈.
-        // stop은 별도 S 단축키로 분리되어 Enter가 실수로 daemon을 내리는 일을 막는다.
-        wiki.start();
-        return true;
-      }
-      if (data === "S" || data === "s") {
-        // 명시적 stop 단축키 — running/starting에서만 의미. 그 외 상태에서는 no-op.
-        const status = wiki.getStatus();
-        if (status.state === "running" || status.state === "starting") {
-          wiki.stop();
-        }
-        return true;
-      }
-      if (data === "P" || data === "p") {
-        deps.stack.push(createInputModal({
-          title: "Wiki Server Port",
-          message: "Set port for this Fleet process.",
-          mode: "numeric",
-          initialValue: String(wiki.getPort()),
-          onRenderRequest: deps.onRenderRequest,
-          validate: validatePort,
-          onCancel: () => {
-            deps.stack.pop();
-          },
-          onSubmit: (value) => {
-            wiki.setPort(Number(value));
-            deps.stack.pop();
-          },
-        }));
+        openWikiActions();
         return true;
       }
       return false;
@@ -172,14 +144,74 @@ export function createWikiPanel(deps: WikiPanelDeps): MenuPanel {
         centerText(MISSION_CONTROL_THEME.accent("Wiki Server"), width),
         "",
         centerText(formatStatus(status), width),
-        centerText(MISSION_CONTROL_THEME.dim(`Port: ${wiki.getPort()}`), width),
+        centerText(formatKeyValue("Port", String(wiki.getPort())), width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("External fleet wiki processes are not managed here."), width),
         "",
-        centerText(MISSION_CONTROL_THEME.dim("Enter open  S stop  P port  Esc back"), width),
+        centerText(formatActionsRow(), width),
+        "",
+        centerText(MISSION_CONTROL_THEME.dim("Enter actions  Esc back"), width),
       ];
     },
   };
+
+  function openWikiActions(): void {
+    deps.stack.push(createActionListPanel({
+      id: "wiki:actions",
+      title: "Wiki Server Actions",
+      breadcrumbs: () => deps.stack.breadcrumbs(),
+      onBack: () => {
+        deps.stack.pop();
+      },
+      actions: () => {
+        const status = wiki.getStatus();
+        const canStop = status.state === "running" || status.state === "starting";
+        return [
+          {
+            id: "open",
+            label: status.state === "running" ? "Reopen Workspace" : "Open Workspace",
+            run: () => {
+              wiki.start();
+              deps.onRenderRequest();
+            },
+          },
+          canStop && {
+            id: "stop",
+            label: "Stop Server",
+            run: () => {
+              wiki.stop();
+              deps.onRenderRequest();
+            },
+          },
+          {
+            id: "port",
+            label: "Set Port",
+            run: () => {
+              openPortModal();
+            },
+          },
+        ];
+      },
+    }));
+  }
+
+  function openPortModal(): void {
+    deps.stack.push(createInputModal({
+      title: "Wiki Server Port",
+      message: "Set port for this Fleet process.",
+      mode: "numeric",
+      initialValue: String(wiki.getPort()),
+      onRenderRequest: deps.onRenderRequest,
+      validate: validatePort,
+      onCancel: () => {
+        deps.stack.pop();
+      },
+      onSubmit: (value) => {
+        wiki.setPort(Number(value));
+        deps.stack.pop();
+      },
+    }));
+  }
 }
 
 function validatePort(value: string): string | undefined {
@@ -203,6 +235,14 @@ function formatStatus(status: WikiServerStatus): string {
     return MISSION_CONTROL_THEME.error(status.message);
   }
   return MISSION_CONTROL_THEME.warning("stopped");
+}
+
+function formatActionsRow(): string {
+  return `${MISSION_CONTROL_THEME.accent("▸")} ${MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent("Actions"))}`;
+}
+
+function formatKeyValue(key: string, value: string): string {
+  return `${key}: ${MISSION_CONTROL_THEME.accent(value)}`;
 }
 
 function formatError(error: unknown): string {

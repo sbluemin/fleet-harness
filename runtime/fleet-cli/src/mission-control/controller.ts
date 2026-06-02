@@ -1,11 +1,13 @@
-import { matchesKey, type Component, type KeyboardProtocolState, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
+import { type Component, type KeyboardProtocolState, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
 import { createCarrierRosterPanel } from "./carrier-roster/register.js";
 import { createAboutPanel } from "./menu/about-panel.js";
+import { createActionListPanel } from "./menu/action-list-panel.js";
 import { createAuthPanel } from "./menu/auth-panel.js";
 import { createDiagnosticsPanel } from "./menu/diagnostics-panel.js";
+import { createInputModal } from "./menu/input-modal.js";
 import { createPanelStack, isDown, isEnter, isUp, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./menu/panel-stack.js";
 import { createWikiPanel } from "./menu/wiki-panel.js";
 import { MISSION_CONTROL_THEME, renderMissionControl } from "./renderer.js";
@@ -16,6 +18,7 @@ import type {
   MissionControlController,
   MissionControlPanel,
   MissionControlPtyView,
+  MissionControlShimmerTimer,
   MissionControlStateKind,
 } from "./types.js";
 
@@ -23,6 +26,29 @@ interface ActivePty {
   readonly host: PtyHost;
   readonly profile: AgentCliProfile;
   readonly view: PtyView;
+}
+
+interface StartPanelOptions {
+  readonly cliOptions: readonly MissionControlCliOption[];
+  readonly launchSelected: () => Promise<void>;
+  readonly onRenderRequest: () => void;
+  readonly selectedCliId: () => AgentCliId;
+  readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
+  readonly setSelectedCliId: (cliId: AgentCliId) => void;
+  readonly stack: PanelStack;
+}
+
+interface SystemMenuPanelOptions {
+  readonly authService: CreateMissionControlControllerOptions["authService"];
+  readonly counts: CreateMissionControlControllerOptions["loadedCounts"];
+  readonly cwd: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly getRelease: () => CreateMissionControlControllerOptions["release"];
+  readonly getStack: () => PanelStack;
+  readonly onPresetReset: () => void;
+  readonly onRenderRequest: () => void;
+  readonly presetService: CreateMissionControlControllerOptions["presetService"];
+  readonly wikiController: CreateMissionControlControllerOptions["wikiController"];
 }
 
 type MissionControlControllerWithReleaseSetter = MissionControlController & {
@@ -39,17 +65,9 @@ const EMPTY_MOUSE_PROTOCOL_STATE: MouseProtocolState = {
   activeProtocol: "none",
   mouseTrackingEnabled: false,
 };
-const ACTION_KEYS = {
-  choose: "c",
-  exit: "x",
-  launch: "\r",
-  launchLineFeed: "\n",
-  relaunch: "r",
-  vimDown: "j",
-  vimUp: "k",
-};
-const OPTION_DRAWER_ROW_COUNT = 4;
-const FLEET_MENU_ITEMS = ["Authentication", "Wiki Server", "Diagnostics", "About"] as const;
+const DEFAULT_SHIMMER_INTERVAL_MS = 100;
+const DEFAULT_SHIMMER_PHASE_STEP = 0.15;
+const LAUNCHER_ITEMS = ["Start", "Configure Carriers", "Options", "System Menu", "Exit Fleet"] as const;
 
 /**
  * Creates a Mission Control controller that hosts the Agent CLI PTY and manages panel lifecycle.
@@ -63,13 +81,11 @@ export function createMissionControlController(options: CreateMissionControlCont
   let lastExit: PtyExitEvent | undefined;
   let active: ActivePty | undefined;
   let activePanel: MissionControlPanel | undefined;
-  let overlay: "options" | "fleet-menu" | undefined;
-  let drawerRow = 0;
-  let editingModel: string | undefined;
-  let saveError: string | undefined;
   let cols = 80;
   let rows = 0;
   let suppressNextExit = false;
+  let shimmerPhase = 0;
+  let shimmerTimer: MissionControlShimmerTimer | undefined;
   let release = options.release;
 
   const component: MissionControlPtyView = {
@@ -83,6 +99,10 @@ export function createMissionControlController(options: CreateMissionControlCont
       return active?.view.getCursorAnchor(width) ?? null;
     },
     handleInput(data: string): void {
+      if (state === "active" && active !== undefined) {
+        active.host.write(data);
+        return;
+      }
       handlePanelOrControlInput(data);
     },
     invalidate(): void {
@@ -93,31 +113,29 @@ export function createMissionControlController(options: CreateMissionControlCont
       return active?.view.isAlternateBufferActive() ?? false;
     },
     render(width: number): string[] {
-      if (activePanel !== undefined) {
-        if (activePanel.id === "fleet-menu" || activePanel.id === "carrier-roster") {
-          return normalizeRenderedRows(renderMissionControl(width, {
-            cliOptions,
-            lastExit,
-            loadedCounts: options.loadedCounts,
-            optionDrawer: options.sessionOptions ? { saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
-            panelLines: activePanel.component.render(width),
-            release,
-            selectedCliId,
-            state,
-          }), rows);
-        }
-        return normalizeRenderedRows(activePanel.component.render(width), rows);
-      }
       if (state === "active" && active !== undefined) {
         return normalizeRenderedRows(active.view.render(width), rows);
       }
-      return normalizeRenderedRows(renderMissionControl(width, {
+      if (activePanel === undefined) {
+        openLauncherRoot();
+      }
+      if (activePanel !== undefined) {
+        return fitMissionControlRows(renderMissionControl(width, {
+          bannerPhase: getBannerPhase(),
+          cliOptions,
+          lastExit,
+          loadedCounts: options.loadedCounts,
+          panelLines: activePanel.component.render(width),
+          release,
+          selectedCliId,
+          state,
+        }), rows);
+      }
+      return fitMissionControlRows(renderMissionControl(width, {
+        bannerPhase: getBannerPhase(),
         cliOptions,
-        editingModel,
         lastExit,
         loadedCounts: options.loadedCounts,
-        optionDrawer: options.sessionOptions ? { saveError, selectedRow: drawerRow, resolved: options.sessionOptions.getResolved() } : undefined,
-        overlay,
         release,
         selectedCliId,
         state,
@@ -142,6 +160,7 @@ export function createMissionControlController(options: CreateMissionControlCont
     getMouseProtocol: () => active?.host.getMouseProtocol?.() ?? EMPTY_MOUSE_PROTOCOL_STATE,
     kill(): void {
       suppressNextExit = true;
+      stopShimmer();
       active?.host.kill();
       active = undefined;
     },
@@ -152,21 +171,26 @@ export function createMissionControlController(options: CreateMissionControlCont
     },
     start(): void {},
     write(data: string): void {
-      if (activePanel !== undefined) {
-        activePanel.component.handleInput?.(data);
-        return;
-      }
       if (state === "active" && active !== undefined) {
         active.host.write(data);
         return;
       }
-      handleControlInput(data);
+      if (activePanel === undefined) {
+        openLauncherRoot();
+      }
+      if (activePanel !== undefined) {
+        activePanel.component.handleInput?.(data);
+        return;
+      }
     },
   };
+
+  startShimmer();
 
   return {
     closePanel,
     component,
+    dispose,
     getActiveProfile: () => active?.profile,
     getState: () => ({ cliId: selectedCliId, kind: state, lastExit }),
     hasActivePanel: () => activePanel !== undefined,
@@ -213,6 +237,7 @@ export function createMissionControlController(options: CreateMissionControlCont
 
     state = "launching";
     lastExit = undefined;
+    startShimmer();
     options.onRenderRequest();
     try {
       const launchOptions = options.sessionOptions?.getDraft();
@@ -223,6 +248,7 @@ export function createMissionControlController(options: CreateMissionControlCont
       const view = (options.createPtyView ?? ((viewCols, viewRows) => new PtyView(viewCols, viewRows)))(cols, rows);
       active = { host, profile, view };
       state = "active";
+      stopShimmer();
       suppressNextExit = false;
       host.onData((chunk) => view.append(chunk, options.onRenderRequest));
       host.onExit((event) => {
@@ -233,261 +259,92 @@ export function createMissionControlController(options: CreateMissionControlCont
         active = undefined;
         lastExit = event;
         state = isFailedExit(event) ? "failed" : "ended";
+        startShimmer();
         options.onRenderRequest();
       });
       host.start({ cols, rows });
+      closePanel();
     } catch {
       active = undefined;
       state = "failed";
+      startShimmer();
     } finally {
       options.onRenderRequest();
     }
   }
 
-  function handleControlInput(data: string): void {
-    if (state === "launching") {
-      return;
-    }
-
-    if (editingModel !== undefined) {
-      handleModelEditInput(data);
-      return;
-    }
-
-    if (overlay !== undefined) {
-      handleOverlayInput(data);
-      return;
-    }
-
-    if (data === "o" && options.sessionOptions !== undefined) {
-      overlay = "options";
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === "m") {
-      openFleetMenu();
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === "C") {
-      openCarrierRoster();
-      options.onRenderRequest();
-      return;
-    }
-
-    if (matchesKey(data, "right") && options.sessionOptions !== undefined) {
-      editingModel = options.sessionOptions.getDraft().model ?? "";
-      options.onRenderRequest();
-      return;
-    }
-
-    const nextCliId = resolveNextCliId(data, selectedCliId, cliOptions);
-    if (nextCliId !== undefined) {
-      selectedCliId = nextCliId;
-      options.sessionOptions?.selectCli(nextCliId);
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === ACTION_KEYS.choose) {
-      state = "idle";
-      lastExit = undefined;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === ACTION_KEYS.exit) {
-      options.onExitFleet();
-      return;
-    }
-
-    if (matchesKey(data, "enter") || data === ACTION_KEYS.relaunch) {
-      void launchSelected();
-    }
-  }
-
-  function handleOverlayInput(data: string): void {
-    if (matchesKey(data, "escape")) {
-      overlay = undefined;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (matchesKey(data, "up") || data === ACTION_KEYS.vimUp) {
-      drawerRow = (drawerRow + OPTION_DRAWER_ROW_COUNT - 1) % OPTION_DRAWER_ROW_COUNT;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (matchesKey(data, "down") || data === ACTION_KEYS.vimDown) {
-      drawerRow = (drawerRow + 1) % OPTION_DRAWER_ROW_COUNT;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === " ") {
-      updateDrawerRowBySpace();
-      saveError = undefined;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === "S") {
-      saveError = undefined;
-      options.onRenderRequest();
-      void options.sessionOptions?.saveDraft()
-        .then(() => {
-          saveError = undefined;
-          options.onRenderRequest();
-        })
-        .catch((error: unknown) => {
-          saveError = formatSaveError(error);
-          options.onRenderRequest();
-        });
-      return;
-    }
-
-    if (data === "R") {
-      options.sessionOptions?.resetOverrides();
-      saveError = undefined;
-      options.onRenderRequest();
-    }
-  }
-
-  function handleModelEditInput(data: string): void {
-    const currentModelInput = editingModel;
-    if (currentModelInput === undefined) {
-      return;
-    }
-
-    if (matchesKey(data, "escape")) {
-      editingModel = undefined;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (isEnterInput(data)) {
-      options.sessionOptions?.setModel(currentModelInput.length > 0 ? currentModelInput : undefined);
-      editingModel = undefined;
-      saveError = undefined;
-      options.onRenderRequest();
-      return;
-    }
-
-    if (data === "\x7f" || data === "\b") {
-      editingModel = currentModelInput.slice(0, -1);
-      options.onRenderRequest();
-      return;
-    }
-
-    if (isPrintableInput(data)) {
-      editingModel = `${currentModelInput}${data}`;
-      options.onRenderRequest();
-    }
-  }
-
-  function updateDrawerRowBySpace(): void {
-    switch (drawerRow) {
-      case 0:
-        options.sessionOptions?.toggleNative();
-        return;
-      case 1:
-        cycleSystemPrompt();
-        return;
-      case 2:
-        options.sessionOptions?.toggleEnableMetaphor();
-        return;
-      case 3:
-        options.sessionOptions?.toggleCursorSync();
-        return;
-      default:
-        return;
-    }
-  }
-
-  function cycleSystemPrompt(): void {
-    const draft = options.sessionOptions?.getDraft();
-    if (draft === undefined) {
-      return;
-    }
-
-    if (draft.native) {
-      options.sessionOptions?.toggleNative();
-      if (draft.replaceSystemPrompt) {
-        options.sessionOptions?.toggleReplaceSystemPrompt();
-      }
-      return;
-    }
-
-    if (!draft.replaceSystemPrompt) {
-      options.sessionOptions?.toggleReplaceSystemPrompt();
-      return;
-    }
-
-    options.sessionOptions?.toggleNative();
-  }
-
   function handlePanelOrControlInput(data: string): void {
+    if (activePanel === undefined) {
+      openLauncherRoot();
+    }
     if (activePanel !== undefined) {
       activePanel.component.handleInput?.(data);
       return;
     }
-
-    handleControlInput(data);
   }
 
-  function openFleetMenu(): void {
+  function openLauncherRoot(): void {
     let stack: PanelStack;
-    const root = createFleetMenuRoot({
+    const root = createLauncherRoot({
       getStack: () => stack,
       onRenderRequest: options.onRenderRequest,
       openItem: (index) => {
-        const currentStack = stack;
         if (index === 0) {
-          currentStack.push(createAuthPanel({
-            authService: options.authService,
+          stack.push(createStartPanel({
+            cliOptions,
+            launchSelected,
             onRenderRequest: options.onRenderRequest,
-            stack: currentStack,
+            selectedCliId: () => selectedCliId,
+            sessionOptions: options.sessionOptions,
+            setSelectedCliId: (cliId) => {
+              selectedCliId = cliId;
+              options.sessionOptions?.selectCli(cliId);
+              options.onRenderRequest();
+            },
+            stack,
           }));
           return;
         }
         if (index === 1) {
-          currentStack.push(createWikiPanel({
-            cwd: options.invocationCwd ?? process.cwd(),
-            onRenderRequest: options.onRenderRequest,
-            stack: currentStack,
-            wiki: options.wikiController,
-          }));
+          openCarrierRoster();
           return;
         }
         if (index === 2) {
-          currentStack.push(createDiagnosticsPanel({
+          stack.push(createOptionsPanel({
+            onRenderRequest: options.onRenderRequest,
+            sessionOptions: options.sessionOptions,
+          }));
+          return;
+        }
+        if (index === 3) {
+          stack.push(createSystemMenuPanel({
+            authService: options.authService,
+            counts: options.loadedCounts,
             cwd: options.invocationCwd ?? process.cwd(),
             env: options.env ?? process.env,
+            getRelease: () => release,
+            getStack: () => stack,
             onPresetReset: () => {
               options.sessionOptions?.resetOverrides();
             },
             onRenderRequest: options.onRenderRequest,
             presetService: options.presetService,
-            stack: currentStack,
+            wikiController: options.wikiController,
           }));
           return;
         }
-        currentStack.push(createAboutPanel({
-          counts: options.loadedCounts,
-          getRelease: () => release,
-          stack: currentStack,
-        }));
+        options.onExitFleet();
       },
+      loadedCounts: options.loadedCounts,
+      onExitFleet: options.onExitFleet,
+      release: () => release,
     });
     stack = createPanelStack({
       root,
-      onEmpty: closePanel,
+      onEmpty: () => {},
       onRenderRequest: options.onRenderRequest,
     });
-    openPanel({ component: stack.component, id: "fleet-menu" });
+    activePanel = { component: stack.component, id: "launcher-root" };
   }
 
   function openCarrierRoster(): void {
@@ -516,102 +373,368 @@ export function createMissionControlController(options: CreateMissionControlCont
       active.host.write(data);
     }
   }
+
+  function dispose(): void {
+    stopShimmer();
+    const panel = activePanel;
+    activePanel = undefined;
+    panel?.dispose?.();
+  }
+
+  function getBannerPhase(): number {
+    return state === "active" ? 0 : shimmerPhase;
+  }
+
+  function startShimmer(): void {
+    if (options.shimmer?.enabled === false || state === "active" || shimmerTimer !== undefined) {
+      return;
+    }
+
+    const setShimmerInterval = options.shimmer?.setInterval ?? setInterval;
+    shimmerTimer = setShimmerInterval(() => {
+      if (state === "active") {
+        stopShimmer();
+        return;
+      }
+      shimmerPhase += DEFAULT_SHIMMER_PHASE_STEP;
+      options.onRenderRequest();
+    }, options.shimmer?.intervalMs ?? DEFAULT_SHIMMER_INTERVAL_MS);
+    shimmerTimer.unref?.();
+  }
+
+  function stopShimmer(): void {
+    if (shimmerTimer === undefined) {
+      return;
+    }
+    const timer = shimmerTimer;
+    shimmerTimer = undefined;
+    const clearShimmerInterval = options.shimmer?.clearInterval ?? clearDefaultShimmerInterval;
+    clearShimmerInterval(timer);
+  }
 }
 
-function createFleetMenuRoot(options: {
+function clearDefaultShimmerInterval(timer: MissionControlShimmerTimer): void {
+  clearInterval(timer as ReturnType<typeof setInterval>);
+}
+
+function createLauncherRoot(options: {
   readonly getStack: () => PanelStack;
+  readonly loadedCounts: CreateMissionControlControllerOptions["loadedCounts"];
   readonly onRenderRequest: () => void;
+  readonly onExitFleet: () => void;
   readonly openItem: (index: number) => void;
+  readonly release: () => CreateMissionControlControllerOptions["release"];
 }): MenuPanel {
-  let selectedIndex = 0;
+  return createActionListPanel({
+    id: "mission-control:launcher-root",
+    title: "Mission Control",
+    breadcrumbs: () => options.getStack().breadcrumbs(),
+    footer: "↑↓ select  Enter open",
+    statusLines: () => formatLauncherStatusLines(options.loadedCounts, options.release()),
+    actions: LAUNCHER_ITEMS.map((label, index) => ({
+      id: label.toLowerCase().replaceAll(" ", "-"),
+      label,
+      run: () => {
+        if (label === "Exit Fleet") {
+          options.onExitFleet();
+          return;
+        }
+        options.openItem(index);
+        options.onRenderRequest();
+      },
+    })),
+  });
+}
+
+function createStartPanel(options: StartPanelOptions): MenuPanel {
+  let selected = Math.max(0, options.cliOptions.findIndex((entry) => entry.id === options.selectedCliId()));
+
   return {
-    id: "fleet-menu:root",
-    title: "Fleet Menu",
+    id: "mission-control:start",
+    title: "Start",
     handleInput(data: string): boolean {
+      selected = clampIndex(selected, options.cliOptions.length);
       if (isUp(data)) {
-        selectedIndex = moveMenuSelection(selectedIndex, -1);
+        selected = moveIndex(selected, options.cliOptions.length, -1);
         return true;
       }
       if (isDown(data)) {
-        selectedIndex = moveMenuSelection(selectedIndex, 1);
+        selected = moveIndex(selected, options.cliOptions.length, 1);
         return true;
       }
+      const entry = options.cliOptions[selected];
+      if (entry === undefined) {
+        return false;
+      }
       if (isEnter(data)) {
-        options.openItem(selectedIndex);
+        options.setSelectedCliId(entry.id);
+        void options.launchSelected();
+        return true;
+      }
+      if (isRight(data) && options.sessionOptions !== undefined) {
+        options.setSelectedCliId(entry.id);
+        openStartModelOverride(options, entry);
         return true;
       }
       return false;
     },
     render({ width }): readonly string[] {
-      return renderFleetMenuPanel(width, options.getStack().breadcrumbs(), selectedIndex);
+      selected = clampIndex(selected, options.cliOptions.length);
+      return [
+        "",
+        centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(options.stack.breadcrumbs())), width),
+        centerText(MISSION_CONTROL_THEME.accent("Start"), width),
+        "",
+        ...options.cliOptions.map((entry, index) => centerText(formatStartCliRow(entry, index === selected, options.sessionOptions), width)),
+        "",
+        centerText(MISSION_CONTROL_THEME.dim("↑↓ select  Enter launch  → model  Esc back"), width),
+      ];
     },
   };
 }
 
-function renderFleetMenuPanel(width: number, breadcrumbs: readonly string[], selectedIndex: number): string[] {
-  const breadcrumbLines = breadcrumbs.length > 1
-    ? ["", centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(breadcrumbs)), width)]
-    : [];
-  return [
-    ...breadcrumbLines,
-    centerText(MISSION_CONTROL_THEME.accent("Fleet Menu"), width),
-    "",
-    ...renderFleetMenuRows(selectedIndex).map((row) => centerText(row, width)),
-    "",
-    centerText(MISSION_CONTROL_THEME.dim("Enter open  Esc close"), width),
-  ];
+function openStartModelOverride(options: StartPanelOptions, entry: MissionControlCliOption): void {
+  options.stack.push(createInputModal({
+    title: `${entry.label} Model Override`,
+    message: "Set model override for the next launch.",
+    mode: "text",
+    initialValue: options.sessionOptions?.getDraft().model ?? "",
+    onRenderRequest: options.onRenderRequest,
+    placeholder: "default",
+    onCancel: () => {
+      options.stack.pop();
+    },
+    onSubmit: (value) => {
+      options.sessionOptions?.setModel(value.trim().length > 0 ? value.trim() : undefined);
+      options.stack.pop();
+    },
+  }));
 }
 
-function renderFleetMenuRows(selectedIndex: number): string[] {
-  const labelWidth = Math.max(...FLEET_MENU_ITEMS.map((item) => item.length));
-  return FLEET_MENU_ITEMS.map((item, index) => `${index === selectedIndex ? "▸" : " "} ${item.padEnd(labelWidth)}`);
+function formatStartCliRow(
+  entry: MissionControlCliOption,
+  selected: boolean,
+  sessionOptions: CreateMissionControlControllerOptions["sessionOptions"],
+): string {
+  const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
+  const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(entry.label)) : entry.label;
+  const model = sessionOptions?.getDraft().model;
+  const detail = model === undefined ? "" : MISSION_CONTROL_THEME.dim(`  model ${model}`);
+  return `${marker} ${label}${detail}`;
 }
 
-function moveMenuSelection(index: number, delta: -1 | 1): number {
-  return (index + delta + FLEET_MENU_ITEMS.length) % FLEET_MENU_ITEMS.length;
+function isRight(data: string): boolean {
+  return data === "\x1b[C" || data === "\x1bOC";
 }
 
-function resolveNextCliId(
-  data: string,
-  selectedCliId: AgentCliId,
-  cliOptions: readonly MissionControlCliOption[],
-): AgentCliId | undefined {
-  const indexedCliId = parseCliOptionKey(data, cliOptions);
-  if (indexedCliId !== undefined) {
-    return indexedCliId;
+function clampIndex(index: number, length: number): number {
+  if (length <= 0) {
+    return 0;
   }
-
-  if (matchesKey(data, "up") || data === ACTION_KEYS.vimUp) {
-    return moveSelection(selectedCliId, cliOptions, -1);
-  }
-
-  if (matchesKey(data, "down") || data === ACTION_KEYS.vimDown) {
-    return moveSelection(selectedCliId, cliOptions, 1);
-  }
-
-  return undefined;
+  return Math.min(index, length - 1);
 }
 
-function parseCliOptionKey(data: string, cliOptions: readonly MissionControlCliOption[]): AgentCliId | undefined {
-  if (!/^[1-9]$/.test(data)) {
-    return undefined;
-  }
-
-  return cliOptions[Number(data) - 1]?.id;
+function moveIndex(index: number, length: number, delta: -1 | 1): number {
+  return length === 0 ? 0 : (index + delta + length) % length;
 }
 
-function moveSelection(
-  selectedCliId: AgentCliId,
-  cliOptions: readonly MissionControlCliOption[],
-  delta: -1 | 1,
-): AgentCliId | undefined {
-  if (cliOptions.length === 0) {
-    return undefined;
+function createOptionsPanel(options: {
+  readonly onRenderRequest: () => void;
+  readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
+}): MenuPanel {
+  let saveError = "";
+
+  return createActionListPanel({
+    id: "mission-control:options",
+    title: "Options",
+    footer: "↑↓ select  Enter apply  Esc back",
+    statusLines: () => [
+      ...(options.sessionOptions === undefined ? [MISSION_CONTROL_THEME.dim("Session options are unavailable.")] : []),
+      ...(saveError.length > 0 ? [MISSION_CONTROL_THEME.error(`Save failed: ${saveError}`)] : []),
+    ],
+    actions: () => [
+      {
+        id: "mode",
+        label: "Mode",
+        detail: options.sessionOptions?.getResolved().values.native ? "Native" : "Fleet prompt",
+        run: () => {
+          options.sessionOptions?.toggleNative();
+          options.onRenderRequest();
+        },
+      },
+      {
+        id: "system-prompt",
+        label: "System prompt",
+        detail: formatSystemPromptOption(options.sessionOptions),
+        run: () => {
+          cycleSystemPromptRuntime(options.sessionOptions);
+          options.onRenderRequest();
+        },
+      },
+      {
+        id: "metaphor",
+        label: "Metaphor",
+        detail: options.sessionOptions?.getResolved().values.enableMetaphor ? "Enabled" : "Off",
+        run: () => {
+          options.sessionOptions?.toggleEnableMetaphor();
+          options.onRenderRequest();
+        },
+      },
+      {
+        id: "cursor-sync",
+        label: "Cursor sync",
+        detail: options.sessionOptions?.getResolved().values.cursorSync ? "Enabled" : "Off",
+        run: () => {
+          options.sessionOptions?.toggleCursorSync();
+          options.onRenderRequest();
+        },
+      },
+      {
+        id: "save-defaults",
+        label: "Save defaults",
+        run: () => {
+          saveError = "";
+          options.onRenderRequest();
+          void options.sessionOptions?.saveDraft()
+            .then(() => {
+              saveError = "";
+              options.onRenderRequest();
+            })
+            .catch((error: unknown) => {
+              saveError = formatSaveError(error);
+              options.onRenderRequest();
+            });
+        },
+      },
+      {
+        id: "reset-overrides",
+        label: "Reset overrides",
+        run: () => {
+          options.sessionOptions?.resetOverrides();
+          options.onRenderRequest();
+        },
+      },
+    ],
+  });
+}
+
+function createSystemMenuPanel(options: SystemMenuPanelOptions): MenuPanel {
+  return createActionListPanel({
+    id: "mission-control:system-menu",
+    title: "System Menu",
+    breadcrumbs: () => options.getStack().breadcrumbs(),
+    footer: "↑↓ select  Enter open  Esc back",
+    actions: () => [
+      {
+        id: "auth",
+        label: "Authentication",
+        run: () => {
+          const stack = options.getStack();
+          stack.push(createAuthPanel({
+            authService: options.authService,
+            onRenderRequest: options.onRenderRequest,
+            stack,
+          }));
+        },
+      },
+      {
+        id: "wiki",
+        label: "Wiki Server",
+        run: () => {
+          const stack = options.getStack();
+          stack.push(createWikiPanel({
+            cwd: options.cwd,
+            onRenderRequest: options.onRenderRequest,
+            stack,
+            wiki: options.wikiController,
+          }));
+        },
+      },
+      {
+        id: "diagnostics",
+        label: "Diagnostics",
+        run: () => {
+          const stack = options.getStack();
+          stack.push(createDiagnosticsPanel({
+            cwd: options.cwd,
+            env: options.env,
+            onPresetReset: options.onPresetReset,
+            onRenderRequest: options.onRenderRequest,
+            presetService: options.presetService,
+            stack,
+          }));
+        },
+      },
+      {
+        id: "about",
+        label: "About",
+        run: () => {
+          const stack = options.getStack();
+          stack.push(createAboutPanel({
+            counts: options.counts,
+            getRelease: options.getRelease,
+            stack,
+          }));
+        },
+      },
+    ],
+  });
+}
+
+function formatLauncherStatusLines(
+  counts: CreateMissionControlControllerOptions["loadedCounts"],
+  release: CreateMissionControlControllerOptions["release"],
+): string[] {
+  const segments: string[] = [];
+  if (counts !== undefined) {
+    segments.push(`${MISSION_CONTROL_THEME.success("✓")} ${counts.carriers} ${MISSION_CONTROL_THEME.dim(`carrier${counts.carriers === 1 ? "" : "s"}`)}`);
+    segments.push(`${MISSION_CONTROL_THEME.success("✓")} ${counts.wikiEntries} ${MISSION_CONTROL_THEME.dim(`wiki entr${counts.wikiEntries === 1 ? "y" : "ies"}`)}`);
+  }
+  if (release !== undefined && release.version.length > 0) {
+    const channel = release.channel === "stable" ? MISSION_CONTROL_THEME.success("stable") : MISSION_CONTROL_THEME.dim("local");
+    segments.push(`${MISSION_CONTROL_THEME.dim(`v${release.version}`)} ${MISSION_CONTROL_THEME.dim("·")} ${channel}`);
+  }
+  if (segments.length === 0) {
+    return [];
+  }
+  const lines = [segments.join(MISSION_CONTROL_THEME.dim(" · "))];
+  if (release?.latestVersion !== undefined && release.latestVersion !== release.version) {
+    lines.push(MISSION_CONTROL_THEME.warning("Update Available"));
+  }
+  return lines;
+}
+
+function formatSystemPromptOption(sessionOptions: CreateMissionControlControllerOptions["sessionOptions"]): string {
+  const values = sessionOptions?.getResolved().values;
+  if (values === undefined) {
+    return "Unavailable";
+  }
+  if (values.native) {
+    return "Native";
+  }
+  return values.replaceSystemPrompt ? "Replace" : "Append";
+}
+
+function cycleSystemPromptRuntime(sessionOptions: CreateMissionControlControllerOptions["sessionOptions"]): void {
+  const draft = sessionOptions?.getDraft();
+  if (draft === undefined) {
+    return;
   }
 
-  const currentIndex = Math.max(0, cliOptions.findIndex((entry) => entry.id === selectedCliId));
-  const nextIndex = (currentIndex + delta + cliOptions.length) % cliOptions.length;
-  return cliOptions[nextIndex]?.id;
+  if (draft.native) {
+    sessionOptions?.toggleNative();
+    if (draft.replaceSystemPrompt) {
+      sessionOptions?.toggleReplaceSystemPrompt();
+    }
+    return;
+  }
+
+  if (!draft.replaceSystemPrompt) {
+    sessionOptions?.toggleReplaceSystemPrompt();
+    return;
+  }
+
+  sessionOptions?.toggleNative();
 }
 
 function isFailedExit(event: PtyExitEvent): boolean {
@@ -627,15 +750,20 @@ function normalizeRenderedRows(lines: readonly string[], rows: number): string[]
   return normalized;
 }
 
-function isPrintableInput(data: string): boolean {
-  return data.length > 0 && [...data].every((char) => {
-    const code = char.codePointAt(0) ?? 0;
-    return code >= 0x20 && code !== 0x7f;
-  });
-}
-
-function isEnterInput(data: string): boolean {
-  return matchesKey(data, "enter") || data.charCodeAt(0) === 13 || data.charCodeAt(0) === 10;
+function fitMissionControlRows(lines: readonly string[], rows: number): string[] {
+  const targetRows = Math.max(0, Math.floor(rows));
+  if (lines.length >= targetRows) {
+    return lines.slice(0, targetRows);
+  }
+  const topPadding = Math.floor((targetRows - lines.length) / 2);
+  const normalized = [
+    ...Array.from({ length: topPadding }, () => ""),
+    ...lines,
+  ];
+  while (normalized.length < targetRows) {
+    normalized.push("");
+  }
+  return normalized;
 }
 
 function formatSaveError(error: unknown): string {

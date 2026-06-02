@@ -14,6 +14,8 @@ export interface CarrierStatusInputController {
   readonly handleRenameInput: (data: string) => void;
   readonly moveEditCursor: (delta: number) => void;
   readonly moveSelection: (delta: number) => void;
+  readonly openActions: () => void;
+  readonly runAction: () => void;
   readonly openTaskForce: () => void;
   readonly resetCliTypesToDefault: () => void;
   readonly startBatchCliFromEdit: () => void;
@@ -44,6 +46,8 @@ export function handleCarrierStatusOverlayInput(
   if (matchesKey(data, "escape")) {
     if (inputState.state.kind === "browse") {
       controller.done();
+    } else if (inputState.state.kind === "carrierActions" || inputState.state.kind === "rosterActions") {
+      controller.cancelEdit();
     } else {
       controller.cancelEdit();
     }
@@ -52,55 +56,26 @@ export function handleCarrierStatusOverlayInput(
 
   if (matchesKey(data, "up")) {
     if (inputState.state.kind === "browse") controller.moveSelection(-1);
+    else if (inputState.state.kind === "carrierActions" || inputState.state.kind === "rosterActions") controller.moveEditCursor(-1);
     else controller.moveEditCursor(-1);
     return;
   }
 
   if (matchesKey(data, "down")) {
     if (inputState.state.kind === "browse") controller.moveSelection(1);
+    else if (inputState.state.kind === "carrierActions" || inputState.state.kind === "rosterActions") controller.moveEditCursor(1);
     else controller.moveEditCursor(1);
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && data === "\t") {
-    controller.toggleDetails();
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && matchesKey(data, "t")) {
-    controller.openTaskForce();
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && data === "s") {
-    controller.toggleSubagentMode();
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && data === "c") {
-    controller.startCliTypeEdit();
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && data === "N") {
-    controller.startRenameEdit();
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && data === "C") {
-    controller.startBatchCliFromEdit();
-    return;
-  }
-
-  if (inputState.state.kind === "browse" && data === "R") {
-    controller.resetCliTypesToDefault();
     return;
   }
 
   if (!matchesKey(data, "enter")) return;
   switch (inputState.state.kind) {
     case "browse":
-      controller.startModelEdit();
+      controller.openActions();
+      return;
+    case "carrierActions":
+    case "rosterActions":
+      controller.runAction();
       return;
     case "model":
       controller.confirmModelEdit();

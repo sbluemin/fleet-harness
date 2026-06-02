@@ -3,7 +3,7 @@ import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { isEnter, isEscape, isPrintable, type MenuPanel } from "./panel-stack.js";
 
-export type InputModalMode = "text" | "password" | "numeric" | "confirm";
+export type InputModalMode = "text" | "password" | "numeric";
 
 export interface InputModalOptions {
   readonly title: string;
@@ -31,17 +31,6 @@ export function createInputModal(options: InputModalOptions): MenuPanel {
       }
       if (isEscape(data)) {
         options.onCancel();
-        return true;
-      }
-      if (options.mode === "confirm") {
-        if (data === "y" || data === "Y") {
-          void submit("yes");
-          return true;
-        }
-        if (data === "n" || data === "N") {
-          options.onCancel();
-          return true;
-        }
         return true;
       }
       if (isEnter(data)) {
@@ -72,15 +61,11 @@ export function createInputModal(options: InputModalOptions): MenuPanel {
         centerText(truncateToWidth(options.message, Math.max(0, width)), width),
         "",
       ];
-      if (options.mode === "confirm") {
-        lines.push(centerText(MISSION_CONTROL_THEME.warning("Y confirm  N cancel  Esc cancel"), width));
-      } else {
-        lines.push(centerText(display, width));
-        if (error !== undefined) {
-          lines.push("", centerText(MISSION_CONTROL_THEME.error(error), width));
-        }
-        lines.push("", centerText(MISSION_CONTROL_THEME.dim("Enter submit  Backspace delete  Esc cancel"), width));
+      lines.push(centerText(display, width));
+      if (error !== undefined) {
+        lines.push("", centerText(MISSION_CONTROL_THEME.error(error), width));
       }
+      lines.push("", centerText(MISSION_CONTROL_THEME.dim("Enter submit  Backspace delete  Esc cancel"), width));
       if (submitting) {
         lines.push("", centerText(MISSION_CONTROL_THEME.dim("Working..."), width));
       }

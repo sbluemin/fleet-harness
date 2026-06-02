@@ -11,6 +11,7 @@ import {
   readCarriersSnapshot,
   resetTaskForceModelSelection,
   setCarrierAgentModeWithCodexRole,
+  setCarrierAgentMode,
   setTaskForceConfiguredCarriers,
   updateTaskForceModelSelection,
   type CarrierRuntime,
@@ -18,7 +19,6 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
 import {
-  PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
 } from "../../styles/carriers.js";
 import {
@@ -49,10 +49,11 @@ export interface TaskForceOverlayOptions {
   readonly theme: FleetPtyTheme;
 }
 
-type TaskForceMode = "browse" | "effort" | "model" | "saving";
+type TaskForceMode = "actions" | "browse" | "effort" | "model" | "saving";
 
 interface TaskForceCellLine {
   readonly bg?: string;
+  readonly selected?: boolean;
   readonly text: string;
 }
 
@@ -99,14 +100,14 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       return;
     }
 
-    if (this.mode === "browse" && data === "r") {
-      this.resetSelectedBackend();
-      return;
-    }
-
     if (!matchesKey(data, "enter")) return;
     if (this.mode === "browse") {
-      this.startModelEdit();
+      this.mode = "actions";
+      this.editCursor = 0;
+      this.feedbackMessage = null;
+      this.options.requestRender();
+    } else if (this.mode === "actions") {
+      this.runAction();
     } else if (this.mode === "model") {
       this.confirmModelEdit();
     } else if (this.mode === "effort") {
@@ -135,7 +136,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       body.push({
         kind: "cell",
         line: {
-          bg: isSelected ? PROVIDER_BG_ANSI_COLORS[entry.cliType] : undefined,
+          selected: isSelected,
           text: withIndent(this.renderEntryLine(entry, isSelected)),
         },
       });
@@ -146,7 +147,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
           const model = models[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = model.modelId === entry.model ? "●" : "○";
-          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${model.name ?? model.modelId}`));
+          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${model.name ?? model.modelId}`, j === this.editCursor));
         }
       }
 
@@ -156,7 +157,17 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
           const level = effortLevels[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = level === (entry.effort ?? "") ? "●" : "○";
-          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${level}`));
+          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${level}`, j === this.editCursor));
+        }
+      }
+
+      if (isSelected && this.mode === "actions") {
+        const actions = this.getSelectedActions(entry);
+        body.push(toIndentedCellLine(`      ${ANSI_ACCENT}Backend Actions${ANSI_RESET}`));
+        for (let j = 0; j < actions.length; j++) {
+          const action = actions[j]!;
+          const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
+          body.push(toIndentedCellLine(`      ${cursor} ${action}`, j === this.editCursor));
         }
       }
     }
@@ -168,7 +179,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     }
 
     body.push({ kind: "center", text: this.options.theme.dim(this.getFooterHint()) });
-    return renderDisplayLines(body, width);
+    return renderDisplayLines(body, width, this.options.theme);
   }
 
   private buildBackendEntries(): TaskForceEntry[] {
@@ -204,6 +215,24 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     if (options.length === 0) return;
     this.editCursor = (this.editCursor + delta + options.length) % options.length;
     this.feedbackMessage = null;
+    this.options.requestRender();
+  }
+
+  private runAction(): void {
+    const entry = this.getSelectedEntry();
+    if (!entry) return;
+    const actions = this.getSelectedActions(entry);
+    const action = actions[this.editCursor];
+    this.mode = "browse";
+    this.editCursor = 0;
+    if (action === "Edit Model") {
+      this.startModelEdit();
+      return;
+    }
+    if (action === "Reset to Origin") {
+      this.resetSelectedBackend();
+      return;
+    }
     this.options.requestRender();
   }
 
@@ -288,6 +317,9 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
 
     this.mode = "saving";
     this.options.requestRender();
+    const config = getCarrierConfig(this.options.carrierRuntime.registry, this.options.carrierId);
+    const wasSubagent = config ? isCarrierAgentModeSubagent(this.options.carrierId, config.defaultAgentMode) : false;
+    const previousDefaultAgentMode = config?.defaultAgentMode;
     try {
       updateTaskForceModelSelection(this.options.carrierId, entry.cliType, normalizedSelection);
       const disabledSubagent = this.disableSubagentModeForTaskForceCommit();
@@ -296,6 +328,12 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
         ? `경고: ${this.options.carrierDisplayName} Native(SubAgent)를 해제하고 ${entry.displayName} Task Force 설정을 저장했습니다.`
         : `${entry.displayName} 설정을 저장했습니다.`;
     } catch (error) {
+      if (wasSubagent) {
+        if (config !== undefined) {
+          config.defaultAgentMode = previousDefaultAgentMode;
+        }
+        setCarrierAgentMode(this.options.carrierId, true);
+      }
       this.feedbackMessage = `저장 실패: ${errorMessage(error)}`;
     } finally {
       this.resetEditState();
@@ -417,6 +455,9 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
   }
 
   private getEditOptions(entry: TaskForceEntry): Array<{ value: string }> {
+    if (this.mode === "actions") {
+      return this.getSelectedActions(entry).map((label) => ({ value: label }));
+    }
     if (this.mode === "model") {
       return this.getAvailableModels(entry.cliType).models.map((model) => ({ value: model.modelId }));
     }
@@ -428,7 +469,8 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
 
   private getFooterHint(): string {
     if (this.mode === "saving") return "저장 중...";
-    if (this.mode === "browse") return "↑↓ select  Enter edit  r reset  Esc back";
+    if (this.mode === "browse") return "↑↓ select  Enter actions  Esc back";
+    if (this.mode === "actions") return "↑↓ select  Enter run  Esc back";
     return "↑↓ select  Enter confirm  Esc cancel";
   }
 
@@ -440,6 +482,10 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     this.mode = "browse";
     this.pendingModelId = null;
     this.editCursor = 0;
+  }
+
+  private getSelectedActions(entry: TaskForceEntry): readonly string[] {
+    return entry.isCustom ? ["Edit Model", "Reset to Origin"] : ["Edit Model"];
   }
 }
 
@@ -470,7 +516,7 @@ function clampOverlayRows(maxRows: number, cardRows: number): number {
   return Math.min(Math.max(0, maxRows), Math.max(0, cardRows));
 }
 
-function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: number): string[] {
+function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: number, theme: FleetPtyTheme): string[] {
   const cellWidth = resolveCellWidth(lines);
   return lines.map((line) => {
     if (line.kind === "blank") {
@@ -479,7 +525,7 @@ function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: numbe
     if (line.kind === "center") {
       return centerText(line.text, width);
     }
-    return centerText(renderCellLine(line.line, cellWidth), width);
+    return centerText(renderCellLine(line.line, cellWidth, theme), width);
   });
 }
 
@@ -490,20 +536,23 @@ function resolveCellWidth(lines: readonly TaskForceDisplayLine[]): number {
   return Math.max(MIN_CELL_WIDTH, ...lineWidths);
 }
 
-function renderCellLine(line: TaskForceCellLine, cellWidth: number): string {
+function renderCellLine(line: TaskForceCellLine, cellWidth: number, theme: FleetPtyTheme): string {
   const padded = padEndVisible(truncateToWidth(line.text, cellWidth), cellWidth);
+  if (line.selected) {
+    return theme.bg("selected", padded);
+  }
   return applyLineBg(padded, line.bg);
 }
 
-function toCellLine(text: string): TaskForceDisplayLine {
+function toCellLine(text: string, selected = false): TaskForceDisplayLine {
   return {
     kind: "cell",
-    line: { text },
+    line: { selected, text },
   };
 }
 
-function toIndentedCellLine(text: string): TaskForceDisplayLine {
-  return toCellLine(withIndent(text));
+function toIndentedCellLine(text: string, selected = false): TaskForceDisplayLine {
+  return toCellLine(withIndent(text), selected);
 }
 
 function withIndent(text: string): string {

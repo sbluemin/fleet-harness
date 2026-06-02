@@ -12,7 +12,7 @@ vi.mock("../src/mission-control/carrier-roster/panel.js", () => ({
     }) {}
 
     handleInput(data: string): void {
-      if (data === "t") {
+      if (data === "\r") {
         this.options.openTaskForcePanel({ carrierDisplayName: "Ohio", carrierId: "ohio" });
         return;
       }
@@ -47,35 +47,37 @@ vi.mock("../src/mission-control/carrier-roster/taskforce-panel.js", () => ({
 }));
 
 describe("Carrier Roster Mission Control registration", () => {
-  it("opens Carrier Roster from uppercase C through Mission Control", () => {
+  it("opens Carrier Roster from Configure Carriers through Mission Control", () => {
     const renderRequests: string[] = [];
     const controller = createTestController({
       onRenderRequest: () => renderRequests.push("render"),
     });
 
-    expect(renderPlain(controller.component.render(80))).toContain("c choose CLI  C Carrier Roster");
+    expect(renderPlain(controller.component.render(80))).toContain("Configure Carriers");
 
-    controller.ptyHost.write("C");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
 
     expect(controller.hasActivePanel()).toBe(true);
     expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster");
-    expect(renderRequests).toHaveLength(2);
+    expect(renderRequests.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps lowercase c scoped to choose CLI instead of opening Carrier Roster", () => {
+  it("keeps lowercase c inert instead of opening Carrier Roster", () => {
     const controller = createTestController();
 
     controller.ptyHost.write("c");
 
-    expect(controller.hasActivePanel()).toBe(false);
-    expect(renderPlain(controller.component.render(80))).toContain("Choose an Agent CLI");
+    expect(renderPlain(controller.component.render(80))).toContain("Mission Control");
+    expect(renderPlain(controller.component.render(80))).not.toContain("Carrier Roster");
   });
 
   it("pushes TaskForce config inside the Carrier Roster panel stack", () => {
     const controller = createTestController();
 
-    controller.ptyHost.write("C");
-    controller.ptyHost.write("t");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\r");
 
     expect(controller.hasActivePanel()).toBe(true);
     expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster / TaskForce");

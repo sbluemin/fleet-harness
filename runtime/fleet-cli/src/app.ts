@@ -206,7 +206,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     stopping = true;
     clearInterruptWarningTimer();
     missionBridge.jobBarState.setPendingExitWarning(false);
-    stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, missionBridge.dispose, runtimeLifecycle, agentCliCleanupCallbacks);
+    stopApp(ui, missionControl.dispose, missionControl.ptyHost, resize, disposeInputStream, missionBridge.dispose, runtimeLifecycle, agentCliCleanupCallbacks);
   };
   const requestInterrupt = () => {
     const now = Date.now();
@@ -386,6 +386,7 @@ function resolveInvocationCwd(): string {
 
 function stopApp(
   ui: LocalTui,
+  disposeMissionControl: () => void,
   ptyHost: PtyHost,
   resize: () => void,
   disposeInputStream: () => void,
@@ -396,6 +397,7 @@ function stopApp(
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
   disposeInputStream();
+  disposeMissionControl();
   disposeMissionBridge();
   process.stdout.write(KITTY_DISABLE);
   ptyHost.kill();

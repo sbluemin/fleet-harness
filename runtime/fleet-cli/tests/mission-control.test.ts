@@ -5,7 +5,8 @@ import { createProgrammaticInput } from "../src/controls/index.js";
 import { visibleWidth, type Component, type PtyExitEvent, type PtyHost, type PtyLaunchProfile } from "../src/controls/index.js";
 import { createMissionControlController } from "../src/mission-control/controller.js";
 import { renderMissionControl } from "../src/mission-control/renderer.js";
-import type { MissionControlCliOption } from "../src/mission-control/types.js";
+import { buildFleetBanner, gradientLine } from "../src/mission-control/welcome.js";
+import type { MissionControlCliOption, MissionControlShimmerOptions, MissionControlShimmerTimer } from "../src/mission-control/types.js";
 import { getAgentCliMetadata, resolveAgentCliId } from "../src/agent-cli/registry.js";
 import type { AgentCliId, AgentCliProfile } from "../src/agent-cli/types.js";
 import { createWikiProcessController } from "../src/mission-control/menu/wiki-panel.js";
@@ -32,6 +33,13 @@ interface FakeAuthService {
   setApiKey(providerId: string, key: string): Promise<void>;
 }
 
+interface FakeShimmerTimer extends MissionControlShimmerTimer {
+  active: boolean;
+  readonly callback: () => void;
+  readonly intervalMs: number;
+  unrefCalls: number;
+}
+
 const TEST_PROFILE: AgentCliProfile = {
   args: [],
   bin: "test",
@@ -48,21 +56,30 @@ const CLI_OPTIONS = [
 ];
 const ALL_CLI_OPTIONS = getAgentCliMetadata();
 const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const RGB_ANSI_PATTERN = /\x1b\[38;2;(\d+);(\d+);(\d+)m/g;
 const RAW_ANSI_PATTERN = /\x1b/;
+const SELECTED_BG = "\x1b[48;2;45;55;70m";
 const LONG_ANSI_CJK_LABEL = "\x1b[1mClaude超長プロバイダー名終端ラベル\x1b[0m";
 const FLEET_BANNER_SAMPLE = "███████╗██╗     ███████╗███████╗████████╗";
 const TEST_ROWS = 24;
 
 describe("Mission Control controller", () => {
-  it("renders idle selection before launch", () => {
+  it("renders the launcher root before launch", () => {
     const controller = createTestController();
 
     expect(controller.getState().kind).toBe("idle");
-    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
-    expect(renderPlain(controller)).toContain("▸ 1. Claude");
-    expect(renderPlain(controller)).toContain("↑↓/j/k select  Enter start  c choose CLI  C Carrier Roster  → model  O options");
+    expect(renderPlain(controller)).toContain(FLEET_BANNER_SAMPLE);
+    expect(renderPlain(controller)).toContain("Mission Control");
+    expect(renderPlain(controller)).toContain("▸ Start");
+    expect(renderPlain(controller)).toContain("Configure Carriers");
+    expect(renderPlain(controller)).toContain("Options");
+    expect(renderPlain(controller)).toContain("System Menu");
+    expect(renderPlain(controller)).toContain("Exit Fleet");
+    expect(renderPlain(controller)).not.toContain(["Esc", "close"].join(" "));
+    expect(renderPlain(controller)).not.toContain("Esc back");
+    expect(renderPlain(controller)).not.toContain("Choose an Agent CLI");
+    expect(renderPlain(controller)).not.toMatch(/Carrier Roster shortcut/);
     expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;254;188;56m");
-    expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;255;149;0m");
   });
 
   it("blank-fills idle Mission Control output to the allocated rows", () => {
@@ -72,7 +89,7 @@ describe("Mission Control controller", () => {
     const lines = controller.component.render(80);
 
     expect(lines).toHaveLength(21);
-    expect(stripAnsi(lines.join("\n"))).toContain("Choose an Agent CLI");
+    expect(stripAnsi(lines.join("\n"))).toContain("Mission Control");
     expect(lines.at(-1)).toBe("");
   });
 
@@ -118,130 +135,180 @@ describe("Mission Control controller", () => {
     expect(plainOutput).toContain("stable");
   });
 
-  it("renders option chips without leaking CLI flag spellings", () => {
-    const lines = renderMissionControl(100, {
-      cliOptions: [{ id: "claude", label: "Claude", optionChips: ["Replace*", "opus-4-7", "Cursor off"] }],
-      lastExit: undefined,
-      loadedCounts: undefined,
-      release: undefined,
-      selectedCliId: "claude",
-      state: "idle",
-    });
-    const plainOutput = stripAnsi(lines.join("\n"));
+  it("smoothly shifts Fleet banner gradient phase right-to-left without changing visible width", () => {
+    const phaseZero = buildFleetBanner(80, 0);
+    const fractionalPhase = buildFleetBanner(80, 0.15);
+    const smoothSample = extractRgbColors(gradientLine("XXXXXXXXXXXX", 0));
+    const shiftedSample = extractRgbColors(gradientLine("XXXXXXXXXXXX", 0.15));
 
-    expect(plainOutput).toContain("Replace*");
-    expect(plainOutput).toContain("opus-4-7");
+    expect(phaseZero).toHaveLength(fractionalPhase.length);
+    expect(phaseZero.join("\n")).not.toBe(fractionalPhase.join("\n"));
+    expect(stripAnsi(phaseZero.join("\n"))).toBe(stripAnsi(fractionalPhase.join("\n")));
+    expect(fractionalPhase.every((line, index) => visibleWidth(line) === visibleWidth(phaseZero[index] ?? ""))).toBe(true);
+    expect(smoothSample[1]?.[1]).toBeGreaterThan(215);
+    expect(smoothSample[1]?.[1]).toBeLessThan(255);
+    expect(shiftedSample[0]?.[1]).toBeLessThan(smoothSample[0]?.[1] ?? 0);
+  });
+
+  it("anchors launcher status counts and update state above the root footer", () => {
+    const controller = createTestController({
+      loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
+      release: { channel: "stable", latestVersion: "0.23.0", version: "0.22.1" },
+    });
+    const output = renderPlain(controller);
+
+    expect(output).toContain("✓ 8 carriers");
+    expect(output).toContain("✓ 17 wiki entries");
+    expect(output).toContain("v0.22.1 · stable");
+    expect(output).toContain("Update Available");
+    expect(output.indexOf("Update Available")).toBeLessThan(output.indexOf("↑↓ select  Enter open"));
+  });
+
+  it("hides Start option chips without leaking CLI flag spellings", () => {
+    const controller = createTestController({
+      cliOptions: [{ id: "claude", label: "Claude", optionChips: ["Replace*", "opus-4-7", "Cursor off"] }],
+    });
+
+    openStart(controller);
+    const plainOutput = renderPlain(controller);
+
+    expect(plainOutput).toContain("Claude");
+    expect(plainOutput).not.toContain("[Replace* · opus-4-7 · Cursor off]");
+    expect(plainOutput).not.toContain("Replace*");
+    expect(plainOutput).not.toContain("opus-4-7");
     expect(plainOutput).not.toMatch(/-rsp|-em|--disable-cursor-sync|--native|-n/);
   });
 
-  it("opens options drawer and fleet menu from welcome without launching", () => {
+  it("opens Options and System Menu from the launcher without legacy root hotkeys", () => {
     const controller = createTestController({
       sessionOptions: createFakeSessionOptionsRuntime(),
     });
     controller.ptyView.resize(100, 24);
 
     controller.ptyHost.write("o");
+    expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("Mission Control");
+    expect(stripAnsi(controller.component.render(100).join("\n"))).not.toContain("Save defaults");
+    controller.ptyHost.write("m");
+    expect(stripAnsi(controller.component.render(100).join("\n"))).not.toContain("Mission Control / System Menu");
+
+    openOptions(controller);
     const optionsOutput = stripAnsi(controller.component.render(100).join("\n"));
     expect(optionsOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(optionsOutput).toContain("Options");
-    expect(optionsOutput).toContain("preset");
-    expect(optionsOutput).toContain("↑↓ select  Space toggle  S save  R reset  Esc close");
+    expect(optionsOutput).toContain("Save defaults");
+    expect(optionsOutput).toContain("↑↓ select  Enter apply  Esc back");
     controller.ptyHost.write("\x1b");
-    controller.ptyHost.write("m");
-    expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("Fleet Menu");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
+    expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("System Menu");
     expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("Authentication");
   });
 
-  it("renders fleet menu with one accent header and the full Fleet banner", () => {
+  it("renders System Menu with one accent header and the full Fleet banner", () => {
     const controller = createTestController();
     controller.ptyView.resize(100, 24);
 
-    controller.ptyHost.write("m");
+    openSystemMenu(controller);
     const output = controller.component.render(100).join("\n");
     const plainOutput = stripAnsi(output);
 
-    expect(countOccurrences(plainOutput, "Fleet Menu")).toBe(1);
+    expect(countOccurrences(plainOutput, "System Menu")).toBeGreaterThanOrEqual(1);
     expect(plainOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(plainOutput).not.toContain("███ FLEET ███");
-    expect(output).toContain("\x1b[38;2;254;188;56mFleet Menu\x1b[0m");
+    expect(output).toContain("\x1b[38;2;254;188;56mSystem Menu\x1b[0m");
   });
 
-  it("uses the full Fleet banner when a fleet menu panel is open", () => {
+  it("opens system menu panels with breadcrumbs", () => {
     const controller = createTestController();
     controller.ptyView.resize(100, 24);
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\r");
+    openSystemMenuItem(controller, 0);
     const plainOutput = stripAnsi(controller.component.render(100).join("\n"));
 
     expect(plainOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(plainOutput).not.toContain("███ FLEET ███");
-    expect(plainOutput).toContain("Fleet Menu / Authentication");
+    expect(plainOutput).toContain("Mission Control / System Menu / Authentication");
     expect(plainOutput).toContain("Authentication");
   });
 
-  it("aligns fleet menu rows in a fixed centered column", () => {
+  it("aligns System Menu rows in a fixed centered column", () => {
     const controller = createTestController();
     controller.ptyView.resize(100, 24);
 
-    controller.ptyHost.write("m");
+    openSystemMenu(controller);
     const lines = stripAnsi(controller.component.render(100).join("\n")).split("\n");
-    const rows = ["Authentication", "Wiki Server", "Diagnostics", "About"].map((label) => {
-      const row = lines.find((line) => line.includes(label));
+    const labels = ["Authentication", "Wiki Server", "Diagnostics", "About"];
+    const rows = labels.map((label) => {
+      const row = lines.find((line) => line.match(/[▸ ]/) && line.includes(label));
       expect(row).toBeDefined();
       return row ?? "";
     });
-    const markerStarts = rows.map((row) => row.search(/[▸ ] (Authentication|Wiki Server|Diagnostics|About)/));
-    const labelStarts = rows.map((row, index) => row.indexOf(["Authentication", "Wiki Server", "Diagnostics", "About"][index] ?? ""));
-
-    expect(new Set(markerStarts).size).toBe(1);
-    expect(new Set(labelStarts).size).toBe(1);
+    expect(rows).toHaveLength(labels.length);
+    expect(renderPlain(controller)).not.toContain("Exit Fleet");
   });
 
-  it("renders options drawer rows with fixed prefix and column alignment", () => {
+  it("exits Fleet from the launcher root item instead of the System Menu", () => {
+    const exitCalls: string[] = [];
+    const controller = createTestController({
+      onExitFleet: () => {
+        exitCalls.push("exit");
+      },
+    });
+
+    openRootItem(controller, 4);
+
+    expect(exitCalls).toEqual(["exit"]);
+  });
+
+  it("legacy options and fleet-menu hotkeys no longer open root panels", () => {
+    const controller = createTestController({
+      sessionOptions: createFakeSessionOptionsRuntime(),
+    });
+
+    controller.ptyHost.write("o");
+    controller.ptyHost.write("m");
+    expect(renderPlain(controller)).toContain("Mission Control");
+    expect(renderPlain(controller)).not.toContain("System Menu / Authentication");
+  });
+
+  it("renders launcher root panel lines through the direct renderer path", () => {
     const lines = renderMissionControl(100, {
       cliOptions: CLI_OPTIONS,
       lastExit: undefined,
       loadedCounts: undefined,
-      optionDrawer: {
-        resolved: createFakeSessionOptionsRuntime().getResolved(),
-        selectedRow: 2,
-      },
-      overlay: "options",
+      panelLines: [
+        "Mission Control",
+        "▸ Start",
+        "  Options",
+        "  System Menu",
+      ],
       release: undefined,
       selectedCliId: "claude",
       state: "idle",
     }).map(stripAnsi);
-    const rows = [
-      { label: "Mode", value: "Fleet prompt", source: "default" },
-      { label: "System prompt", value: "Replace", source: "preset" },
-      { label: "Metaphor", value: "Off", source: "default" },
-      { label: "Cursor sync", value: "Enabled", source: "env" },
-    ].map((expected) => {
-      const row = lines.find((line) => line.includes(expected.label) && line.includes(expected.value) && line.includes(expected.source));
-      expect(row).toBeDefined();
-      return row ?? "";
-    });
-    const labelStarts = rows.map((row, index) => row.indexOf(["Mode", "System prompt", "Metaphor", "Cursor sync"][index] ?? ""));
-    const valueStarts = rows.map((row, index) => row.indexOf(["Fleet prompt", "Replace", "Off", "Enabled"][index] ?? ""));
-    const sourceStarts = rows.map((row, index) => row.lastIndexOf(["default", "preset", "default", "env"][index] ?? ""));
+    const rendered = lines.join("\n");
 
-    expect(new Set(labelStarts).size).toBe(1);
-    expect(new Set(valueStarts).size).toBe(1);
-    expect(new Set(sourceStarts).size).toBe(1);
-    expect(rows[0]?.slice((labelStarts[0] ?? 0) - 2, labelStarts[0])).toBe("  ");
-    expect(rows[2]?.slice((labelStarts[2] ?? 0) - 2, labelStarts[2])).toBe("▸ ");
-    expect(rows[2]).toContain("[Space]");
+    expect(rendered).toContain("Mission Control");
+    expect(rendered).toContain("▸ Start");
+    expect(rendered).toContain("  Options");
+    expect(rendered).not.toContain("[Space]");
+    expect(rendered).not.toContain("Cursor sync");
   });
 
-  it("routes S save and R reset in the options drawer", () => {
+  it("routes Options actions by Enter selection", async () => {
     const sessionOptions = createFakeSessionOptionsRuntime();
     const controller = createTestController({ sessionOptions });
 
-    controller.ptyHost.write("o");
-    controller.ptyHost.write(" ");
-    controller.ptyHost.write("S");
-    controller.ptyHost.write("R");
+    openOptions(controller);
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
+    await waitForAsyncLaunch();
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
 
     expect(sessionOptions.calls).toEqual(["toggleNative", "saveDraft", "resetOverrides"]);
   });
@@ -258,8 +325,12 @@ describe("Mission Control controller", () => {
 
     try {
       controller.ptyView.resize(100, 24);
-      controller.ptyHost.write("o");
-      controller.ptyHost.write("S");
+      openOptions(controller);
+      controller.ptyHost.write("\x1b[B");
+      controller.ptyHost.write("\x1b[B");
+      controller.ptyHost.write("\x1b[B");
+      controller.ptyHost.write("\x1b[B");
+      controller.ptyHost.write("\r");
       await waitForAsyncLaunch();
 
       expect(renderPlain(controller)).toContain("Save failed: Timed out waiting for Fleet preset lock");
@@ -269,103 +340,114 @@ describe("Mission Control controller", () => {
     }
   });
 
-  it("cycles and toggles drawer values with Space without saving", () => {
+  it("cycles and toggles option values with Enter without saving", () => {
     const sessionOptions = createFakeSessionOptionsRuntime();
     const controller = createTestController({ sessionOptions });
 
-    controller.ptyHost.write("o");
+    openOptions(controller);
     controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write(" ");
-    expect(renderPlain(controller)).toMatch(/System prompt\s+Native\s+session\s+\[Space\]/);
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toMatch(/System prompt\s+Native/);
 
     controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write(" ");
-    expect(renderPlain(controller)).toMatch(/Metaphor\s+Enabled\s+session\s+\[Space\]/);
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toMatch(/Metaphor\s+Enabled/);
 
     controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write(" ");
-    expect(renderPlain(controller)).toMatch(/Cursor sync\s+Off\s+session\s+\[Space\]/);
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toMatch(/Cursor sync\s+Off/);
     expect(sessionOptions.calls).toEqual(["toggleNative", "toggleEnableMetaphor", "toggleCursorSync"]);
   });
 
-  it("edits model with → arrow key and blocks navigation while editing", () => {
+  it("edits launch-time model override from the Start panel", () => {
     const sessionOptions = createFakeSessionOptionsRuntime();
     const controller = createTestController({ sessionOptions });
 
+    openStart(controller);
+    expect(renderPlain(controller)).toContain("▸ Claude");
+    expect(renderPlain(controller)).not.toContain("Launch-time Model Override");
+    expect(renderPlain(controller)).not.toContain("▸ Launch");
     controller.ptyHost.write("\x1b[C");
-    expect(renderPlain(controller)).toContain("Model: preset-model|");
+    expect(renderPlain(controller)).toContain("preset-model|");
 
     controller.ptyHost.write("\x7f");
     controller.ptyHost.write("-x");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("Model: preset-mode-xj|");
+    expect(renderPlain(controller)).toContain("preset-mode-xj|");
 
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).not.toContain("Model:");
-    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
+    expect(renderPlain(controller)).not.toContain("preset-mode-xj|");
+    expect(renderPlain(controller)).toContain("Start");
     expect(sessionOptions.calls).toEqual(["setModel:preset-mode-xj"]);
   });
 
-  it("cancels model edit with Esc without affecting the CLI selection", () => {
+  it("cancels launch-time model override without changing the draft", () => {
     const sessionOptions = createFakeSessionOptionsRuntime();
     const controller = createTestController({ sessionOptions });
 
+    openStart(controller);
     controller.ptyHost.write("\x1b[C");
     controller.ptyHost.write("draft");
     controller.ptyHost.write("\x1b");
 
-    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
-    expect(renderPlain(controller)).not.toContain("Model:");
+    expect(renderPlain(controller)).toContain("Start");
+    expect(renderPlain(controller)).not.toContain("draft|");
     expect(sessionOptions.calls).toEqual([]);
   });
 
-  it("moves fleet menu selection with arrows and vim keys without launching", async () => {
+  it("moves launcher selection with arrows only and ignores vim keys", async () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ hosts });
 
-    controller.ptyHost.write("m");
-    expect(renderPlain(controller)).toContain("▸ Authentication");
+    controller.component.render(80);
+    expect(renderPlain(controller)).toContain("▸ Start");
+
+    controller.ptyHost.write("\x1b[C");
+    expect(renderPlain(controller)).toContain("▸ Start");
+    expect(renderPlain(controller)).not.toContain("preset-model|");
 
     controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Wiki Server");
+    expect(renderPlain(controller)).toContain("▸ Configure Carriers");
 
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("▸ Diagnostics");
+    expect(renderPlain(controller)).toContain("▸ Configure Carriers");
 
     controller.ptyHost.write("k");
-    expect(renderPlain(controller)).toContain("▸ Wiki Server");
+    expect(renderPlain(controller)).toContain("▸ Configure Carriers");
 
-    controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
+    controller.ptyHost.write("\x1b[A");
+    expect(renderPlain(controller)).toContain("▸ Start");
+
     expect(controller.getState().kind).toBe("idle");
     expect(hosts).toEqual([]);
 
-    controller.ptyHost.write("\x1b");
-    controller.ptyHost.write("\x1b");
+    controller.ptyHost.write("\r");
     controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
     expect(controller.getState().kind).toBe("active");
     expect(hosts).toHaveLength(1);
   });
 
-  it("opens fleet menu panels, breadcrumbs, and Esc depth transitions", () => {
+  it("opens system menu panels, breadcrumbs, and Esc depth transitions", () => {
     const controller = createTestController();
 
-    controller.ptyHost.write("m");
-    expect(renderPlain(controller)).toContain("Fleet Menu");
+    openSystemMenu(controller);
+    expect(renderPlain(controller)).toContain("System Menu");
     expect(renderPlain(controller)).toContain("▸ Authentication");
 
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Fleet Menu / Authentication");
-    expect(renderPlain(controller)).toContain("Enter register or replace");
+    const authOutput = controller.component.render(80).join("\n");
+    expect(stripAnsi(authOutput)).toContain("Mission Control / System Menu / Authentication");
+    expect(stripAnsi(authOutput)).toContain("Enter actions");
+    expect(authOutput).toContain(SELECTED_BG);
 
     controller.ptyHost.write("\x1b");
-    expect(renderPlain(controller)).toContain("Fleet Menu");
-    expect(renderPlain(controller)).not.toContain("Enter register or replace");
+    expect(renderPlain(controller)).toContain("System Menu");
+    expect(renderPlain(controller)).not.toContain("Enter actions");
 
     controller.ptyHost.write("\x1b");
-    expect(renderPlain(controller)).toContain("Choose an Agent CLI");
+    expect(renderPlain(controller)).toContain("Mission Control");
   });
 
   it("masks auth API key input and saves without spawning a child auth command", async () => {
@@ -373,9 +455,9 @@ describe("Mission Control controller", () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ authService, hosts });
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\r");
+    openSystemMenuItem(controller, 0);
     await waitForAsyncLaunch();
+    controller.ptyHost.write("\r");
     controller.ptyHost.write("\r");
     controller.ptyHost.write("secret-api-key");
 
@@ -389,36 +471,85 @@ describe("Mission Control controller", () => {
     expect(hosts).toEqual([]);
   });
 
-  it("opens wiki server on Enter regardless of state and stops only on S shortcut", () => {
+  it("recomputes auth provider actions and defaults delete confirmation to Cancel", async () => {
+    const authService = createFakeAuthService();
+    const controller = createTestController({ authService });
+
+    openSystemMenuItem(controller, 0);
+    await waitForAsyncLaunch();
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toContain("Register API Key");
+    expect(renderPlain(controller)).not.toContain("Delete API Key");
+
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("secret-api-key");
+    controller.ptyHost.write("\r");
+    await waitForAsyncLaunch();
+    expect(renderPlain(controller)).toContain("Replace API Key");
+    expect(renderPlain(controller)).toContain("Delete API Key");
+
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toContain("▸ Cancel");
+    controller.ptyHost.write("\r");
+    await waitForAsyncLaunch();
+    expect(authService.deleteCalls).toEqual([]);
+    expect(renderPlain(controller)).toContain("Delete API Key");
+
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
+    await waitForAsyncLaunch();
+    expect(authService.deleteCalls).toEqual(["Claude Code with Moonshot Kimi"]);
+    expect(renderPlain(controller)).toContain("Register API Key");
+    expect(renderPlain(controller)).not.toContain("Delete API Key");
+  });
+
+  it("opens, stops, and edits wiki through action-list rows only", () => {
     const wikiController = createFakeWikiController();
     const controller = createTestController({ wikiController });
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Wiki Server");
-    expect(renderPlain(controller)).toContain("stopped");
+    openSystemMenuItem(controller, 1);
+    let wikiOutput = controller.component.render(80).join("\n");
+    expect(stripAnsi(wikiOutput)).toContain("Wiki Server");
+    expect(stripAnsi(wikiOutput)).toContain("stopped");
+    expect(stripAnsi(wikiOutput)).toContain("Port: 4399");
+    expect(stripAnsi(wikiOutput)).toContain("▸ Actions");
+    expect(wikiOutput).toContain(SELECTED_BG);
+    expect(wikiOutput).toContain("Port: \x1b[38;2;254;188;56m4399\x1b[0m");
 
-    // stopped → Enter → start() 호출, daemon spawn + 브라우저 오픈
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toContain("Open Workspace");
     controller.ptyHost.write("\r");
     expect(wikiController.calls).toEqual(["start"]);
-    expect(renderPlain(controller)).toContain("running 127.0.0.1:4399");
+    controller.ptyHost.write("\x1b");
+    wikiOutput = controller.component.render(80).join("\n");
+    expect(stripAnsi(wikiOutput)).toContain("running 127.0.0.1:4399");
 
-    // running → Enter는 stop이 아니라 start()를 한 번 더 호출해 helper로 브라우저 재오픈
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toContain("Reopen Workspace");
+    expect(renderPlain(controller)).toContain("Stop Server");
     controller.ptyHost.write("\r");
     expect(wikiController.calls).toEqual(["start", "start"]);
+    controller.ptyHost.write("\x1b");
     expect(renderPlain(controller)).toContain("running 127.0.0.1:4399");
 
-    // running → S 단축키로만 명시적 stop
     controller.ptyHost.write("S");
+    controller.ptyHost.write("P");
+    expect(wikiController.calls).toEqual(["start", "start"]);
+
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
     expect(wikiController.calls).toEqual(["start", "start", "stop"]);
+    expect(renderPlain(controller)).toContain("Open Workspace");
+    expect(renderPlain(controller)).not.toContain("Stop Server");
+    controller.ptyHost.write("\x1b");
     expect(renderPlain(controller)).toContain("stopped");
 
-    // stopped → S는 무시 (no-op)
-    controller.ptyHost.write("s");
-    expect(wikiController.calls).toEqual(["start", "start", "stop"]);
-
-    controller.ptyHost.write("P");
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
     controller.ptyHost.write("\x7f");
     controller.ptyHost.write("\x7f");
     controller.ptyHost.write("\x7f");
@@ -441,17 +572,19 @@ describe("Mission Control controller", () => {
       sessionOptions,
     });
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Diagnostics");
-    expect(renderPlain(controller)).not.toContain(["Log", "Viewer"].join(" "));
-    expect(renderPlain(controller).toLowerCase()).not.toContain("cursor sync");
+    openSystemMenuItem(controller, 2);
+    let diagnosticsOutput = controller.component.render(80).join("\n");
+    expect(stripAnsi(diagnosticsOutput)).toContain("Diagnostics");
+    expect(stripAnsi(diagnosticsOutput)).not.toContain(["Log", "Viewer"].join(" "));
+    expect(stripAnsi(diagnosticsOutput).toLowerCase()).not.toContain("cursor sync");
+    expect(diagnosticsOutput).toContain(SELECTED_BG);
 
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Data Dir");
-    expect(renderPlain(controller)).toContain("Presets:");
+    diagnosticsOutput = controller.component.render(80).join("\n");
+    expect(stripAnsi(diagnosticsOutput)).toContain("Data Dir");
+    expect(stripAnsi(diagnosticsOutput)).toContain("Presets:");
+    expect(diagnosticsOutput).toContain("Root: \x1b[38;2;254;188;56m");
+    expect(diagnosticsOutput).toContain("Presets: \x1b[38;2;254;188;56m");
     expect(controller.component.render(80).join("\n")).not.toContain("\x1b]52");
     expect(controller.component.render(80).join("\n")).not.toContain("\u009b");
 
@@ -463,6 +596,8 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("All CLI presets will be reset to defaults. Continue?");
 
     controller.ptyHost.write("Y");
+    expect(presetService.calls).toEqual([]);
+    controller.ptyHost.write("\r");
     expect(presetService.calls).toEqual(["resetCliPreset:claude", "resetCliPreset:codex", "saveDefaultCliId:"]);
     expect(sessionOptions.calls).toContain("resetOverrides");
   });
@@ -476,19 +611,20 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\nspoofed-cwd",
     });
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
+    openSystemMenuItem(controller, 2);
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
     const lines = renderPlain(controller).split("\n");
+    const output = controller.component.render(80).join("\n");
 
     expect(lines.filter((line) => line.includes("Shell:"))).toEqual([expect.stringContaining("Shell: /bin/zsh spoofed-shell")]);
     expect(lines.filter((line) => line.includes("Terminal:"))).toEqual([expect.stringContaining("Terminal: xterm-256color spoofed-term")]);
     expect(lines.filter((line) => line.includes("CWD:"))).toEqual([expect.stringContaining("CWD: /tmp/project spoofed-cwd")]);
+    expect(output).toContain("Shell: \x1b[38;2;254;188;56m/bin/zsh spoofed-shell\x1b[0m");
+    expect(output).toContain("Terminal: \x1b[38;2;254;188;56mxterm-256color spoofed-term\x1b[0m");
+    expect(output).toContain("CWD: \x1b[38;2;254;188;56m/tmp/project spoofed-cwd\x1b[0m");
     expect(lines.some((line) => line.trim() === "spoofed-shell")).toBe(false);
     expect(lines.some((line) => line.trim() === "spoofed-term")).toBe(false);
     expect(lines.some((line) => line.trim() === "spoofed-cwd")).toBe(false);
@@ -507,9 +643,9 @@ describe("Mission Control controller", () => {
       },
     });
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\r");
+    openSystemMenuItem(controller, 0);
     await waitForAsyncLaunch();
+    controller.ptyHost.write("\r");
     controller.ptyHost.write("\r");
     controller.ptyHost.write("secret");
     const beforeSubmit = renderRequests;
@@ -631,15 +767,15 @@ describe("Mission Control controller", () => {
       release: { channel: "stable", version: "0.22.1" },
     });
 
-    controller.ptyHost.write("m");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
+    openSystemMenuItem(controller, 3);
+    const output = controller.component.render(80).join("\n");
 
     expect(renderPlain(controller)).toContain("Version: 0.22.1");
     expect(renderPlain(controller)).toContain("Carriers: 8");
     expect(renderPlain(controller)).toContain("Docs: (configured later)");
+    expect(output).toContain("Version: \x1b[38;2;254;188;56m0.22.1\x1b[0m");
+    expect(output).toContain("Carriers: \x1b[38;2;254;188;56m8\x1b[0m");
+    expect(output).toContain("Docs: \x1b[38;2;254;188;56m(configured later)\x1b[0m");
   });
 
   it("labels unpublished working copies as local in the readout", () => {
@@ -670,7 +806,50 @@ describe("Mission Control controller", () => {
     expect(hosts[0]?.writes).toEqual(["hello"]);
   });
 
-  it("routes active input to an open Mission Control panel before the child PTY", async () => {
+  it("runs shimmer only on inactive Mission Control screens and disposes the timer", async () => {
+    let renderRequests = 0;
+    const hosts: FakeHost[] = [];
+    const shimmerClock = createFakeShimmerClock();
+    const controller = createTestController({
+      hosts,
+      onRenderRequest: () => {
+        renderRequests += 1;
+      },
+      shimmer: shimmerClock.options,
+    });
+    const firstFrame = controller.component.render(80).join("\n");
+
+    expect(shimmerClock.timers).toHaveLength(1);
+    expect(shimmerClock.timers[0]?.intervalMs).toBe(100);
+    expect(shimmerClock.timers[0]?.unrefCalls).toBe(1);
+
+    shimmerClock.tick();
+    const secondFrame = controller.component.render(80).join("\n");
+
+    expect(renderRequests).toBe(1);
+    expect(secondFrame).not.toBe(firstFrame);
+    expect(stripAnsi(secondFrame)).toBe(stripAnsi(firstFrame));
+
+    await controller.launchSelected();
+    expect(controller.getState().kind).toBe("active");
+    expect(shimmerClock.activeCount()).toBe(0);
+
+    const beforeActiveTick = renderRequests;
+    shimmerClock.tick();
+    expect(renderRequests).toBe(beforeActiveTick);
+
+    hosts[0]?.emitExit({ exitCode: 0, signal: 0 });
+    expect(controller.getState().kind).toBe("ended");
+    expect(shimmerClock.activeCount()).toBe(1);
+
+    shimmerClock.tick();
+    expect(renderRequests).toBeGreaterThan(beforeActiveTick);
+
+    controller.dispose();
+    expect(shimmerClock.activeCount()).toBe(0);
+  });
+
+  it("routes active input to the child PTY before an open Mission Control panel", async () => {
     const hosts: FakeHost[] = [];
     const controller = createTestController({ hosts });
     const panel = createFakePanel("Custom Panel");
@@ -680,10 +859,10 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("j");
 
     expect(controller.hasActivePanel()).toBe(true);
-    expect(panel.inputs).toEqual(["j"]);
-    expect(hosts[0]?.writes).toEqual([]);
+    expect(panel.inputs).toEqual([]);
+    expect(hosts[0]?.writes).toEqual(["j"]);
     expect(controller.component.render(80)).toHaveLength(TEST_ROWS);
-    expect(renderPlain(controller)).toContain("Custom Panel");
+    expect(renderPlain(controller)).not.toContain("Custom Panel");
   });
 
   it("slices oversized Mission Control panel output to the allocated rows", () => {
@@ -701,7 +880,7 @@ describe("Mission Control controller", () => {
     controller.openPanel({ component: panel, id: "custom-panel" });
     const lines = controller.component.render(80);
 
-    expect(lines).toEqual(["Custom Panel", "row 1", "row 2"]);
+    expect(lines).toHaveLength(3);
   });
 
   it("routes programmatic child reminders directly to the child PTY while a panel is active", async () => {
@@ -732,16 +911,17 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("hello");
 
     expect(controller.hasActivePanel()).toBe(false);
-    expect(panel.inputs).toEqual(["k"]);
-    expect(hosts[0]?.writes).toEqual(["hello"]);
+    expect(panel.inputs).toEqual([]);
+    expect(hosts[0]?.writes).toEqual(["k", "hello"]);
   });
 
-  it("keeps inactive Mission Control menu input working without an active panel", () => {
+  it("keeps legacy numeric root selection inert", () => {
     const controller = createTestController();
 
     controller.ptyHost.write("3");
 
-    expect(controller.getState().cliId).toBe("codex");
+    expect(controller.getState().cliId).toBe("claude");
+    expect(renderPlain(controller)).toContain("Mission Control");
   });
 
   it("requests renders when Mission Control panels open and close", () => {
@@ -778,15 +958,16 @@ describe("Mission Control controller", () => {
 
     expect(controller.getState().kind).toBe("ended");
     expect(controller.component.render(80)).toHaveLength(TEST_ROWS);
-    expect(renderPlain(controller)).toContain("Ended (code 0)");
+    expect(renderPlain(controller)).toContain("Mission Control");
 
-    controller.ptyHost.write("r");
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
     hosts[1]?.emitExit({ exitCode: 2, signal: 0 });
 
     expect(controller.getState().kind).toBe("failed");
     expect(controller.component.render(80)).toHaveLength(TEST_ROWS);
-    expect(renderPlain(controller)).toContain("Failed (code 2)");
+    expect(renderPlain(controller)).toContain("Mission Control");
   });
 
   it("classifies signal-only child exits as failed", async () => {
@@ -797,7 +978,7 @@ describe("Mission Control controller", () => {
     hosts[0]?.emitExit({ signal: 15 });
 
     expect(controller.getState().kind).toBe("failed");
-    expect(renderPlain(controller)).toContain("Failed (signal 15)");
+    expect(renderPlain(controller)).toContain("Mission Control");
   });
 
   it("creates a fresh host for relaunch and does not write inactive input to the old PTY", async () => {
@@ -807,7 +988,8 @@ describe("Mission Control controller", () => {
     await controller.launchSelected();
     hosts[0]?.emitExit({ exitCode: 0, signal: 0 });
     controller.ptyHost.write("ignored");
-    controller.ptyHost.write("r");
+    controller.ptyHost.write("\r");
+    controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
 
     expect(hosts).toHaveLength(2);
@@ -815,7 +997,7 @@ describe("Mission Control controller", () => {
     expect(controller.getState().kind).toBe("active");
   });
 
-  it("selects Codex from idle key input", async () => {
+  it("launches Codex directly from the Start CLI list", async () => {
     const launched: AgentCliId[] = [];
     const controller = createTestController({
       resolveProfile: (cliId) => {
@@ -824,11 +1006,15 @@ describe("Mission Control controller", () => {
       },
     });
 
-    controller.ptyHost.write("3");
-    await controller.launchSelected();
+    openStart(controller);
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\x1b[B");
+    controller.ptyHost.write("\r");
+    await waitForAsyncLaunch();
 
     expect(launched).toEqual(["codex"]);
     expect(controller.getState().cliId).toBe("codex");
+    expect(controller.hasActivePanel()).toBe(false);
   });
 
   it("uses current session option draft for launch profile resolution and injection", async () => {
@@ -861,6 +1047,7 @@ describe("Mission Control controller", () => {
         return Promise.resolve({ ...TEST_PROFILE, id: cliId });
       },
       sessionOptions,
+      shimmer: { enabled: false },
     });
     controller.ptyView.resize(80, TEST_ROWS);
 
@@ -870,7 +1057,7 @@ describe("Mission Control controller", () => {
     expect(injected).toEqual([sessionOptions.getDraft()]);
   });
 
-  it("moves CLI selection with arrow keys and vim keys before launch", async () => {
+  it("moves Start CLI selection with arrow keys, ignores vim keys, and launches the selected row", async () => {
     const launched: AgentCliId[] = [];
     const controller = createTestController({
       cliOptions: ALL_CLI_OPTIONS,
@@ -880,26 +1067,17 @@ describe("Mission Control controller", () => {
       },
     });
 
-    controller.ptyHost.write("\x1bOB");
-    expect(controller.getState().cliId).toBe("claude-kimi");
+    openStart(controller);
+    expect(renderPlain(controller)).toContain("▸ Claude");
 
     controller.ptyHost.write("\x1b[B");
-    expect(controller.getState().cliId).toBe("codex");
-
-    controller.ptyHost.write("\x1b[A");
-    expect(controller.getState().cliId).toBe("claude-kimi");
-
-    controller.ptyHost.write("k");
-    expect(controller.getState().cliId).toBe("claude");
+    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
 
     controller.ptyHost.write("j");
-    expect(controller.getState().cliId).toBe("claude-kimi");
+    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
 
-    controller.ptyHost.write("k");
-    expect(controller.getState().cliId).toBe("claude");
-
-    controller.ptyHost.write("k");
-    expect(controller.getState().cliId).toBe("codex");
+    controller.ptyHost.write("\x1b[B");
+    expect(renderPlain(controller)).toContain("▸ Codex");
 
     controller.ptyHost.write("\x1b[13u");
     await waitForAsyncLaunch();
@@ -977,11 +1155,13 @@ function createTestController(options: {
   readonly hosts?: FakeHost[];
   readonly invocationCwd?: string;
   readonly loadedCounts?: MissionControlCounts;
+  readonly onExitFleet?: () => void;
   readonly onRenderRequest?: () => void;
   readonly presetService?: ReturnType<typeof createFakePresetService>;
   readonly release?: FleetCliRelease;
   readonly resolveProfile?: (cliId: AgentCliId) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;
+  readonly shimmer?: MissionControlShimmerOptions;
   readonly wikiController?: WikiProcessController;
 } = {}) {
   const controller = createMissionControlController({
@@ -998,12 +1178,13 @@ function createTestController(options: {
     invocationCwd: options.invocationCwd ?? "/tmp/mission-control",
     loadedCounts: options.loadedCounts,
     injectProfile: (profile) => Promise.resolve(profile),
-    onExitFleet: () => undefined,
+    onExitFleet: options.onExitFleet ?? (() => undefined),
     onRenderRequest: options.onRenderRequest ?? (() => undefined),
     presetService: options.presetService,
     release: options.release,
     resolveProfile: options.resolveProfile ?? ((cliId) => Promise.resolve({ ...TEST_PROFILE, id: cliId })),
     sessionOptions: options.sessionOptions,
+    shimmer: options.shimmer ?? { enabled: false },
     wikiController: options.wikiController,
   });
   controller.ptyView.resize(80, TEST_ROWS);
@@ -1216,12 +1397,87 @@ function createFakeHost(): FakeHost {
   };
 }
 
+function createFakeShimmerClock(): {
+  readonly options: MissionControlShimmerOptions;
+  readonly timers: FakeShimmerTimer[];
+  activeCount(): number;
+  tick(): void;
+} {
+  const timers: FakeShimmerTimer[] = [];
+  const options: MissionControlShimmerOptions = {
+    clearInterval: (timer) => {
+      (timer as FakeShimmerTimer).active = false;
+    },
+    setInterval: (callback, intervalMs) => {
+      const timer: FakeShimmerTimer = {
+        active: true,
+        callback,
+        intervalMs,
+        unrefCalls: 0,
+        unref() {
+          this.unrefCalls += 1;
+        },
+      };
+      timers.push(timer);
+      return timer;
+    },
+  };
+  return {
+    options,
+    timers,
+    activeCount: () => timers.filter((timer) => timer.active).length,
+    tick: () => {
+      for (const timer of [...timers]) {
+        if (timer.active) {
+          timer.callback();
+        }
+      }
+    },
+  };
+}
+
 function renderPlain(controller: ReturnType<typeof createTestController>): string {
   return stripAnsi(controller.component.render(80).join("\n"));
 }
 
+function openRootItem(controller: ReturnType<typeof createTestController>, index: number): void {
+  controller.component.render(80);
+  for (let i = 0; i < index; i++) {
+    controller.ptyHost.write("\x1b[B");
+  }
+  controller.ptyHost.write("\r");
+}
+
+function openStart(controller: ReturnType<typeof createTestController>): void {
+  openRootItem(controller, 0);
+}
+
+function openOptions(controller: ReturnType<typeof createTestController>): void {
+  openRootItem(controller, 2);
+}
+
+function openSystemMenu(controller: ReturnType<typeof createTestController>): void {
+  openRootItem(controller, 3);
+}
+
+function openSystemMenuItem(controller: ReturnType<typeof createTestController>, index: number): void {
+  openSystemMenu(controller);
+  for (let i = 0; i < index; i++) {
+    controller.ptyHost.write("\x1b[B");
+  }
+  controller.ptyHost.write("\r");
+}
+
 function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
+}
+
+function extractRgbColors(text: string): Array<readonly [number, number, number]> {
+  return [...text.matchAll(RGB_ANSI_PATTERN)].map((match) => [
+    Number(match[1] ?? 0),
+    Number(match[2] ?? 0),
+    Number(match[3] ?? 0),
+  ] as const);
 }
 
 function countOccurrences(text: string, needle: string): number {

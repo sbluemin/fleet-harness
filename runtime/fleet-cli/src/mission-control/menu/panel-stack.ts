@@ -95,11 +95,11 @@ export function isEscape(data: string): boolean {
 }
 
 export function isDown(data: string): boolean {
-  return data === "j" || data === "\x1b[B" || data === "\x1bOB";
+  return data === "\x1b[B" || data === "\x1bOB";
 }
 
 export function isUp(data: string): boolean {
-  return data === "k" || data === "\x1b[A" || data === "\x1bOA";
+  return data === "\x1b[A" || data === "\x1bOA";
 }
 
 export function isPrintable(data: string): boolean {

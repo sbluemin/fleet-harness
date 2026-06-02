@@ -3,6 +3,7 @@ import { CLI_TO_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-infra/auth";
 
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
+import { createActionListPanel } from "./action-list-panel.js";
 import { createInputModal } from "./input-modal.js";
 import { isDown, isEnter, isUp, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stack.js";
 
@@ -44,14 +45,7 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
       if (isEnter(data)) {
         const row = rows[selected];
         if (row !== undefined) {
-          openKeyModal(row);
-        }
-        return true;
-      }
-      if (data === "D" || data === "d") {
-        const row = rows[selected];
-        if (row !== undefined && row.configured) {
-          openDeleteModal(row);
+          openProviderActions(row);
         }
         return true;
       }
@@ -65,7 +59,7 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
         "",
         ...rows.map((row, index) => centerText(formatProviderRow(row, index === selected), width)),
         "",
-        centerText(MISSION_CONTROL_THEME.dim("Enter register or replace  D delete  Esc back"), width),
+        centerText(MISSION_CONTROL_THEME.dim("Enter actions  Esc back"), width),
       ];
       if (loading) {
         lines.push(centerText(MISSION_CONTROL_THEME.dim("Refreshing..."), width));
@@ -115,19 +109,59 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
   }
 
   function openDeleteModal(row: ProviderRow): void {
-    deps.stack.push(createInputModal({
+    deps.stack.push(createActionListPanel({
+      id: `auth:delete:${row.providerId}`,
       title: `Delete ${row.label}`,
-      message: "Delete stored API key?",
-      mode: "confirm",
-      onRenderRequest: deps.onRenderRequest,
-      onCancel: () => {
+      statusLines: () => [MISSION_CONTROL_THEME.warning("Delete stored API key?")],
+      onBack: () => {
         deps.stack.pop();
       },
-      onSubmit: async () => {
-        await authService.deleteApiKey(row.providerId);
+      actions: [
+        {
+          id: "cancel",
+          label: "Cancel",
+          run: () => {
+            deps.stack.pop();
+          },
+        },
+        {
+          id: "confirm",
+          label: "Confirm",
+          run: () => {
+            void authService.deleteApiKey(row.providerId).then(async () => {
+              deps.stack.pop();
+              await refresh();
+            });
+          },
+        },
+      ],
+    }));
+  }
+
+  function openProviderActions(row: ProviderRow): void {
+    deps.stack.push(createActionListPanel({
+      id: `auth:actions:${row.providerId}`,
+      title: row.label,
+      breadcrumbs: () => deps.stack.breadcrumbs(),
+      onBack: () => {
         deps.stack.pop();
-        await refresh();
       },
+      actions: () => [
+        {
+          id: "key",
+          label: row.configured ? "Replace API Key" : "Register API Key",
+          run: () => {
+            openKeyModal(row);
+          },
+        },
+        row.configured && {
+          id: "delete",
+          label: "Delete API Key",
+          run: () => {
+            openDeleteModal(row);
+          },
+        },
+      ],
     }));
   }
 }
@@ -144,9 +178,10 @@ function createProviderRows(): ProviderRow[] {
 }
 
 function formatProviderRow(row: ProviderRow, selected: boolean): string {
-  const marker = selected ? "▸" : " ";
+  const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
+  const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(row.label)) : row.label;
   const status = row.configured ? MISSION_CONTROL_THEME.success(row.status) : MISSION_CONTROL_THEME.warning(row.status);
-  return `${marker} ${row.label}  ${status}`;
+  return `${marker} ${label}  ${status}`;
 }
 
 function formatCliLabel(cliId: string): string {
