@@ -40,6 +40,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
 | Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-cli` registers the two-method `ExecutorPort` at boot. |
+| Durable filesystem I/O primitive | `packages/fleet-infra/src/fs-store/` | Atomic writes, advisory directory locks with quarantine-based stale recovery, and secure filesystem guards. Consumed by preset, auth, and carriers storage through explicit DI factories. |
 | Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, detached job infrastructure, carrier jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline

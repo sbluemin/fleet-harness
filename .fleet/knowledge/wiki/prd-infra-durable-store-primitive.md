@@ -1,0 +1,78 @@
+---
+id: "prd-infra-durable-store-primitive"
+title: "PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처"
+tags: ["prd", "fleet-infra", "durable-io", "primitive", "architecture", "decision-history", "cognitive-debt"]
+created: "2026-06-02T15:51:43.029Z"
+updated: "2026-06-02T16:20:50.544Z"
+version: 2
+rawSourceRef: "raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md"
+template_id: "prd"
+rawSourceRefs: "[{\"ref\":\"raw/2026-06-02-prd-infra-durable-store-primitive-source-9c23c940.md\",\"title\":\"prd-infra-durable-store-primitive\",\"hash\":\"9c23c940\"},{\"ref\":\"raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md\",\"title\":\"prd-infra-durable-store-primitive-v2\",\"hash\":\"76beb213\"}]"
+---
+## Overview
+
+Fleet의 영속 저장소들이 각자 별도의 durable-I/O 보장을 재구현하고 있어서, 동일한 코드베이스 안에서 파일 저장의 신뢰성 수준이 저장소마다 달랐습니다. 이 결정은 fleet-infra가 재사용 가능한 단일 durable-I/O primitive를 소유하고, 모든 도메인 저장소가 이를 명시적 의존성으로 주입받아 소비하도록 아키텍처 경계를 재정립한 것입니다. 이를 통해 영속성 안전성(원자성·락·권한)이 한 곳에서 일관되게 보장되며, 신규 저장소가 같은 보장을 자동으로 상속하고, "저장 신뢰성이 패키지마다 다르다"는 인지부채가 제거됩니다.
+
+## Problem
+
+Fleet은 여러 도메인 저장소(preset, auth, carrier runtime state 등)를 운영하지만, 이들의 파일 I/O 보장 수준이 제각각이었습니다.
+
+- **원자적 쓰기의 드리프트**: 일부 저장소는 임시 파일 작성 후 교체(rename)까지 보장했지만, 다른 저장소는 그렇지 않았습니다. 어떤 저장소는 디스크 동기화(fsync)까지 수행했고, 어떤 저장소는 누락했습니다. 이 차이는 단일 프로세스 내에서도 파일 깨짐 가능성을 불균등하게 만들었습니다.
+- **디렉터리 락의 산재**: 동일한 "디렉터리 기반 advisory lock" 개념이 여러 패키지에서 각자 구현되어, stale lock 복구 정책, 타임아웃, 보안 모드 등 세부 동작이 저장소마다 달랐습니다. 한 저장소에서는 강력한 보안 모드가 적용된 반면, 다른 저장소에서는 락 자체가 없거나 약하게 설정되어 있었습니다.
+- **권한의 역전**: 같은 패키지 내에서도 민감도가 높은 비밀키 저장소가 비민감 데이터 저장소보다 더 약한 파일 권한으로 보호되는 역전 현상이 존재했습니다. 이는 보안 정책이 도메인 로직에 흩뿌려져 있어서 발생한 일관성 결여입니다.
+- **신규 저장소의 인지부채**: 새로운 영역을 추가할 때마다 개발자는 "이 저장소는 어떤 수준의 I/O 안전성을 보장해야 하는가"를 매번 재판단해야 했고, 이는 종종 복사·붙여넣기로 이어져 버그를 전파했습니다.
+
+근본 원인은 fleet-infra가 "host-agnostic runtime infrastructure"를 표방하면서도, 재사용 가능한 durable-I/O primitive를 실제로 소유하지 않았기 때문입니다. 각 도메인이 필요할 때마다 운영체제 수준 파일 API를 직접 호출하는 구조는, infra 패키지가 I/O 게이트웨이의 단일 소유자라는 원래 계약을 위반한 상태였습니다.
+
+## Goals
+
+- fleet-infra가 Fleet 전체의 durable-I/O primitive를 단일 소유하여, 원자적 쓰기·디스크 동기화·디렉터리 락·민감도 기반 파일 권한을 한 곳에서 일관 보장합니다.
+- preset, auth, carrier runtime state 등의 도메인 저장소가 이 primitive를 명시적 의존성으로 주입받아 소비하며, 직접 운영체제 파일 API를 호출하지 않습니다.
+- 신규 저장소 추가 시 I/O 보장 구현을 재작성할 필요 없이 primitive를 주입받아 자동으로 동일한 안전성을 상속합니다.
+- 민감도가 높은 데이터(비밀키 등)가 비민감 데이터보다 강하게 보호되는 직관이 코드 전반에서 성립합니다.
+- "저장 신뢰성이 패키지마다 다르다"는 cognitive debt를 제거하여, 기여자가 도메인 로직에 집중할 수 있게 합니다.
+
+## Non-Goals
+
+- 도메인 저장소의 데이터 모델, 스키마, 검증 로직, 비즈니스 규칙 변경.
+- auth 키의 저장 위치나 파일명 변경 — 보호 메커니즘만 통합하고 도메인 표면은 그대로 유지합니다.
+- 외부 파일 시스템(네트워크 마운트, FUSE 등)에 대한 특수 대응.
+- 데이터베이스, 로그 구조화 저장소, 또는 분산 저장 도입.
+- fleet-wiki는 이식성 격리 도그마(다른 워크스페이스 패키지에 대한 의존 금지)로 인해 범위에서 제외되며, 자체 async 원자쓰기를 유지합니다.
+
+## User Stories
+
+- **As a** 함대 운영자, **when** CLI preset을 저장할 때, **then** carrier runtime state를 저장할 때와 동일한 파일 안정성 보장(원자적 쓰기, 락, 권한)을 자동으로 받습니다.
+- **As a** 개발자, **when** 새로운 도메인 저장소를 추가할 때, **then** I/O 보장 코드를 복사·붙여넣기하지 않고 fleet-infra의 primitive를 주입받아 사용합니다.
+- **As a** 기여자, **when** auth 키와 preset 데이터의 저장 방식을 비교할 때, **then** 민감도가 높은 쪽이 더 강하게 보호된다는 직관이 성립합니다.
+- **As a** 운영자, **when** 동시에 여러 프로세스가 파일을 쓸 때, **then** primitive를 소비하는 저장소는 파일 깨짐 없이 안전한 교체 동작이 보장됩니다.
+- **As a** 리뷰어, **when** 저장소 관련 PR을 리뷰할 때, **then** I/O 안전성 구현의 정합성을 매번 검증할 필요 없이, primitive를 통해 소비하는지만 확인합니다.
+
+## Functional Requirements
+
+- **FR-1: Durable Primitive Contract**: fleet-infra가 원자적 쓰기(임시 파일 작성 후 교체, 디스크 동기화 포함), 디렉터리 기반 advisory lock(호스트 범위 프로세스 식별 및 stale lock 복구), 그리고 민감도 기반 파일/디렉터리 권한 설정을 제공하는 단일 primitive를 export합니다.
+- **FR-2: 주입·소비 구조**: preset, auth, carrier runtime state 등의 도메인 저장소는 이 primitive를 생성자(팩토리)의 명시적 인자로 주입받아 소비합니다. 도메인 저장소가 직접 운영체제 파일 API를 호출하는 것은 금지됩니다.
+- **FR-3: 민감도 기반 권한**: primitive는 저장 대상의 민감도 수준을 인자로 받아, 고민감 데이터(비밀키 등)와 일반 데이터에 차등적인 파일 모드를 적용합니다.
+- **FR-4: 동기·비동기 통일**: primitive는 동기 및 비동기 인터페이스를 모두 제공하되, 동일한 낮은 수준 보장(원자성, 동기화, 락)을 유지합니다.
+- **FR-5: 보장 일관성**: primitive를 소비하는 모든 저장소가 동일한 원자적 쓰기, 디스크 동기화, 디렉터리 락, 권한 보장을 상속받습니다. 어떤 저장소도 이 보장을 일부 생략하거나 재정의할 수 없습니다.
+
+## Acceptance Criteria
+
+- [ ] preset 저장이 primitive를 통해 이루어지며, 직접 운영체제 파일 API를 호출하지 않는다.
+- [ ] auth 저장이 primitive를 통해 이루어지며, 비밀키가 preset보다 강하거나 동등한 파일 권한으로 보호된다.
+- [ ] carrier runtime state 저장이 primitive를 통해 원자적 쓰기와 advisory lock을 수행한다.
+- [ ] 신규 저장소 추가 시 I/O 구현 복제 없이 primitive를 주입받아 사용할 수 있다.
+- [ ] primitive를 소비하는 모든 저장소가 동일한 fsync+rename 원자적 쓰기 보장을 제공한다.
+- [ ] 동시 다중 프로세스 쓰기 시 primitive를 소비하는 저장소는 파일 깨짐 없이 안전하게 교체된다.
+- [ ] primitive를 통하지 않은 직접 파일 쓰기가 infra 계층 저장소 코드베이스에서 발견되지 않는다.
+
+## Open Questions
+
+- 없음. 아키텍처 방향은 확정되었으며, 기각된 대안(preset을 fleet-carriers로 이동)은 I/O 구현을 더 흩뿌려 산개를 심화하므로 반대 방향(단일 primitive 소유)으로 결정되었습니다.
+
+## Related
+
+- [[wiki:prd-core-infra-extraction]] — 인프라 계층 분리 선행 결정
+- [[wiki:prd-carrier-runtime-migration]] — 캐리어 런타임 이전 선행 결정
+- [[wiki:prd-cli-argv-to-preset]] — preset 도메인 도입 결정
+- [[wiki:prd-core-dismantling-di-architecture]] — DI 아키텍처 확립 선행 결정

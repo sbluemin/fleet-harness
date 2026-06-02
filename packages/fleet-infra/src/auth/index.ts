@@ -73,6 +73,7 @@ export type {
   AuthValidationRequest,
   AuthValidationResult,
   AuthValidationStatus,
+  CreateAuthServiceDeps,
 } from "./types.js";
 
 export const auth = {

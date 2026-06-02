@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { writeAtomicSync } from "../fs-store/atomic-write.js";
+import { ensureSafeDirectory, NOFOLLOW_FLAG, SECURE_FILE_MODE } from "../fs-store/secure-fs.js";
 import type {
   AuthMigrationMergeResult,
   AuthMigrationResult,
@@ -64,8 +66,12 @@ export async function migrateLegacyAuthStore(
   const merged = mergeAuthStoresNoOverwrite(legacy, current);
 
   if (merged.migratedProviderIds.length > 0) {
-    fs.mkdirSync(path.dirname(currentPath), { recursive: true });
-    fs.writeFileSync(currentPath, JSON.stringify(merged.data, null, 2));
+    const dir = path.dirname(currentPath);
+    ensureSafeDirectory(dir);
+    writeAtomicSync(currentPath, `${JSON.stringify(merged.data, null, 2)}\n`, {
+      mode: SECURE_FILE_MODE,
+      fsync: true,
+    });
   }
 
   return createMigrationResult({
@@ -98,6 +104,24 @@ function createMigrationResult(input: {
   };
 }
 
+/**
+ * fd 기반 안전 읽기: O_RDONLY|O_NOFOLLOW + fstatSync isFile 검증.
+ * 심볼릭링크(ELOOP)·권한(EACCES)·파싱 오류는 모두 삼키고 빈 store({})를 반환.
+ * 마이그레이션은 손상/심링크 시 조용히 skip하고 진행한다(DoS 방어).
+ */
 function readAuthStore(filePath: string): AuthStorageData {
-  return JSON.parse(fs.readFileSync(filePath, "utf-8")) as AuthStorageData;
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(filePath, fs.constants.O_RDONLY | NOFOLLOW_FLAG);
+    if (!fs.fstatSync(fd).isFile()) {
+      return {};
+    }
+    return JSON.parse(fs.readFileSync(fd, "utf-8")) as AuthStorageData;
+  } catch {
+    return {};
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
+  }
 }

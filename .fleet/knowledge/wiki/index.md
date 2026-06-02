@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `23`
+- total_entries: `24`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -188,6 +188,16 @@
 - raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
 - raw_source_refs: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
 
+### prd-infra-durable-store-primitive
+
+- title: `PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처`
+- path: `wiki/prd-infra-durable-store-primitive.md`
+- tags: `prd, fleet-infra, durable-io, primitive, architecture, decision-history, cognitive-debt`
+- updated: `2026-06-02T16:20:50.544Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md`
+- raw_source_refs: `raw/2026-06-02-prd-infra-durable-store-primitive-source-9c23c940.md, raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md`
+
 ### prd-mcp-server-surface-split
 
 - title: `PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화`
@@ -268,6 +278,7 @@
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
 - [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
@@ -317,6 +328,7 @@
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 
 ### comparison
 
@@ -352,6 +364,7 @@
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 
 ### dedicated-cli
 
@@ -374,6 +387,10 @@
 ### doctrine
 
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
+
+### durable-io
+
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 
 ### fleet-admiral
 
@@ -427,6 +444,7 @@
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 
 ### fleet-infra-log
@@ -554,10 +572,15 @@
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 
 ### preset
 
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
+
+### primitive
+
+- [[wiki:prd-infra-durable-store-primitive]] — PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처
 
 ### protocols
 

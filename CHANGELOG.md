@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+- [core] Introduced a single durable-I/O primitive (`fs-store`) in `fleet-infra` that unifies atomic writes, advisory directory locks with quarantine-based stale recovery, and secure filesystem guards; preset, auth, and carriers storage now consume this primitive instead of maintaining independent implementations.
+- [core] Auth storage is now protected with atomic writes, directory lock, and 0600 file permissions, matching the security level of preset storage and resolving the prior sensitivity inversion.
+- [core] Auth service converted to a pure DI factory (`createAuthService({ authPath })`); module-level mutable singleton and `setAuthPath` removed.
+- [core] Auth service is now wired through the Composition Root; all auth command paths receive an injected `AuthService` instead of creating one per call.
+- [core] `fs-store` `sensitivity` field is now required on `CreateDurableJsonStoreDeps` to prevent accidental 0644 creation for sensitive data.
+- [core] `carriers.json` write mode explicitly set to 0644 to reflect its non-sensitive status and align with the sensitivity model.
+
 ### Fixed
 - [core] Fixed the host TUI leaving stale characters and rows on screen when the terminal is resized or split.
 

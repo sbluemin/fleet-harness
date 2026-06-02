@@ -4,11 +4,11 @@ import {
   AUTH_LIST_EMPTY_MESSAGE,
   AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE,
   CLI_TO_AUTH_PROVIDER_ID,
-  createAuthService,
   formatAuthLogoutSuccessMessage,
   formatAuthMigrationNotice,
   migrateLegacyAuthStore,
 } from "@dotobokuri/fleet-infra/auth";
+import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 
 import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
 import type { AuthCommandIo } from "./types.js";
@@ -21,9 +21,15 @@ Usage:
   fleet auth logout [claude-zai|claude-kimi]
 `;
 
+export interface AuthCommandDeps {
+  readonly authService: AuthService;
+}
+
+// [MEDIUM #6] authService는 Composition Root에서 주입받는다 — per-call createAuthService 제거
 export async function dispatchAuthCommand(
   argv: readonly string[],
   io: AuthCommandIo,
+  deps: AuthCommandDeps,
 ): Promise<number> {
   const command = argv[1];
   if (!command || command === "--help" || command === "-h") {
@@ -31,13 +37,13 @@ export async function dispatchAuthCommand(
     return 0;
   }
   if (command === "login") {
-    return runAuthLoginFlow(argv.slice(2), io);
+    return runAuthLoginFlow(argv.slice(2), io, deps);
   }
   if (command === "list") {
-    return listAuthProviders(io);
+    return listAuthProviders(io, deps);
   }
   if (command === "logout") {
-    return logoutAuthProvider(argv.slice(2), io);
+    return logoutAuthProvider(argv.slice(2), io, deps);
   }
 
   io.stderr.write(`Unknown fleet auth command: ${command}\n`);
@@ -45,13 +51,13 @@ export async function dispatchAuthCommand(
   return 1;
 }
 
-async function listAuthProviders(io: AuthCommandIo): Promise<number> {
+async function listAuthProviders(io: AuthCommandIo, deps: AuthCommandDeps): Promise<number> {
   const migration = await migrateLegacyAuthStore();
   if (migration.shouldPrintNotice) {
     io.stdout.write(`${formatAuthMigrationNotice(migration)}\n`);
   }
 
-  const providerIds = await createAuthService().listProviderIds();
+  const providerIds = await deps.authService.listProviderIds();
   if (providerIds.length === 0) {
     io.stdout.write(`${AUTH_LIST_EMPTY_MESSAGE}\n`);
     return 0;
@@ -66,6 +72,7 @@ async function listAuthProviders(io: AuthCommandIo): Promise<number> {
 async function logoutAuthProvider(
   argv: readonly string[],
   io: AuthCommandIo,
+  deps: AuthCommandDeps,
 ): Promise<number> {
   const selectedCli = parseAuthCliId(argv[0]) ?? await promptForLogoutCli();
   if (!selectedCli) {
@@ -84,7 +91,7 @@ async function logoutAuthProvider(
     return 1;
   }
 
-  await createAuthService().deleteApiKey(providerId);
+  await deps.authService.deleteApiKey(providerId);
   io.stdout.write(`${formatAuthLogoutSuccessMessage(providerId)}\n`);
   return 0;
 }

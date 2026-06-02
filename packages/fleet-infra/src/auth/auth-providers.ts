@@ -1,9 +1,10 @@
 import type { CliType } from "@dotobokuri/fleet-unified-agent";
 
-import { createAuthService } from "./auth-storage.js";
+import { createAuthService, DEFAULT_AUTH_PATH } from "./auth-storage.js";
 import { formatMissingAuthKeyMessage } from "./messages.js";
 import { migrateLegacyAuthStore } from "./migration.js";
 import type {
+  AuthService,
   AuthValidationFailureResult,
   AuthValidationFailureStatus,
 } from "./types.js";
@@ -50,11 +51,12 @@ const AUTH_PROVIDER_DEFINITIONS: Partial<Record<CliType, AuthProviderDefinition>
 
 export async function resolveAuthEnv(
   cli: CliType,
+  deps?: { authService?: AuthService },
 ): Promise<Record<string, string>> {
   const provider = AUTH_PROVIDER_DEFINITIONS[cli];
   if (!provider) return {};
   await migrateLegacyAuthStore();
-  const auth = createAuthService();
+  const auth = deps?.authService ?? createAuthService({ authPath: DEFAULT_AUTH_PATH });
   const token = await auth.getApiKey(provider.providerId);
   if (!token) {
     throw new Error(formatMissingAuthKeyMessage({ cli, providerId: provider.providerId }));

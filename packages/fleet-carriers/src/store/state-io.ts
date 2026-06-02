@@ -6,6 +6,7 @@ import {
   getProviderModels,
   type CliType,
 } from "@dotobokuri/fleet-unified-agent";
+import { ensureSafeDirectory, NOFOLLOW_FLAG, withDirectoryLock, writeAtomicSync } from "@dotobokuri/fleet-infra/fs-store";
 
 import {
   sanitizeAgentCli,
@@ -14,7 +15,6 @@ import {
   sanitizeGeneration,
   sanitizeTaskforce,
 } from "./sanitize.js";
-import { withStoreDirectoryLock } from "./store-lock.js";
 import type { CarrierModelDefaults } from "./models.js";
 import type {
   AgentCliSelection,
@@ -32,6 +32,8 @@ interface StateIoRuntimeState {
 
 const FILENAME = "carriers.json";
 const STALE_SUBAGENT_MODE_FILENAME = "carrier-subagent.json";
+const LOCK_DIRNAME = "carriers.json.lock";
+const LOCK_OWNER_FILENAME = "owner.json";
 
 const runtimeState: StateIoRuntimeState = {
   storeDir: null,
@@ -41,8 +43,9 @@ const runtimeState: StateIoRuntimeState = {
 
 export function initStore(dir: string): void {
   runtimeState.storeDir = dir;
-  fs.mkdirSync(dir, { recursive: true });
-  withStoreDirectoryLock(dir, () => {
+  // [LOW #10] ensureSafeDirectory로 0o700 보장 — 심볼릭링크 방어
+  ensureSafeDirectory(dir);
+  withStoreLock(() => {
     unlinkStaleSubagentModeFile(dir);
   });
 }
@@ -101,18 +104,32 @@ export function updateCarriers(mutator: (states: FleetCarriers) => void): void {
 }
 
 export function withStoreLock<T>(operation: () => T): T {
-  return withStoreDirectoryLock(runtimeState.storeDir, operation);
+  if (!runtimeState.storeDir) return operation();
+  fs.mkdirSync(runtimeState.storeDir, { recursive: true });
+  const lockDir = path.join(runtimeState.storeDir, LOCK_DIRNAME);
+  return withDirectoryLock(
+    { lockDir, ownerFileName: LOCK_OWNER_FILENAME },
+    operation,
+  );
 }
 
 function readCarriers(): FleetCarriers {
   if (!runtimeState.storeDir) return {};
   const filePath = path.join(runtimeState.storeDir, FILENAME);
+  let fd: number | undefined;
   try {
-    if (!fs.existsSync(filePath)) return {};
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    return sanitizeFleetCarriers(parsed);
+    // fd 기반 심링크 방어: lstatSync isFile + O_RDONLY|O_NOFOLLOW + fstatSync isFile
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink()) return {};
+    fd = fs.openSync(filePath, fs.constants.O_RDONLY | NOFOLLOW_FLAG);
+    if (!fs.fstatSync(fd).isFile()) return {};
+    return sanitizeFleetCarriers(JSON.parse(fs.readFileSync(fd, "utf-8")));
   } catch {
     return {};
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -129,17 +146,12 @@ function writeCarriers(s: FleetCarriers): void {
   if (!runtimeState.storeDir) throw new Error("Fleet store is not initialized.");
   fs.mkdirSync(runtimeState.storeDir, { recursive: true });
   const filePath = path.join(runtimeState.storeDir, FILENAME);
-  const tmpPath = buildTempPath(filePath);
   const next = serializeFleetCarriers(s);
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(next, null, 2), "utf-8");
-    fs.renameSync(tmpPath, filePath);
-    runtimeState.lastLocalWriteGeneration = next._meta?.generation ?? 0;
-    recordLastLocalWriteFingerprint(filePath, runtimeState.lastLocalWriteGeneration);
-  } catch (error) {
-    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-    throw error;
-  }
+  // 동작 보존: 현행 무fsync 유지 (atomic write + rename, fsync 없음)
+  // carriers.json은 비민감 데이터 — 0o644 명시로 sensitivity 모델 정합
+  writeAtomicSync(filePath, `${JSON.stringify(next, null, 2)}\n`, { fsync: false, mode: 0o644 });
+  runtimeState.lastLocalWriteGeneration = next._meta?.generation ?? 0;
+  recordLastLocalWriteFingerprint(filePath, runtimeState.lastLocalWriteGeneration);
 }
 
 function serializeFleetCarriers(states: FleetCarriers): FleetCarriers {
@@ -205,11 +217,6 @@ function resolveSelectionForCliType(
       ? defaults.defaultEffort
       : modelEffort.default;
   return { model, effort };
-}
-
-function buildTempPath(filePath: string): string {
-  const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
-  return `${filePath}.${suffix}.tmp`;
 }
 
 function unlinkStaleSubagentModeFile(dir: string): void {

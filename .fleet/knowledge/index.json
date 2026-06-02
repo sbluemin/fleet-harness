@@ -248,6 +248,20 @@
     ],
     "updated": "2026-05-23T05:40:45.905Z"
   },
+  "prd-infra-durable-store-primitive": {
+    "path": "wiki/prd-infra-durable-store-primitive.md",
+    "title": "PRD: fleet-infra durable-I/O primitive 단일 소유 및 주입·소비 아키텍처",
+    "tags": [
+      "prd",
+      "fleet-infra",
+      "durable-io",
+      "primitive",
+      "architecture",
+      "decision-history",
+      "cognitive-debt"
+    ],
+    "updated": "2026-06-02T16:20:50.544Z"
+  },
   "prd-mcp-server-surface-split": {
     "path": "wiki/prd-mcp-server-surface-split.md",
     "title": "PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화",

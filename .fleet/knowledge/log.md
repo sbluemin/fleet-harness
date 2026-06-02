@@ -3365,3 +3365,117 @@
 - result: `accepted`
 - target: `wiki/prd-fleet-tui-dissolution.md`
 
+## 2026-06-02T15:43:24.000Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-02T15:47:47.118Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-02T15:51:43.052Z — raw source added
+
+- id: `prd-infra-durable-store-primitive-source`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-9c23c940.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `prd-infra-durable-store-primitive`
+
+## 2026-06-02T15:51:43.054Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-02T15-51-43-029Z-43ad1e37`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-9c23c940.md`
+- target: `wiki/prd-infra-durable-store-primitive.md`
+- warning_count: `0`
+
+## 2026-06-02T15:51:49.545Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-02T16:03:51.983Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `c2db984d`
+- patch_id: `2026-06-02T15-51-43-029Z-43ad1e37`
+- previous_hash: `83b55466`
+- target: `wiki/prd-infra-durable-store-primitive.md`
+
+## 2026-06-02T16:03:57.057Z — index rebuilt
+
+- entry_count: `24`
+
+## 2026-06-02T16:03:57.059Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-02T15-51-43-029Z-43ad1e37`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-9c23c940.md`
+- result: `accepted`
+- target: `wiki/prd-infra-durable-store-primitive.md`
+
+## 2026-06-02T16:19:35.839Z — raw source added
+
+- id: `prd-infra-durable-store-primitive-source`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `prd-infra-durable-store-primitive-v2`
+
+## 2026-06-02T16:19:35.843Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-06-02T16-19-35-816Z-d1557b25`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md`
+- target: `wiki/prd-infra-durable-store-primitive.md`
+- warning_count: `0`
+
+## 2026-06-02T16:19:42.854Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-02T16:20:50.547Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `d202818b`
+- patch_id: `2026-06-02T16-19-35-816Z-d1557b25`
+- previous_hash: `8b2014b7`
+- target: `wiki/prd-infra-durable-store-primitive.md`
+
+## 2026-06-02T16:22:22.883Z — index rebuilt
+
+- entry_count: `24`
+
+## 2026-06-02T16:22:22.885Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-06-02T16-19-35-816Z-d1557b25`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md`
+- result: `accepted`
+- target: `wiki/prd-infra-durable-store-primitive.md`
+

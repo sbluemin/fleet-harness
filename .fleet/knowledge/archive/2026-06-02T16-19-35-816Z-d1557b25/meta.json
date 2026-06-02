@@ -1,0 +1,16 @@
+{
+  "id": "2026-06-02T16-19-35-816Z-d1557b25",
+  "status": "accepted",
+  "createdAt": "2026-06-02T16:19:35.816Z",
+  "baseCheckedAt": "2026-06-02T16:19:35.839Z",
+  "baseHash": "f3756ea2",
+  "baseVersion": 1,
+  "rawSourceRef": "raw/2026-06-02-prd-infra-durable-store-primitive-source-76beb213.md",
+  "warnings": [],
+  "editedAt": "2026-06-02T16:20:50.544Z",
+  "editCount": 1,
+  "lastEditedBy": "tool:wiki_patch_edit",
+  "previousPatchHash": "8b2014b7",
+  "lastEditHash": "d202818b",
+  "decidedAt": "2026-06-02T16:22:22.884Z"
+}

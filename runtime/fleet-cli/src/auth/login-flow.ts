@@ -4,7 +4,6 @@ import {
   AUTH_LOGIN_PROVIDER_PROMPT_MESSAGE,
   AUTH_LOGIN_SECRET_PROMPT_MESSAGE,
   CLI_TO_AUTH_PROVIDER_ID,
-  createAuthService,
   formatAuthLoginSuccessMessage,
   formatAuthMigrationNotice,
   formatAuthValidationFailureMessage,
@@ -12,6 +11,7 @@ import {
   validateAuthKeyForCli,
 } from "@dotobokuri/fleet-infra/auth";
 
+import type { AuthCommandDeps } from "./dispatcher.js";
 import type { AuthCliId, AuthCommandIo } from "./types.js";
 
 const AUTH_CLI_OPTIONS: Array<{ value: AuthCliId; label: string }> = [
@@ -19,9 +19,11 @@ const AUTH_CLI_OPTIONS: Array<{ value: AuthCliId; label: string }> = [
   { value: "claude-kimi", label: "Claude Code with Moonshot Kimi" },
 ];
 
+// [MEDIUM #6] authService는 Composition Root에서 주입받는다 — per-call createAuthService 제거
 export async function runAuthLoginFlow(
   argv: readonly string[],
   io: AuthCommandIo,
+  deps: AuthCommandDeps,
 ): Promise<number> {
   const selectedCli = parseAuthCliId(argv[0]) ?? await promptForCli();
   if (!selectedCli) return cancelAuthCommand();
@@ -51,7 +53,7 @@ export async function runAuthLoginFlow(
     return 1;
   }
 
-  await createAuthService().setApiKey(providerId, apiKey.trim());
+  await deps.authService.setApiKey(providerId, apiKey.trim());
   io.stdout.write(`${formatAuthLoginSuccessMessage(providerId)}\n`);
   return 0;
 }

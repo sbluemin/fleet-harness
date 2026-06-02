@@ -92,6 +92,24 @@ describe("carriers.json state IO", () => {
     expect(fs.readdirSync(tempDir!).filter((entry) => entry.includes(".stale."))).toEqual([]);
   });
 
+  it("withStoreLock을 통해 carriers.json을 원자적으로 교체한다 (fs-store 소비 smoke)", () => {
+    expect(tempDir).toBeTruthy();
+    let entered = false;
+    withStoreLock(() => {
+      entered = true;
+    });
+    expect(entered).toBe(true);
+
+    // updateCarriers가 fs-store withDirectoryLock 경유로 carriers.json을 안전 교체하는지 확인
+    updateCarriers((states) => {
+      states.carriers = { ...(states.carriers ?? {}), smoke: { displayName: "Smoke Carrier" } };
+    });
+    const filePath = getCarriersFilePath();
+    expect(filePath).toBeTruthy();
+    const raw = JSON.parse(fs.readFileSync(filePath!, "utf-8")) as { carriers?: Record<string, unknown> };
+    expect(raw.carriers?.smoke).toBeDefined();
+  });
+
 });
 
 function writeCarriersJson(value: unknown): void {

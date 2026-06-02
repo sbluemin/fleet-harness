@@ -70,5 +70,8 @@ export interface AuthService {
   getApiKey(providerId: string): Promise<string | undefined>;
   listProviderIds(): Promise<string[]>;
   setApiKey(providerId: string, key: string): Promise<void>;
-  setAuthPath(path: string): void;
+}
+
+export interface CreateAuthServiceDeps {
+  readonly authPath?: string;
 }

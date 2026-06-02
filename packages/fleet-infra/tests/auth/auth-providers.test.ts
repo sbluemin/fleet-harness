@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAuthService,
-  DEFAULT_AUTH_PATH,
   resolveAuthEnv,
 } from "../../src/auth/index.js";
 
@@ -14,7 +13,6 @@ const tempRoots: string[] = [];
 
 describe("auth providers", () => {
   afterEach(() => {
-    createAuthService().setAuthPath(DEFAULT_AUTH_PATH);
     vi.restoreAllMocks();
     for (const tempRoot of tempRoots.splice(0)) {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -26,12 +24,12 @@ describe("auth providers", () => {
   });
 
   it("runs validation before returning Claude-family auth env", async () => {
-    const auth = createAuthService();
-    auth.setAuthPath(createTempAuthPath());
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
     await auth.setApiKey("Claude Code with Z.AI GLM", "zai-token");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
 
-    await expect(resolveAuthEnv("claude-zai")).resolves.toEqual({
+    await expect(resolveAuthEnv("claude-zai", { authService: auth })).resolves.toEqual({
       ANTHROPIC_AUTH_TOKEN: "zai-token",
       ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
       API_TIMEOUT_MS: "3000000",
@@ -44,19 +42,19 @@ describe("auth providers", () => {
   });
 
   it("fails before returning env when the stored key is missing", async () => {
-    const auth = createAuthService();
-    auth.setAuthPath(createTempAuthPath());
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
 
-    await expect(resolveAuthEnv("claude-kimi")).rejects.toThrow("fleet auth login");
+    await expect(resolveAuthEnv("claude-kimi", { authService: auth })).rejects.toThrow("fleet auth login");
   });
 
   it("fails before returning env when validation rejects the stored key", async () => {
-    const auth = createAuthService();
-    auth.setAuthPath(createTempAuthPath());
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
     await auth.setApiKey("Claude Code with Moonshot Kimi", "kimi-token");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("forbidden", { status: 403 }));
 
-    await expect(resolveAuthEnv("claude-kimi")).rejects.toThrow("Auth token is not allowed for this provider");
+    await expect(resolveAuthEnv("claude-kimi", { authService: auth })).rejects.toThrow("Auth token is not allowed for this provider");
   });
 });
 

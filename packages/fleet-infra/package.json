@@ -47,6 +47,11 @@
       "types": "./dist/preset/index.d.ts",
       "import": "./dist/preset.js",
       "require": "./dist/preset.cjs"
+    },
+    "./fs-store": {
+      "types": "./dist/fs-store/index.d.ts",
+      "import": "./dist/fs-store.js",
+      "require": "./dist/fs-store.cjs"
     }
   },
   "typesVersions": {
@@ -62,6 +67,9 @@
       ],
       "preset": [
         "dist/preset/index.d.ts"
+      ],
+      "fs-store": [
+        "dist/fs-store/index.d.ts"
       ]
     }
   },

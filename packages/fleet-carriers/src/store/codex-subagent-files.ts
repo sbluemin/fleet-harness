@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { assertDirectoryIdentity, assertWithinRoot, readDirectoryIdentity, type DirectoryIdentity } from "@dotobokuri/fleet-infra/fs-store";
+
 import type { CodexSubagentRoleDefinition, CodexSubagentToml } from "../subagents/types.js";
 import { getCarriersFilePath, withStoreLock } from "./state-io.js";
 
@@ -8,11 +10,6 @@ export interface CodexSubagentRoleFile {
   readonly configFile: string;
   readonly definition: CodexSubagentRoleDefinition;
   readonly instructionsFile: string;
-}
-
-interface DirectoryIdentity {
-  readonly dev: number;
-  readonly ino: number;
 }
 
 const CODEX_AGENTS_DIR_NAME = "codex-agents";
@@ -48,7 +45,7 @@ export function removeCodexSubagentRoleFile(roleKey: string): void {
   if (!configFile || !instructionsFile) return;
   withStoreLock(() => {
     const rootDir = getCodexSubagentRootDir();
-    const rootIdentity = rootDir ? readCodexSubagentRootIdentity(rootDir) : null;
+    const rootIdentity = rootDir ? readDirectoryIdentity(rootDir) : null;
     if (!rootDir || !rootIdentity) return;
     try {
       assertCodexSubagentRootIdentity(rootDir, rootIdentity);
@@ -94,45 +91,31 @@ function ensureCodexSubagentRootDir(rootDir: string): DirectoryIdentity {
   return readRequiredCodexSubagentRootIdentity(rootDir);
 }
 
+// [MEDIUM #7] fs-store DirectoryIdentity/readDirectoryIdentity/assertDirectoryIdentity 위임
+// writeTextFileAtomic 로컬 구현은 유지 (테스트 mock hook 호환·identity 인터리빙 정당)
+
 function readRequiredCodexSubagentRootIdentity(rootDir: string): DirectoryIdentity {
-  const identity = readCodexSubagentRootIdentity(rootDir);
+  const identity = readDirectoryIdentity(rootDir);
   if (!identity) throw new Error(`Codex subagent root is missing: ${rootDir}`);
   return identity;
 }
 
-function readCodexSubagentRootIdentity(rootDir: string): DirectoryIdentity | null {
-  const stats = lstatCodexSubagentRoot(rootDir);
-  if (!stats) return null;
-  if (stats.isSymbolicLink()) {
-    throw new Error(`Codex subagent root must not be a symlink: ${rootDir}`);
-  }
-  if (!stats.isDirectory()) {
-    throw new Error(`Codex subagent root must be a directory: ${rootDir}`);
-  }
-  return { dev: stats.dev, ino: stats.ino };
-}
-
-function lstatCodexSubagentRoot(rootDir: string): fs.Stats | null {
+function assertCodexSubagentRootIsNotSymlink(rootDir: string): void {
   try {
-    return fs.lstatSync(rootDir);
+    const stats = fs.lstatSync(rootDir);
+    if (stats.isSymbolicLink()) {
+      throw new Error(`Codex subagent root must not be a symlink: ${rootDir}`);
+    }
   } catch (error) {
-    if (isMissingFileError(error)) return null;
+    if (isMissingFileError(error)) return;
     throw error;
   }
 }
 
-function assertCodexSubagentRootIsNotSymlink(rootDir: string): void {
-  const stats = lstatCodexSubagentRoot(rootDir);
-  if (stats?.isSymbolicLink()) {
-    throw new Error(`Codex subagent root must not be a symlink: ${rootDir}`);
-  }
-}
-
 function assertCodexSubagentRootIdentity(rootDir: string, expected: DirectoryIdentity): void {
-  const actual = readRequiredCodexSubagentRootIdentity(rootDir);
-  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
-    throw new Error(`Codex subagent root changed during role file operation: ${rootDir}`);
-  }
+  // assertDirectoryIdentity 위임 — 불일치시 "Directory identity changed" throw
+  // 기존 "changed during role file operation" 메시지 대신 fs-store 표준 메시지 사용
+  assertDirectoryIdentity(rootDir, expected);
 }
 
 function writeTextFileAtomic(
@@ -147,10 +130,11 @@ function writeTextFileAtomic(
     let tempCreated = false;
     try {
       assertCodexSubagentRootIdentity(rootDir, rootIdentity);
+      // path 기반 writeFileSync + flag:"wx" (O_EXCL 의미, 테스트 mock hook 호환)
       fs.writeFileSync(tempPath, contents, { encoding: "utf8", flag: "wx", mode: FILE_MODE });
       tempCreated = true;
       chmodBestEffort(tempPath, FILE_MODE);
-      fsyncFile(tempPath);
+      fsyncFileBestEffort(tempPath);
       assertCodexSubagentRootIdentity(rootDir, rootIdentity);
       fs.renameSync(tempPath, filePath);
       chmodBestEffort(filePath, FILE_MODE);
@@ -203,18 +187,20 @@ function escapeTomlBasicString(value: string): string {
 function resolveConfinedCodexSubagentPath(rootDir: string, fileName: string): string {
   const resolvedRoot = path.resolve(rootDir);
   const candidatePath = path.resolve(resolvedRoot, fileName);
-  if (!candidatePath.startsWith(`${resolvedRoot}${path.sep}`)) {
-    throw new Error(`Codex subagent role path escapes root: ${fileName}`);
-  }
+  assertWithinRoot(resolvedRoot, candidatePath);
   return candidatePath;
 }
 
-function fsyncFile(filePath: string): void {
-  const fd = fs.openSync(filePath, "r");
+function fsyncFileBestEffort(filePath: string): void {
   try {
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
+    const fd = fs.openSync(filePath, "r");
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    // fsync 실패는 원자성 보장 손실이지만 role 파일 생성을 막지는 않는다.
   }
 }
 

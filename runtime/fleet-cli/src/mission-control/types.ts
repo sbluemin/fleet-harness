@@ -65,7 +65,7 @@ export interface MissionControlPtyView extends Component {
 
 export interface CreateMissionControlControllerOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
-  readonly authService?: AuthService;
+  readonly authService: AuthService;
   readonly carrierRuntime?: CarrierRuntime;
   readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
   readonly createPtyView?: (cols: number, rows: number) => PtyView;

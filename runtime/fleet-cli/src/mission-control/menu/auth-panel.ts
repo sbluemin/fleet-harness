@@ -1,13 +1,14 @@
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
-import { CLI_TO_AUTH_PROVIDER_ID, createAuthService } from "@dotobokuri/fleet-infra/auth";
+import { CLI_TO_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-infra/auth";
 
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { createInputModal } from "./input-modal.js";
 import { isDown, isEnter, isUp, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./panel-stack.js";
 
+// [MEDIUM #6] authService 필수 주입 — Composition Root 보장. fallback 무인자 생성 제거
 export interface AuthPanelDeps {
-  readonly authService?: AuthService;
+  readonly authService: AuthService;
   readonly onRenderRequest: () => void;
   readonly stack: PanelStack;
 }
@@ -20,7 +21,7 @@ interface ProviderRow {
 }
 
 export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
-  const authService = deps.authService ?? createAuthService();
+  const authService = deps.authService;
   const rows = createProviderRows();
   let selected = 0;
   let loading = false;

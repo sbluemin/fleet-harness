@@ -126,6 +126,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       ...entry,
       optionChips: entry.id === cliId ? optionChips : [],
     })),
+    authService: runtime.infraServices.authService,
     carrierRuntime: runtime.carrierRuntime,
     createPtyHost: (profile) => createPtyHost({ profile }),
     injectProfile: (profile, launchOptions) =>

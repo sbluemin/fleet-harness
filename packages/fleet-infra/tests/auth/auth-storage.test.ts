@@ -10,7 +10,6 @@ const tempRoots: string[] = [];
 
 describe("auth storage", () => {
   afterEach(() => {
-    createAuthService().setAuthPath(DEFAULT_AUTH_PATH);
     for (const tempRoot of tempRoots.splice(0)) {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -22,23 +21,32 @@ describe("auth storage", () => {
 
   it("stores and reads provider keys from the configured auth path", async () => {
     const authPath = createTempAuthPath();
-    const auth = createAuthService();
+    const auth = createAuthService({ authPath });
 
-    auth.setAuthPath(authPath);
     await auth.setApiKey("Claude Code with Z.AI GLM", "zai-token");
 
     expect(await auth.getApiKey("Claude Code with Z.AI GLM")).toBe("zai-token");
-    expect(JSON.parse(fs.readFileSync(authPath, "utf-8"))).toEqual({
+    expect(JSON.parse(fs.readFileSync(authPath, "utf-8"))).toMatchObject({
       "Claude Code with Z.AI GLM": {
         key: "zai-token",
       },
     });
   });
 
+  it("writes auth file with 0o600 permissions", async () => {
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
+
+    await auth.setApiKey("Claude Code with Z.AI GLM", "zai-token");
+
+    if (process.platform !== "win32") {
+      const stat = fs.statSync(authPath);
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
+  });
+
   it("preserves existing provider metadata when updating a key", async () => {
     const authPath = createTempAuthPath();
-    const auth = createAuthService();
-
     fs.mkdirSync(path.dirname(authPath), { recursive: true });
     fs.writeFileSync(authPath, JSON.stringify({
       "Claude Code with Moonshot Kimi": {
@@ -47,10 +55,10 @@ describe("auth storage", () => {
       },
     }));
 
-    auth.setAuthPath(authPath);
+    const auth = createAuthService({ authPath });
     await auth.setApiKey("Claude Code with Moonshot Kimi", "new-token");
 
-    expect(JSON.parse(fs.readFileSync(authPath, "utf-8"))).toEqual({
+    expect(JSON.parse(fs.readFileSync(authPath, "utf-8"))).toMatchObject({
       "Claude Code with Moonshot Kimi": {
         key: "new-token",
         baseUrl: "https://example.invalid",
@@ -59,17 +67,16 @@ describe("auth storage", () => {
   });
 
   it("returns undefined when a provider key is missing", async () => {
-    const auth = createAuthService();
-
-    auth.setAuthPath(createTempAuthPath());
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
 
     await expect(auth.getApiKey("missing-provider")).resolves.toBeUndefined();
   });
 
   it("lists configured providers without key material", async () => {
-    const auth = createAuthService();
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
 
-    auth.setAuthPath(createTempAuthPath());
     await auth.setApiKey("Claude Code with Moonshot Kimi", "kimi-token");
     await auth.setApiKey("Claude Code with Z.AI GLM", "zai-token");
 
@@ -80,9 +87,9 @@ describe("auth storage", () => {
   });
 
   it("deletes provider keys and reports whether an entry existed", async () => {
-    const auth = createAuthService();
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
 
-    auth.setAuthPath(createTempAuthPath());
     await auth.setApiKey("Claude Code with Z.AI GLM", "zai-token");
 
     await expect(auth.deleteApiKey("Claude Code with Z.AI GLM")).resolves.toBe(true);

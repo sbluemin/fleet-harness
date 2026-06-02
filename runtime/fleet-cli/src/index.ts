@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 
+import { createInfraServices } from "@dotobokuri/fleet-infra";
+
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
@@ -11,10 +13,13 @@ const require = createRequire(import.meta.url);
 const argv = process.argv.slice(2);
 
 if (argv[0] === "auth") {
-  const status = await dispatchAuthCommand(argv, {
-    stdout: process.stdout,
-    stderr: process.stderr,
-  });
+  // auth 커맨드 전용 Composition Root — 경량 infraServices 조립 후 authService 주입
+  const authInfraServices = createInfraServices();
+  const status = await dispatchAuthCommand(
+    argv,
+    { stdout: process.stdout, stderr: process.stderr },
+    { authService: authInfraServices.authService },
+  );
   process.exit(status);
 }
 
