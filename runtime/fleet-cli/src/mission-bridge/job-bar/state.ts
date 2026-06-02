@@ -9,7 +9,6 @@ import {
   getRegisteredOrder,
 } from "@dotobokuri/fleet-carriers";
 import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/fleet-infra/agent";
-import type { KeyboardProtocolState } from "../../controls/index.js";
 
 import {
   ANIM_INTERVAL_MS,
@@ -75,7 +74,6 @@ export interface AgentPanelState {
 
 export interface JobBarStateOptions {
   readonly carrierRuntime: CarrierRuntime;
-  readonly getKeyboardProtocol?: () => KeyboardProtocolState;
   readonly onCarrierResultReminder?: (text: string) => void;
   readonly onRenderRequest?: () => void;
 }
@@ -85,7 +83,6 @@ export interface JobBarState {
   dispose(): void;
   ensurePanelAnimTimer(): void;
   getActiveJobs(): PanelJob[];
-  getKeyboardProtocol?: () => KeyboardProtocolState;
   getGrandFleetStreamStoreState(): {
     runs: Map<string, Pick<PanelRun, "error" | "requestPreview" | "status">>;
   };
@@ -133,7 +130,6 @@ export function createJobBarState(options: JobBarStateOptions): JobBarState {
     dispose: disposeJobBarState,
     ensurePanelAnimTimer,
     getActiveJobs,
-    getKeyboardProtocol: options.getKeyboardProtocol,
     getGrandFleetStreamStoreState,
     getJobById,
     getPanelJobs,

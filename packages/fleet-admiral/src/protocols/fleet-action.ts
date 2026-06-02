@@ -9,9 +9,6 @@
 // 상수
 // ─────────────────────────────────────────────────────────
 
-/** HUD/위젯 표시용 라벨 */
-export const FLEET_ACTION_LABEL = "Fleet Action Protocol";
-
 /** Fleet Action Protocol 본문 — 시스템 프롬프트에 직속 인라인된다. */
 export const FLEET_ACTION_PROMPT = String.raw`Every task progresses through the following phases **in order**. Phases marked *conditional* may be skipped when the task is trivially small or the condition is not met.
 

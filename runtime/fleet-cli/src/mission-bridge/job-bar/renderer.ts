@@ -9,7 +9,7 @@ import {
   type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
-import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "../../controls/index.js";
+import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../controls/index.js";
 import {
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
@@ -23,8 +23,8 @@ import {
 } from "./carrier-helpers.js";
 import {
   ANSI_RESET,
+  BREATHING_CYCLE_FRAMES,
   PANEL_DIM_COLOR,
-  SPINNER_FRAMES,
   SYM_INDICATOR,
   SYM_THINKING,
   TASKFORCE_BADGE_COLOR,
@@ -48,7 +48,6 @@ export interface CarrierJobHudRenderOptions {
   readonly carrierRuntime: CarrierRuntime;
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
-  readonly keyboardProtocol?: KeyboardProtocolState;
   readonly pendingExitWarning?: boolean;
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
@@ -105,7 +104,6 @@ export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): s
     carriers,
     options.frame,
     options.theme,
-    options.keyboardProtocol,
     options.pendingExitWarning === true,
   );
 }
@@ -202,13 +200,11 @@ function renderCarrierHudStrip(
   carriers: CarrierHudTile[],
   frame: number,
   theme: FleetPtyTheme | undefined,
-  keyboardProtocol: KeyboardProtocolState | undefined,
   pendingExitWarning: boolean,
 ): string[] {
   const tiles = carriers.map((carrier) => formatCarrierTile(carrier, frame));
   const line = centerLine(tiles.join(tileSeparator(theme)), width);
-  const warnedLine = prependExitWarning(line, width, pendingExitWarning);
-  return [appendProtocolIndicator(warnedLine, width, keyboardProtocol)];
+  return [prependExitWarning(line, width, pendingExitWarning)];
 }
 
 function appendWidgetJobSummary(
@@ -231,7 +227,7 @@ function appendWidgetJobSummary(
     const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(readCarriersSnapshot(), group.carrierId).length;
     const groupColor = resolveCarrierPresentationColor(carrierRuntime, group.carrierId, subagentModes, taskForceBackendCount);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${groupColor}Carrier ${group.displayName}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${groupColor}${group.displayName}${ANSI_RESET}`,
       width,
     ));
 
@@ -329,15 +325,6 @@ function centerPadding(line: string, width: number): number {
   return Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
 }
 
-function appendProtocolIndicator(line: string, width: number, state: KeyboardProtocolState | undefined): string {
-  if (!state) return line;
-  const indicator = formatProtocolIndicator(state);
-  const indicatorWidth = visibleWidth(indicator);
-  const content = truncateToWidth(line, Math.max(0, width - indicatorWidth));
-  const padding = Math.max(0, width - visibleWidth(content) - indicatorWidth);
-  return truncateToWidth(`${content}${" ".repeat(padding)}${indicator}`, width);
-}
-
 function prependExitWarning(line: string, width: number, pending: boolean): string {
   if (!pending) return line;
   const warning = formatExitWarning();
@@ -365,16 +352,6 @@ function formatExitWarning(): string {
   return `${PANEL_DIM_COLOR}${EXIT_WARNING_TEXT}${ANSI_RESET}`;
 }
 
-function formatProtocolIndicator(state: KeyboardProtocolState): string {
-  const suffix = protocolIndicatorSuffix(state);
-  return `${PANEL_DIM_COLOR}⌨${suffix}${ANSI_RESET}`;
-}
-
-function protocolIndicatorSuffix(state: KeyboardProtocolState): string {
-  if (!state.outerEnabled) return "S";
-  return state.effectiveMode === "transform" ? "T" : "E";
-}
-
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
   const icon = carrierStatusIcon(carrier, frame, carrier.color);
   const hasActiveJob = carrier.activeJobCount > 0;
@@ -390,9 +367,7 @@ function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
 
 function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: string): string {
   if (carrier.activeJobCount > 0) {
-    const frames = SPINNER_FRAMES;
-    const spinner = frames[frame % frames.length] ?? "○";
-    return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
+    return activeBreathingIcon(frame, color);
   }
   return color ? `${color}○${ANSI_RESET}` : "○";
 }
@@ -425,9 +400,7 @@ function capitalize(text: string): string {
 
 function jobIcon(job: PanelJobViewModel, frame: number, color: string): string {
   if (job.status === "active") {
-    const frames = SPINNER_FRAMES;
-    const spinner = frames[frame % frames.length] ?? "○";
-    return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
+    return activeBreathingIcon(frame, color);
   }
   if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
   if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
@@ -499,9 +472,7 @@ function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: stri
     if (track.status === "err") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
     return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
   }
-  const frames = SPINNER_FRAMES;
-  const spinner = frames[frame % frames.length] ?? "○";
-  return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
+  return activeBreathingIcon(frame, color);
 }
 
 function trackDisplayName(track: PanelTrackViewModel): string {
@@ -615,8 +586,21 @@ function isHudEscIntermediate(code: number): boolean {
 }
 
 function widgetTrackStats(track: PanelTrackViewModel): string {
-  const parts: string[] = [];
-  if (track.toolCallCount > 0) parts.push(`${track.toolCallCount}T`);
-  if (track.textLineCount > 0) parts.push(`${track.textLineCount}L`);
-  return parts.length > 0 ? ` ${PANEL_DIM_COLOR}[${parts.join("·")}]${ANSI_RESET}` : "";
+  const label = formatTokenEstimate(track.estimatedTokenCount);
+  return label ? ` ${PANEL_DIM_COLOR}${label}${ANSI_RESET}` : "";
+}
+
+function activeBreathingIcon(frame: number, color?: string): string {
+  const cycleFrame = ((frame % BREATHING_CYCLE_FRAMES) + BREATHING_CYCLE_FRAMES) % BREATHING_CYCLE_FRAMES;
+  const eased = (Math.sin((cycleFrame / BREATHING_CYCLE_FRAMES) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+  const icon = eased >= 0.5 ? "●" : "○";
+  return color ? `${color}${icon}${ANSI_RESET}` : icon;
+}
+
+function formatTokenEstimate(tokenCount: number): string {
+  if (tokenCount <= 0) return "";
+  if (tokenCount < 1000) return `~${tokenCount} tokens`;
+  const scaled = tokenCount / 1000;
+  const rounded = scaled.toFixed(1).replace(/\.0$/, "");
+  return `~${rounded}k tokens`;
 }

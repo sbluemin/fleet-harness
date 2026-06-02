@@ -48,7 +48,8 @@ describe("job bar renderer", () => {
       width: 100,
     }).join("\n"));
 
-    expect(text.match(/Carrier Genesis/g)).toHaveLength(1);
+    expect(text.match(/^  Genesis$/gm)).toHaveLength(1);
+    expect(text).not.toContain("Carrier Genesis");
     expect(text).toContain("Audit stream identity");
     expect(text).toContain("Patch renderer grouping");
     expect(text).toContain("alpha preview");
@@ -117,6 +118,37 @@ describe("job bar renderer", () => {
     expect(text).not.toContain("first line second line third line");
   });
 
+  it("renders token estimates from full blocks while previewing only the latest block", () => {
+    const runtime = createTestCarrierRuntime();
+    const longText = "a".repeat(4000);
+    const runs = new Map<string, PanelRunViewModelSource>([
+      ["run:first", {
+        runId: "run:first",
+        status: "stream",
+        blocks: [
+          { type: "text", text: longText },
+          { type: "tool", title: "Lookup", status: "completed" },
+          { type: "text", text: "latest preview" },
+        ],
+      }],
+    ]);
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [
+        buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000),
+      ],
+      runs,
+      width: 160,
+    }).join("\n"));
+
+    expect(text).toContain("~1k tokens");
+    expect(text).toContain("latest preview");
+    expect(text).not.toContain(longText);
+    expect(text).not.toMatch(/\[[0-9]+T·[0-9]+L\]/);
+  });
+
   it("keeps multiline block rendering split while removing terminal controls", () => {
     expect(renderBlockLines([{
       type: "thought",
@@ -126,6 +158,54 @@ describe("job bar renderer", () => {
       { text: "  step", type: "thought" },
       { text: "  finish", type: "thought" },
     ]);
+  });
+
+  it("breathes active icons and keeps completed or error tracks on the indicator glyph", () => {
+    const runtime = createTestCarrierRuntime();
+    const activeFrame = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [
+        buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+      ],
+      runs: new Map([
+        ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "stream", blocks: [{ type: "text", text: "active" }] }],
+        ["taskforce:first:codex", { runId: "taskforce:first:codex", status: "stream", blocks: [{ type: "text", text: "active" }] }],
+      ]),
+      width: 160,
+    }).join("\n"));
+    const crestFrame = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 5,
+      jobs: [
+        buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+      ],
+      runs: new Map([
+        ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "stream", blocks: [{ type: "text", text: "active" }] }],
+        ["taskforce:first:codex", { runId: "taskforce:first:codex", status: "stream", blocks: [{ type: "text", text: "active" }] }],
+      ]),
+      width: 160,
+    }).join("\n"));
+    const completedFrame = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 5,
+      jobs: [
+        buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+      ],
+      runs: new Map([
+        ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "done", blocks: [{ type: "text", text: "done" }] }],
+        ["taskforce:first:codex", { runId: "taskforce:first:codex", status: "err", blocks: [{ type: "text", text: "error" }] }],
+      ]),
+      width: 160,
+    }).join("\n"));
+
+    expect(activeFrame).toContain("○ Taskforce · Coordinate backends");
+    expect(activeFrame).toContain("○ Claude Code with Anthropic");
+    expect(crestFrame).toContain("● Taskforce · Coordinate backends");
+    expect(crestFrame).toContain("● Claude Code with Anthropic");
+    expect(completedFrame).toContain("⏺ Claude Code with Anthropic");
+    expect(completedFrame).toContain("⏺ OpenAI Codex CLI");
+    expect(`${activeFrame}\n${crestFrame}\n${completedFrame}`).not.toMatch(/[\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f]/);
   });
 
   it("renders no empty-state text when there are no active jobs", () => {
@@ -174,7 +254,7 @@ describe("job bar renderer", () => {
 
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}O`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
-    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Carrier Ohio`);
+    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}Claude Code with Anthropic`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}OpenAI Codex CLI`);

@@ -1,6 +1,5 @@
 export { ANSI_BOLD, ANSI_DIM, ANSI_RESET, paint, stripAnsi } from "./ansi.js";
 export { ASCII_FLEET_BANNER } from "./brand.js";
-export { getFleetActionHudColor } from "./hud.js";
 export {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,

@@ -50,8 +50,7 @@ export interface PanelTrackViewModel {
   readonly status: ColStatus;
   readonly streamKey: string;
   readonly subtitle?: string;
-  readonly textLineCount: number;
-  readonly toolCallCount: number;
+  readonly estimatedTokenCount: number;
   readonly trackId: string;
 }
 
@@ -114,14 +113,13 @@ export function buildPanelTrackViewModel(
     blocks: blockTail,
     displayCli: track.displayCli,
     displayName: track.displayName,
-    isComplete: status === "done",
+    estimatedTokenCount: stats.estimatedTokenCount,
+    isComplete: status === "done" || status === "err",
     kind: track.kind,
     runId: run?.runId ?? track.runId,
     status,
     streamKey: track.streamKey,
     subtitle: track.subtitle,
-    textLineCount: stats.textLineCount,
-    toolCallCount: stats.toolCallCount,
     trackId: track.trackId,
   };
 }
@@ -178,15 +176,16 @@ function resolveRun(
   return runs.get(track.streamKey) ?? runs.get(track.trackId);
 }
 
-function collectBlockStats(blocks: readonly ColBlock[]): { readonly textLineCount: number; readonly toolCallCount: number } {
-  let textLineCount = 0;
-  let toolCallCount = 0;
+function collectBlockStats(blocks: readonly ColBlock[]): { readonly estimatedTokenCount: number } {
+  let charCount = 0;
   for (const block of blocks) {
     if (block.type === "tool") {
-      toolCallCount++;
+      charCount += block.title.length;
+      if (block.status) charCount += block.status.length;
       continue;
     }
-    textLineCount += block.text.split("\n").filter((line) => line.trim()).length;
+    charCount += block.text.length;
   }
-  return { textLineCount, toolCallCount };
+  const estimatedTokenCount = charCount === 0 ? 0 : Math.max(1, Math.round(charCount / 4));
+  return { estimatedTokenCount };
 }

@@ -137,11 +137,11 @@ describe("app cursor policy", () => {
     let native = false;
     const section = new FleetStatusSection({ getNative: () => native });
 
-    expect(stripAnsi(section.render(80).join("\n"))).toContain("⚓ Fleet");
+    expect(stripAnsi(section.render(80).join("\n"))).toBe("─".repeat(80));
 
     native = true;
 
-    expect(stripAnsi(section.render(80).join("\n"))).not.toContain("Fleet Action Protocol");
+    expect(stripAnsi(section.render(80).join("\n"))).toBe("─".repeat(80));
   });
 });
 

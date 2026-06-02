@@ -34,4 +34,4 @@ System Prompt
 
 ## HUD Integration
 
-The Fleet Action Protocol display label (`FLEET_ACTION_LABEL`) is exported from `fleet-action.ts` as a plain protocol constant. Fleet CLI owns HUD color in `runtime/fleet-cli/src/styles/hud.ts` and combines it with the label when rendering `⚓ Fleet Action Protocol`.
+The Fleet Action Protocol does not export a HUD display label. Fleet CLI owns its lower-pane status rendering independently from the prompt protocol body.

@@ -1,6 +1,6 @@
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 
-import type { Component, FleetPtyApi, KeyboardProtocolState } from "../controls/index.js";
+import type { Component, FleetPtyApi } from "../controls/index.js";
 import type { JobBarState } from "./job-bar/state.js";
 
 export interface MissionBridgeController {
@@ -15,7 +15,6 @@ export interface CreateMissionBridgeControllerOptions {
   readonly addInputListener: (listener: (data: string) => void) => () => void;
   readonly carrierRuntime: CarrierRuntime;
   readonly getColumns: () => number;
-  readonly getKeyboardProtocol?: () => KeyboardProtocolState;
   readonly getNative: () => boolean;
   readonly getRows: () => number;
   readonly onCarrierResultReminder?: (text: string) => void;

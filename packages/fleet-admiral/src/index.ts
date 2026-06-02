@@ -8,4 +8,3 @@ export {
   WIKI_EXECUTOR_MCP_TOOL_IDS,
   WIKI_MCP_SERVER_NAME,
 } from "./tools.js";
-export { FLEET_ACTION_LABEL } from "./protocols/index.js";

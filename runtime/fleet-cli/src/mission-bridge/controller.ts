@@ -13,7 +13,6 @@ import type { CreateMissionBridgeControllerOptions, MissionBridgeController } fr
 export function createMissionBridgeController(options: CreateMissionBridgeControllerOptions): MissionBridgeController {
   const jobBarState = createJobBarState({
     carrierRuntime: options.carrierRuntime,
-    getKeyboardProtocol: options.getKeyboardProtocol,
     onCarrierResultReminder: options.onCarrierResultReminder === undefined
       ? undefined
       : (text) => options.onCarrierResultReminder?.(sanitizeCarrierResultReminder(text)),

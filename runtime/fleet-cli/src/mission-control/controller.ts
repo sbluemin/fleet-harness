@@ -1,4 +1,4 @@
-import { type Component, type KeyboardProtocolState, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
+import { type Component, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
@@ -55,11 +55,6 @@ type MissionControlControllerWithReleaseSetter = MissionControlController & {
   readonly setRelease: (release: NonNullable<CreateMissionControlControllerOptions["release"]>) => void;
 };
 
-const EMPTY_KEYBOARD_PROTOCOL_STATE: KeyboardProtocolState = {
-  childRequested: false,
-  effectiveMode: "passthrough",
-  outerEnabled: false,
-};
 const EMPTY_MOUSE_PROTOCOL_STATE: MouseProtocolState = {
   activeEncoding: "default",
   activeProtocol: "none",
@@ -156,7 +151,6 @@ export function createMissionControlController(options: CreateMissionControlCont
   };
 
   const ptyHost: PtyHost = {
-    getKeyboardProtocol: () => active?.host.getKeyboardProtocol?.() ?? EMPTY_KEYBOARD_PROTOCOL_STATE,
     getMouseProtocol: () => active?.host.getMouseProtocol?.() ?? EMPTY_MOUSE_PROTOCOL_STATE,
     kill(): void {
       suppressNextExit = true;

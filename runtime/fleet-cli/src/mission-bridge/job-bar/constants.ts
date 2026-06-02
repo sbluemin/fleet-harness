@@ -10,8 +10,8 @@ export const BORDER = {
   vertical: "│",
 } as const;
 
-export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 export const ANIM_INTERVAL_MS = 100;
+export const BREATHING_CYCLE_FRAMES = 10;
 export const PROGRESS_BLOCK_SIZE = 6;
 
 export const PREVIEW_LINES = 18;

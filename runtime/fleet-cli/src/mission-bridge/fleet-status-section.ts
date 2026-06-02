@@ -1,9 +1,7 @@
-import { FLEET_ACTION_LABEL } from "@dotobokuri/fleet-admiral";
 import { DIM_COLOR } from "../styles/palette.js";
-import { getFleetActionHudColor } from "../styles/hud.js";
 import { paint } from "../styles/index.js";
 
-import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
+import type { Component } from "../controls/index.js";
 
 export interface FleetStatusSectionOptions {
 	readonly getNative?: () => boolean;
@@ -11,7 +9,6 @@ export interface FleetStatusSectionOptions {
 }
 
 const BORDER_CHAR = "─";
-const PROTOCOL_ICON = "⚓";
 
 export class FleetStatusSection implements Component {
 	constructor(private readonly options: FleetStatusSectionOptions) {}
@@ -19,23 +16,9 @@ export class FleetStatusSection implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		if (this.options.getNative?.() ?? this.options.native) {
-			return [renderBorder(width, DIM_COLOR)];
-		}
-		return [renderStatusLine(width, getFleetActionHudColor(), FLEET_ACTION_LABEL)];
+		this.options.getNative?.();
+		return [renderBorder(width, DIM_COLOR)];
 	}
-}
-
-function renderStatusLine(width: number, protocolColor: string, protocolLabel: string): string {
-	if (width <= 0) return "";
-	const centerBlock = paint(protocolColor, ` ${PROTOCOL_ICON} ${protocolLabel} `, true);
-	const centerWidth = visibleWidth(centerBlock);
-	if (centerWidth >= width) return truncateToWidth(centerBlock, width);
-
-	const remainingWidth = width - centerWidth;
-	const leftWidth = Math.floor(remainingWidth / 2);
-	const rightWidth = remainingWidth - leftWidth;
-	return renderBorder(leftWidth, protocolColor) + centerBlock + renderBorder(rightWidth, protocolColor);
 }
 
 function renderBorder(width: number, color: string): string {

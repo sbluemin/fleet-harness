@@ -5,7 +5,7 @@
 ## Owns
 
 - Admiral system prompt assembly and the `createSystemPromptBuilder(deps): SystemPromptBuilder` factory
-- Fleet Action Protocol labels, and prompt body
+- Fleet Action Protocol prompt body
 - Standing orders used by the Admiral system prompt
 - Fleet-specific agent tool defaults and whitelist-only executor MCP tool exposure
 
@@ -34,7 +34,6 @@ The root barrel is whitelist-only. It may export exactly:
 - `CARRIER_EXECUTOR_MCP_TOOL_IDS`
 - `WIKI_EXECUTOR_MCP_TOOL_IDS`
 - `EXECUTOR_MCP_TOOL_IDS`
-- `FLEET_ACTION_LABEL`
 
 Do not use `export *`. Do not re-export generic MCP tool types, formatter helpers, `getAllAgentTools`, or `clearAllDefaultTools`.
 

@@ -58,11 +58,6 @@ const DEFAULT_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
   { action: "mode-toggle", key: "\x14", label: "Ctrl+T" },
 ];
 
-const STANDARD_KEYBOARD_PROTOCOL_STATE = {
-  outerEnabled: false,
-  childRequested: false,
-  effectiveMode: "passthrough" as const,
-};
 export function createMissionControlProfileConfig(
   options: CreateMissionControlProfileConfigOptions,
 ): MissionControlProfileConfig {
@@ -164,7 +159,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     addInputListener: (listener) => ui.addInputListener(listener),
     carrierRuntime: runtime.carrierRuntime,
     getColumns: () => ui.columns,
-    getKeyboardProtocol: () => missionControl.ptyHost.getKeyboardProtocol?.() ?? STANDARD_KEYBOARD_PROTOCOL_STATE,
     getNative: () => sessionOptionsRuntime.getDraft().native,
     getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - missionControl.ptyView.maxRows),
     onCarrierResultReminder: (text) => sendCarrierResultReminder(text),
