@@ -1,5 +1,7 @@
 import {
+  PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
+  SUBAGENT_PRESENTATION_BG_ANSI,
   SUBAGENT_PRESENTATION_ANSI,
 } from "../../styles/carriers.js";
 import { CLI_DISPLAY_NAMES } from "@dotobokuri/fleet-carriers";
@@ -32,7 +34,6 @@ export interface CarrierStatusRenderDeps {
 
 interface CarrierRosterCellLine {
   readonly bg?: string;
-  readonly selected?: boolean;
   readonly text: string;
 }
 
@@ -79,7 +80,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
       body.push({
         kind: "cell",
         line: {
-          selected: isSelected,
+          bg: isSelected ? getEntryBgColorForEntry(entry) : undefined,
           text: withIndent(renderEntryLine(entry, isSelected, deps)),
         },
       });
@@ -103,10 +104,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
   }
 
   body.push({ kind: "blank" });
-  body.push(toCellLine(
-    renderRosterActionsRow(model.viewModel.selectedCarrierId === ROSTER_ACTIONS_ID, deps),
-    model.viewModel.selectedCarrierId === ROSTER_ACTIONS_ID,
-  ));
+  body.push(toCellLine(renderRosterActionsRow(model.viewModel.selectedCarrierId === ROSTER_ACTIONS_ID, deps)));
   if (model.state.kind === "carrierActions") {
     body.push(...buildActionMenuLines("Carrier Actions", CARRIER_ACTION_LABELS, model.state.cursor, deps));
   }
@@ -121,7 +119,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
   }
 
   body.push({ kind: "center", text: deps.theme.dim(getFooterHint(model)) });
-  return renderDisplayLines(body, width, deps.theme);
+  return renderDisplayLines(body, width);
 }
 
 export function estimateCarrierStatusRows(
@@ -165,17 +163,16 @@ function buildBatchCliPanelLines(state: OverlayState, deps: CarrierStatusRenderD
   }
   for (let i = 0; i < state.choices.length; i++) {
     const choice = state.choices[i]!;
-    const cursor = i === state.cursor ? "▸" : " ";
+    const cursor = i === state.cursor ? deps.theme.accent("▸") : " ";
     const content = `  ${cursor} ○ ${choice.label}`;
     lines.push(toCellLine(
       choice.carrierCount === 0 && state.kind === "batchFrom" ? deps.theme.dim(content) : content,
-      i === state.cursor,
     ));
   }
   return lines;
 }
 
-function renderDisplayLines(lines: readonly CarrierRosterDisplayLine[], width: number, theme: FleetPtyTheme): string[] {
+function renderDisplayLines(lines: readonly CarrierRosterDisplayLine[], width: number): string[] {
   const cellWidth = resolveCellWidth(lines);
   return lines.map((line) => {
     if (line.kind === "blank") {
@@ -184,7 +181,7 @@ function renderDisplayLines(lines: readonly CarrierRosterDisplayLine[], width: n
     if (line.kind === "center") {
       return centerText(line.text, width);
     }
-    return centerText(renderCellLine(line.line, cellWidth, theme), width);
+    return renderCellLine(line.line, cellWidth, width);
   });
 }
 
@@ -195,23 +192,20 @@ function resolveCellWidth(lines: readonly CarrierRosterDisplayLine[]): number {
   return Math.max(MIN_CELL_WIDTH, ...lineWidths);
 }
 
-function renderCellLine(line: CarrierRosterCellLine, cellWidth: number, theme: FleetPtyTheme): string {
+function renderCellLine(line: CarrierRosterCellLine, cellWidth: number, width: number): string {
   const padded = padEndVisible(truncateToWidth(line.text, cellWidth), cellWidth);
-  if (line.selected) {
-    return theme.bg("selected", padded);
-  }
-  return applyLineBg(padded, line.bg);
+  return centerText(applyLineBg(padded, line.bg), width);
 }
 
-function toCellLine(text: string, selected = false): CarrierRosterDisplayLine {
+function toCellLine(text: string): CarrierRosterDisplayLine {
   return {
     kind: "cell",
-    line: { selected, text },
+    line: { text },
   };
 }
 
-function toIndentedCellLine(text: string, selected = false): CarrierRosterDisplayLine {
-  return toCellLine(withIndent(text), selected);
+function toIndentedCellLine(text: string): CarrierRosterDisplayLine {
+  return toCellLine(withIndent(text));
 }
 
 function withIndent(text: string): string {
@@ -248,7 +242,7 @@ function buildEntryEditorLines(entry: CarrierStatusEntry, state: OverlayState, d
   return options.map((option, index) => {
     const cursorToken = index === cursor ? `${getCliEntryColor(entry.cliType)}▸${ANSI_RESET}` : " ";
     const marker = option.value === currentValue ? "●" : "○";
-    return toIndentedCellLine(`      ${cursorToken} ${marker} ${option.label}`, index === cursor);
+    return toIndentedCellLine(`      ${cursorToken} ${marker} ${option.label}`);
   });
 }
 
@@ -260,7 +254,10 @@ function buildActionMenuLines(
 ): CarrierRosterDisplayLine[] {
   return [
     toIndentedCellLine(deps.theme.accent(`      ${title}`)),
-    ...labels.map((label, index) => toIndentedCellLine(`      ${index === cursor ? "▸" : " "} ${label}`, index === cursor)),
+    ...labels.map((label, index) => {
+      const marker = index === cursor ? deps.theme.accent("▸") : " ";
+      return toIndentedCellLine(`      ${marker} ${label}`);
+    }),
   ];
 }
 
@@ -268,7 +265,7 @@ function buildRenameEditorLines(renameState: RenameState, theme: FleetPtyTheme):
   const draft = renameState.draft.length > 0 ? renameState.draft : theme.dim("(empty resets default)");
   return [
     toIndentedCellLine(theme.accent("      이름 변경")),
-    toIndentedCellLine(`      ▸ ${draft}`, true),
+    toIndentedCellLine(`      ${theme.accent("▸")} ${draft}`),
   ];
 }
 
@@ -329,6 +326,14 @@ function getEntryColor(entry: CarrierStatusEntry): string {
   return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
 }
 
+function getEntryBgColor(cliType: CarrierCliType): string | undefined {
+  return PROVIDER_BG_ANSI_COLORS[cliType];
+}
+
+function getEntryBgColorForEntry(entry: CarrierStatusEntry): string | undefined {
+  return entry.subagentMode ? getSubagentSignatureBgColor() : getEntryBgColor(entry.cliType);
+}
+
 function getCliEntryColor(cliType: CarrierCliType): string {
   return PROVIDER_ANSI_COLORS[cliType] ?? "";
 }
@@ -339,6 +344,10 @@ function getCliDisplayName(cliType: string): string {
 
 function getSubagentSignatureColor(): string {
   return SUBAGENT_PRESENTATION_ANSI;
+}
+
+function getSubagentSignatureBgColor(): string | undefined {
+  return SUBAGENT_PRESENTATION_BG_ANSI;
 }
 
 function getFooterHint(model: CarrierStatusRenderModel): string {

@@ -53,7 +53,6 @@ type TaskForceMode = "actions" | "browse" | "effort" | "model" | "saving";
 
 interface TaskForceCellLine {
   readonly bg?: string;
-  readonly selected?: boolean;
   readonly text: string;
 }
 
@@ -136,7 +135,6 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       body.push({
         kind: "cell",
         line: {
-          selected: isSelected,
           text: withIndent(this.renderEntryLine(entry, isSelected)),
         },
       });
@@ -147,7 +145,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
           const model = models[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = model.modelId === entry.model ? "●" : "○";
-          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${model.name ?? model.modelId}`, j === this.editCursor));
+          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${model.name ?? model.modelId}`));
         }
       }
 
@@ -157,7 +155,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
           const level = effortLevels[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
           const marker = level === (entry.effort ?? "") ? "●" : "○";
-          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${level}`, j === this.editCursor));
+          body.push(toIndentedCellLine(`      ${cursor} ${marker} ${level}`));
         }
       }
 
@@ -167,7 +165,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
         for (let j = 0; j < actions.length; j++) {
           const action = actions[j]!;
           const cursor = j === this.editCursor ? `${entry.color}▸${ANSI_RESET}` : " ";
-          body.push(toIndentedCellLine(`      ${cursor} ${action}`, j === this.editCursor));
+          body.push(toIndentedCellLine(`      ${cursor} ${action}`));
         }
       }
     }
@@ -179,7 +177,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     }
 
     body.push({ kind: "center", text: this.options.theme.dim(this.getFooterHint()) });
-    return renderDisplayLines(body, width, this.options.theme);
+    return renderDisplayLines(body, width);
   }
 
   private buildBackendEntries(): TaskForceEntry[] {
@@ -516,7 +514,7 @@ function clampOverlayRows(maxRows: number, cardRows: number): number {
   return Math.min(Math.max(0, maxRows), Math.max(0, cardRows));
 }
 
-function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: number, theme: FleetPtyTheme): string[] {
+function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: number): string[] {
   const cellWidth = resolveCellWidth(lines);
   return lines.map((line) => {
     if (line.kind === "blank") {
@@ -525,7 +523,7 @@ function renderDisplayLines(lines: readonly TaskForceDisplayLine[], width: numbe
     if (line.kind === "center") {
       return centerText(line.text, width);
     }
-    return centerText(renderCellLine(line.line, cellWidth, theme), width);
+    return renderCellLine(line.line, cellWidth, width);
   });
 }
 
@@ -536,23 +534,20 @@ function resolveCellWidth(lines: readonly TaskForceDisplayLine[]): number {
   return Math.max(MIN_CELL_WIDTH, ...lineWidths);
 }
 
-function renderCellLine(line: TaskForceCellLine, cellWidth: number, theme: FleetPtyTheme): string {
+function renderCellLine(line: TaskForceCellLine, cellWidth: number, width: number): string {
   const padded = padEndVisible(truncateToWidth(line.text, cellWidth), cellWidth);
-  if (line.selected) {
-    return theme.bg("selected", padded);
-  }
-  return applyLineBg(padded, line.bg);
+  return centerText(applyLineBg(padded, line.bg), width);
 }
 
-function toCellLine(text: string, selected = false): TaskForceDisplayLine {
+function toCellLine(text: string): TaskForceDisplayLine {
   return {
     kind: "cell",
-    line: { selected, text },
+    line: { text },
   };
 }
 
-function toIndentedCellLine(text: string, selected = false): TaskForceDisplayLine {
-  return toCellLine(withIndent(text), selected);
+function toIndentedCellLine(text: string): TaskForceDisplayLine {
+  return toCellLine(withIndent(text));
 }
 
 function withIndent(text: string): string {

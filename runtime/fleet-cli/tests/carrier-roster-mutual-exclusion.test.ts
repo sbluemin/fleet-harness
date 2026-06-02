@@ -17,13 +17,19 @@ import {
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
-import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI } from "../src/styles/carriers.js";
 import { getCliModels } from "@dotobokuri/fleet-infra/agent";
 
 import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
 import { CarrierStatusOverlay } from "../src/mission-control/carrier-roster/panel.js";
 import { renderCarrierStatusOverlay } from "../src/mission-control/carrier-roster/renderer.js";
 import { RosterTaskForcePanelSurface } from "../src/mission-control/carrier-roster/taskforce-panel.js";
+import { MISSION_CONTROL_THEME } from "../src/mission-control/renderer.js";
+import {
+  PROVIDER_BG_ANSI_COLORS,
+  PROVIDER_ANSI_COLORS,
+  SUBAGENT_PRESENTATION_ANSI,
+  SUBAGENT_PRESENTATION_BG_ANSI,
+} from "../src/styles/carriers.js";
 import type { FleetPtyTheme } from "../src/controls/index.js";
 import type { CarrierStatusRenderDeps } from "../src/mission-control/carrier-roster/renderer.js";
 import type { TaskForceEntry } from "../src/mission-control/carrier-roster/types.js";
@@ -36,6 +42,8 @@ const THEME = {
   fg: (_token: string, text: string) => text,
   warning: (text: string) => `<warning>${text}</warning>`,
 } as FleetPtyTheme;
+const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const SELECTED_BG_ANSI = "\x1b[48;2;45;55;70m";
 
 let tempDir: string | null = null;
 
@@ -148,7 +156,7 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     expect(surface.render(140).join("\n")).toContain("<warning>경고:");
   });
 
-  it("highlights TaskForce selectable backend, action, and model rows with selected bg", () => {
+  it("marks TaskForce selectable backend, action, and model rows with markers only", () => {
     const runtime = createTestCarrierRuntime();
     const surface = new RosterTaskForcePanelSurface({
       carrierDisplayName: "Ohio",
@@ -159,13 +167,19 @@ describe("carrier roster SA/TF mutual exclusion", () => {
       theme: THEME,
     });
 
-    expect(findRenderedLine(surface.render(140).join("\n"), "Claude")).toContain("<selected>");
+    const backendLine = findRenderedLine(surface.render(140).join("\n"), "Claude");
+    expect(backendLine).toContain("▸");
+    expect(backendLine).not.toContain("<selected>");
 
     surface.handleInput("\r");
-    expect(findRenderedLine(surface.render(140).join("\n"), "Edit Model")).toContain("<selected>");
+    const actionLine = findRenderedLine(surface.render(140).join("\n"), "Edit Model");
+    expect(actionLine).toContain("▸");
+    expect(actionLine).not.toContain("<selected>");
 
     surface.handleInput("\r");
-    expect(findRenderedLine(surface.render(140).join("\n"), "▸")).toContain("<selected>");
+    const modelLine = findRenderedLine(surface.render(140).join("\n"), "▸");
+    expect(modelLine).toContain("▸");
+    expect(modelLine).not.toContain("<selected>");
   });
 });
 
@@ -190,7 +204,7 @@ describe("carrier roster renderer SA/TF colors", () => {
     expect(rendered).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
   });
 
-  it("highlights carrier row and Carrier Actions action rows with selected bg", () => {
+  it("marks carrier row with signature bg and keeps Carrier Actions marker-only", () => {
     const entry = buildRosterEntry();
     const rendered = renderRosterModel(entry, {
       expandedCarrierId: null,
@@ -199,11 +213,14 @@ describe("carrier roster renderer SA/TF colors", () => {
       state: { cursor: 0, kind: "carrierActions" },
     });
 
-    expect(findRenderedLine(rendered, "Ohio")).toContain("<selected>");
-    expect(findRenderedLine(rendered, "▸ Edit Model")).toContain("<selected>");
+    expect(findRenderedLine(rendered, "Ohio")).not.toContain("<selected>");
+    expect(findRenderedLine(rendered, "Ohio")).toContain("▸");
+    expect(findRenderedLine(rendered, "Ohio")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
+    expect(findRenderedLine(rendered, "▸ Edit Model")).not.toContain("<selected>");
+    expect(findRenderedLine(rendered, "▸ Edit Model")).not.toContain(SELECTED_BG_ANSI);
   });
 
-  it("highlights Roster Actions virtual row and selected action with selected bg", () => {
+  it("marks Roster Actions virtual row and selected action with markers only", () => {
     const entry = buildRosterEntry();
     const rendered = renderRosterModel(entry, {
       expandedCarrierId: null,
@@ -212,11 +229,13 @@ describe("carrier roster renderer SA/TF colors", () => {
       state: { cursor: 0, kind: "rosterActions" },
     });
 
-    expect(findSelectedRenderedLine(rendered, "Roster Actions")).toContain("▸");
-    expect(findSelectedRenderedLine(rendered, "Batch CLI Switch")).toContain("▸");
+    expect(findRenderedLine(rendered, "Roster Actions")).toContain("▸");
+    expect(findRenderedLine(rendered, "Roster Actions")).not.toContain("<selected>");
+    expect(findRenderedLine(rendered, "Batch CLI Switch")).toContain("▸");
+    expect(findRenderedLine(rendered, "Batch CLI Switch")).not.toContain("<selected>");
   });
 
-  it("highlights roster edit, rename, and batch cursor rows with selected bg", () => {
+  it("marks roster edit, rename, and batch cursor rows with markers only", () => {
     const entry = buildRosterEntry({ effort: "low" });
     const modelRendered = renderRosterModel(entry, {
       expandedCarrierId: null,
@@ -258,11 +277,74 @@ describe("carrier roster renderer SA/TF colors", () => {
       },
     });
 
-    expect(findSelectedRenderedLine(modelRendered, "●")).toContain("▸");
-    expect(findSelectedRenderedLine(effortRendered, "high")).toContain("▸");
-    expect(findSelectedRenderedLine(cliTypeRendered, "Codex")).toContain("▸");
-    expect(findSelectedRenderedLine(renameRendered, "New Ohio")).toContain("▸");
-    expect(findSelectedRenderedLine(batchRendered, "Claude")).toContain("▸");
+    expectMarkerOnly(findRenderedLine(modelRendered, "●"));
+    expectMarkerOnly(findRenderedLine(effortRendered, "high"));
+    expectMarkerOnly(findRenderedLine(cliTypeRendered, "Codex"));
+    expectMarkerOnly(findRenderedLine(renameRendered, "New Ohio"));
+    expectMarkerOnly(findRenderedLine(batchRendered, "Claude"));
+  });
+
+  it("keeps selected TaskForce rows marker-only without full selected bg", () => {
+    const runtime = createTestCarrierRuntime();
+    const surface = new RosterTaskForcePanelSurface({
+      carrierDisplayName: "Ohio",
+      carrierId: "ohio",
+      carrierRuntime: runtime,
+      done: vi.fn(),
+      requestRender: vi.fn(),
+      theme: MISSION_CONTROL_THEME,
+    });
+    const browseRendered = surface.render(92).join("\n");
+    surface.handleInput("\r");
+    const actionRendered = surface.render(92).join("\n");
+    surface.handleInput("\r");
+    const modelRendered = surface.render(92).join("\n");
+
+    expectMarkerOnly(findRenderedLine(browseRendered, "Claude"));
+    expectMarkerOnly(findRenderedLine(actionRendered, "Edit Model"));
+    expectMarkerOnly(findRenderedLine(modelRendered, "▸"));
+  });
+
+  it("renders selected carrier rows with signature bg and marker", () => {
+    const entry = buildRosterEntry({
+      effort: "low",
+      role: "Captain",
+      subagentMode: true,
+      taskForceBackendCount: 2,
+    });
+    const rendered = renderRosterModel(entry, {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state: { kind: "browse" },
+      theme: MISSION_CONTROL_THEME,
+      width: 96,
+    });
+    const selectedLine = findRenderedLine(rendered, "Ohio");
+
+    expect(selectedLine).toContain("[SA]");
+    expect(selectedLine).toContain("[TF:2]");
+    expect(stripAnsi(selectedLine)).toContain("▸ #1");
+    expect(selectedLine).toContain(SUBAGENT_PRESENTATION_BG_ANSI);
+    expect(selectedLine).not.toContain(SELECTED_BG_ANSI);
+  });
+
+  it("keeps selected carrier signature bg separate from non-selected rows", () => {
+    const selectedEntry = buildRosterEntry({ carrierId: "ohio", displayName: "Ohio", slot: 1 });
+    const plainEntry = buildRosterEntry({ carrierId: "nimitz", displayName: "Nimitz", slot: 2 });
+    const rendered = renderRosterEntries([selectedEntry, plainEntry], {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: selectedEntry.carrierId,
+      state: { kind: "browse" },
+      theme: MISSION_CONTROL_THEME,
+      width: 96,
+    });
+
+    expect(findRenderedLine(rendered, "Ohio")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
+    expect(findRenderedLine(rendered, "Ohio")).not.toContain(SELECTED_BG_ANSI);
+    expect(findRenderedLine(rendered, "Nimitz")).not.toContain(PROVIDER_BG_ANSI_COLORS.claude);
+    expect(findRenderedLine(rendered, "Nimitz")).not.toContain(SELECTED_BG_ANSI);
   });
 });
 
@@ -318,23 +400,39 @@ function renderRosterModel(
     readonly renameState: { readonly carrierId: string; readonly draft: string } | null;
     readonly selectedCarrierId: string;
     readonly state: Parameters<typeof renderCarrierStatusOverlay>[1]["state"];
+    readonly theme?: FleetPtyTheme;
+    readonly width?: number;
   },
 ): string {
-  return renderCarrierStatusOverlay(140, {
+  return renderRosterEntries([entry], options);
+}
+
+function renderRosterEntries(
+  entries: readonly CarrierStatusEntry[],
+  options: {
+    readonly expandedCarrierId: string | null;
+    readonly renameState: { readonly carrierId: string; readonly draft: string } | null;
+    readonly selectedCarrierId: string;
+    readonly state: Parameters<typeof renderCarrierStatusOverlay>[1]["state"];
+    readonly theme?: FleetPtyTheme;
+    readonly width?: number;
+  },
+): string {
+  return renderCarrierStatusOverlay(options.width ?? 140, {
     expandedCarrierId: options.expandedCarrierId,
     feedbackMessage: null,
     renameState: options.renameState,
     state: options.state,
     viewModel: {
-      flatEntries: [entry],
+      flatEntries: entries,
       groupedEntries: [{
-        color: PROVIDER_ANSI_COLORS[entry.cliType] ?? "",
-        entries: [entry],
+        color: PROVIDER_ANSI_COLORS[entries[0]?.cliType ?? "claude"] ?? "",
+        entries,
         header: "Operations",
       }],
       selectedCarrierId: options.selectedCarrierId,
     },
-  }, buildRosterRenderDeps()).join("\n");
+  }, buildRosterRenderDeps(options.theme)).join("\n");
 }
 
 function openToggleNativeAction(overlay: CarrierStatusOverlay): void {
@@ -345,7 +443,7 @@ function openToggleNativeAction(overlay: CarrierStatusOverlay): void {
   overlay.handleInput("\r");
 }
 
-function buildRosterRenderDeps(): CarrierStatusRenderDeps {
+function buildRosterRenderDeps(theme: FleetPtyTheme = THEME): CarrierStatusRenderDeps {
   return {
     getAvailableModels: (cliType) => ({
       defaultModel: firstModel(cliType),
@@ -356,7 +454,7 @@ function buildRosterRenderDeps(): CarrierStatusRenderDeps {
     getBatchCliChoices: () => [],
     getDefaultEffort: () => null,
     getModelEffortLevels: () => ["low", "high"],
-    theme: THEME,
+    theme,
   };
 }
 
@@ -364,8 +462,14 @@ function findRenderedLine(rendered: string, text: string): string {
   return rendered.split("\n").find((line) => line.includes(text)) ?? "";
 }
 
-function findSelectedRenderedLine(rendered: string, text: string): string {
-  return rendered.split("\n").find((line) => line.includes("<selected>") && line.includes(text)) ?? "";
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, "");
+}
+
+function expectMarkerOnly(line: string): void {
+  expect(line).toContain("▸");
+  expect(line).not.toContain("<selected>");
+  expect(line).not.toContain(SELECTED_BG_ANSI);
 }
 
 function firstModel(cliType: TaskForceCliType): string {

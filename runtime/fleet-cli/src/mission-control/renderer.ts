@@ -24,10 +24,12 @@ const SELECTED_MARKER = "▸";
 const IDLE_MARKER = " ";
 const CHOICE_INDENT = 4;
 const COUNT_SEPARATOR = "  ·  ";
+const SELECTED_BG = "\x1b[48;2;45;55;70m";
+const DEFAULT_BG = "\x1b[48;2;28;28;36m";
 
 export const MISSION_CONTROL_THEME: FleetPtyTheme = {
   accent: (text) => paint(FLEET_ACCENT, text),
-  bg: (name, text) => paint(name === "selected" ? "\x1b[48;2;45;55;70m" : "\x1b[48;2;28;28;36m", text),
+  bg: (name, text) => paintBackground(name === "selected" ? SELECTED_BG : DEFAULT_BG, text),
   bold: (text) => paint("\x1b[1m", text),
   border: (text) => paint("\x1b[38;5;244m", text),
   dim: (text) => paint("\x1b[38;5;244m", text),
@@ -213,4 +215,8 @@ function computeChoiceWidth(cliOptions: readonly MissionControlCliOption[]): num
 
 function paint(code: string, text: string): string {
   return paintBranded(code, text, true);
+}
+
+function paintBackground(code: string, text: string): string {
+  return `${code}${text.replaceAll(ANSI_RESET, `${ANSI_RESET}${code}`)}${ANSI_RESET}`;
 }
