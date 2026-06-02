@@ -65,7 +65,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     `After completing the plan, provide a structured plan summary.\n` +
     `[Required] always include:\n` +
     `  **Plan file** — Exact generated or updated .fleet/plans/{name}.md path.\n` +
-    `  **Execution Waves** — Ordered waves and critical dependencies.\n` +
+    `  **Execution Waves** — Ordered waves with parallel markers (e.g., "W1 → W2 || W3 → W4") and critical dependencies.\n` +
     `  **Scope: IN** — What is explicitly included in the plan.\n` +
     `  **Scope: OUT** — What is explicitly excluded.\n` +
     `  **Next step** — Run \`/start-work {name}\` to execute the plan.\n` +
@@ -79,7 +79,7 @@ export const CARRIER_METADATA: CarrierMetadata = {
     "Pre-plan gap analysis is mandatory internal input, never a substitute final output. May launch background explore/librarian sub-agents for context gathering. Use incremental write protocol: Write() skeleton first, then Edit() in 2-4 task batches.",
     "The .fleet/plans/*.md file MUST contain this exact default Markdown template unless the Admiral provides a different template: " +
       "# Objective, # File Ownership, # Waves, ## Wave N — <name>, - Target files/modules:, - Dependencies:, " +
-      "- Implementation summary:, - Verification/static checks:, - Escalation triggers:, # QA Gates, " +
+      "- Parallelizable:, - Implementation summary:, - Verification/static checks:, - Escalation triggers:, # QA Gates, " +
       "# Acceptance Criteria, # Documentation Updates, # Final Review Loop. " +
       "Required headings must not be renamed, reordered, or omitted; extra sections allowed only after them. Write headings into the plan_file itself, not just mentioned in the response. For tiny tasks, mark non-applicable fields \"Not applicable\" rather than deleting them.",
     "Return unresolved architecture and deep trade-off decisions to the Admiral for direction.",
