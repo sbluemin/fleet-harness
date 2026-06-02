@@ -12,12 +12,12 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import { getCliModels } from "@dotobokuri/fleet-infra/agent";
 
-import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
-import { TASKFORCE_BADGE_COLOR } from "../src/carrier-status/constants.js";
-import { renderBlockLines, renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
-import { createJobBarState, type JobBarState } from "../src/carrier-status/job-bar-state.js";
+import { createJobBarSections } from "../src/mission-bridge/job-bar/section.js";
+import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
+import { renderBlockLines, renderCarrierJobHud } from "../src/mission-bridge/job-bar/renderer.js";
+import { createJobBarState, type JobBarState } from "../src/mission-bridge/job-bar/state.js";
 import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI } from "../src/styles/carriers.js";
-import type { PanelJob, PanelRunViewModelSource } from "../src/carrier-status/job-bar-view-model.js";
+import type { PanelJob, PanelRunViewModelSource } from "../src/mission-bridge/job-bar/view-model.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 

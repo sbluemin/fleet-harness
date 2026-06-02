@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCursorPolicySync, createRenderScheduler } from "../src/controls/index.js";
-import { FleetStatusSection } from "../src/sections/fleet-status-section.js";
+import { FleetStatusSection } from "../src/mission-bridge/fleet-status-section.js";
 
 const HIDDEN_CURSOR_FRAME = "\x1b[?25l";
 const RENDER_THROTTLE_MS = 16;

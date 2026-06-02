@@ -10,7 +10,7 @@ import {
   visibleWidth,
   type FleetPtyTheme,
 } from "../../controls/index.js";
-import { TASKFORCE_BADGE_COLOR } from "../../carrier-status/constants.js";
+import { TASKFORCE_BADGE_COLOR } from "../../mission-bridge/job-bar/constants.js";
 import { centerText } from "../welcome.js";
 
 import type { RenameState, StatusOverlayViewModel } from "./render-types.js";

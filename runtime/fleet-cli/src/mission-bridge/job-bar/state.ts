@@ -9,13 +9,13 @@ import {
   getRegisteredOrder,
 } from "@dotobokuri/fleet-carriers";
 import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/fleet-infra/agent";
-import type { KeyboardProtocolState } from "../controls/index.js";
+import type { KeyboardProtocolState } from "../../controls/index.js";
 
 import {
   ANIM_INTERVAL_MS,
   DEFAULT_BODY_H,
 } from "./constants.js";
-import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./job-bar-view-model.js";
+import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./view-model.js";
 
 export interface FooterModelInfo {
   readonly effort?: string;

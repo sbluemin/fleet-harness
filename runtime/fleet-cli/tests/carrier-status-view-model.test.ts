@@ -19,7 +19,7 @@ let tempDir: string | null = null;
 
 describe("carrier status view model", () => {
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-carrier-status-view-model-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-mission-bridge-view-model-"));
     initStore(tempDir);
   });
 

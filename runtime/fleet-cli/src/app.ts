@@ -6,8 +6,6 @@ import {
   assertInputContract,
   createCursorPolicySync,
   createDedicatedMouseRouter,
-  createFleetPtyApi,
-  createFleetPtyViewport,
   createInputKeybindingConfig,
   createInputRouter,
   createKeybindingRegistry,
@@ -26,9 +24,6 @@ import {
   type TuiPtyManager,
 } from "./controls/index.js";
 
-import { sanitizeCarrierResultReminder, subscribeJobBar } from "./carrier-status/job-bar-register.js";
-import { createJobBarState } from "./carrier-status/job-bar-state.js";
-import { createJobBarSections } from "./carrier-status/job-bar-section.js";
 import { injectAgentCliProfile } from "./agent-cli/injection.js";
 import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import type { FleetCliOptions } from "./cli-args.js";
@@ -36,8 +31,7 @@ import { createMissionControlController } from "./mission-control/controller.js"
 import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-control/loaded-counts.js";
 import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
-import { createDefaultFleetPtyComponent } from "./sections/default-sections.js";
-import { FleetStatusSection } from "./sections/fleet-status-section.js";
+import { createMissionBridgeController } from "./mission-bridge/controller.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
 import type { ResolvedSessionOptions, SessionOptions } from "./mission-control/options/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
@@ -167,31 +161,23 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       }
     })
     .catch(() => {});
-  const jobBarState = createJobBarState({
+  const missionBridge = createMissionBridgeController({
+    addInputListener: (listener) => ui.addInputListener(listener),
     carrierRuntime: runtime.carrierRuntime,
+    getColumns: () => ui.columns,
     getKeyboardProtocol: () => missionControl.ptyHost.getKeyboardProtocol?.() ?? STANDARD_KEYBOARD_PROTOCOL_STATE,
-    onCarrierResultReminder: (text) => sendCarrierResultReminder(sanitizeCarrierResultReminder(text)),
-    onRenderRequest: () => {
+    getNative: () => sessionOptionsRuntime.getDraft().native,
+    getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - missionControl.ptyView.maxRows),
+    onCarrierResultReminder: (text) => sendCarrierResultReminder(text),
+    onJobBarRenderRequest: () => {
       ptyManager?.requestResize("programmatic");
       scheduleRender();
     },
-  });
-  const sections = [
-    { component: new FleetStatusSection({ getNative: () => sessionOptionsRuntime.getDraft().native }), id: "fleet-status-section" },
-    ...createJobBarSections(jobBarState),
-  ];
-  const fleetPty = createFleetPtyApi({
-    defaultComponent: createDefaultFleetPtyComponent(sections),
-    sections,
-  }, {
-    addInputListener: (listener) => ui.addInputListener(listener),
-    getColumns: () => ui.columns,
-    getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - missionControl.ptyView.maxRows),
     requestResize: () => ptyManager?.requestResize("fleet-overlay"),
     requestRender: scheduleRender,
   });
   ptyManager = createTuiPtyManager({
-    fleetPty,
+    fleetPty: missionBridge.ptyApi,
     ptyHost: missionControl.ptyHost,
     ptyView: missionControl.ptyView,
     refreshSize: (size) => ui.refreshSize(size),
@@ -207,7 +193,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       write: (data) => missionControl.writeChildInput(data),
     }, activeProfile).sendMessage(text);
   };
-  let unsubscribeJobBar = () => {};
   let stopping = false;
   let disposeInputStream = () => {};
   let interruptWarningStartedAt = 0;
@@ -221,8 +206,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     }
     stopping = true;
     clearInterruptWarningTimer();
-    jobBarState.setPendingExitWarning(false);
-    stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, unsubscribeJobBar, runtimeLifecycle, agentCliCleanupCallbacks);
+    missionBridge.jobBarState.setPendingExitWarning(false);
+    stopApp(ui, missionControl.ptyHost, resize, disposeInputStream, missionBridge.dispose, runtimeLifecycle, agentCliCleanupCallbacks);
   };
   const requestInterrupt = () => {
     const now = Date.now();
@@ -237,12 +222,12 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     }
 
     interruptWarningStartedAt = now;
-    jobBarState.setPendingExitWarning(true);
+    missionBridge.jobBarState.setPendingExitWarning(true);
     clearInterruptWarningTimer();
     interruptWarningTimer = setTimeout(() => {
       interruptWarningStartedAt = 0;
       interruptWarningTimer = undefined;
-      jobBarState.setPendingExitWarning(false);
+      missionBridge.jobBarState.setPendingExitWarning(false);
     }, DOUBLE_TAP_WINDOW_MS);
     interruptWarningTimer.unref?.();
   };
@@ -290,15 +275,15 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       ptyView: missionControl.ptyView,
       requestRender: scheduleRender,
     }),
-    routeFleetInput: (data) => fleetPty.dispatchInput(data),
-    routeFleetMouse: (event) => fleetPty.dispatchMouse(event),
+    routeFleetInput: (data) => missionBridge.ptyApi.dispatchInput(data),
+    routeFleetMouse: (event) => missionBridge.ptyApi.dispatchMouse(event),
     toggleMode: toggleFleetInputMode,
     writeDedicated: (data) => missionControl.ptyHost.write(data),
   });
   syncCursorPolicy = createCursorPolicySync({
     cursorSync: true,
     cursorSyncExplicitlyEnabled: argvOptions.cursorSyncExplicitlyEnabled,
-    fleetPty,
+    fleetPty: missionBridge.ptyApi,
     getActiveAgentProfileId: () => missionControl.getActiveProfile()?.id,
     getMode: router.getMode,
     hasActiveMissionControlPanel: missionControl.hasActivePanel,
@@ -315,11 +300,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     staticCursorPolicySync();
   };
 
-  ui.setChildren([missionControl.component, createFleetPtyViewport(fleetPty)]);
+  ui.setChildren([missionControl.component, missionBridge.component]);
   syncCursorPolicy();
-  unsubscribeJobBar = subscribeJobBar({
-    jobBarState,
-  });
+  missionBridge.start();
   assertInputContract(keybindings);
   ptyManager.requestResize("initial");
   ui.addInputListener((data) => router.route(csiUNormalizer.normalize(data)));
@@ -407,14 +390,14 @@ function stopApp(
   ptyHost: PtyHost,
   resize: () => void,
   disposeInputStream: () => void,
-  unsubscribeJobBar: () => void,
+  disposeMissionBridge: () => void,
   runtimeLifecycle: FleetRuntimeLifecycle,
   cleanupCallbacks: Iterable<() => void>,
 ): void {
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
   disposeInputStream();
-  unsubscribeJobBar();
+  disposeMissionBridge();
   process.stdout.write(KITTY_DISABLE);
   ptyHost.kill();
   for (const cleanup of cleanupCallbacks) {

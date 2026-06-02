@@ -1,17 +1,20 @@
 import {
+  CLI_DISPLAY_NAMES,
   getCarrierConfig,
+  getConfiguredTaskForceBackendsFromSnapshot,
   getRegisteredOrder,
   readCarrierAgentModeSnapshot,
+  readCarriersSnapshot,
   resolveAgentCliType,
   type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
-import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "../controls/index.js";
+import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "../../controls/index.js";
 import {
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
   SUBAGENT_PRESENTATION_RGB,
-} from "../styles/carriers.js";
+} from "../../styles/carriers.js";
 
 import {
   resolveCarrierColor,
@@ -20,18 +23,15 @@ import {
 } from "./carrier-helpers.js";
 import {
   ANSI_RESET,
-  CLI_DISPLAY_NAMES,
-  getConfiguredTaskForceBackendsFromSnapshot,
   PANEL_DIM_COLOR,
-  readCarriersSnapshot,
   SPINNER_FRAMES,
   SYM_INDICATOR,
   SYM_THINKING,
   TASKFORCE_BADGE_COLOR,
   TASKFORCE_BADGE_RGB,
-} from "./facade.js";
-import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./job-bar-view-model.js";
-import { buildCarrierJobGroups, buildPanelViewModel } from "./job-bar-view-model.js";
+} from "./constants.js";
+import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./view-model.js";
+import { buildCarrierJobGroups, buildPanelViewModel } from "./view-model.js";
 
 export interface CarrierHudTile {
   readonly activeJobCount: number;
@@ -159,7 +159,7 @@ export function renderBlockLines(blocks: readonly ColBlock[]): BlockLine[] {
       if (!trimmed) continue;
       trimmed.split("\n").forEach((line, i) => {
         lines.push({
-          text: i === 0 ? `${SYM_THINKING()} ${line}` : `  ${line}`,
+          text: i === 0 ? `${SYM_THINKING} ${line}` : `  ${line}`,
           type: "thought",
         });
       });
@@ -171,7 +171,7 @@ export function renderBlockLines(blocks: readonly ColBlock[]): BlockLine[] {
       if (!trimmed) continue;
       trimmed.split("\n").forEach((line, i) => {
         lines.push({
-          text: i === 0 ? `${SYM_INDICATOR()} ${line}` : `  ${line}`,
+          text: i === 0 ? `${SYM_INDICATOR} ${line}` : `  ${line}`,
           type: "text",
         });
       });
@@ -181,7 +181,7 @@ export function renderBlockLines(blocks: readonly ColBlock[]): BlockLine[] {
     const isError = block.status === "failed" || block.status === "error";
     const isFinished = block.status === "completed" || block.status === "failed" || block.status === "error";
     const line: BlockLine = {
-      text: `${SYM_INDICATOR()} ${sanitizeHudInlineText(block.title, DEFAULT_SAFE_LABEL)}`,
+      text: `${SYM_INDICATOR} ${sanitizeHudInlineText(block.title, DEFAULT_SAFE_LABEL)}`,
       type: isError ? "tool-error" : "tool-title",
     };
     if (isFinished) {
@@ -316,7 +316,7 @@ function getActiveJobs(jobs: readonly PanelJob[] | undefined): PanelJob[] {
 }
 
 function border(theme: FleetPtyTheme | undefined, text: string): string {
-  return theme?.fg("border", text) ?? `${PANEL_DIM_COLOR()}${text}${ANSI_RESET}`;
+  return theme?.fg("border", text) ?? `${PANEL_DIM_COLOR}${text}${ANSI_RESET}`;
 }
 
 function tileSeparator(theme: FleetPtyTheme | undefined): string {
@@ -364,12 +364,12 @@ function prependExitWarning(line: string, width: number, pending: boolean): stri
 }
 
 function formatExitWarning(): string {
-  return `${PANEL_DIM_COLOR()}${EXIT_WARNING_TEXT}${ANSI_RESET}`;
+  return `${PANEL_DIM_COLOR}${EXIT_WARNING_TEXT}${ANSI_RESET}`;
 }
 
 function formatProtocolIndicator(state: KeyboardProtocolState): string {
   const suffix = protocolIndicatorSuffix(state);
-  return `${PANEL_DIM_COLOR()}⌨${suffix}${ANSI_RESET}`;
+  return `${PANEL_DIM_COLOR}⌨${suffix}${ANSI_RESET}`;
 }
 
 function protocolIndicatorSuffix(state: KeyboardProtocolState): string {
@@ -392,7 +392,7 @@ function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
 
 function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: string): string {
   if (carrier.activeJobCount > 0) {
-    const frames = SPINNER_FRAMES();
+    const frames = SPINNER_FRAMES;
     const spinner = frames[frame % frames.length] ?? "○";
     return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
   }
@@ -401,11 +401,11 @@ function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: strin
 
 function carrierBadges(carrier: CarrierHudTile): string {
   if (carrier.subagentMode) {
-    const pending = carrier.subagentPendingRestart ? `${PANEL_DIM_COLOR()}*${ANSI_RESET}` : "";
+    const pending = carrier.subagentPendingRestart ? `${PANEL_DIM_COLOR}*${ANSI_RESET}` : "";
     return ` ${SUBAGENT_PRESENTATION_ANSI}[SA]${pending}${ANSI_RESET}`;
   }
   const tfBadge = carrier.taskForceBackendCount >= 2
-    ? ` ${TASKFORCE_BADGE_COLOR()}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
+    ? ` ${TASKFORCE_BADGE_COLOR}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   return tfBadge;
 }
@@ -413,7 +413,7 @@ function carrierBadges(carrier: CarrierHudTile): string {
 function carrierActivityBadge(carrier: CarrierHudTile): string {
   if (carrier.activeJobCount <= 0) return "";
   const trackSuffix = carrier.activeTrackCount > 0 ? `:${carrier.activeTrackCount}` : "";
-  return ` ${PANEL_DIM_COLOR()}[${carrier.activeJobCount}${trackSuffix}]${ANSI_RESET}`;
+  return ` ${PANEL_DIM_COLOR}[${carrier.activeJobCount}${trackSuffix}]${ANSI_RESET}`;
 }
 
 function kindDisplayName(kind: string): string {
@@ -427,13 +427,13 @@ function capitalize(text: string): string {
 
 function jobIcon(job: PanelJobViewModel, frame: number, color: string): string {
   if (job.status === "active") {
-    const frames = SPINNER_FRAMES();
+    const frames = SPINNER_FRAMES;
     const spinner = frames[frame % frames.length] ?? "○";
     return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
   }
-  if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR()}${ANSI_RESET}`;
-  if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR()}${ANSI_RESET}`;
-  return `${PANEL_DIM_COLOR()}○${ANSI_RESET}`;
+  if (job.status === "done") return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
+  if (job.status === "error" || job.status === "aborted") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
+  return `${PANEL_DIM_COLOR}○${ANSI_RESET}`;
 }
 
 function jobDisplayLabel(job: PanelJobViewModel): string {
@@ -469,7 +469,7 @@ function resolveCarrierPresentationColor(
   taskForceBackendCount: number,
 ): string {
   if (subagentModes[carrierId] === "subagent") return SUBAGENT_PRESENTATION_ANSI;
-  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR();
+  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
 
@@ -482,12 +482,12 @@ function resolveCarrierPresentationRgb(
   if (subagentModes[carrierId] === "subagent") {
     return [...SUBAGENT_PRESENTATION_RGB];
   }
-  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB();
+  if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB;
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
 }
 
 function resolveJobRowColor(carrierRuntime: CarrierRuntime, job: PanelJobViewModel): string {
-  if (job.kind === "taskforce") return TASKFORCE_BADGE_COLOR();
+  if (job.kind === "taskforce") return TASKFORCE_BADGE_COLOR;
   return resolveBackendRowColor(carrierRuntime, job.ownerCarrierId, job.ownerCarrierId);
 }
 
@@ -498,17 +498,17 @@ function resolveBackendRowColor(carrierRuntime: CarrierRuntime, cliTypeOrCarrier
 
 function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: string): string {
   if (track.isComplete) {
-    if (track.status === "err") return `${COLOR_ERROR}${SYM_INDICATOR()}${ANSI_RESET}`;
-    return `${COLOR_DONE}${SYM_INDICATOR()}${ANSI_RESET}`;
+    if (track.status === "err") return `${COLOR_ERROR}${SYM_INDICATOR}${ANSI_RESET}`;
+    return `${COLOR_DONE}${SYM_INDICATOR}${ANSI_RESET}`;
   }
-  const frames = SPINNER_FRAMES();
+  const frames = SPINNER_FRAMES;
   const spinner = frames[frame % frames.length] ?? "○";
   return color ? `${color}${spinner}${ANSI_RESET}` : spinner;
 }
 
 function trackDisplayName(track: PanelTrackViewModel): string {
   if (track.kind === "backend") {
-    return CLI_DISPLAY_NAMES()[track.displayCli] ?? capitalize(track.displayCli);
+    return CLI_DISPLAY_NAMES[track.displayCli] ?? capitalize(track.displayCli);
   }
   return track.displayName;
 }
@@ -518,7 +518,7 @@ function trackInlineBlock(track: PanelTrackViewModel): string {
   const rendered = renderBlockLines(track.blocks).filter((line) => line.text.trim());
   const latest = rendered[rendered.length - 1];
   if (!latest) return "";
-  return ` ${PANEL_DIM_COLOR()}·${ANSI_RESET} ${STREAM_INLINE_COLOR}${latest.text.trim()}${ANSI_RESET}`;
+  return ` ${PANEL_DIM_COLOR}·${ANSI_RESET} ${STREAM_INLINE_COLOR}${latest.text.trim()}${ANSI_RESET}`;
 }
 
 function sanitizeHudText(text: string): string {
@@ -620,5 +620,5 @@ function widgetTrackStats(track: PanelTrackViewModel): string {
   const parts: string[] = [];
   if (track.toolCallCount > 0) parts.push(`${track.toolCallCount}T`);
   if (track.textLineCount > 0) parts.push(`${track.textLineCount}L`);
-  return parts.length > 0 ? ` ${PANEL_DIM_COLOR()}[${parts.join("·")}]${ANSI_RESET}` : "";
+  return parts.length > 0 ? ` ${PANEL_DIM_COLOR}[${parts.join("·")}]${ANSI_RESET}` : "";
 }

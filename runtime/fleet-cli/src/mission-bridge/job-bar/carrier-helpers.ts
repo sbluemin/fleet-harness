@@ -4,7 +4,7 @@ import {
   resolveCarrierDisplayName as resolveCoreCarrierDisplayName,
   resolveAgentCliType,
 } from "@dotobokuri/fleet-carriers";
-import { PROVIDER_RGBS, getCarrierAnsi } from "../styles/carriers.js";
+import { PROVIDER_RGBS, getCarrierAnsi } from "../../styles/carriers.js";
 
 const DEFAULT_CARRIER_RGB: [number, number, number] = [180, 160, 220];
 

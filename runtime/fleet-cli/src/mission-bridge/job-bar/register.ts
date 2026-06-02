@@ -1,4 +1,4 @@
-import type { JobBarState } from "./job-bar-state.js";
+import type { JobBarState } from "./state.js";
 
 export interface JobBarRegistrationOptions {
   readonly jobBarState: JobBarState;

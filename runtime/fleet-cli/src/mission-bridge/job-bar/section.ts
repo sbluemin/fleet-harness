@@ -1,7 +1,7 @@
-import type { Component, FleetPtySection } from "../controls/index.js";
+import type { Component, FleetPtySection } from "../../controls/index.js";
 
-import { renderCarrierJobHud, renderCarrierJobHudStrip } from "./job-bar-renderer.js";
-import type { JobBarState } from "./job-bar-state.js";
+import { renderCarrierJobHud, renderCarrierJobHudStrip } from "./renderer.js";
+import type { JobBarState } from "./state.js";
 
 const MAX_WIDGET_LINES = 10;
 
