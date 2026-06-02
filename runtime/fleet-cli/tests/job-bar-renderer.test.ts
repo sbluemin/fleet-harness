@@ -4,8 +4,6 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  CARRIER_COLORS,
-  SUBAGENT_CARRIER_COLOR,
   createCarrierRuntime,
   initStore,
   resetStoreForTests,
@@ -18,6 +16,7 @@ import { createJobBarSections } from "../src/carrier-status/job-bar-section.js";
 import { TASKFORCE_BADGE_COLOR } from "../src/carrier-status/constants.js";
 import { renderBlockLines, renderCarrierJobHud } from "../src/carrier-status/job-bar-renderer.js";
 import { createJobBarState, type JobBarState } from "../src/carrier-status/job-bar-state.js";
+import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI } from "../src/styles/carriers.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/carrier-status/job-bar-view-model.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
@@ -157,7 +156,7 @@ describe("job bar renderer", () => {
 
     const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
 
-    expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
+    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
   });
 
   it("renders Task Force carrier strip, detail header, and job label in TF blue while preserving backend row colors", () => {
@@ -177,8 +176,8 @@ describe("job bar renderer", () => {
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Carrier Ohio`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
-    expect(rendered).toContain(`${CARRIER_COLORS.claude}Claude Code with Anthropic`);
-    expect(rendered).toContain(`${CARRIER_COLORS.codex}OpenAI Codex CLI`);
+    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}Claude Code with Anthropic`);
+    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}OpenAI Codex CLI`);
   });
 
   it("shows an SA badge before TF badges for legacy SA plus TF strip state", () => {
@@ -191,8 +190,8 @@ describe("job bar renderer", () => {
 
     const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
 
-    expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
-    expect(line).toContain(`${SUBAGENT_CARRIER_COLOR}[SA]`);
+    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
+    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
     expect(line).toContain("[SA]\x1b[38;2;160;150;180m*");
     expect(line).not.toContain("[TF:2]");
   });
@@ -212,9 +211,9 @@ describe("job bar renderer", () => {
     const backendLine = rendered.split("\n").find((line) => line.includes("Ohio") && line.includes("└─") && !line.includes("Taskforce"));
 
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
-    expect(backendLine).toContain(`${CARRIER_COLORS.claude}Ohio`);
+    expect(backendLine).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
     expect(backendLine).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
-    expect(backendLine).not.toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
+    expect(backendLine).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
   });
 
   it("shows strip and detail sections together when at least one job is active", () => {

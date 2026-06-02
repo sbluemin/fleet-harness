@@ -115,15 +115,6 @@ importers:
         specifier: ^4.0.13
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  packages/fleet-tui:
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.12.2
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.3
-
   packages/fleet-wiki:
     dependencies:
       '@dotobokuri/fleet-mcp-server':
@@ -185,9 +176,6 @@ importers:
       '@dotobokuri/fleet-mcp-server':
         specifier: workspace:*
         version: link:../../packages/fleet-mcp-server
-      '@dotobokuri/fleet-tui':
-        specifier: workspace:*
-        version: link:../../packages/fleet-tui
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
@@ -219,9 +207,6 @@ importers:
 
   runtime/fleet-wiki-ui:
     dependencies:
-      '@dotobokuri/fleet-tui':
-        specifier: workspace:*
-        version: link:../../packages/fleet-tui
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki

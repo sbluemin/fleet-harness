@@ -16,7 +16,7 @@ import {
   resolveColorEnabled,
   section,
   stripAnsi,
-} from "@dotobokuri/fleet-tui/style";
+} from "./help-style.js";
 
 import { openBrowser } from "./browser.js";
 import { isProcessAlive, isProcessAliveWithStatus, lockFilePath, readLockFile, removeLockFile } from "./lock.js";

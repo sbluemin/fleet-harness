@@ -1,5 +1,5 @@
-import { CARRIER_COLORS } from "@dotobokuri/fleet-carriers";
-import { ANSI_RESET, paint as paintBranded } from "@dotobokuri/fleet-tui/style";
+import { ANSI_RESET, paint as paintBranded } from "../styles/index.js";
+import { getCarrierAnsi } from "../styles/carriers.js";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";
@@ -257,7 +257,7 @@ function formatExitEvent(event: PtyExitEvent | undefined): string {
 }
 
 function colorizeProvider(cliId: AgentCliId, text: string): string {
-  const color = CARRIER_COLORS[cliId] ?? "";
+  const color = getCarrierAnsi(cliId);
   return color ? `${color}${text}${ANSI_RESET}` : text;
 }
 

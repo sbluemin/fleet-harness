@@ -1,6 +1,6 @@
-import { getTerminalSize } from "@dotobokuri/fleet-tui/core";
-import type { TerminalSize } from "@dotobokuri/fleet-tui/core";
-import { computeVerticalSplit } from "@dotobokuri/fleet-tui/layout";
+import { getTerminalSize } from "../../tui/terminal-size.js";
+import { computeVerticalSplit } from "../../tui/layout/split-pane.js";
+import type { TerminalSize } from "../../tui/types.js";
 
 import type { ResizeReason, ResizeRequest, TuiPtyManager, TuiPtyManagerOptions } from "../types.js";
 

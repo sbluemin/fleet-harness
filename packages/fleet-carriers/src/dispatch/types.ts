@@ -89,10 +89,6 @@ export interface CarrierCliConfig {
   defaultModel?: string;
   /** dispatch/store가 사용하는 persona 소유 기본 reasoning effort */
   defaultEffort?: string;
-  /** 에이전트 패널 프레임 색상 (ANSI) */
-  color: string;
-  /** 응답 배경색 (ANSI, 선택) */
-  bgColor?: string;
 }
 
 export interface CarrierAgentProviderDefaults {

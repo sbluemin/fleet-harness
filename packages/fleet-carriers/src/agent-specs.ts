@@ -59,7 +59,6 @@ function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): Ca
     defaultModel: defaults.agent.dispatch.defaultModel,
     slot: defaults.slot,
     displayName: defaults.displayName,
-    color: "",
     carrierMetadata: metadata,
     subagent: {
       provider: "claude",

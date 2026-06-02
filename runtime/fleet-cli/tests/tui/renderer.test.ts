@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, it } from "node:test";
-import { LocalTui } from "./renderer.js";
-import type { Component } from "../types.js";
+import { afterEach, beforeEach, describe, it } from "vitest";
+import { LocalTui } from "../../src/tui/renderer.js";
+import type { Component } from "../../src/tui/types.js";
 
 const ORIGINAL_COLUMNS = process.stdout.columns;
 const ORIGINAL_KILL = process.kill;

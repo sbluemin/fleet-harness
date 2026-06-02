@@ -48,7 +48,6 @@ describe("StatusOverlayController", () => {
 
 function createCarrierConfig(): CarrierConfig {
   return {
-    color: "",
     defaultCliType: "claude" as CarrierCliType,
     defaultEffort: "low",
     defaultModel: "sonnet",

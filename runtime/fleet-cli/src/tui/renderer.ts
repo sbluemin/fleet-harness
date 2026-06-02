@@ -9,8 +9,8 @@ import {
   moveCursorTo,
 } from "./ansi.js";
 import { getTerminalSize } from "./terminal-size.js";
-import { truncateToWidth, visibleWidth } from "../primitives/text.js";
-import type { Component, CursorAnchor, InputListener, TerminalSize } from "../types.js";
+import { truncateToWidth, visibleWidth } from "./primitives/cell-width.js";
+import type { Component, CursorAnchor, InputListener, TerminalSize } from "./types.js";
 
 export interface LocalTuiOptions {
   readonly cursorSyncEnabled?: boolean;

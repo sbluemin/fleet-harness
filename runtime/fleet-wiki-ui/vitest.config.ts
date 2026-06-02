@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@dotobokuri/fleet-wiki": fileURLToPath(new URL("../fleet-wiki/src/index.ts", import.meta.url)),
+      "@dotobokuri/fleet-wiki": fileURLToPath(new URL("../../packages/fleet-wiki/src/index.ts", import.meta.url)),
     },
   },
 });

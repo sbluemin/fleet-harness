@@ -1,6 +1,7 @@
-import { FLEET_ACTION_COLOR, FLEET_ACTION_LABEL } from "@dotobokuri/fleet-admiral";
-import { DIM_COLOR } from "@dotobokuri/fleet-tui/core";
-import { paint } from "@dotobokuri/fleet-tui/style";
+import { FLEET_ACTION_LABEL } from "@dotobokuri/fleet-admiral";
+import { DIM_COLOR } from "../styles/palette.js";
+import { getFleetActionHudColor } from "../styles/hud.js";
+import { paint } from "../styles/index.js";
 
 import { truncateToWidth, visibleWidth, type Component } from "../controls/index.js";
 
@@ -21,7 +22,7 @@ export class FleetStatusSection implements Component {
 		if (this.options.getNative?.() ?? this.options.native) {
 			return [renderBorder(width, DIM_COLOR)];
 		}
-		return [renderStatusLine(width, FLEET_ACTION_COLOR, FLEET_ACTION_LABEL)];
+		return [renderStatusLine(width, getFleetActionHudColor(), FLEET_ACTION_LABEL)];
 	}
 }
 

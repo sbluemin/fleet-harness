@@ -59,10 +59,6 @@ export interface CliBackendConfig {
   usesNpxBridge: boolean;
   /** 기본 최대 토큰 */
   defaultMaxTokens: number;
-  /** 전경 RGB 색상 */
-  colorRgb: readonly [number, number, number];
-  /** 배경 RGB 색상 */
-  bgColorRgb: readonly [number, number, number];
   /** 기본 환경변수 (프록시 등 설정용) */
   defaultEnv?: Record<string, string>;
 }

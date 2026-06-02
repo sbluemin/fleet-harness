@@ -28,7 +28,6 @@ fleet-cli
   -> fleet-infra
   -> fleet-mcp-server
   -> fleet-wiki / fleet-wiki-ui
-  -> fleet-tui
 ```
 
 Forbidden patterns:

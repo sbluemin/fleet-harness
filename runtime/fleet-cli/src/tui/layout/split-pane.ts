@@ -1,4 +1,4 @@
-import type { Component, TerminalSize } from "../types.js";
+import type { TerminalSize } from "../types.js";
 
 export type DesiredHeight = number;
 
@@ -33,17 +33,6 @@ export function computeVerticalSplit(size: TerminalSize, desiredFleetRows?: numb
     dedicatedRows: Math.max(MIN_DEDICATED_ROWS, size.rows - fleetRows),
     fleetRows,
   };
-}
-
-export function renderVerticalSplit(dedicated: Component, fleet: readonly Component[], size: TerminalSize): string[] {
-  const split = computeVerticalSplit(size);
-  const dedicatedLines = dedicated.render(size.columns).slice(0, split.dedicatedRows);
-  const fleetLines = fleet.flatMap((component) => component.render(size.columns)).slice(0, split.fleetRows);
-  return [...fillLines(dedicatedLines, split.dedicatedRows), ...fillLines(fleetLines, split.fleetRows)].slice(0, size.rows);
-}
-
-function fillLines(lines: string[], count: number): string[] {
-  return [...lines, ...Array.from({ length: Math.max(0, count - lines.length) }, () => "")];
 }
 
 function clampRows(value: number, min: number, max: number): number {

@@ -1,7 +1,4 @@
 import {
-  CARRIER_COLORS,
-  SUBAGENT_CARRIER_COLOR,
-  SUBAGENT_CARRIER_RGB,
   getCarrierConfig,
   getRegisteredOrder,
   readCarrierAgentModeSnapshot,
@@ -10,6 +7,11 @@ import {
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type KeyboardProtocolState } from "../controls/index.js";
+import {
+  PROVIDER_ANSI_COLORS,
+  SUBAGENT_PRESENTATION_ANSI,
+  SUBAGENT_PRESENTATION_RGB,
+} from "../styles/carriers.js";
 
 import {
   resolveCarrierColor,
@@ -400,7 +402,7 @@ function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: strin
 function carrierBadges(carrier: CarrierHudTile): string {
   if (carrier.subagentMode) {
     const pending = carrier.subagentPendingRestart ? `${PANEL_DIM_COLOR()}*${ANSI_RESET}` : "";
-    return ` ${SUBAGENT_CARRIER_COLOR}[SA]${pending}${ANSI_RESET}`;
+    return ` ${SUBAGENT_PRESENTATION_ANSI}[SA]${pending}${ANSI_RESET}`;
   }
   const tfBadge = carrier.taskForceBackendCount >= 2
     ? ` ${TASKFORCE_BADGE_COLOR()}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
@@ -466,7 +468,7 @@ function resolveCarrierPresentationColor(
   subagentModes: Record<string, "subagent">,
   taskForceBackendCount: number,
 ): string {
-  if (subagentModes[carrierId] === "subagent") return SUBAGENT_CARRIER_COLOR;
+  if (subagentModes[carrierId] === "subagent") return SUBAGENT_PRESENTATION_ANSI;
   if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR();
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
@@ -478,7 +480,7 @@ function resolveCarrierPresentationRgb(
   taskForceBackendCount: number,
 ): [number, number, number] {
   if (subagentModes[carrierId] === "subagent") {
-    return SUBAGENT_CARRIER_RGB;
+    return [...SUBAGENT_PRESENTATION_RGB];
   }
   if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB();
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
@@ -490,7 +492,7 @@ function resolveJobRowColor(carrierRuntime: CarrierRuntime, job: PanelJobViewMod
 }
 
 function resolveBackendRowColor(carrierRuntime: CarrierRuntime, cliTypeOrCarrierId: string, fallbackCarrierId: string): string {
-  return CARRIER_COLORS[cliTypeOrCarrierId]
+  return PROVIDER_ANSI_COLORS[cliTypeOrCarrierId]
     ?? resolveCarrierColor(carrierRuntime.registry, fallbackCarrierId);
 }
 

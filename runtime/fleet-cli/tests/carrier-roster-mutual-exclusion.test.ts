@@ -4,8 +4,6 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  CARRIER_COLORS,
-  SUBAGENT_CARRIER_COLOR,
   createCarrierRuntime,
   getCarrierConfig,
   getCodexSubagentRoleFilePath,
@@ -19,6 +17,7 @@ import {
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
+import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI } from "../src/styles/carriers.js";
 import { getCliModels } from "@dotobokuri/fleet-infra/agent";
 
 import { TASKFORCE_BADGE_COLOR } from "../src/carrier-status/constants.js";
@@ -164,8 +163,8 @@ describe("carrier roster renderer SA/TF colors", () => {
 
     const rendered = renderRosterEntry(entry);
 
-    expect(rendered).toContain(`${SUBAGENT_CARRIER_COLOR}Ohio`);
-    expect(rendered).toContain(`${SUBAGENT_CARRIER_COLOR}[SA]`);
+    expect(rendered).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
+    expect(rendered).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
     expect(rendered).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
   });
@@ -180,7 +179,7 @@ function createTestCarrierRuntime(): CarrierRuntime {
 function buildTaskForceEntry(cliType: TaskForceCliType): TaskForceEntry {
   return {
     cliType,
-    color: CARRIER_COLORS[cliType] ?? "",
+    color: PROVIDER_ANSI_COLORS[cliType] ?? "",
     displayName: cliType === "codex" ? "Codex" : cliType,
     effort: null,
     isCustom: false,
@@ -216,7 +215,7 @@ function renderRosterEntry(entry: CarrierStatusEntry): string {
     viewModel: {
       flatEntries: [entry],
       groupedEntries: [{
-        color: CARRIER_COLORS[entry.cliType] ?? "",
+        color: PROVIDER_ANSI_COLORS[entry.cliType] ?? "",
         entries: [entry],
         header: "Operations",
       }],

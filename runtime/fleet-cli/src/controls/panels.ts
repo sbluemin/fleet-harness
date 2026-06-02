@@ -1,5 +1,5 @@
-import { centerLine, truncateToWidth, visibleWidth } from "@dotobokuri/fleet-tui/primitives";
-import type { Focusable } from "@dotobokuri/fleet-tui/components";
+import { centerLine, truncateToWidth, visibleWidth } from "../tui/primitives/cell-width.js";
+import type { Focusable } from "../tui/types.js";
 
 import type {
   CreateFleetPtyApiOptions,

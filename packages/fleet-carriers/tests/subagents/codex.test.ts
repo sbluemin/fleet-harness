@@ -4,9 +4,6 @@ import {
   buildCodexSubagentDefinition,
   buildCodexSubagentDefinitions,
   buildCodexSubagentRoleKey,
-  SUBAGENT_CARRIER_BG_COLOR,
-  SUBAGENT_CARRIER_COLOR,
-  SUBAGENT_CARRIER_RGB,
   type CarrierConfig,
 } from "../../src/index.js";
 
@@ -91,11 +88,6 @@ describe("Codex subagent conversion", () => {
     expect(definition.toml.model_reasoning_effort).toBeUndefined();
   });
 
-  it("exports Rose/Magenta native subagent presentation colors", () => {
-    expect(SUBAGENT_CARRIER_RGB).toEqual([216, 100, 168]);
-    expect(SUBAGENT_CARRIER_COLOR).toBe("\x1b[38;2;216;100;168m");
-    expect(SUBAGENT_CARRIER_BG_COLOR).toBe("\x1b[48;2;30;14;26m");
-  });
 });
 
 function createCarrierConfig(id: string): CarrierConfig {
@@ -115,7 +107,6 @@ function createCarrierConfig(id: string): CarrierConfig {
       whenNotToUse: [],
       whenToUse: ["plan-file execution"],
     },
-    color: "",
     defaultCliType: "claude",
     displayName: id[0]!.toUpperCase() + id.slice(1),
     id,

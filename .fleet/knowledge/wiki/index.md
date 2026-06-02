@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `22`
+- total_entries: `23`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -168,6 +168,16 @@
 - raw_source_ref: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
 - raw_source_refs: `raw/2026-05-25-prd-fleet-menu-t3-full-source-783a2fe4.md`
 
+### prd-fleet-tui-dissolution
+
+- title: `PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수`
+- path: `wiki/prd-fleet-tui-dissolution.md`
+- tags: `decision-history, fleet-cli, fleet-tui, cognitive-debt, architecture, package-dissolution`
+- updated: `2026-06-02T07:15:28.527Z`
+- summary: `## Overview`
+- raw_source_ref: `raw/2026-06-02-prd-fleet-tui-dissolution-source-1a34ffb1.md`
+- raw_source_refs: `raw/2026-06-02-prd-fleet-tui-dissolution-source-1a34ffb1.md`
+
 ### prd-infra-agent-executor-migration
 
 - title: `PRD: Agent Executor 엔진의 인프라 계층 이전`
@@ -256,6 +266,7 @@
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
+- [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 - [[wiki:prd-mcp-server-surface-split]] — PRD: Fleet 내부 MCP 서버 표면 분리 — fleet-carriers와 fleet-wiki 독립 서버화
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
@@ -305,6 +316,7 @@
 - [[wiki:decision-fleet-cli-mouse-input]] — fleet-cli 마우스 입력 아키텍처 결정 히스토리
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
+- [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 
 ### comparison
 
@@ -339,6 +351,7 @@
 - [[wiki:prd-admiral-protocol-single-immutable-fleet-action]] — PRD: Admiral Protocol 영역의 Multi-Protocol 추상화 폐기 — Fleet Action을 단일 불변 프롬프트로 단일화
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
+- [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 
 ### dedicated-cli
 
@@ -393,6 +406,7 @@
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-fleet-cli-update-mechanism]] — PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘
+- [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 
 ### fleet-core
 
@@ -429,6 +443,7 @@
 
 ### fleet-tui
 
+- [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 - [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
@@ -515,6 +530,7 @@
 ### package-dissolution
 
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
+- [[wiki:prd-fleet-tui-dissolution]] — PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
 
 ### package-extraction
 

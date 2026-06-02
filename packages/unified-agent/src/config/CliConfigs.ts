@@ -32,8 +32,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: false,
     usesNpxBridge: true,
     defaultMaxTokens: 16_384,
-    colorRgb: [255, 149, 0],
-    bgColorRgb: [40, 25, 8],
   },
   'claude-zai': {
     id: 'claude-zai',
@@ -51,8 +49,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: false,
     usesNpxBridge: true,
     defaultMaxTokens: 16_384,
-    colorRgb: [0, 200, 120],
-    bgColorRgb: [8, 32, 18],
     defaultEnv: {
       ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
       API_TIMEOUT_MS: '3000000',
@@ -74,8 +70,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: false,
     usesNpxBridge: true,
     defaultMaxTokens: 16_384,
-    colorRgb: [180, 100, 255],
-    bgColorRgb: [20, 12, 40],
     defaultEnv: {
       ANTHROPIC_BASE_URL: 'https://api.kimi.com/coding/',
       ENABLE_TOOL_SEARCH: 'false',
@@ -101,8 +95,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: false,
     usesNpxBridge: true,
     defaultMaxTokens: 100_000,
-    colorRgb: [169, 169, 169],
-    bgColorRgb: [35, 35, 35],
   },
   'opencode-go': {
     id: 'opencode-go',
@@ -119,8 +111,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: true,
     usesNpxBridge: false,
     defaultMaxTokens: 128_000,
-    colorRgb: [0, 200, 160],
-    bgColorRgb: [8, 32, 28],
   },
   cursor: {
     id: 'cursor',
@@ -136,8 +126,6 @@ export const CLI_BACKENDS = {
     requiresModelAtSpawn: true,
     usesNpxBridge: false,
     defaultMaxTokens: 200_000,
-    colorRgb: [0, 122, 204],
-    bgColorRgb: [10, 25, 41],
   },
 } as const satisfies Record<string, CliBackendConfig>;
 

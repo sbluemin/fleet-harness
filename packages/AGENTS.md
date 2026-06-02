@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-admiral` (Admiral prompt and Fleet tool policy package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-tui` (Fleet TUI engine and shared brand-style hub, exposing `./core`, `./components`, `./layout`, `./primitives`, and `./style`), `fleet-cli` (primary CLI host), `fleet-wiki`, and `fleet-wiki-ui`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `fleet-infra` (host-agnostic runtime infrastructure), `fleet-mcp-server` (generic MCP server and tool registry leaf package), `fleet-admiral` (Admiral prompt and Fleet tool policy package), `fleet-carriers` (carrier persona catalog plus carrier runtime package), `fleet-cli` (primary CLI host), `fleet-wiki`, and `fleet-wiki-ui`.
 
 ## Architecture Philosophy
 
@@ -14,6 +14,7 @@ The final Fleet graph is layered and enforced by build/grep gates:
 - `fleet-cli` assembles `fleet-infra`, `fleet-carriers`, and `fleet-mcp-server` through direct leaf service calls.
 - `fleet-cli` consumes `fleet-admiral`, `fleet-carriers`, `fleet-infra`, and `fleet-mcp-server` through public package surfaces only.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-cli` side.
+- The embedded TUI engine under `src/tui/` is owned exclusively by `fleet-cli`.
 - Mixed modules must keep host adapters in `fleet-cli` and domain policy in the owning Fleet package.
 
 ### 2. Executor Pattern Only
@@ -35,7 +36,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 | Carrier session reuse | `packages/fleet-infra/src/agent/internal/executor-engine.ts` | Live carrier session reuse is in-process executor pool state keyed by `poolKey`; it is not persisted through JSONL custom entries or host adapters. |
 | Track status enum | `packages/fleet-infra/src/agent/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
 | MCP server URL + token routing | `packages/fleet-mcp-server` | Two independent HTTP servers (`fleet-carriers` and `fleet-wiki`), each with per-session Bearer tokens and FIFO routing isolated by token. |
-| CLI provider catalog | `@dotobokuri/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, colors, and reasoning capabilities derive from this. |
+| CLI provider catalog | `@dotobokuri/fleet-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, and reasoning capabilities derive from this; host presentation colors live in `runtime/fleet-cli/src/styles/`. |
 | Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/fleet-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
 | Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/fleet-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/fleet-infra/src/agent/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-cli` registers the two-method `ExecutorPort` at boot. |

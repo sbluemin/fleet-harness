@@ -173,7 +173,6 @@ function createCarrierConfig(id: string): CarrierConfig {
       whenNotToUse: [],
       whenToUse: ["plan-file execution"],
     },
-    color: "",
     defaultCliType: "claude",
     displayName: id[0]!.toUpperCase() + id.slice(1),
     id,

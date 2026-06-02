@@ -1,4 +1,4 @@
-import type { TerminalSize } from "../types.js";
+import type { TerminalSize } from "./types.js";
 
 const DEFAULT_COLUMNS = 80;
 const DEFAULT_ROWS = 24;
@@ -9,4 +9,3 @@ export function getTerminalSize(): TerminalSize {
     rows: process.stdout.rows ?? DEFAULT_ROWS,
   };
 }
-

@@ -1,6 +1,4 @@
 import {
-  CARRIER_BG_COLORS,
-  CARRIER_COLORS,
   CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES,
   getConfiguredTaskForceCarrierIds,
@@ -19,6 +17,10 @@ import {
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
 import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
+import {
+  PROVIDER_BG_ANSI_COLORS,
+  PROVIDER_ANSI_COLORS,
+} from "../../styles/carriers.js";
 import {
   matchesKey,
   truncateToWidth,
@@ -133,7 +135,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       body.push({
         kind: "cell",
         line: {
-          bg: isSelected ? CARRIER_BG_COLORS[entry.cliType] : undefined,
+          bg: isSelected ? PROVIDER_BG_ANSI_COLORS[entry.cliType] : undefined,
           text: withIndent(this.renderEntryLine(entry, isSelected)),
         },
       });
@@ -174,7 +176,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       const config = this.getBackendConfig(cliType);
       return {
         cliType,
-        color: CARRIER_COLORS[cliType] ?? "",
+        color: PROVIDER_ANSI_COLORS[cliType] ?? "",
         displayName: CLI_DISPLAY_NAMES[cliType] ?? cliType,
         effort: config.effort,
         isCustom: config.isCustom,

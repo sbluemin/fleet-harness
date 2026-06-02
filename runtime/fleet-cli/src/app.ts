@@ -1,4 +1,5 @@
-import { attachInputStream, LocalTui } from "@dotobokuri/fleet-tui/core";
+import { attachInputStream } from "./tui/input-stream.js";
+import { LocalTui } from "./tui/renderer.js";
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
 import {

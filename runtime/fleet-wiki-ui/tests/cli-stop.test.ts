@@ -41,12 +41,12 @@ describe("main --stop", () => {
     }));
 
     const { main } = await import("../src/cli.js");
-    await main();
-
-    expect(process.exit).toHaveBeenCalledWith(1);
-    expect(process.stderr.write).toHaveBeenCalledWith(
-      "lock에 비정상 PID가 기록되어 있습니다(pid=0). 안전을 위해 종료를 건너뜁니다.\n",
+    await expect(main()).rejects.toThrow(
+      "lock에 비정상 PID가 기록되어 있습니다(pid=0). 안전을 위해 종료를 건너뜁니다.",
     );
+
+    expect(process.exit).not.toHaveBeenCalled();
+    expect(process.stderr.write).not.toHaveBeenCalled();
     expect(isProcessAlive).not.toHaveBeenCalled();
     expect(removeLockFile).not.toHaveBeenCalled();
   });

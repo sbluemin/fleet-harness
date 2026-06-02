@@ -1,8 +1,8 @@
 import xterm from "@xterm/headless";
 import type { IBufferCell, Terminal as XtermTerminal } from "@xterm/headless";
 
-import type { Component, CursorAnchor } from "@dotobokuri/fleet-tui/components";
-import { truncateToWidth, visibleWidth } from "@dotobokuri/fleet-tui/primitives";
+import type { Component, CursorAnchor } from "../tui/types.js";
+import { truncateToWidth, visibleWidth } from "../tui/primitives/cell-width.js";
 
 type ColorMode = "default" | "palette" | "rgb";
 

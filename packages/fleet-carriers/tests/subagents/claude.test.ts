@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildClaudeSubagentDefinition,
   buildClaudeSubagentDefinitions,
+  CLAUDE_SUBAGENT_COLORS,
   type CarrierConfig,
 } from "../../src/index.js";
 
@@ -54,7 +55,7 @@ describe("Claude subagent conversion", () => {
     const definitions = ["nimitz", "vanguard", "chronicle", "genesis", "kirov", "ohio", "sentinel", "tempest"]
       .map((id) => buildClaudeSubagentDefinition(createCarrierConfig(id)));
 
-    expect(Object.fromEntries(definitions.map((definition) => [definition.carrierId, definition.color]))).toEqual({
+    const expectedColors = {
       nimitz: "blue",
       vanguard: "cyan",
       chronicle: "green",
@@ -63,7 +64,10 @@ describe("Claude subagent conversion", () => {
       ohio: "yellow",
       sentinel: "red",
       tempest: "pink",
-    });
+    };
+
+    expect(CLAUDE_SUBAGENT_COLORS).toEqual(expectedColors);
+    expect(Object.fromEntries(definitions.map((definition) => [definition.carrierId, definition.color]))).toEqual(expectedColors);
   });
 });
 
@@ -80,7 +84,6 @@ function createCarrierConfig(id: string, cliType: CarrierConfig["defaultCliType"
       whenNotToUse: [],
       whenToUse: ["plan-file execution"],
     },
-    color: "",
     defaultCliType: cliType,
     displayName: id[0]!.toUpperCase() + id.slice(1),
     id,

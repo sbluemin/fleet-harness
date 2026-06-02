@@ -12,9 +12,26 @@ interface SegmenterLike {
   readonly segment: (input: string) => Iterable<{ readonly segment: string }>;
 }
 
-const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/y;
-const SGR_PATTERN = /^\x1b\[([0-9;?]*)m$/;
 const ANSI_RESET = "\x1b[0m";
+const BEL = "\x07";
+const C1_APC = 0x9f;
+const C1_CSI = 0x9b;
+const C1_DCS = 0x90;
+const C1_OSC = 0x9d;
+const C1_PM = 0x9e;
+const C1_SOS = 0x98;
+const C1_ST = "\x9c";
+const CSI_FINAL_END = 0x7e;
+const CSI_FINAL_START = 0x40;
+const ESC = "\x1b";
+const ESC_APC = "_";
+const ESC_CSI = "[";
+const ESC_DCS = "P";
+const ESC_OSC = "]";
+const ESC_PM = "^";
+const ESC_SOS = "X";
+const ESC_ST = "\\";
+const SGR_FINAL = "m";
 const ZERO_WIDTH_JOINER = 0x200d;
 const VARIATION_SELECTOR_START = 0xfe00;
 const VARIATION_SELECTOR_END = 0xfe0f;
@@ -443,8 +460,8 @@ export function truncateToWidth(text: string, width: number, options: TruncateOp
 
   for (const token of tokenizeText(text)) {
     if (typeof token !== "string") {
-      output += token.sequence;
       if (token.kind === "sgr") {
+        output += token.sequence;
         activeSgr = updateActiveSgr(activeSgr, token.codes);
       }
       continue;
@@ -486,19 +503,24 @@ export function centerLine(text: string, width: number): string {
   return fitLine(`${" ".repeat(left)}${fitted}`, width);
 }
 
+export function stripControlSequences(text: string): string {
+  return Array.from(tokenizeText(text))
+    .filter((token) => typeof token === "string")
+    .join("");
+}
+
 function* tokenizeText(text: string): Iterable<string | AnsiToken> {
   let index = 0;
   while (index < text.length) {
-    ANSI_PATTERN.lastIndex = index;
-    const match = ANSI_PATTERN.exec(text);
-    if (match?.index === index) {
-      yield parseAnsiToken(match[0]);
-      index += match[0].length;
+    const controlSequence = readControlSequence(text, index);
+    if (controlSequence) {
+      yield parseAnsiToken(controlSequence);
+      index += controlSequence.length;
       continue;
     }
 
-    const nextAnsiIndex = text.indexOf("\x1b[", index);
-    const chunkEnd = nextAnsiIndex === -1 ? text.length : nextAnsiIndex;
+    const nextControlIndex = findNextControlIndex(text, index);
+    const chunkEnd = nextControlIndex === -1 ? text.length : nextControlIndex;
     for (const segment of segmentGraphemes(text.slice(index, chunkEnd))) {
       yield segment;
     }
@@ -507,13 +529,107 @@ function* tokenizeText(text: string): Iterable<string | AnsiToken> {
 }
 
 function parseAnsiToken(sequence: string): AnsiToken {
-  const sgr = SGR_PATTERN.exec(sequence);
-  if (!sgr) {
+  const sgrParameters = readSgrParameters(sequence);
+  if (sgrParameters === undefined) {
     return { sequence, kind: "control", codes: [] };
   }
 
-  const codes = sgr[1].length === 0 ? [0] : sgr[1].split(";").map((code) => Number(code));
+  const codes = sgrParameters.length === 0 ? [0] : sgrParameters.split(";").map((code) => Number(code));
   return { sequence, kind: "sgr", codes };
+}
+
+function findNextControlIndex(text: string, start: number): number {
+  for (let index = start; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code === 0x1b || isC1Control(code)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function readControlSequence(text: string, index: number): string | undefined {
+  const code = text.charCodeAt(index);
+  if (code === 0x1b) {
+    return readEscControlSequence(text, index);
+  }
+  if (isC1Control(code)) {
+    return readC1ControlSequence(text, index);
+  }
+  return undefined;
+}
+
+function readEscControlSequence(text: string, index: number): string {
+  const introducer = text[index + 1];
+  if (introducer === undefined) {
+    return text.slice(index);
+  }
+  if (introducer === ESC_CSI) {
+    return readCsiSequence(text, index, index + 2);
+  }
+  if (introducer === ESC_OSC) {
+    return readStringControlSequence(text, index, index + 2, true);
+  }
+  if (introducer === ESC_DCS || introducer === ESC_PM || introducer === ESC_APC || introducer === ESC_SOS) {
+    return readStringControlSequence(text, index, index + 2, false);
+  }
+  return text.slice(index, Math.min(text.length, index + 2));
+}
+
+function readC1ControlSequence(text: string, index: number): string {
+  const code = text.charCodeAt(index);
+  if (code === C1_CSI) {
+    return readCsiSequence(text, index, index + 1);
+  }
+  if (code === C1_OSC) {
+    return readStringControlSequence(text, index, index + 1, true);
+  }
+  if (code === C1_DCS || code === C1_PM || code === C1_APC || code === C1_SOS) {
+    return readStringControlSequence(text, index, index + 1, false);
+  }
+  return text[index] ?? "";
+}
+
+function readCsiSequence(text: string, start: number, scanStart: number): string {
+  for (let index = scanStart; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= CSI_FINAL_START && code <= CSI_FINAL_END) {
+      return text.slice(start, index + 1);
+    }
+  }
+  return text.slice(start);
+}
+
+function readStringControlSequence(text: string, start: number, scanStart: number, allowBelTerminator: boolean): string {
+  for (let index = scanStart; index < text.length; index += 1) {
+    const char = text[index];
+    if (allowBelTerminator && char === BEL) {
+      return text.slice(start, index + 1);
+    }
+    if (char === C1_ST) {
+      return text.slice(start, index + 1);
+    }
+    if (char === ESC && text[index + 1] === ESC_ST) {
+      return text.slice(start, index + 2);
+    }
+  }
+  return text.slice(start);
+}
+
+function readSgrParameters(sequence: string): string | undefined {
+  if (sequence.endsWith(SGR_FINAL)) {
+    if (sequence.startsWith(`${ESC}${ESC_CSI}`)) {
+      return sequence.slice(2, -1);
+    }
+    if (sequence.charCodeAt(0) === C1_CSI) {
+      return sequence.slice(1, -1);
+    }
+  }
+  return undefined;
+}
+
+function isC1Control(code: number): boolean {
+  return code >= 0x80 && code <= 0x9f;
 }
 
 function* segmentGraphemes(text: string): Iterable<string> {

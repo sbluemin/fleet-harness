@@ -8,6 +8,5 @@
 
 export {
   FLEET_ACTION_LABEL,
-  FLEET_ACTION_COLOR,
   FLEET_ACTION_PROMPT,
 } from "./fleet-action.js";

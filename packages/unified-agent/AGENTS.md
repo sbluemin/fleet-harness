@@ -170,7 +170,6 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
    - `supportsSessionClose`, `supportsSessionLoad` — session capability flags
    - `requiresModelAtSpawn` — spawn behavior flags
    - `defaultMaxTokens` — resource limits
-   - `colorRgb`, `bgColorRgb` — ANSI display colors
     - Display names are sourced from `models.json` via `providers.<cli>.name`
 
 9. **Claude Effort via `_meta` Bridge Channel**: Claude reasoning effort is delivered through `_meta.claudeCode.options.effort` spread in `session/new` and `session/load` payloads (not via `session/set_config_option` RPC). This channel bypasses alias resolution issues on the bridge and ensures effort applies consistently across new sessions and session resumption.
@@ -186,4 +185,4 @@ Adding a new CLI provider requires updating the provider registry first, then an
 3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/IUnifiedAgentClient.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, OpenCode entries in `src/service-status/store.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
 4. **Non-derived provider seams** — Add or adjust any dedicated client routing, status fetcher, or fallback behavior that is not automatically derived from `CLI_BACKENDS`.
 
-All downstream consumers (`fleet-carriers` constants: `CARRIER_COLORS`, `CARRIER_BG_COLORS`, `VALID_CLI_TYPES`, `CLI_PROVIDER_DISPLAY_NAMES`, `CLI_TYPE_DISPLAY_ORDER`) derive automatically from `CLI_BACKENDS`.
+Downstream domain consumers derive CLI type and display-name data from `CLI_BACKENDS`; host presentation colors are owned by `runtime/fleet-cli/src/styles/`.

@@ -34,4 +34,4 @@ System Prompt
 
 ## HUD Integration
 
-The Fleet Action Protocol's display label (`FLEET_ACTION_LABEL`) and ANSI colour (`FLEET_ACTION_COLOR`) are exported from `fleet-action.ts` as plain constants. `sections/fleet-status-section.ts` imports them directly to render the centered border label `⚓ Fleet Action Protocol`. The HUD has no dynamic protocol state and no switching key bindings; the label and colour are compile-time constants.
+The Fleet Action Protocol display label (`FLEET_ACTION_LABEL`) is exported from `fleet-action.ts` as a plain protocol constant. Fleet CLI owns HUD color in `runtime/fleet-cli/src/styles/hud.ts` and combines it with the label when rendering `⚓ Fleet Action Protocol`.

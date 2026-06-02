@@ -1,5 +1,5 @@
-import type { Component as PrimitiveComponent, TerminalSize } from "@dotobokuri/fleet-tui/components";
-import type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "@dotobokuri/fleet-tui/layout";
+import type { Component as PrimitiveComponent, TerminalSize } from "../tui/types.js";
+import type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "../tui/layout/split-pane.js";
 import type { RoutedMouseInput } from "./mouse/parser.js";
 
 export type FleetInputMode = "MIRROR" | "DEDICATED";

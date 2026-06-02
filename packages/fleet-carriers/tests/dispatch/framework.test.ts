@@ -320,7 +320,6 @@ function createConfig(id: string, displayName: string): CarrierConfig {
     defaultCliType: "claude",
     slot: 1,
     displayName,
-    color: "",
   };
 }
 

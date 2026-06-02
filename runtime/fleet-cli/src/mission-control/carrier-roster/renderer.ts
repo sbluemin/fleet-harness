@@ -1,10 +1,10 @@
 import {
-  CARRIER_BG_COLORS,
-  CARRIER_COLORS,
-  CLI_DISPLAY_NAMES,
-  SUBAGENT_CARRIER_BG_COLOR,
-  SUBAGENT_CARRIER_COLOR,
-} from "@dotobokuri/fleet-carriers";
+  PROVIDER_BG_ANSI_COLORS,
+  PROVIDER_ANSI_COLORS,
+  SUBAGENT_PRESENTATION_BG_ANSI,
+  SUBAGENT_PRESENTATION_ANSI,
+} from "../../styles/carriers.js";
+import { CLI_DISPLAY_NAMES } from "@dotobokuri/fleet-carriers";
 import {
   truncateToWidth,
   visibleWidth,
@@ -271,7 +271,7 @@ function getEntryEditorOptions(
 }
 
 function getEntryBgColor(cliType: CarrierCliType): string | undefined {
-  return CARRIER_BG_COLORS[cliType];
+  return PROVIDER_BG_ANSI_COLORS[cliType];
 }
 
 function isWarningFeedback(message: string): boolean {
@@ -281,7 +281,7 @@ function isWarningFeedback(message: string): boolean {
 function getEntryColor(entry: CarrierStatusEntry): string {
   if (entry.subagentMode) return getSubagentSignatureColor();
   if (entry.taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
-  return CARRIER_COLORS[entry.cliType] ?? "";
+  return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
 }
 
 function getEntryBgColorForEntry(entry: CarrierStatusEntry): string | undefined {
@@ -289,7 +289,7 @@ function getEntryBgColorForEntry(entry: CarrierStatusEntry): string | undefined 
 }
 
 function getCliEntryColor(cliType: CarrierCliType): string {
-  return CARRIER_COLORS[cliType] ?? "";
+  return PROVIDER_ANSI_COLORS[cliType] ?? "";
 }
 
 function getCliDisplayName(cliType: string): string {
@@ -297,11 +297,11 @@ function getCliDisplayName(cliType: string): string {
 }
 
 function getSubagentSignatureColor(): string {
-  return SUBAGENT_CARRIER_COLOR;
+  return SUBAGENT_PRESENTATION_ANSI;
 }
 
 function getSubagentSignatureBgColor(): string | undefined {
-  return SUBAGENT_CARRIER_BG_COLOR;
+  return SUBAGENT_PRESENTATION_BG_ANSI;
 }
 
 function getFooterHint(model: CarrierStatusRenderModel): string {

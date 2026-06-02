@@ -1,4 +1,4 @@
-import { LocalTui } from "@dotobokuri/fleet-tui/core";
+import { LocalTui } from "../tui/renderer.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";
 import type { Component, FleetInputMode, FleetPtyApi } from "./types.js";

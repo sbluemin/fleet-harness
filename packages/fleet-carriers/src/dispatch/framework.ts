@@ -12,12 +12,7 @@
 
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
 import { getLogAPI, type LogOptions } from "@dotobokuri/fleet-infra/log";
-import {
-  CARRIER_BG_COLORS,
-  CARRIER_COLORS,
-  CARRIER_RGBS,
-  CLI_DISPLAY_NAMES,
-} from "../constants.js";
+import { CLI_DISPLAY_NAMES } from "../constants.js";
 import {
   loadCarrierDisplayNameOverrides,
   resolveAgentCliType as resolveAgentCliTypeFromStore,
@@ -42,8 +37,6 @@ import {
 export type { CarrierConfig };
 
 // ─── 상수 ─────────────────────────────────────────────────
-
-const DEFAULT_CARRIER_RGB: [number, number, number] = [180, 160, 220];
 
 // ─── 공개 API ────────────────────────────────────────────
 
@@ -98,7 +91,6 @@ export function registerCarrier(
 
   const gs = registry.getState();
   const existingState = gs.modes.get(config.id);
-  const resolvedCliType = resolveAgentCliTypeFromStore(config.id, config.defaultCliType);
 
   // Carrier 상태 등록
   if (existingState) {
@@ -110,13 +102,7 @@ export function registerCarrier(
     existing.defaultEffort = config.defaultEffort;
     existing.carrierMetadata = config.carrierMetadata;
     existing.subagent = config.subagent;
-    existing.color = config.color;
-    existing.bgColor = config.bgColor;
-    existing.color = CARRIER_COLORS[resolvedCliType] ?? "";
-    existing.bgColor = CARRIER_BG_COLORS[resolvedCliType];
   } else {
-    config.color = CARRIER_COLORS[resolvedCliType] ?? "";
-    config.bgColor = CARRIER_BG_COLORS[resolvedCliType];
     gs.modes.set(config.id, { config });
   }
 
@@ -215,15 +201,13 @@ export function setTaskForceConfiguredCarriers(registry: CarrierRegistry, ids: s
 
 /**
  * 지정 carrier의 cliType을 동적으로 변경합니다.
- * 색상·배경색을 새 cliType에 맞게 갱신하고 상태바를 업데이트합니다.
+ * carrier CLI 타입 변경을 알리고 상태바를 업데이트합니다.
  */
 export function updateCarrierCliType(registry: CarrierRegistry, carrierId: string, newType: CliType): void {
   const gs = registry.getState();
   const state = gs.modes.get(carrierId);
   if (!state) return;
-  const config = state.config;
-  config.color = CARRIER_COLORS[newType] ?? "";
-  config.bgColor = CARRIER_BG_COLORS[newType];
+  void newType;
   notifyStatusUpdate(registry);
 }
 
@@ -253,27 +237,6 @@ export function getAllCliTypes(registry: CarrierRegistry): CliType[] {
     if (cliType) types.add(cliType);
   }
   return [...types] as CliType[];
-}
-
-/** carrierId 기준으로 전경(프레임) 색상을 반환합니다. */
-export function resolveCarrierColor(registry: CarrierRegistry, carrierId: string): string {
-  const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
-  return CARRIER_COLORS[cliType] ?? "";
-}
-
-/** carrierId 기준으로 배경색을 반환합니다. */
-export function resolveCarrierBgColor(registry: CarrierRegistry, carrierId: string): string {
-  const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
-  return CARRIER_BG_COLORS[cliType] ?? "";
-}
-
-/** carrierId 기준으로 파도 그라데이션용 RGB를 반환합니다. */
-export function resolveCarrierRgb(registry: CarrierRegistry, carrierId: string): [number, number, number] {
-  const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
-  return CARRIER_RGBS[cliType] ?? DEFAULT_CARRIER_RGB;
 }
 
 /** carrierId 기준으로 carrier 표시 이름을 반환합니다. */

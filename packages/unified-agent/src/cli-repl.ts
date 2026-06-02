@@ -376,7 +376,7 @@ async function handleSlashCommand(
 
     case '/clear': {
       // 화면만 클리어 (서버 히스토리 유지)
-      process.stderr.write('\x1b[2J\x1b[H');
+      process.stderr.write('\u001b[2J\u001b[H');
       return false;
     }
 

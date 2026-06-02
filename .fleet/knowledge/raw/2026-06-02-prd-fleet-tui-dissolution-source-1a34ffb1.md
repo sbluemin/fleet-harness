@@ -1,0 +1,80 @@
+---
+id: "prd-fleet-tui-dissolution-source"
+created: "2026-06-02T07:11:05.238Z"
+sourceType: "inline"
+title: "prd-fleet-tui-dissolution"
+tags: ["decision-history", "fleet-cli", "fleet-tui", "cognitive-debt", "architecture", "package-dissolution"]
+contentHash: "1a34ffb1"
+---
+# PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수
+
+## Overview
+
+Fleet은 도메인 패키지(`fleet-admiral`, `fleet-carriers`, `fleet-infra`, `fleet-mcp-server`)가 각자의 정책·런타임·인프라를 담당하고, `fleet-cli`가 이들을 조립해 단일 CLI host를 만드는 구조다. 그런데 표현 계층 — 특히 터미널 ANSI 제어 시퀀스, 색상 팔레트, help 텍스트 스타일링 — 이 일부는 별도의 first-party 패키지 `fleet-tui`에, 일부는 도메인 패키지에, 일부는 `fleet-cli`에 흩어져 있었다. 이 PRD는 그 분산의 구조적 원인을 밝히고, 표현 계층을 host가 단일 소유하도록 재편한 결정의 역사를 기록한다.
+
+## Problem
+
+문제는 두 겹으로 쌓여 있었다.
+
+**첫째, 잘못된 미래 가정이 패키지 경계를 정당화했다.** `fleet-tui`는 "Fleet 생태계 내에 여러 개의 독립 CLI가 생길 것"이라는 가정 아래 별도 패키지로 분리되었다. 하지만 실제로는 `fleet-cli`가 유일한 터미널 기반 host였고, `fleet-wiki-ui`는 웹 SPA + daemon CLI 조합으로 터미널 렌더링 엔진이 필요 없었다. 단일 소비자에게 별도 패키지를 유지하는 것은 패키지 간 import 제약, 버전 관리 오버헤드, 코드 탐색 마찰만 낳는 인지부채다.
+
+**둘째, 표현과 도메인의 경계가 흐려졌다.** ANSI escape sequence를 생성하는 색상 상수가 carrier runtime 패키지에 존재했고, backend catalog에 RGB 튜플이 메타데이터처럼 섞여 있었다. 이는 "어떤 색으로 그릴 것인가"라는 host의 표현 결정이 "이 backend는 어떤 프로토콜을 쓰는가"라는 도메인 결정과 동일한 파일에 갇혀 있음을 의미했다. 도메인 패키지가 터미널 매체에 대한 지식을 보유한 것은 레이어 역전이다.
+
+이중 문제로 인해 다음과 같은 마찰이 발생했다.
+
+- 표현 토큰 변경 시 도메인 패키지까지 빌드 파이프라인을 타야 했다.
+- carrier 등록 인터페이스에 ANSI 색상 필드가 끼어 있어, 외부 페르소나 등록자가 터미널 표현을 알아야 하는 이상한 계약이 생겼다.
+- `fleet-tui` 패키지는 public subpath barrel을 유지하기 위해 단순한 re-export 파일들이 쌓였고, 이는 패키지 표면을 방어하는 것처럼 보이지만 실제로는 아묟은 독립 가치가 없는 포장지에 불과했다.
+
+## Goals
+
+1. **표현 계층의 단일 소유권 확립**: 터미널 렌더링, ANSI 제어, 색상 팔레트, help 스타일링은 모두 host(`fleet-cli`)가 단일 소유한다. 도메인 패키지는 표현에 대한 지식을 갖지 않는다.
+2. **도메인 패키지의 표현 비의존성**: carrier runtime, backend catalog, Admiral 프로토콜은 터미널 매체와 무관한 데이터만 노출한다. ANSI escape sequence는 도메인 패키지 경계를 넘지 않는다.
+3. **외부 CLI 계약 데이터의 도메인 잔존**: Claude CLI `--agents` JSON payload의 color enum, backend identity RGB 튜플, 프로토콜 라벨 등은 외부 도구와의 계약이므로 도메인 패키지에 남긴다. 이는 "표현"이 아니라 "외부 스키마"다.
+4. **단일 소비자 가정의 폐기**: 더 이상 독립 CLI 다수를 가정하지 않는다. 렌더링 엔진은 host 낵부 구현체로 존재하며, 별도의 first-party 패키지로 분리하지 않는다.
+5. **보조 소비자의 레이어 역전 방지**: `fleet-wiki-ui`처럼 소량의 help 스타일만 필요한 보조 소비자는, host에 의존하거나 새 공유 패키지를 만들지 않고 자체 내장(self-host)으로 해결한다. 이는 레이어 역전을 피하고 패키지 수를 줄인다.
+
+## Non-Goals
+
+- Fleet의 전체 패키지 구조를 재설계하지 않는다. 도메인 패키지의 책임 범위는 그대로 유지하되 표현만 떼어낸다.
+- 새로운 공유 라이브러리나 디자인 시스템 패키지를 만들지 않는다. 표현 자산은 host 낵부로 흡수하거나 보조 소비자가 자급한다.
+- 터미널 렌더링 엔진의 동작 방식이나 알고리즘을 변경하지 않는다. 소유권과 경계만 옮긴다.
+- 웹 UI의 색 체계를 터미널 팔레트와 통일하지 않는다. Maritime Codex의 웹 토큰은 별도 영역이다.
+- 도메인 패키지가 외부 CLI와의 계약 데이터를 포기하지 않는다. backend RGB, Claude color enum, 프로토콜 라벨 등은 도메인에 잔존한다.
+
+## User Stories
+
+- **Operator로서**, 나는 `fleet-cli`를 빌드할 때 도메인 패키지의 색상 상수 변경에 의한 불필요한 재빌드를 겪지 않기를 원한다. 표현 변경은 host 범위에서만 전파되어야 한다.
+- **Carrier 페르소나 등록자로서**, 나는 새 carrier를 등록할 때 터미널 ANSI 색상을 고민하지 않기를 원한다. 내가 제공해야 할 것은 backend id와 protocol 뿐이며, 색상은 host가 결정해야 한다.
+- **Fleet CLI 개발자로서**, 나는 터미널 제어 코드와 색상 토큰을 찾을 때 `fleet-cli` 낵부의 한 디렉터리에서 모두 찾기를 원한다. 별도 패키지를 떠올리거나 public subpath barrel을 탐색할 필요가 없어야 한다.
+- **Fleet Wiki UI 개발자로서**, 나는 daemon CLI의 help 텍스트에 색상을 입힐 때 `fleet-cli`에 의존하지 않기를 원한다. 웹 SPA + daemon의 정체성과 무관한 host 의존성을 만들고 싶지 않다.
+
+## Functional Requirements
+
+1. 터미널 렌더링 엔진(화면 갱신, 입력 스트림, 터미널 크기 측정, 텍스트 폭 계산, 분할 패널 수학)은 host 낵부 구현체로 존재한다. 이는 도메인 패키지의 표면이 아니다.
+2. 색상 및 브랜드 표현 토큰(ANSI SGR, 팔레트, help 라벨 스타일, carrier 배지 색상, HUD 테두리 색상)은 host의 단일 소스로 집결한다. 도메인 패키지는 이 토큰을 생성·소비하지 않는다.
+3. Backend catalog는 RGB 튜플 형태의 identity 메타데이터를 노출할 수 있다. 이는 매체 변환의 원천값이며, ANSI escape 변환은 host의 책임이다.
+4. Claude 서브에이전트 정의에 쓰이는 color enum은 외부 CLI 스키마 데이터로서 도메인 패키지에 남는다. 이는 터미널 표현이 아닌 계약 값이다.
+5. Admiral 프로토콜의 행동 라벨은 도메인 식별자로서 도메인 패키지에 남는다. 색상 표현은 host로 이전한다.
+6. Carrier runtime 객체는 backend id만 노출하고, ANSI 색상 필드를 제거한다. 렌더링 측에서 id를 기반으로 표현을 파생한다.
+7. 보조 소비자가 소량의 help 스타일 토큰을 필요로 할 때, 별도 패키지 의존성을 추가하지 않고 자체 모듈로 자급한다.
+
+## Acceptance Criteria
+
+- 도메인 패키지(`packages/*`) 낵부에서 ANSI escape sequence를 생성하거나 소비하는 코드가 존재하지 않는다. 터미널 매체에 대한 지식은 host 경계를 넘지 않는다.
+- Carrier 등록 인터페이스는 backend id, protocol, capability 정보를 받되 색상 정보를 요구하지 않는다.
+- `fleet-cli` 낵부에서 터미널 제어와 색상 표현을 모두 찾을 수 있으며, 별도의 first-party 패키지를 거쳐야 할 필요가 없다.
+- `fleet-wiki-ui`는 `fleet-cli`나 별도 표현 패키지에 새 의존성을 만들지 않고 daemon help 출력을 유지한다.
+- 외부 CLI 계약 데이터(backend RGB, Claude color enum, 프로토콜 라벨)는 도메인 패키지에 잔존하여 외부 스키마의 출처를 추적할 수 있다.
+
+## Open Questions
+
+이 PRD는 decision-history 문서로, 이미 합의되고 실행된 결정의 이력을 기록한다. 구현 계획이나 미래 행동 항목은 포함하지 않는다.
+
+## Related
+
+- [[wiki:prd-tui-mission-control]]
+- [[wiki:prd-tui-keyboard-protocol-architecture]]
+- [[wiki:prd-tui-mouse-scroll-hybrid-routing]]
+- [[wiki:decision-fleet-cli-mouse-input]]
+- [[wiki:prd-core-dismantling-di-architecture]]

@@ -222,6 +222,19 @@
     ],
     "updated": "2026-05-25T05:40:19.839Z"
   },
+  "prd-fleet-tui-dissolution": {
+    "path": "wiki/prd-fleet-tui-dissolution.md",
+    "title": "PRD: fleet-tui 패키지 해체와 fleet-cli 표현 계층 흡수",
+    "tags": [
+      "decision-history",
+      "fleet-cli",
+      "fleet-tui",
+      "cognitive-debt",
+      "architecture",
+      "package-dissolution"
+    ],
+    "updated": "2026-06-02T07:15:28.527Z"
+  },
   "prd-infra-agent-executor-migration": {
     "path": "wiki/prd-infra-agent-executor-migration.md",
     "title": "PRD: Agent Executor 엔진의 인프라 계층 이전",

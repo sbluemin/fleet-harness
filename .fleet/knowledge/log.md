@@ -3299,3 +3299,69 @@
 - result: `accepted`
 - target: `wiki/guide-004-cli-subagent-injection.md`
 
+## 2026-06-02T06:59:03.950Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-02T07:00:55.966Z — drydock run
+
+- error_count: `0`
+- info_count: `6`
+- issue_count: `13`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-02T07:11:05.249Z — raw source added
+
+- id: `prd-fleet-tui-dissolution-source`
+- raw_source_ref: `raw/2026-06-02-prd-fleet-tui-dissolution-source-1a34ffb1.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `prd-fleet-tui-dissolution`
+
+## 2026-06-02T07:11:05.252Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-02T07-11-05-238Z-d8bf04bf`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-02-prd-fleet-tui-dissolution-source-1a34ffb1.md`
+- target: `wiki/prd-fleet-tui-dissolution.md`
+- warning_count: `0`
+
+## 2026-06-02T07:13:13.724Z — patch edited
+
+- body_replacements: `6`
+- changed_fields: `body, updated`
+- next_hash: `a5ce93d8`
+- patch_id: `2026-06-02T07-11-05-238Z-d8bf04bf`
+- previous_hash: `0e19f2b5`
+- target: `wiki/prd-fleet-tui-dissolution.md`
+
+## 2026-06-02T07:15:28.530Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `d67b75b4`
+- patch_id: `2026-06-02T07-11-05-238Z-d8bf04bf`
+- previous_hash: `a5ce93d8`
+- target: `wiki/prd-fleet-tui-dissolution.md`
+
+## 2026-06-02T07:17:27.081Z — index rebuilt
+
+- entry_count: `23`
+
+## 2026-06-02T07:17:27.083Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-02T07-11-05-238Z-d8bf04bf`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-02-prd-fleet-tui-dissolution-source-1a34ffb1.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-tui-dissolution.md`
+

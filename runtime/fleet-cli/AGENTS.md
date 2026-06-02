@@ -6,9 +6,9 @@
 
 This package owns the local host assembly for the Agent CLI PTY and Fleet PTY lower pane, and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
 
-- **Must Own**: local host assembly, host `controls/**`, host `sections/**`, carrier-roster domain wiring (including subagent mode toggle, `[SA]` badge, and signature color), mission-control domain wiring, panel host callback, agent CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Agent CLI viewport, agent-cli builder injection for Claude-family `--agents` inline JSON startup payload, in-process update subsystem (`src/update/**`), and Fleet's CLI Composition Root.
+- **Must Own**: local host assembly, host-owned TUI engine under `src/tui/`, host-owned SGR/color/brand/help style SSoT under `src/styles/`, host `controls/**`, host `sections/**`, carrier-roster domain wiring (including subagent mode toggle, `[SA]` badge, and signature color), mission-control domain wiring, panel host callback, agent CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Agent CLI viewport, agent-cli builder injection for Claude-family `--agents` inline JSON startup payload, in-process update subsystem (`src/update/**`), and Fleet's CLI Composition Root.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
-- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-tui` (including the `./style` subpath for shared CLI/help brand style assets), `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
+- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 
 Direct dependencies on execution-engine packages are generally forbidden. Execution and model catalog access flow through `fleet-infra` and the Fleet orchestration packages. The Job Bar functionality is fully integrated into `fleet-cli`.
 
@@ -29,7 +29,7 @@ Only the permanent vertical two-pane layout is allowed:
 - **Fleet PTY**: Lower pane.
 - **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Roster) while they are active.
 - **Session Options**: Owned by `src/mission-control/options/`. Mission Control owns the interactive option state; the Options Drawer (`O`) edits boolean flags and `S` persists defaults through `fleet-infra/preset`. Model editing is handled inline via `→` arrow key in the idle CLI selection view, not in the Options Drawer.
-- **Shared PTY negotiation**: `src/controls/pty.ts` is a compatibility facade; actual PTY responsibilities live in `src/controls/pty/{shell,keyboard,csi-u,host,resize}.ts`. `pty/resize.ts` owns host resize negotiation over `@dotobokuri/fleet-tui/layout` primitives.
+- **Shared PTY negotiation**: `src/controls/pty.ts` is a compatibility facade; actual PTY responsibilities live in `src/controls/pty/{shell,keyboard,csi-u,host,resize}.ts`. `pty/resize.ts` owns host resize negotiation over `src/tui/layout` primitives.
 - **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Agent CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
 - **Mouse runtime**: `src/controls/mouse/{parser,protocol,router}.ts` own SGR mouse parse/encode, DEC private mouse protocol state (including drag tracking), pane hit-testing, app-mouse forwarding, and scroll fallback.
 - **Input runtime**: `src/controls/input.ts` is a compatibility facade; actual input responsibilities live in `src/controls/input/{keybindings,router,programmatic,contract}.ts`. `input/router.ts` owns host keyboard routing, `input/keybindings.ts` owns keybinding registry/config, `input/programmatic.ts` owns programmatic PTY input, and `input/contract.ts` owns input contract/predicates.
@@ -48,13 +48,13 @@ Only the permanent vertical two-pane layout is allowed:
 
 ## Host Cursor Policy
 
-Outer-terminal cursor sync policy is owned here; `fleet-tui` supplies only generic anchor primitives (`getCursorAnchor`, `setCursorAnchorTarget`, `cursorSyncEnabled`, post-flush `requestRender` callback).
+Outer-terminal cursor sync policy is owned here; `src/tui/` supplies the local renderer and generic anchor primitives (`getCursorAnchor`, `setCursorAnchorTarget`, `cursorSyncEnabled`, post-flush `requestRender` callback).
 
 - **Policy sync**: `createCursorPolicySync()` in `src/controls/render.ts` runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Dedicated PTY view in `MIRROR`/`DEDICATED` when cursor sync is on, mode-toggle suppression is off, the Fleet PTY has no active overlay, and the Mission Control has no active panel; otherwise the target is cleared.
 - **Windows Claude Code compatibility**: Native Windows (`process.platform === "win32"`) auto-clears the cursor anchor target for Claude-family Agent CLI profiles unless cursor sync was explicitly enabled with `FLEET_CURSOR_SYNC=1`/`true`/`yes`/`on`.
 - **Mode-toggle suppression**: `Ctrl+T` clears the target and schedules one hidden render frame; policy resumes in the renderer post-flush `afterRender` callback (`scheduleRender` → `ui.requestRender(..., callback)`), then a follow-up render — not via independent timer chains.
 - **Off-switch** (read-only env; do not mutate `process.env`): `RunAppOptions.cursorSync` (default on), CLI `--disable-cursor-sync`, and `FLEET_CURSOR_SYNC=0` or `false` parsed in `cli-args.ts` and passed through `index.ts`.
-- **Boundary**: IME/terminal compatibility decisions and overlay/mode gating stay in this package; do not push host policy into `fleet-tui` renderer or anchor types.
+- **Boundary**: IME/terminal compatibility decisions and overlay/mode gating stay in this package; do not push host policy into generic `src/tui` renderer or anchor types.
 
 ## Development & Execution
 
