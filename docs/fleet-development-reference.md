@@ -25,7 +25,7 @@ Put code here when it owns carrier persona metadata, carrier dispatch, carrier j
 
 ### 2.3 `packages/fleet-infra`
 
-Put code here when it owns generic auth, data-dir, executor, log, settings, detached-job, or runtime I/O primitives.
+Put code here when it owns generic auth, data-dir, executor, settings, detached-job, or runtime I/O primitives.
 
 ### 2.4 `packages/fleet-mcp-server`
 

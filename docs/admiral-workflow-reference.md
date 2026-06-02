@@ -6,7 +6,7 @@ This document is the operational doctrine for Admiral and Carrier agents working
 
 - `runtime/fleet-cli` owns the CLI host and Composition Root, and consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, store, and carrier runtime state.
-- `packages/fleet-infra` owns host-agnostic auth, settings, executor/session infrastructure, logs, and I/O gateways.
+- `packages/fleet-infra` owns host-agnostic auth, settings, executor/session infrastructure, and I/O gateways.
 - `packages/fleet-mcp-server` owns the generic MCP registry/server, token isolation, and tool snapshots.
 
 ## 2. Ownership Model

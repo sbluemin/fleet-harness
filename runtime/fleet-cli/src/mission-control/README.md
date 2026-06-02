@@ -14,7 +14,7 @@ Mission Control owns the launch menu for selecting an Agent CLI, startup option 
 - **Inline Model Edit** — `→` (right arrow) from the idle CLI selection opens an inline model text input below the CLI list. `Enter` confirms the model, `Esc` cancels. The model value is persisted through the same session options draft/save flow as the Options Drawer.
 - **Fleet Menu** — `m` opens a native Fleet Menu with Authentication, Wiki Server, Diagnostics, and About in that order. `Enter` opens the selected panel, breadcrumbs show the current depth, and `Esc` walks back one level at a time.
 - **Native Input Modals** — Fleet Menu panels use in-process text, numeric, password, and confirmation modals. Password fields render masked values and are handled without child CLI auth/input subprocesses.
-- **Diagnostics Boundary** — Diagnostics exposes read-only log/data/system views plus a confirmed preset reset. Cursor Sync remains owned by the Options Drawer and is not duplicated in Diagnostics.
+- **Diagnostics Boundary** — Diagnostics exposes read-only data/system views plus a confirmed preset reset. Cursor Sync remains owned by the Options Drawer and is not duplicated in Diagnostics.
 - **Cursor Suppression** — When a panel is active or the controller state is not `"active"`, `getCursorAnchor` returns `null` to suppress the outer-terminal cursor.
 
 ## State Machine

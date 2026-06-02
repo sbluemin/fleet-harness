@@ -8,6 +8,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Fixed
 - [core] Fixed the host TUI leaving stale characters and rows on screen when the terminal is resized or split.
 
+### Removed
+- Removed the `@dotobokuri/fleet-infra/log` public subpath, runtime log store, carrier debug-log hooks, executor stderr log attachment, and Mission Control log viewer.
+
 ## [1.1.0] - 2026-06-01
 
 ### Added

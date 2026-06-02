@@ -10,5 +10,7 @@ describe("preset public surface", () => {
     expect(infra.preset.createPresetService).toBe(createPresetService);
     expect(infra.preset.createPresetStore).toBe(createPresetStore);
     expect(typeof services.presetService.load).toBe("function");
+    expect("log" in infra).toBe(false);
+    expect("log" in services).toBe(false);
   });
 });

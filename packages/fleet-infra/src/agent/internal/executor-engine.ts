@@ -36,7 +36,6 @@ import { executorPortRuntime } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
 import type { TrackStatus } from "../types.js";
 import { resolveAuthEnv } from "../../auth/index.js";
-import { getLogAPI } from "../../log/index.js";
 import { classifyResumeFailure } from "./session-errors.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 
@@ -247,8 +246,6 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
     clientPool.set(poolKey, retained);
   }
 
-  let detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
-
   const onAbort = () => {
     if (aborted) return;
     aborted = true;
@@ -261,7 +258,6 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   };
 
   if (signal?.aborted) {
-    detachStderr();
     if (poolEntry) poolEntry.busy = false;
     return { responseText: "", thoughtText: "", toolCalls: [], status: "aborted" };
   }
@@ -373,9 +369,7 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
 
         try { await client.disconnect(); } catch { }
         detachListeners();
-        detachStderr();
         client = await buildProviderClient({ cli: cliType });
-        detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
         replaceEntryClient(poolKey, poolEntry!, client, builtinExternalMcpSignature, internalExecutorMcpSignature);
         attachListeners();
 
@@ -461,7 +455,6 @@ export async function engineExecuteWithPool(opts: ExecuteOptions): Promise<ExecR
   } finally {
     if (signal) signal.removeEventListener("abort", onAbort);
     detachListeners();
-    detachStderr();
     if (poolEntry) poolEntry.busy = false;
 
     if (promptHandedOff) {
@@ -497,7 +490,6 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
   opts.onStatusChange?.("conn");
 
   const client = await buildProviderClient({ cli: cliType });
-  const detachStderr = attachStderrLogging(client, `acp-exec:${poolKey}`);
   let aborted = false;
   let activeMcpTokens: readonly ExecutorMcpSessionToken[] | undefined;
 
@@ -587,7 +579,6 @@ export async function engineExecuteOneShot(opts: ExecuteOptions): Promise<ExecRe
     }
   } finally {
     if (signal) signal.removeEventListener("abort", onAbort);
-    detachStderr();
     if (activeMcpTokens) {
       cleanupExecutorSessions(activeMcpTokens);
       activeMcpTokens = undefined;
@@ -868,27 +859,6 @@ function debugSystemPromptDrift(scope: string, poolKey: string, cliType: CliType
   console.warn(`[unified-agent] systemPrompt drift 감지 (${scope}, key=${poolKey}, cli=${cliType})`);
 }
 
-function attachStderrLogging(client: IUnifiedAgentClient, source: string): () => void {
-  const onLogEntry = (entry: { message: string; cli?: string; sessionId?: string }) => {
-    const normalized = normalizeDiagnosticStderr(entry.message);
-    if (!normalized) return;
-    const parts = [
-      entry.cli ? `cli=${entry.cli}` : null,
-      entry.sessionId ? `session=${entry.sessionId}` : null,
-      normalized,
-    ].filter(Boolean);
-    getLogAPI().debug(source, parts.join(" "), { category: "acp-stderr", hideFromFooter: true });
-  };
-  client.on("logEntry", onLogEntry);
-  return () => { client.off("logEntry", onLogEntry); };
-}
-
-function normalizeDiagnosticStderr(message: string): string | null {
-  const stripped = message.replace(/\u001b\[[0-9;]*m/g, "").trim();
-  if (!stripped) return null;
-  if (/^[\|\/\\\-⠁-⣿\.\s]+$/.test(stripped)) return null;
-  return stripped;
-}
 
 function extractConnectedModel(connectResult: ConnectResult): string | undefined {
   const sessionAny = connectResult.session as Record<string, unknown> | undefined;

@@ -10,7 +10,10 @@
   "author": "sbluemin",
   "type": "module",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "AGENTS.md"],
+  "files": [
+    "dist",
+    "AGENTS.md"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -40,11 +43,6 @@
       "import": "./dist/data-dir.js",
       "require": "./dist/data-dir.cjs"
     },
-    "./log": {
-      "types": "./dist/log/index.d.ts",
-      "import": "./dist/log.js",
-      "require": "./dist/log.cjs"
-    },
     "./preset": {
       "types": "./dist/preset/index.d.ts",
       "import": "./dist/preset.js",
@@ -53,11 +51,18 @@
   },
   "typesVersions": {
     "*": {
-      "agent": ["dist/agent/index.d.ts"],
-      "auth": ["dist/auth/index.d.ts"],
-      "data-dir": ["dist/data-dir/index.d.ts"],
-      "log": ["dist/log/index.d.ts"],
-      "preset": ["dist/preset/index.d.ts"]
+      "agent": [
+        "dist/agent/index.d.ts"
+      ],
+      "auth": [
+        "dist/auth/index.d.ts"
+      ],
+      "data-dir": [
+        "dist/data-dir/index.d.ts"
+      ],
+      "preset": [
+        "dist/preset/index.d.ts"
+      ]
     }
   },
   "dependencies": {

@@ -1,6 +1,5 @@
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
-import type { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
 import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
@@ -78,7 +77,6 @@ export interface CreateMissionControlControllerOptions {
   readonly onExitFleet: () => void;
   readonly onRenderRequest: () => void;
   readonly presetService?: PresetService;
-  readonly readRecentLogFiles?: typeof readRecentLogFiles;
   readonly release?: FleetCliRelease;
   readonly resolveProfile: (cliId: AgentCliId, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;

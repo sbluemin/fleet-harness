@@ -34,7 +34,6 @@ import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
   emitStreamEvent,
-  logDebug,
   resolveAgentCliType,
   resolveCarrierDisplayName,
   resolveValidatedEffort,
@@ -108,12 +107,6 @@ export interface CarrierSortieOutcome {
 // Constants
 // ═════════════════════════════════════════════════════════
 
-const CARRIER_LOG_CATEGORY_INVOKE = "fleet-carrier:invoke";
-const CARRIER_LOG_CATEGORY_DISPATCH = "fleet-carrier:dispatch";
-const CARRIER_LOG_CATEGORY_STREAM = "fleet-carrier:stream";
-const CARRIER_LOG_CATEGORY_EXEC = "fleet-carrier:exec";
-const CARRIER_LOG_CATEGORY_RESULT = "fleet-carrier:result";
-const CARRIER_LOG_CATEGORY_ERROR = "fleet-carrier:error";
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
 
 /** carrier_dispatch request brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
@@ -211,14 +204,9 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
       const label = args.label.trim();
       const request = args.request;
 
-      logDebug(
-        CARRIER_LOG_CATEGORY_INVOKE,
-        `execute start carrier=${carrierId}`,
-      );
 
       const config = getRegisteredCarrierConfig(registry, carrierId);
       if (!config) {
-        logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier not registered carrier=${carrierId}`);
         return launchResponseResult({
           job_id: jobId,
           accepted: false,
@@ -230,7 +218,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
 
       if (isCarrierAgentModeSubagent(carrierId, config.defaultAgentMode)) {
         const displayName = resolveCarrierDisplayName(registry, carrierId);
-        logDebug(CARRIER_LOG_CATEGORY_ERROR, `carrier subagent mode enabled carrier=${carrierId}`);
         return launchResponseResult({
           job_id: jobId,
           accepted: false,
@@ -242,7 +229,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
       if (metadata) {
         const blockValidation = validateRequiredRequestBlocks(metadata, request, carrierId);
         if (!blockValidation.ok) {
-          logDebug(CARRIER_LOG_CATEGORY_ERROR, `request-block validation failed carrier=${carrierId}`);
           return launchResponseResult({
             job_id: jobId,
             accepted: false,
@@ -288,7 +274,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
         toolName,
       });
 
-      logDebug(CARRIER_LOG_CATEGORY_RESULT, `carrier=${carrierId} accepted job=${jobId}`);
       return launchResponseResult({ job_id: jobId, accepted: true });
     },
   };
@@ -305,10 +290,6 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
   try {
     result = await runSingleCarrier(opts);
     finalStatus = result.status;
-    logDebug(
-      CARRIER_LOG_CATEGORY_RESULT,
-      `carrier=${opts.carrierId} status=${finalStatus}`,
-    );
   } catch (error) {
     finalStatus = "error";
     finalError = error instanceof Error ? error.message : String(error);
@@ -353,7 +334,6 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
         label: opts.label,
       }),
     });
-    logDebug(CARRIER_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);
   }
 }
 
@@ -378,16 +358,6 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   const effort = resolveValidatedEffort(cliType, model, agentCli?.effort);
   let sessionId: string | undefined;
 
-  logDebug(
-    CARRIER_LOG_CATEGORY_DISPATCH,
-    [
-      `carrier=${opts.carrierId} model=${model ?? cliType} effort=${effort ?? "(none)"} promptChars=${opts.request.length}`,
-      "----- BEGIN REQUEST -----",
-      opts.request,
-      "----- END REQUEST -----",
-    ].join("\n"),
-    { hideFromFooter: true, category: "prompt" },
-  );
 
   emitStreamEvent(opts.registry, {
     type: "track:begin",
@@ -426,7 +396,6 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       onToolCall: (toolTitle, toolStatus, _rawOutput, toolCallId) => {
         const title = sanitizeToolLabel(toolTitle);
         const status = sanitizeToolLabel(toolStatus);
-        logDebug(CARRIER_LOG_CATEGORY_STREAM, `carrier=${opts.carrierId} type=toolCall title=${title} status=${status}`, { hideFromFooter: true });
         emitStreamEvent(opts.registry, { type: "track:tool", jobId: opts.jobId, trackId: opts.carrierId, title, status, toolCallId });
       },
     });
@@ -441,7 +410,6 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       fallbackThought: sanitizeChunk(execResult.thoughtText),
       error: finalStatus === "aborted" ? "aborted" : execResult.error,
     });
-    logDebug(CARRIER_LOG_CATEGORY_EXEC, `carrier=${opts.carrierId} success=${execResult.status === "done"} status=${execResult.status} elapsedMs=${Date.now() - execStartedAt}`);
     return {
       carrierId: opts.carrierId,
       displayName: resolveCarrierDisplayName(opts.registry, opts.carrierId),
@@ -461,7 +429,6 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       status: "err",
       error: message,
     });
-    logDebug(CARRIER_LOG_CATEGORY_EXEC, `carrier=${opts.carrierId} success=false status=error elapsedMs=${Date.now() - execStartedAt}`);
     throw error;
   }
 }

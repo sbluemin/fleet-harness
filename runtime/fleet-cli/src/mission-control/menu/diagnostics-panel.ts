@@ -1,9 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
-
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
-import { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
-import type { ReadRecentLogFilesOptions, RecentLogFile } from "@dotobokuri/fleet-infra/log";
 import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
 import { MISSION_CONTROL_THEME } from "../renderer.js";
@@ -17,24 +14,19 @@ export interface DiagnosticsPanelDeps {
   readonly onPresetReset?: () => void;
   readonly onRenderRequest: () => void;
   readonly presetService?: PresetService;
-  readonly readRecentLogFiles?: (options: ReadRecentLogFilesOptions) => readonly RecentLogFile[];
   readonly stack: PanelStack;
 }
 
-type DiagnosticsView = "root" | "logs" | "data" | "system";
+type DiagnosticsView = "root" | "data" | "system";
 
-const ROOT_ROWS = ["Log Viewer", "Data Dir", "Reset Preset To Defaults", "System Info"] as const;
-const LOG_LINE_COUNT = 100;
-const LOG_FILTERS = ["all", "core", "agent", "wiki"] as const;
+const ROOT_ROWS = ["Data Dir", "Reset Preset To Defaults", "System Info"] as const;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const LINE_BREAK_CHARS = /[\r\n]+/g;
 
 export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
-  const logReader = deps.readRecentLogFiles ?? readRecentLogFiles;
   let selected = 0;
   let view: DiagnosticsView = "root";
   let scroll = 0;
-  let filterIndex = 0;
   let message = "";
 
   return {
@@ -55,11 +47,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
           scroll += 1;
           return true;
         }
-        if ((data === "F" || data === "f") && view === "logs") {
-          filterIndex = (filterIndex + 1) % LOG_FILTERS.length;
-          scroll = 0;
-          return true;
-        }
         return false;
       }
       if (isUp(data)) {
@@ -77,9 +64,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       return false;
     },
     render({ width }): readonly string[] {
-      if (view === "logs") {
-        return renderLogViewer(width);
-      }
       if (view === "data") {
         return renderDataDir(width);
       }
@@ -104,11 +88,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
 
   function openSelected(): void {
     const row = ROOT_ROWS[selected];
-    if (row === "Log Viewer") {
-      view = "logs";
-      scroll = 0;
-      return;
-    }
     if (row === "Data Dir") {
       view = "data";
       return;
@@ -132,19 +111,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
     }));
   }
 
-  function renderLogViewer(width: number): readonly string[] {
-    const filter = LOG_FILTERS[filterIndex] ?? "all";
-    const lines = readRecentLogLines(filter).slice(scroll, scroll + 12);
-    return [
-      "",
-      centerText(MISSION_CONTROL_THEME.dim(`${renderBreadcrumbs(deps.stack.breadcrumbs())} / Log Viewer`), width),
-      centerText(MISSION_CONTROL_THEME.accent(`Log Viewer (${filter})`), width),
-      "",
-      ...(lines.length > 0 ? lines.map((line) => centerText(line, width)) : [centerText(MISSION_CONTROL_THEME.dim("No log lines found."), width)]),
-      "",
-      centerText(MISSION_CONTROL_THEME.dim("F filter  ↑↓ scroll  Esc back"), width),
-    ];
-  }
 
   function renderDataDir(width: number): readonly string[] {
     const dataDir = safeValue(getFleetDataDir);
@@ -155,7 +121,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       centerText(MISSION_CONTROL_THEME.accent("Data Dir"), width),
       "",
       centerText(`Root: ${cleanDataDir}`, width),
-      centerText(`Logs: ${sanitizeTerminalText(getLogsDir(dataDir))}`, width),
       centerText(`Presets: ${sanitizeTerminalText(path.join(dataDir, "presets.json"))}`, width),
       "",
       centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
@@ -190,16 +155,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
     message = MISSION_CONTROL_THEME.success("Preset defaults restored.");
   }
 
-  function readRecentLogLines(filter: string): string[] {
-    const files = logReader({
-      category: filter === "all" ? undefined : filter,
-      limit: 4,
-    });
-    return files
-      .flatMap((file) => file.lines)
-      .map(sanitizeTerminalText)
-      .slice(-LOG_LINE_COUNT);
-  }
 }
 
 function safeValue(read: () => string): string {
@@ -210,9 +165,6 @@ function safeValue(read: () => string): string {
   }
 }
 
-function getLogsDir(dataDir: string): string {
-  return path.join(dataDir, "logs");
-}
 
 function move(index: number, length: number, delta: -1 | 1): number {
   return length === 0 ? 0 : (index + delta + length) % length;

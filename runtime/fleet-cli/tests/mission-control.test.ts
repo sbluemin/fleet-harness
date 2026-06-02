@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { RecentLogFile, ReadRecentLogFilesOptions } from "@dotobokuri/fleet-infra/log";
 
 import { createMissionControlProfileConfig } from "../src/app.js";
 import { createProgrammaticInput } from "../src/controls/index.js";
@@ -439,14 +438,6 @@ describe("Mission Control controller", () => {
       },
       invocationCwd: "/tmp/project\x1b[2J",
       presetService,
-      readRecentLogFiles: () => [{
-        category: "core",
-        fileName: "core-2026-05-25.log",
-        lines: ["alpha\x1b[2J beta\x1b]52;c;AAAA\x07 gamma\u009b31m", "split\nspoof"],
-        mtimeMs: 1,
-        sizeBytes: 1,
-        truncated: false,
-      }],
       sessionOptions,
     });
 
@@ -455,20 +446,18 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     expect(renderPlain(controller)).toContain("Diagnostics");
-    expect(renderPlain(controller)).toContain("Log Viewer");
+    expect(renderPlain(controller)).not.toContain(["Log", "Viewer"].join(" "));
     expect(renderPlain(controller).toLowerCase()).not.toContain("cursor sync");
 
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("alpha beta gamma");
-    expect(renderPlain(controller)).toContain("split spoof");
+    expect(renderPlain(controller)).toContain("Data Dir");
+    expect(renderPlain(controller)).toContain("Presets:");
     expect(controller.component.render(80).join("\n")).not.toContain("\x1b]52");
     expect(controller.component.render(80).join("\n")).not.toContain("\u009b");
 
     controller.ptyHost.write("\x1b");
     expect(renderPlain(controller)).toContain("Reset Preset To Defaults");
-    expect(renderPlain(controller)).not.toContain("alpha beta gamma");
 
-    controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     expect(renderPlain(controller)).toContain("All CLI presets will be reset to defaults. Continue?");
@@ -491,7 +480,6 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
-    controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
@@ -991,7 +979,6 @@ function createTestController(options: {
   readonly loadedCounts?: MissionControlCounts;
   readonly onRenderRequest?: () => void;
   readonly presetService?: ReturnType<typeof createFakePresetService>;
-  readonly readRecentLogFiles?: (options: ReadRecentLogFilesOptions) => readonly RecentLogFile[];
   readonly release?: FleetCliRelease;
   readonly resolveProfile?: (cliId: AgentCliId) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;
@@ -1014,7 +1001,6 @@ function createTestController(options: {
     onExitFleet: () => undefined,
     onRenderRequest: options.onRenderRequest ?? (() => undefined),
     presetService: options.presetService,
-    readRecentLogFiles: options.readRecentLogFiles,
     release: options.release,
     resolveProfile: options.resolveProfile ?? ((cliId) => Promise.resolve({ ...TEST_PROFILE, id: cliId })),
     sessionOptions: options.sessionOptions,

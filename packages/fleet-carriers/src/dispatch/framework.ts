@@ -11,7 +11,6 @@
  */
 
 import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
-import { getLogAPI, type LogOptions } from "@dotobokuri/fleet-infra/log";
 import { CLI_DISPLAY_NAMES } from "../constants.js";
 import {
   loadCarrierDisplayNameOverrides,
@@ -298,9 +297,6 @@ export function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
   return "err";
 }
 
-export function logDebug(category: string, message: string, options?: unknown): void {
-  getLogAPI().debug(category, message, options as LogOptions | undefined);
-}
 
 function getModelEffort(
   cliType: CliType,

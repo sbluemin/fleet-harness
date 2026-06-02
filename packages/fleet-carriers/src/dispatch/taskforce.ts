@@ -25,7 +25,6 @@ import {
   emitStreamEvent,
   getRegisteredCarrierConfig,
   getRegisteredOrder,
-  logDebug,
   resolveCarrierDisplayName,
   resolveValidatedEffort,
   toCarrierJobStatus,
@@ -69,30 +68,15 @@ export interface TaskForceLaunchOptions {
   ctx: AgentToolCtx;
 }
 
-const TASKFORCE_LOG_CATEGORY_INVOKE = "fleet-taskforce:invoke";
-const TASKFORCE_LOG_CATEGORY_VALIDATE = "fleet-taskforce:validate";
-const TASKFORCE_LOG_CATEGORY_DISPATCH = "fleet-taskforce:dispatch";
-const TASKFORCE_LOG_CATEGORY_STREAM = "fleet-taskforce:stream";
-const TASKFORCE_LOG_CATEGORY_EXEC = "fleet-taskforce:exec";
-const TASKFORCE_LOG_CATEGORY_RESULT = "fleet-taskforce:result";
-const TASKFORCE_LOG_CATEGORY_ERROR = "fleet-taskforce:error";
 const taskForceStateStore = new Map<string, TaskForceState>();
 
 export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
   const { registry, carrierId, request, label, startedAt, toolName, ctx } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
   const backendIds = getConfiguredTaskForceBackends(carrierId);
-  logDebug(
-    TASKFORCE_LOG_CATEGORY_INVOKE,
-    `execute start carrier=${carrierId} backends=${backendIds.length} ids=${backendIds.join(", ") || "(none)"}`,
-  );
 
   assertRegisteredCarrier(registry, carrierId);
   const activeBackends = assertTaskForceFormable(carrierId);
-  logDebug(
-    TASKFORCE_LOG_CATEGORY_VALIDATE,
-    `validated carrier=${carrierId} backends=${activeBackends.length} ids=${activeBackends.join(", ")}`,
-  );
 
   // 필수 request-block 검증은 carrier_dispatch와 동일한 hard-error 타이밍을 유지합니다.
   const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
@@ -103,10 +87,6 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
       carrierId,
     );
     if (!blockValidation.ok) {
-      logDebug(
-        TASKFORCE_LOG_CATEGORY_ERROR,
-        `request-block validation failed carrier=${carrierId} missing=${blockValidation.missing.join(",")}`,
-      );
       const jobId = buildCarrierJobId("taskforce", ctx.toolCallId ?? "");
       return launchResponseResult({
         job_id: jobId,
@@ -145,7 +125,6 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     label,
   });
 
-  logDebug(TASKFORCE_LOG_CATEGORY_RESULT, `carrier=${carrierId} accepted job=${launch.jobId}`);
   return launchResponseResult({ job_id: launch.jobId, accepted: true });
 }
 
@@ -162,10 +141,6 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
     opts.state.finishedAt = Date.now();
     results = collectTaskForceResults(settledResults, opts.activeBackends);
     finalStatus = computeFinalStatus(results) as CarrierJobStatus;
-    logDebug(
-      TASKFORCE_LOG_CATEGORY_RESULT,
-      `carrier=${opts.carrierId} success=${results.filter((r) => r.status === "done").length} failure=${results.filter((r) => r.status !== "done").length}`,
-    );
   } catch (error) {
     finalStatus = "error";
     finalError = error instanceof Error ? error.message : String(error);
@@ -208,7 +183,6 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
       }),
     });
     clearTaskForceState(opts.requestKey);
-    logDebug(TASKFORCE_LOG_CATEGORY_INVOKE, `execute end carrier=${opts.carrierId} elapsedMs=${finishedAt - opts.startedAt}`);
   }
 }
 
@@ -220,7 +194,6 @@ function assertRegisteredCarrier(registry: CarrierRegistry, carrierId: string): 
   const allIds = new Set(getRegisteredOrder(registry));
   if (!allIds.has(carrierId)) {
     const registered = [...allIds].map(formatCarrierIdForMessage).join(", ") || "(none)";
-    logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `unknown carrier carrier=${carrierId}`);
     throw new Error(`Unknown carrier: ${formatCarrierIdForMessage(carrierId)}. Registered carriers: ${registered}`);
   }
 }
@@ -230,7 +203,6 @@ function assertTaskForceFormable(carrierId: string): TaskForceCliType[] {
   try {
     return [...assertTaskForceBackendCount(carrierId, activeBackends)] as TaskForceCliType[];
   } catch (error) {
-    logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `carrier=${carrierId} insufficient backends=${activeBackends.length}`);
     throw error;
   }
 }
@@ -263,16 +235,6 @@ async function runTaskForceBackend(
   const effort = resolveValidatedEffort(cliType as CliType, modelConfig.model, modelConfig.effort);
   const trackId = `${jobId}:${cliType}`;
 
-  logDebug(
-    TASKFORCE_LOG_CATEGORY_DISPATCH,
-    [
-      `carrier=${carrierId} backend=${cliType} model=${modelConfig.model ?? cliType} promptChars=${request.length} pool=${poolKey} stream=${streamKey}`,
-      "----- BEGIN REQUEST -----",
-      request,
-      "----- END REQUEST -----",
-    ].join("\n"),
-    { hideFromFooter: true, category: "prompt" },
-  );
 
   emitStreamEvent(registry, {
     type: "track:begin",
@@ -305,7 +267,6 @@ async function runTaskForceBackend(
       onThoughtChunk: (text) => {
         const cleanText = sanitizeChunk(text);
         appendBlock(jobId, toArchiveBlock("thought", carrierId, text, cliType));
-        logDebug(TASKFORCE_LOG_CATEGORY_STREAM, `carrier=${carrierId} backend=${cliType} type=thought\n${cleanText}`, { hideFromFooter: true });
         emitStreamEvent(registry, { type: "track:thought", jobId, trackId, text: cleanText });
       },
       onToolCall: (title, status, _rawOutput, toolCallId) => {
@@ -313,25 +274,16 @@ async function runTaskForceBackend(
         progress.toolCallCount++;
         const cleanTitle = sanitizeToolLabel(title);
         const cleanStatus = sanitizeToolLabel(status);
-        logDebug(TASKFORCE_LOG_CATEGORY_STREAM, `carrier=${carrierId} backend=${cliType} type=toolCall title=${cleanTitle} status=${cleanStatus}`, { hideFromFooter: true });
         emitStreamEvent(registry, { type: "track:tool", jobId, trackId, title: cleanTitle, status: cleanStatus, toolCallId });
       },
     });
 
     progress.status = result.status === "done" ? "done" : "error";
     emitTrackFinalized(registry, jobId, trackId, result);
-    logDebug(
-      TASKFORCE_LOG_CATEGORY_EXEC,
-      `carrier=${carrierId} backend=${cliType} success=${result.status === "done"} status=${result.status} elapsedMs=${Date.now() - execStartedAt}`,
-    );
     return buildTaskForceResult(cliType, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     emitStreamEvent(registry, { type: "track:finalized", jobId, trackId, status: "err", error: message });
-    logDebug(
-      TASKFORCE_LOG_CATEGORY_EXEC,
-      `carrier=${carrierId} backend=${cliType} success=false status=error elapsedMs=${Date.now() - execStartedAt}`,
-    );
     throw error;
   }
 }
@@ -394,7 +346,6 @@ function collectTaskForceResults(
 
 export function buildTaskForceErrorResult(cliType: TaskForceCliType, reason: unknown): TaskForceResult {
   const errorMessage = sanitizeChunk(reason instanceof Error ? reason.message : String(reason));
-  logDebug(TASKFORCE_LOG_CATEGORY_ERROR, `backend=${cliType} message=${errorMessage}`);
   return {
     cliType,
     displayName: CLI_DISPLAY_NAMES[cliType] ?? cliType,

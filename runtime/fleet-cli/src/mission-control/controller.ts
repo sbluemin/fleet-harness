@@ -471,7 +471,6 @@ export function createMissionControlController(options: CreateMissionControlCont
             },
             onRenderRequest: options.onRenderRequest,
             presetService: options.presetService,
-            readRecentLogFiles: options.readRecentLogFiles,
             stack: currentStack,
           }));
           return;

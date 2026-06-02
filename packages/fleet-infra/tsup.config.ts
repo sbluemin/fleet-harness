@@ -6,7 +6,6 @@ export default defineConfig({
     agent: "src/agent/index.ts",
     auth: "src/auth/index.ts",
     "data-dir": "src/data-dir/index.ts",
-    log: "src/log/index.ts",
     preset: "src/preset/index.ts"
   },
   format: ["esm", "cjs"],

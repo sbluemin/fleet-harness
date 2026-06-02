@@ -1,7 +1,6 @@
 import { attachInputStream } from "./tui/input-stream.js";
 import { LocalTui } from "./tui/renderer.js";
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
-import { readRecentLogFiles } from "@dotobokuri/fleet-infra/log";
 import {
   assertInputContract,
   createCursorPolicySync,
@@ -149,7 +148,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     env: process.env,
     invocationCwd,
     presetService: runtime.infraServices.presetService,
-    readRecentLogFiles,
     release,
     sessionOptions: sessionOptionsRuntime,
     wikiController,
