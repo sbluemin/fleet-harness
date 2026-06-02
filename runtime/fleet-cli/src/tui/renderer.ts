@@ -166,7 +166,7 @@ export class LocalTui {
 
     this.refreshSize(getTerminalSize());
     const nextFrame = this.buildFrame();
-    const output = `${this.diffFrame(this.frame, nextFrame, force, !this.shouldUseAltScreen())}${this.buildCursorSync(nextFrame)}`;
+    const output = `${this.diffFrame(this.frame, nextFrame, force)}${this.buildCursorSync(nextFrame)}`;
     this.frame = nextFrame;
 
     if (output.length > 0) {
@@ -218,7 +218,6 @@ export class LocalTui {
     previousFrame: FrameBuffer | null,
     nextFrame: FrameBuffer,
     forceFull: boolean,
-    clearUnknownRows: boolean,
   ): string {
     if (
       previousFrame === null ||
@@ -226,10 +225,10 @@ export class LocalTui {
       previousFrame.columns !== nextFrame.columns
     ) {
       const renderedRows = nextFrame.lines.map((line, index) => {
-        const clearLine = clearUnknownRows ? clearToEndOfLine() : "";
+        const clearLine = visibleWidth(line) < nextFrame.columns ? clearToEndOfLine() : "";
         return `${moveCursorTo(index + 1, 1)}${line}${clearLine}`;
       });
-      const trailingRows = clearUnknownRows ? buildTrailingRowClears(nextFrame.lines.length, nextFrame.rows) : [];
+      const trailingRows = buildTrailingRowClears(nextFrame.lines.length, nextFrame.rows);
       return [...renderedRows, ...trailingRows].join("");
     }
 

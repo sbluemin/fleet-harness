@@ -13,14 +13,7 @@ let writes: string[] = [];
 describe("LocalTui", () => {
   beforeEach(() => {
     writes = [];
-    Object.defineProperty(process.stdout, "columns", {
-      configurable: true,
-      value: 12,
-    });
-    Object.defineProperty(process.stdout, "rows", {
-      configurable: true,
-      value: 4,
-    });
+    setTerminalSize(12, 4);
     process.stdout.write = ((chunk: string | Uint8Array) => {
       writes.push(String(chunk));
       return true;
@@ -30,14 +23,7 @@ describe("LocalTui", () => {
   afterEach(() => {
     process.kill = ORIGINAL_KILL;
     process.stdout.write = ORIGINAL_WRITE;
-    Object.defineProperty(process.stdout, "columns", {
-      configurable: true,
-      value: ORIGINAL_COLUMNS,
-    });
-    Object.defineProperty(process.stdout, "rows", {
-      configurable: true,
-      value: ORIGINAL_ROWS,
-    });
+    setTerminalSize(ORIGINAL_COLUMNS, ORIGINAL_ROWS);
   });
 
   it("enters and exits alt-screen by default exactly once", () => {
@@ -285,6 +271,26 @@ describe("LocalTui", () => {
     tui.stop();
   });
 
+  it("clears shortened rows and trailing rows after alt-screen resize full renders", () => {
+    const component = mutableComponent(["widewidewide", "middle", "bottom"]);
+    const tui = new LocalTui({ renderIntervalMs: 1000 });
+
+    tui.addChild(component);
+    tui.start();
+    flush(tui, true);
+    writes = [];
+
+    component.lines = ["tiny"];
+    setTerminalSize(8, 2);
+    flush(tui, false);
+
+    const output = writes.join("");
+    assert.equal(output.includes("\x1b[1;1Htiny\x1b[K"), true);
+    assert.equal(output.includes("\x1b[2;1H\x1b[K"), true);
+    assert.equal(output.includes("\x1b[2J"), false);
+    tui.stop();
+  });
+
   it("installs one process signal listener for multiple active TUIs", () => {
     const initialSigintListeners = process.listenerCount("SIGINT");
     const initialSigtermListeners = process.listenerCount("SIGTERM");
@@ -421,6 +427,17 @@ function delay(ms: number): Promise<void> {
 
 function flush(tui: LocalTui, force: boolean): void {
   (tui as unknown as { flushRender: (force: boolean) => void }).flushRender(force);
+}
+
+function setTerminalSize(columns: number | undefined, rows: number | undefined): void {
+  Object.defineProperty(process.stdout, "columns", {
+    configurable: true,
+    value: columns,
+  });
+  Object.defineProperty(process.stdout, "rows", {
+    configurable: true,
+    value: rows,
+  });
 }
 
 function mutableComponent(lines: string[]): Component & { lines: string[] } {
