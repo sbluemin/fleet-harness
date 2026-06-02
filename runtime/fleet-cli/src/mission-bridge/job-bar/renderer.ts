@@ -41,7 +41,6 @@ export interface CarrierHudTile {
   readonly displayName: string;
   readonly rgb: [number, number, number];
   readonly subagentMode: boolean;
-  readonly subagentPendingRestart: boolean;
   readonly taskForceBackendCount: number;
 }
 
@@ -295,7 +294,6 @@ function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly 
       displayName: resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
       rgb: resolveCarrierPresentationRgb(carrierRuntime, carrierId, subagentModes, taskForceBackendCount),
       subagentMode,
-      subagentPendingRestart: subagentMode,
       taskForceBackendCount,
     };
   });
@@ -400,9 +398,9 @@ function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: strin
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
+  // subagentMode일 때 [SA] 뱃지만 반환 (pending '*' 마커 제거)
   if (carrier.subagentMode) {
-    const pending = carrier.subagentPendingRestart ? `${PANEL_DIM_COLOR}*${ANSI_RESET}` : "";
-    return ` ${SUBAGENT_PRESENTATION_ANSI}[SA]${pending}${ANSI_RESET}`;
+    return ` ${SUBAGENT_PRESENTATION_ANSI}[SA]${ANSI_RESET}`;
   }
   const tfBadge = carrier.taskForceBackendCount >= 2
     ? ` ${TASKFORCE_BADGE_COLOR}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`

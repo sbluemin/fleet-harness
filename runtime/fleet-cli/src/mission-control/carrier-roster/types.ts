@@ -63,7 +63,6 @@ export interface CarrierStatusEntry {
   roleDescription: string | null;
   slot: number;
   subagentMode: boolean;
-  subagentPendingRestart: boolean;
   taskForceBackendCount: number;
 }
 

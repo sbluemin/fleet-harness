@@ -334,8 +334,9 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const tfTag = entry.taskForceBackendCount >= 2
     ? `  ${TASKFORCE_BADGE_COLOR}[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
+  // subagentMode일 때 [SA] 뱃지만 표시 (pending '*' 마커 제거)
   const subagentTag = entry.subagentMode
-    ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}${entry.subagentPendingRestart ? dim("*") : ""}`
+    ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}`
     : "";
   return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${subagentTag}${tfTag}`;
 }

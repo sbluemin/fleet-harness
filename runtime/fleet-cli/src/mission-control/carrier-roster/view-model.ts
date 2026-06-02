@@ -127,7 +127,6 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
       roleDescription: buildRoleDescription(role, roleSummary),
       slot: config.slot,
       subagentMode: subagentModes[id] === "subagent",
-      subagentPendingRestart: subagentModes[id] === "subagent",
       taskForceBackendCount: getConfiguredTaskForceBackendsFromSnapshot(healedSnapshot, id).length,
     });
   }
