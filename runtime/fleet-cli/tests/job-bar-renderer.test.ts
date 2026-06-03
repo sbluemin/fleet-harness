@@ -149,6 +149,71 @@ describe("job bar renderer", () => {
     expect(text).not.toMatch(/\[[0-9]+T·[0-9]+L\]/);
   });
 
+  it("renders sub-minute elapsed time on the job row", () => {
+    const runtime = createTestCarrierRuntime();
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [
+        buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000),
+      ],
+      width: 160,
+      now: 46000,
+    }).join("\n"));
+
+    expect(text).toContain("Audit stream identity 45s");
+  });
+
+  it("renders minute elapsed time to the left of token estimates", () => {
+    const runtime = createTestCarrierRuntime();
+    const longText = "a".repeat(4000);
+    const runs = new Map<string, PanelRunViewModelSource>([
+      ["run:first", {
+        runId: "run:first",
+        status: "stream",
+        blocks: [{ type: "text", text: longText }],
+      }],
+    ]);
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [
+        buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000),
+      ],
+      runs,
+      width: 160,
+      now: 91000,
+    }).join("\n"));
+
+    expect(text).toContain("Audit stream identity 1m 30s ~1k tokens");
+  });
+
+  it("uses finishedAt for elapsed time and does not repeat elapsed on track rows", () => {
+    const runtime = createTestCarrierRuntime();
+    const job = {
+      ...buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+      finishedAt: 91000,
+    };
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [job],
+      runs: new Map([
+        ["taskforce:first:claude", { runId: "taskforce:first:claude", status: "stream", blocks: [{ type: "text", text: "active" }] }],
+        ["taskforce:first:codex", { runId: "taskforce:first:codex", status: "stream", blocks: [{ type: "text", text: "active" }] }],
+      ]),
+      width: 160,
+      now: 200000,
+    }).join("\n"));
+
+    expect(text).toContain("Taskforce · Coordinate backends 1m 30s");
+    expect(text.match(/1m 30s/g)).toHaveLength(1);
+    expect(text).not.toContain("3m 19s");
+  });
+
   it("includes latest tool detailChars in token estimates without double-counting updates", () => {
     const state = createTestJobBarState();
     state.handleCarrierJobStreamEvent({

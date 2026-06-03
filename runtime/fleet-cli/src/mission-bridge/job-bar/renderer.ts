@@ -46,6 +46,7 @@ export interface CarrierJobHudRenderOptions {
   readonly carrierRuntime: CarrierRuntime;
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
+  readonly now?: number;
   readonly pendingExitWarning?: boolean;
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
@@ -87,10 +88,11 @@ const KIND_LABELS: Record<string, string> = {
 export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string[] {
   const lines: string[] = [];
   const jobs = buildActiveJobViewModels(options.jobs, options.runs);
+  const now = options.now ?? Date.now();
 
   if (jobs.length === 0) return [];
 
-  appendWidgetJobSummary(options.carrierRuntime, lines, options.width, jobs, options.frame, options.theme);
+  appendWidgetJobSummary(options.carrierRuntime, lines, options.width, jobs, options.frame, options.theme, now);
   return lines.slice(0, MAX_WIDGET_LINES).map((line) => truncateToWidth(line, options.width));
 }
 
@@ -212,6 +214,7 @@ function appendWidgetJobSummary(
   jobs: PanelJobViewModel[],
   frame: number,
   theme: FleetPtyTheme | undefined,
+  now: number,
 ): void {
   const subagentModes = readCarrierAgentModeSnapshot(buildCarrierDefaults(carrierRuntime)).agentModes;
   const groups = buildCarrierJobGroups(
@@ -238,9 +241,10 @@ function appendWidgetJobSummary(
       const inline = shouldInlineSingleTrack(job) && job.tracks[0] && !job.tracks[0].isComplete
         ? trackInlineBlock(job.tracks[0])
         : "";
+      const elapsed = widgetJobElapsed(job, now);
       const stats = shouldInlineSingleTrack(job) && job.tracks[0] ? widgetTrackStats(job.tracks[0]) : "";
       lines.push(truncateToWidth(
-        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(job, frame, jobColor)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${stats}${inline}`,
+        `${STREAM_PREFIX}  ${border(theme, jobBranch)} ${jobIcon(job, frame, jobColor)} ${jobColor}${jobDisplayLabel(job)}${ANSI_RESET}${elapsed}${stats}${inline}`,
         width,
       ));
 
@@ -579,6 +583,10 @@ function widgetTrackStats(track: PanelTrackViewModel): string {
   return label ? ` ${PANEL_DIM_COLOR}${label}${ANSI_RESET}` : "";
 }
 
+function widgetJobElapsed(job: PanelJobViewModel, now: number): string {
+  return ` ${PANEL_DIM_COLOR}${formatElapsedDuration((job.finishedAt ?? now) - job.startedAt)}${ANSI_RESET}`;
+}
+
 function activeBreathingIcon(frame: number, color?: string): string {
   const cycleFrame = ((frame % BREATHING_CYCLE_FRAMES) + BREATHING_CYCLE_FRAMES) % BREATHING_CYCLE_FRAMES;
   const eased = (Math.sin((cycleFrame / BREATHING_CYCLE_FRAMES) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
@@ -592,4 +600,12 @@ function formatTokenEstimate(tokenCount: number): string {
   const scaled = tokenCount / 1000;
   const rounded = scaled.toFixed(1).replace(/\.0$/, "");
   return `~${rounded}k tokens`;
+}
+
+function formatElapsedDuration(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
 }
