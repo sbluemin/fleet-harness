@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-06-03
+
 ### Added
 - [unified-agent] Cursor Agent provider now supports the Claude Opus 4.8 (thinking) model.
 - [core] Job Bar job rows now show each job's elapsed execution time to the left of the token estimate, displaying seconds only under one minute and minutes plus seconds beyond.
