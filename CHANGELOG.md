@@ -14,7 +14,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Unified menu and information row alignment across all Mission Control panels using shared block-level layout primitives; key:value rows are now colon-aligned within each group.
 - [core] Job Bar token estimates now animate with a smooth frame-by-frame count-up instead of jumping to the final value.
 - [core] Job Bar carrier strip tiles no longer render a per-backend progress indicator; activity is conveyed by the job-level status icon alone.
-- [core] The active-job `●` indicator in the Job Bar now pulses with a sine-wave color shift instead of a static glyph.
+- [core] The active-job indicator in the Job Bar now blinks the filled `●` on and off instead of alternating between `●` and `○`.
 
 ### Breaking Changes
 - [core] Fleet preset storage and the preset public API were removed in favor of global options.

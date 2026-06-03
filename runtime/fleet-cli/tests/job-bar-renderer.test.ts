@@ -399,8 +399,10 @@ describe("job bar renderer", () => {
       width: 160,
     }).join("\n"));
 
-    expect(activeFrame).toContain("● Taskforce · Coordinate backends");
-    expect(activeFrame).toContain("● Claude Code with Anthropic");
+    expect(activeFrame).toContain("  Taskforce · Coordinate backends");
+    expect(activeFrame).toContain("  Claude Code with Anthropic");
+    expect(activeFrame).not.toContain("○ Taskforce · Coordinate backends");
+    expect(activeFrame).not.toContain("○ Claude Code with Anthropic");
     expect(crestFrame).toContain("● Taskforce · Coordinate backends");
     expect(crestFrame).toContain("● Claude Code with Anthropic");
     expect(completedFrame).toContain("⏺ Claude Code with Anthropic");
