@@ -22,7 +22,7 @@ describe("global options store", () => {
     expect(store.load()).toEqual({
       version: 1,
     });
-    expect(store.path).toBe(path.join(dataDir, "fleet-options.json"));
+    expect(store.path).toBe(path.join(dataDir, "settings.json"));
   });
 
   it("does not migrate presets.json", () => {
@@ -42,12 +42,12 @@ describe("global options store", () => {
     expect(createGlobalOptionsStore({ dataDir }).load()).toEqual({
       version: 1,
     });
-    expect(fs.existsSync(path.join(dataDir, "fleet-options.json"))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, "settings.json"))).toBe(false);
   });
 
   it("recovers malformed JSON as safe defaults", () => {
     const dataDir = makeTempDir();
-    fs.writeFileSync(path.join(dataDir, "fleet-options.json"), "{nope", "utf-8");
+    fs.writeFileSync(path.join(dataDir, "settings.json"), "{nope", "utf-8");
 
     expect(createGlobalOptionsStore({ dataDir }).load()).toEqual({
       version: 1,
@@ -85,18 +85,18 @@ describe("global options store", () => {
       enableMetaphor: false,
     });
 
-    expect(JSON.parse(fs.readFileSync(path.join(dataDir, "fleet-options.json"), "utf-8"))).toEqual({
+    expect(JSON.parse(fs.readFileSync(path.join(dataDir, "settings.json"), "utf-8"))).toEqual({
       version: 1,
       native: true,
       replaceSystemPrompt: true,
       enableMetaphor: false,
     });
-    expect(fs.readdirSync(dataDir).filter((name) => name.startsWith(".tmp-fleet-options.json"))).toEqual([]);
+    expect(fs.readdirSync(dataDir).filter((name) => name.startsWith(".tmp-settings.json"))).toEqual([]);
   });
 
   it("recovers stale locks and times out on fresh locks", () => {
     const dataDir = makeTempDir();
-    const lockPath = path.join(dataDir, "fleet-options.json.lock");
+    const lockPath = path.join(dataDir, "settings.json.lock");
     fs.mkdirSync(lockPath);
     const old = Date.now() - 60_000;
     fs.writeFileSync(path.join(lockPath, "owner"), JSON.stringify({ hostname: os.hostname(), pid: 99_999_999, startedAt: old }));
@@ -114,7 +114,7 @@ describe("global options store", () => {
 
   it("does not recover stale locks owned by a live same-host process", () => {
     const dataDir = makeTempDir();
-    const lockPath = path.join(dataDir, "fleet-options.json.lock");
+    const lockPath = path.join(dataDir, "settings.json.lock");
     fs.mkdirSync(lockPath);
     const old = Date.now() - 60_000;
     fs.writeFileSync(path.join(lockPath, "owner"), JSON.stringify({ hostname: os.hostname(), pid: process.pid, startedAt: old }));
@@ -127,8 +127,8 @@ describe("global options store", () => {
 
   it("cleans only old global-options temp files after acquiring the lock", () => {
     const dataDir = makeTempDir();
-    const oldTemp = path.join(dataDir, ".tmp-fleet-options.json-old");
-    const freshTemp = path.join(dataDir, ".tmp-fleet-options.json-fresh");
+    const oldTemp = path.join(dataDir, ".tmp-settings.json-old");
+    const freshTemp = path.join(dataDir, ".tmp-settings.json-fresh");
     fs.writeFileSync(oldTemp, "old");
     fs.writeFileSync(freshTemp, "fresh");
     const now = Date.now();

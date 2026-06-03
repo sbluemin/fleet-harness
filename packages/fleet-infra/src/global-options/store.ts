@@ -12,8 +12,8 @@ interface CreateGlobalOptionsStoreDeps {
 }
 
 const GLOBAL_OPTIONS_VERSION = 1;
-const GLOBAL_OPTIONS_FILE_NAME = "fleet-options.json";
-const LOCK_DIR_NAME = "fleet-options.json.lock";
+const GLOBAL_OPTIONS_FILE_NAME = "settings.json";
+const LOCK_DIR_NAME = "settings.json.lock";
 const LOCK_OWNER_FILE_NAME = "owner";
 const TEMP_FILE_PREFIX = `.tmp-${GLOBAL_OPTIONS_FILE_NAME}-`;
 
