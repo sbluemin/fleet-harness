@@ -11,6 +11,7 @@ import {
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
 } from "../../styles/carriers.js";
+import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
 
 import type { RenameState, StatusOverlayViewModel } from "./render-types.js";
@@ -37,6 +38,11 @@ interface CarrierRosterCellLine {
   readonly text: string;
 }
 
+interface EntryLineMetrics {
+  readonly displayNameWidth: number;
+  readonly slotWidth: number;
+}
+
 type CarrierRosterDisplayLine =
   | { readonly kind: "blank" }
   | { readonly kind: "cell"; readonly line: CarrierRosterCellLine }
@@ -44,8 +50,6 @@ type CarrierRosterDisplayLine =
 
 const ANSI_RESET = "\x1b[0m";
 const INDENT = "    ";
-const SLOT_WIDTH = 4;
-const NAME_WIDTH = 12;
 const MIN_CELL_WIDTH = 40;
 const ROSTER_ACTIONS_ID = "__roster_actions__";
 const CARRIER_ACTION_LABELS = [
@@ -73,6 +77,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
 
   for (let gi = 0; gi < model.viewModel.groupedEntries.length; gi++) {
     const group = model.viewModel.groupedEntries[gi]!;
+    const entryMetrics = resolveEntryLineMetrics(group.entries);
     body.push(toCellLine(`${group.color}◇${ANSI_RESET} ${group.color}${group.header}${ANSI_RESET}`), { kind: "blank" });
 
     for (const entry of group.entries) {
@@ -81,7 +86,7 @@ export function renderCarrierStatusOverlay(width: number, model: CarrierStatusRe
         kind: "cell",
         line: {
           bg: isSelected ? getEntryBgColorForEntry(entry) : undefined,
-          text: withIndent(renderEntryLine(entry, isSelected, deps)),
+          text: withIndent(renderEntryLine(entry, entryMetrics, isSelected, deps)),
         },
       });
 
@@ -300,10 +305,6 @@ function withIndent(text: string): string {
   return `${INDENT}${text}`;
 }
 
-function padEndVisible(text: string, width: number): string {
-  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
-}
-
 function getDetailInnerWidth(width: number): number {
   return Math.max(20, width - 8);
 }
@@ -311,11 +312,13 @@ function getDetailInnerWidth(width: number): number {
 function buildDetailRows(entry: CarrierStatusEntry, innerWidth: number, deps: CarrierStatusRenderDeps): string[] {
   const provider = deps.getAvailableModels(entry.cliType);
   const modelLabel = getModelLabel(provider, entry.model);
-  const labelWidth = 8;
-  const valueWidth = Math.max(10, innerWidth - 10 - labelWidth);
+  const labels = ["model", "cli", "role", "desc"];
+  const labelWidth = maxVisibleWidth(labels);
+  const prefix = "      ";
+  const valueWidth = Math.max(10, innerWidth - visibleWidth(prefix) - labelWidth - 1);
   const lines: string[] = [];
   const detailLine = (label: string, value: string) => {
-    lines.push(`      ${deps.theme.dim(label.padEnd(labelWidth, " "))} ${value}`);
+    lines.push(`${prefix}${deps.theme.dim(padEndVisible(label, labelWidth))} ${value}`);
   };
   detailLine("model", modelLabel);
   detailLine("cli", getCliDisplayName(entry.cliType));
@@ -453,14 +456,25 @@ function getSelectedEntry(model: CarrierStatusRenderModel): CarrierStatusEntry |
     : null;
 }
 
-function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: CarrierStatusRenderDeps): string {
+function resolveEntryLineMetrics(entries: readonly CarrierStatusEntry[]): EntryLineMetrics {
+  return {
+    displayNameWidth: maxVisibleWidth(entries.map((entry) => entry.displayName)),
+    slotWidth: maxVisibleWidth(entries.map((entry) => `#${entry.slot}`)),
+  };
+}
+
+function renderEntryLine(
+  entry: CarrierStatusEntry,
+  metrics: EntryLineMetrics,
+  isSelected: boolean,
+  deps: CarrierStatusRenderDeps,
+): string {
   const dim = deps.theme.dim;
   const slotStr = `#${entry.slot}`;
-  const slotPad = " ".repeat(Math.max(0, SLOT_WIDTH - slotStr.length));
-  const namePad = " ".repeat(Math.max(0, NAME_WIDTH - visibleWidth(entry.displayName)));
   const nameColor = getEntryColor(entry);
   const selectedPrefix = isSelected ? `${nameColor}▸${ANSI_RESET}` : " ";
-  const coloredName = `${nameColor}${entry.displayName}${ANSI_RESET}`;
+  const slotCell = padEndVisible(dim(slotStr), metrics.slotWidth);
+  const coloredName = padEndVisible(`${nameColor}${entry.displayName}${ANSI_RESET}`, metrics.displayNameWidth);
   const modelLabel = getModelLabel(deps.getAvailableModels(entry.cliType), entry.model);
   const modelStr = entry.isDefault ? dim(modelLabel) : modelLabel;
   const effortSupported = deps.getModelEffortLevels(entry.cliType, entry.model).length > 0;
@@ -473,7 +487,7 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const subagentTag = entry.subagentMode
     ? `  ${getSubagentSignatureColor()}[SA]${ANSI_RESET}`
     : "";
-  return `${selectedPrefix} ${dim(slotStr)}${slotPad}${coloredName}${namePad}${modelStr}${effortStr}${roleStr}${subagentTag}${taskForceTag}`;
+  return `${selectedPrefix} ${slotCell} ${coloredName}  ${modelStr}${effortStr}${roleStr}${subagentTag}${taskForceTag}`;
 }
 
 function renderRosterActionsRow(isSelected: boolean, deps: CarrierStatusRenderDeps): string {

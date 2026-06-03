@@ -43,10 +43,10 @@
       "import": "./dist/data-dir.js",
       "require": "./dist/data-dir.cjs"
     },
-    "./preset": {
-      "types": "./dist/preset/index.d.ts",
-      "import": "./dist/preset.js",
-      "require": "./dist/preset.cjs"
+    "./global-options": {
+      "types": "./dist/global-options/index.d.ts",
+      "import": "./dist/global-options.js",
+      "require": "./dist/global-options.cjs"
     },
     "./fs-store": {
       "types": "./dist/fs-store/index.d.ts",
@@ -65,8 +65,8 @@
       "data-dir": [
         "dist/data-dir/index.d.ts"
       ],
-      "preset": [
-        "dist/preset/index.d.ts"
+      "global-options": [
+        "dist/global-options/index.d.ts"
       ],
       "fs-store": [
         "dist/fs-store/index.d.ts"

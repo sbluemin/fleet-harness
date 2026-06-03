@@ -8,10 +8,10 @@ import { createActionListPanel } from "./menu/action-list-panel.js";
 import { createAuthPanel } from "./menu/auth-panel.js";
 import { createDiagnosticsPanel } from "./menu/diagnostics-panel.js";
 import { createInputModal } from "./menu/input-modal.js";
-import { createPanelStack, isDown, isEnter, isUp, renderBreadcrumbs, type MenuPanel, type PanelStack } from "./menu/panel-stack.js";
+import { createPanelStack, type MenuPanel, type PanelStack } from "./menu/panel-stack.js";
+import { createSectionedListPanel, type SectionedListRow } from "./menu/sectioned-list-panel.js";
 import { createWikiPanel } from "./menu/wiki-panel.js";
 import { MISSION_CONTROL_THEME, renderMissionControl } from "./renderer.js";
-import { centerText } from "./welcome.js";
 import type {
   CreateMissionControlControllerOptions,
   MissionControlCliOption,
@@ -32,16 +32,6 @@ interface FocusAwareComponent extends Component {
   getFocusLine?(width: number): number | undefined;
 }
 
-interface StartPanelOptions {
-  readonly cliOptions: readonly MissionControlCliOption[];
-  readonly launchSelected: () => Promise<void>;
-  readonly onRenderRequest: () => void;
-  readonly selectedCliId: () => AgentCliId;
-  readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
-  readonly setSelectedCliId: (cliId: AgentCliId) => void;
-  readonly stack: PanelStack;
-}
-
 interface SystemMenuPanelOptions {
   readonly authService: CreateMissionControlControllerOptions["authService"];
   readonly counts: CreateMissionControlControllerOptions["loadedCounts"];
@@ -49,9 +39,7 @@ interface SystemMenuPanelOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly getRelease: () => CreateMissionControlControllerOptions["release"];
   readonly getStack: () => PanelStack;
-  readonly onPresetReset: () => void;
   readonly onRenderRequest: () => void;
-  readonly presetService: CreateMissionControlControllerOptions["presetService"];
   readonly wikiController: CreateMissionControlControllerOptions["wikiController"];
 }
 
@@ -66,7 +54,6 @@ const EMPTY_MOUSE_PROTOCOL_STATE: MouseProtocolState = {
 };
 const DEFAULT_SHIMMER_INTERVAL_MS = 100;
 const DEFAULT_SHIMMER_PHASE_STEP = 0.15;
-const LAUNCHER_ITEMS = ["Start", "Configure Carriers", "Options", "System Menu", "Exit Fleet"] as const;
 
 /**
  * Creates a Mission Control controller that hosts the Agent CLI PTY and manages panel lifecycle.
@@ -74,8 +61,8 @@ const LAUNCHER_ITEMS = ["Start", "Configure Carriers", "Options", "System Menu",
  * child PTY or Mission Control control UI.
  */
 export function createMissionControlController(options: CreateMissionControlControllerOptions): MissionControlControllerWithReleaseSetter {
-  const cliOptions = options.cliOptions.length > 0 ? [...options.cliOptions] : [{ id: options.defaultCliId, label: options.defaultCliId }];
-  let selectedCliId = cliOptions.some((entry) => entry.id === options.defaultCliId) ? options.defaultCliId : cliOptions[0]?.id ?? options.defaultCliId;
+  const cliOptions = options.cliOptions.length > 0 ? [...options.cliOptions] : [{ id: options.initialCliId, label: options.initialCliId }];
+  let selectedCliId = cliOptions.some((entry) => entry.id === options.initialCliId) ? options.initialCliId : cliOptions[0]?.id ?? options.initialCliId;
   let state: MissionControlStateKind = "idle";
   let lastExit: PtyExitEvent | undefined;
   let active: ActivePty | undefined;
@@ -284,59 +271,55 @@ export function createMissionControlController(options: CreateMissionControlCont
 
   function openLauncherRoot(): void {
     let stack: PanelStack;
-    const root = createLauncherRoot({
+    const root = createMissionRootPanel({
+      cliOptions,
       getStack: () => stack,
+      launchCli: (entry) => {
+        selectedCliId = entry.id;
+        options.sessionOptions?.selectCli(entry.id);
+        void launchSelected();
+      },
+      loadedCounts: options.loadedCounts,
       onRenderRequest: options.onRenderRequest,
-      openItem: (index) => {
-        if (index === 0) {
-          stack.push(createStartPanel({
-            cliOptions,
-            launchSelected,
-            onRenderRequest: options.onRenderRequest,
-            selectedCliId: () => selectedCliId,
-            sessionOptions: options.sessionOptions,
-            setSelectedCliId: (cliId) => {
-              selectedCliId = cliId;
-              options.sessionOptions?.selectCli(cliId);
-              options.onRenderRequest();
-            },
-            stack,
-          }));
-          return;
-        }
-        if (index === 1) {
-          openCarrierRoster();
-          return;
-        }
-        if (index === 2) {
-          stack.push(createOptionsPanel({
-            onRenderRequest: options.onRenderRequest,
-            sessionOptions: options.sessionOptions,
-          }));
-          return;
-        }
-        if (index === 3) {
-          stack.push(createSystemMenuPanel({
+      openCarrierRoster,
+      openModelOverride: (entry) => {
+        selectedCliId = entry.id;
+        options.sessionOptions?.selectCli(entry.id);
+        openModelOverride({
+          entry,
+          onRenderRequest: options.onRenderRequest,
+          sessionOptions: options.sessionOptions,
+          stack,
+        });
+      },
+      openSystemMenu: () => {
+        stack.push(createSystemMenuPanel({
             authService: options.authService,
             counts: options.loadedCounts,
             cwd: options.invocationCwd ?? process.cwd(),
             env: options.env ?? process.env,
             getRelease: () => release,
             getStack: () => stack,
-            onPresetReset: () => {
-              options.sessionOptions?.resetOverrides();
-            },
             onRenderRequest: options.onRenderRequest,
-            presetService: options.presetService,
             wikiController: options.wikiController,
           }));
-          return;
-        }
-        options.onExitFleet();
       },
-      loadedCounts: options.loadedCounts,
       onExitFleet: options.onExitFleet,
       release: () => release,
+      selectedCliId: () => selectedCliId,
+      sessionOptions: options.sessionOptions,
+      toggleEnableMetaphor: () => {
+        options.sessionOptions?.toggleEnableMetaphor();
+        options.onRenderRequest();
+      },
+      toggleNative: () => {
+        options.sessionOptions?.toggleNative();
+        options.onRenderRequest();
+      },
+      toggleReplaceSystemPrompt: () => {
+        options.sessionOptions?.toggleReplaceSystemPrompt();
+        options.onRenderRequest();
+      },
     });
     stack = createPanelStack({
       root,
@@ -416,89 +399,108 @@ function clearDefaultShimmerInterval(timer: MissionControlShimmerTimer): void {
   clearInterval(timer as ReturnType<typeof setInterval>);
 }
 
-function createLauncherRoot(options: {
+function createMissionRootPanel(options: {
+  readonly cliOptions: readonly MissionControlCliOption[];
   readonly getStack: () => PanelStack;
+  readonly launchCli: (entry: MissionControlCliOption) => void;
   readonly loadedCounts: CreateMissionControlControllerOptions["loadedCounts"];
-  readonly onRenderRequest: () => void;
   readonly onExitFleet: () => void;
-  readonly openItem: (index: number) => void;
+  readonly onRenderRequest: () => void;
+  readonly openCarrierRoster: () => void;
+  readonly openModelOverride: (entry: MissionControlCliOption) => void;
+  readonly openSystemMenu: () => void;
   readonly release: () => CreateMissionControlControllerOptions["release"];
+  readonly selectedCliId: () => AgentCliId;
+  readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
+  readonly toggleEnableMetaphor: () => void;
+  readonly toggleNative: () => void;
+  readonly toggleReplaceSystemPrompt: () => void;
 }): MenuPanel {
-  return createActionListPanel({
+  return createSectionedListPanel({
     id: "mission-control:launcher-root",
     title: "Mission Control",
     breadcrumbs: () => options.getStack().breadcrumbs(),
-    footer: "↑↓ select  Enter open",
-    statusLines: () => formatLauncherStatusLines(options.loadedCounts, options.release()),
-    actions: LAUNCHER_ITEMS.map((label, index) => ({
-      id: label.toLowerCase().replaceAll(" ", "-"),
-      label,
-      run: () => {
-        if (label === "Exit Fleet") {
-          options.onExitFleet();
-          return;
-        }
-        options.openItem(index);
-        options.onRenderRequest();
-      },
-    })),
+    footer: "↑↓ select  Enter launch/open  → model",
+    statusLines: () => [
+      ...formatLauncherStatusLines(options.loadedCounts, options.release()),
+      ...(options.sessionOptions?.getStatusLines?.().map((line) => MISSION_CONTROL_THEME.error(line)) ?? []),
+    ],
+    rows: () => createMissionRootRows(options),
   });
 }
 
-function createStartPanel(options: StartPanelOptions): MenuPanel {
-  let selected = Math.max(0, options.cliOptions.findIndex((entry) => entry.id === options.selectedCliId()));
-
-  return {
-    id: "mission-control:start",
-    title: "Start",
-    handleInput(data: string): boolean {
-      selected = clampIndex(selected, options.cliOptions.length);
-      if (isUp(data)) {
-        selected = moveIndex(selected, options.cliOptions.length, -1);
-        return true;
-      }
-      if (isDown(data)) {
-        selected = moveIndex(selected, options.cliOptions.length, 1);
-        return true;
-      }
-      const entry = options.cliOptions[selected];
-      if (entry === undefined) {
-        return false;
-      }
-      if (isEnter(data)) {
-        options.setSelectedCliId(entry.id);
-        void options.launchSelected();
-        return true;
-      }
-      if (isRight(data) && options.sessionOptions !== undefined) {
-        options.setSelectedCliId(entry.id);
-        openStartModelOverride(options, entry);
-        return true;
-      }
-      return false;
+function createMissionRootRows(options: Parameters<typeof createMissionRootPanel>[0]): readonly SectionedListRow[] {
+  const values = options.sessionOptions?.getResolved().values;
+  const model = options.sessionOptions?.getDraft().model;
+  return [
+    { kind: "header", label: "LAUNCH" },
+    ...options.cliOptions.map((entry): SectionedListRow => ({
+      kind: "launch",
+      id: `launch:${entry.id}`,
+      label: entry.label,
+      detail: entry.id === options.selectedCliId() ? "selected" : undefined,
+      trailing: model === undefined ? undefined : `model ${model}`,
+      launch: () => options.launchCli(entry),
+      openModelOverride: () => options.openModelOverride(entry),
+    })),
+    { kind: "header", label: "OPTION" },
+    {
+      kind: "toggle",
+      id: "option:mode",
+      label: "Mode",
+      value: values?.native ? "Native" : "Fleet prompt",
+      toggle: options.toggleNative,
     },
-    getFocusLine(): number | undefined {
-      selected = clampIndex(selected, options.cliOptions.length);
-      return options.cliOptions.length === 0 ? undefined : 4 + selected;
+    {
+      kind: "toggle",
+      id: "option:system-prompt",
+      label: "System prompt",
+      value: formatSystemPromptOption(options.sessionOptions),
+      toggle: options.toggleReplaceSystemPrompt,
     },
-    render({ width }): readonly string[] {
-      selected = clampIndex(selected, options.cliOptions.length);
-      return [
-        "",
-        centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(options.stack.breadcrumbs())), width),
-        centerText(MISSION_CONTROL_THEME.accent("Start"), width),
-        "",
-        ...options.cliOptions.map((entry, index) => centerText(formatStartCliRow(entry, index === selected, options.sessionOptions), width)),
-        "",
-        centerText(MISSION_CONTROL_THEME.dim("↑↓ select  Enter launch  → model  Esc back"), width),
-      ];
+    {
+      kind: "toggle",
+      id: "option:metaphor",
+      label: "Metaphor",
+      value: values?.enableMetaphor ? "Enabled" : "Off",
+      toggle: options.toggleEnableMetaphor,
     },
-  };
+    { kind: "header", label: "SYSTEM" },
+    {
+      kind: "navigate",
+      id: "system:carrier-roster",
+      label: "Carrier Roster",
+      navigate: () => {
+        options.openCarrierRoster();
+        options.onRenderRequest();
+      },
+    },
+    {
+      kind: "navigate",
+      id: "system:system-menu",
+      label: "System Menu",
+      navigate: () => {
+        options.openSystemMenu();
+        options.onRenderRequest();
+      },
+    },
+    {
+      kind: "navigate",
+      id: "system:exit",
+      label: "Exit",
+      navigate: options.onExitFleet,
+    },
+  ];
 }
 
-function openStartModelOverride(options: StartPanelOptions, entry: MissionControlCliOption): void {
+function openModelOverride(options: {
+  readonly entry: MissionControlCliOption;
+  readonly onRenderRequest: () => void;
+  readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
+  readonly stack: PanelStack;
+}): void {
   options.stack.push(createInputModal({
-    title: `${entry.label} Model Override`,
+    title: `${options.entry.label} Model Override`,
     message: "Set model override for the next launch.",
     mode: "text",
     initialValue: options.sessionOptions?.getDraft().model ?? "",
@@ -512,113 +514,6 @@ function openStartModelOverride(options: StartPanelOptions, entry: MissionContro
       options.stack.pop();
     },
   }));
-}
-
-function formatStartCliRow(
-  entry: MissionControlCliOption,
-  selected: boolean,
-  sessionOptions: CreateMissionControlControllerOptions["sessionOptions"],
-): string {
-  const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
-  const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(entry.label)) : entry.label;
-  const model = sessionOptions?.getDraft().model;
-  const detail = model === undefined ? "" : MISSION_CONTROL_THEME.dim(`  model ${model}`);
-  return `${marker} ${label}${detail}`;
-}
-
-function isRight(data: string): boolean {
-  return data === "\x1b[C" || data === "\x1bOC";
-}
-
-function clampIndex(index: number, length: number): number {
-  if (length <= 0) {
-    return 0;
-  }
-  return Math.min(index, length - 1);
-}
-
-function moveIndex(index: number, length: number, delta: -1 | 1): number {
-  return length === 0 ? 0 : (index + delta + length) % length;
-}
-
-function createOptionsPanel(options: {
-  readonly onRenderRequest: () => void;
-  readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
-}): MenuPanel {
-  let saveError = "";
-
-  return createActionListPanel({
-    id: "mission-control:options",
-    title: "Options",
-    footer: "↑↓ select  Enter apply  Esc back",
-    statusLines: () => [
-      ...(options.sessionOptions === undefined ? [MISSION_CONTROL_THEME.dim("Session options are unavailable.")] : []),
-      ...(saveError.length > 0 ? [MISSION_CONTROL_THEME.error(`Save failed: ${saveError}`)] : []),
-    ],
-    actions: () => [
-      {
-        id: "mode",
-        label: "Mode",
-        detail: options.sessionOptions?.getResolved().values.native ? "Native" : "Fleet prompt",
-        run: () => {
-          options.sessionOptions?.toggleNative();
-          options.onRenderRequest();
-        },
-      },
-      {
-        id: "system-prompt",
-        label: "System prompt",
-        detail: formatSystemPromptOption(options.sessionOptions),
-        run: () => {
-          cycleSystemPromptRuntime(options.sessionOptions);
-          options.onRenderRequest();
-        },
-      },
-      {
-        id: "metaphor",
-        label: "Metaphor",
-        detail: options.sessionOptions?.getResolved().values.enableMetaphor ? "Enabled" : "Off",
-        run: () => {
-          options.sessionOptions?.toggleEnableMetaphor();
-          options.onRenderRequest();
-        },
-      },
-      {
-        id: "cursor-sync",
-        label: "Cursor sync",
-        detail: options.sessionOptions?.getResolved().values.cursorSync ? "Enabled" : "Off",
-        run: () => {
-          options.sessionOptions?.toggleCursorSync();
-          options.onRenderRequest();
-        },
-      },
-      {
-        id: "save-defaults",
-        label: "Save defaults",
-        run: () => {
-          saveError = "";
-          options.onRenderRequest();
-          void options.sessionOptions?.saveDraft()
-            .then(() => {
-              saveError = "";
-              options.onRenderRequest();
-            })
-            .catch((error: unknown) => {
-              saveError = formatSaveError(error);
-              options.onRenderRequest();
-            });
-        },
-      },
-      {
-        id: "reset-overrides",
-        label: "Reset overrides",
-        run: () => {
-          options.sessionOptions?.resetOverrides();
-          options.onRenderRequest();
-        },
-      },
-    ],
-  });
 }
 
 function createSystemMenuPanel(options: SystemMenuPanelOptions): MenuPanel {
@@ -661,9 +556,7 @@ function createSystemMenuPanel(options: SystemMenuPanelOptions): MenuPanel {
           stack.push(createDiagnosticsPanel({
             cwd: options.cwd,
             env: options.env,
-            onPresetReset: options.onPresetReset,
             onRenderRequest: options.onRenderRequest,
-            presetService: options.presetService,
             stack,
           }));
         },
@@ -718,28 +611,6 @@ function formatSystemPromptOption(sessionOptions: CreateMissionControlController
   return values.replaceSystemPrompt ? "Replace" : "Append";
 }
 
-function cycleSystemPromptRuntime(sessionOptions: CreateMissionControlControllerOptions["sessionOptions"]): void {
-  const draft = sessionOptions?.getDraft();
-  if (draft === undefined) {
-    return;
-  }
-
-  if (draft.native) {
-    sessionOptions?.toggleNative();
-    if (draft.replaceSystemPrompt) {
-      sessionOptions?.toggleReplaceSystemPrompt();
-    }
-    return;
-  }
-
-  if (!draft.replaceSystemPrompt) {
-    sessionOptions?.toggleReplaceSystemPrompt();
-    return;
-  }
-
-  sessionOptions?.toggleNative();
-}
-
 function isFailedExit(event: PtyExitEvent): boolean {
   return (event.exitCode !== undefined && event.exitCode !== 0) || (event.signal !== undefined && event.signal !== 0);
 }
@@ -787,11 +658,4 @@ function getMissionControlPanelFocusLine(
   const panelFocusLine = (component as FocusAwareComponent).getFocusLine?.(width);
   if (panelFocusLine === undefined) return undefined;
   return rendered.length - panelLines.length + panelFocusLine;
-}
-
-function formatSaveError(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
-  }
-  return "Failed to save Fleet options.";
 }

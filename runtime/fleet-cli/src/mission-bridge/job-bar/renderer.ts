@@ -249,7 +249,7 @@ function appendWidgetJobSummary(
       ));
 
       if (shouldInlineSingleTrack(job)) continue;
-      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme);
+      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme, now);
     }
   }
 }
@@ -262,16 +262,18 @@ function appendTrackRows(
   jobColor: string,
   frame: number,
   theme: FleetPtyTheme | undefined,
+  now: number,
 ): void {
   for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
     const track = job.tracks[trackIndex];
     if (!track) continue;
     const trackColor = resolveBackendRowColor(carrierRuntime, track.displayCli, job.ownerCarrierId) || jobColor;
     const icon = trackStatusIcon(track, frame, trackColor);
+    const elapsed = widgetTrackElapsed(track, job, now);
     const stats = widgetTrackStats(track);
     const inline = !track.isComplete ? trackInlineBlock(track) : "";
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}    ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${stats}${inline}`,
+      `${STREAM_PREFIX}    ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${elapsed}${stats}${inline}`,
       width,
     ));
   }
@@ -354,23 +356,14 @@ function formatExitWarning(): string {
 }
 
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
-  const icon = carrierStatusIcon(carrier, frame, carrier.color);
   const hasActiveJob = carrier.activeJobCount > 0;
   const suffix = carrierBadges(carrier);
-  const prefix = `${icon} `;
 
   if (hasActiveJob) {
-    return `${prefix}${waveText(carrier.displayName, carrier.rgb, frame)}${suffix}${ANSI_RESET}`;
+    return `${waveText(carrier.displayName, carrier.rgb, frame)}${suffix}${ANSI_RESET}`;
   }
 
-  return `${prefix}${carrier.color}${carrier.displayName}${suffix}${ANSI_RESET}`;
-}
-
-function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: string): string {
-  if (carrier.activeJobCount > 0) {
-    return activeBreathingIcon(frame, color);
-  }
-  return color ? `${color}○${ANSI_RESET}` : "○";
+  return `${carrier.color}${carrier.displayName}${suffix}${ANSI_RESET}`;
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
@@ -579,7 +572,7 @@ function isHudEscIntermediate(code: number): boolean {
 }
 
 function widgetTrackStats(track: PanelTrackViewModel): string {
-  const label = formatTokenEstimate(track.estimatedTokenCount);
+  const label = formatTokenEstimate(track.displayedTokenCount);
   return label ? ` ${PANEL_DIM_COLOR}${label}${ANSI_RESET}` : "";
 }
 
@@ -587,10 +580,15 @@ function widgetJobElapsed(job: PanelJobViewModel, now: number): string {
   return ` ${PANEL_DIM_COLOR}${formatElapsedDuration((job.finishedAt ?? now) - job.startedAt)}${ANSI_RESET}`;
 }
 
+function widgetTrackElapsed(track: PanelTrackViewModel, job: PanelJobViewModel, now: number): string {
+  if (track.startedAt === undefined) return "";
+  return ` ${PANEL_DIM_COLOR}${formatElapsedDuration((track.finishedAt ?? job.finishedAt ?? now) - track.startedAt)}${ANSI_RESET}`;
+}
+
 function activeBreathingIcon(frame: number, color?: string): string {
   const cycleFrame = ((frame % BREATHING_CYCLE_FRAMES) + BREATHING_CYCLE_FRAMES) % BREATHING_CYCLE_FRAMES;
   const eased = (Math.sin((cycleFrame / BREATHING_CYCLE_FRAMES) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
-  const icon = eased >= 0.5 ? "●" : "○";
+  const icon = eased >= 0.5 ? "●" : " ";
   return color ? `${color}${icon}${ANSI_RESET}` : icon;
 }
 

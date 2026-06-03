@@ -29,7 +29,7 @@ import {
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
 } from "../src/styles/carriers.js";
-import type { FleetPtyTheme } from "../src/controls/index.js";
+import { visibleWidth, type FleetPtyTheme } from "../src/controls/index.js";
 import type { CarrierStatusRenderDeps } from "../src/mission-control/carrier-roster/renderer.js";
 import type { TaskForceEntry } from "../src/mission-control/carrier-roster/types.js";
 import type { CarrierStatusEntry } from "../src/mission-control/carrier-roster/types.js";
@@ -395,6 +395,23 @@ describe("carrier roster renderer SA/TF colors", () => {
     expect(findRenderedLine(rendered, "Nimitz")).not.toContain(PROVIDER_BG_ANSI_COLORS.claude);
     expect(findRenderedLine(rendered, "Nimitz")).not.toContain(SELECTED_BG_ANSI);
   });
+
+  it("keeps model columns aligned when roster display names use CJK width", () => {
+    const cjkEntry = buildRosterEntry({ carrierId: "yamato", displayName: "大和", slot: 1 });
+    const plainEntry = buildRosterEntry({ carrierId: "nimitz", cliType: "codex", defaultCliType: "codex", displayName: "Nimitz", model: firstModel("codex"), slot: 2 });
+    const rendered = renderRosterEntries([cjkEntry, plainEntry], {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: cjkEntry.carrierId,
+      state: { kind: "browse" },
+      theme: MISSION_CONTROL_THEME,
+      width: 120,
+    });
+    const cjkLine = stripAnsi(findRenderedLine(rendered, "大和"));
+    const plainLine = stripAnsi(findRenderedLine(rendered, "Nimitz"));
+
+    expect(displayColumn(cjkLine, firstModel("claude"))).toBe(displayColumn(plainLine, firstModel("codex")));
+  });
 });
 
 function createTestCarrierRuntime(): CarrierRuntime {
@@ -525,6 +542,12 @@ function findRenderedLine(rendered: string, text: string): string {
 
 function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
+}
+
+function displayColumn(line: string, needle: string): number {
+  const index = line.indexOf(needle);
+  expect(index).toBeGreaterThanOrEqual(0);
+  return visibleWidth(line.slice(0, index));
 }
 
 function expectMarkerOnly(line: string): void {

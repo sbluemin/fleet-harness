@@ -47,15 +47,15 @@ vi.mock("../src/mission-control/carrier-roster/taskforce-panel.js", () => ({
 }));
 
 describe("Carrier Roster Mission Control registration", () => {
-  it("opens Carrier Roster from Configure Carriers through Mission Control", () => {
+  it("opens Carrier Roster from the Mission Control root", () => {
     const renderRequests: string[] = [];
     const controller = createTestController({
       onRenderRequest: () => renderRequests.push("render"),
     });
 
-    expect(renderPlain(controller.component.render(80))).toContain("Configure Carriers");
+    expect(renderPlain(controller.component.render(80))).toContain("Carrier Roster");
 
-    controller.ptyHost.write("\x1b[B");
+    moveRootSelection(controller, 4);
     controller.ptyHost.write("\r");
 
     expect(controller.hasActivePanel()).toBe(true);
@@ -69,13 +69,13 @@ describe("Carrier Roster Mission Control registration", () => {
     controller.ptyHost.write("c");
 
     expect(renderPlain(controller.component.render(80))).toContain("Mission Control");
-    expect(renderPlain(controller.component.render(80))).not.toContain("Carrier Roster");
+    expect(renderPlain(controller.component.render(80))).not.toContain("Task Force Config");
   });
 
   it("pushes TaskForce config inside the Carrier Roster panel stack", () => {
     const controller = createTestController();
 
-    controller.ptyHost.write("\x1b[B");
+    moveRootSelection(controller, 4);
     controller.ptyHost.write("\r");
     controller.ptyHost.write("\r");
 
@@ -96,7 +96,7 @@ function createTestController(options: { readonly onRenderRequest?: () => void }
     carrierRuntime: { registry: {} } as CarrierRuntime,
     cliOptions: [{ id: "claude", label: "Claude" }],
     createPtyHost: (_profile: PtyLaunchProfile) => createFakeHost(),
-    defaultCliId: "claude",
+    initialCliId: "claude",
     injectProfile: (profile) => Promise.resolve(profile),
     onExitFleet: () => undefined,
     onRenderRequest: options.onRenderRequest ?? (() => undefined),
@@ -112,6 +112,13 @@ function createTestController(options: { readonly onRenderRequest?: () => void }
   });
   controller.ptyView.resize(80, 24);
   return controller;
+}
+
+function moveRootSelection(controller: ReturnType<typeof createTestController>, count: number): void {
+  controller.component.render(80);
+  for (let index = 0; index < count; index++) {
+    controller.ptyHost.write("\x1b[B");
+  }
 }
 
 function createFakeHost(): PtyHost {

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createCarrierRuntime,
@@ -24,6 +24,7 @@ const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 afterEach(() => {
   currentJobBarState?.dispose();
   currentJobBarState = undefined;
+  vi.useRealTimers();
   resetStoreForTests();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   tempDir = null;
@@ -190,7 +191,7 @@ describe("job bar renderer", () => {
     expect(text).toContain("Audit stream identity 1m 30s ~1k tokens");
   });
 
-  it("uses finishedAt for elapsed time and does not repeat elapsed on track rows", () => {
+  it("uses finishedAt for elapsed time and keeps the group elapsed on the job row", () => {
     const runtime = createTestCarrierRuntime();
     const job = {
       ...buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
@@ -214,7 +215,95 @@ describe("job bar renderer", () => {
     expect(text).not.toContain("3m 19s");
   });
 
-  it("includes latest tool detailChars in token estimates without double-counting updates", () => {
+  it("renders backend track elapsed time inline from each track start", () => {
+    const runtime = createTestCarrierRuntime();
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [{
+        ...buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"),
+        tracks: [
+          {
+            displayCli: "claude",
+            displayName: "claude",
+            kind: "backend",
+            runId: "taskforce:first:claude",
+            startedAt: 30000,
+            status: "stream",
+            streamKey: "claude",
+            trackId: "claude",
+          },
+          {
+            displayCli: "codex",
+            displayName: "codex",
+            kind: "backend",
+            runId: "taskforce:first:codex",
+            startedAt: 60000,
+            status: "stream",
+            streamKey: "codex",
+            trackId: "codex",
+          },
+        ],
+      }],
+      width: 160,
+      now: 90000,
+    }).join("\n"));
+
+    expect(text).toContain("Taskforce · Coordinate backends 1m 29s");
+    expect(text).toContain("Claude Code with Anthropic 1m 0s");
+    expect(text).toContain("OpenAI Codex CLI 30s");
+  });
+
+  it("freezes finalized backend elapsed while preserving registered track start times", () => {
+    vi.useFakeTimers();
+    const state = createTestJobBarState();
+    state.handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "taskforce:elapsed-freeze",
+      kind: "taskforce",
+      ownerCarrierId: "ohio",
+      label: "Coordinate backends",
+      startedAt: 1000,
+      tracks: [
+        {
+          displayCli: "claude",
+          displayName: "claude",
+          kind: "backend",
+          runId: "taskforce:elapsed-freeze:claude",
+          startedAt: 5000,
+          streamKey: "claude",
+          trackId: "claude",
+        },
+        {
+          displayCli: "codex",
+          displayName: "codex",
+          kind: "backend",
+          runId: "taskforce:elapsed-freeze:codex",
+          startedAt: 10000,
+          streamKey: "codex",
+          trackId: "codex",
+        },
+      ],
+    });
+
+    vi.setSystemTime(15000);
+    state.handleCarrierJobStreamEvent({
+      type: "track:finalized",
+      jobId: "taskforce:elapsed-freeze",
+      trackId: "claude",
+      status: "done",
+    });
+
+    vi.setSystemTime(70000);
+    const text = stripAnsi(createJobBarSections(state)[1]!.component.render(160).join("\n"));
+
+    expect(text).toContain("Claude Code with Anthropic 10s");
+    expect(text).toContain("OpenAI Codex CLI 1m 0s");
+  });
+
+  it("counts token estimates up on the existing frame timer without double-counting updates", () => {
+    vi.useFakeTimers();
     const state = createTestJobBarState();
     state.handleCarrierJobStreamEvent({
       type: "job:registered",
@@ -251,10 +340,13 @@ describe("job bar renderer", () => {
       detailChars: 400,
     });
 
-    const text = stripAnsi(createJobBarSections(state)[1]!.component.render(160).join("\n"));
+    const initialText = stripAnsi(createJobBarSections(state)[1]!.component.render(160).join("\n"));
+    vi.advanceTimersByTime(2000);
+    const settledText = stripAnsi(createJobBarSections(state)[1]!.component.render(160).join("\n"));
 
-    expect(text).toContain("~104 tokens");
-    expect(text).not.toContain("~110 tokens");
+    expect(initialText).not.toContain("~104 tokens");
+    expect(settledText).toContain("~104 tokens");
+    expect(settledText).not.toContain("~110 tokens");
   });
 
   it("keeps multiline block rendering split while removing terminal controls", () => {
@@ -307,8 +399,10 @@ describe("job bar renderer", () => {
       width: 160,
     }).join("\n"));
 
-    expect(activeFrame).toContain("○ Taskforce · Coordinate backends");
-    expect(activeFrame).toContain("○ Claude Code with Anthropic");
+    expect(activeFrame).toContain("  Taskforce · Coordinate backends");
+    expect(activeFrame).toContain("  Claude Code with Anthropic");
+    expect(activeFrame).not.toContain("○ Taskforce · Coordinate backends");
+    expect(activeFrame).not.toContain("○ Claude Code with Anthropic");
     expect(crestFrame).toContain("● Taskforce · Coordinate backends");
     expect(crestFrame).toContain("● Claude Code with Anthropic");
     expect(completedFrame).toContain("⏺ Claude Code with Anthropic");
@@ -382,6 +476,8 @@ describe("job bar renderer", () => {
     const line = stripAnsi(createJobBarSections(state)[0]!.component.render(200).join("\n"));
 
     expect(line).toContain("Ohio [SA]");
+    expect(line).not.toContain("● Ohio");
+    expect(line).not.toContain("○ Ohio");
     expect(line).not.toContain("[1:1]");
     expect(line).not.toContain("[1]");
   });

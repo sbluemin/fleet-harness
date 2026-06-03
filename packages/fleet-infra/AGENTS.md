@@ -7,8 +7,8 @@
 - `auth/` — CLI auth provider mapping, storage, migration, validation, and user-facing auth messages.
 - `agent/` — executor runtime engine, in-memory client pool, provider/model codec, `TrackStatus` SSoT, builtin external MCP catalog, and the two-method `ExecutorPort`.
 - `data-dir/` — Fleet data directory resolution and legacy migration.
-- `preset/` — host-agnostic user preset I/O for CLI startup defaults.
-- `fs-store/` — generic durable filesystem I/O primitive: atomic writes (temp+rename+fsync), advisory directory locks with quarantine-based stale recovery, secure directory/file modes, symlink guards, and path-traversal defenses. Consumed by preset, auth, and carriers storage via explicit DI.
+- `global-options/` — host-agnostic global option I/O for Fleet startup behavior.
+- `fs-store/` — generic durable filesystem I/O primitive: atomic writes (temp+rename+fsync), advisory directory locks with quarantine-based stale recovery, secure directory/file modes, symlink guards, and path-traversal defenses. Consumed by global-options, auth, and carriers storage via explicit DI.
 
 ## I/O Gateway Contract
 
@@ -28,7 +28,7 @@ Consumers use the package root or documented subdomain barrels only:
 - `@dotobokuri/fleet-infra/agent`
 - `@dotobokuri/fleet-infra/auth`
 - `@dotobokuri/fleet-infra/data-dir`
-- `@dotobokuri/fleet-infra/preset`
+- `@dotobokuri/fleet-infra/global-options`
 - `@dotobokuri/fleet-infra/fs-store`
 
 Do not add individual deep source-file exports without an explicit public API decision.

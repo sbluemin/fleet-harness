@@ -1,8 +1,7 @@
 import * as os from "node:os";
-import * as path from "node:path";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
-import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
+import { renderChoiceBlock, renderKeyValueBlock, type ChoiceBlockRow, type KeyValueBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
@@ -11,15 +10,13 @@ import { isDown, isEnter, isEscape, isUp, renderBreadcrumbs, type MenuPanel, typ
 export interface DiagnosticsPanelDeps {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
-  readonly onPresetReset?: () => void;
   readonly onRenderRequest: () => void;
-  readonly presetService?: PresetService;
   readonly stack: PanelStack;
 }
 
 type DiagnosticsView = "root" | "data" | "system";
 
-const ROOT_ROWS = ["Data Dir", "Reset Preset To Defaults", "System Info"] as const;
+const ROOT_ROWS = ["Data Dir", "System Info"] as const;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const LINE_BREAK_CHARS = /[\r\n]+/g;
 
@@ -27,7 +24,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
   let selected = 0;
   let view: DiagnosticsView = "root";
   let scroll = 0;
-  let message = "";
 
   return {
     id: "fleet-menu:diagnostics",
@@ -70,19 +66,15 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       if (view === "system") {
         return renderSystemInfo(width);
       }
-      const lines = [
+      return [
         "",
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Diagnostics"), width),
         "",
-        ...ROOT_ROWS.map((row, index) => centerText(formatRootRow(row, index === selected), width)),
+        ...renderRootRows(selected, width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("Enter open  Esc back"), width),
       ];
-      if (message.length > 0) {
-        lines.push(centerText(message, width));
-      }
-      return lines;
     },
   };
 
@@ -96,87 +88,62 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       view = "system";
       return;
     }
-    deps.stack.push(createActionListPanel({
-      id: "diagnostics:reset-preset",
-      title: "Reset Preset To Defaults",
-      statusLines: () => [MISSION_CONTROL_THEME.warning("All CLI presets will be reset to defaults. Continue?")],
-      onBack: () => {
-        deps.stack.pop();
-      },
-      actions: [
-        {
-          id: "confirm",
-          label: "Confirm",
-          run: () => {
-            resetPresets();
-            deps.stack.pop();
-          },
-        },
-        {
-          id: "cancel",
-          label: "Cancel",
-          run: () => {
-            deps.stack.pop();
-          },
-        },
-      ],
-    }));
   }
 
 
   function renderDataDir(width: number): readonly string[] {
     const dataDir = safeValue(getFleetDataDir);
     const cleanDataDir = sanitizeTerminalText(dataDir);
+    const rows = [
+      { key: "Root", value: MISSION_CONTROL_THEME.accent(cleanDataDir) },
+    ];
     return [
       "",
       centerText(MISSION_CONTROL_THEME.dim(`${renderBreadcrumbs(deps.stack.breadcrumbs())} / Data Dir`), width),
       centerText(MISSION_CONTROL_THEME.accent("Data Dir"), width),
       "",
-      centerText(formatKeyValue("Root", cleanDataDir), width),
-      centerText(formatKeyValue("Presets", sanitizeTerminalText(path.join(dataDir, "presets.json"))), width),
+      ...renderInfoRows(rows, width),
       "",
       centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
     ];
   }
 
   function renderSystemInfo(width: number): readonly string[] {
+    const rows = [
+      { key: "Node", value: MISSION_CONTROL_THEME.accent(process.version) },
+      { key: "OS", value: MISSION_CONTROL_THEME.accent(`${os.platform()} ${os.release()} ${os.arch()}`) },
+      { key: "Shell", value: MISSION_CONTROL_THEME.accent(sanitizeTerminalText(deps.env.SHELL ?? "(unknown)")) },
+      { key: "Terminal", value: MISSION_CONTROL_THEME.accent(sanitizeTerminalText(deps.env.TERM ?? "(unknown)")) },
+      { key: "CWD", value: MISSION_CONTROL_THEME.accent(sanitizeTerminalText(deps.cwd)) },
+    ];
     return [
       "",
       centerText(MISSION_CONTROL_THEME.dim(`${renderBreadcrumbs(deps.stack.breadcrumbs())} / System Info`), width),
       centerText(MISSION_CONTROL_THEME.accent("System Info"), width),
       "",
-      centerText(formatKeyValue("Node", process.version), width),
-      centerText(formatKeyValue("OS", `${os.platform()} ${os.release()} ${os.arch()}`), width),
-      centerText(formatKeyValue("Shell", sanitizeTerminalText(deps.env.SHELL ?? "(unknown)")), width),
-      centerText(formatKeyValue("Terminal", sanitizeTerminalText(deps.env.TERM ?? "(unknown)")), width),
-      centerText(formatKeyValue("CWD", sanitizeTerminalText(deps.cwd)), width),
+      ...renderInfoRows(rows, width),
       "",
       centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
     ];
   }
 
-  function resetPresets(): void {
-    const preset = deps.presetService?.load();
-    if (preset !== undefined) {
-      for (const cliId of Object.keys(preset.byCli)) {
-        deps.presetService?.resetCliPreset(cliId);
-      }
-      deps.presetService?.saveDefaultCliId(undefined);
-    }
-    deps.onPresetReset?.();
-    message = MISSION_CONTROL_THEME.success("Preset defaults restored.");
-  }
-
 }
 
-function formatKeyValue(key: string, value: string): string {
-  return `${key}: ${MISSION_CONTROL_THEME.accent(value)}`;
+function renderInfoRows(rows: readonly KeyValueBlockRow[], width: number): string[] {
+  return renderKeyValueBlock({ innerWidth: width, rows });
 }
 
-function formatRootRow(row: string, selected: boolean): string {
+function renderRootRows(selected: number, width: number): string[] {
+  return renderChoiceBlock({
+    innerWidth: width,
+    rows: ROOT_ROWS.map((row, index) => formatRootRow(row, index === selected)),
+  });
+}
+
+function formatRootRow(row: string, selected: boolean): ChoiceBlockRow {
   const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
   const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(row)) : row;
-  return `${marker} ${label}`;
+  return { label, marker };
 }
 
 function safeValue(read: () => string): string {

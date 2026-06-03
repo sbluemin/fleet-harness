@@ -1,8 +1,9 @@
-import { ANSI_RESET, paint as paintBranded } from "../styles/index.js";
+import { ANSI_RESET, FLEET_COMMAND, paint as paintBranded } from "../styles/index.js";
 import { getCarrierAnsi } from "../styles/carriers.js";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";
+import { computeBlockLeftPad, maxVisibleWidth } from "./layout.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
 import type { MissionControlCliOption, MissionControlStateKind } from "./types.js";
 import { buildFleetBanner, centerText, FLEET_ACCENT } from "./welcome.js";
@@ -18,6 +19,10 @@ interface MissionControlRenderOptions {
   readonly state: MissionControlStateKind;
 }
 
+interface MissionControlTheme extends FleetPtyTheme {
+  readonly section: (text: string) => string;
+}
+
 type StatusTone = "dim" | "error" | "success" | "warning";
 
 const SELECTED_MARKER = "▸";
@@ -27,7 +32,7 @@ const COUNT_SEPARATOR = "  ·  ";
 const SELECTED_BG = "\x1b[48;2;45;55;70m";
 const DEFAULT_BG = "\x1b[48;2;28;28;36m";
 
-export const MISSION_CONTROL_THEME: FleetPtyTheme = {
+export const MISSION_CONTROL_THEME: MissionControlTheme = {
   accent: (text) => paint(FLEET_ACCENT, text),
   bg: (name, text) => paintBackground(name === "selected" ? SELECTED_BG : DEFAULT_BG, text),
   bold: (text) => paint("\x1b[1m", text),
@@ -37,6 +42,7 @@ export const MISSION_CONTROL_THEME: FleetPtyTheme = {
   fg: (name, text) => MISSION_CONTROL_THEME[name](text),
   muted: (text) => paint("\x1b[38;2;160;150;180m", text),
   reset: (text) => `${text}${ANSI_RESET}`,
+  section: (text) => paint(FLEET_COMMAND, text),
   success: (text) => paint("\x1b[38;2;80;200;160m", text),
   warning: (text) => paint("\x1b[38;2;255;200;100m", text),
 };
@@ -52,8 +58,8 @@ const STYLE: Record<StatusTone | "accent" | "muted", (text: string) => string> =
 export function renderMissionControl(width: number, options: MissionControlRenderOptions): string[] {
   const innerWidth = Math.max(0, width);
   const banner = buildFleetBanner(innerWidth, options.bannerPhase ?? 0);
-  const choiceWidth = computeChoiceWidth(options.cliOptions);
-  const choiceLeftPad = Math.max(0, Math.floor((innerWidth - choiceWidth) / 2));
+  const choiceWidth = CHOICE_INDENT + maxVisibleWidth(options.cliOptions.map((option) => option.label));
+  const choiceLeftPad = computeBlockLeftPad(choiceWidth, innerWidth);
   const lines: string[] = [""];
 
   if (banner.length > 0) {
@@ -112,12 +118,9 @@ function renderChoiceLine(options: {
   const marker = options.selected ? STYLE.accent(SELECTED_MARKER) : STYLE.dim(IDLE_MARKER);
   const number = STYLE.muted(`${options.index + 1}.`);
   const label = colorizeProvider(options.entry.id, options.entry.label);
-  const chips = options.entry.optionChips && options.entry.optionChips.length > 0
-    ? STYLE.dim(`  [${options.entry.optionChips.join(" · ")}]`)
-    : "";
   const prefix = `${" ".repeat(options.leftPad)}${marker} ${number} `;
   const remaining = Math.max(0, options.innerWidth - visibleWidth(prefix));
-  return `${prefix}${truncateToWidth(`${label}${chips}`, remaining)}`;
+  return `${prefix}${truncateToWidth(label, remaining)}`;
 }
 
 function renderCountsLine(
@@ -200,17 +203,6 @@ function formatExitEvent(event: PtyExitEvent | undefined): string {
 function colorizeProvider(cliId: AgentCliId, text: string): string {
   const color = getCarrierAnsi(cliId);
   return color ? `${color}${text}${ANSI_RESET}` : text;
-}
-
-function computeChoiceWidth(cliOptions: readonly MissionControlCliOption[]): number {
-  let maxLabelWidth = 0;
-  for (const option of cliOptions) {
-    const width = visibleWidth(option.label);
-    if (width > maxLabelWidth) {
-      maxLabelWidth = width;
-    }
-  }
-  return CHOICE_INDENT + maxLabelWidth;
 }
 
 function paint(code: string, text: string): string {

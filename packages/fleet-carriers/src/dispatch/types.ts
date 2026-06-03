@@ -167,6 +167,7 @@ export interface TrackMeta {
   displayCli: string;
   displayName: string;
   subtitle?: string;
+  startedAt?: number;
   kind: TrackKind;
   runId?: string;
 }
@@ -195,6 +196,7 @@ export type CarrierJobStreamEvent =
     type: "track:begin";
     jobId: string;
     trackId: string;
+    startedAt?: number;
     requestPreview?: string;
   }
   | {
@@ -235,6 +237,7 @@ export type CarrierJobStreamEvent =
     jobId: string;
     trackId: string;
     status: TrackStatus;
+    finishedAt?: number;
     error?: string;
     sessionId?: string;
     fallbackText?: string;

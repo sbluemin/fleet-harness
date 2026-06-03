@@ -12,6 +12,7 @@ export type ColBlock =
   | { readonly detailChars?: number; readonly status: string; readonly title: string; readonly toolCallId?: string; readonly type: "tool" };
 
 export interface PanelRunViewModelSource {
+  readonly displayedTokenCount?: number;
   readonly blocks?: readonly ColBlock[];
   readonly runId?: string;
   readonly status?: ColStatus;
@@ -20,8 +21,10 @@ export interface PanelRunViewModelSource {
 export interface ColumnTrack {
   readonly displayCli: string;
   readonly displayName: string;
+  readonly finishedAt?: number;
   readonly kind: TrackKind;
   readonly runId?: string;
+  readonly startedAt?: number;
   readonly status: ColStatus;
   readonly streamKey: string;
   readonly subtitle?: string;
@@ -44,12 +47,15 @@ export interface PanelTrackViewModel {
   readonly blocks: ColBlock[];
   readonly displayCli: string;
   readonly displayName: string;
+  readonly finishedAt?: number;
   readonly isComplete: boolean;
   readonly kind: ColumnTrack["kind"];
   readonly runId?: string;
+  readonly startedAt?: number;
   readonly status: ColStatus;
   readonly streamKey: string;
   readonly subtitle?: string;
+  readonly displayedTokenCount: number;
   readonly estimatedTokenCount: number;
   readonly trackId: string;
 }
@@ -113,10 +119,13 @@ export function buildPanelTrackViewModel(
     blocks: blockTail,
     displayCli: track.displayCli,
     displayName: track.displayName,
+    displayedTokenCount: run?.displayedTokenCount ?? stats.estimatedTokenCount,
     estimatedTokenCount: stats.estimatedTokenCount,
+    finishedAt: track.finishedAt,
     isComplete: status === "done" || status === "err",
     kind: track.kind,
     runId: run?.runId ?? track.runId,
+    startedAt: track.startedAt,
     status,
     streamKey: track.streamKey,
     subtitle: track.subtitle,

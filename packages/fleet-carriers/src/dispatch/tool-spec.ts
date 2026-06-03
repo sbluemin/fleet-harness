@@ -355,6 +355,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
     type: "track:begin",
     jobId: opts.jobId,
     trackId: opts.carrierId,
+    startedAt: execStartedAt,
     requestPreview: opts.request.trim().split(/\r?\n/, 1)[0],
   });
 
@@ -405,6 +406,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       jobId: opts.jobId,
       trackId: opts.carrierId,
       status: toTrackFinalStatus(finalStatus),
+      finishedAt: Date.now(),
       sessionId,
       fallbackText: sanitizeChunk(execResult.responseText),
       fallbackThought: sanitizeChunk(execResult.thoughtText),
@@ -427,6 +429,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
       jobId: opts.jobId,
       trackId: opts.carrierId,
       status: "err",
+      finishedAt: Date.now(),
       error: message,
     });
     throw error;
@@ -449,6 +452,7 @@ function emitJobRegistered(
     displayName: resolveCarrierDisplayName(registry, carrierId),
     kind: "carrier",
     runId,
+    startedAt,
   }];
   emitStreamEvent(registry, {
     type: "job:registered",

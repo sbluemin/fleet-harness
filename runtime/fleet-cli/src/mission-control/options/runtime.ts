@@ -1,17 +1,19 @@
-import { resolveSessionOptions, toPresetFragment } from "./resolver.js";
+import { resolveSessionOptions } from "./resolver.js";
 import type { CreateSessionOptionsRuntimeOptions, ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "./types.js";
 
 type SessionOptionsField = keyof SessionOptions;
 
 export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntimeOptions): SessionOptionsRuntime {
-  let preset = options.presetService.load();
+  let globalOptions = options.globalOptionsService.load();
   let resolved = resolve();
   let sessionFields = new Set<SessionOptionsField>();
   let draft: SessionOptions = { ...resolved.values };
+  let statusLines: readonly string[] = [];
 
   return {
     getResolved: () => toDraftResolved(),
     getDraft: () => draft,
+    getStatusLines: () => statusLines,
     selectCli: (cliId) => {
       const previousDraft = draft;
       const nextResolved = resolveForCli(cliId);
@@ -25,42 +27,12 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
       } as SessionOptions;
       markSession("cliId");
     },
-    toggleNative: () => {
-      draft = { ...draft, native: !draft.native };
-      markSession("native");
-    },
-    toggleReplaceSystemPrompt: () => {
-      draft = { ...draft, replaceSystemPrompt: !draft.replaceSystemPrompt };
-      markSession("replaceSystemPrompt");
-    },
-    toggleEnableMetaphor: () => {
-      draft = { ...draft, enableMetaphor: !draft.enableMetaphor };
-      markSession("enableMetaphor");
-    },
-    toggleCursorSync: () => {
-      draft = { ...draft, cursorSync: !draft.cursorSync };
-      markSession("cursorSync");
-    },
+    toggleNative: () => updateBoolean("native", !draft.native),
+    toggleReplaceSystemPrompt: () => updateBoolean("replaceSystemPrompt", !draft.replaceSystemPrompt),
+    toggleEnableMetaphor: () => updateBoolean("enableMetaphor", !draft.enableMetaphor),
     setModel: (model) => {
       draft = { ...draft, model: model && model.length > 0 ? model : undefined };
       markSession("model");
-    },
-    saveDraft: async () => {
-      preset = options.presetService.update({
-        defaultCliId: draft.cliId,
-        cliId: draft.cliId,
-        values: toPresetFragment(draft),
-      });
-      resolved = resolve();
-      sessionFields = new Set();
-      draft = { ...resolved.values };
-      return resolved;
-    },
-    resetOverrides: () => {
-      preset = options.presetService.load();
-      resolved = resolveWithoutArg();
-      sessionFields = new Set();
-      draft = { ...resolved.values };
     },
   };
 
@@ -69,23 +41,8 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
       argv: options.argv,
       defaults: options.defaults,
       env: options.env,
+      globalOptions,
       parseCliId: options.parseCliId,
-      preset,
-    });
-  }
-
-  function resolveWithoutArg(): ResolvedSessionOptions {
-    return resolveSessionOptions({
-      argv: {
-        ...options.argv,
-        argvOverrides: {
-          cursorSync: false,
-        },
-      },
-      defaults: options.defaults,
-      env: options.env,
-      parseCliId: options.parseCliId,
-      preset,
     });
   }
 
@@ -98,13 +55,27 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
         cliId,
       },
       env: options.env,
+      globalOptions,
       parseCliId: options.parseCliId,
-      preset,
     });
   }
 
   function markSession(field: SessionOptionsField): void {
     sessionFields = new Set(sessionFields).add(field);
+  }
+
+  function persistGlobalOptions(field: "native" | "replaceSystemPrompt" | "enableMetaphor", value: boolean): void {
+    statusLines = [];
+    void Promise.resolve()
+      .then(() => {
+        globalOptions = options.globalOptionsService.update((current) => ({ ...current, [field]: value }));
+      })
+      .catch((error: unknown) => {
+        statusLines = [`Save failed: ${formatSaveError(error)}`];
+      })
+      .finally(() => {
+        options.onStatusChange?.();
+      });
   }
 
   function toDraftResolved(): ResolvedSessionOptions {
@@ -116,4 +87,19 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
       values: draft,
     };
   }
+
+  function updateBoolean(field: "native" | "replaceSystemPrompt" | "enableMetaphor", value: boolean): void {
+    globalOptions = { ...globalOptions, [field]: value };
+    resolved = resolve();
+    draft = { ...draft, [field]: value };
+    markSession(field);
+    persistGlobalOptions(field, value);
+  }
+}
+
+function formatSaveError(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+  return "Failed to save Fleet options.";
 }

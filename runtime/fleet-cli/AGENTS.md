@@ -27,9 +27,9 @@ Only the permanent vertical two-pane layout is allowed:
 
 - **Agent CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
 - **Fleet PTY**: Lower pane.
-- **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Roster) while they are active.
+- **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Roster) while they are active. Panel renderers consume shared block-level alignment primitives for choice and key:value rows; centering is reserved for banner, title, and footer lines only.
 - **Mission Bridge**: Lower interaction layer under `src/mission-bridge/` that assembles Fleet status, Job Bar state/sections, lower Fleet PTY API consumption, and lower viewport lifecycle.
-- **Session Options**: Owned by `src/mission-control/options/`. Mission Control owns the interactive option state; the Options Drawer (`O`) edits boolean flags and `S` persists defaults through `fleet-infra/preset`. Model editing is handled inline via `→` arrow key in the idle CLI selection view, not in the Options Drawer.
+- **Session Options**: Owned by `src/mission-control/options/`. Mission Control owns the interactive option state; the flat root `OPTION` section toggles boolean flags (Mode, System prompt, Metaphor) and auto-persists each change immediately through `fleet-infra/global-options` (no manual save/reset). Model editing is handled inline via `→` arrow key on a `LAUNCH` row as a session-only override that is not persisted.
 - **Shared PTY negotiation**: `src/controls/pty.ts` is a compatibility facade; actual PTY responsibilities live in `src/controls/pty/{shell,keyboard,csi-u,host,resize}.ts`. `pty/resize.ts` owns host resize negotiation over `src/tui/layout` primitives.
 - **Terminal viewport**: `src/controls/terminal-view.ts` owns the xterm-backed Agent CLI viewport, scrollback rendering, alternate-buffer detection, ANSI style reconstruction, and logical cursor projection.
 - **Mouse runtime**: `src/controls/mouse/{parser,protocol,router}.ts` own SGR mouse parse/encode, DEC private mouse protocol state (including drag tracking), pane hit-testing, app-mouse forwarding, and scroll fallback.

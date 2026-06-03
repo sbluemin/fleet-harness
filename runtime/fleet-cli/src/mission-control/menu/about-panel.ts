@@ -1,3 +1,4 @@
+import { renderKeyValueBlock, type KeyValueBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import type { FleetCliRelease, MissionControlCounts } from "../types.js";
@@ -16,17 +17,23 @@ export function createAboutPanel(deps: AboutPanelDeps): MenuPanel {
     render({ width }): readonly string[] {
       const release = deps.getRelease();
       const counts = deps.counts;
+      const releaseRows = [
+        { key: "Version", value: MISSION_CONTROL_THEME.accent(release?.version ?? "(local)") },
+        { key: "Channel", value: MISSION_CONTROL_THEME.accent(release?.channel ?? "local") },
+      ];
+      const infoRows = [
+        { key: "Carriers", value: MISSION_CONTROL_THEME.accent(String(counts?.carriers ?? 0)) },
+        { key: "Wiki entries", value: MISSION_CONTROL_THEME.accent(String(counts?.wikiEntries ?? 0)) },
+        { key: "Queued patches", value: MISSION_CONTROL_THEME.accent(String(counts?.queuedPatches ?? 0)) },
+        { key: "Docs", value: MISSION_CONTROL_THEME.accent("(configured later)") },
+        { key: "Node", value: MISSION_CONTROL_THEME.accent(process.version) },
+      ];
       return [
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Fleet"), width),
-        centerText(formatKeyValue("Version", release?.version ?? "(local)"), width),
-        centerText(formatKeyValue("Channel", release?.channel ?? "local"), width),
+        ...renderInfoRows(releaseRows, width),
         "",
-        centerText(formatKeyValue("Carriers", String(counts?.carriers ?? 0)), width),
-        centerText(formatKeyValue("Wiki entries", String(counts?.wikiEntries ?? 0)), width),
-        centerText(formatKeyValue("Queued patches", String(counts?.queuedPatches ?? 0)), width),
-        centerText(formatKeyValue("Docs", "(configured later)"), width),
-        centerText(formatKeyValue("Node", process.version), width),
+        ...renderInfoRows(infoRows, width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
       ];
@@ -34,6 +41,6 @@ export function createAboutPanel(deps: AboutPanelDeps): MenuPanel {
   };
 }
 
-function formatKeyValue(key: string, value: string): string {
-  return `${key}: ${MISSION_CONTROL_THEME.accent(value)}`;
+function renderInfoRows(rows: readonly KeyValueBlockRow[], width: number): string[] {
+  return renderKeyValueBlock({ innerWidth: width, rows });
 }

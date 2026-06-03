@@ -1,6 +1,4 @@
-import type { FleetCliPreset } from "@dotobokuri/fleet-infra/preset";
-
-import type { SessionOptions, SessionOptionsResolverInput, ResolvedSessionOptions, SessionOptionSource } from "./types.js";
+import type { ResolvedSessionOptions, SessionOptionSource, SessionOptionsResolverInput } from "./types.js";
 
 type NonArgSessionOptionSource = Exclude<SessionOptionSource, "arg" | "session">;
 
@@ -9,111 +7,50 @@ const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
 export function resolveSessionOptions(input: SessionOptionsResolverInput): ResolvedSessionOptions {
   const envCliId = input.parseCliId(input.env.FLEET_AGENT_CLI);
-  const presetDefaultCliId = parsePresetCliId(input.parseCliId, input.preset.defaultCliId);
-  const cliId = input.cliIdOverride ?? envCliId ?? presetDefaultCliId ?? input.defaults.cliId;
-  const cliIdSource = sourceOf(
-    input.cliIdOverride !== undefined,
-    envCliId !== undefined,
-    presetDefaultCliId !== undefined,
-  );
-  const cliPreset = input.preset.byCli[cliId] ?? {};
+  const cliId = input.cliIdOverride ?? envCliId ?? input.defaults.cliId;
+  const cliIdSource = input.cliIdOverride !== undefined ? "arg" : envCliId !== undefined ? "env" : "default";
+  const native = chooseBooleanWithoutArg({
+    env: parseBooleanEnv(input.env.FLEET_NATIVE),
+    globalOptions: input.globalOptions.native,
+    fallback: input.defaults.native,
+  });
+  const replaceSystemPrompt = chooseBooleanWithoutArg({
+    env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT),
+    globalOptions: input.globalOptions.replaceSystemPrompt,
+    fallback: input.defaults.replaceSystemPrompt,
+  });
+  const enableMetaphor = chooseBooleanWithoutArg({
+    env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR),
+    globalOptions: input.globalOptions.enableMetaphor,
+    fallback: input.defaults.enableMetaphor,
+  });
 
   return {
     values: {
       cliId,
-      model: chooseString({
-        arg: undefined,
-        env: undefined,
-        preset: cliPreset.model,
-        fallback: input.defaults.model,
-      }).value,
-      native: chooseBooleanWithoutArg({
-        env: parseBooleanEnv(input.env.FLEET_NATIVE),
-        preset: cliPreset.native,
-        fallback: input.defaults.native,
-      }).value,
-      replaceSystemPrompt: chooseBooleanWithoutArg({
-        env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT),
-        preset: cliPreset.replaceSystemPrompt,
-        fallback: input.defaults.replaceSystemPrompt,
-      }).value,
-      enableMetaphor: chooseBooleanWithoutArg({
-        env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR),
-        preset: cliPreset.enableMetaphor,
-        fallback: input.defaults.enableMetaphor,
-      }).value,
-      cursorSync: chooseBoolean({
-        arg: input.argv.argvOverrides.cursorSync ? input.argv.cursorSync : undefined,
-        env: parseCursorSyncEnv(input.env.FLEET_CURSOR_SYNC),
-        preset: cliPreset.cursorSync,
-        fallback: input.defaults.cursorSync,
-      }).value,
+      model: input.defaults.model,
+      native: native.value,
+      replaceSystemPrompt: replaceSystemPrompt.value,
+      enableMetaphor: enableMetaphor.value,
     },
     sources: {
       cliId: cliIdSource,
-      model: chooseString({ arg: undefined, env: undefined, preset: cliPreset.model, fallback: input.defaults.model }).source,
-      native: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_NATIVE), preset: cliPreset.native, fallback: input.defaults.native }).source,
-      replaceSystemPrompt: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_REPLACE_SYSTEM_PROMPT), preset: cliPreset.replaceSystemPrompt, fallback: input.defaults.replaceSystemPrompt }).source,
-      enableMetaphor: chooseBooleanWithoutArg({ env: parseBooleanEnv(input.env.FLEET_ENABLE_METAPHOR), preset: cliPreset.enableMetaphor, fallback: input.defaults.enableMetaphor }).source,
-      cursorSync: chooseBoolean({ arg: input.argv.argvOverrides.cursorSync ? input.argv.cursorSync : undefined, env: parseCursorSyncEnv(input.env.FLEET_CURSOR_SYNC), preset: cliPreset.cursorSync, fallback: input.defaults.cursorSync }).source,
+      model: "default",
+      native: native.source,
+      replaceSystemPrompt: replaceSystemPrompt.source,
+      enableMetaphor: enableMetaphor.source,
     },
   };
-}
-
-export function toPresetFragment(options: SessionOptions): FleetCliPreset {
-  return {
-    ...(options.model !== undefined ? { model: options.model } : {}),
-    native: options.native,
-    replaceSystemPrompt: options.replaceSystemPrompt,
-    enableMetaphor: options.enableMetaphor,
-    cursorSync: options.cursorSync,
-  };
-}
-
-function chooseBoolean(options: {
-  readonly arg: boolean | undefined;
-  readonly env: boolean | undefined;
-  readonly preset: boolean | undefined;
-  readonly fallback: boolean;
-}): { readonly value: boolean; readonly source: SessionOptionSource } {
-  if (options.arg !== undefined) return { value: options.arg, source: "arg" };
-  if (options.env !== undefined) return { value: options.env, source: "env" };
-  if (options.preset !== undefined) return { value: options.preset, source: "preset" };
-  return { value: options.fallback, source: "default" };
 }
 
 function chooseBooleanWithoutArg(options: {
   readonly env: boolean | undefined;
-  readonly preset: boolean | undefined;
+  readonly globalOptions: boolean | undefined;
   readonly fallback: boolean;
 }): { readonly value: boolean; readonly source: NonArgSessionOptionSource } {
   if (options.env !== undefined) return { value: options.env, source: "env" };
-  if (options.preset !== undefined) return { value: options.preset, source: "preset" };
+  if (options.globalOptions !== undefined) return { value: options.globalOptions, source: "global-options" };
   return { value: options.fallback, source: "default" };
-}
-
-function chooseString(options: {
-  readonly arg: string | undefined;
-  readonly env: string | undefined;
-  readonly preset: string | undefined;
-  readonly fallback: string | undefined;
-}): { readonly value: string | undefined; readonly source: SessionOptionSource } {
-  if (options.arg !== undefined) return { value: options.arg, source: "arg" };
-  if (options.env !== undefined) return { value: options.env, source: "env" };
-  if (options.preset !== undefined) return { value: options.preset, source: "preset" };
-  return { value: options.fallback, source: "default" };
-}
-
-function sourceOf(hasArg: boolean, hasEnv: boolean, hasPreset: boolean): SessionOptionSource {
-  if (hasArg) return "arg";
-  if (hasEnv) return "env";
-  if (hasPreset) return "preset";
-  return "default";
-}
-
-function parseCursorSyncEnv(value: string | undefined): boolean | undefined {
-  if (value === undefined) return undefined;
-  return parseBooleanEnv(value) ?? true;
 }
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
@@ -122,15 +59,4 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
   if (TRUE_VALUES.has(normalized)) return true;
   if (FALSE_VALUES.has(normalized)) return false;
   return undefined;
-}
-
-function parsePresetCliId(
-  parseCliId: (value: string | undefined) => SessionOptions["cliId"] | undefined,
-  value: string | undefined,
-): SessionOptions["cliId"] | undefined {
-  try {
-    return parseCliId(value);
-  } catch {
-    return undefined;
-  }
 }
