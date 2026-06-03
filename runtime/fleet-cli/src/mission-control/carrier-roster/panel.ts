@@ -58,11 +58,11 @@ import type {
 
 const ROSTER_ACTIONS_ID = "__roster_actions__";
 const CARRIER_ACTION_LABELS = [
-  "Edit Model",
-  "Change CLI Type",
-  "Rename",
-  "Toggle Native(SubAgent)",
-  "Open TaskForce",
+  "Agent CLI",
+  "Model",
+  "Configure TaskForce",
+  "Configure SubAgent",
+  "Rename Carrier",
   "Toggle Details",
 ] as const;
 const ROSTER_ACTION_LABELS = [
@@ -236,19 +236,19 @@ export class CarrierStatusOverlay implements Component, Focusable {
     this.state = { kind: "browse" };
     switch (index) {
       case 0:
-        this.startModelEdit();
-        return;
-      case 1:
         this.startCliTypeEdit();
         return;
+      case 1:
+        this.startModelEdit();
+        return;
       case 2:
-        this.startRenameEdit();
+        this.openTaskForce();
         return;
       case 3:
         this.toggleSubagentMode();
         return;
       case 4:
-        this.openTaskForce();
+        this.startRenameEdit();
         return;
       case 5:
         this.toggleDetails();

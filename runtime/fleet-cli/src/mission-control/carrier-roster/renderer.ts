@@ -50,11 +50,11 @@ const NAME_WIDTH = 12;
 const MIN_CELL_WIDTH = 40;
 const ROSTER_ACTIONS_ID = "__roster_actions__";
 const CARRIER_ACTION_LABELS = [
-  "Edit Model",
-  "Change CLI Type",
-  "Rename",
-  "Toggle Native(SubAgent)",
-  "Open TaskForce",
+  "Agent CLI",
+  "Model",
+  "Configure TaskForce",
+  "Configure SubAgent",
+  "Rename Carrier",
   "Toggle Details",
 ] as const;
 const ROSTER_ACTION_LABELS = [

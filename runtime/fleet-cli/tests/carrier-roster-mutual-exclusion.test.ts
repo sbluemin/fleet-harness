@@ -216,8 +216,8 @@ describe("carrier roster renderer SA/TF colors", () => {
     expect(findRenderedLine(rendered, "Ohio")).not.toContain("<selected>");
     expect(findRenderedLine(rendered, "Ohio")).toContain("▸");
     expect(findRenderedLine(rendered, "Ohio")).toContain(PROVIDER_BG_ANSI_COLORS.claude);
-    expect(findRenderedLine(rendered, "▸ Edit Model")).not.toContain("<selected>");
-    expect(findRenderedLine(rendered, "▸ Edit Model")).not.toContain(SELECTED_BG_ANSI);
+    expect(findRenderedLine(rendered, "▸ Agent CLI")).not.toContain("<selected>");
+    expect(findRenderedLine(rendered, "▸ Agent CLI")).not.toContain(SELECTED_BG_ANSI);
   });
 
   it("marks Roster Actions virtual row and selected action with markers only", () => {
