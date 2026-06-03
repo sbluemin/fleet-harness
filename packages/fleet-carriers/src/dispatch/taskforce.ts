@@ -240,6 +240,7 @@ async function runTaskForceBackend(
     type: "track:begin",
     jobId,
     trackId,
+    startedAt: execStartedAt,
     requestPreview: request.trim().split(/\r?\n/, 1)[0],
   });
 
@@ -291,7 +292,7 @@ async function runTaskForceBackend(
     return buildTaskForceResult(cliType, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    emitStreamEvent(registry, { type: "track:finalized", jobId, trackId, status: "err", error: message });
+    emitStreamEvent(registry, { type: "track:finalized", jobId, trackId, status: "err", finishedAt: Date.now(), error: message });
     throw error;
   }
 }
@@ -379,6 +380,7 @@ function emitTrackFinalized(registry: CarrierRegistry, jobId: string, trackId: s
     jobId,
     trackId,
     status: toTrackFinalStatus(status),
+    finishedAt: Date.now(),
     error: status === "aborted" ? "aborted" : result.error,
     fallbackText: sanitizeChunk(result.responseText),
     fallbackThought: sanitizeChunk(result.thoughtText),

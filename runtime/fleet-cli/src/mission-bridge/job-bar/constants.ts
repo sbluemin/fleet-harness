@@ -12,6 +12,8 @@ export const BORDER = {
 
 export const ANIM_INTERVAL_MS = 100;
 export const BREATHING_CYCLE_FRAMES = 10;
+export const TOKEN_COUNTUP_EASING_FACTOR = 0.25;
+export const TOKEN_COUNTUP_MIN_STEP = 8;
 export const PROGRESS_BLOCK_SIZE = 6;
 
 export const PREVIEW_LINES = 18;

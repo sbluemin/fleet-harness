@@ -13,6 +13,8 @@ import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/fleet-infra
 import {
   ANIM_INTERVAL_MS,
   DEFAULT_BODY_H,
+  TOKEN_COUNTUP_EASING_FACTOR,
+  TOKEN_COUNTUP_MIN_STEP,
 } from "./constants.js";
 import type { ColBlock, ColStatus, ColumnTrack, PanelJob, PanelRunViewModelSource } from "./view-model.js";
 
@@ -44,6 +46,7 @@ export interface CollectedPanelStreamData {
 export interface PanelRun extends PanelRunViewModelSource {
   blocks: ColBlock[];
   cli: string;
+  displayedTokenCount: number;
   error?: string;
   requestPreview?: string;
   runId: string;
@@ -114,6 +117,14 @@ type MutablePanelJob = Omit<PanelJob, "tracks"> & {
 type JobBarStateBindings = {
   onCarrierResultReminder: (text: string) => void;
   onRenderRequest: () => void;
+};
+
+type TrackBeginEventWithStartedAt = Extract<CarrierJobStreamEvent, { type: "track:begin" }> & {
+  startedAt?: number;
+};
+
+type TrackFinalizedEventWithFinishedAt = Extract<CarrierJobStreamEvent, { type: "track:finalized" }> & {
+  finishedAt?: number;
 };
 
 export const PANEL_JOB_RETENTION = 8;
@@ -373,6 +384,7 @@ function ensurePanelAnimTimer(): void {
   if (state.animTimer) return;
   state.animTimer = setInterval(() => {
     state.frame++;
+    advanceDisplayedTokenCounts(state);
     getJobBarStateBindings().onRenderRequest();
     stopPanelAnimTimerIfIdle();
   }, ANIM_INTERVAL_MS);
@@ -416,8 +428,10 @@ function finalizeStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:fi
 function beginTrack(event: Extract<CarrierJobStreamEvent, { type: "track:begin" }>): void {
   const track = getTrack(event.jobId, event.trackId);
   if (!track) return;
+  const startedAt = (event as TrackBeginEventWithStartedAt).startedAt;
   const run = ensureRun(canonicalRunKey(track), track.displayCli, "conn");
   run.requestPreview = event.requestPreview ?? run.requestPreview;
+  track.startedAt = startedAt ?? track.startedAt;
   track.status = "conn";
   syncCarrierActivityStatus(track.displayCli);
 }
@@ -462,8 +476,10 @@ function updateRunBlocks(jobId: string, trackId: string, update: (run: PanelRun)
 function finalizeTrack(event: Extract<CarrierJobStreamEvent, { type: "track:finalized" }>): void {
   const track = getTrack(event.jobId, event.trackId);
   if (!track) return;
+  const finishedAt = (event as TrackFinalizedEventWithFinishedAt).finishedAt;
   const run = resolveRunForTrack(track) ?? ensureRun(canonicalRunKey(track), track.displayCli, toColStatus(event.status));
   track.status = toColStatus(event.status);
+  track.finishedAt = finishedAt ?? Date.now();
   run.status = track.status;
   if (event.sessionId !== undefined) run.sessionId = event.sessionId;
   if (event.error !== undefined) run.error = event.error;
@@ -479,6 +495,7 @@ function toColumnTrack(input: TrackMeta): MutableColumnTrack {
     displayName: input.displayName,
     kind: input.kind,
     runId: input.runId,
+    startedAt: input.startedAt,
     status: "wait",
     streamKey: input.streamKey,
     subtitle: input.subtitle,
@@ -507,6 +524,7 @@ function createPanelRun(runId: string, cli: string, status: ColStatus): PanelRun
   return {
     blocks: [],
     cli,
+    displayedTokenCount: 0,
     runId,
     status,
     text: "",
@@ -548,6 +566,33 @@ function refreshRunDerivedFields(run: PanelRun): void {
   run.toolCalls = run.blocks
     .filter((block): block is Extract<ColBlock, { type: "tool" }> => block.type === "tool")
     .map((block) => ({ status: block.status, title: block.title }));
+}
+
+function advanceDisplayedTokenCounts(state: AgentPanelState): void {
+  for (const run of state.runs.values()) {
+    const target = estimateTokenCount(run.blocks);
+    if (run.displayedTokenCount >= target) {
+      run.displayedTokenCount = target;
+      continue;
+    }
+    const delta = target - run.displayedTokenCount;
+    const easedStep = Math.ceil(delta * TOKEN_COUNTUP_EASING_FACTOR);
+    run.displayedTokenCount = Math.min(target, run.displayedTokenCount + Math.max(TOKEN_COUNTUP_MIN_STEP, easedStep));
+  }
+}
+
+function estimateTokenCount(blocks: readonly ColBlock[]): number {
+  let charCount = 0;
+  for (const block of blocks) {
+    if (block.type === "tool") {
+      charCount += block.title.length;
+      if (block.status) charCount += block.status.length;
+      charCount += block.detailChars ?? 0;
+      continue;
+    }
+    charCount += block.text.length;
+  }
+  return charCount === 0 ? 0 : Math.max(1, Math.round(charCount / 4));
 }
 
 function prependFallbackBlocks(run: PanelRun, fallbackText?: string, fallbackThought?: string): void {

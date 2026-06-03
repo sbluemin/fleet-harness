@@ -77,6 +77,7 @@ const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
 const HUD_CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const HUD_LINE_BREAKS = /[\r\n]+/g;
 const HUD_MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
+const ANSI_RGB_COLOR_RE = /^\x1b\[38;2;(\d{1,3});(\d{1,3});(\d{1,3})m$/;
 const DEFAULT_SAFE_LABEL = "(unnamed)";
 const EXIT_WARNING_TEXT = "Press Ctrl+C again to exit";
 const KIND_LABELS: Record<string, string> = {
@@ -249,7 +250,7 @@ function appendWidgetJobSummary(
       ));
 
       if (shouldInlineSingleTrack(job)) continue;
-      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme);
+      appendTrackRows(carrierRuntime, lines, width, job, jobColor, frame, theme, now);
     }
   }
 }
@@ -262,16 +263,18 @@ function appendTrackRows(
   jobColor: string,
   frame: number,
   theme: FleetPtyTheme | undefined,
+  now: number,
 ): void {
   for (let trackIndex = 0; trackIndex < job.tracks.length && lines.length < MAX_WIDGET_LINES; trackIndex++) {
     const track = job.tracks[trackIndex];
     if (!track) continue;
     const trackColor = resolveBackendRowColor(carrierRuntime, track.displayCli, job.ownerCarrierId) || jobColor;
     const icon = trackStatusIcon(track, frame, trackColor);
+    const elapsed = widgetTrackElapsed(track, job, now);
     const stats = widgetTrackStats(track);
     const inline = !track.isComplete ? trackInlineBlock(track) : "";
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}    ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${stats}${inline}`,
+      `${STREAM_PREFIX}    ${border(theme, "└─")} ${icon} ${trackColor}${trackDisplayName(track)}${ANSI_RESET}${elapsed}${stats}${inline}`,
       width,
     ));
   }
@@ -354,23 +357,14 @@ function formatExitWarning(): string {
 }
 
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
-  const icon = carrierStatusIcon(carrier, frame, carrier.color);
   const hasActiveJob = carrier.activeJobCount > 0;
   const suffix = carrierBadges(carrier);
-  const prefix = `${icon} `;
 
   if (hasActiveJob) {
-    return `${prefix}${waveText(carrier.displayName, carrier.rgb, frame)}${suffix}${ANSI_RESET}`;
+    return `${waveText(carrier.displayName, carrier.rgb, frame)}${suffix}${ANSI_RESET}`;
   }
 
-  return `${prefix}${carrier.color}${carrier.displayName}${suffix}${ANSI_RESET}`;
-}
-
-function carrierStatusIcon(carrier: CarrierHudTile, frame: number, color?: string): string {
-  if (carrier.activeJobCount > 0) {
-    return activeBreathingIcon(frame, color);
-  }
-  return color ? `${color}○${ANSI_RESET}` : "○";
+  return `${carrier.color}${carrier.displayName}${suffix}${ANSI_RESET}`;
 }
 
 function carrierBadges(carrier: CarrierHudTile): string {
@@ -579,7 +573,7 @@ function isHudEscIntermediate(code: number): boolean {
 }
 
 function widgetTrackStats(track: PanelTrackViewModel): string {
-  const label = formatTokenEstimate(track.estimatedTokenCount);
+  const label = formatTokenEstimate(track.displayedTokenCount);
   return label ? ` ${PANEL_DIM_COLOR}${label}${ANSI_RESET}` : "";
 }
 
@@ -587,11 +581,30 @@ function widgetJobElapsed(job: PanelJobViewModel, now: number): string {
   return ` ${PANEL_DIM_COLOR}${formatElapsedDuration((job.finishedAt ?? now) - job.startedAt)}${ANSI_RESET}`;
 }
 
+function widgetTrackElapsed(track: PanelTrackViewModel, job: PanelJobViewModel, now: number): string {
+  if (track.startedAt === undefined) return "";
+  return ` ${PANEL_DIM_COLOR}${formatElapsedDuration((track.finishedAt ?? job.finishedAt ?? now) - track.startedAt)}${ANSI_RESET}`;
+}
+
 function activeBreathingIcon(frame: number, color?: string): string {
   const cycleFrame = ((frame % BREATHING_CYCLE_FRAMES) + BREATHING_CYCLE_FRAMES) % BREATHING_CYCLE_FRAMES;
   const eased = (Math.sin((cycleFrame / BREATHING_CYCLE_FRAMES) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
-  const icon = eased >= 0.5 ? "●" : "○";
-  return color ? `${color}${icon}${ANSI_RESET}` : icon;
+  const rgb = color ? parseAnsiRgbColor(color) : undefined;
+  if (!rgb) return color ? `${color}●${ANSI_RESET}` : "●";
+  const [r, g, b] = rgb;
+  const boost = 0.1 + eased * 0.45;
+  const cr = Math.min(255, Math.round(r + (255 - r) * boost));
+  const cg = Math.min(255, Math.round(g + (255 - g) * boost));
+  const cb = Math.min(255, Math.round(b + (255 - b) * boost));
+  return `\x1b[38;2;${cr};${cg};${cb}m●${ANSI_RESET}`;
+}
+
+function parseAnsiRgbColor(color: string): [number, number, number] | undefined {
+  const match = ANSI_RGB_COLOR_RE.exec(color);
+  if (!match) return undefined;
+  const rgb = match.slice(1).map((part) => Number.parseInt(part, 10));
+  if (rgb.length !== 3 || rgb.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return undefined;
+  return [rgb[0]!, rgb[1]!, rgb[2]!];
 }
 
 function formatTokenEstimate(tokenCount: number): string {
