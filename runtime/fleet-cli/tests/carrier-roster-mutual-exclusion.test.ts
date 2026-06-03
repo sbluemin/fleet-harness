@@ -28,7 +28,6 @@ import {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
-  SUBAGENT_PRESENTATION_BG_ANSI,
 } from "../src/styles/carriers.js";
 import type { FleetPtyTheme } from "../src/controls/index.js";
 import type { CarrierStatusRenderDeps } from "../src/mission-control/carrier-roster/renderer.js";
@@ -193,15 +192,16 @@ describe("carrier roster renderer SA/TF colors", () => {
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
   });
 
-  it("keeps SA color priority over TF roster color for legacy SA plus TF state", () => {
+  it("suppresses TF roster presentation for legacy SA plus TF state", () => {
     const entry = buildRosterEntry({ subagentMode: true, taskForceBackendCount: 2 });
 
     const rendered = renderRosterEntry(entry);
 
-    expect(rendered).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
+    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
     expect(rendered).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
-    expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
+    expect(rendered).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
     expect(rendered).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
+    expect(rendered).not.toContain("[TF:2]");
   });
 
   it("marks carrier row with signature bg and keeps Carrier Actions marker-only", () => {
@@ -354,7 +354,7 @@ describe("carrier roster renderer SA/TF colors", () => {
     expectMarkerOnly(findRenderedLine(modelRendered, "▸"));
   });
 
-  it("renders selected carrier rows with signature bg and marker", () => {
+  it("renders selected SA carrier rows with provider bg and marker", () => {
     const entry = buildRosterEntry({
       effort: "low",
       role: "Captain",
@@ -372,9 +372,9 @@ describe("carrier roster renderer SA/TF colors", () => {
     const selectedLine = findRenderedLine(rendered, "Ohio");
 
     expect(selectedLine).toContain("[SA]");
-    expect(selectedLine).toContain("[TF:2]");
+    expect(selectedLine).not.toContain("[TF:2]");
     expect(stripAnsi(selectedLine)).toContain("▸ #1");
-    expect(selectedLine).toContain(SUBAGENT_PRESENTATION_BG_ANSI);
+    expect(selectedLine).toContain(PROVIDER_BG_ANSI_COLORS.claude);
     expect(selectedLine).not.toContain(SELECTED_BG_ANSI);
   });
 

@@ -9,7 +9,6 @@ import { TASKFORCE_BADGE_COLOR } from "../../mission-bridge/job-bar/constants.js
 import {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
-  SUBAGENT_PRESENTATION_BG_ANSI,
   SUBAGENT_PRESENTATION_ANSI,
 } from "../../styles/carriers.js";
 import { centerText } from "../welcome.js";
@@ -414,7 +413,7 @@ function isWarningFeedback(message: string): boolean {
 }
 
 function getEntryColor(entry: CarrierStatusEntry): string {
-  if (entry.subagentMode) return getSubagentSignatureColor();
+  if (entry.subagentMode) return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
   if (entry.taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
   return PROVIDER_ANSI_COLORS[entry.cliType] ?? "";
 }
@@ -424,7 +423,7 @@ function getEntryBgColor(cliType: CarrierCliType): string | undefined {
 }
 
 function getEntryBgColorForEntry(entry: CarrierStatusEntry): string | undefined {
-  return entry.subagentMode ? getSubagentSignatureBgColor() : getEntryBgColor(entry.cliType);
+  return getEntryBgColor(entry.cliType);
 }
 
 function getCliEntryColor(cliType: CarrierCliType): string {
@@ -437,10 +436,6 @@ function getCliDisplayName(cliType: string): string {
 
 function getSubagentSignatureColor(): string {
   return SUBAGENT_PRESENTATION_ANSI;
-}
-
-function getSubagentSignatureBgColor(): string | undefined {
-  return SUBAGENT_PRESENTATION_BG_ANSI;
 }
 
 function getFooterHint(model: CarrierStatusRenderModel): string {
@@ -471,7 +466,7 @@ function renderEntryLine(entry: CarrierStatusEntry, isSelected: boolean, deps: C
   const effortSupported = deps.getModelEffortLevels(entry.cliType, entry.model).length > 0;
   const effortStr = effortSupported && entry.effort ? `${dim(" · ")}${entry.effort}` : "";
   const roleStr = entry.role ? dim(`  (${entry.role})`) : "";
-  const taskForceTag = entry.taskForceBackendCount >= 2
+  const taskForceTag = !entry.subagentMode && entry.taskForceBackendCount >= 2
     ? `  ${TASKFORCE_BADGE_COLOR}[TF:${entry.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   // subagentMode일 때 [SA] 뱃지만 표시 (pending '*' 마커 제거)

@@ -48,5 +48,5 @@ When the same phase or step calls multiple Captain-led Carriers, invoke them in 
 - Splitting a parallel launch into sequential calls.
 - Sortieing a planning carrier for single-carrier work.
 - Falling back to direct work when delegation is appropriate.
-- Using carrier_dispatch for a Carrier that is available via the native subagent path.`,
+- Treating native subagent availability as exclusive; prefer the native path, but carrier_dispatch remains allowed when operationally useful.`,
 };

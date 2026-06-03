@@ -228,7 +228,7 @@ describe("job bar renderer", () => {
     expect(sections.map(desiredHeight)).toEqual([1, 0]);
   });
 
-  it("renders subagent-mode carriers with the neutral subagent signature color in the Fleet PTY strip", () => {
+  it("renders subagent-mode carrier names with provider color and keeps the SA badge magenta", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-subagent-"));
     initStore(tempDir);
     setCarrierAgentMode("ohio", true);
@@ -236,7 +236,9 @@ describe("job bar renderer", () => {
 
     const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
 
-    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
+    expect(line).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
+    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
+    expect(line).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
   });
 
   it("renders Task Force carrier strip, detail header, and job label in TF blue while preserving backend row colors", () => {
@@ -270,8 +272,10 @@ describe("job bar renderer", () => {
 
     const line = createJobBarSections(state)[0]!.component.render(200).join("\n");
 
-    expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
+    expect(line).toContain(`${PROVIDER_ANSI_COLORS.claude}Ohio`);
     expect(line).toContain(`${SUBAGENT_PRESENTATION_ANSI}[SA]`);
+    expect(line).not.toContain(`${SUBAGENT_PRESENTATION_ANSI}Ohio`);
+    expect(line).not.toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
     expect(line).not.toContain("[TF:2]");
   });
 

@@ -215,15 +215,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
       }
 
       const metadata = config.carrierMetadata;
-
-      if (isCarrierAgentModeSubagent(carrierId, config.defaultAgentMode)) {
-        const displayName = resolveCarrierDisplayName(registry, carrierId);
-        return launchResponseResult({
-          job_id: jobId,
-          accepted: false,
-          error: `Carrier "${carrierId}" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "${displayName}".`,
-        });
-      }
+      const isNativeSubagentMode = isCarrierAgentModeSubagent(carrierId, config.defaultAgentMode);
 
       // 필수 request-block 검증
       if (metadata) {
@@ -237,7 +229,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
         }
       }
 
-      if (getConfiguredTaskForceBackends(carrierId).length >= 2) {
+      if (!isNativeSubagentMode && getConfiguredTaskForceBackends(carrierId).length >= 2) {
         return launchTaskForceJob({
           registry,
           carrierId,

@@ -7,7 +7,7 @@
 - Default carrier persona metadata under `src/personas/`
 - Carrier runtime constants under `src/constants.ts`
 - Carrier runtime construction through `createCarrierRuntime(deps)`
-- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, native-subagent-mode rejection, request-block validation, status overlay, and sortie helpers
+- `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, native-subagent-mode single-dispatch guard, request-block validation, status overlay, and sortie helpers
 - `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
 - `subagents/` — Claude-family and Codex subagent definition conversion derived from carrier metadata
 - `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots, plus Codex subagent role file I/O under `codex-subagent-files.ts`; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/fleet-infra/fs-store`'s `withDirectoryLock`; persona `defaultAgentMode` defaults to `"subagent"` for all built-in carriers, and the store treats `"cli"` as the system-wide fallback when absent

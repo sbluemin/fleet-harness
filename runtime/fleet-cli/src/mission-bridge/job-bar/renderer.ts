@@ -13,7 +13,6 @@ import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../control
 import {
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
-  SUBAGENT_PRESENTATION_RGB,
 } from "../../styles/carriers.js";
 
 import {
@@ -439,7 +438,7 @@ function resolveCarrierPresentationColor(
   subagentModes: Record<string, "subagent">,
   taskForceBackendCount: number,
 ): string {
-  if (subagentModes[carrierId] === "subagent") return SUBAGENT_PRESENTATION_ANSI;
+  if (subagentModes[carrierId] === "subagent") return resolveCarrierColor(carrierRuntime.registry, carrierId);
   if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_COLOR;
   return resolveCarrierColor(carrierRuntime.registry, carrierId);
 }
@@ -450,9 +449,7 @@ function resolveCarrierPresentationRgb(
   subagentModes: Record<string, "subagent">,
   taskForceBackendCount: number,
 ): [number, number, number] {
-  if (subagentModes[carrierId] === "subagent") {
-    return [...SUBAGENT_PRESENTATION_RGB];
-  }
+  if (subagentModes[carrierId] === "subagent") return resolveCarrierRgb(carrierRuntime.registry, carrierId);
   if (taskForceBackendCount >= 2) return TASKFORCE_BADGE_RGB;
   return resolveCarrierRgb(carrierRuntime.registry, carrierId);
 }

@@ -207,7 +207,7 @@ describe("carrier_dispatch effort resolution", () => {
   });
 });
 
-describe("carrier_dispatch native subagent mode rejection", () => {
+describe("carrier_dispatch native subagent mode delegation", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-subagent-mode-"));
     initStore(tempDir);
@@ -226,7 +226,7 @@ describe("carrier_dispatch native subagent mode rejection", () => {
     tempDir = null;
   });
 
-  it("rejects a carrier in native subagent mode with direct invocation guidance", async () => {
+  it("accepts a carrier in native subagent mode as a single dispatch", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     setCarrierAgentMode("ohio", true);
@@ -234,8 +234,8 @@ describe("carrier_dispatch native subagent mode rejection", () => {
     const tool = buildCarrierDispatchToolSpec(registry);
     const result = await tool.execute({
       carrier_id: "ohio",
-      label: "Check subagent guard",
-      request: "Verify dispatch rejection.",
+      label: "Check subagent dispatch",
+      request: "Verify dispatch acceptance.",
     }, {
       cwd: "/tmp",
       toolCallId: "dispatch-subagent-mode",
@@ -243,22 +243,64 @@ describe("carrier_dispatch native subagent mode rejection", () => {
 
     expect(result.details).toEqual({
       job_id: "carrier:dispatch-subagent-mode",
+      accepted: true,
+    });
+    expect(result.isError).toBe(false);
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+    }));
+  });
+
+  it("rejects a subagent-mode carrier with missing required request blocks before launch", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      carrierMetadata: {
+        category: "operations",
+        outputFormat: "Report results.",
+        permissions: [],
+        requestBlocks: [
+          { tag: "objective", hint: "Goal", required: true },
+        ],
+        summary: "Runs focused implementation work.",
+        title: "Captain · Chief Engineer",
+        whenNotToUse: [],
+        whenToUse: ["implementation"],
+      },
+    });
+    setCarrierAgentMode("ohio", true);
+
+    const tool = buildCarrierDispatchToolSpec(registry);
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check request block guard",
+      request: "Verify malformed dispatch rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-subagent-missing-block",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-subagent-missing-block",
       accepted: false,
-      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+      error: `Missing required request block(s) for carrier "ohio": <objective> (missing closing tag). Include the required tag(s) in the request and resubmit.`,
     });
     expect(result.isError).toBe(true);
     expect(executeWithPool).not.toHaveBeenCalled();
   });
 
-  it("rejects a carrier whose persona default agentMode is native subagent", async () => {
+  it("accepts a carrier whose persona default agentMode is native subagent", async () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, { ...createConfig("ohio", "Ohio"), defaultAgentMode: "subagent" });
 
     const tool = buildCarrierDispatchToolSpec(registry);
     const result = await tool.execute({
       carrier_id: "ohio",
-      label: "Check default subagent guard",
-      request: "Verify dispatch rejection.",
+      label: "Check default subagent dispatch",
+      request: "Verify dispatch acceptance.",
     }, {
       cwd: "/tmp",
       toolCallId: "dispatch-default-subagent-mode",
@@ -266,14 +308,18 @@ describe("carrier_dispatch native subagent mode rejection", () => {
 
     expect(result.details).toEqual({
       job_id: "carrier:dispatch-default-subagent-mode",
-      accepted: false,
-      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+      accepted: true,
     });
-    expect(result.isError).toBe(true);
-    expect(executeWithPool).not.toHaveBeenCalled();
+    expect(result.isError).toBe(false);
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+    }));
   });
 
-  it("rejects a subagent-mode carrier before Task Force auto-promotion", async () => {
+  it("skips Task Force auto-promotion for a subagent-mode carrier", async () => {
     writeStates({
       carriers: {
         ohio: {
@@ -297,8 +343,8 @@ describe("carrier_dispatch native subagent mode rejection", () => {
     const tool = buildCarrierDispatchToolSpec(registry);
     const result = await tool.execute({
       carrier_id: "ohio",
-      label: "Check Task Force guard order",
-      request: "Verify dispatch rejection.",
+      label: "Check Task Force skip",
+      request: "Verify single dispatch.",
     }, {
       cwd: "/tmp",
       toolCallId: "dispatch-subagent-taskforce",
@@ -306,11 +352,15 @@ describe("carrier_dispatch native subagent mode rejection", () => {
 
     expect(result.details).toEqual({
       job_id: "carrier:dispatch-subagent-taskforce",
-      accepted: false,
-      error: `Carrier "ohio" is in native subagent mode and is unreachable via carrier_dispatch. Invoke it directly as the native subagent "Ohio".`,
+      accepted: true,
     });
-    expect(result.isError).toBe(true);
-    expect(executeWithPool).not.toHaveBeenCalled();
+    expect(result.isError).toBe(false);
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+    }));
   });
 });
 

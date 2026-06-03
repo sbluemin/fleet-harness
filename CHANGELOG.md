@@ -8,6 +8,10 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - [unified-agent] Cursor Agent provider now supports the Claude Opus 4.8 (thinking) model.
 
+### Changed
+- [core] Native(SubAgent) mode carriers are now eligible for carrier_dispatch in addition to their native CLI path, while remaining mutually exclusive with Task Force.
+- [core] Carrier Roster and Job Bar rows for Native(SubAgent) carriers now render in their respective CLI signature color instead of a dedicated SA color, while preserving the [SA] badge.
+
 ### Fixed
 - [core] Carrier Roster and other Mission Control panels now keep the focused item visible when the terminal height is reduced; selected rows that would be clipped are scrolled into view automatically.
 
