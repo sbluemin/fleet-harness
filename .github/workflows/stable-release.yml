@@ -5,13 +5,17 @@ on:
     branches:
       - main
     # 비배포 경로만 변경된 푸시는 릴리스를 트리거하지 않는다.
-    # (문서/플랜/CI 설정/루트 마크다운 — npm 산출물에 영향 없음)
+    # (문서/플랜/CI·에이전트 설정/마크다운 — npm 산출물에 영향 없음)
     # GitHub Pages 발행과 npm 발행을 분리하기 위한 필터.
+    # '**.md'는 루트를 포함한 모든 깊이의 마크다운을 매칭한다('**/*.md'는 루트 누락).
     paths-ignore:
       - 'docs/**'
       - '.fleet/**'
       - '.github/**'
-      - '*.md'
+      - '.claude/**'
+      - '.agents/**'
+      - '.codex/**'
+      - '**.md'
 
 concurrency:
   group: stable-release-main
