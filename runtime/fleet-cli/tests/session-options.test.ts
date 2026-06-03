@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { GlobalOptionsData } from "@dotobokuri/fleet-infra/global-options";
 import { parseAgentCliId } from "../src/agent-cli/registry.js";
 import { parseFleetCliOptions } from "../src/cli-args.js";
 import { resolveSessionOptions } from "../src/mission-control/options/resolver.js";
@@ -8,106 +9,67 @@ import type { SessionOptions } from "../src/mission-control/options/types.js";
 
 const DEFAULTS: SessionOptions = {
   cliId: "claude",
-  cursorSync: true,
   enableMetaphor: false,
   native: false,
   replaceSystemPrompt: true,
 };
+const EMPTY_GLOBAL_OPTIONS = {
+  version: 1 as const,
+};
 
 describe("session options resolver", () => {
-  it("resolves cli-arg, env, preset, and defaults in priority order", () => {
+  it("resolves env, global options, and defaults in priority order", () => {
     const resolved = resolveSessionOptions({
-      argv: parseFleetCliOptions(["--disable-cursor-sync"], {}),
+      argv: parseFleetCliOptions([], {}),
       cliIdOverride: "codex",
       defaults: DEFAULTS,
       env: {
         FLEET_AGENT_CLI: "claude-kimi",
-        FLEET_CURSOR_SYNC: "1",
         FLEET_ENABLE_METAPHOR: "1",
         FLEET_NATIVE: "1",
         FLEET_REPLACE_SYSTEM_PROMPT: "0",
       },
-      parseCliId: parseAgentCliId,
-      preset: {
+      globalOptions: {
         version: 1,
-        defaultCliId: "claude-kimi",
-        byCli: {
-          codex: {
-            cursorSync: true,
-            enableMetaphor: false,
-            model: "preset-model",
-            native: false,
-            replaceSystemPrompt: true,
-          },
-        },
+        native: false,
+        replaceSystemPrompt: true,
+        enableMetaphor: false,
       },
+      parseCliId: parseAgentCliId,
     });
 
     expect(resolved.values).toEqual({
       cliId: "codex",
-      cursorSync: false,
       enableMetaphor: true,
-      model: "preset-model",
       native: true,
       replaceSystemPrompt: false,
     });
     expect(resolved.sources).toEqual({
       cliId: "arg",
-      cursorSync: "arg",
       enableMetaphor: "env",
-      model: "preset",
+      model: "default",
       native: "env",
       replaceSystemPrompt: "env",
     });
   });
 
-  it("uses env above preset and preset above defaults", () => {
+  it("uses env CLI above the code default and ignores global options for CLI selection", () => {
     const resolved = resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
-      env: { FLEET_AGENT_CLI: "claude-kimi", FLEET_CURSOR_SYNC: "0" },
-      parseCliId: parseAgentCliId,
-      preset: {
+      env: { FLEET_AGENT_CLI: "claude-kimi" },
+      globalOptions: {
         version: 1,
-        defaultCliId: "codex",
-        byCli: {
-          "claude-kimi": {
-            enableMetaphor: true,
-            model: "preset-model",
-            native: true,
-            replaceSystemPrompt: true,
-          },
-        },
+        native: true,
+        replaceSystemPrompt: true,
+        enableMetaphor: true,
       },
-    });
-
-    expect(resolved.values).toEqual({
-      cliId: "claude-kimi",
-      cursorSync: false,
-      enableMetaphor: true,
-      model: "preset-model",
-      native: true,
-      replaceSystemPrompt: true,
-    });
-    expect(resolved.sources).toMatchObject({
-      cliId: "env",
-      cursorSync: "env",
-      enableMetaphor: "preset",
-      model: "preset",
-    });
-  });
-
-  it("ignores invalid preset default CLI IDs", () => {
-    const presetResolved = resolveSessionOptions({
-      argv: parseFleetCliOptions([], {}),
-      defaults: DEFAULTS,
-      env: {},
       parseCliId: parseAgentCliId,
-      preset: { version: 1, defaultCliId: "evil", byCli: {} },
     });
 
-    expect(presetResolved.values.cliId).toBe("claude");
-    expect(presetResolved.sources.cliId).toBe("default");
+    expect(resolved.values.cliId).toBe("claude-kimi");
+    expect(resolved.sources.cliId).toBe("env");
+    expect(resolved.sources.native).toBe("global-options");
   });
 
   it("rejects invalid env CLI IDs", () => {
@@ -115,8 +77,8 @@ describe("session options resolver", () => {
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: { FLEET_AGENT_CLI: "evil" },
+      globalOptions: EMPTY_GLOBAL_OPTIONS,
       parseCliId: parseAgentCliId,
-      preset: { version: 1, byCli: {} },
     })).toThrow('Unsupported agent CLI "evil"');
   });
 
@@ -126,71 +88,67 @@ describe("session options resolver", () => {
     resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
-      env: { FLEET_CURSOR_SYNC: "0" },
+      env: { FLEET_NATIVE: "1" },
+      globalOptions: EMPTY_GLOBAL_OPTIONS,
       parseCliId: parseAgentCliId,
-      preset: { version: 1, byCli: {} },
     });
 
     expect(process.env).toEqual(before);
   });
+
+  it("keeps runtime defaults for fresh empty global options", () => {
+    const resolved = resolveSessionOptions({
+      argv: parseFleetCliOptions([], {}),
+      defaults: DEFAULTS,
+      env: {},
+      globalOptions: EMPTY_GLOBAL_OPTIONS,
+      parseCliId: parseAgentCliId,
+    });
+
+    expect(resolved.values.replaceSystemPrompt).toBe(true);
+    expect(resolved.sources.replaceSystemPrompt).toBe("default");
+  });
 });
 
 describe("session options runtime", () => {
-  it("saves only when S promotion path calls saveDraft", async () => {
+  it("persists boolean toggles as field-merged global options without persisting model", async () => {
     const calls: unknown[] = [];
     const runtime = createSessionOptionsRuntime({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: {},
-      parseCliId: parseAgentCliId,
-      presetService: {
-        load: () => ({ version: 1, byCli: {} }),
-        resolveCliPreset: () => ({}),
-        resetCliPreset: () => ({ version: 1, byCli: {} }),
-        saveCliPreset: () => ({ version: 1, byCli: {} }),
-        saveDefaultCliId: () => ({ version: 1, byCli: {} }),
-        update: (mutation) => {
-          calls.push(mutation);
-          return {
-            version: 1,
-            defaultCliId: "claude",
-            byCli: { claude: { model: "draft-model", cursorSync: true, enableMetaphor: false, native: false, replaceSystemPrompt: false } },
-          };
+      globalOptionsService: {
+        load: () => EMPTY_GLOBAL_OPTIONS,
+        save: (data) => {
+          calls.push(data);
+          return data;
+        },
+        update: (mutate) => {
+          const next = mutate(EMPTY_GLOBAL_OPTIONS);
+          calls.push(next);
+          return next;
         },
       },
+      parseCliId: parseAgentCliId,
     });
 
     runtime.setModel("draft-model");
-    expect(calls).toEqual([]);
-    await runtime.saveDraft();
+    runtime.toggleNative();
+    await Promise.resolve();
 
     expect(calls).toEqual([{
-      defaultCliId: "claude",
-      cliId: "claude",
-      values: {
-        cursorSync: true,
-        enableMetaphor: false,
-        model: "draft-model",
-        native: false,
-        replaceSystemPrompt: true,
-      },
+      version: 1,
+      native: true,
     }]);
   });
 
-  it("marks draft edits as session source before save", () => {
+  it("marks draft edits as session source before save completes", () => {
     const runtime = createSessionOptionsRuntime({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: {},
+      globalOptionsService: createMemoryGlobalOptionsService(),
       parseCliId: parseAgentCliId,
-      presetService: {
-        load: () => ({ version: 1, byCli: {} }),
-        resolveCliPreset: () => ({}),
-        resetCliPreset: () => ({ version: 1, byCli: {} }),
-        saveCliPreset: () => ({ version: 1, byCli: {} }),
-        saveDefaultCliId: () => ({ version: 1, byCli: {} }),
-        update: () => ({ version: 1, byCli: {} }),
-      },
     });
 
     runtime.toggleEnableMetaphor();
@@ -206,83 +164,95 @@ describe("session options runtime", () => {
     });
   });
 
-  it("re-seeds fields from the selected CLI preset while preserving session edits", () => {
+  it("re-seeds CLI from the selected session row while preserving session model", () => {
     const runtime = createSessionOptionsRuntime({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: {},
+      globalOptionsService: createMemoryGlobalOptionsService(),
       parseCliId: parseAgentCliId,
-      presetService: {
-        load: () => ({
-          version: 1,
-          defaultCliId: "claude",
-          byCli: {
-            claude: {
-              model: "opus",
-              native: false,
-              replaceSystemPrompt: true,
-            },
-            codex: {
-              cursorSync: false,
-              model: "gpt-5.4",
-              native: true,
-              replaceSystemPrompt: false,
-            },
-          },
-        }),
-        resolveCliPreset: () => ({}),
-        resetCliPreset: () => ({ version: 1, byCli: {} }),
-        saveCliPreset: () => ({ version: 1, byCli: {} }),
-        saveDefaultCliId: () => ({ version: 1, byCli: {} }),
-        update: () => ({ version: 1, byCli: {} }),
-      },
     });
 
-    expect(runtime.getResolved().values).toMatchObject({
-      cliId: "claude",
-      model: "opus",
-      native: false,
-      replaceSystemPrompt: true,
-    });
-
-    runtime.setModel("session-model");
+    runtime.setModel("gpt-5.4");
     runtime.selectCli("codex");
 
-    expect(runtime.getResolved().values).toMatchObject({
+    expect(runtime.getDraft()).toMatchObject({
       cliId: "codex",
-      cursorSync: false,
-      model: "session-model",
-      native: true,
-      replaceSystemPrompt: false,
+      model: "gpt-5.4",
     });
-    expect(runtime.getResolved().sources).toMatchObject({
-      cliId: "session",
-      cursorSync: "preset",
-      model: "session",
-      native: "preset",
-      replaceSystemPrompt: "preset",
-    });
+    expect(runtime.getResolved().sources.cliId).toBe("session");
   });
 
-  it("R reset clears transient override view", () => {
+  it("keeps the latest rapid toggle snapshot", async () => {
+    const calls: unknown[] = [];
     const runtime = createSessionOptionsRuntime({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
       env: {},
-      parseCliId: parseAgentCliId,
-      presetService: {
-        load: () => ({ version: 1, defaultCliId: "claude", byCli: { claude: { model: "preset-model" } } }),
-        resolveCliPreset: () => ({}),
-        resetCliPreset: () => ({ version: 1, byCli: {} }),
-        saveCliPreset: () => ({ version: 1, byCli: {} }),
-        saveDefaultCliId: () => ({ version: 1, byCli: {} }),
-        update: () => ({ version: 1, byCli: {} }),
+      globalOptionsService: {
+        load: () => EMPTY_GLOBAL_OPTIONS,
+        save: (data) => {
+          calls.push(data);
+          return data;
+        },
+        update: (mutate) => {
+          const current = (calls.at(-1) as GlobalOptionsData | undefined) ?? EMPTY_GLOBAL_OPTIONS;
+          const next = mutate(current);
+          calls.push(next);
+          return next;
+        },
       },
+      parseCliId: parseAgentCliId,
     });
 
-    runtime.setModel("session-model");
-    expect(runtime.getResolved().values).toMatchObject({ model: "session-model" });
-    runtime.resetOverrides();
-    expect(runtime.getResolved().values).toMatchObject({ cliId: "claude", model: "preset-model" });
+    runtime.toggleNative();
+    runtime.toggleEnableMetaphor();
+    await Promise.resolve();
+
+    expect(calls.at(-1)).toEqual({
+      version: 1,
+      native: true,
+      enableMetaphor: true,
+    });
+  });
+
+  it("surfaces save failures without rolling back optimistic state", async () => {
+    const runtime = createSessionOptionsRuntime({
+      argv: parseFleetCliOptions([], {}),
+      defaults: DEFAULTS,
+      env: {},
+      globalOptionsService: {
+        load: () => EMPTY_GLOBAL_OPTIONS,
+        save: () => {
+          throw new Error("disk full");
+        },
+        update: () => {
+          throw new Error("disk full");
+        },
+      },
+      parseCliId: parseAgentCliId,
+    });
+
+    runtime.toggleNative();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(runtime.getDraft().native).toBe(true);
+    expect(runtime.getStatusLines()).toEqual(["Save failed: disk full"]);
   });
 });
+
+function createMemoryGlobalOptionsService() {
+  let data: GlobalOptionsData = EMPTY_GLOBAL_OPTIONS;
+  return {
+    load: () => data,
+    save: (next: GlobalOptionsData) => {
+      data = next;
+      return data;
+    },
+    update: (mutate: (current: GlobalOptionsData) => GlobalOptionsData) => {
+      data = mutate(data);
+      return data;
+    },
+  };
+}

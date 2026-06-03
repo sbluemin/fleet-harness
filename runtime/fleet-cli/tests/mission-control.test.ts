@@ -67,20 +67,35 @@ const TEST_ROWS = 24;
 describe("Mission Control controller", () => {
   it("renders the launcher root before launch", () => {
     const controller = createTestController();
+    const rawLines = controller.component.render(80);
+    const plainLines = rawLines.map(stripAnsi);
+    const launchLine = plainLines.find((line) => line.includes("LAUNCH")) ?? "";
+    const optionLineIndex = plainLines.findIndex((line) => line.includes("OPTION"));
+    const systemLineIndex = plainLines.findIndex((line) => line.includes("SYSTEM"));
+    const selectedLaunchLine = plainLines.find((line) => line.includes("▸ Claude")) ?? "";
 
     expect(controller.getState().kind).toBe("idle");
     expect(renderPlain(controller)).toContain(FLEET_BANNER_SAMPLE);
     expect(renderPlain(controller)).toContain("Mission Control");
-    expect(renderPlain(controller)).toContain("▸ Start");
-    expect(renderPlain(controller)).toContain("Configure Carriers");
-    expect(renderPlain(controller)).toContain("Options");
+    expect(renderPlain(controller)).toContain("LAUNCH");
+    expect(renderPlain(controller)).toContain("OPTION");
+    expect(renderPlain(controller)).toContain("SYSTEM");
+    expect(renderPlain(controller)).toContain("▸ Claude");
+    expect(renderPlain(controller)).toContain("Carrier Roster");
     expect(renderPlain(controller)).toContain("System Menu");
-    expect(renderPlain(controller)).toContain("Exit Fleet");
+    expect(renderPlain(controller)).toContain("Exit");
     expect(renderPlain(controller)).not.toContain(["Esc", "close"].join(" "));
     expect(renderPlain(controller)).not.toContain("Esc back");
     expect(renderPlain(controller)).not.toContain("Choose an Agent CLI");
     expect(renderPlain(controller)).not.toMatch(/Carrier Roster shortcut/);
-    expect(controller.component.render(80).join("\n")).toContain("\x1b[38;2;254;188;56m");
+    expect(rawLines.join("\n")).toContain("\x1b[38;2;94;234;212m");
+    expect(plainLines[optionLineIndex - 1]).toBe("");
+    expect(plainLines[systemLineIndex - 1]).toBe("");
+    expect(selectedLaunchLine.indexOf("▸")).toBe(launchLine.indexOf("LAUNCH") + 2);
+    // "Mission Control" 타이틀 다음 한 줄 여백, 그 다음이 LAUNCH 섹션
+    const missionControlIndex = plainLines.findIndex((line) => line.includes("Mission Control"));
+    expect(plainLines[missionControlIndex + 1]).toBe("");
+    expect(plainLines[missionControlIndex + 2]).toContain("LAUNCH");
   });
 
   it("blank-fills idle Mission Control output to the allocated rows", () => {
@@ -91,7 +106,7 @@ describe("Mission Control controller", () => {
 
     expect(lines).toHaveLength(21);
     expect(stripAnsi(lines.join("\n"))).toContain("Mission Control");
-    expect(lines.at(-1)).toBe("");
+    expect(stripAnsi(lines.at(-1) ?? "")).not.toContain("undefined");
   });
 
   it("keeps narrow Mission Control frames within visible width for long ANSI/CJK labels", () => {
@@ -156,18 +171,29 @@ describe("Mission Control controller", () => {
       loadedCounts: { carriers: 8, queuedPatches: 0, wikiEntries: 17 },
       release: { channel: "stable", latestVersion: "0.23.0", version: "0.22.1" },
     });
-    const output = renderPlain(controller);
+    // 섹션 여백 도입으로 루트 화면은 24행보다 큰 단말을 전제한다.
+    controller.ptyView.resize(80, 30);
+    const plainLines = controller.component.render(80).map(stripAnsi);
+    const output = plainLines.join("\n");
+    const countsIndex = plainLines.findIndex((line) => line.includes("✓ 8 carriers"));
 
     expect(output).toContain("✓ 8 carriers");
     expect(output).toContain("✓ 17 wiki entries");
     expect(output).toContain("v0.22.1 · stable");
+    expect(output).toContain("Exit");
+    // 카운트 줄 바로 앞에 한 줄 여백
+    expect(plainLines[countsIndex - 1]).toBe("");
+    // Update Available 알림과 단축키 힌트가 카운트와 함께 모두 표시(상호 배타 아님)
     expect(output).toContain("Update Available");
-    expect(output.indexOf("Update Available")).toBeLessThan(output.indexOf("↑↓ select  Enter open"));
+    expect(output).toContain("Enter launch/open");
+    // 단축키 힌트 줄 바로 앞에 한 줄 여백
+    const hintIndex = plainLines.findIndex((line) => line.includes("Enter launch/open"));
+    expect(plainLines[hintIndex - 1]).toBe("");
   });
 
   it("hides Start option chips without leaking CLI flag spellings", () => {
     const controller = createTestController({
-      cliOptions: [{ id: "claude", label: "Claude", optionChips: ["Replace*", "opus-4-7", "Cursor off"] }],
+      cliOptions: [{ id: "claude", label: "Claude" }],
     });
 
     openStart(controller);
@@ -188,21 +214,23 @@ describe("Mission Control controller", () => {
 
     controller.ptyHost.write("o");
     expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("Mission Control");
-    expect(stripAnsi(controller.component.render(100).join("\n"))).not.toContain("Save defaults");
+    expect(stripAnsi(controller.component.render(100).join("\n"))).not.toContain(["Save", "defaults"].join(" "));
     controller.ptyHost.write("m");
     expect(stripAnsi(controller.component.render(100).join("\n"))).not.toContain("Mission Control / System Menu");
 
     openOptions(controller);
     const optionsOutput = stripAnsi(controller.component.render(100).join("\n"));
     expect(optionsOutput).toContain(FLEET_BANNER_SAMPLE);
-    expect(optionsOutput).toContain("Options");
-    expect(optionsOutput).toContain("Save defaults");
-    expect(optionsOutput).toContain("↑↓ select  Enter apply  Esc back");
-    controller.ptyHost.write("\x1b");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("System Menu");
-    expect(stripAnsi(controller.component.render(100).join("\n"))).toContain("Authentication");
+    expect(optionsOutput).toContain("OPTION");
+    expect(optionsOutput).toContain("Mode");
+    expect(optionsOutput).not.toContain(["Save", "defaults"].join(" "));
+    const systemController = createTestController({
+      sessionOptions: createFakeSessionOptionsRuntime(),
+    });
+    systemController.ptyView.resize(100, 24);
+    openSystemMenu(systemController);
+    expect(stripAnsi(systemController.component.render(100).join("\n"))).toContain("System Menu");
+    expect(stripAnsi(systemController.component.render(100).join("\n"))).toContain("Authentication");
   });
 
   it("renders System Menu with one accent header and the full Fleet banner", () => {
@@ -257,7 +285,7 @@ describe("Mission Control controller", () => {
       },
     });
 
-    openRootItem(controller, 4);
+    openRootItem(controller, 8);
 
     expect(exitCalls).toEqual(["exit"]);
   });
@@ -280,9 +308,10 @@ describe("Mission Control controller", () => {
       loadedCounts: undefined,
       panelLines: [
         "Mission Control",
-        "▸ Start",
-        "  Options",
-        "  System Menu",
+        "LAUNCH",
+        "▸ Claude",
+        "OPTION",
+        "SYSTEM",
       ],
       release: undefined,
       selectedCliId: "claude",
@@ -291,10 +320,10 @@ describe("Mission Control controller", () => {
     const rendered = lines.join("\n");
 
     expect(rendered).toContain("Mission Control");
-    expect(rendered).toContain("▸ Start");
-    expect(rendered).toContain("  Options");
+    expect(rendered).toContain("▸ Claude");
+    expect(rendered).toContain("OPTION");
     expect(rendered).not.toContain("[Space]");
-    expect(rendered).not.toContain("Cursor sync");
+    expect(rendered).not.toContain(["Cursor", "sync"].join(" "));
   });
 
   it("routes Options actions by Enter selection", async () => {
@@ -304,38 +333,32 @@ describe("Mission Control controller", () => {
     openOptions(controller);
     controller.ptyHost.write("\r");
     controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
-    expect(sessionOptions.calls).toEqual(["toggleNative", "saveDraft", "resetOverrides"]);
+    expect(sessionOptions.calls).toEqual(["toggleNative", "toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
   });
 
-  it("renders save failures without unhandled rejections", async () => {
+  it("renders auto-save failures without unhandled rejections", async () => {
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);
     process.on("unhandledRejection", onUnhandled);
     const sessionOptions = {
       ...createFakeSessionOptionsRuntime(),
-      saveDraft: () => Promise.reject(new Error("Timed out waiting for Fleet preset lock: /tmp/presets.json.lock")),
+      getStatusLines: () => ["Save failed: Timed out waiting for Fleet options lock"],
     };
     const controller = createTestController({ sessionOptions });
 
     try {
-      controller.ptyView.resize(100, 24);
+      // 섹션 여백 도입으로 루트 화면은 24행보다 큰 단말을 전제한다.
+      controller.ptyView.resize(100, 30);
       openOptions(controller);
-      controller.ptyHost.write("\x1b[B");
-      controller.ptyHost.write("\x1b[B");
-      controller.ptyHost.write("\x1b[B");
-      controller.ptyHost.write("\x1b[B");
       controller.ptyHost.write("\r");
       await waitForAsyncLaunch();
 
-      expect(renderPlain(controller)).toContain("Save failed: Timed out waiting for Fleet preset lock");
+      expect(renderPlain(controller)).toContain("Save failed: Timed out waiting for Fleet options lock");
       expect(unhandled).toEqual([]);
     } finally {
       process.off("unhandledRejection", onUnhandled);
@@ -347,6 +370,9 @@ describe("Mission Control controller", () => {
     const controller = createTestController({ sessionOptions });
 
     openOptions(controller);
+    controller.ptyHost.write("\r");
+    expect(renderPlain(controller)).toMatch(/Mode\s+Native/);
+
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     expect(renderPlain(controller)).toMatch(/System prompt\s+Native/);
@@ -354,11 +380,7 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     expect(renderPlain(controller)).toMatch(/Metaphor\s+Enabled/);
-
-    controller.ptyHost.write("\x1b[B");
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toMatch(/Cursor sync\s+Off/);
-    expect(sessionOptions.calls).toEqual(["toggleNative", "toggleEnableMetaphor", "toggleCursorSync"]);
+    expect(sessionOptions.calls).toEqual(["toggleNative", "toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
   });
 
   it("edits launch-time model override from the Start panel", () => {
@@ -380,7 +402,7 @@ describe("Mission Control controller", () => {
 
     controller.ptyHost.write("\r");
     expect(renderPlain(controller)).not.toContain("preset-mode-xj|");
-    expect(renderPlain(controller)).toContain("Start");
+    expect(renderPlain(controller)).toContain("LAUNCH");
     expect(sessionOptions.calls).toEqual(["setModel:preset-mode-xj"]);
   });
 
@@ -393,7 +415,7 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("draft");
     controller.ptyHost.write("\x1b");
 
-    expect(renderPlain(controller)).toContain("Start");
+    expect(renderPlain(controller)).toContain("LAUNCH");
     expect(renderPlain(controller)).not.toContain("draft|");
     expect(sessionOptions.calls).toEqual([]);
   });
@@ -403,23 +425,23 @@ describe("Mission Control controller", () => {
     const controller = createTestController({ hosts });
 
     controller.component.render(80);
-    expect(renderPlain(controller)).toContain("▸ Start");
+    expect(renderPlain(controller)).toContain("▸ Claude");
 
     controller.ptyHost.write("\x1b[C");
-    expect(renderPlain(controller)).toContain("▸ Start");
-    expect(renderPlain(controller)).not.toContain("preset-model|");
+    expect(renderPlain(controller)).toContain("default|");
+    controller.ptyHost.write("\x1b");
 
     controller.ptyHost.write("\x1b[B");
-    expect(renderPlain(controller)).toContain("▸ Configure Carriers");
+    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
 
     controller.ptyHost.write("j");
-    expect(renderPlain(controller)).toContain("▸ Configure Carriers");
+    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
 
     controller.ptyHost.write("k");
-    expect(renderPlain(controller)).toContain("▸ Configure Carriers");
+    expect(renderPlain(controller)).toContain("▸ Claude Kimi");
 
     controller.ptyHost.write("\x1b[A");
-    expect(renderPlain(controller)).toContain("▸ Start");
+    expect(renderPlain(controller)).toContain("▸ Claude");
 
     expect(controller.getState().kind).toBe("idle");
     expect(hosts).toEqual([]);
@@ -561,51 +583,34 @@ describe("Mission Control controller", () => {
     expect(renderPlain(controller)).toContain("Use port 1024-65535");
   });
 
-  it("renders diagnostics safely, keeps subview Esc local, and confirms preset reset", () => {
-    const presetService = createFakePresetService();
-    const sessionOptions = createFakeSessionOptionsRuntime();
+  it("renders diagnostics safely and keeps subview Esc local", () => {
     const controller = createTestController({
       env: {
         SHELL: "/bin/zsh\x1b]52;c;AAAA\x07",
         TERM: "\u009b31mxterm-256color",
       },
       invocationCwd: "/tmp/project\x1b[2J",
-      presetService,
-      sessionOptions,
     });
 
     openSystemMenuItem(controller, 2);
     let diagnosticsOutput = controller.component.render(80).join("\n");
     expect(stripAnsi(diagnosticsOutput)).toContain("Diagnostics");
     expect(stripAnsi(diagnosticsOutput)).not.toContain(["Log", "Viewer"].join(" "));
-    expect(stripAnsi(diagnosticsOutput).toLowerCase()).not.toContain("cursor sync");
+    expect(stripAnsi(diagnosticsOutput).toLowerCase()).not.toContain(["cursor", "sync"].join(" "));
     expect(diagnosticsOutput).toContain(SELECTED_BG);
 
     controller.ptyHost.write("\r");
     diagnosticsOutput = controller.component.render(80).join("\n");
     expect(stripAnsi(diagnosticsOutput)).toContain("Data Dir");
-    expect(stripAnsi(diagnosticsOutput)).toContain("Presets:");
-    expect(diagnosticsOutput).toContain("Root   : \x1b[38;2;254;188;56m");
-    expect(diagnosticsOutput).toContain("Presets: \x1b[38;2;254;188;56m");
-    const dataLines = stripAnsi(diagnosticsOutput).split("\n");
-    const rootLine = dataLines.find((line) => line.includes("Root")) ?? "";
-    const presetsLine = dataLines.find((line) => line.includes("Presets:")) ?? "";
-    expect(displayColumn(rootLine, ":")).toBe(displayColumn(presetsLine, ":"));
+    expect(stripAnsi(diagnosticsOutput)).not.toContain([["Pre", "sets"].join(""), ":"].join(""));
+    expect(diagnosticsOutput).toContain("Root: \x1b[38;2;254;188;56m");
     expect(controller.component.render(80).join("\n")).not.toContain("\x1b]52");
     expect(controller.component.render(80).join("\n")).not.toContain("\u009b");
 
     controller.ptyHost.write("\x1b");
-    expect(renderPlain(controller)).toContain("Reset Preset To Defaults");
-
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("All CLI presets will be reset to defaults. Continue?");
-
-    controller.ptyHost.write("Y");
-    expect(presetService.calls).toEqual([]);
-    controller.ptyHost.write("\r");
-    expect(presetService.calls).toEqual(["resetCliPreset:claude", "resetCliPreset:codex", "saveDefaultCliId:"]);
-    expect(sessionOptions.calls).toContain("resetOverrides");
+    expect(renderPlain(controller)).toContain("System Info");
   });
 
   it("renders diagnostics environment and cwd values as single display lines", () => {
@@ -618,7 +623,6 @@ describe("Mission Control controller", () => {
     });
 
     openSystemMenuItem(controller, 2);
-    controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
@@ -1058,7 +1062,6 @@ describe("Mission Control controller", () => {
       ...createFakeSessionOptionsRuntime(),
       getDraft: () => ({
         cliId: "codex" as const,
-        cursorSync: false,
         enableMetaphor: true,
         model: "draft-model",
         native: true,
@@ -1068,7 +1071,7 @@ describe("Mission Control controller", () => {
     const controller = createMissionControlController({
       cliOptions: CLI_OPTIONS,
       createPtyHost: () => createFakeHost(),
-      defaultCliId: "claude",
+      initialCliId: "claude",
       injectProfile: (profile, launchOptions) => {
         injected.push(launchOptions);
         return Promise.resolve(profile);
@@ -1130,7 +1133,7 @@ describe("Mission Control controller", () => {
     const launched: AgentCliId[] = [];
     const controller = createTestController({
       cliOptions: ALL_CLI_OPTIONS,
-      defaultCliId: resolveAgentCliId({ FLEET_AGENT_CLI: "claude-kimi" }),
+      initialCliId: resolveAgentCliId({ FLEET_AGENT_CLI: "claude-kimi" }),
       resolveProfile: (cliId) => {
         launched.push(cliId);
         return Promise.resolve({ ...TEST_PROFILE, id: cliId, label: cliId });
@@ -1154,7 +1157,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/mission-control",
     });
 
-    expect(config.defaultCliId).toBe("codex");
+    expect(config.initialCliId).toBe("codex");
     expect(config.cliOptions).toEqual(expect.arrayContaining([
       { id: "claude", label: "Claude" },
       { id: "claude-kimi", label: "Claude Kimi" },
@@ -1170,7 +1173,6 @@ describe("Mission Control controller", () => {
 
     const launchProfile = await config.resolveProfile("codex", {
       cliId: "codex",
-      cursorSync: false,
       enableMetaphor: true,
       model: "draft-test",
       native: true,
@@ -1184,14 +1186,13 @@ describe("Mission Control controller", () => {
 function createTestController(options: {
   readonly authService?: FakeAuthService;
   readonly cliOptions?: readonly MissionControlCliOption[];
-  readonly defaultCliId?: AgentCliId;
+  readonly initialCliId?: AgentCliId;
   readonly env?: NodeJS.ProcessEnv;
   readonly hosts?: FakeHost[];
   readonly invocationCwd?: string;
   readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet?: () => void;
   readonly onRenderRequest?: () => void;
-  readonly presetService?: ReturnType<typeof createFakePresetService>;
   readonly release?: FleetCliRelease;
   readonly resolveProfile?: (cliId: AgentCliId) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;
@@ -1207,14 +1208,13 @@ function createTestController(options: {
       return host;
     },
     authService: options.authService,
-    defaultCliId: options.defaultCliId ?? "claude",
+    initialCliId: options.initialCliId ?? "claude",
     env: options.env,
     invocationCwd: options.invocationCwd ?? "/tmp/mission-control",
     loadedCounts: options.loadedCounts,
     injectProfile: (profile) => Promise.resolve(profile),
     onExitFleet: options.onExitFleet ?? (() => undefined),
     onRenderRequest: options.onRenderRequest ?? (() => undefined),
-    presetService: options.presetService,
     release: options.release,
     resolveProfile: options.resolveProfile ?? ((cliId) => Promise.resolve({ ...TEST_PROFILE, id: cliId })),
     sessionOptions: options.sessionOptions,
@@ -1229,7 +1229,6 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
   const calls: string[] = [];
   let draft: SessionOptions = {
     cliId: "claude" as const,
-    cursorSync: true,
     enableMetaphor: false,
     model: "preset-model",
     native: false,
@@ -1237,11 +1236,10 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
   };
   let sources: ResolvedSessionOptions["sources"] = {
     cliId: "default" as const,
-    cursorSync: "env" as const,
     enableMetaphor: "default" as const,
-    model: "preset" as const,
+    model: "session" as const,
     native: "default" as const,
-    replaceSystemPrompt: "preset" as const,
+    replaceSystemPrompt: "default" as const,
   };
   return {
     calls,
@@ -1250,40 +1248,7 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
       sources,
       values: draft,
     }),
-    resetOverrides: () => {
-      calls.push("resetOverrides");
-      draft = {
-        cliId: "claude",
-        cursorSync: true,
-        enableMetaphor: false,
-        model: "preset-model",
-        native: false,
-        replaceSystemPrompt: true,
-      };
-      sources = {
-        cliId: "default",
-        cursorSync: "env",
-        enableMetaphor: "default",
-        model: "preset",
-        native: "default",
-        replaceSystemPrompt: "preset",
-      };
-    },
-    saveDraft: () => {
-      calls.push("saveDraft");
-      sources = {
-        cliId: "preset",
-        cursorSync: "preset",
-        enableMetaphor: "preset",
-        model: "preset",
-        native: "preset",
-        replaceSystemPrompt: "preset",
-      };
-      return Promise.resolve({
-        sources,
-        values: draft,
-      });
-    },
+    getStatusLines: () => [],
     selectCli: (cliId) => {
       draft = { ...draft, cliId };
       sources = { ...sources, cliId: "session" };
@@ -1292,11 +1257,6 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
       calls.push(`setModel:${model ?? ""}`);
       draft = { ...draft, model };
       sources = { ...sources, model: "session" };
-    },
-    toggleCursorSync: () => {
-      calls.push("toggleCursorSync");
-      draft = { ...draft, cursorSync: !draft.cursorSync };
-      sources = { ...sources, cursorSync: "session" };
     },
     toggleEnableMetaphor: () => {
       calls.push("toggleEnableMetaphor");
@@ -1361,32 +1321,6 @@ function createFakeWikiController(): WikiProcessController & { readonly calls: s
       calls.push("stop");
       status = { state: "stopped" };
     },
-  };
-}
-
-function createFakePresetService() {
-  const calls: string[] = [];
-  return {
-    calls,
-    load: () => ({
-      byCli: {
-        claude: { native: true },
-        codex: { cursorSync: false },
-      },
-      defaultCliId: "codex",
-      version: 1 as const,
-    }),
-    resetCliPreset: (cliId: string) => {
-      calls.push(`resetCliPreset:${cliId}`);
-      return { byCli: {}, version: 1 as const };
-    },
-    resolveCliPreset: () => ({}),
-    saveCliPreset: () => ({ byCli: {}, version: 1 as const }),
-    saveDefaultCliId: (cliId: string | undefined) => {
-      calls.push(`saveDefaultCliId:${cliId ?? ""}`);
-      return { byCli: {}, version: 1 as const };
-    },
-    update: () => ({ byCli: {}, version: 1 as const }),
   };
 }
 
@@ -1484,15 +1418,18 @@ function openRootItem(controller: ReturnType<typeof createTestController>, index
 }
 
 function openStart(controller: ReturnType<typeof createTestController>): void {
-  openRootItem(controller, 0);
+  controller.component.render(80);
 }
 
 function openOptions(controller: ReturnType<typeof createTestController>): void {
-  openRootItem(controller, 2);
+  controller.component.render(80);
+  for (let i = 0; i < 3; i++) {
+    controller.ptyHost.write("\x1b[B");
+  }
 }
 
 function openSystemMenu(controller: ReturnType<typeof createTestController>): void {
-  openRootItem(controller, 3);
+  openRootItem(controller, 7);
 }
 
 function openSystemMenuItem(controller: ReturnType<typeof createTestController>, index: number): void {

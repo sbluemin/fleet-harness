@@ -32,7 +32,7 @@ import { createWikiProcessController } from "./mission-control/menu/wiki-panel.j
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createMissionBridgeController } from "./mission-bridge/controller.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
-import type { ResolvedSessionOptions, SessionOptions } from "./mission-control/options/types.js";
+import type { SessionOptions } from "./mission-control/options/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
 import { checkForUpdate } from "./update/check.js";
 
@@ -42,7 +42,7 @@ export interface RunAppOptions {
 }
 
 type FleetHostKeybindingHandlers = Record<string, () => void>;
-type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "cliOptions" | "defaultCliId" | "resolveProfile">;
+type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "cliOptions" | "initialCliId" | "resolveProfile">;
 
 export interface CreateMissionControlProfileConfigOptions {
   readonly env: NodeJS.ProcessEnv;
@@ -63,7 +63,7 @@ export function createMissionControlProfileConfig(
 ): MissionControlProfileConfig {
   return {
     cliOptions: getAgentCliMetadata(),
-    defaultCliId: resolveAgentCliId(options.env),
+    initialCliId: resolveAgentCliId(options.env),
     resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
       resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: launchOptions?.model }),
   };
@@ -78,14 +78,17 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     argv: argvOptions,
     defaults: {
       cliId: getDefaultAgentCliId(),
-      cursorSync: true,
       enableMetaphor: false,
       native: false,
       replaceSystemPrompt: true,
     },
     env: process.env,
+    globalOptionsService: runtime.infraServices.globalOptionsService,
+    onStatusChange: () => {
+      ptyManager?.requestResize("programmatic");
+      scheduleRender();
+    },
     parseCliId: parseAgentCliId,
-    presetService: runtime.infraServices.presetService,
   });
   const initialSessionOptions = sessionOptionsRuntime.getResolved().values;
   const cliId = initialSessionOptions.cliId;
@@ -104,7 +107,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     env: process.env,
     invocationCwd,
   });
-  const optionChips = createMissionControlOptionChips(sessionOptionsRuntime.getResolved());
   // Composition root에서 실제 Fleet Wiki daemon helper를 쓰는 기본 컨트롤러를 고정한다.
   const wikiController = createWikiProcessController({
     cwd: invocationCwd,
@@ -116,11 +118,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const release = readFleetCliRelease();
   const missionControl = createMissionControlController({
     ...missionControlProfileConfig,
-    defaultCliId: cliId,
-    cliOptions: missionControlProfileConfig.cliOptions.map((entry) => ({
-      ...entry,
-      optionChips: entry.id === cliId ? optionChips : [],
-    })),
+    initialCliId: cliId,
+    cliOptions: missionControlProfileConfig.cliOptions,
     authService: runtime.infraServices.authService,
     carrierRuntime: runtime.carrierRuntime,
     createPtyHost: (profile) => createPtyHost({ profile }),
@@ -143,7 +142,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     },
     env: process.env,
     invocationCwd,
-    presetService: runtime.infraServices.presetService,
     release,
     sessionOptions: sessionOptionsRuntime,
     wikiController,
@@ -274,7 +272,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     writeDedicated: (data) => missionControl.ptyHost.write(data),
   });
   syncCursorPolicy = createCursorPolicySync({
-    cursorSync: true,
+    cursorSync: argvOptions.cursorSync,
     cursorSyncExplicitlyEnabled: argvOptions.cursorSyncExplicitlyEnabled,
     fleetPty: missionBridge.ptyApi,
     getActiveAgentProfileId: () => missionControl.getActiveProfile()?.id,
@@ -284,14 +282,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     ptyView: missionControl.ptyView,
     ui,
   });
-  const staticCursorPolicySync = syncCursorPolicy;
-  syncCursorPolicy = () => {
-    if (!sessionOptionsRuntime.getDraft().cursorSync) {
-      ui.setCursorAnchorTarget(undefined);
-      return;
-    }
-    staticCursorPolicySync();
-  };
 
   ui.setChildren([missionControl.component, missionBridge.component]);
   syncCursorPolicy();
@@ -311,18 +301,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   ui.start();
   process.stdout.write(KITTY_ENABLE);
   disposeInputStream = attachInputStream(ui);
-}
-
-function createMissionControlOptionChips(resolved: ResolvedSessionOptions): string[] {
-  const { sources, values } = resolved;
-  const star = (source: string) => source === "arg" ? "*" : "";
-  return [
-    values.native ? `Native${star(sources.native)}` : `Fleet prompt${star(sources.native)}`,
-    values.replaceSystemPrompt ? `Replace${star(sources.replaceSystemPrompt)}` : `Append${star(sources.replaceSystemPrompt)}`,
-    values.enableMetaphor ? `Metaphor${star(sources.enableMetaphor)}` : undefined,
-    values.model ? values.model : undefined,
-    values.cursorSync ? undefined : `Cursor off${star(sources.cursorSync)}`,
-  ].filter((chip): chip is string => chip !== undefined);
 }
 
 function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {

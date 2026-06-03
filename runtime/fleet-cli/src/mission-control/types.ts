@@ -1,6 +1,5 @@
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
-import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
@@ -14,7 +13,6 @@ export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" 
 export interface MissionControlCliOption {
   readonly id: AgentCliId;
   readonly label: string;
-  readonly optionChips?: readonly string[];
 }
 
 export type { FleetCliRelease, MissionControlCounts };
@@ -68,14 +66,13 @@ export interface CreateMissionControlControllerOptions {
   readonly carrierRuntime?: CarrierRuntime;
   readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
   readonly createPtyView?: (cols: number, rows: number) => PtyView;
-  readonly defaultCliId: AgentCliId;
+  readonly initialCliId: AgentCliId;
   readonly env?: NodeJS.ProcessEnv;
   readonly injectProfile: (profile: AgentCliProfile, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
   readonly invocationCwd?: string;
   readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet: () => void;
   readonly onRenderRequest: () => void;
-  readonly presetService?: PresetService;
   readonly release?: FleetCliRelease;
   readonly resolveProfile: (cliId: AgentCliId, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;

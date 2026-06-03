@@ -9,10 +9,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Job Bar backend rows now display per-backend elapsed execution time inline, using actual backend start and finish timestamps when available.
 
 ### Changed
+- [core] Mission Control now uses a flat LAUNCH/OPTION/SYSTEM root with automatic global option persistence.
+- [core] Mission Control now ignores legacy `presets.json`; operators may delete stale preset files manually after the global options rollout.
 - [core] Unified menu and information row alignment across all Mission Control panels using shared block-level layout primitives; key:value rows are now colon-aligned within each group.
 - [core] Job Bar token estimates now animate with a smooth frame-by-frame count-up instead of jumping to the final value.
 - [core] Job Bar carrier strip tiles no longer render a per-backend progress indicator; activity is conveyed by the job-level status icon alone.
 - [core] The active-job `●` indicator in the Job Bar now pulses with a sine-wave color shift instead of a static glyph.
+
+### Breaking Changes
+- [core] Fleet preset storage and the preset public API were removed in favor of global options.
 
 ## [1.1.3] - 2026-06-03
 

@@ -3,12 +3,12 @@ import { auth } from "./auth/index.js";
 import { createAuthService, DEFAULT_AUTH_PATH } from "./auth/auth-storage.js";
 import { dataDir } from "./data-dir/index.js";
 import * as fsStore from "./fs-store/index.js";
-import * as preset from "./preset/index.js";
+import * as globalOptions from "./global-options/index.js";
 import {
   executorPortRuntime,
   type ExecutorPortRuntime,
 } from "./agent/index.js";
-import { createPresetService, type PresetService } from "./preset/index.js";
+import { createGlobalOptionsService, type GlobalOptionsService } from "./global-options/index.js";
 import type { AuthService } from "./auth/types.js";
 
 export interface InfraServices {
@@ -17,9 +17,9 @@ export interface InfraServices {
   authService: AuthService;
   dataDir: typeof dataDir;
   fsStore: typeof fsStore;
-  preset: typeof preset;
+  globalOptions: typeof globalOptions;
   executorPortRuntime: ExecutorPortRuntime;
-  presetService: PresetService;
+  globalOptionsService: GlobalOptionsService;
 }
 
 export interface InfraServicesDeps {
@@ -30,18 +30,18 @@ export * from "./agent/index.js";
 export * from "./auth/index.js";
 export * from "./data-dir/index.js";
 export * from "./fs-store/index.js";
-export * from "./preset/index.js";
+export * from "./global-options/index.js";
 
 export const infra = {
   agent,
   auth,
   dataDir,
   fsStore,
-  preset,
+  globalOptions,
 };
 
 export function createInfraServices(deps: InfraServicesDeps = {}): InfraServices {
-  const presetService = createPresetService();
+  const globalOptionsService = createGlobalOptionsService();
   const authService = createAuthService({ authPath: deps.authPath ?? DEFAULT_AUTH_PATH });
 
   return {
@@ -50,8 +50,8 @@ export function createInfraServices(deps: InfraServicesDeps = {}): InfraServices
     authService,
     dataDir,
     fsStore,
-    preset,
+    globalOptions,
     executorPortRuntime,
-    presetService,
+    globalOptionsService,
   };
 }

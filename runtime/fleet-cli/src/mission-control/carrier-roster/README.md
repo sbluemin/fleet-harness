@@ -2,7 +2,7 @@
 
 Mission Control-owned carrier configuration panel.
 
-Carrier Roster opens from `Mission Control -> Configure Carriers`. Browse mode uses row selection only: `↑↓`, `Enter`, and `Esc`.
+Carrier Roster opens from `Mission Control -> SYSTEM -> Carrier Roster`. Browse mode uses row selection only: `↑↓`, `Enter`, and `Esc`.
 
 ## Workflow
 

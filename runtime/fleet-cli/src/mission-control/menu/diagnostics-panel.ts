@@ -1,7 +1,5 @@
 import * as os from "node:os";
-import * as path from "node:path";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
-import type { PresetService } from "@dotobokuri/fleet-infra/preset";
 
 import { renderChoiceBlock, renderKeyValueBlock, type ChoiceBlockRow, type KeyValueBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../renderer.js";
@@ -12,15 +10,13 @@ import { isDown, isEnter, isEscape, isUp, renderBreadcrumbs, type MenuPanel, typ
 export interface DiagnosticsPanelDeps {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
-  readonly onPresetReset?: () => void;
   readonly onRenderRequest: () => void;
-  readonly presetService?: PresetService;
   readonly stack: PanelStack;
 }
 
 type DiagnosticsView = "root" | "data" | "system";
 
-const ROOT_ROWS = ["Data Dir", "Reset Preset To Defaults", "System Info"] as const;
+const ROOT_ROWS = ["Data Dir", "System Info"] as const;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const LINE_BREAK_CHARS = /[\r\n]+/g;
 
@@ -28,7 +24,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
   let selected = 0;
   let view: DiagnosticsView = "root";
   let scroll = 0;
-  let message = "";
 
   return {
     id: "fleet-menu:diagnostics",
@@ -71,7 +66,7 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       if (view === "system") {
         return renderSystemInfo(width);
       }
-      const lines = [
+      return [
         "",
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Diagnostics"), width),
@@ -80,10 +75,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
         "",
         centerText(MISSION_CONTROL_THEME.dim("Enter open  Esc back"), width),
       ];
-      if (message.length > 0) {
-        lines.push(centerText(message, width));
-      }
-      return lines;
     },
   };
 
@@ -97,31 +88,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       view = "system";
       return;
     }
-    deps.stack.push(createActionListPanel({
-      id: "diagnostics:reset-preset",
-      title: "Reset Preset To Defaults",
-      statusLines: () => [MISSION_CONTROL_THEME.warning("All CLI presets will be reset to defaults. Continue?")],
-      onBack: () => {
-        deps.stack.pop();
-      },
-      actions: [
-        {
-          id: "confirm",
-          label: "Confirm",
-          run: () => {
-            resetPresets();
-            deps.stack.pop();
-          },
-        },
-        {
-          id: "cancel",
-          label: "Cancel",
-          run: () => {
-            deps.stack.pop();
-          },
-        },
-      ],
-    }));
   }
 
 
@@ -130,7 +96,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
     const cleanDataDir = sanitizeTerminalText(dataDir);
     const rows = [
       { key: "Root", value: MISSION_CONTROL_THEME.accent(cleanDataDir) },
-      { key: "Presets", value: MISSION_CONTROL_THEME.accent(sanitizeTerminalText(path.join(dataDir, "presets.json"))) },
     ];
     return [
       "",
@@ -160,18 +125,6 @@ export function createDiagnosticsPanel(deps: DiagnosticsPanelDeps): MenuPanel {
       "",
       centerText(MISSION_CONTROL_THEME.dim("Esc back"), width),
     ];
-  }
-
-  function resetPresets(): void {
-    const preset = deps.presetService?.load();
-    if (preset !== undefined) {
-      for (const cliId of Object.keys(preset.byCli)) {
-        deps.presetService?.resetCliPreset(cliId);
-      }
-      deps.presetService?.saveDefaultCliId(undefined);
-    }
-    deps.onPresetReset?.();
-    message = MISSION_CONTROL_THEME.success("Preset defaults restored.");
   }
 
 }
