@@ -21,7 +21,7 @@ import { getCliModels } from "@dotobokuri/fleet-infra/agent";
 
 import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
 import { CarrierStatusOverlay } from "../src/mission-control/carrier-roster/panel.js";
-import { renderCarrierStatusOverlay } from "../src/mission-control/carrier-roster/renderer.js";
+import { getCarrierStatusFocusLine, renderCarrierStatusOverlay } from "../src/mission-control/carrier-roster/renderer.js";
 import { RosterTaskForcePanelSurface } from "../src/mission-control/carrier-roster/taskforce-panel.js";
 import { MISSION_CONTROL_THEME } from "../src/mission-control/renderer.js";
 import {
@@ -284,6 +284,55 @@ describe("carrier roster renderer SA/TF colors", () => {
     expectMarkerOnly(findRenderedLine(batchRendered, "Claude"));
   });
 
+  it("reports batch target focus on the rendered choice row after the FROM row", () => {
+    const entry = buildRosterEntry();
+    const state = {
+      choices: [{ carrierCount: 1, cliType: "codex" as const, label: "Codex" }],
+      cursor: 0,
+      fromCli: "claude" as const,
+      kind: "batchTo" as const,
+    };
+    const deps = {
+      ...buildRosterRenderDeps(),
+      getBatchCliChoices: () => [{ carrierCount: 1, cliType: "claude" as const, label: "Claude" }],
+    };
+    const model = buildRosterRenderModel([entry], {
+      expandedCarrierId: null,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state,
+    });
+    const lines = renderCarrierStatusOverlay(140, model, deps).map(stripAnsi);
+    const focusLine = getCarrierStatusFocusLine(140, model, deps);
+
+    expect(lines[focusLine ?? -1]).toContain("▸");
+    expect(lines[focusLine ?? -1]).toContain("○ Codex");
+    expect(lines[(focusLine ?? 0) - 1]).toContain("FROM: Claude");
+  });
+
+  it("reports carrier action focus after the actual wrapped detail rows", () => {
+    const entry = buildRosterEntry({
+      role: "long-role",
+      roleDescription: "This role description is intentionally long enough to wrap across several rendered detail rows when the roster is narrow.",
+    });
+    const state = { cursor: 5, kind: "carrierActions" as const };
+    const deps = buildRosterRenderDeps();
+    const model = buildRosterRenderModel([entry], {
+      expandedCarrierId: entry.carrierId,
+      renameState: null,
+      selectedCarrierId: entry.carrierId,
+      state,
+    });
+    const lines = renderCarrierStatusOverlay(60, model, deps).map(stripAnsi);
+    const focusLine = getCarrierStatusFocusLine(60, model, deps);
+    const descLine = lines.findIndex((line) => line.includes("desc"));
+    const actionTitleLine = lines.findIndex((line) => line.includes("Carrier Actions"));
+
+    expect(actionTitleLine - descLine).toBeGreaterThan(3);
+    expect(lines[focusLine ?? -1]).toContain("▸");
+    expect(lines[focusLine ?? -1]).toContain("Toggle Details");
+  });
+
   it("keeps selected TaskForce rows marker-only without full selected bg", () => {
     const runtime = createTestCarrierRuntime();
     const surface = new RosterTaskForcePanelSurface({
@@ -418,7 +467,19 @@ function renderRosterEntries(
     readonly width?: number;
   },
 ): string {
-  return renderCarrierStatusOverlay(options.width ?? 140, {
+  return renderCarrierStatusOverlay(options.width ?? 140, buildRosterRenderModel(entries, options), buildRosterRenderDeps(options.theme)).join("\n");
+}
+
+function buildRosterRenderModel(
+  entries: readonly CarrierStatusEntry[],
+  options: {
+    readonly expandedCarrierId: string | null;
+    readonly renameState: { readonly carrierId: string; readonly draft: string } | null;
+    readonly selectedCarrierId: string;
+    readonly state: Parameters<typeof renderCarrierStatusOverlay>[1]["state"];
+  },
+): Parameters<typeof renderCarrierStatusOverlay>[1] {
+  return {
     expandedCarrierId: options.expandedCarrierId,
     feedbackMessage: null,
     renameState: options.renameState,
@@ -432,7 +493,7 @@ function renderRosterEntries(
       }],
       selectedCarrierId: options.selectedCarrierId,
     },
-  }, buildRosterRenderDeps(options.theme)).join("\n");
+  };
 }
 
 function openToggleNativeAction(overlay: CarrierStatusOverlay): void {

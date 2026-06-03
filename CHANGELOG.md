@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+- [core] Carrier Roster and other Mission Control panels now keep the focused item visible when the terminal height is reduced; selected rows that would be clipped are scrolled into view automatically.
+
 ## [1.1.1] - 2026-06-02
 
 ### Changed

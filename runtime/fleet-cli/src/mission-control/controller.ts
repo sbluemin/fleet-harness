@@ -28,6 +28,10 @@ interface ActivePty {
   readonly view: PtyView;
 }
 
+interface FocusAwareComponent extends Component {
+  getFocusLine?(width: number): number | undefined;
+}
+
 interface StartPanelOptions {
   readonly cliOptions: readonly MissionControlCliOption[];
   readonly launchSelected: () => Promise<void>;
@@ -115,16 +119,18 @@ export function createMissionControlController(options: CreateMissionControlCont
         openLauncherRoot();
       }
       if (activePanel !== undefined) {
-        return fitMissionControlRows(renderMissionControl(width, {
+        const panelLines = activePanel.component.render(width);
+        const rendered = renderMissionControl(width, {
           bannerPhase: getBannerPhase(),
           cliOptions,
           lastExit,
           loadedCounts: options.loadedCounts,
-          panelLines: activePanel.component.render(width),
+          panelLines,
           release,
           selectedCliId,
           state,
-        }), rows);
+        });
+        return fitMissionControlRows(rendered, rows, getMissionControlPanelFocusLine(activePanel.component, width, rendered, panelLines));
       }
       return fitMissionControlRows(renderMissionControl(width, {
         bannerPhase: getBannerPhase(),
@@ -139,7 +145,6 @@ export function createMissionControlController(options: CreateMissionControlCont
     resize(nextCols: number, nextRows: number): void {
       cols = nextCols;
       rows = nextRows;
-      activePanel?.component.desiredHeight?.(nextRows);
       active?.view.resize(nextCols, nextRows);
     },
     scrollLines(delta: number): boolean {
@@ -472,6 +477,10 @@ function createStartPanel(options: StartPanelOptions): MenuPanel {
       }
       return false;
     },
+    getFocusLine(): number | undefined {
+      selected = clampIndex(selected, options.cliOptions.length);
+      return options.cliOptions.length === 0 ? undefined : 4 + selected;
+    },
     render({ width }): readonly string[] {
       selected = clampIndex(selected, options.cliOptions.length);
       return [
@@ -744,10 +753,11 @@ function normalizeRenderedRows(lines: readonly string[], rows: number): string[]
   return normalized;
 }
 
-function fitMissionControlRows(lines: readonly string[], rows: number): string[] {
+function fitMissionControlRows(lines: readonly string[], rows: number, focusLine?: number): string[] {
   const targetRows = Math.max(0, Math.floor(rows));
   if (lines.length >= targetRows) {
-    return lines.slice(0, targetRows);
+    const start = getFitStartLine(lines.length, targetRows, focusLine);
+    return lines.slice(start, start + targetRows);
   }
   const topPadding = Math.floor((targetRows - lines.length) / 2);
   const normalized = [
@@ -758,6 +768,25 @@ function fitMissionControlRows(lines: readonly string[], rows: number): string[]
     normalized.push("");
   }
   return normalized;
+}
+
+function getFitStartLine(totalRows: number, targetRows: number, focusLine: number | undefined): number {
+  if (targetRows <= 0 || focusLine === undefined || !Number.isFinite(focusLine)) return 0;
+  const normalizedFocusLine = Math.max(0, Math.min(totalRows - 1, Math.floor(focusLine)));
+  const maxStart = Math.max(0, totalRows - targetRows);
+  if (normalizedFocusLine < targetRows) return 0;
+  return Math.min(maxStart, normalizedFocusLine - targetRows + 1);
+}
+
+function getMissionControlPanelFocusLine(
+  component: Component,
+  width: number,
+  rendered: readonly string[],
+  panelLines: readonly string[],
+): number | undefined {
+  const panelFocusLine = (component as FocusAwareComponent).getFocusLine?.(width);
+  if (panelFocusLine === undefined) return undefined;
+  return rendered.length - panelLines.length + panelFocusLine;
 }
 
 function formatSaveError(error: unknown): string {

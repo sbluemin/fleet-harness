@@ -34,6 +34,7 @@ import { handleCarrierStatusOverlayInput } from "./input.js";
 import {
   clampCarrierStatusOverlayRows,
   estimateCarrierStatusRows,
+  getCarrierStatusFocusLine,
   renderCarrierStatusOverlay,
 } from "./renderer.js";
 import type { CarrierStatusOverlayOptions, EntrySnapshot, RenameState } from "./render-types.js";
@@ -120,6 +121,10 @@ export class CarrierStatusOverlay implements Component, Focusable {
 
   render(width: number): string[] {
     return renderCarrierStatusOverlay(width, this.getRenderModel(), this.getRenderDeps());
+  }
+
+  getFocusLine(width: number): number | undefined {
+    return getCarrierStatusFocusLine(width, this.getRenderModel(), this.getRenderDeps());
   }
 
   private getEntries(): CarrierStatusEntry[] {

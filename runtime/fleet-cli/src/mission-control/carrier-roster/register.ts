@@ -41,6 +41,9 @@ export function createCarrierRosterPanel(options: CreateCarrierRosterPanelOption
       component.handleInput(data);
       return true;
     },
+    getFocusLine({ width }): number | undefined {
+      return component.getFocusLine?.(width);
+    },
     render({ width }): readonly string[] {
       return component.render(width);
     },

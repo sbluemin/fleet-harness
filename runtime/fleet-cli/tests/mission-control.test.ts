@@ -22,6 +22,7 @@ interface FakeHost extends PtyHost {
 interface FakePanel extends Component {
   readonly inputs: string[];
   readonly invalidations: { count: number };
+  getFocusLine?(width: number): number | undefined;
 }
 
 interface FakeAuthService {
@@ -881,6 +882,29 @@ describe("Mission Control controller", () => {
     const lines = controller.component.render(80);
 
     expect(lines).toHaveLength(3);
+    expect(stripAnsi(lines.join("\n"))).toContain(FLEET_BANNER_SAMPLE);
+    expect(stripAnsi(lines.join("\n"))).not.toContain("row 5");
+  });
+
+  it("keeps an oversized Mission Control panel focus line visible", () => {
+    const controller = createTestController();
+    const panel = createFakePanel("Custom Panel", [
+      "Custom Panel",
+      "row 1",
+      "row 2",
+      "row 3",
+      "row 4",
+      "row 5",
+      "row 6",
+      "selected row",
+    ], 7);
+
+    controller.ptyView.resize(80, 4);
+    controller.openPanel({ component: panel, id: "custom-panel" });
+    const plainOutput = stripAnsi(controller.component.render(80).join("\n"));
+
+    expect(plainOutput).toContain("selected row");
+    expect(plainOutput).not.toContain("Custom Panel");
   });
 
   it("routes programmatic child reminders directly to the child PTY while a panel is active", async () => {
@@ -1356,10 +1380,11 @@ function createFakePresetService() {
   };
 }
 
-function createFakePanel(label: string, renderedLines: readonly string[] = [label]): FakePanel {
+function createFakePanel(label: string, renderedLines: readonly string[] = [label], focusLine?: number): FakePanel {
   const inputs: string[] = [];
   const invalidations = { count: 0 };
   return {
+    ...(focusLine === undefined ? {} : { getFocusLine: () => focusLine }),
     inputs,
     invalidations,
     handleInput(data: string): void {

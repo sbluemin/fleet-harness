@@ -47,6 +47,12 @@ export function createActionListPanel(options: ActionListPanelOptions): MenuPane
       }
       return false;
     },
+    getFocusLine({ width }): number | undefined {
+      const actions = resolveActions(options.actions);
+      selected = clampSelected(selected, actions.length);
+      if (actions.length === 0) return undefined;
+      return getActionFocusLine(width, options, selected);
+    },
     render({ width }): readonly string[] {
       const actions = resolveActions(options.actions);
       selected = clampSelected(selected, actions.length);
@@ -68,6 +74,15 @@ export function createActionListPanel(options: ActionListPanelOptions): MenuPane
       ];
     },
   };
+}
+
+function getActionFocusLine(width: number, options: ActionListPanelOptions, selected: number): number {
+  const breadcrumbs = options.breadcrumbs?.() ?? [];
+  const breadcrumbLines = breadcrumbs.length <= 1 ? [] : [
+    "",
+    centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(breadcrumbs)), width),
+  ];
+  return breadcrumbLines.length + 2 + selected;
 }
 
 function resolveActions(actions: ActionListPanelOptions["actions"]): ActionListItem[] {

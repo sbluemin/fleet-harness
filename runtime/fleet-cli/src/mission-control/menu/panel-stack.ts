@@ -7,13 +7,14 @@ export interface MenuRenderContext {
 export interface MenuPanel {
   readonly id: string;
   readonly title: string;
+  getFocusLine?(context: MenuRenderContext): number | undefined;
   handleInput?(data: string): boolean;
   render(context: MenuRenderContext): readonly string[];
   dispose?(): void;
 }
 
 export interface PanelStack {
-  readonly component: Component;
+  readonly component: Component & { getFocusLine?(width: number): number | undefined };
   readonly current: () => MenuPanel;
   readonly breadcrumbs: () => readonly string[];
   readonly depth: () => number;
@@ -49,6 +50,9 @@ export function createPanelStack(options: CreatePanelStackOptions): PanelStack {
         }
       },
       invalidate(): void {},
+      getFocusLine(width: number): number | undefined {
+        return api.current().getFocusLine?.({ width });
+      },
       render(width: number): string[] {
         return [...api.current().render({ width })];
       },
