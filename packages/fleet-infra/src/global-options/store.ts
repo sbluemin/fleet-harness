@@ -53,6 +53,10 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
     return { data: createEmptyGlobalOptionsData(), changed: true };
   }
 
+  if (value.version !== GLOBAL_OPTIONS_VERSION) {
+    return { data: createEmptyGlobalOptionsData(), changed: true };
+  }
+
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(typeof value.native === "boolean" ? { native: value.native } : {}),
@@ -60,8 +64,7 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
   };
   const allowedKeys = new Set(["version", "native", "replaceSystemPrompt", "enableMetaphor"]);
-  const changed = value.version !== GLOBAL_OPTIONS_VERSION ||
-    Object.keys(value).some((key) => !allowedKeys.has(key)) ||
+  const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("native" in value && typeof value.native !== "boolean") ||
     ("replaceSystemPrompt" in value && typeof value.replaceSystemPrompt !== "boolean") ||
     ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean");

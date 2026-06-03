@@ -56,7 +56,7 @@ describe("global options store", () => {
 
   it("sanitizes unknown schema fields and invalid values", () => {
     expect(sanitizeGlobalOptionsData({
-      version: 99,
+      version: 1,
       native: true,
       replaceSystemPrompt: "yes",
       enableMetaphor: false,
@@ -71,6 +71,34 @@ describe("global options store", () => {
         native: true,
         enableMetaphor: false,
       },
+    });
+  });
+
+  it("ignores stale settings files without the current schema marker", () => {
+    expect(sanitizeGlobalOptionsData({
+      native: true,
+      replaceSystemPrompt: true,
+      enableMetaphor: true,
+      oldSection: {},
+    })).toEqual({
+      changed: true,
+      data: {
+        version: 1,
+      },
+    });
+  });
+
+  it("ignores settings files with a stale schema marker", () => {
+    const dataDir = makeTempDir();
+    fs.writeFileSync(path.join(dataDir, "settings.json"), JSON.stringify({
+      version: 99,
+      native: true,
+      replaceSystemPrompt: true,
+      enableMetaphor: true,
+    }));
+
+    expect(createGlobalOptionsStore({ dataDir }).load()).toEqual({
+      version: 1,
     });
   });
 
