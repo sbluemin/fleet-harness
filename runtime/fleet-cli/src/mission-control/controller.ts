@@ -3,6 +3,7 @@ import { type Component, type MouseProtocolState, type PtyExitEvent, type PtyHos
 import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
 import { createCarrierRosterPanel } from "./carrier-roster/register.js";
+import { renderChoiceBlock, type ChoiceBlockRow } from "./layout.js";
 import { createAboutPanel } from "./menu/about-panel.js";
 import { createActionListPanel } from "./menu/action-list-panel.js";
 import { createAuthPanel } from "./menu/auth-panel.js";
@@ -488,7 +489,7 @@ function createStartPanel(options: StartPanelOptions): MenuPanel {
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(options.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Start"), width),
         "",
-        ...options.cliOptions.map((entry, index) => centerText(formatStartCliRow(entry, index === selected, options.sessionOptions), width)),
+        ...renderStartCliRows(options.cliOptions, selected, options.sessionOptions, width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("↑↓ select  Enter launch  → model  Esc back"), width),
       ];
@@ -514,16 +515,28 @@ function openStartModelOverride(options: StartPanelOptions, entry: MissionContro
   }));
 }
 
+function renderStartCliRows(
+  entries: readonly MissionControlCliOption[],
+  selected: number,
+  sessionOptions: CreateMissionControlControllerOptions["sessionOptions"],
+  width: number,
+): string[] {
+  return renderChoiceBlock({
+    innerWidth: width,
+    rows: entries.map((entry, index) => formatStartCliRow(entry, index === selected, sessionOptions)),
+  });
+}
+
 function formatStartCliRow(
   entry: MissionControlCliOption,
   selected: boolean,
   sessionOptions: CreateMissionControlControllerOptions["sessionOptions"],
-): string {
+): ChoiceBlockRow {
   const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
   const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(entry.label)) : entry.label;
   const model = sessionOptions?.getDraft().model;
-  const detail = model === undefined ? "" : MISSION_CONTROL_THEME.dim(`  model ${model}`);
-  return `${marker} ${label}${detail}`;
+  const trailing = model === undefined ? undefined : MISSION_CONTROL_THEME.dim(`model ${model}`);
+  return { label, marker, trailing };
 }
 
 function isRight(data: string): boolean {

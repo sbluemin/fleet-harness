@@ -1,6 +1,7 @@
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import { CLI_TO_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-infra/auth";
 
+import { renderChoiceBlock, type ChoiceBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
@@ -57,7 +58,7 @@ export function createAuthPanel(deps: AuthPanelDeps): MenuPanel {
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Authentication"), width),
         "",
-        ...rows.map((row, index) => centerText(formatProviderRow(row, index === selected), width)),
+        ...renderProviderRows(rows, selected, width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("Enter actions  Esc back"), width),
       ];
@@ -177,11 +178,18 @@ function createProviderRows(): ProviderRow[] {
     .sort((left, right) => left.label.localeCompare(right.label));
 }
 
-function formatProviderRow(row: ProviderRow, selected: boolean): string {
+function renderProviderRows(rows: readonly ProviderRow[], selected: number, width: number): string[] {
+  return renderChoiceBlock({
+    innerWidth: width,
+    rows: rows.map((row, index) => formatProviderRow(row, index === selected)),
+  });
+}
+
+function formatProviderRow(row: ProviderRow, selected: boolean): ChoiceBlockRow {
   const marker = selected ? MISSION_CONTROL_THEME.accent("▸") : MISSION_CONTROL_THEME.dim(" ");
   const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(row.label)) : row.label;
   const status = row.configured ? MISSION_CONTROL_THEME.success(row.status) : MISSION_CONTROL_THEME.warning(row.status);
-  return `${marker} ${label}  ${status}`;
+  return { label, marker, trailing: status };
 }
 
 function formatCliLabel(cliId: string): string {

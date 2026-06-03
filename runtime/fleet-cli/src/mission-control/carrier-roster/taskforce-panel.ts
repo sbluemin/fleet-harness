@@ -30,6 +30,7 @@ import {
   type Focusable,
 } from "../../controls/index.js";
 import type { MenuPanel } from "../menu/panel-stack.js";
+import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
@@ -54,6 +55,11 @@ type TaskForceMode = "actions" | "browse" | "effort" | "model" | "saving";
 interface TaskForceCellLine {
   readonly bg?: string;
   readonly text: string;
+}
+
+interface TaskForceEntryLineMetrics {
+  readonly detailWidth: number;
+  readonly displayNameWidth: number;
 }
 
 type TaskForceDisplayLine =
@@ -123,19 +129,20 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
   }
 
   render(width: number): string[] {
+    const entries = this.buildBackendEntries();
+    const entryMetrics = this.resolveEntryLineMetrics(entries);
     const body: TaskForceDisplayLine[] = [
       { kind: "center", text: this.options.theme.dim("Carrier Roster / TaskForce") },
       { kind: "center", text: this.options.theme.accent(`TaskForce - ${this.options.carrierDisplayName}`) },
       { kind: "blank" },
     ];
-    const entries = this.buildBackendEntries();
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i]!;
       const isSelected = i === this.selectedIndex;
       body.push({
         kind: "cell",
         line: {
-          text: withIndent(this.renderEntryLine(entry, isSelected)),
+          text: withIndent(this.renderEntryLine(entry, entryMetrics, isSelected)),
         },
       });
 
@@ -371,8 +378,22 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     this.options.requestRender();
   }
 
-  private renderEntryLine(entry: TaskForceEntry, isSelected: boolean): string {
+  private resolveEntryLineMetrics(entries: readonly TaskForceEntry[]): TaskForceEntryLineMetrics {
+    return {
+      detailWidth: maxVisibleWidth(entries.map((entry) => this.formatEntryDetail(entry))),
+      displayNameWidth: maxVisibleWidth(entries.map((entry) => entry.displayName)),
+    };
+  }
+
+  private renderEntryLine(entry: TaskForceEntry, metrics: TaskForceEntryLineMetrics, isSelected: boolean): string {
     const selectedPrefix = isSelected ? `${entry.color}▸${ANSI_RESET}` : " ";
+    const nameCell = padEndVisible(`${entry.color}${entry.displayName}${ANSI_RESET}`, metrics.displayNameWidth);
+    const detailCell = padEndVisible(this.formatEntryDetail(entry), metrics.detailWidth);
+    const configTag = entry.isCustom ? `  ${ANSI_ACCENT}(custom)${ANSI_RESET}` : `  ${ANSI_DIM}(origin)${ANSI_RESET}`;
+    return `  ${selectedPrefix} ${nameCell}  ${detailCell}${configTag}`;
+  }
+
+  private formatEntryDetail(entry: TaskForceEntry): string {
     const provider = this.getAvailableModels(entry.cliType);
     const modelName = provider.models.find((model) => model.modelId === entry.model)?.name ?? entry.model;
     const modelStr = entry.isCustom ? modelName : this.options.theme.dim(modelName);
@@ -380,8 +401,7 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
     const effortStr = effortSupported && entry.effort
       ? ` ${this.options.theme.dim("·")} ${entry.isCustom ? entry.effort : this.options.theme.dim(entry.effort)}`
       : "";
-    const configTag = entry.isCustom ? `  ${ANSI_ACCENT}(custom)${ANSI_RESET}` : `  ${ANSI_DIM}(origin)${ANSI_RESET}`;
-    return `  ${selectedPrefix} ${entry.color}${entry.displayName}${ANSI_RESET}  ${modelStr}${effortStr}${configTag}`;
+    return `${modelStr}${effortStr}`;
   }
 
   private getBackendConfig(cliType: TaskForceCliType): { effort: string | null; isCustom: boolean; model: string } {
@@ -552,10 +572,6 @@ function toIndentedCellLine(text: string): TaskForceDisplayLine {
 
 function withIndent(text: string): string {
   return `${INDENT}${text}`;
-}
-
-function padEndVisible(text: string, width: number): string {
-  return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
 function applyLineBg(line: string, bg: string | undefined): string {

@@ -1,4 +1,5 @@
 import { MISSION_CONTROL_THEME } from "../renderer.js";
+import { renderChoiceBlock, type ChoiceBlockRow } from "../layout.js";
 import { centerText } from "../welcome.js";
 import { isDown, isEnter, isEscape, isUp, renderBreadcrumbs, type MenuPanel } from "./panel-stack.js";
 
@@ -66,7 +67,7 @@ export function createActionListPanel(options: ActionListPanelOptions): MenuPane
         ...breadcrumbLines,
         centerText(MISSION_CONTROL_THEME.accent(options.title), width),
         "",
-        ...actions.map((item, index) => centerText(formatActionRow(item, index === selected), width)),
+        ...renderActionRows(actions, selected, width),
         "",
         ...statusLines.map((line) => centerText(line, width)),
         ...(statusLines.length === 0 ? [] : [""]),
@@ -95,11 +96,16 @@ function clampSelected(selected: number, length: number): number {
   return Math.min(selected, length - 1);
 }
 
-function formatActionRow(item: ActionListItem, selected: boolean): string {
+function renderActionRows(actions: readonly ActionListItem[], selected: number, width: number): string[] {
+  const rows = actions.map((item, index) => formatActionRow(item, index === selected));
+  return renderChoiceBlock({ innerWidth: width, rows });
+}
+
+function formatActionRow(item: ActionListItem, selected: boolean): ChoiceBlockRow {
   const marker = selected ? MISSION_CONTROL_THEME.accent(item.marker ?? "▸") : MISSION_CONTROL_THEME.dim(" ");
-  const detail = item.detail === undefined ? "" : MISSION_CONTROL_THEME.dim(`  ${item.detail}`);
+  const trailing = item.detail === undefined ? undefined : MISSION_CONTROL_THEME.dim(item.detail);
   const label = selected ? MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent(item.label)) : item.label;
-  return `${marker} ${label}${detail}`;
+  return { label, marker, trailing };
 }
 
 function move(index: number, length: number, delta: -1 | 1): number {

@@ -245,6 +245,7 @@ describe("Mission Control controller", () => {
       return row ?? "";
     });
     expect(rows).toHaveLength(labels.length);
+    expect(new Set(rows.map((row) => displayColumn(row, labels.find((label) => row.includes(label)) ?? ""))).size).toBe(1);
     expect(renderPlain(controller)).not.toContain("Exit Fleet");
   });
 
@@ -584,8 +585,12 @@ describe("Mission Control controller", () => {
     diagnosticsOutput = controller.component.render(80).join("\n");
     expect(stripAnsi(diagnosticsOutput)).toContain("Data Dir");
     expect(stripAnsi(diagnosticsOutput)).toContain("Presets:");
-    expect(diagnosticsOutput).toContain("Root: \x1b[38;2;254;188;56m");
+    expect(diagnosticsOutput).toContain("Root   : \x1b[38;2;254;188;56m");
     expect(diagnosticsOutput).toContain("Presets: \x1b[38;2;254;188;56m");
+    const dataLines = stripAnsi(diagnosticsOutput).split("\n");
+    const rootLine = dataLines.find((line) => line.includes("Root")) ?? "";
+    const presetsLine = dataLines.find((line) => line.includes("Presets:")) ?? "";
+    expect(displayColumn(rootLine, ":")).toBe(displayColumn(presetsLine, ":"));
     expect(controller.component.render(80).join("\n")).not.toContain("\x1b]52");
     expect(controller.component.render(80).join("\n")).not.toContain("\u009b");
 
@@ -619,13 +624,18 @@ describe("Mission Control controller", () => {
 
     const lines = renderPlain(controller).split("\n");
     const output = controller.component.render(80).join("\n");
+    const shellLine = lines.find((line) => line.includes("Shell")) ?? "";
+    const terminalLine = lines.find((line) => line.includes("Terminal:")) ?? "";
+    const cwdLine = lines.find((line) => line.includes("CWD")) ?? "";
 
-    expect(lines.filter((line) => line.includes("Shell:"))).toEqual([expect.stringContaining("Shell: /bin/zsh spoofed-shell")]);
-    expect(lines.filter((line) => line.includes("Terminal:"))).toEqual([expect.stringContaining("Terminal: xterm-256color spoofed-term")]);
-    expect(lines.filter((line) => line.includes("CWD:"))).toEqual([expect.stringContaining("CWD: /tmp/project spoofed-cwd")]);
-    expect(output).toContain("Shell: \x1b[38;2;254;188;56m/bin/zsh spoofed-shell\x1b[0m");
+    expect(lines.filter((line) => line.includes("Shell"))).toEqual([expect.stringContaining("Shell   : /bin/zsh spoofed-shell")]);
+    expect(lines.filter((line) => line.includes("Terminal"))).toEqual([expect.stringContaining("Terminal: xterm-256color spoofed-term")]);
+    expect(lines.filter((line) => line.includes("CWD"))).toEqual([expect.stringContaining("CWD     : /tmp/project spoofed-cwd")]);
+    expect(displayColumn(shellLine, ":")).toBe(displayColumn(terminalLine, ":"));
+    expect(displayColumn(cwdLine, ":")).toBe(displayColumn(terminalLine, ":"));
+    expect(output).toContain("Shell   : \x1b[38;2;254;188;56m/bin/zsh spoofed-shell\x1b[0m");
     expect(output).toContain("Terminal: \x1b[38;2;254;188;56mxterm-256color spoofed-term\x1b[0m");
-    expect(output).toContain("CWD: \x1b[38;2;254;188;56m/tmp/project spoofed-cwd\x1b[0m");
+    expect(output).toContain("CWD     : \x1b[38;2;254;188;56m/tmp/project spoofed-cwd\x1b[0m");
     expect(lines.some((line) => line.trim() === "spoofed-shell")).toBe(false);
     expect(lines.some((line) => line.trim() === "spoofed-term")).toBe(false);
     expect(lines.some((line) => line.trim() === "spoofed-cwd")).toBe(false);
@@ -772,11 +782,11 @@ describe("Mission Control controller", () => {
     const output = controller.component.render(80).join("\n");
 
     expect(renderPlain(controller)).toContain("Version: 0.22.1");
-    expect(renderPlain(controller)).toContain("Carriers: 8");
-    expect(renderPlain(controller)).toContain("Docs: (configured later)");
+    expect(renderPlain(controller)).toContain("Carriers      : 8");
+    expect(renderPlain(controller)).toContain("Docs          : (configured later)");
     expect(output).toContain("Version: \x1b[38;2;254;188;56m0.22.1\x1b[0m");
-    expect(output).toContain("Carriers: \x1b[38;2;254;188;56m8\x1b[0m");
-    expect(output).toContain("Docs: \x1b[38;2;254;188;56m(configured later)\x1b[0m");
+    expect(output).toContain("Carriers      : \x1b[38;2;254;188;56m8\x1b[0m");
+    expect(output).toContain("Docs          : \x1b[38;2;254;188;56m(configured later)\x1b[0m");
   });
 
   it("labels unpublished working copies as local in the readout", () => {
@@ -1495,6 +1505,12 @@ function openSystemMenuItem(controller: ReturnType<typeof createTestController>,
 
 function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
+}
+
+function displayColumn(line: string, needle: string): number {
+  const index = line.indexOf(needle);
+  expect(index).toBeGreaterThanOrEqual(0);
+  return visibleWidth(line.slice(0, index));
 }
 
 function extractRgbColors(text: string): Array<readonly [number, number, number]> {

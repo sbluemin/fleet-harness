@@ -3,6 +3,7 @@ import { getCarrierAnsi } from "../styles/carriers.js";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme, type PtyExitEvent } from "../controls/index.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";
+import { computeBlockLeftPad, maxVisibleWidth } from "./layout.js";
 import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
 import type { MissionControlCliOption, MissionControlStateKind } from "./types.js";
 import { buildFleetBanner, centerText, FLEET_ACCENT } from "./welcome.js";
@@ -52,8 +53,8 @@ const STYLE: Record<StatusTone | "accent" | "muted", (text: string) => string> =
 export function renderMissionControl(width: number, options: MissionControlRenderOptions): string[] {
   const innerWidth = Math.max(0, width);
   const banner = buildFleetBanner(innerWidth, options.bannerPhase ?? 0);
-  const choiceWidth = computeChoiceWidth(options.cliOptions);
-  const choiceLeftPad = Math.max(0, Math.floor((innerWidth - choiceWidth) / 2));
+  const choiceWidth = CHOICE_INDENT + maxVisibleWidth(options.cliOptions.map((option) => option.label));
+  const choiceLeftPad = computeBlockLeftPad(choiceWidth, innerWidth);
   const lines: string[] = [""];
 
   if (banner.length > 0) {
@@ -200,17 +201,6 @@ function formatExitEvent(event: PtyExitEvent | undefined): string {
 function colorizeProvider(cliId: AgentCliId, text: string): string {
   const color = getCarrierAnsi(cliId);
   return color ? `${color}${text}${ANSI_RESET}` : text;
-}
-
-function computeChoiceWidth(cliOptions: readonly MissionControlCliOption[]): number {
-  let maxLabelWidth = 0;
-  for (const option of cliOptions) {
-    const width = visibleWidth(option.label);
-    if (width > maxLabelWidth) {
-      maxLabelWidth = width;
-    }
-  }
-  return CHOICE_INDENT + maxLabelWidth;
 }
 
 function paint(code: string, text: string): string {

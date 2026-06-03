@@ -5,6 +5,7 @@ import {
 } from "@dotobokuri/fleet-wiki-ui/cli";
 import type { OpenFleetWikiWorkspaceResult } from "@dotobokuri/fleet-wiki-ui/cli";
 
+import { renderKeyValueBlock, type KeyValueBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../renderer.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
@@ -138,13 +139,16 @@ export function createWikiPanel(deps: WikiPanelDeps): MenuPanel {
     },
     render({ width }): readonly string[] {
       const status = wiki.getStatus();
+      const infoRows = [
+        { key: "Port", value: MISSION_CONTROL_THEME.accent(String(wiki.getPort())) },
+      ];
       return [
         "",
         centerText(MISSION_CONTROL_THEME.dim(renderBreadcrumbs(deps.stack.breadcrumbs())), width),
         centerText(MISSION_CONTROL_THEME.accent("Wiki Server"), width),
         "",
         centerText(formatStatus(status), width),
-        centerText(formatKeyValue("Port", String(wiki.getPort())), width),
+        ...renderInfoRows(infoRows, width),
         "",
         centerText(MISSION_CONTROL_THEME.dim("External fleet wiki processes are not managed here."), width),
         "",
@@ -241,8 +245,8 @@ function formatActionsRow(): string {
   return `${MISSION_CONTROL_THEME.accent("▸")} ${MISSION_CONTROL_THEME.bg("selected", MISSION_CONTROL_THEME.accent("Actions"))}`;
 }
 
-function formatKeyValue(key: string, value: string): string {
-  return `${key}: ${MISSION_CONTROL_THEME.accent(value)}`;
+function renderInfoRows(rows: readonly KeyValueBlockRow[], width: number): string[] {
+  return renderKeyValueBlock({ innerWidth: width, rows });
 }
 
 function formatError(error: unknown): string {
