@@ -32,6 +32,7 @@ describe('ModelRegistry', () => {
       'gemini-3-flash',
       'gemini-3.5-flash',
       'claude-opus-4-7-thinking',
+      'claude-opus-4-8-thinking',
       'claude-4.6-sonnet-medium-thinking',
     ]);
   });

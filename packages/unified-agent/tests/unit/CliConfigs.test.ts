@@ -76,6 +76,18 @@ describe('CliConfigs', () => {
       expect(config.args).toEqual(['--model', 'claude-opus-4-7-thinking-high', 'acp']);
       expect(config.useNpx).toBe(false);
     });
+
+    it('Cursor Opus 4.8 thinking 모델은 effort를 반영한 CLI 모델 ID로 spawn한다', () => {
+      const config = createSpawnConfig('cursor', {
+        cwd: '/tmp/workspace',
+        model: 'claude-opus-4-8-thinking',
+        effort: 'high',
+      });
+
+      expect(config.command).toBe('cursor-agent');
+      expect(config.args).toEqual(['--model', 'claude-opus-4-8-thinking-high', 'acp']);
+      expect(config.useNpx).toBe(false);
+    });
   });
 
   describe('getYoloModeId', () => {
