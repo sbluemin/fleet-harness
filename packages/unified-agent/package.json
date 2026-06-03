@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-unified-agent",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Codex CLI와 Claude Code를 통합하는 TypeScript 기반 SDK",
   "repository": {
     "type": "git",
