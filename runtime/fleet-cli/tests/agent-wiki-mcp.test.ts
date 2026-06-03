@@ -308,58 +308,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(definition.prompt).toContain(maliciousFixture.prompt);
   });
 
-  it("keeps native subagent carriers out of the carrier_dispatch roster section", async () => {
-    lifecycle = createFleetRuntimeLifecycle();
-    const runtime = await lifecycle.start();
-    const systemPrompt = createSystemPromptBuilder({
-      carrierRuntime: runtime.carrierRuntime,
-      mcpRegistry: runtime.mcpRegistry,
-    }).build(false, [{
-      carrierId: "ohio",
-      description: "Ohio native subagent",
-      name: "Ohio",
-      prompt: "system prompt",
-    }]);
-
-    expect(extractFleetSection(systemPrompt, "roster")).not.toContain("**ohio**");
-    expect(extractFleetSection(systemPrompt, "roster")).not.toContain('carrier_id: "ohio"');
-    expect(extractFleetSection(systemPrompt, "subagents")).toContain("- ohio: invoke as `Ohio`");
-    expect(extractFleetSection(systemPrompt, "subagents")).toContain("When invoking a native subagent, use the carrier's structured request blocks below and keep the request concise.");
-    expect(extractFleetSection(systemPrompt, "subagents")).toContain("Request blocks — wrap content in these (? = optional):");
-    expect(extractFleetSection(systemPrompt, "subagents")).toContain("<plan_file> required:");
-  });
-
-  it("renders original carrier ids separately from slugged native subagent invocation names", async () => {
-    lifecycle = createFleetRuntimeLifecycle();
-    const runtime = await lifecycle.start();
-    const systemPrompt = createSystemPromptBuilder({
-      carrierRuntime: runtime.carrierRuntime,
-      mcpRegistry: runtime.mcpRegistry,
-    }).build(false, [{
-      carrierId: "foo_bar",
-      description: "Slugged native subagent",
-      name: "FooBar",
-      prompt: "system prompt",
-    }]);
-    const subagentsSection = extractFleetSection(systemPrompt, "subagents");
-
-    expect(subagentsSection).toContain("- foo_bar: invoke as `FooBar`");
-    expect(subagentsSection).not.toContain("- FooBar: invoke as `FooBar`");
-  });
-
-  it("renders Codex role keys in native subagent prompt guidance", async () => {
-    lifecycle = createFleetRuntimeLifecycle();
-    const runtime = await lifecycle.start();
-    const systemPrompt = createSystemPromptBuilder({
-      carrierRuntime: runtime.carrierRuntime,
-      mcpRegistry: runtime.mcpRegistry,
-    }).build(false, [buildCodexSubagentDefinition(createTestCarrierConfig("ohio"))]);
-    const subagentsSection = extractFleetSection(systemPrompt, "subagents");
-
-    expect(subagentsSection).toContain("# Native Codex Subagents");
-    expect(subagentsSection).toContain("- ohio: invoke as `ohio`");
-    expect(subagentsSection).toContain("Native subagent output is not recovered into Fleet `carrier_jobs`, JobArchive, stream events, or `[carrier:result]` reminders.");
-  });
 });
 
 async function listMcpTools(url: string, token: string): Promise<Set<string>> {
@@ -397,11 +345,6 @@ function makeAgentCliInjectionContext(): AgentCliInjectionContext {
     replaceSystemPrompt: true,
     systemPromptFile: "/tmp/fleet-system-prompt.md",
   };
-}
-
-function extractFleetSection(systemPrompt: string, section: string): string {
-  const pattern = new RegExp(`<fleet section="${section}">\\n([\\s\\S]*?)\\n</fleet>`);
-  return pattern.exec(systemPrompt)?.[1] ?? "";
 }
 
 function makeMaliciousCarrierConfig(fixture: {

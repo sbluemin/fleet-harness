@@ -28,7 +28,7 @@ import { getAgentCliInjectionCapability } from "./capabilities.js";
 import type { AgentCliInjectionContext, AgentCliProfile } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly buildSystemPrompt: (injectTone: boolean, nativeSubagents?: readonly ClaudeSubagentDefinition[] | readonly CodexSubagentRoleDefinition[]) => string;
+  readonly buildSystemPrompt: (injectTone: boolean) => string;
   readonly carrierRuntime: CarrierRuntime;
   readonly dedicatedMcpSession: ExecutorSessionManager;
   readonly replaceSystemPrompt?: boolean;
@@ -64,7 +64,7 @@ export async function injectAgentCliProfile(
     : [];
   const systemPromptFile = writeSystemPromptFile(
     profile.id,
-    options.buildSystemPrompt(injectTone, startupSubagents.definitions),
+    options.buildSystemPrompt(injectTone),
     options.onCleanup,
   );
   const context: AgentCliInjectionContext = {
