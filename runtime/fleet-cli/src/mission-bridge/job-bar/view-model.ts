@@ -9,7 +9,7 @@ export type ColStatus = "wait" | "conn" | "stream" | "done" | "err";
 export type ColBlock =
   | { readonly text: string; readonly type: "thought" }
   | { readonly text: string; readonly type: "text" }
-  | { readonly status: string; readonly title: string; readonly toolCallId?: string; readonly type: "tool" };
+  | { readonly detailChars?: number; readonly status: string; readonly title: string; readonly toolCallId?: string; readonly type: "tool" };
 
 export interface PanelRunViewModelSource {
   readonly blocks?: readonly ColBlock[];
@@ -182,6 +182,7 @@ function collectBlockStats(blocks: readonly ColBlock[]): { readonly estimatedTok
     if (block.type === "tool") {
       charCount += block.title.length;
       if (block.status) charCount += block.status.length;
+      charCount += block.detailChars ?? 0;
       continue;
     }
     charCount += block.text.length;

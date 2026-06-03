@@ -225,6 +225,7 @@ export type CarrierJobStreamEvent =
     type: "track:tool";
     jobId: string;
     trackId: string;
+    detailChars?: number;
     toolCallId?: string;
     title: string;
     status: string;

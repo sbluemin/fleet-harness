@@ -34,7 +34,6 @@ import { buildCarrierJobGroups, buildPanelViewModel } from "./view-model.js";
 
 export interface CarrierHudTile {
   readonly activeJobCount: number;
-  readonly activeTrackCount: number;
   readonly carrierId: string;
   readonly color: string;
   readonly displayName: string;
@@ -283,7 +282,6 @@ function buildCarrierTiles(carrierRuntime: CarrierRuntime, activeJobs: readonly 
     const subagentMode = subagentModes[carrierId] === "subagent";
     return {
       activeJobCount: activeCarrierJobs.length,
-      activeTrackCount: activeCarrierJobs.reduce((sum, job) => sum + job.tracks.length, 0),
       carrierId,
       color: resolveCarrierPresentationColor(carrierRuntime, carrierId, subagentModes, taskForceBackendCount),
       displayName: resolveCarrierDisplayName(carrierRuntime.registry, carrierId),
@@ -354,7 +352,7 @@ function formatExitWarning(): string {
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {
   const icon = carrierStatusIcon(carrier, frame, carrier.color);
   const hasActiveJob = carrier.activeJobCount > 0;
-  const suffix = `${carrierBadges(carrier)}${carrierActivityBadge(carrier)}`;
+  const suffix = carrierBadges(carrier);
   const prefix = `${icon} `;
 
   if (hasActiveJob) {
@@ -380,12 +378,6 @@ function carrierBadges(carrier: CarrierHudTile): string {
     ? ` ${TASKFORCE_BADGE_COLOR}[TF:${carrier.taskForceBackendCount}]${ANSI_RESET}`
     : "";
   return tfBadge;
-}
-
-function carrierActivityBadge(carrier: CarrierHudTile): string {
-  if (carrier.activeJobCount <= 0) return "";
-  const trackSuffix = carrier.activeTrackCount > 0 ? `:${carrier.activeTrackCount}` : "";
-  return ` ${PANEL_DIM_COLOR}[${carrier.activeJobCount}${trackSuffix}]${ANSI_RESET}`;
 }
 
 function kindDisplayName(kind: string): string {

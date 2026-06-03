@@ -149,6 +149,49 @@ describe("job bar renderer", () => {
     expect(text).not.toMatch(/\[[0-9]+T·[0-9]+L\]/);
   });
 
+  it("includes latest tool detailChars in token estimates without double-counting updates", () => {
+    const state = createTestJobBarState();
+    state.handleCarrierJobStreamEvent({
+      type: "job:registered",
+      jobId: "carrier:tool-detail",
+      kind: "carrier",
+      ownerCarrierId: "genesis",
+      label: "Audit tool output length",
+      startedAt: 1000,
+      tracks: [{
+        displayCli: "genesis",
+        displayName: "Genesis",
+        kind: "carrier",
+        runId: "run:tool-detail",
+        streamKey: "genesis",
+        trackId: "genesis",
+      }],
+    });
+    state.handleCarrierJobStreamEvent({
+      type: "track:tool",
+      jobId: "carrier:tool-detail",
+      trackId: "genesis",
+      toolCallId: "tool:first",
+      title: "Lookup",
+      status: "completed",
+      detailChars: 8,
+    });
+    state.handleCarrierJobStreamEvent({
+      type: "track:tool",
+      jobId: "carrier:tool-detail",
+      trackId: "genesis",
+      toolCallId: "tool:first",
+      title: "Lookup",
+      status: "completed",
+      detailChars: 400,
+    });
+
+    const text = stripAnsi(createJobBarSections(state)[1]!.component.render(160).join("\n"));
+
+    expect(text).toContain("~104 tokens");
+    expect(text).not.toContain("~110 tokens");
+  });
+
   it("keeps multiline block rendering split while removing terminal controls", () => {
     expect(renderBlockLines([{
       type: "thought",
@@ -253,6 +296,7 @@ describe("job bar renderer", () => {
     state.getPanelJobs().set("taskforce:first", buildTaskForceJob("taskforce:first", "ohio", "claude", "codex"));
 
     const rendered = createJobBarSections(state).flatMap((section) => section.component.render(200)).join("\n");
+    const text = stripAnsi(rendered);
 
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}O`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
@@ -260,6 +304,21 @@ describe("job bar renderer", () => {
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}Claude Code with Anthropic`);
     expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}OpenAI Codex CLI`);
+    expect(text).not.toContain("[1:2]");
+  });
+
+  it("keeps an active SA strip badge without rendering an activity count badge", () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-job-bar-active-sa-"));
+    initStore(tempDir);
+    setCarrierAgentMode("ohio", true);
+    const state = createTestJobBarState();
+    state.getPanelJobs().set("carrier:ohio", buildCarrierJob("carrier:ohio", "ohio", "Ohio", "run:ohio", "Review active strip", 1000));
+
+    const line = stripAnsi(createJobBarSections(state)[0]!.component.render(200).join("\n"));
+
+    expect(line).toContain("Ohio [SA]");
+    expect(line).not.toContain("[1:1]");
+    expect(line).not.toContain("[1]");
   });
 
   it("shows an SA badge before TF badges for legacy SA plus TF strip state", () => {
@@ -328,21 +387,25 @@ function desiredHeight(section: ReturnType<typeof createJobBarSections>[number])
 }
 
 function buildDispatchJob(jobId: string, runId: string, label: string, startedAt: number): PanelJob {
+  return buildCarrierJob(jobId, "genesis", "Genesis", runId, label, startedAt);
+}
+
+function buildCarrierJob(jobId: string, carrierId: string, displayName: string, runId: string, label: string, startedAt: number): PanelJob {
   return {
     jobId,
     kind: "carrier",
     label,
-    ownerCarrierId: "genesis",
+    ownerCarrierId: carrierId,
     startedAt,
     status: "active",
     tracks: [{
-      displayCli: "genesis",
-      displayName: "Genesis",
+      displayCli: carrierId,
+      displayName,
       kind: "carrier",
       runId,
       status: "stream",
-      streamKey: "genesis",
-      trackId: "genesis",
+      streamKey: carrierId,
+      trackId: carrierId,
     }],
   };
 }

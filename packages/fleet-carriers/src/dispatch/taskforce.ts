@@ -269,12 +269,20 @@ async function runTaskForceBackend(
         appendBlock(jobId, toArchiveBlock("thought", carrierId, text, cliType));
         emitStreamEvent(registry, { type: "track:thought", jobId, trackId, text: cleanText });
       },
-      onToolCall: (title, status, _rawOutput, toolCallId) => {
+      onToolCall: (title, status, rawOutput, toolCallId) => {
         progress.status = "streaming";
         progress.toolCallCount++;
         const cleanTitle = sanitizeToolLabel(title);
         const cleanStatus = sanitizeToolLabel(status);
-        emitStreamEvent(registry, { type: "track:tool", jobId, trackId, title: cleanTitle, status: cleanStatus, toolCallId });
+        emitStreamEvent(registry, {
+          type: "track:tool",
+          jobId,
+          trackId,
+          detailChars: rawOutput?.length ?? 0,
+          title: cleanTitle,
+          status: cleanStatus,
+          toolCallId,
+        });
       },
     });
 

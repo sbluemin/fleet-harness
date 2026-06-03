@@ -385,10 +385,18 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
         appendBlock(opts.jobId, toArchiveBlock("thought", opts.carrierId, text));
         emitStreamEvent(opts.registry, { type: "track:thought", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
       },
-      onToolCall: (toolTitle, toolStatus, _rawOutput, toolCallId) => {
+      onToolCall: (toolTitle, toolStatus, rawOutput, toolCallId) => {
         const title = sanitizeToolLabel(toolTitle);
         const status = sanitizeToolLabel(toolStatus);
-        emitStreamEvent(opts.registry, { type: "track:tool", jobId: opts.jobId, trackId: opts.carrierId, title, status, toolCallId });
+        emitStreamEvent(opts.registry, {
+          type: "track:tool",
+          jobId: opts.jobId,
+          trackId: opts.carrierId,
+          detailChars: rawOutput?.length ?? 0,
+          title,
+          status,
+          toolCallId,
+        });
       },
     });
     const finalStatus = toCarrierJobStatus(execResult.status);

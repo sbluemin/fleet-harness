@@ -330,7 +330,7 @@ function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void {
       return;
     case "track:tool":
       updateRunBlocks(event.jobId, event.trackId, (run) => {
-        upsertToolBlock(run.blocks, event.toolCallId, event.title, event.status);
+        upsertToolBlock(run.blocks, event.toolCallId, event.title, event.status, event.detailChars);
         if (run.status === "wait" || run.status === "conn") run.status = "stream";
       });
       schedulePanelRender(true);
@@ -655,7 +655,7 @@ function coalesceThoughtBlock(blocks: ColBlock[], text: string): void {
   blocks.push({ text, type: "thought" });
 }
 
-function upsertToolBlock(blocks: ColBlock[], toolCallId: string | undefined, title: string, status: string): void {
+function upsertToolBlock(blocks: ColBlock[], toolCallId: string | undefined, title: string, status: string, detailChars: number | undefined): void {
   const existingIndex = blocks.findIndex((block) =>
     block.type === "tool" && (toolCallId ? block.toolCallId === toolCallId : block.title === title),
   );
@@ -665,13 +665,20 @@ function upsertToolBlock(blocks: ColBlock[], toolCallId: string | undefined, tit
     if (existing?.type !== "tool") return;
     blocks[existingIndex] = {
       ...existing,
+      ...(detailChars !== undefined ? { detailChars } : {}),
       status: status || existing.status,
       title: title || existing.title,
     };
     return;
   }
 
-  blocks.push({ status, title, toolCallId, type: "tool" });
+  blocks.push({
+    ...(detailChars !== undefined ? { detailChars } : {}),
+    status,
+    title,
+    toolCallId,
+    type: "tool",
+  });
 }
 
 function toReadonlyPanelJob(job: MutablePanelJob): PanelJob {

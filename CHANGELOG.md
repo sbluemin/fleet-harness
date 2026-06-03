@@ -11,6 +11,10 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 - [core] Native(SubAgent) mode carriers are now eligible for carrier_dispatch in addition to their native CLI path, while remaining mutually exclusive with Task Force.
 - [core] Carrier Roster and Job Bar rows for Native(SubAgent) carriers now render in their respective CLI signature color instead of a dedicated SA color, while preserving the [SA] badge.
+- [core] Job Bar token estimates now account for tool result output size in addition to streamed text and tool labels.
+
+### Removed
+- [core] Removed the per-carrier active job and track count badge ([N:M]) from Job Bar carrier strip tiles; live activity is still conveyed by the breathing carrier icon, and the [TF:N] and [SA] badges remain.
 
 ### Fixed
 - [core] Carrier Roster and other Mission Control panels now keep the focused item visible when the terminal height is reduced; selected rows that would be clipped are scrolled into view automatically.
