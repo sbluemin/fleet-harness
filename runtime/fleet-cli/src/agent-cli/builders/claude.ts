@@ -1,7 +1,10 @@
 import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js";
 
 export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string[] {
+  const systemPromptArg = context.replaceSystemPrompt ? "--system-prompt-file" : "--append-system-prompt-file";
   return [
+    systemPromptArg,
+    requireSystemPromptFile(context),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -23,4 +26,9 @@ function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string 
       }]),
     ),
   });
+}
+
+function requireSystemPromptFile(context: AgentCliInjectionContext): string {
+  if (context.systemPromptFile) return context.systemPromptFile;
+  throw new Error("Claude system prompt file is required for native injection");
 }

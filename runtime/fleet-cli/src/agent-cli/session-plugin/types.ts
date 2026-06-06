@@ -4,7 +4,6 @@ export interface CreateAgentCliSessionPluginOptions {
   readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
   readonly cliId: string;
   readonly cwd: string;
-  readonly doctrine: string;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
 }

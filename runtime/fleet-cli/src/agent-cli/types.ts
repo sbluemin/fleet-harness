@@ -41,9 +41,12 @@ export interface AgentCliMcpServerArg {
 
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
+  readonly codexProfileName?: string;
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
+  readonly replaceSystemPrompt?: boolean;
+  readonly systemPromptFile?: string;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

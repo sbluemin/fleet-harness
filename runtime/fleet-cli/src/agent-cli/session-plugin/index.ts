@@ -34,7 +34,6 @@ interface SessionPluginBundle {
   readonly displayName: string;
   readonly hashFileName: string;
   readonly includeClaudeAgents: boolean;
-  readonly includeSessionHook: boolean;
   readonly name: string;
   readonly skills: readonly SessionPluginSkill[];
 }
@@ -75,7 +74,6 @@ const SESSION_PLUGIN_BUNDLES: readonly SessionPluginBundle[] = [{
   displayName: "Fleet",
   hashFileName: ".fleet-codex-plugin.hash",
   includeClaudeAgents: true,
-  includeSessionHook: true,
   name: "fleet",
   skills: [{
     content: FLEET_CARRIERS_SKILL,
@@ -92,7 +90,6 @@ const PLUGIN_MANAGED_ENTRIES = [
   "skills",
   "agents",
   ".mcp.json",
-  "doctrine.md",
   "claude",
   "codex-marketplace",
   "plugins",
@@ -105,7 +102,6 @@ const MARKETPLACE_MANAGED_ENTRIES = [
   "skills",
   "agents",
   ".mcp.json",
-  "doctrine.md",
   "claude",
   "codex-marketplace",
   "plugins",
@@ -179,14 +175,9 @@ function renderPluginRoot(
   ensurePrivateDir(pluginRoot, pluginRoot);
   prunePluginRoot(pluginRoot);
   ensurePrivateDir(path.join(pluginRoot, "agents"), pluginRoot);
-  ensurePrivateDir(path.join(pluginRoot, "hooks"), pluginRoot);
   ensurePrivateDir(path.join(pluginRoot, "skills"), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), pluginRoot);
-  if (bundle.includeSessionHook) {
-    writePrivateFile(path.join(pluginRoot, "hooks", "session-start.mjs"), hookScript(options.doctrine), pluginRoot);
-    writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), hookConfig(), pluginRoot);
-  }
   for (const skill of bundle.skills) {
     writePrivateFile(path.join(pluginRoot, "skills", skill.dirName, "SKILL.md"), skill.content, pluginRoot);
   }
@@ -228,32 +219,6 @@ function buildContentHash(pluginRoot: string): string {
     hash.update("\0");
   }
   return hash.digest("hex");
-}
-
-function hookConfig(): unknown {
-  return {
-    hooks: {
-      SessionStart: [{
-        hooks: [{
-          type: "command",
-          command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"',
-        }],
-      }],
-    },
-  };
-}
-
-function hookScript(doctrine: string): string {
-  return [
-    `const doctrine = ${JSON.stringify(doctrine)};`,
-    "console.log(JSON.stringify({",
-    "  hookSpecificOutput: {",
-    '    hookEventName: "SessionStart",',
-    "    additionalContext: doctrine,",
-    "  },",
-    "}));",
-    "",
-  ].join("\n");
 }
 
 function codexMarketplace(): unknown {
@@ -299,7 +264,6 @@ function codexManifest(bundle: SessionPluginBundle): unknown {
     name: bundle.name,
     version: "0.0.0",
     description: bundle.description,
-    ...(bundle.includeSessionHook ? { hooks: "./hooks/hooks.json" } : {}),
     skills: "./skills/",
   };
 }

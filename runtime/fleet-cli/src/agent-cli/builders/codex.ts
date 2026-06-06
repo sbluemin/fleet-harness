@@ -1,21 +1,17 @@
-import { lstatSync, realpathSync } from "node:fs";
-import path from "node:path";
-
 import type { AgentCliInjectionContext } from "../types.js";
 import { escapeTomlBasicString } from "./toml.js";
 
-const PRIVATE_DIR_MODE_MASK = 0o077;
 const CODEX_TOOL_TIMEOUT_SEC = 1_800;
 
 export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[] {
+  const profileName = requireCodexProfileName(context);
   const args = [
     "--enable",
     "plugins",
     "--enable",
-    "plugin_hooks",
-    "--enable",
     "child_agents_md",
-    ...(canBypassHookTrust(context) ? ["--dangerously-bypass-hook-trust"] : []),
+    "--profile",
+    profileName,
     "-c",
     'approval_policy="never"',
     "-c",
@@ -36,31 +32,7 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
   return args;
 }
 
-function canBypassHookTrust(context: AgentCliInjectionContext): boolean {
-  return context.pluginRoots.every((pluginRoot) => isPrivateOwnedDirectory(pluginRoot)
-    && isRealpathContained(path.dirname(pluginRoot), pluginRoot));
-}
-
-function isPrivateOwnedDirectory(dirPath: string): boolean {
-  try {
-    const stat = lstatSync(dirPath);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
-    if ((stat.mode & PRIVATE_DIR_MODE_MASK) !== 0) return false;
-    return process.getuid === undefined || stat.uid === process.getuid();
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
-function isRealpathContained(rootPath: string, candidatePath: string): boolean {
-  try {
-    const root = realpathSync(rootPath);
-    const candidate = realpathSync(candidatePath);
-    const relative = path.relative(root, candidate);
-    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
-    throw error;
-  }
+function requireCodexProfileName(context: AgentCliInjectionContext): string {
+  if (context.codexProfileName) return context.codexProfileName;
+  throw new Error("Codex profile name is required for native injection");
 }

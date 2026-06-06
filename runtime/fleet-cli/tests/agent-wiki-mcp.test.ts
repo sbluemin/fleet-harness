@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,8 @@ const EXPECTED_CARRIER_TOOL_IDS = [
   "carrier_dispatch",
   "carrier_jobs",
 ] as const;
+const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
+const FLEET_PROFILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 describe("fleet-cli agent CLI MCP registration", () => {
   let lifecycle: FleetRuntimeLifecycle | undefined;
@@ -87,6 +89,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
     const context = makeAgentCliInjectionContext(root);
     try {
       expect(buildClaudeNativeArgs(context)).toEqual([
+        "--system-prompt-file",
+        context.systemPromptFile,
         "--plugin-dir",
         context.pluginRoots[0],
         "--mcp-config",
@@ -110,10 +114,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
         "--enable",
         "plugins",
         "--enable",
-        "plugin_hooks",
-        "--enable",
         "child_agents_md",
-        "--dangerously-bypass-hook-trust",
+        "--profile",
+        context.codexProfileName,
         "-c",
         'approval_policy="never"',
         "-c",
@@ -170,9 +173,12 @@ describe("fleet-cli agent CLI MCP registration", () => {
       });
       const pluginRoots = pluginDirArgs(profile.args);
       const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
+      const systemPromptFile = argValue(profile.args, "--system-prompt-file");
 
       expect(pluginRoots).toEqual([pluginRoot]);
-      expect(readFileSync(path.join(pluginRoot, "hooks", "session-start.mjs"), "utf8")).toContain("private fleet prompt");
+      expect(systemPromptFile).toBeDefined();
+      expect(readFileSync(systemPromptFile!, "utf8")).toBe("private fleet prompt");
+      expect(existsSync(path.join(pluginRoot, "hooks"))).toBe(false);
       expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("name: fleet-usage");
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
@@ -188,6 +194,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
       }
 
       expect(existsSync(pluginRoot)).toBe(true);
+      expect(existsSync(systemPromptFile!)).toBe(false);
       expect(releaseSessionToken).toHaveBeenCalledTimes(1);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
@@ -196,6 +203,10 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
   it("registers Codex plugin through the resolved Codex CLI before launch args are returned", async () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
+    const staleProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000000.config.toml");
+    const freshProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000001.config.toml");
+    const userFleetProfilePath = path.join(codexHome, "fleet.config.toml");
     const commands: string[] = [];
     const codexState = {
       installed: new Set<string>(),
@@ -203,11 +214,16 @@ describe("fleet-cli agent CLI MCP registration", () => {
     };
     const releaseSessionToken = vi.fn();
     try {
+      writeFileSync(staleProfilePath, `${CODEX_FLEET_PROFILE_MARKER}\nold = true\n`, { encoding: "utf8" });
+      writeFileSync(freshProfilePath, `${CODEX_FLEET_PROFILE_MARKER}\nfresh = true\n`, { encoding: "utf8" });
+      writeFileSync(userFleetProfilePath, "user = true\n", { encoding: "utf8" });
+      const staleMtime = new Date(Date.now() - (25 * 60 * 60 * 1000));
+      utimesSync(staleProfilePath, staleMtime, staleMtime);
       const profile = await injectAgentCliProfile({
         args: ["--no-alt-screen"],
         bin: "/usr/local/bin/codex",
         cwd: process.cwd(),
-        env: { PATH: process.env.PATH ?? "" },
+        env: { CODEX_HOME: codexHome, PATH: process.env.PATH ?? "" },
         id: "codex",
         label: "Codex",
         terminalName: "xterm-256color",
@@ -266,20 +282,38 @@ describe("fleet-cli agent CLI MCP registration", () => {
       ]);
       expect(profile.args).toContain("--enable");
       expect(profile.args).toContain("child_agents_md");
-      expect(profile.args).toContain("--dangerously-bypass-hook-trust");
+      expect(profile.args).toContain("--profile");
+      const profileName = argValue(profile.args, "--profile");
+      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
+      const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+      expect(profile.args).not.toContain("plugin_hooks");
+      expect(profile.args).not.toContain("--dangerously-bypass-hook-trust");
+      expect(readFileSync(profilePath, "utf8")).toBe([
+        CODEX_FLEET_PROFILE_MARKER,
+        'developer_instructions = "private fleet prompt"',
+        "",
+      ].join("\n"));
+      expect(existsSync(staleProfilePath)).toBe(false);
+      expect(existsSync(freshProfilePath)).toBe(true);
+      expect(existsSync(userFleetProfilePath)).toBe(true);
+      profile.cleanup?.();
+      expect(existsSync(profilePath)).toBe(false);
+      expect(releaseSessionToken).toHaveBeenCalledTimes(1);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
     }
   });
 
   it("continues Codex launch profile injection when plugin registration fails", async () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
     try {
       const profile = await injectAgentCliProfile({
         args: [],
         bin: "/usr/local/bin/codex",
         cwd: process.cwd(),
-        env: {},
+        env: { CODEX_HOME: codexHome },
         id: "codex",
         label: "Codex",
         terminalName: "xterm-256color",
@@ -298,10 +332,21 @@ describe("fleet-cli agent CLI MCP registration", () => {
       });
 
       expect(profile.args).toContain("child_agents_md");
+      const profileName = argValue(profile.args, "--profile");
+      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
+      const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+      expect(readFileSync(profilePath, "utf8")).toBe([
+        CODEX_FLEET_PROFILE_MARKER,
+        'developer_instructions = "private fleet prompt"',
+        "",
+      ].join("\n"));
       expect(profile.launchWarnings?.[0]).toContain("codex plugin marketplace list failed");
       expect(profile.launchWarnings?.[0]).toContain("codex plugin exploded");
+      profile.cleanup?.();
+      expect(existsSync(profilePath)).toBe(false);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
     }
   });
 });
@@ -334,7 +379,15 @@ function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
     ],
     pluginRoot,
     pluginRoots: [pluginRoot],
+    codexProfileName: "fleet-00000000-0000-4000-8000-000000000000",
+    replaceSystemPrompt: true,
+    systemPromptFile: path.join(root, "system-prompt.md"),
   };
+}
+
+function argValue(args: readonly string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  return index === -1 ? undefined : args[index + 1];
 }
 
 function pluginDirArgs(args: readonly string[]): string[] {
