@@ -235,6 +235,7 @@ describe("update installer process invocation", () => {
     await expect(runFleetUpdate(io)).resolves.toBe(0);
 
     expect(io.stdout.toString()).toBe("Fleet is already on the latest version (v1.2.0).\n");
+    expect(mockedCheckUpdateStatus).toHaveBeenCalledWith({ channel: "stable", version: "1.2.0" }, { forceRefresh: true });
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
 

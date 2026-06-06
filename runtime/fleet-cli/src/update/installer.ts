@@ -43,7 +43,7 @@ export async function runFleetUpdate(io: UpdateCommandIo): Promise<number> {
     writeManualInstallMessage(io, target.channel, target.reason);
     return 0;
   }
-  const updateCheck = await checkUpdateStatus(release).catch(() => ({ status: "unavailable" as const }));
+  const updateCheck = await checkUpdateStatus(release, { forceRefresh: true }).catch(() => ({ status: "unavailable" as const }));
   if (updateCheck.status === "current") {
     io.stdout.write(`Fleet is already on the latest version (v${release.version}).\n`);
     return 0;
