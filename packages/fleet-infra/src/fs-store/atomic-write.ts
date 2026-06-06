@@ -6,6 +6,32 @@ import type { AtomicWriteOptions } from "./types.js";
 import { SECURE_FILE_MODE } from "./secure-fs.js";
 
 const DEFAULT_MAX_ATTEMPTS = 10;
+const IGNORED_FSYNC_ERROR_CODES = new Set(["EPERM", "EINVAL", "ENOSYS"]);
+
+function isIgnoredFsyncError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return typeof code === "string" && IGNORED_FSYNC_ERROR_CODES.has(code);
+}
+
+function fsyncSyncBestEffort(fd: number): void {
+  try {
+    fs.fsyncSync(fd);
+  } catch (error) {
+    if (!isIgnoredFsyncError(error)) {
+      throw error;
+    }
+  }
+}
+
+async function fsyncAsyncBestEffort(fd: fs.promises.FileHandle): Promise<void> {
+  try {
+    await fd.sync();
+  } catch (error) {
+    if (!isIgnoredFsyncError(error)) {
+      throw error;
+    }
+  }
+}
 
 /**
  * temp 파일 경로 생성기
@@ -39,7 +65,7 @@ export function writeAtomicSync(
       if (doFsync) {
         const fd = fs.openSync(tempPath, "r");
         try {
-          fs.fsyncSync(fd);
+          fsyncSyncBestEffort(fd);
         } finally {
           fs.closeSync(fd);
         }
@@ -84,7 +110,7 @@ export async function writeAtomicAsync(
       if (doFsync) {
         const fd = await fs.promises.open(tempPath, "r");
         try {
-          await fd.sync();
+          await fsyncAsyncBestEffort(fd);
         } finally {
           await fd.close();
         }

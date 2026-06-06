@@ -2,7 +2,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    fsyncSync: vi.fn(actual.fsyncSync),
+  };
+});
 
 import { writeAtomicSync, writeAtomicAsync } from "../../src/fs-store/atomic-write.js";
 
@@ -14,8 +22,15 @@ function makeTempDir(): string {
   return dir;
 }
 
+function makeErrnoError(code: string): NodeJS.ErrnoException {
+  const error = new Error(code) as NodeJS.ErrnoException;
+  error.code = code;
+  return error;
+}
+
 describe("writeAtomicSync", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -62,10 +77,34 @@ describe("writeAtomicSync", () => {
     const entries = fs.readdirSync(dir);
     expect(entries.filter((e) => e.endsWith(".tmp"))).toEqual([]);
   });
+
+  it("fsync EPERM은 저장을 막지 않는다", () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "test.json");
+    vi.mocked(fs.fsyncSync).mockImplementationOnce(() => {
+      throw makeErrnoError("EPERM");
+    });
+
+    writeAtomicSync(filePath, "content");
+
+    expect(fs.readFileSync(filePath, "utf-8")).toBe("content");
+  });
+
+  it("fsync EIO는 실제 I/O 오류로 전파한다", () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "test.json");
+    vi.mocked(fs.fsyncSync).mockImplementationOnce(() => {
+      throw makeErrnoError("EIO");
+    });
+
+    expect(() => writeAtomicSync(filePath, "content")).toThrow(/EIO/);
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
 });
 
 describe("writeAtomicAsync", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -88,5 +127,34 @@ describe("writeAtomicAsync", () => {
     await writeAtomicAsync(filePath, "second");
 
     expect(fs.readFileSync(filePath, "utf-8")).toBe("second");
+  });
+
+  it("fsync EPERM은 저장을 막지 않는다", async () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "test.json");
+    const originalOpen = fs.promises.open.bind(fs.promises);
+    vi.spyOn(fs.promises, "open").mockImplementationOnce(async (...args) => {
+      const fd = await originalOpen(...args);
+      vi.spyOn(fd, "sync").mockRejectedValueOnce(makeErrnoError("EPERM"));
+      return fd;
+    });
+
+    await writeAtomicAsync(filePath, "content");
+
+    expect(fs.readFileSync(filePath, "utf-8")).toBe("content");
+  });
+
+  it("fsync EIO는 실제 I/O 오류로 전파한다", async () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "test.json");
+    const originalOpen = fs.promises.open.bind(fs.promises);
+    vi.spyOn(fs.promises, "open").mockImplementationOnce(async (...args) => {
+      const fd = await originalOpen(...args);
+      vi.spyOn(fd, "sync").mockRejectedValueOnce(makeErrnoError("EIO"));
+      return fd;
+    });
+
+    await expect(writeAtomicAsync(filePath, "content")).rejects.toThrow(/EIO/);
+    expect(fs.existsSync(filePath)).toBe(false);
   });
 });
