@@ -1,4 +1,4 @@
-import { createChildEnv, resolveBinary } from "../resolve-bin.js";
+import { createChildEnv, resolveBinary } from "../../process/resolve-bin.js";
 import type { AgentCliDefinition, AgentCliProfileOptions } from "../types.js";
 import { createCodexEnv } from "./env.js";
 

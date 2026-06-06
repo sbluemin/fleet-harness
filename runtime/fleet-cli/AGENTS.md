@@ -38,6 +38,7 @@ Only the permanent vertical two-pane layout is allowed:
 - **Render coordination**: `src/controls/render.ts` owns host render scheduling, cursor policy sync, and viewport adapter.
 - **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
 - **Controls barrel**: `src/controls/index.ts` is an explicit package-local barrel; it is not a public workspace surface.
+- **Process runtime**: `src/process/` owns cross-subsystem binary resolution and Windows shim wrapping; shared by update and agent-cli subsystems.
 
 ## Input & Mode Logic
 
