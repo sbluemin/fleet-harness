@@ -33,8 +33,15 @@ export interface AgentCliProfileOptions {
   readonly model?: string;
 }
 
+export interface AgentCliMcpServerArg {
+  readonly bearerToken: string;
+  readonly endpointUrl: string;
+  readonly name: string;
+}
+
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
+  readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
 }

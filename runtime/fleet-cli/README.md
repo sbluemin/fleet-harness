@@ -27,10 +27,11 @@ After installation, run `fleet` from any directory.
 ## Session Plugins
 
 Dedicated Claude and Codex sessions receive Fleet context through generated plugin assets rendered under `~/.fleet/marketplace/plugins/fleet`.
-The SessionStart hook injects Fleet doctrine from an inline hook payload, `.mcp.json` reads bearer tokens from child-only environment variables, and provider-shared skill files are generated inside each bundle.
+The SessionStart hook injects Fleet doctrine from an inline hook payload, and provider-shared skill files are generated inside each bundle.
+The carrier and wiki MCP servers are not rendered into the plugin bundle; they are injected at spawn time as launch arguments (`--mcp-config` for Claude and `-c mcp_servers.*` for Codex).
 
 Claude launches with `--plugin-dir ~/.fleet/marketplace/plugins/fleet` and discovers enabled carrier agents from plugin `agents/*.md`.
-Fleet also writes provider marketplace metadata at `~/.fleet/marketplace/.agents/plugins/marketplace.json` for Codex and `~/.fleet/marketplace/.claude-plugin/marketplace.json` for Claude. Both marketplace files point at the same installable bundle under `./plugins/fleet`, so carrier and wiki MCP wiring share Codex and Claude manifests, skills, agents, hooks, and MCP config without provider-specific duplication.
+Fleet also writes provider marketplace metadata at `~/.fleet/marketplace/.agents/plugins/marketplace.json` for Codex and `~/.fleet/marketplace/.claude-plugin/marketplace.json` for Claude. Both marketplace files point at the same installable bundle under `./plugins/fleet`, so Codex and Claude share manifests, skills, agents, and hooks without provider-specific duplication.
 Codex uses the official `codex plugin marketplace add ~/.fleet/marketplace` and `codex plugin add fleet -m fleet` commands, with plugin features enabled at launch and hook trust bypass for the vetted Fleet plugin.
 Codex role files are no longer created.
 

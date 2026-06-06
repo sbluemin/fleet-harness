@@ -1,17 +1,10 @@
 import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
 
-export interface SessionPluginMcpServerInput {
-  readonly endpointUrl: string;
-  readonly name: string;
-  readonly token: string;
-}
-
 export interface CreateAgentCliSessionPluginOptions {
   readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
   readonly cliId: string;
   readonly cwd: string;
   readonly doctrine: string;
-  readonly mcpServers: readonly SessionPluginMcpServerInput[];
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
 }
@@ -41,7 +34,6 @@ export interface CodexPluginRegistrationCommand {
 export interface AgentCliSessionPlugin {
   readonly cleanup: () => void;
   readonly codexRegistrations: readonly CodexPluginRegistration[];
-  readonly env: Readonly<Record<string, string>>;
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
 }

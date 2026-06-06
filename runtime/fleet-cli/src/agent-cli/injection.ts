@@ -18,8 +18,8 @@ import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { createAgentCliSessionPlugin, ensureCodexPluginRegistered } from "./session-plugin/index.js";
-import type { CodexCommandResult, CodexPluginRegistrationCommand, SessionPluginMcpServerInput } from "./session-plugin/types.js";
-import type { AgentCliInjectionContext, AgentCliProfile } from "./types.js";
+import type { CodexCommandResult, CodexPluginRegistrationCommand } from "./session-plugin/types.js";
+import type { AgentCliInjectionContext, AgentCliMcpServerArg, AgentCliProfile } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
@@ -57,7 +57,6 @@ export async function injectAgentCliProfile(
       cliId: profile.id,
       cwd: profile.cwd,
       doctrine: options.buildSystemPrompt(injectTone),
-      mcpServers,
       rootDir: options.sessionPluginRootDir,
     });
     const launchWarnings: string[] = [];
@@ -66,7 +65,7 @@ export async function injectAgentCliProfile(
         args: [],
         bin: profile.bin,
         cwd: profile.cwd,
-        env: { ...profile.env, ...plugin.env },
+        env: { ...profile.env },
       }, options.codexCommandRunner);
       if (registrationWarning !== undefined) {
         launchWarnings.push(`Fleet Codex plugin registration failed for ${registration.pluginName}: ${registrationWarning}`);
@@ -79,6 +78,7 @@ export async function injectAgentCliProfile(
     options.onCleanup?.(cleanup);
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
+      mcpServers,
       pluginRoot: plugin.pluginRoot,
       pluginRoots: plugin.pluginRoots,
     };
@@ -87,7 +87,6 @@ export async function injectAgentCliProfile(
       ...profile,
       args: [...profile.args, ...injectedArgs],
       cleanup,
-      env: { ...profile.env, ...plugin.env },
       launchWarnings: [...(profile.launchWarnings ?? []), ...launchWarnings],
     };
   } catch (error) {
@@ -128,7 +127,7 @@ function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeDefin
 function buildAgentCliMcpServerConfigs(
   endpoints: readonly { readonly name: string; readonly url: string }[],
   tokens: readonly { readonly name: string; readonly token: string }[],
-): SessionPluginMcpServerInput[] {
+): AgentCliMcpServerArg[] {
   return endpoints.map((endpoint) => {
     const token = tokens.find((entry) => entry.name === endpoint.name)?.token;
     if (!token) {
@@ -137,7 +136,7 @@ function buildAgentCliMcpServerConfigs(
     return {
       name: endpoint.name,
       endpointUrl: endpoint.url,
-      token,
+      bearerToken: token,
     };
   });
 }

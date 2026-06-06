@@ -35,7 +35,6 @@ interface SessionPluginBundle {
   readonly hashFileName: string;
   readonly includeClaudeAgents: boolean;
   readonly includeSessionHook: boolean;
-  readonly mcpServerNames: readonly string[];
   readonly name: string;
   readonly skills: readonly SessionPluginSkill[];
 }
@@ -47,7 +46,6 @@ interface SessionPluginSkill {
 
 const LEGACY_PLUGIN_NAME = "fleet";
 const CODEX_MARKETPLACE_NAME = "fleet";
-const CODEX_TOOL_TIMEOUT_SEC = 1_800;
 const CLAUDE_AGENT_FILE_STEM_ALLOWLIST = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const MARKETPLACE_DIR_NAME = "marketplace";
 const PLUGIN_BUNDLES_DIR_NAME = "plugins";
@@ -78,7 +76,6 @@ const SESSION_PLUGIN_BUNDLES: readonly SessionPluginBundle[] = [{
   hashFileName: ".fleet-codex-plugin.hash",
   includeClaudeAgents: true,
   includeSessionHook: true,
-  mcpServerNames: ["carrier", "wiki"],
   name: "fleet",
   skills: [{
     content: FLEET_CARRIERS_SKILL,
@@ -120,7 +117,6 @@ export function createAgentCliSessionPlugin(
 ): AgentCliSessionPlugin {
   const fleetRoot = options.rootDir ?? path.join(os.homedir(), ".fleet");
   const marketplaceRoot = path.join(fleetRoot, MARKETPLACE_DIR_NAME);
-  const env = buildEnv(options.mcpServers);
   validateClaudeAgentFileStems(options.claudeDefinitions);
   ensurePrivateDir(marketplaceRoot, marketplaceRoot);
   renderMarketplaceRoot(marketplaceRoot);
@@ -144,7 +140,6 @@ export function createAgentCliSessionPlugin(
         pluginRoot: pluginRoots[index]!,
       }))
       : [],
-    env,
     pluginRoot: pluginRoots[0]!,
     pluginRoots,
   };
@@ -176,22 +171,6 @@ function validateClaudeAgentFileStems(
   }
 }
 
-function buildEnv(
-  servers: CreateAgentCliSessionPluginOptions["mcpServers"],
-): Record<string, string> {
-  return Object.fromEntries(
-    servers.map((server) => [mcpEnvVarName(server.name), server.token]),
-  );
-}
-
-function mcpEnvVarName(serverName: string): string {
-  return `FLEET_MCP_${normalizeEnvName(serverName)}_TOKEN`;
-}
-
-function normalizeEnvName(value: string): string {
-  return value.replace(/[^A-Z0-9_]/gi, "_").toUpperCase();
-}
-
 function renderPluginRoot(
   pluginRoot: string,
   bundle: SessionPluginBundle,
@@ -208,7 +187,6 @@ function renderPluginRoot(
     writePrivateFile(path.join(pluginRoot, "hooks", "session-start.mjs"), hookScript(options.doctrine), pluginRoot);
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), hookConfig(), pluginRoot);
   }
-  writePrivateJson(path.join(pluginRoot, ".mcp.json"), mcpConfig(filterMcpServers(options.mcpServers, bundle)), pluginRoot);
   for (const skill of bundle.skills) {
     writePrivateFile(path.join(pluginRoot, "skills", skill.dirName, "SKILL.md"), skill.content, pluginRoot);
   }
@@ -225,13 +203,6 @@ function renderMarketplaceRoot(marketplaceRoot: string): void {
   pruneMarketplaceRoot(marketplaceRoot);
   writePrivateJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(), marketplaceRoot);
   writePrivateJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(), marketplaceRoot);
-}
-
-function filterMcpServers(
-  servers: CreateAgentCliSessionPluginOptions["mcpServers"],
-  bundle: SessionPluginBundle,
-): CreateAgentCliSessionPluginOptions["mcpServers"] {
-  return servers.filter((server) => bundle.mcpServerNames.includes(server.name));
 }
 
 function prunePluginRoot(pluginRoot: string): void {
@@ -330,7 +301,6 @@ function codexManifest(bundle: SessionPluginBundle): unknown {
     description: bundle.description,
     ...(bundle.includeSessionHook ? { hooks: "./hooks/hooks.json" } : {}),
     skills: "./skills/",
-    mcpServers: "./.mcp.json",
   };
 }
 
@@ -339,25 +309,6 @@ function claudeManifest(bundle: SessionPluginBundle): unknown {
     name: bundle.name,
     version: "0.0.0",
     description: bundle.description,
-  };
-}
-
-function mcpConfig(servers: CreateAgentCliSessionPluginOptions["mcpServers"]): unknown {
-  return {
-    mcpServers: Object.fromEntries(
-      servers.map((server) => {
-        const envName = mcpEnvVarName(server.name);
-        return [server.name, {
-          type: "http",
-          url: server.endpointUrl,
-          bearer_token_env_var: envName,
-          headers: {
-            Authorization: `Bearer \${${envName}}`,
-          },
-          tool_timeout_sec: CODEX_TOOL_TIMEOUT_SEC,
-        }];
-      }),
-    ),
   };
 }
 

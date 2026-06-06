@@ -2,11 +2,13 @@ import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 import type { AgentCliInjectionContext } from "../types.js";
+import { escapeTomlBasicString } from "./toml.js";
 
 const PRIVATE_DIR_MODE_MASK = 0o077;
+const CODEX_TOOL_TIMEOUT_SEC = 1_800;
 
 export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[] {
-  return [
+  const args = [
     "--enable",
     "plugins",
     "--enable",
@@ -19,6 +21,19 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
     "-c",
     'sandbox_mode="danger-full-access"',
   ];
+  for (const server of context.mcpServers) {
+    const prefix = `mcp_servers.${server.name}`;
+    const bearerHeader = `Bearer ${server.bearerToken}`;
+    args.push(
+      "-c",
+      `${prefix}.url="${escapeTomlBasicString(server.endpointUrl)}"`,
+      "-c",
+      `${prefix}.http_headers={"Authorization" = "${escapeTomlBasicString(bearerHeader)}"}`,
+      "-c",
+      `${prefix}.tool_timeout_sec=${CODEX_TOOL_TIMEOUT_SEC}`,
+    );
+  }
+  return args;
 }
 
 function canBypassHookTrust(context: AgentCliInjectionContext): boolean {

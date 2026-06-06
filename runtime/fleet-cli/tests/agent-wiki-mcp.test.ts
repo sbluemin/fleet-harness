@@ -82,13 +82,28 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(systemPrompt).toContain('<fleet section="tool-guide" tool="wiki_query">');
   });
 
-  it("builds provider args with session plugin activation only", () => {
+  it("builds provider args with plugin activation and spawn-time MCP injection", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-args-"));
     const context = makeAgentCliInjectionContext(root);
     try {
       expect(buildClaudeNativeArgs(context)).toEqual([
         "--plugin-dir",
         context.pluginRoots[0],
+        "--mcp-config",
+        JSON.stringify({
+          mcpServers: {
+            carrier: {
+              type: "http",
+              url: "http://127.0.0.1:1000/carriers",
+              headers: { Authorization: "Bearer carriers-token" },
+            },
+            wiki: {
+              type: "http",
+              url: "http://127.0.0.1:1001/wiki",
+              headers: { Authorization: "Bearer wiki-token" },
+            },
+          },
+        }),
         "--dangerously-skip-permissions",
       ]);
       expect(buildCodexNativeArgs(context)).toEqual([
@@ -103,6 +118,18 @@ describe("fleet-cli agent CLI MCP registration", () => {
         'approval_policy="never"',
         "-c",
         'sandbox_mode="danger-full-access"',
+        "-c",
+        'mcp_servers.carrier.url="http://127.0.0.1:1000/carriers"',
+        "-c",
+        'mcp_servers.carrier.http_headers={"Authorization" = "Bearer carriers-token"}',
+        "-c",
+        "mcp_servers.carrier.tool_timeout_sec=1800",
+        "-c",
+        'mcp_servers.wiki.url="http://127.0.0.1:1001/wiki"',
+        "-c",
+        'mcp_servers.wiki.http_headers={"Authorization" = "Bearer wiki-token"}',
+        "-c",
+        "mcp_servers.wiki.tool_timeout_sec=1800",
       ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -146,12 +173,14 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
       expect(pluginRoots).toEqual([pluginRoot]);
       expect(readFileSync(path.join(pluginRoot, "hooks", "session-start.mjs"), "utf8")).toContain("private fleet prompt");
-      expect(readFileSync(path.join(pluginRoot, ".mcp.json"), "utf8")).not.toContain("carriers-token");
-      expect(readFileSync(path.join(pluginRoot, ".mcp.json"), "utf8")).not.toContain("wiki-token");
+      expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("name: fleet-usage");
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
-      expect(Object.values(profile.env)).toContain("carriers-token");
-      expect(Object.values(profile.env)).toContain("wiki-token");
+      const renderedArgs = profile.args.join(" ");
+      expect(renderedArgs).toContain("carriers-token");
+      expect(renderedArgs).toContain("wiki-token");
+      expect(Object.values(profile.env)).not.toContain("carriers-token");
+      expect(Object.values(profile.env)).not.toContain("wiki-token");
 
       profile.cleanup?.();
       for (const cleanup of cleanups) {
@@ -299,6 +328,10 @@ function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
   mkdirSync(pluginRoot, { recursive: true, mode: 0o700 });
   return {
     cliId: "codex",
+    mcpServers: [
+      { name: "carrier", endpointUrl: "http://127.0.0.1:1000/carriers", bearerToken: "carriers-token" },
+      { name: "wiki", endpointUrl: "http://127.0.0.1:1001/wiki", bearerToken: "wiki-token" },
+    ],
     pluginRoot,
     pluginRoots: [pluginRoot],
   };

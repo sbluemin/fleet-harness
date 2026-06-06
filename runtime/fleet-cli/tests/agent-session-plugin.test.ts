@@ -9,8 +9,6 @@ import { cleanupPrivateRoot } from "../src/agent-cli/session-plugin/fs.js";
 import type { AgentCliSessionPlugin, CodexPluginRegistration, CodexPluginRegistrationCommand } from "../src/agent-cli/session-plugin/types.js";
 
 const DOCTRINE = "FLEET_DOCTRINE_MARKER";
-const CARRIER_TOKEN = "carrier-secret-token";
-const WIKI_TOKEN = "wiki-secret-token";
 
 describe("agent CLI session plugin renderer", () => {
   const tempRoots: string[] = [];
@@ -21,7 +19,7 @@ describe("agent CLI session plugin renderer", () => {
     }
   });
 
-  it("renders one marketplace with one Fleet Claude/Codex plugin bundle and env-only MCP tokens", () => {
+  it("renders one marketplace with one Fleet Claude/Codex plugin bundle without MCP definitions", () => {
     const rootDir = makeRoot();
     const plugin = createAgentCliSessionPlugin({
       claudeDefinitions: [{
@@ -36,7 +34,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
 
@@ -80,38 +77,13 @@ describe("agent CLI session plugin renderer", () => {
     });
     expect(readJson(path.join(fleetRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
       hooks: "./hooks/hooks.json",
-      mcpServers: "./.mcp.json",
       name: "fleet",
       skills: "./skills/",
     });
-    expect(readJson(path.join(fleetRoot, ".mcp.json"))).toEqual({
-      mcpServers: {
-        carrier: {
-          type: "http",
-          url: "http://127.0.0.1:1000/carriers",
-          bearer_token_env_var: "FLEET_MCP_CARRIER_TOKEN",
-          headers: {
-            Authorization: "Bearer ${FLEET_MCP_CARRIER_TOKEN}",
-          },
-          tool_timeout_sec: 1800,
-        },
-        wiki: {
-          type: "http",
-          url: "http://127.0.0.1:1001/wiki",
-          bearer_token_env_var: "FLEET_MCP_WIKI_TOKEN",
-          headers: {
-            Authorization: "Bearer ${FLEET_MCP_WIKI_TOKEN}",
-          },
-          tool_timeout_sec: 1800,
-        },
-      },
-    });
-    expect(readFileSync(path.join(fleetRoot, ".mcp.json"), "utf8")).not.toContain(CARRIER_TOKEN);
-    expect(readFileSync(path.join(fleetRoot, ".mcp.json"), "utf8")).not.toContain(WIKI_TOKEN);
+    expect(readJson(path.join(fleetRoot, ".codex-plugin", "plugin.json"))).not.toHaveProperty("mcpServers");
+    expect(existsSync(path.join(fleetRoot, ".mcp.json"))).toBe(false);
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("carrier_dispatch");
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
-    expect(Object.values(plugin.env)).toContain(CARRIER_TOKEN);
-    expect(Object.values(plugin.env)).toContain(WIKI_TOKEN);
     expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
     assertPrivateTree(path.join(rootDir, "marketplace"));
   });
@@ -126,7 +98,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
 
@@ -148,7 +119,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "claude",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     })).toThrow(/Invalid Claude agent file name/);
     expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "agents"))).toBe(false);
@@ -165,7 +135,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir: linkRoot,
     })).toThrow(/symlink/);
     expect(existsSync(path.join(outside, "marketplace"))).toBe(false);
@@ -184,7 +153,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir: escapedRoot,
     })).toThrow(/symlink/);
     expect(existsSync(path.join(outside, ".fleet", "marketplace"))).toBe(false);
@@ -205,7 +173,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "claude",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
 
@@ -229,7 +196,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: "first",
-      mcpServers: mcpServers(),
       rootDir,
     });
     const second = createAgentCliSessionPlugin({
@@ -237,7 +203,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: "second",
-      mcpServers: mcpServers(),
       rootDir,
     });
 
@@ -262,7 +227,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
 
@@ -277,7 +241,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const calls: readonly string[][][] = [];
@@ -306,7 +269,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const calls: readonly string[][][] = [];
@@ -332,7 +294,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const calls: string[] = [];
@@ -367,7 +328,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
@@ -408,7 +368,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
@@ -435,7 +394,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
@@ -456,7 +414,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: DOCTRINE,
-      mcpServers: mcpServers(),
       rootDir,
     });
     const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
@@ -483,7 +440,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: "first",
-      mcpServers: mcpServers(),
       rootDir,
     });
     const firstRegistration = registrationByName(first, "fleet");
@@ -498,7 +454,6 @@ describe("agent CLI session plugin renderer", () => {
       cliId: "codex",
       cwd: process.cwd(),
       doctrine: "second",
-      mcpServers: mcpServers(),
       rootDir,
     });
     ensureCodexPluginRegistered(registrationByName(second, "fleet"), command, runner);
@@ -512,13 +467,6 @@ describe("agent CLI session plugin renderer", () => {
     return root;
   }
 });
-
-function mcpServers() {
-  return [
-    { name: "carrier", endpointUrl: "http://127.0.0.1:1000/carriers", token: CARRIER_TOKEN },
-    { name: "wiki", endpointUrl: "http://127.0.0.1:1001/wiki", token: WIKI_TOKEN },
-  ];
-}
 
 function readJson(filePath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
