@@ -35,6 +35,13 @@ const EXPECTED_CARRIER_TOOL_IDS = [
   "carrier_dispatch",
   "carrier_jobs",
 ] as const;
+const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
+  "wiki_drydock",
+  "wiki_ingest",
+  "wiki_patch_edit",
+  "wiki_compile_source",
+  "wiki_query",
+] as const;
 const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const FLEET_PROFILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -46,7 +53,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     lifecycle = undefined;
   });
 
-  it("exposes carrier and wiki tools on separate dedicated MCP servers", async () => {
+  it("exposes carrier and wiki tools on one dedicated Fleet MCP server", async () => {
     lifecycle = createFleetRuntimeLifecycle();
     const runtime = await lifecycle.start();
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
@@ -58,23 +65,43 @@ describe("fleet-cli agent CLI MCP registration", () => {
       ...server,
       token: tokens.find((entry) => entry.name === server.name)?.token,
     }));
-    const carriers = servers.find((server) => server.name === "carrier");
-    const wiki = servers.find((server) => server.name === "wiki");
+    const fleet = servers.find((server) => server.name === "fleet");
 
-    expect(carriers?.token).toBeDefined();
-    expect(wiki?.token).toBeDefined();
-    expect(carriers?.token).not.toEqual(wiki?.token);
+    expect(servers.map((server) => server.name)).toEqual(["fleet"]);
+    expect(tokens.map((entry) => entry.name)).toEqual(["fleet"]);
+    expect(fleet?.token).toBeDefined();
 
-    const carrierToolNames = await listMcpTools(carriers!.url, carriers!.token!);
-    const wikiToolNames = await listMcpTools(wiki!.url, wiki!.token!);
+    const fleetToolNames = await listMcpTools(fleet!.url, fleet!.token!);
 
-    expect([...carrierToolNames].sort()).toEqual([...EXPECTED_CARRIER_TOOL_IDS].sort());
-    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
-      expect(wikiToolNames.has(toolId)).toBe(true);
+    for (const toolId of EXPECTED_CARRIER_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(true);
     }
-    expect(wikiToolNames.size).toBe(EXPECTED_WIKI_TOOL_IDS.length);
-    expect(carrierToolNames.has("wiki_briefing")).toBe(false);
-    expect(wikiToolNames.has("carrier_dispatch")).toBe(false);
+    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(true);
+    }
+    expect(fleetToolNames.size).toBe(EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length);
+    expect(fleetToolNames.has("mcp__fleet__wiki_query")).toBe(false);
+    expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
+    expect(fleetToolNames.has("mcp__wiki__wiki_query")).toBe(false);
+
+    const executorPort = runtime.infraServices.executorPortRuntime;
+    expect(executorPort.getExecutorMcpRouterRuntimes().map((entry) => entry.name)).toEqual(["fleet"]);
+    expect(executorPort.getExecutorMcpTools("unknown", "chronicle")).toEqual([]);
+
+    const chronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "chronicle").map((tool) => tool.id));
+    const nonChronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
+
+    for (const toolId of CHRONICLE_ONLY_WIKI_TOOL_IDS) {
+      expect(chronicleTools.has(toolId)).toBe(true);
+      expect(nonChronicleTools.has(toolId)).toBe(false);
+    }
+    expect(chronicleTools.has("wiki_patch_queue")).toBe(false);
+    expect(nonChronicleTools.has("wiki_patch_queue")).toBe(false);
+    expect(nonChronicleTools.has("wiki_briefing")).toBe(true);
+    expect(nonChronicleTools.has("wiki_orient")).toBe(true);
+    expect(nonChronicleTools.has("wiki_read")).toBe(true);
+    expect(nonChronicleTools.has("wiki_resolve")).toBe(true);
+    expect(nonChronicleTools.has("carrier_jobs")).toBe(true);
 
     const systemPrompt = createSystemPromptBuilder({
       carrierRuntime: runtime.carrierRuntime,
@@ -96,15 +123,10 @@ describe("fleet-cli agent CLI MCP registration", () => {
         "--mcp-config",
         JSON.stringify({
           mcpServers: {
-            carrier: {
+            fleet: {
               type: "http",
-              url: "http://127.0.0.1:1000/carriers",
-              headers: { Authorization: "Bearer carriers-token" },
-            },
-            wiki: {
-              type: "http",
-              url: "http://127.0.0.1:1001/wiki",
-              headers: { Authorization: "Bearer wiki-token" },
+              url: "http://127.0.0.1:1000/fleet",
+              headers: { Authorization: "Bearer fleet-token" },
             },
           },
         }),
@@ -122,17 +144,11 @@ describe("fleet-cli agent CLI MCP registration", () => {
         "-c",
         'sandbox_mode="danger-full-access"',
         "-c",
-        'mcp_servers.carrier.url="http://127.0.0.1:1000/carriers"',
+        'mcp_servers.fleet.url="http://127.0.0.1:1000/fleet"',
         "-c",
-        'mcp_servers.carrier.http_headers={"Authorization" = "Bearer carriers-token"}',
+        'mcp_servers.fleet.http_headers={"Authorization" = "Bearer fleet-token"}',
         "-c",
-        "mcp_servers.carrier.tool_timeout_sec=1800",
-        "-c",
-        'mcp_servers.wiki.url="http://127.0.0.1:1001/wiki"',
-        "-c",
-        'mcp_servers.wiki.http_headers={"Authorization" = "Bearer wiki-token"}',
-        "-c",
-        "mcp_servers.wiki.tool_timeout_sec=1800",
+        "mcp_servers.fleet.tool_timeout_sec=1800",
       ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -157,15 +173,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
         carrierRuntime: createCarrierRuntime(),
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [
-              { name: "carrier", url: "http://127.0.0.1:1000/carriers" },
-              { name: "wiki", url: "http://127.0.0.1:1001/wiki" },
-            ],
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
           }),
-          issueSessionToken: () => [
-            { name: "carrier", token: "carriers-token" },
-            { name: "wiki", token: "wiki-token" },
-          ],
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken,
         } as never,
         onCleanup: (cleanup) => cleanups.push(cleanup),
@@ -183,10 +193,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("name: fleet-usage");
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
       const renderedArgs = profile.args.join(" ");
-      expect(renderedArgs).toContain("carriers-token");
-      expect(renderedArgs).toContain("wiki-token");
-      expect(Object.values(profile.env)).not.toContain("carriers-token");
-      expect(Object.values(profile.env)).not.toContain("wiki-token");
+      expect(renderedArgs).toContain("fleet-token");
+      expect(Object.values(profile.env)).not.toContain("fleet-token");
 
       profile.cleanup?.();
       for (const cleanup of cleanups) {
@@ -260,15 +268,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
         },
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [
-              { name: "carrier", url: "http://127.0.0.1:1000/carriers" },
-              { name: "wiki", url: "http://127.0.0.1:1001/wiki" },
-            ],
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
           }),
-          issueSessionToken: () => [
-            { name: "carrier", token: "carriers-token" },
-            { name: "wiki", token: "wiki-token" },
-          ],
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken,
         } as never,
         sessionPluginRootDir: rootDir,
@@ -323,9 +325,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
         codexCommandRunner: () => ({ status: 1, stderr: "codex plugin exploded", stdout: "" }),
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [{ name: "carrier", url: "http://127.0.0.1:1000/carriers" }],
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
           }),
-          issueSessionToken: () => [{ name: "carrier", token: "carriers-token" }],
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken: vi.fn(),
         } as never,
         sessionPluginRootDir: rootDir,
@@ -374,8 +376,7 @@ function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
   return {
     cliId: "codex",
     mcpServers: [
-      { name: "carrier", endpointUrl: "http://127.0.0.1:1000/carriers", bearerToken: "carriers-token" },
-      { name: "wiki", endpointUrl: "http://127.0.0.1:1001/wiki", bearerToken: "wiki-token" },
+      { name: "fleet", endpointUrl: "http://127.0.0.1:1000/fleet", bearerToken: "fleet-token" },
     ],
     pluginRoot,
     pluginRoots: [pluginRoot],

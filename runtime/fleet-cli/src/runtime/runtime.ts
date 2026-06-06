@@ -3,10 +3,9 @@ import path from "node:path";
 
 import { createCarrierRuntime, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import {
-	CARRIER_MCP_SERVER_NAME,
+	FLEET_MCP_SERVER_NAME,
 	getExecutorMcpTools,
 	registerAgentToolDefaults,
-	WIKI_MCP_SERVER_NAME,
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
 import {
@@ -45,11 +44,6 @@ interface RuntimeMcpServices {
 	readonly mcpRegistry: McpToolRegistry;
 	readonly mcpServer: McpServer;
 	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
-}
-
-interface RuntimeMcpBundles {
-	readonly carriers: RuntimeMcpServices;
-	readonly wiki: RuntimeMcpServices;
 }
 
 interface StartedRuntime {
@@ -92,31 +86,17 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 				: [];
 		},
 		getExecutorMcpTools(serverName, carrierId) {
-			switch (serverName) {
-				case CARRIER_MCP_SERVER_NAME:
-					return getExecutorMcpTools(mcpRuntimes.carriers.mcpRegistry, carrierRuntime, carrierId);
-				case WIKI_MCP_SERVER_NAME:
-					return getExecutorMcpTools(mcpRuntimes.wiki.mcpRegistry, carrierRuntime, carrierId);
-				default:
-					return [];
-			}
+			if (serverName !== FLEET_MCP_SERVER_NAME) return [];
+			return getExecutorMcpTools(mcpRuntimes.mcpRegistry, carrierRuntime, carrierId);
 		},
 		getExecutorMcpRouterRuntimes() {
 			return [
 				{
-					name: mcpRuntimes.carriers.name,
+					name: mcpRuntimes.name,
 					runtime: {
-						registry: mcpRuntimes.carriers.mcpRegistry,
-						server: mcpRuntimes.carriers.mcpServer,
-						snapshotStore: mcpRuntimes.carriers.mcpToolSnapshotStore,
-					},
-				},
-				{
-					name: mcpRuntimes.wiki.name,
-					runtime: {
-						registry: mcpRuntimes.wiki.mcpRegistry,
-						server: mcpRuntimes.wiki.mcpServer,
-						snapshotStore: mcpRuntimes.wiki.mcpToolSnapshotStore,
+						registry: mcpRuntimes.mcpRegistry,
+						server: mcpRuntimes.mcpServer,
+						snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
 					},
 				},
 			];
@@ -125,10 +105,10 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
 
-	registerAgentToolDefaults(mcpRuntimes.carriers.mcpRegistry, carrierRuntime);
+	registerAgentToolDefaults(mcpRuntimes.mcpRegistry, carrierRuntime);
 	for (const spec of getWikiToolSpecs()) {
 		if (spec.id === "wiki_patch_queue") {
-			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
+			mcpRuntimes.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
 		} else if (
 			spec.id === "wiki_drydock"
 			|| spec.id === "wiki_ingest"
@@ -136,36 +116,25 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			|| spec.id === "wiki_compile_source"
 			|| spec.id === "wiki_query"
 		) {
-			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
+			mcpRuntimes.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
 		} else {
-			mcpRuntimes.wiki.mcpRegistry.registerExecutorTool(spec);
+			mcpRuntimes.mcpRegistry.registerExecutorTool(spec);
 		}
 	}
 	const dedicatedMcpSession = createExecutorSessionManager({
 		runtimes: [
 			{
-				name: mcpRuntimes.carriers.name,
+				name: mcpRuntimes.name,
 				runtime: {
-					registry: mcpRuntimes.carriers.mcpRegistry,
-					server: mcpRuntimes.carriers.mcpServer,
-					snapshotStore: mcpRuntimes.carriers.mcpToolSnapshotStore,
-				},
-			},
-			{
-				name: mcpRuntimes.wiki.name,
-				runtime: {
-					registry: mcpRuntimes.wiki.mcpRegistry,
-					server: mcpRuntimes.wiki.mcpServer,
-					snapshotStore: mcpRuntimes.wiki.mcpToolSnapshotStore,
+					registry: mcpRuntimes.mcpRegistry,
+					server: mcpRuntimes.mcpServer,
+					snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
 				},
 			},
 		],
 	});
-	void Promise.all([
-		mcpRuntimes.carriers.mcpServer.start(),
-		mcpRuntimes.wiki.mcpServer.start(),
-	]).catch((error: unknown) => {
-		console.error("[fleet-cli] Failed to start MCP servers", error);
+	void mcpRuntimes.mcpServer.start().catch((error: unknown) => {
+		console.error("[fleet-cli] Failed to start MCP server", error);
 	});
 
 	reconcileRuntimeState(carrierRuntime);
@@ -175,28 +144,19 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			carrierRuntime,
 			dedicatedMcpSession,
 			infraServices,
-			mcpRegistry: [
-				mcpRuntimes.carriers.mcpRegistry,
-				mcpRuntimes.wiki.mcpRegistry,
-			],
+			mcpRegistry: [mcpRuntimes.mcpRegistry],
 		},
 		async shutdown() {
 			dedicatedMcpSession.cleanup();
 			const disconnectAgentSessions = infraServices.agent.disconnectAll;
 			await disconnectAgentSessions();
-			await Promise.all([
-				mcpRuntimes.carriers.mcpServer.stop(),
-				mcpRuntimes.wiki.mcpServer.stop(),
-			]);
+			await mcpRuntimes.mcpServer.stop();
 		},
 	};
 }
 
-function createRuntimeMcpServices(): RuntimeMcpBundles {
-	return {
-		carriers: createRuntimeMcpBundle(CARRIER_MCP_SERVER_NAME),
-		wiki: createRuntimeMcpBundle(WIKI_MCP_SERVER_NAME),
-	};
+function createRuntimeMcpServices(): RuntimeMcpServices {
+	return createRuntimeMcpBundle(FLEET_MCP_SERVER_NAME);
 }
 
 function createRuntimeMcpBundle(name: string): RuntimeMcpServices {

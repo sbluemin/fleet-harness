@@ -113,7 +113,7 @@ type EffortResolution =
 
 const CLIENT_INFO = { name: "fleet-unified-agent", version: "1.0.0" } as const;
 const MAX_TOOL_CALLS_TO_KEEP = 30;
-const INTERNAL_MCP_SERVER_NAMES = new Set(["carrier", "fleet-carriers", "fleet-wiki", "wiki"]);
+const INTERNAL_MCP_SERVER_NAMES = new Set(["carrier", "fleet", "fleet-carriers", "fleet-wiki", "wiki"]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Module-level pool (globalThis 대체)

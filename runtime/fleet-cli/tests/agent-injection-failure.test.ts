@@ -35,9 +35,9 @@ describe("agent CLI injection failure cleanup", () => {
         carrierRuntime: createCarrierRuntime(),
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [{ name: "carrier", url: "http://127.0.0.1:1000/carriers" }],
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
           }),
-          issueSessionToken: () => [{ name: "carrier", token: "token" }],
+          issueSessionToken: () => [{ name: "fleet", token: "token" }],
           releaseSessionToken,
         } as never,
       })).rejects.toThrow(/render failed/);
