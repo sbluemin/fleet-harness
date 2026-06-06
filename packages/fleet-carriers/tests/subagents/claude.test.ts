@@ -97,10 +97,6 @@ function createCarrierConfig(id: string, cliType: CarrierConfig["defaultCliType"
           defaultModel: "sonnet",
           defaultEffort: "low",
         },
-        codex: {
-          defaultModel: "gpt-5.5",
-          defaultEffort: "low",
-        },
       },
     },
   };

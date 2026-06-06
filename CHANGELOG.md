@@ -7,9 +7,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - [core] `fleet update` now prints situation-specific guidance instead of a single generic message: local development builds report that there is nothing to update; up-to-date installs skip reinstall with an already-on-the-latest-version notice; undetectable global installs, non-writable install locations, and unreachable registry checks each receive a distinct message before manual fallback instructions.
+- [core] Dedicated Agent CLI launches now activate Fleet through one flat generated plugin root with inline SessionStart doctrine hooks, env-only MCP tokens, Codex-compatible marketplace discovery, and official Codex CLI plugin registration.
 
 ### Fixed
 - [core] Fixed Windows `fleet update` only printing manual install instructions instead of running the automatic global npm or pnpm update; package manager shims are now resolved and invoked correctly on Windows, with manual instructions shown only when detection or installation fails.
+
+### Removed
+- [core] Removed Codex role-file generation and direct prompt, MCP, and inline agent injection from dedicated Agent CLI sessions.
 
 ## [1.2.0] - 2026-06-03
 
@@ -84,7 +88,7 @@ Release v1.1.3
 - [core] Enabling Native(SubAgent) mode and committing a TaskForce config are now mutually exclusive, with a warning surfaced when one would overwrite the other.
 - [core] Carrier Status is now reached from Mission Control's `C` shortcut as Carrier Roster.
 - [core] Moved default carrier persona settings into each persona module while preserving deterministic carrier registration order.
-- [core] Claude-family Agent CLI native subagents injected via `--agents` now default to `background: true` and run as background tasks.
+- [core] Claude-family Agent CLI native subagents injected via inline startup payloads now default to `background: true` and run as background tasks.
 
 ### Fixed
 - [core] Enabled Agent CLI app-mouse drag forwarding while preserving existing Fleet scroll fallback behavior.

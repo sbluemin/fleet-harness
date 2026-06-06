@@ -23,6 +23,7 @@ import type {
 } from "./types.js";
 
 interface ActivePty {
+  readonly cleanup?: () => void;
   readonly host: PtyHost;
   readonly profile: AgentCliProfile;
   readonly view: PtyView;
@@ -65,6 +66,8 @@ export function createMissionControlController(options: CreateMissionControlCont
   let selectedCliId = cliOptions.some((entry) => entry.id === options.initialCliId) ? options.initialCliId : cliOptions[0]?.id ?? options.initialCliId;
   let state: MissionControlStateKind = "idle";
   let lastExit: PtyExitEvent | undefined;
+  let lastLaunchError: string | undefined;
+  let lastLaunchWarning: string | undefined;
   let active: ActivePty | undefined;
   let activePanel: MissionControlPanel | undefined;
   let cols = 80;
@@ -110,6 +113,8 @@ export function createMissionControlController(options: CreateMissionControlCont
         const rendered = renderMissionControl(width, {
           bannerPhase: getBannerPhase(),
           cliOptions,
+          lastLaunchError,
+          lastLaunchWarning,
           lastExit,
           loadedCounts: options.loadedCounts,
           panelLines,
@@ -122,6 +127,8 @@ export function createMissionControlController(options: CreateMissionControlCont
       return fitMissionControlRows(renderMissionControl(width, {
         bannerPhase: getBannerPhase(),
         cliOptions,
+        lastLaunchError,
+        lastLaunchWarning,
         lastExit,
         loadedCounts: options.loadedCounts,
         release,
@@ -147,7 +154,9 @@ export function createMissionControlController(options: CreateMissionControlCont
     kill(): void {
       suppressNextExit = true;
       stopShimmer();
-      active?.host.kill();
+      const current = active;
+      current?.host.kill();
+      current?.cleanup?.();
       active = undefined;
     },
     onData(): void {},
@@ -178,7 +187,13 @@ export function createMissionControlController(options: CreateMissionControlCont
     component,
     dispose,
     getActiveProfile: () => active?.profile,
-    getState: () => ({ cliId: selectedCliId, kind: state, lastExit }),
+    getState: () => ({
+      cliId: selectedCliId,
+      kind: state,
+      ...(lastExit !== undefined ? { lastExit } : {}),
+      ...(lastLaunchError !== undefined ? { lastLaunchError } : {}),
+      ...(lastLaunchWarning !== undefined ? { lastLaunchWarning } : {}),
+    }),
     hasActivePanel: () => activePanel !== undefined,
     kill: () => ptyHost.kill(),
     launchSelected,
@@ -223,35 +238,46 @@ export function createMissionControlController(options: CreateMissionControlCont
 
     state = "launching";
     lastExit = undefined;
+    lastLaunchError = undefined;
     startShimmer();
     options.onRenderRequest();
+    let pendingCleanup: (() => void) | undefined;
     try {
       const launchOptions = options.sessionOptions?.getDraft();
       const launchCliId = launchOptions?.cliId ?? selectedCliId;
       const baseProfile = await options.resolveProfile(launchCliId, launchOptions);
       const profile = await options.injectProfile(baseProfile, launchOptions);
+      lastLaunchWarning = profile.launchWarnings?.[0];
+      pendingCleanup = profile.cleanup;
       const host = options.createPtyHost(profile);
       const view = (options.createPtyView ?? ((viewCols, viewRows) => new PtyView(viewCols, viewRows)))(cols, rows);
-      active = { host, profile, view };
+      active = { cleanup: profile.cleanup, host, profile, view };
       state = "active";
       stopShimmer();
       suppressNextExit = false;
       host.onData((chunk) => view.append(chunk, options.onRenderRequest));
       host.onExit((event) => {
+        active?.cleanup?.();
         if (suppressNextExit) {
           suppressNextExit = false;
           return;
         }
         active = undefined;
         lastExit = event;
+        lastLaunchError = undefined;
+        lastLaunchWarning = undefined;
         state = isFailedExit(event) ? "failed" : "ended";
         startShimmer();
         options.onRenderRequest();
       });
       host.start({ cols, rows });
+      pendingCleanup = undefined;
       closePanel();
-    } catch {
+    } catch (error) {
+      pendingCleanup?.();
       active = undefined;
+      lastLaunchError = formatError(error);
+      lastLaunchWarning = undefined;
       state = "failed";
       startShimmer();
     } finally {
@@ -280,6 +306,8 @@ export function createMissionControlController(options: CreateMissionControlCont
         void launchSelected();
       },
       loadedCounts: options.loadedCounts,
+      getLaunchError: () => lastLaunchError,
+      getLaunchWarning: () => lastLaunchWarning,
       onRenderRequest: options.onRenderRequest,
       openCarrierRoster,
       openModelOverride: (entry) => {
@@ -399,8 +427,17 @@ function clearDefaultShimmerInterval(timer: MissionControlShimmerTimer): void {
   clearInterval(timer as ReturnType<typeof setInterval>);
 }
 
+function formatError(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+  return String(error);
+}
+
 function createMissionRootPanel(options: {
   readonly cliOptions: readonly MissionControlCliOption[];
+  readonly getLaunchError: () => string | undefined;
+  readonly getLaunchWarning: () => string | undefined;
   readonly getStack: () => PanelStack;
   readonly launchCli: (entry: MissionControlCliOption) => void;
   readonly loadedCounts: CreateMissionControlControllerOptions["loadedCounts"];
@@ -422,6 +459,8 @@ function createMissionRootPanel(options: {
     breadcrumbs: () => options.getStack().breadcrumbs(),
     footer: "↑↓ select  Enter launch/open  → model",
     statusLines: () => [
+      ...(options.getLaunchError() ? [MISSION_CONTROL_THEME.error(`Launch failed: ${options.getLaunchError()}`)] : []),
+      ...(options.getLaunchWarning() ? [MISSION_CONTROL_THEME.warning(`Launch warning: ${options.getLaunchWarning()}`)] : []),
       ...formatLauncherStatusLines(options.loadedCounts, options.release()),
       ...(options.sessionOptions?.getStatusLines?.().map((line) => MISSION_CONTROL_THEME.error(line)) ?? []),
     ],
@@ -434,6 +473,8 @@ function createMissionRootRows(options: Parameters<typeof createMissionRootPanel
   const model = options.sessionOptions?.getDraft().model;
   return [
     { kind: "header", label: "LAUNCH" },
+    ...(options.getLaunchError() ? [{ kind: "header" as const, label: `Launch failed: ${options.getLaunchError()}` }] : []),
+    ...(options.getLaunchWarning() ? [{ kind: "header" as const, label: `Launch warning: ${options.getLaunchWarning()}` }] : []),
     ...options.cliOptions.map((entry): SectionedListRow => ({
       kind: "launch",
       id: `launch:${entry.id}`,

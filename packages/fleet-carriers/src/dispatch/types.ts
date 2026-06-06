@@ -106,7 +106,6 @@ export interface CarrierPersonaAgentDefaults {
   readonly nativeSubagents?: {
     readonly byHost?: {
       readonly claude?: CarrierAgentProviderDefaults;
-      readonly codex?: CarrierAgentProviderDefaults;
     };
   };
 }
@@ -116,7 +115,6 @@ export interface CarrierSubagentConfig {
   subagent?: {
     readonly byHost?: {
       readonly claude?: CarrierAgentProviderDefaults;
-      readonly codex?: CarrierAgentProviderDefaults;
     };
     /** @deprecated byHost.claude를 사용한다. 기존 확장 호환용 읽기 필드. */
     readonly provider?: "claude";

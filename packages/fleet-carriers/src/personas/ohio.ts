@@ -23,7 +23,6 @@ export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "sonnet", defaultEffort: "low" },
-        codex: { defaultModel: "gpt-5.5", defaultEffort: "low" },
       },
     },
   },

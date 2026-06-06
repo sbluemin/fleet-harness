@@ -23,7 +23,6 @@ export const CHRONICLE_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "sonnet", defaultEffort: "low" },
-        codex: { defaultModel: "gpt-5.4", defaultEffort: "medium" },
       },
     },
   },

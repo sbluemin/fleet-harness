@@ -15,7 +15,7 @@ import {
   resetCarrierTaskForceConfig,
   sanitizeCarrierDisplayName,
   saveAgentCliSelection,
-  setCarrierAgentModeWithCodexRole,
+  setCarrierAgentMode,
   updateAgentCliSelection,
   updateCarrierCliType,
   updateCarrierDisplayName,
@@ -600,15 +600,18 @@ export class CarrierStatusOverlay implements Component, Focusable {
       this.options.requestRender();
       return;
     }
-    const registeredCarrierIds = getRegisteredOrder(this.options.carrierRuntime.registry);
-    setCarrierAgentModeWithCodexRole(config, enabled, this.resolveCodexSubagentSettings(entry), { registeredCarrierIds });
+    if (entry.cliType === "codex" && enabled) {
+      this.feedbackMessage = `${entry.displayName} Codex native SubAgent는 지원하지 않습니다. Claude 계열에서만 사용할 수 있습니다.`;
+      this.options.requestRender();
+      return;
+    }
+    setCarrierAgentMode(entry.carrierId, enabled, config.defaultAgentMode);
     const resetTaskForce = enabled ? resetCarrierTaskForceConfig(entry.carrierId) : false;
     notifyStatusUpdate(this.options.carrierRuntime.registry);
-    const hostFamily = entry.cliType === "codex" ? "Codex 계열" : "Claude 계열";
     this.feedbackMessage = enabled
       ? resetTaskForce
-        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
-        : `${entry.displayName} Native(SubAgent) 활성화: 다음 ${hostFamily} dedicated CLI 시작부터 적용됩니다.`
+        ? `경고: ${entry.displayName} Native(SubAgent)를 활성화하며 기존 Task Force 설정을 해제했습니다. 다음 Claude 계열 dedicated CLI 시작부터 적용됩니다.`
+        : `${entry.displayName} Native(SubAgent) 활성화: 다음 Claude 계열 dedicated CLI 시작부터 적용됩니다.`
       : `${entry.displayName} Native(SubAgent) 비활성화: 다음 dedicated CLI 시작부터 적용됩니다.`;
     this.options.requestRender();
   }
@@ -644,16 +647,6 @@ export class CarrierStatusOverlay implements Component, Focusable {
       isDefault: entry.isDefault,
       model: entry.model,
     };
-  }
-
-  private resolveCodexSubagentSettings(entry: CarrierStatusEntry): AgentCliSelection | undefined {
-    if (entry.cliType === "codex") {
-      return {
-        effort: entry.effort ?? undefined,
-        model: entry.model,
-      };
-    }
-    return getAgentCliSelection(entry.carrierId, "codex");
   }
 
   private restoreEntrySnapshot(entry: CarrierStatusEntry, snapshot: EntrySnapshot): void {

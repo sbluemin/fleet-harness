@@ -10,7 +10,7 @@ export const codexCli: AgentCliDefinition = {
   async createProfile(options: AgentCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
-      args: [...prefixArgs, ...buildModelArgs(options.model)],
+      args: [...prefixArgs, "--no-alt-screen", ...buildModelArgs(options.model)],
       bin,
       cwd: options.cwd,
       env: createChildEnv(options.env, createCodexEnv()),

@@ -24,7 +24,6 @@ export const SENTINEL_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "sonnet", defaultEffort: "xhigh" },
-        codex: { defaultModel: "gpt-5.5", defaultEffort: "high" },
       },
     },
   },

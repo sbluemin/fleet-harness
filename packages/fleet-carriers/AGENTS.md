@@ -10,7 +10,7 @@
 - `dispatch/` — carrier framework, `carrier_dispatch`, Task Force auto-promotion, native-subagent-mode single-dispatch guard, request-block validation, status overlay, and sortie helpers
 - `jobs/` — detached job archive, lifecycle, concurrency, cancellation, reminders, IDs, sanitization, cache helpers, and the `carrier_jobs` lookup/control tool surface
 - `subagents/` — Claude-family and Codex subagent definition conversion derived from carrier metadata
-- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots, plus Codex subagent role file I/O under `codex-subagent-files.ts`; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/fleet-infra/fs-store`'s `withDirectoryLock`; persona `defaultAgentMode` defaults to `"subagent"` for all built-in carriers, and the store treats `"cli"` as the system-wide fallback when absent
+- `store/` — `carriers.json` carrier runtime persistence with override-only raw state and healed read-time snapshots; `state-io.ts` is the file-I/O gate and delegates directory locking to `@dotobokuri/fleet-infra/fs-store`'s `withDirectoryLock`; persona `defaultAgentMode` defaults to `"subagent"` for all built-in carriers, and the store treats `"cli"` as the system-wide fallback when absent
 - `stream/` — carrier job stream event types and Set-based handler registry
 - Explicit default carrier registration via `registerDefaultCarriers()`
 - Package-local tests for persona data, runtime registration, store reset, stream reset, and framework reset behavior

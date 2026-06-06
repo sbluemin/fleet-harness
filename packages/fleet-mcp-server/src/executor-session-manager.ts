@@ -26,6 +26,7 @@ export interface ExecutorSessionRequest {
 export interface ExecutorSessionManager {
   getEndpoint(): Promise<ExecutorEndpoint>;
   issueSessionToken(request: ExecutorSessionRequest): readonly ExecutorServerToken[];
+  releaseSessionToken(label: string): void;
   cleanup(): void;
 }
 
@@ -59,6 +60,9 @@ export function createExecutorSessionManager(deps: ExecutorSessionManagerDeps): 
     issueSessionToken(request) {
       return issueSessionToken(deps, sessionTokensByLabel, request);
     },
+    releaseSessionToken(label) {
+      releaseSessionToken(deps, sessionTokensByLabel, label);
+    },
     cleanup() {
       for (const tokens of sessionTokensByLabel.values()) {
         cleanupExecutorServerTokens(deps, tokens);
@@ -66,6 +70,18 @@ export function createExecutorSessionManager(deps: ExecutorSessionManagerDeps): 
       sessionTokensByLabel.clear();
     },
   };
+}
+
+function releaseSessionToken(
+  deps: ExecutorSessionManagerDeps,
+  sessionTokensByLabel: Map<string, readonly ExecutorServerToken[]>,
+  rawLabel: string,
+): void {
+  const label = rawLabel.trim();
+  const tokens = sessionTokensByLabel.get(label);
+  if (!tokens) return;
+  cleanupExecutorServerTokens(deps, tokens);
+  sessionTokensByLabel.delete(label);
 }
 
 function issueSessionToken(

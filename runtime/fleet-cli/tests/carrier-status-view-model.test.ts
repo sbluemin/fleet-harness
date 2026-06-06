@@ -75,28 +75,24 @@ describe("carrier status view model", () => {
     expect(entry?.subagentMode).toBe(true);
   });
 
-  it("heals codex-only carriers with codex persona defaults", () => {
+  it("heals codex-only carriers with provider defaults", () => {
     const runtime = createCarrierRuntime();
     registerCarrier(runtime.registry, createCarrierConfig({
       summary: "Runs with Codex defaults",
       title: "Operator",
-    }, "codex", {
-      defaultEffort: "low",
-      defaultModel: "gpt-5.4-mini",
-    }));
+    }, "codex"));
 
     const entry = buildStatusEntries(runtime)[0];
 
     expect(entry?.cliType).toBe("codex");
-    expect(entry?.model).toBe("gpt-5.4-mini");
-    expect(entry?.effort).toBe("low");
+    expect(entry?.model).toBe("gpt-5.4");
+    expect(entry?.effort).toBe("high");
   });
 });
 
 function createCarrierConfig(
   metadata: Pick<CarrierMetadata, "summary" | "title">,
   cliType: CarrierConfig["defaultCliType"] = "claude",
-  codexDefaults?: { readonly defaultEffort: string; readonly defaultModel: string },
 ): CarrierConfig {
   return {
     carrierMetadata: {
@@ -115,6 +111,5 @@ function createCarrierConfig(
     displayName: "Metadata Test",
     id: "metadata_test",
     slot: 1,
-    ...(codexDefaults ? { subagent: { byHost: { codex: codexDefaults } } } : {}),
   };
 }

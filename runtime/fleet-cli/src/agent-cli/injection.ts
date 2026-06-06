@@ -1,30 +1,24 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import crypto from "node:crypto";
 
 import type { ExecutorSessionManager } from "@dotobokuri/fleet-mcp-server";
 import {
   buildClaudeSubagentDefinitions,
-  buildCodexSubagentDefinitions,
-  ensureCodexSubagentRoleFile,
   getCarrierConfig,
   getEnabledCarrierSubagentIds,
-  getAgentCliSelection,
   getRegisteredOrder,
   readCarrierAgentModeSnapshot,
-  readCarriersSnapshot,
   resolveAgentCliType,
   type CarrierConfig,
   type CarrierModelDefaults,
   type CarrierRuntime,
   type ClaudeSubagentDefinition,
-  type CodexSubagentRoleDefinition,
-  type AgentCliSelection,
 } from "@dotobokuri/fleet-carriers";
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
+import { createAgentCliSessionPlugin, ensureCodexPluginRegistered } from "./session-plugin/index.js";
+import type { CodexCommandResult, CodexPluginRegistrationCommand, SessionPluginMcpServerInput } from "./session-plugin/types.js";
 import type { AgentCliInjectionContext, AgentCliProfile } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
@@ -33,15 +27,14 @@ export interface InjectAgentCliProfileOptions {
   readonly dedicatedMcpSession: ExecutorSessionManager;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
+  readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
   readonly onCleanup?: (cleanup: () => void) => void;
+  readonly sessionPluginRootDir?: string;
 }
 
-type StartupNativeSubagents =
+type StartupNativeDefinitions =
   | { readonly host: "claude"; readonly definitions: ClaudeSubagentDefinition[] }
-  | { readonly host: "codex"; readonly definitions: CodexSubagentRoleDefinition[] }
   | { readonly host: "none"; readonly definitions: [] };
-
-const SYSTEM_PROMPT_FILE_MODE = 0o600;
 
 export async function injectAgentCliProfile(
   profile: AgentCliProfile,
@@ -54,39 +47,58 @@ export async function injectAgentCliProfile(
 
   const injectTone = options.enableMetaphor ?? false;
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
-  const tokens = options.dedicatedMcpSession.issueSessionToken({
-    cwd: profile.cwd,
-    label: `agent:${profile.id}`,
-  });
-  const startupSubagents = buildStartupNativeSubagents(profile.id, options.carrierRuntime);
-  const codexSubagents = startupSubagents.host === "codex"
-    ? startupSubagents.definitions.map((definition) => ensureCodexSubagentRoleFile(definition)).filter((role): role is NonNullable<typeof role> => role !== undefined)
-    : [];
-  const systemPromptFile = writeSystemPromptFile(
-    profile.id,
-    options.buildSystemPrompt(injectTone),
-    options.onCleanup,
-  );
-  const context: AgentCliInjectionContext = {
-    claudeSubagents: startupSubagents.host === "claude" ? startupSubagents.definitions : [],
-    cliId: profile.id,
-    codexSubagents,
-    mcpServers: buildAgentCliMcpServerConfigs(endpoint.servers, tokens),
-    replaceSystemPrompt: options.replaceSystemPrompt ?? true,
-    systemPromptFile,
-  };
-  const injectedArgs = buildAgentCliArgs(capability.builderId, context);
-  return {
-    ...profile,
-    args: [...profile.args, ...injectedArgs],
-    env: { ...profile.env },
-  };
+  const startupDefinitions = buildStartupNativeDefinitions(profile.id, options.carrierRuntime);
+  const tokenLabel = `agent:${profile.id}:${crypto.randomUUID()}`;
+  const tokens = options.dedicatedMcpSession.issueSessionToken({ cwd: profile.cwd, label: tokenLabel });
+  const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
+  try {
+    const plugin = createAgentCliSessionPlugin({
+      claudeDefinitions: startupDefinitions.host === "claude" ? startupDefinitions.definitions : [],
+      cliId: profile.id,
+      cwd: profile.cwd,
+      doctrine: options.buildSystemPrompt(injectTone),
+      mcpServers,
+      rootDir: options.sessionPluginRootDir,
+    });
+    const launchWarnings: string[] = [];
+    if (plugin.codexRegistration !== undefined) {
+      const registrationWarning = ensureCodexPluginRegistered(plugin.codexRegistration, {
+        args: [],
+        bin: profile.bin,
+        cwd: profile.cwd,
+        env: { ...profile.env, ...plugin.env },
+      }, options.codexCommandRunner);
+      if (registrationWarning !== undefined) {
+        launchWarnings.push(`Fleet Codex plugin registration failed: ${registrationWarning}`);
+      }
+    }
+    const cleanup = createOnceCleanup(() => {
+      plugin.cleanup();
+      options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
+    });
+    options.onCleanup?.(cleanup);
+    const context: AgentCliInjectionContext = {
+      cliId: profile.id,
+      pluginRoot: plugin.codexRegistration?.pluginRoot ?? plugin.pluginRoot,
+    };
+    const injectedArgs = buildAgentCliArgs(capability.builderId, context);
+    return {
+      ...profile,
+      args: [...profile.args, ...injectedArgs],
+      cleanup,
+      env: { ...profile.env, ...plugin.env },
+      launchWarnings: [...(profile.launchWarnings ?? []), ...launchWarnings],
+    };
+  } catch (error) {
+    options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
+    throw error;
+  }
 }
 
-function buildStartupNativeSubagents(
+function buildStartupNativeDefinitions(
   cliId: AgentCliProfile["id"],
   carrierRuntime: CarrierRuntime,
-): StartupNativeSubagents {
+): StartupNativeDefinitions {
   const host = getNativeSubagentHost(cliId);
   if (host === "none") return { host, definitions: [] };
   const carrierIds = getRegisteredOrder(carrierRuntime.registry);
@@ -100,31 +112,22 @@ function buildStartupNativeSubagents(
     readCarrierAgentModeSnapshot(defaultsByCarrier),
     carrierIds,
   );
-  if (enabledCarrierIds.length === 0) return { host, definitions: [] } as StartupNativeSubagents;
+  if (enabledCarrierIds.length === 0) return { host, definitions: [] } as StartupNativeDefinitions;
   if (host === "claude") {
     return { host, definitions: buildClaudeSubagentDefinitions({ carrierConfigs, enabledCarrierIds }) };
   }
-  const codexSettings = buildEffectiveCodexSettingsByCarrierId(carrierConfigs, enabledCarrierIds);
-  return {
-    host,
-    definitions: buildCodexSubagentDefinitions({
-      carrierConfigs,
-      enabledCarrierIds,
-      agentCliByCarrierId: codexSettings,
-    }),
-  };
+  return { host, definitions: [] };
 }
 
-function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeSubagents["host"] {
+function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeDefinitions["host"] {
   if (cliId === "claude" || cliId === "claude-kimi") return "claude";
-  if (cliId === "codex") return "codex";
   return "none";
 }
 
 function buildAgentCliMcpServerConfigs(
   endpoints: readonly { readonly name: string; readonly url: string }[],
   tokens: readonly { readonly name: string; readonly token: string }[],
-): AgentCliInjectionContext["mcpServers"] {
+): SessionPluginMcpServerInput[] {
   return endpoints.map((endpoint) => {
     const token = tokens.find((entry) => entry.name === endpoint.name)?.token;
     if (!token) {
@@ -133,63 +136,9 @@ function buildAgentCliMcpServerConfigs(
     return {
       name: endpoint.name,
       endpointUrl: endpoint.url,
-      bearerToken: token,
+      token,
     };
   });
-}
-
-function writeSystemPromptFile(
-  cliId: string,
-  systemPrompt: string,
-  onCleanup: InjectAgentCliProfileOptions["onCleanup"],
-): string {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), `fleet-${cliId}-`));
-  const filePath = path.join(tempDir, "system-prompt.md");
-  writeFileSync(filePath, systemPrompt, { encoding: "utf8", flag: "wx", mode: SYSTEM_PROMPT_FILE_MODE });
-  chmodBestEffort(filePath, SYSTEM_PROMPT_FILE_MODE);
-  onCleanup?.(() => rmBestEffort(tempDir));
-  return filePath;
-}
-
-function chmodBestEffort(targetPath: string, mode: number): void {
-  try {
-    chmodSync(targetPath, mode);
-  } catch {
-    // POSIX 권한을 지원하지 않는 파일시스템에서는 best-effort로 둔다.
-  }
-}
-
-function rmBestEffort(targetPath: string): void {
-  try {
-    rmSync(targetPath, { force: true, recursive: true });
-  } catch {
-    // 세션 정리는 파일이 이미 사라진 경우에도 전체 shutdown을 막지 않는다.
-  }
-}
-
-function buildEffectiveCodexSettingsByCarrierId(
-  carrierConfigs: readonly CarrierConfig[],
-  enabledCarrierIds: readonly string[],
-): Record<string, AgentCliSelection | undefined> {
-  const enabled = new Set(enabledCarrierIds);
-  const codexCliTypesByCarrier = Object.fromEntries(
-    carrierConfigs
-      .filter((config) => enabled.has(config.id))
-      .map((config) => [config.id, buildCarrierModelDefaults(config)]),
-  );
-  const snapshot = readCarriersSnapshot(codexCliTypesByCarrier);
-  return Object.fromEntries(
-    carrierConfigs
-      .filter((config) => enabled.has(config.id))
-      .map((config) => {
-        const cliType = resolveAgentCliType(config.id, config.defaultCliType);
-        const selection = snapshot.carriers[config.id]?.agentCli.codex;
-        const settings = cliType === "codex" && selection
-          ? toAgentCliSelection(selection)
-          : getAgentCliSelection(config.id, "codex", snapshot);
-        return [config.id, settings];
-      }),
-  );
 }
 
 function buildCarrierModelDefaults(config: CarrierConfig): CarrierModelDefaults {
@@ -207,7 +156,6 @@ function resolvePersonaCliDefaults(
   config: CarrierConfig,
   cliType: ReturnType<typeof resolveAgentCliType>,
 ): { readonly defaultEffort?: string; readonly defaultModel?: string } {
-  if (cliType === "codex") return config.subagent?.byHost?.codex ?? {};
   if (cliType === "claude") {
     return config.subagent?.byHost?.claude ?? {
       ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
@@ -215,13 +163,6 @@ function resolvePersonaCliDefaults(
     };
   }
   return {};
-}
-
-function toAgentCliSelection(selection: { readonly effort?: string; readonly model: string }): AgentCliSelection {
-  return {
-    model: selection.model,
-    ...(selection.effort ? { effort: selection.effort } : {}),
-  };
 }
 
 function buildAgentCliArgs(
@@ -234,4 +175,13 @@ function buildAgentCliArgs(
     case "codex-native":
       return buildCodexNativeArgs(context);
   }
+}
+
+function createOnceCleanup(cleanup: () => void): () => void {
+  let cleaned = false;
+  return () => {
+    if (cleaned) return;
+    cleaned = true;
+    cleanup();
+  };
 }

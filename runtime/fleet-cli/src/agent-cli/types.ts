@@ -1,5 +1,3 @@
-import type { ClaudeSubagentDefinition, CodexSubagentRoleDefinition } from "@dotobokuri/fleet-carriers";
-
 export type AgentCliId = "claude" | "claude-kimi" | "codex";
 
 export interface AgentCliProfile {
@@ -7,8 +5,10 @@ export interface AgentCliProfile {
   readonly label: string;
   readonly bin: string;
   readonly args: readonly string[];
+  readonly cleanup?: () => void;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
+  readonly launchWarnings?: readonly string[];
   readonly messagePolicy?: CliMessagePolicy;
   readonly terminalName: string;
 }
@@ -34,23 +34,8 @@ export interface AgentCliProfileOptions {
 }
 
 export interface AgentCliInjectionContext {
-  readonly claudeSubagents?: readonly ClaudeSubagentDefinition[];
   readonly cliId: AgentCliId;
-  readonly codexSubagents?: readonly AgentCliCodexSubagentRole[];
-  readonly replaceSystemPrompt: boolean;
-  readonly systemPromptFile: string;
-  readonly mcpServers: readonly AgentCliMcpServerConfig[];
-}
-
-export interface AgentCliCodexSubagentRole {
-  readonly definition: CodexSubagentRoleDefinition;
-  readonly configFile: string;
-}
-
-export interface AgentCliMcpServerConfig {
-  readonly name: string;
-  readonly endpointUrl: string;
-  readonly bearerToken: string;
+  readonly pluginRoot: string;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

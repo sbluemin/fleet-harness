@@ -158,7 +158,6 @@ function resolvePersonaCliDefaults(
   config: NonNullable<ReturnType<typeof getCarrierConfig>>,
   cliType: CarrierCliType,
 ): { readonly defaultEffort?: string; readonly defaultModel?: string } {
-  if (cliType === "codex") return config.subagent?.byHost?.codex ?? {};
   if (cliType === "claude") {
     return config.subagent?.byHost?.claude ?? {
       ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),

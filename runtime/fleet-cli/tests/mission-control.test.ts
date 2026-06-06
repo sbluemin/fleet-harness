@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createMissionControlProfileConfig } from "../src/app.js";
 import { createProgrammaticInput } from "../src/controls/index.js";
@@ -56,9 +56,9 @@ const CLI_OPTIONS = [
   { id: "codex" as const, label: "Codex" },
 ];
 const ALL_CLI_OPTIONS = getAgentCliMetadata();
-const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
-const RGB_ANSI_PATTERN = /\x1b\[38;2;(\d+);(\d+);(\d+)m/g;
-const RAW_ANSI_PATTERN = /\x1b/;
+const ANSI_PATTERN = new RegExp(String.raw`\x1b\[[0-9;?]*[ -/]*[@-~]`, "g");
+const RGB_ANSI_PATTERN = new RegExp(String.raw`\x1b\[38;2;(\d+);(\d+);(\d+)m`, "g");
+const RAW_ANSI_PATTERN = new RegExp(String.raw`\x1b`);
 const SELECTED_BG = "\x1b[48;2;45;55;70m";
 const LONG_ANSI_CJK_LABEL = "\x1b[1mClaude超長プロバイダー名終端ラベル\x1b[0m";
 const FLEET_BANNER_SAMPLE = "███████╗██╗     ███████╗███████╗████████╗";
@@ -821,6 +821,55 @@ describe("Mission Control controller", () => {
     expect(hosts[0]?.writes).toEqual(["hello"]);
   });
 
+  it("cleans injected profile resources when PTY creation fails", async () => {
+    const cleanup = vi.fn();
+    const controller = createTestController({
+      createPtyHost: () => {
+        throw new Error("pty create failed");
+      },
+      injectProfile: (profile) => Promise.resolve({ ...profile, cleanup }),
+    });
+
+    await controller.launchSelected();
+    await controller.launchSelected();
+
+    expect(controller.getState().kind).toBe("failed");
+    expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces launch failures in Mission Control status", async () => {
+    const controller = createTestController({
+      injectProfile: () => Promise.reject(new Error("config symlink rejected")),
+    });
+
+    await controller.launchSelected();
+
+    expect(controller.getState()).toMatchObject({
+      kind: "failed",
+      lastLaunchError: "config symlink rejected",
+    });
+    expect(renderPlain(controller)).toContain("Launch failed: config symlink rejected");
+  });
+
+  it("keeps launching when profile injection returns a launch warning", async () => {
+    const hosts: FakeHost[] = [];
+    const controller = createTestController({
+      hosts,
+      injectProfile: (profile) => Promise.resolve({
+        ...profile,
+        launchWarnings: ["Fleet Codex plugin registration failed: plugin add failed"],
+      }),
+    });
+
+    await controller.launchSelected();
+
+    expect(controller.getState()).toMatchObject({
+      kind: "active",
+      lastLaunchWarning: "Fleet Codex plugin registration failed: plugin add failed",
+    });
+    expect(hosts).toHaveLength(1);
+  });
+
   it("runs shimmer only on inactive Mission Control screens and disposes the timer", async () => {
     let renderRequests = 0;
     const hosts: FakeHost[] = [];
@@ -1169,7 +1218,7 @@ describe("Mission Control controller", () => {
     expect(profile.id).toBe("codex");
     expect(profile.bin).toBe(process.execPath);
     expect(profile.cwd).toBe("/tmp/mission-control");
-    expect(profile.args).toEqual([]);
+    expect(profile.args).toEqual(["--no-alt-screen"]);
 
     const launchProfile = await config.resolveProfile("codex", {
       cliId: "codex",
@@ -1179,16 +1228,18 @@ describe("Mission Control controller", () => {
       replaceSystemPrompt: false,
     });
 
-    expect(launchProfile.args).toEqual(["--model", "draft-test"]);
+    expect(launchProfile.args).toEqual(["--no-alt-screen", "--model", "draft-test"]);
   });
 });
 
 function createTestController(options: {
   readonly authService?: FakeAuthService;
   readonly cliOptions?: readonly MissionControlCliOption[];
+  readonly createPtyHost?: (profile: PtyLaunchProfile) => PtyHost;
   readonly initialCliId?: AgentCliId;
   readonly env?: NodeJS.ProcessEnv;
   readonly hosts?: FakeHost[];
+  readonly injectProfile?: (profile: AgentCliProfile) => Promise<AgentCliProfile>;
   readonly invocationCwd?: string;
   readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet?: () => void;
@@ -1201,18 +1252,18 @@ function createTestController(options: {
 } = {}) {
   const controller = createMissionControlController({
     cliOptions: options.cliOptions ?? CLI_OPTIONS,
-    createPtyHost: (profile: PtyLaunchProfile) => {
+    createPtyHost: options.createPtyHost ?? ((profile: PtyLaunchProfile) => {
       void profile;
       const host = createFakeHost();
       options.hosts?.push(host);
       return host;
-    },
+    }),
     authService: options.authService,
     initialCliId: options.initialCliId ?? "claude",
     env: options.env,
     invocationCwd: options.invocationCwd ?? "/tmp/mission-control",
     loadedCounts: options.loadedCounts,
-    injectProfile: (profile) => Promise.resolve(profile),
+    injectProfile: options.injectProfile ?? ((profile) => Promise.resolve(profile)),
     onExitFleet: options.onExitFleet ?? (() => undefined),
     onRenderRequest: options.onRenderRequest ?? (() => undefined),
     release: options.release,

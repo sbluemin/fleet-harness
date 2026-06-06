@@ -23,7 +23,6 @@ export const TEMPEST_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "sonnet", defaultEffort: "medium" },
-        codex: { defaultModel: "gpt-5.4-mini", defaultEffort: "xhigh" },
       },
     },
   },
