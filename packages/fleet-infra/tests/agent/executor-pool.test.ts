@@ -235,7 +235,7 @@ describe("executeWithPool in-memory reuse", () => {
     let executorTools: readonly AgentToolSpec[] = [buildToolSpec("carrier_jobs")];
     executorPortRuntime.register({
       getCarrierExternalMcpServerIds: () => [],
-      getExecutorMcpRouterRuntimes: () => [{ name: "fleet-carriers", runtime }],
+      getExecutorMcpRouterRuntimes: () => [{ name: "carrier", runtime }],
       getExecutorMcpTools: () => executorTools,
     });
 
@@ -261,7 +261,7 @@ describe("executeWithPool in-memory reuse", () => {
     ];
     executorPortRuntime.register({
       getCarrierExternalMcpServerIds: () => [],
-      getExecutorMcpRouterRuntimes: () => [{ name: "fleet-carriers", runtime }],
+      getExecutorMcpRouterRuntimes: () => [{ name: "carrier", runtime }],
       getExecutorMcpTools: () => executorTools,
     });
 

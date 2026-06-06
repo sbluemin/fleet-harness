@@ -22,8 +22,8 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
 }
 
 function canBypassHookTrust(context: AgentCliInjectionContext): boolean {
-  return isPrivateOwnedDirectory(context.pluginRoot)
-    && isRealpathContained(path.dirname(context.pluginRoot), context.pluginRoot);
+  return context.pluginRoots.every((pluginRoot) => isPrivateOwnedDirectory(pluginRoot)
+    && isRealpathContained(path.dirname(pluginRoot), pluginRoot));
 }
 
 function isPrivateOwnedDirectory(dirPath: string): boolean {

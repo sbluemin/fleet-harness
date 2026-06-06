@@ -56,8 +56,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
       ...server,
       token: tokens.find((entry) => entry.name === server.name)?.token,
     }));
-    const carriers = servers.find((server) => server.name === "fleet-carriers");
-    const wiki = servers.find((server) => server.name === "fleet-wiki");
+    const carriers = servers.find((server) => server.name === "carrier");
+    const wiki = servers.find((server) => server.name === "wiki");
 
     expect(carriers?.token).toBeDefined();
     expect(wiki?.token).toBeDefined();
@@ -88,7 +88,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     try {
       expect(buildClaudeNativeArgs(context)).toEqual([
         "--plugin-dir",
-        context.pluginRoot,
+        context.pluginRoots[0],
         "--dangerously-skip-permissions",
       ]);
       expect(buildCodexNativeArgs(context)).toEqual([
@@ -127,20 +127,31 @@ describe("fleet-cli agent CLI MCP registration", () => {
         carrierRuntime: createCarrierRuntime(),
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+            servers: [
+              { name: "carrier", url: "http://127.0.0.1:1000/carriers" },
+              { name: "wiki", url: "http://127.0.0.1:1001/wiki" },
+            ],
           }),
-          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+          issueSessionToken: () => [
+            { name: "carrier", token: "carriers-token" },
+            { name: "wiki", token: "wiki-token" },
+          ],
           releaseSessionToken,
         } as never,
         onCleanup: (cleanup) => cleanups.push(cleanup),
         sessionPluginRootDir: rootDir,
       });
-      const pluginRoot = profile.args[profile.args.indexOf("--plugin-dir") + 1]!;
+      const pluginRoots = pluginDirArgs(profile.args);
+      const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
 
+      expect(pluginRoots).toEqual([pluginRoot]);
       expect(readFileSync(path.join(pluginRoot, "hooks", "session-start.mjs"), "utf8")).toContain("private fleet prompt");
       expect(readFileSync(path.join(pluginRoot, ".mcp.json"), "utf8")).not.toContain("carriers-token");
+      expect(readFileSync(path.join(pluginRoot, ".mcp.json"), "utf8")).not.toContain("wiki-token");
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("name: fleet-usage");
+      expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
       expect(Object.values(profile.env)).toContain("carriers-token");
+      expect(Object.values(profile.env)).toContain("wiki-token");
 
       profile.cleanup?.();
       for (const cleanup of cleanups) {
@@ -157,6 +168,10 @@ describe("fleet-cli agent CLI MCP registration", () => {
   it("registers Codex plugin through the resolved Codex CLI before launch args are returned", async () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
     const commands: string[] = [];
+    const codexState = {
+      installed: new Set<string>(),
+      marketplaceRoot: undefined as string | undefined,
+    };
     const releaseSessionToken = vi.fn();
     try {
       const profile = await injectAgentCliProfile({
@@ -172,20 +187,43 @@ describe("fleet-cli agent CLI MCP registration", () => {
         carrierRuntime: createCarrierRuntime(),
         codexCommandRunner: (command: CodexPluginRegistrationCommand) => {
           expect(command.bin).toBe("/usr/local/bin/codex");
-          commands.push(command.args.join(" "));
-          if (command.args.join(" ") === "plugin marketplace list") {
+          const line = command.args.join(" ");
+          commands.push(line);
+          if (line === "plugin marketplace list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet ${codexState.marketplaceRoot}\n`,
+            };
+          }
+          if (line.startsWith("plugin marketplace add ")) {
+            codexState.marketplaceRoot = line.slice("plugin marketplace add ".length);
             return { status: 0, stderr: "", stdout: "" };
           }
-          if (command.args.join(" ") === "plugin list") {
+          if (line === "plugin list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet`).join("\n"),
+            };
+          }
+          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet")) {
+            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet".length));
             return { status: 0, stderr: "", stdout: "" };
           }
           return { status: 0, stderr: "", stdout: "" };
         },
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+            servers: [
+              { name: "carrier", url: "http://127.0.0.1:1000/carriers" },
+              { name: "wiki", url: "http://127.0.0.1:1001/wiki" },
+            ],
           }),
-          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+          issueSessionToken: () => [
+            { name: "carrier", token: "carriers-token" },
+            { name: "wiki", token: "wiki-token" },
+          ],
           releaseSessionToken,
         } as never,
         sessionPluginRootDir: rootDir,
@@ -193,7 +231,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
       expect(commands).toEqual([
         "plugin marketplace list",
-        `plugin marketplace add ${path.join(rootDir, "plugins")}`,
+        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
         "plugin list",
         "plugin add fleet -m fleet",
       ]);
@@ -222,9 +260,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
         codexCommandRunner: () => ({ status: 1, stderr: "codex plugin exploded", stdout: "" }),
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+            servers: [{ name: "carrier", url: "http://127.0.0.1:1000/carriers" }],
           }),
-          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+          issueSessionToken: () => [{ name: "carrier", token: "carriers-token" }],
           releaseSessionToken: vi.fn(),
         } as never,
         sessionPluginRootDir: rootDir,
@@ -257,10 +295,21 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
 }
 
 function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
-  const pluginRoot = path.join(root, "plugins");
+  const pluginRoot = path.join(root, "marketplace", "plugins", "fleet");
   mkdirSync(pluginRoot, { recursive: true, mode: 0o700 });
   return {
     cliId: "codex",
     pluginRoot,
+    pluginRoots: [pluginRoot],
   };
+}
+
+function pluginDirArgs(args: readonly string[]): string[] {
+  const pluginDirs: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--plugin-dir") {
+      pluginDirs.push(args[index + 1]!);
+    }
+  }
+  return pluginDirs;
 }

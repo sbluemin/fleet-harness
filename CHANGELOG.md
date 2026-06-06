@@ -7,7 +7,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 - [core] `fleet update` now prints situation-specific guidance instead of a single generic message: local development builds report that there is nothing to update; up-to-date installs skip reinstall with an already-on-the-latest-version notice; undetectable global installs, non-writable install locations, and unreachable registry checks each receive a distinct message before manual fallback instructions.
-- [core] Dedicated Agent CLI launches now activate Fleet through one flat generated plugin root with inline SessionStart doctrine hooks, env-only MCP tokens, Codex-compatible marketplace discovery, and official Codex CLI plugin registration.
+- [core] Dedicated Agent CLI launches now activate Fleet through a shared generated marketplace directory with provider-specific marketplace metadata, inline SessionStart doctrine hooks, env-only MCP tokens, and official Codex CLI plugin registration.
 
 ### Fixed
 - [core] Fixed Windows `fleet update` only printing manual install instructions instead of running the automatic global npm or pnpm update; package manager shims are now resolved and invoked correctly on Windows, with manual instructions shown only when detection or installation fails.

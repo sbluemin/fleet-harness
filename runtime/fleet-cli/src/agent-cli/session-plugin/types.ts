@@ -40,7 +40,8 @@ export interface CodexPluginRegistrationCommand {
 
 export interface AgentCliSessionPlugin {
   readonly cleanup: () => void;
-  readonly codexRegistration?: CodexPluginRegistration;
+  readonly codexRegistrations: readonly CodexPluginRegistration[];
   readonly env: Readonly<Record<string, string>>;
   readonly pluginRoot: string;
+  readonly pluginRoots: readonly string[];
 }

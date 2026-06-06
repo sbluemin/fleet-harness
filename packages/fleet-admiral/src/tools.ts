@@ -5,8 +5,8 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/fleet-mcp-server";
 
-export const CARRIER_MCP_SERVER_NAME = "fleet-carriers";
-export const WIKI_MCP_SERVER_NAME = "fleet-wiki";
+export const CARRIER_MCP_SERVER_NAME = "carrier";
+export const WIKI_MCP_SERVER_NAME = "wiki";
 
 export const CARRIER_EXECUTOR_MCP_TOOL_IDS = ["carrier_jobs"] as const;
 

@@ -26,7 +26,7 @@ const BUILTIN_EXTERNAL_MCP_CATALOG = {
 } as const satisfies Record<string, BuiltinExternalMcpCatalogEntry>;
 
 const BUILTIN_EXTERNAL_MCP_SERVER_ID_REGEX = /^[a-z][a-z0-9_]*$/;
-const RESERVED_EXTERNAL_MCP_SERVER_IDS = new Set(["fleet-carriers", "fleet-tools", "fleet-wiki"]);
+const RESERVED_EXTERNAL_MCP_SERVER_IDS = new Set(["carrier", "fleet-carriers", "fleet-tools", "fleet-wiki", "wiki"]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions

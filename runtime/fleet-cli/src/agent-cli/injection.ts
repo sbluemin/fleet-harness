@@ -61,15 +61,15 @@ export async function injectAgentCliProfile(
       rootDir: options.sessionPluginRootDir,
     });
     const launchWarnings: string[] = [];
-    if (plugin.codexRegistration !== undefined) {
-      const registrationWarning = ensureCodexPluginRegistered(plugin.codexRegistration, {
+    for (const registration of plugin.codexRegistrations) {
+      const registrationWarning = ensureCodexPluginRegistered(registration, {
         args: [],
         bin: profile.bin,
         cwd: profile.cwd,
         env: { ...profile.env, ...plugin.env },
       }, options.codexCommandRunner);
       if (registrationWarning !== undefined) {
-        launchWarnings.push(`Fleet Codex plugin registration failed: ${registrationWarning}`);
+        launchWarnings.push(`Fleet Codex plugin registration failed for ${registration.pluginName}: ${registrationWarning}`);
       }
     }
     const cleanup = createOnceCleanup(() => {
@@ -79,7 +79,8 @@ export async function injectAgentCliProfile(
     options.onCleanup?.(cleanup);
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
-      pluginRoot: plugin.codexRegistration?.pluginRoot ?? plugin.pluginRoot,
+      pluginRoot: plugin.pluginRoot,
+      pluginRoots: plugin.pluginRoots,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     return {

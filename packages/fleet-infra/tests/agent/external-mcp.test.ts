@@ -13,9 +13,11 @@ describe("resolveBuiltinExternalMcpServers", () => {
   });
 
   it("내부 Fleet MCP 예약 ID는 throw", () => {
+    expect(() => resolveBuiltinExternalMcpServers(["carrier"])).toThrow(/carrier/);
     expect(() => resolveBuiltinExternalMcpServers(["fleet-carriers"])).toThrow(/fleet-carriers/);
     expect(() => resolveBuiltinExternalMcpServers(["fleet-tools"])).toThrow(/fleet-tools/);
     expect(() => resolveBuiltinExternalMcpServers(["fleet-wiki"])).toThrow(/fleet-wiki/);
+    expect(() => resolveBuiltinExternalMcpServers(["wiki"])).toThrow(/wiki/);
   });
 
   it("정규식 위반 ID는 throw", () => {
@@ -37,8 +39,8 @@ describe("resolveBuiltinExternalMcpServers", () => {
 
   it("내부 MCP 토큰 재사용과 external 누수를 거부한다", () => {
     expect(() => assertInternalMcpTokensNotShared([], [
-      { serverName: "fleet-carriers", token: "same-token" },
-      { serverName: "fleet-wiki", token: "same-token" },
+      { serverName: "carrier", token: "same-token" },
+      { serverName: "wiki", token: "same-token" },
     ])).toThrow(/reused/);
 
     expect(() => assertInternalMcpTokensNotShared([
@@ -49,8 +51,8 @@ describe("resolveBuiltinExternalMcpServers", () => {
         headers: [{ name: "Authorization", value: "Bearer carriers-token" }],
       },
     ], [
-      { serverName: "fleet-carriers", token: "carriers-token" },
-      { serverName: "fleet-wiki", token: "wiki-token" },
+      { serverName: "carrier", token: "carriers-token" },
+      { serverName: "wiki", token: "wiki-token" },
     ])).toThrow(/leaked/);
   });
 });

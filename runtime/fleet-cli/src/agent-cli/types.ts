@@ -36,6 +36,7 @@ export interface AgentCliProfileOptions {
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
   readonly pluginRoot: string;
+  readonly pluginRoots: readonly string[];
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

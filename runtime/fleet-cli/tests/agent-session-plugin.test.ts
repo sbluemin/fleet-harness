@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createAgentCliSessionPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/session-plugin/index.js";
 import { cleanupPrivateRoot } from "../src/agent-cli/session-plugin/fs.js";
-import type { CodexPluginRegistrationCommand } from "../src/agent-cli/session-plugin/types.js";
+import type { AgentCliSessionPlugin, CodexPluginRegistration, CodexPluginRegistrationCommand } from "../src/agent-cli/session-plugin/types.js";
 
 const DOCTRINE = "FLEET_DOCTRINE_MARKER";
 const CARRIER_TOKEN = "carrier-secret-token";
@@ -21,7 +21,7 @@ describe("agent CLI session plugin renderer", () => {
     }
   });
 
-  it("renders one flat Claude and Codex plugin root with env-only MCP tokens", () => {
+  it("renders one marketplace with one Fleet Claude/Codex plugin bundle and env-only MCP tokens", () => {
     const rootDir = makeRoot();
     const plugin = createAgentCliSessionPlugin({
       claudeDefinitions: [{
@@ -40,47 +40,80 @@ describe("agent CLI session plugin renderer", () => {
       rootDir,
     });
 
-    expect(plugin.pluginRoot).toBe(path.join(rootDir, "plugins"));
-    expect(plugin.codexRegistration).toMatchObject({
-      marketplaceDir: path.join(rootDir, "plugins"),
+    const marketplaceRoot = path.join(rootDir, "marketplace");
+    const fleetRoot = path.join(marketplaceRoot, "plugins", "fleet");
+    const registration = registrationByName(plugin, "fleet");
+
+    expect(plugin.pluginRoot).toBe(fleetRoot);
+    expect(plugin.pluginRoots).toEqual([fleetRoot]);
+    expect(plugin.codexRegistrations).toHaveLength(1);
+    expect(registration).toMatchObject({
+      marketplaceDir: path.join(rootDir, "marketplace"),
       marketplaceName: "fleet",
       pluginName: "fleet",
-      pluginRoot: path.join(rootDir, "plugins"),
+      pluginRoot: fleetRoot,
     });
 
-    assertHookOutput(plugin.pluginRoot);
-    expect(readJson(path.join(plugin.pluginRoot, ".claude-plugin", "plugin.json"))).toMatchObject({ name: "fleet" });
-    expect(readFileSync(path.join(plugin.pluginRoot, "agents", "Ohio.md"), "utf8")).toContain("Ohio prompt");
+    assertHookOutput(fleetRoot);
+    expect(readJson(path.join(fleetRoot, ".claude-plugin", "plugin.json"))).toMatchObject({ name: "fleet" });
+    expect(readFileSync(path.join(fleetRoot, "agents", "Ohio.md"), "utf8")).toContain("Ohio prompt");
 
-    const codexRoot = plugin.codexRegistration!.pluginRoot;
-    const marketplace = readJson(path.join(plugin.codexRegistration!.marketplaceDir, ".agents", "plugins", "marketplace.json"));
+    const marketplace = readJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"));
     expect(marketplace).toEqual({
       name: "fleet",
       plugins: [{
         name: "fleet",
+        displayName: "Fleet",
         source: {
           source: "local",
           path: "./plugins/fleet",
         },
+        description: "Fleet carrier delegation and wiki evidence plugin",
       }],
     });
-    expect(readlinkSync(path.join(plugin.pluginRoot, "plugins", "fleet"))).toBe("..");
-    expect(readJson(path.join(codexRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
+    expect(readJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"))).toMatchObject({
+      name: "fleet",
+      plugins: [{
+        name: "fleet",
+        source: "./plugins/fleet",
+      }],
+    });
+    expect(readJson(path.join(fleetRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
       hooks: "./hooks/hooks.json",
       mcpServers: "./.mcp.json",
       name: "fleet",
       skills: "./skills/",
     });
-    assertHookOutput(codexRoot);
-
-    const mcpConfigText = readFileSync(path.join(codexRoot, ".mcp.json"), "utf8");
-    expect(mcpConfigText).not.toContain(CARRIER_TOKEN);
-    expect(mcpConfigText).not.toContain(WIKI_TOKEN);
-    expect(mcpConfigText).toContain("bearer_token_env_var");
+    expect(readJson(path.join(fleetRoot, ".mcp.json"))).toEqual({
+      mcpServers: {
+        carrier: {
+          type: "http",
+          url: "http://127.0.0.1:1000/carriers",
+          bearer_token_env_var: "FLEET_MCP_CARRIER_TOKEN",
+          headers: {
+            Authorization: "Bearer ${FLEET_MCP_CARRIER_TOKEN}",
+          },
+          tool_timeout_sec: 1800,
+        },
+        wiki: {
+          type: "http",
+          url: "http://127.0.0.1:1001/wiki",
+          bearer_token_env_var: "FLEET_MCP_WIKI_TOKEN",
+          headers: {
+            Authorization: "Bearer ${FLEET_MCP_WIKI_TOKEN}",
+          },
+          tool_timeout_sec: 1800,
+        },
+      },
+    });
+    expect(readFileSync(path.join(fleetRoot, ".mcp.json"), "utf8")).not.toContain(CARRIER_TOKEN);
+    expect(readFileSync(path.join(fleetRoot, ".mcp.json"), "utf8")).not.toContain(WIKI_TOKEN);
+    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("carrier_dispatch");
+    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
     expect(Object.values(plugin.env)).toContain(CARRIER_TOKEN);
     expect(Object.values(plugin.env)).toContain(WIKI_TOKEN);
-    expect(statSync(path.join(rootDir, "plugins")).mode & 0o777).toBe(0o700);
-    assertPrivateTree(path.join(rootDir, "plugins"));
+    expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
+    assertPrivateTree(path.join(rootDir, "marketplace"));
   });
 
   it("does not chmod existing ancestors on first render and only hardens created managed dirs", () => {
@@ -99,7 +132,7 @@ describe("agent CLI session plugin renderer", () => {
 
     expect(statSync(parent).mode & 0o777).toBe(0o755);
     expect(statSync(rootDir).mode & 0o777).toBe(0o700);
-    expect(statSync(path.join(rootDir, "plugins")).mode & 0o777).toBe(0o700);
+    expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
   });
 
   it("rejects unsafe Claude agent file names without leaving rendered agents", () => {
@@ -118,7 +151,7 @@ describe("agent CLI session plugin renderer", () => {
       mcpServers: mcpServers(),
       rootDir,
     })).toThrow(/Invalid Claude agent file name/);
-    expect(existsSync(path.join(rootDir, "plugins", "agents"))).toBe(false);
+    expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "agents"))).toBe(false);
   });
 
   it("rejects ancestor symlinks before writing session assets", () => {
@@ -135,7 +168,7 @@ describe("agent CLI session plugin renderer", () => {
       mcpServers: mcpServers(),
       rootDir: linkRoot,
     })).toThrow(/symlink/);
-    expect(existsSync(path.join(outside, "plugins"))).toBe(false);
+    expect(existsSync(path.join(outside, "marketplace"))).toBe(false);
   });
 
   it("rejects intermediate rootDir symlinks without writing or cleaning outside targets", () => {
@@ -154,7 +187,7 @@ describe("agent CLI session plugin renderer", () => {
       mcpServers: mcpServers(),
       rootDir: escapedRoot,
     })).toThrow(/symlink/);
-    expect(existsSync(path.join(outside, ".fleet", "plugins"))).toBe(false);
+    expect(existsSync(path.join(outside, ".fleet", "marketplace"))).toBe(false);
 
     createSentinel(outsideSentinel);
     expect(() => cleanupPrivateRoot(
@@ -176,17 +209,20 @@ describe("agent CLI session plugin renderer", () => {
       rootDir,
     });
 
-    expect(plugin.codexRegistration).toBeUndefined();
-    expect(existsSync(path.join(rootDir, "plugins", ".agents", "plugins", "marketplace.json"))).toBe(true);
-    expect(existsSync(path.join(rootDir, "plugins", ".fleet-codex-plugin.hash"))).toBe(false);
+    expect(plugin.codexRegistrations).toEqual([]);
+    expect(existsSync(path.join(rootDir, "marketplace", ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(path.join(rootDir, "marketplace", ".fleet-codex-plugin.hash"))).toBe(false);
   });
 
   it("updates plugin content idempotently and prunes stale managed tree entries", () => {
     const rootDir = makeRoot();
-    const pluginRoot = path.join(rootDir, "plugins");
+    const marketplaceRoot = path.join(rootDir, "marketplace");
+    const pluginRoot = path.join(marketplaceRoot, "plugins", "fleet");
     createSentinel(path.join(pluginRoot, "skills", "old-skill", "SKILL.md"));
     createSentinel(path.join(pluginRoot, "hooks", "old-hook.mjs"));
-    createSentinel(path.join(pluginRoot, "codex-marketplace", "plugins", "old", ".codex-plugin", "plugin.json"));
+    createSentinel(path.join(marketplaceRoot, "plugins", "carrier", "skills", "old-skill", "SKILL.md"));
+    createSentinel(path.join(marketplaceRoot, "plugins", "wiki", "skills", "old-skill", "SKILL.md"));
+    createSentinel(path.join(marketplaceRoot, "codex-marketplace", "plugins", "old", ".codex-plugin", "plugin.json"));
 
     const first = createAgentCliSessionPlugin({
       claudeDefinitions: [],
@@ -206,13 +242,32 @@ describe("agent CLI session plugin renderer", () => {
     });
 
     expect(first.pluginRoot).toBe(second.pluginRoot);
-    expect(first.codexRegistration!.marketplaceDir).toBe(second.codexRegistration!.marketplaceDir);
-    expect(first.codexRegistration!.contentHash).not.toBe(second.codexRegistration!.contentHash);
+    expect(registrationByName(first, "fleet").marketplaceDir).toBe(registrationByName(second, "fleet").marketplaceDir);
+    expect(registrationByName(first, "fleet").contentHash).not.toBe(registrationByName(second, "fleet").contentHash);
     expect(readFileSync(path.join(second.pluginRoot, "hooks", "session-start.mjs"), "utf8")).toContain("second");
     expect(existsSync(path.join(pluginRoot, "skills", "old-skill"))).toBe(false);
     expect(existsSync(path.join(pluginRoot, "hooks", "old-hook.mjs"))).toBe(false);
-    expect(existsSync(path.join(pluginRoot, "codex-marketplace"))).toBe(false);
-    expect(existsSync(path.join(second.codexRegistration!.pluginRoot, "skills", "fleet-usage", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(marketplaceRoot, "plugins", "carrier"))).toBe(false);
+    expect(existsSync(path.join(marketplaceRoot, "plugins", "wiki"))).toBe(false);
+    expect(existsSync(path.join(marketplaceRoot, "codex-marketplace"))).toBe(false);
+    expect(existsSync(path.join(registrationByName(second, "fleet").pluginRoot, "skills", "fleet-usage", "SKILL.md"))).toBe(true);
+  });
+
+  it("leaves the old flat Fleet plugin root untouched while rendering the marketplace root", () => {
+    const rootDir = makeRoot();
+    createSentinel(path.join(rootDir, "plugins", "skills", "old-skill", "SKILL.md"));
+
+    createAgentCliSessionPlugin({
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      doctrine: DOCTRINE,
+      mcpServers: mcpServers(),
+      rootDir,
+    });
+
+    expect(existsSync(path.join(rootDir, "plugins", "skills", "old-skill", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "skills", "fleet-usage", "SKILL.md"))).toBe(true);
   });
 
   it("registers Codex marketplace and plugin idempotently through codex CLI", () => {
@@ -229,13 +284,14 @@ describe("agent CLI session plugin renderer", () => {
     const state = { marketplaceRoot: undefined as string | undefined, plugin: false };
     const runner = createCodexRunner(state, calls);
     const command = codexCommand();
+    const registration = registrationByName(plugin, "fleet");
 
-    ensureCodexPluginRegistered(plugin.codexRegistration!, command, runner);
-    ensureCodexPluginRegistered(plugin.codexRegistration!, command, runner);
+    ensureCodexPluginRegistered(registration, command, runner);
+    ensureCodexPluginRegistered(registration, command, runner);
 
     expect(calls.flat().map((args) => args.join(" "))).toEqual([
       "plugin marketplace list",
-      `plugin marketplace add ${plugin.codexRegistration!.marketplaceDir}`,
+      `plugin marketplace add ${registration.marketplaceDir}`,
       "plugin list",
       "plugin add fleet -m fleet",
       "plugin marketplace list",
@@ -256,13 +312,14 @@ describe("agent CLI session plugin renderer", () => {
     const calls: readonly string[][][] = [];
     const state = { marketplaceRoot: "/Users/sbluemin", plugin: false };
     const runner = createCodexRunner(state, calls);
+    const registration = registrationByName(plugin, "fleet");
 
-    ensureCodexPluginRegistered(plugin.codexRegistration!, codexCommand(), runner);
+    ensureCodexPluginRegistered(registration, codexCommand(), runner);
 
     expect(calls.flat().map((args) => args.join(" "))).toEqual([
       "plugin marketplace list",
       "plugin marketplace remove fleet",
-      `plugin marketplace add ${plugin.codexRegistration!.marketplaceDir}`,
+      `plugin marketplace add ${registration.marketplaceDir}`,
       "plugin list",
       "plugin add fleet -m fleet",
     ]);
@@ -279,7 +336,8 @@ describe("agent CLI session plugin renderer", () => {
       rootDir,
     });
     const calls: string[] = [];
-    const warning = ensureCodexPluginRegistered(plugin.codexRegistration!, codexCommand(), (command) => {
+    const registration = registrationByName(plugin, "fleet");
+    const warning = ensureCodexPluginRegistered(registration, codexCommand(), (command) => {
       const line = command.args.join(" ");
       calls.push(line);
       if (line === "plugin marketplace list") {
@@ -295,7 +353,7 @@ describe("agent CLI session plugin renderer", () => {
     expect(calls).toEqual([
       "plugin marketplace list",
       "plugin marketplace remove fleet",
-      `plugin marketplace add ${plugin.codexRegistration!.marketplaceDir}`,
+      `plugin marketplace add ${registration.marketplaceDir}`,
       "plugin list",
       "plugin add fleet -m fleet",
     ]);
@@ -326,9 +384,10 @@ describe("agent CLI session plugin renderer", () => {
         },
       ],
     });
-    const state = { marketplaceRoot: plugin.codexRegistration!.marketplaceDir, plugin: false };
+    const registration = registrationByName(plugin, "fleet");
+    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
 
-    ensureCodexPluginRegistered(plugin.codexRegistration!, codexCommand(homeDir), createCodexRunner(state, []));
+    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
 
     expect(readJson(marketplacePath)).toEqual({
       name: "fleet",
@@ -360,9 +419,10 @@ describe("agent CLI session plugin renderer", () => {
         source: { source: "local", path: path.join(homeDir, ".fleet", "plugins") },
       }],
     });
-    const state = { marketplaceRoot: plugin.codexRegistration!.marketplaceDir, plugin: false };
+    const registration = registrationByName(plugin, "fleet");
+    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
 
-    ensureCodexPluginRegistered(plugin.codexRegistration!, codexCommand(homeDir), createCodexRunner(state, []));
+    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
 
     expect(existsSync(marketplacePath)).toBe(false);
   });
@@ -380,9 +440,10 @@ describe("agent CLI session plugin renderer", () => {
     });
     const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
     writeJsonFile(marketplacePath, { name: "fleet", plugins: [] });
-    const state = { marketplaceRoot: plugin.codexRegistration!.marketplaceDir, plugin: false };
+    const registration = registrationByName(plugin, "fleet");
+    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
 
-    ensureCodexPluginRegistered(plugin.codexRegistration!, codexCommand(homeDir), createCodexRunner(state, []));
+    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
 
     expect(existsSync(marketplacePath)).toBe(false);
   });
@@ -407,9 +468,10 @@ describe("agent CLI session plugin renderer", () => {
       }],
     };
     writeJsonFile(marketplacePath, original);
-    const state = { marketplaceRoot: plugin.codexRegistration!.marketplaceDir, plugin: false };
+    const registration = registrationByName(plugin, "fleet");
+    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
 
-    ensureCodexPluginRegistered(plugin.codexRegistration!, codexCommand(homeDir), createCodexRunner(state, []));
+    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
 
     expect(readJson(marketplacePath)).toEqual(original);
   });
@@ -424,11 +486,12 @@ describe("agent CLI session plugin renderer", () => {
       mcpServers: mcpServers(),
       rootDir,
     });
-    const state = { marketplaceRoot: first.codexRegistration!.marketplaceDir, plugin: true };
+    const firstRegistration = registrationByName(first, "fleet");
+    const state = { marketplaceRoot: firstRegistration.marketplaceDir, plugin: true };
     const calls: readonly string[][][] = [];
     const runner = createCodexRunner(state, calls);
     const command = codexCommand();
-    ensureCodexPluginRegistered(first.codexRegistration!, command, runner);
+    ensureCodexPluginRegistered(firstRegistration, command, runner);
 
     const second = createAgentCliSessionPlugin({
       claudeDefinitions: [],
@@ -438,7 +501,7 @@ describe("agent CLI session plugin renderer", () => {
       mcpServers: mcpServers(),
       rootDir,
     });
-    ensureCodexPluginRegistered(second.codexRegistration!, command, runner);
+    ensureCodexPluginRegistered(registrationByName(second, "fleet"), command, runner);
 
     expect(calls.flat().map((args) => args.join(" ")).filter((line) => line === "plugin add fleet -m fleet")).toHaveLength(2);
   });
@@ -452,8 +515,8 @@ describe("agent CLI session plugin renderer", () => {
 
 function mcpServers() {
   return [
-    { name: "fleet-carriers", endpointUrl: "http://127.0.0.1:1000/carriers", token: CARRIER_TOKEN },
-    { name: "fleet-wiki", endpointUrl: "http://127.0.0.1:1001/wiki", token: WIKI_TOKEN },
+    { name: "carrier", endpointUrl: "http://127.0.0.1:1000/carriers", token: CARRIER_TOKEN },
+    { name: "wiki", endpointUrl: "http://127.0.0.1:1001/wiki", token: WIKI_TOKEN },
   ];
 }
 
@@ -469,6 +532,12 @@ function createSentinel(filePath: string): void {
 function writeJsonFile(filePath: string, value: unknown): void {
   mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function registrationByName(plugin: AgentCliSessionPlugin, pluginName: string): CodexPluginRegistration {
+  const registration = plugin.codexRegistrations.find((entry) => entry.pluginName === pluginName);
+  expect(registration).toBeDefined();
+  return registration!;
 }
 
 function assertHookOutput(pluginRoot: string): void {
@@ -517,7 +586,7 @@ function createCodexRunner(
     if (line === "plugin list") {
       return { status: 0, stderr: "", stdout: state.plugin ? "fleet@fleet\n" : "" };
     }
-    if (line === "plugin add fleet -m fleet") {
+    if (line.startsWith("plugin add ") && line.endsWith(" -m fleet")) {
       state.plugin = true;
       return { status: 0, stderr: "", stdout: "" };
     }
