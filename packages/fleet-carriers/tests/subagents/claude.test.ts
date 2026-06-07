@@ -12,7 +12,7 @@ describe("Claude subagent conversion", () => {
     const definition = buildClaudeSubagentDefinition(createCarrierConfig("ohio"));
 
     expect(definition.carrierId).toBe("ohio");
-    expect(definition.name).toBe("Ohio");
+    expect(definition.name).toBe("ohio");
     expect(definition.description).toContain("Ohio");
     expect(definition.description).toContain("Multi-wave execution");
     expect(definition.prompt).toContain("<your_identity>");
@@ -46,7 +46,7 @@ describe("Claude subagent conversion", () => {
       enabledCarrierIds: ["ohio", "sentinel"],
     });
 
-    expect(definitions.map((definition) => definition.name)).toEqual(["Ohio", "Sentinel"]);
+    expect(definitions.map((definition) => definition.name)).toEqual(["ohio", "sentinel"]);
     expect(definitions.map((definition) => definition.carrierId)).toEqual(["ohio", "sentinel"]);
     expect(definitions.map((definition) => definition.color)).toEqual(["yellow", "red"]);
   });
