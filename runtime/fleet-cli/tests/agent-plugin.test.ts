@@ -13,6 +13,13 @@ import type { AgentCliPlugin, CodexPluginRegistration, CodexPluginRegistrationCo
 
 const PLUGIN_ASSETS_DIR = path.resolve("assets");
 const tempCodexHomes: string[] = [];
+const BUILT_IN_SKILL_NAMES = [
+  "fleet-protocol-high-risk",
+  "fleet-protocol-multi-agent",
+  "fleet-protocol-standard",
+  "fleet-protocol-trivial",
+  "fleet-wiki-usage",
+] as const;
 const EXPECTED_SUBAGENTS_CONTEXT = `<fleet section="subagents">
 # Claude Native Subagents
 
@@ -111,10 +118,20 @@ describe("agent CLI plugin renderer", () => {
     expect(readJson(path.join(fleetRoot, ".codex-plugin", "plugin.json"))).not.toHaveProperty("mcpServers");
     expect(existsSync(path.join(fleetRoot, "hooks"))).toBe(false);
     expect(existsSync(path.join(fleetRoot, ".mcp.json"))).toBe(false);
+    expect(readdirSync(path.join(fleetRoot, "skills")).sort()).toEqual([...BUILT_IN_SKILL_NAMES]);
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toBe(
       readFileSync(path.join(PLUGIN_ASSETS_DIR, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8"),
     );
+    for (const skillName of BUILT_IN_SKILL_NAMES) {
+      expect(readFileSync(path.join(fleetRoot, "skills", skillName, "SKILL.md"), "utf8")).toContain(`name: ${skillName}`);
+    }
+    // Protocol-mode skills must lock the R2 invariant: planning boundary requires complete confidence.
+    for (const skillName of BUILT_IN_SKILL_NAMES.filter((name) => name.startsWith("fleet-protocol-"))) {
+      const body = readFileSync(path.join(fleetRoot, "skills", skillName, "SKILL.md"), "utf8");
+      expect(body).toContain("Context Confidence");
+      expect(body).toContain("entry requires complete");
+    }
     expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
     assertPrivateTree(path.join(rootDir, "marketplace"));
   });

@@ -121,10 +121,11 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(systemPrompt).toContain('<fleet section="role">');
     expect(systemPrompt).toContain('<fleet section="persona">');
     expect(systemPrompt).toContain('<fleet section="roster">');
-    expect(systemPrompt).toContain('<fleet section="protocol">');
-    expect(systemPrompt).toContain('<fleet section="standing-orders">');
+    expect(systemPrompt).toContain('<fleet section="protocol-gate">');
+    expect(systemPrompt).not.toContain('<fleet section="protocol">');
+    expect(systemPrompt).toContain('<fleet section="standing-orders"');
     expect(systemPrompt).not.toContain('<fleet section="tool-guide"');
-    expect(roughTokens).toBeLessThanOrEqual(13_500);
+    expect(roughTokens).toBeLessThanOrEqual(8_500);
   });
 
   it("builds provider args with plugin activation and spawn-time MCP injection", () => {

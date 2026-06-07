@@ -22,10 +22,30 @@ describe("Admiral prompts", () => {
 
     expect(prompt).toContain('<fleet section="preamble">');
     expect(prompt).toContain('<fleet section="role">');
-    expect(prompt).toContain('<fleet section="protocol">');
+    expect(prompt).toContain('<fleet section="protocol-gate">');
+    expect(prompt).not.toContain('<fleet section="protocol">');
     expect(prompt).toContain('<fleet section="standing-orders" type="mission-anchor">');
     expect(prompt).not.toContain('<fleet section="tool-guide"');
+    expect(prompt).not.toContain("Every task progresses through the following phases");
     expect(getAllStandingOrders()).toHaveLength(5);
+  });
+
+  it("renders the intent and mode gate instead of the old full protocol body", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createCarrierRuntime(),
+    }).build(false);
+
+    expect(prompt).toContain("Conversational");
+    expect(prompt).toContain("answer normally without loading a protocol skill");
+    expect(prompt).toContain("fleet-protocol-trivial");
+    expect(prompt).toContain("fleet-protocol-standard");
+    expect(prompt).toContain("fleet-protocol-high-risk");
+    expect(prompt).toContain("fleet-protocol-multi-agent");
+    expect(prompt).toContain("fall back to `fleet-protocol-standard`");
+    expect(prompt).toContain("Never choose `fleet-protocol-trivial` or `fleet-protocol-standard`");
+    expect(prompt).toContain("irreversible operations, structural/API changes, multi-module edits, or doctrine/prompt-policy edits");
+    expect(prompt).toContain("Mode Mapping (examples)");
+    expect(prompt).not.toContain("# Fleet Action Protocol — Operational Doctrine");
   });
 
   it("renders each standing order as its own type-scoped block without a shared wrapper", () => {
@@ -33,6 +53,14 @@ describe("Admiral prompts", () => {
       carrierRuntime: createCarrierRuntime(),
     }).build(false);
 
+    // Lock the five-order identity and ordering against silent reorder/rename regressions.
+    expect(getAllStandingOrders().map((order) => order.id)).toEqual([
+      "mission-anchor",
+      "context-confidence",
+      "carrier-operations-policy",
+      "deep-dive",
+      "result-integrity",
+    ]);
     for (const order of getAllStandingOrders()) {
       expect(prompt).toContain(`<fleet section="standing-orders" type="${order.id}">`);
     }

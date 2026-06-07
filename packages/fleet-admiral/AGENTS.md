@@ -5,7 +5,7 @@
 ## Owns
 
 - Admiral system prompt assembly and the `createSystemPromptBuilder(deps): SystemPromptBuilder` factory
-- Fleet Action Protocol prompt body
+- Protocol gate prompt policy, protocol skill doctrine, and standing-order prompt policy
 - Standing orders used by the Admiral system prompt
 - Fleet-specific agent tool defaults and whitelist-only executor MCP tool exposure
 

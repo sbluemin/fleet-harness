@@ -48,8 +48,17 @@ the Admiral prompt. The static prompt includes:
 - `RISEN_DEV_SLATE` when enabled by development context
 - `<fleet section="role">` outside dev mode
 - `<fleet section="roster">` when carriers are registered
-- `<fleet section="protocol">` containing the Fleet Action Protocol body — fleet-harness's single, immutable protocol; no catalog, no switching
-- `<fleet section="standing-orders">`
+- `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work
+- `<fleet section="standing-orders" type="<id>">` as five separate always-on Standing Order blocks
+
+The full protocol workflows are not inlined into the static Admiral prompt.
+Operational requests load exactly one built-in protocol skill on demand:
+`fleet-protocol-trivial`, `fleet-protocol-standard`,
+`fleet-protocol-high-risk`, or `fleet-protocol-multi-agent`. The Fleet CLI
+owns those packaged skill assets and marketplace rendering; `fleet-admiral`
+owns only the prompt gate and Standing Order policy. There is still no protocol
+registry, persisted mode setting, runtime switching API, or Fleet CLI protocol
+selector UI.
 
 The prompt does not inline per-tool guide blocks. Live MCP tool descriptions
 and schemas remain the tool-specific authority for usage and arguments outside
@@ -63,7 +72,8 @@ the Admiral prompt path.
 
 Runtime state is read through direct owners:
 
-- Protocol state: `packages/fleet-admiral/src/protocols/**`
+- Protocol gate and Standing Order policy: `packages/fleet-admiral/src/protocols/**`
+- Built-in protocol skill assets: `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store and job stream state: `@dotobokuri/fleet-carriers`
 - Executor/session/model state: `@dotobokuri/fleet-infra/agent`
