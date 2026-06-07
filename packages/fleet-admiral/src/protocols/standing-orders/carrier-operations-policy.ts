@@ -27,13 +27,13 @@ Resolve technical trade-offs first; never delegate unresolved decisions to a pla
 ### Tool Selection
 | Intent | Tool |
 |---|---|
-| Delegate to a roster Carrier (listed in <fleet section="roster">) | native subagent path (spawn_agent / agent) when available; otherwise carrier_dispatch |
-| Parallel subtasks on one Carrier | multiple invocations, same response |
+| Delegate to a roster Carrier (listed in <fleet section="roster">) | carrier_dispatch |
+| Parallel subtasks on one Carrier | multiple carrier_dispatch calls in the same response |
 | Lookup/control detached jobs | carrier_jobs (never for delegation) |
 | Synthesis, strategic advice | (no tool) |
 
 ### Carrier Invocation
-Every Carrier lives in <fleet section="roster">. For any Carrier, prefer the native subagent path (spawn_agent / agent); if the Carrier cannot be invoked that way in this session, fall back to carrier_dispatch. If neither path accepts the Carrier, report it unavailable per Dispatch rules — never silently substitute. Native invocations return inline and do NOT emit a [carrier:result] push — do not wait for one. Only carrier_dispatch jobs push completion via [carrier:result].
+Every Carrier lives in <fleet section="roster">. Delegate roster Carrier work through carrier_dispatch. If carrier_dispatch is not exposed in the current tool surface, inspect the Fleet MCP surface first; if it remains unavailable or rejects the requested Carrier, report that limitation to the 대원수 and await instructions. Never silently substitute a generic agent tool or local execution path for a requested Carrier. carrier_dispatch jobs are fire-and-forget and push completion via [carrier:result].
 
 ### Parallel Default
 When the same phase or step calls multiple Captain-led Carriers, invoke them in parallel — one tool call per carrier, same response. Sequence only when:
@@ -51,5 +51,5 @@ When the same phase or step calls multiple Captain-led Carriers, invoke them in 
 - Splitting a parallel launch into sequential calls.
 - Sortieing a planning carrier for single-carrier work.
 - Falling back to direct work when delegation is appropriate.
-- Treating native subagent availability as exclusive; prefer the native path, but carrier_dispatch remains allowed when operationally useful.`,
+- Bypassing carrier_dispatch with a generic agent tool when the task calls for a roster Carrier.`,
 };
