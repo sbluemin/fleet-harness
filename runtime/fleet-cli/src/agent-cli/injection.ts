@@ -20,7 +20,7 @@ import {
 
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
-import { escapeTomlBasicString } from "./builders/toml.js";
+import { escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { CODEX_FLEET_PLUGIN_KEY, createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
 import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "./plugin/types.js";
@@ -250,7 +250,11 @@ function writeCodexFleetProfile(
   onCleanup(() => rmBestEffort(profilePath));
   writeFileNoFollow(profilePath, [
     CODEX_FLEET_PROFILE_MARKER,
-    `developer_instructions = "${escapeTomlBasicString(doctrine)}"`,
+    // doctrine를 멀티라인 TOML 문자열로 직렬화해 실제 줄바꿈을 보존(pretty)한다.
+    // 여는 """ 바로 뒤의 줄바꿈은 TOML 파서가 제거하므로 본문은 다음 줄부터 시작한다.
+    `developer_instructions = """`,
+    escapeTomlMultilineString(doctrine),
+    `"""`,
     "",
     `[plugins."${escapeTomlBasicString(CODEX_FLEET_PLUGIN_KEY)}"]`,
     "enabled = true",

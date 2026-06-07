@@ -320,7 +320,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(profile.args).not.toContain("--dangerously-bypass-hook-trust");
       expect(readFileSync(profilePath, "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
-        'developer_instructions = "private fleet prompt"',
+        'developer_instructions = """',
+        "private fleet prompt",
+        '"""',
         "",
         '[plugins."fleet@fleet-harness"]',
         "enabled = true",
@@ -371,7 +373,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
       const profilePath = path.join(codexHome, `${profileName}.config.toml`);
       expect(readFileSync(profilePath, "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
-        'developer_instructions = "private fleet prompt"',
+        'developer_instructions = """',
+        "private fleet prompt",
+        '"""',
         "",
         '[plugins."fleet@fleet-harness"]',
         "enabled = true",
