@@ -113,7 +113,7 @@ describe("agent CLI plugin renderer", () => {
     expect(existsSync(path.join(fleetRoot, ".mcp.json"))).toBe(false);
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toBe(
-      readFileSync(path.join(PLUGIN_ASSETS_DIR, "plugins", "fleet", "skills", "fleet-wiki-usage", "SKILL.md"), "utf8"),
+      readFileSync(path.join(PLUGIN_ASSETS_DIR, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8"),
     );
     expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
     assertPrivateTree(path.join(rootDir, "marketplace"));
@@ -139,6 +139,129 @@ describe("agent CLI plugin renderer", () => {
     expect(readFileSync(path.join(skillsRoot, "alpha-skill", "SKILL.md"), "utf8")).toBe("Alpha skill");
     expect(readFileSync(path.join(skillsRoot, "alpha-skill", "references", "example.md"), "utf8")).toBe("Alpha reference");
     expect(readFileSync(path.join(skillsRoot, "zeta-skill", "SKILL.md"), "utf8")).toBe("Zeta skill");
+  });
+
+  it("requires built-in Fleet asset skills while leaving project subdirectories optional", () => {
+    const assetsDir = makeRoot();
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    mkdirSync(path.join(cwd, ".fleet"), { recursive: true, mode: 0o700 });
+
+    expect(() => createAgentCliPlugin({
+      assetsDir,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    })).toThrow(/Failed to read Fleet plugin skills directory skills/);
+
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    expect(plugin.pluginRoots).toEqual([
+      path.join(rootDir, "marketplace", "plugins", "fleet"),
+      path.join(rootDir, "marketplace", "plugins", "fleet-project"),
+    ]);
+    expect(readJson(path.join(rootDir, "marketplace", "plugins", "fleet-project", ".codex-plugin", "plugin.json"))).toMatchObject({
+      name: "fleet-project",
+    });
+  });
+
+  it("renders project .fleet assets as a second marketplace plugin when present", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    mkdirSync(path.join(cwd, ".fleet", "skills", "project-skill"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(cwd, ".fleet", "agents"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(cwd, ".fleet", "hooks"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(cwd, ".fleet", "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(cwd, ".fleet", "agents", "project.md"), "Project agent", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(cwd, ".fleet", "hooks", "hooks.json"), "{\"hooks\":{}}", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(cwd, ".fleet", ".mcp.json"), "{\"mcpServers\":{}}", { encoding: "utf8", mode: 0o600 });
+
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [{
+        carrierId: "ohio",
+        description: "Ohio carrier",
+        name: "Ohio",
+        prompt: "generated asset agent",
+      }],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    const marketplaceRoot = path.join(rootDir, "marketplace");
+    const fleetRoot = path.join(marketplaceRoot, "plugins", "fleet");
+    const projectRoot = path.join(marketplaceRoot, "plugins", "fleet-project");
+
+    expect(plugin.pluginRoot).toBe(fleetRoot);
+    expect(plugin.pluginRoots).toEqual([fleetRoot, projectRoot]);
+    expect(plugin.codexRegistrations.map((registration) => registration.pluginName)).toEqual(["fleet", "fleet-project"]);
+    expect(registrationByName(plugin, "fleet-project")).toMatchObject({
+      hashPath: path.join(marketplaceRoot, ".fleet-project-codex-plugin.hash"),
+      marketplaceName: "fleet-harness",
+      pluginName: "fleet-project",
+      pluginRoot: projectRoot,
+    });
+    expect(readJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"))).toMatchObject({
+      plugins: [
+        { name: "fleet", source: { path: "./plugins/fleet" } },
+        { name: "fleet-project", displayName: "Fleet Project", source: { path: "./plugins/fleet-project" } },
+      ],
+    });
+    expect(readJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"))).toMatchObject({
+      plugins: [
+        { name: "fleet", source: "./plugins/fleet" },
+        { name: "fleet-project", source: "./plugins/fleet-project" },
+      ],
+    });
+    expect(readJson(path.join(projectRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
+      name: "fleet-project",
+      skills: "./skills/",
+    });
+    expect(readFileSync(path.join(projectRoot, "skills", "project-skill", "SKILL.md"), "utf8")).toBe("Project skill");
+    expect(readFileSync(path.join(projectRoot, "agents", "project.md"), "utf8")).toBe("Project agent");
+    expect(readFileSync(path.join(projectRoot, "hooks", "hooks.json"), "utf8")).toBe("{\"hooks\":{}}");
+    expect(readFileSync(path.join(projectRoot, ".mcp.json"), "utf8")).toBe("{\"mcpServers\":{}}");
+    expect(existsSync(path.join(projectRoot, "agents", "Ohio.md"))).toBe(false);
+  });
+
+  it("rejects symlinks inside project .fleet assets before copying", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const outside = makeRoot();
+    mkdirSync(path.join(cwd, ".fleet", "skills"), { recursive: true, mode: 0o700 });
+    symlinkSync(path.join(outside, "SKILL.md"), path.join(cwd, ".fleet", "skills", "linked.md"));
+
+    expect(() => createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    })).toThrow(/symlink/);
+  });
+
+  it("rejects a symlinked project .fleet root before copying", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const outside = makeRoot();
+    mkdirSync(path.join(outside, "skills"), { recursive: true, mode: 0o700 });
+    symlinkSync(outside, path.join(cwd, ".fleet"));
+
+    expect(() => createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    })).toThrow(/source root is a symlink/);
   });
 
   it("throws a clear renderer error when required assets are not provided", () => {
@@ -829,7 +952,7 @@ function writeJsonFile(filePath: string, value: unknown): void {
 }
 
 function createSkillAssetFile(assetsDir: string, relativePath: string, content: string): void {
-  const skillPath = path.join(assetsDir, "plugins", "fleet", "skills", relativePath);
+  const skillPath = path.join(assetsDir, "skills", relativePath);
   mkdirSync(path.dirname(skillPath), { recursive: true, mode: 0o700 });
   writeFileSync(skillPath, content, { encoding: "utf8", mode: 0o600 });
 }

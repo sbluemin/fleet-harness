@@ -340,6 +340,101 @@ describe("fleet-cli agent CLI MCP registration", () => {
     }
   });
 
+  it("enables every rendered Codex plugin in the Fleet session profile", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "fleet-project-cwd-"));
+    const commands: string[] = [];
+    const codexState = {
+      installed: new Set<string>(),
+      marketplaceRoot: undefined as string | undefined,
+    };
+    try {
+      mkdirSync(path.join(cwd, ".fleet", "skills", "project-skill"), { recursive: true, mode: 0o700 });
+      writeFileSync(path.join(cwd, ".fleet", "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8" });
+
+      const profile = await injectAgentCliProfile({
+        args: [],
+        bin: "/usr/local/bin/codex",
+        cwd,
+        env: { CODEX_HOME: codexHome },
+        id: "codex",
+        label: "Codex",
+        terminalName: "xterm-256color",
+      }, {
+        buildSystemPrompt: () => "private fleet prompt",
+        carrierRuntime: createCarrierRuntime(),
+        codexCommandRunner: (command: CodexPluginRegistrationCommand) => {
+          const line = command.args.join(" ");
+          commands.push(line);
+          if (line === "plugin marketplace list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet-harness ${codexState.marketplaceRoot}\n`,
+            };
+          }
+          if (line.startsWith("plugin marketplace add ")) {
+            codexState.marketplaceRoot = line.slice("plugin marketplace add ".length);
+            return { status: 0, stderr: "", stdout: "" };
+          }
+          if (line === "plugin list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet-harness  installed, enabled`).join("\n"),
+            };
+          }
+          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
+            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet-harness".length));
+            return { status: 0, stderr: "", stdout: "" };
+          }
+          return { status: 0, stderr: "", stdout: "" };
+        },
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
+          }),
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
+          releaseSessionToken: vi.fn(),
+        } as never,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+      });
+
+      expect(commands).toEqual([
+        "plugin marketplace list",
+        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
+        "plugin list",
+        "plugin add fleet -m fleet-harness",
+        "plugin marketplace list",
+        "plugin list",
+        "plugin add fleet-project -m fleet-harness",
+      ]);
+      expect(codexState.installed).toEqual(new Set(["fleet", "fleet-project"]));
+      const profileName = argValue(profile.args, "--profile");
+      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
+      expect(readFileSync(path.join(codexHome, `${profileName}.config.toml`), "utf8")).toBe([
+        CODEX_FLEET_PROFILE_MARKER,
+        'developer_instructions = """',
+        "private fleet prompt",
+        '"""',
+        "",
+        '[plugins."fleet@fleet-harness"]',
+        "enabled = true",
+        "",
+        '[plugins."fleet-project@fleet-harness"]',
+        "enabled = true",
+        "",
+      ].join("\n"));
+      profile.cleanup?.();
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("continues Codex launch profile injection when plugin registration fails", async () => {
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
     const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));

@@ -22,7 +22,7 @@ import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { CODEX_FLEET_PLUGIN_KEY, createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
+import { createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
 import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "./plugin/types.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg, AgentCliProfile } from "./types.js";
 
@@ -82,9 +82,6 @@ export async function injectAgentCliProfile(
     const systemPromptFile = profile.id === "claude" || profile.id === "claude-kimi"
       ? writeSystemPromptFile(profile.id, doctrine, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
-    const codexProfile = profile.id === "codex"
-      ? writeCodexFleetProfile(profile.env, doctrine, (cleanup) => tempCleanups.push(cleanup))
-      : undefined;
     const plugin = createAgentCliPlugin({
       claudeDefinitions: startupDefinitions.host === "claude" ? startupDefinitions.definitions : [],
       cliId: profile.id,
@@ -95,6 +92,10 @@ export async function injectAgentCliProfile(
         ? buildFleetHookCommand(options.pluginEntry)
         : undefined,
     });
+    const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
+    const codexProfile = profile.id === "codex"
+      ? writeCodexFleetProfile(profile.env, doctrine, codexPluginKeys, (cleanup) => tempCleanups.push(cleanup))
+      : undefined;
     const launchWarnings: string[] = [];
     // Codex CLI가 Windows .cmd shim이면 profile.bin은 cmd.exe, binPrefixArgs는 /d /s /c <shim>이다.
     // 등록 명령은 이 prefixArgs를 base args로 실어야 PTY 실행 경로와 동일하게 codex가 호출된다(POSIX에선 빈 배열).
@@ -240,6 +241,7 @@ function writeSystemPromptFile(
 function writeCodexFleetProfile(
   env: Readonly<Record<string, string>>,
   doctrine: string,
+  pluginKeys: readonly string[],
   onCleanup: (cleanup: () => void) => void,
 ): CodexFleetProfile {
   const codexHome = env.CODEX_HOME ?? path.join(env.HOME ?? os.homedir(), ".codex");
@@ -256,9 +258,11 @@ function writeCodexFleetProfile(
     escapeTomlMultilineString(doctrine),
     `"""`,
     "",
-    `[plugins."${escapeTomlBasicString(CODEX_FLEET_PLUGIN_KEY)}"]`,
-    "enabled = true",
-    "",
+    ...pluginKeys.flatMap((pluginKey) => [
+      `[plugins."${escapeTomlBasicString(pluginKey)}"]`,
+      "enabled = true",
+      "",
+    ]),
   ].join("\n"));
   chmodBestEffort(profilePath, SYSTEM_PROMPT_FILE_MODE);
   return { profileName, profilePath };

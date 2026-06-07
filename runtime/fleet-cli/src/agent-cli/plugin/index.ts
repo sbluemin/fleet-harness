@@ -14,14 +14,29 @@ import type {
   CreateAgentCliPluginOptions,
 } from "./types.js";
 
-interface PluginBundle {
+interface PluginBundleBase {
   readonly description: string;
   readonly directoryName: string;
   readonly displayName: string;
   readonly hashFileName: string;
-  readonly includeClaudeAgents: boolean;
   readonly name: string;
 }
+
+interface AssetPluginBundle extends PluginBundleBase {
+  readonly includeClaudeAgents: boolean;
+  readonly source: "asset";
+}
+
+interface ProjectPluginBundle extends PluginBundleBase {
+  readonly source: "project";
+}
+
+interface CopyDirectoryIntoPluginOptions {
+  readonly label?: string;
+  readonly required?: boolean;
+}
+
+type PluginBundle = AssetPluginBundle | ProjectPluginBundle;
 
 export const CODEX_FLEET_PLUGIN_KEY = "fleet@fleet-harness";
 export const FLEET_MARKETPLACE_NAME = "fleet-harness";
@@ -36,10 +51,19 @@ const PLUGIN_BUNDLES: readonly PluginBundle[] = [{
   hashFileName: ".fleet-codex-plugin.hash",
   includeClaudeAgents: true,
   name: "fleet",
+  source: "asset",
+}, {
+  description: "Fleet project-local agents, skills, hooks, and MCP plugin",
+  directoryName: "fleet-project",
+  displayName: "Fleet Project",
+  hashFileName: ".fleet-project-codex-plugin.hash",
+  name: "fleet-project",
+  source: "project",
 }] as const;
 const PLUGIN_MANAGED_ENTRIES = [
   ".codex-plugin",
   ".claude-plugin",
+  ".mcp.json",
   "hooks",
   "skills",
   "agents",
@@ -65,10 +89,11 @@ export function createAgentCliPlugin(
 ): AgentCliPlugin {
   const fleetRoot = options.rootDir ?? path.join(os.homedir(), ".fleet");
   const marketplaceRoot = path.join(fleetRoot, MARKETPLACE_DIR_NAME);
+  const effectiveBundles = renderablePluginBundles(options);
   validateClaudeAgentFileStems(options.claudeDefinitions);
   ensurePrivateDir(marketplaceRoot, marketplaceRoot);
-  renderMarketplaceRoot(marketplaceRoot);
-  const pluginRoots = PLUGIN_BUNDLES.map((bundle) => {
+  renderMarketplaceRoot(marketplaceRoot, effectiveBundles);
+  const pluginRoots = effectiveBundles.map((bundle) => {
     const pluginRoot = path.join(marketplaceRoot, PLUGIN_BUNDLES_DIR_NAME, bundle.directoryName);
     renderPluginRoot(pluginRoot, bundle, options);
     return pluginRoot;
@@ -79,7 +104,7 @@ export function createAgentCliPlugin(
   return {
     cleanup,
     codexRegistrations: options.cliId === "codex"
-      ? PLUGIN_BUNDLES.map((bundle, index) => ({
+      ? effectiveBundles.map((bundle, index) => ({
         contentHash,
         hashPath: path.join(marketplaceRoot, bundle.hashFileName),
         marketplaceDir: marketplaceRoot,
@@ -130,13 +155,30 @@ function renderPluginRoot(
   ensurePrivateDir(path.join(pluginRoot, "skills"), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), pluginRoot);
-  for (const skillRelativePath of listAssetSkillFilePaths(options, bundle)) {
-    writePrivateFile(
-      path.join(pluginRoot, "skills", skillRelativePath),
-      readRequiredAsset(options, path.join("plugins", bundle.directoryName, "skills", skillRelativePath)),
-      pluginRoot,
-    );
+  switch (bundle.source) {
+    case "asset":
+      renderAssetPluginRoot(pluginRoot, bundle, options);
+      return;
+    case "project":
+      renderProjectPluginRoot(pluginRoot, options);
+      return;
   }
+}
+
+function renderAssetPluginRoot(
+  pluginRoot: string,
+  bundle: AssetPluginBundle,
+  options: CreateAgentCliPluginOptions,
+): void {
+  copyDirectoryIntoPlugin(
+    path.join(requiredAssetsDir(options), "skills"),
+    pluginRoot,
+    "skills",
+    {
+      label: "skills",
+      required: true,
+    },
+  );
   if (bundle.includeClaudeAgents) {
     for (const subagent of options.claudeDefinitions) {
       const fileStem = parseClaudeAgentFileStem(subagent.name);
@@ -148,25 +190,66 @@ function renderPluginRoot(
   }
 }
 
-function readRequiredAsset(options: CreateAgentCliPluginOptions, relativePath: string): string {
-  const assetPath = path.join(requiredAssetsDir(options), relativePath);
-  try {
-    return readFileSync(assetPath, "utf8");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read Fleet plugin asset ${relativePath}: ${message}`);
+function renderProjectPluginRoot(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
+  const fleetProjectRoot = path.join(options.cwd, ".fleet");
+  assertProjectFleetRootSafe(fleetProjectRoot);
+  copyDirectoryIntoPlugin(path.join(fleetProjectRoot, "skills"), pluginRoot, "skills");
+  copyDirectoryIntoPlugin(path.join(fleetProjectRoot, "agents"), pluginRoot, "agents");
+  copyDirectoryIntoPlugin(path.join(fleetProjectRoot, "hooks"), pluginRoot, "hooks");
+  copyOptionalFileIntoPlugin(path.join(fleetProjectRoot, ".mcp.json"), path.join(pluginRoot, ".mcp.json"), pluginRoot);
+}
+
+function assertProjectFleetRootSafe(fleetProjectRoot: string): void {
+  const sourceStat = lstatSync(fleetProjectRoot);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error(`Fleet project plugin source root is a symlink: ${fleetProjectRoot}`);
+  }
+  if (!sourceStat.isDirectory()) {
+    throw new Error(`Fleet project plugin source root is not a directory: ${fleetProjectRoot}`);
   }
 }
 
-function listAssetSkillFilePaths(options: CreateAgentCliPluginOptions, bundle: PluginBundle): string[] {
-  const skillsRelativePath = path.join("plugins", bundle.directoryName, "skills");
-  const skillsRoot = path.join(requiredAssetsDir(options), skillsRelativePath);
-  try {
-    return listAssetFiles(skillsRoot);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read Fleet plugin skills directory ${skillsRelativePath}: ${message}`);
+function copyDirectoryIntoPlugin(
+  sourceDir: string,
+  pluginRoot: string,
+  pluginRelative: string,
+  options: CopyDirectoryIntoPluginOptions = {},
+): void {
+  if (!existsSync(sourceDir)) {
+    if (options.required === true) {
+      throw new Error(`Failed to read Fleet plugin skills directory ${options.label ?? sourceDir}: directory is missing`);
+    }
+    return;
   }
+  const sourceStat = lstatSync(sourceDir);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error(`Fleet plugin source directory is a symlink: ${sourceDir}`);
+  }
+  if (!sourceStat.isDirectory()) {
+    if (options.required === true) {
+      throw new Error(`Failed to read Fleet plugin skills directory ${options.label ?? sourceDir}: not a directory`);
+    }
+    throw new Error(`Fleet plugin source path is not a directory: ${sourceDir}`);
+  }
+  for (const relativePath of listAssetFiles(sourceDir)) {
+    writePrivateFile(
+      path.join(pluginRoot, pluginRelative, relativePath),
+      readFileSync(path.join(sourceDir, relativePath), "utf8"),
+      pluginRoot,
+    );
+  }
+}
+
+function copyOptionalFileIntoPlugin(sourceFile: string, destPath: string, pluginRoot: string): void {
+  if (!existsSync(sourceFile)) return;
+  const sourceStat = lstatSync(sourceFile);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error(`Fleet plugin source file is a symlink: ${sourceFile}`);
+  }
+  if (!sourceStat.isFile()) {
+    throw new Error(`Fleet plugin source path is not a file: ${sourceFile}`);
+  }
+  writePrivateFile(destPath, readFileSync(sourceFile, "utf8"), pluginRoot);
 }
 
 function listAssetFiles(rootPath: string): string[] {
@@ -199,11 +282,15 @@ function requiredAssetsDir(options: CreateAgentCliPluginOptions): string {
   return options.assetsDir;
 }
 
-function renderMarketplaceRoot(marketplaceRoot: string): void {
+function renderablePluginBundles(options: CreateAgentCliPluginOptions): readonly PluginBundle[] {
+  return PLUGIN_BUNDLES.filter((bundle) => bundle.source !== "project" || existsSync(path.join(options.cwd, ".fleet")));
+}
+
+function renderMarketplaceRoot(marketplaceRoot: string, bundles: readonly PluginBundle[]): void {
   ensurePrivateDir(marketplaceRoot, marketplaceRoot);
   pruneMarketplaceRoot(marketplaceRoot);
-  writePrivateJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(), marketplaceRoot);
-  writePrivateJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(), marketplaceRoot);
+  writePrivateJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(bundles), marketplaceRoot);
+  writePrivateJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(bundles), marketplaceRoot);
 }
 
 function prunePluginRoot(pluginRoot: string): void {
@@ -231,10 +318,10 @@ function buildContentHash(pluginRoot: string): string {
   return hash.digest("hex");
 }
 
-function codexMarketplace(): unknown {
+function codexMarketplace(bundles: readonly PluginBundle[]): unknown {
   return {
     name: FLEET_MARKETPLACE_NAME,
-    plugins: PLUGIN_BUNDLES.map((bundle) => ({
+    plugins: bundles.map((bundle) => ({
       name: bundle.name,
       displayName: bundle.displayName,
       source: {
@@ -246,14 +333,14 @@ function codexMarketplace(): unknown {
   };
 }
 
-function claudeMarketplace(): unknown {
+function claudeMarketplace(bundles: readonly PluginBundle[]): unknown {
   return {
     name: FLEET_MARKETPLACE_NAME,
     description: "Fleet plugin marketplace",
     owner: {
       name: "Fleet",
     },
-    plugins: PLUGIN_BUNDLES.map((bundle) => ({
+    plugins: bundles.map((bundle) => ({
       name: bundle.name,
       description: bundle.description,
       author: {
@@ -375,10 +462,11 @@ function ensureCodexPluginRegisteredOrThrow(
   assertCommandSucceeded("codex plugin list", pluginList);
   const installed = isCodexPluginInstalled(pluginList, registration.pluginName, registration.marketplaceName);
   const previousHash = readHash(registration.hashPath);
+  const pluginKey = `${registration.pluginName}@${registration.marketplaceName}`;
   if (installed && previousHash === registration.contentHash) {
     neutralizeCodexFleetPluginConfig({
       codexHome: resolveCodexHome(command.env),
-      pluginKey: CODEX_FLEET_PLUGIN_KEY,
+      pluginKey,
     });
     return;
   }
@@ -390,7 +478,7 @@ function ensureCodexPluginRegisteredOrThrow(
   assertCommandSucceeded("codex plugin add", addPlugin);
   neutralizeCodexFleetPluginConfig({
     codexHome: resolveCodexHome(command.env),
-    pluginKey: CODEX_FLEET_PLUGIN_KEY,
+    pluginKey,
   });
   writePrivateFile(registration.hashPath, `${registration.contentHash}\n`, path.dirname(registration.hashPath));
 }
