@@ -29,6 +29,8 @@ export interface BuildFleetHelpTextOptions {
   readonly release?: FleetCliRelease;
 }
 
+export type FleetHookCommand = "subagents-context";
+
 type MutableFleetCliArgOverrides = {
   -readonly [Key in keyof FleetCliArgOverrides]: FleetCliArgOverrides[Key];
 };
@@ -59,6 +61,11 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
   return { cursorSync, cursorSyncExplicitlyEnabled, argvOverrides, help };
 }
 
+export function parseFleetHookCommand(argv: readonly string[]): FleetHookCommand {
+  if (argv[0] === "subagents-context" && argv.length === 1) return "subagents-context";
+  throw new Error("Unknown fleet hook command. Run 'fleet hook subagents-context'.");
+}
+
 export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): string {
   const release = options.release ?? readFleetCliRelease();
   const colorEnabled = resolveColorEnabled(options);
@@ -73,11 +80,13 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     section("USAGE", colorEnabled),
     `  ${command("fleet", colorEnabled)} ${dim("[options]", colorEnabled)}`,
     `  ${command("fleet auth", colorEnabled)} ${dim("<login|list|logout> [claude-zai|claude-kimi]", colorEnabled)}`,
+    `  ${command("fleet hook subagents-context", colorEnabled)}`,
     `  ${command("fleet wiki", colorEnabled)} ${dim("[--host <addr>] [--port <port>] [--stop] [--help]", colorEnabled)}`,
     `  ${command("fleet update", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("auth", colorEnabled)}                ${dim("Manage Fleet authentication.", colorEnabled)}`,
+    `  ${command("hook", colorEnabled)}                ${dim("Run non-interactive Fleet hook helpers.", colorEnabled)}`,
     `  ${command("wiki", colorEnabled)}                ${dim("Run Fleet Wiki.", colorEnabled)}`,
     `  ${command("update", colorEnabled)}              ${dim("Update Fleet CLI packages.", colorEnabled)}`,
     "",

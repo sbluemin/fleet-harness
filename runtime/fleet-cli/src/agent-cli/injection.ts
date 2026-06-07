@@ -21,8 +21,8 @@ import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { escapeTomlBasicString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { createAgentCliSessionPlugin, ensureCodexPluginRegistered } from "./session-plugin/index.js";
-import type { CodexCommandResult, CodexPluginRegistrationCommand } from "./session-plugin/types.js";
+import { createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
+import type { CodexCommandResult, CodexPluginRegistrationCommand } from "./plugin/types.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg, AgentCliProfile } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
@@ -33,7 +33,15 @@ export interface InjectAgentCliProfileOptions {
   readonly enableMetaphor?: boolean;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
   readonly onCleanup?: (cleanup: () => void) => void;
-  readonly sessionPluginRootDir?: string;
+  readonly pluginAssetsDir?: string;
+  readonly pluginEntry?: FleetHookCommandEntry;
+  readonly pluginRootDir?: string;
+}
+
+export interface FleetHookCommandEntry {
+  readonly entryPath: string;
+  readonly execPath: string;
+  readonly tsxLoaderPath?: string;
 }
 
 interface CodexFleetProfile {
@@ -49,6 +57,8 @@ const CODEX_FLEET_PROFILE_FILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[
 const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const CODEX_STALE_PROFILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SYSTEM_PROMPT_FILE_MODE = 0o600;
+const JAVASCRIPT_ENTRY_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
+const TYPESCRIPT_ENTRY_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"]);
 
 export async function injectAgentCliProfile(
   profile: AgentCliProfile,
@@ -74,11 +84,15 @@ export async function injectAgentCliProfile(
     const codexProfile = profile.id === "codex"
       ? writeCodexFleetProfile(profile.env, doctrine, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
       claudeDefinitions: startupDefinitions.host === "claude" ? startupDefinitions.definitions : [],
       cliId: profile.id,
       cwd: profile.cwd,
-      rootDir: options.sessionPluginRootDir,
+      rootDir: options.pluginRootDir,
+      assetsDir: options.pluginAssetsDir,
+      hookCommand: startupDefinitions.host === "claude"
+        ? buildFleetHookCommand(options.pluginEntry)
+        : undefined,
     });
     const launchWarnings: string[] = [];
     for (const registration of plugin.codexRegistrations) {
@@ -123,6 +137,35 @@ export async function injectAgentCliProfile(
     options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
     throw error;
   }
+}
+
+export function buildFleetHookCommand(entry: FleetHookCommandEntry | undefined): string {
+  if (entry === undefined) {
+    throw new Error("Fleet session hook command requires the current Fleet entry path");
+  }
+  const extension = path.extname(entry.entryPath);
+  if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {
+    return [
+      shellQuote(entry.execPath),
+      shellQuote(entry.entryPath),
+      "hook",
+      "subagents-context",
+    ].join(" ");
+  }
+  if (TYPESCRIPT_ENTRY_EXTENSIONS.has(extension)) {
+    if (!entry.tsxLoaderPath) {
+      throw new Error("Fleet session hook command for TypeScript entries requires a tsx loader path");
+    }
+    return [
+      shellQuote(entry.execPath),
+      "--import",
+      shellQuote(entry.tsxLoaderPath),
+      shellQuote(entry.entryPath),
+      "hook",
+      "subagents-context",
+    ].join(" ");
+  }
+  throw new Error(`Unsupported Fleet session hook entry extension: ${extension}`);
 }
 
 function buildStartupNativeDefinitions(
@@ -255,6 +298,10 @@ function isStaleFleetCodexProfile(filePath: string, now: number): boolean {
 function readFirstLine(filePath: string): string {
   const content = readFileSync(filePath, "utf8");
   return content.split(/\r?\n/, 1)[0] ?? "";
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

@@ -1,9 +1,11 @@
 import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
 
-export interface CreateAgentCliSessionPluginOptions {
+export interface CreateAgentCliPluginOptions {
+  readonly assetsDir?: string;
   readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
   readonly cliId: string;
   readonly cwd: string;
+  readonly hookCommand?: string;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
 }
@@ -30,7 +32,7 @@ export interface CodexPluginRegistrationCommand {
   readonly env: Readonly<Record<string, string>>;
 }
 
-export interface AgentCliSessionPlugin {
+export interface AgentCliPlugin {
   readonly cleanup: () => void;
   readonly codexRegistrations: readonly CodexPluginRegistration[];
   readonly pluginRoot: string;

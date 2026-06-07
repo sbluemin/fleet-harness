@@ -1,13 +1,22 @@
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAgentCliSessionPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/session-plugin/index.js";
-import { cleanupPrivateRoot } from "../src/agent-cli/session-plugin/fs.js";
-import type { AgentCliSessionPlugin, CodexPluginRegistration, CodexPluginRegistrationCommand } from "../src/agent-cli/session-plugin/types.js";
+import { buildSubagentsSection } from "@dotobokuri/fleet-admiral";
+import { buildFleetHookCommand } from "../src/agent-cli/injection.js";
+import { createAgentCliPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/plugin/index.js";
+import { cleanupPrivateRoot } from "../src/agent-cli/plugin/fs.js";
+import type { AgentCliPlugin, CodexPluginRegistration, CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
 
-describe("agent CLI session plugin renderer", () => {
+const PLUGIN_ASSETS_DIR = path.resolve("assets");
+const TEST_HOOK_COMMAND = buildFleetHookCommand({
+  entryPath: "/opt/fleet/dist/index.js",
+  execPath: "/opt/node/bin/node",
+});
+
+describe("agent CLI plugin renderer", () => {
   const tempRoots: string[] = [];
 
   afterEach(() => {
@@ -18,7 +27,8 @@ describe("agent CLI session plugin renderer", () => {
 
   it("renders one marketplace with one Fleet Claude/Codex plugin bundle without MCP definitions", () => {
     const rootDir = makeRoot();
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [{
         carrierId: "ohio",
         color: "yellow",
@@ -42,7 +52,7 @@ describe("agent CLI session plugin renderer", () => {
     expect(plugin.codexRegistrations).toHaveLength(1);
     expect(registration).toMatchObject({
       marketplaceDir: path.join(rootDir, "marketplace"),
-      marketplaceName: "fleet",
+      marketplaceName: "fleet-harness",
       pluginName: "fleet",
       pluginRoot: fleetRoot,
     });
@@ -52,7 +62,7 @@ describe("agent CLI session plugin renderer", () => {
 
     const marketplace = readJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"));
     expect(marketplace).toEqual({
-      name: "fleet",
+      name: "fleet-harness",
       plugins: [{
         name: "fleet",
         displayName: "Fleet",
@@ -64,7 +74,7 @@ describe("agent CLI session plugin renderer", () => {
       }],
     });
     expect(readJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"))).toMatchObject({
-      name: "fleet",
+      name: "fleet-harness",
       plugins: [{
         name: "fleet",
         source: "./plugins/fleet",
@@ -80,8 +90,22 @@ describe("agent CLI session plugin renderer", () => {
     expect(existsSync(path.join(fleetRoot, ".mcp.json"))).toBe(false);
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("carrier_dispatch");
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
+    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toBe(
+      readFileSync(path.join(PLUGIN_ASSETS_DIR, "plugins", "fleet", "skills", "fleet-usage", "SKILL.md"), "utf8"),
+    );
     expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
     assertPrivateTree(path.join(rootDir, "marketplace"));
+  });
+
+  it("throws a clear renderer error when required assets are not provided", () => {
+    const rootDir = makeRoot();
+
+    expect(() => createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      rootDir,
+    })).toThrow(/assets directory is required/);
   });
 
   it("does not chmod existing ancestors on first render and only hardens created managed dirs", () => {
@@ -89,7 +113,8 @@ describe("agent CLI session plugin renderer", () => {
     chmodSync(parent, 0o755);
     const rootDir = path.join(parent, ".fleet");
 
-    createAgentCliSessionPlugin({
+    createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -104,7 +129,8 @@ describe("agent CLI session plugin renderer", () => {
   it("rejects unsafe Claude agent file names without leaving rendered agents", () => {
     const rootDir = makeRoot();
 
-    expect(() => createAgentCliSessionPlugin({
+    expect(() => createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [{
         carrierId: "ohio",
         description: "Unsafe carrier",
@@ -124,7 +150,8 @@ describe("agent CLI session plugin renderer", () => {
     const linkRoot = path.join(rootDir, "linked-root");
     symlinkSync(outside, linkRoot);
 
-    expect(() => createAgentCliSessionPlugin({
+    expect(() => createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -141,7 +168,8 @@ describe("agent CLI session plugin renderer", () => {
     const outsideSentinel = path.join(outside, ".fleet", "sentinel.txt");
     symlinkSync(outside, linkRoot);
 
-    expect(() => createAgentCliSessionPlugin({
+    expect(() => createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -160,16 +188,99 @@ describe("agent CLI session plugin renderer", () => {
   it("does not create Codex registration metadata for Claude launches", () => {
     const rootDir = makeRoot();
 
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "claude",
       cwd: process.cwd(),
+      hookCommand: TEST_HOOK_COMMAND,
       rootDir,
     });
 
     expect(plugin.codexRegistrations).toEqual([]);
     expect(existsSync(path.join(rootDir, "marketplace", ".agents", "plugins", "marketplace.json"))).toBe(true);
     expect(existsSync(path.join(rootDir, "marketplace", ".fleet-codex-plugin.hash"))).toBe(false);
+    expect(readJson(path.join(rootDir, "marketplace", "plugins", "fleet", "hooks", "hooks.json"))).toEqual({
+      hooks: {
+        SessionStart: [{
+          hooks: [{
+            command: TEST_HOOK_COMMAND,
+            type: "command",
+          }],
+        }],
+      },
+    });
+  });
+
+  it("builds PATH-independent Fleet hook commands for bundled and dev entries", () => {
+    expect(buildFleetHookCommand({
+      entryPath: "/opt/fleet/dist/index.js",
+      execPath: "/opt/node/bin/node",
+    })).toBe("'/opt/node/bin/node' '/opt/fleet/dist/index.js' hook subagents-context");
+    expect(buildFleetHookCommand({
+      entryPath: "/workspace/fleet/runtime/fleet-cli/src/index.ts",
+      execPath: "/opt/node/bin/node",
+      tsxLoaderPath: "/workspace/fleet/node_modules/tsx/dist/loader.mjs",
+    })).toBe("'/opt/node/bin/node' --import '/workspace/fleet/node_modules/tsx/dist/loader.mjs' '/workspace/fleet/runtime/fleet-cli/src/index.ts' hook subagents-context");
+    expect(() => buildFleetHookCommand({
+      entryPath: "/workspace/fleet/runtime/fleet-cli/src/index.ts",
+      execPath: "/opt/node/bin/node",
+    })).toThrow(/requires a tsx loader path/);
+  });
+
+  it("executes fleet hook subagents-context using the canonical subagents formatter", () => {
+    const rootDir = makeRoot();
+    writeJsonFile(path.join(rootDir, "carriers.json"), { carriers: {} });
+
+    const result = spawnSync("pnpm", ["exec", "tsx", "src/index.ts", "hook", "subagents-context"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, FLEET_ROOT: rootDir },
+    });
+
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout) as {
+      hookSpecificOutput?: { additionalContext?: string; hookEventName?: string };
+    };
+    expect(output.hookSpecificOutput?.hookEventName).toBe("SessionStart");
+    expect(output.hookSpecificOutput?.additionalContext).toContain('<fleet section="subagents">');
+    expect(output.hookSpecificOutput?.additionalContext).toBe(buildSubagentsSection([
+      { carrierId: "nimitz", displayName: "Nimitz", nativeName: "Nimitz" },
+      { carrierId: "kirov", displayName: "Kirov", nativeName: "Kirov" },
+      { carrierId: "genesis", displayName: "Genesis", nativeName: "Genesis" },
+      { carrierId: "ohio", displayName: "Ohio", nativeName: "Ohio" },
+      { carrierId: "sentinel", displayName: "Sentinel", nativeName: "Sentinel" },
+      { carrierId: "vanguard", displayName: "Vanguard", nativeName: "Vanguard" },
+      { carrierId: "tempest", displayName: "Tempest", nativeName: "Tempest" },
+      { carrierId: "chronicle", displayName: "Chronicle", nativeName: "Chronicle" },
+    ]));
+  });
+
+  it("emits an empty hook context when carriers.json is missing, corrupt, or schema-invalid", () => {
+    const roots = [
+      makeRoot(),
+      makeRoot(),
+      makeRoot(),
+      makeRoot(),
+    ];
+    writeFileSync(path.join(roots[1]!, "carriers.json"), "{", { encoding: "utf8" });
+    writeJsonFile(path.join(roots[2]!, "carriers.json"), []);
+    writeJsonFile(path.join(roots[3]!, "carriers.json"), { carriers: "not-an-object" });
+
+    for (const rootDir of roots) {
+      const result = spawnSync("pnpm", ["exec", "tsx", "src/index.ts", "hook", "subagents-context"], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, FLEET_ROOT: rootDir },
+      });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: "",
+        },
+      });
+    }
   });
 
   it("updates plugin content idempotently and prunes stale managed tree entries", () => {
@@ -182,7 +293,8 @@ describe("agent CLI session plugin renderer", () => {
     createSentinel(path.join(marketplaceRoot, "plugins", "wiki", "skills", "old-skill", "SKILL.md"));
     createSentinel(path.join(marketplaceRoot, "codex-marketplace", "plugins", "old", ".codex-plugin", "plugin.json"));
 
-    const first = createAgentCliSessionPlugin({
+    const first = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [{
         carrierId: "ohio",
         description: "Ohio carrier",
@@ -193,7 +305,8 @@ describe("agent CLI session plugin renderer", () => {
       cwd: process.cwd(),
       rootDir,
     });
-    const second = createAgentCliSessionPlugin({
+    const second = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [{
         carrierId: "ohio",
         description: "Ohio carrier",
@@ -222,7 +335,8 @@ describe("agent CLI session plugin renderer", () => {
     const rootDir = makeRoot();
     createSentinel(path.join(rootDir, "plugins", "skills", "old-skill", "SKILL.md"));
 
-    createAgentCliSessionPlugin({
+    createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -235,7 +349,8 @@ describe("agent CLI session plugin renderer", () => {
 
   it("registers Codex marketplace and plugin idempotently through codex CLI", () => {
     const rootDir = makeRoot();
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -254,7 +369,7 @@ describe("agent CLI session plugin renderer", () => {
       "plugin marketplace list",
       `plugin marketplace add ${registration.marketplaceDir}`,
       "plugin list",
-      "plugin add fleet -m fleet",
+      "plugin add fleet -m fleet-harness",
       "plugin marketplace list",
       "plugin list",
     ]);
@@ -262,7 +377,8 @@ describe("agent CLI session plugin renderer", () => {
 
   it("removes stale Codex marketplace roots before readding the Fleet root", () => {
     const rootDir = makeRoot();
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -277,16 +393,17 @@ describe("agent CLI session plugin renderer", () => {
 
     expect(calls.flat().map((args) => args.join(" "))).toEqual([
       "plugin marketplace list",
-      "plugin marketplace remove fleet",
+      "plugin marketplace remove fleet-harness",
       `plugin marketplace add ${registration.marketplaceDir}`,
       "plugin list",
-      "plugin add fleet -m fleet",
+      "plugin add fleet -m fleet-harness",
     ]);
   });
 
   it("continues Codex registration when a stale auto-discovered marketplace cannot be removed", () => {
     const rootDir = makeRoot();
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -298,10 +415,10 @@ describe("agent CLI session plugin renderer", () => {
       const line = command.args.join(" ");
       calls.push(line);
       if (line === "plugin marketplace list") {
-        return { status: 0, stderr: "", stdout: "fleet /Users/sbluemin\n" };
+        return { status: 0, stderr: "", stdout: "fleet-harness /Users/sbluemin\n" };
       }
-      if (line === "plugin marketplace remove fleet") {
-        return { status: 1, stderr: "marketplace `fleet` is not configured or installed", stdout: "" };
+      if (line === "plugin marketplace remove fleet-harness") {
+        return { status: 1, stderr: "marketplace `fleet-harness` is not configured or installed", stdout: "" };
       }
       return { status: 0, stderr: "", stdout: "" };
     });
@@ -309,100 +426,18 @@ describe("agent CLI session plugin renderer", () => {
     expect(warning).toBeUndefined();
     expect(calls).toEqual([
       "plugin marketplace list",
-      "plugin marketplace remove fleet",
+      "plugin marketplace remove fleet-harness",
       `plugin marketplace add ${registration.marketplaceDir}`,
       "plugin list",
-      "plugin add fleet -m fleet",
+      "plugin add fleet -m fleet-harness",
     ]);
-  });
-
-  it("removes only the legacy Fleet entry from ~/.agents/plugins/marketplace.json", () => {
-    const homeDir = makeRoot();
-    const rootDir = path.join(homeDir, ".fleet");
-    const plugin = createAgentCliSessionPlugin({
-      claudeDefinitions: [],
-      cliId: "codex",
-      cwd: process.cwd(),
-      rootDir,
-    });
-    const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
-    writeJsonFile(marketplacePath, {
-      name: "fleet",
-      plugins: [
-        {
-          name: "fleet",
-          source: { source: "local", path: path.join(homeDir, ".fleet", "plugins") },
-        },
-        {
-          name: "other",
-          source: { source: "local", path: "/opt/other-plugin" },
-        },
-      ],
-    });
-    const registration = registrationByName(plugin, "fleet");
-    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
-
-    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
-
-    expect(readJson(marketplacePath)).toEqual({
-      name: "fleet",
-      plugins: [
-        {
-          name: "other",
-          source: { source: "local", path: "/opt/other-plugin" },
-        },
-      ],
-    });
-  });
-
-  it("removes legacy ~/.agents marketplace files that only contain Fleet's old entry", () => {
-    const homeDir = makeRoot();
-    const rootDir = path.join(homeDir, ".fleet");
-    const plugin = createAgentCliSessionPlugin({
-      claudeDefinitions: [],
-      cliId: "codex",
-      cwd: process.cwd(),
-      rootDir,
-    });
-    const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
-    writeJsonFile(marketplacePath, {
-      name: "fleet",
-      plugins: [{
-        name: "fleet",
-        source: { source: "local", path: path.join(homeDir, ".fleet", "plugins") },
-      }],
-    });
-    const registration = registrationByName(plugin, "fleet");
-    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
-
-    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
-
-    expect(existsSync(marketplacePath)).toBe(false);
-  });
-
-  it("removes empty legacy Fleet ~/.agents marketplace files", () => {
-    const homeDir = makeRoot();
-    const rootDir = path.join(homeDir, ".fleet");
-    const plugin = createAgentCliSessionPlugin({
-      claudeDefinitions: [],
-      cliId: "codex",
-      cwd: process.cwd(),
-      rootDir,
-    });
-    const marketplacePath = path.join(homeDir, ".agents", "plugins", "marketplace.json");
-    writeJsonFile(marketplacePath, { name: "fleet", plugins: [] });
-    const registration = registrationByName(plugin, "fleet");
-    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
-
-    ensureCodexPluginRegistered(registration, codexCommand(homeDir), createCodexRunner(state, []));
-
-    expect(existsSync(marketplacePath)).toBe(false);
   });
 
   it("leaves non-Fleet ~/.agents plugin entries untouched", () => {
     const homeDir = makeRoot();
     const rootDir = path.join(homeDir, ".fleet");
-    const plugin = createAgentCliSessionPlugin({
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd: process.cwd(),
@@ -427,7 +462,8 @@ describe("agent CLI session plugin renderer", () => {
 
   it("reruns codex plugin add when rendered content hash changes", () => {
     const rootDir = makeRoot();
-    const first = createAgentCliSessionPlugin({
+    const first = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [{
         carrierId: "ohio",
         description: "Ohio carrier",
@@ -445,7 +481,8 @@ describe("agent CLI session plugin renderer", () => {
     const command = codexCommand();
     ensureCodexPluginRegistered(firstRegistration, command, runner);
 
-    const second = createAgentCliSessionPlugin({
+    const second = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [{
         carrierId: "ohio",
         description: "Ohio carrier",
@@ -458,11 +495,81 @@ describe("agent CLI session plugin renderer", () => {
     });
     ensureCodexPluginRegistered(registrationByName(second, "fleet"), command, runner);
 
-    expect(calls.flat().map((args) => args.join(" ")).filter((line) => line === "plugin add fleet -m fleet")).toHaveLength(2);
+    expect(calls.flat().map((args) => args.join(" ")).filter((line) => line === "plugin add fleet -m fleet-harness")).toHaveLength(2);
+  });
+
+  it("does not treat Codex plugin list headers or not-installed rows as installed", () => {
+    const rootDir = makeRoot();
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      rootDir,
+    });
+    const registration = registrationByName(plugin, "fleet");
+    writeFileSync(registration.hashPath, `${registration.contentHash}\n`, { encoding: "utf8", mode: 0o600 });
+    const calls: string[] = [];
+
+    ensureCodexPluginRegistered(registration, codexCommand(), (command) => {
+      const line = command.args.join(" ");
+      calls.push(line);
+      if (line === "plugin marketplace list") {
+        return { status: 0, stderr: "", stdout: `fleet-harness ${registration.marketplaceDir}\n` };
+      }
+      if (line === "plugin list") {
+        return {
+          status: 0,
+          stderr: "",
+          stdout: [
+            "Marketplace `fleet-harness`",
+            "fleet@fleet-harness not installed disabled",
+          ].join("\n"),
+        };
+      }
+      return { status: 0, stderr: "", stdout: "" };
+    });
+
+    expect(calls).toEqual([
+      "plugin marketplace list",
+      "plugin list",
+      "plugin add fleet -m fleet-harness",
+    ]);
+  });
+
+  it("treats installed disabled Codex plugin list rows as installed", () => {
+    const rootDir = makeRoot();
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      rootDir,
+    });
+    const registration = registrationByName(plugin, "fleet");
+    writeFileSync(registration.hashPath, `${registration.contentHash}\n`, { encoding: "utf8", mode: 0o600 });
+    const calls: string[] = [];
+
+    ensureCodexPluginRegistered(registration, codexCommand(), (command) => {
+      const line = command.args.join(" ");
+      calls.push(line);
+      if (line === "plugin marketplace list") {
+        return { status: 0, stderr: "", stdout: `fleet-harness ${registration.marketplaceDir}\n` };
+      }
+      if (line === "plugin list") {
+        return { status: 0, stderr: "", stdout: "fleet@fleet-harness  installed, disabled\n" };
+      }
+      return { status: 0, stderr: "", stdout: "" };
+    });
+
+    expect(calls).toEqual([
+      "plugin marketplace list",
+      "plugin list",
+    ]);
   });
 
   function makeRoot(): string {
-    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-session-plugin-test-"));
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-test-"));
     tempRoots.push(root);
     return root;
   }
@@ -482,7 +589,7 @@ function writeJsonFile(filePath: string, value: unknown): void {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
-function registrationByName(plugin: AgentCliSessionPlugin, pluginName: string): CodexPluginRegistration {
+function registrationByName(plugin: AgentCliPlugin, pluginName: string): CodexPluginRegistration {
   const registration = plugin.codexRegistrations.find((entry) => entry.pluginName === pluginName);
   expect(registration).toBeDefined();
   return registration!;
@@ -497,9 +604,9 @@ function createCodexRunner(
     mutableCalls.push([Array.from(command.args)]);
     const line = command.args.join(" ");
     if (line === "plugin marketplace list") {
-      return { status: 0, stderr: "", stdout: state.marketplaceRoot === undefined ? "" : `fleet ${state.marketplaceRoot}\n` };
+      return { status: 0, stderr: "", stdout: state.marketplaceRoot === undefined ? "" : `fleet-harness ${state.marketplaceRoot}\n` };
     }
-    if (line === "plugin marketplace remove fleet") {
+    if (line === "plugin marketplace remove fleet-harness") {
       state.marketplaceRoot = undefined;
       return { status: 0, stderr: "", stdout: "" };
     }
@@ -508,9 +615,9 @@ function createCodexRunner(
       return { status: 0, stderr: "", stdout: "" };
     }
     if (line === "plugin list") {
-      return { status: 0, stderr: "", stdout: state.plugin ? "fleet@fleet\n" : "" };
+      return { status: 0, stderr: "", stdout: state.plugin ? "fleet@fleet-harness  installed, enabled\n" : "" };
     }
-    if (line.startsWith("plugin add ") && line.endsWith(" -m fleet")) {
+    if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
       state.plugin = true;
       return { status: 0, stderr: "", stdout: "" };
     }

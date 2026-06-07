@@ -18,11 +18,11 @@ const TEST_PROFILE: AgentCliProfile = {
 };
 
 describe("agent CLI injection failure cleanup", () => {
-  it("releases the MCP token when session plugin rendering fails", async () => {
+  it("releases the MCP token when plugin rendering fails", async () => {
     const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
     vi.resetModules();
-    vi.doMock("../src/agent-cli/session-plugin/index.js", () => ({
-      createAgentCliSessionPlugin: () => {
+    vi.doMock("../src/agent-cli/plugin/index.js", () => ({
+      createAgentCliPlugin: () => {
         throw new Error("render failed");
       },
     }));

@@ -1,4 +1,9 @@
-export { createSystemPromptBuilder, type SystemPromptBuilder } from "./prompts.js";
+export {
+  buildSubagentsSection,
+  createSystemPromptBuilder,
+  type SubagentSectionEntry,
+  type SystemPromptBuilder,
+} from "./prompts.js";
 export {
   CARRIER_EXECUTOR_MCP_TOOL_IDS,
   EXECUTOR_MCP_TOOL_IDS,

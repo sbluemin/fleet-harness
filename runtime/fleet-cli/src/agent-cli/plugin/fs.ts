@@ -72,14 +72,14 @@ function ensureRootBase(rootBase: string): string {
   const resolvedBase = path.resolve(rootBase);
   const anchor = findExistingDirectoryAnchor(path.dirname(resolvedBase));
   ensureDirectorySegments(anchor, resolvedBase);
-  assertDirectorySafe(resolvedBase, "Session plugin root base");
+  assertDirectorySafe(resolvedBase, "Plugin root base");
   return resolvedBase;
 }
 
 function assertRootBaseSafe(rootBase: string): string {
   const resolvedBase = path.resolve(rootBase);
   assertExistingSegmentsSafe(findExistingDirectoryAnchor(path.dirname(resolvedBase)), resolvedBase);
-  assertDirectorySafe(resolvedBase, "Session plugin root base");
+  assertDirectorySafe(resolvedBase, "Plugin root base");
   return resolvedBase;
 }
 
@@ -88,7 +88,7 @@ function findExistingDirectoryAnchor(targetPath: string): string {
   let current = resolvedTarget;
   while (true) {
     try {
-      assertDirectorySafe(current, "Session plugin path anchor");
+      assertDirectorySafe(current, "Plugin path anchor");
       return current;
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
@@ -116,7 +116,7 @@ function ensurePathWithinRoot(resolvedBase: string, candidatePath: string): void
   const resolvedCandidate = path.resolve(candidatePath);
   const relative = path.relative(resolvedBase, resolvedCandidate);
   if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) return;
-  throw new Error(`Session plugin path escapes root base: ${candidatePath}`);
+  throw new Error(`Plugin path escapes root base: ${candidatePath}`);
 }
 
 function ensureDirectorySegments(resolvedBase: string, dirPath: string): void {
@@ -128,10 +128,10 @@ function ensureDirectorySegments(resolvedBase: string, dirPath: string): void {
     try {
       const stat = lstatSync(current);
       if (stat.isSymbolicLink()) {
-        throw new Error(`Session plugin path segment is a symlink: ${current}`);
+        throw new Error(`Plugin path segment is a symlink: ${current}`);
       }
       if (!stat.isDirectory()) {
-        throw new Error(`Session plugin path segment is unsafe: ${current}`);
+        throw new Error(`Plugin path segment is unsafe: ${current}`);
       }
     } catch (error) {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") {
@@ -153,10 +153,10 @@ function assertExistingSegmentsSafe(resolvedBase: string, targetPath: string): v
     current = path.join(current, segment);
     const stat = lstatSync(current);
     if (stat.isSymbolicLink()) {
-      throw new Error(`Session plugin path segment is a symlink: ${current}`);
+      throw new Error(`Plugin path segment is a symlink: ${current}`);
     }
     if (!stat.isDirectory()) {
-      throw new Error(`Session plugin path segment is unsafe: ${current}`);
+      throw new Error(`Plugin path segment is unsafe: ${current}`);
     }
     assertSegmentRealpathWithinRoot(resolvedBase, current);
   }
@@ -171,5 +171,5 @@ function assertSegmentRealpathWithinRoot(resolvedBase: string, segmentPath: stri
   const segmentRealpath = realpathSync(segmentPath);
   const relative = path.relative(baseRealpath, segmentRealpath);
   if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) return;
-  throw new Error(`Session plugin path segment escapes root base: ${segmentPath}`);
+  throw new Error(`Plugin path segment escapes root base: ${segmentPath}`);
 }

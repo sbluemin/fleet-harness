@@ -23,7 +23,7 @@ import {
   type TuiPtyManager,
 } from "./controls/index.js";
 
-import { injectAgentCliProfile } from "./agent-cli/injection.js";
+import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/injection.js";
 import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
@@ -39,6 +39,8 @@ import { checkForUpdate } from "./update/check.js";
 export interface RunAppOptions {
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
+  readonly pluginAssetsDir?: string;
+  readonly pluginEntry?: FleetHookCommandEntry;
 }
 
 type FleetHostKeybindingHandlers = Record<string, () => void>;
@@ -133,6 +135,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
             onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
             replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
+            pluginAssetsDir: options.pluginAssetsDir,
+            pluginEntry: options.pluginEntry,
           }),
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
     onExitFleet: () => stop(),

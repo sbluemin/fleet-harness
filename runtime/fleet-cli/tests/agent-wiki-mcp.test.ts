@@ -7,9 +7,9 @@ import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
 import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
-import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
+import { buildFleetHookCommand, injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
-import type { CodexPluginRegistrationCommand } from "../src/agent-cli/session-plugin/types.js";
+import type { CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -44,6 +44,12 @@ const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
 ] as const;
 const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const FLEET_PROFILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const PLUGIN_ASSETS_DIR = path.resolve("assets");
+const TEST_HOOK_ENTRY = {
+  entryPath: "/opt/fleet/dist/index.js",
+  execPath: "/opt/node/bin/node",
+};
+const TEST_HOOK_COMMAND = buildFleetHookCommand(TEST_HOOK_ENTRY);
 
 describe("fleet-cli agent CLI MCP registration", () => {
   let lifecycle: FleetRuntimeLifecycle | undefined;
@@ -179,7 +185,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
           releaseSessionToken,
         } as never,
         onCleanup: (cleanup) => cleanups.push(cleanup),
-        sessionPluginRootDir: rootDir,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+        pluginEntry: TEST_HOOK_ENTRY,
       });
       const pluginRoots = pluginDirArgs(profile.args);
       const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
@@ -188,7 +196,16 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(pluginRoots).toEqual([pluginRoot]);
       expect(systemPromptFile).toBeDefined();
       expect(readFileSync(systemPromptFile!, "utf8")).toBe("private fleet prompt");
-      expect(existsSync(path.join(pluginRoot, "hooks"))).toBe(false);
+      expect(readJson(path.join(pluginRoot, "hooks", "hooks.json"))).toMatchObject({
+        hooks: {
+          SessionStart: [{
+            hooks: [{
+              command: TEST_HOOK_COMMAND,
+              type: "command",
+            }],
+          }],
+        },
+      });
       expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("name: fleet-usage");
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
@@ -242,28 +259,28 @@ describe("fleet-cli agent CLI MCP registration", () => {
           expect(command.bin).toBe("/usr/local/bin/codex");
           const line = command.args.join(" ");
           commands.push(line);
-          if (line === "plugin marketplace list") {
-            return {
-              status: 0,
-              stderr: "",
-              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet ${codexState.marketplaceRoot}\n`,
-            };
-          }
+	          if (line === "plugin marketplace list") {
+	            return {
+	              status: 0,
+	              stderr: "",
+	              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet-harness ${codexState.marketplaceRoot}\n`,
+	            };
+	          }
           if (line.startsWith("plugin marketplace add ")) {
             codexState.marketplaceRoot = line.slice("plugin marketplace add ".length);
             return { status: 0, stderr: "", stdout: "" };
           }
           if (line === "plugin list") {
-            return {
-              status: 0,
-              stderr: "",
-              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet`).join("\n"),
-            };
-          }
-          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet")) {
-            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet".length));
-            return { status: 0, stderr: "", stdout: "" };
-          }
+	            return {
+	              status: 0,
+	              stderr: "",
+	              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet-harness  installed, enabled`).join("\n"),
+	            };
+	          }
+	          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
+	            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet-harness".length));
+	            return { status: 0, stderr: "", stdout: "" };
+	          }
           return { status: 0, stderr: "", stdout: "" };
         },
         dedicatedMcpSession: {
@@ -273,15 +290,16 @@ describe("fleet-cli agent CLI MCP registration", () => {
           issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken,
         } as never,
-        sessionPluginRootDir: rootDir,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
       });
 
       expect(commands).toEqual([
-        "plugin marketplace list",
-        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
-        "plugin list",
-        "plugin add fleet -m fleet",
-      ]);
+	        "plugin marketplace list",
+	        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
+	        "plugin list",
+	        "plugin add fleet -m fleet-harness",
+	      ]);
       expect(profile.args).toContain("--enable");
       expect(profile.args).toContain("child_agents_md");
       expect(profile.args).toContain("--profile");
@@ -330,7 +348,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
           issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken: vi.fn(),
         } as never,
-        sessionPluginRootDir: rootDir,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
       });
 
       expect(profile.args).toContain("child_agents_md");
@@ -368,6 +387,10 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
   });
   const body = await response.json() as McpToolListResponse;
   return new Set(body.result?.tools?.map((tool) => tool.name).filter((name): name is string => Boolean(name)));
+}
+
+function readJson(filePath: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
 }
 
 function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
