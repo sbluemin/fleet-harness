@@ -103,7 +103,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
   const buildSystemPrompt = createSystemPromptBuilder({
     carrierRuntime: runtime.carrierRuntime,
-    mcpRegistry: runtime.mcpRegistry,
   }).build;
   const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({

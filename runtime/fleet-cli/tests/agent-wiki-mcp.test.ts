@@ -49,7 +49,7 @@ const TEST_HOOK_ENTRY = {
   entryPath: "/opt/fleet/dist/index.js",
   execPath: "/opt/node/bin/node",
 };
-const TEST_HOOK_COMMAND = buildFleetHookCommand(TEST_HOOK_ENTRY);
+const TEST_HOOK_EXEC = buildFleetHookCommand(TEST_HOOK_ENTRY);
 
 describe("fleet-cli agent CLI MCP registration", () => {
   let lifecycle: FleetRuntimeLifecycle | undefined;
@@ -111,10 +111,16 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
     const systemPrompt = createSystemPromptBuilder({
       carrierRuntime: runtime.carrierRuntime,
-      mcpRegistry: runtime.mcpRegistry,
     }).build(false);
-    expect(systemPrompt).toContain('<fleet section="tool-guide" tool="carrier_dispatch">');
-    expect(systemPrompt).toContain('<fleet section="tool-guide" tool="wiki_query">');
+    const roughTokens = Math.ceil(systemPrompt.length / 4);
+
+    expect(systemPrompt).toContain('<fleet section="role">');
+    expect(systemPrompt).toContain('<fleet section="persona">');
+    expect(systemPrompt).toContain('<fleet section="roster">');
+    expect(systemPrompt).toContain('<fleet section="protocol">');
+    expect(systemPrompt).toContain('<fleet section="standing-orders">');
+    expect(systemPrompt).not.toContain('<fleet section="tool-guide"');
+    expect(roughTokens).toBeLessThanOrEqual(13_500);
   });
 
   it("builds provider args with plugin activation and spawn-time MCP injection", () => {
@@ -200,7 +206,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
         hooks: {
           SessionStart: [{
             hooks: [{
-              command: TEST_HOOK_COMMAND,
+              args: TEST_HOOK_EXEC.args,
+              command: TEST_HOOK_EXEC.command,
               type: "command",
             }],
           }],

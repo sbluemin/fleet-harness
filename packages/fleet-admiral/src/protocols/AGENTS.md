@@ -29,8 +29,9 @@ System Prompt
   + [Always] <fleet section="roster">
   + [Always] <fleet section="protocol">           ← Fleet Action Protocol body, inlined
   + [Always] <fleet section="standing-orders">
-  + [Always] <fleet section="tool-guide"> × N
 ```
+
+Tool-specific usage and argument details remain live MCP metadata exposed through tool descriptions and schemas, not static prompt sections.
 
 ## HUD Integration
 

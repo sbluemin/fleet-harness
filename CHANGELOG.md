@@ -16,6 +16,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Fixed Windows `fleet update` only printing manual install instructions instead of running the automatic global npm or pnpm update; package manager shims are now resolved and invoked correctly on Windows, with manual instructions shown only when detection or installation fails.
 
 ### Removed
+- [core] Admiral system prompts no longer inline per-tool guide blocks; tool-specific guidance remains available through Fleet MCP tool metadata.
 - [core] Removed Codex role-file generation and direct prompt and inline agent injection from dedicated Agent CLI sessions.
 
 ### Fixed

@@ -25,6 +25,9 @@ After receiving any Carrier result, verify before reporting to the Admiral of th
 
 If any check fails, request clarification from the same Carrier with specific feedback before accepting the result.
 
+### Multi-agent Filesystem Safety
+Multiple agents may share one branch and filesystem. Re-read files before modifying them or accepting Carrier-proposed modifications, prefer precise edits over full-file writes, and never overwrite or revert changes made by others. If ownership is unclear or concurrent edits conflict, stop and escalate.
+
 ### Cross-Carrier Feedback Patterns
 When multiple Carriers contribute to the same task, apply structured feedback:
 

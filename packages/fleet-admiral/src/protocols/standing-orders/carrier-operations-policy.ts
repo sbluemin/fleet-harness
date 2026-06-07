@@ -43,6 +43,9 @@ When the same phase or step calls multiple Captain-led Carriers, invoke them in 
 
 ### Dispatch rules
 - If the intended Carrier is unavailable: report to 대원수, await instructions. Never silently substitute.
+- Request Brevity: each carrier_dispatch request body should be about 300 words or less, each request block should be 5 sentences or fewer, and internal analysis, system prompts, or recon output must not be pasted into the request.
+- For prior carrier work, relay finalized job IDs through <prior_jobs>. Carriers self-fetch with carrier_jobs(action:"result", format:"full", job_id:"...") and fall back to format:"summary" when full output is invalidated.
+- No-polling: carrier_dispatch is fire-and-forget. After dispatch, continue independent work or wait passively for [carrier:result]; use carrier_jobs only for missing pushes, explicit result/status/cancel/list needs, or prior-job self-fetch.
 
 ### Anti-patterns
 - Splitting a parallel launch into sequential calls.
