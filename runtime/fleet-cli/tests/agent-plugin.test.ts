@@ -27,14 +27,14 @@ const EXPECTED_SUBAGENTS_CONTEXT = `<fleet section="subagents">
 
 The following Fleet carriers are exposed as Claude native subagents for this session:
 
-- Nimitz (nimitz): invoke as Claude native subagent \`nimitz\`.
-- Kirov (kirov): invoke as Claude native subagent \`kirov\`.
-- Genesis (genesis): invoke as Claude native subagent \`genesis\`.
-- Ohio (ohio): invoke as Claude native subagent \`ohio\`.
-- Sentinel (sentinel): invoke as Claude native subagent \`sentinel\`.
-- Vanguard (vanguard): invoke as Claude native subagent \`vanguard\`.
-- Tempest (tempest): invoke as Claude native subagent \`tempest\`.
-- Chronicle (chronicle): invoke as Claude native subagent \`chronicle\`.
+- Nimitz (nimitz): invoke as Claude native subagent \`fleet:nimitz\`.
+- Kirov (kirov): invoke as Claude native subagent \`fleet:kirov\`.
+- Genesis (genesis): invoke as Claude native subagent \`fleet:genesis\`.
+- Ohio (ohio): invoke as Claude native subagent \`fleet:ohio\`.
+- Sentinel (sentinel): invoke as Claude native subagent \`fleet:sentinel\`.
+- Vanguard (vanguard): invoke as Claude native subagent \`fleet:vanguard\`.
+- Tempest (tempest): invoke as Claude native subagent \`fleet:tempest\`.
+- Chronicle (chronicle): invoke as Claude native subagent \`fleet:chronicle\`.
 
 Native subagent calls return inline and do not emit \`[carrier:result]\`. Do not wait for a carrier job completion push after native invocation.
 

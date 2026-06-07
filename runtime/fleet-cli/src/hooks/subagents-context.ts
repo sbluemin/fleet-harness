@@ -14,6 +14,8 @@ import {
   type CarrierModelDefaults,
 } from "@dotobokuri/fleet-carriers";
 
+import { assetBundle } from "../agent-cli/plugin/fleet.js";
+
 interface SubagentSectionEntry {
   readonly carrierId: string;
   readonly displayName?: string;
@@ -44,7 +46,8 @@ export function runSubagentsContextHook(env: NodeJS.ProcessEnv): string {
   const additionalContext = buildSubagentsSection(definitions.map((definition) => ({
     carrierId: definition.carrierId,
     displayName: configsById.get(definition.carrierId)?.displayName,
-    nativeName: definition.name,
+    // Claude Code는 plugin 에이전트를 `<pluginName>:<name>`으로 등록하므로 호출명에 plugin 네임스페이스를 부착한다.
+    nativeName: `${assetBundle.name}:${definition.name}`,
   }))) ?? "";
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } });
 }
