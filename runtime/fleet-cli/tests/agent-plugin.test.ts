@@ -93,10 +93,9 @@ describe("agent CLI plugin renderer", () => {
     expect(readJson(path.join(fleetRoot, ".codex-plugin", "plugin.json"))).not.toHaveProperty("mcpServers");
     expect(existsSync(path.join(fleetRoot, "hooks"))).toBe(false);
     expect(existsSync(path.join(fleetRoot, ".mcp.json"))).toBe(false);
-    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("carrier_dispatch");
     expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
-    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toBe(
-      readFileSync(path.join(PLUGIN_ASSETS_DIR, "plugins", "fleet", "skills", "fleet-usage", "SKILL.md"), "utf8"),
+    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toBe(
+      readFileSync(path.join(PLUGIN_ASSETS_DIR, "plugins", "fleet", "skills", "fleet-wiki-usage", "SKILL.md"), "utf8"),
     );
     expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
     assertPrivateTree(path.join(rootDir, "marketplace"));
@@ -348,7 +347,7 @@ describe("agent CLI plugin renderer", () => {
     expect(existsSync(path.join(marketplaceRoot, "plugins", "carrier"))).toBe(false);
     expect(existsSync(path.join(marketplaceRoot, "plugins", "wiki"))).toBe(false);
     expect(existsSync(path.join(marketplaceRoot, "codex-marketplace"))).toBe(false);
-    expect(existsSync(path.join(registrationByName(second, "fleet").pluginRoot, "skills", "fleet-usage", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(registrationByName(second, "fleet").pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"))).toBe(true);
   });
 
   it("leaves the old flat Fleet plugin root untouched while rendering the marketplace root", () => {
@@ -364,7 +363,7 @@ describe("agent CLI plugin renderer", () => {
     });
 
     expect(existsSync(path.join(rootDir, "plugins", "skills", "old-skill", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "skills", "fleet-usage", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "skills", "fleet-wiki-usage", "SKILL.md"))).toBe(true);
   });
 
   it("registers Codex marketplace and plugin idempotently through codex CLI", () => {

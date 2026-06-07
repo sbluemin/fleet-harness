@@ -218,7 +218,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
         },
       });
       expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
-      expect(readFileSync(path.join(pluginRoot, "skills", "fleet-usage", "SKILL.md"), "utf8")).toContain("name: fleet-usage");
       expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
       const renderedArgs = profile.args.join(" ");
       expect(renderedArgs).toContain("fleet-token");

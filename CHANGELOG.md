@@ -21,6 +21,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Removed
 - [core] Admiral system prompts no longer inline per-tool guide blocks; tool-specific guidance remains available through Fleet MCP tool metadata.
 - [core] Removed Codex role-file generation and direct prompt and inline agent injection from dedicated Agent CLI sessions.
+- [core] Removed the fleet-usage skill from the Fleet plugin bundle, which now ships only the wiki-usage skill.
 
 ### Fixed
 - [core][unified-agent] Codex carrier ACP child processes are now reliably terminated when Fleet CLI exits on POSIX—including terminal-close and fatal-error exits—so they no longer linger as orphaned processes.

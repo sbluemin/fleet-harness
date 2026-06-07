@@ -42,8 +42,6 @@ const PLUGIN_BUNDLES: readonly PluginBundle[] = [{
   includeClaudeAgents: true,
   name: "fleet",
   skills: [{
-    dirName: "fleet-usage",
-  }, {
     dirName: "fleet-wiki-usage",
   }],
 }] as const;
