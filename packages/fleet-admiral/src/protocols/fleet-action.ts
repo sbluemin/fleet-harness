@@ -12,7 +12,25 @@
 /** Fleet Action Protocol gate — static prompt classifier for on-demand protocol skills. */
 export const FLEET_PROTOCOL_GATE_PROMPT = String.raw`# Protocol Gate
 
-Classify intent before choosing any operational workflow.
+## Workflow
+Every request flows through these gates in order:
+
+  request → Intent Gate → (Operational) Mode Gate → load one protocol skill → execute
+
+1. **Intent Gate** — classify Conversational vs Operational.
+2. **Mode Gate** — Operational only: select exactly one protocol mode (apply the Downward Guard).
+3. **Execute** — run under the loaded protocol skill plus the always-on Standing Orders.
+
+Conversational requests skip the Mode Gate and load no skill; Standing Orders still apply.
+
+## Gate Declaration (mandatory)
+Before loading any protocol skill or producing any other output, emit exactly one line in this exact form:
+
+  Gate decision — Intent: <Conversational|Operational> (why: <one phrase>) | Mode: <protocol-skill-id | n/a> (why: <one phrase>)
+
+- Operational requests MUST name the deciding factor in the Mode reason (e.g. downward-guard trigger, multi-carrier coordination, single reversible surface).
+- Conversational requests set Mode to ${"`"}n/a${"`"} and keep the reason to a few words.
+- A declaration that is missing, or that states a Mode without a reason, is a protocol violation: stop and emit the line before continuing.
 
 ## Intent Gate
 - **Conversational**: answer normally without loading a protocol skill when the user's request is chat, explanation, brainstorming, wording help, or another non-operational exchange that does not require workspace action.
