@@ -1,6 +1,6 @@
 # Protocols Doctrine
 
-`packages/fleet-admiral/src/protocols/` owns the Admiral prompt protocol policy. fleet-harness ships an always-on protocol gate that selects one on-demand Fleet protocol skill for operational work: `fleet-protocol-trivial`, `fleet-protocol-standard`, `fleet-protocol-high-risk`, or `fleet-protocol-multi-agent`. There is no protocol catalog, no registry, no switching API, and no settings key for selecting a protocol. The full protocol bodies are Fleet CLI skill assets, not imports from this package. Any new injectable composition must use explicit `create*(deps): Interface` pure factories and must not introduce DI containers or frameworks.
+`packages/fleet-admiral/src/protocols/` owns the Admiral prompt protocol policy. fleet-harness ships an always-on protocol gate that selects one on-demand Fleet protocol skill for operational work: `fleet-protocol-trivial`, `fleet-protocol-standard`, `fleet-protocol-high-risk`, or `fleet-protocol-multi-agent`. Auxiliary operational skills may exist outside the Mode Gate and may be invoked by the active protocol or Standing Orders, but they do not replace the exactly one selected protocol mode. There is no protocol catalog, no registry, no switching API, and no settings key for selecting a protocol. The full protocol bodies are Fleet CLI skill assets, not imports from this package. Any new injectable composition must use explicit `create*(deps): Interface` pure factories and must not introduce DI containers or frameworks.
 
 ## Standing Orders
 
@@ -14,7 +14,7 @@ Standing Orders are cross-cutting mechanisms always injected into the system pro
 
 ## Protocol Gate and Skills
 
-The static gate lives as `FLEET_PROTOCOL_GATE_PROMPT` in `fleet-action.ts`. During system prompt synthesis it is inlined inside `<fleet section="protocol-gate">` and classifies conversational vs operational intent, then selects exactly one protocol skill mode for operational work. The skill Markdown bodies live under `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`; `fleet-admiral` must not import them or depend on `runtime/fleet-cli`.
+The static gate lives as `FLEET_PROTOCOL_GATE_PROMPT` in `fleet-action.ts`. During system prompt synthesis it is inlined inside `<fleet section="protocol-gate">` and classifies conversational vs operational intent, then selects exactly one protocol skill mode for operational work. Auxiliary operational skills are outside the Mode Gate list and remain subordinate to the active protocol and Standing Orders. The skill Markdown bodies live under `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`; `fleet-admiral` must not import them or depend on `runtime/fleet-cli`.
 
 ## Prompt Structure
 

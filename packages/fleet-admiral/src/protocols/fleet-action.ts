@@ -16,7 +16,7 @@ Classify intent before choosing any operational workflow.
 
 ## Intent Gate
 - **Conversational**: answer normally without loading a protocol skill when the user's request is chat, explanation, brainstorming, wording help, or another non-operational exchange that does not require workspace action.
-- **Operational**: before planning or execution, load exactly one active protocol skill from the mode gate below, then follow that skill together with the always-injected Standing Orders.
+- **Operational**: before planning or execution, load exactly one active protocol skill from the mode gate below, then follow that skill together with the always-injected Standing Orders. Workspace action includes file reads or grep, carrier dispatch, read-only reconnaissance, and auxiliary operational skill invocation.
 
 ## Mode Gate
 Choose exactly one mode for every operational request:
@@ -26,6 +26,9 @@ Choose exactly one mode for every operational request:
 - ${"`"}fleet-protocol-multi-agent${"`"} — work that needs multiple Carriers, independent parallel workstreams, cross-carrier review loops, or file-ownership coordination.
 
 If operational mode is ambiguous, fall back to ${"`"}fleet-protocol-standard${"`"} unless the downward guard applies.
+
+## Auxiliary Skills
+${"`"}fleet-assumption-audit${"`"} is not a protocol mode and is outside the Mode Gate list. It may be invoked by the active protocol or by Standing Order re-entry for decision-shaped blocking gaps, and it does not replace the chosen mode.
 
 ## Downward Guard
 Never choose ${"`"}fleet-protocol-trivial${"`"} or ${"`"}fleet-protocol-standard${"`"} when irreversible operations, structural/API changes, multi-module edits, or doctrine/prompt-policy edits are in scope. Choose ${"`"}fleet-protocol-high-risk${"`"} unless coordination across multiple Carriers or parallel ownership boundaries makes ${"`"}fleet-protocol-multi-agent${"`"} the better fit.

@@ -14,6 +14,7 @@ import type { AgentCliPlugin, CodexPluginRegistration, CodexPluginRegistrationCo
 const PLUGIN_ASSETS_DIR = path.resolve("assets");
 const tempCodexHomes: string[] = [];
 const BUILT_IN_SKILL_NAMES = [
+  "fleet-assumption-audit",
   "fleet-protocol-high-risk",
   "fleet-protocol-multi-agent",
   "fleet-protocol-standard",

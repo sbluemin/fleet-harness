@@ -29,7 +29,7 @@ Confidence is determined by the resolution status of knowledge gaps identified d
 | **partial** | At least one blocking gap remains unresolved. |
 | **speculative** | Two or more blocking gaps remain unresolved, OR confidence has not been deliberately evaluated. |
 
-The terms *blocking* and *confirmatory* are assigned during the reconnaissance checkpoint's gap identification step. They are the evidence base — not a free-form judgment.
+The terms *blocking* and *confirmatory* are assigned during the reconnaissance checkpoint's gap identification step. They are the evidence-criticality axis — not a free-form judgment. Keep this axis separate from the later re-entry resolution-path axis of *scout-shaped* versus *decision-shaped* gaps.
 
 ### Evidence Checklist
 
@@ -58,7 +58,10 @@ Threshold selection follows proportionality:
 If confidence is below the required threshold, do NOT proceed to the gated checkpoint. Instead:
 
 1. Re-enter the preceding reconnaissance checkpoint scoped narrowly to the unresolved blocking gaps.
-2. Dispatch focused reconnaissance carriers if direct knowledge audit is insufficient.
+2. Triage each unresolved blocking gap by resolution path:
+   - **scout-shaped** gaps use direct audit, focused reconnaissance, or focused reconnaissance carriers.
+   - **decision-shaped** gaps invoke ${"`"}fleet-assumption-audit${"`"} one gap at a time, with the recommended answer first.
+   - repeated failures or authority-level gaps escalate to the Admiral of the Navy (대원수).
 3. Re-evaluate confidence after gap resolution.
 4. Re-apply the gate.
 
