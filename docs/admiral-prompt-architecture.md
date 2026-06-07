@@ -67,7 +67,7 @@ Runtime state is read through direct owners:
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store and job stream state: `@dotobokuri/fleet-carriers`
 - Executor/session/model state: `@dotobokuri/fleet-infra/agent`
-- MCP registry/server state: `@dotobokuri/fleet-mcp-server`
+- MCP registry/server state: `@dotobokuri/core-mcp-server`
 
 These values are operational inputs for services, overlays, tools, and status
 rendering. MCP registry/server state stays live for tool exposure, but no longer

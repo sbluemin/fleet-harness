@@ -3,9 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
-import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
-import { getEffort, getProviderModels, type CliType } from "@dotobokuri/fleet-unified-agent";
+import { executeWithPool } from "@dotobokuri/core-agent";
+import type { AgentToolCtx } from "@dotobokuri/core-mcp-server";
+import { getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
   type CarrierConfig,
@@ -29,8 +29,8 @@ interface CarrierDispatchToolResult {
   isError: boolean;
 }
 
-vi.mock("@dotobokuri/fleet-infra/agent", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@dotobokuri/fleet-infra/agent")>();
+vi.mock("@dotobokuri/core-agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dotobokuri/core-agent")>();
   return {
     ...actual,
     executeWithPool: vi.fn(),
@@ -38,6 +38,9 @@ vi.mock("@dotobokuri/fleet-infra/agent", async (importOriginal) => {
 });
 
 const C1_CSI = "\u009b2J";
+const testDeps = {
+  authEnvResolver: () => Promise.resolve({}),
+};
 
 let tempDir: string | null = null;
 
@@ -157,7 +160,7 @@ describe("carrier_dispatch effort resolution", () => {
         defaultEffort: "low",
       },
     });
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
     const ctx: AgentToolCtx = {
       cwd: "/tmp",
       toolCallId: "dispatch-effort",
@@ -173,7 +176,7 @@ describe("carrier_dispatch effort resolution", () => {
       expect(executeWithPool).toHaveBeenCalledTimes(1);
     });
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
-      carrierId: "ohio",
+      scopeId: "ohio",
       cliType: "claude",
       model: "sonnet",
       effort: "max",
@@ -187,7 +190,7 @@ describe("carrier_dispatch effort resolution", () => {
       defaultEffort: "max",
       defaultModel: "sonnet",
     });
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
       carrier_id: "ohio",
@@ -202,7 +205,7 @@ describe("carrier_dispatch effort resolution", () => {
       expect(executeWithPool).toHaveBeenCalledTimes(1);
     });
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
-      carrierId: "ohio",
+      scopeId: "ohio",
       cliType: "claude",
       model: "sonnet",
       effort: "max",
@@ -220,7 +223,7 @@ describe("carrier_dispatch effort resolution", () => {
     });
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
       carrier_id: "ohio",
@@ -252,7 +255,7 @@ describe("carrier_dispatch effort resolution", () => {
       expect(executeWithPool).toHaveBeenCalledTimes(1);
     });
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
-      carrierId: "ohio",
+      scopeId: "ohio",
       cliType: "claude",
       effort,
       model,
@@ -284,7 +287,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     setCarrierAgentMode("ohio", true);
 
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
     const result = await tool.execute({
       carrier_id: "ohio",
       label: "Check subagent dispatch",
@@ -303,7 +306,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
       expect(executeWithPool).toHaveBeenCalledTimes(1);
     });
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
-      carrierId: "ohio",
+      scopeId: "ohio",
     }));
   });
 
@@ -326,7 +329,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
     });
     setCarrierAgentMode("ohio", true);
 
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
     const result = await tool.execute({
       carrier_id: "ohio",
       label: "Check request block guard",
@@ -349,7 +352,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, { ...createConfig("ohio", "Ohio"), defaultAgentMode: "subagent" });
 
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
     const result = await tool.execute({
       carrier_id: "ohio",
       label: "Check default subagent dispatch",
@@ -368,7 +371,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
       expect(executeWithPool).toHaveBeenCalledTimes(1);
     });
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
-      carrierId: "ohio",
+      scopeId: "ohio",
     }));
   });
 
@@ -393,7 +396,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
     const registry = createCarrierRegistry();
     registerCarrier(registry, createConfig("ohio", "Ohio"));
 
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
     const result = await tool.execute({
       carrier_id: "ohio",
       label: "Check Task Force skip",
@@ -412,7 +415,7 @@ describe("carrier_dispatch native subagent mode delegation", () => {
       expect(executeWithPool).toHaveBeenCalledTimes(1);
     });
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
-      carrierId: "ohio",
+      scopeId: "ohio",
     }));
   });
 });
@@ -448,7 +451,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     await tool.execute({
       carrier_id: "ohio",
@@ -508,7 +511,7 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     registerCarrier(registry, createConfig("ohio", "Ohio"));
     const events: CarrierJobStreamEvent[] = [];
     const unregister = registerStreamHandler(registry, (event) => events.push(event));
-    const tool = buildCarrierDispatchToolSpec(registry);
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
 
     const result = await tool.execute({
       carrier_id: "ohio",

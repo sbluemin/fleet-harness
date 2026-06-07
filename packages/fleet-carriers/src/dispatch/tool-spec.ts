@@ -5,9 +5,10 @@
  */
 
 import { Type } from "typebox";
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolSpec } from "@dotobokuri/core-mcp-server";
+import type { AuthEnvResolver } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type {
@@ -23,7 +24,7 @@ import { launchResponseResult } from "../jobs/lifecycle.js";
 import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
-import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
+import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
   isCarrierAgentModeSubagent,
@@ -69,6 +70,7 @@ interface CarrierBackgroundOptions {
   permit: JobPermitAccepted;
   startedAt: number;
   toolName: `carrier_${string}`;
+  deps: CarrierToolSpecDeps;
 }
 
 interface CarrierTrackModelInfo {
@@ -110,6 +112,11 @@ export interface CarrierSortieOutcome {
   readonly status: "done" | "error" | "aborted";
 }
 
+export interface CarrierToolSpecDeps {
+  readonly authEnvResolver: AuthEnvResolver;
+  readonly reservedExternalMcpServerIds?: readonly string[];
+}
+
 // ═════════════════════════════════════════════════════════
 // Constants
 // ═════════════════════════════════════════════════════════
@@ -132,7 +139,7 @@ export const CARRIER_REQUEST_BREVITY_GUIDELINE =
 /**
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합한 AgentToolSpec을 반환합니다.
  */
-export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentToolSpec {
+export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: CarrierToolSpecDeps): AgentToolSpec {
   return {
     id: "carrier_dispatch",
     tag: "carrier_dispatch",
@@ -245,6 +252,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
           startedAt: t0,
           toolName,
           ctx,
+          deps,
         });
       }
 
@@ -283,6 +291,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
         permit: launch.permit,
         startedAt: t0,
         toolName,
+        deps,
       });
 
       return launchResponseResult({ job_id: jobId, accepted: true });
@@ -366,7 +375,9 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   try {
     const execResult = await executeWithPool({
       poolKey: opts.carrierId,
-      carrierId: opts.carrierId,
+      scopeId: opts.carrierId,
+      authEnvResolver: opts.deps.authEnvResolver,
+      reservedExternalMcpServerIds: opts.deps.reservedExternalMcpServerIds,
       cliType,
       request: opts.request,
       cwd: opts.cwd,

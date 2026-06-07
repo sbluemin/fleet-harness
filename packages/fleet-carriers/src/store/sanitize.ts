@@ -3,7 +3,7 @@ import {
   getEffort,
   getProviderModels,
   type CliType,
-} from "@dotobokuri/fleet-unified-agent";
+} from "@dotobokuri/core-unified-agent";
 
 import type {
   AgentCliConfig,

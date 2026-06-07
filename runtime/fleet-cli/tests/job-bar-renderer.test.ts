@@ -10,7 +10,7 @@ import {
   setCarrierAgentMode,
   updateTaskForceModelSelection,
 } from "@dotobokuri/fleet-carriers";
-import { getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliModels } from "@dotobokuri/core-agent";
 
 import { createJobBarSections } from "../src/mission-bridge/job-bar/section.js";
 import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";

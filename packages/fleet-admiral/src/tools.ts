@@ -2,8 +2,9 @@ import {
   buildCarrierDispatchToolSpec,
   buildCarrierJobsToolSpec,
   type CarrierRuntime,
+  type CarrierToolSpecDeps,
 } from "@dotobokuri/fleet-carriers";
-import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/core-mcp-server";
 
 export const FLEET_MCP_SERVER_NAME = "fleet";
 
@@ -24,8 +25,12 @@ export const EXECUTOR_MCP_TOOL_IDS = [
   ...WIKI_EXECUTOR_MCP_TOOL_IDS,
 ] as const;
 
-export function registerAgentToolDefaults(registry: McpToolRegistry, carrierRuntime: CarrierRuntime): void {
-  registry.registerAgentTool(buildCarrierDispatchToolSpec(carrierRuntime.registry));
+export function registerAgentToolDefaults(
+  registry: McpToolRegistry,
+  carrierRuntime: CarrierRuntime,
+  deps: CarrierToolSpecDeps,
+): void {
+  registry.registerAgentTool(buildCarrierDispatchToolSpec(carrierRuntime.registry, deps));
   registry.registerAgentTool(buildCarrierJobsToolSpec());
 }
 
@@ -37,5 +42,9 @@ export function getExecutorMcpTools(
   const metadataIds = carrierId
     ? carrierRuntime.registry.getState().modes.get(carrierId)?.config.carrierMetadata?.allowedExecutorTools ?? []
     : [];
-  return registry.getExecutorMcpToolsForCarrier(carrierId, metadataIds);
+  return registry.getExecutorMcpToolsForScope(carrierId, metadataIds);
+}
+
+export function renderFleetToolGuide(tool: AgentToolSpec, markdown: string): string {
+  return `<fleet section="tool-guide" tool="${tool.tag}">\n${markdown}\n</fleet>`;
 }

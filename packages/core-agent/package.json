@@ -1,0 +1,42 @@
+{
+  "name": "@dotobokuri/core-agent",
+  "version": "1.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "packages/core-agent"
+  },
+  "private": true,
+  "author": "sbluemin",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "AGENTS.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --noEmit false -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "dependencies": {
+    "@dotobokuri/core-mcp-server": "workspace:*",
+    "@dotobokuri/core-unified-agent": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}

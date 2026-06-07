@@ -15,7 +15,7 @@ import {
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliEffortLevels, getCliModels } from "@dotobokuri/core-agent";
 import {
   PROVIDER_ANSI_COLORS,
 } from "../../styles/carriers.js";

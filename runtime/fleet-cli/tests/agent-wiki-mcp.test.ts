@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
+import {
+  executorMcpRuntimeProviderRuntime,
+  executorPortRuntime,
+} from "@dotobokuri/core-agent";
 import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
 import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
 import { buildFleetHookCommand, injectAgentCliProfile } from "../src/agent-cli/injection.js";
@@ -90,8 +94,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
     expect(fleetToolNames.has("mcp__wiki__wiki_query")).toBe(false);
 
-    const executorPort = runtime.infraServices.executorPortRuntime;
-    expect(executorPort.getExecutorMcpRouterRuntimes().map((entry) => entry.name)).toEqual(["fleet"]);
+    const executorPort = executorPortRuntime;
+    expect(executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().map((entry) => entry.name)).toEqual(["fleet"]);
     expect(executorPort.getExecutorMcpTools("unknown", "chronicle")).toEqual([]);
 
     const chronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "chronicle").map((tool) => tool.id));

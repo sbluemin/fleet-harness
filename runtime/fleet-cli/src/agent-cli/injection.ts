@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { ExecutorSessionManager } from "@dotobokuri/fleet-mcp-server";
+import type { ExecutorSessionManager } from "@dotobokuri/core-mcp-server";
 import {
   buildClaudeSubagentDefinitions,
   getCarrierConfig,

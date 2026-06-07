@@ -2,7 +2,7 @@ import {
   getEffort,
   getProviderModels,
   type CliType,
-} from "@dotobokuri/fleet-unified-agent";
+} from "@dotobokuri/core-unified-agent";
 
 import { TASKFORCE_CLI_TYPES, type TaskForceCliType } from "../dispatch/types.js";
 import {

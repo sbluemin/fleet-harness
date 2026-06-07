@@ -8,16 +8,16 @@ This package owns the local host assembly for the Agent CLI PTY and Fleet PTY lo
 
 - **Must Own**: local host assembly, host-owned TUI engine under `src/tui/`, host-owned SGR/color/brand/help style SSoT under `src/styles/`, host `controls/**`, Mission Bridge lower Fleet PTY domain wiring under `src/mission-bridge/**`, carrier-roster domain wiring (including subagent mode toggle, `[SA]` badge, and signature color), mission-control domain wiring, panel host callback, agent CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Agent CLI viewport, agent-cli plugin rendering for Claude/Codex Fleet activation, in-process update subsystem (`src/update/**`), and Fleet's CLI Composition Root.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
-- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/fleet-mcp-server`, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
+- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/core-agent` for ExecutorPort/provider registration and execution substrate assembly, `@dotobokuri/core-mcp-server`, `@dotobokuri/core-unified-agent` when CLI SDK types or provider metadata are needed, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 
-Direct dependencies on execution-engine packages are generally forbidden. Execution and model catalog access flow through `fleet-infra` and the Fleet orchestration packages. The Job Bar functionality is fully integrated into `fleet-cli`.
+Direct dependencies on execution-engine internals or deep implementation files are forbidden. Fleet's Composition Root may depend on the `@dotobokuri/core-agent` root API to register `ExecutorPort` policy, executor MCP runtime providers, auth resolvers, and shutdown hooks explicitly. The Job Bar functionality is fully integrated into `fleet-cli`.
 
 ## Composition Root Contract
 
 `fleet-cli` is the only Composition Root for the CLI runtime. It assembles all service instances bottom-up and passes dependencies downward through explicit factory dependency objects.
 
-- The DI layer order is one-way: `fleet-cli` -> `fleet-admiral` -> `fleet-carriers` / `fleet-mcp-server`; `fleet-mcp-server` is a generic leaf dependency consumed through public APIs.
-- `fleet-cli` may call `createInfraServices(deps)`, `createCarrierRuntime(deps)`, default agent tool registration, and MCP startup while assembling the runtime, but lower layers must not reach back into host wiring.
+- The DI layer order is one-way: `fleet-cli` -> `fleet-admiral` -> `fleet-carriers` / `core-agent` / `core-mcp-server`; core packages are generic leaf dependencies consumed through public APIs.
+- `fleet-cli` may call `createInfraServices(deps)`, `createCarrierRuntime(deps)`, default agent tool registration, core-agent executor/provider registration, and MCP startup while assembling the runtime, but lower layers must not reach back into host wiring.
 - Service construction must stay explicit in the host assembly path; do not introduce hidden global service containers, lazy host lookups, or reverse imports from lower layers.
 - Host UI and PTY objects are terminal adapters only. Domain services receive narrow dependencies, not `fleet-cli` module state.
 

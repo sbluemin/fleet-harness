@@ -4,12 +4,12 @@
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
 
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolCtx } from "@dotobokuri/core-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
-import type { ExecResult } from "@dotobokuri/fleet-infra/agent";
+import type { ExecResult } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus, TrackMeta, TrackStatus } from "./types.js";
 
 import {
@@ -20,7 +20,7 @@ import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { finalizeDetachedJob, launchResponseResult, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
-import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
+import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   emitStreamEvent,
   getRegisteredCarrierConfig,
@@ -32,6 +32,7 @@ import {
   type CarrierRegistry,
 } from "./framework.js";
 import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./tool-spec.js";
+import type { CarrierToolSpecDeps } from "./tool-spec.js";
 import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
@@ -57,6 +58,7 @@ interface TaskForceBackgroundOptions {
   startedAt: number;
   toolName: `carrier_${string}`;
   label: string;
+  deps: CarrierToolSpecDeps;
 }
 
 interface TaskForceTrackModelInfo {
@@ -72,12 +74,13 @@ export interface TaskForceLaunchOptions {
   startedAt: number;
   toolName: `carrier_${string}`;
   ctx: AgentToolCtx;
+  deps: CarrierToolSpecDeps;
 }
 
 const taskForceStateStore = new Map<string, TaskForceState>();
 
 export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
-  const { registry, carrierId, request, label, startedAt, toolName, ctx } = options;
+  const { registry, carrierId, request, label, startedAt, toolName, ctx, deps } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
   const backendIds = getConfiguredTaskForceBackends(carrierId);
 
@@ -140,6 +143,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     startedAt,
     toolName,
     label,
+    deps,
   });
 
   return launchResponseResult({ job_id: launch.jobId, accepted: true });
@@ -152,7 +156,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
   try {
     const settledResults = await Promise.allSettled(
       opts.activeBackends.map((cliType) =>
-        runTaskForceBackend(opts.registry, cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId, opts.trackModelInfoByCli),
+        runTaskForceBackend(opts.registry, cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId, opts.trackModelInfoByCli, opts.deps),
       ),
     );
     opts.state.finishedAt = Date.now();
@@ -244,6 +248,7 @@ async function runTaskForceBackend(
   cwd: string,
   jobId: string,
   trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>,
+  deps: CarrierToolSpecDeps,
 ): Promise<TaskForceResult> {
   const execStartedAt = Date.now();
   const progress = state.backends.get(cliType)!;
@@ -265,7 +270,9 @@ async function runTaskForceBackend(
   try {
     const result = await executeWithPool({
       poolKey,
-      carrierId,
+      scopeId: carrierId,
+      authEnvResolver: deps.authEnvResolver,
+      reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
       cliType: cliType as CliType,
       request,
       cwd,

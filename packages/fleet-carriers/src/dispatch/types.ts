@@ -1,7 +1,7 @@
-import { CLI_BACKENDS, type CliType, type HealthStatus, type ProviderKey } from "@dotobokuri/fleet-unified-agent";
-import type { TrackStatus } from "@dotobokuri/fleet-infra";
+import { CLI_BACKENDS, type CliType, type HealthStatus, type ProviderKey } from "@dotobokuri/core-unified-agent";
+import type { TrackStatus } from "@dotobokuri/core-agent";
 
-export type { TrackStatus } from "@dotobokuri/fleet-infra";
+export type { TrackStatus } from "@dotobokuri/core-agent";
 
 /**
  * fleet/carrier/types.ts — Carrier 프레임워크 타입 정의

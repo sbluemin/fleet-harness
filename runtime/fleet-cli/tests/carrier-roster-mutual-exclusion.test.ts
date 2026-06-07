@@ -16,7 +16,7 @@ import {
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
-import { getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliModels } from "@dotobokuri/core-agent";
 
 import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
 import { CarrierStatusOverlay } from "../src/mission-control/carrier-roster/panel.js";

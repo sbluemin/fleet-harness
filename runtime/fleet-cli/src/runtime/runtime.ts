@@ -7,7 +7,14 @@ import {
 	getExecutorMcpTools,
 	registerAgentToolDefaults,
 } from "@dotobokuri/fleet-admiral";
+import {
+	disconnectAll,
+	executorMcpRuntimeProviderRuntime,
+	executorPortRuntime,
+	type AuthEnvResolver,
+} from "@dotobokuri/core-agent";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
+import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import {
 	createMcpServer,
 	createMcpToolRegistry,
@@ -17,7 +24,7 @@ import {
 	type McpServer,
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
-} from "@dotobokuri/fleet-mcp-server";
+} from "@dotobokuri/core-mcp-server";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import { reconcileRuntimeState } from "./reconciliation.js";
@@ -78,17 +85,20 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const infraServices = createInfraServices();
 	const mcpRuntimes = createRuntimeMcpServices();
 	const carrierRuntime = createCarrierRuntime();
+	const authEnvResolver: AuthEnvResolver = (cli) => resolveAuthEnv(cli, { authService: infraServices.authService });
 
-	infraServices.executorPortRuntime.register({
-		getCarrierExternalMcpServerIds(carrierId) {
-			return carrierId
-				? carrierRuntime.registry.getState().modes.get(carrierId)?.config.carrierMetadata?.allowedBuiltinExternalMcpServers ?? []
+	executorPortRuntime.register({
+		getScopeExternalMcpServerIds(scopeId) {
+			return scopeId
+				? carrierRuntime.registry.getState().modes.get(scopeId)?.config.carrierMetadata?.allowedBuiltinExternalMcpServers ?? []
 				: [];
 		},
-		getExecutorMcpTools(serverName, carrierId) {
+		getExecutorMcpTools(serverName, scopeId) {
 			if (serverName !== FLEET_MCP_SERVER_NAME) return [];
-			return getExecutorMcpTools(mcpRuntimes.mcpRegistry, carrierRuntime, carrierId);
+			return getExecutorMcpTools(mcpRuntimes.mcpRegistry, carrierRuntime, scopeId);
 		},
+	});
+	executorMcpRuntimeProviderRuntime.register({
 		getExecutorMcpRouterRuntimes() {
 			return [
 				{
@@ -105,10 +115,13 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
 
-	registerAgentToolDefaults(mcpRuntimes.mcpRegistry, carrierRuntime);
+	registerAgentToolDefaults(mcpRuntimes.mcpRegistry, carrierRuntime, {
+		authEnvResolver,
+		reservedExternalMcpServerIds: [FLEET_MCP_SERVER_NAME, "carrier", "wiki", "fleet-carriers", "fleet-wiki", "fleet-tools"],
+	});
 	for (const spec of getWikiToolSpecs()) {
 		if (spec.id === "wiki_patch_queue") {
-			mcpRuntimes.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: [] });
+			mcpRuntimes.mcpRegistry.registerExecutorTool(spec, { allowedScopes: [] });
 		} else if (
 			spec.id === "wiki_drydock"
 			|| spec.id === "wiki_ingest"
@@ -116,7 +129,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			|| spec.id === "wiki_compile_source"
 			|| spec.id === "wiki_query"
 		) {
-			mcpRuntimes.mcpRegistry.registerExecutorTool(spec, { allowedCarriers: ["chronicle"] });
+			mcpRuntimes.mcpRegistry.registerExecutorTool(spec, { allowedScopes: ["chronicle"] });
 		} else {
 			mcpRuntimes.mcpRegistry.registerExecutorTool(spec);
 		}
@@ -148,8 +161,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		},
 		async shutdown() {
 			dedicatedMcpSession.cleanup();
-			const disconnectAgentSessions = infraServices.agent.disconnectAll;
-			await disconnectAgentSessions();
+			await disconnectAll();
 			await mcpRuntimes.mcpServer.stop();
 		},
 	};

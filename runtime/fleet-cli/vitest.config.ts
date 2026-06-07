@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@dotobokuri/fleet-unified-agent": fileURLToPath(new URL("../../packages/unified-agent/src/index.ts", import.meta.url)),
+      "@dotobokuri/core-unified-agent": fileURLToPath(new URL("../../packages/core-unified-agent/src/index.ts", import.meta.url)),
     },
   },
   test: {

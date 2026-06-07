@@ -1,4 +1,4 @@
-import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolSpec } from "@dotobokuri/core-mcp-server";
 
 import { Type, type TObject } from "typebox";
 

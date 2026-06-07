@@ -1,4 +1,4 @@
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/core-unified-agent";
 
 import { createAuthService, DEFAULT_AUTH_PATH } from "./auth-storage.js";
 import { formatMissingAuthKeyMessage } from "./messages.js";

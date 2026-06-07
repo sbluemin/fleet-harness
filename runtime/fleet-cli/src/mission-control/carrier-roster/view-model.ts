@@ -11,7 +11,7 @@ import {
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliEffortLevels, getCliModels } from "@dotobokuri/core-agent";
 
 import type { GroupedEntries, StatusOverlayViewModel } from "./render-types.js";
 import type { CarrierCliType, CarrierStatusEntry, CliModelInfo, FleetStoreSnapshot } from "./types.js";

@@ -9,9 +9,9 @@ Fleet development follows a hard one-way dependency graph:
 - `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral`.
 - `packages/fleet-carriers` — carrier runtime, personas, jobs, and carrier state.
 - `packages/fleet-infra` — host-agnostic infrastructure and I/O gateways.
-- `packages/fleet-mcp-server` — generic MCP server, registry, routing, and tool snapshots.
+- `packages/core-mcp-server` — generic MCP server, registry, routing, and tool snapshots.
 - `packages/fleet-wiki` and `runtime/fleet-wiki-ui` — Fleet knowledge package and web UI.
-- `packages/unified-agent` — independent execution engine client package.
+- `packages/core-unified-agent` — independent execution engine client package.
 
 ## 2. Where New Work Goes
 
@@ -27,7 +27,7 @@ Put code here when it owns carrier persona metadata, carrier dispatch, carrier j
 
 Put code here when it owns generic auth, data-dir, executor, settings, detached-job, or runtime I/O primitives.
 
-### 2.4 `packages/fleet-mcp-server`
+### 2.4 `packages/core-mcp-server`
 
 Put code here when it owns generic MCP registry/server behavior, token isolation, routing, or tool snapshots.
 
