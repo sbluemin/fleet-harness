@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
-import { createSystemPromptBuilder, buildSubagentsSection } from "./index.js";
+import { createSystemPromptBuilder } from "./index.js";
 import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
 
 describe("Admiral prompts", () => {
@@ -59,22 +59,4 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("never overwrite or revert changes made by others");
   });
 
-  it("returns no subagents section for an empty enabled set", () => {
-    expect(buildSubagentsSection([])).toBeUndefined();
-  });
-
-  it("formats native subagent names and dispatch guidance", () => {
-    const section = buildSubagentsSection([
-      { carrierId: "ohio", displayName: "Ohio", nativeName: "Ohio" },
-      { carrierId: "sentinel", nativeName: "Sentinel" },
-    ]);
-
-    expect(section).toContain('<fleet section="subagents">');
-    expect(section).toContain("Ohio (ohio)");
-    expect(section).toContain("`Ohio`");
-    expect(section).toContain("sentinel");
-    expect(section).toContain("`Sentinel`");
-    expect(section).toContain("do not emit `[carrier:result]`");
-    expect(section).toContain("`carrier_dispatch` remains available");
-  });
 });

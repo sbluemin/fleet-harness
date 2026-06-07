@@ -25,12 +25,6 @@ export interface SystemPromptBuilder {
   build(injectTone: boolean): string;
 }
 
-export interface SubagentSectionEntry {
-  readonly carrierId: string;
-  readonly displayName?: string;
-  readonly nativeName: string;
-}
-
 interface SystemPromptBuilderDeps {
   readonly carrierRuntime: CarrierRuntime;
 }
@@ -138,17 +132,6 @@ export function createSystemPromptBuilder(deps: SystemPromptBuilderDeps): System
 
 export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boolean): string {
   return buildSystemPromptFromDeps(deps, injectTone);
-}
-
-export function buildSubagentsSection(entries: readonly SubagentSectionEntry[]): string | undefined {
-  if (entries.length === 0) return undefined;
-  const lines = entries
-    .map((entry) => {
-      const label = entry.displayName ? `${entry.displayName} (${entry.carrierId})` : entry.carrierId;
-      return `- ${label}: invoke as Claude native subagent \`${entry.nativeName}\`.`;
-    })
-    .join("\n");
-  return `<fleet section="subagents">\n# Claude Native Subagents\n\nThe following Fleet carriers are exposed as Claude native subagents for this session:\n\n${lines}\n\nNative subagent calls return inline and do not emit \`[carrier:result]\`. Do not wait for a carrier job completion push after native invocation.\n\n\`carrier_dispatch\` remains available as a separate Fleet delegation path for carriers that are not invoked through the native subagent interface.\n</fleet>`;
 }
 
 function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, injectTone: boolean): string {

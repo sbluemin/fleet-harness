@@ -27,8 +27,6 @@ The root barrel is whitelist-only. It may export exactly:
 
 - `createSystemPromptBuilder`
 - `SystemPromptBuilder`
-- `buildSubagentsSection`
-- `SubagentSectionEntry`
 - `registerAgentToolDefaults`
 - `getExecutorMcpTools`
 - `FLEET_MCP_SERVER_NAME`

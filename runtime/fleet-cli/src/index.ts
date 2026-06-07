@@ -1,27 +1,14 @@
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import os from "node:os";
 import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
-import { buildSubagentsSection } from "@dotobokuri/fleet-admiral";
-import {
-  buildClaudeSubagentDefinitions,
-  createCarrierRuntime,
-  getCarrierConfig,
-  getEnabledCarrierSubagentIds,
-  getRegisteredOrder,
-  readCarrierAgentModeSnapshot,
-  resolveAgentCliType,
-  type CarrierConfig,
-  type CarrierModelDefaults,
-} from "@dotobokuri/fleet-carriers";
 import { createInfraServices } from "@dotobokuri/fleet-infra";
 
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions, parseFleetHookCommand } from "./cli-args.js";
+import { runSubagentsContextHook } from "./hooks/subagents-context.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
@@ -138,67 +125,4 @@ function resolveOptionalPackage(id: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function runSubagentsContextHook(env: NodeJS.ProcessEnv): string {
-  const fleetRoot = env.FLEET_ROOT ?? path.join(env.HOME ?? os.homedir(), ".fleet");
-  if (!canReadCarrierState(path.join(fleetRoot, "carriers.json"))) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: "" } });
-  }
-  const carrierRuntime = createCarrierRuntime();
-  carrierRuntime.store.initStore(fleetRoot);
-  carrierRuntime.registerCarrierDefaults();
-  const carrierIds = getRegisteredOrder(carrierRuntime.registry);
-  const carrierConfigs = carrierIds
-    .map((carrierId) => getCarrierConfig(carrierRuntime.registry, carrierId))
-    .filter((config): config is NonNullable<typeof config> => config !== undefined);
-  const defaultsByCarrier = Object.fromEntries(
-    carrierConfigs.map((config) => [config.id, buildCarrierModelDefaults(config)]),
-  );
-  const enabledCarrierIds = getEnabledCarrierSubagentIds(
-    readCarrierAgentModeSnapshot(defaultsByCarrier),
-    carrierIds,
-  );
-  const definitions = buildClaudeSubagentDefinitions({ carrierConfigs, enabledCarrierIds });
-  const configsById = new Map(carrierConfigs.map((config) => [config.id, config]));
-  const additionalContext = buildSubagentsSection(definitions.map((definition) => ({
-    carrierId: definition.carrierId,
-    displayName: configsById.get(definition.carrierId)?.displayName,
-    nativeName: definition.name,
-  }))) ?? "";
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } });
-}
-
-function canReadCarrierState(filePath: string): boolean {
-  try {
-    return isReadableCarrierStateRoot(JSON.parse(readFileSync(filePath, "utf8")));
-  } catch {
-    return false;
-  }
-}
-
-function isReadableCarrierStateRoot(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const carriers = value.carriers;
-  return carriers === undefined || isRecord(carriers);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function buildCarrierModelDefaults(config: CarrierConfig): CarrierModelDefaults {
-  const cliType = resolveAgentCliType(config.id, config.defaultCliType);
-  const cliDefaults = cliType === "claude"
-    ? config.subagent?.byHost?.claude ?? {
-      ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
-      ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
-    }
-    : {};
-  return {
-    cliType,
-    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
-    ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
-    ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
-  };
 }

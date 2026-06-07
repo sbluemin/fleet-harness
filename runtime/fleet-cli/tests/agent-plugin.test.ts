@@ -4,15 +4,33 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildSubagentsSection } from "@dotobokuri/fleet-admiral";
 import { buildFleetHookCommand } from "../src/agent-cli/injection.js";
 import { createAgentCliPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/plugin/index.js";
 import { neutralizeCodexFleetPluginConfig } from "../src/agent-cli/plugin/codex-config.js";
 import { cleanupPrivateRoot } from "../src/agent-cli/plugin/fs.js";
+import { runSubagentsContextHook } from "../src/hooks/subagents-context.js";
 import type { AgentCliPlugin, CodexPluginRegistration, CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
 
 const PLUGIN_ASSETS_DIR = path.resolve("assets");
 const tempCodexHomes: string[] = [];
+const EXPECTED_SUBAGENTS_CONTEXT = `<fleet section="subagents">
+# Claude Native Subagents
+
+The following Fleet carriers are exposed as Claude native subagents for this session:
+
+- Nimitz (nimitz): invoke as Claude native subagent \`nimitz\`.
+- Kirov (kirov): invoke as Claude native subagent \`kirov\`.
+- Genesis (genesis): invoke as Claude native subagent \`genesis\`.
+- Ohio (ohio): invoke as Claude native subagent \`ohio\`.
+- Sentinel (sentinel): invoke as Claude native subagent \`sentinel\`.
+- Vanguard (vanguard): invoke as Claude native subagent \`vanguard\`.
+- Tempest (tempest): invoke as Claude native subagent \`tempest\`.
+- Chronicle (chronicle): invoke as Claude native subagent \`chronicle\`.
+
+Native subagent calls return inline and do not emit \`[carrier:result]\`. Do not wait for a carrier job completion push after native invocation.
+
+\`carrier_dispatch\` remains available as a separate Fleet delegation path for carriers that are not invoked through the native subagent interface.
+</fleet>`;
 const TEST_HOOK_EXEC = buildFleetHookCommand({
   entryPath: "/opt/fleet/dist/index.js",
   execPath: "/opt/node/bin/node",
@@ -263,16 +281,8 @@ describe("agent CLI plugin renderer", () => {
     };
     expect(output.hookSpecificOutput?.hookEventName).toBe("SessionStart");
     expect(output.hookSpecificOutput?.additionalContext).toContain('<fleet section="subagents">');
-    expect(output.hookSpecificOutput?.additionalContext).toBe(buildSubagentsSection([
-      { carrierId: "nimitz", displayName: "Nimitz", nativeName: "Nimitz" },
-      { carrierId: "kirov", displayName: "Kirov", nativeName: "Kirov" },
-      { carrierId: "genesis", displayName: "Genesis", nativeName: "Genesis" },
-      { carrierId: "ohio", displayName: "Ohio", nativeName: "Ohio" },
-      { carrierId: "sentinel", displayName: "Sentinel", nativeName: "Sentinel" },
-      { carrierId: "vanguard", displayName: "Vanguard", nativeName: "Vanguard" },
-      { carrierId: "tempest", displayName: "Tempest", nativeName: "Tempest" },
-      { carrierId: "chronicle", displayName: "Chronicle", nativeName: "Chronicle" },
-    ]));
+    expect(output.hookSpecificOutput?.additionalContext).toBe(EXPECTED_SUBAGENTS_CONTEXT);
+    expect(output).toEqual(JSON.parse(runSubagentsContextHook({ ...process.env, FLEET_ROOT: rootDir })));
   });
 
   it("emits an empty hook context when carriers.json is missing, corrupt, or schema-invalid", () => {
