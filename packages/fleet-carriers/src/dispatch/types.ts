@@ -164,6 +164,8 @@ export interface TrackMeta {
   streamKey: string;
   displayCli: string;
   displayName: string;
+  effort?: string;
+  model?: string;
   subtitle?: string;
   startedAt?: number;
   kind: TrackKind;

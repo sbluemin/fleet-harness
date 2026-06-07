@@ -21,8 +21,10 @@ export interface PanelRunViewModelSource {
 export interface ColumnTrack {
   readonly displayCli: string;
   readonly displayName: string;
+  readonly effort?: string;
   readonly finishedAt?: number;
   readonly kind: TrackKind;
+  readonly model?: string;
   readonly runId?: string;
   readonly startedAt?: number;
   readonly status: ColStatus;
@@ -47,9 +49,11 @@ export interface PanelTrackViewModel {
   readonly blocks: ColBlock[];
   readonly displayCli: string;
   readonly displayName: string;
+  readonly effort?: string;
   readonly finishedAt?: number;
   readonly isComplete: boolean;
   readonly kind: ColumnTrack["kind"];
+  readonly model?: string;
   readonly runId?: string;
   readonly startedAt?: number;
   readonly status: ColStatus;
@@ -121,9 +125,11 @@ export function buildPanelTrackViewModel(
     displayName: track.displayName,
     displayedTokenCount: run?.displayedTokenCount ?? stats.estimatedTokenCount,
     estimatedTokenCount: stats.estimatedTokenCount,
+    effort: track.effort,
     finishedAt: track.finishedAt,
     isComplete: status === "done" || status === "err",
     kind: track.kind,
+    model: track.model,
     runId: run?.runId ?? track.runId,
     startedAt: track.startedAt,
     status,

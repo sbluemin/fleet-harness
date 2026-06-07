@@ -493,7 +493,9 @@ function toColumnTrack(input: TrackMeta): MutableColumnTrack {
   return {
     displayCli: input.displayCli,
     displayName: input.displayName,
+    effort: input.effort,
     kind: input.kind,
+    model: input.model,
     runId: input.runId,
     startedAt: input.startedAt,
     status: "wait",

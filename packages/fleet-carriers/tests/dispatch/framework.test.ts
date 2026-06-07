@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
 import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
+import { getEffort, getProviderModels, type CliType } from "@dotobokuri/fleet-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
   type CarrierConfig,
+  type CarrierJobStreamEvent,
   createCarrierRegistry,
   emitStreamEvent,
   buildCarrierRoster,
@@ -18,6 +20,7 @@ import {
   resetStoreForTests,
   resolveCarrierDisplayName,
   setCarrierAgentMode,
+  updateTaskForceModelSelection,
   updateCarrierDisplayName,
 } from "../../src/index.js";
 
@@ -205,6 +208,56 @@ describe("carrier_dispatch effort resolution", () => {
       effort: "max",
     }));
   });
+
+  it("emits single carrier model and effort in the registered track metadata", async () => {
+    const model = firstModel("claude");
+    const effort = firstEffort("claude", model);
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      defaultEffort: effort,
+      defaultModel: model,
+    });
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const tool = buildCarrierDispatchToolSpec(registry);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check single dispatch metadata",
+      request: "Verify single dispatch track metadata.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-single-metadata",
+    });
+    unregister();
+
+    const registered = events.find((event) => event.type === "job:registered");
+    expect(registered).toEqual(expect.objectContaining({
+      jobId: "carrier:dispatch-single-metadata",
+      kind: "carrier",
+      ownerCarrierId: "ohio",
+    }));
+    if (registered?.type !== "job:registered") throw new Error("Single carrier job registration event was not emitted.");
+    expect(registered.tracks).toEqual([
+      expect.objectContaining({
+        displayCli: "ohio",
+        displayName: "Ohio",
+        effort,
+        kind: "carrier",
+        model,
+      }),
+    ]);
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      carrierId: "ohio",
+      cliType: "claude",
+      effort,
+      model,
+    }));
+  });
 });
 
 describe("carrier_dispatch native subagent mode delegation", () => {
@@ -364,6 +417,120 @@ describe("carrier_dispatch native subagent mode delegation", () => {
   });
 });
 
+describe("carrier_dispatch taskforce stream metadata", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-taskforce-metadata-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("emits Task Force backend model and effort in the registered track metadata", async () => {
+    const claudeModel = firstModel("claude");
+    const codexModel = firstModel("codex");
+    const claudeEffort = firstEffort("claude", claudeModel);
+    const codexEffort = firstEffort("codex", codexModel);
+    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: claudeEffort });
+    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: codexEffort });
+    setCarrierAgentMode("ohio", false, "subagent");
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const tool = buildCarrierDispatchToolSpec(registry);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check Task Force metadata",
+      request: "Verify Task Force track metadata.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-taskforce-metadata",
+    });
+    unregister();
+
+    const registered = events.find((event) => event.type === "job:registered");
+    expect(registered).toEqual(expect.objectContaining({
+      jobId: "taskforce:dispatch-taskforce-metadata",
+      kind: "taskforce",
+      ownerCarrierId: "ohio",
+    }));
+    if (registered?.type !== "job:registered") throw new Error("Task Force job registration event was not emitted.");
+    expect(registered.tracks).toEqual([
+      expect.objectContaining({
+        displayCli: "claude",
+        displayName: "Claude Code with Anthropic",
+        effort: claudeEffort,
+        kind: "backend",
+        model: claudeModel,
+      }),
+      expect.objectContaining({
+        displayCli: "codex",
+        displayName: "OpenAI Codex CLI",
+        effort: codexEffort,
+        kind: "backend",
+        model: codexModel,
+      }),
+    ]);
+  });
+
+  it("rejects invalid raw Task Force model config before starting a detached job", async () => {
+    const codexModel = firstModel("codex");
+    writeStates({
+      carriers: {
+        ohio: {
+          agentMode: "cli",
+          taskforce: {
+            claude: {
+              model: "not-a-real-model",
+              effort: "medium",
+            },
+            codex: {
+              model: codexModel,
+              effort: firstEffort("codex", codexModel),
+            },
+          },
+        },
+      },
+    });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const tool = buildCarrierDispatchToolSpec(registry);
+
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check invalid Task Force metadata",
+      request: "Verify invalid Task Force config rejection.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-taskforce-invalid-metadata",
+    }) as CarrierDispatchToolResult;
+    unregister();
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual(expect.objectContaining({
+      job_id: "taskforce:dispatch-taskforce-invalid-metadata",
+      accepted: false,
+    }));
+    expect(JSON.stringify(result.details)).toContain("not-a-real-model");
+    expect(events.some((event) => event.type === "job:registered")).toBe(false);
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+});
+
 function createConfig(id: string, displayName: string): CarrierConfig {
   return {
     id,
@@ -376,4 +543,17 @@ function createConfig(id: string, displayName: string): CarrierConfig {
 function writeStates(value: unknown): void {
   if (!tempDir) throw new Error("테스트 store가 초기화되지 않았습니다.");
   fs.writeFileSync(path.join(tempDir, "carriers.json"), JSON.stringify(value), "utf-8");
+}
+
+function firstModel(cliType: CliType): string {
+  const model = getProviderModels(cliType).models[0]?.modelId;
+  if (!model) throw new Error(`No test model for ${cliType}`);
+  return model;
+}
+
+function firstEffort(cliType: CliType, model: string): string {
+  const effort = getEffort(cliType, model);
+  const first = effort.supported ? effort.levels[0] : undefined;
+  if (!first) throw new Error(`No test effort for ${cliType}/${model}`);
+  return first;
 }
