@@ -23,12 +23,13 @@ The final system prompt is composed as:
 ```text
 System Prompt
   + [Boot] Initial Slate (FLEET_HARNESS_DEV=1 activates RISEN dev context, otherwise empty)
-  + [Always] <fleet section="role">
+  + [Always] <fleet section="preamble">
   + [Always] <fleet section="persona">
+  + [Always] <fleet section="role">
   + [Tone-gated] <fleet section="tone">
   + [Always] <fleet section="roster">
-  + [Always] <fleet section="protocol">           ← Fleet Action Protocol body, inlined
-  + [Always] <fleet section="standing-orders">
+  + [Always] <fleet section="protocol">                       ← Fleet Action Protocol body, inlined
+  + [Always] <fleet section="standing-orders" type="<id>">    ← one block per Standing Order
 ```
 
 Tool-specific usage and argument details remain live MCP metadata exposed through tool descriptions and schemas, not static prompt sections.

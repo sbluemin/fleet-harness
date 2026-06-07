@@ -78,9 +78,5 @@ Upon re-evaluation downgrade, halt the current phase and re-apply the appropriat
 - **Mission Anchor** governs *objective alignment* across phase boundaries.
 - **Context Confidence** governs *evidence sufficiency* before decision phases.
 
-The two gates are orthogonal: an anchored objective with speculative evidence still fails the Context Confidence gate, and conversely, complete evidence on a drifting objective still fails the Mission Anchor self-check. Apply both independently — never collapse one into the other.
-
-### Admiral's role (yours — the host agent, 제독; not the user)
-
-Evaluate confidence honestly and apply the gate strictly. Do not flatten partial evidence into a confident-sounding label. Surfacing ${"`"}partial${"`"} or ${"`"}speculative${"`"} is a feature, not a failure — it triggers the correct workflow (re-entry) and prevents low-quality plans from contaminating execution.`,
+The two gates are orthogonal: an anchored objective with speculative evidence still fails the Context Confidence gate, and conversely, complete evidence on a drifting objective still fails the Mission Anchor self-check. Apply both independently — never collapse one into the other.`,
 };

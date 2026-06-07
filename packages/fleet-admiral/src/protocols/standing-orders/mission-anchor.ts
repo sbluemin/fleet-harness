@@ -28,8 +28,5 @@ Apply this Standing Order before entering Phase 1 and at every phase boundary in
 3. **Post-Phase Self-Check** — After each phase, output exactly one short alignment line:
    ${"``"}Aligned? [yes / partial — adjust / drift — halt]${"``"}
 4. **Drift Recovery** — If the self-check is ${"``"}partial — adjust${"``"} or ${"``"}drift — halt${"``"}, do not enter the next phase. Return to the original user request, re-derive the anchor, and continue only after the objective is clear.
-5. **Compact Mode** — For trivial single-phase tasks with no more than 3 changed lines, state the Objective once and omit per-phase Anchor Recall lines. Multi-phase tasks never use this exemption.
-
-### Admiral's role (yours — the host agent, 제독; not the user)
-Your role is to preserve objective alignment, not to expand scope. Use the anchor to decide what to investigate, delegate, implement, review, document, skip, or halt.`,
+5. **Compact Mode** — For trivial single-phase tasks with no more than 3 changed lines, state the Objective once and omit per-phase Anchor Recall lines. Multi-phase tasks never use this exemption.`,
 };

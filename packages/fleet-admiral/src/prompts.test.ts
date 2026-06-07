@@ -20,11 +20,26 @@ describe("Admiral prompts", () => {
       carrierRuntime: createCarrierRuntime(),
     }).build(false);
 
+    expect(prompt).toContain('<fleet section="preamble">');
     expect(prompt).toContain('<fleet section="role">');
     expect(prompt).toContain('<fleet section="protocol">');
-    expect(prompt).toContain('<fleet section="standing-orders">');
+    expect(prompt).toContain('<fleet section="standing-orders" type="mission-anchor">');
     expect(prompt).not.toContain('<fleet section="tool-guide"');
     expect(getAllStandingOrders()).toHaveLength(5);
+  });
+
+  it("renders each standing order as its own type-scoped block without a shared wrapper", () => {
+    const prompt = createSystemPromptBuilder({
+      carrierRuntime: createCarrierRuntime(),
+    }).build(false);
+
+    for (const order of getAllStandingOrders()) {
+      expect(prompt).toContain(`<fleet section="standing-orders" type="${order.id}">`);
+    }
+    // 공통 "# Standing Orders" 래퍼 헤더는 개별 블록 분리로 제거되었다.
+    expect(prompt).not.toContain("# Standing Orders");
+    // "### Admiral's role" 중복 섹션은 전부 제거되었다.
+    expect(prompt).not.toContain("### Admiral's role");
   });
 
   it("preserves relocated operational invariants", () => {
