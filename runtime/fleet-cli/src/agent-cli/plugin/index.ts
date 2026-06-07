@@ -21,11 +21,6 @@ interface PluginBundle {
   readonly hashFileName: string;
   readonly includeClaudeAgents: boolean;
   readonly name: string;
-  readonly skills: readonly PluginSkill[];
-}
-
-interface PluginSkill {
-  readonly dirName: string;
 }
 
 export const CODEX_FLEET_PLUGIN_KEY = "fleet@fleet-harness";
@@ -41,9 +36,6 @@ const PLUGIN_BUNDLES: readonly PluginBundle[] = [{
   hashFileName: ".fleet-codex-plugin.hash",
   includeClaudeAgents: true,
   name: "fleet",
-  skills: [{
-    dirName: "fleet-wiki-usage",
-  }],
 }] as const;
 const PLUGIN_MANAGED_ENTRIES = [
   ".codex-plugin",
@@ -138,10 +130,10 @@ function renderPluginRoot(
   ensurePrivateDir(path.join(pluginRoot, "skills"), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), pluginRoot);
-  for (const skill of bundle.skills) {
+  for (const skillRelativePath of listAssetSkillFilePaths(options, bundle)) {
     writePrivateFile(
-      path.join(pluginRoot, "skills", skill.dirName, "SKILL.md"),
-      readRequiredAsset(options, path.join("plugins", bundle.directoryName, "skills", skill.dirName, "SKILL.md")),
+      path.join(pluginRoot, "skills", skillRelativePath),
+      readRequiredAsset(options, path.join("plugins", bundle.directoryName, "skills", skillRelativePath)),
       pluginRoot,
     );
   }
@@ -157,17 +149,54 @@ function renderPluginRoot(
 }
 
 function readRequiredAsset(options: CreateAgentCliPluginOptions, relativePath: string): string {
-  const assetsDir = options.assetsDir;
-  if (!assetsDir) {
-    throw new Error("Fleet plugin assets directory is required");
-  }
-  const assetPath = path.join(assetsDir, relativePath);
+  const assetPath = path.join(requiredAssetsDir(options), relativePath);
   try {
     return readFileSync(assetPath, "utf8");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to read Fleet plugin asset ${relativePath}: ${message}`);
   }
+}
+
+function listAssetSkillFilePaths(options: CreateAgentCliPluginOptions, bundle: PluginBundle): string[] {
+  const skillsRelativePath = path.join("plugins", bundle.directoryName, "skills");
+  const skillsRoot = path.join(requiredAssetsDir(options), skillsRelativePath);
+  try {
+    return listAssetFiles(skillsRoot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read Fleet plugin skills directory ${skillsRelativePath}: ${message}`);
+  }
+}
+
+function listAssetFiles(rootPath: string): string[] {
+  const files: string[] = [];
+  collectAssetFiles(rootPath, rootPath, files);
+  return files.sort();
+}
+
+function collectAssetFiles(rootPath: string, currentPath: string, files: string[]): void {
+  for (const entry of readdirSync(currentPath)) {
+    const entryPath = path.join(currentPath, entry);
+    const stat = lstatSync(entryPath);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Fleet plugin asset symlink is unsupported: ${path.relative(rootPath, entryPath)}`);
+    }
+    if (stat.isDirectory()) {
+      collectAssetFiles(rootPath, entryPath, files);
+      continue;
+    }
+    if (stat.isFile()) {
+      files.push(path.relative(rootPath, entryPath));
+    }
+  }
+}
+
+function requiredAssetsDir(options: CreateAgentCliPluginOptions): string {
+  if (!options.assetsDir) {
+    throw new Error("Fleet plugin assets directory is required");
+  }
+  return options.assetsDir;
 }
 
 function renderMarketplaceRoot(marketplaceRoot: string): void {

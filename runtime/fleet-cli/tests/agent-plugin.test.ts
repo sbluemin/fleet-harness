@@ -119,6 +119,28 @@ describe("agent CLI plugin renderer", () => {
     assertPrivateTree(path.join(rootDir, "marketplace"));
   });
 
+  it("renders every skill directory found under the Fleet plugin assets", () => {
+    const assetsDir = makeRoot();
+    const rootDir = makeRoot();
+    createSkillAssetFile(assetsDir, path.join("alpha-skill", "SKILL.md"), "Alpha skill");
+    createSkillAssetFile(assetsDir, path.join("alpha-skill", "references", "example.md"), "Alpha reference");
+    createSkillAssetFile(assetsDir, path.join("zeta-skill", "SKILL.md"), "Zeta skill");
+
+    const plugin = createAgentCliPlugin({
+      assetsDir,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      rootDir,
+    });
+
+    const skillsRoot = path.join(plugin.pluginRoot, "skills");
+    expect(readdirSync(skillsRoot).sort()).toEqual(["alpha-skill", "zeta-skill"]);
+    expect(readFileSync(path.join(skillsRoot, "alpha-skill", "SKILL.md"), "utf8")).toBe("Alpha skill");
+    expect(readFileSync(path.join(skillsRoot, "alpha-skill", "references", "example.md"), "utf8")).toBe("Alpha reference");
+    expect(readFileSync(path.join(skillsRoot, "zeta-skill", "SKILL.md"), "utf8")).toBe("Zeta skill");
+  });
+
   it("throws a clear renderer error when required assets are not provided", () => {
     const rootDir = makeRoot();
 
@@ -804,6 +826,12 @@ function createSentinel(filePath: string): void {
 function writeJsonFile(filePath: string, value: unknown): void {
   mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function createSkillAssetFile(assetsDir: string, relativePath: string, content: string): void {
+  const skillPath = path.join(assetsDir, "plugins", "fleet", "skills", relativePath);
+  mkdirSync(path.dirname(skillPath), { recursive: true, mode: 0o700 });
+  writeFileSync(skillPath, content, { encoding: "utf8", mode: 0o600 });
 }
 
 function registrationByName(plugin: AgentCliPlugin, pluginName: string): CodexPluginRegistration {
