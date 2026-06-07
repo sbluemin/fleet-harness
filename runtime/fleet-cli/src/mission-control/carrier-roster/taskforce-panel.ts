@@ -2,7 +2,6 @@ import {
   CLI_DISPLAY_NAMES,
   TASKFORCE_CLI_TYPES,
   getConfiguredTaskForceCarrierIds,
-  getAgentCliSelection,
   getCarrierConfig,
   getTaskForceModelConfig,
   getRegisteredOrder,
@@ -10,14 +9,13 @@ import {
   notifyStatusUpdate,
   readCarriersSnapshot,
   resetTaskForceModelSelection,
-  setCarrierAgentModeWithCodexRole,
   setCarrierAgentMode,
   setTaskForceConfiguredCarriers,
   updateTaskForceModelSelection,
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliEffortLevels, getCliModels } from "@dotobokuri/core-agent";
 import {
   PROVIDER_ANSI_COLORS,
 } from "../../styles/carriers.js";
@@ -358,18 +356,8 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
       throw new Error(`${this.options.carrierDisplayName} carrier metadata를 찾을 수 없습니다.`);
     }
     if (!isCarrierAgentModeSubagent(this.options.carrierId, config.defaultAgentMode)) return false;
-    const registeredCarrierIds = getRegisteredOrder(this.options.carrierRuntime.registry);
-    setCarrierAgentModeWithCodexRole(config, false, this.resolveCodexSubagentSettings(), { registeredCarrierIds });
+    setCarrierAgentMode(this.options.carrierId, false, config.defaultAgentMode);
     return true;
-  }
-
-  private resolveCodexSubagentSettings() {
-    const config = getCarrierConfig(this.options.carrierRuntime.registry, this.options.carrierId);
-    if (config?.defaultCliType === "codex") {
-      const provider = this.getAvailableModels("codex");
-      return { model: provider.defaultModel };
-    }
-    return getAgentCliSelection(this.options.carrierId, "codex");
   }
 
   private cancelEdit(): void {

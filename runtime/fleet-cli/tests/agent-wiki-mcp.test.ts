@@ -1,24 +1,20 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import crypto from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 import {
-  buildClaudeSubagentDefinition,
-  buildCodexSubagentDefinition,
-  createCarrierRuntime,
-  initStore,
-  resetStoreForTests,
-  setCarrierAgentMode,
-  updateAgentCliTypeOverride,
-  updateAgentCliSelection,
-  type CarrierConfig,
-} from "@dotobokuri/fleet-carriers";
+  executorMcpRuntimeProviderRuntime,
+  executorPortRuntime,
+} from "@dotobokuri/core-agent";
 import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
 import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
-import { injectAgentCliProfile } from "../src/agent-cli/injection.js";
+import { buildFleetHookCommand, injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
+import type { CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -44,6 +40,21 @@ const EXPECTED_CARRIER_TOOL_IDS = [
   "carrier_dispatch",
   "carrier_jobs",
 ] as const;
+const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
+  "wiki_drydock",
+  "wiki_ingest",
+  "wiki_patch_edit",
+  "wiki_compile_source",
+  "wiki_query",
+] as const;
+const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
+const FLEET_PROFILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const PLUGIN_ASSETS_DIR = path.resolve("assets");
+const TEST_HOOK_ENTRY = {
+  entryPath: "/opt/fleet/dist/index.js",
+  execPath: "/opt/node/bin/node",
+};
+const TEST_HOOK_EXEC = buildFleetHookCommand(TEST_HOOK_ENTRY);
 
 describe("fleet-cli agent CLI MCP registration", () => {
   let lifecycle: FleetRuntimeLifecycle | undefined;
@@ -53,7 +64,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     lifecycle = undefined;
   });
 
-  it("exposes carrier and wiki tools on separate dedicated MCP servers", async () => {
+  it("exposes carrier and wiki tools on one dedicated Fleet MCP server", async () => {
     lifecycle = createFleetRuntimeLifecycle();
     const runtime = await lifecycle.start();
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
@@ -65,249 +76,423 @@ describe("fleet-cli agent CLI MCP registration", () => {
       ...server,
       token: tokens.find((entry) => entry.name === server.name)?.token,
     }));
-    const carriers = servers.find((server) => server.name === "fleet-carriers");
-    const wiki = servers.find((server) => server.name === "fleet-wiki");
+    const fleet = servers.find((server) => server.name === "fleet");
 
-    expect(carriers?.token).toBeDefined();
-    expect(wiki?.token).toBeDefined();
-    expect(carriers?.token).not.toEqual(wiki?.token);
+    expect(servers.map((server) => server.name)).toEqual(["fleet"]);
+    expect(tokens.map((entry) => entry.name)).toEqual(["fleet"]);
+    expect(fleet?.token).toBeDefined();
 
-    const carrierToolNames = await listMcpTools(carriers!.url, carriers!.token!);
-    const wikiToolNames = await listMcpTools(wiki!.url, wiki!.token!);
+    const fleetToolNames = await listMcpTools(fleet!.url, fleet!.token!);
 
-    expect([...carrierToolNames].sort()).toEqual([...EXPECTED_CARRIER_TOOL_IDS].sort());
-
-    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
-      expect(wikiToolNames.has(toolId)).toBe(true);
+    for (const toolId of EXPECTED_CARRIER_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(true);
     }
-    expect(wikiToolNames.size).toBe(EXPECTED_WIKI_TOOL_IDS.length);
-    expect(carrierToolNames.has("wiki_briefing")).toBe(false);
-    expect(wikiToolNames.has("carrier_dispatch")).toBe(false);
-    expect(wikiToolNames.has("carrier_jobs")).toBe(false);
+    for (const toolId of EXPECTED_WIKI_TOOL_IDS) {
+      expect(fleetToolNames.has(toolId)).toBe(true);
+    }
+    expect(fleetToolNames.size).toBe(EXPECTED_CARRIER_TOOL_IDS.length + EXPECTED_WIKI_TOOL_IDS.length);
+    expect(fleetToolNames.has("mcp__fleet__wiki_query")).toBe(false);
+    expect(fleetToolNames.has("mcp__carrier__carrier_dispatch")).toBe(false);
+    expect(fleetToolNames.has("mcp__wiki__wiki_query")).toBe(false);
+
+    const executorPort = executorPortRuntime;
+    expect(executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes().map((entry) => entry.name)).toEqual(["fleet"]);
+    expect(executorPort.getExecutorMcpTools("unknown", "chronicle")).toEqual([]);
+
+    const chronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "chronicle").map((tool) => tool.id));
+    const nonChronicleTools = new Set(executorPort.getExecutorMcpTools("fleet", "nimitz").map((tool) => tool.id));
+
+    for (const toolId of CHRONICLE_ONLY_WIKI_TOOL_IDS) {
+      expect(chronicleTools.has(toolId)).toBe(true);
+      expect(nonChronicleTools.has(toolId)).toBe(false);
+    }
+    expect(chronicleTools.has("wiki_patch_queue")).toBe(false);
+    expect(nonChronicleTools.has("wiki_patch_queue")).toBe(false);
+    expect(nonChronicleTools.has("wiki_briefing")).toBe(true);
+    expect(nonChronicleTools.has("wiki_orient")).toBe(true);
+    expect(nonChronicleTools.has("wiki_read")).toBe(true);
+    expect(nonChronicleTools.has("wiki_resolve")).toBe(true);
+    expect(nonChronicleTools.has("carrier_jobs")).toBe(true);
 
     const systemPrompt = createSystemPromptBuilder({
       carrierRuntime: runtime.carrierRuntime,
-      mcpRegistry: runtime.mcpRegistry,
     }).build(false);
-    expect(systemPrompt).toContain('<fleet section="tool-guide" tool="carrier_dispatch">');
-    expect(systemPrompt).toContain('<fleet section="tool-guide" tool="wiki_query">');
+    const roughTokens = Math.ceil(systemPrompt.length / 4);
+
+    expect(systemPrompt).toContain('<fleet section="role">');
+    expect(systemPrompt).toContain('<fleet section="persona">');
+    expect(systemPrompt).toContain('<fleet section="roster">');
+    expect(systemPrompt).toContain('<fleet section="protocol-gate">');
+    expect(systemPrompt).not.toContain('<fleet section="protocol">');
+    expect(systemPrompt).toContain('<fleet section="standing-orders"');
+    expect(systemPrompt).not.toContain('<fleet section="tool-guide"');
+    expect(roughTokens).toBeLessThanOrEqual(8_500);
   });
 
-  it("builds Claude and Codex configs with only the split internal MCP server names", () => {
-    const context = makeAgentCliInjectionContext();
-
-    const claudeArgs = buildClaudeNativeArgs(context);
-    const mcpConfigIndex = claudeArgs.indexOf("--mcp-config") + 1;
-    const claudeConfig = JSON.parse(claudeArgs[mcpConfigIndex]!) as {
-      mcpServers: Record<string, { headers?: { Authorization?: string } }>;
-    };
-    expect(Object.keys(claudeConfig.mcpServers).sort()).toEqual(["fleet-carriers", "fleet-wiki"]);
-    expect(claudeConfig.mcpServers["fleet-carriers"]?.headers?.Authorization).toBe("Bearer carriers-token");
-    expect(claudeConfig.mcpServers["fleet-wiki"]?.headers?.Authorization).toBe("Bearer wiki-token");
-
-    const codexArgs = buildCodexNativeArgs(context);
-    const codexConfigArgs = codexArgs.filter((arg) => arg !== "-c");
-    expect(codexConfigArgs.some((arg) => arg.includes("mcp_servers.fleet-tools"))).toBe(false);
-    expect(codexConfigArgs).toContain('mcp_servers.fleet-carriers.url="http://127.0.0.1:1000/carriers"');
-    expect(codexConfigArgs).toContain('mcp_servers.fleet-wiki.url="http://127.0.0.1:1001/wiki"');
-  });
-
-  it("writes injected system prompt files private and registers cleanup", async () => {
-    const cleanups: Array<() => void> = [];
-    const profile = await injectAgentCliProfile({
-      args: [],
-      bin: "claude",
-      cwd: process.cwd(),
-      env: {},
-      id: "claude",
-      label: "Claude",
-      terminalName: "claude",
-    }, {
-      buildSystemPrompt: () => "private fleet prompt",
-      carrierRuntime: createCarrierRuntime(),
-      dedicatedMcpSession: {
-        getEndpoint: async () => ({
-          servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+  it("builds provider args with plugin activation and spawn-time MCP injection", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-args-"));
+    const context = makeAgentCliInjectionContext(root);
+    try {
+      expect(buildClaudeNativeArgs(context)).toEqual([
+        "--system-prompt-file",
+        context.systemPromptFile,
+        "--plugin-dir",
+        context.pluginRoots[0],
+        "--mcp-config",
+        JSON.stringify({
+          mcpServers: {
+            fleet: {
+              type: "http",
+              url: "http://127.0.0.1:1000/fleet",
+              headers: { Authorization: "Bearer fleet-token" },
+            },
+          },
         }),
-        issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
-      } as never,
-      onCleanup: (cleanup) => cleanups.push(cleanup),
-    });
-    const systemPromptFile = profile.args[profile.args.indexOf("--system-prompt-file") + 1]!;
-
-    expect(readFileSync(systemPromptFile, "utf8")).toBe("private fleet prompt");
-    expect(statSync(systemPromptFile).mode & 0o777).toBe(0o600);
-    expect(systemPromptFile).not.toBe(path.join(os.tmpdir(), "fleet-claude-system-prompt.md"));
-    expect(path.basename(systemPromptFile)).toBe("system-prompt.md");
-    expect(path.dirname(systemPromptFile)).toContain(path.join(os.tmpdir(), "fleet-claude-"));
-
-    cleanups.forEach((cleanup) => cleanup());
-
-    expect(existsSync(systemPromptFile)).toBe(false);
-  });
-
-  it("passes current effective Codex model settings into startup native roles", async () => {
-    const tempDir = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-startup-"));
-    initStore(tempDir);
-    try {
-      const runtime = createCarrierRuntime();
-      runtime.registerCarrierDefaults();
-      updateAgentCliTypeOverride("ohio", "codex", "claude");
-      await updateAgentCliSelection("ohio", "codex", { model: "gpt-5.4", effort: "high" });
-      setCarrierAgentMode("ohio", true);
-
-      await injectAgentCliProfile({
-        args: [],
-        bin: "codex",
-        cwd: process.cwd(),
-        env: {},
-        id: "codex",
-        label: "Codex",
-        terminalName: "codex",
-      }, {
-        buildSystemPrompt: () => "fleet prompt",
-        carrierRuntime: runtime,
-        dedicatedMcpSession: {
-          getEndpoint: async () => ({
-            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
-          }),
-          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
-        } as never,
-      });
-
-      const roleToml = readFileSync(path.join(tempDir, "codex-agents/ohio.toml"), "utf8");
-      expect(roleToml).toContain('model = "gpt-5.4"');
-      expect(roleToml).toContain('model_reasoning_effort = "high"');
+        "--dangerously-skip-permissions",
+      ]);
+      expect(buildCodexNativeArgs(context)).toEqual([
+        "--enable",
+        "plugins",
+        "--enable",
+        "child_agents_md",
+        "--profile",
+        context.codexProfileName,
+        "-c",
+        'approval_policy="never"',
+        "-c",
+        'sandbox_mode="danger-full-access"',
+        "-c",
+        'mcp_servers.fleet.url="http://127.0.0.1:1000/fleet"',
+        "-c",
+        'mcp_servers.fleet.http_headers={"Authorization" = "Bearer fleet-token"}',
+        "-c",
+        "mcp_servers.fleet.tool_timeout_sec=1800",
+      ]);
     } finally {
-      resetStoreForTests();
-      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("heals startup Codex roles from codex persona defaults when no codex model is stored", async () => {
-    const tempDir = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-default-startup-"));
-    initStore(tempDir);
+  it("injects rendered plugin paths, child env, Claude agents, and cleanup", async () => {
+    const cleanups: Array<() => void> = [];
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const releaseSessionToken = vi.fn();
     try {
-      const runtime = createCarrierRuntime();
-      runtime.registerCarrierDefaults();
-      updateAgentCliTypeOverride("vanguard", "codex", "claude");
-
-      await injectAgentCliProfile({
+      const profile = await injectAgentCliProfile({
         args: [],
-        bin: "codex",
+        bin: "claude",
         cwd: process.cwd(),
         env: {},
-        id: "codex",
-        label: "Codex",
-        terminalName: "codex",
+        id: "claude",
+        label: "Claude",
+        terminalName: "claude",
       }, {
-        buildSystemPrompt: () => "fleet prompt",
-        carrierRuntime: runtime,
+        buildSystemPrompt: () => "private fleet prompt",
+        carrierRuntime: createCarrierRuntime(),
         dedicatedMcpSession: {
           getEndpoint: async () => ({
-            servers: [{ name: "fleet-carriers", url: "http://127.0.0.1:1000/carriers" }],
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
           }),
-          issueSessionToken: () => [{ name: "fleet-carriers", token: "carriers-token" }],
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
+          releaseSessionToken,
         } as never,
+        onCleanup: (cleanup) => cleanups.push(cleanup),
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+        pluginEntry: TEST_HOOK_ENTRY,
       });
+      const pluginRoots = pluginDirArgs(profile.args);
+      const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
+      const systemPromptFile = argValue(profile.args, "--system-prompt-file");
 
-      const roleToml = readFileSync(path.join(tempDir, "codex-agents/vanguard.toml"), "utf8");
-      expect(roleToml).toContain('model = "gpt-5.4-mini"');
-      expect(roleToml).toContain('model_reasoning_effort = "low"');
+      expect(pluginRoots).toEqual([pluginRoot]);
+      expect(systemPromptFile).toBeDefined();
+      expect(readFileSync(systemPromptFile!, "utf8")).toBe("private fleet prompt");
+      expect(readJson(path.join(pluginRoot, "hooks", "hooks.json"))).toMatchObject({
+        hooks: {
+          SessionStart: [{
+            hooks: [{
+              args: TEST_HOOK_EXEC.args,
+              command: TEST_HOOK_EXEC.command,
+              type: "command",
+            }],
+          }],
+        },
+      });
+      expect(existsSync(path.join(pluginRoot, ".mcp.json"))).toBe(false);
+      expect(readFileSync(path.join(pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("name: fleet-wiki-usage");
+      const renderedArgs = profile.args.join(" ");
+      expect(renderedArgs).toContain("fleet-token");
+      expect(Object.values(profile.env)).not.toContain("fleet-token");
+
+      profile.cleanup?.();
+      for (const cleanup of cleanups) {
+        cleanup();
+      }
+
+      expect(existsSync(pluginRoot)).toBe(true);
+      expect(existsSync(systemPromptFile!)).toBe(false);
+      expect(releaseSessionToken).toHaveBeenCalledTimes(1);
     } finally {
-      resetStoreForTests();
-      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(rootDir, { recursive: true, force: true });
     }
   });
 
-  it("serializes inline Claude subagent model and effort in the Claude --agents JSON payload", () => {
-    const context = {
-      ...makeAgentCliInjectionContext(),
-      claudeSubagents: [
-        {
-          carrierId: "ohio",
-          color: "yellow" as const,
-          description: "Ohio native subagent",
-          effort: "low",
-          model: "sonnet",
-          name: "Ohio",
-          prompt: "system prompt",
+  it("registers Codex plugin through the resolved Codex CLI before launch args are returned", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
+    const staleProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000000.config.toml");
+    const freshProfilePath = path.join(codexHome, "fleet-00000000-0000-4000-8000-000000000001.config.toml");
+    const userFleetProfilePath = path.join(codexHome, "fleet.config.toml");
+    const commands: string[] = [];
+    const codexState = {
+      installed: new Set<string>(),
+      marketplaceRoot: undefined as string | undefined,
+    };
+    const releaseSessionToken = vi.fn();
+    try {
+      writeFileSync(staleProfilePath, `${CODEX_FLEET_PROFILE_MARKER}\nold = true\n`, { encoding: "utf8" });
+      writeFileSync(freshProfilePath, `${CODEX_FLEET_PROFILE_MARKER}\nfresh = true\n`, { encoding: "utf8" });
+      writeFileSync(userFleetProfilePath, "user = true\n", { encoding: "utf8" });
+      const staleMtime = new Date(Date.now() - (25 * 60 * 60 * 1000));
+      utimesSync(staleProfilePath, staleMtime, staleMtime);
+      const profile = await injectAgentCliProfile({
+        args: ["--no-alt-screen"],
+        bin: "/usr/local/bin/codex",
+        cwd: process.cwd(),
+        env: { CODEX_HOME: codexHome, PATH: process.env.PATH ?? "" },
+        id: "codex",
+        label: "Codex",
+        terminalName: "xterm-256color",
+      }, {
+        buildSystemPrompt: () => "private fleet prompt",
+        carrierRuntime: createCarrierRuntime(),
+        codexCommandRunner: (command: CodexPluginRegistrationCommand) => {
+          expect(command.bin).toBe("/usr/local/bin/codex");
+          const line = command.args.join(" ");
+          commands.push(line);
+	          if (line === "plugin marketplace list") {
+	            return {
+	              status: 0,
+	              stderr: "",
+	              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet-harness ${codexState.marketplaceRoot}\n`,
+	            };
+	          }
+          if (line.startsWith("plugin marketplace add ")) {
+            codexState.marketplaceRoot = line.slice("plugin marketplace add ".length);
+            return { status: 0, stderr: "", stdout: "" };
+          }
+          if (line === "plugin list") {
+	            return {
+	              status: 0,
+	              stderr: "",
+	              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet-harness  installed, enabled`).join("\n"),
+	            };
+	          }
+	          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
+	            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet-harness".length));
+	            return { status: 0, stderr: "", stdout: "" };
+	          }
+          return { status: 0, stderr: "", stdout: "" };
         },
-      ],
-    };
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
+          }),
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
+          releaseSessionToken,
+        } as never,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+      });
 
-    const claudeArgs = buildClaudeNativeArgs(context);
-    // 이 검증은 builder의 argv/JSON 직렬화 범위만 다룹니다.
-    // 실제 Claude CLI의 per-agent effort 수용성은 별도 수동 또는 smoke 검증이 필요합니다.
-    expect(claudeArgs.filter((arg) => arg === "--agents")).toHaveLength(1);
-    expect(JSON.parse(claudeArgs[claudeArgs.indexOf("--agents") + 1]!)).toEqual({
-      "Ohio": {
-        background: true,
-        color: "yellow",
-        description: "Ohio native subagent",
-        effort: "low",
-        model: "sonnet",
-        prompt: "system prompt",
-      },
-    });
-    expect(buildCodexNativeArgs(context)).not.toContain("--agents");
+      expect(commands).toEqual([
+	        "plugin marketplace list",
+	        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
+	        "plugin list",
+	        "plugin add fleet -m fleet-harness",
+	      ]);
+      expect(profile.args).toContain("--enable");
+      expect(profile.args).toContain("child_agents_md");
+      expect(profile.args).toContain("--profile");
+      const profileName = argValue(profile.args, "--profile");
+      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
+      const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+      expect(profile.args).not.toContain("plugin_hooks");
+      expect(profile.args).not.toContain("--dangerously-bypass-hook-trust");
+      expect(readFileSync(profilePath, "utf8")).toBe([
+        CODEX_FLEET_PROFILE_MARKER,
+        'developer_instructions = """',
+        "private fleet prompt",
+        '"""',
+        "",
+        '[plugins."fleet@fleet-harness"]',
+        "enabled = true",
+        "",
+      ].join("\n"));
+      expect(existsSync(staleProfilePath)).toBe(false);
+      expect(existsSync(freshProfilePath)).toBe(true);
+      expect(existsSync(userFleetProfilePath)).toBe(true);
+      profile.cleanup?.();
+      expect(existsSync(profilePath)).toBe(false);
+      expect(releaseSessionToken).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
+    }
   });
 
-  it("serializes Codex native roles as agents config_file overrides", () => {
-    const context = {
-      ...makeAgentCliInjectionContext(),
-      codexSubagents: [
-        {
-          definition: buildCodexSubagentDefinition(createTestCarrierConfig("ohio")),
-          configFile: "/tmp/fleet-data/codex-agents/ohio.toml",
+  it("enables every rendered Codex plugin in the Fleet session profile", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "fleet-project-cwd-"));
+    const commands: string[] = [];
+    const codexState = {
+      installed: new Set<string>(),
+      marketplaces: new Map<string, string>(),
+    };
+    try {
+      mkdirSync(path.join(cwd, ".fleet", "skills", "project-skill"), { recursive: true, mode: 0o700 });
+      writeFileSync(path.join(cwd, ".fleet", "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8" });
+      const projectMarketplaceRoot = path.resolve(cwd, ".fleet");
+      const projectMarketplaceName = projectMarketplaceNameForCwd(cwd);
+
+      const profile = await injectAgentCliProfile({
+        args: [],
+        bin: "/usr/local/bin/codex",
+        cwd,
+        env: { CODEX_HOME: codexHome },
+        id: "codex",
+        label: "Codex",
+        terminalName: "xterm-256color",
+      }, {
+        buildSystemPrompt: () => "private fleet prompt",
+        carrierRuntime: createCarrierRuntime(),
+        codexCommandRunner: (command: CodexPluginRegistrationCommand) => {
+          const line = command.args.join(" ");
+          commands.push(line);
+          if (line === "plugin marketplace list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: [...codexState.marketplaces].map(([name, root]) => `${name} ${root}`).join("\n"),
+            };
+          }
+          if (line.startsWith("plugin marketplace add ")) {
+            const marketplaceRoot = line.slice("plugin marketplace add ".length);
+            const marketplaceName = marketplaceRoot === projectMarketplaceRoot ? projectMarketplaceName : "fleet-harness";
+            codexState.marketplaces.set(marketplaceName, marketplaceRoot);
+            return { status: 0, stderr: "", stdout: "" };
+          }
+          if (line === "plugin list") {
+            return {
+              status: 0,
+              stderr: "",
+              stdout: [...codexState.installed].map((pluginKey) => `${pluginKey}  installed, enabled`).join("\n"),
+            };
+          }
+          const addMatch = line.match(/^plugin add (\S+) -m (\S+)$/);
+          if (addMatch) {
+            codexState.installed.add(`${addMatch[1]}@${addMatch[2]}`);
+            return { status: 0, stderr: "", stdout: "" };
+          }
+          return { status: 0, stderr: "", stdout: "" };
         },
-      ],
-    };
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
+          }),
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
+          releaseSessionToken: vi.fn(),
+        } as never,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+      });
 
-    const codexArgs = buildCodexNativeArgs(context);
-    const codexConfigArgs = codexArgs.filter((arg) => arg !== "-c");
-
-    expect(codexConfigArgs.some((arg) => arg.startsWith("agents.ohio.description="))).toBe(true);
-    expect(codexConfigArgs).toContain('agents.ohio.config_file="/tmp/fleet-data/codex-agents/ohio.toml"');
-    expect(codexConfigArgs.some((arg) => arg.includes("developer_instructions"))).toBe(false);
-    expect(codexConfigArgs.some((arg) => arg.includes("model_reasoning_effort"))).toBe(false);
+      expect(commands).toEqual([
+        "plugin marketplace list",
+        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
+        "plugin list",
+        "plugin add fleet -m fleet-harness",
+        "plugin marketplace list",
+        `plugin marketplace add ${projectMarketplaceRoot}`,
+        "plugin list",
+        `plugin add fleet-project -m ${projectMarketplaceName}`,
+      ]);
+      expect(codexState.installed).toEqual(new Set(["fleet@fleet-harness", `fleet-project@${projectMarketplaceName}`]));
+      const profileName = argValue(profile.args, "--profile");
+      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
+      expect(readFileSync(path.join(codexHome, `${profileName}.config.toml`), "utf8")).toBe([
+        CODEX_FLEET_PROFILE_MARKER,
+        'developer_instructions = """',
+        "private fleet prompt",
+        '"""',
+        "",
+        '[plugins."fleet@fleet-harness"]',
+        "enabled = true",
+        "",
+        `[plugins."fleet-project@${projectMarketplaceName}"]`,
+        "enabled = true",
+        "",
+      ].join("\n"));
+      profile.cleanup?.();
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
-  it("keeps malicious Claude subagent metadata inside one parseable --agents argv", () => {
-    const maliciousFixture = {
-      displayName: 'Display "Name"\n--display-flag $() </fleet>',
-      prompt: 'Prompt "body"\n--prompt-flag $(touch sentinel) </fleet>',
-      summary: 'Summary "line"\n--summary-flag $() </fleet>',
-      title: 'Title "role"\n--title-flag $() </fleet>',
-    };
-    const definition = buildClaudeSubagentDefinition(makeMaliciousCarrierConfig(maliciousFixture));
-    const context = {
-      ...makeAgentCliInjectionContext(),
-      claudeSubagents: [definition],
-    };
+  it("continues Codex launch profile injection when plugin registration fails", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
+    const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
+    try {
+      const profile = await injectAgentCliProfile({
+        args: [],
+        bin: "/usr/local/bin/codex",
+        cwd: process.cwd(),
+        env: { CODEX_HOME: codexHome },
+        id: "codex",
+        label: "Codex",
+        terminalName: "xterm-256color",
+      }, {
+        buildSystemPrompt: () => "private fleet prompt",
+        carrierRuntime: createCarrierRuntime(),
+        codexCommandRunner: () => ({ status: 1, stderr: "codex plugin exploded", stdout: "" }),
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({
+            servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
+          }),
+          issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
+          releaseSessionToken: vi.fn(),
+        } as never,
+        pluginRootDir: rootDir,
+        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+      });
 
-    const claudeArgs = buildClaudeNativeArgs(context);
-    const agentsIndex = claudeArgs.indexOf("--agents");
-    const payloadArg = claudeArgs[agentsIndex + 1]!;
-    const parsedPayload = JSON.parse(payloadArg) as Record<string, unknown>;
-
-    expect(claudeArgs).toHaveLength(7);
-    expect(claudeArgs.filter((arg) => arg === "--agents")).toHaveLength(1);
-    expect(claudeArgs.filter((arg) => arg === "--display-flag")).toHaveLength(0);
-    expect(claudeArgs.filter((arg) => arg === "--prompt-flag")).toHaveLength(0);
-    expect(parsedPayload).toEqual({
-      [definition.name]: {
-        background: true,
-        description: definition.description,
-        prompt: definition.prompt,
-      },
-    });
-    expect(definition.description).toContain('--display-flag $() </fleet>');
-    expect(definition.description).toContain('--title-flag $() </fleet>');
-    expect(definition.description).toContain('--summary-flag $() </fleet>');
-    expect(definition.prompt).toContain(maliciousFixture.prompt);
+      expect(profile.args).toContain("child_agents_md");
+      const profileName = argValue(profile.args, "--profile");
+      expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
+      const profilePath = path.join(codexHome, `${profileName}.config.toml`);
+      expect(readFileSync(profilePath, "utf8")).toBe([
+        CODEX_FLEET_PROFILE_MARKER,
+        'developer_instructions = """',
+        "private fleet prompt",
+        '"""',
+        "",
+        '[plugins."fleet@fleet-harness"]',
+        "enabled = true",
+        "",
+      ].join("\n"));
+      expect(profile.launchWarnings?.[0]).toContain("codex plugin marketplace list failed");
+      expect(profile.launchWarnings?.[0]).toContain("codex plugin exploded");
+      profile.cleanup?.();
+      expect(existsSync(profilePath)).toBe(false);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+      rmSync(codexHome, { recursive: true, force: true });
+    }
   });
-
 });
 
 async function listMcpTools(url: string, token: string): Promise<Set<string>> {
@@ -327,73 +512,42 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
   return new Set(body.result?.tools?.map((tool) => tool.name).filter((name): name is string => Boolean(name)));
 }
 
-function makeAgentCliInjectionContext(): AgentCliInjectionContext {
+function readJson(filePath: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+}
+
+function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
+  const pluginRoot = path.join(root, "marketplace", "plugins", "fleet");
+  mkdirSync(pluginRoot, { recursive: true, mode: 0o700 });
   return {
     cliId: "codex",
     mcpServers: [
-      {
-        name: "fleet-carriers",
-        endpointUrl: "http://127.0.0.1:1000/carriers",
-        bearerToken: "carriers-token",
-      },
-      {
-        name: "fleet-wiki",
-        endpointUrl: "http://127.0.0.1:1001/wiki",
-        bearerToken: "wiki-token",
-      },
+      { name: "fleet", endpointUrl: "http://127.0.0.1:1000/fleet", bearerToken: "fleet-token" },
     ],
+    pluginRoot,
+    pluginRoots: [pluginRoot],
+    codexProfileName: "fleet-00000000-0000-4000-8000-000000000000",
     replaceSystemPrompt: true,
-    systemPromptFile: "/tmp/fleet-system-prompt.md",
+    systemPromptFile: path.join(root, "system-prompt.md"),
   };
 }
 
-function makeMaliciousCarrierConfig(fixture: {
-  readonly displayName: string;
-  readonly prompt: string;
-  readonly summary: string;
-  readonly title: string;
-}): CarrierConfig {
-  return {
-    id: 'malicious-"carrier"',
-    defaultCliType: "claude",
-    slot: 1,
-    displayName: fixture.displayName,
-    color: "",
-    carrierMetadata: {
-      title: fixture.title,
-      summary: fixture.summary,
-      category: "operations",
-      whenToUse: [],
-      whenNotToUse: [],
-      requestBlocks: [],
-      permissions: [],
-      outputFormat: fixture.prompt,
-    },
-  };
+function projectMarketplaceNameForCwd(cwd: string): string {
+  const hash = crypto.createHash("sha256").update(path.resolve(cwd, ".fleet")).digest("hex").slice(0, 12);
+  return `fleet-project-${hash}`;
 }
 
-function createTestCarrierConfig(id: string): CarrierConfig {
-  return {
-    carrierMetadata: {
-      category: "operations",
-      outputFormat: "Report completion.",
-      permissions: ["Execute only the assigned wave."],
-      principles: ["Follow the plan."],
-      requestBlocks: [],
-      summary: "Multi-wave execution",
-      title: "Captain",
-      whenNotToUse: [],
-      whenToUse: ["plan-file execution"],
-    },
-    color: "",
-    defaultCliType: "claude",
-    displayName: id[0]!.toUpperCase() + id.slice(1),
-    id,
-    slot: 1,
-    subagent: {
-      byHost: {
-        codex: { defaultModel: "gpt-5.5", defaultEffort: "low" },
-      },
-    },
-  };
+function argValue(args: readonly string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  return index === -1 ? undefined : args[index + 1];
+}
+
+function pluginDirArgs(args: readonly string[]): string[] {
+  const pluginDirs: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--plugin-dir") {
+      pluginDirs.push(args[index + 1]!);
+    }
+  }
+  return pluginDirs;
 }

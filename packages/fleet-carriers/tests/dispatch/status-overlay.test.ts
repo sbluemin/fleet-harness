@@ -38,11 +38,11 @@ describe("StatusOverlayController", () => {
     const result = await controller.changeCliType("vanguard", "codex");
 
     expect(result).toEqual({
-      model: "gpt-5.4-mini",
-      effort: "low",
+      model: "gpt-provider-default",
+      effort: "medium",
       isDefault: true,
     });
-    expect(savedSelection).toEqual({ model: "gpt-5.4-mini", effort: "low" });
+    expect(savedSelection).toEqual({ model: "gpt-provider-default", effort: "medium" });
   });
 });
 
@@ -54,10 +54,5 @@ function createCarrierConfig(): CarrierConfig {
     displayName: "Vanguard",
     id: "vanguard",
     slot: 6,
-    subagent: {
-      byHost: {
-        codex: { defaultModel: "gpt-5.4-mini", defaultEffort: "low" },
-      },
-    },
   };
 }

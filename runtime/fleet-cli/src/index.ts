@@ -1,15 +1,26 @@
 import { spawn } from "node:child_process";
+import path, { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 import { createInfraServices } from "@dotobokuri/fleet-infra";
 
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
-import { buildFleetHelpText, parseFleetCliOptions } from "./cli-args.js";
+import { buildFleetHelpText, parseFleetCliOptions, parseFleetHookCommand } from "./cli-args.js";
+import { runSubagentsContextHook } from "./hooks/subagents-context.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
 const require = createRequire(import.meta.url);
+const FLEET_ENTRY_PATH = fileURLToPath(import.meta.url);
+const PLUGIN_ASSETS_DIR = path.join(dirname(dirname(FLEET_ENTRY_PATH)), "assets");
+const PLUGIN_TSX_LOADER_PATH = resolveOptionalPackage("tsx");
+const PLUGIN_ENTRY = {
+  entryPath: FLEET_ENTRY_PATH,
+  execPath: process.execPath,
+  ...(PLUGIN_TSX_LOADER_PATH ? { tsxLoaderPath: PLUGIN_TSX_LOADER_PATH } : {}),
+};
 const argv = process.argv.slice(2);
 
 if (argv[0] === "auth") {
@@ -21,6 +32,14 @@ if (argv[0] === "auth") {
     { authService: authInfraServices.authService },
   );
   process.exit(status);
+}
+
+if (argv[0] === "hook") {
+  const hookCommand = parseFleetHookCommandOrExit(argv.slice(1));
+  if (hookCommand === "subagents-context") {
+    process.stdout.write(`${runSubagentsContextHook(process.env)}\n`);
+    process.exit(0);
+  }
 }
 
 if (argv[0] === "wiki") {
@@ -72,6 +91,8 @@ if (options.help) {
 runApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
+  pluginAssetsDir: PLUGIN_ASSETS_DIR,
+  pluginEntry: PLUGIN_ENTRY,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);
   process.stderr.write(`${message}\n`);
@@ -85,5 +106,23 @@ function parseFleetCliOptionsOrExit(argv: readonly string[]): ReturnType<typeof 
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
     process.exit(1);
+  }
+}
+
+function parseFleetHookCommandOrExit(argv: readonly string[]): ReturnType<typeof parseFleetHookCommand> {
+  try {
+    return parseFleetHookCommand(argv);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exit(1);
+  }
+}
+
+function resolveOptionalPackage(id: string): string | undefined {
+  try {
+    return require.resolve(id);
+  } catch {
+    return undefined;
   }
 }

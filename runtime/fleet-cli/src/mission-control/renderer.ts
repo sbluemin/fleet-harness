@@ -11,6 +11,8 @@ import { buildFleetBanner, centerText, FLEET_ACCENT } from "./welcome.js";
 interface MissionControlRenderOptions {
   readonly bannerPhase?: number;
   readonly cliOptions: readonly MissionControlCliOption[];
+  readonly lastLaunchError?: string;
+  readonly lastLaunchWarning?: string;
   readonly lastExit: PtyExitEvent | undefined;
   readonly loadedCounts: MissionControlCounts | undefined;
   readonly panelLines?: readonly string[];
@@ -74,7 +76,10 @@ export function renderMissionControl(width: number, options: MissionControlRende
     return lines;
   }
 
-  lines.push(renderStatusLine(options.state, options.lastExit, innerWidth));
+  lines.push(renderStatusLine(options.state, options.lastExit, options.lastLaunchError, innerWidth));
+  if (options.lastLaunchWarning !== undefined) {
+    lines.push(centerText(STYLE.warning(`Warning: ${options.lastLaunchWarning}`), innerWidth));
+  }
   lines.push("");
 
   for (const [index, entry] of options.cliOptions.entries()) {
@@ -103,8 +108,13 @@ export function renderMissionControl(width: number, options: MissionControlRende
   return lines;
 }
 
-function renderStatusLine(state: MissionControlStateKind, event: PtyExitEvent | undefined, innerWidth: number): string {
-  const { text, tone } = getStatusText(state, event);
+function renderStatusLine(
+  state: MissionControlStateKind,
+  event: PtyExitEvent | undefined,
+  launchError: string | undefined,
+  innerWidth: number,
+): string {
+  const { text, tone } = getStatusText(state, event, launchError);
   return centerText(STYLE[tone](text), innerWidth);
 }
 
@@ -169,7 +179,11 @@ function renderFooterHint(state: MissionControlStateKind, innerWidth: number): s
   return centerText(STYLE.dim(hint), innerWidth);
 }
 
-function getStatusText(state: MissionControlStateKind, event: PtyExitEvent | undefined): { readonly text: string; readonly tone: StatusTone } {
+function getStatusText(
+  state: MissionControlStateKind,
+  event: PtyExitEvent | undefined,
+  launchError: string | undefined,
+): { readonly text: string; readonly tone: StatusTone } {
   if (state === "launching") {
     return { text: "Starting selected Agent CLI...", tone: "warning" };
   }
@@ -179,6 +193,9 @@ function getStatusText(state: MissionControlStateKind, event: PtyExitEvent | und
   }
 
   if (state === "failed") {
+    if (launchError !== undefined) {
+      return { text: `Failed: ${launchError}`, tone: "error" };
+    }
     return { text: `Failed${formatExitEvent(event)}`, tone: "error" };
   }
 

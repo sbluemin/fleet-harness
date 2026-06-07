@@ -44,14 +44,14 @@ export function buildClaudeSubagentDefinition(config: CarrierConfig): ClaudeSuba
   return definition;
 }
 
-// 캐리어 ID를 Claude 서브에이전트 주입 이름(prefix 없는 Upper Camel Case)으로 변환한다.
+// 캐리어 ID를 Claude 서브에이전트 주입 이름(prefix 없는 소문자)으로 변환한다.
 export function buildClaudeSubagentName(carrierId: string): string {
-  const pascalCaseName = carrierId
+  const lowerCaseName = carrierId
     .split(NAME_SEGMENT_SPLIT_PATTERN)
     .filter((segment) => segment.length > 0)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .map((segment) => segment.toLowerCase())
     .join("");
-  return pascalCaseName || "Carrier";
+  return lowerCaseName || "carrier";
 }
 
 function buildDescription(config: CarrierConfig): string {

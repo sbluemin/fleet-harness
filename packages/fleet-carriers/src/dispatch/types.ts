@@ -1,7 +1,7 @@
-import { CLI_BACKENDS, type CliType, type HealthStatus, type ProviderKey } from "@dotobokuri/fleet-unified-agent";
-import type { TrackStatus } from "@dotobokuri/fleet-infra";
+import { CLI_BACKENDS, type CliType, type HealthStatus, type ProviderKey } from "@dotobokuri/core-unified-agent";
+import type { TrackStatus } from "@dotobokuri/core-agent";
 
-export type { TrackStatus } from "@dotobokuri/fleet-infra";
+export type { TrackStatus } from "@dotobokuri/core-agent";
 
 /**
  * fleet/carrier/types.ts — Carrier 프레임워크 타입 정의
@@ -106,7 +106,6 @@ export interface CarrierPersonaAgentDefaults {
   readonly nativeSubagents?: {
     readonly byHost?: {
       readonly claude?: CarrierAgentProviderDefaults;
-      readonly codex?: CarrierAgentProviderDefaults;
     };
   };
 }
@@ -116,7 +115,6 @@ export interface CarrierSubagentConfig {
   subagent?: {
     readonly byHost?: {
       readonly claude?: CarrierAgentProviderDefaults;
-      readonly codex?: CarrierAgentProviderDefaults;
     };
     /** @deprecated byHost.claude를 사용한다. 기존 확장 호환용 읽기 필드. */
     readonly provider?: "claude";
@@ -166,6 +164,8 @@ export interface TrackMeta {
   streamKey: string;
   displayCli: string;
   displayName: string;
+  effort?: string;
+  model?: string;
   subtitle?: string;
   startedAt?: number;
   kind: TrackKind;

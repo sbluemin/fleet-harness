@@ -225,7 +225,6 @@ function resolvePersonaCliDefaults(
   cliType: CarrierCliType,
 ): PersonaCliDefaults {
   if (!config) return {};
-  if (cliType === "codex") return config.subagent?.byHost?.codex ?? {};
   if (cliType === "claude") {
     return config.subagent?.byHost?.claude ?? {
       ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),

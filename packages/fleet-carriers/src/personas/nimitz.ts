@@ -23,7 +23,6 @@ export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "opus[1m]", defaultEffort: "xhigh" },
-        codex: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
       },
     },
   },

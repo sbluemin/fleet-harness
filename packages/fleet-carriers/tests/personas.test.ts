@@ -63,17 +63,6 @@ const EXPECTED_CLAUDE_SUBAGENT_DEFAULTS = {
   ohio: { defaultModel: "sonnet", defaultEffort: "low" },
 } as const;
 
-const EXPECTED_CODEX_PROVIDER_DEFAULTS = {
-  genesis: { defaultModel: "gpt-5.5", defaultEffort: "medium" },
-  kirov: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
-  nimitz: { defaultModel: "gpt-5.5", defaultEffort: "xhigh" },
-  sentinel: { defaultModel: "gpt-5.5", defaultEffort: "high" },
-  vanguard: { defaultModel: "gpt-5.4-mini", defaultEffort: "low" },
-  tempest: { defaultModel: "gpt-5.4-mini", defaultEffort: "xhigh" },
-  chronicle: { defaultModel: "gpt-5.4", defaultEffort: "medium" },
-  ohio: { defaultModel: "gpt-5.5", defaultEffort: "low" },
-} as const;
-
 const EXPECTED_CHRONICLE_EXECUTOR_TOOLS = [
   "wiki_briefing",
   "wiki_drydock",
@@ -161,7 +150,7 @@ describe("persona defaults", () => {
         defaultEffort: EXPECTED_DEFAULTS[id].defaultEffort,
       });
       expect(persona.defaults.agent.nativeSubagents?.byHost?.claude).toEqual(EXPECTED_CLAUDE_SUBAGENT_DEFAULTS[id]);
-      expect(persona.defaults.agent.nativeSubagents?.byHost?.codex).toEqual(EXPECTED_CODEX_PROVIDER_DEFAULTS[id]);
+      expect(Object.keys(persona.defaults.agent.nativeSubagents?.byHost ?? {})).not.toContain("codex");
     }
   });
 
@@ -200,14 +189,14 @@ describe("explicit default registration", () => {
     }
   });
 
-  it("모든 기본 carrier가 Claude/Codex native subagent 기본값을 가진다", () => {
+  it("모든 기본 carrier가 Claude native subagent 기본값만 가진다", () => {
     registerDefaultCarriers(registry);
 
     for (const id of EXPECTED_IDS) {
       const config = getRegisteredCarrierConfig(registry, id);
 
       expect(config?.subagent?.byHost?.claude).toEqual(EXPECTED_CLAUDE_SUBAGENT_DEFAULTS[id]);
-      expect(config?.subagent?.byHost?.codex).toEqual(EXPECTED_CODEX_PROVIDER_DEFAULTS[id]);
+      expect(Object.keys(config?.subagent?.byHost ?? {})).not.toContain("codex");
     }
   });
 });

@@ -33,11 +33,6 @@
       "import": "./dist/auth.js",
       "require": "./dist/auth.cjs"
     },
-    "./agent": {
-      "types": "./dist/agent/index.d.ts",
-      "import": "./dist/agent.js",
-      "require": "./dist/agent.cjs"
-    },
     "./data-dir": {
       "types": "./dist/data-dir/index.d.ts",
       "import": "./dist/data-dir.js",
@@ -56,9 +51,6 @@
   },
   "typesVersions": {
     "*": {
-      "agent": [
-        "dist/agent/index.d.ts"
-      ],
       "auth": [
         "dist/auth/index.d.ts"
       ],
@@ -74,8 +66,7 @@
     }
   },
   "dependencies": {
-    "@dotobokuri/fleet-mcp-server": "workspace:*",
-    "@dotobokuri/fleet-unified-agent": "workspace:*"
+    "@dotobokuri/core-unified-agent": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

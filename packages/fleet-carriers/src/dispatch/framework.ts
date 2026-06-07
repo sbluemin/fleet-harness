@@ -10,7 +10,7 @@
  *  - slot 기반 등록 순서 관리
  */
 
-import { getEffort, type CliType } from "@dotobokuri/fleet-unified-agent";
+import { getEffort, type CliType } from "@dotobokuri/core-unified-agent";
 import { CLI_DISPLAY_NAMES } from "../constants.js";
 import {
   loadCarrierDisplayNameOverrides,

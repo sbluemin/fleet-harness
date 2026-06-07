@@ -3479,3 +3479,91 @@
 - result: `accepted`
 - target: `wiki/prd-infra-durable-store-primitive.md`
 
+## 2026-06-07T03:13:52.212Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-07T03:16:31.901Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-07T03:18:01.985Z — raw source added
+
+- id: `guide-005-cli-hooks-io-comparison-source`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-6fb1bd2b.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `Claude Code vs Codex CLI — Hook Input/Output 활용 기능 비교`
+
+## 2026-06-07T03:18:01.988Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-07T03-18-01-960Z-4781b20c`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-6fb1bd2b.md`
+- target: `wiki/guide-005-cli-hooks-io-comparison.md`
+- warning_count: `0`
+
+## 2026-06-07T03:18:07.513Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-07T03:18:42.870Z — index rebuilt
+
+- entry_count: `25`
+
+## 2026-06-07T03:18:42.872Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-07T03-18-01-960Z-4781b20c`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-6fb1bd2b.md`
+- result: `accepted`
+- target: `wiki/guide-005-cli-hooks-io-comparison.md`
+
+## 2026-06-07T03:27:07.336Z — raw source added
+
+- id: `guide-005-cli-hooks-io-comparison-source`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교`
+
+## 2026-06-07T03:27:07.338Z — patch enqueued
+
+- op: `update_wiki`
+- patch_id: `2026-06-07T03-27-07-329Z-47f17b18`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
+- target: `wiki/guide-005-cli-hooks-io-comparison.md`
+- warning_count: `0`
+
+## 2026-06-07T03:27:11.156Z — index rebuilt
+
+- entry_count: `25`
+
+## 2026-06-07T03:27:11.157Z — patch approved
+
+- op: `update_wiki`
+- patch_id: `2026-06-07T03-27-07-329Z-47f17b18`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
+- result: `accepted`
+- target: `wiki/guide-005-cli-hooks-io-comparison.md`
+

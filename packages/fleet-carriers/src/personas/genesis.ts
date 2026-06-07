@@ -23,7 +23,6 @@ export const GENESIS_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "sonnet", defaultEffort: "medium" },
-        codex: { defaultModel: "gpt-5.5", defaultEffort: "medium" },
       },
     },
   },

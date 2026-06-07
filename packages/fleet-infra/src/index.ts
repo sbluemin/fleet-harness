@@ -1,24 +1,17 @@
-import * as agent from "./agent/index.js";
 import { auth } from "./auth/index.js";
 import { createAuthService, DEFAULT_AUTH_PATH } from "./auth/auth-storage.js";
 import { dataDir } from "./data-dir/index.js";
 import * as fsStore from "./fs-store/index.js";
 import * as globalOptions from "./global-options/index.js";
-import {
-  executorPortRuntime,
-  type ExecutorPortRuntime,
-} from "./agent/index.js";
 import { createGlobalOptionsService, type GlobalOptionsService } from "./global-options/index.js";
 import type { AuthService } from "./auth/types.js";
 
 export interface InfraServices {
-  agent: typeof agent;
   auth: typeof auth;
   authService: AuthService;
   dataDir: typeof dataDir;
   fsStore: typeof fsStore;
   globalOptions: typeof globalOptions;
-  executorPortRuntime: ExecutorPortRuntime;
   globalOptionsService: GlobalOptionsService;
 }
 
@@ -26,14 +19,12 @@ export interface InfraServicesDeps {
   readonly authPath?: string;
 }
 
-export * from "./agent/index.js";
 export * from "./auth/index.js";
 export * from "./data-dir/index.js";
 export * from "./fs-store/index.js";
 export * from "./global-options/index.js";
 
 export const infra = {
-  agent,
   auth,
   dataDir,
   fsStore,
@@ -45,13 +36,11 @@ export function createInfraServices(deps: InfraServicesDeps = {}): InfraServices
   const authService = createAuthService({ authPath: deps.authPath ?? DEFAULT_AUTH_PATH });
 
   return {
-    agent,
     auth,
     authService,
     dataDir,
     fsStore,
     globalOptions,
-    executorPortRuntime,
     globalOptionsService,
   };
 }

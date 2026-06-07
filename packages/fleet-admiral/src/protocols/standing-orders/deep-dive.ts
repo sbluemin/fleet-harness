@@ -16,7 +16,7 @@ export const DEEP_DIVE: StandingOrder = {
   name: "Deep Dive",
   prompt: String.raw`## Deep Dive Standing Order
 
-A cross-cutting verification procedure that can be triggered **from any phase** whenever results contain speculation, ambiguity, or insufficient evidence. It is not a workflow phase itself — it is a procedure that interrupts the current phase, runs to completion, and then resumes the phase.
+A cross-cutting verification procedure that can be triggered **from any phase** whenever results contain speculation, ambiguity, or insufficient evidence. It is not a workflow phase itself — it is a procedure that interrupts the current phase, runs to completion, and then resumes the phase. Throughout, never flatten uncertainty into confident-sounding summaries — preserve and surface ambiguity honestly.
 
 ### Trigger
 Any phase produces output (from a Carrier, from the Admiral's own analysis, or from a review) that contains speculative, assumed, or unverified claims.
@@ -31,8 +31,5 @@ Any phase produces output (from a Carrier, from the Admiral's own analysis, or f
 4. **Repeat** until all speculative elements are either **confirmed with evidence** or explicitly flagged as **unresolvable unknowns**.
 
 ### Depth limit
-Deep Dive verification depth is capped at **2 iterations**. If after 2 rounds of audit + follow-up verification a claim remains unconfirmed, mark it as ${"``"}[Unverified — depth limit reached]${"``"} and report it to the Admiral of the Navy (대원수). Do not continue iterating — the cost of further verification outweighs the risk of surfaced uncertainty.
-
-### Admiral's role (yours — the host agent, 제독; not the user)
-Your role throughout Deep Dive is **coordination, not investigation**. Route, synthesize, and report — do not spend effort on direct deep analysis. Do **not** flatten uncertainty into confident-sounding summaries — preserve and surface ambiguity honestly.`,
+Deep Dive verification depth is capped at **2 iterations**. If after 2 rounds of audit + follow-up verification a claim remains unconfirmed, mark it as ${"``"}[Unverified — depth limit reached]${"``"} and report it to the Admiral of the Navy (대원수). Do not continue iterating — the cost of further verification outweighs the risk of surfaced uncertainty.`,
 };

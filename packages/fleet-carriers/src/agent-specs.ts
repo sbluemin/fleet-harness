@@ -50,7 +50,6 @@ export function registerDefaultCarriers(registry: CarrierRegistry): void {
 function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): CarrierConfig {
   const { defaults, metadata } = registration;
   const claudeSubagentDefaults = defaults.agent.nativeSubagents?.byHost?.claude;
-  const codexSubagentDefaults = defaults.agent.nativeSubagents?.byHost?.codex;
   return {
     id: defaults.id,
     defaultCliType: defaults.agent.dispatch.defaultCliType,
@@ -66,7 +65,6 @@ function buildDefaultCarrierConfig(registration: DefaultCarrierRegistration): Ca
       defaultEffort: claudeSubagentDefaults?.defaultEffort,
       byHost: {
         claude: claudeSubagentDefaults,
-        codex: codexSubagentDefaults,
       },
     },
   };

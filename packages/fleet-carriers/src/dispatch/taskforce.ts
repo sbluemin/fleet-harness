@@ -4,12 +4,12 @@
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
 
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolCtx } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolCtx } from "@dotobokuri/core-mcp-server";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
-import type { ExecResult } from "@dotobokuri/fleet-infra/agent";
+import type { ExecResult } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus, TrackMeta, TrackStatus } from "./types.js";
 
 import {
@@ -20,7 +20,7 @@ import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { finalizeDetachedJob, launchResponseResult, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
-import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
+import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   emitStreamEvent,
   getRegisteredCarrierConfig,
@@ -32,6 +32,7 @@ import {
   type CarrierRegistry,
 } from "./framework.js";
 import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./tool-spec.js";
+import type { CarrierToolSpecDeps } from "./tool-spec.js";
 import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
@@ -48,6 +49,7 @@ interface TaskForceBackgroundOptions {
   carrierId: string;
   requestKey: string;
   activeBackends: TaskForceCliType[];
+  trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>;
   request: string;
   state: TaskForceState;
   signal: AbortSignal | undefined;
@@ -56,6 +58,12 @@ interface TaskForceBackgroundOptions {
   startedAt: number;
   toolName: `carrier_${string}`;
   label: string;
+  deps: CarrierToolSpecDeps;
+}
+
+interface TaskForceTrackModelInfo {
+  readonly effort?: string;
+  readonly model: string;
 }
 
 export interface TaskForceLaunchOptions {
@@ -66,12 +74,13 @@ export interface TaskForceLaunchOptions {
   startedAt: number;
   toolName: `carrier_${string}`;
   ctx: AgentToolCtx;
+  deps: CarrierToolSpecDeps;
 }
 
 const taskForceStateStore = new Map<string, TaskForceState>();
 
 export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
-  const { registry, carrierId, request, label, startedAt, toolName, ctx } = options;
+  const { registry, carrierId, request, label, startedAt, toolName, ctx, deps } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
   const backendIds = getConfiguredTaskForceBackends(carrierId);
 
@@ -95,6 +104,16 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
       });
     }
   }
+  let trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>;
+  try {
+    trackModelInfoByCli = resolveTaskForceTrackModelInfoByCli(carrierId, activeBackends);
+  } catch (error) {
+    return launchResponseResult({
+      job_id: buildCarrierJobId("taskforce", ctx.toolCallId ?? ""),
+      accepted: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const launch = startDetachedJob({
     jobKind: "taskforce",
@@ -107,7 +126,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
   if (!launch.accepted) return launch.response;
 
   const state = initTaskForceState(carrierId, requestKey, activeBackends);
-  emitTaskForceJobRegistered(registry, launch.jobId, carrierId, requestKey, activeBackends, startedAt, label);
+  emitTaskForceJobRegistered(registry, launch.jobId, carrierId, requestKey, activeBackends, startedAt, label, trackModelInfoByCli);
 
   void runTaskForceJobInBackground({
     registry,
@@ -115,6 +134,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     carrierId,
     requestKey,
     activeBackends,
+    trackModelInfoByCli,
     request,
     state,
     signal: launch.signal,
@@ -123,6 +143,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     startedAt,
     toolName,
     label,
+    deps,
   });
 
   return launchResponseResult({ job_id: launch.jobId, accepted: true });
@@ -135,7 +156,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
   try {
     const settledResults = await Promise.allSettled(
       opts.activeBackends.map((cliType) =>
-        runTaskForceBackend(opts.registry, cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId),
+        runTaskForceBackend(opts.registry, cliType, opts.carrierId, opts.requestKey, opts.request, opts.state, opts.signal, opts.cwd, opts.jobId, opts.trackModelInfoByCli, opts.deps),
       ),
     );
     opts.state.finishedAt = Date.now();
@@ -226,13 +247,15 @@ async function runTaskForceBackend(
   signal: AbortSignal | undefined,
   cwd: string,
   jobId: string,
+  trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>,
+  deps: CarrierToolSpecDeps,
 ): Promise<TaskForceResult> {
   const execStartedAt = Date.now();
   const progress = state.backends.get(cliType)!;
   const poolKey = buildTaskForceRunId(carrierId, cliType);
   const streamKey = buildTaskForceScopedRunId(requestKey, cliType);
-  const modelConfig = getRequiredTaskForceModelConfig(carrierId, cliType);
-  const effort = resolveValidatedEffort(cliType as CliType, modelConfig.model, modelConfig.effort);
+  const modelInfo = trackModelInfoByCli.get(cliType);
+  if (!modelInfo) throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
   const trackId = `${jobId}:${cliType}`;
 
 
@@ -247,12 +270,14 @@ async function runTaskForceBackend(
   try {
     const result = await executeWithPool({
       poolKey,
-      carrierId,
+      scopeId: carrierId,
+      authEnvResolver: deps.authEnvResolver,
+      reservedExternalMcpServerIds: deps.reservedExternalMcpServerIds,
       cliType: cliType as CliType,
       request,
       cwd,
-      model: modelConfig.model,
-      effort,
+      model: modelInfo.model,
+      effort: modelInfo.effort,
       connectSystemPrompt: buildCarrierSystemPrompt(getRegisteredCarrierConfig(registry, carrierId)?.carrierMetadata),
       signal,
       onStatusChange: (status) => {
@@ -305,15 +330,22 @@ function emitTaskForceJobRegistered(
   activeBackends: readonly TaskForceCliType[],
   startedAt: number,
   label: string,
+  trackModelInfoByCli: ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo>,
 ): void {
-  const tracks: TrackMeta[] = activeBackends.map((cliType) => ({
-    trackId: `${jobId}:${cliType}`,
-    streamKey: buildTaskForceScopedRunId(requestKey, cliType),
-    displayCli: cliType,
-    displayName: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-    subtitle: resolveCarrierDisplayName(registry, carrierId),
-    kind: "backend",
-  }));
+  const tracks: TrackMeta[] = activeBackends.map((cliType) => {
+    const modelInfo = trackModelInfoByCli.get(cliType);
+    if (!modelInfo) throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
+    return {
+      trackId: `${jobId}:${cliType}`,
+      streamKey: buildTaskForceScopedRunId(requestKey, cliType),
+      displayCli: cliType,
+      displayName: CLI_DISPLAY_NAMES[cliType] ?? cliType,
+      effort: modelInfo.effort,
+      model: modelInfo.model,
+      subtitle: resolveCarrierDisplayName(registry, carrierId),
+      kind: "backend",
+    };
+  });
   emitStreamEvent(registry, {
     type: "job:registered",
     jobId,
@@ -323,6 +355,21 @@ function emitTaskForceJobRegistered(
     startedAt,
     tracks,
   });
+}
+
+function resolveTaskForceTrackModelInfoByCli(
+  carrierId: string,
+  activeBackends: readonly TaskForceCliType[],
+): ReadonlyMap<TaskForceCliType, TaskForceTrackModelInfo> {
+  return new Map(activeBackends.map((cliType) => [cliType, resolveTaskForceTrackModelInfo(carrierId, cliType)]));
+}
+
+function resolveTaskForceTrackModelInfo(carrierId: string, cliType: TaskForceCliType): TaskForceTrackModelInfo {
+  const modelConfig = getRequiredTaskForceModelConfig(carrierId, cliType);
+  return {
+    model: modelConfig.model,
+    effort: resolveValidatedEffort(cliType as CliType, modelConfig.model, modelConfig.effort),
+  };
 }
 
 function buildTaskForceResult(

@@ -8,7 +8,7 @@ import {
   getActiveBackgroundJobCount,
   getRegisteredOrder,
 } from "@dotobokuri/fleet-carriers";
-import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/fleet-infra/agent";
+import { getSessionIdFor as getAgentSessionIdFor } from "@dotobokuri/core-agent";
 
 import {
   ANIM_INTERVAL_MS,
@@ -493,7 +493,9 @@ function toColumnTrack(input: TrackMeta): MutableColumnTrack {
   return {
     displayCli: input.displayCli,
     displayName: input.displayName,
+    effort: input.effort,
     kind: input.kind,
+    model: input.model,
     runId: input.runId,
     startedAt: input.startedAt,
     status: "wait",

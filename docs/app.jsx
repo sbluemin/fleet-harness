@@ -11,7 +11,7 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 const UI = {
   navHierarchy: { ko: "지휘 체계", en: "Command Chain" },
   navCaptains:  { ko: "8 함장", en: "8 Captains" },
-  navProtocol:  { ko: "7 단계", en: "7 Phases" },
+  navProtocol:  { ko: "4 모드", en: "4 Modes" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
 
@@ -35,7 +35,7 @@ const UI = {
   metaCaptains: { ko: "Captains", en: "Captains" },
   metaCaptainsVal: { ko: "명시적 책임 분리", en: "Distinct responsibilities" },
   metaProtocol: { ko: "Protocol", en: "Protocol" },
-  metaProtocolVal: { ko: "Reconnaissance → Documentation", en: "Reconnaissance → Documentation" },
+  metaProtocolVal: { ko: "Intent → Mode → Execute", en: "Intent → Mode → Execute" },
 
   hierarchyEy:  { ko: "Chain of Command", en: "Chain of Command" },
   hierarchyTitle: { ko: "3-단 지휘 체계", en: "Three-tier command structure" },
@@ -52,15 +52,15 @@ const UI = {
   captainCap:    { ko: "Captain", en: "Captain" },
   responsibilities: { ko: "Responsibilities", en: "Responsibilities" },
 
-  protocolEy:    { ko: "Fleet Action Protocol · 07", en: "Fleet Action Protocol · 07" },
-  protocolTitle: { ko: ["하나의 작전,", "일곱 단계의 항해."], en: ["One operation,", "seven phases of voyage."] },
-  protocolLede:  { ko: "정찰에서 시작해 항해일지로 닫는다. 어떤 임무도 이 골격을 벗어나지 않는다.", en: "Begin with reconnaissance, end with the log. No mission escapes this skeleton." },
-  protocolAria:  { ko: "Fleet Action Protocol 단계", en: "Fleet Action Protocol phases" },
-  phaseLabel:    { ko: "Phase", en: "Phase" },
+  protocolEy:    { ko: "Fleet Action Protocol · 04", en: "Fleet Action Protocol · 04" },
+  protocolTitle: { ko: ["하나의 게이트,", "네 개의 모드."], en: ["One gate,", "four modes."] },
+  protocolLede:  { ko: "모든 요청은 Intent Gate에서 대화형과 작전형으로 갈린다. 작전형은 Mode Gate에서 정확히 하나의 모드를 고르고, 진입 전 Gate Declaration 한 줄을 반드시 선언한다. 하향 가드가 가벼운 모드로의 도피를 막는다.", en: "Every request splits at the Intent Gate — conversational or operational. Operational work picks exactly one mode at the Mode Gate and must emit a one-line Gate Declaration before entry. The downward guard blocks any escape into a lighter mode." },
+  protocolAria:  { ko: "Fleet Action Protocol 모드", en: "Fleet Action Protocol modes" },
+  phaseLabel:    { ko: "Mode", en: "Mode" },
 
   ordersEy:    { ko: "Standing Orders · Always Active", en: "Standing Orders · Always Active" },
-  ordersTitle: { ko: ["항상 켜져 있는", "세 개의 명령."], en: ["Three orders,", "always on."] },
-  ordersLede:  { ko: "단계에 종속되지 않고 모든 작전 위에 상시 작동하는 호스트 차원의 안전 장치.", en: "Phase-agnostic safeguards that operate above every mission, at the host level." },
+  ordersTitle: { ko: ["항상 켜져 있는", "다섯 개의 명령."], en: ["Five orders,", "always on."] },
+  ordersLede:  { ko: "어떤 프로토콜 모드에도 종속되지 않고 모든 작전 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every mission, bound to no protocol mode — and never switched off, even on conversational requests." },
   active:      { ko: "Active", en: "Active" },
 
   diffsEy:    { ko: "What sets it apart · 04", en: "What sets it apart · 04" },
@@ -77,7 +77,7 @@ const UI = {
   setSailCmt:  { ko: "# Set sail on your first mission, Admiral.", en: "# Set sail on your first mission, Admiral." },
   footerLine:  { ko: "fleet-harness · Fleet Action Protocol v1", en: "fleet-harness · Fleet Action Protocol v1" },
   builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 6 CLI · 8 Captains · 7 Phases", en: "· 6 CLI · 8 Captains · 7 Phases" },
+  countMeta:   { ko: "· 6 CLI · 8 Captains · 4 Modes", en: "· 6 CLI · 8 Captains · 4 Modes" },
 };
 
 // ───── Data ─────
@@ -218,115 +218,82 @@ const CAPTAINS = [
   },
 ];
 
-const PHASES = [
+const MODES = [
   {
     n: "01",
-    name: "Reconnaissance",
-    kr: { ko: "정찰", en: "Reconnaissance" },
-    tag: { ko: "필수", en: "Required" },
-    required: true,
-    desc: { ko: "모든 작전은 정찰로 시작한다. 임무 목표를 한 문장 북극성으로 고정하고, 알고 있는 것·모르는 것·확인이 필요한 것을 분리한 뒤 Vanguard를 띄운다.", en: "Every mission starts with reconnaissance. Pin the objective as a single-sentence north star, separate what's known from what's missing or unverified, then deploy Vanguard." },
+    name: "Trivial",
+    kr: { ko: "사소", en: "Trivial" },
+    tag: { ko: "단일 표면", en: "Single surface" },
+    required: false,
+    desc: { ko: "단순하고 가역적이며 단일 표면에 닿는 작업. 계획 부담이 거의 없는 최소 절차로 즉시 실행한다.", en: "Simple, reversible work that touches a single surface. Run it immediately with minimal planning overhead." },
     points: [
-      { m: "ANCHOR", t: { ko: "**Mission Objective Anchor** — 임무를 단 한 문장의 북극성으로 환원. 이후 모든 결정의 기준선.", en: "**Mission Objective Anchor** — Reduce the mission to a single-sentence north star. Every later decision is measured against it." } },
-      { m: "AUDIT",  t: { ko: "**Internal Knowledge Audit** — 함대가 이미 아는 사실을 명시적으로 기술. 추측을 사실로 위장하는 위험 차단.", en: "**Internal Knowledge Audit** — Explicitly state what the fleet already knows. Blocks guesswork from masquerading as fact." } },
-      { m: "GAP",    t: { ko: "**Knowledge Gap Identification** — Blocking(작전 진행 불가) vs Confirmatory(검증 필요) 두 부류로 분류.", en: "**Knowledge Gap Identification** — Sort gaps into Blocking (op cannot proceed) vs Confirmatory (needs verification)." } },
-      { m: "DEPLOY", t: { ko: "**Vanguard 분산 정찰** — 서브-스카우트 병렬 파견으로 면적을 빠르게 확보.", en: "**Vanguard Distributed Recon** — Dispatch parallel sub-scouts to cover ground quickly." } },
+      { m: "SCOPE", t: { ko: "**단일·가역 표면** — 오타 수정, 로그 한 줄, 지역 변수 개명 수준.", en: "**Single, reversible surface** — a typo, one log line, a local rename." } },
+      { m: "GUARD", t: { ko: "비가역·구조·다중 모듈·독트린 변경이 끼면 진입 금지, 상향 게이트로.", en: "Anything irreversible, structural, multi-module, or doctrine-level forbids entry — escalate." } },
     ],
   },
   {
     n: "02",
-    name: "Architecture Review",
-    kr: { ko: "아키텍처 리뷰", en: "Architecture Review" },
-    tag: { ko: "조건부", en: "Conditional" },
+    name: "Standard",
+    kr: { ko: "표준", en: "Standard" },
+    tag: { ko: "기본", en: "Default" },
     required: false,
-    desc: { ko: "구조에 손이 닿는 작전이라면, Nimitz가 ADR을 발행하기 전엔 한 줄도 쓰지 않는다. 단순 패치라면 이 단계는 통과한다.", en: "If the operation touches structure, not a line gets written before Nimitz ships the ADR. Simple patches skip this phase." },
+    desc: { ko: "하향 가드를 건드리지 않는 일반적인 경계형 작전. 모드가 모호할 때의 기본 폴백이기도 하다.", en: "Ordinary bounded work that doesn't trip the downward guard — and the default fallback when the mode is ambiguous." },
     points: [
-      { m: "TRIGGER", t: { ko: "데이터 모델·경계·계약을 건드리는 변경에서만 진입.", en: "Enter only when changes touch the data model, boundaries, or contracts." } },
-      { m: "ADR",     t: { ko: "Nimitz가 트레이드오프와 대안을 명시한 결정 기록을 작성.", en: "Nimitz authors a decision record stating tradeoffs and alternatives." } },
-      { m: "GATE",    t: { ko: "Architecture sign-off 없이는 다음 단계로 진행 불가.", en: "No advance to the next phase without architecture sign-off." } },
+      { m: "FLOW", t: { ko: "**정찰 → 계획 경계 → 인라인 계획 → 실집행 → 검증 → 문서**.", en: "**Recon → planning boundary → inline plan → execution → verification → docs**." } },
+      { m: "GATE", t: { ko: "계획 경계 진입엔 complete 확신 — 차단 갭이 남으면 못 들어간다.", en: "The planning boundary demands complete confidence — no entry with blocking gaps open." } },
     ],
   },
   {
     n: "03",
-    name: "Work Plan",
-    kr: { ko: "작전 계획", en: "Work Plan" },
-    tag: { ko: "Wave", en: "Wave" },
-    required: false,
-    desc: { ko: "Inline plan은 한 함장이 머릿속에 들고 가는 단순 항해. Structured plan은 Kirov가 .fleet/plans/*.md로 발행하는 다단 작전 계획서.", en: "An inline plan is a simple voyage carried in one captain's head. A structured plan is a multi-stage order Kirov publishes as .fleet/plans/*.md." },
+    name: "High-Risk",
+    kr: { ko: "고위험", en: "High-Risk" },
+    tag: { ko: "강제 통제", en: "Hard controls" },
+    required: true,
+    desc: { ko: "비가역 작업, 구조·API 변경, 다중 모듈 편집, 독트린·프롬프트 정책 수정, 보안 민감 작업. 명시적 위험 통제 없이는 한 줄도 쓰지 않는다.", en: "Irreversible ops, structural/API changes, cross-module edits, doctrine or prompt-policy edits, security-sensitive work. Not a line ships without explicit risk controls." },
     points: [
-      { m: "INLINE",     t: { ko: "**Inline** — 단일 함장, 단일 wave, 즉시 실행.", en: "**Inline** — single captain, single wave, immediate execution." } },
-      { m: "STRUCTURED", t: { ko: "**Structured** — Kirov가 plan_file 발행, Ohio가 수신·실행.", en: "**Structured** — Kirov issues the plan_file; Ohio receives and executes." } },
-      { m: "CRITERIA",   t: { ko: "Acceptance criteria · 빌드 게이트 · 롤백 단위 명시.", en: "Specify acceptance criteria, build gates, and rollback units." } },
+      { m: "TRIGGER", t: { ko: "**하향 가드 발동** — 비가역·구조·계약·독트린·보안 중 하나라도.", en: "**Downward guard fires** — any of irreversible, structural, contract, doctrine, or security." } },
+      { m: "CONTROL", t: { ko: "롤백 단위·명시적 통제·증거 기반 진행을 강제한다.", en: "Enforces rollback units, explicit controls, and evidence-backed progress." } },
     ],
   },
   {
     n: "04",
-    name: "Execution",
-    kr: { ko: "실집행", en: "Execution" },
-    tag: { ko: "행동", en: "Action" },
+    name: "Multi-Agent",
+    kr: { ko: "다중 함장", en: "Multi-Agent" },
+    tag: { ko: "병렬 협조", en: "Coordinated" },
     required: true,
-    desc: { ko: "계획이 잉크에서 강철로 바뀌는 단계. Genesis 또는 Ohio가 실제 변경을 가하고, 각 wave 끝에서 빌드 게이트를 통과한다.", en: "Where the plan turns from ink to steel. Genesis or Ohio applies real changes, and each wave ends at a build gate." },
+    desc: { ko: "여러 함장, 독립 병렬 작업 줄기, 교차 함장 리뷰 루프, 파일 소유권 조정이 필요한 작전. 협조 자체가 핵심이다.", en: "Work that needs multiple captains, independent parallel workstreams, cross-captain review loops, and file-ownership coordination. Coordination is the whole point." },
     points: [
-      { m: "WAVE",  t: { ko: "Wave 단위 커밋 — 각 wave는 자체적으로 컴파일·테스트 통과.", en: "Wave-level commits — every wave compiles and tests on its own." } },
-      { m: "GATE",  t: { ko: "빌드 게이트 강제 — 실패 wave는 다음으로 넘기지 않는다.", en: "Build gate is mandatory — a failed wave never advances." } },
-      { m: "TRACE", t: { ko: "변경 트레이스 보존 — Documentation 단계에서 Chronicle이 회수.", en: "Preserve change traces — Chronicle reclaims them during the Documentation phase." } },
-    ],
-  },
-  {
-    n: "05",
-    name: "Refactoring",
-    kr: { ko: "정리", en: "Refactoring" },
-    tag: { ko: "조건부", en: "Conditional" },
-    required: false,
-    desc: { ko: "구현 중 누적된 부채가 임계치를 넘었을 때만 진입. 행동을 바꾸지 않고 구조만 정돈한다.", en: "Enter only when accumulated debt crosses the threshold. Tidy the structure without changing behavior." },
-    points: [
-      { m: "SCOPE",    t: { ko: "동작 보존 변경에 한정 — 새 기능 끼워 넣기 금지.", en: "Behavior-preserving changes only — no new features sneaked in." } },
-      { m: "BOUNDARY", t: { ko: "리팩터링과 기능 변경은 동일 wave에 섞지 않는다.", en: "Refactoring and feature changes never share a wave." } },
-    ],
-  },
-  {
-    n: "06",
-    name: "Review Cycle",
-    kr: { ko: "심문 단계", en: "Review Cycle" },
-    tag: { ko: "병렬", en: "Parallel" },
-    required: true,
-    desc: { ko: "Sentinel가 두 줄기로 동시에 검열한다. Code Review와 Security Review가 병렬로 진행되며, 양쪽 모두의 통과 도장 없이는 작전이 닫히지 않는다.", en: "Sentinel inspects on two parallel tracks. Code review and security review run concurrently, and both must clear before the op closes." },
-    points: [
-      { m: "CODE",     t: { ko: "**Code Review** — 시맨틱·성능·테스트 커버리지·가독성.", en: "**Code Review** — semantics, performance, test coverage, readability." } },
-      { m: "SECURITY", t: { ko: "**Security Review** — OWASP Top 10·권한·비밀·공급망.", en: "**Security Review** — OWASP Top 10, permissions, secrets, supply chain." } },
-      { m: "PARALLEL", t: { ko: "두 리뷰는 병렬 — 차단된 줄기는 즉시 Genesis로 반려.", en: "Both reviews run in parallel — a blocked branch is sent straight back to Genesis." } },
-    ],
-  },
-  {
-    n: "07",
-    name: "Documentation Update",
-    kr: { ko: "항해일지 갱신", en: "Documentation Update" },
-    tag: { ko: "필수", en: "Required" },
-    required: true,
-    desc: { ko: "Chronicle이 마지막으로 일지를 닫는다. 코드와 문서의 진실원이 어긋나면 작전은 미완료다.", en: "Chronicle closes the log last. If code and docs disagree on the source of truth, the operation is unfinished." },
-    points: [
-      { m: "PR",     t: { ko: "PR 요약 — Why·What·Risk·Rollback 4축 보고서.", en: "PR summary — a four-axis report: Why, What, Risk, Rollback." } },
-      { m: "AGENTS", t: { ko: "AGENTS.md — 새로 도입된 함장 운영 규칙 반영.", en: "AGENTS.md — reflects newly introduced captain-operation rules." } },
-      { m: "AUDIT",  t: { ko: "변경 영향 감사 — 외부 계약과 내부 가정의 충돌 확인.", en: "Impact audit — checks external contracts against internal assumptions." } },
+      { m: "COORD",     t: { ko: "**다중 함장 병렬 출격** — 같은 단계의 함장은 기본이 병렬.", en: "**Multiple captains in parallel** — same-phase captains launch concurrently by default." } },
+      { m: "OWNERSHIP", t: { ko: "파일 소유권 경계와 교차 리뷰 루프를 관리한다.", en: "Manages file-ownership boundaries and cross-review loops." } },
     ],
   },
 ];
 
 const ORDERS = [
   {
-    name: "Delegation Policy",
-    kr: { ko: "위임 정책", en: "Delegation Policy" },
-    desc: { ko: "제독은 결정한다. 함장은 실행한다. 호스트는 판단을 유지하고 행동은 가장 적합한 CLI 백엔드에 위임한다.", en: "The Admiral decides. Captains execute. The host keeps judgment and delegates action to the best-fit CLI backend." },
+    name: "Mission Anchor",
+    kr: { ko: "임무 정렬", en: "Mission Anchor" },
+    desc: { ko: "임무 목표를 단 한 문장의 북극성으로 고정한다. 모든 체크포인트 진입 전 목표를 복창하고, 진출 후 정렬을 자가 점검하며, 표류가 감지되면 즉시 정지·복귀한다.", en: "Pins the mission to a single-sentence north star. Recall the objective before every checkpoint, self-check alignment after, and halt to recover the moment drift appears." },
+  },
+  {
+    name: "Context Confidence",
+    kr: { ko: "맥락 확신", en: "Context Confidence" },
+    desc: { ko: "결정 경계에 들어서기 전 증거 충분성을 complete·sufficient·partial·speculative로 판정한다. 증거 목록 없는 확신은 speculative로 강등되고, 기준 미달이면 정찰로 재진입한다.", en: "Grades evidence sufficiency — complete, sufficient, partial, speculative — before any decision boundary. Confidence with no evidence list is demoted to speculative; below threshold, it re-enters reconnaissance." },
+  },
+  {
+    name: "Carrier Operations Policy",
+    kr: { ko: "함대 운용 정책", en: "Carrier Operations Policy" },
+    desc: { ko: "실행은 위임하고 판단은 보유한다. 작업 복잡도에 함대 규모를 비례시키고, 같은 단계의 다중 함장은 기본적으로 병렬 출격시킨다.", en: "Delegate execution, retain judgment. Size the fleet to the task's complexity, and launch same-phase captains in parallel by default." },
   },
   {
     name: "Deep Dive",
     kr: { ko: "딥 다이브", en: "Deep Dive" },
-    desc: { ko: "추측이 발견되는 즉시 자동 검증을 띄운다. 동일 가정에 대해 최대 2회까지 재검증, 그래도 불확실하면 Admiral에게 회부.", en: "Auto-verification launches the moment a guess is detected. Up to two re-checks per assumption — still uncertain? It's escalated to the Admiral." },
+    desc: { ko: "추측이 발견되는 즉시 자동 검증을 띄운다. 동일 가정에 대해 최대 2회까지 재검증하고, 그래도 불확실하면 대원수에게 회부한다.", en: "Auto-verification launches the moment a guess appears. Up to two re-checks per assumption — still uncertain, it escalates to the Admiral of the Navy." },
   },
   {
     name: "Result Integrity",
     kr: { ko: "결과 무결성", en: "Result Integrity" },
-    desc: { ko: "함장이 가져온 결과는 관련성·완결성·내부 충돌 3축으로 검사된다. 어느 하나라도 어긋나면 자동 재시도.", en: "Captain results are checked on three axes: relevance, completeness, internal consistency. Any failure triggers an automatic retry." },
+    desc: { ko: "함장이 가져온 결과는 관련성·완결성·내부 충돌 3축으로 검사한다. 어느 하나라도 어긋나면 자동 재시도하고, 실패가 누적되면 대원수에게 보고한다.", en: "Captain results are checked on three axes — relevance, completeness, internal consistency. Any failure triggers a retry; repeated failure is reported to the Admiral of the Navy." },
   },
 ];
 
@@ -395,7 +362,7 @@ const COMPARES = [
     bullets: [
       { ko: "6 CLI 백엔드 동시 지휘", en: "Six CLI backends commanded together" },
       { ko: "8 함장 명시적 책임 분리", en: "Eight captains, distinct duties" },
-      { ko: "7-단계 작전 프로토콜", en: "Seven-phase action protocol" },
+      { ko: "적응형 4-모드 프로토콜 게이트", en: "Adaptive four-mode protocol gate" },
     ],
     verdict: { ko: "처음부터 함대로 설계되었다.", en: "Designed as a fleet from day one." },
   },
@@ -487,7 +454,7 @@ function Hero() {
               </div>
               <div className="hero-meta-item">
                 <div className="label">{t(UI.metaProtocol)}</div>
-                <div className="value"><em>7</em> · {t(UI.metaProtocolVal)}</div>
+                <div className="value"><em>4</em> · {t(UI.metaProtocolVal)}</div>
               </div>
             </div>
           </div>
@@ -645,10 +612,10 @@ function Captains() {
   );
 }
 
-// ───── Protocol (7 phases) ─────
+// ───── Protocol (gate · 4 modes) ─────
 function Protocol() {
   const [active, setActive] = useState(0);
-  const p = PHASES[active];
+  const p = MODES[active];
   const title = t(UI.protocolTitle);
   return (
     <section className="section" id="protocol">
@@ -661,7 +628,7 @@ function Protocol() {
         </div>
         <div className="phases-wrap">
           <div className="phase-rail" role="tablist" aria-label={t(UI.protocolAria)}>
-            {PHASES.map((ph, i) => (
+            {MODES.map((ph, i) => (
               <button
                 key={ph.n}
                 role="tab"

@@ -1,14 +1,17 @@
-import type { ClaudeSubagentDefinition, CodexSubagentRoleDefinition } from "@dotobokuri/fleet-carriers";
-
 export type AgentCliId = "claude" | "claude-kimi" | "codex";
 
 export interface AgentCliProfile {
   readonly id: AgentCliId;
   readonly label: string;
   readonly bin: string;
+  // bin이 Windows .cmd shim을 cmd.exe로 래핑한 경우의 선행 인자(/d /s /c <shim>).
+  // PTY 외 경로(예: Codex 플러그인 등록)에서 bin과 함께 재사용해 동일하게 CLI를 호출한다.
+  readonly binPrefixArgs?: readonly string[];
   readonly args: readonly string[];
+  readonly cleanup?: () => void;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
+  readonly launchWarnings?: readonly string[];
   readonly messagePolicy?: CliMessagePolicy;
   readonly terminalName: string;
 }
@@ -33,24 +36,20 @@ export interface AgentCliProfileOptions {
   readonly model?: string;
 }
 
-export interface AgentCliInjectionContext {
-  readonly claudeSubagents?: readonly ClaudeSubagentDefinition[];
-  readonly cliId: AgentCliId;
-  readonly codexSubagents?: readonly AgentCliCodexSubagentRole[];
-  readonly replaceSystemPrompt: boolean;
-  readonly systemPromptFile: string;
-  readonly mcpServers: readonly AgentCliMcpServerConfig[];
-}
-
-export interface AgentCliCodexSubagentRole {
-  readonly definition: CodexSubagentRoleDefinition;
-  readonly configFile: string;
-}
-
-export interface AgentCliMcpServerConfig {
-  readonly name: string;
-  readonly endpointUrl: string;
+export interface AgentCliMcpServerArg {
   readonly bearerToken: string;
+  readonly endpointUrl: string;
+  readonly name: string;
+}
+
+export interface AgentCliInjectionContext {
+  readonly cliId: AgentCliId;
+  readonly codexProfileName?: string;
+  readonly mcpServers: readonly AgentCliMcpServerArg[];
+  readonly pluginRoot: string;
+  readonly pluginRoots: readonly string[];
+  readonly replaceSystemPrompt?: boolean;
+  readonly systemPromptFile?: string;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

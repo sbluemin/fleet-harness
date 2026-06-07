@@ -1,5 +1,5 @@
-import { CLI_BACKENDS, type CliType } from "@dotobokuri/fleet-unified-agent";
-import { disconnect } from "@dotobokuri/fleet-infra/agent";
+import { CLI_BACKENDS, type CliType } from "@dotobokuri/core-unified-agent";
+import { disconnect } from "@dotobokuri/core-agent";
 
 import {
   sanitizeAgentCli,

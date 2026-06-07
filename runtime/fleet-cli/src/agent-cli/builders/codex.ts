@@ -4,9 +4,14 @@ import { escapeTomlBasicString } from "./toml.js";
 const CODEX_TOOL_TIMEOUT_SEC = 1_800;
 
 export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[] {
+  const profileName = requireCodexProfileName(context);
   const args = [
-    "-c",
-    `model_instructions_file="${escapeTomlBasicString(context.systemPromptFile)}"`,
+    "--enable",
+    "plugins",
+    "--enable",
+    "child_agents_md",
+    "--profile",
+    profileName,
     "-c",
     'approval_policy="never"',
     "-c",
@@ -24,14 +29,10 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
       `${prefix}.tool_timeout_sec=${CODEX_TOOL_TIMEOUT_SEC}`,
     );
   }
-  for (const role of context.codexSubagents ?? []) {
-    const prefix = `agents.${role.definition.roleKey}`;
-    args.push(
-      "-c",
-      `${prefix}.description="${escapeTomlBasicString(role.definition.description)}"`,
-      "-c",
-      `${prefix}.config_file="${escapeTomlBasicString(role.configFile)}"`,
-    );
-  }
   return args;
+}
+
+function requireCodexProfileName(context: AgentCliInjectionContext): string {
+  if (context.codexProfileName) return context.codexProfileName;
+  throw new Error("Codex profile name is required for native injection");
 }

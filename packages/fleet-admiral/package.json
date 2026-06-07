@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@dotobokuri/fleet-carriers": "workspace:*",
-    "@dotobokuri/fleet-mcp-server": "workspace:*"
+    "@dotobokuri/core-mcp-server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

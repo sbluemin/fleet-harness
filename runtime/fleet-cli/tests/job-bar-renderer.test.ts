@@ -10,7 +10,7 @@ import {
   setCarrierAgentMode,
   updateTaskForceModelSelection,
 } from "@dotobokuri/fleet-carriers";
-import { getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliModels } from "@dotobokuri/core-agent";
 
 import { createJobBarSections } from "../src/mission-bridge/job-bar/section.js";
 import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
@@ -166,6 +166,31 @@ describe("job bar renderer", () => {
     expect(text).toContain("Audit stream identity 45s");
   });
 
+  it("renders single carrier model and effort next to the carrier name without replacing the job summary", () => {
+    const runtime = createTestCarrierRuntime();
+    const baseJob = buildDispatchJob("carrier:first", "run:first", "Audit stream identity", 1000);
+    const job: PanelJob = {
+      ...baseJob,
+      tracks: [{
+        ...baseJob.tracks[0]!,
+        effort: "max",
+        model: "sonnet",
+      }],
+    };
+
+    const text = stripAnsi(renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [job],
+      width: 160,
+      now: 46000,
+    }).join("\n"));
+
+    expect(text).toContain("Genesis (sonnet - max)");
+    expect(text).toContain("Audit stream identity 45s");
+    expect(text).not.toContain("Audit stream identity · sonnet - max");
+  });
+
   it("renders minute elapsed time to the left of token estimates", () => {
     const runtime = createTestCarrierRuntime();
     const longText = "a".repeat(4000);
@@ -227,7 +252,9 @@ describe("job bar renderer", () => {
           {
             displayCli: "claude",
             displayName: "claude",
+            effort: "medium",
             kind: "backend",
+            model: firstModel("claude"),
             runId: "taskforce:first:claude",
             startedAt: 30000,
             status: "stream",
@@ -237,7 +264,9 @@ describe("job bar renderer", () => {
           {
             displayCli: "codex",
             displayName: "codex",
+            effort: "high",
             kind: "backend",
+            model: firstModel("codex"),
             runId: "taskforce:first:codex",
             startedAt: 60000,
             status: "stream",
@@ -251,8 +280,53 @@ describe("job bar renderer", () => {
     }).join("\n"));
 
     expect(text).toContain("Taskforce · Coordinate backends 1m 29s");
-    expect(text).toContain("Claude Code with Anthropic 1m 0s");
-    expect(text).toContain("OpenAI Codex CLI 30s");
+    expect(text).toContain(`${firstModel("claude")} - medium 1m 0s`);
+    expect(text).toContain(`${firstModel("codex")} - high 30s`);
+  });
+
+  it("sanitizes backend model-effort labels and falls back to CLI names when model metadata is missing", () => {
+    const runtime = createTestCarrierRuntime();
+    const rendered = renderCarrierJobHud({
+      carrierRuntime: runtime,
+      frame: 0,
+      jobs: [{
+        ...buildTaskForceJob("taskforce:safe-labels", "ohio", "claude", "codex"),
+        tracks: [
+          {
+            displayCli: "claude",
+            displayName: "claude",
+            effort: "h\u061ci\u009b31mg\u202eh\ufe0f",
+            kind: "backend",
+            model: "gp\u202et\r\nsa\u200bfe\u180e\x1b]52;c;AAAA\x07",
+            runId: "taskforce:safe-labels:claude",
+            status: "stream",
+            streamKey: "claude",
+            trackId: "claude",
+          },
+          {
+            displayCli: "codex",
+            displayName: "codex",
+            kind: "backend",
+            runId: "taskforce:safe-labels:codex",
+            status: "stream",
+            streamKey: "codex",
+            trackId: "codex",
+          },
+        ],
+      }],
+      width: 160,
+    }).join("\n");
+    const text = stripAnsi(rendered);
+
+    expect(text).toContain("gpt safe - high");
+    expect(text).toContain("OpenAI Codex CLI");
+    expect(rendered).not.toContain("\x1b]52");
+    expect(rendered).not.toContain("\u009b31m");
+    expect(rendered).not.toContain("\u202e");
+    expect(rendered).not.toContain("\u200b");
+    expect(rendered).not.toContain("\u061c");
+    expect(rendered).not.toContain("\u180e");
+    expect(rendered).not.toContain("\ufe0f");
   });
 
   it("freezes finalized backend elapsed while preserving registered track start times", () => {
@@ -269,7 +343,9 @@ describe("job bar renderer", () => {
         {
           displayCli: "claude",
           displayName: "claude",
+          effort: "medium",
           kind: "backend",
+          model: firstModel("claude"),
           runId: "taskforce:elapsed-freeze:claude",
           startedAt: 5000,
           streamKey: "claude",
@@ -278,7 +354,9 @@ describe("job bar renderer", () => {
         {
           displayCli: "codex",
           displayName: "codex",
+          effort: "high",
           kind: "backend",
+          model: firstModel("codex"),
           runId: "taskforce:elapsed-freeze:codex",
           startedAt: 10000,
           streamKey: "codex",
@@ -298,8 +376,8 @@ describe("job bar renderer", () => {
     vi.setSystemTime(70000);
     const text = stripAnsi(createJobBarSections(state)[1]!.component.render(160).join("\n"));
 
-    expect(text).toContain("Claude Code with Anthropic 10s");
-    expect(text).toContain("OpenAI Codex CLI 1m 0s");
+    expect(text).toContain(`${firstModel("claude")} - medium 10s`);
+    expect(text).toContain(`${firstModel("codex")} - high 1m 0s`);
   });
 
   it("counts token estimates up on the existing frame timer without double-counting updates", () => {
@@ -400,13 +478,13 @@ describe("job bar renderer", () => {
     }).join("\n"));
 
     expect(activeFrame).toContain("  Taskforce · Coordinate backends");
-    expect(activeFrame).toContain("  Claude Code with Anthropic");
+    expect(activeFrame).toContain(`  ${firstModel("claude")} - medium`);
     expect(activeFrame).not.toContain("○ Taskforce · Coordinate backends");
-    expect(activeFrame).not.toContain("○ Claude Code with Anthropic");
+    expect(activeFrame).not.toContain(`○ ${firstModel("claude")} - medium`);
     expect(crestFrame).toContain("● Taskforce · Coordinate backends");
-    expect(crestFrame).toContain("● Claude Code with Anthropic");
-    expect(completedFrame).toContain("⏺ Claude Code with Anthropic");
-    expect(completedFrame).toContain("⏺ OpenAI Codex CLI");
+    expect(crestFrame).toContain(`● ${firstModel("claude")} - medium`);
+    expect(completedFrame).toContain(`⏺ ${firstModel("claude")} - medium`);
+    expect(completedFrame).toContain(`⏺ ${firstModel("codex")} - high`);
     expect(`${activeFrame}\n${crestFrame}\n${completedFrame}`).not.toMatch(/[\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f]/);
   });
 
@@ -461,8 +539,8 @@ describe("job bar renderer", () => {
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}[TF:2]`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Ohio`);
     expect(rendered).toContain(`${TASKFORCE_BADGE_COLOR}Taskforce · Coordinate backends`);
-    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}Claude Code with Anthropic`);
-    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}OpenAI Codex CLI`);
+    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.claude}${firstModel("claude")} - medium`);
+    expect(rendered).toContain(`${PROVIDER_ANSI_COLORS.codex}${firstModel("codex")} - high`);
     expect(text).not.toContain("[1:2]");
   });
 
@@ -583,6 +661,7 @@ function buildTaskForceJob(jobId: string, ownerCarrierId: string, firstCli: stri
       {
         displayCli: firstCli,
         displayName: firstCli,
+        ...taskForceTrackModel(firstCli),
         kind: "backend",
         runId: `${jobId}:${firstCli}`,
         status: "stream",
@@ -592,6 +671,7 @@ function buildTaskForceJob(jobId: string, ownerCarrierId: string, firstCli: stri
       {
         displayCli: secondCli,
         displayName: secondCli,
+        ...taskForceTrackModel(secondCli),
         kind: "backend",
         runId: `${jobId}:${secondCli}`,
         status: "stream",
@@ -606,6 +686,12 @@ function firstModel(cliType: "claude" | "codex"): string {
   const model = getCliModels(cliType)[0]?.id;
   if (!model) throw new Error(`No test model for ${cliType}`);
   return model;
+}
+
+function taskForceTrackModel(cliType: string): { readonly effort?: string; readonly model?: string } {
+  if (cliType === "claude") return { model: firstModel("claude"), effort: "medium" };
+  if (cliType === "codex") return { model: firstModel("codex"), effort: "high" };
+  return {};
 }
 
 function stripAnsi(text: string): string {

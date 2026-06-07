@@ -68,6 +68,20 @@
     ],
     "updated": "2026-06-01T14:35:35.364Z"
   },
+  "guide-005-cli-hooks-io-comparison": {
+    "path": "wiki/guide-005-cli-hooks-io-comparison.md",
+    "title": "Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교",
+    "tags": [
+      "guide",
+      "hooks",
+      "claude-code",
+      "codex",
+      "cli",
+      "comparison",
+      "current"
+    ],
+    "updated": "2026-06-07T03:27:07.329Z"
+  },
   "guide-unified-agent-cursor-composer-25": {
     "path": "wiki/guide-unified-agent-cursor-composer-25.md",
     "title": "Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결",

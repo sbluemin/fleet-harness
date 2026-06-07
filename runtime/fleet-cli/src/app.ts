@@ -23,7 +23,7 @@ import {
   type TuiPtyManager,
 } from "./controls/index.js";
 
-import { injectAgentCliProfile } from "./agent-cli/injection.js";
+import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/injection.js";
 import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
@@ -39,17 +39,20 @@ import { checkForUpdate } from "./update/check.js";
 export interface RunAppOptions {
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
+  readonly pluginAssetsDir?: string;
+  readonly pluginEntry?: FleetHookCommandEntry;
 }
 
 type FleetHostKeybindingHandlers = Record<string, () => void>;
 type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "cliOptions" | "initialCliId" | "resolveProfile">;
+type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
 
 export interface CreateMissionControlProfileConfigOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly invocationCwd: string;
 }
 
-const SHUTDOWN_TIMEOUT_MS = 3_000;
+const SHUTDOWN_TIMEOUT_MS = 8_000;
 const DOUBLE_TAP_WINDOW_MS = 2_000;
 const INTERRUPT_DEDUPE_WINDOW_MS = 100;
 const DEFAULT_HOST_KEYBINDINGS: readonly KeybindingDefinition[] = [
@@ -100,7 +103,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
   const buildSystemPrompt = createSystemPromptBuilder({
     carrierRuntime: runtime.carrierRuntime,
-    mcpRegistry: runtime.mcpRegistry,
   }).build;
   const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({
@@ -133,6 +135,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
             enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
             onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
             replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
+            pluginAssetsDir: options.pluginAssetsDir,
+            pluginEntry: options.pluginEntry,
           }),
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
     onExitFleet: () => stop(),
@@ -189,16 +193,32 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   let interruptWarningStartedAt = 0;
   let lastInterruptHandledAt = 0;
   let interruptWarningTimer: ReturnType<typeof setTimeout> | undefined;
+  let shutdownExitCode = 0;
   const resize = () => ptyManager?.requestResize("terminal-resize");
   const stop = () => {
     if (stopping) {
-      process.exit(1);
+      process.exit(shutdownExitCode === 0 ? 1 : shutdownExitCode);
       return;
     }
     stopping = true;
     clearInterruptWarningTimer();
     missionBridge.jobBarState.setPendingExitWarning(false);
-    stopApp(ui, missionControl.dispose, missionControl.ptyHost, resize, disposeInputStream, missionBridge.dispose, runtimeLifecycle, agentCliCleanupCallbacks);
+    stopApp(
+      ui,
+      missionControl.dispose,
+      missionControl.ptyHost,
+      resize,
+      disposeInputStream,
+      missionBridge.dispose,
+      runtimeLifecycle,
+      agentCliCleanupCallbacks,
+      shutdownExitCode,
+    );
+  };
+  const stopAfterFatal = (event: ProcessFatalEvent, reason: unknown) => {
+    shutdownExitCode = 1;
+    logProcessFatal(event, reason);
+    stop();
   };
   const requestInterrupt = () => {
     const now = Date.now();
@@ -294,6 +314,9 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   process.on("SIGWINCH", resize);
   process.on("SIGINT", requestInterrupt);
   process.on("SIGTERM", stop);
+  process.on("SIGHUP", stop);
+  process.on("uncaughtException", (error) => stopAfterFatal("uncaughtException", error));
+  process.on("unhandledRejection", (reason) => stopAfterFatal("unhandledRejection", reason));
 
   const disableKeyboardProtocol = () => process.stdout.write(KITTY_DISABLE);
   process.on("exit", disableKeyboardProtocol);
@@ -365,6 +388,7 @@ function stopApp(
   disposeMissionBridge: () => void,
   runtimeLifecycle: FleetRuntimeLifecycle,
   cleanupCallbacks: Iterable<() => void>,
+  exitCode: number,
 ): void {
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
@@ -377,10 +401,32 @@ function stopApp(
     cleanup();
   }
   ui.stop();
-  const timer = setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS);
+  const timer = setTimeout(() => process.exit(exitCode), SHUTDOWN_TIMEOUT_MS);
   timer.unref?.();
   runtimeLifecycle.shutdown().finally(() => {
     clearTimeout(timer);
-    process.exit(0);
+    process.exit(exitCode);
   });
+}
+
+function logProcessFatal(event: ProcessFatalEvent, reason: unknown): void {
+  const formattedReason = formatProcessFatalReason(reason);
+  // 치명 오류에서도 ACP disconnect 체인을 타도록 먼저 로그를 남기고 graceful stop으로 넘긴다.
+  process.stderr.write(`[fleet-cli] ${event}: ${formattedReason}\n`);
+}
+
+function formatProcessFatalReason(reason: unknown): string {
+  if (reason instanceof Error) {
+    return reason.stack ?? reason.message;
+  }
+
+  if (typeof reason === "string") {
+    return reason;
+  }
+
+  try {
+    return JSON.stringify(reason) ?? String(reason);
+  } catch {
+    return String(reason);
+  }
 }

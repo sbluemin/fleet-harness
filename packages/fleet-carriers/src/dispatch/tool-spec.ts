@@ -5,9 +5,10 @@
  */
 
 import { Type } from "typebox";
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolSpec } from "@dotobokuri/fleet-mcp-server";
+import type { AgentToolSpec } from "@dotobokuri/core-mcp-server";
+import type { AuthEnvResolver } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type {
@@ -23,7 +24,7 @@ import { launchResponseResult } from "../jobs/lifecycle.js";
 import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
-import { executeWithPool } from "@dotobokuri/fleet-infra/agent";
+import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
   isCarrierAgentModeSubagent,
@@ -61,6 +62,7 @@ interface CarrierBackgroundOptions {
   registry: CarrierRegistry;
   jobId: string;
   carrierId: string;
+  trackModelInfo: CarrierTrackModelInfo;
   label: string;
   request: string;
   signal: AbortSignal | undefined;
@@ -68,6 +70,13 @@ interface CarrierBackgroundOptions {
   permit: JobPermitAccepted;
   startedAt: number;
   toolName: `carrier_${string}`;
+  deps: CarrierToolSpecDeps;
+}
+
+interface CarrierTrackModelInfo {
+  readonly cliType: CliType;
+  readonly effort?: string;
+  readonly model: string;
 }
 
 /** 검증 성공 결과 */
@@ -103,6 +112,11 @@ export interface CarrierSortieOutcome {
   readonly status: "done" | "error" | "aborted";
 }
 
+export interface CarrierToolSpecDeps {
+  readonly authEnvResolver: AuthEnvResolver;
+  readonly reservedExternalMcpServerIds?: readonly string[];
+}
+
 // ═════════════════════════════════════════════════════════
 // Constants
 // ═════════════════════════════════════════════════════════
@@ -125,7 +139,7 @@ export const CARRIER_REQUEST_BREVITY_GUIDELINE =
 /**
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합한 AgentToolSpec을 반환합니다.
  */
-export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentToolSpec {
+export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: CarrierToolSpecDeps): AgentToolSpec {
   return {
     id: "carrier_dispatch",
     tag: "carrier_dispatch",
@@ -238,6 +252,18 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
           startedAt: t0,
           toolName,
           ctx,
+          deps,
+        });
+      }
+
+      let trackModelInfo: CarrierTrackModelInfo;
+      try {
+        trackModelInfo = resolveCarrierTrackModelInfo(registry, carrierId);
+      } catch (error) {
+        return launchResponseResult({
+          job_id: jobId,
+          accepted: false,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
 
@@ -251,12 +277,13 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
       });
       if (!launch.accepted) return launch.response;
 
-      emitJobRegistered(registry, jobId, carrierId, toolCallId, label, t0);
+      emitJobRegistered(registry, jobId, carrierId, toolCallId, label, t0, trackModelInfo);
 
       void runCarrierJobInBackground({
         registry,
         jobId,
         carrierId,
+        trackModelInfo,
         label,
         request,
         signal: launch.signal,
@@ -264,6 +291,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry): AgentTo
         permit: launch.permit,
         startedAt: t0,
         toolName,
+        deps,
       });
 
       return launchResponseResult({ job_id: jobId, accepted: true });
@@ -332,22 +360,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
 async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<CarrierSingleResult> {
   const execStartedAt = Date.now();
   const carrierConfig = getRegisteredCarrierConfig(opts.registry, opts.carrierId);
-  const cliType = carrierConfig
-    ? resolveAgentCliType(opts.carrierId, carrierConfig.defaultCliType)
-    : (opts.carrierId as CliType);
-  const modelConfig = loadCarrierStates({
-    [opts.carrierId]: carrierConfig
-      ? {
-        cliType,
-        ...(carrierConfig.defaultAgentMode ? { defaultAgentMode: carrierConfig.defaultAgentMode } : {}),
-        ...(carrierConfig.defaultEffort ? { defaultEffort: carrierConfig.defaultEffort } : {}),
-        ...(carrierConfig.defaultModel ? { defaultModel: carrierConfig.defaultModel } : {}),
-      }
-      : cliType,
-  })[opts.carrierId];
-  const agentCli = modelConfig?.agentCli[cliType];
-  const model = agentCli?.model;
-  const effort = resolveValidatedEffort(cliType, model, agentCli?.effort);
+  const { cliType, effort, model } = opts.trackModelInfo;
   let sessionId: string | undefined;
 
 
@@ -362,7 +375,9 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   try {
     const execResult = await executeWithPool({
       poolKey: opts.carrierId,
-      carrierId: opts.carrierId,
+      scopeId: opts.carrierId,
+      authEnvResolver: opts.deps.authEnvResolver,
+      reservedExternalMcpServerIds: opts.deps.reservedExternalMcpServerIds,
       cliType,
       request: opts.request,
       cwd: opts.cwd,
@@ -443,6 +458,7 @@ function emitJobRegistered(
   sortieKey: string,
   label: string,
   startedAt: number,
+  trackModelInfo: CarrierTrackModelInfo,
 ): void {
   const runId = buildCarrierDispatchRunId(jobId, carrierId);
   const tracks: TrackMeta[] = [{
@@ -450,7 +466,9 @@ function emitJobRegistered(
     streamKey: carrierId,
     displayCli: carrierId,
     displayName: resolveCarrierDisplayName(registry, carrierId),
+    effort: trackModelInfo.effort,
     kind: "carrier",
+    model: trackModelInfo.model,
     runId,
     startedAt,
   }];
@@ -464,6 +482,31 @@ function emitJobRegistered(
     activeJobToolCallId: sortieKey,
     tracks,
   });
+}
+
+function resolveCarrierTrackModelInfo(registry: CarrierRegistry, carrierId: string): CarrierTrackModelInfo {
+  const carrierConfig = getRegisteredCarrierConfig(registry, carrierId);
+  const cliType = carrierConfig
+    ? resolveAgentCliType(carrierId, carrierConfig.defaultCliType)
+    : (carrierId as CliType);
+  const modelConfig = loadCarrierStates({
+    [carrierId]: carrierConfig
+      ? {
+        cliType,
+        ...(carrierConfig.defaultAgentMode ? { defaultAgentMode: carrierConfig.defaultAgentMode } : {}),
+        ...(carrierConfig.defaultEffort ? { defaultEffort: carrierConfig.defaultEffort } : {}),
+        ...(carrierConfig.defaultModel ? { defaultModel: carrierConfig.defaultModel } : {}),
+      }
+      : cliType,
+  })[carrierId];
+  const agentCli = modelConfig?.agentCli[cliType];
+  const model = agentCli?.model;
+  if (!model) throw new Error(`Carrier model config missing for "${carrierId}".`);
+  return {
+    cliType,
+    model,
+    effort: resolveValidatedEffort(cliType, model, agentCli?.effort),
+  };
 }
 
 function buildCarrierDispatchRunId(jobId: string, carrierId: string): string {

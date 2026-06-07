@@ -20,6 +20,8 @@ export type { FleetCliRelease, MissionControlCounts };
 export interface MissionControlStateSnapshot {
   readonly cliId: AgentCliId;
   readonly kind: MissionControlStateKind;
+  readonly lastLaunchError?: string;
+  readonly lastLaunchWarning?: string;
   readonly lastExit?: PtyExitEvent;
 }
 

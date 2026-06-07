@@ -23,7 +23,6 @@ export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
     nativeSubagents: {
       byHost: {
         claude: { defaultModel: "haiku", defaultEffort: "low" },
-        codex: { defaultModel: "gpt-5.4-mini", defaultEffort: "low" },
       },
     },
   },

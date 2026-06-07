@@ -6,18 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createCarrierRuntime,
   getCarrierConfig,
-  getCodexSubagentRoleFilePath,
   initStore,
   isCarrierAgentModeSubagent,
   readCarriersSnapshot,
   resetStoreForTests,
   setCarrierAgentMode,
-  setCarrierAgentModeWithCodexRole,
+  updateAgentCliTypeOverride,
   updateTaskForceModelSelection,
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
-import { getCliModels } from "@dotobokuri/fleet-infra/agent";
+import { getCliModels } from "@dotobokuri/core-agent";
 
 import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
 import { CarrierStatusOverlay } from "../src/mission-control/carrier-roster/panel.js";
@@ -41,7 +40,7 @@ const THEME = {
   fg: (_token: string, text: string) => text,
   warning: (text: string) => `<warning>${text}</warning>`,
 } as FleetPtyTheme;
-const ANSI_PATTERN = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const ANSI_PATTERN = new RegExp("\\x1b\\[[0-9;?]*[ -/]*[@-~]", "g");
 const SELECTED_BG_ANSI = "\x1b[48;2;45;55;70m";
 
 let tempDir: string | null = null;
@@ -79,11 +78,11 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     expect(overlay.render(140).join("\n")).toContain("<warning>경고:");
   });
 
-  it("preserves existing Task Force config when SA enable fails before TF reset", () => {
+  it("preserves existing Task Force config when Codex SA enable is rejected", () => {
     updateTaskForceModelSelection("ohio", "claude", { model: firstModel("claude") });
     updateTaskForceModelSelection("ohio", "codex", { model: firstModel("codex") });
+    updateAgentCliTypeOverride("ohio", "codex", "claude");
     setCarrierAgentMode("ohio", false, "subagent");
-    fs.symlinkSync(tempDir!, path.join(tempDir!, "codex-agents"), "dir");
     const runtime = createTestCarrierRuntime();
     const overlay = new CarrierStatusOverlay({
       carrierRuntime: runtime,
@@ -94,22 +93,19 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     });
 
     (overlay as unknown as { selectedCarrierId: string }).selectedCarrierId = "ohio";
+    openToggleNativeAction(overlay);
 
-    expect(() => openToggleNativeAction(overlay)).toThrow(/Codex subagent root must not be a symlink/);
     expect(readCarriersSnapshot().carriers.ohio?.taskforce?.claude?.model).toBe(firstModel("claude"));
     expect(readCarriersSnapshot().carriers.ohio?.taskforce?.codex?.model).toBe(firstModel("codex"));
     expect(isCarrierAgentModeSubagent("ohio", getCarrierConfig(runtime.registry, "ohio")?.defaultAgentMode)).toBe(false);
+    expect(overlay.render(140).join("\n")).toContain("Codex native SubAgent는 지원하지 않습니다");
   });
 
-  it("disables SA mode through Codex role cleanup before saving TF config and renders warning feedback", async () => {
+  it("disables SA mode before saving TF config and renders warning feedback", async () => {
     const runtime = createTestCarrierRuntime();
     const config = getCarrierConfig(runtime.registry, "ohio");
     expect(config).toBeTruthy();
-    setCarrierAgentModeWithCodexRole(config!, true, { model: firstModel("codex") }, {
-      registeredCarrierIds: ["ohio"],
-    });
-    const roleFile = getCodexSubagentRoleFilePath("ohio");
-    expect(roleFile && fs.existsSync(roleFile)).toBe(true);
+    setCarrierAgentMode("ohio", true, config!.defaultAgentMode);
     const surface = new RosterTaskForcePanelSurface({
       carrierDisplayName: "Ohio",
       carrierId: "ohio",
@@ -125,14 +121,12 @@ describe("carrier roster SA/TF mutual exclusion", () => {
     }).commitSelection(entry, { model: entry.model });
 
     expect(isCarrierAgentModeSubagent("ohio", config!.defaultAgentMode)).toBe(false);
-    expect(roleFile && fs.existsSync(roleFile)).toBe(false);
     expect(readCarriersSnapshot().carriers.ohio?.taskforce?.codex?.model).toBe(entry.model);
     expect(surface.render(140).join("\n")).toContain("<warning>경고:");
   });
 
-  it("disables SA mode and saves TF config when SA cleanup succeeds after TF save", async () => {
+  it("disables SA mode and saves TF config without Codex role-file cleanup", async () => {
     setCarrierAgentMode("ohio", true);
-    fs.symlinkSync(tempDir!, path.join(tempDir!, "codex-agents"), "dir");
     const runtime = createTestCarrierRuntime();
     const config = getCarrierConfig(runtime.registry, "ohio");
     expect(config).toBeTruthy();
@@ -514,11 +508,7 @@ function buildRosterRenderModel(
 }
 
 function openToggleNativeAction(overlay: CarrierStatusOverlay): void {
-  overlay.handleInput("\r");
-  overlay.handleInput("\x1b[B");
-  overlay.handleInput("\x1b[B");
-  overlay.handleInput("\x1b[B");
-  overlay.handleInput("\r");
+  (overlay as unknown as { toggleSubagentMode(): void }).toggleSubagentMode();
 }
 
 function buildRosterRenderDeps(theme: FleetPtyTheme = THEME): CarrierStatusRenderDeps {

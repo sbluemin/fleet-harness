@@ -1,4 +1,4 @@
-import type { CliType } from "@dotobokuri/fleet-unified-agent";
+import type { CliType } from "@dotobokuri/core-unified-agent";
 
 import type { TaskForceCliType } from "../dispatch/types.js";
 

@@ -5,7 +5,7 @@
 ## Owns
 
 - Admiral system prompt assembly and the `createSystemPromptBuilder(deps): SystemPromptBuilder` factory
-- Fleet Action Protocol prompt body
+- Protocol gate prompt policy, protocol skill doctrine, and standing-order prompt policy
 - Standing orders used by the Admiral system prompt
 - Fleet-specific agent tool defaults and whitelist-only executor MCP tool exposure
 
@@ -17,7 +17,7 @@
 
 ## Import Boundaries
 
-- May depend on `@dotobokuri/fleet-carriers` and `@dotobokuri/fleet-mcp-server`.
+- May depend on `@dotobokuri/fleet-carriers` and `@dotobokuri/core-mcp-server`.
 - Must not import `@dotobokuri/fleet-cli`, `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-wiki-ui`, `@dotobokuri/fleet-infra`, or `runtime/fleet-cli`.
 - Consumers import only from the root package entry `@dotobokuri/fleet-admiral`; do not add subpath exports or deep-import compatibility paths.
 
@@ -29,8 +29,7 @@ The root barrel is whitelist-only. It may export exactly:
 - `SystemPromptBuilder`
 - `registerAgentToolDefaults`
 - `getExecutorMcpTools`
-- `CARRIER_MCP_SERVER_NAME`
-- `WIKI_MCP_SERVER_NAME`
+- `FLEET_MCP_SERVER_NAME`
 - `CARRIER_EXECUTOR_MCP_TOOL_IDS`
 - `WIKI_EXECUTOR_MCP_TOOL_IDS`
 - `EXECUTOR_MCP_TOOL_IDS`

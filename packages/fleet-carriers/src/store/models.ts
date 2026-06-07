@@ -2,8 +2,8 @@ import {
   getEffort,
   getProviderModels,
   type CliType,
-} from "@dotobokuri/fleet-unified-agent";
-import { disconnect } from "@dotobokuri/fleet-infra/agent";
+} from "@dotobokuri/core-unified-agent";
+import { disconnect } from "@dotobokuri/core-agent";
 
 import {
   sanitizeAgentCli,

@@ -77,6 +77,7 @@ const STREAM_INLINE_COLOR = "\x1b[38;2;100;210;245m";
 const HUD_CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const HUD_LINE_BREAKS = /[\r\n]+/g;
 const HUD_MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
+const HUD_SPOOFING_FORMAT_CHARS = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufe00-\ufe0f\ufeff]/gi;
 const DEFAULT_SAFE_LABEL = "(unnamed)";
 const EXIT_WARNING_TEXT = "Press Ctrl+C again to exit";
 const KIND_LABELS: Record<string, string> = {
@@ -227,8 +228,9 @@ function appendWidgetJobSummary(
     if (!group || group.jobs.length === 0) continue;
     const taskForceBackendCount = getConfiguredTaskForceBackendsFromSnapshot(readCarriersSnapshot(), group.carrierId).length;
     const groupColor = resolveCarrierPresentationColor(carrierRuntime, group.carrierId, subagentModes, taskForceBackendCount);
+    const groupModelInfo = carrierGroupModelInfo(group);
     lines.push(truncateToWidth(
-      `${STREAM_PREFIX}${groupColor}${group.displayName}${ANSI_RESET}`,
+      `${STREAM_PREFIX}${groupColor}${group.displayName}${groupModelInfo}${ANSI_RESET}`,
       width,
     ));
 
@@ -404,6 +406,19 @@ function shouldInlineSingleTrack(job: PanelJobViewModel): boolean {
   return job.kind === "carrier" && job.tracks.length === 1;
 }
 
+function carrierGroupModelInfo(group: CarrierJobGroupViewModel): string {
+  const label = groupTrackModelEffortLabel(group);
+  return label ? ` (${label})` : "";
+}
+
+function groupTrackModelEffortLabel(group: CarrierJobGroupViewModel): string {
+  if (group.jobs.some((job) => job.kind === "taskforce")) return "";
+  const carrierJobs = group.jobs.filter((job) => shouldInlineSingleTrack(job));
+  if (carrierJobs.length !== 1) return "";
+  const track = carrierJobs[0]?.tracks[0];
+  return track ? trackModelEffortLabel(track) : "";
+}
+
 function buildCarrierDefaults(carrierRuntime: CarrierRuntime): Record<string, CarrierModelDefaults> {
   return Object.fromEntries(
     getRegisteredOrder(carrierRuntime.registry)
@@ -463,9 +478,18 @@ function trackStatusIcon(track: PanelTrackViewModel, frame: number, color?: stri
 
 function trackDisplayName(track: PanelTrackViewModel): string {
   if (track.kind === "backend") {
+    const label = trackModelEffortLabel(track);
+    if (label) return label;
     return CLI_DISPLAY_NAMES[track.displayCli] ?? capitalize(track.displayCli);
   }
   return track.displayName;
+}
+
+function trackModelEffortLabel(track: PanelTrackViewModel): string {
+  const model = track.model ? sanitizeHudInlineText(track.model) : "";
+  if (!model) return "";
+  const effort = track.effort ? sanitizeHudInlineText(track.effort) : "";
+  return effort ? `${model} - ${effort}` : model;
 }
 
 function trackInlineBlock(track: PanelTrackViewModel): string {
@@ -477,11 +501,16 @@ function trackInlineBlock(track: PanelTrackViewModel): string {
 }
 
 function sanitizeHudText(text: string): string {
-  return stripHudTerminalControls(text).replace(HUD_LINE_BREAKS, " ").replace(HUD_CONTROL_CHARS, "").trim();
+  return stripHudTerminalControls(text)
+    .replace(HUD_SPOOFING_FORMAT_CHARS, "")
+    .replace(HUD_LINE_BREAKS, " ")
+    .replace(HUD_CONTROL_CHARS, "")
+    .trim();
 }
 
 function sanitizeHudMultilineText(text: string): string {
   return stripHudTerminalControls(text)
+    .replace(HUD_SPOOFING_FORMAT_CHARS, "")
     .replace(/\r\n?/g, "\n")
     .replace(HUD_MULTILINE_CONTROL_CHARS, "")
     .trim();

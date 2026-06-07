@@ -26,9 +26,10 @@
     }
   },
   "dependencies": {
+    "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-mcp-server": "workspace:*",
+    "@dotobokuri/core-unified-agent": "workspace:*",
     "@dotobokuri/fleet-infra": "workspace:*",
-    "@dotobokuri/fleet-mcp-server": "workspace:*",
-    "@dotobokuri/fleet-unified-agent": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {
