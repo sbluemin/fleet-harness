@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import crypto from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -348,11 +349,13 @@ describe("fleet-cli agent CLI MCP registration", () => {
     const commands: string[] = [];
     const codexState = {
       installed: new Set<string>(),
-      marketplaceRoot: undefined as string | undefined,
+      marketplaces: new Map<string, string>(),
     };
     try {
       mkdirSync(path.join(cwd, ".fleet", "skills", "project-skill"), { recursive: true, mode: 0o700 });
       writeFileSync(path.join(cwd, ".fleet", "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8" });
+      const projectMarketplaceRoot = path.join(path.resolve(cwd, ".fleet"), "marketplace");
+      const projectMarketplaceName = projectMarketplaceNameForCwd(cwd);
 
       const profile = await injectAgentCliProfile({
         args: [],
@@ -372,22 +375,25 @@ describe("fleet-cli agent CLI MCP registration", () => {
             return {
               status: 0,
               stderr: "",
-              stdout: codexState.marketplaceRoot === undefined ? "" : `fleet-harness ${codexState.marketplaceRoot}\n`,
+              stdout: [...codexState.marketplaces].map(([name, root]) => `${name} ${root}`).join("\n"),
             };
           }
           if (line.startsWith("plugin marketplace add ")) {
-            codexState.marketplaceRoot = line.slice("plugin marketplace add ".length);
+            const marketplaceRoot = line.slice("plugin marketplace add ".length);
+            const marketplaceName = marketplaceRoot === projectMarketplaceRoot ? projectMarketplaceName : "fleet-harness";
+            codexState.marketplaces.set(marketplaceName, marketplaceRoot);
             return { status: 0, stderr: "", stdout: "" };
           }
           if (line === "plugin list") {
             return {
               status: 0,
               stderr: "",
-              stdout: [...codexState.installed].map((pluginName) => `${pluginName}@fleet-harness  installed, enabled`).join("\n"),
+              stdout: [...codexState.installed].map((pluginKey) => `${pluginKey}  installed, enabled`).join("\n"),
             };
           }
-          if (line.startsWith("plugin add ") && line.endsWith(" -m fleet-harness")) {
-            codexState.installed.add(line.slice("plugin add ".length, line.length - " -m fleet-harness".length));
+          const addMatch = line.match(/^plugin add (\S+) -m (\S+)$/);
+          if (addMatch) {
+            codexState.installed.add(`${addMatch[1]}@${addMatch[2]}`);
             return { status: 0, stderr: "", stdout: "" };
           }
           return { status: 0, stderr: "", stdout: "" };
@@ -409,10 +415,11 @@ describe("fleet-cli agent CLI MCP registration", () => {
         "plugin list",
         "plugin add fleet -m fleet-harness",
         "plugin marketplace list",
+        `plugin marketplace add ${projectMarketplaceRoot}`,
         "plugin list",
-        "plugin add fleet-project -m fleet-harness",
+        `plugin add fleet-project -m ${projectMarketplaceName}`,
       ]);
-      expect(codexState.installed).toEqual(new Set(["fleet", "fleet-project"]));
+      expect(codexState.installed).toEqual(new Set(["fleet@fleet-harness", `fleet-project@${projectMarketplaceName}`]));
       const profileName = argValue(profile.args, "--profile");
       expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
       expect(readFileSync(path.join(codexHome, `${profileName}.config.toml`), "utf8")).toBe([
@@ -424,7 +431,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
         '[plugins."fleet@fleet-harness"]',
         "enabled = true",
         "",
-        '[plugins."fleet-project@fleet-harness"]',
+        `[plugins."fleet-project@${projectMarketplaceName}"]`,
         "enabled = true",
         "",
       ].join("\n"));
@@ -523,6 +530,11 @@ function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
     replaceSystemPrompt: true,
     systemPromptFile: path.join(root, "system-prompt.md"),
   };
+}
+
+function projectMarketplaceNameForCwd(cwd: string): string {
+  const hash = crypto.createHash("sha256").update(path.resolve(cwd, ".fleet")).digest("hex").slice(0, 12);
+  return `fleet-project-${hash}`;
 }
 
 function argValue(args: readonly string[], name: string): string | undefined {

@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, constants, lstatSync, mkdirSync, openSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants, lstatSync, mkdirSync, openSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const DIR_MODE = 0o700;
@@ -20,6 +20,17 @@ export function writePrivateFile(filePath: string, content: string, rootBase: st
   ensureDirectorySegments(resolvedBase, path.dirname(filePath));
   writeFileNoFollow(filePath, content);
   chmodBestEffort(filePath, FILE_MODE);
+}
+
+export function linkPrivateSymlink(linkPath: string, target: string, rootBase: string): void {
+  // Mirrors a user .fleet source symlink into the managed tree as a symlink (passthrough),
+  // instead of deep-copying the target content. The link location stays inside the hardened
+  // root (validated below); only its resolved target may point outside, which is the
+  // intentional, Admiral-accepted behavior for user-controlled .fleet sources.
+  const resolvedBase = ensureRootBase(rootBase);
+  ensurePathWithinRoot(resolvedBase, linkPath);
+  ensureDirectorySegments(resolvedBase, path.dirname(linkPath));
+  symlinkSync(target, linkPath);
 }
 
 export function removePrivatePath(targetPath: string, rootBase: string): void {

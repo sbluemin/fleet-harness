@@ -136,6 +136,8 @@ Fleet collapses that into a single convention. Define your project's extensions 
 
 On launch, Fleet renders `.fleet/` into a native plugin for each carrier's CLI, so the same hooks, agents, skills, and MCP servers are applied to every tool automatically — no per-CLI duplication. Drop the folder into any repository and every carrier picks it up.
 
+The same convention works at the user-global level. Define extensions once under `~/.fleet/` with the identical `hooks/`, `agents/`, `skills/`, and `.mcp.json` layout, and Fleet renders them into a global plugin that applies across every project — independent of the working directory. Project-level `.fleet/` and user-global `~/.fleet/` are rendered side by side, so each carrier loads both scopes at once.
+
 ## Documentation
 
 - [Fleet Development Reference](./docs/fleet-development-reference.md) — The comprehensive guide for developing Fleet host extensions and using the SDK.

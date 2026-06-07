@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import crypto from "node:crypto";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -183,9 +184,9 @@ describe("agent CLI plugin renderer", () => {
 
     expect(plugin.pluginRoots).toEqual([
       path.join(rootDir, "marketplace", "plugins", "fleet"),
-      path.join(rootDir, "marketplace", "plugins", "fleet-project"),
+      path.join(projectMarketplaceRootForCwd(cwd), "plugins", "fleet-project"),
     ]);
-    expect(readJson(path.join(rootDir, "marketplace", "plugins", "fleet-project", ".codex-plugin", "plugin.json"))).toMatchObject({
+    expect(readJson(path.join(projectMarketplaceRootForCwd(cwd), "plugins", "fleet-project", ".codex-plugin", "plugin.json"))).toMatchObject({
       name: "fleet-project",
     });
   });
@@ -215,29 +216,40 @@ describe("agent CLI plugin renderer", () => {
     });
 
     const marketplaceRoot = path.join(rootDir, "marketplace");
+    const projectMarketplaceRoot = projectMarketplaceRootForCwd(cwd);
+    const projectMarketplaceName = projectMarketplaceNameForCwd(cwd);
     const fleetRoot = path.join(marketplaceRoot, "plugins", "fleet");
-    const projectRoot = path.join(marketplaceRoot, "plugins", "fleet-project");
+    const projectRoot = path.join(projectMarketplaceRoot, "plugins", "fleet-project");
 
     expect(plugin.pluginRoot).toBe(fleetRoot);
     expect(plugin.pluginRoots).toEqual([fleetRoot, projectRoot]);
     expect(plugin.codexRegistrations.map((registration) => registration.pluginName)).toEqual(["fleet", "fleet-project"]);
     expect(registrationByName(plugin, "fleet-project")).toMatchObject({
-      hashPath: path.join(marketplaceRoot, ".fleet-project-codex-plugin.hash"),
-      marketplaceName: "fleet-harness",
+      hashPath: path.join(projectMarketplaceRoot, ".fleet-project-codex-plugin.hash"),
+      marketplaceDir: projectMarketplaceRoot,
+      marketplaceName: projectMarketplaceName,
       pluginName: "fleet-project",
       pluginRoot: projectRoot,
     });
-    expect(readJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"))).toMatchObject({
-      plugins: [
-        { name: "fleet", source: { path: "./plugins/fleet" } },
-        { name: "fleet-project", displayName: "Fleet Project", source: { path: "./plugins/fleet-project" } },
-      ],
+    expect(readJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"))).toEqual({
+      name: "fleet-harness",
+      plugins: [{
+        name: "fleet",
+        displayName: "Fleet",
+        source: {
+          source: "local",
+          path: "./plugins/fleet",
+        },
+        description: "Fleet carrier delegation and wiki evidence plugin",
+      }],
     });
-    expect(readJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"))).toMatchObject({
-      plugins: [
-        { name: "fleet", source: "./plugins/fleet" },
-        { name: "fleet-project", source: "./plugins/fleet-project" },
-      ],
+    expect(readJson(path.join(projectMarketplaceRoot, ".agents", "plugins", "marketplace.json"))).toMatchObject({
+      name: projectMarketplaceName,
+      plugins: [{ name: "fleet-project", displayName: "Fleet Project", source: { path: "./plugins/fleet-project" } }],
+    });
+    expect(readJson(path.join(projectMarketplaceRoot, ".claude-plugin", "marketplace.json"))).toMatchObject({
+      name: projectMarketplaceName,
+      plugins: [{ name: "fleet-project", source: "./plugins/fleet-project" }],
     });
     expect(readJson(path.join(projectRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
       name: "fleet-project",
@@ -250,27 +262,152 @@ describe("agent CLI plugin renderer", () => {
     expect(existsSync(path.join(projectRoot, "agents", "Ohio.md"))).toBe(false);
   });
 
-  it("rejects symlinks inside project .fleet assets before copying", () => {
+  it("renders global ~/.fleet assets as a marketplace plugin when present", () => {
     const cwd = makeRoot();
     const rootDir = makeRoot();
-    const outside = makeRoot();
-    mkdirSync(path.join(cwd, ".fleet", "skills"), { recursive: true, mode: 0o700 });
-    symlinkSync(path.join(outside, "SKILL.md"), path.join(cwd, ".fleet", "skills", "linked.md"));
+    mkdirSync(path.join(rootDir, "skills", "global-skill"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(rootDir, "agents"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(rootDir, "hooks"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(rootDir, "skills", "global-skill", "SKILL.md"), "Global skill", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(rootDir, "agents", "global.md"), "Global agent", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(rootDir, "hooks", "hooks.json"), "{\"hooks\":{}}", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(rootDir, ".mcp.json"), "{\"mcpServers\":{}}", { encoding: "utf8", mode: 0o600 });
 
-    expect(() => createAgentCliPlugin({
+    const plugin = createAgentCliPlugin({
       assetsDir: PLUGIN_ASSETS_DIR,
       claudeDefinitions: [],
       cliId: "codex",
       cwd,
       rootDir,
-    })).toThrow(/symlink/);
+    });
+
+    const marketplaceRoot = path.join(rootDir, "marketplace");
+    const fleetRoot = path.join(marketplaceRoot, "plugins", "fleet");
+    const globalRoot = path.join(marketplaceRoot, "plugins", "fleet-global");
+
+    expect(plugin.pluginRoots).toEqual([fleetRoot, globalRoot]);
+    expect(plugin.codexRegistrations.map((registration) => registration.pluginName)).toEqual(["fleet", "fleet-global"]);
+    expect(registrationByName(plugin, "fleet-global")).toMatchObject({
+      hashPath: path.join(marketplaceRoot, ".fleet-global-codex-plugin.hash"),
+      marketplaceName: "fleet-harness",
+      pluginName: "fleet-global",
+      pluginRoot: globalRoot,
+    });
+    expect(readJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"))).toMatchObject({
+      plugins: [
+        { name: "fleet", source: { path: "./plugins/fleet" } },
+        { name: "fleet-global", displayName: "Fleet Global", source: { path: "./plugins/fleet-global" } },
+      ],
+    });
+    expect(readJson(path.join(globalRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
+      name: "fleet-global",
+      skills: "./skills/",
+    });
+    expect(readFileSync(path.join(globalRoot, "skills", "global-skill", "SKILL.md"), "utf8")).toBe("Global skill");
+    expect(readFileSync(path.join(globalRoot, "agents", "global.md"), "utf8")).toBe("Global agent");
+    expect(readFileSync(path.join(globalRoot, "hooks", "hooks.json"), "utf8")).toBe("{\"hooks\":{}}");
+    expect(readFileSync(path.join(globalRoot, ".mcp.json"), "utf8")).toBe("{\"mcpServers\":{}}");
+    expect(existsSync(path.join(globalRoot, "skills", "marketplace"))).toBe(false);
   });
 
-  it("rejects a symlinked project .fleet root before copying", () => {
+  it("omits the global plugin when no global ~/.fleet content exists", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    expect(plugin.pluginRoots).toEqual([path.join(rootDir, "marketplace", "plugins", "fleet")]);
+    expect(plugin.codexRegistrations.map((registration) => registration.pluginName)).toEqual(["fleet"]);
+  });
+
+  it("mirrors symlinked skills inside global ~/.fleet as symlinks instead of deep-copying", () => {
     const cwd = makeRoot();
     const rootDir = makeRoot();
     const outside = makeRoot();
-    mkdirSync(path.join(outside, "skills"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(rootDir, "skills"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(outside, "linked-skill"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(outside, "linked-skill", "SKILL.md"), "Linked global skill", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(outside, "linked-file.md"), "Linked global file", { encoding: "utf8", mode: 0o600 });
+    symlinkSync(path.join(outside, "linked-skill"), path.join(rootDir, "skills", "linked-skill"));
+    symlinkSync(path.join(outside, "linked-file.md"), path.join(rootDir, "skills", "linked-file.md"));
+
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    const globalRoot = path.join(rootDir, "marketplace", "plugins", "fleet-global");
+    const linkedSkill = path.join(globalRoot, "skills", "linked-skill");
+    const linkedFile = path.join(globalRoot, "skills", "linked-file.md");
+    expect(plugin.pluginRoots.map((p) => path.basename(p))).toContain("fleet-global");
+    // Mirrored as symlinks (passthrough), not deep-copied directories/files.
+    expect(lstatSync(linkedSkill).isSymbolicLink()).toBe(true);
+    expect(lstatSync(linkedFile).isSymbolicLink()).toBe(true);
+    expect(realpathSync(linkedSkill)).toBe(realpathSync(path.join(outside, "linked-skill")));
+    // Content stays readable through the mirrored symlink.
+    expect(readFileSync(path.join(linkedSkill, "SKILL.md"), "utf8")).toBe("Linked global skill");
+    expect(readFileSync(linkedFile, "utf8")).toBe("Linked global file");
+  });
+
+  it("mirrors symlinked skills inside project .fleet as symlinks instead of deep-copying", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const outside = makeRoot();
+    mkdirSync(path.join(cwd, ".fleet", "skills"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(outside, "linked-skill"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(outside, "linked-skill", "SKILL.md"), "Linked project skill", { encoding: "utf8", mode: 0o600 });
+    symlinkSync(path.join(outside, "linked-skill"), path.join(cwd, ".fleet", "skills", "linked-skill"));
+
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    const projectRoot = path.join(projectMarketplaceRootForCwd(cwd), "plugins", "fleet-project");
+    const linkedSkill = path.join(projectRoot, "skills", "linked-skill");
+    expect(lstatSync(linkedSkill).isSymbolicLink()).toBe(true);
+    expect(readFileSync(path.join(linkedSkill, "SKILL.md"), "utf8")).toBe("Linked project skill");
+  });
+
+  it("skips dangling symlinks inside global ~/.fleet without aborting the launch", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const outside = makeRoot();
+    mkdirSync(path.join(rootDir, "skills", "real-skill"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(rootDir, "skills", "real-skill", "SKILL.md"), "Real skill", { encoding: "utf8", mode: 0o600 });
+    symlinkSync(path.join(outside, "missing-target"), path.join(rootDir, "skills", "dangling"));
+
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    const globalRoot = path.join(rootDir, "marketplace", "plugins", "fleet-global");
+    expect(readFileSync(path.join(globalRoot, "skills", "real-skill", "SKILL.md"), "utf8")).toBe("Real skill");
+    expect(existsSync(path.join(globalRoot, "skills", "dangling"))).toBe(false);
+  });
+
+  it("rejects a symlinked project .fleet root", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const outside = makeRoot();
+    mkdirSync(path.join(outside, "skills", "root-linked-skill"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(outside, "skills", "root-linked-skill", "SKILL.md"), "Root-linked skill", { encoding: "utf8", mode: 0o600 });
     symlinkSync(outside, path.join(cwd, ".fleet"));
 
     expect(() => createAgentCliPlugin({
@@ -279,7 +416,24 @@ describe("agent CLI plugin renderer", () => {
       cliId: "codex",
       cwd,
       rootDir,
-    })).toThrow(/source root is a symlink/);
+    })).toThrow(/is a symlink/);
+    expect(existsSync(path.join(outside, "marketplace"))).toBe(false);
+    expect(existsSync(path.join(cwd, ".fleet", "marketplace"))).toBe(false);
+  });
+
+  it("rejects a project .fleet root that is not a directory", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    writeFileSync(path.join(cwd, ".fleet"), "x", { encoding: "utf8", mode: 0o600 });
+
+    expect(() => createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    })).toThrow(/not a directory/);
+    expect(existsSync(path.join(rootDir, "marketplace"))).toBe(false);
   });
 
   it("throws a clear renderer error when required assets are not provided", () => {
@@ -973,6 +1127,15 @@ function createSkillAssetFile(assetsDir: string, relativePath: string, content: 
   const skillPath = path.join(assetsDir, "skills", relativePath);
   mkdirSync(path.dirname(skillPath), { recursive: true, mode: 0o700 });
   writeFileSync(skillPath, content, { encoding: "utf8", mode: 0o600 });
+}
+
+function projectMarketplaceRootForCwd(cwd: string): string {
+  return path.join(path.resolve(cwd, ".fleet"), "marketplace");
+}
+
+function projectMarketplaceNameForCwd(cwd: string): string {
+  const hash = crypto.createHash("sha256").update(path.resolve(cwd, ".fleet")).digest("hex").slice(0, 12);
+  return `fleet-project-${hash}`;
 }
 
 function registrationByName(plugin: AgentCliPlugin, pluginName: string): CodexPluginRegistration {
