@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `24`
+- total_entries: `25`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -57,6 +57,16 @@
 - summary: `# 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안`
 - raw_source_ref: `raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
 - raw_source_refs: `raw/2026-05-31-guide-004-cli-subagent-injection-source-64d34adf.md, raw/2026-06-01-guide-004-cli-subagent-injection-source-89c3a393.md, raw/2026-06-01-guide-004-cli-subagent-injection-source-a0d6c283.md`
+
+### guide-005-cli-hooks-io-comparison
+
+- title: `Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교`
+- path: `wiki/guide-005-cli-hooks-io-comparison.md`
+- tags: `guide, hooks, claude-code, codex, cli, comparison, current`
+- updated: `2026-06-07T03:27:07.329Z`
+- summary: `# Claude Code vs Codex CLI — Hook Input/Output 활용 기능 비교`
+- raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
+- raw_source_refs: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-6fb1bd2b.md, raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
 
 ### guide-unified-agent-cursor-composer-25
 
@@ -308,10 +318,12 @@
 ### claude-code
 
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 
 ### cli
 
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 
 ### cli-options
@@ -321,6 +333,7 @@
 ### codex
 
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 
 ### cognitive-debt
 
@@ -333,6 +346,7 @@
 ### comparison
 
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 
 ### composer-2.5
 
@@ -352,6 +366,7 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 
 ### cursor
 
@@ -480,6 +495,11 @@
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
+
+### hooks
+
+- [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 
 ### keybind
 
