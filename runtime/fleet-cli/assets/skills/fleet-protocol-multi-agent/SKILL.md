@@ -9,6 +9,29 @@ Use this mode when operational work requires multiple Carriers, independent para
 
 The always-on Standing Orders remain binding: Mission Anchor, Context Confidence, Carrier Operations Policy, Deep Dive, and Result Integrity.
 
+## Reporting Cadence
+
+As you move through this protocol, report progress to the Admiral of the Navy in order — each step on its own line with its report token. Do not merge steps together or fold them into the General Quarters checks below.
+
+1. State that you are drawing up the plan for this work. → report `plan: drafting`
+2. State that you are running the readiness checks below. → report `checks: running`
+3. Confirm the readiness checks are complete. → report `checks: complete`
+4. Brief how the Workflow will proceed — name (a) the Workflow steps that will run, (b) each carrier's file or responsibility ownership, and (c) the dispatch wave sequencing. → report `brief: <…>`
+5. Confirm all five steps were reported, then state that execution is beginning and run the Workflow. → report `executing`
+
+Steps 2–3 wrap the General Quarters section: step 2 opens the readiness checks, they run in full, and step 3 closes them once every check has reported its token.
+
+## General Quarters
+
+Confirm each readiness check below before the Workflow. Work through them in order and report each as you confirm it, then proceed to reconnaissance and decomposition. These checks prepare the work; they do not gate entry.
+
+- [ ] **Common** — objective stated (Mission Anchor), mode-fit holds (Mode Gate), Standing Orders binding. → report `common: ready`
+- [ ] **Impact & isolation** — carry the high-risk checks (public-surface impact, rollback checkpoint, branch or worktree isolation) wherever the work is also high risk. → report `impact/isolation: <…>`
+- [ ] **Carrier availability** — confirm the intended carriers are actually exposed and available this session. → report `carriers: <…>`
+- [ ] **Ownership** — pre-sketch each carrier's file or responsibility boundary. → report `ownership: <…>`
+- [ ] **Shared resources** — flag shared mutable resources (same files, lock files, or a singleton test environment). → report `shared: <…|none>`
+- [ ] **Dependencies** — pre-classify parallel versus sequential work before decomposition and dispatch. → report `dependencies: <parallel|sequenced: …>`
+
 ## Workflow
 
 1. Reconnaissance and decomposition: audit known facts, identify gaps, map affected surfaces, and split work into independently verifiable missions.
