@@ -12,6 +12,7 @@ export const codexCli: AgentCliDefinition = {
     return {
       args: [...prefixArgs, "--no-alt-screen", ...buildModelArgs(options.model)],
       bin,
+      binPrefixArgs: prefixArgs,
       cwd: options.cwd,
       env: createChildEnv(options.env, createCodexEnv()),
       id: "codex",

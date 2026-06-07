@@ -22,6 +22,7 @@ describe("agent CLI injection failure cleanup", () => {
     const codexHome = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
     vi.resetModules();
     vi.doMock("../src/agent-cli/plugin/index.js", () => ({
+      CODEX_FLEET_PLUGIN_KEY: "fleet@fleet-harness",
       createAgentCliPlugin: () => {
         throw new Error("render failed");
       },

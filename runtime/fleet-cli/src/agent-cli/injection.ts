@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { chmodSync, closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import type { ExecutorSessionManager } from "@dotobokuri/fleet-mcp-server";
 import {
@@ -21,8 +22,8 @@ import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { escapeTomlBasicString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
-import type { CodexCommandResult, CodexPluginRegistrationCommand } from "./plugin/types.js";
+import { CODEX_FLEET_PLUGIN_KEY, createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
+import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "./plugin/types.js";
 import type { AgentCliInjectionContext, AgentCliMcpServerArg, AgentCliProfile } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
@@ -90,14 +91,16 @@ export async function injectAgentCliProfile(
       cwd: profile.cwd,
       rootDir: options.pluginRootDir,
       assetsDir: options.pluginAssetsDir,
-      hookCommand: startupDefinitions.host === "claude"
+      hookExec: startupDefinitions.host === "claude"
         ? buildFleetHookCommand(options.pluginEntry)
         : undefined,
     });
     const launchWarnings: string[] = [];
+    // Codex CLI가 Windows .cmd shim이면 profile.bin은 cmd.exe, binPrefixArgs는 /d /s /c <shim>이다.
+    // 등록 명령은 이 prefixArgs를 base args로 실어야 PTY 실행 경로와 동일하게 codex가 호출된다(POSIX에선 빈 배열).
     for (const registration of plugin.codexRegistrations) {
       const registrationWarning = ensureCodexPluginRegistered(registration, {
-        args: [],
+        args: [...(profile.binPrefixArgs ?? [])],
         bin: profile.bin,
         cwd: profile.cwd,
         env: { ...profile.env },
@@ -139,31 +142,27 @@ export async function injectAgentCliProfile(
   }
 }
 
-export function buildFleetHookCommand(entry: FleetHookCommandEntry | undefined): string {
+export function buildFleetHookCommand(entry: FleetHookCommandEntry | undefined): FleetHookExec {
   if (entry === undefined) {
     throw new Error("Fleet session hook command requires the current Fleet entry path");
   }
   const extension = path.extname(entry.entryPath);
   if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {
-    return [
-      shellQuote(entry.execPath),
-      shellQuote(entry.entryPath),
-      "hook",
-      "subagents-context",
-    ].join(" ");
+    // exec form: 셸 인용이 없으므로 공백 포함 경로(예: C:\Program Files\nodejs\node.exe)도 그대로 안전하다.
+    return {
+      command: entry.execPath,
+      args: [entry.entryPath, "hook", "subagents-context"],
+    };
   }
   if (TYPESCRIPT_ENTRY_EXTENSIONS.has(extension)) {
     if (!entry.tsxLoaderPath) {
       throw new Error("Fleet session hook command for TypeScript entries requires a tsx loader path");
     }
-    return [
-      shellQuote(entry.execPath),
-      "--import",
-      shellQuote(entry.tsxLoaderPath),
-      shellQuote(entry.entryPath),
-      "hook",
-      "subagents-context",
-    ].join(" ");
+    // node --import는 Windows에서 절대경로(C:\...)를 c: URL scheme으로 오인하므로 file:// URL로 변환한다.
+    return {
+      command: entry.execPath,
+      args: ["--import", pathToFileURL(entry.tsxLoaderPath).href, entry.entryPath, "hook", "subagents-context"],
+    };
   }
   throw new Error(`Unsupported Fleet session hook entry extension: ${extension}`);
 }
@@ -253,6 +252,9 @@ function writeCodexFleetProfile(
     CODEX_FLEET_PROFILE_MARKER,
     `developer_instructions = "${escapeTomlBasicString(doctrine)}"`,
     "",
+    `[plugins."${escapeTomlBasicString(CODEX_FLEET_PLUGIN_KEY)}"]`,
+    "enabled = true",
+    "",
   ].join("\n"));
   chmodBestEffort(profilePath, SYSTEM_PROMPT_FILE_MODE);
   return { profileName, profilePath };
@@ -298,10 +300,6 @@ function isStaleFleetCodexProfile(filePath: string, now: number): boolean {
 function readFirstLine(filePath: string): string {
   const content = readFileSync(filePath, "utf8");
   return content.split(/\r?\n/, 1)[0] ?? "";
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

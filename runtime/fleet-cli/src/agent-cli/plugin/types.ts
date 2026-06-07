@@ -1,11 +1,16 @@
 import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
 
+export interface FleetHookExec {
+  readonly args: readonly string[];
+  readonly command: string;
+}
+
 export interface CreateAgentCliPluginOptions {
   readonly assetsDir?: string;
   readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
   readonly cliId: string;
   readonly cwd: string;
-  readonly hookCommand?: string;
+  readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
 }

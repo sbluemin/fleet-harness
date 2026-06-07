@@ -7,11 +7,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildSubagentsSection } from "@dotobokuri/fleet-admiral";
 import { buildFleetHookCommand } from "../src/agent-cli/injection.js";
 import { createAgentCliPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/plugin/index.js";
+import { neutralizeCodexFleetPluginConfig } from "../src/agent-cli/plugin/codex-config.js";
 import { cleanupPrivateRoot } from "../src/agent-cli/plugin/fs.js";
 import type { AgentCliPlugin, CodexPluginRegistration, CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
 
 const PLUGIN_ASSETS_DIR = path.resolve("assets");
-const TEST_HOOK_COMMAND = buildFleetHookCommand({
+const tempCodexHomes: string[] = [];
+const TEST_HOOK_EXEC = buildFleetHookCommand({
   entryPath: "/opt/fleet/dist/index.js",
   execPath: "/opt/node/bin/node",
 });
@@ -21,6 +23,9 @@ describe("agent CLI plugin renderer", () => {
 
   afterEach(() => {
     for (const root of tempRoots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+    for (const root of tempCodexHomes.splice(0)) {
       rmSync(root, { recursive: true, force: true });
     }
   });
@@ -193,7 +198,7 @@ describe("agent CLI plugin renderer", () => {
       claudeDefinitions: [],
       cliId: "claude",
       cwd: process.cwd(),
-      hookCommand: TEST_HOOK_COMMAND,
+      hookExec: TEST_HOOK_EXEC,
       rootDir,
     });
 
@@ -204,7 +209,8 @@ describe("agent CLI plugin renderer", () => {
       hooks: {
         SessionStart: [{
           hooks: [{
-            command: TEST_HOOK_COMMAND,
+            args: TEST_HOOK_EXEC.args,
+            command: TEST_HOOK_EXEC.command,
             type: "command",
           }],
         }],
@@ -212,16 +218,30 @@ describe("agent CLI plugin renderer", () => {
     });
   });
 
-  it("builds PATH-independent Fleet hook commands for bundled and dev entries", () => {
+  it("builds PATH-independent exec-form Fleet hook commands for bundled and dev entries", () => {
+    // .js entry: 셸 없이 직접 spawn되는 exec form (command + args)
     expect(buildFleetHookCommand({
       entryPath: "/opt/fleet/dist/index.js",
       execPath: "/opt/node/bin/node",
-    })).toBe("'/opt/node/bin/node' '/opt/fleet/dist/index.js' hook subagents-context");
+    })).toEqual({
+      command: "/opt/node/bin/node",
+      args: ["/opt/fleet/dist/index.js", "hook", "subagents-context"],
+    });
+    // .ts dev entry: tsx loader는 Windows 호환을 위해 file:// URL로 변환되어야 한다.
     expect(buildFleetHookCommand({
       entryPath: "/workspace/fleet/runtime/fleet-cli/src/index.ts",
       execPath: "/opt/node/bin/node",
       tsxLoaderPath: "/workspace/fleet/node_modules/tsx/dist/loader.mjs",
-    })).toBe("'/opt/node/bin/node' --import '/workspace/fleet/node_modules/tsx/dist/loader.mjs' '/workspace/fleet/runtime/fleet-cli/src/index.ts' hook subagents-context");
+    })).toEqual({
+      command: "/opt/node/bin/node",
+      args: [
+        "--import",
+        "file:///workspace/fleet/node_modules/tsx/dist/loader.mjs",
+        "/workspace/fleet/runtime/fleet-cli/src/index.ts",
+        "hook",
+        "subagents-context",
+      ],
+    });
     expect(() => buildFleetHookCommand({
       entryPath: "/workspace/fleet/runtime/fleet-cli/src/index.ts",
       execPath: "/opt/node/bin/node",
@@ -373,6 +393,42 @@ describe("agent CLI plugin renderer", () => {
       "plugin marketplace list",
       "plugin list",
     ]);
+  });
+
+  it("prepends the resolved Codex binary prefix args to every registration command", () => {
+    // Windows .cmd shim 시나리오: bin=cmd.exe, base args=/d /s /c <shim>. 모든 codex 호출이 이 prefix를 유지해야 한다.
+    const rootDir = makeRoot();
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      rootDir,
+    });
+    const registration = registrationByName(plugin, "fleet");
+    const prefix = ["/d", "/s", "/c", "C:\\tools\\codex.cmd"];
+    const calls: string[][] = [];
+    ensureCodexPluginRegistered(registration, {
+      args: prefix,
+      bin: "C:\\Windows\\System32\\cmd.exe",
+      cwd: process.cwd(),
+      env: {},
+    }, (command) => {
+      calls.push([...command.args]);
+      const sub = command.args.slice(prefix.length).join(" ");
+      if (sub === "plugin marketplace list") {
+        return { status: 0, stderr: "", stdout: `fleet-harness ${registration.marketplaceDir}\n` };
+      }
+      return { status: 0, stderr: "", stdout: "" };
+    });
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const args of calls) {
+      expect(args.slice(0, prefix.length)).toEqual(prefix);
+    }
+    expect(calls.map((args) => args.join(" "))).toContain(
+      "/d /s /c C:\\tools\\codex.cmd plugin add fleet -m fleet-harness",
+    );
   });
 
   it("removes stale Codex marketplace roots before readding the Fleet root", () => {
@@ -568,6 +624,158 @@ describe("agent CLI plugin renderer", () => {
     ]);
   });
 
+  it("neutralizes Codex Fleet plugin enablement after plugin add", () => {
+    const rootDir = makeRoot();
+    const codexHome = makeCodexHome();
+    const plugin = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd: process.cwd(),
+      rootDir,
+    });
+    const registration = registrationByName(plugin, "fleet");
+    const state = { marketplaceRoot: registration.marketplaceDir, plugin: false };
+
+    ensureCodexPluginRegistered(registration, codexCommand(codexHome), createCodexRunner(state, []));
+
+    expect(readFileSync(path.join(codexHome, "config.toml"), "utf8")).toContain([
+      `[plugins."fleet@fleet-harness"]`,
+      "enabled = false",
+    ].join("\n"));
+  });
+
+  it("preserves unrelated Codex config lines while disabling Fleet plugin tables", () => {
+    const codexHome = makeCodexHome();
+    const fleetRoot = makeRoot();
+    const marketplaceDir = path.join(fleetRoot, "marketplace");
+    const configPath = path.join(codexHome, "config.toml");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(configPath, [
+      "# user comment",
+      "model = \"gpt-5\"",
+      "",
+      "[plugins.\"fleet@fleet-harness\"] # fleet",
+      "enabled = true # codex plugin add",
+      "mcp_servers = {}",
+      "",
+      "[plugins.\"fleet@fleet\"]",
+      "enabled = true",
+      "",
+      "[plugins.\"user@fleet-harness\"]",
+      "enabled = true",
+      "",
+    ].join("\n"), { encoding: "utf8", mode: 0o600 });
+
+    neutralizeCodexFleetPluginConfig({
+      codexHome,
+      pluginKey: "fleet@fleet-harness",
+    });
+
+    expect(readFileSync(configPath, "utf8")).toBe([
+      "# user comment",
+      "model = \"gpt-5\"",
+      "",
+      "[plugins.\"fleet@fleet-harness\"] # fleet",
+      "enabled = false # codex plugin add",
+      "mcp_servers = {}",
+      "",
+      "[plugins.\"fleet@fleet\"]",
+      "enabled = false",
+      "",
+      "[plugins.\"user@fleet-harness\"]",
+      "enabled = true",
+      "",
+    ].join("\n"));
+  });
+
+  it("leaves Codex marketplace tables untouched while neutralizing the Fleet plugin", () => {
+    const codexHome = makeCodexHome();
+    const fleetRoot = makeRoot();
+    const configPath = path.join(codexHome, "config.toml");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(configPath, [
+      "[marketplaces.fleet]",
+      "source_type = \"local\"",
+      `source = "${fleetRoot}/marketplace"`,
+      "",
+      "[marketplaces.other]",
+      "source_type = \"local\"",
+      `source = "${fleetRoot}/other"`,
+      "",
+    ].join("\n"), { encoding: "utf8", mode: 0o600 });
+
+    neutralizeCodexFleetPluginConfig({
+      codexHome,
+      pluginKey: "fleet@fleet-harness",
+    });
+
+    // 활성 마켓플레이스 키가 "fleet"여도 [marketplaces.*]는 보존되고, 끝에 plugin enable=false만 추가된다.
+    expect(readFileSync(configPath, "utf8")).toBe([
+      "[marketplaces.fleet]",
+      "source_type = \"local\"",
+      `source = "${fleetRoot}/marketplace"`,
+      "",
+      "[marketplaces.other]",
+      "source_type = \"local\"",
+      `source = "${fleetRoot}/other"`,
+      "",
+      "[plugins.\"fleet@fleet-harness\"]",
+      "enabled = false",
+      "",
+    ].join("\n"));
+  });
+
+  it("disables a literal-quoted Fleet plugin table in place without appending a duplicate", () => {
+    const codexHome = makeCodexHome();
+    const configPath = path.join(codexHome, "config.toml");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(configPath, [
+      "[plugins.'fleet@fleet-harness']",
+      "enabled = true",
+      "",
+    ].join("\n"), { encoding: "utf8", mode: 0o600 });
+
+    neutralizeCodexFleetPluginConfig({
+      codexHome,
+      pluginKey: "fleet@fleet-harness",
+    });
+
+    // single-quoted(literal) 키를 동일 테이블로 인식해 in-place로 false 처리, 중복 테이블 append 금지.
+    expect(readFileSync(configPath, "utf8")).toBe([
+      "[plugins.'fleet@fleet-harness']",
+      "enabled = false",
+      "",
+    ].join("\n"));
+  });
+
+  it("follows a symlinked Codex config and preserves the symlink while neutralizing", () => {
+    const codexHome = makeCodexHome();
+    const realDir = makeRoot();
+    const realConfig = path.join(realDir, "real-config.toml");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(realConfig, [
+      "[plugins.\"fleet@fleet-harness\"]",
+      "enabled = true",
+      "",
+    ].join("\n"), { encoding: "utf8", mode: 0o600 });
+    // dotfiles 저장소 링크처럼 config.toml이 심링크인 경우.
+    symlinkSync(realConfig, path.join(codexHome, "config.toml"));
+
+    neutralizeCodexFleetPluginConfig({
+      codexHome,
+      pluginKey: "fleet@fleet-harness",
+    });
+
+    // 심링크는 보존되고 실제 대상 파일 내용만 false로 갱신된다(O_NOFOLLOW로 인한 throw 회피).
+    expect(lstatSync(path.join(codexHome, "config.toml")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(realConfig, "utf8")).toBe([
+      "[plugins.\"fleet@fleet-harness\"]",
+      "enabled = false",
+      "",
+    ].join("\n"));
+  });
+
   function makeRoot(): string {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-plugin-test-"));
     tempRoots.push(root);
@@ -630,8 +838,14 @@ function codexCommand(homeDir?: string): CodexPluginRegistrationCommand {
     args: [],
     bin: "codex",
     cwd: process.cwd(),
-    env: homeDir === undefined ? {} : { HOME: homeDir },
+    env: { CODEX_HOME: homeDir ?? makeCodexHome() },
   };
+}
+
+function makeCodexHome(): string {
+  const root = mkdtempSync(path.join(os.tmpdir(), "fleet-codex-home-"));
+  tempCodexHomes.push(root);
+  return root;
 }
 
 function assertPrivateTree(rootPath: string): void {

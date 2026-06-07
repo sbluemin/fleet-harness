@@ -319,6 +319,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
         CODEX_FLEET_PROFILE_MARKER,
         'developer_instructions = "private fleet prompt"',
         "",
+        '[plugins."fleet@fleet-harness"]',
+        "enabled = true",
+        "",
       ].join("\n"));
       expect(existsSync(staleProfilePath)).toBe(false);
       expect(existsSync(freshProfilePath)).toBe(true);
@@ -366,6 +369,9 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(readFileSync(profilePath, "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
         'developer_instructions = "private fleet prompt"',
+        "",
+        '[plugins."fleet@fleet-harness"]',
+        "enabled = true",
         "",
       ].join("\n"));
       expect(profile.launchWarnings?.[0]).toContain("codex plugin marketplace list failed");

@@ -4,6 +4,9 @@ export interface AgentCliProfile {
   readonly id: AgentCliId;
   readonly label: string;
   readonly bin: string;
+  // bin이 Windows .cmd shim을 cmd.exe로 래핑한 경우의 선행 인자(/d /s /c <shim>).
+  // PTY 외 경로(예: Codex 플러그인 등록)에서 bin과 함께 재사용해 동일하게 CLI를 호출한다.
+  readonly binPrefixArgs?: readonly string[];
   readonly args: readonly string[];
   readonly cleanup?: () => void;
   readonly cwd: string;

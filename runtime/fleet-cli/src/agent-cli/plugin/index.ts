@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readFileSync, readlinkSync, readdirSync, realpat
 import os from "node:os";
 import path from "node:path";
 
+import { neutralizeCodexFleetPluginConfig } from "./codex-config.js";
 import { ensurePrivateDir, removePrivatePath, writePrivateFile, writePrivateJson } from "./fs.js";
 import type {
   AgentCliPlugin,
@@ -27,7 +28,9 @@ interface PluginSkill {
   readonly dirName: string;
 }
 
-const MARKETPLACE_NAME = "fleet-harness";
+export const CODEX_FLEET_PLUGIN_KEY = "fleet@fleet-harness";
+export const FLEET_MARKETPLACE_NAME = "fleet-harness";
+
 const CLAUDE_AGENT_FILE_STEM_ALLOWLIST = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const MARKETPLACE_DIR_NAME = "marketplace";
 const PLUGIN_BUNDLES_DIR_NAME = "plugins";
@@ -90,7 +93,7 @@ export function createAgentCliPlugin(
         contentHash,
         hashPath: path.join(marketplaceRoot, bundle.hashFileName),
         marketplaceDir: marketplaceRoot,
-        marketplaceName: MARKETPLACE_NAME,
+        marketplaceName: FLEET_MARKETPLACE_NAME,
         pluginName: bundle.name,
         pluginRoot: pluginRoots[index]!,
       }))
@@ -203,7 +206,7 @@ function buildContentHash(pluginRoot: string): string {
 
 function codexMarketplace(): unknown {
   return {
-    name: MARKETPLACE_NAME,
+    name: FLEET_MARKETPLACE_NAME,
     plugins: PLUGIN_BUNDLES.map((bundle) => ({
       name: bundle.name,
       displayName: bundle.displayName,
@@ -218,7 +221,7 @@ function codexMarketplace(): unknown {
 
 function claudeMarketplace(): unknown {
   return {
-    name: MARKETPLACE_NAME,
+    name: FLEET_MARKETPLACE_NAME,
     description: "Fleet plugin marketplace",
     owner: {
       name: "Fleet",
@@ -257,15 +260,18 @@ function claudeManifest(bundle: PluginBundle): unknown {
 }
 
 function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
-  const hookCommand = options.hookCommand;
-  if (!hookCommand) {
+  const hookExec = options.hookExec;
+  if (!hookExec) {
     throw new Error("Fleet Claude session hook command is required");
   }
   return {
     hooks: {
       SessionStart: [{
         hooks: [{
-          command: hookCommand,
+          // exec form: command는 직접 spawn되는 실행 파일, args는 셸 토크나이징 없이 그대로 전달된다.
+          // Windows cmd/powershell의 따옴표 규칙과 무관하게 동작하며 공백 포함 경로도 안전하다.
+          args: [...hookExec.args],
+          command: hookExec.command,
           type: "command",
         }],
       }],
@@ -316,7 +322,9 @@ function ensureCodexPluginRegisteredOrThrow(
   command: CodexPluginRegistrationCommand,
   runCommand: (command: CodexPluginRegistrationCommand) => CodexCommandResult,
 ): void {
-  const marketplaceList = runCommand({ ...command, args: ["plugin", "marketplace", "list"] });
+  // command.args는 Windows에서 cmd.exe 셸 래핑 인자(/d /s /c codex.cmd)를 담을 수 있으므로
+  // 각 서브커맨드 인자 앞에 항상 보존한다. POSIX에서는 빈 배열이라 동작이 동일하다.
+  const marketplaceList = runCommand({ ...command, args: [...command.args, "plugin", "marketplace", "list"] });
   assertCommandSucceeded("codex plugin marketplace list", marketplaceList);
   const marketplaces = findMarketplaceEntries(marketplaceList, registration.marketplaceName);
   const targetRoot = normalizeMarketplaceRoot(registration.marketplaceDir, command.cwd);
@@ -325,31 +333,43 @@ function ensureCodexPluginRegisteredOrThrow(
   if (hasStaleMarketplace) {
     runCommand({
       ...command,
-      args: ["plugin", "marketplace", "remove", registration.marketplaceName],
+      args: [...command.args, "plugin", "marketplace", "remove", registration.marketplaceName],
     });
   }
   if (!hasTargetMarketplace || hasStaleMarketplace) {
     const addMarketplace = runCommand({
       ...command,
-      args: ["plugin", "marketplace", "add", registration.marketplaceDir],
+      args: [...command.args, "plugin", "marketplace", "add", registration.marketplaceDir],
     });
     assertCommandSucceeded("codex plugin marketplace add", addMarketplace);
   }
 
-  const pluginList = runCommand({ ...command, args: ["plugin", "list"] });
+  const pluginList = runCommand({ ...command, args: [...command.args, "plugin", "list"] });
   assertCommandSucceeded("codex plugin list", pluginList);
   const installed = isCodexPluginInstalled(pluginList, registration.pluginName, registration.marketplaceName);
   const previousHash = readHash(registration.hashPath);
   if (installed && previousHash === registration.contentHash) {
+    neutralizeCodexFleetPluginConfig({
+      codexHome: resolveCodexHome(command.env),
+      pluginKey: CODEX_FLEET_PLUGIN_KEY,
+    });
     return;
   }
 
   const addPlugin = runCommand({
     ...command,
-    args: ["plugin", "add", registration.pluginName, "-m", registration.marketplaceName],
+    args: [...command.args, "plugin", "add", registration.pluginName, "-m", registration.marketplaceName],
   });
   assertCommandSucceeded("codex plugin add", addPlugin);
+  neutralizeCodexFleetPluginConfig({
+    codexHome: resolveCodexHome(command.env),
+    pluginKey: CODEX_FLEET_PLUGIN_KEY,
+  });
   writePrivateFile(registration.hashPath, `${registration.contentHash}\n`, path.dirname(registration.hashPath));
+}
+
+function resolveCodexHome(env: Readonly<Record<string, string>>): string {
+  return env.CODEX_HOME ?? path.join(env.HOME ?? os.homedir(), ".codex");
 }
 
 function findMarketplaceEntries(
