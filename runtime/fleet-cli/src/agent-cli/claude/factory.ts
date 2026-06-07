@@ -1,6 +1,6 @@
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 
-import { createChildEnv, resolveBinary } from "../resolve-bin.js";
+import { createChildEnv, resolveBinary } from "../../process/resolve-bin.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 import { createClaudeEnv } from "./env.js";
 
