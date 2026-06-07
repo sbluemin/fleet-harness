@@ -98,6 +98,7 @@ export class BaseConnection extends EventEmitter {
           cwd: this.cwd,
           stdio: ['pipe', 'pipe', 'pipe'],
           env: this.env as NodeJS.ProcessEnv,
+          detached: true,
         });
 
     this.childExitPromise = new Promise<void>((resolve) => {
