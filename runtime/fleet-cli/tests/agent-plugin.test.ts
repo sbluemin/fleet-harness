@@ -339,6 +339,39 @@ describe("agent CLI plugin renderer", () => {
     expect(registrationByName(second, "fleet-project").contentHash).not.toBe(firstHash);
   });
 
+  it("rehashes flat project sources when a duplicate symlinked skill alias is removed", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const projectFleetRoot = path.join(cwd, ".fleet");
+    const skillsRoot = path.join(projectFleetRoot, "skills");
+    mkdirSync(path.join(skillsRoot, "aaa-skill"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(skillsRoot, "aaa-skill", "SKILL.md"), "shared skill", { encoding: "utf8", mode: 0o600 });
+    // 동일한 실제 디렉터리(aaa-skill)를 가리키는 별개의 논리 경로(zzz-alias)를 추가한다.
+    symlinkSync(path.join(skillsRoot, "aaa-skill"), path.join(skillsRoot, "zzz-alias"));
+
+    const withAlias = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+    const withAliasHash = registrationByName(withAlias, "fleet-project").contentHash;
+
+    // 같은 타깃을 공유하는 별개 논리 경로를 제거하면 렌더 capability가 달라지므로 해시도 달라져야 한다.
+    // (전역 dedup이면 zzz-alias가 애초에 누락되어 해시가 동일하게 남는 회귀를 잡는다.)
+    rmSync(path.join(skillsRoot, "zzz-alias"));
+    const withoutAlias = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    expect(registrationByName(withoutAlias, "fleet-project").contentHash).not.toBe(withAliasHash);
+  });
+
   it("renders global ~/.fleet assets as a marketplace plugin when present", () => {
     const cwd = makeRoot();
     const rootDir = makeRoot();
