@@ -489,7 +489,7 @@ function createMissionRootRows(options: Parameters<typeof createMissionRootPanel
       kind: "toggle",
       id: "option:mode",
       label: "Mode",
-      value: values?.native ? "Native" : "Fleet prompt",
+      value: values?.native ? "Native" : "Fleet Action",
       toggle: options.toggleNative,
     },
     {
