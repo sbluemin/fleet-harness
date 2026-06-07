@@ -310,6 +310,35 @@ describe("agent CLI plugin renderer", () => {
     expect(existsSync(path.join(projectRoot, "skills", "stale-skill"))).toBe(false);
   });
 
+  it("rehashes flat project sources when linked skill content changes", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const projectFleetRoot = path.join(cwd, ".fleet");
+    mkdirSync(path.join(projectFleetRoot, "skills", "project-skill"), { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(projectFleetRoot, "skills", "project-skill", "SKILL.md"), "v1", { encoding: "utf8", mode: 0o600 });
+
+    const first = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+    const firstHash = registrationByName(first, "fleet-project").contentHash;
+
+    // 심볼릭으로 연결된 실제 스킬 내용을 변경하면 해시가 갱신되어 Codex 재등록을 유발해야 한다.
+    writeFileSync(path.join(projectFleetRoot, "skills", "project-skill", "SKILL.md"), "v2", { encoding: "utf8", mode: 0o600 });
+    const second = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    expect(registrationByName(second, "fleet-project").contentHash).not.toBe(firstHash);
+  });
+
   it("renders global ~/.fleet assets as a marketplace plugin when present", () => {
     const cwd = makeRoot();
     const rootDir = makeRoot();

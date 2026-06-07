@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readlinkSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -202,8 +202,9 @@ function buildContentHash(target: MarketplaceTarget): string {
     const relativePath = path.relative(target.root, filePath);
     hash.update(relativePath);
     hash.update("\0");
-    const stat = lstatSync(filePath);
-    hash.update(stat.isSymbolicLink() ? readlinkSync(filePath) : readFileSync(filePath));
+    // 심볼릭 링크는 타깃 경로가 아니라 링크가 가리키는 실제 파일 내용을 해시한다.
+    // (readFileSync는 링크를 따라가 원본 내용을 읽으므로 .fleet 소스 내용 변경이 해시에 반영된다.)
+    hash.update(readFileSync(filePath));
     hash.update("\0");
   }
   return hash.digest("hex");
@@ -211,32 +212,66 @@ function buildContentHash(target: MarketplaceTarget): string {
 
 function listRenderableFiles(target: MarketplaceTarget): string[] {
   const files: string[] = [];
+  const visitedDirs = new Set<string>();
   const entries = target.flat ? FLAT_MARKETPLACE_MANAGED_ENTRIES : MARKETPLACE_MANAGED_ENTRIES;
   for (const entry of entries) {
     const entryPath = path.join(target.root, entry);
     if (!existsSync(entryPath)) continue;
-    collectRenderableFiles(target.root, entryPath, files);
+    collectRenderableFiles(target.root, entryPath, files, visitedDirs);
   }
   return files.sort();
 }
 
-function collectRenderableFiles(rootPath: string, currentPath: string, files: string[]): void {
+function collectRenderableFiles(
+  rootPath: string,
+  currentPath: string,
+  files: string[],
+  visitedDirs: Set<string>,
+): void {
+  // 디렉터리 순환 심볼릭 링크로 인한 무한 재귀를 실제 경로 기준으로 차단한다.
+  const realDir = realpathSync(currentPath);
+  if (visitedDirs.has(realDir)) return;
+  visitedDirs.add(realDir);
   for (const entry of readdirSync(currentPath)) {
     const entryPath = path.join(currentPath, entry);
     const relativePath = path.relative(rootPath, entryPath);
     if (HASH_IGNORED_RELATIVE_PATHS.has(relativePath)) continue;
     const stat = lstatSync(entryPath);
     if (stat.isSymbolicLink()) {
-      files.push(entryPath);
+      collectSymlinkedRenderable(rootPath, entryPath, files, visitedDirs);
       continue;
     }
     if (stat.isDirectory()) {
-      collectRenderableFiles(rootPath, entryPath, files);
+      collectRenderableFiles(rootPath, entryPath, files, visitedDirs);
       continue;
     }
     if (stat.isFile()) {
       files.push(entryPath);
     }
+  }
+}
+
+function collectSymlinkedRenderable(
+  rootPath: string,
+  entryPath: string,
+  files: string[],
+  visitedDirs: Set<string>,
+): void {
+  // 링크가 가리키는 실제 대상의 종류를 확인한다. 끊어진(dangling) 링크는 건너뛴다.
+  let resolvedStat;
+  try {
+    resolvedStat = statSync(entryPath);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR")) return;
+    throw error;
+  }
+  if (resolvedStat.isDirectory()) {
+    // 디렉터리 링크는 따라 들어가 내부 파일 내용을 해시 대상으로 수집한다.
+    collectRenderableFiles(rootPath, entryPath, files, visitedDirs);
+    return;
+  }
+  if (resolvedStat.isFile()) {
+    files.push(entryPath);
   }
 }
 
