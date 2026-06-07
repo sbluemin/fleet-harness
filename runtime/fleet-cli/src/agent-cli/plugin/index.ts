@@ -22,6 +22,7 @@ export const FLEET_MARKETPLACE_NAME = "fleet-harness";
 
 const FLEET_PROJECT_MARKETPLACE_NAME_PREFIX = "fleet-project";
 const MARKETPLACE_DIR_NAME = "marketplace";
+const FLAT_PLUGIN_DIR_NAME = "plugin";
 const PLUGIN_BUNDLES_DIR_NAME = "plugins";
 const PLUGIN_BUNDLES: readonly PluginBundle[] = [assetBundle, projectBundle, globalBundle];
 const PLUGIN_MANAGED_ENTRIES = [
@@ -46,6 +47,11 @@ const MARKETPLACE_MANAGED_ENTRIES = [
   "codex-marketplace",
   "plugins",
 ] as const;
+const FLAT_MARKETPLACE_MANAGED_ENTRIES = [
+  ".agents",
+  ".claude-plugin",
+  "plugin",
+] as const;
 const HASH_IGNORED_RELATIVE_PATHS = new Set(PLUGIN_BUNDLES.map((bundle) => bundle.hashFileName));
 
 export function createAgentCliPlugin(
@@ -57,14 +63,14 @@ export function createAgentCliPlugin(
   validateClaudeAgentFileStems(options.claudeDefinitions);
   for (const marketplace of marketplaceBundles) {
     ensurePrivateDir(marketplace.target.root, marketplace.target.root);
-    renderMarketplaceRoot(marketplace.target.root, marketplace.target.name, marketplace.bundles.map(({ bundle }) => bundle));
+    renderMarketplaceRoot(marketplace.target, marketplace.bundles.map(({ bundle }) => bundle));
   }
   const pluginRoots = renderableBundles.map(({ bundle, target }) => {
-    const pluginRoot = path.join(target.root, PLUGIN_BUNDLES_DIR_NAME, bundle.directoryName);
+    const pluginRoot = pluginRootForTarget(target, bundle);
     renderPluginRoot(pluginRoot, bundle, options, fleetRoot);
     return pluginRoot;
   });
-  const contentHashes = new Map(marketplaceBundles.map(({ target }) => [target.root, buildContentHash(target.root)]));
+  const contentHashes = new Map(marketplaceBundles.map(({ target }) => [target.root, buildContentHash(target)]));
   const cleanup = (): void => {};
   options.onCleanup?.(cleanup);
   return {
@@ -113,6 +119,7 @@ function resolveRenderablePluginBundles(
 
 function homeMarketplaceTarget(fleetRoot: string): MarketplaceTarget {
   return {
+    flat: false,
     name: FLEET_MARKETPLACE_NAME,
     root: path.join(fleetRoot, MARKETPLACE_DIR_NAME),
   };
@@ -122,8 +129,9 @@ function projectMarketplaceTarget(cwd: string): MarketplaceTarget {
   const projectFleetRoot = resolveProjectFleetRoot(cwd);
   const hash = crypto.createHash("sha256").update(path.resolve(cwd, ".fleet")).digest("hex").slice(0, 12);
   return {
+    flat: true,
     name: `${FLEET_PROJECT_MARKETPLACE_NAME_PREFIX}-${hash}`,
-    root: path.join(projectFleetRoot, MARKETPLACE_DIR_NAME),
+    root: projectFleetRoot,
   };
 }
 
@@ -150,12 +158,12 @@ function renderPluginRoot(
 ): void {
   ensurePrivateDir(pluginRoot, pluginRoot);
   prunePluginRoot(pluginRoot);
-  ensurePrivateDir(path.join(pluginRoot, "agents"), pluginRoot);
-  ensurePrivateDir(path.join(pluginRoot, "skills"), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle), pluginRoot);
   writePrivateJson(path.join(pluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), pluginRoot);
   switch (bundle.source) {
     case "asset":
+      ensurePrivateDir(path.join(pluginRoot, "agents"), pluginRoot);
+      ensurePrivateDir(path.join(pluginRoot, "skills"), pluginRoot);
       renderAssetPluginRoot(pluginRoot, bundle, options);
       return;
     case "project":
@@ -167,11 +175,12 @@ function renderPluginRoot(
   }
 }
 
-function renderMarketplaceRoot(marketplaceRoot: string, marketplaceName: string, bundles: readonly PluginBundle[]): void {
+function renderMarketplaceRoot(target: MarketplaceTarget, bundles: readonly PluginBundle[]): void {
+  const marketplaceRoot = target.root;
   ensurePrivateDir(marketplaceRoot, marketplaceRoot);
-  pruneMarketplaceRoot(marketplaceRoot);
-  writePrivateJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(marketplaceName, bundles), marketplaceRoot);
-  writePrivateJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(marketplaceName, bundles), marketplaceRoot);
+  pruneMarketplaceRoot(target);
+  writePrivateJson(path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json"), codexMarketplace(target, bundles), marketplaceRoot);
+  writePrivateJson(path.join(marketplaceRoot, ".claude-plugin", "marketplace.json"), claudeMarketplace(target, bundles), marketplaceRoot);
 }
 
 function prunePluginRoot(pluginRoot: string): void {
@@ -180,16 +189,17 @@ function prunePluginRoot(pluginRoot: string): void {
   }
 }
 
-function pruneMarketplaceRoot(marketplaceRoot: string): void {
-  for (const entry of MARKETPLACE_MANAGED_ENTRIES) {
-    removePrivatePath(path.join(marketplaceRoot, entry), marketplaceRoot);
+function pruneMarketplaceRoot(target: MarketplaceTarget): void {
+  const entries = target.flat ? FLAT_MARKETPLACE_MANAGED_ENTRIES : MARKETPLACE_MANAGED_ENTRIES;
+  for (const entry of entries) {
+    removePrivatePath(path.join(target.root, entry), target.root);
   }
 }
 
-function buildContentHash(pluginRoot: string): string {
+function buildContentHash(target: MarketplaceTarget): string {
   const hash = crypto.createHash("sha256");
-  for (const filePath of listRenderableFiles(pluginRoot)) {
-    const relativePath = path.relative(pluginRoot, filePath);
+  for (const filePath of listRenderableFiles(target)) {
+    const relativePath = path.relative(target.root, filePath);
     hash.update(relativePath);
     hash.update("\0");
     const stat = lstatSync(filePath);
@@ -199,9 +209,14 @@ function buildContentHash(pluginRoot: string): string {
   return hash.digest("hex");
 }
 
-function listRenderableFiles(rootPath: string): string[] {
+function listRenderableFiles(target: MarketplaceTarget): string[] {
   const files: string[] = [];
-  collectRenderableFiles(rootPath, rootPath, files);
+  const entries = target.flat ? FLAT_MARKETPLACE_MANAGED_ENTRIES : MARKETPLACE_MANAGED_ENTRIES;
+  for (const entry of entries) {
+    const entryPath = path.join(target.root, entry);
+    if (!existsSync(entryPath)) continue;
+    collectRenderableFiles(target.root, entryPath, files);
+  }
   return files.sort();
 }
 
@@ -225,24 +240,24 @@ function collectRenderableFiles(rootPath: string, currentPath: string, files: st
   }
 }
 
-function codexMarketplace(marketplaceName: string, bundles: readonly PluginBundle[]): unknown {
+function codexMarketplace(target: MarketplaceTarget, bundles: readonly PluginBundle[]): unknown {
   return {
-    name: marketplaceName,
+    name: target.name,
     plugins: bundles.map((bundle) => ({
       name: bundle.name,
       displayName: bundle.displayName,
       source: {
         source: "local",
-        path: marketplacePluginPath(bundle),
+        path: marketplacePluginPath(target, bundle),
       },
       description: bundle.description,
     })),
   };
 }
 
-function claudeMarketplace(marketplaceName: string, bundles: readonly PluginBundle[]): unknown {
+function claudeMarketplace(target: MarketplaceTarget, bundles: readonly PluginBundle[]): unknown {
   return {
-    name: marketplaceName,
+    name: target.name,
     description: "Fleet plugin marketplace",
     owner: {
       name: "Fleet",
@@ -254,12 +269,19 @@ function claudeMarketplace(marketplaceName: string, bundles: readonly PluginBund
         name: "Fleet",
       },
       category: "development",
-      source: marketplacePluginPath(bundle),
+      source: marketplacePluginPath(target, bundle),
     })),
   };
 }
 
-function marketplacePluginPath(bundle: PluginBundle): string {
+function pluginRootForTarget(target: MarketplaceTarget, bundle: PluginBundle): string {
+  return target.flat
+    ? path.join(target.root, FLAT_PLUGIN_DIR_NAME)
+    : path.join(target.root, PLUGIN_BUNDLES_DIR_NAME, bundle.directoryName);
+}
+
+function marketplacePluginPath(target: MarketplaceTarget, bundle: PluginBundle): string {
+  if (target.flat) return `./${FLAT_PLUGIN_DIR_NAME}`;
   return `./${PLUGIN_BUNDLES_DIR_NAME}/${bundle.directoryName}`;
 }
 

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { copyUserFleetSourcesIntoPlugin } from "./internal.js";
+import { linkUserFleetSourcesIntoPlugin } from "./internal.js";
 import type { GlobalPluginBundle } from "./types.js";
 
 const GLOBAL_FLEET_SOURCE_ENTRIES = ["skills", "agents", "hooks", ".mcp.json"] as const;
@@ -16,7 +16,7 @@ export const globalBundle: GlobalPluginBundle = {
 };
 
 export function renderGlobalPluginRoot(pluginRoot: string, fleetRoot: string): void {
-  copyUserFleetSourcesIntoPlugin(fleetRoot, pluginRoot);
+  linkUserFleetSourcesIntoPlugin(fleetRoot, pluginRoot);
 }
 
 export function globalFleetContentExists(fleetRoot: string): boolean {

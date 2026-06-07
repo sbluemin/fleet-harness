@@ -4,6 +4,10 @@ import path from "node:path";
 import { linkPrivateSymlink, writePrivateFile } from "./fs.js";
 import type { AssetEntry, CopyDirectoryIntoPluginOptions } from "./types.js";
 
+type UserFleetSourceEntry =
+  | { readonly kind: "directory"; readonly sourcePath: string; readonly pluginRelative: "agents" | "hooks" | "skills" }
+  | { readonly kind: "file"; readonly sourcePath: string; readonly pluginRelative: ".mcp.json" };
+
 export function copyDirectoryIntoPlugin(
   sourceDir: string,
   pluginRoot: string,
@@ -38,36 +42,39 @@ export function copyDirectoryIntoPlugin(
   }
 }
 
-export function copyUserFleetSourcesIntoPlugin(sourceRoot: string, pluginRoot: string): void {
-  copyDirectoryIntoPlugin(path.join(sourceRoot, "skills"), pluginRoot, "skills", { followSymlinks: true });
-  copyDirectoryIntoPlugin(path.join(sourceRoot, "agents"), pluginRoot, "agents", { followSymlinks: true });
-  copyDirectoryIntoPlugin(path.join(sourceRoot, "hooks"), pluginRoot, "hooks", { followSymlinks: true });
-  copyOptionalFileIntoPlugin(path.join(sourceRoot, ".mcp.json"), path.join(pluginRoot, ".mcp.json"), pluginRoot, { followSymlinks: true });
-}
-
-function copyOptionalFileIntoPlugin(
-  sourceFile: string,
-  destPath: string,
-  pluginRoot: string,
-  options: CopyDirectoryIntoPluginOptions = {},
-): void {
-  const followSymlinks = options.followSymlinks === true;
-  if (!existsSync(sourceFile)) return;
-  const sourceStat = lstatSync(sourceFile);
-  if (sourceStat.isSymbolicLink() && !followSymlinks) {
-    throw new Error(`Fleet plugin source file is a symlink: ${sourceFile}`);
+export function linkUserFleetSourcesIntoPlugin(sourceRoot: string, pluginRoot: string): void {
+  const entries = listUserFleetSourceEntries(sourceRoot);
+  for (const entry of entries) {
+    linkPrivateSymlink(path.join(pluginRoot, entry.pluginRelative), entry.sourcePath, pluginRoot);
   }
-  const resolvedStat = sourceStat.isSymbolicLink() ? statSync(sourceFile) : sourceStat;
-  if (!resolvedStat.isFile()) {
-    throw new Error(`Fleet plugin source path is not a file: ${sourceFile}`);
-  }
-  writePrivateFile(destPath, readFileSync(sourceFile, "utf8"), pluginRoot);
 }
 
 function listAssetEntries(rootPath: string, followSymlinks = false): AssetEntry[] {
   const entries: AssetEntry[] = [];
   collectAssetEntries(rootPath, rootPath, entries, followSymlinks);
   return entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+function listUserFleetSourceEntries(sourceRoot: string): UserFleetSourceEntry[] {
+  const entries: UserFleetSourceEntry[] = [];
+  for (const pluginRelative of ["skills", "agents", "hooks"] as const) {
+    const sourcePath = path.join(sourceRoot, pluginRelative);
+    if (!existsSync(sourcePath)) continue;
+    const resolvedStat = statSync(sourcePath);
+    if (!resolvedStat.isDirectory()) {
+      throw new Error(`Fleet plugin source path is not a directory: ${sourcePath}`);
+    }
+    entries.push({ kind: "directory", pluginRelative, sourcePath });
+  }
+  const mcpPath = path.join(sourceRoot, ".mcp.json");
+  if (existsSync(mcpPath)) {
+    const resolvedStat = statSync(mcpPath);
+    if (!resolvedStat.isFile()) {
+      throw new Error(`Fleet plugin source path is not a file: ${mcpPath}`);
+    }
+    entries.push({ kind: "file", pluginRelative: ".mcp.json", sourcePath: mcpPath });
+  }
+  return entries;
 }
 
 function collectAssetEntries(

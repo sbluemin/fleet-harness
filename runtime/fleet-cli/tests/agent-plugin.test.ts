@@ -184,9 +184,9 @@ describe("agent CLI plugin renderer", () => {
 
     expect(plugin.pluginRoots).toEqual([
       path.join(rootDir, "marketplace", "plugins", "fleet"),
-      path.join(projectMarketplaceRootForCwd(cwd), "plugins", "fleet-project"),
+      path.join(projectMarketplaceRootForCwd(cwd), "plugin"),
     ]);
-    expect(readJson(path.join(projectMarketplaceRootForCwd(cwd), "plugins", "fleet-project", ".codex-plugin", "plugin.json"))).toMatchObject({
+    expect(readJson(path.join(projectMarketplaceRootForCwd(cwd), "plugin", ".codex-plugin", "plugin.json"))).toMatchObject({
       name: "fleet-project",
     });
   });
@@ -219,7 +219,7 @@ describe("agent CLI plugin renderer", () => {
     const projectMarketplaceRoot = projectMarketplaceRootForCwd(cwd);
     const projectMarketplaceName = projectMarketplaceNameForCwd(cwd);
     const fleetRoot = path.join(marketplaceRoot, "plugins", "fleet");
-    const projectRoot = path.join(projectMarketplaceRoot, "plugins", "fleet-project");
+    const projectRoot = path.join(projectMarketplaceRoot, "plugin");
 
     expect(plugin.pluginRoot).toBe(fleetRoot);
     expect(plugin.pluginRoots).toEqual([fleetRoot, projectRoot]);
@@ -245,21 +245,69 @@ describe("agent CLI plugin renderer", () => {
     });
     expect(readJson(path.join(projectMarketplaceRoot, ".agents", "plugins", "marketplace.json"))).toMatchObject({
       name: projectMarketplaceName,
-      plugins: [{ name: "fleet-project", displayName: "Fleet Project", source: { path: "./plugins/fleet-project" } }],
+      plugins: [{ name: "fleet-project", displayName: "Fleet Project", source: { path: "./plugin" } }],
     });
     expect(readJson(path.join(projectMarketplaceRoot, ".claude-plugin", "marketplace.json"))).toMatchObject({
       name: projectMarketplaceName,
-      plugins: [{ name: "fleet-project", source: "./plugins/fleet-project" }],
+      plugins: [{ name: "fleet-project", source: "./plugin" }],
     });
     expect(readJson(path.join(projectRoot, ".codex-plugin", "plugin.json"))).toMatchObject({
       name: "fleet-project",
       skills: "./skills/",
     });
+    expect(lstatSync(path.join(projectRoot, "skills")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(path.join(projectRoot, "agents")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(path.join(projectRoot, "hooks")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(path.join(projectRoot, ".mcp.json")).isSymbolicLink()).toBe(true);
+    expect(realpathSync(path.join(projectRoot, "skills"))).toBe(realpathSync(path.join(cwd, ".fleet", "skills")));
     expect(readFileSync(path.join(projectRoot, "skills", "project-skill", "SKILL.md"), "utf8")).toBe("Project skill");
     expect(readFileSync(path.join(projectRoot, "agents", "project.md"), "utf8")).toBe("Project agent");
     expect(readFileSync(path.join(projectRoot, "hooks", "hooks.json"), "utf8")).toBe("{\"hooks\":{}}");
     expect(readFileSync(path.join(projectRoot, ".mcp.json"), "utf8")).toBe("{\"mcpServers\":{}}");
     expect(existsSync(path.join(projectRoot, "agents", "Ohio.md"))).toBe(false);
+  });
+
+  it("preserves flat project user sources and excludes them from marketplace content hashes", () => {
+    const cwd = makeRoot();
+    const rootDir = makeRoot();
+    const projectFleetRoot = path.join(cwd, ".fleet");
+    mkdirSync(path.join(projectFleetRoot, "skills", "project-skill"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(projectFleetRoot, "agents"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(projectFleetRoot, "hooks"), { recursive: true, mode: 0o700 });
+    createSentinel(path.join(projectFleetRoot, "plans", "keep.md"));
+    createSentinel(path.join(projectFleetRoot, "plugin", "skills", "stale-skill", "SKILL.md"));
+    createSentinel(path.join(projectFleetRoot, ".agents", "plugins", "stale.json"));
+    writeFileSync(path.join(projectFleetRoot, "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(projectFleetRoot, "agents", "project.md"), "Project agent", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(projectFleetRoot, "hooks", "hooks.json"), "{\"hooks\":{}}", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(path.join(projectFleetRoot, ".mcp.json"), "{\"mcpServers\":{}}", { encoding: "utf8", mode: 0o600 });
+
+    const first = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+    const firstHash = registrationByName(first, "fleet-project").contentHash;
+    writeFileSync(path.join(projectFleetRoot, "plans", "keep.md"), "changed plan", { encoding: "utf8", mode: 0o600 });
+    const second = createAgentCliPlugin({
+      assetsDir: PLUGIN_ASSETS_DIR,
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      rootDir,
+    });
+
+    const projectRoot = path.join(projectFleetRoot, "plugin");
+    expect(registrationByName(second, "fleet-project").contentHash).toBe(firstHash);
+    expect(readFileSync(path.join(projectFleetRoot, "plans", "keep.md"), "utf8")).toBe("changed plan");
+    expect(readFileSync(path.join(projectFleetRoot, "agents", "project.md"), "utf8")).toBe("Project agent");
+    expect(readFileSync(path.join(projectFleetRoot, "skills", "project-skill", "SKILL.md"), "utf8")).toBe("Project skill");
+    expect(readFileSync(path.join(projectFleetRoot, "hooks", "hooks.json"), "utf8")).toBe("{\"hooks\":{}}");
+    expect(readFileSync(path.join(projectFleetRoot, ".mcp.json"), "utf8")).toBe("{\"mcpServers\":{}}");
+    expect(lstatSync(path.join(projectRoot, "skills")).isSymbolicLink()).toBe(true);
+    expect(existsSync(path.join(projectRoot, "skills", "stale-skill"))).toBe(false);
   });
 
   it("renders global ~/.fleet assets as a marketplace plugin when present", () => {
@@ -303,6 +351,11 @@ describe("agent CLI plugin renderer", () => {
       name: "fleet-global",
       skills: "./skills/",
     });
+    expect(lstatSync(path.join(globalRoot, "skills")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(path.join(globalRoot, "agents")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(path.join(globalRoot, "hooks")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(path.join(globalRoot, ".mcp.json")).isSymbolicLink()).toBe(true);
+    expect(realpathSync(path.join(globalRoot, "skills"))).toBe(realpathSync(path.join(rootDir, "skills")));
     expect(readFileSync(path.join(globalRoot, "skills", "global-skill", "SKILL.md"), "utf8")).toBe("Global skill");
     expect(readFileSync(path.join(globalRoot, "agents", "global.md"), "utf8")).toBe("Global agent");
     expect(readFileSync(path.join(globalRoot, "hooks", "hooks.json"), "utf8")).toBe("{\"hooks\":{}}");
@@ -326,7 +379,7 @@ describe("agent CLI plugin renderer", () => {
     expect(plugin.codexRegistrations.map((registration) => registration.pluginName)).toEqual(["fleet"]);
   });
 
-  it("mirrors symlinked skills inside global ~/.fleet as symlinks instead of deep-copying", () => {
+  it("links global ~/.fleet source directories instead of deep-copying them", () => {
     const cwd = makeRoot();
     const rootDir = makeRoot();
     const outside = makeRoot();
@@ -349,16 +402,16 @@ describe("agent CLI plugin renderer", () => {
     const linkedSkill = path.join(globalRoot, "skills", "linked-skill");
     const linkedFile = path.join(globalRoot, "skills", "linked-file.md");
     expect(plugin.pluginRoots.map((p) => path.basename(p))).toContain("fleet-global");
-    // Mirrored as symlinks (passthrough), not deep-copied directories/files.
+    expect(lstatSync(path.join(globalRoot, "skills")).isSymbolicLink()).toBe(true);
+    expect(realpathSync(path.join(globalRoot, "skills"))).toBe(realpathSync(path.join(rootDir, "skills")));
     expect(lstatSync(linkedSkill).isSymbolicLink()).toBe(true);
     expect(lstatSync(linkedFile).isSymbolicLink()).toBe(true);
     expect(realpathSync(linkedSkill)).toBe(realpathSync(path.join(outside, "linked-skill")));
-    // Content stays readable through the mirrored symlink.
     expect(readFileSync(path.join(linkedSkill, "SKILL.md"), "utf8")).toBe("Linked global skill");
     expect(readFileSync(linkedFile, "utf8")).toBe("Linked global file");
   });
 
-  it("mirrors symlinked skills inside project .fleet as symlinks instead of deep-copying", () => {
+  it("links project .fleet source directories instead of deep-copying them", () => {
     const cwd = makeRoot();
     const rootDir = makeRoot();
     const outside = makeRoot();
@@ -375,8 +428,10 @@ describe("agent CLI plugin renderer", () => {
       rootDir,
     });
 
-    const projectRoot = path.join(projectMarketplaceRootForCwd(cwd), "plugins", "fleet-project");
+    const projectRoot = path.join(projectMarketplaceRootForCwd(cwd), "plugin");
     const linkedSkill = path.join(projectRoot, "skills", "linked-skill");
+    expect(lstatSync(path.join(projectRoot, "skills")).isSymbolicLink()).toBe(true);
+    expect(realpathSync(path.join(projectRoot, "skills"))).toBe(realpathSync(path.join(cwd, ".fleet", "skills")));
     expect(lstatSync(linkedSkill).isSymbolicLink()).toBe(true);
     expect(readFileSync(path.join(linkedSkill, "SKILL.md"), "utf8")).toBe("Linked project skill");
   });
@@ -418,7 +473,7 @@ describe("agent CLI plugin renderer", () => {
       rootDir,
     })).toThrow(/is a symlink/);
     expect(existsSync(path.join(outside, "marketplace"))).toBe(false);
-    expect(existsSync(path.join(cwd, ".fleet", "marketplace"))).toBe(false);
+    expect(existsSync(path.join(cwd, ".fleet", "plugin"))).toBe(false);
   });
 
   it("rejects a project .fleet root that is not a directory", () => {
@@ -1130,7 +1185,7 @@ function createSkillAssetFile(assetsDir: string, relativePath: string, content: 
 }
 
 function projectMarketplaceRootForCwd(cwd: string): string {
-  return path.join(path.resolve(cwd, ".fleet"), "marketplace");
+  return path.resolve(cwd, ".fleet");
 }
 
 function projectMarketplaceNameForCwd(cwd: string): string {

@@ -354,7 +354,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     try {
       mkdirSync(path.join(cwd, ".fleet", "skills", "project-skill"), { recursive: true, mode: 0o700 });
       writeFileSync(path.join(cwd, ".fleet", "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8" });
-      const projectMarketplaceRoot = path.join(path.resolve(cwd, ".fleet"), "marketplace");
+      const projectMarketplaceRoot = path.resolve(cwd, ".fleet");
       const projectMarketplaceName = projectMarketplaceNameForCwd(cwd);
 
       const profile = await injectAgentCliProfile({

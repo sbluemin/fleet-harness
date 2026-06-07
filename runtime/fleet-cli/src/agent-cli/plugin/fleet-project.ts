@@ -1,7 +1,7 @@
 import { lstatSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { copyUserFleetSourcesIntoPlugin } from "./internal.js";
+import { linkUserFleetSourcesIntoPlugin } from "./internal.js";
 import type { CreateAgentCliPluginOptions, ProjectPluginBundle } from "./types.js";
 
 export const projectBundle: ProjectPluginBundle = {
@@ -15,7 +15,7 @@ export const projectBundle: ProjectPluginBundle = {
 
 export function renderProjectPluginRoot(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
   const fleetProjectRoot = resolveProjectFleetRoot(options.cwd);
-  copyUserFleetSourcesIntoPlugin(fleetProjectRoot, pluginRoot);
+  linkUserFleetSourcesIntoPlugin(fleetProjectRoot, pluginRoot);
 }
 
 export function resolveProjectFleetRoot(cwd: string): string {

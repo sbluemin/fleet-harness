@@ -66,6 +66,7 @@ export interface GlobalPluginBundle extends PluginBundleBase {
 }
 
 export interface MarketplaceTarget {
+  readonly flat: boolean;
   readonly name: string;
   readonly root: string;
 }
