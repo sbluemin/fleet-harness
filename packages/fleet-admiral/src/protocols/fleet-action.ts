@@ -23,15 +23,6 @@ Every request flows through these gates in order:
 
 Conversational requests skip the Mode Gate and load no skill; Standing Orders still apply.
 
-## Gate Declaration (mandatory)
-Before loading any protocol skill or producing any other output, emit exactly one line in this exact form:
-
-  Gate decision — Intent: <Conversational|Operational> (why: <one phrase>) | Mode: <protocol-skill-id | n/a> (why: <one phrase>)
-
-- Operational requests MUST name the deciding factor in the Mode reason (e.g. downward-guard trigger, multi-carrier coordination, single reversible surface).
-- Conversational requests set Mode to ${"`"}n/a${"`"} and keep the reason to a few words.
-- A declaration that is missing, or that states a Mode without a reason, is a protocol violation: stop and emit the line before continuing.
-
 ## Intent Gate
 - **Conversational**: answer normally without loading a protocol skill when the user's request is chat, explanation, brainstorming, wording help, or another non-operational exchange that does not require workspace action.
 - **Operational**: before planning or execution, load exactly one active protocol skill from the mode gate below, then follow that skill together with the always-injected Standing Orders. Workspace action includes file reads or grep, carrier dispatch, read-only reconnaissance, and auxiliary operational skill invocation.
