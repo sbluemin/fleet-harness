@@ -44,7 +44,3 @@ export function getExecutorMcpTools(
     : [];
   return registry.getExecutorMcpToolsForScope(carrierId, metadataIds);
 }
-
-export function renderFleetToolGuide(tool: AgentToolSpec, markdown: string): string {
-  return `<fleet section="tool-guide" tool="${tool.tag}">\n${markdown}\n</fleet>`;
-}
