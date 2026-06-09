@@ -23,7 +23,16 @@ import {
   readWorkspaceSchemaSummary,
   scanTemplates,
 } from "./schema.js";
-import { listDirectoryNames, listFileNames, loadIndex, pathExists, readJsonFile, readPatchFile } from "./store.js";
+import {
+  listDirectoryNames,
+  listFileNames,
+  loadIndex,
+  pathExists,
+  readJsonFile,
+  readPatchFile,
+  stripLeadingFrontmatter,
+  writePatchFile,
+} from "./store.js";
 import {
   WIKI_ENTRY_STATUSES,
   WIKI_ENTRY_TYPES,
@@ -60,16 +69,27 @@ interface WikiSemanticGraph {
   titleOwners: Map<string, ParsedSemanticEntry[]>;
 }
 
+interface DryDockOptions {
+  fix?: boolean;
+}
+
+interface ParsedFrontmatterDocument {
+  frontmatter: Record<string, unknown>;
+  rawFrontmatter: string;
+  body: string;
+}
+
 const INLINE_RAW_SOURCE_REF_PATTERN = /(^|\n)raw_source_ref\s*:/i;
 const LOOKUP_PHRASE_MIN_LENGTH = 3;
 const NORMALIZED_STATUSES = new Set<string>(WIKI_ENTRY_STATUSES);
 const NORMALIZED_TYPES = new Set<string>(WIKI_ENTRY_TYPES);
 
-export async function runDryDock(paths: MemoryPaths): Promise<DryDockReport> {
+export async function runDryDock(paths: MemoryPaths, options: DryDockOptions = {}): Promise<DryDockReport> {
   const issues: DryDockIssue[] = [];
   const wikiIds = new Map<string, string>();
   const parsedWikiFiles: Array<{ filePath: string; body: string }> = [];
   const semanticEntries: ParsedSemanticEntry[] = [];
+  let fixedDuplicateFrontmatterCount = 0;
   const indexMarkdownFile = getIndexMarkdownFile(paths);
   const logFile = getLogFile(paths);
 
@@ -99,8 +119,18 @@ export async function runDryDock(paths: MemoryPaths): Promise<DryDockReport> {
       issues.push(issue("inline_raw_source_ref", "warning", "위키 본문에 inline raw_source_ref 잔여물이 있습니다.", filePath));
     }
 
-    parsedWikiFiles.push({ filePath, body: parsed.body });
-    semanticEntries.push(toSemanticEntry(filePath, parsed.frontmatter, parsed.body));
+    const strippedBody = stripLeadingFrontmatter(parsed.body);
+    const effectiveBody = strippedBody === parsed.body ? parsed.body : strippedBody;
+    if (strippedBody !== parsed.body) {
+      issues.push(issue("duplicate_frontmatter", "warning", "위키 본문 선두에 중복 YAML frontmatter 블록이 있습니다.", filePath));
+      if (options.fix) {
+        await writePatchFile(filePath, serializeParsedMarkdown(parsed.rawFrontmatter, strippedBody), paths);
+        fixedDuplicateFrontmatterCount += 1;
+      }
+    }
+
+    parsedWikiFiles.push({ filePath, body: effectiveBody });
+    semanticEntries.push(toSemanticEntry(filePath, parsed.frontmatter, effectiveBody));
   }
 
   issues.push(...await claimIssues(paths, wikiIds));
@@ -256,6 +286,7 @@ export async function runDryDock(paths: MemoryPaths): Promise<DryDockReport> {
     issue_count: issues.length,
     ok: report.ok,
     warning_count: issues.filter((item) => item.severity === "warning").length,
+    ...(options.fix ? { fixed_duplicate_frontmatter_count: fixedDuplicateFrontmatterCount } : {}),
   });
   return report;
 }
@@ -298,7 +329,7 @@ function safetyIssues(content: string, filePath: string): DryDockIssue[] {
   }));
 }
 
-function parseFrontmatter(content: string): { frontmatter: Record<string, unknown>; body: string } | null {
+function parseFrontmatter(content: string): ParsedFrontmatterDocument | null {
   const match = content.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return null;
   const [, rawFrontmatter, body] = match;
@@ -316,7 +347,11 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, unknow
     }
     frontmatter[key] = rawValue.replace(/^"(.*)"$/, "$1");
   }
-  return { frontmatter, body };
+  return { frontmatter, rawFrontmatter, body };
+}
+
+function serializeParsedMarkdown(rawFrontmatter: string, body: string): string {
+  return `---\n${rawFrontmatter}\n---\n${body}`;
 }
 
 function toSemanticEntry(filePath: string, frontmatter: Record<string, unknown>, body: string): ParsedSemanticEntry {

@@ -8,22 +8,6 @@ version: 1
 rawSourceRef: "raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md"
 rawSourceRefs: "[{\"ref\":\"raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md\",\"title\":\"PRD: Agent Executor 엔진의 인프라 계층 이전\",\"hash\":\"6de036c4\"}]"
 ---
----
-id: prd-infra-agent-executor-migration
-title: "PRD: Agent Executor 엔진의 인프라 계층 이전"
-tags:
-  - fleet-core
-  - fleet-infra
-  - agent-executor
-  - package-migration
-  - architecture
-  - dependency-injection
-feature_area: architecture
-lifecycle: shipped
-created: "2026-05-23T06:00:00.000Z"
-updated: "2026-05-23T06:00:00.000Z"
-version: 1
----
 
 ## Overview
 

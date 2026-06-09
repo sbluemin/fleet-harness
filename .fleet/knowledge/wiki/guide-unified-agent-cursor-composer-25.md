@@ -8,14 +8,6 @@ version: 1
 rawSourceRef: "raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md"
 rawSourceRefs: "[{\"ref\":\"raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md\",\"title\":\"Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결\",\"hash\":\"db68c1a5\"}]"
 ---
----
-id: guide-unified-agent-cursor-composer-25
-title: Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
-tags: [unified-agent, cursor, composer-2.5, acp, models]
-created: 2026-05-26
-updated: 2026-05-26
-version: 1
----
 
 # Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결
 

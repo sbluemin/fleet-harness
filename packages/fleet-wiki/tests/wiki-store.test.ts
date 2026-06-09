@@ -11,6 +11,7 @@ import {
   readRawSourceEntry,
   readWikiEntry,
   rebuildIndex,
+  stripLeadingFrontmatter,
   writeRawSourceEntry,
   writeWikiEntry,
 } from "../src/store.js";
@@ -211,6 +212,163 @@ describe("wiki store", () => {
 
     expect(wiki?.title).toBe(title);
     expect(wiki?.tags).toEqual([tag]);
+  });
+
+  it("strips duplicate leading frontmatter from wiki bodies at write time", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry({
+      id: "frontmatter-body",
+      title: "Frontmatter Body",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "---\nid: \"frontmatter-body\"\ntitle: \"Duplicate\"\n---\nclean body",
+    }, paths);
+
+    const wikiFile = await readFile(path.join(paths.wikiDir, "frontmatter-body.md"), "utf8");
+    const wiki = await readWikiEntry("frontmatter-body", paths);
+
+    expect(wikiFile).not.toContain("\n---\nid: \"frontmatter-body\"");
+    expect(wiki?.body).toBe("clean body");
+  });
+
+  it("strips block-style duplicate leading frontmatter from wiki bodies", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry({
+      id: "block-frontmatter-body",
+      title: "Block Frontmatter Body",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: [
+        "---",
+        "id: block-frontmatter-body",
+        'title: "Block Duplicate"',
+        "tags:",
+        "  - fleet-core",
+        "  - fleet-infra",
+        "feature_area: architecture",
+        "---",
+        "clean body",
+      ].join("\n"),
+    }, paths);
+
+    const wiki = await readWikiEntry("block-frontmatter-body", paths);
+
+    expect(wiki?.body).toBe("clean body");
+  });
+
+  it("strips multiple duplicate leading frontmatter blocks from wiki bodies", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+
+    await writeWikiEntry({
+      id: "triple-frontmatter-body",
+      title: "Triple Frontmatter Body",
+      tags: [],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: [
+        "---",
+        'id: "triple-frontmatter-body"',
+        'title: "Duplicate One"',
+        "---",
+        "---",
+        'id: "triple-frontmatter-body"',
+        'title: "Duplicate Two"',
+        "---",
+        "clean body",
+      ].join("\n"),
+    }, paths);
+
+    const wiki = await readWikiEntry("triple-frontmatter-body", paths);
+
+    expect(wiki?.body).toBe("clean body");
+  });
+
+  it("does not strip a markdown horizontal rule from wiki bodies", async () => {
+    const body = "---\n\nThis body intentionally starts after a thematic break.";
+
+    expect(stripLeadingFrontmatter(body)).toBe(body);
+  });
+
+  it("does not strip leading YAML-like body content without an id", async () => {
+    const body = "---\ntitle: Example\n---\nExample body";
+
+    expect(stripLeadingFrontmatter(body)).toBe(body);
+  });
+
+  it("does not strip indented YAML-like body content without an id", async () => {
+    const body = [
+      "---",
+      "title: Example",
+      "tags:",
+      "  - example",
+      "---",
+      "Example body",
+    ].join("\n");
+
+    expect(stripLeadingFrontmatter(body)).toBe(body);
+  });
+
+  it("does not strip leading fenced content when prose is mixed into the block", async () => {
+    const body = [
+      "---",
+      "id: content-example",
+      "title: Content Example",
+      "This line is prose, not YAML frontmatter.",
+      "---",
+      "Example body",
+    ].join("\n");
+
+    expect(stripLeadingFrontmatter(body)).toBe(body);
+  });
+
+  it("rewrites normal wiki entries idempotently", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const entry = {
+      id: "idempotent-entry",
+      title: "Idempotent Entry",
+      tags: ["stable"],
+      created: "2026-04-26T00:00:00.000Z",
+      updated: "2026-04-26T00:00:00.000Z",
+      version: 1,
+      body: "stable body",
+    };
+
+    await writeWikiEntry(entry, paths);
+    const firstContent = await readFile(path.join(paths.wikiDir, "idempotent-entry.md"), "utf8");
+    const roundTrippedEntry = await readWikiEntry("idempotent-entry", paths);
+    expect(roundTrippedEntry).not.toBeNull();
+    await writeWikiEntry(roundTrippedEntry!, paths);
+    const secondContent = await readFile(path.join(paths.wikiDir, "idempotent-entry.md"), "utf8");
+
+    expect(secondContent).toBe(firstContent);
+  });
+
+  it("preserves leading frontmatter-like text in raw source content", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const content = "---\nid: \"raw-source\"\ntitle: \"Raw Source\"\n---\nsource body";
+
+    const rawRef = await writeRawSourceEntry({
+      id: "frontmatter-raw-source",
+      created: "2026-04-26T00:00:00.000Z",
+      sourceType: "inline",
+      tags: [],
+      content,
+    }, paths);
+    const rawEntry = await readRawSourceEntry(rawRef, paths);
+
+    expect(rawEntry.content).toBe(content);
   });
 
   it("dedupes raw source paths for identical content on the same day", async () => {

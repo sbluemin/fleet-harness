@@ -327,6 +327,7 @@ export interface DryDockIssue {
     | "duplicate_id"
     | "malformed_queue"
     | "inline_raw_source_ref"
+    | "duplicate_frontmatter"
     | "legacy_markdown_wiki_link"
     | "missing_index_md"
     | "malformed_index_md"

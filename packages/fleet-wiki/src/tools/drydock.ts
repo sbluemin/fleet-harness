@@ -17,12 +17,12 @@ export function buildDryDockToolConfig() {
     parameters: buildWikiDryDockSchema(),
     async execute(
       _id: string,
-      _params: Record<string, unknown>,
+      params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: { cwd: string },
     ) {
-      const report = await runDryDock(resolveMemoryPaths(ctx.cwd));
+      const report = await runDryDock(resolveMemoryPaths(ctx.cwd), { fix: params.fix === true });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
         details: {},
