@@ -20,7 +20,6 @@ const BUILT_IN_SKILL_NAMES = [
   "fleet-protocol-multi-agent",
   "fleet-protocol-standard",
   "fleet-protocol-trivial",
-  "fleet-wiki-usage",
 ] as const;
 const EXPECTED_SUBAGENTS_CONTEXT = `<fleet section="subagents">
 # Claude Native Subagents
@@ -121,12 +120,10 @@ describe("agent CLI plugin renderer", () => {
     expect(existsSync(path.join(fleetRoot, "hooks"))).toBe(false);
     expect(existsSync(path.join(fleetRoot, ".mcp.json"))).toBe(false);
     expect(readdirSync(path.join(fleetRoot, "skills")).sort()).toEqual([...BUILT_IN_SKILL_NAMES]);
-    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toContain("Fleet Wiki");
-    expect(readFileSync(path.join(fleetRoot, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8")).toBe(
-      readFileSync(path.join(PLUGIN_ASSETS_DIR, "skills", "fleet-wiki-usage", "SKILL.md"), "utf8"),
-    );
     for (const skillName of BUILT_IN_SKILL_NAMES) {
-      expect(readFileSync(path.join(fleetRoot, "skills", skillName, "SKILL.md"), "utf8")).toContain(`name: ${skillName}`);
+      const rendered = readFileSync(path.join(fleetRoot, "skills", skillName, "SKILL.md"), "utf8");
+      expect(rendered).toContain(`name: ${skillName}`);
+      expect(rendered).toBe(readFileSync(path.join(PLUGIN_ASSETS_DIR, "skills", skillName, "SKILL.md"), "utf8"));
     }
     // Protocol-mode skills must lock the R2 invariant: planning boundary requires complete confidence.
     for (const skillName of BUILT_IN_SKILL_NAMES.filter((name) => name.startsWith("fleet-protocol-"))) {
@@ -791,7 +788,7 @@ describe("agent CLI plugin renderer", () => {
     expect(existsSync(path.join(marketplaceRoot, "plugins", "carrier"))).toBe(false);
     expect(existsSync(path.join(marketplaceRoot, "plugins", "wiki"))).toBe(false);
     expect(existsSync(path.join(marketplaceRoot, "codex-marketplace"))).toBe(false);
-    expect(existsSync(path.join(registrationByName(second, "fleet").pluginRoot, "skills", "fleet-wiki-usage", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(registrationByName(second, "fleet").pluginRoot, "skills", "fleet-protocol-standard", "SKILL.md"))).toBe(true);
   });
 
   it("leaves the old flat Fleet plugin root untouched while rendering the marketplace root", () => {
@@ -807,7 +804,7 @@ describe("agent CLI plugin renderer", () => {
     });
 
     expect(existsSync(path.join(rootDir, "plugins", "skills", "old-skill", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "skills", "fleet-wiki-usage", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(rootDir, "marketplace", "plugins", "fleet", "skills", "fleet-protocol-standard", "SKILL.md"))).toBe(true);
   });
 
   it("registers Codex marketplace and plugin idempotently through codex CLI", () => {
