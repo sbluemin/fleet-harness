@@ -7,7 +7,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const NIMITZ_DEFAULTS: CarrierPersonaDefaults = {
   id: "nimitz",
@@ -49,7 +49,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "problem", hint: "The specific question, decision point, or challenge to analyze.", required: true },
     { tag: "constraints", hint: "Hard constraints, deadlines, compatibility requirements.", required: false },
     { tag: "artifacts", hint: "Relevant code snippets, file paths, error logs to examine.", required: false },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
 

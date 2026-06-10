@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { CarrierMetadata } from "../src/index.js";
 import {
   CARRIER_JOBS_SELF_CALL_HINT,
+  PRIOR_JOBS_REQUEST_HINT,
   CHRONICLE_DEFAULTS,
   CHRONICLE_METADATA,
   GENESIS_DEFAULTS,
@@ -109,6 +110,13 @@ describe("CARRIER_JOBS_SELF_CALL_HINT", () => {
   }
 });
 
+describe("PRIOR_JOBS_REQUEST_HINT", () => {
+  it("공유 prior_jobs 로스터 힌트가 full lookup과 summary fallback을 포함", () => {
+    expect(PRIOR_JOBS_REQUEST_HINT).toContain('format:"full"');
+    expect(PRIOR_JOBS_REQUEST_HINT).toContain('format:"summary"');
+  });
+});
+
 describe("allowedExecutorTools", () => {
   it("chronicle은 wiki 도구 7종과 carrier_jobs를 정확히 선언", () => {
     expect(CHRONICLE_METADATA.allowedExecutorTools).toEqual(EXPECTED_CHRONICLE_EXECUTOR_TOOLS);
@@ -155,10 +163,10 @@ describe("persona defaults", () => {
   });
 
   for (const persona of DEFAULT_PERSONAS) {
-    it(`${persona.defaults.id} requestBlocks 구조가 유효하고 prior_jobs를 명시 포함`, () => {
+    it(`${persona.defaults.id} requestBlocks 구조가 유효하고 prior_jobs를 반복하지 않음`, () => {
       const tags = persona.meta.requestBlocks.map((block) => block.tag);
       expect(new Set(tags).size).toBe(tags.length);
-      expect(tags).toContain("prior_jobs");
+      expect(tags).not.toContain("prior_jobs");
       for (const block of persona.meta.requestBlocks) {
         expect(block.hint.trim().length).toBeGreaterThan(0);
       }

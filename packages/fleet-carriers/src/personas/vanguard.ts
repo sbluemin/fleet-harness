@@ -7,7 +7,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const VANGUARD_DEFAULTS: CarrierPersonaDefaults = {
   id: "vanguard",
@@ -47,7 +47,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "search_space", hint: "Directories, files, URLs, or domains to focus the search on.", required: false },
     { tag: "hints", hint: "Known symbols, keywords, file patterns, or prior findings to narrow the scan.", required: false },
     { tag: "depth", hint: "'quick' for surface scan, 'thorough' for exhaustive. Default: 'medium'.", required: false },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
 

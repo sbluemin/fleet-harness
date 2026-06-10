@@ -7,7 +7,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const CHRONICLE_DEFAULTS: CarrierPersonaDefaults = {
   id: "chronicle",
@@ -67,7 +67,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
       hint: "[Codebase Doc] include/exclude; for changelogs/change-impact/audits: commit range, PR, diff, feature slice, deployment scope. [Fleet Wiki] feature_area, target wiki id (for update), tags.",
       required: false,
     },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: [
     "wiki_briefing", "wiki_drydock", "wiki_ingest",

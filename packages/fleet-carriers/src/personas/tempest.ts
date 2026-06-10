@@ -7,7 +7,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const TEMPEST_DEFAULTS: CarrierPersonaDefaults = {
   id: "tempest",
@@ -47,7 +47,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "objective", hint: "What intelligence is needed — feature, pattern, API usage, or implementation detail.", required: true },
     { tag: "focus_areas", hint: "Specific directories, files, symbols, or code patterns to prioritize.", required: false },
     { tag: "constraints", hint: "Time constraints, specific branches/tags, or areas to exclude.", required: false },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
   allowedBuiltinExternalMcpServers: ["grep_app"],

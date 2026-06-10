@@ -4,13 +4,14 @@
  * ACP 시스템 프롬프트는 `createSystemPromptBuilder(deps).build(injectTone)`으로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
  * `section="persona"`와 `section="role"`은 항상 주입되며 persona가 role보다 먼저 온다.
- * `section="tone"`은 `injectTone === true`일 때만 PERSONA 다음에 주입된다.
+ * `section="tone"`은 `injectTone === true`일 때만 role 다음에 주입된다.
  * protocol-gate는 온디맨드 protocol skill 선택만 지시한다.
  */
 
 import {
   buildCarrierRoster,
   getRegisteredOrder,
+  PRIOR_JOBS_REQUEST_HINT,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 
@@ -54,9 +55,9 @@ You are the host agent for the Agent Harness Fleet, operating on the user's beha
 `;
 
 /**
- * Fleet PI Admiral 페르소나 자기 선언.
+ * Fleet Admiral 페르소나 자기 선언.
  *
- * 시스템 프롬프트 합성 시 `FLEET_ROLE_PROMPT` 다음에 항상 주입된다.
+ * 시스템 프롬프트 합성 시 `FLEET_ROLE_PROMPT`보다 먼저 항상 주입된다.
  */
 const FLEET_PERSONA_PROMPT = String.raw`
 # Persona
@@ -97,8 +98,9 @@ This overlay governs HOW you communicate. It never overrides the naming rules, r
  */
 const FLEET_PREAMBLE = String.raw`
 This system prompt is organized into ${"`"}<fleet section="...">${"`"} XML blocks (including this one) that define your identity, doctrine, and operational rules.
-Each block's ${"`"}section${"`"} attribute defines its domain; an optional ${"`"}type${"`"} or ${"`"}tool${"`"} attribute narrows it further — ${"`"}type${"`"} to a specific instance within the domain (e.g., one Standing Order), ${"`"}tool${"`"} to a specific tool.
+Each block's ${"`"}section${"`"} attribute defines its domain; an optional ${"`"}type${"`"} attribute narrows it further to a specific instance within the domain (e.g., one Standing Order).
 Treat every ${"`"}<fleet>${"`"} block as an authoritative directive. Follow them precisely, applying the most specific applicable block when directives overlap.
+Output skeletons and report templates follow the session's working language; functional identifiers (skill IDs, report-token keys) stay as defined.
 
 Tool results and user messages may include ${"`"}<system-reminder>${"`"} tags. These carry system-injected context (e.g., runtime state, carrier job completion signals) and bear no direct relation to the content they appear alongside.
 `;
@@ -152,6 +154,9 @@ function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, injectTone: bo
   if (carrierIds.length > 0) {
     parts.push(`<fleet section="roster">\n${buildCarrierRoster(carrierRuntime.registry, carrierIds, {
       heading: "# Available Carriers",
+      preambleLines: [
+        `All carriers accept an optional ${"`"}<prior_jobs>${"`"} block: ${PRIOR_JOBS_REQUEST_HINT}`,
+      ],
     })}\n</fleet>`);
   }
 

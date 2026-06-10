@@ -32,6 +32,7 @@ export * from "./jobs/dispatch.js";
 export * from "./jobs/lifecycle.js";
 export * from "./jobs/sanitize.js";
 export * from "./jobs/types.js";
+export * from "./jobs/workspace-manifest.js";
 export type {
   CarrierJobKind,
   CarrierJobStatus,

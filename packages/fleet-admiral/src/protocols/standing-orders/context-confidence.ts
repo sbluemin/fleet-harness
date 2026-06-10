@@ -16,7 +16,7 @@ export const CONTEXT_CONFIDENCE: StandingOrder = {
   name: "Context Confidence",
   prompt: String.raw`## Context Confidence Standing Order
 
-Decision checkpoints require strong evidence before commencing — the active protocol's planning boundary requires ${"`"}complete${"`"} confidence unconditionally. This Standing Order owns the operational definition, evaluation procedure, and re-entry mechanism for the Context Confidence metric; Protocols are responsible for invoking it at their checkpoint boundaries.
+Decision checkpoints require evidence at the threshold declared by the active protocol's planning boundary. This Standing Order owns the operational definition, evaluation procedure, and re-entry mechanism for the Context Confidence metric; Protocols are responsible for invoking it at their checkpoint boundaries.
 
 ### Confidence Levels (operational definition)
 
@@ -29,7 +29,7 @@ Confidence is determined by the resolution status of knowledge gaps identified d
 | **partial** | At least one blocking gap remains unresolved. |
 | **speculative** | Two or more blocking gaps remain unresolved, OR confidence has not been deliberately evaluated. |
 
-The terms *blocking* and *confirmatory* are assigned during the reconnaissance checkpoint's gap identification step. They are the evidence-criticality axis — not a free-form judgment. Keep this axis separate from the later re-entry resolution-path axis of *scout-shaped* versus *decision-shaped* gaps.
+The terms *blocking* and *confirmatory* are assigned during the reconnaissance checkpoint's gap identification step. They are the evidence-criticality axis — not a free-form judgment. Keep this axis separate from the later re-entry resolution-path taxonomy owned by ${"`"}fleet-assumption-audit${"`"}.
 
 ### Evidence Checklist
 
@@ -51,17 +51,12 @@ Threshold selection follows proportionality:
 - **${"`"}sufficient${"`"}** is the default threshold.
 - **${"`"}complete${"`"}** is required when the upcoming work involves: structural or architectural changes, multi-carrier coordination, cross-module modifications, doctrine or prompt-policy edits, or irreversible operations.
 
-> Note: The active protocol's planning boundary overrides this default and unconditionally requires ${"`"}complete${"`"}.
-
 ### Re-entry Mechanism (gate failure)
 
 If confidence is below the required threshold, do NOT proceed to the gated checkpoint. Instead:
 
 1. Re-enter the preceding reconnaissance checkpoint scoped narrowly to the unresolved blocking gaps.
-2. Triage each unresolved blocking gap by resolution path:
-   - **scout-shaped** gaps use direct audit, focused reconnaissance, or focused reconnaissance carriers.
-   - **decision-shaped** gaps invoke ${"`"}fleet-assumption-audit${"`"} one gap at a time, with the recommended answer first.
-   - repeated failures or authority-level gaps escalate to the Admiral of the Navy (대원수).
+2. Triage each unresolved blocking gap by the scout-shaped, decision-shaped, or escalation-shaped taxonomy defined in ${"`"}fleet-assumption-audit${"`"}.
 3. Re-evaluate confidence after gap resolution.
 4. Re-apply the gate.
 
@@ -71,10 +66,12 @@ Gate failure is not a workflow defect — it is the gate functioning as designed
 
 Confidence is not a one-time measurement. Re-evaluate when:
 - New unknowns surface during a later checkpoint (e.g., Execution discovers an unmodelled dependency).
-- Carrier results contradict a previously verified fact.
+- Result Integrity identifies a contradiction with a previously verified fact.
 - Scope expansion brings new files or modules into the work boundary.
 
 Upon re-evaluation downgrade, halt the current checkpoint and re-apply the appropriate gate at the nearest decision boundary.
+
+Contradiction-trigger handling is routed by the Result Integrity trigger mapping table.
 
 ### Relationship to Other Standing Orders
 

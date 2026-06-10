@@ -6,9 +6,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- [core] Protocol-mode skills now declare checkpoint boundaries and use a two-report cadence with normalized report tokens.
+- [core] A protocol sync check now guards protocol mode drift, duplicated Downward Guard wording, and report-token grammar.
+- [core] Admiral result integrity now requires artifact inspection before accepting mutating carrier job results.
+- [core] Carrier job results now include best-effort workspace change manifests for inspection.
 - [wiki] Wiki entry writes now automatically strip duplicate leading frontmatter from the body, and `wiki_drydock` detects this condition with an optional `fix` parameter for opt-in auto-cleanup.
 
 ### Changed
+- [core] Admiral prompt policy now treats live carrier tool descriptions as the authority for carrier request mechanics.
+- [core] Carrier rosters now show the optional prior-jobs context hint once instead of repeating it under every carrier.
+- [core] Context Confidence planning thresholds now scale by protocol mode, with standard work requiring sufficient confidence.
 - Consolidated duplicated helpers and resolved internal module import cycles across all workspace packages with no behavior change.
 - Realigned the root structure map, developer reference documents, and bilingual READMEs with the current workspace layout and public APIs.
 - [core-unified-agent] The package is now marked private to prevent accidental publication to npm.

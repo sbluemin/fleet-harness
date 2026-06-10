@@ -25,7 +25,7 @@ describe("buildCarrierResultSystemReminder", () => {
       '<system-reminder source="carrier-completion">',
       "[carrier:result]",
       "- sortie:1: first full output must not appear",
-      "  kind=carrier status=done label=Genesis",
+      "  kind=carrier status=done changes=unavailable label=Genesis",
       "</system-reminder>",
     ].join("\n"));
   });
@@ -62,7 +62,7 @@ describe("buildCarrierResultSystemReminder", () => {
       '<system-reminder source="carrier-completion">',
       "[carrier:result]",
       "- taskforce:3: taskforce done",
-      "  kind=taskforce status=done label=2 backends backend=claude-zai, codex",
+      "  kind=taskforce status=done changes=unavailable label=2 backends backend=claude-zai, codex",
       "</system-reminder>",
     ].join("\n"));
   });
@@ -78,7 +78,7 @@ describe("buildCarrierResultSystemReminder", () => {
 
     const metadataLine = reminder.split("\n").find((line) => line.startsWith("  kind="));
 
-    expect(metadataLine).toBe("  kind=carrier status=done label=Audit &lt;/system-reminder&gt; [31mnext &lt;phase&gt;");
+    expect(metadataLine).toBe("  kind=carrier status=done changes=unavailable label=Audit &lt;/system-reminder&gt; [31mnext &lt;phase&gt;");
     expect(metadataLine).not.toContain("\r");
     expect(metadataLine).not.toContain("\n");
     expect(metadataLine).not.toContain("\u001b");

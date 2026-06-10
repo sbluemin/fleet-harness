@@ -49,6 +49,8 @@ Representative Admiral of the Navy requests mapped to a mode. Match an incoming 
 |---|---|---|
 | Fix a typo, tweak one log line, rename a local variable | trivial | single reversible surface, no planning needed |
 | Fix a scoped bug, add input validation to one function, add a unit test | standard | one carrier, bounded work, downward guard not triggered |
+| Investigate, analyze, measure, or audit the codebase (read-only) | standard | operational reconnaissance without downward-guard changes |
+| Single-fact lookup (read one file/value and answer) | trivial | compact single-surface verification |
 | Change a public API or signature, edit prompt/doctrine policy, run a DB migration, remove a feature's code | high-risk | irreversible / structural / doctrine edit — downward guard forbids trivial and standard |
 | Implement a full PRD, refactor across multiple modules or packages in parallel | multi-agent | multiple carriers, parallel ownership, cross-carrier review loops |
 | Ask a question, request an explanation, brainstorm, or get wording help | conversational — load no skill | non-operational; answer directly while Standing Orders stay active |
