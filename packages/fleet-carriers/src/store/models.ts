@@ -8,29 +8,35 @@ import { disconnect } from "@dotobokuri/core-agent";
 import {
   sanitizeAgentCli,
   sanitizeAgentCliSelectionForCliType,
+  sanitizeAgentCliType,
   sanitizeConfigKey,
+  sanitizeGeneration,
+  sanitizeTaskforce,
 } from "./sanitize.js";
 import { readRawCarriers, updateCarriers } from "./state-io.js";
 import type {
-  AgentCliConfig,
   AgentCliSelection,
-  CarrierAgentMode,
+  CarrierModelDefaults,
   CarrierState,
+  FleetCarriers,
   FleetStoreSnapshot,
   ResolvedCarrierState,
+  TaskForceConfig,
 } from "./types.js";
-
-export interface CarrierModelDefaults {
-  readonly cliType: CliType;
-  readonly defaultAgentMode?: CarrierAgentMode;
-  readonly defaultEffort?: string;
-  readonly defaultModel?: string;
-}
-
-export { applyAgentCliTypeSelectionUpdate } from "./cli-types.js";
 
 export function loadCarrierStates(defaultsByCarrier?: Record<string, CliType | CarrierModelDefaults>): Record<string, ResolvedCarrierState> {
   return buildHealedCarriers(defaultsByCarrier);
+}
+
+/** raw carriers.json을 읽어 generation과 sanitize-힐링된 carrier 상태 스냅샷을 반환합니다. */
+export function readCarriersSnapshot(
+  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
+): FleetStoreSnapshot {
+  const raw = readRawCarriers();
+  return {
+    generation: sanitizeGeneration(raw._meta?.generation),
+    carriers: resolveCarriersRecord(raw, defaultsByCarrier, resolveSnapshotCarrierState),
+  };
 }
 
 export async function updateAgentCliSelection(
@@ -93,7 +99,40 @@ export function saveAgentCliSelection(
 export function buildHealedCarriers(
   defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
 ): Record<string, ResolvedCarrierState> {
-  const raw = readRawCarriers();
+  return resolveCarriersRecord(readRawCarriers(), defaultsByCarrier, resolveCarrierState);
+}
+
+export function resolveCarrierState(
+  state: CarrierState,
+  defaults?: CarrierModelDefaults,
+): ResolvedCarrierState {
+  return buildResolvedCarrierState(
+    state,
+    defaults,
+    state.agentCliType ?? defaults?.cliType ?? "claude",
+    state.taskforce ?? {},
+  );
+}
+
+/** snapshot 경로 전용 — agentCliType/taskforce를 sanitize 경유로 해석합니다. */
+function resolveSnapshotCarrierState(
+  state: CarrierState,
+  defaults?: CarrierModelDefaults,
+): ResolvedCarrierState {
+  return buildResolvedCarrierState(
+    state,
+    defaults,
+    sanitizeAgentCliType(state.agentCliType) ?? defaults?.cliType ?? "claude",
+    sanitizeTaskforce(state.taskforce),
+  );
+}
+
+/** carrierIds 합집합(raw 키 + defaults 키)을 순회하며 상태를 해석하는 공통 흐름 */
+function resolveCarriersRecord(
+  raw: FleetCarriers,
+  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults>,
+  resolve: (state: CarrierState, defaults?: CarrierModelDefaults) => ResolvedCarrierState,
+): Record<string, ResolvedCarrierState> {
   const carrierIds = new Set([
     ...Object.keys(raw.carriers ?? {}),
     ...Object.keys(defaultsByCarrier),
@@ -102,26 +141,26 @@ export function buildHealedCarriers(
   for (const carrierId of carrierIds) {
     const state = raw.carriers?.[carrierId] ?? {};
     const defaults = normalizeDefaults(defaultsByCarrier[carrierId]);
-    result[carrierId] = resolveCarrierState(state, defaults);
+    result[carrierId] = resolve(state, defaults);
   }
   return result;
 }
 
-export function resolveCarrierState(
+function buildResolvedCarrierState(
   state: CarrierState,
-  defaults?: CarrierModelDefaults,
+  defaults: CarrierModelDefaults | undefined,
+  agentCliType: CliType,
+  taskforce: TaskForceConfig,
 ): ResolvedCarrierState {
-  const agentCliType = state.agentCliType ?? defaults?.cliType ?? "claude";
   const agentCli = sanitizeAgentCli(state.agentCli);
-  const activeSelection = resolveSelectionForCliType(agentCli[agentCliType], agentCliType, defaults);
   return {
     agentMode: state.agentMode ?? defaults?.defaultAgentMode ?? "cli",
     agentCliType,
     agentCli: {
       ...agentCli,
-      [agentCliType]: activeSelection,
+      [agentCliType]: resolveSelectionForCliType(agentCli[agentCliType], agentCliType, defaults),
     },
-    taskforce: state.taskforce ?? {},
+    taskforce,
     ...(state.displayName ? { displayName: state.displayName } : {}),
   };
 }

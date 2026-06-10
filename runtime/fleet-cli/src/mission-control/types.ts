@@ -5,7 +5,8 @@ import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 import type { PtyView } from "../controls/terminal-view.js";
 import type { SessionOptions, SessionOptionsRuntime } from "./options/types.js";
-import type { FleetCliRelease, MissionControlCounts } from "./loaded-counts.js";
+import type { FleetCliRelease } from "../release.js";
+import type { MissionControlCounts } from "./loaded-counts.js";
 import type { WikiProcessController } from "./menu/wiki-panel.js";
 
 export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" | "failed";

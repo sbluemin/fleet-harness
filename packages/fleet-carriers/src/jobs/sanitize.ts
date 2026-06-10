@@ -17,13 +17,13 @@ export function sanitizeToolLabel(text: string): string {
   return sanitizeToolBlockLabel(text).replace(/\s+/g, " ").trim() || "(unnamed)";
 }
 
-function sanitizeOneLineText(text: string): string {
+export function sanitizeOneLineText(text: string): string {
   return stripTerminalControlSequences(text)
     .replace(LINE_BREAKS, " ")
     .replace(CONTROL_CHARS, "");
 }
 
-function stripTerminalControlSequences(text: string): string {
+export function stripTerminalControlSequences(text: string): string {
   let result = "";
   let index = 0;
 

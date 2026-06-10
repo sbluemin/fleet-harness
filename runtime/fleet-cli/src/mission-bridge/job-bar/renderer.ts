@@ -6,28 +6,28 @@ import {
   readCarrierAgentModeSnapshot,
   readCarriersSnapshot,
   resolveAgentCliType,
+  resolveCarrierDisplayName,
   type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { truncateToWidth, visibleWidth, type FleetPtyTheme } from "../../controls/index.js";
+import { ANSI_RESET } from "../../styles/ansi.js";
 import {
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
+  TASKFORCE_BADGE_COLOR,
+  TASKFORCE_BADGE_RGB,
 } from "../../styles/carriers.js";
 
 import {
   resolveCarrierColor,
-  resolveCarrierDisplayName,
   resolveCarrierRgb,
 } from "./carrier-helpers.js";
 import {
-  ANSI_RESET,
   BREATHING_CYCLE_FRAMES,
   PANEL_DIM_COLOR,
   SYM_INDICATOR,
   SYM_THINKING,
-  TASKFORCE_BADGE_COLOR,
-  TASKFORCE_BADGE_RGB,
 } from "./constants.js";
 import type { CarrierJobGroupViewModel, ColBlock, PanelJob, PanelJobViewModel, PanelRunViewModelSource, PanelTrackViewModel } from "./view-model.js";
 import { buildCarrierJobGroups, buildPanelViewModel } from "./view-model.js";
@@ -109,7 +109,7 @@ export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): s
   );
 }
 
-export function waveText(
+function waveText(
   text: string,
   rgb: [number, number, number],
   frame: number,

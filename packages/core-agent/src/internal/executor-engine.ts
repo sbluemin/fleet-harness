@@ -124,43 +124,6 @@ const MAX_TOOL_CALLS_TO_KEEP = 30;
 const clientPool = new Map<string, PooledClient[]>();
 const launchConfigs = new Map<string, LaunchConfig>();
 
-function getMcpRouterRuntime(serverName: string): McpRouterRuntime | undefined {
-  return executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes()
-    .find((entry) => entry.name === serverName)?.runtime;
-}
-
-function cleanupExecutorSessions(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
-  for (const { serverName, token } of sessionTokens) {
-    const runtime = getMcpRouterRuntime(serverName);
-    if (runtime) cleanupExecutorMcpSession(runtime, token);
-  }
-}
-
-function detachExecutorMcpForReuse(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
-  for (const { serverName, token } of sessionTokens) {
-    const runtime = getMcpRouterRuntime(serverName);
-    if (runtime) detachExecutorMcpForSessionReuse(runtime, token);
-  }
-}
-
-function installActiveExecutorToolCallRouter(
-  sessionTokens: readonly ExecutorMcpSessionToken[],
-  ctx: { cwd: string; signal?: AbortSignal },
-): void {
-  for (const { serverName, token } of sessionTokens) {
-    const runtime = getMcpRouterRuntime(serverName);
-    if (runtime) installExecutorToolCallRouter(runtime, token, ctx);
-  }
-}
-
-function registerActiveExecutorSessionTools(
-  runtime: McpRouterRuntime,
-  sessionToken: string,
-  specs: AgentToolSpec[],
-): void {
-  registerExecutorSessionTools(runtime, sessionToken, specs);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions (공개 — executor.ts facade에서 호출)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -682,9 +645,78 @@ export function engineGetPooledSessionId(poolKey: string): string | undefined {
   return undefined;
 }
 
+export function assertInternalMcpTokensNotShared(
+  mcpServers: readonly McpServerConfig[],
+  tokens: readonly ExecutorMcpSessionToken[],
+  reservedIds: readonly string[] = [],
+): void {
+  if (tokens.length === 0) return;
+  const internalMcpServerNames = new Set([
+    ...tokens.map((token) => token.serverName),
+    ...reservedIds,
+  ]);
+  const tokenValues = new Map<string, string>();
+  for (const { serverName, token } of tokens) {
+    if (tokenValues.has(token)) {
+      throw new Error(
+        `Internal MCP Bearer token reused by "${tokenValues.get(token)}" and "${serverName}".`,
+      );
+    }
+    tokenValues.set(token, serverName);
+  }
+
+  for (const server of mcpServers) {
+    if (internalMcpServerNames.has(server.name)) continue;
+    for (const { serverName, token } of tokens) {
+      if (server.headers?.some((header) => header.value.includes(token))) {
+        throw new Error(
+          `Internal MCP Bearer token for "${serverName}" leaked into external MCP server "${server.name}".`,
+        );
+      }
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Internal helpers
 // ═══════════════════════════════════════════════════════════════════════════
+
+function getMcpRouterRuntime(serverName: string): McpRouterRuntime | undefined {
+  return executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes()
+    .find((entry) => entry.name === serverName)?.runtime;
+}
+
+function cleanupExecutorSessions(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
+  for (const { serverName, token } of sessionTokens) {
+    const runtime = getMcpRouterRuntime(serverName);
+    if (runtime) cleanupExecutorMcpSession(runtime, token);
+  }
+}
+
+function detachExecutorMcpForReuse(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
+  for (const { serverName, token } of sessionTokens) {
+    const runtime = getMcpRouterRuntime(serverName);
+    if (runtime) detachExecutorMcpForSessionReuse(runtime, token);
+  }
+}
+
+function installActiveExecutorToolCallRouter(
+  sessionTokens: readonly ExecutorMcpSessionToken[],
+  ctx: { cwd: string; signal?: AbortSignal },
+): void {
+  for (const { serverName, token } of sessionTokens) {
+    const runtime = getMcpRouterRuntime(serverName);
+    if (runtime) installExecutorToolCallRouter(runtime, token, ctx);
+  }
+}
+
+function registerActiveExecutorSessionTools(
+  runtime: McpRouterRuntime,
+  sessionToken: string,
+  specs: AgentToolSpec[],
+): void {
+  registerExecutorSessionTools(runtime, sessionToken, specs);
+}
 
 function resolveEffort(
   poolKey: string,
@@ -871,14 +903,6 @@ function debugSystemPromptDrift(scope: string, poolKey: string, cliType: CliType
 }
 
 
-function extractConnectedModel(connectResult: ConnectResult): string | undefined {
-  const sessionAny = connectResult.session as Record<string, unknown> | undefined;
-  if (sessionAny?.models && Array.isArray(sessionAny.models) && sessionAny.models.length > 0) {
-    return String(sessionAny.models[0]);
-  }
-  return undefined;
-}
-
 function extractToolResultText(data?: ToolCallLike): string | undefined {
   if (!data) return undefined;
   const contentText = extractContentText(data.content);
@@ -1015,38 +1039,6 @@ function getAllowedBuiltinExternalMcpServerIds(scopeId?: string): readonly strin
 function formatBuiltinExternalMcpServerIds(scopeId?: string): string {
   const ids = getAllowedBuiltinExternalMcpServerIds(scopeId);
   return ids.length === 0 ? "none" : ids.join(",");
-}
-
-export function assertInternalMcpTokensNotShared(
-  mcpServers: readonly McpServerConfig[],
-  tokens: readonly ExecutorMcpSessionToken[],
-  reservedIds: readonly string[] = [],
-): void {
-  if (tokens.length === 0) return;
-  const internalMcpServerNames = new Set([
-    ...tokens.map((token) => token.serverName),
-    ...reservedIds,
-  ]);
-  const tokenValues = new Map<string, string>();
-  for (const { serverName, token } of tokens) {
-    if (tokenValues.has(token)) {
-      throw new Error(
-        `Internal MCP Bearer token reused by "${tokenValues.get(token)}" and "${serverName}".`,
-      );
-    }
-    tokenValues.set(token, serverName);
-  }
-
-  for (const server of mcpServers) {
-    if (internalMcpServerNames.has(server.name)) continue;
-    for (const { serverName, token } of tokens) {
-      if (server.headers?.some((header) => header.value.includes(token))) {
-        throw new Error(
-          `Internal MCP Bearer token for "${serverName}" leaked into external MCP server "${server.name}".`,
-        );
-      }
-    }
-  }
 }
 
 function buildBuiltinExternalMcpSignature(scopeId?: string): string {

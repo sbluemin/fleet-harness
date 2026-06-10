@@ -4,13 +4,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 import {
   createMcpServer,
-  createMcpToolRegistry,
   createMcpToolSnapshotStore,
 } from "../src/index.js";
 
-const registry = createMcpToolRegistry();
 const snapshotStore = createMcpToolSnapshotStore();
-const server = createMcpServer({ registry, toolSnapshotStore: snapshotStore });
+const server = createMcpServer({ toolSnapshotStore: snapshotStore });
 
 describe("provider-mcp", () => {
   beforeEach(() => {

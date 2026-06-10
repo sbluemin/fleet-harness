@@ -68,7 +68,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["alpha"]);
     const tui = new LocalTui({ renderIntervalMs: 5 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     component.lines = ["beta"];
     tui.requestRender();
@@ -85,7 +85,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["alpha", "bravo"]);
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     flush(tui, true);
     writes = [];
@@ -108,7 +108,7 @@ describe("LocalTui", () => {
     const component = anchorComponent(["alpha"], { column: 2, row: 0, visible: true });
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.setCursorAnchorTarget(component);
     tui.start();
     flush(tui, true);
@@ -123,7 +123,7 @@ describe("LocalTui", () => {
     const component = anchorComponent(["alpha"], { column: 4, row: 0, visible: true });
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.setCursorAnchorTarget(component);
     tui.start();
     flush(tui, true);
@@ -153,7 +153,7 @@ describe("LocalTui", () => {
     const component = anchorComponent(["alpha"], { column: 0, row: 0, visible: false });
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     flush(tui, true);
     assert.equal(writes.join("").endsWith("\x1b[?25l"), true);
@@ -171,7 +171,7 @@ describe("LocalTui", () => {
     const tui = new LocalTui({ renderIntervalMs: 1000 });
     const disabledTui = new LocalTui({ cursorSyncEnabled: false, renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.setCursorAnchorTarget(component);
     tui.start();
     flush(tui, true);
@@ -179,7 +179,7 @@ describe("LocalTui", () => {
     tui.stop();
 
     writes = [];
-    disabledTui.addChild(disabled);
+    disabledTui.setChildren([disabled]);
     disabledTui.setCursorAnchorTarget(disabled);
     disabledTui.start();
     flush(disabledTui, true);
@@ -204,7 +204,7 @@ describe("LocalTui", () => {
       const component = anchorComponent(["alpha"], anchor);
       const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-      tui.addChild(component);
+      tui.setChildren([component]);
       tui.setCursorAnchorTarget(component);
       tui.start();
       flush(tui, true);
@@ -219,7 +219,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["longer", "remove"]);
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     flush(tui, true);
     writes = [];
@@ -238,7 +238,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["longer", "remove"]);
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     flush(tui, true);
     writes = [];
@@ -258,7 +258,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["alpha"]);
     const tui = new LocalTui({ renderIntervalMs: 1000, useAltScreen: false });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     flush(tui, true);
 
@@ -275,7 +275,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["widewidewide", "middle", "bottom"]);
     const tui = new LocalTui({ renderIntervalMs: 1000 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     flush(tui, true);
     writes = [];
@@ -364,7 +364,7 @@ describe("LocalTui", () => {
     const component = mutableComponent(["alpha"]);
     const tui = new LocalTui({ renderIntervalMs: 20 });
 
-    tui.addChild(component);
+    tui.setChildren([component]);
     tui.start();
     tui.stop();
     await delay(30);

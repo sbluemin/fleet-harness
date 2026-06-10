@@ -11,6 +11,11 @@ export interface AtomicWriteOptions {
   readonly maxAttempts?: number;
 }
 
+export interface DirectoryIdentity {
+  readonly dev: number;
+  readonly ino: number;
+}
+
 export interface DirectoryLockOwner {
   readonly pid: number;
   readonly hostname: string;
@@ -30,15 +35,6 @@ export interface DirectoryLockDeps {
   readonly retryMs?: number;
   /** 현재 시각 provider (테스트 주입용) */
   readonly now?: () => number;
-}
-
-export interface DirectoryLock {
-  withLock<T>(operation: () => T): T;
-}
-
-export interface SecureFsOptions {
-  /** 심볼릭링크·traversal 검증 여부 (기본값: true) */
-  readonly nofollow?: boolean;
 }
 
 export interface DurableJsonStore<T> {

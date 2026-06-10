@@ -8,6 +8,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - [wiki] Wiki entry writes now automatically strip duplicate leading frontmatter from the body, and `wiki_drydock` detects this condition with an optional `fix` parameter for opt-in auto-cleanup.
 
+### Changed
+- Consolidated duplicated helpers and resolved internal module import cycles across all workspace packages with no behavior change.
+- Realigned the root structure map, developer reference documents, and bilingual READMEs with the current workspace layout and public APIs.
+- [core-unified-agent] The package is now marked private to prevent accidental publication to npm.
+
+### Fixed
+- [wiki-web] The global `fleet-wiki` command now relaunches the repository-local build when invoked inside a monorepo checkout or git worktree, as originally intended.
+- [wiki-web] Web client request-failure messages now follow the selected interface language instead of always appearing in Korean.
+- [wiki-web] The wiki daemon health endpoint now reports the real package version instead of a hard-coded placeholder.
+- [core-unified-agent] System prompts containing control characters are now fully escaped when serialized into the Codex TOML profile.
+
+### Removed
+- Removed dead code and unused public API surfaces across all workspace packages; no CLI, MCP tool, carrier, or stored-configuration contracts changed.
+
 ## [1.3.1] - 2026-06-07
 
 ### Fixed

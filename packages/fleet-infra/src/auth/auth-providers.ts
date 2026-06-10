@@ -1,4 +1,4 @@
-import type { CliType } from "@dotobokuri/core-unified-agent";
+import { CLI_BACKENDS, type CliType } from "@dotobokuri/core-unified-agent";
 
 import { createAuthService, DEFAULT_AUTH_PATH } from "./auth-storage.js";
 import { formatMissingAuthKeyMessage } from "./messages.js";
@@ -20,6 +20,7 @@ interface AuthProviderDefinition {
   readonly env: Record<string, string>;
 }
 
+// providerId 문자열은 ~/.fleet/auth.json 영속 키이므로 derive 금지 — 리터럴로 유지한다.
 export const CLI_TO_AUTH_PROVIDER_ID: Partial<Record<CliType, string>> = {
   "claude-zai": "Claude Code with Z.AI GLM",
   "claude-kimi": "Claude Code with Moonshot Kimi",
@@ -28,24 +29,18 @@ export const CLI_TO_AUTH_PROVIDER_ID: Partial<Record<CliType, string>> = {
 const CLAUDE_ZAI_PROVIDER_ID = "Claude Code with Z.AI GLM";
 const CLAUDE_KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 
+// env·baseUrl은 CLI provider 카탈로그 SSoT인 CLI_BACKENDS.defaultEnv에서 파생한다.
+// spawn env(UnifiedClaudeAgentClient)와 auth 검증 env가 갈라지는 회귀를 차단한다.
 const AUTH_PROVIDER_DEFINITIONS: Partial<Record<CliType, AuthProviderDefinition>> = {
   "claude-zai": {
     providerId: CLAUDE_ZAI_PROVIDER_ID,
-    baseUrl: "https://api.z.ai/api/anthropic",
-    env: {
-      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
-      API_TIMEOUT_MS: "3000000",
-    },
+    baseUrl: CLI_BACKENDS["claude-zai"].defaultEnv.ANTHROPIC_BASE_URL,
+    env: CLI_BACKENDS["claude-zai"].defaultEnv,
   },
   "claude-kimi": {
     providerId: CLAUDE_KIMI_PROVIDER_ID,
-    baseUrl: "https://api.kimi.com/coding/",
-    env: {
-      ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/",
-      ENABLE_TOOL_SEARCH: "false",
-      CLAUDE_CODE_SUBAGENT_MODEL: "kimi-k2.5",
-      API_TIMEOUT_MS: "3000000",
-    },
+    baseUrl: CLI_BACKENDS["claude-kimi"].defaultEnv.ANTHROPIC_BASE_URL,
+    env: CLI_BACKENDS["claude-kimi"].defaultEnv,
   },
 };
 

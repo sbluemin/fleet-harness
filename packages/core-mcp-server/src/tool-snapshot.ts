@@ -55,20 +55,6 @@ export function createMcpToolSnapshotStore(): McpToolSnapshotStore {
   };
 }
 
-export function computeToolHash(tools: McpTool[]): string {
-  let hash = 5381;
-
-  for (const tool of tools) {
-    const key = `${tool.name}:${tool.description ?? ""}:${JSON.stringify(tool.parameters ?? {})}`;
-
-    for (let i = 0; i < key.length; i++) {
-      hash = ((hash << 5) + hash + key.charCodeAt(i)) | 0;
-    }
-  }
-
-  return hash.toString(36);
-}
-
 function cleanSchema(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 

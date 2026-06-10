@@ -1,10 +1,16 @@
 import path from "node:path";
 
 import { wrapWikiEntryBoundary } from "./boundaries.js";
-import { extractWikiLinks } from "./links.js";
+import { dedupeStrings, estimateTokens, normalizeLimit, normalizeTopic } from "./internal-utils.js";
+import { collectRetrievalLexicalMatches, type RetrievalLexicalMatch } from "./lexical.js";
+import { buildBacklinksIndex as buildSharedBacklinksIndex } from "./links.js";
 import { enhancedSearch } from "./search.js";
 import { listWiki } from "./store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry } from "./types.js";
+
+// barrel 표면 보존을 위한 동명 re-export — 구현은 lexical.ts로 이동했다.
+export { collectRetrievalLexicalMatches, tokenizeRetrievalTopic } from "./lexical.js";
+export type { RetrievalLexicalMatch } from "./lexical.js";
 
 interface BriefingQueryOptions {
   topic?: string;
@@ -29,24 +35,11 @@ interface MatchDetail {
   matchTypePriority: number;
 }
 
-export interface RetrievalLexicalMatch {
-  reason: BriefingHit["reason"];
-  field: "id" | "alias" | "tag" | "title" | "body";
-  snippet: string;
-  matchType: "exact_phrase" | "token_or";
-  matchedTerms?: string[];
-}
-
-const BRIEFING_LIMIT_MIN = 1;
-const BRIEFING_LIMIT_MAX = 50;
-const BRIEFING_QUERY_MAX_LENGTH = 256;
 const EXACT_ID_PRIORITY = 5;
 const ALIAS_PRIORITY = 4;
 const TAG_PRIORITY = 3;
 const TITLE_PRIORITY = 2;
 const BODY_PRIORITY = 1;
-const MATCH_CONTEXT_BEFORE = 40;
-const MATCH_CONTEXT_AFTER = 80;
 const CURRENT_STATUS_BOOST = 2;
 const DEFAULT_STATUS_BOOST = 1;
 const DEPRECATED_STATUS_BOOST = 0;
@@ -80,91 +73,10 @@ export async function briefingQuery(paths: MemoryPaths, options: BriefingQueryOp
     .map((item) => item.hit);
 }
 
-function normalizeTopic(topic: string | undefined): string {
-  const normalized = (topic ?? "").trim().toLowerCase();
-  if (normalized.length > BRIEFING_QUERY_MAX_LENGTH) {
-    throw new Error("[fleet-wiki] wiki_briefing query exceeds 256 characters");
-  }
-  return normalized;
-}
-
-export function tokenizeRetrievalTopic(topic: string): string[] {
-  const tokens = topic
-    .toLowerCase()
-    .split(/[^a-z0-9]+/i)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 1 || /^[0-9]+$/.test(token));
-  return dedupeStrings(tokens);
-}
-
-export function collectRetrievalLexicalMatches(
-  entry: WikiEntry,
-  topic: string,
-  tags: string[],
-): RetrievalLexicalMatch[] {
-  const matches: RetrievalLexicalMatch[] = [];
-  const topicTokens = tokenizeRetrievalTopic(topic);
-  const lowerTags = entry.tags.map((tag) => tag.toLowerCase());
-
-  if (topic && entry.id.toLowerCase() === topic) {
-    matches.push({
-      reason: "id",
-      field: "id",
-      snippet: entry.id,
-      matchType: "exact_phrase",
-      matchedTerms: [topic],
-    });
-  }
-
-  if (tags.some((tag) => lowerTags.includes(tag))) {
-    const matchedTag = tags.find((tag) => lowerTags.includes(tag)) ?? entry.tags[0] ?? "";
-    matches.push({
-      reason: "tag",
-      field: "tag",
-      snippet: matchedTag,
-      matchType: "exact_phrase",
-      matchedTerms: [matchedTag.toLowerCase()],
-    });
-  }
-
-  const aliasMatch = findLexicalFieldMatch(entry.aliases ?? [], topic, topicTokens, "alias", "alias");
-  if (aliasMatch) {
-    matches.push(aliasMatch);
-  }
-
-  const titleMatch = findLexicalFieldMatch([entry.title], topic, topicTokens, "title", "title");
-  if (titleMatch) {
-    matches.push(titleMatch);
-  }
-
-  const bodyMatch = findLexicalFieldMatch([entry.body], topic, topicTokens, "body", "body");
-  if (bodyMatch) {
-    matches.push(bodyMatch);
-  }
-
-  return matches;
-}
-
-function normalizeLimit(limit: number | undefined): number {
-  if (limit === undefined) return 5;
-  if (!Number.isInteger(limit) || limit < BRIEFING_LIMIT_MIN || limit > BRIEFING_LIMIT_MAX) {
-    throw new Error("[fleet-wiki] wiki_briefing limit must be between 1 and 50");
-  }
-  return limit;
-}
-
+// 공유 backlink 역인덱스를 briefing 랭킹이 쓰는 정렬 배열 형태로 변환한다.
 function buildBacklinksIndex(entries: WikiEntry[]): Map<string, string[]> {
-  const backlinks = new Map<string, Set<string>>();
-  for (const entry of entries) {
-    for (const linkedId of extractWikiLinks(entry.body)) {
-      const targets = backlinks.get(linkedId) ?? new Set<string>();
-      targets.add(entry.id);
-      backlinks.set(linkedId, targets);
-    }
-  }
-
   const normalized = new Map<string, string[]>();
-  for (const [id, refs] of backlinks.entries()) {
+  for (const [id, refs] of buildSharedBacklinksIndex(entries).entries()) {
     normalized.set(id, [...refs].sort((left, right) => left.localeCompare(right)));
   }
   return normalized;
@@ -291,49 +203,6 @@ function compareRankedHits(left: RankedHit, right: RankedHit): number {
   );
 }
 
-function findLexicalFieldMatch(
-  values: string[],
-  topic: string,
-  topicTokens: string[],
-  reason: BriefingHit["reason"],
-  field: RetrievalLexicalMatch["field"],
-): RetrievalLexicalMatch | null {
-  if (!topic) return null;
-
-  for (const value of values) {
-    const lowerValue = value.toLowerCase();
-    if (lowerValue.includes(topic)) {
-      return {
-        reason,
-        field,
-        snippet: field === "title" || field === "body" ? buildMatchSnippet(value, topic) : value,
-        matchType: "exact_phrase",
-        matchedTerms: [topic],
-      };
-    }
-  }
-
-  if (topicTokens.length <= 1) {
-    return null;
-  }
-
-  for (const token of topicTokens) {
-    for (const value of values) {
-      const valueTokens = tokenizeRetrievalTopic(value);
-      if (!valueTokens.includes(token)) continue;
-      return {
-        reason,
-        field,
-        snippet: field === "title" || field === "body" ? buildMatchSnippet(value, token) : value,
-        matchType: "token_or",
-        matchedTerms: [token],
-      };
-    }
-  }
-
-  return null;
-}
-
 function getBasePriority(reason: BriefingHit["reason"]): number {
   if (reason === "id") return EXACT_ID_PRIORITY;
   if (reason === "alias") return ALIAS_PRIORITY;
@@ -351,17 +220,6 @@ function getStatusPriority(status: WikiEntry["status"]): number {
 function getMatchTypePriority(matchType: RetrievalLexicalMatch["matchType"]): number {
   if (matchType === "exact_phrase") return EXACT_PHRASE_PRIORITY;
   return TOKEN_OR_PRIORITY;
-}
-
-function buildMatchSnippet(text: string, query: string): string {
-  const lowerText = text.toLowerCase();
-  const index = lowerText.indexOf(query.toLowerCase());
-  if (index === -1) {
-    return text.slice(0, MATCH_CONTEXT_BEFORE + MATCH_CONTEXT_AFTER).trim();
-  }
-  const start = Math.max(0, index - MATCH_CONTEXT_BEFORE);
-  const end = Math.min(text.length, index + query.length + MATCH_CONTEXT_AFTER);
-  return text.slice(start, end).trim();
 }
 
 function inferFallbackSnippet(entry: WikiEntry, reason: BriefingHit["reason"]): string {
@@ -401,18 +259,6 @@ function buildMergedWhyThisMatched(fields: string[], status: WikiEntry["status"]
   return base;
 }
 
-function dedupeStrings(values: string[]): string[] {
-  const seen = new Set<string>();
-  const deduped: string[] = [];
-  for (const value of values) {
-    if (!seen.has(value)) {
-      seen.add(value);
-      deduped.push(value);
-    }
-  }
-  return deduped;
-}
-
 function dedupeSnippets(values: Array<{ field: string; snippet: string }>): Array<{ field: string; snippet: string }> {
   const seen = new Set<string>();
   const deduped: Array<{ field: string; snippet: string }> = [];
@@ -424,8 +270,4 @@ function dedupeSnippets(values: Array<{ field: string; snippet: string }>): Arra
     }
   }
   return deduped;
-}
-
-function estimateTokens(value: unknown): number {
-  return Math.ceil(JSON.stringify(value).length / 4);
 }

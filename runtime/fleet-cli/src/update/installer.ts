@@ -7,8 +7,8 @@ import path from "node:path";
 import { resolvePathBinary, type ResolvedBinary } from "../process/resolve-bin.js";
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
-import type { UpdateCommandIo } from "./dispatcher.js";
 import type { UpdateChannel } from "./registry.js";
+import type { UpdateCommandIo } from "./types.js";
 
 interface PackageManagerInstall {
   readonly command: "npm" | "pnpm";
@@ -63,9 +63,6 @@ export async function runFleetUpdate(io: UpdateCommandIo): Promise<number> {
 
 function resolveGlobalInstallTarget(channel: UpdateChannel, io: UpdateCommandIo): GlobalInstallTarget {
   const { manager, reason } = detectGlobalPackageManager(io);
-  if (manager === undefined) {
-    return { channel, manager, reason };
-  }
   return { channel, manager, reason };
 }
 

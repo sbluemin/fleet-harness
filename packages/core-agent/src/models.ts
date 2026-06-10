@@ -5,9 +5,7 @@
  */
 
 import {
-  CLI_BACKENDS,
   getEffort,
-  getModelsRegistry,
   getProviderModels,
   type CliType,
 } from "@dotobokuri/core-unified-agent";
@@ -18,41 +16,15 @@ import {
 
 export type SelectableThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
-export interface CliCapability {
-  readonly supportsSessionClose: boolean;
-  readonly supportsSessionLoad: boolean;
-  readonly requiresModelAtSpawn: boolean;
-  readonly usesNpxBridge: boolean;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const SELECTABLE_THINKING_LEVELS = new Set<SelectableThinkingLevel>(["low", "medium", "high", "xhigh", "max"]);
 
-export const DEFAULT_BRIDGE_SCOPE = "default";
-
-export const CLI_CAPABILITIES: Record<CliType, CliCapability> = Object.fromEntries(
-  Object.entries(CLI_BACKENDS).map(([cliType, backend]) => [
-    cliType,
-    {
-      supportsSessionClose: backend.supportsSessionClose,
-      supportsSessionLoad: backend.supportsSessionLoad,
-      requiresModelAtSpawn: backend.requiresModelAtSpawn,
-      usesNpxBridge: backend.usesNpxBridge,
-    },
-  ]),
-) as Record<CliType, CliCapability>;
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Functions
 // ═══════════════════════════════════════════════════════════════════════════
-
-/** cli → 정규 provider 표시명 */
-export function buildProviderId(cli: CliType): string {
-  return getCanonicalProviderName(cli);
-}
 
 /** CLI 타입에 속한 모델 목록 반환 */
 export function getCliModels(cli: CliType): readonly { id: string; name: string }[] {
@@ -66,12 +38,4 @@ export function getCliEffortLevels(cli: CliType, modelId?: string): readonly str
   const resolvedModel = modelId ?? provider.defaultModel;
   const modelEffort = getEffort(cli, resolvedModel);
   return modelEffort.supported ? modelEffort.levels : null;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Internal helpers
-// ═══════════════════════════════════════════════════════════════════════════
-
-function getCanonicalProviderName(cli: CliType): string {
-  return getModelsRegistry().providers[cli]?.name ?? cli;
 }

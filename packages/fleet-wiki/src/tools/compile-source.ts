@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { wrapWikiRawSourceBoundary } from "../boundaries.js";
 import { briefingQuery } from "../briefing.js";
+import { mergeRawSourceRefs, normalizeComparableText, truncateSummary } from "../internal-utils.js";
 import { extractWikiLinks } from "../links.js";
 import { appendLog } from "../log.js";
 import { buildPatchSetId, writePatchSet } from "../patch-set.js";
@@ -396,19 +397,6 @@ function buildProposalPatch(proposal: CompileSourceProposal, createdAt: string):
   };
 }
 
-function mergeRawSourceRefs(
-  refs: WikiEntry["rawSourceRefs"],
-  currentRef: string | undefined,
-  nextRef: NonNullable<WikiEntry["rawSourceRefs"]>[number],
-): WikiEntry["rawSourceRefs"] {
-  const existing = refs ? [...refs] : [];
-  if (currentRef && !existing.some((item) => item.ref === currentRef)) {
-    existing.push({ ref: currentRef });
-  }
-  if (existing.some((item) => item.ref === nextRef.ref)) return existing;
-  return [...existing, nextRef];
-}
-
 function buildCompileWarnings(input: NormalizedCompileSourceInput, mode: "preview" | "stage"): string[] {
   const warnings: string[] = [];
   if (mode === "preview") {
@@ -478,14 +466,6 @@ function appendSourceCompileNote(body: string, sourcePageId: string, rawSourceRe
     return body;
   }
   return `${body.trimEnd()}\n\n${note}\n`;
-}
-
-function truncateSummary(summary: string): string {
-  return summary.slice(0, 120);
-}
-
-function normalizeComparableText(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function upsertCandidate(

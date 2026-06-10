@@ -9,6 +9,9 @@ export const WORKSPACE_SCHEMA_FILENAME = "wiki-schema.md";
 export const WORKSPACE_TEMPLATE_PREFIX = "template-";
 export const WORKSPACE_TEMPLATE_SUFFIX = ".md";
 
+// 파일명 prefix로 template id를 추론할 때 쓰는 기본 후보 목록.
+const DEFAULT_TEMPLATE_IDS = ["prd"];
+
 export const REQUIRED_WORKSPACE_SCHEMA_SECTIONS = [
   "Canonical Link Syntax",
   "Entry Frontmatter",
@@ -346,8 +349,6 @@ export function inferTemplateIdFromTarget(target: string, knownTemplateIds?: str
   }
   return undefined;
 }
-
-const DEFAULT_TEMPLATE_IDS = ["prd"];
 
 async function writeDefaultFileIfMissing(filePath: string, content: string): Promise<void> {
   try {

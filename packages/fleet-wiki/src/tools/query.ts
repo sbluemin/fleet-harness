@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { dedupeStrings, truncateSummary } from "../internal-utils.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
@@ -311,22 +312,6 @@ function assertSafeRawRef(rawRef: string): void {
   if (rawRef.includes("..") || path.isAbsolute(rawRef)) {
     throw new Error(`[fleet-wiki] wiki_query raw source ref escapes raw/: ${rawRef}`);
   }
-}
-
-function dedupeStrings(values: string[]): string[] {
-  const seen = new Set<string>();
-  const deduped: string[] = [];
-  for (const value of values) {
-    if (!seen.has(value)) {
-      seen.add(value);
-      deduped.push(value);
-    }
-  }
-  return deduped;
-}
-
-function truncateSummary(value: string): string {
-  return value.slice(0, 120);
 }
 
 function clampInteger(value: number | undefined, fallback: number, min: number, max: number, field: string): number {

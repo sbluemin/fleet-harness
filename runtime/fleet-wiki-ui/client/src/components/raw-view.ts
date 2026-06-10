@@ -1,6 +1,7 @@
 import { renderMarkdown } from "../markdown/renderer";
 import type { RawSourceState } from "../raw-state";
 import { t } from "../i18n/t";
+import { escapeHtml } from "../utils/html";
 
 const BACK_ICON = `
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -49,11 +50,4 @@ export function renderRawView(state: RawSourceState): string {
       </article>
     </div>
   `;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }

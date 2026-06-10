@@ -11,8 +11,7 @@ import {
   validateAuthKeyForCli,
 } from "@dotobokuri/fleet-infra/auth";
 
-import type { AuthCommandDeps } from "./dispatcher.js";
-import type { AuthCliId, AuthCommandIo } from "./types.js";
+import type { AuthCliId, AuthCommandDeps, AuthCommandIo } from "./types.js";
 
 const AUTH_CLI_OPTIONS: Array<{ value: AuthCliId; label: string }> = [
   { value: "claude-zai", label: "Claude Code with Z.AI GLM" },

@@ -7,7 +7,7 @@ export const PROVIDER_RGBS: Record<string, readonly [number, number, number]> = 
   cursor: [0, 122, 204],
 };
 
-export const PROVIDER_BG_RGBS: Record<string, readonly [number, number, number]> = {
+const PROVIDER_BG_RGBS: Record<string, readonly [number, number, number]> = {
   claude: [40, 25, 8],
   "claude-zai": [8, 32, 18],
   "claude-kimi": [20, 12, 40],
@@ -23,7 +23,8 @@ export const SUBAGENT_PRESENTATION_RGB: readonly [number, number, number] = [216
 export const SUBAGENT_PRESENTATION_ANSI = rgb(...SUBAGENT_PRESENTATION_RGB);
 export const SUBAGENT_PRESENTATION_BG_ANSI = bgRgb(30, 14, 26);
 
-export const TASKFORCE_BADGE_COLOR = (): string => "\x1b[38;2;125;211;252m";
+export const TASKFORCE_BADGE_RGB: [number, number, number] = [100, 180, 255];
+export const TASKFORCE_BADGE_COLOR = rgb(...TASKFORCE_BADGE_RGB);
 
 export function getCarrierAnsi(cliType: string): string {
   return PROVIDER_ANSI_COLORS[cliType] ?? "";

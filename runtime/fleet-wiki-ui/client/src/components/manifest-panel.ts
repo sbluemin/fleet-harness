@@ -5,6 +5,7 @@ import type {
 } from "../api";
 import { renderCopyContextActions } from "./copy-context-actions";
 import { rawPath } from "../router";
+import { escapeAttribute, escapeHtml } from "../utils/html";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
 import { t } from "../i18n/t";
 
@@ -71,15 +72,4 @@ export function renderManifestPanel(
       ${actionsHtml ? `<div class="manifest-actions">${actionsHtml}</div>` : ""}
     </aside>
   `;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }

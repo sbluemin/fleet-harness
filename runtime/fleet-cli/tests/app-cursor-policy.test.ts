@@ -133,13 +133,8 @@ describe("app cursor policy", () => {
     expect(cursorTarget()).toBe(ptyView);
   });
 
-  it("re-reads native status when rendering the Fleet status section", () => {
-    let native = false;
-    const section = new FleetStatusSection({ getNative: () => native });
-
-    expect(stripAnsi(section.render(80).join("\n"))).toBe("─".repeat(80));
-
-    native = true;
+  it("renders the Fleet status section border", () => {
+    const section = new FleetStatusSection();
 
     expect(stripAnsi(section.render(80).join("\n"))).toBe("─".repeat(80));
   });

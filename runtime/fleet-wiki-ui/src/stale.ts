@@ -1,18 +1,18 @@
 import type { FleetWikiLock } from "./lock.js";
 
-export function isStaleLock(lock: FleetWikiLock, distMtime: number): boolean {
-  if (distMtime === 0) return false;
-  const startedAtMs = new Date(lock.startedAt).getTime();
-  if (Number.isNaN(startedAtMs)) return false;
-  return startedAtMs < distMtime;
-}
-
 export interface LockTrustResult {
   trusted: boolean;
   reason?: string;
 }
 
 const DEFAULT_HOST = "127.0.0.1";
+
+export function isStaleLock(lock: FleetWikiLock, distMtime: number): boolean {
+  if (distMtime === 0) return false;
+  const startedAtMs = new Date(lock.startedAt).getTime();
+  if (Number.isNaN(startedAtMs)) return false;
+  return startedAtMs < distMtime;
+}
 
 export function isLockTrustworthyForRestart(
   lock: FleetWikiLock,

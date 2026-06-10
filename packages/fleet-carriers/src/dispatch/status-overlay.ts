@@ -1,4 +1,4 @@
-import type { CarrierConfig } from "./types.js";
+import type { CarrierAgentProviderDefaults, CarrierConfig } from "./types.js";
 import type {
   CarrierCliType,
   CarrierOverlayCallbacks,
@@ -11,14 +11,11 @@ import type {
   ResolvedCliSelection,
 } from "./types.js";
 
+import { normalizeEffort } from "./framework.js";
+
 interface StoredCliSelection {
   model: string;
   effort?: string;
-}
-
-interface PersonaCliDefaults {
-  defaultModel?: string;
-  defaultEffort?: string;
 }
 
 interface StatusOverlayControllerDeps {
@@ -154,7 +151,7 @@ export class StatusOverlayController implements Pick<
   ): ResolvedCliSelection {
     const saved = this.deps.getAgentCliSelection(carrierId, cliType);
     const config = this.deps.getCarrierConfig(carrierId);
-    const personaDefaults = resolvePersonaCliDefaults(config, cliType);
+    const personaDefaults = buildCarrierModelDefaults(config, cliType);
     const provider = this.deps.getAvailableModels(cliType);
     const hasSavedModel = !!(saved?.model && provider.models.some((model) => model.modelId === saved.model));
     const hasPersonaDefaultModel = !!(
@@ -220,10 +217,15 @@ export class StatusOverlayController implements Pick<
   }
 }
 
-function resolvePersonaCliDefaults(
+/**
+ * 페르소나 CLI 기본값 해석 SSoT — claude cliType일 때 config.subagent.byHost.claude를
+ * 우선하고(존재 시 top-level defaultModel/defaultEffort 무시), 없으면 top-level
+ * defaultModel/defaultEffort로 fallback한다. 그 외 cliType은 기본값 없음.
+ */
+export function buildCarrierModelDefaults(
   config: CarrierConfig | undefined,
   cliType: CarrierCliType,
-): PersonaCliDefaults {
+): CarrierAgentProviderDefaults {
   if (!config) return {};
   if (cliType === "claude") {
     return config.subagent?.byHost?.claude ?? {
@@ -232,17 +234,4 @@ function resolvePersonaCliDefaults(
     };
   }
   return {};
-}
-
-function normalizeEffort(
-  effort: ModelEffort,
-): ModelEffort | null {
-  if (!effort.supported) return null;
-  const levels = effort.levels ?? [];
-  if (levels.length === 0) return null;
-  return {
-    supported: true,
-    levels,
-    default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
-  };
 }

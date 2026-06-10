@@ -22,22 +22,23 @@ src/
 ├── cli-repl.ts                 # REPL mode logic (Interactive interface)
 ├── cli-renderer.ts             # CLI result rendering (Pretty/JSON output)
 ├── service-status/
-│   ├── index.ts                # Service status management exports
-│   ├── types.ts                # ServiceSnapshot, HealthStatus, ProviderKey types
-│   ├── callbacks.ts            # ServiceStatusCallbacks implementation
-│   └── context.ts              # ServiceStatusContextPort implementation
+│   ├── index.ts                # Service status type exports
+│   └── types.ts                # ServiceSnapshot, HealthStatus, ProviderKey types
 ├── types/
 │   ├── common.ts               # JSON-RPC 2.0 base types
 │   ├── acp.ts                  # ACP protocol types (Based on official schema)
+│   ├── codex-app-server.ts     # Codex app-server v2 JSON-RPC types
 │   └── config.ts               # CLI config/detection types
 ├── connection/
 │   ├── BaseConnection.ts       # Abstract base (spawn + JSON-RPC stdio)
 │   ├── AcpConnection.ts        # ACP protocol implementation (Wraps official SDK ClientSideConnection)
 │   └── CodexAppServerConnection.ts # Codex app-server v2 native JSON-RPC implementation
 ├── client/
-│   ├── IUnifiedAgentClient.ts  # Public API contract + UnifiedAgent builder
+│   ├── IUnifiedAgentClient.ts  # Public API contract (events, types, interface)
+│   ├── UnifiedAgent.ts         # UnifiedAgent builder (provider client selection)
 │   ├── UnifiedClaudeAgentClient.ts # Claude-specific client
 │   ├── UnifiedCodexAgentClient.ts  # Codex-specific client
+│   ├── UnifiedCursorAgentClient.ts # Cursor-specific client
 │   └── UnifiedOpenCodeAgentClient.ts # OpenCode-specific client
 ├── detector/
 │   └── CliDetector.ts          # CLI auto-detection
@@ -52,11 +53,14 @@ src/
     └── npx.ts                  # npx path resolution
 
 tests/
+├── unit/                       # Unit tests (mock-based: connections, clients, configs, REPL)
+├── manual/                     # Manual verification scripts (local only)
 └── e2e/                        # E2E tests per CLI (Executing actual CLIs)
     ├── helpers.ts              # Shared helper functions
     ├── claude.test.ts           # Claude E2E
     ├── codex.test.ts            # Codex E2E
-    └── opencode.test.ts         # OpenCode E2E
+    ├── opencode.test.ts         # OpenCode E2E
+    └── unified-agent.contract.test.ts # Cross-CLI contract E2E
 ```
 
 ## Core Commands
@@ -154,7 +158,7 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 3. **Config-driven + provider seam**: Maintain common contracts while encapsulating CLI differences in `CliConfigs.ts` and internal connection seams.
 4. **Event-driven Streaming**: Real-time response processing based on `EventEmitter` (`messageChunk`, `toolCall`, etc.).
 5. **Graceful Process Management**: 2-stage termination (SIGTERM → SIGKILL), environment sanitization to prevent child process interference, and Codex legacy AppServer exit classification that treats graceful/intentional exits separately from abnormal child death.
-6. **Service Status Management**: Provides a unified way to track and report the health and status of various services (Claude, Codex, Cursor) through `ServiceSnapshot` and `HealthStatus`. Managed via `ServiceStatusCallbacks` and `ServiceStatusContextPort`.
+6. **Service Status Types Only**: The package exposes only the service status type contract (`ServiceSnapshot`, `HealthStatus`, `ProviderKey`) consumed by downstream domain packages (e.g., `fleet-carriers`). The former polling/fetching runtime (`service-status/store.ts`) was removed as dead code; status collection is the consumer's responsibility.
 7. **System Prompt Injection (Provider-aware)**:
    - **Claude**: `AcpConnection` appends to the native system prompt via `_meta.systemPrompt.append` when calling `session/new`. The `claude-agent-acp` bridge handles this.
    - **Codex (Dual-path)**: 
@@ -181,8 +185,8 @@ ait (model) ❯ {input}            # Omitted if effort is not supported
 Adding a new CLI provider requires updating the provider registry first, then any provider-specific seams that do not derive automatically:
 
 1. **`packages/core-unified-agent/src/config/CliConfigs.ts`** — Add an entry to `CLI_BACKENDS` with the required spawn/protocol metadata.
-2. **Claude-family alias additions** — If the new provider reuses `UnifiedClaudeAgentClient`, also update the `cliType` union in `src/client/UnifiedClaudeAgentClient.ts`, the Claude bridge allowlist in `src/connection/AcpConnection.ts#getClaudeSystemPrompt()`, the status fetcher registration in `src/service-status/store.ts`, and any provider-specific fallback URL/target switches in the same store.
-3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/IUnifiedAgentClient.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, OpenCode entries in `src/service-status/store.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
-4. **Non-derived provider seams** — Add or adjust any dedicated client routing, status fetcher, or fallback behavior that is not automatically derived from `CLI_BACKENDS`.
+2. **Claude-family alias additions** — If the new provider reuses `UnifiedClaudeAgentClient`, also update the `cliType` union in `src/client/UnifiedClaudeAgentClient.ts` and the Claude bridge allowlist in `src/connection/AcpConnection.ts#getClaudeSystemPrompt()`.
+3. **OpenCode-specific note** — The current OpenCode surface keeps only `opencode-go`. Adding another OpenCode variant requires reintroducing explicit routing in `src/client/UnifiedAgent.ts`, the provider union in `src/client/UnifiedOpenCodeAgentClient.ts`, the model registry in `models.json`, and E2E coverage in `tests/e2e/opencode.test.ts`.
+4. **Non-derived provider seams** — Add or adjust any dedicated client routing or fallback behavior that is not automatically derived from `CLI_BACKENDS`.
 
 Downstream domain consumers derive CLI type and display-name data from `CLI_BACKENDS`; host presentation colors are owned by `runtime/fleet-cli/src/styles/`.

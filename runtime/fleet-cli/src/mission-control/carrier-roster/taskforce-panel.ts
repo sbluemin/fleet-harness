@@ -15,7 +15,6 @@ import {
   type CarrierRuntime,
   type TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@dotobokuri/core-agent";
 import {
   PROVIDER_ANSI_COLORS,
 } from "../../styles/carriers.js";
@@ -32,6 +31,7 @@ import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
 
 import { buildModelEffortTransition } from "./model-flow.js";
+import { getAvailableModels, getModelEffort } from "./model-info.js";
 import type {
   CliModelInfo,
   ModelEffort,
@@ -413,40 +413,11 @@ export class RosterTaskForcePanelSurface implements Component, Focusable {
   }
 
   private getAvailableModels(cliType: TaskForceCliType): CliModelInfo {
-    try {
-      const models = getCliModels(cliType).map((model) => ({
-        modelId: model.id,
-        name: model.name,
-      }));
-      const defaultModel = models[0]?.modelId ?? "default";
-      return {
-        defaultModel,
-        effort: this.getModelEffort(cliType, defaultModel),
-        models,
-        name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-      };
-    } catch {
-      return {
-        defaultModel: "default",
-        effort: { supported: false },
-        models: [],
-        name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-      };
-    }
+    return getAvailableModels(cliType);
   }
 
   private getModelEffort(cliType: TaskForceCliType, modelId: string): ModelEffort {
-    try {
-      const levels = getCliEffortLevels(cliType, modelId);
-      if (!levels || levels.length === 0) return { supported: false };
-      return {
-        default: levels[0],
-        levels,
-        supported: true,
-      };
-    } catch {
-      return { supported: false };
-    }
+    return getModelEffort(cliType, modelId);
   }
 
   private getEffortLevels(cliType: TaskForceCliType, modelId: string): string[] {

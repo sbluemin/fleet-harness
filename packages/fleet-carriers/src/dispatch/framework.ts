@@ -1,5 +1,5 @@
 /**
- * fleet/carrier/framework.ts — Carrier 프레임워크
+ * dispatch/framework.ts — Carrier 프레임워크
  *
  * 외부 확장(feature, experimentals 등)이 커스텀 Carrier를
  * 등록하는 데 사용하는 공개 SDK입니다.
@@ -122,14 +122,6 @@ export function registerCarrier(
 }
 
 /**
- * 상태바 갱신 콜백을 등록합니다.
- */
-export function onStatusUpdate(registry: CarrierRegistry, callback: () => void): void {
-  const gs = registry.getState();
-  gs.statusUpdateCallbacks.push(callback);
-}
-
-/**
  * 등록된 모든 상태바 갱신 콜백을 호출합니다.
  */
 export function notifyStatusUpdate(registry: CarrierRegistry): void {
@@ -176,21 +168,6 @@ export function getRegisteredOrder(registry: CarrierRegistry): string[] {
 // ─── Task Force 설정 변경 관리 ──────────────────────────
 
 /**
- * Task Force 설정이 완료된 carrier ID 목록을 반환합니다.
- */
-export function getTaskForceConfiguredIds(registry: CarrierRegistry): string[] {
-  return [...registry.getState().taskforceConfiguredCarriers];
-}
-
-/** Task Force 설정 carrier ID 목록을 registeredOrder 순서로 반환합니다. */
-export function getActiveTaskForceIds(registry: CarrierRegistry): string[] {
-  const gs = registry.getState();
-  return gs.registeredOrder.filter(
-    (id) => gs.taskforceConfiguredCarriers.has(id),
-  );
-}
-
-/**
  * Task Force 설정 완료 carrier ID 목록을 일괄 설정합니다.
  */
 export function setTaskForceConfiguredCarriers(registry: CarrierRegistry, ids: string[]): void {
@@ -199,8 +176,10 @@ export function setTaskForceConfiguredCarriers(registry: CarrierRegistry, ids: s
 }
 
 /**
- * 지정 carrier의 cliType을 동적으로 변경합니다.
- * carrier CLI 타입 변경을 알리고 상태바를 업데이트합니다.
+ * carrier CLI 타입 변경을 상태바에 알립니다.
+ *
+ * 알림 전용 — 실제 CLI 타입 변경(영속)은 store(updateAgentCliTypeOverride /
+ * applyAgentCliTypeSelectionUpdate)가 소유한다. newType 인자는 변경을 적용하지 않는다.
  */
 export function updateCarrierCliType(registry: CarrierRegistry, carrierId: string, newType: CliType): void {
   const gs = registry.getState();
@@ -217,6 +196,7 @@ export function getRegisteredCarrierConfig(registry: CarrierRegistry, carrierId:
   return registry.getState().modes.get(carrierId)?.config;
 }
 
+/** @deprecated 신규 코드는 getRegisteredCarrierConfig를 사용한다 — 기존 소비처 호환을 위한 별칭. */
 export const getCarrierConfig = getRegisteredCarrierConfig;
 
 export function resolveAgentCliType(carrierId: string, defaultCliType: CliType): CliType {
@@ -252,13 +232,6 @@ export function getCarrierSourceDisplayName(registry: CarrierRegistry, carrierId
     ?? sanitizeCarrierDisplayName(CLI_DISPLAY_NAMES[carrierId])
     ?? sanitizeCarrierDisplayName(carrierId)
     ?? carrierId;
-}
-
-/** carrierId 기준으로 실제 CLI 표시 이름을 반환합니다. */
-export function resolveCarrierCliDisplayName(registry: CarrierRegistry, carrierId: string): string {
-  const config = getRegisteredCarrierConfig(registry, carrierId);
-  const cliType = config ? resolveAgentCliTypeFromStore(carrierId, config.defaultCliType) : carrierId;
-  return CLI_DISPLAY_NAMES[cliType] ?? cliType;
 }
 
 // ─── 내부 헬퍼 ───────────────────────────────────────────
@@ -297,15 +270,8 @@ export function toTrackFinalStatus(status: CarrierJobStatus): TrackStatus {
   return "err";
 }
 
-
-function getModelEffort(
-  cliType: CliType,
-  modelId: string,
-): ModelEffort | null {
-  return normalizeEffort(getEffort(cliType, modelId));
-}
-
-function normalizeEffort(
+/** effort 메타데이터를 정규화합니다 — 미지원이거나 level이 없으면 null. */
+export function normalizeEffort(
   effort: ModelEffort,
 ): ModelEffort | null {
   if (!effort.supported) return null;
@@ -316,4 +282,11 @@ function normalizeEffort(
     levels,
     default: effort.default && levels.includes(effort.default) ? effort.default : levels[0],
   };
+}
+
+function getModelEffort(
+  cliType: CliType,
+  modelId: string,
+): ModelEffort | null {
+  return normalizeEffort(getEffort(cliType, modelId));
 }

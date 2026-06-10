@@ -10,7 +10,7 @@ const forbidden = [
   /@dotobokuri\/fleet-harness/,
   /@dotobokuri\/fleet-ai/,
   /@dotobokuri\/fleet-coding-agent/,
-  /workspace:\*.*@dotobokuri\/fleet-(?:ai|cli|coding-agent)/,
+  /@dotobokuri\/fleet-(?:ai|cli|coding-agent)["']\s*:\s*["']workspace:\*/,
 ];
 const allowedDocPhrases = [
   "permanently forbidden",
@@ -73,10 +73,4 @@ function listFiles(entries) {
     }
   }
   return files;
-}
-
-function isDomainConsumer(file) {
-  return file.includes(`${path.sep}src${path.sep}controls${path.sep}`)
-    || file.includes(`${path.sep}src${path.sep}sections${path.sep}`)
-    || file.includes(`${path.sep}src${path.sep}carrier-status${path.sep}`);
 }

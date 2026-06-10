@@ -10,6 +10,7 @@ import {
   REQUIRED_WIKI_FRONTMATTER_KEYS,
 } from "./constants.js";
 import { listConflicts, readConflict } from "./conflicts.js";
+import { dedupeStrings } from "./internal-utils.js";
 import { extractLegacyMarkdownWikiLinks, extractWikiLinks } from "./links.js";
 import { appendLog, parseLog } from "./log.js";
 import { PATCH_SET_DIRNAME, readPatchSet } from "./patch-set.js";
@@ -215,6 +216,8 @@ export async function runDryDock(paths: MemoryPaths, options: DryDockOptions = {
 
   for (const conflict of await listConflicts(paths)) {
     if (conflict.status !== "unresolved") continue;
+    // "미해결 상태의 conflict" 표면화 경고. 코드값이 아래 "손상된 conflict 엔트리"의
+    // unresolved_conflict와 의미상 교차되어 있으나, 출력 호환성 계약 때문에 코드값을 바꾸지 않는다.
     issues.push(
       issue(
         "conflict_unresolved",
@@ -229,6 +232,8 @@ export async function runDryDock(paths: MemoryPaths, options: DryDockOptions = {
     try {
       await readConflict(conflictId, paths);
     } catch {
+      // "손상된(파싱 불가) conflict 엔트리" 경고. 코드값이 위 "미해결 conflict"의
+      // conflict_unresolved와 의미상 교차되어 있으나, 출력 호환성 계약 때문에 코드값을 바꾸지 않는다.
       issues.push(
         issue(
           "unresolved_conflict",
@@ -793,10 +798,6 @@ function findSupersedesCycles(graph: WikiSemanticGraph): ParsedSemanticEntry[][]
     const rightKey = right.map((entry) => entry.id).join("|");
     return leftKey.localeCompare(rightKey);
   });
-}
-
-function dedupeStrings(values: string[]): string[] {
-  return [...new Set(values)];
 }
 
 function issue(code: DryDockIssue["code"], severity: DryDockIssue["severity"], message: string, filePath: string): DryDockIssue {

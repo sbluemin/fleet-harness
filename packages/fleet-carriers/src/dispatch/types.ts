@@ -1,10 +1,13 @@
-import { CLI_BACKENDS, type CliType, type HealthStatus, type ProviderKey } from "@dotobokuri/core-unified-agent";
+import { CLI_BACKENDS, type CliType, type ProviderKey } from "@dotobokuri/core-unified-agent";
 import type { TrackStatus } from "@dotobokuri/core-agent";
+import type { CarrierJobFinalStatus, CarrierJobKind } from "../jobs/types.js";
 
 export type { TrackStatus } from "@dotobokuri/core-agent";
+// job kind/status는 jobs/types.ts가 단일 소유자 — 여기서는 재노출/별칭으로만 참조한다.
+export type { CarrierJobKind } from "../jobs/types.js";
 
 /**
- * fleet/carrier/types.ts — Carrier 프레임워크 타입 정의
+ * dispatch/types.ts — Carrier 프레임워크 타입 정의
  *
  * 외부 확장이 커스텀 Carrier를 등록할 때 사용하는
  * 공개 타입 및 내부 상태 타입을 정의합니다.
@@ -136,13 +139,14 @@ export type CarrierConfig = CarrierCoreConfig & CarrierCliConfig & CarrierSubage
 
 // ─── 내부 상태 타입 ──────────────────────────────────────
 
-export interface CarrierState {
+/** 레지스트리 엔트리 — store/types.ts의 영속 CarrierState와 구별되는 내부 전용 타입 */
+export interface CarrierRegistryEntry {
   config: CarrierConfig;
 }
 
 export interface CarrierFrameworkState {
   /** 등록된 모든 carrier */
-  modes: Map<string, CarrierState>;
+  modes: Map<string, CarrierRegistryEntry>;
   /** slot 순으로 정렬된 carrierId 목록 */
   registeredOrder: string[];
   /** 상태바 갱신 콜백 */
@@ -153,9 +157,8 @@ export interface CarrierFrameworkState {
   taskforceConfiguredCarriers: Set<string>;
 }
 
-export type CarrierJobKind = "carrier" | "sortie" | "taskforce";
-
-export type CarrierJobStatus = "done" | "error" | "aborted";
+/** 스트림 job 최종 상태 — jobs/types.ts CarrierJobFinalStatus의 별칭 */
+export type CarrierJobStatus = CarrierJobFinalStatus;
 
 export type TrackKind = "carrier" | "subtask" | "backend";
 
@@ -297,10 +300,6 @@ export interface CliModelInfo {
   models: ModelInfo[];
 }
 
-export interface CliServiceSnapshot {
-  status: HealthStatus;
-}
-
 export interface ResolvedCliSelection {
   model: string;
   effort: string | null;
@@ -335,34 +334,6 @@ export interface CarrierStatusEntry {
   category?: CarrierCategory;
 }
 
-export interface CarrierStatusGroup {
-  header: string;
-  color: string;
-  providerKey: ProviderKey;
-  entries: CarrierStatusEntry[];
-}
-
-export interface CliTypeChoice {
-  value: CarrierCliType;
-  label: string;
-}
-
-export interface BatchCliChoice {
-  cliType: CarrierCliType;
-  label: string;
-  carrierCount: number;
-  status: HealthStatus;
-}
-
-export type OverlayState =
-  | { kind: "browse" }
-  | { kind: "model"; carrierId: string; choices: string[]; cursor: number }
-  | { kind: "effort"; carrierId: string; pendingModel: string; choices: string[]; cursor: number }
-  | { kind: "cliType"; carrierId: string; choices: CliTypeChoice[]; cursor: number }
-  | { kind: "batchFrom"; choices: BatchCliChoice[]; cursor: number }
-  | { kind: "batchTo"; fromCli: CarrierCliType; choices: BatchCliChoice[]; cursor: number }
-  | { kind: "saving" };
-
 export interface CarrierOverlayCallbacks {
   getEntries(): CarrierStatusEntry[];
   changeCliType(carrierId: string, newCliType: CarrierCliType): Promise<ResolvedCliSelection>;
@@ -371,7 +342,6 @@ export interface CarrierOverlayCallbacks {
   saveModelSelection(carrierId: string, selection: ModelSelection): Promise<void>;
   openTaskForce(carrierId: string): void;
   getAvailableModels(cliType: CarrierCliType): CliModelInfo;
-  getServiceSnapshots(): Map<CarrierCliType, CliServiceSnapshot>;
   getDefaultCliType(): CarrierCliType;
 }
 

@@ -5,7 +5,6 @@ export const ko: I18nMessages = {
     none: "없음",
     confirm: "확인",
     cancel: "취소",
-    processing: "처리 중",
     codeCopied: "코드블록을 복사했습니다.",
   },
   nav: {

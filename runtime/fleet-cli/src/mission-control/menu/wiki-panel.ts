@@ -6,7 +6,7 @@ import {
 import type { OpenFleetWikiWorkspaceResult } from "@dotobokuri/fleet-wiki-ui/cli";
 
 import { renderKeyValueBlock, type KeyValueBlockRow } from "../layout.js";
-import { MISSION_CONTROL_THEME } from "../renderer.js";
+import { MISSION_CONTROL_THEME } from "../theme.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
 import { createInputModal } from "./input-modal.js";

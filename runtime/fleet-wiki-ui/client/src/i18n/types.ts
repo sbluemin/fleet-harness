@@ -5,7 +5,6 @@ export interface I18nMessages {
     none: string;
     confirm: string;
     cancel: string;
-    processing: string;
     codeCopied: string;
   };
   nav: {

@@ -2,10 +2,10 @@ import { ANSI_RESET, ASCII_FLEET_BANNER, FLEET_ACCENT, GRADIENT_RGBS, type RgbTu
 
 import { truncateToWidth, visibleWidth } from "../controls/index.js";
 
+export { FLEET_ACCENT };
+
 const FLEET_BANNER: readonly string[] = ASCII_FLEET_BANNER;
 const BANNER_VISIBLE_WIDTH = visibleWidth(FLEET_BANNER[0] ?? "");
-
-export { FLEET_ACCENT };
 const FLEET_BANNER_MIN_WIDTH = BANNER_VISIBLE_WIDTH + 4;
 
 export function buildFleetBanner(innerWidth: number, phase = 0): string[] {

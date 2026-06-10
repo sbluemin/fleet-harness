@@ -15,7 +15,7 @@ import { renderManifestPanel } from "./components/manifest-panel";
 import { installDiagramHydrator } from "./markdown/diagrams";
 import { renderError, renderLoading, renderMarkdownView, renderWelcome } from "./components/markdown-view";
 import type { MarkdownViewRender } from "./components/markdown-view";
-import { renderNavTree, setNavMode, toggleTag } from "./components/nav-tree";
+import { initNavTree, renderNavTree, setNavMode, toggleTag } from "./components/nav-tree";
 import type { NavMode } from "./components/nav-tree";
 import { renderRawView } from "./components/raw-view";
 import { renderQueueList } from "./components/queue-list";
@@ -35,7 +35,6 @@ import {
   logPath,
   navigate,
   subscribeRoute,
-  workspaceHomePath,
 } from "./router";
 import type { Route } from "./router";
 import {
@@ -63,6 +62,7 @@ let shellPainted = false;
 initLanguage();
 initRouter();
 initCommandPalette();
+initNavTree();
 subscribeLanguage(() => render());
 subscribeState(() => render());
 subscribeRawState(() => render());
@@ -72,7 +72,6 @@ subscribeRoute((route) => {
 });
 
 document.addEventListener("click", handleDocumentClick);
-document.addEventListener("change", handleDocumentChange);
 document.addEventListener("submit", handleDocumentSubmit);
 installDiagramHydrator(document.body);
 void boot();
@@ -327,15 +326,6 @@ function handleDocumentSubmit(event: SubmitEvent): void {
     const textarea = form.querySelector<HTMLTextAreaElement>("textarea[name='reason']");
     void rejectCurrentPatch(textarea?.value ?? "");
   }
-}
-
-function handleDocumentChange(event: Event): void {
-  const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) return;
-  if (target.dataset.action !== "switch-workspace") return;
-  if (!target.value) return;
-  navigate(workspaceHomePath(target.value));
-  window.location.reload();
 }
 
 async function copyCode(button: HTMLElement): Promise<void> {

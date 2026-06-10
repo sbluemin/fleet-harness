@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "../constants.js";
 import { appendLog } from "../log.js";
-import { parsePatch, rewriteQueuedPatch, serializePatch } from "../patch.js";
+import { assertSafeQueueId, parsePatch, rewriteQueuedPatch, serializePatch } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
   WIKI_PATCH_EDIT_DESCRIPTION,
@@ -196,12 +196,6 @@ function parsePatchEditParams(params: Record<string, unknown>): PatchEditParams 
     touch_updated: params.touch_updated !== false,
     proposer: typeof params.proposer === "string" && params.proposer.trim() ? params.proposer.trim() : "tool:wiki_patch_edit",
   };
-}
-
-function assertSafeQueueId(id: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-f0-9]{8}$/.test(id)) {
-    throw new Error("patch_id must be a non-empty canonical queue ID");
-  }
 }
 
 async function assertPatchFrontmatterRoundTrip(previousPatch: Patch, nextPatch: Patch): Promise<void> {

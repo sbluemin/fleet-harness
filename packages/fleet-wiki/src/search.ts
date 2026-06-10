@@ -1,8 +1,9 @@
 import path from "node:path";
 
 import { wrapWikiEntryBoundary } from "./boundaries.js";
-import { collectRetrievalLexicalMatches, tokenizeRetrievalTopic } from "./briefing.js";
-import { extractWikiLinks } from "./links.js";
+import { normalizeLimit, normalizeTopic } from "./internal-utils.js";
+import { collectRetrievalLexicalMatches, tokenizeRetrievalTopic } from "./lexical.js";
+import { buildBacklinksIndex } from "./links.js";
 import { listWiki, loadIndex } from "./store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry, WikiEntryStatus } from "./types.js";
 
@@ -38,9 +39,6 @@ interface MatchSignals {
   stale: boolean;
 }
 
-const SEARCH_LIMIT_MIN = 1;
-const SEARCH_LIMIT_MAX = 50;
-const SEARCH_QUERY_MAX_LENGTH = 256;
 const EXACT_ID_PRIORITY = 500;
 const EXACT_ALIAS_PRIORITY = 420;
 const TAG_PRIORITY = 320;
@@ -107,36 +105,8 @@ export async function enhancedSearch(paths: MemoryPaths, options: EnhancedSearch
     .map((item) => item.hit);
 }
 
-function normalizeTopic(topic: string | undefined): string {
-  const normalized = (topic ?? "").trim().toLowerCase();
-  if (normalized.length > SEARCH_QUERY_MAX_LENGTH) {
-    throw new Error("[fleet-wiki] wiki_briefing query exceeds 256 characters");
-  }
-  return normalized;
-}
-
 function normalizeTags(tags: string[] | undefined): string[] {
   return (tags ?? []).map((tag) => tag.toLowerCase().trim()).filter((tag) => tag.length > 0);
-}
-
-function normalizeLimit(limit: number | undefined): number {
-  if (limit === undefined) return 5;
-  if (!Number.isInteger(limit) || limit < SEARCH_LIMIT_MIN || limit > SEARCH_LIMIT_MAX) {
-    throw new Error("[fleet-wiki] wiki_briefing limit must be between 1 and 50");
-  }
-  return limit;
-}
-
-function buildBacklinksIndex(entries: WikiEntry[]): Map<string, Set<string>> {
-  const backlinks = new Map<string, Set<string>>();
-  for (const entry of entries) {
-    for (const linkedId of extractWikiLinks(entry.body)) {
-      const refs = backlinks.get(linkedId) ?? new Set<string>();
-      refs.add(entry.id);
-      backlinks.set(linkedId, refs);
-    }
-  }
-  return backlinks;
 }
 
 function buildDocumentFrequency(entries: WikiEntry[]): Map<string, number> {

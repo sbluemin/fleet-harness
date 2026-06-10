@@ -1,5 +1,5 @@
 import { renderChoiceBlock, type ChoiceBlockRow } from "../layout.js";
-import { MISSION_CONTROL_THEME } from "../renderer.js";
+import { MISSION_CONTROL_THEME } from "../theme.js";
 import { centerText } from "../welcome.js";
 import { isDown, isEnter, isUp, renderBreadcrumbs, type MenuPanel } from "./panel-stack.js";
 

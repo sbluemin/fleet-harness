@@ -1,9 +1,12 @@
+import type { AuthService } from "@dotobokuri/fleet-infra/auth";
+
 import { claudeCli } from "./claude/claude.js";
 import { claudeKimiCli } from "./claude-kimi/claude-kimi.js";
 import { codexCli } from "./codex/codex.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 interface ResolveAgentCliProfileOptions {
+  readonly authService?: AuthService;
   readonly cliId?: string;
   readonly model?: string;
 }
@@ -26,7 +29,7 @@ export async function resolveAgentCliProfile(
   options: ResolveAgentCliProfileOptions = {},
 ): Promise<AgentCliProfile> {
   const id = resolveAgentCliId(env, options);
-  return DEFINITIONS[id].createProfile({ cwd, env, model: options.model });
+  return DEFINITIONS[id].createProfile({ authService: options.authService, cwd, env, model: options.model });
 }
 
 export function resolveAgentCliId(env: NodeJS.ProcessEnv, options: ResolveAgentCliProfileOptions = {}): AgentCliId {

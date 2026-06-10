@@ -4,7 +4,6 @@ import type { PromptResponse, McpServer } from '@agentclientprotocol/sdk';
 import type {
   AgentMode,
   CliDetectionResult,
-  CliType,
   McpServerConfig,
   UnifiedClientOptions,
 } from '../types/config.js';
@@ -36,6 +35,7 @@ import {
   getBackendConfig,
   getYoloModeId,
   mcpServerConfigsToAcp,
+  type CliType,
 } from '../config/CliConfigs.js';
 import { cleanEnvironment } from '../utils/env.js';
 import { getProviderModels, getProviderModelsMapping } from '../models/ModelRegistry.js';

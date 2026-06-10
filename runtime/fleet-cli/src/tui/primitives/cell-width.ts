@@ -1,7 +1,3 @@
-export interface TruncateOptions {
-  readonly resetActiveSgr?: boolean;
-}
-
 interface AnsiToken {
   readonly sequence: string;
   readonly kind: "sgr" | "control";
@@ -448,7 +444,7 @@ export function visibleWidth(text: string): number {
   return width;
 }
 
-export function truncateToWidth(text: string, width: number, options: TruncateOptions = {}): string {
+export function truncateToWidth(text: string, width: number): string {
   if (width <= 0) {
     return "";
   }
@@ -477,7 +473,7 @@ export function truncateToWidth(text: string, width: number, options: TruncateOp
     visible += tokenWidth;
   }
 
-  if (truncated && activeSgr && options.resetActiveSgr !== false) {
+  if (truncated && activeSgr) {
     output += ANSI_RESET;
   }
 

@@ -5,7 +5,6 @@ export const en: I18nMessages = {
     none: "None",
     confirm: "Confirm",
     cancel: "Cancel",
-    processing: "Processing",
     codeCopied: "Code copied.",
   },
   nav: {

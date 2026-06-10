@@ -1,11 +1,9 @@
-import type { McpRouterRuntime } from "@dotobokuri/core-mcp-server";
+import type { ExecutorRuntime } from "@dotobokuri/core-mcp-server";
 
 import type { AgentToolSpec } from "./types.js";
 
-export interface ExecutorMcpRouterRuntime {
-  readonly name: string;
-  readonly runtime: McpRouterRuntime;
-}
+// 구조 동일 타입의 SSoT는 core-mcp-server의 ExecutorRuntime — 기존 공개 이름은 별칭으로 유지한다.
+export type ExecutorMcpRouterRuntime = ExecutorRuntime;
 
 export interface ExecutorPort {
   getScopeExternalMcpServerIds(scopeId?: string): readonly string[];

@@ -15,13 +15,13 @@
  */
 
 // === 통합 클라이언트 ===
-export {
-  UnifiedAgent,
-  type UnifiedAgentBuildOptions,
-  type ConnectResult,
-  type ConnectionInfo,
-  type IUnifiedAgentClient,
-  type UnifiedClientEvents,
+export { UnifiedAgent } from './client/UnifiedAgent.js';
+export type {
+  UnifiedAgentBuildOptions,
+  ConnectResult,
+  ConnectionInfo,
+  IUnifiedAgentClient,
+  UnifiedClientEvents,
 } from './client/IUnifiedAgentClient.js';
 
 export { UnifiedClaudeAgentClient } from './client/UnifiedClaudeAgentClient.js';
@@ -55,22 +55,10 @@ export { AcpConnection, createIdleTimeoutRace, type AcpConnectionOptions, type A
 export { CliDetector } from './detector/CliDetector.js';
 
 // === 서비스 상태 ===
-export {
-  initServiceStatus,
-  resetServiceStatus,
-  attachStatusContext,
-  detachStatusContext,
-  refreshStatusNow,
-  getServiceSnapshots,
-  refreshStatusQuiet,
-} from './service-status/index.js';
-
 export type {
   ServiceSnapshot,
   HealthStatus,
   ProviderKey,
-  ServiceStatusCallbacks,
-  ServiceStatusContextPort,
 } from './service-status/index.js';
 
 // === CLI 설정 ===
@@ -95,7 +83,6 @@ export type {
   Client as AcpClient,
   Agent as AcpAgent,
   Stream as AcpStream,
-  McpServer as AcpMcpServer,
 } from '@agentclientprotocol/sdk';
 
 // === 타입 ===
@@ -104,6 +91,7 @@ export type {
   ConnectionState,
   ClientInfo,
   ConnectionEvents,
+  StructuredLogEntry,
 } from './types/common.js';
 
 export type {
@@ -120,7 +108,6 @@ export type {
   AcpSessionSetModeParams,
   AcpSessionSetModelParams,
   AcpSessionSetConfigParams,
-  AcpSessionUpdateType,
   AcpSessionUpdateParams,
   AcpSessionUpdate,
   AcpAvailableCommandsUpdate,
@@ -142,7 +129,6 @@ export type {
   AcpSessionModelState,
   AcpModelInfo,
   AcpModelId,
-  AcpEvents,
   AcpToolCall,
   AcpToolCallUpdate,
   AcpToolCallContent,
@@ -164,5 +150,5 @@ export type {
 
 // === 유틸리티 ===
 export { cleanEnvironment, isWindows } from './utils/env.js';
-export { killProcess, killProcessGroup } from './utils/process.js';
+export { killProcess } from './utils/process.js';
 export { resolveNpxPath, buildNpxArgs } from './utils/npx.js';

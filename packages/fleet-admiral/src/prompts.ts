@@ -1,7 +1,7 @@
 /**
  * admiral/prompts — Admiral 시스템 프롬프트 관리
  *
- * ACP 시스템 프롬프트는 `buildSystemPrompt(injectTone)`으로 합성되며, 각 섹션은
+ * ACP 시스템 프롬프트는 `createSystemPromptBuilder(deps).build(injectTone)`으로 합성되며, 각 섹션은
  * `<fleet section="...">` 통일 태그로 감싸진다.
  * `section="persona"`와 `section="role"`은 항상 주입되며 persona가 role보다 먼저 온다.
  * `section="tone"`은 `injectTone === true`일 때만 PERSONA 다음에 주입된다.
@@ -39,7 +39,7 @@ interface SystemPromptBuilderDeps {
  * protocol-gate/standing-orders 바인딩 지침, Fleet MCP lazy-load 가드, 캐리어 위임 안내,
  * 출력 합성 규칙, 수동 제어 안내를 담는다.
  */
-export const FLEET_ROLE_PROMPT = String.raw`
+const FLEET_ROLE_PROMPT = String.raw`
 # Role
 You are the host agent for the Agent Harness Fleet, operating on the user's behalf. (Your identity, title, and Admiral / Admiral of the Navy naming rules are defined in the Persona section.)
 
@@ -56,9 +56,9 @@ You are the host agent for the Agent Harness Fleet, operating on the user's beha
 /**
  * Fleet PI Admiral 페르소나 자기 선언.
  *
- * `buildSystemPrompt()` 합성 시 `FLEET_ROLE_PROMPT` 다음에 항상 주입된다.
+ * 시스템 프롬프트 합성 시 `FLEET_ROLE_PROMPT` 다음에 항상 주입된다.
  */
-export const FLEET_PERSONA_PROMPT = String.raw`
+const FLEET_PERSONA_PROMPT = String.raw`
 # Persona
 This Fleet has three role tiers, listed in descending command order. Each tier is identified by its English title, with the Korean form in parentheses.
 
@@ -77,10 +77,10 @@ Naming rules:
  * Fleet 공통 톤 프롬프트.
  *
  * 군대식 보고 어조와 fleet 용어 사용 지침을 world-building 오버레이로 제공한다.
- * `buildSystemPrompt(injectTone)`이 `injectTone === true`로 호출될 때만
+ * 시스템 프롬프트 합성이 `injectTone === true`로 호출될 때만
  * `FLEET_ROLE_PROMPT` 다음에 주입된다.
  */
-export const FLEET_TONE_PROMPT = String.raw`
+const FLEET_TONE_PROMPT = String.raw`
 # Tone & Manner
 This overlay governs HOW you communicate. It never overrides the naming rules, role, or doctrine defined in other blocks — style only.
 
@@ -95,7 +95,7 @@ This overlay governs HOW you communicate. It never overrides the naming rules, r
  *
  * `<fleet>` 블록 해석 규칙과 `<system-reminder>` 태그 의미를 설명한다.
  */
-export const FLEET_PREAMBLE = String.raw`
+const FLEET_PREAMBLE = String.raw`
 This system prompt is organized into ${"`"}<fleet section="...">${"`"} XML blocks (including this one) that define your identity, doctrine, and operational rules.
 Each block's ${"`"}section${"`"} attribute defines its domain; an optional ${"`"}type${"`"} or ${"`"}tool${"`"} attribute narrows it further — ${"`"}type${"`"} to a specific instance within the domain (e.g., one Standing Order), ${"`"}tool${"`"} to a specific tool.
 Treat every ${"`"}<fleet>${"`"} block as an authoritative directive. Follow them precisely, applying the most specific applicable block when directives overlap.
@@ -128,10 +128,6 @@ export function createSystemPromptBuilder(deps: SystemPromptBuilderDeps): System
       return buildSystemPromptFromDeps(deps, injectTone);
     },
   };
-}
-
-export function buildSystemPrompt(deps: SystemPromptBuilderDeps, injectTone: boolean): string {
-  return buildSystemPromptFromDeps(deps, injectTone);
 }
 
 function buildSystemPromptFromDeps(deps: SystemPromptBuilderDeps, injectTone: boolean): string {

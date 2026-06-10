@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { wrapWikiEntryBoundary, wrapWikiRawSourceBoundary, FLEET_WIKI_BOUNDARY_GUIDELINES } from "../boundaries.js";
+import { dedupeStrings, estimateTokens } from "../internal-utils.js";
 import { extractWikiLinks } from "../links.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
@@ -433,25 +434,9 @@ function escapeFrontmatterString(value: string): string {
     .replace(/"/g, "\\\"");
 }
 
-function estimateTokens(value: unknown): number {
-  return Math.ceil(JSON.stringify(value).length / 4);
-}
-
 function truncateString(value: string): string {
   const limit = Math.max(0, 512 - TRUNCATION_MARKER.length);
   return `${value.slice(0, limit)}${TRUNCATION_MARKER}`;
-}
-
-function dedupeStrings(values: string[]): string[] {
-  const seen = new Set<string>();
-  const deduped: string[] = [];
-  for (const value of values) {
-    if (!seen.has(value)) {
-      seen.add(value);
-      deduped.push(value);
-    }
-  }
-  return deduped;
 }
 
 function normalizeMaxTokens(value: unknown): number | undefined {

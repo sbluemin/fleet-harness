@@ -5,6 +5,7 @@ import { renderOpBadge } from "./op-badge";
 import { renderMarkdown } from "../markdown/renderer";
 import type { TocItem } from "../markdown/renderer";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
+import { escapeAttribute, escapeHtml } from "../utils/html";
 import { t } from "../i18n/t";
 
 const BACK_ICON = `
@@ -225,15 +226,4 @@ function renderStatusDot(status: string): string {
       ? "status-dot--accepted"
       : "status-dot--rejected";
   return `<span class="status-dot ${colorClass}" aria-label="${escapeAttribute(status)}"></span>`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }

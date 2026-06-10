@@ -30,9 +30,6 @@ The root barrel is whitelist-only. It may export exactly:
 - `registerAgentToolDefaults`
 - `getExecutorMcpTools`
 - `FLEET_MCP_SERVER_NAME`
-- `CARRIER_EXECUTOR_MCP_TOOL_IDS`
-- `WIKI_EXECUTOR_MCP_TOOL_IDS`
-- `EXECUTOR_MCP_TOOL_IDS`
 
 Do not use `export *`. Do not re-export generic MCP tool types, formatter helpers, `getAllAgentTools`, or `clearAllDefaultTools`.
 

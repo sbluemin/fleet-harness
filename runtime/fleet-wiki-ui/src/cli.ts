@@ -262,7 +262,7 @@ export async function main(): Promise<void> {
 export function findLocalCliMjs(cwd: string): string | null {
   let currentDir = path.resolve(cwd);
   while (true) {
-    const candidate = path.join(currentDir, "packages", "fleet-wiki-ui", "dist", "cli.mjs");
+    const candidate = path.join(currentDir, "runtime", "fleet-wiki-ui", "dist", "cli.mjs");
     if (existsSync(candidate)) {
       return candidate;
     }

@@ -1,6 +1,7 @@
 import { attachInputStream } from "./tui/input-stream.js";
 import { LocalTui } from "./tui/renderer.js";
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import {
   assertInputContract,
   createCursorPolicySync,
@@ -27,7 +28,8 @@ import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/i
 import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
-import { discoverMissionControlCounts, readFleetCliRelease } from "./mission-control/loaded-counts.js";
+import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
+import { readFleetCliRelease } from "./release.js";
 import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
 import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
 import { createMissionBridgeController } from "./mission-bridge/controller.js";
@@ -48,6 +50,7 @@ type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "
 type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
 
 export interface CreateMissionControlProfileConfigOptions {
+  readonly authService?: AuthService;
   readonly env: NodeJS.ProcessEnv;
   readonly invocationCwd: string;
 }
@@ -68,7 +71,11 @@ export function createMissionControlProfileConfig(
     cliOptions: getAgentCliMetadata(),
     initialCliId: resolveAgentCliId(options.env),
     resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
-      resolveAgentCliProfile(options.env, options.invocationCwd, { cliId: selectedCliId, model: launchOptions?.model }),
+      resolveAgentCliProfile(options.env, options.invocationCwd, {
+        authService: options.authService,
+        cliId: selectedCliId,
+        model: launchOptions?.model,
+      }),
   };
 }
 
@@ -106,6 +113,8 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   }).build;
   const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({
+    // claude-kimi 프로필의 resolveAuthEnv까지 Composition Root의 authService를 명시 주입한다.
+    authService: runtime.infraServices.authService,
     env: process.env,
     invocationCwd,
   });
@@ -161,7 +170,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     addInputListener: (listener) => ui.addInputListener(listener),
     carrierRuntime: runtime.carrierRuntime,
     getColumns: () => ui.columns,
-    getNative: () => sessionOptionsRuntime.getDraft().native,
     getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - missionControl.ptyView.maxRows),
     onCarrierResultReminder: (text) => sendCarrierResultReminder(text),
     onJobBarRenderRequest: () => {
@@ -326,17 +334,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   disposeInputStream = attachInputStream(ui);
 }
 
-function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
-  return {
-    argvOverrides: {
-      cursorSync: options.cursorSync === false,
-    },
-    cursorSync: options.cursorSync !== false,
-    cursorSyncExplicitlyEnabled: false,
-    help: false,
-  };
-}
-
 export function createFleetHostInputKeybindingConfig(options: {
   readonly definitions: readonly KeybindingDefinition[];
   readonly handlers: FleetHostKeybindingHandlers;
@@ -373,6 +370,17 @@ export function createFleetHostInputKeybindingConfig(options: {
     modeToggleKeys,
     registeredKeybindings,
   });
+}
+
+function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
+  return {
+    argvOverrides: {
+      cursorSync: options.cursorSync === false,
+    },
+    cursorSync: options.cursorSync !== false,
+    cursorSyncExplicitlyEnabled: false,
+    help: false,
+  };
 }
 
 function resolveInvocationCwd(): string {

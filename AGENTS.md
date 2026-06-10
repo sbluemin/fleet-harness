@@ -3,17 +3,18 @@
 > **A Multi-LLM Orchestration Kit**
 >
 > A standalone multi-LLM orchestration kit.
-> The core purpose is to operate 8 carriers — Claude Code, Codex CLI, and Cursor Agent — through a single unified interface.
+> The core purpose is to operate 8 carriers — Claude Code, Codex CLI, OpenCode Go, and Cursor Agent — through a single unified interface.
 
 ## Structure
 
 | Path | Description |
 |------|-------------|
-| `bin/` | Fleet dev and main entry scripts |
-| `docs/` | **Main Developer Guide** — Comprehensive reference for SDK, extensions, TUI, themes, and RPC; **Operational Doctrine** — High-level architecture, naval hierarchy, and delegation workflows |
-| `packages/` | First-party workspace packages: `core-agent` (`@dotobokuri/core-agent`), `core-mcp-server` (`@dotobokuri/core-mcp-server`), `core-unified-agent` (`@dotobokuri/core-unified-agent`), `fleet-carriers`, `fleet-infra`, `fleet-wiki`, and `fleet-wiki-ui` |
+| `docs/` | **Developer Reference** — `fleet-development-reference.md` and `fleet-lightweight-followup.md`; **Operational Doctrine** — `admiral-workflow-reference.md`; **Admiral-only prompt/runtime architecture note** — `admiral-prompt-architecture.md`; plus the static landing page (`index.html`, `app.jsx`) |
+| `packages/` | First-party workspace packages: `core-agent` (`@dotobokuri/core-agent`), `core-mcp-server` (`@dotobokuri/core-mcp-server`), `core-unified-agent` (`@dotobokuri/core-unified-agent`), `fleet-admiral`, `fleet-carriers`, `fleet-infra`, and `fleet-wiki` |
+| `runtime/` | Runtime workspace packages: `fleet-cli` (CLI host and entry point — `runtime/fleet-cli/bin/fleet`, or `pnpm fleet` from the repo root) and `fleet-wiki-ui` |
+| `scripts/` | Repo maintenance scripts: core/agent boundary guards, publish helpers, and the node-pty postinstall fix |
 
-> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-mcp-server/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-infra/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, and `runtime/fleet-wiki-ui/AGENTS.md`.
+> See each directory's `AGENTS.md` for detailed maps: `runtime/fleet-cli/AGENTS.md`, `packages/core-agent/AGENTS.md`, `packages/core-mcp-server/AGENTS.md`, `packages/core-unified-agent/AGENTS.md`, `packages/fleet-admiral/AGENTS.md`, `packages/fleet-carriers/AGENTS.md`, `packages/fleet-infra/AGENTS.md`, `packages/fleet-wiki/AGENTS.md`, and `runtime/fleet-wiki-ui/AGENTS.md`.
 
 ## TypeScript File Structure
 

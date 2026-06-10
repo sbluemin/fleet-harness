@@ -3,6 +3,7 @@ import { entryPath, navigate } from "../router";
 import { rememberMatchHint } from "../state";
 import type { BriefingHit, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
+import { escapeAttribute, escapeHtml } from "../utils/html";
 
 interface CommandPaletteState {
   open: boolean;
@@ -39,7 +40,7 @@ export function configureCommandPalette(index: WikiIndexEntry[], recentIds: stri
   }
 }
 
-export function openCommandPalette(): void {
+function openCommandPalette(): void {
   if (state.open) {
     focusCommandInput();
     return;
@@ -55,7 +56,7 @@ export function openCommandPalette(): void {
   focusCommandInput();
 }
 
-export function closeCommandPalette(): void {
+function closeCommandPalette(): void {
   if (!state.open) return;
   state.open = false;
   state.searchSeq++;
@@ -439,15 +440,4 @@ function stripMarkdownSyntax(value: string): string {
     .replace(/__([^_]+)__/g, "$1")
     .replace(/\*([^*\n]+)\*/g, "$1")
     .replace(/_([^_\n]+)_/g, "$1");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }

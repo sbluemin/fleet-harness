@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 
+import type { WorkspaceMetadata } from "./api-types.js";
 import { workspaceHash } from "./lock.js";
 import { resolveWorkspaceMemoryPaths } from "./paths.js";
 
@@ -14,15 +15,6 @@ export interface WorkspaceRegistration {
   paths: MemoryPaths;
   registeredAt: string;
   lastOpenedAt: string;
-}
-
-export interface WorkspaceMetadata {
-  id: string;
-  cwd: string;
-  label: string;
-  registeredAt: string;
-  lastOpenedAt: string;
-  urlPath: string;
 }
 
 export class WorkspaceRegistry {

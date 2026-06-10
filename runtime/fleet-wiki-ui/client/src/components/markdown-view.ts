@@ -5,6 +5,7 @@ import type { TocItem } from "../markdown/renderer";
 import type { WikiEntryResponse, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
 import { entryPath } from "../router";
+import { escapeAttribute, escapeHtml } from "../utils/html";
 
 export interface MarkdownViewRender {
   html: string;
@@ -93,13 +94,3 @@ export function renderError(message: string): string {
   `;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
-}

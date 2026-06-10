@@ -44,9 +44,10 @@ guide, and not a Chronicle-managed asset.
 `buildSystemPrompt()` in `packages/fleet-admiral/src/prompts.ts` assembles
 the Admiral prompt. The static prompt includes:
 
-- `FLEET_PREAMBLE`
-- `RISEN_DEV_SLATE` when enabled by development context
-- `<fleet section="role">` outside dev mode
+- `<fleet section="preamble">` — always injected first
+- `<fleet section="persona">` — always injected, before role
+- `<fleet section="role">` — always injected
+- `<fleet section="tone">` — only when tone injection is enabled
 - `<fleet section="roster">` when carriers are registered
 - `<fleet section="protocol-gate">` containing the always-on intent gate, mode gate, standard fallback, and downward guard for irreversible, structural, multi-module, or doctrine/prompt-policy work
 - `<fleet section="standing-orders" type="<id>">` as five separate always-on Standing Order blocks
@@ -76,7 +77,7 @@ Runtime state is read through direct owners:
 - Built-in protocol skill assets: `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store and job stream state: `@dotobokuri/fleet-carriers`
-- Executor/session/model state: `@dotobokuri/fleet-infra/agent`
+- Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-mcp-server`
 
 These values are operational inputs for services, overlays, tools, and status
@@ -89,7 +90,8 @@ not serialized into a per-turn prompt wrapper.
 ## 4. Lifecycle Boot
 
 `runtime/fleet-cli/src/runtime/runtime.ts` is the lifecycle boot entry point.
-`bootRuntime()` performs boot side effects directly:
+`createFleetRuntimeLifecycle()` returns the lifecycle handle; its `start()`
+performs boot side effects directly:
 
 - creates infrastructure services
 - creates the carrier runtime
@@ -101,14 +103,14 @@ not serialized into a per-turn prompt wrapper.
 - registers Fleet Wiki executor tools
 - starts the MCP server
 
-`shutdownRuntime()` disconnects executor pools, cleans dedicated MCP sessions,
-stops the MCP server, and resets settings.
+The lifecycle's `shutdown()` disconnects executor pools, cleans dedicated MCP
+sessions, stops the MCP server, and resets settings.
 
 ---
 
 ## 5. Executor Path
 
-Carrier execution is routed through `@dotobokuri/fleet-infra/agent`
+Carrier execution is routed through `@dotobokuri/core-agent`
 `executeWithPool()` and `executeOneShot()`. Carrier requests receive the request
 body composed by the caller plus the carrier system prompt assembled by
 `buildCarrierSystemPrompt()`.

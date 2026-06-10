@@ -4,8 +4,6 @@
 
 import type { CliType } from '../config/CliConfigs.js';
 
-export type { CliType } from '../config/CliConfigs.js';
-
 /** 통신 프로토콜 */
 export type ProtocolType = 'acp' | 'codex-app-server';
 

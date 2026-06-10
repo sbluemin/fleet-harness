@@ -68,11 +68,11 @@ Fleet은 이런 마찰을 제거하면서도 각 CLI의 본질을 훼손하지 �
 
 ## 항공모함
 
-> 각 항공모함의 설정(모델 선택, 추론 레벨 등)은 Fleet Bridge UI(`Alt+O`)에서 조정할 수 있습니다.
+> 각 항공모함의 설정(모델 선택, 추론 레벨 등)은 Mission Control 메뉴의 Carrier Roster 항목에서 조정할 수 있습니다.
 
 8개의 기본 Carrier가 각각 고유한 작전 역할을 수행합니다:
 
-- **Nimitz** — 전략 지휘·판단. 읽기 전용 아키처 결정·트레이드오프 재결.
+- **Nimitz** — 전략 지휘·판단. 읽기 전용 아키텍처 결정·트레이드오프 재결.
 - **Kirov** — 작전 기획 브리지. 요구사항 명확화 및 Ohio에 전달할 plan_file 작성(.fleet/plans/*.md).
 - **Genesis** — 수석 엔지니어. 제독 직접 지휘 하의 단발 구현.
 - **Ohio** — 다단 파상 타격 집행. Kirov가 작성한 plan_file을 받아 웨이브 단위로 실행.
@@ -89,7 +89,7 @@ Fleet은 API를 래핑하거나 프록시를 운용하지 않습니다 — **프
 
 | CLI | 제공자 | 프로토콜 | 주요 기능 |
 |-----|--------|----------|-----------|
-| **Claude Code** | Anthropic | ACP | 심층 추론, 아키처 판단 |
+| **Claude Code** | Anthropic | ACP | 심층 추론, 아키텍처 판단 |
 | **Claude Code (Z.AI GLM)** | Z.AI | ACP | Claude 브리지를 통한 GLM-5 시리즈 |
 | **Claude Code (Moonshot Kimi)** | Moonshot | ACP | Claude 브리지를 통한 Kimi K2 시리즈 |
 | **Codex CLI** | OpenAI | ACP | 빠른 코드 생성, 다단계 실행 |
@@ -136,8 +136,11 @@ Fleet은 이를 하나의 컨벤션으로 통합합니다. 프로젝트 확장�
 
 실행 시 Fleet은 `.fleet/`를 각 carrier CLI의 네이티브 플러그인으로 변환하므로, 동일한 hook·agent·skill·MCP 서버가 CLI별 중복 없이 모든 도구에 자동 적용됩니다. 폴더를 아무 저장소에나 넣기만 하면 모든 carrier가 인식합니다.
 
+같은 컨벤션이 사용자 전역 레벨에서도 동작합니다. `~/.fleet/` 아래에 동일한 `hooks/`, `agents/`, `skills/`, `.mcp.json` 구조로 확장을 한 번만 정의하면, Fleet이 이를 작업 디렉토리와 무관하게 모든 프로젝트에 적용되는 전역 플러그인으로 변환합니다. 프로젝트 레벨 `.fleet/`과 사용자 전역 `~/.fleet/`은 나란히 렌더링되므로, 각 carrier는 두 범위를 동시에 로드합니다.
+
 ## 문서
 
+- [Fleet 개발 레퍼런스](./docs/fleet-development-reference.md) — Fleet 호스트 확장 개발과 SDK 사용을 위한 종합 가이드.
 - [제독 워크플로우 레퍼런스](./docs/admiral-workflow-reference.md) — 해군 함대 아키텍처 및 운용 원칙에 대한 심층 분석.
 - [CHANGELOG](./CHANGELOG.md) — 프로젝트 변경 이력 및 릴리스 노트.
 

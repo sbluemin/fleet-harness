@@ -63,10 +63,6 @@ export class LocalTui {
 
   public constructor(private readonly options: LocalTuiOptions = {}) {}
 
-  public addChild(component: Component): void {
-    this.children.push(component);
-  }
-
   public setChildren(components: Component[]): void {
     this.children = components;
   }
@@ -266,13 +262,6 @@ export class LocalTui {
     for (const callback of callbacks) {
       callback();
     }
-  }
-
-  private handleTerminalPanic(): void {
-    this.running = false;
-    this.cancelScheduledRender();
-    unregisterTerminalRestore(this.restoreFromProcessRegistry);
-    this.restoreTerminal();
   }
 
   private restoreTerminal(): void {

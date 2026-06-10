@@ -43,7 +43,7 @@ if (argv[0] === "hook") {
 }
 
 if (argv[0] === "wiki") {
-  const cliPath = require.resolve("@dotobokuri/fleet-wiki-ui/dist/cli.mjs");
+  const cliPath = require.resolve("@dotobokuri/fleet-wiki-ui/cli");
   const child = spawn(process.execPath, [cliPath, ...argv.slice(1)], {
     stdio: "inherit",
     cwd: process.env.INIT_CWD || process.cwd(),

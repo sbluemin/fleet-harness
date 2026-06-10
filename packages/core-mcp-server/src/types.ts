@@ -36,25 +36,6 @@ export interface RegisteredTool {
   inputSchema: Record<string, unknown>;
 }
 
-export interface PendingToolCallState {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  emitted: boolean;
-}
-
-export interface McpSessionRoutingState {
-  sessionKey: string;
-  mcpSessionToken?: string;
-  pendingToolQueue: PendingToolCallState[];
-  pendingToolCallNotifier?: (() => void) | null;
-}
-
-export interface McpProviderRoutingState<TSession extends McpSessionRoutingState = McpSessionRoutingState> {
-  sessions: Map<string, TSession>;
-  toolCallToSessionKey: Map<string, string>;
-}
-
 export interface RegisterExecutorToolOptions {
   readonly allowedScopes?: readonly string[];
 }

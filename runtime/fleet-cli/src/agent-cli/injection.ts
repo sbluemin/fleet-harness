@@ -6,18 +6,11 @@ import { pathToFileURL } from "node:url";
 
 import type { ExecutorSessionManager } from "@dotobokuri/core-mcp-server";
 import {
-  buildClaudeSubagentDefinitions,
-  getCarrierConfig,
-  getEnabledCarrierSubagentIds,
-  getRegisteredOrder,
-  readCarrierAgentModeSnapshot,
-  resolveAgentCliType,
-  type CarrierConfig,
-  type CarrierModelDefaults,
   type CarrierRuntime,
   type ClaudeSubagentDefinition,
 } from "@dotobokuri/fleet-carriers";
 
+import { buildClaudeNativeSubagentPlan } from "./carrier-defaults.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
@@ -174,22 +167,7 @@ function buildStartupNativeDefinitions(
 ): StartupNativeDefinitions {
   const host = getNativeSubagentHost(cliId);
   if (host === "none") return { host, definitions: [] };
-  const carrierIds = getRegisteredOrder(carrierRuntime.registry);
-  const carrierConfigs = carrierIds
-    .map((carrierId) => getCarrierConfig(carrierRuntime.registry, carrierId))
-    .filter((config): config is NonNullable<typeof config> => config !== undefined);
-  const defaultsByCarrier = Object.fromEntries(
-    carrierConfigs.map((config) => [config.id, buildCarrierModelDefaults(config)]),
-  );
-  const enabledCarrierIds = getEnabledCarrierSubagentIds(
-    readCarrierAgentModeSnapshot(defaultsByCarrier),
-    carrierIds,
-  );
-  if (enabledCarrierIds.length === 0) return { host, definitions: [] } as StartupNativeDefinitions;
-  if (host === "claude") {
-    return { host, definitions: buildClaudeSubagentDefinitions({ carrierConfigs, enabledCarrierIds }) };
-  }
-  return { host, definitions: [] };
+  return { host, definitions: buildClaudeNativeSubagentPlan(carrierRuntime.registry).definitions };
 }
 
 function getNativeSubagentHost(cliId: AgentCliProfile["id"]): StartupNativeDefinitions["host"] {
@@ -212,17 +190,6 @@ function buildAgentCliMcpServerConfigs(
       bearerToken: token,
     };
   });
-}
-
-function buildCarrierModelDefaults(config: CarrierConfig): CarrierModelDefaults {
-  const cliType = resolveAgentCliType(config.id, config.defaultCliType);
-  const cliDefaults = resolvePersonaCliDefaults(config, cliType);
-  return {
-    cliType,
-    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
-    ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
-    ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
-  };
 }
 
 function writeSystemPromptFile(
@@ -332,19 +299,6 @@ function unlinkBestEffort(targetPath: string): void {
   } catch {
     // stale profile 정리는 검증 뒤 파일이 바뀌거나 사라져도 세션 시작을 막지 않는다.
   }
-}
-
-function resolvePersonaCliDefaults(
-  config: CarrierConfig,
-  cliType: ReturnType<typeof resolveAgentCliType>,
-): { readonly defaultEffort?: string; readonly defaultModel?: string } {
-  if (cliType === "claude") {
-    return config.subagent?.byHost?.claude ?? {
-      ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
-      ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
-    };
-  }
-  return {};
 }
 
 function buildAgentCliArgs(

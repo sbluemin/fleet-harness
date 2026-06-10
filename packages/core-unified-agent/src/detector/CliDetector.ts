@@ -4,8 +4,8 @@
  */
 
 import { execFile } from 'child_process';
-import { CLI_BACKENDS } from '../config/CliConfigs.js';
-import type { CliDetectionResult, CliType, ProtocolType } from '../types/config.js';
+import { CLI_BACKENDS, type CliType } from '../config/CliConfigs.js';
+import type { CliDetectionResult, ProtocolType } from '../types/config.js';
 import { isWindows } from '../utils/env.js';
 
 /** 감지 대상 CLI 목록 */

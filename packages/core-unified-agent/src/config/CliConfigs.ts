@@ -201,6 +201,16 @@ export function getBackendConfig(cli: CliType): CliBackendConfig {
 }
 
 /**
+ * Claude 계열 CLI인지 판별합니다.
+ *
+ * @param cli - CLI 종류
+ * @returns Claude 계열('claude' | 'claude-zai' | 'claude-kimi') 여부
+ */
+export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-zai' | 'claude-kimi' {
+  return cli === 'claude' || cli === 'claude-zai' || cli === 'claude-kimi';
+}
+
+/**
  * CLI별 YOLO 모드 ID를 반환합니다.
  *
  * @param cli - CLI 종류
@@ -297,8 +307,10 @@ export function mcpServerConfigsToAcp(servers: McpServerConfig[]): McpServer[] {
   })) as McpServer[];
 }
 
+// TOML basic string 이스케이프. 단축 이스케이프가 없는 제어문자(U+0000-U+001F)와
+// DEL(U+007F)은 \uXXXX 형태로 폴백 이스케이프해 깨진 TOML 생성을 방지한다.
 function escapeTomlBasicString(value: string): string {
-  return value.replace(/[\b\t\n\f\r"\\]/g, (char) => {
+  return value.replace(/[\u0000-\u001f"\\\u007f]/g, (char) => {
     switch (char) {
       case '\b':
         return '\\b';
@@ -315,7 +327,7 @@ function escapeTomlBasicString(value: string): string {
       case '\\':
         return '\\\\';
       default:
-        return char;
+        return `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;
     }
   });
 }

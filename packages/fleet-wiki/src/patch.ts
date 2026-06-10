@@ -247,7 +247,8 @@ export async function approvePatch(id: string, paths: MemoryPaths): Promise<Patc
   });
 }
 
-function assertSafeQueueId(id: string): void {
+// queue ID 형식 검증의 SSoT — 경로 주입 방어를 위해 patch-edit 도구 경로도 이 함수를 공유한다.
+export function assertSafeQueueId(id: string): void {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-f0-9]{8}$/.test(id)) {
     throw new Error("patch_id must be a non-empty canonical queue ID");
   }

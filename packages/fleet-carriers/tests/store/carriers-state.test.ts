@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getCarriersFilePath,
   initStore,
+  loadCarrierStates,
   readCarriersSnapshot,
   resetStoreForTests,
   saveAgentCliSelection,
@@ -53,6 +54,27 @@ describe("carriers.json state IO", () => {
     expect(snapshot.carriers.ohio?.agentMode).toBe("subagent");
     expect(snapshot.carriers.ohio?.agentCliType).toBe("codex");
     expect(snapshot.carriers.ohio?.agentCli.codex).toEqual({ model: "gpt-5.5", effort: "low" });
+  });
+
+  it("heals invalid agentCliType and taskforce values identically for snapshot and loadCarrierStates reads", () => {
+    // resolve 통일 후에도 sanitize delta(agentCliType/taskforce)가 보존되는지 검증한다.
+    writeCarriersJson({
+      _meta: { generation: 1 },
+      carriers: {
+        ohio: {
+          agentCliType: "not-a-real-cli",
+          taskforce: { "not-a-real-cli": { model: "x" }, codex: "not-an-object" },
+        },
+      },
+    });
+
+    const snapshot = readCarriersSnapshot({ ohio: { cliType: "codex" } });
+    expect(snapshot.carriers.ohio?.agentCliType).toBe("codex");
+    expect(snapshot.carriers.ohio?.taskforce).toEqual({});
+
+    const states = loadCarrierStates({ ohio: { cliType: "codex" } });
+    expect(states.ohio?.agentCliType).toBe("codex");
+    expect(states.ohio?.taskforce).toEqual({});
   });
 
   it("does not persist invalid agentCli selections on write", () => {

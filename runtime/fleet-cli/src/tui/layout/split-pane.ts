@@ -23,7 +23,7 @@ export interface SplitPaneLayout {
 }
 
 const FLEET_PTY_ROWS = 3;
-export const MIN_DEDICATED_ROWS = 5;
+const MIN_DEDICATED_ROWS = 5;
 
 export function computeVerticalSplit(size: TerminalSize, desiredFleetRows?: number): SplitPaneLayout {
   const maxFleetRows = Math.max(0, size.rows - MIN_DEDICATED_ROWS);

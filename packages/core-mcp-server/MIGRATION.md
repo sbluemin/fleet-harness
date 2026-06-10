@@ -10,7 +10,7 @@ The MCP server and tool registry internals have been extracted from `packages/fl
 
 ### 1. Import Path Migration
 
-All generic MCP types, registry functions, and server lifecycle methods must now be imported from `@dotobokuri/core-mcp-server`.
+All generic MCP types, registry factories, and server lifecycle surfaces must now be imported from `@dotobokuri/core-mcp-server`.
 
 **Before:**
 ```typescript
@@ -20,7 +20,10 @@ import { AgentToolSpec } from "./legacy/agent/types.js";
 
 **After:**
 ```typescript
-import { registerAgentTool, AgentToolSpec } from "@dotobokuri/core-mcp-server";
+import { createMcpToolRegistry, type AgentToolSpec } from "@dotobokuri/core-mcp-server";
+
+const registry = createMcpToolRegistry();
+registry.registerAgentTool(spec);
 ```
 
 ### 2. SSoT for Tool Specs
@@ -32,10 +35,10 @@ The `AgentToolSpec` interface is now owned by the leaf package. It remains the S
 
 ### 3. Server Lifecycle Management
 
-The MCP server is now a singleton managed via `startMcpServer()` and `stopMcpServer()`.
+The MCP server is now an explicit instance created via `createMcpServer(deps)` and managed through the returned instance's `start()`/`stop()` methods. There is no module-level singleton.
 
-- `fleet-admiral` manages MCP server startup and cleanup through its lifecycle boot/shutdown path.
-- The fleet-admiral shutdown handle explicitly calls `stopMcpServer()`.
+- The host composition root creates the server instance and manages startup and cleanup through its lifecycle boot/shutdown path.
+- The shutdown handle explicitly calls the server instance's `stop()`.
 
 ### 4. Hardening and Invariants
 

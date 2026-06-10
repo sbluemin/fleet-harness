@@ -82,7 +82,7 @@ export function createCursorPolicySync(options: {
   };
 }
 
-export function shouldAutoDisableCursorSync(
+function shouldAutoDisableCursorSync(
   profileId: AgentCliId | undefined,
   cursorSyncExplicitlyEnabled = false,
 ): boolean {

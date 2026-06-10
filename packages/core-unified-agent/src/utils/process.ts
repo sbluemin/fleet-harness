@@ -63,31 +63,6 @@ export function isIntentionalKillMarked(child: ChildProcess | null | undefined):
   return Boolean((child as IntentionalKillMarkedChildProcess | null | undefined)?.__intentionalKill);
 }
 
-/**
- * 프로세스 그룹 전체를 종료합니다 (detached 프로세스용).
- *
- * @param pid - 프로세스 그룹 리더 PID
- */
-export function killProcessGroup(pid: number): void {
-  if (isWindows()) {
-    try {
-      execSync(`taskkill /PID ${pid} /T /F`, {
-        stdio: 'pipe',
-        timeout: 5000,
-      });
-    } catch {
-      // 무시 - 이미 종료되었을 수 있음
-    }
-    return;
-  }
-
-  try {
-    process.kill(-pid, 'SIGTERM');
-  } catch {
-    // 무시 - 이미 종료되었을 수 있음
-  }
-}
-
 function killProcessGroupWithFallback(child: ChildProcess, signal: NodeJS.Signals): void {
   if (!child.pid) {
     return;

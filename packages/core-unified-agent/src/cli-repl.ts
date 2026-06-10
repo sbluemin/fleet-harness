@@ -7,20 +7,40 @@ import { createInterface, type Interface as ReadlineInterface } from 'node:readl
 
 import { CliRenderer } from './cli-renderer.js';
 import type { ColorFns } from './cli-renderer.js';
-import { UnifiedAgent, type IUnifiedAgentClient } from './client/IUnifiedAgentClient.js';
+import { UnifiedAgent } from './client/UnifiedAgent.js';
+import type { IUnifiedAgentClient } from './client/IUnifiedAgentClient.js';
 import {
   getProviderModelIds,
   getProviderModels,
   getEffort,
   getEffortLevels,
 } from './models/ModelRegistry.js';
-import type { CliType } from './types/config.js';
+import { isClaudeFamily, type CliType } from './config/CliConfigs.js';
 import type { AcpPermissionRequestParams, AcpPermissionResponse } from './types/acp.js';
 
 // ─── 타입 (내부) ────────────────────────────────────────
 
 /** 미해결 권한 요청의 resolve 함수 참조 */
 type PendingPermissionResolve = ((response: AcpPermissionResponse) => void) | null;
+
+/** 슬래시 커맨드가 참조하는 REPL 로컬 상태 */
+interface ReplState {
+  currentModel: string;
+  currentEffort: string | null;
+  setModel: (m: string) => void;
+  setEffort: (e: string | null) => void;
+}
+
+/** /effort 커맨드 처리 컨텍스트 */
+interface EffortCommandContext {
+  cli: CliType;
+  arg: string;
+  ce: ColorFns;
+  currentModel: string;
+  setEffort: (effort: string | null) => void;
+  setConfigOption: (configId: string, value: string) => Promise<void>;
+  writeLine: (text: string) => void;
+}
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -92,7 +112,7 @@ export async function startRepl(options: ReplOptions): Promise<void> {
     }
 
     requestedEffort = effortOpt;
-    if (isClaudeCli(connectedCli)) {
+    if (isClaudeFamily(connectedCli)) {
       process.stderr.write(`${ce.dim('⚠ Claude의 effort 변경은 다음 새 세션부터 적용됩니다')}\n`);
     } else {
       try {
@@ -288,23 +308,6 @@ function buildPrompt(model: string, effort: string | null, ce: ColorFns): string
 
 // ─── 슬래시 커맨드 ──────────────────────────────────────
 
-interface ReplState {
-  currentModel: string;
-  currentEffort: string | null;
-  setModel: (m: string) => void;
-  setEffort: (e: string | null) => void;
-}
-
-interface EffortCommandContext {
-  cli: CliType;
-  arg: string;
-  ce: ColorFns;
-  currentModel: string;
-  setEffort: (effort: string | null) => void;
-  setConfigOption: (configId: string, value: string) => Promise<void>;
-  writeLine: (text: string) => void;
-}
-
 /**
  * 슬래시 커맨드를 처리합니다.
  * @returns true면 REPL 종료
@@ -416,7 +419,7 @@ async function applyDefaultEffortForModel(
     return;
   }
 
-  if (isClaudeCli(cli)) {
+  if (isClaudeFamily(cli)) {
     state.setEffort(effort.default);
     writeLine(`${ce.dim(`Claude의 기본 effort ${effort.default}는 다음 새 세션부터 적용됩니다`)}\n`);
     return;
@@ -441,7 +444,7 @@ export async function handleEffortSlashCommand(context: EffortCommandContext): P
   }
 
   try {
-    if (isClaudeCli(cli)) {
+    if (isClaudeFamily(cli)) {
       setEffort(arg);
       writeLine(`${ce.dim(`Claude의 effort ${arg}는 다음 새 세션부터 적용됩니다`)}\n`);
       return;
@@ -453,10 +456,6 @@ export async function handleEffortSlashCommand(context: EffortCommandContext): P
   } catch {
     writeLine(`${ce.red('오류')}: reasoning effort 설정 실패 (이 CLI에서는 지원되지 않을 수 있습니다)\n`);
   }
-}
-
-function isClaudeCli(cli: CliType): cli is 'claude' | 'claude-zai' | 'claude-kimi' {
-  return cli === 'claude' || cli === 'claude-zai' || cli === 'claude-kimi';
 }
 
 function handleEffortLevelsSlashCommand(

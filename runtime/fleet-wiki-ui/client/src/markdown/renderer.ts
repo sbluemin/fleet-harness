@@ -9,10 +9,7 @@ import python from "highlight.js/lib/languages/python";
 import typescript from "highlight.js/lib/languages/typescript";
 
 import { entryPath } from "../router";
-// SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
-// Inlined here because the client (Vite SPA) bundle cannot transitively pull
-// fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
-const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
+import { escapeHtml } from "../utils/html";
 
 export interface TocItem {
   id: string;
@@ -24,6 +21,11 @@ export interface RenderedMarkdown {
   html: string;
   toc: TocItem[];
 }
+
+// SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
+// Inlined here because the client (Vite SPA) bundle cannot transitively pull
+// fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
+const WIKI_LINK_PATTERN = /\[\[wiki:([^\]]+)\]\]/g;
 
 const marked = new Marked({
   gfm: true,
@@ -48,6 +50,20 @@ export function renderMarkdown(body: string): RenderedMarkdown {
     html,
     toc: extractToc(document),
   };
+}
+
+export function encodeMermaidSource(source: string): string {
+  const bytes = new TextEncoder().encode(source);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export function decodeMermaidSource(encoded: string): string {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new TextDecoder().decode(bytes);
 }
 
 function renderWikiLinks(body: string): string {
@@ -175,25 +191,4 @@ function slugify(value: string): string {
     .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "section";
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-export function encodeMermaidSource(source: string): string {
-  const bytes = new TextEncoder().encode(source);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-export function decodeMermaidSource(encoded: string): string {
-  const binary = atob(encoded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-  return new TextDecoder().decode(bytes);
 }

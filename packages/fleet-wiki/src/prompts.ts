@@ -2,8 +2,6 @@ import { Type } from "typebox";
 
 import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./boundaries.js";
 
-interface MemoryCaptureSession { branchId: string }
-
 export const WIKI_SCHEMA_PROMPT_NOTE =
   "Workspace common rules live in `.fleet/knowledge/schema/wiki-schema.md`; body sections live in `.fleet/knowledge/schema/template-*.md`.";
 export const CANONICAL_WIKI_LINK_GUIDELINE =
@@ -120,51 +118,6 @@ export const WIKI_ORIENT_GUIDELINES = [
   ...FLEET_WIKI_BOUNDARY_GUIDELINES,
   "If you need details, narrow down after orient with wiki_briefing, wiki_patch_queue, and wiki_drydock.",
 ];
-
-export function buildWikiCaptureDirective(input: {
-  mode: "stage" | "preview";
-  session: MemoryCaptureSession;
-}): string {
-  if (input.mode === "stage") {
-    return [
-      "Fleet Wiki capture staging",
-      "",
-      "Use the current conversation/session history already present in context to identify durable, long-term meaningful knowledge worth retaining in Fleet Wiki.",
-      "Stage actual pending Fleet Wiki patches in this turn.",
-      "Prefer staging one high-value entry. Multiple calls require explicit justification.",
-      "For wiki-worthy knowledge, call `wiki_ingest` to create pending wiki patches with raw source captured from the current conversation context.",
-      "Do not approve, merge, or otherwise finalize any patch in this turn.",
-      "",
-      "Your workflow:",
-      "1. Identify durable knowledge candidates from the active conversation/session, ignoring transient chatter.",
-      "2. Select the single most valuable candidate to stage. Skip if the topic is already adequately covered in the wiki. Only proceed with additional candidates when they belong to clearly distinct domains (e.g., a code/architecture decision and an operational incident record co-occurring in the same session).",
-      "3. Write the wiki body for the selected candidate as self-contained synthesized markdown; do not put raw_source_ref in the body.",
-      "4. Call `wiki_ingest` for the selected candidate. Default is a single call per session capture; additional calls require the explicit cross-domain justification from step 2.",
-      "5. Report the staged patch IDs, what each patch contains, and the exact approval/rejection commands the user can run next.",
-      "6. Surface conflicts, unknowns, and unsafe/privacy warnings before recommending approval.",
-      "",
-      `Base all staging on the active context for branch \`${input.session.branchId}\`.`,
-      "Do not restate the full transcript unless a short excerpt is strictly necessary to explain a conflict or warning.",
-    ].join("\n");
-  }
-
-  return [
-    "Fleet Wiki capture preview",
-    "",
-    "You are preparing a staged Fleet Wiki capture preview from the current PI conversation history.",
-    "Produce a preview only. Do not mutate Fleet Wiki state in this turn.",
-    "Do not call `wiki_ingest` until the user explicitly approves the preview in a later turn.",
-    "",
-    "The preview must include:",
-    "1. the single highest-priority wiki entry candidate (with rationale for the selection; mention runner-up candidates only if they belong to clearly distinct domains)",
-    "2. conflicts or unknowns that block safe capture",
-    "3. unsafe or privacy-sensitive warnings",
-    "4. proposed next actions for the user to approve or refine",
-    "",
-    `Base the preview on the current conversation/session history already present in context for branch \`${input.session.branchId}\`.`,
-    "Do not restate the full transcript unless a short excerpt is strictly necessary to explain a conflict or warning.",
-  ].join("\n");
-}
 
 export function buildWikiIngestSchema() {
   return Type.Object({

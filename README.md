@@ -68,7 +68,7 @@ A **Carrier** is an execution instance of a CLI tool with isolated configuration
 
 ## Carriers
 
-> Per-carrier configuration (model selection, reasoning level, etc.) can be adjusted from Mission Control's Carrier Roster (`C`).
+> Per-carrier configuration (model selection, reasoning level, etc.) can be adjusted from the Carrier Roster entry in the Mission Control menu.
 
 Eight built-in Carriers, each with a distinct operational role:
 
@@ -110,7 +110,7 @@ Watch every active carrier stream results in real time, navigate between carrier
 
 <img src=".github/carrier_status.png" alt="Carrier Roster" width="100%" />
 
-The Carrier layer is the fleet's execution engine. Whether you need a single agent, a or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
+The Carrier layer is the fleet's execution engine. Whether you need a single agent, a coordinated wing, or a cross-model task force, you deploy and control every operation through a unified dispatch interface.
 
 #### Sortie
 

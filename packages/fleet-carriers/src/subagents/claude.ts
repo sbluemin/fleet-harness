@@ -1,4 +1,4 @@
-import { buildCarrierSystemPrompt } from "../dispatch/tool-spec.js";
+import { buildCarrierSystemPrompt } from "../dispatch/prompt.js";
 import type { CarrierConfig } from "../dispatch/types.js";
 import type {
   BuildClaudeSubagentDefinitionsOptions,

@@ -1,6 +1,3 @@
-import os from "node:os";
-import path from "node:path";
-
 import { createCarrierRuntime, type CarrierRuntime } from "@dotobokuri/fleet-carriers";
 import {
 	FLEET_MCP_SERVER_NAME,
@@ -15,6 +12,7 @@ import {
 } from "@dotobokuri/core-agent";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
+import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import {
 	createMcpServer,
 	createMcpToolRegistry,
@@ -81,7 +79,7 @@ export function createFleetRuntimeLifecycle(deps: FleetRuntimeLifecycleDeps = {}
 }
 
 async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRuntime> {
-	const dataDir = deps.dataDir ?? path.join(os.homedir(), ".fleet");
+	const dataDir = deps.dataDir ?? getFleetDataDir();
 	const infraServices = createInfraServices();
 	const mcpRuntimes = createRuntimeMcpServices();
 	const carrierRuntime = createCarrierRuntime();
@@ -175,7 +173,6 @@ function createRuntimeMcpBundle(name: string): RuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
 	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
 	const mcpServer = createMcpServer({
-		registry: mcpRegistry,
 		serverInfo: { name },
 		toolSnapshotStore: mcpToolSnapshotStore,
 	});

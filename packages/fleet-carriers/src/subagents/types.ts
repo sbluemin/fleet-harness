@@ -1,7 +1,4 @@
 import type { CarrierConfig } from "../dispatch/types.js";
-export type { CarrierAgentProviderDefaults as ProviderSubagentDefaults } from "../dispatch/types.js";
-
-export type NativeSubagentHost = "claude";
 
 export type ClaudeSubagentColor =
   | "red"

@@ -3,6 +3,8 @@ import type { QueueListItem } from "../api";
 import type { QueueState } from "../queue-state";
 import { renderOpBadge } from "./op-badge";
 import { t } from "../i18n/t";
+import { escapeAttribute, escapeHtml } from "../utils/html";
+import { relativeTime } from "../utils/time";
 
 export function renderQueueList(state: QueueState): string {
   const { tab, items, pendingCount, archivedCount, loading, error } = state;
@@ -108,26 +110,3 @@ function renderStatusDot(status: string): string {
   return `<span class="status-dot ${colorClass}" aria-label="${escapeAttribute(status)}"></span>`;
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return t("time.justNow");
-  if (minutes < 60) return t("time.minutesAgo", { n: minutes });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t("time.hoursAgo", { n: hours });
-  const days = Math.floor(hours / 24);
-  if (days < 30) return t("time.daysAgo", { n: days });
-  const months = Math.floor(days / 30);
-  return t("time.monthsAgo", { n: months });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
-}

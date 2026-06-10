@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import type { DirectoryIdentity } from "./types.js";
+
 // 파일 권한 상수
 export const SECURE_DIR_MODE = 0o700;
 export const SECURE_FILE_MODE = 0o600;
@@ -55,11 +57,6 @@ export function assertWithinRoot(root: string, candidatePath: string): void {
   }
 }
 
-export interface DirectoryIdentity {
-  readonly dev: number;
-  readonly ino: number;
-}
-
 /**
  * 디렉터리의 dev/ino identity를 읽는다. 없거나 심볼릭링크면 null 반환.
  */
@@ -75,16 +72,5 @@ export function readDirectoryIdentity(dirPath: string): DirectoryIdentity | null
       return null;
     }
     throw error;
-  }
-}
-
-/**
- * dirPath의 현재 identity가 expected와 일치하는지 assert한다.
- * 불일치시 throw.
- */
-export function assertDirectoryIdentity(dirPath: string, expected: DirectoryIdentity): void {
-  const actual = readDirectoryIdentity(dirPath);
-  if (!actual || actual.dev !== expected.dev || actual.ino !== expected.ino) {
-    throw new Error(`Directory identity changed: ${dirPath}`);
   }
 }

@@ -109,7 +109,7 @@ export function buildPanelViewModel(
   }));
 }
 
-export function buildPanelTrackViewModel(
+function buildPanelTrackViewModel(
   track: ColumnTrack,
   runs: ReadonlyMap<string, PanelRunViewModelSource>,
   maxTrackBlocks = DEFAULT_MAX_TRACK_BLOCKS,

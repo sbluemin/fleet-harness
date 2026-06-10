@@ -1,6 +1,7 @@
 import { FLEET_WIKI_BOUNDARY_GUIDELINES, wrapWikiRawSourceBoundary } from "../boundaries.js";
 import { briefingQuery } from "../briefing.js";
 import { readClaims } from "../claims.js";
+import { dedupeStrings, estimateTokens } from "../internal-utils.js";
 import { extractWikiLinks } from "../links.js";
 import { resolveMemoryPaths } from "../paths.js";
 import {
@@ -548,17 +549,6 @@ function collectSourceRefs(entry: WikiEntry): string[] {
   ]);
 }
 
-function dedupeStrings(values: string[]): string[] {
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const value of values) {
-    if (seen.has(value)) continue;
-    seen.add(value);
-    next.push(value);
-  }
-  return next;
-}
-
 function dedupeFacts(facts: WikiContextPackFact[]): WikiContextPackFact[] {
   const seen = new Set<string>();
   const next: WikiContextPackFact[] = [];
@@ -575,8 +565,4 @@ function pushUnique(target: string[], value: string): void {
   if (!target.includes(value)) {
     target.push(value);
   }
-}
-
-function estimateTokens(value: unknown): number {
-  return Math.ceil(JSON.stringify(value).length / 4);
 }

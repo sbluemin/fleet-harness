@@ -1,20 +1,19 @@
 import {
-  CLI_DISPLAY_NAMES,
   getCarrierConfig,
   getConfiguredTaskForceBackendsFromSnapshot,
   getRegisteredOrder,
   readCarriersSnapshot,
   readCarrierAgentModeSnapshot,
-  resolveAgentCliType,
   resolveCarrierDisplayName,
   type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers";
-import { getCliEffortLevels, getCliModels } from "@dotobokuri/core-agent";
 
+import { buildHostCarrierModelDefaults } from "../../agent-cli/carrier-defaults.js";
+import { getAvailableModels } from "./model-info.js";
 import type { GroupedEntries, StatusOverlayViewModel } from "./render-types.js";
-import type { CarrierCliType, CarrierStatusEntry, CliModelInfo, FleetStoreSnapshot } from "./types.js";
+import type { CarrierCliType, CarrierStatusEntry, FleetStoreSnapshot } from "./types.js";
 
 const ANSI_DIM = "\x1b[38;2;100;100;100m";
 const CATEGORY_ORDER = ["strategy", "planning", "operations"] as const;
@@ -110,7 +109,7 @@ function buildStatusEntriesFromSnapshot(carrierRuntime: CarrierRuntime, snapshot
     if (!config) continue;
     const cliType = cliTypeForCarrierFromSnapshot(healedSnapshot, id, config.defaultCliType as CarrierCliType);
     const selection = healedSnapshot.carriers[id]?.agentCli[cliType];
-    const provider = getProviderModelsEquivalent(cliType);
+    const provider = getAvailableModels(cliType);
     const meta = config.carrierMetadata;
     const role = sanitizeCarrierMetadataText(meta?.title);
     const roleSummary = sanitizeCarrierMetadataText(meta?.summary);
@@ -141,30 +140,10 @@ function buildCliTypesByCarrierFromSnapshot(carrierRuntime: CarrierRuntime, snap
       .map((id) => {
         const config = getCarrierConfig(registry, id);
         if (!config) return null;
-        const cliType = resolveAgentCliType(id, config.defaultCliType) as CarrierCliType;
-        const cliDefaults = resolvePersonaCliDefaults(config, cliType);
-        return [id, {
-          cliType,
-          ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
-          ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
-          ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
-        }];
+        return [id, buildHostCarrierModelDefaults(config)];
       })
       .filter((entry): entry is [string, CarrierModelDefaults] => entry !== null),
   );
-}
-
-function resolvePersonaCliDefaults(
-  config: NonNullable<ReturnType<typeof getCarrierConfig>>,
-  cliType: CarrierCliType,
-): { readonly defaultEffort?: string; readonly defaultModel?: string } {
-  if (cliType === "claude") {
-    return config.subagent?.byHost?.claude ?? {
-      ...(config.defaultEffort ? { defaultEffort: config.defaultEffort } : {}),
-      ...(config.defaultModel ? { defaultModel: config.defaultModel } : {}),
-    };
-  }
-  return {};
 }
 
 function cliTypeForCarrierFromSnapshot(
@@ -173,30 +152,6 @@ function cliTypeForCarrierFromSnapshot(
   defaultCliType: CarrierCliType,
 ): CarrierCliType {
   return snapshot.carriers[carrierId]?.agentCliType ?? defaultCliType;
-}
-
-function getProviderModelsEquivalent(cliType: CarrierCliType): CliModelInfo {
-  try {
-    const models = getCliModels(cliType).map((model) => ({
-      modelId: model.id,
-      name: model.name,
-    }));
-    const defaultModel = models[0]?.modelId ?? "default";
-    const levels = getCliEffortLevels(cliType, defaultModel);
-    return {
-      defaultModel,
-      effort: levels?.length ? { default: levels[0], levels, supported: true } : { supported: false },
-      models,
-      name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-    };
-  } catch {
-    return {
-      defaultModel: "default",
-      effort: { supported: false },
-      models: [],
-      name: CLI_DISPLAY_NAMES[cliType] ?? cliType,
-    };
-  }
 }
 
 function buildRoleDescription(role: string | null, summary: string | null): string | null {

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, lstat, mkdir, open, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readFile, rm, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -41,7 +41,7 @@ export function lockFilePath(): string {
   return daemonLockFilePath();
 }
 
-export function daemonLockFilePath(): string {
+function daemonLockFilePath(): string {
   return path.join(lockDirectoryPath(), DAEMON_LOCK_FILENAME);
 }
 
@@ -81,19 +81,14 @@ export async function readLockFile(filePath: string): Promise<FleetWikiLock | nu
   }
 }
 
-export async function writeLockFile(filePath: string, lock: FleetWikiLock): Promise<void> {
-  await ensureLockDirectory();
-  await removeSymbolicLock(filePath);
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tempPath, JSON.stringify(lock, null, 2), { encoding: "utf8", mode: LOCK_FILE_MODE });
-  await rename(tempPath, filePath);
-  await chmod(filePath, LOCK_FILE_MODE);
-}
-
 export async function removeLockFile(filePath: string): Promise<void> {
   await rm(filePath, { force: true });
 }
 
+// Sync: packages/fleet-infra/src/fs-store/directory-lock.ts의 isProcessAlive와 같은
+// process.kill(pid, 0) probe 발상의 사본. 단 이쪽은 EPERM을 restricted로 구분하는 강화판이며
+// (fleet-infra 쪽은 EPERM=alive 단순판), 계층 그래프상 공유 지점이 없어 의도적으로 분리 유지한다.
+// 의미론 변경 시 두 구현의 드리프트 여부를 함께 점검할 것.
 export function isProcessAlive(pid: number): boolean {
   return isProcessAliveWithStatus(pid).alive;
 }
@@ -113,7 +108,7 @@ export function isProcessAliveWithStatus(pid: number): ProcessLiveness {
   }
 }
 
-export async function isSymbolicLock(filePath: string): Promise<boolean> {
+async function isSymbolicLock(filePath: string): Promise<boolean> {
   try {
     return (await lstat(filePath)).isSymbolicLink();
   } catch {

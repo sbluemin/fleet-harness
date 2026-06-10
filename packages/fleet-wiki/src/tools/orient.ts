@@ -14,12 +14,6 @@ import {
 import { ensureWorkspaceSchema, readWorkspaceSchemaSummary } from "../schema.js";
 import { pathExists } from "../store.js";
 
-const DEFAULT_LOG_LIMIT = 5;
-const DEFAULT_MAX_TOKENS = 12_000;
-const MAX_TOKENS_FLOOR = 1_000;
-const MAX_TOKENS_CEILING = 50_000;
-const TRUNCATION_MARKER = "\n\n[truncated by wiki_orient max_tokens]";
-
 interface OrientInput {
   includeSchema: boolean;
   includeIndex: boolean;
@@ -45,6 +39,12 @@ interface OrientPayload {
     fields_truncated: string[];
   };
 }
+
+const DEFAULT_LOG_LIMIT = 5;
+const DEFAULT_MAX_TOKENS = 12_000;
+const MAX_TOKENS_FLOOR = 1_000;
+const MAX_TOKENS_CEILING = 50_000;
+const TRUNCATION_MARKER = "\n\n[truncated by wiki_orient max_tokens]";
 
 export function buildOrientToolConfig() {
   return {

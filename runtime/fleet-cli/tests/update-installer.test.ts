@@ -10,7 +10,7 @@ import { resolvePathBinary } from "../src/process/resolve-bin.js";
 import { readFleetCliRelease } from "../src/release.js";
 import { checkUpdateStatus } from "../src/update/check.js";
 import { __installerTestHooks, runFleetUpdate } from "../src/update/installer.js";
-import type { UpdateCommandIo } from "../src/update/dispatcher.js";
+import type { UpdateCommandIo } from "../src/update/types.js";
 
 interface StringWriter {
   write(chunk: string): boolean;

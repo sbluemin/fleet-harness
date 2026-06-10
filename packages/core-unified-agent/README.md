@@ -16,7 +16,7 @@ Unified Agent provides two ways to control supported CLI agents — Claude, Code
 | CLI | Protocol | Spawn Command |
 |-----|----------|---------------|
 | **Claude** | ACP | `npx --package=@agentclientprotocol/claude-agent-acp@0.33.1 claude-agent-acp` |
-| **Codex** | `codex-app-server` | `codex app-server --listen stdio://` |
+| **Codex** | `codex-acp` / `app-server` | (Toggle) `npx --yes --package=@zed-industries/codex-acp@0.14.0 codex-acp` / `codex app-server` |
 | **OpenCode Go** | ACP | `opencode acp` |
 | **Cursor Agent** | ACP | `cursor-agent acp` |
 
@@ -287,6 +287,8 @@ Closes the connection and terminates the child process.
 UnifiedAgent
   +-- UnifiedClaudeAgentClient
   +-- UnifiedCodexAgentClient
+  +-- UnifiedOpenCodeAgentClient
+  +-- UnifiedCursorAgentClient
 ```
 
 ## License

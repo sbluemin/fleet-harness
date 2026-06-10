@@ -1,18 +1,25 @@
-export interface HealthResponse {
-  ok: boolean;
-  version: string;
-  cwd: string;
-  knowledgeRoot: string;
-}
+// 서버 응답 DTO는 src/api-types.ts(타입 전용 파일)를 단일 출처로 공유한다.
+// 같은 패키지 서버 코드의 type-only import이므로 Vite 번들에는 포함되지 않는다.
+import type {
+  ConflictDetailResponse,
+  ConflictListItem,
+  HealthResponse,
+  LogResponse,
+  QueuePatchSetMember,
+  QueuePatchSetResponse,
+  WorkspaceMetadata,
+} from "../../src/api-types";
+import { t } from "./i18n/t";
 
-export interface WorkspaceMetadata {
-  id: string;
-  cwd: string;
-  label: string;
-  registeredAt: string;
-  lastOpenedAt: string;
-  urlPath: string;
-}
+export type {
+  ConflictDetailResponse,
+  ConflictListItem,
+  HealthResponse,
+  LogResponse,
+  QueuePatchSetMember,
+  QueuePatchSetResponse,
+  WorkspaceMetadata,
+};
 
 export interface WorkspacesResponse {
   currentWorkspaceId: string | null;
@@ -81,29 +88,6 @@ export interface BriefingHit {
   graph_boost?: number;
 }
 
-export interface ConflictListItem {
-  id: string;
-  title: string;
-  updated: string;
-  status: "open" | "resolved" | "unknown";
-  path: string;
-}
-
-export interface ConflictDetailResponse {
-  id: string;
-  meta: Record<string, unknown>;
-  current: string | null;
-  proposed: string | null;
-  rawSource: string | null;
-}
-
-export interface LogResponse {
-  limit: number;
-  entries: string[];
-  totalEntries: number;
-  truncated: boolean;
-}
-
 export interface PatchMetaData {
   id: string;
   status: "pending" | "accepted" | "rejected";
@@ -155,21 +139,6 @@ export interface QueueListResponse {
   items: QueueListItem[];
   pendingCount: number;
   archivedCount: number;
-}
-
-export interface QueuePatchSetMember {
-  id: string;
-  status?: string;
-  target?: string;
-  summary?: string;
-  source: "queue" | "archive" | "missing";
-}
-
-export interface QueuePatchSetResponse {
-  id: string;
-  sourceRef: string;
-  createdAt: string;
-  members: QueuePatchSetMember[];
 }
 
 export interface PatchDetailResponse {
@@ -276,13 +245,12 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const json = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(json?.error ?? `${url} 요청 실패: ${response.status}`);
+    throw new Error(await buildRequestError(url, response));
   }
   return response.json() as Promise<T>;
 }
 
 async function buildRequestError(url: string, response: Response): Promise<string> {
   const json = await response.json().catch(() => null) as { error?: string } | null;
-  return json?.error ?? `${url} 요청 실패: ${response.status}`;
+  return json?.error ?? t("errors.requestFailed", { url, status: response.status });
 }

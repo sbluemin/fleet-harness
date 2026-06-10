@@ -12,19 +12,6 @@ import type { AgentCliSelection } from "./types.js";
 
 const VALID_CLI_TYPES = new Set(Object.keys(CLI_BACKENDS));
 
-export function loadAgentCliTypeOverrides(validIds?: Set<string>): Record<string, string> {
-  const carriers = readRawCarriers().carriers ?? {};
-  const overrides = Object.fromEntries(
-    Object.entries(carriers)
-      .filter(([, state]) => state.agentCliType)
-      .map(([id, state]) => [id, state.agentCliType!]),
-  );
-  if (!validIds) return overrides;
-  return Object.fromEntries(
-    Object.entries(overrides).filter(([id]) => validIds.has(id)),
-  );
-}
-
 export function resolveAgentCliType(carrierId: string, defaultCliType: CliType): CliType {
   return readRawCarriers().carriers?.[carrierId]?.agentCliType ?? defaultCliType;
 }

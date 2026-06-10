@@ -10,7 +10,6 @@ import {
   getLogFile,
   listQueue,
   listWiki,
-  loadIndex,
   parsePatch,
   readPatchSet,
   readWikiEntry,
@@ -18,8 +17,15 @@ import {
   showQueue,
 } from "@dotobokuri/fleet-wiki";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
-import type { MemoryPaths, PatchMeta, PatchSet, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
+import type { MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "@dotobokuri/fleet-wiki";
 
+import type {
+  ConflictDetailResponse,
+  ConflictListItem,
+  LogResponse,
+  QueuePatchSetMember,
+  QueuePatchSetResponse,
+} from "./api-types.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { hasAdminBearer } from "./admin-auth.js";
 import type { WorkspaceRegistry } from "./workspaces.js";
@@ -37,44 +43,6 @@ interface RouteContext {
   externalMode: boolean;
   workspaces?: WorkspaceRegistry;
   adminToken?: string;
-}
-
-interface ConflictListItem {
-  id: string;
-  title: string;
-  updated: string;
-  status: "open" | "resolved" | "unknown";
-  path: string;
-}
-
-interface ConflictDetailResponse {
-  id: string;
-  meta: Record<string, unknown>;
-  current: string | null;
-  proposed: string | null;
-  rawSource: string | null;
-}
-
-interface LogResponse {
-  limit: number;
-  entries: string[];
-  totalEntries: number;
-  truncated: boolean;
-}
-
-interface QueuePatchSetMember {
-  id: string;
-  status?: string;
-  target?: string;
-  summary?: string;
-  source: "queue" | "archive" | "missing";
-}
-
-interface QueuePatchSetResponse {
-  id: string;
-  sourceRef: string;
-  createdAt: string;
-  members: QueuePatchSetMember[];
 }
 
 const JSON_HEADERS = {

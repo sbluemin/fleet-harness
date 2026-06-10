@@ -1,5 +1,5 @@
 /**
- * carrier/tool-spec.ts — carrier_dispatch 단일 도구 스펙
+ * dispatch/tool-spec.ts — carrier_dispatch 단일 도구 스펙
  *
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합합니다.
  */
@@ -8,7 +8,6 @@ import { Type } from "typebox";
 import type { CliType } from "@dotobokuri/core-unified-agent";
 
 import type { AgentToolSpec } from "@dotobokuri/core-mcp-server";
-import type { AuthEnvResolver } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type {
@@ -23,7 +22,7 @@ import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { launchResponseResult } from "../jobs/lifecycle.js";
 import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
-import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
+import { buildCarrierJobId, buildJobSummary } from "../jobs/types.js";
 import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
@@ -31,6 +30,11 @@ import {
   loadCarrierStates,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
+import {
+  buildCarrierSystemPrompt,
+  validateRequiredRequestBlocks,
+  type CarrierToolSpecDeps,
+} from "./prompt.js";
 import {
   getRegisteredCarrierConfig,
   getRegisteredOrder,
@@ -79,22 +83,6 @@ interface CarrierTrackModelInfo {
   readonly model: string;
 }
 
-/** 검증 성공 결과 */
-export interface RequiredBlockValidationOk {
-  ok: true;
-}
-
-/** 검증 실패 결과 */
-export interface RequiredBlockValidationFail {
-  ok: false;
-  missing: string[];
-  error: string;
-}
-
-export type RequiredBlockValidationResult =
-  | RequiredBlockValidationOk
-  | RequiredBlockValidationFail;
-
 /** buildCarrierRoster 호출 시 각 caller별 차이를 조정하는 옵션 */
 export interface CarrierRosterOptions {
   /** 로스터에서 제외할 carrier ID 목록 */
@@ -107,21 +95,9 @@ export interface CarrierRosterOptions {
   extraLines?: (carrierId: string, meta: CarrierMetadata | undefined) => string[];
 }
 
-export interface CarrierSortieOutcome {
-  readonly carrierId: string;
-  readonly status: "done" | "error" | "aborted";
-}
-
-export interface CarrierToolSpecDeps {
-  readonly authEnvResolver: AuthEnvResolver;
-  readonly reservedExternalMcpServerIds?: readonly string[];
-}
-
 // ═════════════════════════════════════════════════════════
 // Constants
 // ═════════════════════════════════════════════════════════
-
-const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;
 
 /** carrier_dispatch request brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
 export const CARRIER_REQUEST_BREVITY_GUIDELINE =
@@ -526,85 +502,6 @@ function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; r
   );
 }
 
-/**
- * 필수 requestBlock이 request 텍스트에 정상적으로 존재하는지 검사합니다.
- *
- * opening tag, closing tag, 비어 있지 않은 본문을 모두 확인합니다.
- * 속성이 포함된 태그도 허용합니다: `<plan_file source="kirov">...</plan_file>`
- *
- * @param meta carrier 메타데이터
- * @param request 사용자 요청 텍스트
- * @param carrierId 검증 실패 시 에러 메시지에 포함할 carrier 식별자
- */
-export function validateRequiredRequestBlocks(
-  meta: CarrierMetadata,
-  request: string,
-  carrierId: string,
-): RequiredBlockValidationResult {
-  const required = meta.requestBlocks.filter((b) => b.required);
-  if (required.length === 0) return { ok: true };
-
-  const missing: string[] = [];
-  const details: string[] = [];
-
-  for (const block of required) {
-    const escaped = escapeRegExp(block.tag);
-    const regex = new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)</${escaped}>`);
-    const match = regex.exec(request);
-    if (!match) {
-      missing.push(block.tag);
-      details.push(`<${block.tag}> (missing closing tag)`);
-    } else if (!match[1]?.trim()) {
-      missing.push(block.tag);
-      details.push(`<${block.tag}> (empty body)`);
-    }
-  }
-
-  if (missing.length === 0) return { ok: true };
-
-  return {
-    ok: false,
-    missing,
-    error:
-      `Missing required request block(s) for carrier "${carrierId}": ${details.join(", ")}.` +
-      ` Include the required tag(s) in the request and resubmit.`,
-  };
-}
-
-/** 정규식 특수문자를 이스케이프합니다 */
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// ═════════════════════════════════════════════════════════
-// 캐리어 시스템 프롬프트 (Tier 2)
-// ═════════════════════════════════════════════════════════
-
-export function buildCarrierSystemPrompt(metadata?: CarrierMetadata): string {
-  const parts: string[] = [CARRIER_FLEET_BACKGROUND];
-
-  if (metadata) {
-    parts.push(`<your_identity>\n${metadata.title}\n${metadata.summary}\n</your_identity>`);
-
-    if (metadata.permissions.length > 0) {
-      const body = metadata.permissions.map((item) => `- ${item}`).join("\n");
-      parts.push(`<your_permissions>\n${body}\n</your_permissions>`);
-    }
-
-    const principles = metadata.principles ?? [];
-    if (principles.length > 0) {
-      const body = principles.map((item) => `- ${item}`).join("\n");
-      parts.push(`<your_principles>\n${body}\n</your_principles>`);
-    }
-
-    if (metadata.outputFormat) {
-      parts.push(`<output_format>\n${metadata.outputFormat.trim()}\n</output_format>`);
-    }
-  }
-
-  return parts.join("\n\n");
-}
-
 // ═════════════════════════════════════════════════════════
 // 로스터 렌더링
 // ═════════════════════════════════════════════════════════
@@ -672,5 +569,3 @@ export function formatRequestBlocksGuide(meta: CarrierMetadata): string[] {
     return `  - ${sig} ${label}: ${b.hint}`;
   });
 }
-
-export { buildJobSummary as buildSortieJobSummary, computeFinalStatus as computeSortieFinalStatus };
