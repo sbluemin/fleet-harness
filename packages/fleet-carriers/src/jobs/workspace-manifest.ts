@@ -11,6 +11,8 @@ export interface WorkspaceChangeSnapshotEntry {
 
 export const WORKSPACE_CHANGE_ATTRIBUTION = "window-approximate";
 export const WORKSPACE_CHANGE_LIMIT = 200;
+/** baseline에서 dirty였다가 종료 스냅샷에서 사라진 경로의 합성 status — 원복/삭제 탐지용. */
+export const WORKSPACE_CHANGE_CLEARED_STATUS = "cleared";
 
 export async function captureWorkspaceSnapshot(
   scanner: WorkspaceChangeScanner | undefined,
@@ -47,9 +49,16 @@ export function buildWorkspaceManifest(
   }
 
   const baselineByPath = new Map(baseline.map((entry) => [entry.path, normalizeEntry(entry)]));
-  const changes = end
+  const endChanges = end
     .map(normalizeEntry)
     .filter((entry) => baselineByPath.get(entry.path)?.status !== entry.status);
+  // baseline에서 dirty였다가 종료 스냅샷에서 사라진 경로 — 잡 도중 원복·삭제된 변경으로,
+  // Artifact Inspection Gate가 주시하는 "무관 파일 되돌림"이 여기에 해당한다.
+  const endPaths = new Set(end.map((entry) => entry.path));
+  const clearedChanges = [...baselineByPath.values()]
+    .filter((entry) => !endPaths.has(entry.path))
+    .map((entry) => ({ status: WORKSPACE_CHANGE_CLEARED_STATUS, path: entry.path }));
+  const changes = [...endChanges, ...clearedChanges];
   const truncated = changes.length > WORKSPACE_CHANGE_LIMIT;
   const capped = changes.slice(0, WORKSPACE_CHANGE_LIMIT);
 

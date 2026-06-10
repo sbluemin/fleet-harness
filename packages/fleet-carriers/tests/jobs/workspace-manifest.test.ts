@@ -5,6 +5,7 @@ import {
   captureWorkspaceSnapshot,
   unavailableWorkspaceManifest,
   WORKSPACE_CHANGE_ATTRIBUTION,
+  WORKSPACE_CHANGE_CLEARED_STATUS,
   WORKSPACE_CHANGE_LIMIT,
   type WorkspaceChangeScanner,
 } from "../../src/jobs/workspace-manifest.js";
@@ -61,6 +62,23 @@ describe("workspace change manifest helpers", () => {
     expect(manifest.changes).toHaveLength(WORKSPACE_CHANGE_LIMIT);
     expect(manifest.truncated).toBe(true);
     expect(manifest.statLine).toBe(`${WORKSPACE_CHANGE_LIMIT}+ files (window-approx)`);
+  });
+
+  it("baseline에서 dirty였다가 종료 스냅샷에서 사라진 경로를 cleared로 방출", () => {
+    const manifest = buildWorkspaceManifest(
+      [
+        { status: "M", path: "reverted.ts" },
+        { status: "??", path: "removed.txt" },
+        { status: "M", path: "kept.ts" },
+      ],
+      [{ status: "M", path: "kept.ts" }],
+    );
+
+    expect(manifest.changes).toEqual([
+      { status: WORKSPACE_CHANGE_CLEARED_STATUS, path: "reverted.ts" },
+      { status: WORKSPACE_CHANGE_CLEARED_STATUS, path: "removed.txt" },
+    ]);
+    expect(manifest.statLine).toBe("2 files (window-approx)");
   });
 
   it("preserves flattened rename paths", () => {
