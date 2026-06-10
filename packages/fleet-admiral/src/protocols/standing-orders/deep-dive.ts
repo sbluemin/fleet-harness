@@ -19,7 +19,7 @@ export const DEEP_DIVE: StandingOrder = {
 A cross-cutting verification procedure that can be triggered **from any phase** whenever results contain speculation, ambiguity, or insufficient evidence. It is not a workflow phase itself — it is a procedure that interrupts the current phase, runs to completion, and then resumes the phase. Throughout, never flatten uncertainty into confident-sounding summaries — preserve and surface ambiguity honestly.
 
 ### Trigger
-Any phase produces output (from a Carrier, from the Admiral's own analysis, or from a review) that contains speculative, assumed, or unverified claims.
+Speculation-trigger handling is routed by the Result Integrity trigger mapping table.
 
 ### Procedure
 1. **Surface scan** — Look for obvious speculation markers (e.g., "likely", "probably", "I think", "may be", "not sure but…").

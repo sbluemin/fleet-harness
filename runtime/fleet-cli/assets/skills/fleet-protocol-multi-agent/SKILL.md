@@ -7,26 +7,25 @@ description: Use the coordinated Fleet protocol mode for multi-carrier or parall
 
 Use this mode when operational work requires multiple Carriers, independent parallel workstreams, cross-carrier review loops, or file ownership coordination. If the work is high risk but single-owner, use `fleet-protocol-high-risk` instead.
 
-The always-on Standing Orders remain binding: Mission Anchor, Context Confidence, Carrier Operations Policy, Deep Dive, and Result Integrity.
+## Checkpoints
+
+Decomposition, Dispatch, Integration, Verification.
 
 ## Reporting Cadence
 
-As you move through this protocol, report progress to the Admiral of the Navy in order — each step on its own line with its report token. Do not merge steps together or fold them into the General Quarters checks below.
+As you move through this protocol, report progress to the Admiral of the Navy in order — each step on its own line with its report token.
 
-1. State that you are drawing up the plan for this work. → report `plan: drafting`
-2. State that you are running the readiness checks below. → report `checks: running`
-3. Confirm the readiness checks are complete. → report `checks: complete`
-4. Brief how the Workflow will proceed — name (a) the Workflow steps that will run, (b) each carrier's file or responsibility ownership, and (c) the dispatch wave sequencing. → report `brief: <…>`
-5. Confirm all five steps were reported, then state that execution is beginning and run the Workflow. → report `executing`
-
-Steps 2–3 wrap the General Quarters section: step 2 opens the readiness checks, they run in full, and step 3 closes them once every check has reported its token.
+1. Brief how the Workflow will proceed — name (a) the Workflow steps that will run, (b) each carrier's file or responsibility ownership, and (c) the dispatch wave sequencing. → report `brief: <…>`
+2. State that execution is beginning and run the Workflow. → report `status: executing`
 
 ## General Quarters
 
 Confirm each readiness check below before the Workflow. Work through them in order and report each as you confirm it, then proceed to reconnaissance and decomposition. These checks prepare the work; they do not gate entry.
 
 - [ ] **Common** — objective stated (Mission Anchor), mode-fit holds (Mode Gate), Standing Orders binding. → report `common: ready`
-- [ ] **Impact & isolation** — carry the high-risk checks (public-surface impact, rollback checkpoint, branch or worktree isolation) wherever the work is also high risk. → report `impact/isolation: <…>`
+- [ ] **Impact radius** — flag public-surface or API impact, irreversibility, and any security-sensitive surface. → report `impact: <…>`
+- [ ] **Rollback** — identify a rollback-safe checkpoint and any Admiral of the Navy approval point before execution begins. → report `rollback: <…>`
+- [ ] **Isolation** — confirm a working branch or worktree isolates the change; no direct work on the default branch. → report `isolation: <branch>`
 - [ ] **Carrier availability** — confirm the intended carriers are actually exposed and available this session. → report `carriers: <…>`
 - [ ] **Ownership** — pre-sketch each carrier's file or responsibility boundary. → report `ownership: <…>`
 - [ ] **Shared resources** — flag shared mutable resources (same files, lock files, or a singleton test environment). → report `shared: <…|none>`

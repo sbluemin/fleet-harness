@@ -8,6 +8,7 @@ import type { AgentToolCtx } from "@dotobokuri/core-mcp-server";
 import { getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
+  PRIOR_JOBS_REQUEST_HINT,
   type CarrierConfig,
   type CarrierJobStreamEvent,
   createCarrierRegistry,
@@ -116,6 +117,19 @@ describe("carrier roster rendering", () => {
     expect(roster).not.toContain('carrier_id: "ohio"');
     expect(roster).toContain("**sentinel**");
     expect(roster).toContain('carrier_id: "sentinel"');
+  });
+
+  it("renders the shared prior_jobs preamble once before carrier entries", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const preamble = `All carriers accept an optional <prior_jobs> block: ${PRIOR_JOBS_REQUEST_HINT}`;
+
+    const roster = buildCarrierRoster(registry, ["ohio"], {
+      preambleLines: [preamble],
+    });
+
+    expect(roster.match(/<prior_jobs>/g)).toHaveLength(1);
+    expect(roster.indexOf(preamble)).toBeLessThan(roster.indexOf("**ohio**"));
   });
 });
 

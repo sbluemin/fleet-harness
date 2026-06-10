@@ -7,7 +7,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const OHIO_DEFAULTS: CarrierPersonaDefaults = {
   id: "ohio",
@@ -50,7 +50,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "objective", hint: "Optional brief restatement of the overarching goal for context anchoring.", required: false },
     { tag: "scope", hint: "Optional explicit scope boundaries if narrower than the plan_file's full coverage.", required: false },
     { tag: "constraints", hint: "Optional hard constraints, deadlines, or compatibility requirements that override or supplement the plan.", required: false },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
 

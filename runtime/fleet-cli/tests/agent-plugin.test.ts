@@ -125,11 +125,16 @@ describe("agent CLI plugin renderer", () => {
       expect(rendered).toContain(`name: ${skillName}`);
       expect(rendered).toBe(readFileSync(path.join(PLUGIN_ASSETS_DIR, "skills", skillName, "SKILL.md"), "utf8"));
     }
-    // Protocol-mode skills must lock the R2 invariant: planning boundary requires complete confidence.
+    // Protocol-mode skills must preserve explicit Context Confidence planning boundaries.
     for (const skillName of BUILT_IN_SKILL_NAMES.filter((name) => name.startsWith("fleet-protocol-"))) {
       const body = readFileSync(path.join(fleetRoot, "skills", skillName, "SKILL.md"), "utf8");
+      if (skillName === "fleet-protocol-trivial") {
+        expect(body).not.toContain("entry requires complete");
+        continue;
+      }
       expect(body).toContain("Context Confidence");
-      expect(body).toContain("entry requires complete");
+      const expectedThreshold = skillName === "fleet-protocol-standard" ? "sufficient" : "complete";
+      expect(body).toContain(`entry requires ${expectedThreshold}`);
     }
     expect(statSync(path.join(rootDir, "marketplace")).mode & 0o777).toBe(0o700);
     assertPrivateTree(path.join(rootDir, "marketplace"));

@@ -4,17 +4,17 @@
 
 ## Standing Orders
 
-Standing Orders are cross-cutting mechanisms always injected into the system prompt, regardless of caller or session. They are protocol-agnostic and complement the active protocol skill's checkpoint workflow.
+Standing Orders are cross-cutting mechanisms always injected into the system prompt, regardless of caller or session. They are protocol-agnostic and complement the active protocol skill's checkpoint workflow. Protocol skills own their declared checkpoint boundaries; Standing Orders consume those boundaries but do not redefine them.
 
-- **Mission Anchor**: Anchors every checkpoint decision to the Mission Objective; enforces pre-checkpoint recall, post-checkpoint self-check, and drift recovery.
-- **Context Confidence**: Owns the evidence-sufficiency gate (complete / sufficient / partial / speculative) invoked at the active protocol's planning boundary. Defines the operational levels, evidence-checklist requirement, gate-failure re-entry, and re-evaluation triggers.
-- **Carrier Operations Policy**: Defines how and when the host agent delegates tasks to carriers.
-- **Deep Dive**: Strategy for recursive investigation and root-cause analysis.
-- **Result Integrity**: Governs how carrier results are evaluated, cross-carrier feedback loops, and retry policy on carrier failures.
+- **Mission Anchor**: Anchors checkpoint decisions to the Mission Objective at boundaries declared by the active protocol. If the active protocol declares no checkpoints, only the Anchor Statement applies.
+- **Context Confidence**: Owns evidence-sufficiency levels (complete / sufficient / partial / speculative), evidence-checklist requirements, gate-failure re-entry, and re-evaluation. Thresholds are protocol-specific: standard requires sufficient confidence; high-risk and multi-agent require complete confidence.
+- **Carrier Operations Policy**: Defines how and when the host agent delegates tasks to carriers. Live carrier tool descriptions own request format, brevity, polling, and result lookup mechanics.
+- **Deep Dive**: Strategy for recursive investigation and root-cause analysis, invoked through Result Integrity's trigger mapping.
+- **Result Integrity**: Governs result evaluation, cross-carrier feedback loops, retry policy on carrier failures, and the trigger mapping for result received / speculation found / contradiction with verified fact.
 
 ## Protocol Gate and Skills
 
-The static gate lives as `FLEET_PROTOCOL_GATE_PROMPT` in `fleet-action.ts`. During system prompt synthesis it is inlined inside `<fleet section="protocol-gate">` and classifies conversational vs operational intent, then selects exactly one protocol skill mode for operational work. Auxiliary operational skills are outside the Mode Gate list and remain subordinate to the active protocol and Standing Orders. The skill Markdown bodies live under `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`; `fleet-admiral` must not import them or depend on `runtime/fleet-cli`.
+The static gate lives as `FLEET_PROTOCOL_GATE_PROMPT` in `fleet-action.ts`. During system prompt synthesis it is inlined inside `<fleet section="protocol-gate">` and classifies conversational vs operational intent, then selects exactly one protocol skill mode for operational work. Downward Guard triggers are single-sourced in the gate; protocol skill assets may reference the gate but must not duplicate the trigger list. Auxiliary operational skills are outside the Mode Gate list and remain subordinate to the active protocol and Standing Orders. `fleet-assumption-audit` owns the scout-shaped / decision-shaped / escalation-shaped gap taxonomy. The skill Markdown bodies live under `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`; `fleet-admiral` must not import them or depend on `runtime/fleet-cli`.
 
 ## Prompt Structure
 
@@ -32,6 +32,8 @@ System Prompt
 ```
 
 Tool-specific usage and argument details remain live MCP metadata exposed through tool descriptions and schemas, not static prompt sections.
+
+Run `pnpm check:protocol-sync` after changing protocol modes, protocol skill assets, Downward Guard references, or protocol report tokens. Report-token keys must stay lowercase single words in `key: value` form.
 
 ## HUD Integration
 

@@ -99,7 +99,7 @@ export interface CarrierRosterOptions {
 // Constants
 // ═════════════════════════════════════════════════════════
 
-/** carrier_dispatch request brevity 정책 SSoT — Host PI(Admiral)의 비대 request 안티패턴 억제. */
+/** carrier_dispatch request brevity 정책 SSoT — Host(Admiral)의 비대 request 안티패턴 억제. */
 export const CARRIER_REQUEST_BREVITY_GUIDELINE =
   `Each request body MUST be ≤ ~300 words and each request block MUST be ≤ 5 sentences.` +
   ` MUST NOT paraphrase or copy your own analysis, reconnaissance output, or system-prompt content into the request.` +
@@ -152,17 +152,6 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
     ],
     get parameters() {
       const carrierIds = getRegisteredOrder(registry);
-      const blockLines = carrierIds
-        .map((carrierId) => {
-          const config = getRegisteredCarrierConfig(registry, carrierId);
-          const required = config?.carrierMetadata?.requestBlocks.filter((b) => b.required) ?? [];
-          if (required.length === 0) return null;
-          return `${carrierId}: ${required.map((b) => `<${b.tag}>`).join(", ")}`;
-        })
-        .filter((line): line is string => line !== null);
-      const requestDesc = blockLines.length > 0
-        ? `The task/prompt to send to the carrier. Per-carrier required blocks — ${blockLines.join("; ")}. Missing blocks cause hard-error rejection.`
-        : "The task/prompt to send to the carrier.";
       return Type.Object({
         carrier_id: Type.String({
           enum: carrierIds,
@@ -171,7 +160,11 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         label: Type.String({
           description: `Required concise one-line dispatch intent label. Describe the work intent, e.g. "Audit panel run identity"; do not use the carrier name and do not paste the full request.`,
         }),
-        request: Type.String({ description: requestDesc }),
+        request: Type.String({
+          description:
+            `The task/prompt to send to the carrier. Required blocks per carrier -- see <fleet section="roster">.` +
+            ` Missing blocks cause hard-error rejection.`,
+        }),
       });
     },
 

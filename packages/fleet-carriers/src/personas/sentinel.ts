@@ -8,7 +8,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const SENTINEL_DEFAULTS: CarrierPersonaDefaults = {
   id: "sentinel",
@@ -50,7 +50,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "attack_surface", hint: "Known entry points, user-controlled inputs, or external interfaces (security mode).", required: false },
     { tag: "threat_model", hint: "Assumed attacker capability — unauth user, compromised dep, insider (security mode).", required: false },
     { tag: "fix_mode", hint: "'report' (default) for findings only, or 'fix' to apply corrections.", required: false },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
 

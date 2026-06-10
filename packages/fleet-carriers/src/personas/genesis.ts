@@ -7,7 +7,7 @@
 
 import type { CarrierMetadata, CarrierPersonaDefaults } from "../dispatch/types.js";
 
-import { CARRIER_JOBS_SELF_CALL_HINT, PRIOR_JOBS_REQUEST_BLOCK } from "../constants.js";
+import { CARRIER_JOBS_SELF_CALL_HINT } from "../constants.js";
 
 export const GENESIS_DEFAULTS: CarrierPersonaDefaults = {
   id: "genesis",
@@ -53,7 +53,6 @@ export const CARRIER_METADATA: CarrierMetadata = {
     { tag: "scope", hint: "Which modules, directories, or subsystems are in play.", required: true },
     { tag: "constraints", hint: "Hard technical constraints, compatibility requirements, or non-negotiables.", required: false },
     { tag: "references", hint: "Prior Nimitz recommendations, Kirov plans, existing patterns to follow, or design decisions already made.", required: false },
-    PRIOR_JOBS_REQUEST_BLOCK,
   ],
   allowedExecutorTools: ["carrier_jobs"],
 

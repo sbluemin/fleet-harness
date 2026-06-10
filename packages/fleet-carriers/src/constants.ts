@@ -1,6 +1,5 @@
 import { CLI_BACKENDS, getProviderModels } from "@dotobokuri/core-unified-agent";
 import type { CliType } from "@dotobokuri/core-unified-agent";
-import type { RequestBlock } from "./dispatch/types.js";
 
 // CLI_DISPLAY_NAMES 조립 전용 내부 사본 — 공개 표면은 CLI_DISPLAY_NAMES만 유지한다.
 const CLI_PROVIDER_DISPLAY_NAMES: Record<CliType, string> = Object.fromEntries(
@@ -31,9 +30,6 @@ export const CARRIER_JOBS_SELF_CALL_HINT =
   ` If archive content has expired (\`full_invalidated\` is true), fall back to` +
   ` \`carrier_jobs(action:"result", format:"summary", job_id:"<id>")\`.`;
 
-/** <prior_jobs> 공용 요청 블록 — 모든 persona가 requestBlocks에 명시 첨부하는 선택 블록 */
-export const PRIOR_JOBS_REQUEST_BLOCK: RequestBlock = {
-  tag: "prior_jobs",
-  hint: `Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.`,
-  required: false,
-};
+/** <prior_jobs> 공용 요청 힌트 — 로스터에서 한 번만 렌더링한다. */
+export const PRIOR_JOBS_REQUEST_HINT =
+  `Prior finalized carrier job IDs for context lookup. Fetch with carrier_jobs(action:"result", format:"full", job_id:...); use format:"summary" if archive content has expired.`;

@@ -17,6 +17,13 @@ export const RESULT_INTEGRITY: StandingOrder = {
 
 A cross-cutting procedure governing how the Admiral evaluates Carrier results, handles cross-Carrier feedback loops, and retries failed operations.
 
+### Trigger Mapping
+| Trigger | Route |
+|---|---|
+| Result received | Run the Result Integrity relevance, completeness, and conflict checks. |
+| Speculation found | Invoke Deep Dive. |
+| Contradiction with verified fact | Re-evaluate Context Confidence. |
+
 ### Result Evaluation
 After receiving any Carrier result, verify before reporting to the Admiral of the Navy (대원수):
 1. **Relevance check** — Does the result address the original request? Flag partial or off-topic responses.
