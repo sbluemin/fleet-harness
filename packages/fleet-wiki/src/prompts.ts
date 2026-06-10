@@ -281,7 +281,9 @@ export function buildWikiResolveSchema() {
 }
 
 export function buildWikiDryDockSchema() {
-  return Type.Object({});
+  return Type.Object({
+    fix: Type.Optional(Type.Boolean({ description: "Apply opt-in duplicate frontmatter cleanup. Default false keeps dry-run behavior." })),
+  });
 }
 
 export function buildWikiPatchQueueSchema() {

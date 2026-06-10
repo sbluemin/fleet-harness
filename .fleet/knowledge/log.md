@@ -3567,3 +3567,11 @@
 - result: `accepted`
 - target: `wiki/guide-005-cli-hooks-io-comparison.md`
 
+## 2026-06-09T13:18:25.801Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+

@@ -11,6 +11,7 @@ import { enqueuePatch, parsePatch } from "../src/patch.js";
 import { ensureMemoryRoot, getIndexMarkdownFile, getLogFile, resolveMemoryPaths } from "../src/paths.js";
 import { WORKSPACE_SCHEMA_AGENTS_FILENAME, WORKSPACE_SCHEMA_FILENAME } from "../src/schema.js";
 import { rebuildIndex, writeRawSourceEntry, writeWikiEntry } from "../src/store.js";
+import { buildDryDockToolConfig } from "../src/tools/drydock.js";
 
 const cleanupPaths: string[] = [];
 
@@ -133,6 +134,181 @@ describe("wiki drydock", () => {
     const report = await runDryDock(paths);
 
     expect(report.issues.some((issue) => issue.code === "inline_raw_source_ref")).toBe(true);
+  });
+
+  it("warns about duplicate body frontmatter without changing files by default", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const filePath = path.join(paths.wikiDir, "duplicate-frontmatter.md");
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(filePath, [
+      "---",
+      'id: "duplicate-frontmatter"',
+      'title: "Duplicate Frontmatter"',
+      "tags: []",
+      'created: "2026-04-26T00:00:00.000Z"',
+      'updated: "2026-04-26T00:00:00.000Z"',
+      "version: 1",
+      "---",
+      "---",
+      'id: "duplicate-frontmatter"',
+      'title: "Duplicate Body"',
+      "---",
+      "clean body",
+    ].join("\n"), "utf8");
+
+    const report = await runDryDock(paths);
+    const content = await readFile(filePath, "utf8");
+
+    expect(report.issues.some((issue) => issue.code === "duplicate_frontmatter" && issue.severity === "warning")).toBe(true);
+    expect(content).toContain('\n---\nid: "duplicate-frontmatter"\ntitle: "Duplicate Body"\n---\nclean body');
+  });
+
+  it("fixes duplicate body frontmatter only when explicitly requested", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const filePath = path.join(paths.wikiDir, "fix-frontmatter.md");
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(filePath, [
+      "---",
+      'id: "fix-frontmatter"',
+      'title: "Fix Frontmatter"',
+      "tags: []",
+      'created: "2026-04-26T00:00:00.000Z"',
+      'updated: "2026-04-26T00:00:00.000Z"',
+      "version: 1",
+      "---",
+      "---",
+      'id: "fix-frontmatter"',
+      'title: "Duplicate Body"',
+      "---",
+      "clean body",
+    ].join("\n"), "utf8");
+
+    const fixedReport = await runDryDock(paths, { fix: true });
+    const fixedContent = await readFile(filePath, "utf8");
+    const reportAfterFix = await runDryDock(paths);
+
+    expect(fixedReport.issues.some((issue) => issue.code === "duplicate_frontmatter")).toBe(true);
+    expect(fixedContent).toContain('version: 1\n---\nclean body');
+    expect(fixedContent).not.toContain('title: "Duplicate Body"\n---\nclean body');
+    expect(reportAfterFix.issues.some((issue) => issue.code === "duplicate_frontmatter")).toBe(false);
+  });
+
+  it("fixes multiple duplicate body frontmatter blocks when explicitly requested", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const filePath = path.join(paths.wikiDir, "fix-multiple-frontmatter.md");
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(filePath, [
+      "---",
+      'id: "fix-multiple-frontmatter"',
+      'title: "Fix Multiple Frontmatter"',
+      "tags: []",
+      'created: "2026-04-26T00:00:00.000Z"',
+      'updated: "2026-04-26T00:00:00.000Z"',
+      "version: 1",
+      "---",
+      "---",
+      'id: "fix-multiple-frontmatter"',
+      'title: "Duplicate One"',
+      "---",
+      "---",
+      'id: "fix-multiple-frontmatter"',
+      'title: "Duplicate Two"',
+      "---",
+      "clean body",
+    ].join("\n"), "utf8");
+
+    await runDryDock(paths, { fix: true });
+    const fixedContent = await readFile(filePath, "utf8");
+    const reportAfterFix = await runDryDock(paths);
+
+    expect(fixedContent).toContain('version: 1\n---\nclean body');
+    expect(fixedContent).not.toContain('title: "Duplicate One"');
+    expect(fixedContent).not.toContain('title: "Duplicate Two"');
+    expect(reportAfterFix.issues.some((issue) => issue.code === "duplicate_frontmatter")).toBe(false);
+  });
+
+  it("does not warn or fix a leading YAML body example without id", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const filePath = path.join(paths.wikiDir, "body-yaml-example.md");
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(filePath, [
+      "---",
+      'id: "body-yaml-example"',
+      'title: "Body YAML Example"',
+      "tags: []",
+      'created: "2026-04-26T00:00:00.000Z"',
+      'updated: "2026-04-26T00:00:00.000Z"',
+      "version: 1",
+      "---",
+      "---",
+      "title: Example",
+      "---",
+      "Example body",
+    ].join("\n"), "utf8");
+
+    const report = await runDryDock(paths, { fix: true });
+    const content = await readFile(filePath, "utf8");
+
+    expect(report.issues.some((issue) => issue.code === "duplicate_frontmatter")).toBe(false);
+    expect(content).toContain("\n---\ntitle: Example\n---\nExample body");
+  });
+
+  it("passes fix through the wiki_drydock tool parameters", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const filePath = path.join(paths.wikiDir, "tool-fix-frontmatter.md");
+    const tool = buildDryDockToolConfig();
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(filePath, [
+      "---",
+      'id: "tool-fix-frontmatter"',
+      'title: "Tool Fix Frontmatter"',
+      "tags: []",
+      'created: "2026-04-26T00:00:00.000Z"',
+      'updated: "2026-04-26T00:00:00.000Z"',
+      "version: 1",
+      "---",
+      "---",
+      'id: "tool-fix-frontmatter"',
+      'title: "Duplicate Body"',
+      "---",
+      "clean body",
+    ].join("\n"), "utf8");
+
+    const result = await tool.execute("tool-call", { fix: true }, undefined, undefined, { cwd: root });
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as { issues?: Array<{ code: string }> };
+    const fixedContent = await readFile(filePath, "utf8");
+
+    expect(payload.issues?.some((issue) => issue.code === "duplicate_frontmatter")).toBe(true);
+    expect(fixedContent).toContain('version: 1\n---\nclean body');
+    expect(fixedContent).not.toContain('title: "Duplicate Body"\n---\nclean body');
+  });
+
+  it("does not warn when a wiki body starts with a markdown horizontal rule", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    await mkdir(paths.wikiDir, { recursive: true });
+    await writeFile(path.join(paths.wikiDir, "horizontal-rule.md"), [
+      "---",
+      'id: "horizontal-rule"',
+      'title: "Horizontal Rule"',
+      "tags: []",
+      'created: "2026-04-26T00:00:00.000Z"',
+      'updated: "2026-04-26T00:00:00.000Z"',
+      "version: 1",
+      "---",
+      "---",
+      "",
+      "body after rule",
+    ].join("\n"), "utf8");
+
+    const report = await runDryDock(paths);
+
+    expect(report.issues.some((issue) => issue.code === "duplicate_frontmatter")).toBe(false);
   });
 
   it("warns when a legacy markdown wiki link is used", async () => {

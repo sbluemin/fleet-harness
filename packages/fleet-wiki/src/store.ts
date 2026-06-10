@@ -19,6 +19,9 @@ import {
 
 type FrontmatterShape = Record<string, unknown>;
 
+const MAX_LEADING_FRONTMATTER_STRIP_PASSES = 20;
+const RESERVED_WIKI_ENTRY_IDS = new Set<string>(["index"]);
+
 export async function readWikiEntry(id: string, paths: MemoryPaths): Promise<WikiEntry | null> {
   if (id === "index") {
     return null;
@@ -290,7 +293,20 @@ export function assertSafeEntryId(id: string): void {
   }
 }
 
-const RESERVED_WIKI_ENTRY_IDS = new Set<string>(["index"]);
+export function stripLeadingFrontmatter(body: string): string {
+  let next = body.replace(/\r\n/g, "\n");
+  let stripped = false;
+  for (let pass = 0; pass < MAX_LEADING_FRONTMATTER_STRIP_PASSES; pass += 1) {
+    const match = next.match(/^---\n([\s\S]*?)\n---(?:\n|$)([\s\S]*)$/);
+    if (!match) return stripped ? next : body;
+    const [, rawFrontmatter, rest] = match;
+    if (!isFrontmatterBlock(rawFrontmatter)) return stripped ? next : body;
+    if (rest === next) return stripped ? next : body;
+    next = rest;
+    stripped = true;
+  }
+  return stripped ? next : body;
+}
 
 function assertWithinRawDir(absolutePath: string, paths: MemoryPaths): void {
   const relative = path.relative(paths.rawDir, absolutePath);
@@ -325,7 +341,7 @@ function serializeWikiEntry(entry: WikiEntry): string {
   if (entry.related?.length) frontmatter.related = entry.related;
   if (entry.rawSourceRefs?.length) frontmatter.rawSourceRefs = JSON.stringify(entry.rawSourceRefs);
   assertRequiredKeys(frontmatter, REQUIRED_WIKI_FRONTMATTER_KEYS);
-  return serializeMarkdown(frontmatter, entry.body);
+  return serializeMarkdown(frontmatter, stripLeadingFrontmatter(entry.body));
 }
 
 function parseWikiEntry(content: string): WikiEntry {
@@ -509,6 +525,20 @@ function assertRequiredKeys(value: object, keys: readonly string[]): void {
   for (const key of keys) {
     if (!(key in value)) throw new Error(`missing required key: ${key}`);
   }
+}
+
+function isFrontmatterBlock(rawFrontmatter: string): boolean {
+  const keys = new Set<string>();
+  for (const line of rawFrontmatter.split("\n")) {
+    if (!line.trim()) continue;
+    if (/^\s+/.test(line)) continue;
+    const separator = line.indexOf(":");
+    if (separator === -1) return false;
+    const key = line.slice(0, separator).trim();
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(key)) return false;
+    keys.add(key);
+  }
+  return keys.has("id") && keys.has("title");
 }
 
 async function writeMarkdownAtomic(filePath: string, content: string, paths: MemoryPaths): Promise<void> {
