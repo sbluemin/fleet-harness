@@ -8,6 +8,7 @@ import type { SessionOptions, SessionOptionsRuntime } from "./options/types.js";
 import type { FleetCliRelease } from "../release.js";
 import type { MissionControlCounts } from "./loaded-counts.js";
 import type { WikiProcessController } from "./menu/wiki-panel.js";
+import type { GatewayProcessController } from "./menu/gateway-panel.js";
 
 export type MissionControlStateKind = "idle" | "launching" | "active" | "ended" | "failed";
 
@@ -80,6 +81,7 @@ export interface CreateMissionControlControllerOptions {
   readonly resolveProfile: (cliId: AgentCliId, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
   readonly sessionOptions?: SessionOptionsRuntime;
   readonly shimmer?: MissionControlShimmerOptions;
+  readonly gatewayController?: GatewayProcessController;
   readonly wikiController?: WikiProcessController;
 }
 
