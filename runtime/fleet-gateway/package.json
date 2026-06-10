@@ -1,0 +1,42 @@
+{
+  "name": "@dotobokuri/fleet-gateway",
+  "version": "1.3.1",
+  "description": "Fleet Gateway - machine-wide local daemon for Fleet MCP routing and observability.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "runtime/fleet-gateway"
+  },
+  "private": true,
+  "type": "module",
+  "main": "./dist/cli.mjs",
+  "types": "./dist/cli.d.ts",
+  "bin": {
+    "fleet-gateway": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.mjs"
+    }
+  },
+  "files": ["dist", "AGENTS.md"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.13"
+  }
+}

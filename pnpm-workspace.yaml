@@ -7,6 +7,7 @@ packages:
   - "packages/fleet-carriers"
   - "packages/fleet-wiki"
   - "runtime/fleet-wiki-ui"
+  - "runtime/fleet-gateway"
   - "runtime/fleet-cli"
 allowBuilds:
   esbuild: true
