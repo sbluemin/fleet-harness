@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import {
 	createGatewayDaemonLifecycle,
 	createGatewayLock,
@@ -12,10 +14,12 @@ import type {
 	ExecutorServerToken,
 	McpToolRegistry,
 } from "@dotobokuri/core-mcp-server";
+import type { ExecutorMcpSession } from "@dotobokuri/core-agent";
 
 export interface GatewayDedicatedSessionManager {
 	getEndpoint(): Promise<ExecutorEndpoint>;
 	issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): Promise<readonly ExecutorServerToken[]>;
+	createExecutorMcpSession(request: { readonly serverName: string; readonly specs: readonly AgentToolSpec[]; readonly cwd: string; readonly signal?: AbortSignal }): Promise<ExecutorMcpSession>;
 	releaseSessionToken(label: string): void;
 	cleanup(): void;
 }
@@ -87,28 +91,37 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			return endpointPromise;
 		},
 		async issueSessionToken(request) {
-			const label = request.label.trim();
-			if (!label) throw new Error("Gateway session label is required");
-			const cwd = request.cwd.trim();
-			if (!cwd) throw new Error("Gateway session cwd is required");
-			this.releaseSessionToken(label);
-			const endpoint = await getGatewayEndpoint();
-			const bootstrapToken = await getBootstrapToken();
-			const registration = await postJson<GatewayRegisterTenantResponse>(fetchImpl, endpoint.replace("/mcp", "/admin/register"), bootstrapToken, {
-				tenantLabel: label,
-				cwd,
-				tools: deps.registry.getAllAgentTools().map(specToGatewayTool),
+			this.releaseSessionToken(request.label);
+			const session = await registerGatewaySession({
+				label: request.label,
+				cwd: request.cwd,
+				signal: request.signal,
+				specs: deps.registry.getAllAgentTools(),
 			});
-			const abort = new AbortController();
-			const session: ActiveGatewaySession = { label, cwd, registration, abort };
-			activeSessions.set(label, session);
-			void consumeCalls(session, deps.registry).catch((err) => {
-				if (!abort.signal.aborted) {
-					console.error("[fleet-cli] Fleet Gateway call consumer stopped", err);
-				}
+			return [{ name: deps.name, token: session.registration.sessionToken }];
+		},
+		async createExecutorMcpSession(request) {
+			const label = `executor:${request.serverName}:${crypto.randomUUID()}`;
+			const session = await registerGatewaySession({
+				label,
+				cwd: request.cwd,
+				signal: request.signal,
+				specs: request.specs,
 			});
-			request.signal?.addEventListener("abort", () => abort.abort(), { once: true });
-			return [{ name: deps.name, token: registration.sessionToken }];
+			return {
+				serverName: request.serverName,
+				token: session.registration.sessionToken,
+				mcpServer: {
+					type: "http",
+					name: request.serverName,
+					url: session.registration.endpoint,
+					headers: [{ name: "Authorization", value: `Bearer ${session.registration.sessionToken}` }],
+					toolTimeout: 1800,
+				},
+				cleanup: () => this.releaseSessionToken(label),
+				detachForReuse: () => undefined,
+				installForReuse: () => undefined,
+			};
 		},
 		releaseSessionToken(label) {
 			const session = activeSessions.get(label.trim());
@@ -122,6 +135,35 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			}
 		},
 	};
+
+	async function registerGatewaySession(request: {
+		readonly label: string;
+		readonly cwd: string;
+		readonly signal?: AbortSignal;
+		readonly specs: readonly AgentToolSpec[];
+	}): Promise<ActiveGatewaySession> {
+		const label = request.label.trim();
+		if (!label) throw new Error("Gateway session label is required");
+		const cwd = request.cwd.trim();
+		if (!cwd) throw new Error("Gateway session cwd is required");
+		const endpoint = await getGatewayEndpoint();
+		const bootstrapToken = await getBootstrapToken();
+		const registration = await postJson<GatewayRegisterTenantResponse>(fetchImpl, endpoint.replace("/mcp", "/admin/register"), bootstrapToken, {
+			tenantLabel: label,
+			cwd,
+			tools: request.specs.map(specToGatewayTool),
+		});
+		const abort = new AbortController();
+		const session: ActiveGatewaySession = { label, cwd, registration, abort };
+		activeSessions.set(label, session);
+		void consumeCalls(session, deps.registry).catch((err) => {
+			if (!abort.signal.aborted) {
+				console.error("[fleet-cli] Fleet Gateway call consumer stopped", err);
+			}
+		});
+		request.signal?.addEventListener("abort", () => abort.abort(), { once: true });
+		return session;
+	}
 }
 
 async function executeGatewayCall(

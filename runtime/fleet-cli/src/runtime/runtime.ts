@@ -96,20 +96,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			return getExecutorMcpTools(mcpRuntimes.mcpRegistry, carrierRuntime, scopeId);
 		},
 	});
-	executorMcpRuntimeProviderRuntime.register({
-		getExecutorMcpRouterRuntimes() {
-			return [
-				{
-					name: mcpRuntimes.name,
-					runtime: {
-						registry: mcpRuntimes.mcpRegistry,
-						server: mcpRuntimes.mcpServer,
-						snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
-					},
-				},
-			];
-		},
-	});
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
 
@@ -136,6 +122,23 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	const dedicatedMcpSession = createGatewayDedicatedSessionManager({
 		name: mcpRuntimes.name,
 		registry: mcpRuntimes.mcpRegistry,
+	});
+	executorMcpRuntimeProviderRuntime.register({
+		getExecutorMcpRouterRuntimes() {
+			return [
+				{
+					name: mcpRuntimes.name,
+					runtime: {
+						registry: mcpRuntimes.mcpRegistry,
+						server: mcpRuntimes.mcpServer,
+						snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
+					},
+				},
+			];
+		},
+		createExecutorMcpSession(request) {
+			return dedicatedMcpSession.createExecutorMcpSession(request);
+		},
 	});
 
 	reconcileRuntimeState(carrierRuntime);

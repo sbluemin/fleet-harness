@@ -6,6 +6,8 @@ export type {
   ExecutorMcpRuntimeProvider,
   ExecutorMcpRuntimeProviderRuntime,
   ExecutorMcpRouterRuntime,
+  ExecutorMcpSession,
+  ExecutorMcpSessionRequest,
   ExecutorPort,
   ExecutorPortRuntime,
 } from "./executor-port.js";
