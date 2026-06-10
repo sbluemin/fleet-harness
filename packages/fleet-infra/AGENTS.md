@@ -34,7 +34,7 @@ Do not add individual deep source-file exports without an explicit public API de
 ## Dependency Boundary
 
 - This package must stay host-agnostic.
-- It may depend on `@dotobokuri/core-unified-agent` for shared CLI type definitions.
+- It may depend on `@dotobokuri/core-unified-agent` for shared CLI type definitions and the CLI provider catalog (`CLI_BACKENDS`), the SSoT from which auth provider env/baseUrl values are derived.
 - It must not import `@dotobokuri/fleet-cli`, `fleet-carriers`, host UI/runtime packages, or engine packages.
 - Relative imports inside `src/` must stay within `packages/fleet-infra/src/**`.
 
