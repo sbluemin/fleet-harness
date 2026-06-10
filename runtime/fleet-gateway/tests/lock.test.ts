@@ -71,6 +71,23 @@ describe("gateway lock", () => {
       host: "127.0.0.1",
       port: 37283,
       endpointPath: "/mcp",
-    })).toThrow(/loopback/);
+    })).toThrow(/must match/);
+  });
+
+  it("rejects deceptive DNS names that start with 127", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-gateway-lock-"));
+    tempDirs.push(dir);
+    const lockFile = path.join(dir, "gateway.lock");
+    const lock = createGatewayLock({ now: () => 1, randomToken: () => "token", hostname: () => "127.0.0.1" });
+    const handle = lock.writeLock({ dir, lockFile, pid: 123, port: 37283, endpoint: "http://127.0.0.1:37283/mcp", version: "test" });
+
+    expect(() => lock.assertTrustedLock({
+      dir,
+      lockFile,
+      payload: { ...handle.payload, host: "127.evil.test", endpoint: "http://127.evil.test:37283/mcp" },
+      host: "127.0.0.1",
+      port: 37283,
+      endpointPath: "/mcp",
+    })).toThrow(/must match/);
   });
 });

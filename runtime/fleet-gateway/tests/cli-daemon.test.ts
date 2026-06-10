@@ -47,4 +47,58 @@ describe("gateway daemon lifecycle", () => {
     await expect(lifecycle.ensureDaemon()).rejects.toThrow(/spawn attempted/);
     expect(fs.existsSync(lockFile)).toBe(false);
   });
+
+  it("cleans symbolic locks before starting a healthy daemon", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-gateway-symlink-lock-"));
+    tempDirs.push(dir);
+    const lockFile = path.join(dir, "gateway.lock");
+    const target = path.join(dir, "target.lock");
+    const token = "bootstrap-token";
+    const startedAt = Date.now();
+    let probeCount = 0;
+    fs.chmodSync(dir, 0o700);
+    fs.writeFileSync(target, "{}");
+    fs.symlinkSync(target, lockFile);
+    const lifecycle = createGatewayDaemonLifecycle({
+      env: { FLEET_GATEWAY_DIR: dir },
+      serverModulePath: "/tmp/server.mjs",
+      sleep: async () => undefined,
+      health: {
+        probe: async (payload) => {
+          probeCount += 1;
+          if (!payload) return { healthy: false, lock: null, error: "lock missing" };
+          return {
+            healthy: true,
+            lock: payload,
+            health: {
+              ok: true,
+              pid: payload.pid,
+              host: payload.host,
+              port: payload.port,
+              endpoint: payload.endpoint,
+              startedAt: payload.startedAt,
+              version: payload.version,
+            },
+          };
+        },
+      },
+      spawnDetached: () => {
+        expect(fs.existsSync(lockFile)).toBe(false);
+        fs.writeFileSync(lockFile, JSON.stringify({
+          pid: process.pid,
+          host: "127.0.0.1",
+          port: 37283,
+          endpoint: "http://127.0.0.1:37283/mcp",
+          startedAt,
+          token,
+          version: "test",
+        }));
+        fs.chmodSync(lockFile, 0o600);
+      },
+    });
+
+    await expect(lifecycle.ensureDaemon()).resolves.toBe("http://127.0.0.1:37283/mcp");
+    expect(fs.lstatSync(lockFile).isSymbolicLink()).toBe(false);
+    expect(probeCount).toBe(2);
+  });
 });

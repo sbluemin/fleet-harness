@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import type { GatewayLockPayload } from "./api-types.js";
@@ -42,7 +41,7 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
   const fsImpl = deps.fs ?? fs;
   const now = deps.now ?? Date.now;
   const randomToken = deps.randomToken ?? (() => crypto.randomBytes(32).toString("base64url"));
-  const hostname = deps.hostname ?? os.hostname;
+  const hostname = deps.hostname ?? (() => "127.0.0.1");
 
   function ensureLockDir(dir: string): void {
     fsImpl.mkdirSync(dir, { recursive: true, mode: LOCK_DIR_MODE });
@@ -121,8 +120,8 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
     if (currentUid != null && (dirStat.uid !== currentUid || fileStat.uid !== currentUid)) {
       throw new Error("Gateway lock owner does not match current user");
     }
-    if (!isLoopbackHost(input.payload.host)) {
-      throw new Error(`Gateway lock host must be loopback: ${input.payload.host}`);
+    if (input.payload.host !== input.host) {
+      throw new Error(`Gateway lock host must match ${input.host}: ${input.payload.host}`);
     }
     if (input.payload.port !== input.port) {
       throw new Error(`Gateway lock port must be ${input.port}, got ${input.payload.port}`);
@@ -131,8 +130,8 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
     if (endpoint.protocol !== "http:" || endpoint.pathname !== input.endpointPath) {
       throw new Error("Gateway lock endpoint path must match the fixed contract");
     }
-    if (!isLoopbackHost(endpoint.hostname) || Number(endpoint.port) !== input.port) {
-      throw new Error("Gateway lock endpoint must use the fixed loopback port");
+    if (endpoint.hostname !== input.host || Number(endpoint.port) !== input.port) {
+      throw new Error("Gateway lock endpoint must use the fixed loopback host and port");
     }
     if (input.payload.endpoint !== `http://${input.host}:${input.port}${input.endpointPath}`) {
       throw new Error("Gateway lock endpoint must match the fixed endpoint");
@@ -140,9 +139,4 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
   }
 
   return { ensureLockDir, readLock, writeLock, removeLock, assertLockModes, assertTrustedLock };
-}
-
-function isLoopbackHost(host: string): boolean {
-  const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
-  return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
 }

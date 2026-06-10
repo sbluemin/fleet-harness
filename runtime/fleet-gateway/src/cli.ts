@@ -15,6 +15,7 @@ export interface GatewayDaemonLifecycleDeps {
   readonly serverModulePath?: string;
   readonly spawnDetached?: (execPath: string, args: readonly string[], options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore" }) => void;
   readonly sleep?: (ms: number) => Promise<void>;
+  readonly health?: ReturnType<typeof createGatewayHealthClient>;
 }
 
 const FIXED_HOST = "127.0.0.1";
@@ -30,7 +31,7 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const paths = createGatewayPaths({ env });
   const lock = createGatewayLock();
-  const health = createGatewayHealthClient();
+  const health = deps.health ?? createGatewayHealthClient();
   const stale = createGatewayStalePolicy();
 
   async function runServer(): Promise<void> {
@@ -82,9 +83,9 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   return { ensureDaemon, probe, runServer, stop, argv };
 
   function readTrustedLock(options: { readonly cleanUntrusted?: boolean } = {}): GatewayLockPayload | null {
-    const payload = lock.readLock(paths.lockFile);
-    if (!payload) return null;
     try {
+      const payload = lock.readLock(paths.lockFile);
+      if (!payload) return null;
       lock.assertTrustedLock({
         dir: paths.dir,
         lockFile: paths.lockFile,
