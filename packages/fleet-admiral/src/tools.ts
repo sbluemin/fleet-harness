@@ -4,7 +4,7 @@ import {
   type CarrierRuntime,
   type CarrierToolSpecDeps,
 } from "@dotobokuri/fleet-carriers";
-import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/core-mcp-server";
+import type { AgentToolSpec, McpToolRegistry } from "@dotobokuri/core-agent";
 
 export const FLEET_MCP_SERVER_NAME = "fleet";
 

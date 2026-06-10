@@ -5,18 +5,16 @@ import {
 	registerAgentToolDefaults,
 } from "@dotobokuri/fleet-admiral";
 import {
+	createMcpToolRegistry,
 	disconnectAll,
 	executorMcpRuntimeProviderRuntime,
 	executorPortRuntime,
 	type AuthEnvResolver,
+	type McpToolRegistry,
 } from "@dotobokuri/core-agent";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
-import {
-	createMcpToolRegistry,
-	type McpToolRegistry,
-} from "@dotobokuri/core-mcp-server";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import { createGatewayDedicatedSessionManager, type GatewayDedicatedSessionManager } from "./gateway.js";

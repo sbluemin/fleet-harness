@@ -8,11 +8,9 @@ import type {
   AcpContentBlock,
   UnifiedClientOptions,
 } from "@dotobokuri/core-unified-agent";
-import {
-  createMcpToolSnapshotStore,
-  type AgentToolSpec,
-  type McpRouterRuntime,
-} from "@dotobokuri/core-mcp-server";
+import { createMcpToolSnapshotStore } from "../src/tool-snapshot.js";
+import type { McpRouterRuntime } from "../src/mcp-router.js";
+import type { AgentToolSpec } from "../src/types.js";
 
 const buildMock = vi.fn();
 

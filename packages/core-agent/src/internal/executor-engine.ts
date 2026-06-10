@@ -24,17 +24,16 @@ import {
 
 import {
   cleanupExecutorSession as cleanupExecutorMcpSession,
-  convertToolSchema,
   detachExecutorMcpForReuse as detachExecutorMcpForSessionReuse,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
-  type AgentToolSpec,
-  type McpRouterRuntime,
-} from "@dotobokuri/core-mcp-server";
+} from "../mcp-router.js";
 
 import { executorMcpRuntimeProviderRuntime, executorPortRuntime, type ExecutorMcpSession } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
-import type { TrackStatus } from "../types.js";
+import type { AgentToolSpec, TrackStatus } from "../types.js";
+import type { McpRouterRuntime } from "../mcp-router.js";
+import { convertToolSchema } from "../tool-snapshot.js";
 import { classifyResumeFailure } from "./session-errors.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 

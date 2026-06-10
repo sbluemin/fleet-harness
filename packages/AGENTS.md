@@ -1,6 +1,6 @@
 # Packages Doctrine
 
-`packages/` is the Fleet first-party workspace monorepo root, containing `core-agent`, `core-unified-agent`, `core-mcp-server`, `fleet-infra`, `fleet-admiral`, `fleet-carriers`, and `fleet-wiki`. The `fleet-cli` and `fleet-wiki-ui` workspaces live under `runtime/`.
+`packages/` is the Fleet first-party workspace monorepo root, containing `core-agent`, `core-unified-agent`, `fleet-infra`, `fleet-admiral`, `fleet-carriers`, and `fleet-wiki`. The `fleet-cli` and `fleet-wiki-ui` workspaces live under `runtime/`.
 
 ## Architecture Philosophy
 
@@ -11,8 +11,8 @@ The Fleet codebase is built on **five core principles**. Every contribution and 
 The final Fleet graph is layered and enforced by build/grep gates:
 
 - `fleet-cli` owns host assembly and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
-- `fleet-cli` assembles `core-agent`, `fleet-infra`, `fleet-carriers`, and `core-mcp-server` through direct leaf service calls.
-- `fleet-cli` consumes `fleet-admiral`, `fleet-carriers`, `core-agent`, `fleet-infra`, and `core-mcp-server` through public package surfaces only.
+- `fleet-cli` assembles `core-agent`, `fleet-infra`, and `fleet-carriers` through direct leaf service calls.
+- `fleet-cli` consumes `fleet-admiral`, `fleet-carriers`, `core-agent`, and `fleet-infra` through public package surfaces only.
 - Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-cli` side.
 - The embedded TUI engine under `src/tui/` is owned exclusively by `fleet-cli`.
 - Mixed modules must keep host adapters in `fleet-cli` and domain policy in the owning Fleet package.
@@ -35,17 +35,17 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 |---------|-------|-----------|
 | Carrier session reuse | `packages/core-agent/src/internal/executor-engine.ts` | Live carrier session reuse is in-process executor pool state keyed by `poolKey`; it is not persisted through JSONL custom entries or host adapters. |
 | Track status enum | `packages/core-agent/src/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
-| MCP server URL + token routing | `packages/core-mcp-server` | One internal `fleet` HTTP server with per-session Bearer tokens and FIFO routing isolated by token; carrier and wiki tool IDs and per-tool access policies remain unchanged. |
+| MCP server URL + token routing | `runtime/fleet-gateway` | One machine-wide local gateway with per-session Bearer tokens and FIFO routing isolated by token; carrier and wiki tool IDs and per-tool access policies remain unchanged. |
 | CLI provider catalog | `@dotobokuri/core-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, and reasoning capabilities derive from this; host presentation colors live in `runtime/fleet-cli/src/styles/`. |
-| Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/core-mcp-server` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
-| Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/core-mcp-server` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
+| Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/core-agent` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
+| Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/core-agent` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |
 | Executor runtime engine and builtin external MCP catalog | `packages/core-agent/src/` | Host-agnostic runtime owns pool/session/model/external-MCP infrastructure; `fleet-cli` registers the two-method `ExecutorPort` at boot. |
 | Durable filesystem I/O primitive | `packages/fleet-infra/src/fs-store/` | Atomic writes, advisory directory locks with quarantine-based stale recovery, and secure filesystem guards. Consumed by preset, auth, and carriers storage through explicit DI factories. |
 | Default carrier persona catalog and carrier runtime | `packages/fleet-carriers` | Default carrier metadata, dispatch, detached job infrastructure, carrier jobs, store, stream events, runtime constants, and explicit default carrier registration live in the carrier package. |
 
 ### 4. Public Surface Discipline
 
-Consumers use public package root barrels: `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/fleet-infra` for infrastructure, and `@dotobokuri/core-mcp-server` for generic MCP registry/server APIs. The implementation is re-exported from `@dotobokuri/core-agent`; internal helpers under `packages/core-agent/src/internal/` are never consumer imports.
+Consumers use public package root barrels: `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-carriers` for carrier runtime, `@dotobokuri/fleet-infra` for infrastructure, and `@dotobokuri/core-agent` for generic agent executor and tool registry APIs. Internal helpers under `packages/core-agent/src/internal/` are never consumer imports.
 
 ### 5. DI Factory Discipline
 

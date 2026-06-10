@@ -1,6 +1,6 @@
-import type { McpRouterRuntime } from "@dotobokuri/core-mcp-server";
 import type { McpServerConfig } from "@dotobokuri/core-unified-agent";
 
+import type { McpRouterRuntime } from "./mcp-router.js";
 import type { AgentToolSpec } from "./types.js";
 
 export interface ExecutorMcpRouterRuntime {

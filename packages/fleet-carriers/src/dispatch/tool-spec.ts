@@ -7,7 +7,7 @@
 import { Type } from "typebox";
 import type { CliType } from "@dotobokuri/core-unified-agent";
 
-import type { AgentToolSpec } from "@dotobokuri/core-mcp-server";
+import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import type { CarrierJobStatus as StoredCarrierJobStatus } from "../jobs/types.js";
 import type { JobPermitAccepted } from "../jobs/lifecycle.js";
 import type {

@@ -26,7 +26,7 @@
     }
   },
   "dependencies": {
-    "@dotobokuri/core-mcp-server": "workspace:*",
+    "@dotobokuri/core-agent": "workspace:*",
     "typebox": "^1.1.24"
   },
   "devDependencies": {

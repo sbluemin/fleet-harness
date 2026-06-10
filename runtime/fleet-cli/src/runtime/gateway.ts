@@ -10,9 +10,9 @@ import {
 } from "@dotobokuri/fleet-gateway";
 import type {
 	AgentToolSpec,
+	ExecutorMcpSession,
 	McpToolRegistry,
-} from "@dotobokuri/core-mcp-server";
-import type { ExecutorMcpSession } from "@dotobokuri/core-agent";
+} from "@dotobokuri/core-agent";
 import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 
 export interface GatewayDedicatedSessionManager {

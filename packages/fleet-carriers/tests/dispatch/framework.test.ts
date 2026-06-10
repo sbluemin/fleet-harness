@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { executeWithPool } from "@dotobokuri/core-agent";
-import type { AgentToolCtx } from "@dotobokuri/core-mcp-server";
+import type { AgentToolCtx } from "@dotobokuri/core-agent";
 import { getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
