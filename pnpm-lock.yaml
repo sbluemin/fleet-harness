@@ -185,6 +185,9 @@ importers:
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../../packages/fleet-carriers
+      '@dotobokuri/fleet-gateway':
+        specifier: workspace:*
+        version: link:../fleet-gateway
       '@dotobokuri/fleet-infra':
         specifier: workspace:*
         version: link:../../packages/fleet-infra

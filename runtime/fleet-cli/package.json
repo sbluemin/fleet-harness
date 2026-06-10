@@ -37,6 +37,7 @@
     "@clack/prompts": "1.4.0",
     "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*",
+    "@dotobokuri/fleet-gateway": "workspace:*",
     "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/core-mcp-server": "workspace:*",
     "@dotobokuri/fleet-infra": "workspace:*",

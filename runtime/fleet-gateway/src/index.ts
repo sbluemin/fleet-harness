@@ -1,4 +1,10 @@
-export type { GatewayHealth, GatewayLockPayload } from "./api-types.js";
+export type {
+	GatewayHealth,
+	GatewayLockPayload,
+	GatewayQueuedToolCall,
+	GatewayRegisterTenantResponse,
+	GatewayToolCallResult,
+} from "./api-types.js";
 export { createGatewayCallQueue } from "./call-queue.js";
 export { createGatewayDaemonLifecycle } from "./cli.js";
 export { createGatewayHealthClient } from "./health.js";

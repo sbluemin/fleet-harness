@@ -17,20 +17,19 @@ import {
 	createMcpServer,
 	createMcpToolRegistry,
 	createMcpToolSnapshotStore,
-	createExecutorSessionManager,
-	type ExecutorSessionManager,
 	type McpServer,
 	type McpToolRegistry,
 	type McpToolSnapshotStore,
 } from "@dotobokuri/core-mcp-server";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
+import { createGatewayDedicatedSessionManager, type GatewayDedicatedSessionManager } from "./gateway.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
 export interface RuntimeServices {
 	readonly carrierRuntime: CarrierRuntime;
-	readonly dedicatedMcpSession: ExecutorSessionManager;
+	readonly dedicatedMcpSession: GatewayDedicatedSessionManager;
 	readonly infraServices: InfraServices;
 	readonly mcpRegistry: readonly McpToolRegistry[];
 }
@@ -134,20 +133,9 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			mcpRuntimes.mcpRegistry.registerExecutorTool(spec);
 		}
 	}
-	const dedicatedMcpSession = createExecutorSessionManager({
-		runtimes: [
-			{
-				name: mcpRuntimes.name,
-				runtime: {
-					registry: mcpRuntimes.mcpRegistry,
-					server: mcpRuntimes.mcpServer,
-					snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
-				},
-			},
-		],
-	});
-	void mcpRuntimes.mcpServer.start().catch((error: unknown) => {
-		console.error("[fleet-cli] Failed to start MCP server", error);
+	const dedicatedMcpSession = createGatewayDedicatedSessionManager({
+		name: mcpRuntimes.name,
+		registry: mcpRuntimes.mcpRegistry,
 	});
 
 	reconcileRuntimeState(carrierRuntime);
