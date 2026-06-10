@@ -38,6 +38,11 @@ export interface GatewayTenantStoreDeps {
   readonly randomToken?: () => string;
 }
 
+export interface GatewayTenantRelease {
+  readonly tenantId: string;
+  readonly sessionIds: readonly string[];
+}
+
 export function createGatewayTenantStore(deps: GatewayTenantStoreDeps = {}) {
   const now = deps.now ?? Date.now;
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
@@ -79,9 +84,10 @@ export function createGatewayTenantStore(deps: GatewayTenantStoreDeps = {}) {
     return tokens.get(token) ?? null;
   }
 
-  function releaseTenant(controlToken: string): boolean {
+  function releaseTenant(controlToken: string): GatewayTenantRelease | null {
     const lookup = tokens.get(controlToken);
-    if (!lookup || lookup.kind !== "control") return false;
+    if (!lookup || lookup.kind !== "control") return null;
+    const sessionIds = Array.from(lookup.tenant.sessions.keys());
     tenants.delete(lookup.tenant.tenantId);
     tokens.delete(lookup.tenant.controlToken);
     tokens.delete(lookup.tenant.observerToken);
@@ -89,7 +95,7 @@ export function createGatewayTenantStore(deps: GatewayTenantStoreDeps = {}) {
       tokens.delete(session.token);
     }
     lookup.tenant.sessions.clear();
-    return true;
+    return { tenantId: lookup.tenant.tenantId, sessionIds };
   }
 
   function clear(): void {

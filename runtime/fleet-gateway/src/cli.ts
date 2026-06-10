@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 
+import type { GatewayLockPayload } from "./api-types.js";
 import { createGatewayHealthClient } from "./health.js";
 import { createGatewayLock } from "./lock.js";
 import { createGatewayPaths } from "./paths.js";
@@ -12,13 +13,21 @@ export interface GatewayDaemonLifecycleDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
   readonly serverModulePath?: string;
+  readonly spawnDetached?: (execPath: string, args: readonly string[], options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore" }) => void;
+  readonly sleep?: (ms: number) => Promise<void>;
 }
+
+const FIXED_HOST = "127.0.0.1";
+const FIXED_PORT = 37283;
+const FIXED_ENDPOINT_PATH = "/mcp";
 
 export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = {}) {
   const argv = deps.argv ?? process.argv;
   const env = deps.env ?? process.env;
   const execPath = deps.execPath ?? process.execPath;
   const serverModulePath = deps.serverModulePath ?? new URL("./cli.mjs", import.meta.url).pathname;
+  const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => { spawn(bin, [...args], options).unref(); });
+  const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const paths = createGatewayPaths({ env });
   const lock = createGatewayLock();
   const health = createGatewayHealthClient();
@@ -34,18 +43,19 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   }
 
   async function probe() {
-    return health.probe(lock.readLock(paths.lockFile));
+    const payload = readTrustedLock();
+    return health.probe(payload);
   }
 
   async function stop(): Promise<void> {
-    const payload = lock.readLock(paths.lockFile);
+    const payload = readTrustedLock();
     if (!payload) return;
     try {
       process.kill(payload.pid, "SIGTERM");
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await sleep(200);
     try {
       process.kill(payload.pid, 0);
       process.kill(payload.pid, "SIGKILL");
@@ -56,13 +66,13 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   }
 
   async function ensureDaemon(): Promise<string> {
-    const current = lock.readLock(paths.lockFile);
+    const current = readTrustedLock({ cleanUntrusted: true });
     const probeResult = await health.probe(current);
     if (probeResult.healthy && current && !stale.isBuildStale(current, serverModulePath)) return current.endpoint;
     if (current) await stop();
-    spawn(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore" }).unref();
+    spawnDetached(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore" });
     for (let i = 0; i < 30; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await sleep(100);
       const next = await probe();
       if (next.healthy && next.lock) return next.lock.endpoint;
     }
@@ -70,6 +80,27 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   }
 
   return { ensureDaemon, probe, runServer, stop, argv };
+
+  function readTrustedLock(options: { readonly cleanUntrusted?: boolean } = {}): GatewayLockPayload | null {
+    const payload = lock.readLock(paths.lockFile);
+    if (!payload) return null;
+    try {
+      lock.assertTrustedLock({
+        dir: paths.dir,
+        lockFile: paths.lockFile,
+        payload,
+        host: FIXED_HOST,
+        port: FIXED_PORT,
+        endpointPath: FIXED_ENDPOINT_PATH,
+      });
+      return payload;
+    } catch (err) {
+      if (!options.cleanUntrusted) throw err;
+      // 신뢰할 수 없는 잠금은 프로세스를 종료하지 않고 파일만 폐기한다.
+      lock.removeLock(paths.lockFile);
+      return null;
+    }
+  }
 }
 
 async function main(): Promise<void> {

@@ -19,6 +19,7 @@ export interface GatewayDedicatedSessionManager {
 	getEndpoint(): Promise<ExecutorEndpoint>;
 	issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): Promise<readonly ExecutorServerToken[]>;
 	createExecutorMcpSession(request: { readonly serverName: string; readonly specs: readonly AgentToolSpec[]; readonly cwd: string; readonly signal?: AbortSignal }): Promise<ExecutorMcpSession>;
+	getConnectionState(): GatewayClientConnectionState;
 	publishJobEvent(event: CarrierJobStreamEvent): void;
 	releaseSessionToken(label: string): void;
 	cleanup(): void;
@@ -29,13 +30,24 @@ export interface GatewayDedicatedSessionManagerDeps {
 	readonly registry: McpToolRegistry;
 	readonly lifecycle?: ReturnType<typeof createGatewayDaemonLifecycle>;
 	readonly fetch?: typeof fetch;
+	readonly readBootstrapToken?: () => Promise<string>;
+	readonly sleep?: (ms: number) => Promise<void>;
+}
+
+export interface GatewayClientConnectionState {
+	readonly state: "ready" | "retrying" | "degraded";
+	readonly attempts: number;
+	readonly message: string;
 }
 
 interface ActiveGatewaySession {
 	readonly label: string;
 	readonly cwd: string;
-	readonly registration: GatewayRegisterTenantResponse;
+	readonly specs: readonly AgentToolSpec[];
+	registration: GatewayRegisterTenantResponse;
 	readonly abort: AbortController;
+	readonly seenCallIds: Set<string>;
+	readonly seenCallOrder: string[];
 }
 
 interface ExecutorEndpoint {
@@ -50,8 +62,14 @@ interface ExecutorServerToken {
 export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessionManagerDeps): GatewayDedicatedSessionManager {
 	const lifecycle = deps.lifecycle ?? createGatewayDaemonLifecycle();
 	const fetchImpl = deps.fetch ?? fetch;
+	const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 	const activeSessions = new Map<string, ActiveGatewaySession>();
 	let endpointPromise: Promise<ExecutorEndpoint> | undefined;
+	let connectionState: GatewayClientConnectionState = {
+		state: "ready",
+		attempts: 0,
+		message: "Fleet Gateway consumer ready",
+	};
 
 	async function getGatewayEndpoint(): Promise<string> {
 		const endpoint = await lifecycle.ensureDaemon();
@@ -59,6 +77,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 	}
 
 	async function getBootstrapToken(): Promise<string> {
+		if (deps.readBootstrapToken) return deps.readBootstrapToken();
 		await getGatewayEndpoint();
 		const paths = createGatewayPaths();
 		const lock = createGatewayLock().readLock(paths.lockFile);
@@ -66,7 +85,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		return lock.token;
 	}
 
-	async function consumeCalls(session: ActiveGatewaySession, registry: McpToolRegistry): Promise<void> {
+	async function consumeCallsOnce(session: ActiveGatewaySession, registry: McpToolRegistry): Promise<void> {
 		const response = await fetchImpl(session.registration.endpoint.replace("/mcp", "/control/calls"), {
 			headers: { Authorization: `Bearer ${session.registration.controlToken}` },
 			signal: session.abort.signal,
@@ -90,6 +109,30 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 					void executeGatewayCall(JSON.parse(data) as GatewayQueuedToolCall, session, registry, fetchImpl);
 				}
 				split = buffer.indexOf("\n\n");
+			}
+		}
+	}
+
+	async function consumeCallsWithReconnect(session: ActiveGatewaySession, registry: McpToolRegistry): Promise<void> {
+		let attempts = 0;
+		while (!session.abort.signal.aborted) {
+			try {
+				await consumeCallsOnce(session, registry);
+				if (session.abort.signal.aborted) return;
+				throw new Error("Fleet Gateway call stream ended");
+			} catch (err) {
+				if (session.abort.signal.aborted) return;
+				attempts += 1;
+				endpointPromise = undefined;
+				connectionState = {
+					state: attempts >= 5 ? "degraded" : "retrying",
+					attempts,
+					message: `Fleet Gateway consumer reconnecting: ${err instanceof Error ? err.message : String(err)}`,
+				};
+				if (attempts >= 5) return;
+				await sleep(Math.min(1_000, attempts * 100));
+				await refreshGatewaySession(session);
+				attempts = 0;
 			}
 		}
 	}
@@ -132,13 +175,20 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				installForReuse: () => undefined,
 			};
 		},
+		getConnectionState() {
+			return connectionState;
+		},
 		publishJobEvent(event) {
 			for (const session of activeSessions.values()) {
 				void postJson(fetchImpl, session.registration.endpoint.replace("/mcp", "/control/events"), session.registration.controlToken, {
 					event,
 				}).catch((err) => {
 					if (!session.abort.signal.aborted) {
-						console.error("[fleet-cli] Fleet Gateway observability publish failed", err);
+						connectionState = {
+							state: "retrying",
+							attempts: 1,
+							message: `Fleet Gateway observability publish failed: ${err instanceof Error ? err.message : String(err)}`,
+						};
 					}
 				});
 			}
@@ -148,6 +198,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			if (!session) return;
 			session.abort.abort();
 			activeSessions.delete(label.trim());
+			void releaseGatewaySession(session).catch(() => undefined);
 		},
 		cleanup() {
 			for (const label of Array.from(activeSessions.keys())) {
@@ -167,22 +218,63 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		const cwd = request.cwd.trim();
 		if (!cwd) throw new Error("Gateway session cwd is required");
 		const endpoint = await getGatewayEndpoint();
-		const bootstrapToken = await getBootstrapToken();
-		const registration = await postJson<GatewayRegisterTenantResponse>(fetchImpl, endpoint.replace("/mcp", "/admin/register"), bootstrapToken, {
-			tenantLabel: label,
-			cwd,
-			tools: request.specs.map(specToGatewayTool),
-		});
+		const registration = await registerWithGateway(endpoint, label, cwd, request.specs);
 		const abort = new AbortController();
-		const session: ActiveGatewaySession = { label, cwd, registration, abort };
+		const session: ActiveGatewaySession = {
+			label,
+			cwd,
+			specs: request.specs,
+			registration,
+			abort,
+			seenCallIds: new Set(),
+			seenCallOrder: [],
+		};
 		activeSessions.set(label, session);
-		void consumeCalls(session, deps.registry).catch((err) => {
+		connectionState = {
+			state: "ready",
+			attempts: 0,
+			message: "Fleet Gateway consumer connected",
+		};
+		void consumeCallsWithReconnect(session, deps.registry).catch((err) => {
 			if (!abort.signal.aborted) {
-				console.error("[fleet-cli] Fleet Gateway call consumer stopped", err);
+				connectionState = {
+					state: "degraded",
+					attempts: 5,
+					message: `Fleet Gateway consumer stopped: ${err instanceof Error ? err.message : String(err)}`,
+				};
 			}
 		});
 		request.signal?.addEventListener("abort", () => abort.abort(), { once: true });
 		return session;
+	}
+
+	async function registerWithGateway(endpoint: string, label: string, cwd: string, specs: readonly AgentToolSpec[]): Promise<GatewayRegisterTenantResponse> {
+		const bootstrapToken = await getBootstrapToken();
+		return postJson<GatewayRegisterTenantResponse>(fetchImpl, endpoint.replace("/mcp", "/admin/register"), bootstrapToken, {
+			tenantLabel: label,
+			cwd,
+			tools: specs.map(specToGatewayTool),
+		});
+	}
+
+	async function refreshGatewaySession(session: ActiveGatewaySession): Promise<void> {
+		const endpoint = await getGatewayEndpoint();
+		const previous = session.registration;
+		session.registration = await registerWithGateway(endpoint, session.label, session.cwd, session.specs);
+		void releaseGatewayRegistration(previous).catch(() => undefined);
+		connectionState = {
+			state: "ready",
+			attempts: 0,
+			message: "Fleet Gateway consumer reconnected",
+		};
+	}
+
+	async function releaseGatewaySession(session: ActiveGatewaySession): Promise<void> {
+		await releaseGatewayRegistration(session.registration);
+	}
+
+	async function releaseGatewayRegistration(registration: GatewayRegisterTenantResponse): Promise<void> {
+		await postJson(fetchImpl, registration.endpoint.replace("/mcp", "/control/release"), registration.controlToken, {});
 	}
 }
 
@@ -192,6 +284,7 @@ async function executeGatewayCall(
 	registry: McpToolRegistry,
 	fetchImpl: typeof fetch,
 ): Promise<void> {
+	if (!rememberCall(session, call.callId)) return;
 	const result = await registry.invoke(call.toolName, call.args, {
 		cwd: session.cwd,
 		toolCallId: call.callId,
@@ -204,6 +297,17 @@ async function executeGatewayCall(
 		sessionId: call.sessionId,
 		result,
 	});
+}
+
+function rememberCall(session: ActiveGatewaySession, callId: string): boolean {
+	if (session.seenCallIds.has(callId)) return false;
+	session.seenCallIds.add(callId);
+	session.seenCallOrder.push(callId);
+	while (session.seenCallOrder.length > 512) {
+		const stale = session.seenCallOrder.shift();
+		if (stale) session.seenCallIds.delete(stale);
+	}
+	return true;
 }
 
 async function postJson<T>(fetchImpl: typeof fetch, url: string, token: string, body: unknown): Promise<T> {

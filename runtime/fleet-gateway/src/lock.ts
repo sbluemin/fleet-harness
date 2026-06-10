@@ -26,8 +26,17 @@ export interface GatewayLockHandle {
   release(): void;
 }
 
-const LOCK_DIR_MODE = 0o700;
-const LOCK_FILE_MODE = 0o600;
+export interface GatewayLockTrustInput {
+  readonly dir: string;
+  readonly lockFile: string;
+  readonly payload: GatewayLockPayload;
+  readonly host: string;
+  readonly port: number;
+  readonly endpointPath: string;
+}
+
+export const LOCK_DIR_MODE = 0o700;
+export const LOCK_FILE_MODE = 0o600;
 
 export function createGatewayLock(deps: GatewayLockDeps = {}) {
   const fsImpl = deps.fs ?? fs;
@@ -75,7 +84,12 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
   }
 
   function removeLock(lockFile: string, pid?: number): void {
-    const current = readLock(lockFile);
+    let current: GatewayLockPayload | null = null;
+    try {
+      current = readLock(lockFile);
+    } catch (err) {
+      if (pid != null) throw err;
+    }
     if (pid != null && current && current.pid !== pid) return;
     try {
       fsImpl.rmSync(lockFile, { force: true });
@@ -96,5 +110,39 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
     }
   }
 
-  return { ensureLockDir, readLock, writeLock, removeLock, assertLockModes };
+  function assertTrustedLock(input: GatewayLockTrustInput): void {
+    const dirStat = fsImpl.statSync(input.dir);
+    const fileStat = fsImpl.lstatSync(input.lockFile);
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`Refusing symbolic gateway lock: ${input.lockFile}`);
+    }
+    assertLockModes(input.lockFile);
+    const currentUid = typeof process.getuid === "function" ? process.getuid() : null;
+    if (currentUid != null && (dirStat.uid !== currentUid || fileStat.uid !== currentUid)) {
+      throw new Error("Gateway lock owner does not match current user");
+    }
+    if (!isLoopbackHost(input.payload.host)) {
+      throw new Error(`Gateway lock host must be loopback: ${input.payload.host}`);
+    }
+    if (input.payload.port !== input.port) {
+      throw new Error(`Gateway lock port must be ${input.port}, got ${input.payload.port}`);
+    }
+    const endpoint = new URL(input.payload.endpoint);
+    if (endpoint.protocol !== "http:" || endpoint.pathname !== input.endpointPath) {
+      throw new Error("Gateway lock endpoint path must match the fixed contract");
+    }
+    if (!isLoopbackHost(endpoint.hostname) || Number(endpoint.port) !== input.port) {
+      throw new Error("Gateway lock endpoint must use the fixed loopback port");
+    }
+    if (input.payload.endpoint !== `http://${input.host}:${input.port}${input.endpointPath}`) {
+      throw new Error("Gateway lock endpoint must match the fixed endpoint");
+    }
+  }
+
+  return { ensureLockDir, readLock, writeLock, removeLock, assertLockModes, assertTrustedLock };
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
+  return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
 }

@@ -38,7 +38,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
   const port = deps.port ?? DEFAULT_PORT;
   const endpointPath = deps.endpointPath ?? DEFAULT_ENDPOINT_PATH;
   const version = deps.version ?? (typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev");
-  const lock = createGatewayLock();
+  const lock = createGatewayLock({ hostname: () => host });
   const tenants = createGatewayTenantStore();
   const callQueue = createGatewayCallQueue();
   const observability = createGatewayObservabilityStore();
@@ -62,6 +62,10 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     }
     if (req.url?.startsWith("/control/results/")) {
       void handleResultSubmission(req, res);
+      return;
+    }
+    if (req.url === "/control/release") {
+      void handleControlRelease(req, res);
       return;
     }
     if (req.url === "/control/events") {
@@ -145,21 +149,35 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       writeJson(res, 400, { error: "Invalid JSON-RPC payload" });
       return;
     }
-    const keepalive = setInterval(() => {
+    const isHeldToolCall = request.method === "tools/call";
+    if (isHeldToolCall) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.flushHeaders();
+    }
+    const keepalive = isHeldToolCall ? setInterval(() => {
       if (!res.writableEnded) res.write(" ");
-    }, 60_000);
+    }, 60_000) : null;
     try {
       const payload = await mcpRouter.process(request, lookup.session);
-      clearInterval(keepalive);
+      if (keepalive) clearInterval(keepalive);
       if (payload === null) {
-        res.writeHead(204);
+        if (!res.headersSent) res.writeHead(204);
         res.end();
+        return;
+      }
+      if (res.headersSent) {
+        res.end(JSON.stringify(payload));
         return;
       }
       writeJson(res, 200, payload);
     } catch (err) {
-      clearInterval(keepalive);
-      writeJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      if (keepalive) clearInterval(keepalive);
+      const body = { error: err instanceof Error ? err.message : String(err) };
+      if (res.headersSent) {
+        res.end(JSON.stringify(body));
+        return;
+      }
+      writeJson(res, 500, body);
     }
   }
 
@@ -219,6 +237,23 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     if (!callQueue.resolveCall(body.sessionId, callId, body.result)) {
       writeJson(res, 404, { error: "Call not found" });
       return;
+    }
+    writeJson(res, 200, { ok: true });
+  }
+
+  async function handleControlRelease(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const token = readBearerToken(req.headers);
+    const release = token ? tenants.releaseTenant(token) : null;
+    if (!release) {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
+    for (const sessionId of release.sessionIds) {
+      callQueue.clearSession(sessionId);
     }
     writeJson(res, 200, { ok: true });
   }

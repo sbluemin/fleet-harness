@@ -16,4 +16,14 @@ describe("gateway call queue", () => {
     await expect(first).resolves.toMatchObject({ content: [{ text: "A" }] });
     await expect(second).resolves.toMatchObject({ content: [{ text: "B" }] });
   });
+
+  it("caps pending calls per session", async () => {
+    const queue = createGatewayCallQueue({ maxPendingCalls: 1, timeoutMs: 10_000 });
+    const first = queue.enqueue("session", "a", "tool", {});
+    const capped = queue.enqueue("session", "b", "tool", {});
+
+    await expect(capped).resolves.toMatchObject({ isError: true, content: [{ text: "Too many pending tool calls" }] });
+    expect(queue.resolveCall("session", "a", { content: [{ type: "text", text: "A" }], isError: false })).toBe(true);
+    await expect(first).resolves.toMatchObject({ content: [{ text: "A" }] });
+  });
 });
