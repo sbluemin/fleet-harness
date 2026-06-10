@@ -101,7 +101,7 @@ Runtime state is read through direct owners:
 - Carrier store, job stream state, and per-job workspace change manifest policy: `@dotobokuri/fleet-carriers`
 - Workspace git-status scanner implementation: `runtime/fleet-cli`
 - Executor/session/model state: `@dotobokuri/core-agent`
-- MCP registry/server state: `@dotobokuri/core-mcp-server`
+- MCP registry/server state: `@dotobokuri/core-agent`
 
 These values are operational inputs for services, overlays, tools, and status
 rendering. MCP registry/server state stays live for tool exposure, but no longer

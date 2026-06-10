@@ -10,7 +10,7 @@ Fleet development follows a hard one-way dependency graph:
 - `packages/fleet-carriers` — carrier runtime, personas, jobs (including detached jobs), and carrier state.
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine and builtin external MCP catalog.
 - `packages/fleet-infra` — host-agnostic auth, data-dir resolution, global options, and durable `fs-store` I/O primitives.
-- `packages/core-mcp-server` — generic MCP server, registry, routing, and tool snapshots.
+- `runtime/fleet-gateway` — machine-wide local gateway daemon for MCP pass-through routing and tenant token isolation.
 - `packages/fleet-wiki` and `runtime/fleet-wiki-ui` — Fleet knowledge package and web UI.
 - `packages/core-unified-agent` — independent execution engine client package.
 
@@ -28,9 +28,9 @@ Put code here when it owns carrier persona metadata, carrier dispatch, carrier j
 
 Put code here when it owns generic auth, data-dir resolution, global options, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`; detached-job infrastructure belongs to `packages/fleet-carriers`.
 
-### 2.4 `packages/core-mcp-server`
+### 2.4 `runtime/fleet-gateway`
 
-Put code here when it owns generic MCP registry/server behavior, token isolation, routing, or tool snapshots.
+Put code here when it owns the machine-wide local gateway daemon, loopback endpoint lifecycle, tenant token isolation, or schema-agnostic MCP pass-through routing.
 
 ### 2.5 `packages/core-agent`
 

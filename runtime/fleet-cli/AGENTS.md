@@ -8,7 +8,7 @@ This package owns the local host assembly for the Agent CLI PTY and Fleet PTY lo
 
 - **Must Own**: local host assembly, host-owned TUI engine under `src/tui/`, host-owned SGR/color/brand/help style SSoT under `src/styles/`, host `controls/**`, Mission Bridge lower Fleet PTY domain wiring under `src/mission-bridge/**`, carrier-roster domain wiring (including subagent mode toggle, `[SA]` badge, and signature color), mission-control domain wiring, panel host callback, agent CLI profile resolution, CLI process lifecycle, programmatic PTY input bridge, xterm-backed Agent CLI viewport, agent-cli plugin rendering for Claude/Codex Fleet activation, in-process update subsystem (`src/update/**`), and Fleet's CLI Composition Root.
 - **Must Not Own**: carrier persona definitions, host-agnostic infrastructure, generic MCP server internals, or generic engine logic.
-- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/core-agent` for ExecutorPort/provider registration, execution substrate assembly, and generic tool registry primitives, `@dotobokuri/core-unified-agent` when CLI SDK types or provider metadata are needed, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
+- **Dependencies**: Restricted to `@dotobokuri/fleet-admiral` for Admiral prompt/tool policy, `@dotobokuri/fleet-infra` for auth/session infrastructure, `@dotobokuri/fleet-carriers` for carrier runtime and detached job count, `@dotobokuri/core-agent` for ExecutorPort/provider registration, execution substrate assembly, and generic tool registry primitives, `@dotobokuri/fleet-gateway` for gateway client/consumer assembly, `@dotobokuri/core-unified-agent` when CLI SDK types or provider metadata are needed, `@dotobokuri/fleet-wiki`, and `@dotobokuri/fleet-wiki-ui`.
 
 Direct dependencies on execution-engine internals or deep implementation files are forbidden. Fleet's Composition Root may depend on the `@dotobokuri/core-agent` root API to register `ExecutorPort` policy, executor MCP runtime providers, auth resolvers, and shutdown hooks explicitly. The Job Bar functionality is fully integrated into `fleet-cli`.
 
@@ -17,7 +17,7 @@ Direct dependencies on execution-engine internals or deep implementation files a
 `fleet-cli` is the only Composition Root for the CLI runtime. It assembles all service instances bottom-up and passes dependencies downward through explicit factory dependency objects.
 
 - The DI layer order is one-way: `fleet-cli` -> `fleet-admiral` -> `fleet-carriers` / `core-agent`; core packages are generic leaf dependencies consumed through public APIs.
-- `fleet-cli` may call `createInfraServices(deps)`, `createCarrierRuntime(deps)`, default agent tool registration, core-agent executor/provider registration, and MCP startup while assembling the runtime, but lower layers must not reach back into host wiring.
+- `fleet-cli` may call `createInfraServices(deps)`, `createCarrierRuntime(deps)`, default agent tool registration, core-agent executor/provider registration, and gateway client/consumer assembly while booting the runtime, but lower layers must not reach back into host wiring.
 - Service construction must stay explicit in the host assembly path; do not introduce hidden global service containers, lazy host lookups, or reverse imports from lower layers.
 - Host UI and PTY objects are terminal adapters only. Domain services receive narrow dependencies, not `fleet-cli` module state.
 
@@ -27,7 +27,7 @@ Only the permanent vertical two-pane layout is allowed:
 
 - **Agent CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
 - **Fleet PTY**: Lower pane.
-- **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Roster) while they are active. Panel renderers consume shared block-level alignment primitives for choice and key:value rows; centering is reserved for banner, title, and footer lines only.
+- **Mission Control**: Upper interaction layer that hosts the Agent CLI PTY and temporarily yields to panels (e.g., Carrier Roster, Gateway Status) while they are active. Panel renderers consume shared block-level alignment primitives for choice and key:value rows; centering is reserved for banner, title, and footer lines only.
 - **Mission Bridge**: Lower interaction layer under `src/mission-bridge/` that assembles Fleet status, Job Bar state/sections, lower Fleet PTY API consumption, and lower viewport lifecycle.
 - **Session Options**: Owned by `src/mission-control/options/`. Mission Control owns the interactive option state; the flat root `OPTION` section toggles boolean flags (Mode, System prompt, Metaphor) and auto-persists each change immediately through `fleet-infra/global-options` (no manual save/reset). Model editing is handled inline via `→` arrow key on a `LAUNCH` row as a session-only override that is not persisted.
 - **Shared PTY negotiation**: `src/controls/pty.ts` is a compatibility facade; actual PTY responsibilities live in `src/controls/pty/{shell,keyboard,csi-u,host,resize}.ts`. `pty/resize.ts` owns host resize negotiation over `src/tui/layout` primitives.
