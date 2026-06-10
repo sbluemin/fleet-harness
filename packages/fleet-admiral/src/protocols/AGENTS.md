@@ -10,7 +10,7 @@ Standing Orders are cross-cutting mechanisms always injected into the system pro
 - **Context Confidence**: Owns evidence-sufficiency levels (complete / sufficient / partial / speculative), evidence-checklist requirements, gate-failure re-entry, and re-evaluation. Thresholds are protocol-specific: standard requires sufficient confidence; high-risk and multi-agent require complete confidence.
 - **Carrier Operations Policy**: Defines how and when the host agent delegates tasks to carriers. Live carrier tool descriptions own request format, brevity, polling, and result lookup mechanics.
 - **Deep Dive**: Strategy for recursive investigation and root-cause analysis, invoked through Result Integrity's trigger mapping.
-- **Result Integrity**: Governs result evaluation, cross-carrier feedback loops, retry policy on carrier failures, and the trigger mapping for result received / speculation found / contradiction with verified fact.
+- **Result Integrity**: Governs result evaluation, Artifact Inspection Gate checks for mutating carrier jobs, cross-carrier feedback loops, retry policy on carrier failures, and the trigger mapping for result received / mutating job finalized / speculation found / contradiction with verified fact.
 
 ## Protocol Gate and Skills
 

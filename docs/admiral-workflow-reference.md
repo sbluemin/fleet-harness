@@ -51,8 +51,9 @@ Forbidden patterns:
 6. Follow the active protocol's declared checkpoints. Trivial has none and uses Mission Anchor Compact Mode.
 7. Use the reduced protocol cadence: emit `brief: <...>` after readiness checks and `status: executing` when execution begins.
 8. Apply Context Confidence at the active protocol's planning boundary: standard requires sufficient confidence; high-risk and multi-agent require complete confidence.
-9. Let Result Integrity route verification loops: received results get relevance/completeness/conflict checks, speculation goes to Deep Dive, and contradictions with verified facts re-enter Context Confidence.
-10. Run `pnpm check:protocol-sync` after changing protocol gate text, protocol skill assets, or report-token grammar.
+9. Let Result Integrity route verification loops: received results get relevance/completeness/conflict checks, mutating finalized jobs run the Artifact Inspection Gate, speculation goes to Deep Dive, and contradictions with verified facts re-enter Context Confidence.
+10. For mutating carrier jobs, inspect actual artifacts before acceptance: use the `carrier_jobs` summary manifest, direct git diff, and changed files against the dispatch intent and Mission Objective. Read-only jobs skip this gate and route claims through Deep Dive.
+11. Run `pnpm check:protocol-sync` after changing protocol gate text, protocol skill assets, or report-token grammar.
 
 ## 5. Compatibility Invariants
 

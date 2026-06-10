@@ -85,8 +85,9 @@ Context Confidence thresholds are differentiated by protocol boundary. Trivial
 mode has no planning micro-check, standard requires sufficient confidence, and
 high-risk plus multi-agent require complete confidence. Result Integrity owns
 the verification-loop routing table: received results run the three integrity
-checks, speculation routes to Deep Dive, and contradictions with verified facts
-route back to Context Confidence.
+checks, mutating finalized jobs run the Artifact Inspection Gate, speculation
+routes to Deep Dive, and contradictions with verified facts route back to
+Context Confidence.
 
 ---
 
@@ -97,7 +98,8 @@ Runtime state is read through direct owners:
 - Protocol gate and Standing Order policy: `packages/fleet-admiral/src/protocols/**`
 - Built-in protocol skill assets: `runtime/fleet-cli/assets/skills/fleet-protocol-*/SKILL.md`
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
-- Carrier store and job stream state: `@dotobokuri/fleet-carriers`
+- Carrier store, job stream state, and per-job workspace change manifest policy: `@dotobokuri/fleet-carriers`
+- Workspace git-status scanner implementation: `runtime/fleet-cli`
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-mcp-server`
 
@@ -105,6 +107,12 @@ These values are operational inputs for services, overlays, tools, and status
 rendering. MCP registry/server state stays live for tool exposure, but no longer
 serializes per-tool doctrine into the Admiral system prompt. These values are
 not serialized into a per-turn prompt wrapper.
+
+Detached carrier job summaries may include a best-effort workspace change
+manifest with `window-approximate` attribution. `carrier_jobs(action:"result")`
+surfaces the manifest through the summary, and `[carrier:result]` reminders show
+only compact `changes=<statLine>` metadata so the Admiral can start artifact
+inspection without embedding file lists in reminder text.
 
 ---
 

@@ -20,6 +20,7 @@ import { buildCarrierResultSystemReminder } from "../jobs/dispatch.js";
 import { finalizeDetachedJob, launchResponseResult, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary, computeFinalStatus } from "../jobs/types.js";
+import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/workspace-manifest.js";
 import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   emitStreamEvent,
@@ -153,6 +154,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let results: TaskForceResult[] = [];
+  const baselineSnapshot = await captureWorkspaceSnapshot(opts.deps.workspaceChangeScanner, opts.cwd);
   try {
     const settledResults = await Promise.allSettled(
       opts.activeBackends.map((cliType) =>
@@ -167,6 +169,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
     finalError = error instanceof Error ? error.message : String(error);
   } finally {
     const finishedAt = Date.now();
+    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, baselineSnapshot);
     const summary = buildJobSummary({
       jobId: opts.jobId,
       startedAt: opts.startedAt,
@@ -177,6 +180,7 @@ async function runTaskForceJobInBackground(opts: TaskForceBackgroundOptions): Pr
       error: finalError,
       tool: opts.toolName,
       prefix: "carrier_dispatch taskforce",
+      workspaceChanges,
     });
     finalizeDetachedJob({
       jobId: opts.jobId,

@@ -90,6 +90,9 @@ describe("Admiral prompts", () => {
     expect(prompt).toContain("<prior_jobs>");
     expect(prompt.match(/<prior_jobs>/g)).toHaveLength(1);
     expect(prompt).toContain("Multi-agent Filesystem Safety");
+    expect(prompt).toContain("Artifact Inspection Gate");
+    expect(prompt.replace(/\s+/g, " ")).toContain("never against the carrier's narrative");
+    expect(prompt).toContain("Mutating job finalized");
     expect(prompt).toContain("Re-read files before modifying");
     expect(prompt).toContain("never overwrite or revert changes made by others");
   });
@@ -99,7 +102,8 @@ describe("Admiral prompts", () => {
       carrierRuntime: createRuntimeWithDefaults(),
     }).build(false);
 
-    expect(prompt.length).toBeLessThanOrEqual(32500);
+    // Protocol overhaul budget was 32500; Artifact Inspection Gate measured 32152, capped with tight headroom.
+    expect(prompt.length).toBeLessThanOrEqual(33000);
   });
 
 });

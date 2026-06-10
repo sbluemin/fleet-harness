@@ -57,6 +57,21 @@ export interface CarrierJobBase {
 
 export interface CarrierJobSummary extends CarrierJobBase {
   summary: string;
+  workspaceChanges?: WorkspaceChangeManifest;
+}
+
+export interface WorkspaceChangeManifest {
+  attribution: "window-approximate";
+  available: boolean;
+  reason?: string;
+  changes: WorkspaceChangeManifestEntry[];
+  statLine: string;
+  truncated: boolean;
+}
+
+export interface WorkspaceChangeManifestEntry {
+  status: string;
+  path: string;
 }
 
 export type CarrierJobRecord = CarrierJobBase;
@@ -88,6 +103,7 @@ export interface JobSummaryOptions {
   readonly error?: string;
   readonly tool: `carrier_${string}`;
   readonly prefix: string;
+  readonly workspaceChanges?: WorkspaceChangeManifest;
 }
 
 export const CARRIER_JOB_TTL_MS = 3 * 60 * 60 * 1000;
@@ -127,6 +143,7 @@ export function buildJobSummary(options: JobSummaryOptions): CarrierJobSummary {
     finishedAt: options.finishedAt,
     carriers: [...options.carriers],
     error: options.error,
+    workspaceChanges: options.workspaceChanges,
   };
 }
 

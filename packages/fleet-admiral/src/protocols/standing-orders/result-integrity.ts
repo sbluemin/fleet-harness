@@ -21,6 +21,7 @@ A cross-cutting procedure governing how the Admiral evaluates Carrier results, h
 | Trigger | Route |
 |---|---|
 | Result received | Run the Result Integrity relevance, completeness, and conflict checks. |
+| Mutating job finalized | Run the Artifact Inspection Gate. |
 | Speculation found | Invoke Deep Dive. |
 | Contradiction with verified fact | Re-evaluate Context Confidence. |
 
@@ -31,6 +32,25 @@ After receiving any Carrier result, verify before reporting to the Admiral of th
 3. **Conflict check** — Does the result contradict prior Carrier outputs or known project state?
 
 If any check fails, request clarification from the same Carrier with specific feedback before accepting the result.
+
+### Artifact Inspection Gate
+For any carrier job that mutates the workspace (code, docs, plans, prompts),
+the three Result Evaluation checks alone do not close the job. Before
+accepting, the Admiral MUST inspect the actual artifacts directly — git diff
+and changed files, retrieved alongside the carrier_jobs response — and judge
+them against the dispatch intent and the Mission Objective, never against
+the carrier's narrative alone:
+1. Scope — only surfaces within the carrier's declared ownership changed.
+2. Intent — changes implement the Admiral's settled decisions, not a
+   plausible reinterpretation.
+3. Side effects — no unrelated reverts, history rewrites, or drive-by edits.
+Disposition (report one line): ${"`"}inspection: pass${"`"} | ${"`"}inspection: fixed — <n>
+deviations corrected by the Admiral${"`"} | ${"`"}inspection: rejected — re-dispatched
+with findings${"`"}. Small deviations the Admiral corrects directly during
+integration; systematic deviations route back to the owning carrier.
+Proportionality: full-diff reading for doctrine/prompt/structural changes;
+stat + targeted sampling for large mechanical changes. Read-only jobs skip
+this gate — their claims route through Deep Dive instead.
 
 ### Multi-agent Filesystem Safety
 Multiple agents may share one branch and filesystem. Re-read files before modifying them or accepting Carrier-proposed modifications, prefer precise edits over full-file writes, and never overwrite or revert changes made by others. If ownership is unclear or concurrent edits conflict, stop and escalate.

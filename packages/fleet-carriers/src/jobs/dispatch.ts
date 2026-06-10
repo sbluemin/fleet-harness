@@ -97,6 +97,7 @@ export function buildCarrierResultSystemReminder(input: CarrierResultSystemRemin
   const metadata = [
     `kind=${input.kind}`,
     `status=${input.status}`,
+    `changes=${sanitizeReminderText(input.summary.workspaceChanges?.statLine ?? "unavailable")}`,
     input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
     input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
     input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,

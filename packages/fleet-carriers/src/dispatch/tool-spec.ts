@@ -23,6 +23,7 @@ import { launchResponseResult } from "../jobs/lifecycle.js";
 import { finalizeDetachedJob, startDetachedJob } from "../jobs/lifecycle.js";
 import { sanitizeChunk, sanitizeToolLabel } from "../jobs/sanitize.js";
 import { buildCarrierJobId, buildJobSummary } from "../jobs/types.js";
+import { captureJobWindowManifest, captureWorkspaceSnapshot } from "../jobs/workspace-manifest.js";
 import { executeWithPool } from "@dotobokuri/core-agent";
 import {
   getConfiguredTaskForceBackends,
@@ -276,6 +277,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
   let finalStatus: CarrierJobStatus = "done";
   let finalError: string | undefined;
   let result: CarrierSingleResult | undefined;
+  const baselineSnapshot = await captureWorkspaceSnapshot(opts.deps.workspaceChangeScanner, opts.cwd);
   try {
     result = await runSingleCarrier(opts);
     finalStatus = result.status;
@@ -284,6 +286,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
     finalError = error instanceof Error ? error.message : String(error);
   } finally {
     const finishedAt = Date.now();
+    const workspaceChanges = await captureJobWindowManifest(opts.deps.workspaceChangeScanner, opts.cwd, baselineSnapshot);
     const assignments = [{ carrier: opts.carrierId, request: opts.request }];
     const results = result
       ? [result]
@@ -298,6 +301,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
       error: finalError,
       tool: opts.toolName,
       prefix: "carrier job",
+      workspaceChanges,
     });
     finalizeDetachedJob({
       jobId: opts.jobId,

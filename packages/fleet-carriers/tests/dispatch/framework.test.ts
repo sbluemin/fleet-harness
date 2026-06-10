@@ -15,6 +15,7 @@ import {
   emitStreamEvent,
   buildCarrierRoster,
   getCarrierSourceDisplayName,
+  getJobSummary,
   initStore,
   registerCarrier,
   registerStreamHandler,
@@ -24,6 +25,7 @@ import {
   updateTaskForceModelSelection,
   updateCarrierDisplayName,
 } from "../../src/index.js";
+import type { WorkspaceChangeScanner, WorkspaceChangeSnapshotEntry } from "../../src/jobs/workspace-manifest.js";
 
 interface CarrierDispatchToolResult {
   details: unknown;
@@ -389,6 +391,69 @@ describe("carrier_dispatch native subagent mode delegation", () => {
     }));
   });
 
+  it("stores a window-approximate workspace manifest on single dispatch finalization", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const scanner = createSequenceScanner([
+      [],
+      [{ status: "M", path: "src/file.ts" }],
+    ]);
+    const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check manifest",
+      request: "Verify manifest capture.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-manifest",
+    });
+
+    await vi.waitFor(() => {
+      expect(getJobSummary("carrier:dispatch-manifest", Date.now())?.workspaceChanges).toMatchObject({
+        attribution: "window-approximate",
+        available: true,
+        changes: [{ status: "M", path: "src/file.ts" }],
+        statLine: "1 file (window-approx)",
+      });
+    });
+    unregister();
+
+    const finalized = events.find((event) => event.type === "job:finalized");
+    expect(finalized?.type).toBe("job:finalized");
+    if (finalized?.type !== "job:finalized") throw new Error("Single dispatch finalization event was not emitted.");
+    expect(finalized.systemReminder).toContain("changes=1 file (window-approx)");
+  });
+
+  it("records scanner-not-configured without failing single dispatch", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check missing scanner",
+      request: "Verify missing scanner.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-no-scanner",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.details).toEqual({
+      job_id: "carrier:dispatch-no-scanner",
+      accepted: true,
+    });
+    await vi.waitFor(() => {
+      expect(getJobSummary("carrier:dispatch-no-scanner", Date.now())?.workspaceChanges).toMatchObject({
+        available: false,
+        reason: "scanner-not-configured",
+        statLine: "unavailable",
+      });
+    });
+  });
+
   it("skips Task Force auto-promotion for a subagent-mode carrier", async () => {
     writeStates({
       carriers: {
@@ -431,6 +496,40 @@ describe("carrier_dispatch native subagent mode delegation", () => {
     expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
       scopeId: "ohio",
     }));
+  });
+
+  it("does not scan when request-block validation rejects before launch", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("ohio", "Ohio"),
+      carrierMetadata: {
+        category: "operations",
+        outputFormat: "Report results.",
+        permissions: [],
+        requestBlocks: [
+          { tag: "objective", hint: "Goal", required: true },
+        ],
+        summary: "Runs focused implementation work.",
+        title: "Captain · Chief Engineer",
+        whenNotToUse: [],
+        whenToUse: ["implementation"],
+      },
+    });
+    setCarrierAgentMode("ohio", true);
+    const scanner = createSequenceScanner([[]]);
+    const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
+
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Check validation scanner skip",
+      request: "Missing objective.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-validation-no-scan",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(scanner.calls).toBe(0);
   });
 });
 
@@ -502,6 +601,47 @@ describe("carrier_dispatch taskforce stream metadata", () => {
     ]);
   });
 
+  it("stores a window-approximate workspace manifest on Task Force finalization", async () => {
+    const claudeModel = firstModel("claude");
+    const codexModel = firstModel("codex");
+    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    setCarrierAgentMode("ohio", false, "subagent");
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const events: CarrierJobStreamEvent[] = [];
+    const unregister = registerStreamHandler(registry, (event) => events.push(event));
+    const scanner = createSequenceScanner([
+      [],
+      [{ status: "A", path: "docs/plan.md" }],
+    ]);
+    const tool = buildCarrierDispatchToolSpec(registry, { ...testDeps, workspaceChangeScanner: scanner });
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Check Task Force manifest",
+      request: "Verify Task Force manifest.",
+    }, {
+      cwd: "/tmp",
+      toolCallId: "dispatch-taskforce-manifest",
+    });
+
+    await vi.waitFor(() => {
+      expect(getJobSummary("taskforce:dispatch-taskforce-manifest", Date.now())?.workspaceChanges).toMatchObject({
+        attribution: "window-approximate",
+        available: true,
+        changes: [{ status: "A", path: "docs/plan.md" }],
+        statLine: "1 file (window-approx)",
+      });
+    });
+    unregister();
+
+    const finalized = events.find((event) => event.type === "job:finalized");
+    expect(finalized?.type).toBe("job:finalized");
+    if (finalized?.type !== "job:finalized") throw new Error("Task Force finalization event was not emitted.");
+    expect(finalized.systemReminder).toContain("changes=1 file (window-approx)");
+  });
+
   it("rejects invalid raw Task Force model config before starting a detached job", async () => {
     const codexModel = firstModel("codex");
     writeStates({
@@ -554,6 +694,18 @@ function createConfig(id: string, displayName: string): CarrierConfig {
     defaultCliType: "claude",
     slot: 1,
     displayName,
+  };
+}
+
+function createSequenceScanner(
+  snapshots: (readonly WorkspaceChangeSnapshotEntry[] | null)[],
+): WorkspaceChangeScanner & { calls: number } {
+  return {
+    calls: 0,
+    async snapshot() {
+      const index = this.calls++;
+      return snapshots[index] ?? null;
+    },
   };
 }
 

@@ -8,6 +8,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - [core] Protocol-mode skills now declare checkpoint boundaries and use a two-report cadence with normalized report tokens.
 - [core] A protocol sync check now guards protocol mode drift, duplicated Downward Guard wording, and report-token grammar.
+- [core] Admiral result integrity now requires artifact inspection before accepting mutating carrier job results.
+- [core] Carrier job results now include best-effort workspace change manifests for inspection.
 - [wiki] Wiki entry writes now automatically strip duplicate leading frontmatter from the body, and `wiki_drydock` detects this condition with an optional `fix` parameter for opt-in auto-cleanup.
 
 ### Changed

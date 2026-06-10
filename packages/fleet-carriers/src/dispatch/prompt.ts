@@ -6,6 +6,7 @@
  */
 
 import type { AuthEnvResolver } from "@dotobokuri/core-agent";
+import type { WorkspaceChangeScanner } from "../jobs/workspace-manifest.js";
 import type { CarrierMetadata } from "./types.js";
 
 /** 검증 성공 결과 */
@@ -27,6 +28,7 @@ export type RequiredBlockValidationResult =
 export interface CarrierToolSpecDeps {
   readonly authEnvResolver: AuthEnvResolver;
   readonly reservedExternalMcpServerIds?: readonly string[];
+  readonly workspaceChangeScanner?: WorkspaceChangeScanner;
 }
 
 const CARRIER_FLEET_BACKGROUND = String.raw`You are an autonomous agent (Carrier) operating within a coordinated multi-agent Fleet system. The Admiral, your superior, dispatches specialized tasks to you and synthesizes your output for the user. Below is your identity, operational permissions, behavioral principles, and required output format. Your assigned task arrives in the user message channel below.`;

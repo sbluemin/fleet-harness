@@ -26,6 +26,7 @@ import {
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import { reconcileRuntimeState } from "./reconciliation.js";
+import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
 export interface RuntimeServices {
 	readonly carrierRuntime: CarrierRuntime;
@@ -116,6 +117,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	registerAgentToolDefaults(mcpRuntimes.mcpRegistry, carrierRuntime, {
 		authEnvResolver,
 		reservedExternalMcpServerIds: [FLEET_MCP_SERVER_NAME, "carrier", "wiki", "fleet-carriers", "fleet-wiki", "fleet-tools"],
+		workspaceChangeScanner: createWorkspaceChangeScanner(),
 	});
 	for (const spec of getWikiToolSpecs()) {
 		if (spec.id === "wiki_patch_queue") {
