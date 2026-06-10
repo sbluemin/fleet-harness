@@ -1,35 +1,34 @@
 # core-mcp-server Doctrine
 
-`packages/core-mcp-server` is a leaf workspace package for Fleet's generic MCP HTTP server, token/FIFO routing, session tool snapshots, and generic agent tool registry primitives.
+`packages/core-mcp-server` is a leaf workspace package for generic agent tool registry primitives, MCP schema conversion, session tool snapshots, and local invocation helpers.
 
 ## Owns
 
-- Generic MCP HTTP JSON-RPC server lifecycle (body caps, timeouts, snapshot cleanup) and routing under `src/`
-- Bearer token isolation, opaque server path, FIFO `tools/call` hold behavior, pre-queued result handling, and generic executor session token management through `createExecutorSessionManager(deps): ExecutorSessionManager`.
 - Session tool snapshots and MCP tool schema conversion
 - Generic `AgentToolSpec`, `AgentToolCtx`, `McpCallToolResult`, registry, formatter, and invocation primitives
-- Package-local tests for MCP server, registry, and executor session manager behavior
+- Package-local tests for registry, snapshot, schema conversion, and local invocation behavior
 
 ## Must Not Own
 
 - Fleet carrier framework, carrier metadata lookup, persona registration, default Fleet tool builders, prompt assembly, or host UI. Carrier metadata, default tool builders, and single-fleet prompt composition belong to `@dotobokuri/fleet-admiral`; runtime composition belongs to `fleet-cli`.
 - Imports from any `@dotobokuri/fleet-*` workspace package
 - Imports from Fleet engine packages, Anthropic packages, or `@modelcontextprotocol/*` unless an Admiral-approved plan explicitly changes this package boundary
+- Live daemon/server lifecycle; Fleet Gateway owns local HTTP routing and token/FIFO transport.
 
 ## Import Boundaries
 
-- This package may use Node built-ins such as `node:http` and `node:crypto`.
+- This package may use Node built-ins such as `node:crypto`.
 - This package must remain a dependency leaf relative to Fleet workspace packages: no `@dotobokuri/fleet-*` runtime, dev, test, or source imports.
 - Consumers import through the root package entry `@dotobokuri/core-mcp-server`; do not add public subpath exports without an explicit plan requirement.
 
 ## MCP Invariants
 
-These runtime invariants must be preserved across changes:
+Runtime HTTP invariants live in `runtime/fleet-gateway`. This package preserves:
 
-- Opaque server path and Bearer token isolation per session
-- FIFO `tools/call` resolution and pre-queued result handling
-- Immediate headers / keepalive behavior
-- Null-safe stop and restart-after-stop lifecycle
+- Registry ordering
+- Scoped executor tool filtering
+- Session snapshot conversion
+- Local invocation result formatting
 
 ## TypeScript File Structure
 

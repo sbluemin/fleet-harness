@@ -14,12 +14,8 @@ import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import {
-	createMcpServer,
 	createMcpToolRegistry,
-	createMcpToolSnapshotStore,
-	type McpServer,
 	type McpToolRegistry,
-	type McpToolSnapshotStore,
 } from "@dotobokuri/core-mcp-server";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
@@ -47,8 +43,6 @@ interface FleetRuntimeLifecycleDeps {
 interface RuntimeMcpServices {
 	readonly name: string;
 	readonly mcpRegistry: McpToolRegistry;
-	readonly mcpServer: McpServer;
-	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
 }
 
 interface StartedRuntime {
@@ -130,8 +124,21 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 					name: mcpRuntimes.name,
 					runtime: {
 						registry: mcpRuntimes.mcpRegistry,
-						server: mcpRuntimes.mcpServer,
-						snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
+						server: {
+							start: async () => {
+								throw new Error("Executor MCP sessions are provided by Fleet Gateway");
+							},
+							setOnToolCallArrived: () => undefined,
+							resolveNextToolCall: () => undefined,
+							clearPendingForSession: () => undefined,
+						},
+						snapshotStore: {
+							registerToolsForSession: () => undefined,
+							removeToolsForSession: () => undefined,
+							clearAllTools: () => undefined,
+							getToolsForSession: () => [],
+							getToolNamesForSession: () => new Set<string>(),
+						},
 					},
 				},
 			];
@@ -157,7 +164,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			dedicatedMcpSession.cleanup();
 			unsubscribeGatewayJobPublisher();
 			await disconnectAll();
-			await mcpRuntimes.mcpServer.stop();
 		},
 	};
 }
@@ -168,10 +174,5 @@ function createRuntimeMcpServices(): RuntimeMcpServices {
 
 function createRuntimeMcpBundle(name: string): RuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
-	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
-	const mcpServer = createMcpServer({
-		serverInfo: { name },
-		toolSnapshotStore: mcpToolSnapshotStore,
-	});
-	return { name, mcpRegistry, mcpServer, mcpToolSnapshotStore };
+	return { name, mcpRegistry };
 }

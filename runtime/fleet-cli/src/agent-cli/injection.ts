@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { ExecutorEndpoint, ExecutorServerToken } from "@dotobokuri/core-mcp-server";
 import {
   type CarrierRuntime,
   type ClaudeSubagentDefinition,
@@ -47,6 +46,15 @@ interface DedicatedMcpSession {
   getEndpoint(): Promise<ExecutorEndpoint>;
   issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
   releaseSessionToken(label: string): void;
+}
+
+interface ExecutorEndpoint {
+  readonly servers: readonly { readonly name: string; readonly url: string }[];
+}
+
+interface ExecutorServerToken {
+  readonly name: string;
+  readonly token: string;
 }
 
 type StartupNativeDefinitions =

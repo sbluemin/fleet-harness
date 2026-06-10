@@ -1,11 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   cleanupExecutorSession,
-  createMcpServer,
   createMcpToolRegistry,
   createMcpToolSnapshotStore,
-  installExecutorToolCallRouter,
   registerExecutorSessionTools,
 } from "../src/index.js";
 import type { AgentToolSpec, McpRouterRuntime } from "../src/index.js";
@@ -39,28 +37,6 @@ function registerScopedTools(): void {
   for (const id of SCOPED_EXECUTOR_TOOL_IDS) {
     whitelistRegistry.registerExecutorTool(makeToolSpec(id, () => `${id}-ok`), { allowedScopes: ["scope_a"] });
   }
-}
-
-async function mcpToolsCall(
-  url: string,
-  token: string,
-  toolName: string,
-  args: Record<string, unknown> = {},
-): Promise<Record<string, unknown>> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-    }),
-  });
-  return res.json() as Promise<Record<string, unknown>>;
 }
 
 describe("executor MCP whitelist", () => {
@@ -110,52 +86,14 @@ describe("executor MCP router", () => {
     const snapshotStore = createMcpToolSnapshotStore();
     routerRuntime = {
       registry,
-      server: createMcpServer({ toolSnapshotStore: snapshotStore }),
+      server: {
+        start: vi.fn(async () => "http://127.0.0.1:1/mcp"),
+        setOnToolCallArrived: vi.fn(),
+        resolveNextToolCall: vi.fn(),
+        clearPendingForSession: vi.fn(),
+      },
       snapshotStore,
     };
-  });
-
-  afterEach(async () => {
-    await routerRuntime.server.stop();
-  });
-
-  it("self-invoke 성공 경로: 도구 실행 결과가 MCP 응답으로 반환된다", async () => {
-    const url = await routerRuntime.server.start();
-    const token = "exec-router-success";
-    const spec = makeToolSpec("exec_ok", () => ({
-      content: [{ type: "text", text: "success-value" }],
-      isError: false,
-    }));
-    routerRuntime.registry.registerAgentTool(spec);
-    registerExecutorSessionTools(routerRuntime, token, [spec]);
-    installExecutorToolCallRouter(routerRuntime, token, { cwd: process.cwd() });
-
-    const body = await mcpToolsCall(url, token, "exec_ok");
-
-    expect(body.result).toEqual({
-      content: [{ type: "text", text: "success-value" }],
-      isError: false,
-    });
-    cleanupExecutorSession(routerRuntime, token);
-  });
-
-  it("self-invoke 실패 경로: 도구 execute 오류가 isError=true로 반환된다", async () => {
-    const url = await routerRuntime.server.start();
-    const token = "exec-router-failure";
-    const spec = makeToolSpec("exec_throws", () => {
-      throw new Error("deliberate-failure");
-    });
-    routerRuntime.registry.registerAgentTool(spec);
-    registerExecutorSessionTools(routerRuntime, token, [spec]);
-    installExecutorToolCallRouter(routerRuntime, token, { cwd: process.cwd() });
-
-    const body = await mcpToolsCall(url, token, "exec_throws");
-
-    expect(body.result).toBeDefined();
-    const result = body.result as { isError: boolean; content: Array<{ text: string }> };
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain("deliberate-failure");
-    cleanupExecutorSession(routerRuntime, token);
   });
 
   it("알 수 없는 도구 호출은 isError=true로 반환된다", async () => {
@@ -173,31 +111,5 @@ describe("executor MCP router", () => {
     expect(routerRuntime.snapshotStore.getToolsForSession(token).length).toBeGreaterThan(0);
     cleanupExecutorSession(routerRuntime, token);
     expect(routerRuntime.snapshotStore.getToolsForSession(token)).toHaveLength(0);
-  });
-
-  it("serverInfo 옵션이 initialize 응답 이름을 바꾼다", async () => {
-    const snapshotStore = createMcpToolSnapshotStore();
-    const server = createMcpServer({
-      serverInfo: { name: "custom-mcp", version: "9.9.9" },
-      toolSnapshotStore: snapshotStore,
-    });
-    const url = await server.start();
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer init-token",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-      }),
-    });
-    const body = await res.json() as { result?: { serverInfo?: unknown } };
-
-    expect(body.result?.serverInfo).toEqual({ name: "custom-mcp", version: "9.9.9" });
-    await server.stop();
   });
 });

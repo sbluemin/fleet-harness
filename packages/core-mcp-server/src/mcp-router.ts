@@ -1,13 +1,24 @@
 import crypto from "node:crypto";
 
-import type { McpServer } from "./server.js";
 import type { McpToolRegistry } from "./tool-registry.js";
 import type { McpToolSnapshotStore } from "./tool-snapshot.js";
-import type { AgentToolSpec, McpTool } from "./types.js";
+import type { AgentToolSpec, McpCallToolResult, McpTool } from "./types.js";
+
+export type ToolCallArrivedCallback = (
+  toolName: string,
+  args: Record<string, unknown>,
+) => string;
+
+export interface McpRouterServer {
+  start(): Promise<string>;
+  setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void;
+  resolveNextToolCall(token: string, toolCallId: string, result: McpCallToolResult): void;
+  clearPendingForSession(token: string): void;
+}
 
 export interface McpRouterRuntime {
   registry: McpToolRegistry;
-  server: McpServer;
+  server: McpRouterServer;
   snapshotStore: McpToolSnapshotStore;
 }
 

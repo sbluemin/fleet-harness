@@ -10,8 +10,6 @@ import {
 } from "@dotobokuri/fleet-gateway";
 import type {
 	AgentToolSpec,
-	ExecutorEndpoint,
-	ExecutorServerToken,
 	McpToolRegistry,
 } from "@dotobokuri/core-mcp-server";
 import type { ExecutorMcpSession } from "@dotobokuri/core-agent";
@@ -38,6 +36,15 @@ interface ActiveGatewaySession {
 	readonly cwd: string;
 	readonly registration: GatewayRegisterTenantResponse;
 	readonly abort: AbortController;
+}
+
+interface ExecutorEndpoint {
+	readonly servers: readonly { readonly name: string; readonly url: string }[];
+}
+
+interface ExecutorServerToken {
+	readonly name: string;
+	readonly token: string;
 }
 
 export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessionManagerDeps): GatewayDedicatedSessionManager {
