@@ -140,6 +140,9 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			return dedicatedMcpSession.createExecutorMcpSession(request);
 		},
 	});
+	const unsubscribeGatewayJobPublisher = carrierRuntime.jobs.streaming.register((event) => {
+		dedicatedMcpSession.publishJobEvent(event);
+	});
 
 	reconcileRuntimeState(carrierRuntime);
 
@@ -152,6 +155,7 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		},
 		async shutdown() {
 			dedicatedMcpSession.cleanup();
+			unsubscribeGatewayJobPublisher();
 			await disconnectAll();
 			await mcpRuntimes.mcpServer.stop();
 		},

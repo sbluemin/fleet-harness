@@ -10,6 +10,7 @@ export { createGatewayDaemonLifecycle } from "./cli.js";
 export { createGatewayHealthClient } from "./health.js";
 export { createGatewayLock } from "./lock.js";
 export { createGatewayMcpJsonRpcRouter } from "./mcp-jsonrpc.js";
+export { createGatewayObservabilityStore } from "./observability-store.js";
 export { createGatewayPaths } from "./paths.js";
 export { createGatewayServer } from "./server.js";
 export { createGatewayStalePolicy } from "./stale.js";

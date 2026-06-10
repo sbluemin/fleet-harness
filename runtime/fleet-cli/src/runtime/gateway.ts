@@ -15,11 +15,13 @@ import type {
 	McpToolRegistry,
 } from "@dotobokuri/core-mcp-server";
 import type { ExecutorMcpSession } from "@dotobokuri/core-agent";
+import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 
 export interface GatewayDedicatedSessionManager {
 	getEndpoint(): Promise<ExecutorEndpoint>;
 	issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): Promise<readonly ExecutorServerToken[]>;
 	createExecutorMcpSession(request: { readonly serverName: string; readonly specs: readonly AgentToolSpec[]; readonly cwd: string; readonly signal?: AbortSignal }): Promise<ExecutorMcpSession>;
+	publishJobEvent(event: CarrierJobStreamEvent): void;
 	releaseSessionToken(label: string): void;
 	cleanup(): void;
 }
@@ -122,6 +124,17 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				detachForReuse: () => undefined,
 				installForReuse: () => undefined,
 			};
+		},
+		publishJobEvent(event) {
+			for (const session of activeSessions.values()) {
+				void postJson(fetchImpl, session.registration.endpoint.replace("/mcp", "/control/events"), session.registration.controlToken, {
+					event,
+				}).catch((err) => {
+					if (!session.abort.signal.aborted) {
+						console.error("[fleet-cli] Fleet Gateway observability publish failed", err);
+					}
+				});
+			}
 		},
 		releaseSessionToken(label) {
 			const session = activeSessions.get(label.trim());

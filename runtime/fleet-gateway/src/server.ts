@@ -6,6 +6,8 @@ import { createGatewayCallQueue } from "./call-queue.js";
 import { writeGatewayCallEvent } from "./call-stream.js";
 import { createGatewayLock, type GatewayLockHandle } from "./lock.js";
 import { createGatewayMcpJsonRpcRouter } from "./mcp-jsonrpc.js";
+import { writeObserverEvents } from "./observability-routes.js";
+import { createGatewayObservabilityStore } from "./observability-store.js";
 import { createGatewayTenantStore } from "./tenant-store.js";
 
 declare const __PKG_VERSION__: string | undefined;
@@ -39,6 +41,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
   const lock = createGatewayLock();
   const tenants = createGatewayTenantStore();
   const callQueue = createGatewayCallQueue();
+  const observability = createGatewayObservabilityStore();
   const mcpRouter = createGatewayMcpJsonRpcRouter({ callQueue, serverInfo: { name: "fleet-gateway", version } });
   let server: http.Server | null = null;
   let lockHandle: GatewayLockHandle | null = null;
@@ -59,6 +62,22 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     }
     if (req.url?.startsWith("/control/results/")) {
       void handleResultSubmission(req, res);
+      return;
+    }
+    if (req.url === "/control/events") {
+      void handleControlEvent(req, res);
+      return;
+    }
+    if (req.url === "/observer/status") {
+      handleObserverStatus(req, res);
+      return;
+    }
+    if (req.url === "/observer/jobs") {
+      handleObserverJobs(req, res);
+      return;
+    }
+    if (req.url === "/observer/events") {
+      handleObserverEvents(req, res);
       return;
     }
     if (req.url === endpointPath) {
@@ -204,6 +223,59 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     writeJson(res, 200, { ok: true });
   }
 
+  async function handleControlEvent(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const token = readBearerToken(req.headers);
+    const lookup = token ? tenants.lookupToken(token) : null;
+    if (!lookup || lookup.kind !== "control") {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
+    const body = await readJsonBody<{ event?: unknown }>(req);
+    if (!body || !("event" in body)) {
+      writeJson(res, 400, { error: "Invalid event payload" });
+      return;
+    }
+    writeJson(res, 200, { ok: true, event: observability.append(lookup.tenant.tenantId, body.event) });
+  }
+
+  function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const lookup = readObserverLookup(req, res);
+    if (!lookup) return;
+    writeJson(res, 200, {
+      tenantId: lookup.tenant.tenantId,
+      tenantLabel: lookup.tenant.tenantLabel,
+      sessions: lookup.tenant.sessions.size,
+      jobs: observability.listJobs(lookup.tenant.tenantId).length,
+      events: observability.listEvents(lookup.tenant.tenantId).length,
+    });
+  }
+
+  function handleObserverJobs(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const lookup = readObserverLookup(req, res);
+    if (!lookup) return;
+    writeJson(res, 200, { jobs: observability.listJobs(lookup.tenant.tenantId) });
+  }
+
+  function handleObserverEvents(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const lookup = readObserverLookup(req, res);
+    if (!lookup) return;
+    writeObserverEvents(req, res, lookup.tenant, observability);
+  }
+
+  function readObserverLookup(req: http.IncomingMessage, res: http.ServerResponse) {
+    const token = readBearerToken(req.headers);
+    const lookup = token ? tenants.lookupToken(token) : null;
+    if (!lookup || lookup.kind !== "observer") {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return null;
+    }
+    return lookup;
+  }
+
   return {
     host,
     port,
@@ -252,6 +324,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       });
       callQueue.clear();
       tenants.clear();
+      observability.clear();
       currentLock?.release();
     },
   };
