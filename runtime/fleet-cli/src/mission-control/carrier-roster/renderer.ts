@@ -5,11 +5,11 @@ import {
   visibleWidth,
   type FleetPtyTheme,
 } from "../../controls/index.js";
-import { TASKFORCE_BADGE_COLOR } from "../../mission-bridge/job-bar/constants.js";
 import {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
+  TASKFORCE_BADGE_COLOR,
 } from "../../styles/carriers.js";
 import { maxVisibleWidth, padEndVisible } from "../layout.js";
 import { centerText } from "../welcome.js";
@@ -194,7 +194,7 @@ export function getCarrierStatusFocusLine(width: number, model: CarrierStatusRen
   return undefined;
 }
 
-export function getModelLabel(provider: CliModelInfo, modelId: string): string {
+function getModelLabel(provider: CliModelInfo, modelId: string): string {
   return provider.models.find((model) => model.modelId === modelId)?.name ?? modelId;
 }
 

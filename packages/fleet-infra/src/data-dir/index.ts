@@ -1,9 +1,3 @@
-import * as paths from "./paths.js";
-import { getFleetDataDir } from "./paths.js";
+// data-dir 공개 배럴 — named export 일원화 (집계 객체 없음)
 
 export { getFleetDataDir } from "./paths.js";
-
-export const dataDir = {
-  paths,
-  getFleetDataDir,
-};

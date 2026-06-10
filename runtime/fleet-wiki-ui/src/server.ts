@@ -47,7 +47,11 @@ type WorkspaceSelection =
 type NetworkInterfaces = NodeJS.Dict<NetworkInterfaceInfo[]>;
 type RequestHandler = (request: IncomingMessage, response: ServerResponse) => void | Promise<void>;
 
-const VERSION = "0.0.0";
+// tsup 빌드 시 define으로 package.json 버전이 주입된다.
+// vitest 등 미번들 실행에서는 식별자가 정의되지 않으므로 "0.0.0"으로 fallback한다.
+declare const __PKG_VERSION__: string | undefined;
+
+const VERSION = typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0";
 const DAEMON_HOST = "127.0.0.1";
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_ROOT = resolveClientRoot(MODULE_DIR);

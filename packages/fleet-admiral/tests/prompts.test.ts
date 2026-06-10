@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 
-import { createSystemPromptBuilder } from "./index.js";
-import { getAllStandingOrders } from "./protocols/standing-orders/index.js";
+import { createSystemPromptBuilder } from "../src/index.js";
+import { getAllStandingOrders } from "../src/protocols/standing-orders/index.js";
 
 describe("Admiral prompts", () => {
   it("keeps subagents out of the static system prompt while preserving roster", () => {

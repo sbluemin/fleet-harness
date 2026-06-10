@@ -1,9 +1,6 @@
-export interface UpdateCommandIo {
-  readonly stdout: Pick<NodeJS.WriteStream, "write">;
-  readonly stderr: Pick<NodeJS.WriteStream, "write">;
-}
+import type { UpdateCommandIo } from "./types.js";
 
-export const UPDATE_HELP_TEXT = `fleet update — Update Fleet
+const UPDATE_HELP_TEXT = `fleet update — Update Fleet
 
 Usage:
   fleet update

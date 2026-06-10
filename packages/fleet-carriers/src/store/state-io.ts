@@ -1,27 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import {
-  getEffort,
-  getProviderModels,
-  type CliType,
-} from "@dotobokuri/core-unified-agent";
 import { ensureSafeDirectory, NOFOLLOW_FLAG, withDirectoryLock, writeAtomicSync } from "@dotobokuri/fleet-infra/fs-store";
 
 import {
-  sanitizeAgentCli,
-  sanitizeAgentCliType,
   sanitizeCarriersMap,
   sanitizeGeneration,
-  sanitizeTaskforce,
 } from "./sanitize.js";
-import type { CarrierModelDefaults } from "./models.js";
 import type {
-  AgentCliSelection,
   FleetCarriers,
-  FleetStoreSnapshot,
   FleetStoreWriteFingerprint,
-  ResolvedCarrierState,
 } from "./types.js";
 
 interface StateIoRuntimeState {
@@ -56,34 +44,8 @@ export function resetStoreForTests(): void {
   runtimeState.lastLocalWriteFingerprint = null;
 }
 
-export function readCarriersSnapshot(
-  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
-): FleetStoreSnapshot {
-  const raw = readCarriers();
-  const carrierIds = new Set([
-    ...Object.keys(raw.carriers ?? {}),
-    ...Object.keys(defaultsByCarrier),
-  ]);
-  return {
-    generation: sanitizeGeneration(raw._meta?.generation),
-    carriers: Object.fromEntries([...carrierIds].map((carrierId) => [
-      carrierId,
-      resolveSnapshotCarrierState(raw.carriers?.[carrierId] ?? {}, normalizeDefaults(defaultsByCarrier[carrierId])),
-    ])),
-  };
-}
-
 export function readRawCarriers(): FleetCarriers {
   return readCarriers();
-}
-
-export function getLastLocalCarriersGeneration(): number {
-  return runtimeState.lastLocalWriteGeneration;
-}
-
-/** `writeCarriers` 직후 동기 stat으로 기록된 최신 로컬 write 지문(없으면 null) */
-export function getLastLocalWriteFingerprint(): FleetStoreWriteFingerprint | null {
-  return runtimeState.lastLocalWriteFingerprint;
 }
 
 export function getCarriersFilePath(): string | null {
@@ -170,53 +132,6 @@ function sanitizeFleetCarriers(value: unknown): FleetCarriers {
     _meta: { generation: sanitizeGeneration(record._meta?.generation) },
     carriers: sanitizeCarriersMap(record.carriers),
   };
-}
-
-function normalizeDefaults(value: CliType | CarrierModelDefaults | undefined): CarrierModelDefaults | undefined {
-  if (!value) return undefined;
-  return typeof value === "string" ? { cliType: value } : value;
-}
-
-function resolveSnapshotCarrierState(
-  state: NonNullable<FleetCarriers["carriers"]>[string],
-  defaults?: CarrierModelDefaults,
-): ResolvedCarrierState {
-  const agentCliType = sanitizeAgentCliType(state.agentCliType) ?? defaults?.cliType ?? "claude";
-  const agentCli = sanitizeAgentCli(state.agentCli);
-  return {
-    agentMode: state.agentMode ?? defaults?.defaultAgentMode ?? "cli",
-    agentCliType,
-    agentCli: {
-      ...agentCli,
-      [agentCliType]: resolveSelectionForCliType(agentCli[agentCliType], agentCliType, defaults),
-    },
-    taskforce: sanitizeTaskforce(state.taskforce),
-    ...(state.displayName ? { displayName: state.displayName } : {}),
-  };
-}
-
-function resolveSelectionForCliType(
-  stored: AgentCliSelection | undefined,
-  cliType: CliType,
-  defaults?: CarrierModelDefaults,
-): AgentCliSelection {
-  const provider = getProviderModels(cliType);
-  const allowedModels = new Set(provider.models.map((model) => model.modelId));
-  const defaultModelIsValid = !!defaults?.defaultModel && allowedModels.has(defaults.defaultModel);
-  const storedModelIsValid = !!stored?.model && allowedModels.has(stored.model);
-  const model = storedModelIsValid
-    ? stored!.model
-    : defaultModelIsValid
-      ? defaults!.defaultModel!
-      : provider.defaultModel;
-  const modelEffort = getEffort(cliType, model);
-  if (!modelEffort.supported) return { model };
-  const effort = storedModelIsValid && stored?.effort && modelEffort.levels.includes(stored.effort)
-    ? stored.effort
-    : defaults?.defaultEffort && modelEffort.levels.includes(defaults.defaultEffort)
-      ? defaults.defaultEffort
-      : modelEffort.default;
-  return { model, effort };
 }
 
 function unlinkStaleSubagentModeFile(dir: string): void {

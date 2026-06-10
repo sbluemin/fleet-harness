@@ -7,7 +7,7 @@
 - Pure LLM-Wiki domain logic and types under `src/`
 - Single public subpath `./`
 - LLM-Wiki package-specific validation under `tests/`
-- `@dotobokuri/core-mcp-server` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 4종 `drydock` / `ingest` / `patch_edit` / `query`는 chronicle 전용으로 제한 — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
+- `@dotobokuri/core-mcp-server` agent registry self-registration via `agent-specs.ts` (10종 wiki 도구를 doctrine으로 노출; 순수 읽기 4종 `briefing` / `orient` / `read` / `resolve`은 글로벌로 등록되어 모든 캐리어에 공개, 쓰기·stage 가능 5종 `drydock` / `ingest` / `patch_edit` / `compile_source` / `query`는 chronicle 전용으로 제한, `patch_queue`는 executor에 비노출(`allowedScopes: []`) — `wiki_query`는 `mode="stage_answer_page"` / `save_good_answer=true`에서 패치 큐에 stage하므로 read-only가 아님)
 
 ## Must Not Own
 
@@ -39,10 +39,10 @@
 - `src/links.ts` — Canonical wiki link helper SSoT. Exports `WIKI_LINK_PATTERN`, `extractWikiLinks()`, `extractLegacyMarkdownWikiLinks()`, `replaceWikiLinksWithMarkdown()`.
 - `src/log.ts` — Append-only operational log helpers. Exports `appendLog()`, `parseLog()`, `formatLogEntry()` for `.fleet/knowledge/log.md`. Payload values are escaped (newlines → `\n`, backticks → `` \` ``) so multiline user input cannot break the single-bullet line invariant.
 - `src/schema.ts` — Workspace schema bootstrap and summary. Exports `ensureWorkspaceSchema()`, `readWorkspaceSchemaSummary()`, default schema constants, required section definitions.
-- `src/boundaries.ts` — Retrieval boundary helper SSoT. Exports `wrapEntry()`, `wrapRawSource()`, `TRUST_BOUNDARY_RULES` (four-rule array). Used by every LLM-facing tool (briefing/orient/read/resolve/query).
+- `src/boundaries.ts` — Retrieval boundary helper SSoT. Exports `wrapWikiEntryBoundary()`, `wrapWikiRawSourceBoundary()`, `FLEET_WIKI_BOUNDARY_GUIDELINES` (four-rule array). Used by every LLM-facing tool (briefing/orient/read/resolve/query).
 - `src/store.ts` — Wiki entry storage, `index.json` + `wiki/index.md` generation, raw source management with content-hash filename suffix. `readWikiEntry()` falls back to recursive scan when `index.json` is stale. `writeWikiEntry()` automatically strips duplicate leading frontmatter from the body before serialization.
-- `src/patch.ts` — Patch queuing, validation (`create_wiki` overwrite prevention, target/body collision detection), approval/rejection. `buildPatchId()` hashes timestamp + summary + target + body to prevent compile_source ID collisions.
-- `src/patch-set.ts` — `PatchSet` metadata helpers. `buildPatchSetId()`, `writePatchSet()`, `readPatchSet()`, `listPatchSets()`. Stored at `queue/_sets/{patch_set_id}/meta.json`.
+- `src/patch.ts` — Patch queuing, validation (`create_wiki` overwrite prevention, target/body collision detection), approval/rejection. `buildPatchId()` hashes timestamp + summary + target + body to prevent compile_source ID collisions. The module-level lock Maps (`approvalLocks` / `patchEditLocks`) are an intended exception to the no-module-level-singleton rule: they implement the in-process per-patch mutex shared by tool and direct (`fleet-wiki-ui`) call paths.
+- `src/patch-set.ts` — `PatchSet` metadata helpers. `buildPatchSetId()`, `writePatchSet()`, `readPatchSet()`. Stored at `queue/_sets/{patch_set_id}/meta.json`.
 - `src/conflicts.ts` — Conflict persistence under `.fleet/knowledge/conflicts/{id}/`. Exports `createConflict()`, `listConflicts()`, `readConflict()`, `resolveConflict()`. Triggered by ingest auto-mode, base_version mismatch, duplicate alias, raw source contradiction, or patch body/target id mismatch.
 - `src/claims.ts` — Claim provenance sidecar at `wiki/.claims/{id}.json` with `ClaimSet`/`Claim`/`ClaimSourceRef` types. Exports `readClaims()`, `writeClaims()`, `listClaims()`. Optional — `wiki_resolve` falls back to summary if absent.
 - `src/search.ts` — Optional enhanced ranker for `wiki_briefing`. Inline BM25-style scoring with alias/type/status/freshness/graph boost, no new dependency. Default ranker remains the deterministic substring scorer in `briefing.ts`.
@@ -57,12 +57,11 @@
 - Canonical wiki link syntax is `[[wiki:id]]` (cross-layer standard used by leaf package and web surface).
 - `index.md` at `.fleet/knowledge/wiki/index.md` provides deterministic markdown catalog with id ordering and tag grouping.
 - `log.md` at `.fleet/knowledge/log.md` append-only operational chronicle of ingest, patch, rebuild, drydock, and conflict events.
-- `conflicts/{id}/` stores `meta.json` + `current.md` + `proposed.md` + `raw-source.md` (when applicable). Surfaced via `wiki_drydock` `unresolved_conflict` warnings and the web `/conflicts` route.
+- `conflicts/{id}/` stores `meta.json` + `current.md` + `proposed.md` + `raw-source.md` (when applicable). Surfaced via `wiki_drydock` `conflict_unresolved` warnings and the web `/conflicts` route (the `unresolved_conflict` code is reserved for corrupted conflict entries).
 - `wiki/.claims/{id}.json` claim sidecars are optional but enable provenance-tracked `wiki_resolve` facts. Schema: `{ entryId, claims: [{ id, text, sourceRefs: [{ ref, quote, span }], confidence }] }`.
 
 ## Compatibility Doctrine
 
-- Preserve the `experimentalWiki` symbol key name for downstream compatibility.
 - Do not change MCP tool names: `wiki_briefing`, `wiki_drydock`, `wiki_ingest`, `wiki_patch_edit`, `wiki_patch_queue`, `wiki_orient`, `wiki_read`, `wiki_resolve`, `wiki_compile_source`, `wiki_query`.
 - Existing `wiki_briefing` callers must remain working with `enhanced=false` (default).
 - Existing `wiki_ingest` callers must remain working with `mode="auto"` (default), which falls back to create when the target is absent.

@@ -19,7 +19,7 @@ export function createMissionBridgeController(options: CreateMissionBridgeContro
     onRenderRequest: options.onJobBarRenderRequest,
   });
   const sections = [
-    { component: new FleetStatusSection({ getNative: options.getNative }), id: "fleet-status-section" },
+    { component: new FleetStatusSection(), id: "fleet-status-section" },
     ...createJobBarSections(jobBarState),
   ];
   const ptyApi = createFleetPtyApi({

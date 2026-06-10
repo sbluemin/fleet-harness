@@ -5,10 +5,10 @@
 
 import { CliRenderer } from './cli-renderer.js';
 import type { ColorFns } from './cli-renderer.js';
-import { UnifiedAgent } from './client/IUnifiedAgentClient.js';
+import { UnifiedAgent } from './client/UnifiedAgent.js';
 import { getProviderModels, getEffort } from './models/ModelRegistry.js';
 import type { IUnifiedAgentClient } from './client/IUnifiedAgentClient.js';
-import type { CliType } from './types/config.js';
+import { isClaudeFamily, type CliType } from './config/CliConfigs.js';
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ export async function runOneShot(options: OneShotOptions): Promise<void> {
 
     // effort 설정
     if (effortOpt && effort.supported && effort.levels.includes(effortOpt)) {
-      if (!isClaudeCli(result.cli)) {
+      if (!isClaudeFamily(result.cli)) {
         try {
           await client.setConfigOption('effort', effortOpt);
         } catch {
@@ -171,8 +171,4 @@ function stdoutWrite(data: string): Promise<void> {
   return new Promise<void>((resolve) => {
     process.stdout.write(data, () => resolve());
   });
-}
-
-function isClaudeCli(cli: CliType): cli is 'claude' | 'claude-zai' | 'claude-kimi' {
-  return cli === 'claude' || cli === 'claude-zai' || cli === 'claude-kimi';
 }

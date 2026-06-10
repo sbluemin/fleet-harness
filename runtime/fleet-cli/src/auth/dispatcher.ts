@@ -8,22 +8,17 @@ import {
   formatAuthMigrationNotice,
   migrateLegacyAuthStore,
 } from "@dotobokuri/fleet-infra/auth";
-import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 
 import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
-import type { AuthCommandIo } from "./types.js";
+import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
 
-export const AUTH_HELP_TEXT = `fleet auth — Authentication
+const AUTH_HELP_TEXT = `fleet auth — Authentication
 
 Usage:
   fleet auth login [claude-zai|claude-kimi]
   fleet auth list
   fleet auth logout [claude-zai|claude-kimi]
 `;
-
-export interface AuthCommandDeps {
-  readonly authService: AuthService;
-}
 
 // [MEDIUM #6] authService는 Composition Root에서 주입받는다 — per-call createAuthService 제거
 export async function dispatchAuthCommand(

@@ -1,8 +1,7 @@
 import { sanitizeConfigKey } from "./sanitize.js";
 import { buildHealedCarriers } from "./models.js";
 import { readRawCarriers, updateCarriers } from "./state-io.js";
-import type { CarrierAgentMode, CarrierAgentModeSnapshot } from "./types.js";
-import type { CarrierModelDefaults } from "./models.js";
+import type { CarrierAgentMode, CarrierAgentModeSnapshot, CarrierModelDefaults } from "./types.js";
 
 export function readCarrierAgentModeSnapshot(
   defaultsByCarrier: Record<string, CarrierModelDefaults> = {},

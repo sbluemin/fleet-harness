@@ -2,7 +2,7 @@ import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import { CLI_TO_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-infra/auth";
 
 import { renderChoiceBlock, type ChoiceBlockRow } from "../layout.js";
-import { MISSION_CONTROL_THEME } from "../renderer.js";
+import { MISSION_CONTROL_THEME } from "../theme.js";
 import { centerText } from "../welcome.js";
 import { createActionListPanel } from "./action-list-panel.js";
 import { createInputModal } from "./input-modal.js";

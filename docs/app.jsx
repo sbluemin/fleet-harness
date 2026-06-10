@@ -31,7 +31,7 @@ const UI = {
   ctaProtocol:  { ko: "Fleet Action Protocol 보기", en: "See the Fleet Action Protocol" },
 
   metaBackends: { ko: "CLI Backends", en: "CLI Backends" },
-  metaBackendsVal: { ko: "Anthropic / OpenAI / Google / OSS", en: "Anthropic / OpenAI / Google / OSS" },
+  metaBackendsVal: { ko: "Anthropic / OpenAI / Cursor / OSS", en: "Anthropic / OpenAI / Cursor / OSS" },
   metaCaptains: { ko: "Captains", en: "Captains" },
   metaCaptainsVal: { ko: "명시적 책임 분리", en: "Distinct responsibilities" },
   metaProtocol: { ko: "Protocol", en: "Protocol" },
@@ -107,7 +107,7 @@ const CLI_BACKENDS = [
   { num: "02", vendor: "Z.AI", name: "Claude Code · GLM", tag: { ko: "Anthropic 호환 · GLM 구동 코스트 절감 라인", en: "Anthropic-compatible — a GLM-powered cost-cutting line." }, color: "oklch(82% 0.13 195)" },
   { num: "03", vendor: "Moonshot", name: "Claude Code · Kimi", tag: { ko: "Anthropic 호환 · 초장문 컨텍스트 라인", en: "Anthropic-compatible — the ultra-long-context line." }, color: "oklch(78% 0.14 290)" },
   { num: "04", vendor: "OpenAI", name: "Codex", tag: { ko: "도구 호출과 실행 위임에 최적화된 작업 함정", en: "A working vessel optimized for tool calls and execution delegation." }, color: "oklch(72% 0.17 25)" },
-  { num: "05", vendor: "Google", name: "Gemini", tag: { ko: "외부 인텔리전스 · 대규모 컨텍스트 정찰함", en: "External intelligence — a long-range reconnaissance ship." }, color: "oklch(78% 0.14 145)" },
+  { num: "05", vendor: "Cursor", name: "Cursor Agent", tag: { ko: "프론티어 모델 다중 라우팅 함정", en: "A multi-model vessel routing across frontier models." }, color: "oklch(78% 0.14 145)" },
   { num: "06", vendor: "Open Source", name: "OpenCode Go", tag: { ko: "오픈코어 폴백 · 자체 호스팅 모델 게이트웨이", en: "Open-core fallback — a self-hosted model gateway." }, color: "oklch(74% 0.06 248)" },
 ];
 

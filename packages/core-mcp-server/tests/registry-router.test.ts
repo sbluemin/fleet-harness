@@ -35,9 +35,9 @@ function makeToolSpec(id: string, execute: (args: unknown) => unknown): AgentToo
   };
 }
 
-function registerChronicleWikiTools(): void {
+function registerScopedTools(): void {
   for (const id of SCOPED_EXECUTOR_TOOL_IDS) {
-    whitelistRegistry.registerExecutorTool(makeToolSpec(id, () => `${id}-ok`), { allowedScopes: ["chronicle"] });
+    whitelistRegistry.registerExecutorTool(makeToolSpec(id, () => `${id}-ok`), { allowedScopes: ["scope_a"] });
   }
 }
 
@@ -74,16 +74,16 @@ describe("executor MCP whitelist", () => {
   });
 
   it("scope-scoped 도구와 metadata-declared 도구를 lazy union한다", () => {
-    registerChronicleWikiTools();
+    registerScopedTools();
     whitelistRegistry.registerAgentTool(makeToolSpec("metadata_tool", () => "metadata-ok"));
 
-    const chronicleIds = whitelistRegistry.getExecutorMcpToolsForScope("chronicle", ["metadata_tool"])
+    const scopeAIds = whitelistRegistry.getExecutorMcpToolsForScope("scope_a", ["metadata_tool"])
       .map((s) => s.id);
-    const otherIds = whitelistRegistry.getExecutorMcpToolsForScope("genesis", ["metadata_tool"])
+    const otherIds = whitelistRegistry.getExecutorMcpToolsForScope("scope_b", ["metadata_tool"])
       .map((s) => s.id);
 
-    expect(SCOPED_EXECUTOR_TOOL_IDS.every((id) => chronicleIds.includes(id))).toBe(true);
-    expect(chronicleIds).toContain("metadata_tool");
+    expect(SCOPED_EXECUTOR_TOOL_IDS.every((id) => scopeAIds.includes(id))).toBe(true);
+    expect(scopeAIds).toContain("metadata_tool");
     expect(otherIds).toEqual(["metadata_tool"]);
   });
 
@@ -110,7 +110,7 @@ describe("executor MCP router", () => {
     const snapshotStore = createMcpToolSnapshotStore();
     routerRuntime = {
       registry,
-      server: createMcpServer({ registry, toolSnapshotStore: snapshotStore }),
+      server: createMcpServer({ toolSnapshotStore: snapshotStore }),
       snapshotStore,
     };
   });
@@ -176,10 +176,8 @@ describe("executor MCP router", () => {
   });
 
   it("serverInfo 옵션이 initialize 응답 이름을 바꾼다", async () => {
-    const registry = createMcpToolRegistry();
     const snapshotStore = createMcpToolSnapshotStore();
     const server = createMcpServer({
-      registry,
       serverInfo: { name: "custom-mcp", version: "9.9.9" },
       toolSnapshotStore: snapshotStore,
     });

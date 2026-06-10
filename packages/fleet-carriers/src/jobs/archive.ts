@@ -5,6 +5,21 @@ export interface SerializeJobArchiveOptions {
   perSubOpMaxBytes?: number;
 }
 
+interface ArchiveState {
+  archives: Map<string, JobArchive>;
+}
+
+export interface JobStreamArchiveStore {
+  createJobArchive(jobId: string, now?: number): JobArchive;
+  appendBlock(jobId: string, block: ArchiveBlock, now?: number): boolean;
+  finalizeJobArchive(jobId: string, status: CarrierJobStatus, now?: number): boolean;
+  getFinalized(jobId: string, now?: number): JobArchive | null;
+  hasJobArchive(jobId: string, now?: number): boolean;
+  hasFinalizedJobArchive(jobId: string, now?: number): boolean;
+  detachJobArchive(jobId: string): void;
+  resetJobArchivesForTest(): void;
+}
+
 const HEAD_BYTE_RATIO = 0.25;
 const MAX_TEXT_CHARS = 24_000;
 const MAX_RAW_OUTPUT_CHARS = 12_000;
@@ -17,6 +32,14 @@ const SECRET_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: "generic_secret", pattern: /\b[A-Z_]+_(?:KEY|TOKEN|SECRET|PASSWORD)\s*[:=]\s*[^\s]*[^\s-](?=\s|$)/g },
   { label: "pem_private_key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/g },
 ];
+
+const MAX_BLOCKS = 2000;
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const PRESERVE_HEAD_BLOCKS = 20;
+const PRESERVE_TAIL_BLOCKS = 50;
+
+// default 인스턴스 생성 — 함수 선언 호이스팅에 의존하므로 const 선언 구획 마지막에 둡니다.
+const defaultJobStreamArchiveStore = createJobStreamArchiveStore();
 
 export function serializeJobArchive(archive: JobArchive, opts?: SerializeJobArchiveOptions): string {
   const blocks = archive.truncated
@@ -417,28 +440,6 @@ function safeSerialize(value: unknown, maxChars: number): string {
     return sanitizeArchiveText(String(value), maxChars);
   }
 }
-
-interface ArchiveState {
-  archives: Map<string, JobArchive>;
-}
-
-export interface JobStreamArchiveStore {
-  createJobArchive(jobId: string, now?: number): JobArchive;
-  appendBlock(jobId: string, block: ArchiveBlock, now?: number): boolean;
-  finalizeJobArchive(jobId: string, status: CarrierJobStatus, now?: number): boolean;
-  getFinalized(jobId: string, now?: number): JobArchive | null;
-  hasJobArchive(jobId: string, now?: number): boolean;
-  hasFinalizedJobArchive(jobId: string, now?: number): boolean;
-  detachJobArchive(jobId: string): void;
-  resetJobArchivesForTest(): void;
-}
-
-const MAX_BLOCKS = 2000;
-const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
-const PRESERVE_HEAD_BLOCKS = 20;
-const PRESERVE_TAIL_BLOCKS = 50;
-
-const defaultJobStreamArchiveStore = createJobStreamArchiveStore();
 
 export function createJobStreamArchiveStore(): JobStreamArchiveStore {
   const state: ArchiveState = { archives: new Map() };

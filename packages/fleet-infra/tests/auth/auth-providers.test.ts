@@ -41,6 +41,24 @@ describe("auth providers", () => {
     }));
   });
 
+  it("derives Kimi auth env from CLI_BACKENDS identical to the historical literal values", async () => {
+    const authPath = createTempAuthPath();
+    const auth = createAuthService({ authPath });
+    await auth.setApiKey("Claude Code with Moonshot Kimi", "kimi-token");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+    // CLI_BACKENDS.defaultEnv 파생 결과가 기존 하드코딩 값과 byte 동일함을 고정한다
+    await expect(resolveAuthEnv("claude-kimi", { authService: auth })).resolves.toEqual({
+      ANTHROPIC_AUTH_TOKEN: "kimi-token",
+      ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/",
+      ENABLE_TOOL_SEARCH: "false",
+      CLAUDE_CODE_SUBAGENT_MODEL: "kimi-k2.5",
+      API_TIMEOUT_MS: "3000000",
+    });
+    // baseUrl 파생 값도 기존 리터럴과 동일한 검증 URL을 만들어야 한다
+    expect(fetchMock).toHaveBeenCalledWith("https://api.kimi.com/coding/v1/messages", expect.anything());
+  });
+
   it("fails before returning env when the stored key is missing", async () => {
     const authPath = createTempAuthPath();
     const auth = createAuthService({ authPath });

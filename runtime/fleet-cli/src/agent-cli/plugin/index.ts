@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+
+import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 
 import { assetBundle, renderAssetPluginRoot, validateClaudeAgentFileStems } from "./fleet.js";
 import { globalBundle, globalFleetContentExists, renderGlobalPluginRoot } from "./fleet-global.js";
@@ -17,8 +18,7 @@ import type {
 
 export { ensureCodexPluginRegistered } from "./codex-register.js";
 
-export const CODEX_FLEET_PLUGIN_KEY = "fleet@fleet-harness";
-export const FLEET_MARKETPLACE_NAME = "fleet-harness";
+const FLEET_MARKETPLACE_NAME = "fleet-harness";
 
 const FLEET_PROJECT_MARKETPLACE_NAME_PREFIX = "fleet-project";
 const MARKETPLACE_DIR_NAME = "marketplace";
@@ -57,7 +57,7 @@ const HASH_IGNORED_RELATIVE_PATHS = new Set(PLUGIN_BUNDLES.map((bundle) => bundl
 export function createAgentCliPlugin(
   options: CreateAgentCliPluginOptions,
 ): AgentCliPlugin {
-  const fleetRoot = options.rootDir ?? path.join(os.homedir(), ".fleet");
+  const fleetRoot = options.rootDir ?? getFleetDataDir();
   const renderableBundles = resolveRenderablePluginBundles(options, fleetRoot);
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   validateClaudeAgentFileStems(options.claudeDefinitions);

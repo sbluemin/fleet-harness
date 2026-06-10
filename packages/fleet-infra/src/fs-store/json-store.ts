@@ -2,10 +2,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { CreateDurableJsonStoreDeps, DurableJsonStore } from "./types.js";
-import { writeAtomicSync } from "./atomic-write.js";
+import { cleanupTempFiles, writeAtomicSync } from "./atomic-write.js";
 import { withDirectoryLock } from "./directory-lock.js";
 import { ensureSafeDirectory, NOFOLLOW_FLAG, SECURE_FILE_MODE } from "./secure-fs.js";
-import { cleanupOrphanTempFiles, DEFAULT_TEMP_FILE_MIN_AGE_MS } from "./temp-cleanup.js";
+
+/** temp 파일 최소 수명 기본값 — 이보다 새로운 temp 파일은 정리하지 않는다 */
+const DEFAULT_TEMP_FILE_MIN_AGE_MS = 60_000;
 
 /**
  * durable JSON 저장소 factory.
@@ -62,7 +64,7 @@ export function createDurableJsonStore<T>(deps: CreateDurableJsonStoreDeps<T>): 
       },
       () => {
         if (deps.tempCleanupPrefix) {
-          cleanupOrphanTempFiles(dir, deps.tempCleanupPrefix, now(), minAgeMs);
+          cleanupTempFiles(dir, deps.tempCleanupPrefix, minAgeMs, now());
         }
         return operation();
       },

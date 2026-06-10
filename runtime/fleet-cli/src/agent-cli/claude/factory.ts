@@ -2,7 +2,6 @@ import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 
 import { createChildEnv, resolveBinary } from "../../process/resolve-bin.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
-import { createClaudeEnv } from "./env.js";
 
 interface ClaudeFamilyCliFactoryOptions {
   readonly id: Extract<AgentCliId, "claude" | "claude-kimi">;
@@ -14,21 +13,19 @@ export function createClaudeFamilyCliDefinition(
   options: ClaudeFamilyCliFactoryOptions,
 ): AgentCliDefinition {
   return {
-    defaultBin: "claude",
-    envOverrideName: "CLAUDE_BIN",
     id: options.id,
     label: options.label,
     async createProfile(profileOptions: AgentCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
-      const authEnv = options.authCli ? await resolveAuthEnv(options.authCli) : {};
+      // Composition Root가 주입한 authService를 명시 전달한다 (per-call AuthService 암묵 생성 방지).
+      const authEnv = options.authCli
+        ? await resolveAuthEnv(options.authCli, { authService: profileOptions.authService })
+        : {};
       return {
         args: [...prefixArgs, ...buildModelArgs(profileOptions.model)],
         bin,
         cwd: profileOptions.cwd,
-        env: createChildEnv(profileOptions.env, {
-          ...createClaudeEnv(),
-          ...authEnv,
-        }),
+        env: createChildEnv(profileOptions.env, authEnv),
         id: options.id,
         label: options.label,
         messagePolicy: {

@@ -15,7 +15,6 @@ export interface CreateMissionBridgeControllerOptions {
   readonly addInputListener: (listener: (data: string) => void) => () => void;
   readonly carrierRuntime: CarrierRuntime;
   readonly getColumns: () => number;
-  readonly getNative: () => boolean;
   readonly getRows: () => number;
   readonly onCarrierResultReminder?: (text: string) => void;
   readonly onJobBarRenderRequest: () => void;

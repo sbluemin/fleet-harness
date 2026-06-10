@@ -50,7 +50,7 @@
 `client/src/components/copy-context-actions.ts` exposes three clipboard actions plus one disclosure toggle inside the entry Manifest card:
 - **Compact context** — entry frontmatter + body summary as compact JSON.
 - **With provenance** — adds `rawSourceRefs[]` blocks.
-- **Related context pack** — calls `wiki_resolve` (markdown_pack format) and copies the result.
+- **Related context pack** — synthesizes a markdown context pack locally from the entry's frontmatter `related` ids and the loaded index (no server / `wiki_resolve` call) and copies the result.
 - **Why this matched** — toggles the current briefing-match rationale inline when present.
 
 ## Status Badges

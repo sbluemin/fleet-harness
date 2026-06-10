@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { PATCH_META_FILENAME } from "./constants.js";
-import { listDirectoryNames, readJsonFile, writeJsonFile } from "./store.js";
+import { readJsonFile, writeJsonFile } from "./store.js";
 import type { MemoryPaths, PatchSet } from "./types.js";
 
 export const PATCH_SET_DIRNAME = "_sets";
@@ -38,14 +38,6 @@ export async function readPatchSet(paths: MemoryPaths, patchSetId: string): Prom
   const patchSet = await readJsonFile<PatchSet>(getPatchSetMetaFile(paths, patchSetId));
   assertSafePatchSetId(patchSet.id);
   return patchSet;
-}
-
-export async function listPatchSets(paths: MemoryPaths): Promise<PatchSet[]> {
-  const patchSets: PatchSet[] = [];
-  for (const patchSetId of await listDirectoryNames(path.join(paths.queueDir, PATCH_SET_DIRNAME))) {
-    patchSets.push(await readPatchSet(paths, patchSetId));
-  }
-  return patchSets.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
 }
 
 function assertSafePatchSetId(patchSetId: string): void {

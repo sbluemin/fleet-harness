@@ -1,3 +1,5 @@
+import type { AuthService } from "@dotobokuri/fleet-infra/auth";
+
 export type AgentCliId = "claude" | "claude-kimi" | "codex";
 
 export interface AgentCliProfile {
@@ -25,12 +27,12 @@ export interface CliMessagePolicy {
 export interface AgentCliDefinition {
   readonly id: AgentCliId;
   readonly label: string;
-  readonly defaultBin: string;
-  readonly envOverrideName: string;
   createProfile(options: AgentCliProfileOptions): Promise<AgentCliProfile>;
 }
 
 export interface AgentCliProfileOptions {
+  // Composition Root가 주입하는 인증 서비스 — 미주입 시 fleet-infra 기본 경로로 fallback한다.
+  readonly authService?: AuthService;
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;

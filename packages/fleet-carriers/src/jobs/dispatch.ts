@@ -4,97 +4,20 @@ import { Type, type TObject } from "typebox";
 
 import { getFinalized, hasFinalizedJobArchive, hasJobArchive, serializeJobArchive } from "./archive.js";
 import { cancelJob, getActiveJob, listActiveJobs } from "./lifecycle.js";
-import { isCarrierJobId, CARRIER_JOB_TTL_MS, CARRIER_JOBS_FULL_RESULT_BYTE_CAP, CARRIER_JOBS_GLOBAL_BYTE_CAP, CARRIER_JOBS_PER_SUBOP_BYTE_CAP, type ArchiveBlock, type CarrierJobRecord, type CarrierJobStatus, type CarrierJobSummary, type JobArchive, type CarrierJobsAvailability, type CarrierJobsFormat, type CarrierJobsParams } from "./types.js";
+import { getJobSummary, listJobSummaries } from "./summary-cache.js";
+import { isCarrierJobId, CARRIER_JOBS_FULL_RESULT_BYTE_CAP, CARRIER_JOBS_GLOBAL_BYTE_CAP, CARRIER_JOBS_PER_SUBOP_BYTE_CAP, type ArchiveBlock, type CarrierJobRecord, type CarrierJobStatus, type CarrierJobSummary, type JobArchive, type CarrierJobsAvailability, type CarrierJobsFormat, type CarrierJobsParams } from "./types.js";
 
-interface SummaryCacheState {
-  entries: Map<string, CarrierJobSummary>;
-  maxEntries: number;
-  onEvict?: (jobId: string) => void;
-}
-
-export interface JobSummaryCache {
-  putJobSummary(summary: CarrierJobSummary, now?: number): void;
-  getJobSummary(jobId: string, now?: number): CarrierJobSummary | null;
-  listJobSummaries(now?: number): CarrierJobSummary[];
-  configureJobSummaryCache(maxEntries: number, onEvict?: (jobId: string) => void): void;
-  resetJobSummaryCacheForTest(): void;
-}
-
-const DEFAULT_MAX_ENTRIES = 50;
-
-const defaultJobSummaryCache = createJobSummaryCache();
-
-export function createJobSummaryCache(): JobSummaryCache {
-  const state: SummaryCacheState = {
-    entries: new Map(),
-    maxEntries: DEFAULT_MAX_ENTRIES,
-  };
-
-  function purgeExpiredSummaries(now: number): void {
-    for (const [jobId, entry] of state.entries) {
-      const anchor = entry.finishedAt ?? entry.startedAt;
-      if (anchor + CARRIER_JOB_TTL_MS <= now) {
-        state.entries.delete(jobId);
-        state.onEvict?.(jobId);
-      }
-    }
-  }
-
-  return {
-    putJobSummary(summary, now = Date.now()) {
-      purgeExpiredSummaries(now);
-      state.entries.delete(summary.jobId);
-      state.entries.set(summary.jobId, summary);
-      while (state.entries.size > state.maxEntries) {
-        const oldestKey = state.entries.keys().next().value as string | undefined;
-        if (!oldestKey) break;
-        state.entries.delete(oldestKey);
-        state.onEvict?.(oldestKey);
-      }
-    },
-    getJobSummary(jobId, now = Date.now()) {
-      purgeExpiredSummaries(now);
-      const entry = state.entries.get(jobId) ?? null;
-      if (!entry) return null;
-      state.entries.delete(jobId);
-      state.entries.set(jobId, entry);
-      return entry;
-    },
-    listJobSummaries(now = Date.now()) {
-      purgeExpiredSummaries(now);
-      return [...state.entries.values()].sort((a, b) => b.startedAt - a.startedAt);
-    },
-    configureJobSummaryCache(maxEntries, onEvict) {
-      state.maxEntries = maxEntries;
-      state.onEvict = onEvict;
-    },
-    resetJobSummaryCacheForTest() {
-      state.entries.clear();
-      state.maxEntries = DEFAULT_MAX_ENTRIES;
-      state.onEvict = undefined;
-    },
-  };
-}
-
-export function putJobSummary(summary: CarrierJobSummary, now = Date.now()): void {
-  defaultJobSummaryCache.putJobSummary(summary, now);
-}
-
-export function getJobSummary(jobId: string, now = Date.now()): CarrierJobSummary | null {
-  return defaultJobSummaryCache.getJobSummary(jobId, now);
-}
-
-export function listJobSummaries(now = Date.now()): CarrierJobSummary[] {
-  return defaultJobSummaryCache.listJobSummaries(now);
-}
-
-export function configureJobSummaryCache(maxEntries: number, onEvict?: (jobId: string) => void): void {
-  defaultJobSummaryCache.configureJobSummaryCache(maxEntries, onEvict);
-}
-
-export function resetJobSummaryCacheForTest(): void {
-  defaultJobSummaryCache.resetJobSummaryCacheForTest();
-}
+// summary cache / launch-response는 하위 모듈로 분리됨 — 기존 소비자를 위한 동명 re-export
+export {
+  configureJobSummaryCache,
+  createJobSummaryCache,
+  getJobSummary,
+  listJobSummaries,
+  putJobSummary,
+  resetJobSummaryCacheForTest,
+  type JobSummaryCache,
+} from "./summary-cache.js";
+export { formatLaunchResponseText, JOB_LAUNCH_NOTICE } from "./types.js";
 
 interface SystemReminderAttributes {
   [key: string]: string;
@@ -110,66 +33,27 @@ export interface CarrierResultSystemReminderInput {
   label?: string;
 }
 
-export const JOB_LAUNCH_NOTICE = [
-  "Job accepted from carrier_dispatch; result arrives later via carrier-completion follow-up push tagged [carrier:result].",
-  "Task Force is an execution mode of carrier_dispatch when the selected carrier is configured for it.",
-  "DO NOT poll carrier_jobs.",
-].join(" ");
+export interface CarrierJobsResponse {
+  action: string;
+  format?: CarrierJobsFormat;
+  job_id?: string;
+  ok: boolean;
+  status?: string;
+  active?: CarrierJobRecord[];
+  recent?: CarrierJobSummary[];
+  summary?: CarrierJobSummary;
+  full_result?: string;
+  results?: Record<string, string>;
+  full_available?: boolean;
+  full_invalidated?: boolean;
+  retry_after?: string;
+  notice?: string;
+  summary_available?: boolean;
+  cancelled?: boolean;
+  error?: string;
+}
 
 export const CARRIER_RESULT_PUSH_PREFIX = "[carrier:result]";
-
-const REMINDER_TEXT_LIMIT = 500;
-const REMINDER_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
-const REMINDER_WHITESPACE = /\s+/g;
-
-export function formatLaunchResponseText(response: unknown, accepted: boolean): string {
-  const payload = JSON.stringify(response);
-  if (!accepted) return payload;
-  return JOB_LAUNCH_NOTICE + "\n" + payload;
-}
-
-export function buildCarrierResultSystemReminder(input: CarrierResultSystemReminderInput): string {
-  const lines = [`- ${input.jobId}: ${sanitizeReminderText(input.summary.summary)}`];
-  const metadata = [
-    `kind=${input.kind}`,
-    `status=${input.status}`,
-    input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
-    input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
-    input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,
-  ].filter((part): part is string => Boolean(part));
-  if (metadata.length > 0) lines.push(`  ${metadata.join(" ")}`);
-  return wrapSystemReminder(`${CARRIER_RESULT_PUSH_PREFIX}\n${lines.join("\n")}`, { source: "carrier-completion" });
-}
-
-export function wrapSystemReminder(text: string, attrs?: SystemReminderAttributes): string {
-  const renderedAttrs = renderSystemReminderAttributes(attrs);
-  return `<system-reminder${renderedAttrs}>\n${text}\n</system-reminder>`;
-}
-
-function sanitizeReminderText(text: string): string {
-  return escapeXmlText(
-    text
-      .replace(REMINDER_CONTROL_CHARS, " ")
-      .replace(REMINDER_WHITESPACE, " ")
-      .trim()
-      .slice(0, REMINDER_TEXT_LIMIT),
-  );
-}
-
-function renderSystemReminderAttributes(attrs?: SystemReminderAttributes): string {
-  if (!attrs) return "";
-  const pairs = Object.entries(attrs);
-  if (pairs.length === 0) return "";
-  return pairs.map(([key, value]) => ` ${key}="${escapeXmlAttribute(value)}"`).join("");
-}
-
-function escapeXmlAttribute(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-}
-
-function escapeXmlText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 export const CARRIER_JOBS_DOCTRINE = {
   id: "carrier_jobs",
@@ -198,6 +82,33 @@ export const CARRIER_JOBS_DOCTRINE = {
     `carrier_jobs reads the process-memory summary cache and JobStreamArchive only. It never reads the Agent Panel stream-store.`,
   ],
 };
+
+const REMINDER_TEXT_LIMIT = 500;
+const REMINDER_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+const REMINDER_WHITESPACE = /\s+/g;
+
+const ACTIVE_STATUS_NOTICE =
+  "Job is still running. The [carrier:result] push will be delivered automatically when it finishes — do not call carrier_jobs again until that push arrives. Stop calling tools now and return control to the user; the push wakes the agent even after this response ends.";
+const ACTIVE_CANCEL_NOTICE =
+  "Cancel did not apply: the job is still running normally, not hung. Long-running carrier jobs are expected — do not retry cancel without an explicit user request to abort. The [carrier:result] push will arrive automatically; stop calling tools and return control to the user.";
+
+export function buildCarrierResultSystemReminder(input: CarrierResultSystemReminderInput): string {
+  const lines = [`- ${input.jobId}: ${sanitizeReminderText(input.summary.summary)}`];
+  const metadata = [
+    `kind=${input.kind}`,
+    `status=${input.status}`,
+    input.label ? `label=${sanitizeReminderText(input.label)}` : undefined,
+    input.taskforceBackend ? `backend=${sanitizeReminderText(input.taskforceBackend)}` : undefined,
+    input.error ? `error=${sanitizeReminderText(input.error)}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+  if (metadata.length > 0) lines.push(`  ${metadata.join(" ")}`);
+  return wrapSystemReminder(`${CARRIER_RESULT_PUSH_PREFIX}\n${lines.join("\n")}`, { source: "carrier-completion" });
+}
+
+export function wrapSystemReminder(text: string, attrs?: SystemReminderAttributes): string {
+  const renderedAttrs = renderSystemReminderAttributes(attrs);
+  return `<system-reminder${renderedAttrs}>\n${text}\n</system-reminder>`;
+}
 
 export function buildCarrierJobsSchema(): TObject {
   return Type.Object({
@@ -232,31 +143,6 @@ export function buildCarrierJobsToolSpec(): AgentToolSpec {
   };
 }
 
-export interface CarrierJobsResponse {
-  action: string;
-  format?: CarrierJobsFormat;
-  job_id?: string;
-  ok: boolean;
-  status?: string;
-  active?: CarrierJobRecord[];
-  recent?: CarrierJobSummary[];
-  summary?: CarrierJobSummary;
-  full_result?: string;
-  results?: Record<string, string>;
-  full_available?: boolean;
-  full_invalidated?: boolean;
-  retry_after?: string;
-  notice?: string;
-  summary_available?: boolean;
-  cancelled?: boolean;
-  error?: string;
-}
-
-const ACTIVE_STATUS_NOTICE =
-  "Job is still running. The [carrier:result] push will be delivered automatically when it finishes — do not call carrier_jobs again until that push arrives. Stop calling tools now and return control to the user; the push wakes the agent even after this response ends.";
-const ACTIVE_CANCEL_NOTICE =
-  "Cancel did not apply: the job is still running normally, not hung. Long-running carrier jobs are expected — do not retry cancel without an explicit user request to abort. The [carrier:result] push will arrive automatically; stop calling tools and return control to the user.";
-
 export function dispatchCarrierJobsAction(params: CarrierJobsParams, now = Date.now()): CarrierJobsResponse {
   if (params.action === "list") {
     return {
@@ -288,6 +174,31 @@ export function dispatchCarrierJobsAction(params: CarrierJobsParams, now = Date.
     ok: false,
     error: "unsupported action",
   };
+}
+
+function sanitizeReminderText(text: string): string {
+  return escapeXmlText(
+    text
+      .replace(REMINDER_CONTROL_CHARS, " ")
+      .replace(REMINDER_WHITESPACE, " ")
+      .trim()
+      .slice(0, REMINDER_TEXT_LIMIT),
+  );
+}
+
+function renderSystemReminderAttributes(attrs?: SystemReminderAttributes): string {
+  if (!attrs) return "";
+  const pairs = Object.entries(attrs);
+  if (pairs.length === 0) return "";
+  return pairs.map(([key, value]) => ` ${key}="${escapeXmlAttribute(value)}"`).join("");
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function statusResponse(jobId: string, now: number): CarrierJobsResponse {

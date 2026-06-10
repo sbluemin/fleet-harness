@@ -1,9 +1,10 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
+import { getFleetDataDir } from "../data-dir/paths.js";
 import { writeAtomicSync } from "../fs-store/atomic-write.js";
-import { ensureSafeDirectory, NOFOLLOW_FLAG, SECURE_FILE_MODE } from "../fs-store/secure-fs.js";
+import { ensureSafeDirectory, SECURE_FILE_MODE } from "../fs-store/secure-fs.js";
+import { readAuthStoreFile } from "./auth-store-file.js";
 import type {
   AuthMigrationMergeResult,
   AuthMigrationResult,
@@ -16,8 +17,8 @@ interface AuthMigrationOptions {
   readonly currentPath?: string;
 }
 
-export const LEGACY_AUTH_PATH = path.join(os.homedir(), ".fleet", "agent", "auth.json");
-export const CURRENT_AUTH_PATH = path.join(os.homedir(), ".fleet", "auth.json");
+export const LEGACY_AUTH_PATH = path.join(getFleetDataDir(), "agent", "auth.json");
+export const CURRENT_AUTH_PATH = path.join(getFleetDataDir(), "auth.json");
 
 export function mergeAuthStoresNoOverwrite(
   legacy: AuthStorageData,
@@ -61,8 +62,8 @@ export async function migrateLegacyAuthStore(
     });
   }
 
-  const legacy = readAuthStore(legacyPath);
-  const current = fs.existsSync(currentPath) ? readAuthStore(currentPath) : {};
+  const legacy = readAuthStoreFile(legacyPath);
+  const current = fs.existsSync(currentPath) ? readAuthStoreFile(currentPath) : {};
   const merged = mergeAuthStoresNoOverwrite(legacy, current);
 
   if (merged.migratedProviderIds.length > 0) {
@@ -102,26 +103,4 @@ function createMigrationResult(input: {
     shouldPrintNotice: input.shouldPrintNotice,
     status: input.status,
   };
-}
-
-/**
- * fd 기반 안전 읽기: O_RDONLY|O_NOFOLLOW + fstatSync isFile 검증.
- * 심볼릭링크(ELOOP)·권한(EACCES)·파싱 오류는 모두 삼키고 빈 store({})를 반환.
- * 마이그레이션은 손상/심링크 시 조용히 skip하고 진행한다(DoS 방어).
- */
-function readAuthStore(filePath: string): AuthStorageData {
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(filePath, fs.constants.O_RDONLY | NOFOLLOW_FLAG);
-    if (!fs.fstatSync(fd).isFile()) {
-      return {};
-    }
-    return JSON.parse(fs.readFileSync(fd, "utf-8")) as AuthStorageData;
-  } catch {
-    return {};
-  } finally {
-    if (fd !== undefined) {
-      try { fs.closeSync(fd); } catch { /* ignore */ }
-    }
-  }
 }

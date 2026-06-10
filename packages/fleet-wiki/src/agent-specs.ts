@@ -34,9 +34,9 @@ interface WikiAgentToolConfig {
 // Constants — build specs (uses hoisted function declarations below)
 // ═══════════════════════════════════════
 
-// fleet-wiki가 fleet-admiral agent tool registry에 self-register하는 tool ID의 SSoT.
-// fleet-harness `registerFleetPiTools`가 host PI tool 등록 시 이 집합을 skip하여
-// `registerFleetWiki`가 등록한 compact wiki UI가 generic core wrapper로 덮어쓰이지 않도록 한다.
+// fleet-wiki가 @dotobokuri/core-mcp-server registry에 노출하는 10종 wiki tool ID 카탈로그 상수.
+// 실제 등록은 fleet-cli runtime.ts가 getWikiToolSpecs() 순회로 직접 수행하며,
+// 이 상수는 테스트(wiki-patch-edit.test.ts)가 도구 ID 명세를 고정하는 용도로만 쓰인다.
 export const FLEET_WIKI_AGENT_TOOL_IDS = [
   "wiki_briefing",
   "wiki_drydock",

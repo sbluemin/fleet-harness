@@ -12,7 +12,7 @@ import type {
   ProviderModelInfo,
   Effort,
 } from './schemas.js';
-import type { CliType } from '../types/config.js';
+import type { CliType } from '../config/CliConfigs.js';
 
 // 빌드 시 인라인, 한 번만 검증 후 동결
 const registry: ModelsRegistry = Object.freeze(ModelsRegistrySchema.parse(modelsData));

@@ -8,6 +8,7 @@ export {
   SUBAGENT_PRESENTATION_ANSI,
   SUBAGENT_PRESENTATION_RGB,
   TASKFORCE_BADGE_COLOR,
+  TASKFORCE_BADGE_RGB,
   getCarrierAnsi,
   getCarrierBgAnsi,
 } from "./carriers.js";

@@ -46,10 +46,6 @@ export function classifyResumeFailure(error: unknown): ResumeFailureKind {
   return "unknown";
 }
 
-export function isDeadSessionError(err: unknown): boolean {
-  return classifyResumeFailure(err) === "dead-session";
-}
-
 function extractErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;

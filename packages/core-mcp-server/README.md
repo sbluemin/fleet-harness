@@ -16,21 +16,31 @@ A leaf workspace package for generic Model Context Protocol (MCP) HTTP server, t
 
 ## Public API
 
-### Server Lifecycle
-- `startMcpServer(): Promise<string>`: Boots the HTTP server on a random port with an opaque path. Returns the full MCP URL.
-- `stopMcpServer(): Promise<void>`: Gracefully shuts down the server, terminates all pending calls, and clears all internal state.
+All injectable services follow the `create*(deps): Interface` factory pattern. There is no module-level singleton state.
 
-### Tool Registry
+### Factories
+- `createMcpServer(deps: CreateMcpServerDeps): McpServer`: Creates an MCP HTTP server instance. `deps` accepts an optional `serverInfo` (name/version for `initialize`) and an optional `toolSnapshotStore`.
+- `createMcpToolRegistry(): McpToolRegistry`: Creates an isolated agent tool registry.
+- `createMcpToolSnapshotStore(): McpToolSnapshotStore`: Creates a session-scoped tool snapshot store backing `tools/list`.
+- `createExecutorSessionManager(deps: ExecutorSessionManagerDeps): ExecutorSessionManager`: Creates a manager that issues/releases per-session executor tokens across one or more `McpRouterRuntime`s.
+
+### Server Lifecycle (`McpServer`)
+- `start(): Promise<string>`: Boots the HTTP server on a random port with an opaque path. Returns the full MCP URL.
+- `stop(): Promise<void>`: Gracefully shuts down the server, terminates all pending calls, and clears all internal state.
+
+### Tool Registry (`McpToolRegistry`)
 - `registerAgentTool(spec: AgentToolSpec): void`: Registers a tool for global doctrine and invocation.
 - `registerExecutorTool(spec: AgentToolSpec, options?: { allowedScopes?: string[] }): void`: Registers a tool and whitelists it for scope executor sessions.
+- `getAllAgentTools(): AgentToolSpec[]`: Returns all registered tools in registration order.
+- `getExecutorMcpToolsForScope(scopeId?, metadataAllowedToolIds?): AgentToolSpec[]`: Resolves the executor whitelist union for a scope.
 - `invoke(name: string, args: unknown, ctx?: Partial<AgentToolCtx>): Promise<McpCallToolResult>`: Directly executes a registered tool.
 
-### Routing Primitives
+### Routing Primitives (`McpServer`)
 - `setOnToolCallArrived(token: string, cb: ToolCallArrivedCallback | null): void`: Hooks into the MCP request stream for a specific session token.
 - `resolveNextToolCall(token: string, toolCallId: string, result: McpCallToolResult): void`: Delivers a tool execution result to a waiting MCP client.
 
 ### Snapshot & Schema
-- `registerToolsForSession(token: string, tools: McpTool[]): void`: Snapshots a set of tools for a specific session's `tools/list` response.
+- `McpToolSnapshotStore.registerToolsForSession(token: string, tools: McpTool[]): void`: Snapshots a set of tools for a specific session's `tools/list` response.
 - `convertToolSchema(schema: unknown): Record<string, unknown>`: Normalizes TypeBox or complex JSON schemas into standard MCP-compatible shapes.
 
 ## Usage Examples
@@ -38,16 +48,25 @@ A leaf workspace package for generic Model Context Protocol (MCP) HTTP server, t
 ### Starting the Server and Registering a Tool
 
 ```typescript
-import { startMcpServer, registerAgentTool } from "@dotobokuri/core-mcp-server";
+import {
+  createMcpServer,
+  createMcpToolRegistry,
+  createMcpToolSnapshotStore,
+} from "@dotobokuri/core-mcp-server";
 
-// 1. Start the server
-const mcpUrl = await startMcpServer();
+// 1. Create service instances via factories
+const registry = createMcpToolRegistry();
+const snapshotStore = createMcpToolSnapshotStore();
+const server = createMcpServer({ toolSnapshotStore: snapshotStore });
+
+// 2. Start the server
+const mcpUrl = await server.start();
 console.log(`MCP Server running at: ${mcpUrl}`);
 
-// 2. Register a tool
-registerAgentTool({
+// 3. Register a tool
+registry.registerAgentTool({
   id: "my_tool",
-  tag: "my-tool",
+  tag: "my_tool",
   title: "My Custom Tool",
   description: "Does something useful",
   promptSnippet: "Use my_tool to achieve X",
@@ -69,16 +88,17 @@ registerAgentTool({
 ### Resolving an MCP Tool Call Manually
 
 ```typescript
-import { setOnToolCallArrived, resolveNextToolCall } from "@dotobokuri/core-mcp-server";
+import { createMcpServer } from "@dotobokuri/core-mcp-server";
 
+const server = createMcpServer({});
 const sessionToken = "my-secret-token";
 
-setOnToolCallArrived(sessionToken, (toolName, args) => {
+server.setOnToolCallArrived(sessionToken, (toolName, args) => {
   const toolCallId = "unique-call-id";
-  
+
   // Logic to trigger execution...
   // When done, resolve:
-  resolveNextToolCall(sessionToken, toolCallId, {
+  server.resolveNextToolCall(sessionToken, toolCallId, {
     content: [{ type: "text", text: "Success!" }],
     isError: false
   });

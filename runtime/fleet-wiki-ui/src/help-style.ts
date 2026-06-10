@@ -1,3 +1,8 @@
+// SSoT: runtime/fleet-cli/src/styles (ansi/help-tokens/palette/brand) 및
+// runtime/fleet-cli/src/tui/primitives/cell-width.ts의 제어 시퀀스 파서 — keep in sync.
+// 독트린상 이 파일은 fleet-cli/packages/*를 import할 수 없는 CLI-help 전용 self-hosted
+// 사본이므로, fleet-cli styles 쪽 브랜드/SGR 변경 시 이 파일에도 수동 동기화가 필요하다.
+
 export interface ResolveColorEnabledOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly isTTY?: boolean;

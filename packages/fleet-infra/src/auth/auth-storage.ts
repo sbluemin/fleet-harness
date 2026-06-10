@@ -1,13 +1,14 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 
+import { getFleetDataDir } from "../data-dir/paths.js";
 import { writeAtomicSync } from "../fs-store/atomic-write.js";
 import { ensureSafeDirectory, NOFOLLOW_FLAG, SECURE_FILE_MODE } from "../fs-store/secure-fs.js";
 import { withDirectoryLock } from "../fs-store/directory-lock.js";
+import { readAuthStoreFile } from "./auth-store-file.js";
 import type { AuthService, AuthStorageData, CreateAuthServiceDeps } from "./types.js";
 
-export const DEFAULT_AUTH_PATH = path.join(os.homedir(), ".fleet", "auth.json");
+export const DEFAULT_AUTH_PATH = path.join(getFleetDataDir(), "auth.json");
 
 const AUTH_LOCK_OWNER_FILE_NAME = "owner.json";
 const AUTH_LOCK_TIMEOUT_MS = 5_000;
@@ -27,7 +28,7 @@ export function createAuthService(deps: CreateAuthServiceDeps = {}): AuthService
       let deleted = false;
       withAuthLock(authPath, lockDir, () => {
         if (!fs.existsSync(authPath)) return;
-        const data = readAuthDataFd(authPath);
+        const data = readAuthStoreFile(authPath);
         if (!Object.prototype.hasOwnProperty.call(data, providerId)) return;
         delete data[providerId];
         writeAuthData(authPath, data);
@@ -64,7 +65,7 @@ export function createAuthService(deps: CreateAuthServiceDeps = {}): AuthService
         return [];
       }
       try {
-        return Object.keys(readAuthDataFd(authPath)).sort();
+        return Object.keys(readAuthStoreFile(authPath)).sort();
       } catch {
         return [];
       }
@@ -75,7 +76,7 @@ export function createAuthService(deps: CreateAuthServiceDeps = {}): AuthService
       ensureSafeDirectory(dir);
       withAuthLock(authPath, lockDir, () => {
         // [HIGH #2] 락 내부 read도 fd 기반으로 통일
-        const data: AuthStorageData = fs.existsSync(authPath) ? readAuthDataFd(authPath) : {};
+        const data: AuthStorageData = fs.existsSync(authPath) ? readAuthStoreFile(authPath) : {};
         data[providerId] = {
           ...(data[providerId] ?? {}),
           key,
@@ -102,25 +103,4 @@ function writeAuthData(authPath: string, data: AuthStorageData): void {
     mode: SECURE_FILE_MODE,
     fsync: true,
   });
-}
-
-/**
- * fd 기반 안전 읽기: O_RDONLY|O_NOFOLLOW + fstatSync isFile 검증.
- * 심볼릭링크·비파일이면 빈 객체 반환.
- */
-function readAuthDataFd(authPath: string): AuthStorageData {
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(authPath, fs.constants.O_RDONLY | NOFOLLOW_FLAG);
-    if (!fs.fstatSync(fd).isFile()) {
-      return {};
-    }
-    return JSON.parse(fs.readFileSync(fd, "utf-8")) as AuthStorageData;
-  } catch {
-    return {};
-  } finally {
-    if (fd !== undefined) {
-      try { fs.closeSync(fd); } catch { /* ignore */ }
-    }
-  }
 }

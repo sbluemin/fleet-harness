@@ -32,7 +32,7 @@ export function createMouseProtocol(): MouseProtocol {
   };
 }
 
-export function detectMouseProtocolRequest(chunk: string, state: MutableMouseProtocolState): void {
+function detectMouseProtocolRequest(chunk: string, state: MutableMouseProtocolState): void {
   for (const match of chunk.matchAll(PRIVATE_MODE_PATTERN)) {
     const action = match[2];
     const modes = parseModes(match[1] ?? "");

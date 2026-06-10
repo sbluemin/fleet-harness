@@ -1,13 +1,17 @@
-import type { CarrierJobLaunchResponse, CarrierJobRecord, CarrierJobSummary } from "./types.js";
-import { buildCarrierJobId } from "./types.js";
+import type { CarrierJobFinalStatus, CarrierJobKind, CarrierJobLaunchResponse, CarrierJobRecord, CarrierJobSummary } from "./types.js";
+import { buildCarrierJobId, formatLaunchResponseText } from "./types.js";
 import { createJobArchive, finalizeJobArchive } from "./archive.js";
-import { formatLaunchResponseText, putJobSummary } from "./dispatch.js";
+import { putJobSummary } from "./summary-cache.js";
 
 interface GuardState {
   activeJobs: Map<string, CarrierJobRecord>;
   activeCarrierJobs: Map<string, Set<string>>;
   maxDetachedJobs: number;
   activeJobCountCallbacks: Array<(count: number) => void>;
+}
+
+interface CancelState {
+  controllers: Map<string, Set<AbortController>>;
 }
 
 export interface JobPermitAccepted {
@@ -22,6 +26,51 @@ export interface JobPermitRejected {
 
 export type JobPermit = JobPermitAccepted | JobPermitRejected;
 
+export interface JobCancelRegistry {
+  registerJobAbortController(jobId: string, controller: AbortController): void;
+  unregisterJobAbortControllers(jobId: string): void;
+  cancelJob(jobId: string): CancelResult;
+  hasJobCancelControllers(jobId: string): boolean;
+  resetJobCancelRegistryForTest(): void;
+}
+
+export interface CancelResult {
+  cancelled: boolean;
+  status: "cancelled" | "not_found";
+}
+
+export interface DetachedJobAccepted {
+  accepted: true;
+  jobId: string;
+  permit: JobPermitAccepted;
+  signal: AbortSignal;
+}
+
+export interface DetachedJobRejected {
+  accepted: false;
+  response: ReturnType<typeof launchResponseResult>;
+}
+
+export type DetachedJobLaunch = DetachedJobAccepted | DetachedJobRejected;
+
+export interface StartDetachedJobOptions {
+  jobKind: CarrierJobKind;
+  toolName: `carrier_${string}`;
+  toolCallId: string | undefined;
+  startedAt: number;
+  carrierIds: string[];
+  signal: AbortSignal | undefined;
+}
+
+export interface FinalizeDetachedJobOptions {
+  jobId: string;
+  status: CarrierJobFinalStatus;
+  error: string | undefined;
+  finishedAt: number;
+  summary: CarrierJobSummary;
+  permit: JobPermitAccepted;
+}
+
 const DEFAULT_MAX_DETACHED_JOBS = 5;
 const guardState: GuardState = {
   activeJobs: new Map(),
@@ -29,6 +78,8 @@ const guardState: GuardState = {
   maxDetachedJobs: DEFAULT_MAX_DETACHED_JOBS,
   activeJobCountCallbacks: [],
 };
+
+const defaultJobCancelRegistry = createJobCancelRegistry();
 
 export function acquireJobPermit(record: CarrierJobRecord): JobPermit {
   const state = getGuardState();
@@ -102,36 +153,6 @@ export function resetJobConcurrencyForTest(): void {
   state.maxDetachedJobs = DEFAULT_MAX_DETACHED_JOBS;
   state.activeJobCountCallbacks = [];
 }
-
-function notifyActiveJobCountChange(state: GuardState): void {
-  const count = state.activeJobs.size;
-  for (const callback of state.activeJobCountCallbacks) {
-    try { callback(count); } catch { /* ignore listener failures */ }
-  }
-}
-
-function getGuardState(): GuardState {
-  return guardState;
-}
-
-interface CancelState {
-  controllers: Map<string, Set<AbortController>>;
-}
-
-export interface JobCancelRegistry {
-  registerJobAbortController(jobId: string, controller: AbortController): void;
-  unregisterJobAbortControllers(jobId: string): void;
-  cancelJob(jobId: string): CancelResult;
-  hasJobCancelControllers(jobId: string): boolean;
-  resetJobCancelRegistryForTest(): void;
-}
-
-export interface CancelResult {
-  cancelled: boolean;
-  status: "cancelled" | "not_found";
-}
-
-const defaultJobCancelRegistry = createJobCancelRegistry();
 
 export function createJobCancelRegistry(): JobCancelRegistry {
   const state: CancelState = { controllers: new Map() };
@@ -225,42 +246,6 @@ export function combineAbortSignals(signals: readonly AbortSignal[]): AbortSigna
   return controller.signal;
 }
 
-export type DetachedJobKind = "carrier" | "sortie" | "taskforce";
-
-export type DetachedJobFinalStatus = "done" | "error" | "aborted";
-
-export interface DetachedJobAccepted {
-  accepted: true;
-  jobId: string;
-  permit: JobPermitAccepted;
-  signal: AbortSignal;
-}
-
-export interface DetachedJobRejected {
-  accepted: false;
-  response: ReturnType<typeof launchResponseResult>;
-}
-
-export type DetachedJobLaunch = DetachedJobAccepted | DetachedJobRejected;
-
-export interface StartDetachedJobOptions {
-  jobKind: DetachedJobKind;
-  toolName: `carrier_${string}`;
-  toolCallId: string | undefined;
-  startedAt: number;
-  carrierIds: string[];
-  signal: AbortSignal | undefined;
-}
-
-export interface FinalizeDetachedJobOptions {
-  jobId: string;
-  status: DetachedJobFinalStatus;
-  error: string | undefined;
-  finishedAt: number;
-  summary: CarrierJobSummary;
-  permit: JobPermitAccepted;
-}
-
 export function launchResponseResult(response: CarrierJobLaunchResponse): { content: { type: "text"; text: string }[]; isError: boolean; details: CarrierJobLaunchResponse } {
   return {
     content: [{ type: "text", text: formatLaunchResponseText(response, response.accepted) }],
@@ -297,4 +282,15 @@ export function finalizeDetachedJob(options: FinalizeDetachedJobOptions): void {
   finalizeJobArchive(options.jobId, options.status, options.finishedAt);
   unregisterJobAbortControllers(options.jobId);
   options.permit.release({ status: options.status, error: options.error, finishedAt: options.finishedAt });
+}
+
+function notifyActiveJobCountChange(state: GuardState): void {
+  const count = state.activeJobs.size;
+  for (const callback of state.activeJobCountCallbacks) {
+    try { callback(count); } catch { /* ignore listener failures */ }
+  }
+}
+
+function getGuardState(): GuardState {
+  return guardState;
 }

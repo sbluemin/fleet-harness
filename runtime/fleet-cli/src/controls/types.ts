@@ -158,7 +158,6 @@ export interface TuiPtyManager {
 }
 
 export type Component = PrimitiveComponent & {
-  readonly wantsKeyRelease?: boolean;
   desiredHeight?(maxRows: number): number | undefined;
   dispose?(): void;
   handleMouse?(event: RoutedMouseInput): boolean | void;

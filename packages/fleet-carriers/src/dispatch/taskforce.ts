@@ -1,5 +1,5 @@
 /**
- * taskforce/tool-spec.ts — Task Force 내부 실행 지원
+ * dispatch/taskforce.ts — Task Force 내부 실행 지원
  *
  * 선택된 Carrier의 persona를 유지한 채로 설정된 CLI 백엔드들에 동시 실행하여 교차검증합니다.
  */
@@ -31,8 +31,8 @@ import {
   toTrackFinalStatus,
   type CarrierRegistry,
 } from "./framework.js";
-import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./tool-spec.js";
-import type { CarrierToolSpecDeps } from "./tool-spec.js";
+import { buildCarrierSystemPrompt, validateRequiredRequestBlocks } from "./prompt.js";
+import type { CarrierToolSpecDeps } from "./prompt.js";
 import {
   getConfiguredTaskForceBackends,
   getTaskForceModelConfig,
@@ -221,11 +221,7 @@ function assertRegisteredCarrier(registry: CarrierRegistry, carrierId: string): 
 
 function assertTaskForceFormable(carrierId: string): TaskForceCliType[] {
   const activeBackends = getConfiguredTaskForceBackends(carrierId);
-  try {
-    return [...assertTaskForceBackendCount(carrierId, activeBackends)] as TaskForceCliType[];
-  } catch (error) {
-    throw error;
-  }
+  return [...assertTaskForceBackendCount(carrierId, activeBackends)] as TaskForceCliType[];
 }
 
 function getRequiredTaskForceModelConfig(
@@ -471,5 +467,3 @@ export function buildTaskForceRunId(carrierId: string, cliType: TaskForceCliType
   const encodedCarrierId = Buffer.from(carrierId, "utf-8").toString("base64url");
   return `taskforce:${cliType}:${encodedCarrierId}`;
 }
-
-export { buildJobSummary as buildTaskForceJobSummary, computeFinalStatus as computeTaskForceFinalStatus };

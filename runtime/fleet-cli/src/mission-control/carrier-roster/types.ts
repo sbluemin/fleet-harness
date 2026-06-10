@@ -1,53 +1,34 @@
 import type {
   CarrierCategory,
+  CarrierCliType,
   FleetStoreSnapshot,
+  ModelEffort,
   TaskForceCliType,
 } from "@dotobokuri/fleet-carriers";
 
-export type CarrierCliType = TaskForceCliType;
-export type { FleetStoreSnapshot };
-
-export interface ModelSelection {
-  effort?: string;
-  model: string;
-}
-
-export interface ModelEffort {
-  readonly default?: string;
-  readonly levels?: readonly string[];
-  readonly supported: boolean;
-}
+// 구조 동일 도메인 타입은 fleet-carriers(SSoT) 정의를 재export한다.
+export type {
+  CarrierCliType,
+  CliTypeChangeResult,
+  CliTypeChangeSettledResult,
+  FleetStoreSnapshot,
+  ModelEffort,
+  ModelSelection,
+  ResolvedCliSelection,
+} from "@dotobokuri/fleet-carriers";
 
 export interface ProviderModelInfo {
   readonly modelId: string;
   readonly name: string;
 }
 
+// host 확장 필드(effort/name)가 있어 fleet-carriers CliModelInfo와 분리 유지한다.
 export interface CliModelInfo {
   readonly [legacyField: string]: unknown;
   readonly defaultModel: string;
   readonly effort: ModelEffort;
   readonly models: ProviderModelInfo[];
   readonly name: string;
-}
-
-export interface ResolvedCliSelection {
-  readonly effort: string | null;
-  readonly isDefault: boolean;
-  readonly model: string;
-}
-
-export interface CliTypeChangeResult {
-  readonly carrierId: string;
-  readonly newCliType: CarrierCliType;
-  readonly selection: ResolvedCliSelection;
-}
-
-export interface CliTypeChangeSettledResult {
-  readonly carrierId: string;
-  readonly error?: string;
-  readonly result?: CliTypeChangeResult;
-  readonly status: "fulfilled" | "rejected";
 }
 
 export interface CarrierStatusEntry {

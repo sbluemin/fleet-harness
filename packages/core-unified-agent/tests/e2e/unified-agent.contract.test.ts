@@ -11,7 +11,8 @@ import {
   UnifiedAgent,
   type IUnifiedAgentClient,
 } from '../../src/index.js';
-import type { CliType, ProtocolType } from '../../src/types/config.js';
+import type { CliType } from '../../src/config/CliConfigs.js';
+import type { ProtocolType } from '../../src/types/config.js';
 import {
   isCliInstalled,
   SIMPLE_PROMPT,

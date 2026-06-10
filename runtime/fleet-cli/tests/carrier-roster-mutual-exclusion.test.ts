@@ -18,7 +18,6 @@ import {
 } from "@dotobokuri/fleet-carriers";
 import { getCliModels } from "@dotobokuri/core-agent";
 
-import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
 import { CarrierStatusOverlay } from "../src/mission-control/carrier-roster/panel.js";
 import { getCarrierStatusFocusLine, renderCarrierStatusOverlay } from "../src/mission-control/carrier-roster/renderer.js";
 import { RosterTaskForcePanelSurface } from "../src/mission-control/carrier-roster/taskforce-panel.js";
@@ -27,6 +26,7 @@ import {
   PROVIDER_BG_ANSI_COLORS,
   PROVIDER_ANSI_COLORS,
   SUBAGENT_PRESENTATION_ANSI,
+  TASKFORCE_BADGE_COLOR,
 } from "../src/styles/carriers.js";
 import { visibleWidth, type FleetPtyTheme } from "../src/controls/index.js";
 import type { CarrierStatusRenderDeps } from "../src/mission-control/carrier-roster/renderer.js";

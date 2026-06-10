@@ -16,7 +16,7 @@ import {
 } from './helpers.js';
 import type { IUnifiedAgentClient } from '../../src/index.js';
 import type { CliJsonResult } from './helpers.js';
-import type { CliType } from '../../src/types/config.js';
+import type { CliType } from '../../src/config/CliConfigs.js';
 
 const CLI = 'opencode';
 const installed = isCliInstalled(CLI);

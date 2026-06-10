@@ -8,31 +8,6 @@ import { SECURE_FILE_MODE } from "./secure-fs.js";
 const DEFAULT_MAX_ATTEMPTS = 10;
 const IGNORED_FSYNC_ERROR_CODES = new Set(["EPERM", "EINVAL", "ENOSYS"]);
 
-function isIgnoredFsyncError(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException).code;
-  return typeof code === "string" && IGNORED_FSYNC_ERROR_CODES.has(code);
-}
-
-function fsyncSyncBestEffort(fd: number): void {
-  try {
-    fs.fsyncSync(fd);
-  } catch (error) {
-    if (!isIgnoredFsyncError(error)) {
-      throw error;
-    }
-  }
-}
-
-async function fsyncAsyncBestEffort(fd: fs.promises.FileHandle): Promise<void> {
-  try {
-    await fd.sync();
-  } catch (error) {
-    if (!isIgnoredFsyncError(error)) {
-      throw error;
-    }
-  }
-}
-
 /**
  * temp 파일 경로 생성기
  */
@@ -88,8 +63,10 @@ export function writeAtomicSync(
 }
 
 /**
- * async 원자쓰기: temp+rename, 선택 fsync.
- * wiki `writeAtomic` 알고리즘(동기 표면 없는 async 경로용).
+ * async 원자쓰기: temp+rename, 선택 fsync (동기 표면 없는 async 경로용).
+ * fleet-wiki는 계층 그래프상(fleet-wiki -> core-mcp-server) fleet-infra에 의존할 수 없어
+ * 자체 writeAtomic을 유지한다. 이 함수는 현재 1차 소비자가 없으며,
+ * fs-store 비동기 쓰기의 검증 표면(패키지 테스트)으로 유지된다.
  */
 export async function writeAtomicAsync(
   filePath: string,
@@ -160,6 +137,33 @@ export function cleanupTempFiles(
       }
     } catch {
       // 이미 삭제됐거나 권한 없음은 무시한다.
+    }
+  }
+}
+
+// --- 내부 helper (fsync best-effort) ---
+
+function isIgnoredFsyncError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return typeof code === "string" && IGNORED_FSYNC_ERROR_CODES.has(code);
+}
+
+function fsyncSyncBestEffort(fd: number): void {
+  try {
+    fs.fsyncSync(fd);
+  } catch (error) {
+    if (!isIgnoredFsyncError(error)) {
+      throw error;
+    }
+  }
+}
+
+async function fsyncAsyncBestEffort(fd: fs.promises.FileHandle): Promise<void> {
+  try {
+    await fd.sync();
+  } catch (error) {
+    if (!isIgnoredFsyncError(error)) {
+      throw error;
     }
   }
 }

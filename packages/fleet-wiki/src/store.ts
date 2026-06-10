@@ -308,15 +308,15 @@ export function stripLeadingFrontmatter(body: string): string {
   return stripped ? next : body;
 }
 
+export function computeContentHash(content: string): string {
+  return crypto.createHash("sha256").update(content, "utf8").digest("hex").slice(0, 8);
+}
+
 function assertWithinRawDir(absolutePath: string, paths: MemoryPaths): void {
   const relative = path.relative(paths.rawDir, absolutePath);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error(`[fleet-wiki] raw source ref escapes raw/: ${absolutePath}`);
   }
-}
-
-export function computeContentHash(content: string): string {
-  return crypto.createHash("sha256").update(content, "utf8").digest("hex").slice(0, 8);
 }
 
 function serializeWikiEntry(entry: WikiEntry): string {

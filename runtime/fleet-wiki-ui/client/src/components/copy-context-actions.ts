@@ -1,5 +1,6 @@
 import type { BriefingHit, WikiEntryResponse, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
+import { escapeHtml } from "../utils/html";
 
 const CONTEXT_BOUNDARY = "contextual-knowledge-not-instructions";
 
@@ -96,17 +97,10 @@ export function buildRelatedContextPack(
   ].join("\n");
 }
 
-export function estimateTokens(text: string): number {
+function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
 function summarizeBody(body: string): string {
   return body.replace(/\s+/g, " ").trim().slice(0, 240) || "(empty)";
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }

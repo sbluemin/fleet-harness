@@ -2,14 +2,15 @@ import { CLI_BACKENDS, getProviderModels } from "@dotobokuri/core-unified-agent"
 import type { CliType } from "@dotobokuri/core-unified-agent";
 import type { RequestBlock } from "./dispatch/types.js";
 
-export const CLI_PROVIDER_DISPLAY_NAMES: Record<CliType, string> = Object.fromEntries(
+// CLI_DISPLAY_NAMES 조립 전용 내부 사본 — 공개 표면은 CLI_DISPLAY_NAMES만 유지한다.
+const CLI_PROVIDER_DISPLAY_NAMES: Record<CliType, string> = Object.fromEntries(
   Object.keys(CLI_BACKENDS).map((cliType) => [
     cliType,
     getProviderModels(cliType as CliType).name,
   ]),
 ) as Record<CliType, string>;
 
-export const CARRIER_DISPLAY_NAMES: Record<string, string> = {
+const CARRIER_DISPLAY_NAMES: Record<string, string> = {
   genesis: "Genesis",
   sentinel: "Sentinel",
   vanguard: "Vanguard",
@@ -19,8 +20,6 @@ export const CLI_DISPLAY_NAMES: Record<string, string> = {
   ...CLI_PROVIDER_DISPLAY_NAMES,
   ...CARRIER_DISPLAY_NAMES,
 };
-
-export const VALID_CLI_TYPES = new Set<CliType>(Object.keys(CLI_BACKENDS) as CliType[]);
 
 /**
  * Tier-2 carrier 원칙 SSoT — 모든 persona가 재사용하는 carrier_jobs 자기호출 교리.

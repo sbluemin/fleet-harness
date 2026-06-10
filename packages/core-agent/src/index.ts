@@ -1,7 +1,5 @@
 export type {
-  AgentToolCtx,
   AgentToolSpec,
-  McpCallToolResult,
   TrackStatus,
 } from "./types.js";
 export type {
@@ -15,7 +13,6 @@ export type { AuthEnvResolver, ExecuteOptions, ExecResult } from "./executor.js"
 export type { ResumeFailureKind } from "./internal/session-errors.js";
 export type {
   SelectableThinkingLevel,
-  CliCapability,
 } from "./models.js";
 export {
   createExecutorMcpRuntimeProviderRuntime,
@@ -24,12 +21,9 @@ export {
   executorPortRuntime,
 } from "./executor-port.js";
 export {
-  buildProviderId,
   getCliModels,
   getCliEffortLevels,
   SELECTABLE_THINKING_LEVELS,
-  DEFAULT_BRIDGE_SCOPE,
-  CLI_CAPABILITIES,
 } from "./models.js";
 export {
   resolveBuiltinExternalMcpServers,
@@ -46,5 +40,4 @@ export {
 } from "./executor.js";
 export {
   classifyResumeFailure,
-  isDeadSessionError,
 } from "./internal/session-errors.js";

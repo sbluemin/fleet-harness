@@ -13,7 +13,10 @@ export interface CarrierJobsAvailability {
   full_invalidated: boolean;
 }
 
-export type CarrierJobStatus = "active" | "done" | "error" | "aborted";
+/** 종료된 job의 최종 상태 3값 — kind/status 사본의 단일 소유자 */
+export type CarrierJobFinalStatus = "done" | "error" | "aborted";
+
+export type CarrierJobStatus = "active" | CarrierJobFinalStatus;
 
 export type ArchiveBlockKind = "text" | "thought" | "tool_call";
 
@@ -72,7 +75,7 @@ export interface ParsedCarrierJobId {
 }
 
 export interface FinalStatusInput {
-  readonly status: "done" | "error" | "aborted";
+  readonly status: CarrierJobFinalStatus;
 }
 
 export interface JobSummaryOptions {
@@ -92,7 +95,19 @@ export const CARRIER_JOBS_FULL_RESULT_BYTE_CAP = 20_000;
 export const CARRIER_JOBS_PER_SUBOP_BYTE_CAP = 20_000;
 export const CARRIER_JOBS_GLOBAL_BYTE_CAP = 60_000;
 
+export const JOB_LAUNCH_NOTICE = [
+  "Job accepted from carrier_dispatch; result arrives later via carrier-completion follow-up push tagged [carrier:result].",
+  "Task Force is an execution mode of carrier_dispatch when the selected carrier is configured for it.",
+  "DO NOT poll carrier_jobs.",
+].join(" ");
+
 const JOB_PREFIXES = new Set<CarrierJobKind>(["carrier", "sortie", "taskforce"]);
+
+export function formatLaunchResponseText(response: unknown, accepted: boolean): string {
+  const payload = JSON.stringify(response);
+  if (!accepted) return payload;
+  return JOB_LAUNCH_NOTICE + "\n" + payload;
+}
 
 export function computeFinalStatus(results: readonly FinalStatusInput[]): CarrierJobStatus {
   if (results.some((result) => result.status === "aborted")) return "aborted";

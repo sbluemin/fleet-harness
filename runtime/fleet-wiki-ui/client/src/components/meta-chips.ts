@@ -1,6 +1,13 @@
 import type { WikiEntryFrontmatter, WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
 import { languageLocale } from "../i18n/store";
+import { escapeAttribute, escapeHtml } from "../utils/html";
+
+export interface EntryStatusBadge {
+  label: string;
+  tone: "neutral" | "stale" | "deprecated";
+  title: string;
+}
 
 export function renderMetaChips(frontmatter: WikiEntryFrontmatter | WikiIndexEntry): string {
   const tags = frontmatter.tags.map((tag) => `<span class="chip chip-tag">${escapeHtml(tag)}</span>`).join("");
@@ -34,13 +41,7 @@ function renderStatusBadge(frontmatter: WikiEntryFrontmatter | WikiIndexEntry): 
   return `<span class="chip ${badge.tone === "deprecated" ? "chip-coral" : badge.tone === "stale" ? "chip-stale" : ""}" title="${escapeAttribute(badge.title)}">${escapeHtml(badge.label)}</span>`;
 }
 
-export interface EntryStatusBadge {
-  label: string;
-  tone: "neutral" | "stale" | "deprecated";
-  title: string;
-}
-
-export function getEntryStatusBadge(frontmatter: WikiEntryFrontmatter | WikiIndexEntry, now: Date = new Date()): EntryStatusBadge | null {
+function getEntryStatusBadge(frontmatter: WikiEntryFrontmatter | WikiIndexEntry, now: Date = new Date()): EntryStatusBadge | null {
   const status = frontmatter.status;
   const stale = typeof frontmatter.revalidateAfter === "string"
     && !Number.isNaN(Date.parse(frontmatter.revalidateAfter))
@@ -67,16 +68,4 @@ export function getEntryStatusBadge(frontmatter: WikiEntryFrontmatter | WikiInde
     };
   }
   return null;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }

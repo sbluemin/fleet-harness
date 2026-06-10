@@ -5,7 +5,6 @@ import {
   createMcpToolSnapshotStore,
   type McpToolSnapshotStore,
 } from "./tool-snapshot.js";
-import type { McpToolRegistry } from "./tool-registry.js";
 import type { McpCallToolResult } from "./types.js";
 
 interface JsonRpcRequest {
@@ -55,7 +54,6 @@ export interface McpServer {
 }
 
 export interface CreateMcpServerDeps {
-  registry: McpToolRegistry;
   serverInfo?: McpServerInfo;
   toolSnapshotStore?: McpToolSnapshotStore;
 }
@@ -81,7 +79,6 @@ const MCP_KEEPALIVE_INTERVAL_MS = 60_000;
 const MCP_SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 
 export function createMcpServer(deps: CreateMcpServerDeps): McpServer {
-  void deps.registry;
   const snapshotStore = deps.toolSnapshotStore ?? createMcpToolSnapshotStore();
   const serverInfo = {
     name: deps.serverInfo?.name ?? "core-mcp-tools",

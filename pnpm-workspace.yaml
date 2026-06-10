@@ -9,8 +9,5 @@ packages:
   - "runtime/fleet-wiki-ui"
   - "runtime/fleet-cli"
 allowBuilds:
-  '@google/genai': true
   esbuild: true
-  koffi: true
   node-pty: true
-  protobufjs: true

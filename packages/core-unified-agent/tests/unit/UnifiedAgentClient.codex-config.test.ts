@@ -49,6 +49,18 @@ vi.mock('../../src/detector/CliDetector.js', () => ({
 const { UnifiedCodexAgentClient } = await import('../../src/client/UnifiedCodexAgentClient.js');
 const { CodexAppServerConnection } = await import('../../src/connection/CodexAppServerConnection.js');
 
+type CodexClient = InstanceType<typeof UnifiedCodexAgentClient>;
+
+// 공개 connect()는 CODEX_USE_ACP 기본값(true)으로 항상 ACP 경로를 타므로,
+// 레거시 app-server config 스테이징 검증은 내부 connectAppServer 경로를 직접 구동한다.
+// (소스 동작은 변경하지 않는 테스트 전용 우회 — element access로 private 메서드 호출)
+async function connectAppServer(
+  client: CodexClient,
+  options: Parameters<CodexClient['connect']>[0],
+): Promise<void> {
+  await client['connectAppServer'](options);
+}
+
 describe('UnifiedCodexAgentClient config staging', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,7 +76,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('codex 연결 시 systemPrompt를 developerInstructions로 전달한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       systemPrompt: '개발자 지침',
@@ -94,7 +106,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('codex MCP 서버 설정은 app-server 시작 -c 인자로 전달한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       mcpServers: [{
@@ -132,7 +144,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('configOverrides의 mcp_servers 설정도 MCP ready 대기 대상으로 등록한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       configOverrides: [
@@ -149,7 +161,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('codex session resume은 thread/resume에 정책과 systemPrompt를 재전달한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       sessionId: 'codex-thread-existing',
@@ -174,13 +186,14 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
   it('setModel/setConfigOption 후 다음 sendMessage에서 pending override를 consume한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
     });
 
     await client.setModel('gpt-5.4-mini');
-    await client.setConfigOption('reasoning_effort', 'high');
+    // app-server 경로의 turn-level 키는 'effort' (ACP 경로에서만 'reasoning_effort'로 매핑)
+    await client.setConfigOption('effort', 'high');
     await client.sendMessage('안녕');
 
     expect(mockSetPendingModel).toHaveBeenCalledWith('gpt-5.4-mini');
@@ -196,7 +209,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
   it('setMode는 Codex pending mode로 저장되고 즉시 ACP 호출하지 않는다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
     });
@@ -210,7 +223,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
   it('resetSession은 초기 mode와 systemPrompt를 thread/start payload로 보존한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       yoloMode: false,
@@ -231,7 +244,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
 
   it('setMode와 non-turn setConfigOption은 다음 resetSession payload에 반영한다', async () => {
     const client = new UnifiedCodexAgentClient();
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       systemPrompt: '리셋 지침',
@@ -263,7 +276,7 @@ describe('UnifiedCodexAgentClient config staging', () => {
   it('sessionId resume 경로도 fresh thread/start와 동등한 정책과 developerInstructions를 전달한다', async () => {
     const client = new UnifiedCodexAgentClient();
 
-    await client.connect({
+    await connectAppServer(client, {
       cwd: '/workspace',
       cli: 'codex',
       sessionId: 'thread-existing',

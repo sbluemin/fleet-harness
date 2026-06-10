@@ -3,6 +3,7 @@ import type { WikiIndexEntry } from "../api";
 import type { WorkspaceMetadata } from "../api";
 import { t } from "../i18n/t";
 import { getLanguage, languageLocale } from "../i18n/store";
+import { escapeAttribute, escapeHtml } from "../utils/html";
 import { renderLangToggle } from "./lang-toggle";
 
 export type NavMode = "tags" | "entries";
@@ -192,8 +193,12 @@ export function setNavMode(mode: NavMode): void {
   navMode = mode;
 }
 
-export function getNavMode(): NavMode {
-  return navMode;
+// 워크스페이스 스위처의 document 전역 클릭/키보드 리스너 등록.
+// 부트스트랩 책임은 main.ts에 있다 — 모듈 평가 부수효과로 호출하지 말 것.
+export function initNavTree(): void {
+  if (typeof document === "undefined") return;
+  document.addEventListener("click", handleWorkspaceSwitcherClick);
+  document.addEventListener("keydown", handleWorkspaceSwitcherKeydown);
 }
 
 function countTags(entries: WikiIndexEntry[]): number {
@@ -271,17 +276,6 @@ function renderEntry(entry: WikiIndexEntry, currentId: string | null): string {
   `;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
-}
-
 function renderWorkspaceOption(workspace: WorkspaceMetadata, isActive: boolean, needsSuffix: boolean): string {
   const suffix = needsSuffix
     ? `<span class="workspace-option-suffix" aria-hidden="true">· ${escapeHtml(workspace.id.slice(0, 6))}</span>`
@@ -324,12 +318,6 @@ function findDuplicateBasenames(workspaces: WorkspaceMetadata[]): Set<string> {
 
 function workspaceOptionId(workspaceId: string): string {
   return `${WORKSPACE_OPTION_PREFIX}${workspaceId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
-}
-
-function installWorkspaceSwitcherHandlers(): void {
-  if (typeof document === "undefined") return;
-  document.addEventListener("click", handleWorkspaceSwitcherClick);
-  document.addEventListener("keydown", handleWorkspaceSwitcherKeydown);
 }
 
 function handleWorkspaceSwitcherClick(event: MouseEvent): void {
@@ -453,5 +441,3 @@ function stripWorkspacePath(pathname: string): string {
   const match = pathname.match(/^\/w\/[^/]+(\/.*)?$/);
   return match ? match[1] ?? "/" : pathname;
 }
-
-installWorkspaceSwitcherHandlers();

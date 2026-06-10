@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { createConflict } from "../conflicts.js";
+import { mergeRawSourceRefs, normalizeComparableText } from "../internal-utils.js";
 import { appendLog } from "../log.js";
 import { enqueuePatch } from "../patch.js";
 import { resolveMemoryPaths } from "../paths.js";
@@ -509,19 +510,6 @@ function buildPatch(op: PatchOp, entry: WikiEntry, proposer: string, created: st
   };
 }
 
-function mergeRawSourceRefs(
-  refs: WikiEntry["rawSourceRefs"],
-  currentRef: string | undefined,
-  nextRef: NonNullable<WikiEntry["rawSourceRefs"]>[number],
-): WikiEntry["rawSourceRefs"] {
-  const existing = refs ? [...refs] : [];
-  if (currentRef && !existing.some((item) => item.ref === currentRef)) {
-    existing.push({ ref: currentRef });
-  }
-  if (existing.some((item) => item.ref === nextRef.ref)) return existing;
-  return [...existing, nextRef];
-}
-
 function resolveConflictOrThrow(
   duplicatePolicy: DuplicatePolicy,
   error: Error,
@@ -559,10 +547,6 @@ function normalizeTemplateInput(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
-}
-
-function normalizeComparableText(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function createFriendlyError(message: string): Error {

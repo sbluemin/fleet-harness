@@ -4,9 +4,6 @@ import { join } from "node:path";
 import { DEFAULT_CARRIER_COUNT } from "@dotobokuri/fleet-carriers";
 import { resolveMemoryPaths } from "@dotobokuri/fleet-wiki";
 
-export type { FleetCliChannel, FleetCliRelease } from "../release.js";
-export { readFleetCliRelease } from "../release.js";
-
 export interface MissionControlCounts {
   readonly carriers: number;
   readonly queuedPatches: number;

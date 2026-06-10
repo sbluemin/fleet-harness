@@ -1,5 +1,4 @@
 export interface Component {
-  readonly wantsKeyRelease?: boolean;
   getCursorAnchor?(width: number): CursorAnchor | null;
   handleInput?(data: string): void;
   invalidate(): void;

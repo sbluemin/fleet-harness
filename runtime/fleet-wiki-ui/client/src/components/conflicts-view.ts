@@ -2,6 +2,7 @@ import { renderMarkdown } from "../markdown/renderer";
 import { conflictDetailPath } from "../router";
 import type { ConflictDetailResponse, ConflictListItem } from "../api";
 import { t } from "../i18n/t";
+import { escapeHtml } from "../utils/html";
 
 export function renderConflictsList(conflicts: ConflictListItem[]): string {
   return `
@@ -62,11 +63,4 @@ function renderConflictSection(title: string, content: string | null): string {
       <div class="markdown-body">${rendered.html}</div>
     </section>
   `;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }

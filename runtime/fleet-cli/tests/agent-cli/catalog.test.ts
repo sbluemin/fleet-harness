@@ -84,7 +84,7 @@ describe("agent CLI catalog", () => {
 
     const profile = await resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" });
 
-    expect(mocks.resolveAuthEnvMock).toHaveBeenCalledWith("claude-kimi");
+    expect(mocks.resolveAuthEnvMock).toHaveBeenCalledWith("claude-kimi", { authService: undefined });
     expect(profile.env.ANTHROPIC_AUTH_TOKEN).toBe("variant-token");
     expect(profile.env.ANTHROPIC_BASE_URL).toBe("https://example.invalid/anthropic");
   });

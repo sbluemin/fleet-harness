@@ -6,7 +6,7 @@ import { execSync, spawn, spawnSync } from 'child_process';
 import * as http from 'node:http';
 import { resolve } from 'path';
 import { UnifiedAgent, type IUnifiedAgentClient } from '../../src/index.js';
-import type { CliType } from '../../src/types/config.js';
+import type { CliType } from '../../src/config/CliConfigs.js';
 
 /** CLI JSON 출력 결과 타입 */
 export interface CliJsonResult {

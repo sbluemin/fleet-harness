@@ -21,6 +21,7 @@ export * as subagents from "./subagents/index.js";
 export * as store from "./store/index.js";
 export * from "./subagents/index.js";
 export * from "./dispatch/framework.js";
+export * from "./dispatch/prompt.js";
 export * from "./dispatch/status-overlay.js";
 export * from "./dispatch/taskforce.js";
 export * from "./dispatch/tool-spec.js";
@@ -38,8 +39,6 @@ export type {
 export type {
   CarrierJobStreamEvent,
   CarrierJobStreamHandler,
-  CarrierJobKind as CarrierStreamJobKind,
-  CarrierJobStatus as CarrierStreamJobStatus,
   TrackMeta,
   TrackKind,
   TrackStatus,
@@ -58,7 +57,6 @@ export {
   getConfiguredTaskForceBackendsFromSnapshot,
   getConfiguredTaskForceCarrierIds,
   getConfiguredTaskForceCarrierIdsFromSnapshot,
-  loadAgentCliTypeOverrides,
   updateAgentCliTypeOverride,
   applyAgentCliTypeSelectionUpdate,
   loadCarrierDisplayNameOverrides,
@@ -71,8 +69,6 @@ export {
   normalizeCarrierDisplayNameInput,
   sanitizeCarrierDisplayName,
   readCarriersSnapshot,
-  getLastLocalCarriersGeneration,
-  getLastLocalWriteFingerprint,
   getCarriersFilePath,
   updateCarriers,
   withStoreLock,
@@ -111,24 +107,12 @@ export const dispatch = {
   buildToolSpecs: dispatchToolSpec.buildCarrierDispatchToolSpec,
 };
 
-export const carrier = dispatch;
-
-export const taskforce = dispatchTaskforce;
-
-export const stream = {
-  emitStreamEvent: dispatchFramework.emitStreamEvent,
-  registerStreamHandler: dispatchFramework.registerStreamHandler,
-  unregisterStreamHandler: dispatchFramework.unregisterStreamHandler,
-};
-
 export const jobs = {
   archive: jobArchive,
   dispatch: jobDispatch,
   lifecycle: jobLifecycle,
   sanitize: jobSanitize,
   types: jobTypes,
-  jobTypes,
-  prompts: jobDispatch,
   buildToolSpec: jobDispatch.buildCarrierJobsToolSpec,
   configureJobSummaryCache: jobDispatch.configureJobSummaryCache,
   detachJobArchive: jobArchive.detachJobArchive,
@@ -142,8 +126,6 @@ export const jobs = {
     emit: dispatchFramework.emitStreamEvent,
   },
 };
-
-export const carrierJobs = jobs;
 
 export function createCarrierRuntime(): CarrierRuntime {
   const registry = createCarrierRegistry();

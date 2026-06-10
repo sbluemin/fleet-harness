@@ -15,18 +15,27 @@ const dryRun = args.includes("--dry-run");
 
 const isPrerelease = version && version.includes("-");
 const wikiWebRange = wikiWebVersion
-  ?? (isPrerelease ? version : "^0.21.0");
+  ?? (isPrerelease ? version : "^1.3.0");
 
-const EXTERNAL_DEPS = {
-  "@clack/prompts": "1.4.0",
-  "@dotobokuri/fleet-wiki-ui": wikiWebRange,
-  "@xterm/headless": "^5.5.0",
-  "node-pty": "^1.0.0",
-};
+// 배포 산출물에서 external로 유지할 패키지 이름 목록 — 버전은 원본 package.json에서 읽는다.
+const EXTERNAL_DEP_NAMES = ["@clack/prompts", "@xterm/headless", "node-pty"];
 
 const original = readFileSync(PKG_PATH, "utf8");
-const pkgName = JSON.parse(original).name;
-const targetVersion = version ?? JSON.parse(original).version;
+const originalPkg = JSON.parse(original);
+const pkgName = originalPkg.name;
+const targetVersion = version ?? originalPkg.version;
+
+const EXTERNAL_DEPS = {
+  "@dotobokuri/fleet-wiki-ui": wikiWebRange,
+};
+for (const name of EXTERNAL_DEP_NAMES) {
+  const range = originalPkg.dependencies?.[name];
+  if (!range) {
+    console.error(`external dependency ${name} not found in ${PKG_PATH}`);
+    process.exit(1);
+  }
+  EXTERNAL_DEPS[name] = range;
+}
 
 try {
   execSync(`npm view ${pkgName}@${targetVersion} version`, { stdio: "pipe" });

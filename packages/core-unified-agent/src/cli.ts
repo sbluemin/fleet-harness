@@ -12,7 +12,7 @@ import { CLI_BACKENDS } from './config/CliConfigs.js';
 import { getModelsRegistry, getProviderModels } from './models/ModelRegistry.js';
 import { runOneShot } from './cli-oneshot.js';
 import { startRepl } from './cli-repl.js';
-import type { CliType } from './types/config.js';
+import type { CliType } from './config/CliConfigs.js';
 
 // Claude Code 내부에서 실행될 때 환경변수 충돌 방지
 // (cli.ts 프로세스 자체가 Claude Code 세션 안에서 spawn되므로 즉시 제거)

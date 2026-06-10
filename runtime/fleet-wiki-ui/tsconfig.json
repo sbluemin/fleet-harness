@@ -15,7 +15,7 @@
     "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "tsup.config.ts"]
 }

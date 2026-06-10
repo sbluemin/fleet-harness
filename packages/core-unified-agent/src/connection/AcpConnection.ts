@@ -44,7 +44,7 @@ import type {
   AcpToolCall,
   AcpToolCallUpdate,
 } from '../types/acp.js';
-import type { CliType } from '../types/config.js';
+import type { CliType } from '../config/CliConfigs.js';
 import { BaseConnection, type BaseConnectionOptions } from './BaseConnection.js';
 
 /** AcpConnection 생성 옵션 */

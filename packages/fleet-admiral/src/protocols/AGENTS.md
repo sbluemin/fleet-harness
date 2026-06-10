@@ -22,7 +22,6 @@ The final system prompt is composed as:
 
 ```text
 System Prompt
-  + [Boot] Initial Slate (FLEET_HARNESS_DEV=1 activates RISEN dev context, otherwise empty)
   + [Always] <fleet section="preamble">
   + [Always] <fleet section="persona">
   + [Always] <fleet section="role">

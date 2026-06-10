@@ -3,6 +3,7 @@ import { entryPath } from "../router";
 import type { WikiIndexEntry } from "../api";
 import { t } from "../i18n/t";
 import { languageLocale } from "../i18n/store";
+import { escapeAttribute, escapeHtml } from "../utils/html";
 
 interface RelatedEntry {
   entry: WikiIndexEntry;
@@ -43,15 +44,4 @@ function relatedEntries(currentId: string, currentTags: string[], entries: WikiI
         left.entry.title.localeCompare(right.entry.title, locale, { sensitivity: "base", numeric: true }),
     )
     .slice(0, 5);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/"/g, "&quot;");
 }

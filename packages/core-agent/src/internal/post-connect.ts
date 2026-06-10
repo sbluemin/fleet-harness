@@ -1,7 +1,7 @@
 /**
  * post-connect — 연결 후 추론 설정 적용.
  *
- * session-engine과 executor-engine 모두 이 모듈에서 import.
+ * executor-engine이 이 모듈에서 import.
  *
  * imports → types/interfaces → constants → functions 순서 준수.
  */

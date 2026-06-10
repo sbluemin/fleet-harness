@@ -13,10 +13,9 @@ import {
 import { getCliModels } from "@dotobokuri/core-agent";
 
 import { createJobBarSections } from "../src/mission-bridge/job-bar/section.js";
-import { TASKFORCE_BADGE_COLOR } from "../src/mission-bridge/job-bar/constants.js";
 import { renderBlockLines, renderCarrierJobHud } from "../src/mission-bridge/job-bar/renderer.js";
 import { createJobBarState, type JobBarState } from "../src/mission-bridge/job-bar/state.js";
-import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI } from "../src/styles/carriers.js";
+import { PROVIDER_ANSI_COLORS, SUBAGENT_PRESENTATION_ANSI, TASKFORCE_BADGE_COLOR } from "../src/styles/carriers.js";
 import type { PanelJob, PanelRunViewModelSource } from "../src/mission-bridge/job-bar/view-model.js";
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
