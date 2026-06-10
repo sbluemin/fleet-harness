@@ -11,7 +11,8 @@ export function createWorkspaceChangeScanner(): WorkspaceChangeScanner {
 	return {
 		async snapshot(cwd) {
 			try {
-				const { stdout } = await execFileAsync("git", ["status", "--porcelain=v1", "-z"], {
+				// 신규 디렉토리가 "?? dir/"로 접히지 않도록 미추적 파일을 개별 열거한다.
+				const { stdout } = await execFileAsync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
 					cwd,
 					encoding: "utf8",
 					maxBuffer: GIT_STATUS_MAX_BUFFER,

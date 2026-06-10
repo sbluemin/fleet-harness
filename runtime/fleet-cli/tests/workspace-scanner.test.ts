@@ -54,6 +54,8 @@ describeWithGit("createWorkspaceChangeScanner", () => {
 			writeFileSync(path.join(dir, "modified.txt"), "after\n");
 			rmSync(path.join(dir, "deleted.txt"));
 			writeFileSync(path.join(dir, "untracked.txt"), "new\n");
+			mkdirSync(path.join(dir, "new-dir"));
+			writeFileSync(path.join(dir, "new-dir", "nested.txt"), "nested\n");
 			runGit(dir, "mv", "old.txt", "new.txt");
 
 			const snapshot = await createWorkspaceChangeScanner().snapshot(dir);
@@ -62,6 +64,8 @@ describeWithGit("createWorkspaceChangeScanner", () => {
 				{ status: "M", path: "modified.txt" },
 				{ status: "D", path: "deleted.txt" },
 				{ status: "??", path: "untracked.txt" },
+				// 신규 디렉토리 내 파일이 "?? new-dir/"로 접히지 않고 개별 경로로 열거되어야 한다.
+				{ status: "??", path: "new-dir/nested.txt" },
 				{ status: "R", path: "old.txt -> new.txt" },
 			]));
 		} finally {
