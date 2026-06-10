@@ -61,13 +61,40 @@ describeWithGit("createWorkspaceChangeScanner", () => {
 			const snapshot = await createWorkspaceChangeScanner().snapshot(dir);
 
 			expect(snapshot).toEqual(expect.arrayContaining([
-				{ status: "M", path: "modified.txt" },
-				{ status: "D", path: "deleted.txt" },
-				{ status: "??", path: "untracked.txt" },
+				expect.objectContaining({ status: "M", path: "modified.txt" }),
+				expect.objectContaining({ status: "D", path: "deleted.txt" }),
+				expect.objectContaining({ status: "??", path: "untracked.txt" }),
 				// 신규 디렉토리 내 파일이 "?? new-dir/"로 접히지 않고 개별 경로로 열거되어야 한다.
-				{ status: "??", path: "new-dir/nested.txt" },
-				{ status: "R", path: "old.txt -> new.txt" },
+				expect.objectContaining({ status: "??", path: "new-dir/nested.txt" }),
+				expect.objectContaining({ status: "R", path: "old.txt -> new.txt" }),
 			]));
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("enriches modified already-dirty files with changed content hashes", async () => {
+		const dir = makeTempDir("fleet-scanner-dirty-hash-");
+		try {
+			runGit(dir, "init");
+			runGit(dir, "config", "user.email", "fleet@example.com");
+			runGit(dir, "config", "user.name", "Fleet Test");
+			writeFileSync(path.join(dir, "dirty.txt"), "clean\n");
+			runGit(dir, "add", ".");
+			runGit(dir, "commit", "-m", "seed");
+
+			writeFileSync(path.join(dir, "dirty.txt"), "baseline dirty\n");
+			const baseline = await createWorkspaceChangeScanner().snapshot(dir);
+			writeFileSync(path.join(dir, "dirty.txt"), "end dirty\n");
+			const end = await createWorkspaceChangeScanner().snapshot(dir);
+
+			const baselineEntry = baseline?.find((entry) => entry.path === "dirty.txt");
+			const endEntry = end?.find((entry) => entry.path === "dirty.txt");
+			expect(baselineEntry).toMatchObject({ status: "M", path: "dirty.txt" });
+			expect(endEntry).toMatchObject({ status: "M", path: "dirty.txt" });
+			expect(baselineEntry?.contentHash).toMatch(/^[0-9a-f]{40}$/);
+			expect(endEntry?.contentHash).toMatch(/^[0-9a-f]{40}$/);
+			expect(endEntry?.contentHash).not.toBe(baselineEntry?.contentHash);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

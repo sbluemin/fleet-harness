@@ -29,6 +29,26 @@ describe("workspace change manifest helpers", () => {
     });
   });
 
+  it("detects same-status entries when both snapshots carry different content hashes", () => {
+    const manifest = buildWorkspaceManifest(
+      [{ status: "M", path: "dirty.ts", contentHash: "before-hash" }],
+      [{ status: "M", path: "dirty.ts", contentHash: "after-hash" }],
+    );
+
+    expect(manifest.changes).toEqual([{ status: "M", path: "dirty.ts" }]);
+    expect(manifest.statLine).toBe("1 file (window-approx)");
+  });
+
+  it("falls back to status-only comparison when hashes are absent", () => {
+    const manifest = buildWorkspaceManifest(
+      [{ status: "M", path: "dirty.ts", contentHash: "before-hash" }],
+      [{ status: "M", path: "dirty.ts" }],
+    );
+
+    expect(manifest.changes).toEqual([]);
+    expect(manifest.statLine).toBe("0 files (window-approx)");
+  });
+
   it("returns unavailable manifests for null baseline or end snapshots", () => {
     expect(buildWorkspaceManifest(null, [])).toMatchObject({
       attribution: WORKSPACE_CHANGE_ATTRIBUTION,

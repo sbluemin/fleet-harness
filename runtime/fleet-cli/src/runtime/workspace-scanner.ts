@@ -6,6 +6,8 @@ import type { WorkspaceChangeScanner, WorkspaceChangeSnapshotEntry } from "@doto
 const execFileAsync = promisify(execFile);
 const GIT_STATUS_TIMEOUT_MS = 4_000;
 const GIT_STATUS_MAX_BUFFER = 1024 * 1024;
+const GIT_HASH_TIMEOUT_MS = 4_000;
+const GIT_HASH_MAX_BUFFER = 1024 * 1024;
 
 export function createWorkspaceChangeScanner(): WorkspaceChangeScanner {
 	return {
@@ -18,7 +20,9 @@ export function createWorkspaceChangeScanner(): WorkspaceChangeScanner {
 					maxBuffer: GIT_STATUS_MAX_BUFFER,
 					timeout: GIT_STATUS_TIMEOUT_MS,
 				});
-				return parseGitStatusPorcelainZ(stdout);
+				const entries = parseGitStatusPorcelainZ(stdout);
+				if (!entries) return null;
+				return await enrichEntriesWithContentHashes(cwd, entries);
 			} catch {
 				return null;
 			}
@@ -48,4 +52,55 @@ export function parseGitStatusPorcelainZ(output: string): WorkspaceChangeSnapsho
 	} catch {
 		return null;
 	}
+}
+
+async function enrichEntriesWithContentHashes(
+	cwd: string,
+	entries: readonly WorkspaceChangeSnapshotEntry[],
+): Promise<WorkspaceChangeSnapshotEntry[]> {
+	const hashPaths = entries.map((entry) => hashablePath(entry)).filter((path): path is string => Boolean(path));
+	if (hashPaths.length === 0) return [...entries];
+
+	try {
+		const stdout = await execGitHashObject(cwd, hashPaths);
+		const hashes = stdout.split(/\r?\n/).filter((line) => line.length > 0);
+		if (hashes.length !== hashPaths.length) return [...entries];
+		const hashByPath = new Map(hashPaths.map((filePath, index) => [filePath, hashes[index]!]));
+		return entries.map((entry) => {
+			const contentHash = hashByPath.get(hashablePath(entry) ?? "");
+			return contentHash ? { ...entry, contentHash } : entry;
+		});
+	} catch {
+		return [...entries];
+	}
+}
+
+function execGitHashObject(cwd: string, paths: readonly string[]): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const child = execFile(
+			"git",
+			["hash-object", "--stdin-paths"],
+			{
+				cwd,
+				encoding: "utf8",
+				maxBuffer: GIT_HASH_MAX_BUFFER,
+				timeout: GIT_HASH_TIMEOUT_MS,
+			},
+			(error, stdout) => {
+				if (error) {
+					reject(error);
+					return;
+				}
+				resolve(stdout);
+			},
+		);
+		child.stdin?.end(`${paths.join("\n")}\n`);
+	});
+}
+
+function hashablePath(entry: WorkspaceChangeSnapshotEntry): string | null {
+	if (entry.status === "D") return null;
+	const path = entry.path.includes(" -> ") ? entry.path.split(" -> ").at(-1)! : entry.path;
+	if (!path || path.includes("\n")) return null;
+	return path;
 }

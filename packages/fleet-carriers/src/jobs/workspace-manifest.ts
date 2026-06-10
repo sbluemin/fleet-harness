@@ -7,6 +7,13 @@ export interface WorkspaceChangeScanner {
 export interface WorkspaceChangeSnapshotEntry {
   readonly status: string;
   readonly path: string;
+  readonly contentHash?: string;
+}
+
+interface NormalizedWorkspaceChangeSnapshotEntry {
+  readonly status: string;
+  readonly path: string;
+  readonly contentHash?: string;
 }
 
 export const WORKSPACE_CHANGE_ATTRIBUTION = "window-approximate";
@@ -48,10 +55,11 @@ export function buildWorkspaceManifest(
     return unavailableWorkspaceManifest(reason ?? "snapshot-unavailable");
   }
 
-  const baselineByPath = new Map(baseline.map((entry) => [entry.path, normalizeEntry(entry)]));
+  const baselineByPath = new Map(baseline.map((entry) => [entry.path, normalizeSnapshotEntry(entry)]));
   const endChanges = end
-    .map(normalizeEntry)
-    .filter((entry) => baselineByPath.get(entry.path)?.status !== entry.status);
+    .map(normalizeSnapshotEntry)
+    .filter((entry) => hasWindowChange(baselineByPath.get(entry.path), entry))
+    .map(toManifestEntry);
   // baseline에서 dirty였다가 종료 스냅샷에서 사라진 경로 — 잡 도중 원복·삭제된 변경으로,
   // Artifact Inspection Gate가 주시하는 "무관 파일 되돌림"이 여기에 해당한다.
   const endPaths = new Set(end.map((entry) => entry.path));
@@ -82,11 +90,31 @@ export function unavailableWorkspaceManifest(reason: string): WorkspaceChangeMan
   };
 }
 
-function normalizeEntry(entry: WorkspaceChangeSnapshotEntry): WorkspaceChangeManifestEntry {
+function normalizeSnapshotEntry(entry: WorkspaceChangeSnapshotEntry): NormalizedWorkspaceChangeSnapshotEntry {
   return {
     status: entry.status.trim(),
     path: entry.path,
+    contentHash: entry.contentHash?.trim(),
   };
+}
+
+function toManifestEntry(entry: NormalizedWorkspaceChangeSnapshotEntry): WorkspaceChangeManifestEntry {
+  return {
+    status: entry.status,
+    path: entry.path,
+  };
+}
+
+function hasWindowChange(
+  baseline: NormalizedWorkspaceChangeSnapshotEntry | undefined,
+  end: NormalizedWorkspaceChangeSnapshotEntry,
+): boolean {
+  if (!baseline) return true;
+  if (baseline.status !== end.status) return true;
+  if (baseline.contentHash && end.contentHash) {
+    return baseline.contentHash !== end.contentHash;
+  }
+  return false;
 }
 
 function buildStatLine(changeCount: number, truncated: boolean): string {
