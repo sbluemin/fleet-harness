@@ -16,6 +16,7 @@ export interface GatewayHealth {
   readonly endpoint: string;
   readonly startedAt: number;
   readonly version: string;
+  readonly tenantCount: number;
 }
 
 export interface GatewayToolSnapshot {

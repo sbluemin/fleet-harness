@@ -109,6 +109,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       endpoint: payload.endpoint,
       startedAt: payload.startedAt,
       version: payload.version,
+      tenantCount: tenants.tenantCount(),
     };
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(body));

@@ -78,6 +78,7 @@ describe("gateway daemon lifecycle", () => {
               endpoint: payload.endpoint,
               startedAt: payload.startedAt,
               version: payload.version,
+              tenantCount: 0,
             },
           };
         },

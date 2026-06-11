@@ -4,7 +4,7 @@
 
 ## Owns
 
-- Loopback-only daemon lifecycle, lock-file discovery, health probe, stale restart, and stop helpers.
+- Loopback-only daemon lifecycle, lock-file discovery, health probe, tenant-aware deferred stale restart, and stop helpers.
 - Fixed local MCP endpoint and local admin/control/observer HTTP surfaces.
 - Tenant/session/control/observer token isolation.
 - Schema-agnostic MCP pass-through routing and in-memory queues.
@@ -21,6 +21,7 @@
 - Shared mutable state must be constructed through `create*(deps)` factories.
 - Lock directories are `0700`; lock files are `0600`; symlink lock files are rejected.
 - The daemon binds only to loopback.
+- Automatic stale restart only occurs when no tenants are registered; explicit restart always replaces the daemon.
 - Gateway restart drops all in-memory tenants, sessions, calls, results, and observability.
 
 ## TypeScript File Structure

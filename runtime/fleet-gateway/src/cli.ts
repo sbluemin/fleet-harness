@@ -45,7 +45,8 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
 
   async function probe() {
     const payload = readTrustedLock();
-    return health.probe(payload);
+    const probeResult = await health.probe(payload);
+    return { ...probeResult, buildStale: payload ? stale.isBuildStale(payload, serverModulePath) : false };
   }
 
   async function stop(): Promise<void> {
@@ -69,7 +70,11 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   async function ensureDaemon(): Promise<string> {
     const current = readTrustedLock({ cleanUntrusted: true });
     const probeResult = await health.probe(current);
-    if (probeResult.healthy && current && !stale.isBuildStale(current, serverModulePath)) return current.endpoint;
+    const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
+    if (probeResult.healthy && current) {
+      if (!isBuildStale) return current.endpoint;
+      if (typeof probeResult.health?.tenantCount === "number" && probeResult.health.tenantCount > 0) return current.endpoint;
+    }
     if (current) await stop();
     spawnDetached(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore" });
     for (let i = 0; i < 30; i += 1) {

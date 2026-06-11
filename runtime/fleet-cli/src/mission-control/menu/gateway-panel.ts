@@ -22,7 +22,7 @@ export interface GatewayPanelDeps {
 export type GatewayStatus =
   | { readonly state: "stopped"; readonly lastHealth?: string }
   | { readonly state: "starting"; readonly lastHealth?: string }
-  | { readonly state: "running"; readonly endpoint: string; readonly pid?: number; readonly lastHealth?: string }
+  | { readonly state: "running"; readonly endpoint: string; readonly pid?: number; readonly tenantCount?: number; readonly buildStale?: boolean; readonly lastHealth?: string }
   | { readonly state: "error"; readonly message: string; readonly lastHealth?: string };
 
 export function createGatewayProcessController(options: { readonly onChange: () => void }): GatewayProcessController {
@@ -38,6 +38,8 @@ export function createGatewayProcessController(options: { readonly onChange: () 
         state: "running",
         endpoint: probe.health.endpoint,
         pid: probe.health.pid,
+        tenantCount: probe.health.tenantCount,
+        buildStale: probe.buildStale,
         lastHealth: new Date().toISOString(),
       };
       options.onChange();
@@ -154,7 +156,8 @@ function buildRows(status: GatewayStatus): KeyValueBlockRow[] {
   return [
     { key: "Endpoint", value: status.state === "running" ? MISSION_CONTROL_THEME.accent(status.endpoint) : MISSION_CONTROL_THEME.dim("unavailable") },
     { key: "PID", value: status.state === "running" && status.pid !== undefined ? String(status.pid) : MISSION_CONTROL_THEME.dim("none") },
-    { key: "Tenants", value: MISSION_CONTROL_THEME.dim("in memory") },
+    { key: "Tenants", value: status.state === "running" && status.tenantCount !== undefined ? String(status.tenantCount) : MISSION_CONTROL_THEME.dim("unknown") },
+    { key: "Build", value: status.state === "running" && status.buildStale ? MISSION_CONTROL_THEME.warning("stale (restart deferred)") : status.state === "running" ? "current" : MISSION_CONTROL_THEME.dim("unknown") },
     { key: "Pending Calls", value: MISSION_CONTROL_THEME.dim("in memory") },
     { key: "Observer Status", value: status.state === "running" ? "available" : MISSION_CONTROL_THEME.dim("unavailable") },
     { key: "Last Health", value: status.lastHealth ?? MISSION_CONTROL_THEME.dim("not checked") },

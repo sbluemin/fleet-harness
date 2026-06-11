@@ -14,6 +14,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - The generic MCP registry, routing, and tool snapshot primitives formerly in `@dotobokuri/core-mcp-server` are now owned by `@dotobokuri/core-agent`.
 - [core][core-agent] Executor sessions connect to the local gateway instead of spawning an in-process MCP server per Fleet CLI instance.
 
+### Fixed
+- [core] Gateway auto-refresh now defers stale daemon replacement while active tenants are connected, preserving existing session tokens until an explicit restart.
+
 ### Removed
 - Removed the `@dotobokuri/core-mcp-server` workspace package; consumers should import generic MCP APIs from `@dotobokuri/core-agent` instead.
 

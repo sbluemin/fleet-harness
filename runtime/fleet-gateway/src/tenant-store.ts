@@ -103,7 +103,11 @@ export function createGatewayTenantStore(deps: GatewayTenantStoreDeps = {}) {
     tokens.clear();
   }
 
-  return { registerTenant, lookupToken, releaseTenant, clear };
+  function tenantCount(): number {
+    return tenants.size;
+  }
+
+  return { registerTenant, lookupToken, releaseTenant, clear, tenantCount };
 }
 
 function copyToolSnapshot(tool: GatewayToolSnapshot): GatewayToolSnapshot {
