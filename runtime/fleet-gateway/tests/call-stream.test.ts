@@ -206,6 +206,41 @@ describe("gateway call stream", () => {
     await server.stop();
   });
 
+  it("removes a held tool call when the MCP client disconnects before delivery", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-gateway-stream-"));
+    tempDirs.push(dir);
+    const server = createGatewayServer({ port: 0, version: "test" });
+    await server.start({ dir, lockFile: path.join(dir, "gateway.lock") });
+    const lock = createGatewayLock().readLock(path.join(dir, "gateway.lock"))!;
+    const registration = await postJson(`${lock.endpoint.replace("/mcp", "/admin/register")}`, lock.token, {
+      tenantLabel: "tenant",
+      cwd: "/tmp",
+      tools: [{ name: "ping", description: "Ping", inputSchema: {} }],
+    });
+    const held = postRawToolCall(lock.endpoint, registration.sessionToken);
+    void held.body.catch(() => undefined);
+    const response = await held.response;
+    expect(response.statusCode).toBe(200);
+    await delay(10);
+
+    const closed = new Promise<void>((resolve) => {
+      response.once("close", () => resolve());
+    });
+    held.request.destroy();
+    response.destroy();
+    await closed;
+    await delay(10);
+
+    const stream = await fetch(lock.endpoint.replace("/mcp", "/control/calls"), {
+      headers: { Authorization: `Bearer ${registration.controlToken}` },
+    });
+    const reader = stream.body!.getReader();
+
+    await expect(readDataWithin(reader, 50)).resolves.toBeNull();
+    await reader.cancel();
+    await server.stop();
+  });
+
   it("clears the held tool call keepalive timer when the MCP client disconnects", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-gateway-stream-"));
     tempDirs.push(dir);
@@ -259,6 +294,17 @@ async function readUntilData(reader: ReadableStreamDefaultReader<Uint8Array>): P
     text += decoder.decode(chunk.value);
   }
   return text;
+}
+
+async function readDataWithin(reader: ReadableStreamDefaultReader<Uint8Array>, ms: number): Promise<string | null> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => resolve(null), ms);
+  });
+  const dataPromise = readUntilData(reader);
+  const result = await Promise.race([dataPromise, timeoutPromise]);
+  if (timeout) clearTimeout(timeout);
+  return result === "" ? null : result;
 }
 
 function postRawToolCall(endpoint: string, token: string): { readonly request: http.ClientRequest; readonly response: Promise<http.IncomingMessage>; readonly body: Promise<string> } {

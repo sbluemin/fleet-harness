@@ -171,6 +171,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       res.writeHead(200, withSecurityHeaders({ "Content-Type": "application/json" }));
       res.flushHeaders();
     }
+    const heldAbort = isHeldToolCall ? new AbortController() : null;
     let keepalive = isHeldToolCall ? setInterval(() => {
       if (!res.writableEnded) res.write(" ");
     }, 60_000) : null;
@@ -182,6 +183,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       if (!keepalive) return;
       clearInterval(keepalive);
       keepalive = null;
+      heldAbort?.abort();
     };
     if (keepalive) {
       req.once("close", cleanupKeepalive);
@@ -190,7 +192,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       res.once("finish", cleanupKeepalive);
     }
     try {
-      const payload = await mcpRouter.processPayload(request, lookup.session);
+      const payload = await mcpRouter.processPayload(request, lookup.session, { signal: heldAbort?.signal });
       cleanupKeepalive();
       if (payload === null) {
         if (!res.headersSent) res.writeHead(204);

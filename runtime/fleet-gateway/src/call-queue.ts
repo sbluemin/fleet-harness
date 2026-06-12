@@ -12,6 +12,10 @@ export interface GatewayCallQueueDeps {
   readonly maxPendingCalls?: number;
 }
 
+export interface GatewayCallEnqueueOptions {
+  readonly signal?: AbortSignal;
+}
+
 interface GatewayCallWaiter {
   readonly resolve: (call: PendingGatewayToolCall | null) => void;
   readonly signal?: AbortSignal;
@@ -28,13 +32,18 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
   const pending = new Map<string, PendingGatewayToolCall[]>();
   const delivered = new Map<string, Set<string>>();
   const waiters = new Map<string, GatewayCallWaiter[]>();
+  const abortListeners = new WeakMap<PendingGatewayToolCall, { readonly signal?: AbortSignal; readonly listener: () => void }>();
 
-  function enqueue(sessionId: string, callId: string, toolName: string, args: Record<string, unknown>): Promise<GatewayToolCallResult> {
+  function enqueue(sessionId: string, callId: string, toolName: string, args: Record<string, unknown>, options: GatewayCallEnqueueOptions = {}): Promise<GatewayToolCallResult> {
     const queue = pending.get(sessionId) ?? [];
     if (queue.length >= maxPendingCalls) {
       return Promise.resolve({ content: [{ type: "text", text: "Too many pending tool calls" }], isError: true });
     }
     return new Promise((resolve, reject) => {
+      if (options.signal?.aborted) {
+        resolve(clientDisconnectedResult());
+        return;
+      }
       const call: PendingGatewayToolCall = {
         callId,
         sessionId,
@@ -48,6 +57,14 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
           resolve({ content: [{ type: "text", text: "Tool call timed out" }], isError: true });
         }, timeoutMs),
       };
+      const abortListener = () => {
+        const removed = remove(sessionId, callId);
+        if (!removed) return;
+        clearTimeout(removed.timeout);
+        resolve(clientDisconnectedResult());
+      };
+      options.signal?.addEventListener("abort", abortListener, { once: true });
+      abortListeners.set(call, { signal: options.signal, listener: abortListener });
       queue.push(call);
       pending.set(sessionId, queue);
       notify(sessionId);
@@ -120,6 +137,7 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
     const queue = pending.get(sessionId) ?? [];
     for (const call of queue) {
       clearTimeout(call.timeout);
+      clearCallAbortListener(call);
       call.resolve({ content: [{ type: "text", text: "Session closed" }], isError: true });
     }
     pending.delete(sessionId);
@@ -157,6 +175,7 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
     const [call] = queue.splice(index, 1);
     if (queue.length === 0) pending.delete(sessionId);
     delivered.get(sessionId)?.delete(callId);
+    if (call) clearCallAbortListener(call);
     return call ?? null;
   }
 
@@ -175,5 +194,16 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
     waiter.abortListener = undefined;
   }
 
+  function clearCallAbortListener(call: PendingGatewayToolCall): void {
+    const entry = abortListeners.get(call);
+    if (!entry?.signal) return;
+    entry.signal.removeEventListener("abort", entry.listener);
+    abortListeners.delete(call);
+  }
+
   return { enqueue, next, waitForNext, releaseDelivered, releaseDeliveredForSession, resolveCall, clearSession, clear };
+}
+
+function clientDisconnectedResult(): GatewayToolCallResult {
+  return { content: [{ type: "text", text: "Client disconnected" }], isError: true };
 }

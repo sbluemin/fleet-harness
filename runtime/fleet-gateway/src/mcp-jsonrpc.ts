@@ -26,13 +26,17 @@ export interface GatewayMcpRouterDeps {
   readonly callQueue: ReturnType<typeof createGatewayCallQueue>;
 }
 
+interface GatewayMcpProcessOptions {
+  readonly signal?: AbortSignal;
+}
+
 export function createGatewayMcpJsonRpcRouter(deps: GatewayMcpRouterDeps) {
   const serverInfo = {
     name: deps.serverInfo?.name ?? "fleet-gateway",
     version: deps.serverInfo?.version ?? "1.0.0",
   };
 
-  async function process(req: JsonRpcRequest, session: GatewaySessionRecord): Promise<JsonRpcResponse | null> {
+  async function process(req: JsonRpcRequest, session: GatewaySessionRecord, options: GatewayMcpProcessOptions = {}): Promise<JsonRpcResponse | null> {
     const id = req.id ?? null;
     if (req.method === "initialize") {
       return result(id, { protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo });
@@ -59,6 +63,7 @@ export function createGatewayMcpJsonRpcRouter(deps: GatewayMcpRouterDeps) {
         callId,
         params.name,
         params.arguments ?? {},
+        { signal: options.signal },
       );
       return result(id, callResult);
     }
@@ -66,9 +71,9 @@ export function createGatewayMcpJsonRpcRouter(deps: GatewayMcpRouterDeps) {
     return error(id, -32601, `Unsupported method: ${req.method}`);
   }
 
-  async function processPayload(payload: JsonRpcPayload, session: GatewaySessionRecord): Promise<JsonRpcResultPayload> {
-    if (!Array.isArray(payload)) return process(payload, session);
-    const results = await Promise.all(payload.map((item) => process(item, session)));
+  async function processPayload(payload: JsonRpcPayload, session: GatewaySessionRecord, options: GatewayMcpProcessOptions = {}): Promise<JsonRpcResultPayload> {
+    if (!Array.isArray(payload)) return process(payload, session, options);
+    const results = await Promise.all(payload.map((item) => process(item, session, options)));
     const filtered = results.filter((item): item is JsonRpcResponse => item !== null);
     return filtered.length === 0 ? null : filtered;
   }
