@@ -113,7 +113,15 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				buffer = buffer.slice(split + 2);
 				const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
 				if (data) {
-					void executeGatewayCall(JSON.parse(data) as GatewayQueuedToolCall, session, registry, fetchImpl);
+					void executeGatewayCall(JSON.parse(data) as GatewayQueuedToolCall, session, registry, fetchImpl, (err) => {
+						if (!session.abort.signal.aborted) {
+							connectionState = {
+								state: "retrying",
+								attempts: 1,
+								message: `Fleet Gateway result publish failed: ${err instanceof Error ? err.message : String(err)}`,
+							};
+						}
+					});
 				}
 				split = buffer.indexOf("\n\n");
 			}
@@ -316,8 +324,10 @@ async function executeGatewayCall(
 	session: ActiveGatewaySession,
 	registry: McpToolRegistry,
 	fetchImpl: typeof fetch,
+	onPublishFailure: (err: unknown) => void,
 ): Promise<void> {
 	if (!rememberCall(session, call.callId)) return;
+	const registration = session.registration;
 	const invocation = session.invocation;
 	const signal = combineAbortSignals([session.abort.signal, invocation.signal].filter((candidate): candidate is AbortSignal => Boolean(candidate)));
 	const result = await registry.invoke(call.toolName, call.args, {
@@ -328,9 +338,11 @@ async function executeGatewayCall(
 		content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
 		isError: true,
 	}));
-	await postJson(fetchImpl, session.registration.endpoint.replace("/mcp", `/control/results/${call.callId}`), session.registration.controlToken, {
+	await postJson(fetchImpl, registration.endpoint.replace("/mcp", `/control/results/${call.callId}`), registration.controlToken, {
 		sessionId: call.sessionId,
 		result,
+	}).catch((err) => {
+		onPublishFailure(err);
 	});
 }
 

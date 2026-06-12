@@ -13,6 +13,12 @@ interface ControlledGatewayCallStream {
   stream(): ReadableStream<Uint8Array>;
 }
 
+interface ResultPost {
+  readonly callId: string;
+  readonly sessionId: string;
+  readonly token: string;
+}
+
 describe("gateway observability publisher", () => {
   it("publishes each carrier event to the primary active gateway tenant only", async () => {
     const posts: string[] = [];
@@ -124,6 +130,93 @@ describe("gateway observability publisher", () => {
     await waitFor(() => resultPosts.includes("call-next"));
     expect(invocations[0]?.signal?.aborted).toBe(true);
   });
+
+  it("posts an in-flight call result through the registration captured at delivery time", async () => {
+    let registerCount = 0;
+    let callStreamCount = 0;
+    const releases: string[] = [];
+    const resultPosts: ResultPost[] = [];
+    const invoke = vi.fn(async () => {
+      await waitFor(() => registerCount >= 2 && releases.includes("control-1"));
+      return { content: [{ type: "text", text: "pong" }], isError: false };
+    });
+    const manager = createGatewayDedicatedSessionManager({
+      name: "fleet",
+      lifecycle: { ensureDaemon: async () => "http://127.0.0.1:37283/mcp" } as never,
+      readBootstrapToken: async () => "bootstrap",
+      sleep: async () => undefined,
+      registry: {
+        getAllAgentTools: () => [{ id: "ping", description: "Ping", parameters: {} }],
+        invoke,
+      } as never,
+      fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.endsWith("/admin/register")) {
+          registerCount += 1;
+          return jsonResponse({
+            tenantId: `tenant-${registerCount}`,
+            sessionId: `session-${registerCount}`,
+            endpoint: "http://127.0.0.1:37283/mcp",
+            controlToken: `control-${registerCount}`,
+            sessionToken: `session-token-${registerCount}`,
+            observerToken: `observer-${registerCount}`,
+          });
+        }
+        if (target.endsWith("/control/calls")) {
+          callStreamCount += 1;
+          if (callStreamCount === 1) {
+            return new Response(sseStream({
+              callId: "call-refresh",
+              sessionId: "session-1",
+              toolName: "ping",
+              args: {},
+              createdAt: Date.now(),
+            }), { status: 200 });
+          }
+          return new Response(new ReadableStream(), { status: 200 });
+        }
+        if (target.includes("/control/results/")) {
+          resultPosts.push({
+            callId: target.split("/").pop() ?? "",
+            sessionId: JSON.parse(String(init?.body)).sessionId as string,
+            token: authorizationToken(init),
+          });
+          return jsonResponse({ ok: true });
+        }
+        if (target.endsWith("/control/release")) {
+          releases.push(authorizationToken(init));
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ error: "unexpected" }, 500);
+      }) as typeof fetch,
+    });
+
+    await manager.issueSessionToken({ label: "agent:refresh", cwd: "/tmp/first" });
+    await waitFor(() => resultPosts.length === 1);
+    manager.releaseSessionToken("agent:refresh");
+
+    expect(resultPosts).toEqual([{ callId: "call-refresh", sessionId: "session-1", token: "control-1" }]);
+    expect(registerCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("handles result publish failures without an unhandled rejection", async () => {
+    const calls = createControlledGatewayCallStream();
+    const resultPosts: string[] = [];
+    const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "pong" }], isError: false }));
+    const manager = createExecutorManager(calls, invoke, resultPosts, 403);
+
+    await manager.createExecutorMcpSession({
+      serverName: "fleet",
+      specs: [{ id: "ping", description: "Ping", parameters: {} }],
+      cwd: "/tmp/failure",
+    });
+    await waitFor(() => calls.ready);
+    calls.emit({ callId: "call-fail", sessionId: "session-fail", toolName: "ping", args: {} });
+    await waitFor(() => manager.getConnectionState().state === "retrying");
+
+    expect(resultPosts).toEqual(["call-fail"]);
+    expect(manager.getConnectionState().message).toContain("Fleet Gateway result publish failed");
+  });
 });
 
 function createManager(posts: string[], publishStatus = 200) {
@@ -167,6 +260,7 @@ function createExecutorManager(
   calls: ControlledGatewayCallStream,
   invoke: ReturnType<typeof vi.fn>,
   resultPosts: string[],
+  resultStatus = 200,
 ) {
   return createGatewayDedicatedSessionManager({
     name: "fleet",
@@ -194,7 +288,7 @@ function createExecutorManager(
       }
       if (target.includes("/control/results/")) {
         resultPosts.push(target.split("/").pop() ?? "");
-        return jsonResponse({ ok: true });
+        return jsonResponse({ ok: resultStatus === 200 }, resultStatus);
       }
       if (target.endsWith("/control/release")) {
         return jsonResponse({ ok: true });
@@ -230,6 +324,20 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function sseStream(body: unknown): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(body)}\n\n`));
+      controller.close();
+    },
+  });
+}
+
+function authorizationToken(init: RequestInit | undefined): string {
+  return String(init?.headers instanceof Headers ? init.headers.get("Authorization") : (init?.headers as Record<string, string>).Authorization).replace("Bearer ", "");
 }
 
 async function waitForAbort(signal: AbortSignal | undefined): Promise<void> {

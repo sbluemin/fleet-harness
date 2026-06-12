@@ -65,23 +65,23 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       return;
     }
     if (pathname === "/admin/register") {
-      void handleRegister(req, res);
+      runAsyncHandler(handleRegister(req, res), res);
       return;
     }
     if (pathname === "/control/calls") {
-      void handleCallStream(req, res);
+      runAsyncHandler(handleCallStream(req, res), res);
       return;
     }
     if (pathname.startsWith("/control/results/")) {
-      void handleResultSubmission(req, res);
+      runAsyncHandler(handleResultSubmission(req, res), res);
       return;
     }
     if (pathname === "/control/release") {
-      void handleControlRelease(req, res);
+      runAsyncHandler(handleControlRelease(req, res), res);
       return;
     }
     if (pathname === "/control/events") {
-      void handleControlEvent(req, res);
+      runAsyncHandler(handleControlEvent(req, res), res);
       return;
     }
     if (pathname === "/observer/status") {
@@ -101,7 +101,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       return;
     }
     if (pathname === endpointPath) {
-      void handleMcp(req, res);
+      runAsyncHandler(handleMcp(req, res), res);
       return;
     }
     res.writeHead(404);
@@ -499,16 +499,31 @@ async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
-    if (total > MAX_BODY_BYTES) throw new Error("Request body too large");
+    if (total > MAX_BODY_BYTES) return null;
     chunks.push(buffer);
   }
   if (chunks.length === 0) return null;
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+  } catch {
+    return null;
+  }
 }
 
 function writeJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json" }));
   res.end(JSON.stringify(body));
+}
+
+function runAsyncHandler(handler: Promise<void>, res: http.ServerResponse): void {
+  void handler.catch(() => {
+    if (res.writableEnded) return;
+    if (res.headersSent) {
+      res.end();
+      return;
+    }
+    writeJson(res, 500, { error: "Internal server error" });
+  });
 }
 
 function hasToolsCallRequest(value: JsonRpcPayload): boolean {
