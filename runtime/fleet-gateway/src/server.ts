@@ -5,7 +5,7 @@ import type { GatewayHealth, GatewayRegisterTenantRequest, GatewayToolCallResult
 import { createGatewayCallQueue } from "./call-queue.js";
 import { writeGatewayCallEvent } from "./call-stream.js";
 import { createGatewayLock, type GatewayLockHandle } from "./lock.js";
-import { createGatewayMcpJsonRpcRouter } from "./mcp-jsonrpc.js";
+import { createGatewayMcpJsonRpcRouter, type JsonRpcPayload } from "./mcp-jsonrpc.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createGatewayObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
@@ -161,12 +161,12 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    const request = await readJsonBody<Parameters<typeof mcpRouter.process>[0]>(req);
+    const request = await readJsonBody<JsonRpcPayload>(req);
     if (!request) {
       writeJson(res, 400, { error: "Invalid JSON-RPC payload" });
       return;
     }
-    const isHeldToolCall = request.method === "tools/call";
+    const isHeldToolCall = hasToolsCallRequest(request);
     if (isHeldToolCall) {
       res.writeHead(200, withSecurityHeaders({ "Content-Type": "application/json" }));
       res.flushHeaders();
@@ -175,7 +175,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       if (!res.writableEnded) res.write(" ");
     }, 60_000) : null;
     try {
-      const payload = await mcpRouter.process(request, lookup.session);
+      const payload = await mcpRouter.processPayload(request, lookup.session);
       if (keepalive) clearInterval(keepalive);
       if (payload === null) {
         if (!res.headersSent) res.writeHead(204);
@@ -478,6 +478,13 @@ async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
 function writeJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json" }));
   res.end(JSON.stringify(body));
+}
+
+function hasToolsCallRequest(value: JsonRpcPayload): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => item.method === "tools/call");
+  }
+  return value.method === "tools/call";
 }
 
 function validateHost(req: http.IncomingMessage, expectedPort: number): boolean {

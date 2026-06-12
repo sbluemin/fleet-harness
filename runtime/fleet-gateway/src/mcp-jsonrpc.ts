@@ -18,6 +18,9 @@ interface JsonRpcResponse {
   readonly error?: { code: number; message: string };
 }
 
+export type JsonRpcPayload = JsonRpcRequest | JsonRpcRequest[];
+export type JsonRpcResultPayload = JsonRpcResponse | readonly JsonRpcResponse[] | null;
+
 export interface GatewayMcpRouterDeps {
   readonly serverInfo?: { readonly name?: string; readonly version?: string };
   readonly callQueue: ReturnType<typeof createGatewayCallQueue>;
@@ -63,7 +66,14 @@ export function createGatewayMcpJsonRpcRouter(deps: GatewayMcpRouterDeps) {
     return error(id, -32601, `Unsupported method: ${req.method}`);
   }
 
-  return { process };
+  async function processPayload(payload: JsonRpcPayload, session: GatewaySessionRecord): Promise<JsonRpcResultPayload> {
+    if (!Array.isArray(payload)) return process(payload, session);
+    const results = await Promise.all(payload.map((item) => process(item, session)));
+    const filtered = results.filter((item): item is JsonRpcResponse => item !== null);
+    return filtered.length === 0 ? null : filtered;
+  }
+
+  return { process, processPayload };
 }
 
 function result(id: string | number | null, value: unknown): JsonRpcResponse {

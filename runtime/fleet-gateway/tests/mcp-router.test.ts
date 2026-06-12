@@ -22,4 +22,37 @@ describe("gateway MCP router", () => {
       error: { code: -32602 },
     });
   });
+
+  it("returns per-request responses for initialize and tools/list batches", async () => {
+    const router = createGatewayMcpJsonRpcRouter({ callQueue: createGatewayCallQueue() });
+    const session = createSession();
+
+    await expect(router.processPayload([
+      { jsonrpc: "2.0", id: 1, method: "initialize" },
+      { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    ], session)).resolves.toMatchObject([
+      { id: 1, result: { protocolVersion: "2025-03-26" } },
+      { id: 2, result: { tools: [{ name: "ping", description: "Ping" }] } },
+    ]);
+  });
+
+  it("returns no payload for notification-only and empty batches", async () => {
+    const router = createGatewayMcpJsonRpcRouter({ callQueue: createGatewayCallQueue() });
+    const session = createSession();
+
+    await expect(router.processPayload([
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+    ], session)).resolves.toBeNull();
+    await expect(router.processPayload([], session)).resolves.toBeNull();
+  });
 });
+
+function createSession(): GatewaySessionRecord {
+  return {
+    sessionId: "session",
+    tenantId: "tenant",
+    token: "token",
+    tools: [{ name: "ping", description: "Ping", inputSchema: { type: "object" } }],
+    createdAt: 1,
+  };
+}

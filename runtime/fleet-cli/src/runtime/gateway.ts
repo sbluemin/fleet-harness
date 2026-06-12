@@ -45,9 +45,15 @@ interface ActiveGatewaySession {
 	readonly cwd: string;
 	readonly specs: readonly AgentToolSpec[];
 	registration: GatewayRegisterTenantResponse;
+	invocation: GatewayInvocationContext;
 	readonly abort: AbortController;
 	readonly seenCallIds: Set<string>;
 	readonly seenCallOrder: string[];
+}
+
+interface GatewayInvocationContext {
+	readonly cwd: string;
+	readonly signal?: AbortSignal;
 }
 
 interface ExecutorEndpoint {
@@ -160,6 +166,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				cwd: request.cwd,
 				signal: request.signal,
 				specs: request.specs,
+				bindSignalToSession: false,
 			});
 			return {
 				serverName: request.serverName,
@@ -172,8 +179,12 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 					toolTimeout: 1800,
 				},
 				cleanup: () => this.releaseSessionToken(label),
-				detachForReuse: () => undefined,
-				installForReuse: () => undefined,
+				detachForReuse: () => {
+					session.invocation = { cwd: session.cwd };
+				},
+				installForReuse: (ctx) => {
+					session.invocation = { cwd: ctx.cwd, signal: ctx.signal };
+				},
 			};
 		},
 		getConnectionState() {
@@ -214,6 +225,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		readonly cwd: string;
 		readonly signal?: AbortSignal;
 		readonly specs: readonly AgentToolSpec[];
+		readonly bindSignalToSession?: boolean;
 	}): Promise<ActiveGatewaySession> {
 		const label = request.label.trim();
 		if (!label) throw new Error("Gateway session label is required");
@@ -227,6 +239,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			cwd,
 			specs: request.specs,
 			registration,
+			invocation: { cwd, signal: request.signal },
 			abort,
 			seenCallIds: new Set(),
 			seenCallOrder: [],
@@ -247,7 +260,9 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				};
 			}
 		});
-		request.signal?.addEventListener("abort", () => abort.abort(), { once: true });
+		if (request.bindSignalToSession !== false) {
+			request.signal?.addEventListener("abort", () => abort.abort(), { once: true });
+		}
 		return session;
 	}
 
@@ -303,10 +318,12 @@ async function executeGatewayCall(
 	fetchImpl: typeof fetch,
 ): Promise<void> {
 	if (!rememberCall(session, call.callId)) return;
+	const invocation = session.invocation;
+	const signal = combineAbortSignals([session.abort.signal, invocation.signal].filter((candidate): candidate is AbortSignal => Boolean(candidate)));
 	const result = await registry.invoke(call.toolName, call.args, {
-		cwd: session.cwd,
+		cwd: invocation.cwd,
 		toolCallId: call.callId,
-		signal: session.abort.signal,
+		signal,
 	}).catch((err): GatewayToolCallResult => ({
 		content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
 		isError: true,
@@ -326,6 +343,36 @@ function rememberCall(session: ActiveGatewaySession, callId: string): boolean {
 		if (stale) session.seenCallIds.delete(stale);
 	}
 	return true;
+}
+
+function combineAbortSignals(signals: readonly AbortSignal[]): AbortSignal {
+	if (signals.length === 0) {
+		return new AbortController().signal;
+	}
+	if (typeof AbortSignal.any === "function") {
+		return AbortSignal.any([...signals]);
+	}
+	const abortedSignal = signals.find((signal) => signal.aborted);
+	if (abortedSignal) {
+		return AbortSignal.abort(abortedSignal.reason);
+	}
+	const controller = new AbortController();
+	const cleanup = new Map<AbortSignal, () => void>();
+	const abortFrom = (signal: AbortSignal) => {
+		for (const [registeredSignal, listener] of cleanup) {
+			registeredSignal.removeEventListener("abort", listener);
+		}
+		cleanup.clear();
+		controller.abort(signal.reason);
+	};
+	for (const signal of signals) {
+		const listener = () => {
+			abortFrom(signal);
+		};
+		cleanup.set(signal, listener);
+		signal.addEventListener("abort", listener, { once: true });
+	}
+	return controller.signal;
 }
 
 async function postJson<T>(fetchImpl: typeof fetch, url: string, token: string, body: unknown): Promise<T> {
