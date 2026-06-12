@@ -52,7 +52,8 @@ describe("auth providers", () => {
       ANTHROPIC_AUTH_TOKEN: "kimi-token",
       ANTHROPIC_BASE_URL: "https://api.kimi.com/coding/",
       ENABLE_TOOL_SEARCH: "false",
-      CLAUDE_CODE_SUBAGENT_MODEL: "kimi-k2.5",
+      ANTHROPIC_MODEL: "kimi-k2.7-code",
+      CLAUDE_CODE_SUBAGENT_MODEL: "kimi-k2.7-code",
       API_TIMEOUT_MS: "3000000",
     });
     // baseUrl 파생 값도 기존 리터럴과 동일한 검증 URL을 만들어야 한다
