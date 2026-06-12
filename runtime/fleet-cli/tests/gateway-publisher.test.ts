@@ -443,6 +443,71 @@ describe("gateway observability publisher", () => {
     expect(resultPosts).toEqual(["call-fail"]);
     expect(manager.getConnectionState().message).toContain("Fleet Gateway result publish failed");
   });
+
+  it("reposts a cached result on redelivery after a publish failure without re-running the tool", async () => {
+    const calls = createControlledGatewayCallStream();
+    const resultPosts: string[] = [];
+    const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "pong" }], isError: false }));
+    const manager = createExecutorManager(calls, invoke, resultPosts, [403, 200]);
+
+    await manager.createExecutorMcpSession({
+      serverName: "fleet",
+      specs: [{ id: "ping", description: "Ping", parameters: {} }],
+      cwd: "/tmp/retry",
+    });
+    await waitFor(() => calls.ready);
+    calls.emit({ callId: "call-retry", sessionId: "session-retry", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.length === 1);
+    calls.emit({ callId: "call-retry", sessionId: "session-retry", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.length === 2);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(resultPosts).toEqual(["call-retry", "call-retry"]);
+  });
+
+  it("ignores redelivery after a result has already been published", async () => {
+    const calls = createControlledGatewayCallStream();
+    const resultPosts: string[] = [];
+    const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "pong" }], isError: false }));
+    const manager = createExecutorManager(calls, invoke, resultPosts);
+
+    await manager.createExecutorMcpSession({
+      serverName: "fleet",
+      specs: [{ id: "ping", description: "Ping", parameters: {} }],
+      cwd: "/tmp/published",
+    });
+    await waitFor(() => calls.ready);
+    calls.emit({ callId: "call-published", sessionId: "session-published", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.length === 1);
+    calls.emit({ callId: "call-published", sessionId: "session-published", toolName: "ping", args: {} });
+    await delay(20);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(resultPosts).toEqual(["call-published"]);
+  });
+
+  it("keeps cached failed publishes retryable across repeated redeliveries", async () => {
+    const calls = createControlledGatewayCallStream();
+    const resultPosts: string[] = [];
+    const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "pong" }], isError: false }));
+    const manager = createExecutorManager(calls, invoke, resultPosts, [403, 503, 200]);
+
+    await manager.createExecutorMcpSession({
+      serverName: "fleet",
+      specs: [{ id: "ping", description: "Ping", parameters: {} }],
+      cwd: "/tmp/retry-again",
+    });
+    await waitFor(() => calls.ready);
+    calls.emit({ callId: "call-repeat", sessionId: "session-repeat", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.length === 1);
+    calls.emit({ callId: "call-repeat", sessionId: "session-repeat", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.length === 2);
+    calls.emit({ callId: "call-repeat", sessionId: "session-repeat", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.length === 3);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(resultPosts).toEqual(["call-repeat", "call-repeat", "call-repeat"]);
+  });
 });
 
 function createManager(posts: string[], publishStatus = 200) {
@@ -486,8 +551,9 @@ function createExecutorManager(
   calls: ControlledGatewayCallStream,
   invoke: ReturnType<typeof vi.fn>,
   resultPosts: string[],
-  resultStatus = 200,
+  resultStatus: number | number[] = 200,
 ) {
+  const resultStatuses = Array.isArray(resultStatus) ? [...resultStatus] : null;
   return createGatewayDedicatedSessionManager({
     name: "fleet",
     lifecycle: { ensureDaemon: async () => "http://127.0.0.1:37283/mcp" } as never,
@@ -514,7 +580,8 @@ function createExecutorManager(
       }
       if (target.includes("/control/results/")) {
         resultPosts.push(target.split("/").pop() ?? "");
-        return jsonResponse({ ok: resultStatus === 200 }, resultStatus);
+        const status = resultStatuses?.shift() ?? (resultStatus as number);
+        return jsonResponse({ ok: status === 200 }, status);
       }
       if (target.endsWith("/control/release")) {
         return jsonResponse({ ok: true });
@@ -587,4 +654,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   expect(predicate()).toBe(true);
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -48,7 +48,7 @@ interface ActiveGatewaySession {
 	invocation: GatewayInvocationContext;
 	readonly registrationLeases: Map<string, GatewayRegistrationLease>;
 	readonly abort: AbortController;
-	readonly seenCallIds: Set<string>;
+	readonly callStates: Map<string, GatewayCallState>;
 	readonly seenCallOrder: string[];
 }
 
@@ -67,6 +67,16 @@ interface GatewayRegistrationLease {
 interface GatewayCallStreamHttpError extends Error {
 	readonly gatewayStatus: number;
 }
+
+type GatewayCallState =
+	| { readonly status: "running" }
+	| { readonly status: "published" }
+	| { readonly status: "publish_failed"; readonly result: GatewayToolCallResult };
+
+type GatewayCallAction =
+	| { readonly kind: "run" }
+	| { readonly kind: "retry"; readonly result: GatewayToolCallResult }
+	| { readonly kind: "ignore" };
 
 interface ExecutorEndpoint {
 	readonly servers: readonly { readonly name: string; readonly url: string }[];
@@ -281,11 +291,11 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			specs: request.specs,
 			registration,
 			invocation: { cwd, signal: request.signal },
-			registrationLeases: new Map(),
-			abort,
-			seenCallIds: new Set(),
-			seenCallOrder: [],
-		};
+				registrationLeases: new Map(),
+				abort,
+				callStates: new Map(),
+				seenCallOrder: [],
+			};
 		trackGatewayRegistration(session, registration);
 		activeSessions.set(label, session);
 		primarySessionLabel ??= label;
@@ -363,7 +373,12 @@ async function executeGatewayCall(
 	onPublishFailure: (err: unknown) => void,
 	onRegistrationIdle: (lease: GatewayRegistrationLease) => void,
 ): Promise<void> {
-	if (!rememberCall(session, call.callId)) return;
+	const action = prepareGatewayCall(session, call.callId);
+	if (action.kind === "ignore") return;
+	if (action.kind === "retry") {
+		await publishGatewayCallResult(call, session, action.result, fetchImpl, onPublishFailure, onRegistrationIdle);
+		return;
+	}
 	const lease = acquireGatewayRegistration(session);
 	const registration = lease.registration;
 	const invocation = session.invocation;
@@ -381,22 +396,62 @@ async function executeGatewayCall(
 			sessionId: call.sessionId,
 			result,
 		});
+		markGatewayCallPublished(session, call.callId);
 	} catch (err) {
+		markGatewayCallPublishFailed(session, call.callId, result);
 		onPublishFailure(err);
 	} finally {
 		finishGatewayRegistration(session, lease, onRegistrationIdle);
 	}
 }
 
-function rememberCall(session: ActiveGatewaySession, callId: string): boolean {
-	if (session.seenCallIds.has(callId)) return false;
-	session.seenCallIds.add(callId);
+async function publishGatewayCallResult(
+	call: GatewayQueuedToolCall,
+	session: ActiveGatewaySession,
+	result: GatewayToolCallResult,
+	fetchImpl: typeof fetch,
+	onPublishFailure: (err: unknown) => void,
+	onRegistrationIdle: (lease: GatewayRegistrationLease) => void,
+): Promise<void> {
+	const lease = acquireGatewayRegistration(session);
+	const registration = lease.registration;
+	try {
+		await postJson(fetchImpl, registration.endpoint.replace("/mcp", `/control/results/${call.callId}`), registration.controlToken, {
+			sessionId: call.sessionId,
+			result,
+		});
+		markGatewayCallPublished(session, call.callId);
+	} catch (err) {
+		markGatewayCallPublishFailed(session, call.callId, result);
+		onPublishFailure(err);
+	} finally {
+		finishGatewayRegistration(session, lease, onRegistrationIdle);
+	}
+}
+
+function prepareGatewayCall(session: ActiveGatewaySession, callId: string): GatewayCallAction {
+	const existing = session.callStates.get(callId);
+	if (existing?.status === "publish_failed") return { kind: "retry", result: existing.result };
+	if (existing) return { kind: "ignore" };
+	session.callStates.set(callId, { status: "running" });
 	session.seenCallOrder.push(callId);
 	while (session.seenCallOrder.length > 512) {
 		const stale = session.seenCallOrder.shift();
-		if (stale) session.seenCallIds.delete(stale);
+		if (stale) session.callStates.delete(stale);
 	}
-	return true;
+	return { kind: "run" };
+}
+
+function markGatewayCallPublished(session: ActiveGatewaySession, callId: string): void {
+	if (session.callStates.has(callId)) {
+		session.callStates.set(callId, { status: "published" });
+	}
+}
+
+function markGatewayCallPublishFailed(session: ActiveGatewaySession, callId: string, result: GatewayToolCallResult): void {
+	if (session.callStates.has(callId)) {
+		session.callStates.set(callId, { status: "publish_failed", result });
+	}
 }
 
 function trackGatewayRegistration(session: ActiveGatewaySession, registration: GatewayRegisterTenantResponse): GatewayRegistrationLease {
