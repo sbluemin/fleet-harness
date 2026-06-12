@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `25`
+- total_entries: `26`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -68,13 +68,23 @@
 - raw_source_ref: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
 - raw_source_refs: `raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-6fb1bd2b.md, raw/2026-06-07-guide-005-cli-hooks-io-comparison-source-385c9ab6.md`
 
+### guide-006-maritime-codex-design-language
+
+- title: `Guide - 006 Maritime Codex 디자인 언어`
+- path: `wiki/guide-006-maritime-codex-design-language.md`
+- tags: `design, look-and-feel, maritime-codex, visual-identity, guide`
+- updated: `2026-06-12T16:31:53.920Z`
+- summary: `# Maritime Codex 디자인 언어`
+- raw_source_ref: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
+- raw_source_refs: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
+
 ### guide-unified-agent-cursor-composer-25
 
 - title: `Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결`
 - path: `wiki/guide-unified-agent-cursor-composer-25.md`
 - tags: `unified-agent, cursor, composer-2.5, acp, models`
 - updated: `2026-05-26T14:37:03.523Z`
-- summary: `---`
+- summary: `# Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결`
 - raw_source_ref: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
 - raw_source_refs: `raw/2026-05-26-guide-unified-agent-cursor-composer-25-source-db68c1a5.md`
 
@@ -194,7 +204,7 @@
 - path: `wiki/prd-infra-agent-executor-migration.md`
 - tags: `fleet-core, fleet-infra, agent-executor, package-migration, architecture, dependency-injection`
 - updated: `2026-05-23T05:40:45.905Z`
-- summary: `---`
+- summary: `## Overview`
 - raw_source_ref: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
 - raw_source_refs: `raw/2026-05-23-prd-infra-agent-executor-migration-source-6de036c4.md`
 
@@ -395,6 +405,10 @@
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
 
+### design
+
+- [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
+
 ### diagnostics
 
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
@@ -496,6 +510,7 @@
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
 - [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
+- [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
 
 ### hooks
 
@@ -512,6 +527,14 @@
 ### keyboard-protocol
 
 - [[wiki:prd-tui-keyboard-protocol-architecture]] — PRD: Fleet TUI Keyboard Protocol & Keybinding Registry Architecture
+
+### look-and-feel
+
+- [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
+
+### maritime-codex
+
+- [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
 
 ### mcp
 
@@ -652,6 +675,10 @@
 
 - [[wiki:prd-cli-argv-to-preset]] — PRD: fleet-cli CLI argument의 인터랙티브 메뉴 + preset 영속 모델로의 전환
 - [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
+
+### visual-identity
+
+- [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
 
 ### wiki-server
 

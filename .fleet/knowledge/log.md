@@ -3575,3 +3575,95 @@
 - ok: `true`
 - warning_count: `7`
 
+## 2026-06-12T16:27:03.253Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-12T16:28:15.177Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-12T16:30:12.094Z — raw source added
+
+- id: `guide-006-maritime-codex-design-language-source`
+- raw_source_ref: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
+- source_type: `inline`
+- tag_count: `5`
+- title: `Guide - 006 Maritime Codex 디자인 언어`
+
+## 2026-06-12T16:30:12.097Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-12T16-30-12-084Z-0a87926c`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
+- target: `wiki/guide-006-maritime-codex-design-language.md`
+- warning_count: `0`
+
+## 2026-06-12T16:30:18.631Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-12T16:31:31.004Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `20be20cb`
+- patch_id: `2026-06-12T16-30-12-084Z-0a87926c`
+- previous_hash: `092007c1`
+- target: `wiki/guide-006-maritime-codex-design-language.md`
+
+## 2026-06-12T16:31:38.020Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `2eaf5146`
+- patch_id: `2026-06-12T16-30-12-084Z-0a87926c`
+- previous_hash: `20be20cb`
+- target: `wiki/guide-006-maritime-codex-design-language.md`
+
+## 2026-06-12T16:31:44.825Z — patch edited
+
+- body_replacements: `3`
+- changed_fields: `body, updated`
+- next_hash: `0b1cf63c`
+- patch_id: `2026-06-12T16-30-12-084Z-0a87926c`
+- previous_hash: `2eaf5146`
+- target: `wiki/guide-006-maritime-codex-design-language.md`
+
+## 2026-06-12T16:31:53.925Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `5217ddfb`
+- patch_id: `2026-06-12T16-30-12-084Z-0a87926c`
+- previous_hash: `0b1cf63c`
+- target: `wiki/guide-006-maritime-codex-design-language.md`
+
+## 2026-06-12T16:32:00.715Z — index rebuilt
+
+- entry_count: `26`
+
+## 2026-06-12T16:32:00.717Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-12T16-30-12-084Z-0a87926c`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
+- result: `accepted`
+- target: `wiki/guide-006-maritime-codex-design-language.md`
+

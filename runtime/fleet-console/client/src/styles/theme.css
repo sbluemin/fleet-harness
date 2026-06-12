@@ -1,58 +1,77 @@
-/* ── Fleet Console design tokens ─────────────────────────────────────
-   정체성: 정밀 관제 콘솔. 깊은 카본 베이스 위에 단일 시그널(라임) 액센트.
-   wiki의 Maritime Codex(브라스/세리프)와 의도적으로 대척점에 선다. */
-
 :root {
   color-scheme: dark;
 
-  /* type */
-  --font-ui: "Archivo Variable", "Avenir Next", "Segoe UI", sans-serif;
-  --font-mono: "Martian Mono Variable", "SFMono-Regular", "Menlo", monospace;
+  --ink-abyss: oklch(15% 0.04 250);
+  --ink-deep: oklch(20% 0.045 248);
+  --ink-mid: oklch(28% 0.04 248);
+  --ink-veil: oklch(36% 0.035 248);
+  --ink-rim: oklch(48% 0.03 248);
+  --ink-fog: oklch(70% 0.02 248);
+  --ink-spectral: oklch(82% 0.018 90);
+  --ink-pearl: oklch(96% 0.012 88);
 
-  /* carbon scale — 차가운 심야 카본 */
-  --carbon-0: oklch(0.13 0.012 250);
-  --carbon-1: oklch(0.16 0.014 250);
-  --carbon-2: oklch(0.19 0.016 250);
-  --carbon-3: oklch(0.235 0.018 250);
-  --carbon-rim: oklch(0.32 0.02 250 / 0.55);
-  --carbon-rim-soft: oklch(0.32 0.02 250 / 0.3);
-  --carbon-rim-faint: oklch(0.32 0.02 250 / 0.12);
+  --brass: oklch(78% 0.13 75);
+  --brass-bright: oklch(86% 0.16 78);
+  --brass-deep: oklch(56% 0.13 65);
+  --brass-glow: oklch(82% 0.16 75 / 28%);
 
-  /* ink scale — 한랭 회백 텍스트 */
-  --ink-strong: oklch(0.93 0.008 240);
-  --ink: oklch(0.78 0.012 240);
-  --ink-dim: oklch(0.6 0.014 240);
-  --ink-faint: oklch(0.46 0.014 240);
+  --aurora: oklch(82% 0.13 195);
+  --aurora-deep: oklch(58% 0.13 200);
+  --aurora-glow: oklch(82% 0.13 195 / 22%);
 
-  /* signal — 단일 액센트. 살아있는 스트림의 색 */
-  --signal: oklch(0.86 0.2 128);
-  --signal-deep: oklch(0.68 0.16 130);
-  --signal-glow: oklch(0.86 0.2 128 / 0.16);
-  --signal-faint: oklch(0.86 0.2 128 / 0.07);
+  --coral: oklch(72% 0.17 25);
+  --coral-glow: oklch(72% 0.17 25 / 22%);
+  --warn: oklch(80% 0.13 85);
+  --warn-glow: oklch(80% 0.13 85 / 22%);
 
-  /* semantic states */
-  --state-ok: oklch(0.72 0.07 200);
-  --state-bad: oklch(0.68 0.18 25);
-  --state-bad-glow: oklch(0.68 0.18 25 / 0.14);
-  --state-idle: oklch(0.55 0.012 250);
-  --state-warn: oklch(0.8 0.13 85);
+  --surface-glass: oklch(28% 0.04 248 / 60%);
+  --surface-glass-strong: oklch(32% 0.04 248 / 78%);
+  --surface-pillar: oklch(22% 0.05 248 / 86%);
+  --surface-rim: oklch(64% 0.04 248 / 24%);
+  --surface-rim-strong: oklch(72% 0.05 248 / 38%);
 
-  /* geometry */
-  --radius-xs: 4px;
-  --radius-sm: 7px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --shadow-soft: 0 1px 0 0 oklch(96% 0.01 90 / 6%) inset, 0 18px 38px -22px oklch(0% 0 0 / 70%);
+  --shadow-floating: 0 1px 0 0 oklch(96% 0.01 90 / 8%) inset, 0 32px 60px -28px oklch(0% 0 0 / 80%);
+  --shadow-anchor: 0 0 0 1px oklch(78% 0.13 75 / 16%), 0 12px 32px -16px oklch(78% 0.13 75 / 30%);
 
-  /* motion */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --duration-fast: 130ms;
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --font-display: "Fraunces Variable", "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-body: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-glide: cubic-bezier(0.4, 0.14, 0.2, 1);
+  --duration-fast: 140ms;
   --duration-base: 220ms;
+  --duration-slow: 360ms;
+
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.93  0 0 0 0 0.86  0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/></svg>");
 }
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+*::selection {
+  background: var(--brass-glow);
+  color: var(--ink-pearl);
 }
 
 html,
@@ -62,44 +81,58 @@ body {
   height: 100%;
 }
 
-body {
-  background: var(--carbon-0);
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.55;
-  letter-spacing: -0.006em;
+html {
+  background: var(--ink-abyss);
+  color: var(--ink-pearl);
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
+  background: transparent;
+  color: var(--ink-spectral);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
 }
 
-/* 관제실 분위기: 시그널 잔광 + 미세 그레인. 컴포넌트가 재정의하지 않는다. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(120% 90% at 8% -10%, var(--signal-faint), transparent 52%),
-    radial-gradient(100% 80% at 100% 110%, oklch(0.4 0.06 250 / 0.1), transparent 55%);
-  z-index: 0;
-}
-
+body::before,
 body::after {
   content: "";
   position: fixed;
   inset: 0;
+  z-index: -2;
   pointer-events: none;
-  opacity: 0.35;
+}
+
+body::before {
+  background:
+    radial-gradient(900px 720px at 8% 4%, oklch(48% 0.12 200 / 24%), transparent 60%),
+    radial-gradient(820px 700px at 92% 96%, oklch(52% 0.13 60 / 18%), transparent 62%),
+    radial-gradient(640px 520px at 68% 14%, oklch(82% 0.13 195 / 10%), transparent 68%),
+    radial-gradient(520px 480px at 28% 98%, oklch(78% 0.13 75 / 11%), transparent 70%),
+    var(--ink-abyss);
+}
+
+body::after {
+  z-index: -1;
+  background-image: var(--grain);
+  background-size: 220px 220px;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.28'/%3E%3C/svg%3E");
-  z-index: 0;
+  opacity: 0.45;
 }
 
 #app {
   position: relative;
-  height: 100%;
   z-index: 1;
+  height: 100%;
 }
 
 code,
@@ -107,52 +140,82 @@ pre {
   font-family: var(--font-mono);
 }
 
-button {
+button,
+input,
+textarea {
   font: inherit;
-  color: inherit;
-  background: none;
+  font-feature-settings: inherit;
+}
+
+button {
   border: none;
   padding: 0;
+  background: none;
+  color: inherit;
   cursor: pointer;
 }
 
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
 :focus-visible {
-  outline: 1.5px solid var(--signal-deep);
+  outline: 2px solid var(--brass);
   outline-offset: 2px;
   border-radius: var(--radius-xs);
 }
 
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--carbon-3);
-  border-radius: 999px;
-  border: 2px solid var(--carbon-0);
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* Firefox: WebKit 의사요소 미지원 환경에서만 표준 속성을 적용해
-   Chromium의 정밀 스크롤바 스타일을 덮어쓰지 않는다. */
+::-webkit-scrollbar-thumb {
+  background: oklch(50% 0.04 248 / 30%);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(70% 0.05 248 / 50%);
+  background-clip: padding-box;
+}
+
 @supports not selector(::-webkit-scrollbar) {
   * {
-    scrollbar-color: var(--carbon-3) transparent;
+    scrollbar-color: oklch(50% 0.04 248 / 45%) transparent;
     scrollbar-width: thin;
   }
 }
 
-@keyframes signal-pulse {
+@keyframes codex-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes aurora-pulse {
   0%,
   100% {
-    opacity: 1;
+    opacity: 0.58;
+    box-shadow: 0 0 0 0 var(--aurora-glow);
   }
   50% {
-    opacity: 0.35;
+    opacity: 1;
+    box-shadow: 0 0 14px 2px var(--aurora-glow);
   }
 }
 
@@ -164,17 +227,6 @@ button {
   56%,
   100% {
     opacity: 0;
-  }
-}
-
-@keyframes console-rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 

@@ -37,15 +37,19 @@
 - The output view keeps pin-to-bottom follow behavior: pinned within slack distance, released on upward scroll, restored via the follow button. Removing this is a UX regression.
 - `sentTextLength` tracks emitted length from `textLength` metadata so retention clamping on the gateway side stays visible to the operator.
 
-## Design Identity — "Precision Operations Console"
+## Design Identity — "Maritime Console"
 
-The console is a cold, precise, dark operations instrument. It must not imitate the Fleet Wiki "Maritime Codex" identity (no serif display, no brass/aurora palette, no glassmorphism-led editorial surfaces).
+The console is the operations variant of Fleet Wiki's **Maritime Codex** language: same deep-water ink, brass instrumentation, aurora life signals, glass surfaces, and codex motion grammar, but tuned for live observation rather than reading. It is a command instrument over the same sea, not an editorial document view.
 
-- **Type**: `Archivo Variable` for UI/display, `Martian Mono Variable` for data/output. No Inter/Roboto/Arial/system-ui as a primary family; no font CDNs.
-- **Color**: deep cold carbon base (`--carbon-*`), restrained cool-grey ink scale (`--ink-*`), and a **single signal accent** (electric lime, `--signal`) reserved for *live activity* — streaming state, live dots, the stream caret, the follow button. Semantic states: `--state-ok` (calm cyan-grey), `--state-bad` (coral), `--state-warn` (amber), `--state-idle` (neutral). Tokens are defined in `client/src/styles/theme.css` with `oklch()`; components must reference tokens, never raw hex.
-- **Signal discipline**: the lime signal means "alive right now". Using it for terminal/idle/selection states dilutes the instrument's meaning and is a design regression. Two deliberate exceptions are allowed and fixed: the topbar brand sigil (identity mark) and the `:focus-visible` outline (interaction affordance). Anything else must justify itself as live activity.
-- **Atmosphere**: the viewport background (signal afterglow gradient + grain) is owned by `body::before`/`body::after` in `theme.css`; components must not redefine it.
-- **Motion**: pulse for live dots, blink for the stream caret, one `console-rise` entrance per pane. `prefers-reduced-motion` short-circuits all animation and must stay intact.
+- **Relationship to Maritime Codex**: `runtime/fleet-wiki-ui` remains the reference doctrine and visual source material. Console may translate the vocabulary for operations needs, but it must stay visibly related through the shared token system, glass atmosphere, brass/aurora pairing, Fraunces display type, and `codex-rise` motion.
+- **Color semantics**:
+  - `brass` means "지금 보고 있는 곳" — selected job brass dot indicator, active navigation, structural decoration, and non-live active/focus-adjacent emphasis.
+  - `aurora` means "지금 살아있는 것" — streaming status, live dots, tenant beacons, stream caret, follow button, and `connection-chip--live`. Unlike Fleet Wiki, console does not reserve aurora only for document linkage because there is no document-link concept here.
+  - `coral` means error/bad; `--warn` (amber, near `oklch(80% 0.13 85)`) means warning/auth-needed/connecting; neutral ink means idle.
+- **Typography**: `Fraunces Variable` is display type for the topbar brand, job titles, idle marks, and large headings. `Manrope Variable` is the default UI family. `JetBrains Mono Variable` is for stream output, job ids, timelines, and eyebrow labels with uppercase tracked styling.
+- **Surface and atmosphere**: `body::before` owns the multi-radial cold teal + brass afterglow field, and `body::after` owns the `feTurbulence` grain overlay. Sidebar, selected-job stage, timeline dock, and job summary are glass cards using `backdrop-filter: blur(18px) saturate(140%)`, `--surface-glass`, `--surface-rim`, `--shadow-soft`, and `--radius-xl`/large-radius surfaces.
+- **Motion**: panes use one first-paint `codex-rise` reveal (720ms, `--ease-spring`, topbar/sidebar/stage staggered 40/120/200ms). Live dots use aurora pulse, the stream caret keeps its blink, and ambient infinite motion is forbidden. `prefers-reduced-motion` must continue to short-circuit animation.
+- **Hard bans**: no font CDN; no `Inter`/`Roboto`/`Arial`/`system-ui` as the first font family; no solid `#fff` or `#000` backgrounds; no card/button/chip radius at or below 4px; no removal of `prefers-reduced-motion`; no mixing brass and aurora roles; no reintroduction of `--carbon-*` or `--signal-*` token families.
 - CSS stays in three layers: `theme.css` (tokens/reset/keyframes only), `layout.css` (shell grid/breakpoints only), `components.css` (every concrete surface).
 
 ## TypeScript File Structure

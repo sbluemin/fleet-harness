@@ -1,5 +1,6 @@
-import "@fontsource-variable/archivo/wdth.css";
-import "@fontsource-variable/martian-mono";
+import "@fontsource-variable/fraunces";
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/jetbrains-mono";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";

@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
 
-declare module "@fontsource-variable/archivo/wdth.css";
-declare module "@fontsource-variable/martian-mono";
+declare module "@fontsource-variable/fraunces";
+declare module "@fontsource-variable/manrope";
+declare module "@fontsource-variable/jetbrains-mono";
