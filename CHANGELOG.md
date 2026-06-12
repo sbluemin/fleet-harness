@@ -6,11 +6,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
+- [core] Fleet Console, a standalone web surface for gateway observability, ships as its own runtime package and is served by the local gateway daemon — navigable workspace and job rails, smooth incremental streaming of carrier output with reasoning folds and inline tool-call activity, job finalize summaries, and a raw event timeline.
 - [core] A machine-wide gateway daemon replaces per-instance MCP servers, exposing a fixed local loopback endpoint with per-session tenant tokens, in-memory call queues, and an observer read-only access mode.
 - [core] Mission Control now includes a gateway status panel showing daemon health, tenant count, and last-seen timestamp.
+- [core] The `fleet console` subcommand and the standalone `fleet-console` binary ensure the gateway daemon and open the Fleet Console in a browser.
 
 ### Changed
 - [core-unified-agent] Claude Code with Moonshot Kimi now runs the Kimi K2.7 coding model as the default, slot-mapped, and subagent model.
+- [core] Observability events now retain carrier output text in memory with a per-event retention cap instead of redacting it to length metadata, so the console can render live streams; exposure stays loopback-only behind observer tokens.
 - The generic MCP registry, routing, and tool snapshot primitives formerly in `@dotobokuri/core-mcp-server` are now owned by `@dotobokuri/core-agent`.
 - [core][core-agent] Executor sessions connect to the local gateway instead of spawning an in-process MCP server per Fleet CLI instance.
 

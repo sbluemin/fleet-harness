@@ -1,0 +1,54 @@
+{
+  "name": "@dotobokuri/fleet-console",
+  "version": "1.4.0",
+  "description": "Fleet Console - web surface for observing Fleet Gateway tenants, carrier jobs, and live output streams.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbluemin/fleet-harness.git",
+    "directory": "runtime/fleet-console"
+  },
+  "homepage": "https://github.com/sbluemin/fleet-harness#readme",
+  "bugs": {
+    "url": "https://github.com/sbluemin/fleet-harness/issues"
+  },
+  "private": true,
+  "type": "module",
+  "main": "./dist/cli.mjs",
+  "types": "./dist/cli.d.ts",
+  "bin": {
+    "fleet-console": "./dist/cli.mjs"
+  },
+  "exports": {
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.mjs"
+    }
+  },
+  "files": ["dist", "AGENTS.md", "README.md"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "build": "tsup && vite build --config client/vite.config.ts && node ../fleet-gateway/scripts/embed-console.mjs",
+    "dev": "vite --config client/vite.config.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
+  },
+  "dependencies": {
+    "@dotobokuri/fleet-gateway": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@fontsource-variable/archivo": "^5.2.8",
+    "@fontsource-variable/martian-mono": "^5.2.7",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.2",
+    "vite": "^7.2.7",
+    "vitest": "^4.0.13"
+  }
+}

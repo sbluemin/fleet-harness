@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import process from "node:process";
 
 import type { GatewayLockPayload } from "./api-types.js";
@@ -26,7 +27,7 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
   const argv = deps.argv ?? process.argv;
   const env = deps.env ?? process.env;
   const execPath = deps.execPath ?? process.execPath;
-  const serverModulePath = deps.serverModulePath ?? new URL("./cli.mjs", import.meta.url).pathname;
+  const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
   const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => { spawn(bin, [...args], options).unref(); });
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const paths = createGatewayPaths({ env });
@@ -107,6 +108,12 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
       return null;
     }
   }
+}
+
+function resolveDefaultServerModulePath(): string {
+  const builtPath = new URL("./cli.mjs", import.meta.url).pathname;
+  if (fs.existsSync(builtPath)) return builtPath;
+  return new URL("../dist/cli.mjs", import.meta.url).pathname;
 }
 
 async function main(): Promise<void> {

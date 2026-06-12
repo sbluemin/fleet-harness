@@ -33,6 +33,7 @@ describe("gateway daemon lifecycle", () => {
       endpoint: "http://203.0.113.1:37283/mcp",
       startedAt: Date.now(),
       token: "hostile",
+      observerToken: "observer-token",
       version: "test",
     }));
     fs.chmodSync(lockFile, 0o600);
@@ -92,6 +93,7 @@ describe("gateway daemon lifecycle", () => {
           endpoint: "http://127.0.0.1:37283/mcp",
           startedAt,
           token,
+          observerToken: "observer-token",
           version: "test",
         }));
         fs.chmodSync(lockFile, 0o600);

@@ -1,0 +1,190 @@
+/* ── Fleet Console design tokens ─────────────────────────────────────
+   정체성: 정밀 관제 콘솔. 깊은 카본 베이스 위에 단일 시그널(라임) 액센트.
+   wiki의 Maritime Codex(브라스/세리프)와 의도적으로 대척점에 선다. */
+
+:root {
+  color-scheme: dark;
+
+  /* type */
+  --font-ui: "Archivo Variable", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "Martian Mono Variable", "SFMono-Regular", "Menlo", monospace;
+
+  /* carbon scale — 차가운 심야 카본 */
+  --carbon-0: oklch(0.13 0.012 250);
+  --carbon-1: oklch(0.16 0.014 250);
+  --carbon-2: oklch(0.19 0.016 250);
+  --carbon-3: oklch(0.235 0.018 250);
+  --carbon-rim: oklch(0.32 0.02 250 / 0.55);
+  --carbon-rim-soft: oklch(0.32 0.02 250 / 0.3);
+  --carbon-rim-faint: oklch(0.32 0.02 250 / 0.12);
+
+  /* ink scale — 한랭 회백 텍스트 */
+  --ink-strong: oklch(0.93 0.008 240);
+  --ink: oklch(0.78 0.012 240);
+  --ink-dim: oklch(0.6 0.014 240);
+  --ink-faint: oklch(0.46 0.014 240);
+
+  /* signal — 단일 액센트. 살아있는 스트림의 색 */
+  --signal: oklch(0.86 0.2 128);
+  --signal-deep: oklch(0.68 0.16 130);
+  --signal-glow: oklch(0.86 0.2 128 / 0.16);
+  --signal-faint: oklch(0.86 0.2 128 / 0.07);
+
+  /* semantic states */
+  --state-ok: oklch(0.72 0.07 200);
+  --state-bad: oklch(0.68 0.18 25);
+  --state-bad-glow: oklch(0.68 0.18 25 / 0.14);
+  --state-idle: oklch(0.55 0.012 250);
+  --state-warn: oklch(0.8 0.13 85);
+
+  /* geometry */
+  --radius-xs: 4px;
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 130ms;
+  --duration-base: 220ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--carbon-0);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* 관제실 분위기: 시그널 잔광 + 미세 그레인. 컴포넌트가 재정의하지 않는다. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 8% -10%, var(--signal-faint), transparent 52%),
+    radial-gradient(100% 80% at 100% 110%, oklch(0.4 0.06 250 / 0.1), transparent 55%);
+  z-index: 0;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.28'/%3E%3C/svg%3E");
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  height: 100%;
+  z-index: 1;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 1.5px solid var(--signal-deep);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--carbon-3);
+  border-radius: 999px;
+  border: 2px solid var(--carbon-0);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Firefox: WebKit 의사요소 미지원 환경에서만 표준 속성을 적용해
+   Chromium의 정밀 스크롤바 스타일을 덮어쓰지 않는다. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: var(--carbon-3) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@keyframes signal-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes console-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

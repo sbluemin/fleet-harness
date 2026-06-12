@@ -22,6 +22,7 @@ describe("gateway lock", () => {
     const handle = lock.writeLock({ dir, lockFile, pid: 123, port: 37283, endpoint: "http://127.0.0.1:37283/mcp", version: "test" });
 
     expect(handle.payload.token).toBe("token");
+    expect(handle.payload.observerToken).toBe("token");
     expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
     expect(fs.statSync(lockFile).mode & 0o777).toBe(0o600);
     lock.assertLockModes(lockFile);
@@ -72,6 +73,15 @@ describe("gateway lock", () => {
       port: 37283,
       endpointPath: "/mcp",
     })).toThrow(/must match/);
+
+    expect(() => lock.assertTrustedLock({
+      dir,
+      lockFile,
+      payload: { ...handle.payload, observerToken: "" },
+      host: "127.0.0.1",
+      port: 37283,
+      endpointPath: "/mcp",
+    })).toThrow(/observer token/);
   });
 
   it("rejects deceptive DNS names that start with 127", () => {

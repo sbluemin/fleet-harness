@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-gateway",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Fleet Gateway - machine-wide local daemon for Fleet MCP routing and observability.",
   "repository": {
     "type": "git",
@@ -24,12 +24,16 @@
       "default": "./dist/cli.mjs"
     }
   },
-  "files": ["dist", "AGENTS.md"],
+  "files": [
+    "dist",
+    "AGENTS.md",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node ./scripts/embed-console.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

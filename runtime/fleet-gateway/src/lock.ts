@@ -70,6 +70,7 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
       endpoint: input.endpoint,
       startedAt: now(),
       token: randomToken(),
+      observerToken: randomToken(),
       version: input.version,
     };
     const fd = fsImpl.openSync(input.lockFile, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, LOCK_FILE_MODE);
@@ -135,6 +136,9 @@ export function createGatewayLock(deps: GatewayLockDeps = {}) {
     }
     if (input.payload.endpoint !== `http://${input.host}:${input.port}${input.endpointPath}`) {
       throw new Error("Gateway lock endpoint must match the fixed endpoint");
+    }
+    if (typeof input.payload.observerToken !== "string" || input.payload.observerToken.length === 0) {
+      throw new Error("Gateway lock observer token must be a non-empty string");
     }
   }
 

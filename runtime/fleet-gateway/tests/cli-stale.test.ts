@@ -19,7 +19,21 @@ describe("gateway stale policy", () => {
   it("detects builds newer than the lock", () => {
     const policy = createGatewayStalePolicy({ fs: { statSync: () => ({ mtimeMs: 20 }) } as never });
 
-    expect(policy.isBuildStale({ pid: 1, host: "127.0.0.1", port: 37283, endpoint: ENDPOINT, startedAt: 10, token: "token", version: "test" }, "server.mjs")).toBe(true);
+    expect(
+      policy.isBuildStale(
+        {
+          pid: 1,
+          host: "127.0.0.1",
+          port: 37283,
+          endpoint: ENDPOINT,
+          startedAt: 10,
+          token: "token",
+          observerToken: "observer-token",
+          version: "test",
+        },
+        "server.mjs",
+      ),
+    ).toBe(true);
   });
 
   it("defers stale restart while tenants are active", async () => {
@@ -122,6 +136,7 @@ function createLockPayload(startedAt: number): GatewayLockPayload {
     endpoint: ENDPOINT,
     startedAt,
     token: "token",
+    observerToken: "observer-token",
     version: "test",
   };
 }

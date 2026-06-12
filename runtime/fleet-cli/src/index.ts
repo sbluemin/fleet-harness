@@ -43,29 +43,11 @@ if (argv[0] === "hook") {
 }
 
 if (argv[0] === "wiki") {
-  const cliPath = require.resolve("@dotobokuri/fleet-wiki-ui/cli");
-  const child = spawn(process.execPath, [cliPath, ...argv.slice(1)], {
-    stdio: "inherit",
-    cwd: process.env.INIT_CWD || process.cwd(),
-  });
-  const status = await new Promise<number>((resolve) => {
-    child.on("error", (error) => {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-      resolve(1);
-    });
-    child.on("exit", (code, signal) => {
-      if (typeof code === "number") {
-        resolve(code);
-        return;
-      }
-      if (signal) {
-        resolve(1);
-        return;
-      }
-      resolve(0);
-    });
-  });
-  process.exit(status);
+  process.exit(await relayToPackageCli("@dotobokuri/fleet-wiki-ui/cli", argv.slice(1)));
+}
+
+if (argv[0] === "console") {
+  process.exit(await relayToPackageCli("@dotobokuri/fleet-console/cli", argv.slice(1)));
 }
 
 if (argv[0] === "update") {
@@ -125,4 +107,29 @@ function resolveOptionalPackage(id: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function relayToPackageCli(specifier: string, args: readonly string[]): Promise<number> {
+  const cliPath = require.resolve(specifier);
+  const child = spawn(process.execPath, [cliPath, ...args], {
+    stdio: "inherit",
+    cwd: process.env.INIT_CWD || process.cwd(),
+  });
+  return new Promise<number>((resolve) => {
+    child.on("error", (error) => {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      resolve(1);
+    });
+    child.on("exit", (code, signal) => {
+      if (typeof code === "number") {
+        resolve(code);
+        return;
+      }
+      if (signal) {
+        resolve(1);
+        return;
+      }
+      resolve(0);
+    });
+  });
 }

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import type {
+  GatewayObservedTenant,
   GatewayRegisterTenantRequest,
   GatewayRegisterTenantResponse,
   GatewayToolSnapshot,
@@ -84,6 +85,22 @@ export function createGatewayTenantStore(deps: GatewayTenantStoreDeps = {}) {
     return tokens.get(token) ?? null;
   }
 
+  function listTenantSnapshots(): readonly GatewayObservedTenant[] {
+    return Array.from(tenants.values())
+      .map((tenant) => ({
+        tenantId: tenant.tenantId,
+        tenantLabel: tenant.tenantLabel,
+        cwd: tenant.cwd,
+        createdAt: tenant.createdAt,
+        sessions: tenant.sessions.size,
+      }))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  function getTenant(tenantId: string): GatewayTenantRecord | null {
+    return tenants.get(tenantId) ?? null;
+  }
+
   function releaseTenant(controlToken: string): GatewayTenantRelease | null {
     const lookup = tokens.get(controlToken);
     if (!lookup || lookup.kind !== "control") return null;
@@ -107,7 +124,7 @@ export function createGatewayTenantStore(deps: GatewayTenantStoreDeps = {}) {
     return tenants.size;
   }
 
-  return { registerTenant, lookupToken, releaseTenant, clear, tenantCount };
+  return { registerTenant, lookupToken, listTenantSnapshots, getTenant, releaseTenant, clear, tenantCount };
 }
 
 function copyToolSnapshot(tool: GatewayToolSnapshot): GatewayToolSnapshot {

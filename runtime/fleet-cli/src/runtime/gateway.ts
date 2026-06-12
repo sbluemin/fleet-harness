@@ -64,6 +64,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 	const fetchImpl = deps.fetch ?? fetch;
 	const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 	const activeSessions = new Map<string, ActiveGatewaySession>();
+	let primarySessionLabel: string | null = null;
 	let endpointPromise: Promise<ExecutorEndpoint> | undefined;
 	let connectionState: GatewayClientConnectionState = {
 		state: "ready",
@@ -179,25 +180,26 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			return connectionState;
 		},
 		publishJobEvent(event) {
-			for (const session of activeSessions.values()) {
-				void postJson(fetchImpl, session.registration.endpoint.replace("/mcp", "/control/events"), session.registration.controlToken, {
-					event,
-				}).catch((err) => {
-					if (!session.abort.signal.aborted) {
-						connectionState = {
-							state: "retrying",
-							attempts: 1,
-							message: `Fleet Gateway observability publish failed: ${err instanceof Error ? err.message : String(err)}`,
-						};
-					}
-				});
-			}
+			const session = getPrimarySession();
+			if (!session) return;
+			void postJson(fetchImpl, session.registration.endpoint.replace("/mcp", "/control/events"), session.registration.controlToken, {
+				event,
+			}).catch((err) => {
+				if (!session.abort.signal.aborted) {
+					connectionState = {
+						state: "retrying",
+						attempts: 1,
+						message: `Fleet Gateway observability publish failed: ${err instanceof Error ? err.message : String(err)}`,
+					};
+				}
+			});
 		},
 		releaseSessionToken(label) {
 			const session = activeSessions.get(label.trim());
 			if (!session) return;
 			session.abort.abort();
 			activeSessions.delete(label.trim());
+			if (primarySessionLabel === label.trim()) primarySessionLabel = activeSessions.keys().next().value ?? null;
 			void releaseGatewaySession(session).catch(() => undefined);
 		},
 		cleanup() {
@@ -230,6 +232,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			seenCallOrder: [],
 		};
 		activeSessions.set(label, session);
+		primarySessionLabel ??= label;
 		connectionState = {
 			state: "ready",
 			attempts: 0,
@@ -246,6 +249,21 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		});
 		request.signal?.addEventListener("abort", () => abort.abort(), { once: true });
 		return session;
+	}
+
+	function getPrimarySession(): ActiveGatewaySession | null {
+		if (primarySessionLabel) {
+			const primary = activeSessions.get(primarySessionLabel);
+			if (primary && !primary.abort.signal.aborted) return primary;
+		}
+		for (const [label, session] of activeSessions) {
+			if (!session.abort.signal.aborted) {
+				primarySessionLabel = label;
+				return session;
+			}
+		}
+		primarySessionLabel = null;
+		return null;
 	}
 
 	async function registerWithGateway(endpoint: string, label: string, cwd: string, specs: readonly AgentToolSpec[]): Promise<GatewayRegisterTenantResponse> {

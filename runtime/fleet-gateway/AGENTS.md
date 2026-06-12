@@ -6,6 +6,7 @@
 
 - Loopback-only daemon lifecycle, lock-file discovery, health probe, tenant-aware deferred stale restart, and stop helpers.
 - Fixed local MCP endpoint and local admin/control/observer HTTP surfaces.
+- Loopback static serving for the embedded Fleet Console assets (built by `@dotobokuri/fleet-console` and embedded into `dist/client/` via `scripts/embed-console.mjs`, which both packages' builds invoke; it resolves fleet-console by monorepo-relative path to avoid a workspace dependency cycle).
 - Tenant/session/control/observer token isolation.
 - Schema-agnostic MCP pass-through routing and in-memory queues.
 - In-memory observability REST/SSE state.
@@ -13,6 +14,7 @@
 ## Must Not Own
 
 - Fleet tool builders, `AgentToolSpec.execute`, carrier persona policy, or provider-specific CLI launch logic.
+- The Fleet Console UI source and the console CLI launcher / browser opening (owned by `@dotobokuri/fleet-console`).
 - Durable call, result, job, or event journals.
 - Non-loopback or remote API serving.
 

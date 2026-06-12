@@ -5,6 +5,7 @@ export interface GatewayLockPayload {
   readonly endpoint: string;
   readonly startedAt: number;
   readonly token: string;
+  readonly observerToken: string;
   readonly version: string;
 }
 
@@ -52,4 +53,57 @@ export interface GatewayQueuedToolCall {
 export interface GatewayToolCallResult {
   readonly content: Array<{ type: string; text?: string }>;
   readonly isError: boolean;
+}
+
+export interface GatewayObservedTenant {
+  readonly tenantId: string;
+  readonly tenantLabel: string;
+  readonly cwd: string;
+  readonly createdAt: number;
+  readonly sessions: number;
+}
+
+export interface GatewayObserverTenantsResponse {
+  readonly tenants: readonly GatewayObservedTenant[];
+}
+
+export interface GatewayObservedEvent {
+  readonly id: number;
+  readonly jobId?: string;
+  readonly type: string;
+  readonly timestamp: number;
+  readonly payload: Record<string, unknown>;
+}
+
+export interface GatewayObservedJob {
+  readonly jobId: string;
+  readonly status: string;
+  readonly updatedAt: number;
+  readonly events: readonly GatewayObservedEvent[];
+}
+
+export interface GatewayObserverTruncation {
+  readonly droppedCount: number;
+  readonly droppedBeforeId?: number;
+}
+
+export interface GatewayObserverJobsResponse {
+  readonly jobs: readonly GatewayObservedJob[];
+  readonly truncation: GatewayObserverTruncation;
+}
+
+export interface GatewayObserverTenantJobsResponse {
+  readonly tenantId: string;
+  readonly tenantLabel?: string;
+  readonly jobs: readonly GatewayObservedJob[];
+  readonly truncation: GatewayObserverTruncation;
+}
+
+export interface GatewayObserverAggregateJobsResponse {
+  readonly tenants: readonly GatewayObserverTenantJobsResponse[];
+}
+
+export interface GatewayObserverEventsResponse {
+  readonly events: readonly GatewayObservedEvent[];
+  readonly truncation: GatewayObserverTruncation;
 }

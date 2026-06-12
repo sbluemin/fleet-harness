@@ -6,9 +6,11 @@ import { createGatewayCallQueue } from "./call-queue.js";
 import { writeGatewayCallEvent } from "./call-stream.js";
 import { createGatewayLock, type GatewayLockHandle } from "./lock.js";
 import { createGatewayMcpJsonRpcRouter } from "./mcp-jsonrpc.js";
-import { writeObserverEvents } from "./observability-routes.js";
+import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createGatewayObservabilityStore } from "./observability-store.js";
-import { createGatewayTenantStore } from "./tenant-store.js";
+import { withSecurityHeaders } from "./security-headers.js";
+import { tryServeStaticConsole } from "./static-console.js";
+import { createGatewayTenantStore, type GatewayTenantRecord } from "./tenant-store.js";
 
 declare const __PKG_VERSION__: string | undefined;
 
@@ -26,6 +28,10 @@ export interface GatewayServer {
   start(lockPaths: { dir: string; lockFile: string }): Promise<string>;
   stop(): Promise<void>;
 }
+
+type ObserverLookup =
+  | { readonly kind: "aggregate" }
+  | { readonly kind: "tenant"; readonly tenant: GatewayTenantRecord };
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 37283;
@@ -48,43 +54,53 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
   let activeEndpoint: string | null = null;
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (req.url === "/health") {
+    if (!validateHost(req, lockHandle?.payload.port ?? port)) {
+      writeJson(res, 403, { error: "host_mismatch" });
+      return;
+    }
+    const pathname = getPathname(req);
+    if (tryServeStaticConsole(req, res, pathname)) return;
+    if (pathname === "/health") {
       handleHealth(req, res);
       return;
     }
-    if (req.url === "/admin/register") {
+    if (pathname === "/admin/register") {
       void handleRegister(req, res);
       return;
     }
-    if (req.url === "/control/calls") {
+    if (pathname === "/control/calls") {
       void handleCallStream(req, res);
       return;
     }
-    if (req.url?.startsWith("/control/results/")) {
+    if (pathname.startsWith("/control/results/")) {
       void handleResultSubmission(req, res);
       return;
     }
-    if (req.url === "/control/release") {
+    if (pathname === "/control/release") {
       void handleControlRelease(req, res);
       return;
     }
-    if (req.url === "/control/events") {
+    if (pathname === "/control/events") {
       void handleControlEvent(req, res);
       return;
     }
-    if (req.url === "/observer/status") {
+    if (pathname === "/observer/status") {
       handleObserverStatus(req, res);
       return;
     }
-    if (req.url === "/observer/jobs") {
+    if (pathname === "/observer/tenants") {
+      handleObserverTenants(req, res);
+      return;
+    }
+    if (pathname === "/observer/jobs") {
       handleObserverJobs(req, res);
       return;
     }
-    if (req.url === "/observer/events") {
+    if (pathname === "/observer/events") {
       handleObserverEvents(req, res);
       return;
     }
-    if (req.url === endpointPath) {
+    if (pathname === endpointPath) {
       void handleMcp(req, res);
       return;
     }
@@ -96,7 +112,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     const handle = lockHandle;
     const token = handle?.payload.token;
     if (!handle || !token || req.headers.authorization !== `Bearer ${token}`) {
-      res.writeHead(401, { "Content-Type": "application/json" });
+      res.writeHead(401, withSecurityHeaders({ "Content-Type": "application/json" }));
       res.end(JSON.stringify({ error: "Unauthorized" }));
       return;
     }
@@ -111,7 +127,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       version: payload.version,
       tenantCount: tenants.tenantCount(),
     };
-    res.writeHead(200, { "Content-Type": "application/json" });
+    res.writeHead(200, withSecurityHeaders({ "Content-Type": "application/json" }));
     res.end(JSON.stringify(body));
   }
 
@@ -152,7 +168,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     }
     const isHeldToolCall = request.method === "tools/call";
     if (isHeldToolCall) {
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(200, withSecurityHeaders({ "Content-Type": "application/json" }));
       res.flushHeaders();
     }
     const keepalive = isHeldToolCall ? setInterval(() => {
@@ -194,6 +210,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       return;
     }
     res.writeHead(200, {
+      ...withSecurityHeaders(),
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-store",
       Connection: "keep-alive",
@@ -256,6 +273,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     for (const sessionId of release.sessionIds) {
       callQueue.clearSession(sessionId);
     }
+    observability.removeTenant(release.tenantId);
     writeJson(res, 200, { ok: true });
   }
 
@@ -281,6 +299,10 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
   function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const lookup = readObserverLookup(req, res);
     if (!lookup) return;
+    if (lookup.kind !== "tenant") {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
     writeJson(res, 200, {
       tenantId: lookup.tenant.tenantId,
       tenantLabel: lookup.tenant.tenantLabel,
@@ -290,26 +312,92 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     });
   }
 
+  function handleObserverTenants(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const lookup = readObserverLookup(req, res);
+    if (!lookup) return;
+    if (lookup.kind !== "aggregate") {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
+    writeJson(res, 200, { tenants: tenants.listTenantSnapshots() });
+  }
+
   function handleObserverJobs(req: http.IncomingMessage, res: http.ServerResponse): void {
     const lookup = readObserverLookup(req, res);
     if (!lookup) return;
-    writeJson(res, 200, { jobs: observability.listJobs(lookup.tenant.tenantId) });
+    if (lookup.kind === "aggregate") {
+      const requestedTenantId = readUrl(req).searchParams.get("tenant");
+      const visibleTenants = listVisibleTenants(requestedTenantId);
+      if (requestedTenantId && visibleTenants.length === 0) {
+        writeJson(res, 404, { error: "Tenant not found" });
+        return;
+      }
+      writeJson(res, 200, {
+        tenants: visibleTenants.map((tenant) => ({
+          tenantId: tenant.tenantId,
+          tenantLabel: tenant.tenantLabel,
+          jobs: observability.listJobs(tenant.tenantId),
+          truncation: observability.getTruncation(tenant.tenantId),
+        })),
+      });
+      return;
+    }
+    const requestedTenantId = readUrl(req).searchParams.get("tenant");
+    if (requestedTenantId && requestedTenantId !== lookup.tenant.tenantId) {
+      writeJson(res, 403, { error: "Forbidden" });
+      return;
+    }
+    writeJson(res, 200, {
+      jobs: observability.listJobs(lookup.tenant.tenantId),
+      truncation: observability.getTruncation(lookup.tenant.tenantId),
+    });
   }
 
   function handleObserverEvents(req: http.IncomingMessage, res: http.ServerResponse): void {
     const lookup = readObserverLookup(req, res);
     if (!lookup) return;
+    if (lookup.kind === "aggregate") {
+      const requestedTenantId = readUrl(req).searchParams.get("tenant");
+      const visibleTenants = listVisibleTenants(requestedTenantId);
+      if (requestedTenantId && visibleTenants.length === 0) {
+        writeJson(res, 404, { error: "Tenant not found" });
+        return;
+      }
+      writeAggregateObserverEvents(req, res, visibleTenants, observability, (tenantId) => tenants.getTenant(tenantId), {
+        subscribeAll: !requestedTenantId,
+      });
+      return;
+    }
+    const requestedTenantId = readUrl(req).searchParams.get("tenant");
+    if (requestedTenantId && requestedTenantId !== lookup.tenant.tenantId) {
+      writeJson(res, 403, { error: "Forbidden" });
+      return;
+    }
     writeObserverEvents(req, res, lookup.tenant, observability);
   }
 
-  function readObserverLookup(req: http.IncomingMessage, res: http.ServerResponse) {
+  function readObserverLookup(req: http.IncomingMessage, res: http.ServerResponse): ObserverLookup | null {
     const token = readBearerToken(req.headers);
+    if (token && token === lockHandle?.payload.observerToken) {
+      return { kind: "aggregate" };
+    }
     const lookup = token ? tenants.lookupToken(token) : null;
     if (!lookup || lookup.kind !== "observer") {
       writeJson(res, 401, { error: "Unauthorized" });
       return null;
     }
-    return lookup;
+    return { kind: "tenant", tenant: lookup.tenant };
+  }
+
+  function listVisibleTenants(requestedTenantId: string | null): readonly GatewayTenantRecord[] {
+    if (requestedTenantId) {
+      const tenant = tenants.getTenant(requestedTenantId);
+      return tenant ? [tenant] : [];
+    }
+    return tenants
+      .listTenantSnapshots()
+      .map((tenant) => tenants.getTenant(tenant.tenantId))
+      .filter((tenant): tenant is GatewayTenantRecord => tenant !== null);
   }
 
   return {
@@ -366,6 +454,14 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
   };
 }
 
+function getPathname(req: http.IncomingMessage): string {
+  return readUrl(req).pathname;
+}
+
+function readUrl(req: http.IncomingMessage): URL {
+  return new URL(req.url ?? "/", "http://127.0.0.1");
+}
+
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -380,6 +476,15 @@ async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
 }
 
 function writeJson(res: http.ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json" }));
   res.end(JSON.stringify(body));
+}
+
+function validateHost(req: http.IncomingMessage, expectedPort: number): boolean {
+  if (req.url?.startsWith("http://") || req.url?.startsWith("https://")) return false;
+  const hostHeaderCount = req.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === "host").length;
+  if (hostHeaderCount !== 1) return false;
+  const hostHeader = req.headers.host;
+  if (!hostHeader) return false;
+  return hostHeader === `127.0.0.1:${expectedPort}`;
 }

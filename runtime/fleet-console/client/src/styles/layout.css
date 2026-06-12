@@ -1,0 +1,66 @@
+/* ── Shell composition — 배치·그리드·브레이크포인트만. 표면 스타일은 components.css 소유. ── */
+
+.console-shell {
+  display: grid;
+  grid-template-rows: 52px minmax(0, 1fr);
+  height: 100%;
+}
+
+.console-body {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* 토큰 미보유 게이트 화면은 사이드바 칼럼 없이 전폭을 쓴다. */
+.console-body--gate {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 12px 24px;
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.stage-stream {
+  position: relative;
+  min-height: 0;
+}
+
+.stage-scroll {
+  height: 100%;
+  overflow-y: auto;
+  scroll-behavior: auto;
+}
+
+.stage-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 18px 28px 40px;
+}
+
+@media (max-width: 900px) {
+  .console-body {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .console-body--gate {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage-content {
+    padding: 14px 16px 32px;
+  }
+}
