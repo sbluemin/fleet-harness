@@ -64,6 +64,10 @@ interface GatewayRegistrationLease {
 	released: boolean;
 }
 
+interface GatewayCallStreamHttpError extends Error {
+	readonly gatewayStatus: number;
+}
+
 interface ExecutorEndpoint {
 	readonly servers: readonly { readonly name: string; readonly url: string }[];
 }
@@ -100,14 +104,15 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		return lock.token;
 	}
 
-	async function consumeCallsOnce(session: ActiveGatewaySession, registry: McpToolRegistry): Promise<void> {
+	async function consumeCallsOnce(session: ActiveGatewaySession, registry: McpToolRegistry, onConnected?: () => void): Promise<void> {
 		const response = await fetchImpl(session.registration.endpoint.replace("/mcp", "/control/calls"), {
 			headers: { Authorization: `Bearer ${session.registration.controlToken}` },
 			signal: session.abort.signal,
 		});
 		if (!response.ok || !response.body) {
-			throw new Error(`Fleet Gateway call stream failed: ${response.status}`);
+			throw createGatewayCallStreamHttpError(response.status);
 		}
+		onConnected?.();
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = "";
@@ -149,7 +154,16 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		let attempts = 0;
 		while (!session.abort.signal.aborted) {
 			try {
-				await consumeCallsOnce(session, registry);
+				// 재구독이 성공하면 누적 실패 카운터를 리셋해 transient 끊김이 수명 내내 쌓여 degraded로 영구 정지하는 것을 막는다
+				await consumeCallsOnce(session, registry, () => {
+					if (attempts === 0) return;
+					attempts = 0;
+					connectionState = {
+						state: "ready",
+						attempts: 0,
+						message: "Fleet Gateway consumer reconnected",
+					};
+				});
 				if (session.abort.signal.aborted) return;
 				throw new Error("Fleet Gateway call stream ended");
 			} catch (err) {
@@ -163,8 +177,10 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				};
 				if (attempts >= 5) return;
 				await sleep(Math.min(1_000, attempts * 100));
-				await refreshGatewaySession(session);
-				attempts = 0;
+				if (isGatewayCallStreamAuthError(err)) {
+					await refreshGatewaySession(session);
+					attempts = 0;
+				}
 			}
 		}
 	}
@@ -429,6 +445,16 @@ async function releaseGatewayRegistrationLease(
 
 function gatewayRegistrationKey(registration: GatewayRegisterTenantResponse): string {
 	return registration.controlToken;
+}
+
+function createGatewayCallStreamHttpError(status: number): GatewayCallStreamHttpError {
+	return Object.assign(new Error(`Fleet Gateway call stream failed: ${status}`), { gatewayStatus: status });
+}
+
+function isGatewayCallStreamAuthError(err: unknown): boolean {
+	if (!(err instanceof Error) || !("gatewayStatus" in err)) return false;
+	const status = (err as GatewayCallStreamHttpError).gatewayStatus;
+	return status === 401 || status === 403;
 }
 
 function combineAbortSignals(signals: readonly AbortSignal[]): AbortSignal {

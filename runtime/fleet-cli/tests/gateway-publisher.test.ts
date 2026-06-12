@@ -131,6 +131,100 @@ describe("gateway observability publisher", () => {
     expect(invocations[0]?.signal?.aborted).toBe(true);
   });
 
+  it("resubscribes the control stream after a transient disconnect without re-registering", async () => {
+    let registerCount = 0;
+    let callStreamCount = 0;
+    const releases: string[] = [];
+    const manager = createGatewayDedicatedSessionManager({
+      name: "fleet",
+      lifecycle: { ensureDaemon: async () => "http://127.0.0.1:37283/mcp" } as never,
+      readBootstrapToken: async () => "bootstrap",
+      sleep: async () => undefined,
+      registry: {
+        getAllAgentTools: () => [{ id: "ping", description: "Ping", parameters: {} }],
+        invoke: vi.fn(),
+      } as never,
+      fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.endsWith("/admin/register")) {
+          registerCount += 1;
+          return jsonResponse({
+            tenantId: `tenant-${registerCount}`,
+            sessionId: `session-${registerCount}`,
+            endpoint: "http://127.0.0.1:37283/mcp",
+            controlToken: `control-${registerCount}`,
+            sessionToken: `session-token-${registerCount}`,
+            observerToken: `observer-${registerCount}`,
+          });
+        }
+        if (target.endsWith("/control/calls")) {
+          callStreamCount += 1;
+          return callStreamCount === 1
+            ? new Response(closedStream(), { status: 200 })
+            : new Response(new ReadableStream(), { status: 200 });
+        }
+        if (target.endsWith("/control/release")) {
+          releases.push(authorizationToken(init));
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ error: "unexpected" }, 500);
+      }) as typeof fetch,
+    });
+
+    const tokens = await manager.issueSessionToken({ label: "agent:transient", cwd: "/tmp/first" });
+    await waitFor(() => callStreamCount >= 2);
+    manager.releaseSessionToken("agent:transient");
+    await waitFor(() => releases.includes("control-1"));
+
+    expect(tokens).toEqual([{ name: "fleet", token: "session-token-1" }]);
+    expect(registerCount).toBe(1);
+    expect(releases).toEqual(["control-1"]);
+  });
+
+  it("keeps resubscribing after repeated transient disconnects instead of going degraded", async () => {
+    let callStreamCount = 0;
+    const manager = createGatewayDedicatedSessionManager({
+      name: "fleet",
+      lifecycle: { ensureDaemon: async () => "http://127.0.0.1:37283/mcp" } as never,
+      readBootstrapToken: async () => "bootstrap",
+      sleep: async () => undefined,
+      registry: {
+        getAllAgentTools: () => [{ id: "ping", description: "Ping", parameters: {} }],
+        invoke: vi.fn(),
+      } as never,
+      fetch: (async (url: string | URL | Request) => {
+        const target = String(url);
+        if (target.endsWith("/admin/register")) {
+          return jsonResponse({
+            tenantId: "tenant-1",
+            sessionId: "session-1",
+            endpoint: "http://127.0.0.1:37283/mcp",
+            controlToken: "control-1",
+            sessionToken: "session-token-1",
+            observerToken: "observer-1",
+          });
+        }
+        if (target.endsWith("/control/calls")) {
+          callStreamCount += 1;
+          // 처음 6회는 연결 직후 끊기는 transient 스트림, 이후 유지되는 스트림
+          return callStreamCount <= 6
+            ? new Response(closedStream(), { status: 200 })
+            : new Response(new ReadableStream(), { status: 200 });
+        }
+        if (target.endsWith("/control/release")) {
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ error: "unexpected" }, 500);
+      }) as typeof fetch,
+    });
+
+    await manager.issueSessionToken({ label: "agent:flaky", cwd: "/tmp/first" });
+    await waitFor(() => callStreamCount >= 7);
+
+    expect(manager.getConnectionState().state).not.toBe("degraded");
+    manager.releaseSessionToken("agent:flaky");
+  });
+
   it("posts an in-flight call result through the registration captured at delivery time", async () => {
     let registerCount = 0;
     let callStreamCount = 0;
@@ -174,6 +268,9 @@ describe("gateway observability publisher", () => {
               args: {},
               createdAt: Date.now(),
             }), { status: 200 });
+          }
+          if (callStreamCount === 2) {
+            return jsonResponse({ error: "Unauthorized" }, 401);
           }
           return new Response(new ReadableStream(), { status: 200 });
         }
@@ -233,6 +330,9 @@ describe("gateway observability publisher", () => {
         }
         if (target.endsWith("/control/calls")) {
           callStreamCount += 1;
+          if (callStreamCount === 2) {
+            return jsonResponse({ error: "Unauthorized" }, 401);
+          }
           return callStreamCount === 1
             ? new Response(closedStream(), { status: 200 })
             : new Response(new ReadableStream(), { status: 200 });
@@ -295,6 +395,9 @@ describe("gateway observability publisher", () => {
               args: {},
               createdAt: Date.now(),
             }), { status: 200 });
+          }
+          if (callStreamCount === 2) {
+            return jsonResponse({ error: "Unauthorized" }, 401);
           }
           return new Response(new ReadableStream(), { status: 200 });
         }
