@@ -45,7 +45,8 @@ interface ActiveGatewaySession {
 	readonly cwd: string;
 	readonly specs: readonly AgentToolSpec[];
 	registration: GatewayRegisterTenantResponse;
-	invocation: GatewayInvocationContext;
+	// null이면 detach 상태 — 다음 installForReuse 전까지 도착하는 콜은 실행하지 않고 거부한다
+	invocation: GatewayInvocationContext | null;
 	readonly registrationLeases: Map<string, GatewayRegistrationLease>;
 	readonly abort: AbortController;
 	readonly callStates: Map<string, GatewayCallState>;
@@ -234,7 +235,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				},
 				cleanup: () => this.releaseSessionToken(label),
 				detachForReuse: () => {
-					session.invocation = { cwd: session.cwd };
+					session.invocation = null;
 				},
 				installForReuse: (ctx) => {
 					session.invocation = { cwd: ctx.cwd, signal: ctx.signal };
@@ -382,9 +383,17 @@ async function executeGatewayCall(
 		await publishGatewayCallResult(call, session, action.result, fetchImpl, onPublishFailure, onRegistrationIdle);
 		return;
 	}
+	const invocation = session.invocation;
+	if (!invocation) {
+		// detach 상태에서 도착한 스테일 콜은 실행하지 않고 에러 결과로 거부한다
+		await publishGatewayCallResult(call, session, {
+			content: [{ type: "text", text: "Fleet Gateway session is detached between prompts" }],
+			isError: true,
+		}, fetchImpl, onPublishFailure, onRegistrationIdle);
+		return;
+	}
 	const lease = acquireGatewayRegistration(session);
 	const registration = lease.registration;
-	const invocation = session.invocation;
 	const signal = combineAbortSignals([session.abort.signal, invocation.signal].filter((candidate): candidate is AbortSignal => Boolean(candidate)));
 	const result = await registry.invoke(call.toolName, call.args, {
 		cwd: invocation.cwd,

@@ -132,6 +132,33 @@ describe("gateway observability publisher", () => {
     expect(invocations[0]?.signal?.aborted).toBe(true);
   });
 
+  it("rejects stale calls while detached and resumes execution after reuse install", async () => {
+    const calls = createControlledGatewayCallStream();
+    const resultPosts: string[] = [];
+    const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "ran" }], isError: false }));
+    const manager = createExecutorManager(calls, invoke, resultPosts);
+    const nextRequest = new AbortController();
+
+    const session = await manager.createExecutorMcpSession({
+      serverName: "fleet",
+      specs: [{ id: "ping", description: "Ping", parameters: {} }],
+      cwd: "/tmp/first",
+    });
+    await waitFor(() => calls.ready);
+
+    session.detachForReuse?.();
+    calls.emit({ callId: "call-stale", sessionId: "session-stale", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.includes("call-stale"));
+    expect(invoke).not.toHaveBeenCalled();
+
+    session.installForReuse?.({ cwd: "/tmp/next", signal: nextRequest.signal });
+    calls.emit({ callId: "call-live", sessionId: "session-live", toolName: "ping", args: {} });
+    await waitFor(() => resultPosts.includes("call-live"));
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    session.cleanup();
+  });
+
   it("decodes multi-byte tool arguments split across SSE chunks", async () => {
     const calls = createControlledGatewayCallStream();
     const resultPosts: string[] = [];
