@@ -73,7 +73,8 @@ export const CLI_BACKENDS = {
     defaultEnv: {
       ANTHROPIC_BASE_URL: 'https://api.kimi.com/coding/',
       ENABLE_TOOL_SEARCH: 'false',
-      CLAUDE_CODE_SUBAGENT_MODEL: 'kimi-k2.5',
+      ANTHROPIC_MODEL: 'kimi-k2.7-code',
+      CLAUDE_CODE_SUBAGENT_MODEL: 'kimi-k2.7-code',
       API_TIMEOUT_MS: '3000000',
     },
   },

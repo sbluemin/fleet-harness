@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-21T00:00:00Z",
+  "updatedAt": "2026-06-13T00:00:00Z",
   "providers": {
     "claude": {
       "name": "Claude Code with Anthropic",
@@ -31,14 +31,14 @@
       "name": "Claude Code with Moonshot Kimi",
       "defaultModel": "opus",
       "models": [
-        { "modelId": "haiku", "name": "Kimi K2.5 (Haiku slot)", "effort": { "supported": false } },
-        { "modelId": "sonnet", "name": "Kimi K2.5 (Sonnet slot)", "effort": { "supported": false } },
-        { "modelId": "opus", "name": "Kimi K2.6 (Opus slot)", "effort": { "supported": false } }
+        { "modelId": "haiku", "name": "Kimi K2.7 Code (Haiku slot)", "effort": { "supported": false } },
+        { "modelId": "sonnet", "name": "Kimi K2.7 Code (Sonnet slot)", "effort": { "supported": false } },
+        { "modelId": "opus", "name": "Kimi K2.7 Code (Opus slot)", "effort": { "supported": false } }
       ],
       "modelsMapping": {
-        "haiku": "kimi-k2",
-        "sonnet": "kimi-k2.5",
-        "opus": "kimi-k2.6"
+        "haiku": "kimi-k2.7-code",
+        "sonnet": "kimi-k2.7-code",
+        "opus": "kimi-k2.7-code"
       }
     },
     "codex": {
