@@ -171,12 +171,27 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       res.writeHead(200, withSecurityHeaders({ "Content-Type": "application/json" }));
       res.flushHeaders();
     }
-    const keepalive = isHeldToolCall ? setInterval(() => {
+    let keepalive = isHeldToolCall ? setInterval(() => {
       if (!res.writableEnded) res.write(" ");
     }, 60_000) : null;
+    const cleanupKeepalive = () => {
+      req.off("close", cleanupKeepalive);
+      req.socket.off("close", cleanupKeepalive);
+      res.off("close", cleanupKeepalive);
+      res.off("finish", cleanupKeepalive);
+      if (!keepalive) return;
+      clearInterval(keepalive);
+      keepalive = null;
+    };
+    if (keepalive) {
+      req.once("close", cleanupKeepalive);
+      req.socket.once("close", cleanupKeepalive);
+      res.once("close", cleanupKeepalive);
+      res.once("finish", cleanupKeepalive);
+    }
     try {
       const payload = await mcpRouter.processPayload(request, lookup.session);
-      if (keepalive) clearInterval(keepalive);
+      cleanupKeepalive();
       if (payload === null) {
         if (!res.headersSent) res.writeHead(204);
         res.end();
@@ -188,7 +203,7 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
       }
       writeJson(res, 200, payload);
     } catch (err) {
-      if (keepalive) clearInterval(keepalive);
+      cleanupKeepalive();
       const body = { error: err instanceof Error ? err.message : String(err) };
       if (res.headersSent) {
         res.end(JSON.stringify(body));
@@ -217,17 +232,33 @@ export function createGatewayServer(deps: GatewayServerDeps = {}): GatewayServer
     });
     res.write(": connected\n\n");
     const keepalive = setInterval(() => res.write(": keepalive\n\n"), 30_000);
-    req.on("close", () => clearInterval(keepalive));
+    const streamAbort = new AbortController();
+    const cleanupStream = () => {
+      clearInterval(keepalive);
+      streamAbort.abort();
+    };
+    req.once("close", cleanupStream);
+    res.once("close", cleanupStream);
     for (const session of lookup.tenant.sessions.values()) {
-      void streamSessionCalls(session.sessionId, res);
+      callQueue.releaseDeliveredForSession(session.sessionId);
+      void streamSessionCalls(session.sessionId, res, streamAbort.signal);
     }
   }
 
-  async function streamSessionCalls(sessionId: string, res: http.ServerResponse): Promise<void> {
-    while (!res.writableEnded) {
-      const call = await callQueue.waitForNext(sessionId);
-      if (res.writableEnded) return;
-      writeGatewayCallEvent(res, call);
+  async function streamSessionCalls(sessionId: string, res: http.ServerResponse, signal: AbortSignal): Promise<void> {
+    while (!signal.aborted && !res.writableEnded) {
+      const call = await callQueue.waitForNext(sessionId, { signal });
+      if (!call) return;
+      if (signal.aborted || res.writableEnded) {
+        callQueue.releaseDelivered(sessionId, call.callId);
+        return;
+      }
+      try {
+        writeGatewayCallEvent(res, call);
+      } catch (err) {
+        callQueue.releaseDelivered(sessionId, call.callId);
+        throw err;
+      }
     }
   }
 

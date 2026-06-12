@@ -26,4 +26,16 @@ describe("gateway call queue", () => {
     expect(queue.resolveCall("session", "a", { content: [{ type: "text", text: "A" }], isError: false })).toBe(true);
     await expect(first).resolves.toMatchObject({ content: [{ text: "A" }] });
   });
+
+  it("can release delivered calls for at-least-once redelivery", () => {
+    const queue = createGatewayCallQueue({ timeoutMs: 10_000 });
+    void queue.enqueue("session", "a", "tool", {});
+
+    expect(queue.next("session")?.callId).toBe("a");
+    expect(queue.next("session")).toBeNull();
+    expect(queue.releaseDelivered("session", "a")).toBe(true);
+    expect(queue.next("session")?.callId).toBe("a");
+
+    queue.clear();
+  });
 });

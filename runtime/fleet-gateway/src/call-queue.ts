@@ -12,6 +12,12 @@ export interface GatewayCallQueueDeps {
   readonly maxPendingCalls?: number;
 }
 
+interface GatewayCallWaiter {
+  readonly resolve: (call: PendingGatewayToolCall | null) => void;
+  readonly signal?: AbortSignal;
+  abortListener?: () => void;
+}
+
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_PENDING_CALLS = 64;
 
@@ -21,7 +27,7 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
   const maxPendingCalls = deps.maxPendingCalls ?? DEFAULT_MAX_PENDING_CALLS;
   const pending = new Map<string, PendingGatewayToolCall[]>();
   const delivered = new Map<string, Set<string>>();
-  const waiters = new Map<string, Array<(call: PendingGatewayToolCall) => void>>();
+  const waiters = new Map<string, GatewayCallWaiter[]>();
 
   function enqueue(sessionId: string, callId: string, toolName: string, args: Record<string, unknown>): Promise<GatewayToolCallResult> {
     const queue = pending.get(sessionId) ?? [];
@@ -61,14 +67,45 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
     return null;
   }
 
-  function waitForNext(sessionId: string): Promise<PendingGatewayToolCall> {
+  function waitForNext(sessionId: string, options: { readonly signal?: AbortSignal } = {}): Promise<PendingGatewayToolCall | null> {
     const existing = next(sessionId);
     if (existing) return Promise.resolve(existing);
     return new Promise((resolve) => {
+      if (options.signal?.aborted) {
+        resolve(null);
+        return;
+      }
       const list = waiters.get(sessionId) ?? [];
-      list.push(resolve);
+      const waiter: GatewayCallWaiter = { resolve, signal: options.signal };
+      waiter.abortListener = () => {
+        removeWaiter(sessionId, waiter);
+        resolve(null);
+      };
+      options.signal?.addEventListener("abort", waiter.abortListener, { once: true });
+      list.push(waiter);
       waiters.set(sessionId, list);
     });
+  }
+
+  function releaseDelivered(sessionId: string, callId: string): boolean {
+    const queue = pending.get(sessionId);
+    if (!queue?.some((call) => call.callId === callId)) return false;
+    const didRelease = delivered.get(sessionId)?.delete(callId) ?? false;
+    if (didRelease) notify(sessionId);
+    return didRelease;
+  }
+
+  function releaseDeliveredForSession(sessionId: string): number {
+    const queue = pending.get(sessionId);
+    const deliveredSet = delivered.get(sessionId);
+    if (!queue || !deliveredSet) return 0;
+    let released = 0;
+    for (const call of queue) {
+      if (deliveredSet.delete(call.callId)) released += 1;
+    }
+    if (deliveredSet.size === 0) delivered.delete(sessionId);
+    if (released > 0) notify(sessionId);
+    return released;
   }
 
   function resolveCall(sessionId: string, callId: string, result: GatewayToolCallResult): boolean {
@@ -95,10 +132,21 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
   }
 
   function notify(sessionId: string): void {
-    const waiter = waiters.get(sessionId)?.shift();
-    if (!waiter) return;
-    const call = next(sessionId);
-    if (call) waiter(call);
+    const list = waiters.get(sessionId);
+    while (list && list.length > 0) {
+      const waiter = list.shift();
+      if (!waiter) continue;
+      if (waiter.signal?.aborted) continue;
+      const call = next(sessionId);
+      if (!call) {
+        list.unshift(waiter);
+        return;
+      }
+      clearWaiterAbortListener(waiter);
+      waiter.resolve(call);
+      return;
+    }
+    if (list?.length === 0) waiters.delete(sessionId);
   }
 
   function remove(sessionId: string, callId: string): PendingGatewayToolCall | null {
@@ -112,5 +160,20 @@ export function createGatewayCallQueue(deps: GatewayCallQueueDeps = {}) {
     return call ?? null;
   }
 
-  return { enqueue, next, waitForNext, resolveCall, clearSession, clear };
+  function removeWaiter(sessionId: string, waiter: GatewayCallWaiter): void {
+    const list = waiters.get(sessionId);
+    if (!list) return;
+    const index = list.indexOf(waiter);
+    if (index >= 0) list.splice(index, 1);
+    if (list.length === 0) waiters.delete(sessionId);
+    clearWaiterAbortListener(waiter);
+  }
+
+  function clearWaiterAbortListener(waiter: GatewayCallWaiter): void {
+    if (!waiter.signal || !waiter.abortListener) return;
+    waiter.signal.removeEventListener("abort", waiter.abortListener);
+    waiter.abortListener = undefined;
+  }
+
+  return { enqueue, next, waitForNext, releaseDelivered, releaseDeliveredForSession, resolveCall, clearSession, clear };
 }
