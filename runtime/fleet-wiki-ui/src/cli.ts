@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import net from "node:net";
@@ -74,8 +74,6 @@ const DEFAULT_PORT = 3737;
 const DEFAULT_HOST = "127.0.0.1";
 const HEALTH_TIMEOUT_MS = 5000;
 const HEALTH_INTERVAL_MS = 150;
-const TRAMPOLINE_ENV = "FLEET_WIKI_TRAMPOLINED";
-const SIGNAL_EXIT_FALLBACK_MS = 1000;
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
 const RFC1123_HOSTNAME = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
@@ -95,24 +93,18 @@ export function parseCliArgs(argv: string[]): CliArgs {
     } else if (arg === "--port") {
       const raw = argv[i + 1];
       if (!raw || raw.startsWith("--")) {
-        process.stderr.write("--port requires a value\n");
-        process.exit(1);
-        return result;
+        throw new Error("--port requires a value");
       }
       i += 1;
       const port = Number(raw);
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-        process.stderr.write(`Invalid --port value: ${raw}\n`);
-        process.exit(1);
-        return result;
+        throw new Error(`Invalid --port value: ${raw}`);
       }
       result.port = port;
     } else if (arg === "--host") {
       const raw = argv[i + 1];
       if (!raw || raw.startsWith("--")) {
-        process.stderr.write("--host requires a value\n");
-        process.exit(1);
-        return result;
+        throw new Error("--host requires a value");
       }
       i += 1;
       result.host = parseHostValue(raw);
@@ -120,18 +112,16 @@ export function parseCliArgs(argv: string[]): CliArgs {
       const raw = arg.slice("--port=".length);
       const port = Number(raw);
       if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-        process.stderr.write(`Invalid --port value: ${raw}\n`);
-        process.exit(1);
-        return result;
+        throw new Error(`Invalid --port value: ${raw}`);
       }
       result.port = port;
     } else if (arg.startsWith("--host=")) {
       const raw = arg.slice("--host=".length);
       result.host = parseHostValue(raw);
     } else if (arg.startsWith("--")) {
-      process.stderr.write(`Unknown option: ${arg}\n`);
-      process.exit(1);
-      return result;
+      throw new Error(`Unknown option: ${arg}`);
+    } else {
+      throw new Error(`Unexpected positional argument: ${arg}`);
     }
   }
   return result;
@@ -262,9 +252,13 @@ export async function main(): Promise<void> {
 export function findLocalCliMjs(cwd: string): string | null {
   let currentDir = path.resolve(cwd);
   while (true) {
-    const candidate = path.join(currentDir, "runtime", "fleet-wiki-ui", "dist", "cli.mjs");
-    if (existsSync(candidate)) {
-      return candidate;
+    const cliBinCandidate = path.join(currentDir, "runtime", "fleet-wiki-ui", "dist", "cli-bin.mjs");
+    if (existsSync(cliBinCandidate)) {
+      return cliBinCandidate;
+    }
+    const legacyCliCandidate = path.join(currentDir, "runtime", "fleet-wiki-ui", "dist", "cli.mjs");
+    if (existsSync(legacyCliCandidate)) {
+      return legacyCliCandidate;
     }
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
@@ -453,9 +447,7 @@ function configuredPort(): number {
 
 function parseHostValue(raw: string): string {
   if (!isValidHostValue(raw)) {
-    process.stderr.write(`Invalid --host value: ${raw}\n`);
-    process.exit(1);
-    return raw;
+    throw new Error(`Invalid --host value: ${raw}`);
   }
   return raw;
 }
@@ -499,65 +491,6 @@ function signalProcess(pid: number, signal: NodeJS.Signals): boolean {
   }
 }
 
-function maybeTrampolineToLocalCli(): void {
-  if (process.env[TRAMPOLINE_ENV] === "1") return;
-  const localCli = findLocalCliMjs(process.cwd());
-  if (!localCli) return;
-
-  const currentCli = fileURLToPath(import.meta.url);
-  if (path.resolve(localCli) === path.resolve(currentCli)) return;
-  if (!isSameGitCommonDir(localCli, currentCli)) return;
-
-  const cyan = process.stderr.isTTY ? "\x1b[36m" : "";
-  const reset = process.stderr.isTTY ? "\x1b[0m" : "";
-  process.stderr.write(`${cyan}fleet-wiki: redirecting to ${localCli}${reset}\n`);
-
-  const result = spawnSync(process.execPath, [localCli, ...process.argv.slice(2)], {
-    stdio: "inherit",
-    env: { ...process.env, [TRAMPOLINE_ENV]: "1" },
-  });
-  if (result.error) {
-    process.stderr.write(`fleet-wiki: trampoline failed: ${result.error.message}\n`);
-    process.exit(1);
-  }
-  if (result.signal) {
-    process.kill(process.pid, result.signal);
-    setTimeout(() => process.exit(1), SIGNAL_EXIT_FALLBACK_MS);
-    return;
-  }
-  process.exit(result.status ?? 1);
-}
-
-function isSameGitCommonDir(candidateCli: string, currentCli: string): boolean {
-  const candidateCommonDir = gitCommonDir(path.dirname(candidateCli));
-  const currentCommonDir = gitCommonDir(path.dirname(currentCli));
-  return candidateCommonDir !== null && currentCommonDir !== null && candidateCommonDir === currentCommonDir;
-}
-
-function gitCommonDir(cwd: string): string | null {
-  const result = spawnSync("git", ["-C", cwd, "rev-parse", "--git-common-dir"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  if (result.error || result.status !== 0 || typeof result.stdout !== "string") {
-    return null;
-  }
-  const rawCommonDir = result.stdout.trim();
-  if (!rawCommonDir) {
-    return null;
-  }
-  return path.resolve(cwd, rawCommonDir);
-}
-
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
-}
-
-const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isDirectRun) {
-  maybeTrampolineToLocalCli();
-  await main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
 }

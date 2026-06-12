@@ -43,7 +43,7 @@ if (argv[0] === "hook") {
 }
 
 if (argv[0] === "wiki") {
-  process.exit(await relayToPackageCli("@dotobokuri/fleet-wiki-ui/cli", argv.slice(1)));
+  process.exit(await relayToPackageCli("@dotobokuri/fleet-wiki-ui/cli-bin", argv.slice(1)));
 }
 
 if (argv[0] === "console") {
