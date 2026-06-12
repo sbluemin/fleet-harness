@@ -10,6 +10,7 @@ interface CapturedInvocation {
 interface ControlledGatewayCallStream {
   readonly ready: boolean;
   emit(call: { readonly callId: string; readonly sessionId: string; readonly toolName: string; readonly args: Record<string, unknown> }): void;
+  emitSplit(call: { readonly callId: string; readonly sessionId: string; readonly toolName: string; readonly args: Record<string, unknown> }, splitAt: number): void;
   stream(): ReadableStream<Uint8Array>;
 }
 
@@ -129,6 +130,31 @@ describe("gateway observability publisher", () => {
     session.cleanup();
     await waitFor(() => resultPosts.includes("call-next"));
     expect(invocations[0]?.signal?.aborted).toBe(true);
+  });
+
+  it("decodes multi-byte tool arguments split across SSE chunks", async () => {
+    const calls = createControlledGatewayCallStream();
+    const resultPosts: string[] = [];
+    const received: string[] = [];
+    const invoke = vi.fn(async (_toolName: string, args: Record<string, unknown>) => {
+      received.push(String(args.text));
+      return { content: [{ type: "text", text: "ok" }], isError: false };
+    });
+    const manager = createExecutorManager(calls, invoke, resultPosts);
+    const session = await manager.createExecutorMcpSession({
+      serverName: "fleet",
+      specs: [{ id: "ping", description: "Ping", parameters: {} }],
+      cwd: "/tmp/kr",
+    });
+    await waitFor(() => calls.ready);
+
+    // "한"(3바이트)의 첫 바이트 직후에서 청크를 갈라 멀티바이트 경계 분할을 재현한다
+    const probe = new TextEncoder().encode(`data: ${JSON.stringify({ callId: "call-kr", sessionId: "session-kr", toolName: "ping", args: { text: "한글" } })}`);
+    calls.emitSplit({ callId: "call-kr", sessionId: "session-kr", toolName: "ping", args: { text: "한글" } }, probe.indexOf(0xed) + 1);
+    await waitFor(() => received.length === 1);
+
+    expect(received[0]).toBe("한글");
+    session.cleanup();
   });
 
   it("resubscribes the control stream after a transient disconnect without re-registering", async () => {
@@ -601,6 +627,12 @@ function createControlledGatewayCallStream(): ControlledGatewayCallStream {
     emit(call) {
       if (!controller) throw new Error("Gateway call stream is not ready");
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ ...call, createdAt: Date.now() })}\n\n`));
+    },
+    emitSplit(call, splitAt) {
+      if (!controller) throw new Error("Gateway call stream is not ready");
+      const bytes = encoder.encode(`data: ${JSON.stringify({ ...call, createdAt: Date.now() })}\n\n`);
+      controller.enqueue(bytes.slice(0, splitAt));
+      controller.enqueue(bytes.slice(splitAt));
     },
     stream() {
       return new ReadableStream<Uint8Array>({

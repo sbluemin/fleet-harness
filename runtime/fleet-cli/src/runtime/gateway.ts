@@ -129,7 +129,8 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 		while (!session.abort.signal.aborted) {
 			const chunk = await reader.read();
 			if (chunk.done) break;
-			buffer += decoder.decode(chunk.value);
+			// 멀티바이트 UTF-8 문자가 청크 경계에 걸려도 깨지지 않도록 디코더 상태를 청크 간 유지한다
+			buffer += decoder.decode(chunk.value, { stream: true });
 			let split = buffer.indexOf("\n\n");
 			while (split >= 0) {
 				const frame = buffer.slice(0, split);
@@ -158,6 +159,8 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				split = buffer.indexOf("\n\n");
 			}
 		}
+		// 스트림 종료 시 디코더에 남은 부분 바이트를 비운다 (불완전 프레임은 기존대로 폐기)
+		buffer += decoder.decode();
 	}
 
 	async function consumeCallsWithReconnect(session: ActiveGatewaySession, registry: McpToolRegistry): Promise<void> {
