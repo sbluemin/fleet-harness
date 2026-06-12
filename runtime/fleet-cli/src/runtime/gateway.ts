@@ -46,6 +46,7 @@ interface ActiveGatewaySession {
 	readonly specs: readonly AgentToolSpec[];
 	registration: GatewayRegisterTenantResponse;
 	invocation: GatewayInvocationContext;
+	readonly registrationLeases: Map<string, GatewayRegistrationLease>;
 	readonly abort: AbortController;
 	readonly seenCallIds: Set<string>;
 	readonly seenCallOrder: string[];
@@ -54,6 +55,13 @@ interface ActiveGatewaySession {
 interface GatewayInvocationContext {
 	readonly cwd: string;
 	readonly signal?: AbortSignal;
+}
+
+interface GatewayRegistrationLease {
+	readonly registration: GatewayRegisterTenantResponse;
+	inFlight: number;
+	releaseRequested: boolean;
+	released: boolean;
 }
 
 interface ExecutorEndpoint {
@@ -113,15 +121,24 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 				buffer = buffer.slice(split + 2);
 				const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
 				if (data) {
-					void executeGatewayCall(JSON.parse(data) as GatewayQueuedToolCall, session, registry, fetchImpl, (err) => {
-						if (!session.abort.signal.aborted) {
-							connectionState = {
-								state: "retrying",
-								attempts: 1,
-								message: `Fleet Gateway result publish failed: ${err instanceof Error ? err.message : String(err)}`,
-							};
-						}
-					});
+					void executeGatewayCall(
+						JSON.parse(data) as GatewayQueuedToolCall,
+						session,
+						registry,
+						fetchImpl,
+						(err) => {
+							if (!session.abort.signal.aborted) {
+								connectionState = {
+									state: "retrying",
+									attempts: 1,
+									message: `Fleet Gateway result publish failed: ${err instanceof Error ? err.message : String(err)}`,
+								};
+							}
+						},
+						(lease) => {
+							void releaseGatewayRegistrationLease(session, lease, releaseGatewayRegistration).catch(() => undefined);
+						},
+					);
 				}
 				split = buffer.indexOf("\n\n");
 			}
@@ -248,10 +265,12 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 			specs: request.specs,
 			registration,
 			invocation: { cwd, signal: request.signal },
+			registrationLeases: new Map(),
 			abort,
 			seenCallIds: new Set(),
 			seenCallOrder: [],
 		};
+		trackGatewayRegistration(session, registration);
 		activeSessions.set(label, session);
 		primarySessionLabel ??= label;
 		connectionState = {
@@ -300,9 +319,10 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 
 	async function refreshGatewaySession(session: ActiveGatewaySession): Promise<void> {
 		const endpoint = await getGatewayEndpoint();
-		const previous = session.registration;
+		const previous = trackGatewayRegistration(session, session.registration);
 		session.registration = await registerWithGateway(endpoint, session.label, session.cwd, session.specs);
-		void releaseGatewayRegistration(previous).catch(() => undefined);
+		trackGatewayRegistration(session, session.registration);
+		void releaseGatewayRegistrationLease(session, previous, releaseGatewayRegistration).catch(() => undefined);
 		connectionState = {
 			state: "ready",
 			attempts: 0,
@@ -311,7 +331,7 @@ export function createGatewayDedicatedSessionManager(deps: GatewayDedicatedSessi
 	}
 
 	async function releaseGatewaySession(session: ActiveGatewaySession): Promise<void> {
-		await releaseGatewayRegistration(session.registration);
+		await Promise.all(Array.from(session.registrationLeases.values()).map((lease) => releaseGatewayRegistrationLease(session, lease, releaseGatewayRegistration, true)));
 	}
 
 	async function releaseGatewayRegistration(registration: GatewayRegisterTenantResponse): Promise<void> {
@@ -325,9 +345,11 @@ async function executeGatewayCall(
 	registry: McpToolRegistry,
 	fetchImpl: typeof fetch,
 	onPublishFailure: (err: unknown) => void,
+	onRegistrationIdle: (lease: GatewayRegistrationLease) => void,
 ): Promise<void> {
 	if (!rememberCall(session, call.callId)) return;
-	const registration = session.registration;
+	const lease = acquireGatewayRegistration(session);
+	const registration = lease.registration;
 	const invocation = session.invocation;
 	const signal = combineAbortSignals([session.abort.signal, invocation.signal].filter((candidate): candidate is AbortSignal => Boolean(candidate)));
 	const result = await registry.invoke(call.toolName, call.args, {
@@ -338,12 +360,16 @@ async function executeGatewayCall(
 		content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
 		isError: true,
 	}));
-	await postJson(fetchImpl, registration.endpoint.replace("/mcp", `/control/results/${call.callId}`), registration.controlToken, {
-		sessionId: call.sessionId,
-		result,
-	}).catch((err) => {
+	try {
+		await postJson(fetchImpl, registration.endpoint.replace("/mcp", `/control/results/${call.callId}`), registration.controlToken, {
+			sessionId: call.sessionId,
+			result,
+		});
+	} catch (err) {
 		onPublishFailure(err);
-	});
+	} finally {
+		finishGatewayRegistration(session, lease, onRegistrationIdle);
+	}
 }
 
 function rememberCall(session: ActiveGatewaySession, callId: string): boolean {
@@ -355,6 +381,54 @@ function rememberCall(session: ActiveGatewaySession, callId: string): boolean {
 		if (stale) session.seenCallIds.delete(stale);
 	}
 	return true;
+}
+
+function trackGatewayRegistration(session: ActiveGatewaySession, registration: GatewayRegisterTenantResponse): GatewayRegistrationLease {
+	const key = gatewayRegistrationKey(registration);
+	const existing = session.registrationLeases.get(key);
+	if (existing) return existing;
+	const lease: GatewayRegistrationLease = {
+		registration,
+		inFlight: 0,
+		releaseRequested: false,
+		released: false,
+	};
+	session.registrationLeases.set(key, lease);
+	return lease;
+}
+
+function acquireGatewayRegistration(session: ActiveGatewaySession): GatewayRegistrationLease {
+	const lease = trackGatewayRegistration(session, session.registration);
+	lease.inFlight += 1;
+	return lease;
+}
+
+function finishGatewayRegistration(session: ActiveGatewaySession, lease: GatewayRegistrationLease, onRegistrationIdle: (lease: GatewayRegistrationLease) => void): void {
+	lease.inFlight = Math.max(0, lease.inFlight - 1);
+	if (lease.inFlight === 0 && lease.releaseRequested && !lease.released) {
+		onRegistrationIdle(lease);
+	}
+}
+
+async function releaseGatewayRegistrationLease(
+	session: ActiveGatewaySession,
+	lease: GatewayRegistrationLease,
+	releaseRegistration: (registration: GatewayRegisterTenantResponse) => Promise<void>,
+	force = false,
+): Promise<void> {
+	if (lease.released) return;
+	if (!force && lease.inFlight > 0) {
+		lease.releaseRequested = true;
+		return;
+	}
+	lease.released = true;
+	lease.releaseRequested = false;
+	session.registrationLeases.delete(gatewayRegistrationKey(lease.registration));
+	await releaseRegistration(lease.registration);
+}
+
+function gatewayRegistrationKey(registration: GatewayRegisterTenantResponse): string {
+	return registration.controlToken;
 }
 
 function combineAbortSignals(signals: readonly AbortSignal[]): AbortSignal {

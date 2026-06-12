@@ -135,9 +135,11 @@ describe("gateway observability publisher", () => {
     let registerCount = 0;
     let callStreamCount = 0;
     const releases: string[] = [];
+    const order: string[] = [];
     const resultPosts: ResultPost[] = [];
     const invoke = vi.fn(async () => {
-      await waitFor(() => registerCount >= 2 && releases.includes("control-1"));
+      await waitFor(() => registerCount >= 2);
+      expect(releases).not.toContain("control-1");
       return { content: [{ type: "text", text: "pong" }], isError: false };
     });
     const manager = createGatewayDedicatedSessionManager({
@@ -176,6 +178,7 @@ describe("gateway observability publisher", () => {
           return new Response(new ReadableStream(), { status: 200 });
         }
         if (target.includes("/control/results/")) {
+          order.push("result");
           resultPosts.push({
             callId: target.split("/").pop() ?? "",
             sessionId: JSON.parse(String(init?.body)).sessionId as string,
@@ -184,6 +187,7 @@ describe("gateway observability publisher", () => {
           return jsonResponse({ ok: true });
         }
         if (target.endsWith("/control/release")) {
+          order.push(`release:${authorizationToken(init)}`);
           releases.push(authorizationToken(init));
           return jsonResponse({ ok: true });
         }
@@ -193,10 +197,129 @@ describe("gateway observability publisher", () => {
 
     await manager.issueSessionToken({ label: "agent:refresh", cwd: "/tmp/first" });
     await waitFor(() => resultPosts.length === 1);
+    await waitFor(() => releases.includes("control-1"));
     manager.releaseSessionToken("agent:refresh");
 
     expect(resultPosts).toEqual([{ callId: "call-refresh", sessionId: "session-1", token: "control-1" }]);
+    expect(order.indexOf("result")).toBeLessThan(order.indexOf("release:control-1"));
     expect(registerCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("releases the previous registration immediately when refresh has no in-flight calls", async () => {
+    let registerCount = 0;
+    let callStreamCount = 0;
+    const releases: string[] = [];
+    const manager = createGatewayDedicatedSessionManager({
+      name: "fleet",
+      lifecycle: { ensureDaemon: async () => "http://127.0.0.1:37283/mcp" } as never,
+      readBootstrapToken: async () => "bootstrap",
+      sleep: async () => undefined,
+      registry: {
+        getAllAgentTools: () => [{ id: "ping", description: "Ping", parameters: {} }],
+        invoke: vi.fn(),
+      } as never,
+      fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.endsWith("/admin/register")) {
+          registerCount += 1;
+          return jsonResponse({
+            tenantId: `tenant-${registerCount}`,
+            sessionId: `session-${registerCount}`,
+            endpoint: "http://127.0.0.1:37283/mcp",
+            controlToken: `control-${registerCount}`,
+            sessionToken: `session-token-${registerCount}`,
+            observerToken: `observer-${registerCount}`,
+          });
+        }
+        if (target.endsWith("/control/calls")) {
+          callStreamCount += 1;
+          return callStreamCount === 1
+            ? new Response(closedStream(), { status: 200 })
+            : new Response(new ReadableStream(), { status: 200 });
+        }
+        if (target.endsWith("/control/release")) {
+          releases.push(authorizationToken(init));
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ error: "unexpected" }, 500);
+      }) as typeof fetch,
+    });
+
+    await manager.issueSessionToken({ label: "agent:no-inflight", cwd: "/tmp/first" });
+    await waitFor(() => registerCount >= 2 && releases.includes("control-1"));
+    manager.releaseSessionToken("agent:no-inflight");
+
+    expect(callStreamCount).toBeGreaterThanOrEqual(2);
+    expect(releases[0]).toBe("control-1");
+  });
+
+  it("releases a refreshed registration after an in-flight result publish fails", async () => {
+    let registerCount = 0;
+    let callStreamCount = 0;
+    const releases: string[] = [];
+    const resultPosts: ResultPost[] = [];
+    const invoke = vi.fn(async () => {
+      await waitFor(() => registerCount >= 2);
+      expect(releases).not.toContain("control-1");
+      return { content: [{ type: "text", text: "pong" }], isError: false };
+    });
+    const manager = createGatewayDedicatedSessionManager({
+      name: "fleet",
+      lifecycle: { ensureDaemon: async () => "http://127.0.0.1:37283/mcp" } as never,
+      readBootstrapToken: async () => "bootstrap",
+      sleep: async () => undefined,
+      registry: {
+        getAllAgentTools: () => [{ id: "ping", description: "Ping", parameters: {} }],
+        invoke,
+      } as never,
+      fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.endsWith("/admin/register")) {
+          registerCount += 1;
+          return jsonResponse({
+            tenantId: `tenant-${registerCount}`,
+            sessionId: `session-${registerCount}`,
+            endpoint: "http://127.0.0.1:37283/mcp",
+            controlToken: `control-${registerCount}`,
+            sessionToken: `session-token-${registerCount}`,
+            observerToken: `observer-${registerCount}`,
+          });
+        }
+        if (target.endsWith("/control/calls")) {
+          callStreamCount += 1;
+          if (callStreamCount === 1) {
+            return new Response(sseStream({
+              callId: "call-fail-refresh",
+              sessionId: "session-1",
+              toolName: "ping",
+              args: {},
+              createdAt: Date.now(),
+            }), { status: 200 });
+          }
+          return new Response(new ReadableStream(), { status: 200 });
+        }
+        if (target.includes("/control/results/")) {
+          resultPosts.push({
+            callId: target.split("/").pop() ?? "",
+            sessionId: JSON.parse(String(init?.body)).sessionId as string,
+            token: authorizationToken(init),
+          });
+          return jsonResponse({ ok: false }, 403);
+        }
+        if (target.endsWith("/control/release")) {
+          releases.push(authorizationToken(init));
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ error: "unexpected" }, 500);
+      }) as typeof fetch,
+    });
+
+    await manager.issueSessionToken({ label: "agent:publish-fail", cwd: "/tmp/first" });
+    await waitFor(() => resultPosts.length === 1 && releases.includes("control-1"));
+    manager.releaseSessionToken("agent:publish-fail");
+
+    expect(resultPosts).toEqual([{ callId: "call-fail-refresh", sessionId: "session-1", token: "control-1" }]);
+    expect(manager.getConnectionState().message).toContain("Fleet Gateway result publish failed");
   });
 
   it("handles result publish failures without an unhandled rejection", async () => {
@@ -331,6 +454,14 @@ function sseStream(body: unknown): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(body)}\n\n`));
+      controller.close();
+    },
+  });
+}
+
+function closedStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
       controller.close();
     },
   });
