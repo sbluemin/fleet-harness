@@ -43,7 +43,7 @@ if (argv[0] === "hook") {
 }
 
 if (argv[0] === "wiki") {
-  process.exit(await relayToPackageCli("@dotobokuri/fleet-wiki-ui/cli-bin", argv.slice(1)));
+  process.exit(await relayToPackageCli(resolveWikiCliSpecifier(), argv.slice(1)));
 }
 
 if (argv[0] === "console") {
@@ -132,4 +132,14 @@ async function relayToPackageCli(specifier: string, args: readonly string[]): Pr
       resolve(0);
     });
   });
+}
+
+// 구버전 fleet-wiki-ui에는 ./cli-bin export가 없으므로 자기실행형 ./cli 엔트리로 폴백한다.
+function resolveWikiCliSpecifier(): string {
+  try {
+    require.resolve("@dotobokuri/fleet-wiki-ui/cli-bin");
+    return "@dotobokuri/fleet-wiki-ui/cli-bin";
+  } catch {
+    return "@dotobokuri/fleet-wiki-ui/cli";
+  }
 }
