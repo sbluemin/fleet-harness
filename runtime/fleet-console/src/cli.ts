@@ -212,11 +212,7 @@ export async function openFleetConsole(deps: OpenFleetConsoleDeps = {}): Promise
   if (!status.healthy || !status.lock) {
     throw new Error("Fleet Console server is not healthy after ensure");
   }
-  const fragment = new URLSearchParams({
-    observerToken: status.lock.observerToken,
-    terminalToken: status.lock.terminalToken,
-  });
-  const url = `${status.lock.endpoint}console/#${fragment.toString()}`;
+  const url = `${status.lock.endpoint}console/`;
   (deps.openBrowser ?? openBrowser)(url);
   return { url };
 }

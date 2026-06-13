@@ -16,8 +16,6 @@ const LOCK: ConsoleLockPayload = {
   endpoint: "http://127.0.0.1:37283/",
   startedAt: 1,
   token: "bootstrap-token",
-  observerToken: "observer-token",
-  terminalToken: "terminal-token",
   version: "test",
 };
 
@@ -43,7 +41,7 @@ describe("fleet console CLI", () => {
     expect(helpText).not.toContain("Gateway");
   });
 
-  it("ensures the server and opens the console with observer and terminal tokens in the URL fragment only", async () => {
+  it("ensures the server and opens the console URL without browser tokens", async () => {
     const calls: string[] = [];
     const opened: string[] = [];
 
@@ -64,10 +62,9 @@ describe("fleet console CLI", () => {
     });
 
     expect(calls).toEqual(["ensure", "probe"]);
-    expect(opened).toEqual(["http://127.0.0.1:37283/console/#observerToken=observer-token&terminalToken=terminal-token"]);
+    expect(opened).toEqual(["http://127.0.0.1:37283/console/"]);
     expect(result.url).toBe(opened[0]);
-    expect(opened[0]).not.toContain("?observerToken=");
-    expect(opened[0]).not.toContain("?terminalToken=");
+    expect(opened[0]).not.toContain("#");
   });
 
   it("fails when the console is not healthy after ensure", async () => {
@@ -91,7 +88,6 @@ describe("fleet console CLI", () => {
     expect(text).toContain("running");
     expect(text).toContain("http://127.0.0.1:37283/console/");
     expect(text).toContain("workspaces 2");
-    expect(text).not.toContain("observerToken");
   });
 
   it("reports a not-running server when the console is absent", async () => {

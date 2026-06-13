@@ -7,8 +7,6 @@ export interface ConsoleLockPayload {
   readonly endpoint: string;
   readonly startedAt: number;
   readonly token: string;
-  readonly observerToken: string;
-  readonly terminalToken: string;
   readonly version: string;
 }
 

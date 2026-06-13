@@ -15,7 +15,6 @@ interface SummaryMetric {
 }
 
 const CONNECTION_LABELS: Readonly<Record<ConnectionState, string>> = {
-  "auth-needed": "token required",
   connecting: "connecting",
   live: "live",
 };
@@ -69,12 +68,6 @@ export function Welcome({ state }: WelcomeProps) {
           </article>
         ))}
       </section>
-
-      {state.connection === "auth-needed" ? (
-        <aside className="welcome-token-note" aria-label="Observer token guidance">
-          Open this page through <code>fleet console</code> so the console can hand browser tokens to this session.
-        </aside>
-      ) : null}
     </main>
   );
 }

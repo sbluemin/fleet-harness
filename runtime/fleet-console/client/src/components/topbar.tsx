@@ -15,7 +15,6 @@ interface NavItem {
 }
 
 const CONNECTION_LABELS: Readonly<Record<ConnectionState, string>> = {
-  "auth-needed": "token required",
   connecting: "connecting",
   live: "live",
 };

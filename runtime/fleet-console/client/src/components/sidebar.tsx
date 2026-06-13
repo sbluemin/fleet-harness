@@ -30,15 +30,15 @@ interface SessionEntryProps {
 export function Sidebar({ state }: SidebarProps) {
   const tenantIds = state.tenantOrder.length > 0 ? state.tenantOrder : state.tenants.map((tenant) => tenant.tenantId);
   const handleCreateSession = async () => {
-    if (!state.terminalToken || state.creatingTerminalSession) return;
+    if (state.creatingTerminalSession) return;
     beginCreateTerminalSession();
     try {
-      const picked = await pickTerminalFolder(state.terminalToken);
+      const picked = await pickTerminalFolder();
       if ("cancelled" in picked) {
         failCreateTerminalSession("");
         return;
       }
-      completeCreateTerminalSession(await createTerminalSession(state.terminalToken, picked.folderGrantId));
+      completeCreateTerminalSession(await createTerminalSession(picked.folderGrantId));
     } catch (error) {
       failCreateTerminalSession(error instanceof Error ? error.message : String(error));
     }

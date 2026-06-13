@@ -69,8 +69,6 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       endpoint: input.endpoint,
       startedAt: now(),
       token: randomToken(),
-      observerToken: randomToken(),
-      terminalToken: randomToken(),
       version: input.version,
     };
     const fd = fsImpl.openSync(input.lockFile, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, LOCK_FILE_MODE);
@@ -136,12 +134,6 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     }
     if (input.payload.endpoint !== `http://${input.host}:${input.port}/`) {
       throw new Error("Console lock endpoint must match the fixed endpoint");
-    }
-    if (typeof input.payload.observerToken !== "string" || input.payload.observerToken.length === 0) {
-      throw new Error("Console lock observer token must be a non-empty string");
-    }
-    if (typeof input.payload.terminalToken !== "string" || input.payload.terminalToken.length === 0) {
-      throw new Error("Console lock terminal token must be a non-empty string");
     }
   }
 

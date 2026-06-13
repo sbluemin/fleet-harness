@@ -4,14 +4,13 @@
 
 ## Owns
 
-- The console HTTP backend (loopback-only): its own server skeleton, bearer auth, security headers, static `/console/` serving of its own `dist/client/`, the CLI register-ingest API, the browser observer REST/SSE surface, and the terminal PTY WebSocket. The console no longer imports or launches the retired gateway package.
+- The console HTTP backend (loopback-only): its own server skeleton, CLI ingest bearer auth, security headers, static `/console/` serving of its own `dist/client/`, the CLI register-ingest API, the browser observer REST/SSE surface, and the terminal PTY WebSocket. The console no longer imports or launches the retired gateway package.
 - The server lifecycle: lock file, runtime paths, health probe, and build-stale detection are console-owned. `fleet-console` is the daemon, not a launcher over someone else's daemon.
 - The `fleet-console` CLI entry point (`./cli` export, `dist/cli.mjs`): `start` (the default when no subcommand is given) ensures the local console server and opens the console URL in a browser; `stop` stops the console server; `status` prints server health, endpoint, console URL, and registered-workspace count. `--help`/`-h` prints the banner-style help. `fleet console <args>` in `fleet-cli` relays the full argument list to this CLI as a child process, so every subcommand works through both `fleet console …` and the standalone `fleet-console …` binary. The root `pnpm fleet-console` script runs it from source via `tsx`.
 - The CLI register-ingest contract (server side): `POST /api/cli/register` (returns only `registrationId`, `ingestToken`, `heartbeatIntervalMs`, `leaseTtlMs`, `maxBatchEvents`), `POST /api/cli/events` (ordered `{cliRunId, seq, at, event}[]` batches authenticated by the ingest token; the console assigns its own `observedId`), `POST /api/cli/heartbeat`, and best-effort `POST /api/cli/deregister`. Registration and ingest are CLI-only; the shared register/ingest data-contract types are owned by `@dotobokuri/core-agent`.
 - The React SPA served from the console backend at `/console/`: layout, components, styles, and visual identity.
 - The observer-side client contract: REST snapshot fetches and the SSE consumption loop with reconnect/resync.
 - The streaming view model: the event reducer that folds `CarrierJobStreamEvent` timelines into per-job, per-track views with incremental text accumulation.
-- The browser token handoff shape: launcher passes the browser observer/terminal tokens once through the URL fragment (never a query string); the client moves them to `sessionStorage` and strips the fragment.
 
 ## Must Not Own
 
@@ -21,7 +20,8 @@
 
 ## Token Boundary (hard rule)
 
-- The browser may receive only browser-facing observer/terminal tokens, and the terminal WebSocket is reached through a ticket, not a raw terminal token.
+- Browser observer routes are loopback-only and do not use browser bearer tokens.
+- Terminal HTTP routes do not use browser bearer tokens, but must retain the terminal Origin check; the terminal WebSocket is reached through a one-use ticket.
 - The CLI `ingestToken` and any MCP session token must never reach browser code, URL query strings, SSE payloads, terminal tickets, logs, or static assets.
 
 ## Layout
@@ -32,7 +32,7 @@
 
 ## Tech Stack (deliberate)
 
-- **React 19 + Vite + TypeScript.** Chosen because the console's core requirement is smooth incremental streaming UI and the package is slated to grow into the unified Fleet GUI. Do not replace with hand-rolled DOM rendering. A second surface has now landed (the Welcome dashboard), so `react-router-dom` (`BrowserRouter` with `basename="/console"`) is the sanctioned client router. Routes: `/` renders **Welcome** (the live dashboard, no token gate); `/operations` renders the carrier observation surface (Sidebar + JobView, behind the observer-token gate); unknown paths redirect to `/`. The console backend already serves extensionless `/console/*` paths as `index.html` (SPA fallback in `static-console.ts`), so client-side routes require **no** backend change. Routing state belongs to react-router; observation data stays in the external `store.ts`. Do not add a state-management library until that store proves insufficient.
+- **React 19 + Vite + TypeScript.** Chosen because the console's core requirement is smooth incremental streaming UI and the package is slated to grow into the unified Fleet GUI. Do not replace with hand-rolled DOM rendering. A second surface has now landed (the Welcome dashboard), so `react-router-dom` (`BrowserRouter` with `basename="/console"`) is the sanctioned client router. Routes: `/` renders **Welcome** (the live dashboard); `/operations` renders the carrier observation surface (Sidebar + JobView); unknown paths redirect to `/`. The console backend already serves extensionless `/console/*` paths as `index.html` (SPA fallback in `static-console.ts`), so client-side routes require **no** backend change. Routing state belongs to react-router; observation data stays in the external `store.ts`. Do not add a state-management library until that store proves insufficient.
 - State lives in a framework-agnostic external store (`client/src/store.ts`) bridged via `useSyncExternalStore`. Pure reduction logic stays in `client/src/reduce.ts` and must remain React-free and unit-tested.
 - Web fonts are self-hosted via `@fontsource-variable/*`. External font CDNs are forbidden.
 - Browser launch must use OS-level commands via `child_process.spawn`; do not add an `open` dependency.
@@ -53,7 +53,7 @@ The console is the operations variant of Fleet Wiki's **Maritime Codex** languag
 - **Color semantics**:
   - `brass` means "지금 보고 있는 곳" — selected job brass dot indicator, active navigation, structural decoration, and non-live active/focus-adjacent emphasis.
   - `aurora` means "지금 살아있는 것" — streaming status, live dots, tenant beacons, stream caret, follow button, and `connection-chip--live`. Unlike Fleet Wiki, console does not reserve aurora only for document linkage because there is no document-link concept here.
-  - `coral` means error/bad; `--warn` (amber, near `oklch(80% 0.13 85)`) means warning/auth-needed/connecting; neutral ink means idle.
+  - `coral` means error/bad; `--warn` (amber, near `oklch(80% 0.13 85)`) means warning/connecting; neutral ink means idle.
 - **Typography**: `Fraunces Variable` is display type for the topbar brand, job titles, idle marks, and large headings. `Manrope Variable` is the default UI family. `JetBrains Mono Variable` is for stream output, job ids, timelines, and eyebrow labels with uppercase tracked styling. **Exception**: the Operations terminal (xterm) uses `Cascadia Code` — a terminal-tuned face for box-drawing/Powerline glyph alignment — rendered via the xterm WebGL addon with DOM fallback. This is the sole surface where the console mono identity deliberately diverges from JetBrains Mono; the terminal font lives in the `terminal.tsx` xterm options (xterm takes a JS font string, not a CSS token), so it is not a `theme.css` variable.
 - **Surface and atmosphere**: `body::before` owns the multi-radial cold teal + brass afterglow field, and `body::after` owns the `feTurbulence` grain overlay. Sidebar, selected-job stage, timeline dock, and job summary are glass cards using `backdrop-filter: blur(18px) saturate(140%)`, `--surface-glass`, `--surface-rim`, `--shadow-soft`, and `--radius-xl`/large-radius surfaces.
 - **Motion**: panes use one first-paint `codex-rise` reveal (720ms, `--ease-spring`, topbar/sidebar/stage staggered 40/120/200ms). Live dots use aurora pulse, the stream caret keeps its blink, and ambient infinite motion is forbidden. `prefers-reduced-motion` must continue to short-circuit animation.

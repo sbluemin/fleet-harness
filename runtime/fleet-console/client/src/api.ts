@@ -1,6 +1,6 @@
 import type { ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
 
-/** HTTP status를 보존하는 observer API 오류 — 인증 실패(401/403) 분기에 필요하다. */
+/** HTTP status를 보존하는 API 오류. */
 export class ApiError extends Error {
   readonly status: number;
 
@@ -11,31 +11,27 @@ export class ApiError extends Error {
   }
 }
 
-export function isAuthError(err: unknown): boolean {
-  return err instanceof ApiError && (err.status === 401 || err.status === 403);
-}
-
-export async function fetchTenants(token: string, signal?: AbortSignal): Promise<readonly ObservedTenant[]> {
-  const response = await fetch("/observer/tenants", { headers: authHeaders(token), signal });
+export async function fetchTenants(signal?: AbortSignal): Promise<readonly ObservedTenant[]> {
+  const response = await fetch("/observer/tenants", { signal });
   await assertOk(response);
   return ((await response.json()) as { tenants: readonly ObservedTenant[] }).tenants;
 }
 
-export async function fetchJobs(token: string, signal?: AbortSignal): Promise<readonly SnapshotTenantJobs[]> {
-  const response = await fetch("/observer/jobs", { headers: authHeaders(token), signal });
+export async function fetchJobs(signal?: AbortSignal): Promise<readonly SnapshotTenantJobs[]> {
+  const response = await fetch("/observer/jobs", { signal });
   await assertOk(response);
   return ((await response.json()) as { tenants: readonly SnapshotTenantJobs[] }).tenants;
 }
 
-export async function openEventsStream(token: string, signal?: AbortSignal): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-  const response = await fetch("/observer/events", { headers: authHeaders(token), signal });
+export async function openEventsStream(signal?: AbortSignal): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const response = await fetch("/observer/events", { signal });
   await assertOk(response);
   if (!response.body) throw new ApiError(response.status, "Observer stream unavailable");
   return response.body.getReader();
 }
 
-export async function pickTerminalFolder(token: string, signal?: AbortSignal): Promise<{ readonly folderGrantId: string } | { readonly cancelled: true }> {
-  const response = await fetch("/terminal/folders/pick", { method: "POST", headers: authHeaders(token), signal });
+export async function pickTerminalFolder(signal?: AbortSignal): Promise<{ readonly folderGrantId: string } | { readonly cancelled: true }> {
+  const response = await fetch("/terminal/folders/pick", { method: "POST", signal });
   await assertOk(response);
   const payload = (await response.json()) as { folderGrantId?: unknown; cancelled?: unknown };
   if (payload.cancelled === true) return { cancelled: true };
@@ -43,10 +39,10 @@ export async function pickTerminalFolder(token: string, signal?: AbortSignal): P
   return { folderGrantId: payload.folderGrantId };
 }
 
-export async function createTerminalSession(token: string, folderGrantId: string, signal?: AbortSignal): Promise<SessionInfo> {
+export async function createTerminalSession(folderGrantId: string, signal?: AbortSignal): Promise<SessionInfo> {
   const response = await fetch("/terminal/sessions", {
     method: "POST",
-    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ folderGrantId }),
     signal,
   });
@@ -54,18 +50,18 @@ export async function createTerminalSession(token: string, folderGrantId: string
   return assertSessionInfo(await response.json(), response.status);
 }
 
-export async function fetchTerminalSessions(token: string, signal?: AbortSignal): Promise<readonly SessionInfo[]> {
-  const response = await fetch("/terminal/sessions", { headers: authHeaders(token), signal });
+export async function fetchTerminalSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
+  const response = await fetch("/terminal/sessions", { signal });
   await assertOk(response);
   const payload = (await response.json()) as { sessions?: unknown };
   if (!Array.isArray(payload.sessions)) throw new ApiError(response.status, "Invalid terminal sessions response");
   return payload.sessions.map((session) => assertSessionInfo(session, response.status));
 }
 
-export async function requestTerminalTicket(token: string, sessionId: string, signal?: AbortSignal): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+export async function requestTerminalTicket(sessionId: string, signal?: AbortSignal): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
   const response = await fetch("/terminal/ticket", {
     method: "POST",
-    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId }),
     signal,
   });
@@ -91,10 +87,6 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
   };
-}
-
-function authHeaders(token: string): HeadersInit {
-  return { Authorization: `Bearer ${token}` };
 }
 
 async function assertOk(response: Response): Promise<void> {

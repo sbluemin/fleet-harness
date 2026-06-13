@@ -102,13 +102,11 @@ export interface TenantJobsView {
   readonly truncation: ObserverTruncation;
 }
 
-export type ConnectionState = "auth-needed" | "connecting" | "live";
+export type ConnectionState = "connecting" | "live";
 
 export type CoverDepth = "list" | "detail";
 
 export interface ConsoleState {
-  readonly token: string | null;
-  readonly terminalToken: string | null;
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly tenants: readonly ObservedTenant[];

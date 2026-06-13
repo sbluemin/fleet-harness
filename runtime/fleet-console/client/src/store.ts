@@ -16,9 +16,7 @@ const TENANT_JOB_LIMIT = 200;
 
 const listeners = new Set<Listener>();
 let state: ConsoleState = {
-  token: null,
-  terminalToken: null,
-  connection: "auth-needed",
+  connection: "connecting",
   connectionError: null,
   tenants: [],
   sessions: {},
@@ -49,17 +47,6 @@ export function subscribe(listener: Listener): () => void {
 
 export function setState(patch: Partial<ConsoleState>): void {
   state = { ...state, ...patch };
-  emit();
-}
-
-export function resetForToken(token: string | null, terminalToken: string | null = state.terminalToken): void {
-  state = {
-    ...state,
-    token,
-    terminalToken,
-    connection: token ? "connecting" : "auth-needed",
-    connectionError: null,
-  };
   emit();
 }
 

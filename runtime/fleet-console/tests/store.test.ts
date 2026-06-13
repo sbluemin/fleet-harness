@@ -10,7 +10,6 @@ import {
   completeCreateTerminalSession,
   getState,
   hydrateTerminalSessions,
-  resetForToken,
   selectJob,
   selectCoverJob,
   selectTenant,
@@ -29,8 +28,9 @@ function makeEvent(id: number, type: string, event: Record<string, unknown>, ten
 }
 
 beforeEach(() => {
-  resetForToken("token-a");
   setState({
+    connection: "connecting",
+    connectionError: null,
     tenants: [],
     tenantJobs: {},
     tenantOrder: [],

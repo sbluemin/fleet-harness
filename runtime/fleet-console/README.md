@@ -19,12 +19,12 @@ Fleet Console owns its own local HTTP server. Fleet CLI processes register with 
 |---|---|---|
 | `POST /api/cli/register` | CLI registers a workspace session. | Uses the console bootstrap token from the lock file. |
 | `POST /api/cli/events` | CLI pushes `{ cliRunId, seq, at, event }[]` batches. | Uses CLI-only `ingestToken`; never sent to browser code. |
-| `/observer/*` | Browser snapshot and SSE observer surface. | Uses browser observer token only. |
-| `POST /terminal/folders/pick` | Opens a native folder picker and returns a one-use folder grant, or `{ cancelled: true }`. | Uses the browser terminal token; selected paths are kept server-side. |
+| `/observer/*` | Browser snapshot and SSE observer surface. | Loopback-only; no browser bearer token. |
+| `POST /terminal/folders/pick` | Opens a native folder picker and returns a one-use folder grant, or `{ cancelled: true }`. | Requires the terminal Origin boundary; selected paths are kept server-side. |
 | `POST /terminal/sessions` | Consumes `{ folderGrantId }` to create a console-spawned `fleet-cli --native` PTY session. | Raw cwd values from browser requests are rejected. |
-| `GET /terminal/sessions` | Lists non-secret terminal session metadata for hydration. | Uses the browser terminal token. |
-| `POST /terminal/ticket` + `/terminal/ws` | Browser terminal PTY transport; ticket requests may include `{ sessionId }` and default to `"default"` for compatibility. | Browser receives a ticket, not the raw terminal token. |
-| `/console/` | Static React client served from this package's `dist/client`. | Browser tokens are handed off once through the URL fragment. |
+| `GET /terminal/sessions` | Lists non-secret terminal session metadata for hydration. | Requires the terminal Origin boundary. |
+| `POST /terminal/ticket` + `/terminal/ws` | Browser terminal PTY transport; ticket requests may include `{ sessionId }` and default to `"default"` for compatibility. | Browser receives a one-use ticket. |
+| `/console/` | Static React client served from this package's `dist/client`. | Served directly from the loopback console URL. |
 
 `/observer/tenants` may include `terminalSessionId` when a registered CLI workspace is deterministically bound to a console-spawned terminal session. `/terminal/ws` keeps the same path and query shape.
 
@@ -36,7 +36,7 @@ Folder grants are one-use and in-memory. Folder picker cancellation is a normal 
 
 ## Security Notes
 
-All HTTP surfaces are loopback-only and protected by the existing bearer tokens. Browser code receives only observer/terminal browser tokens and non-secret session metadata. CLI `ingestToken`, MCP session tokens, bootstrap tokens, and selected absolute paths are not exposed through browser payloads, URL query strings, SSE frames, terminal tickets, logs, or static assets.
+HTTP surfaces are loopback-only. CLI ingest remains protected by bearer tokens, while browser observer routes are directly available on loopback and terminal routes retain their Origin boundary. CLI `ingestToken`, MCP session tokens, bootstrap tokens, and selected absolute paths are not exposed through browser payloads, URL query strings, SSE frames, terminal tickets, logs, or static assets.
 
 ## Usage
 
@@ -47,7 +47,7 @@ fleet-console status
 fleet-console stop
 ```
 
-The launcher ensures the local console server is running and opens `/console/` with observer and terminal browser tokens in the URL fragment. The client moves them to `sessionStorage` and strips the fragment from the address bar.
+The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.
 
 ## Development
 

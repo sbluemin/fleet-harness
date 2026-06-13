@@ -6,10 +6,8 @@ import { Terminal as XtermTerminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 
 import { createTerminalConnection, type TerminalConnection } from "../terminal-connection.js";
-import { clearTerminalToken } from "../token-storage.js";
 
 interface TerminalProps {
-  readonly terminalToken: string;
   readonly sessionId: string;
 }
 
@@ -45,7 +43,7 @@ const TERMINAL_OPTIONS = {
   },
 };
 
-export function Terminal({ terminalToken, sessionId }: TerminalProps) {
+export function Terminal({ sessionId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const [status, setStatus] = useState("connecting");
@@ -54,6 +52,7 @@ export function Terminal({ terminalToken, sessionId }: TerminalProps) {
     const container = containerRef.current;
     if (!container) return;
 
+    let disposed = false;
     const terminal = new XtermTerminal(TERMINAL_OPTIONS);
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -83,10 +82,8 @@ export function Terminal({ terminalToken, sessionId }: TerminalProps) {
     }
 
     const connection = createTerminalConnection({
-      terminalToken,
       sessionId,
       terminal,
-      onAuthInvalid: clearTerminalToken,
       onStatus: (nextStatus, message) => {
         setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
       },
@@ -100,6 +97,9 @@ export function Terminal({ terminalToken, sessionId }: TerminalProps) {
 
     const runInitialFit = async () => {
       await document.fonts?.ready;
+      // 폰트 로딩 대기 중 세션이 전환되면(effect cleanup) 이미 dispose된 터미널에
+      // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
+      if (disposed) return;
       fitAndResize();
       connection.start();
     };
@@ -109,15 +109,16 @@ export function Terminal({ terminalToken, sessionId }: TerminalProps) {
     void runInitialFit();
 
     return () => {
+      disposed = true;
       resizeObserver.disconnect();
       connection.dispose();
       connectionRef.current = null;
       terminal.dispose();
     };
-  }, [sessionId, terminalToken]);
+  }, [sessionId]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
-  // connecting/auth-needed/error 등 문제 상황에서만 상태를 노출한다.
+  // connecting/error 등 문제 상황에서만 상태를 노출한다.
   const isLive = status.startsWith("live");
 
   return (

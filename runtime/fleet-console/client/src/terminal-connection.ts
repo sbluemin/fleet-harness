@@ -1,4 +1,4 @@
-import { isAuthError, requestTerminalTicket } from "./api.js";
+import { requestTerminalTicket } from "./api.js";
 
 export interface TerminalLike {
   readonly onData: (listener: (data: string) => void) => { readonly dispose: () => void };
@@ -6,10 +6,8 @@ export interface TerminalLike {
 }
 
 export interface TerminalConnectionOptions {
-  readonly terminalToken: string;
   readonly sessionId: string;
   readonly terminal: TerminalLike;
-  readonly onAuthInvalid?: () => void;
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
   readonly fetchTicket?: typeof requestTerminalTicket;
   readonly location?: Pick<Location, "host" | "protocol">;
@@ -33,7 +31,7 @@ export interface WebSocketLike {
   onerror: (() => void) | null;
 }
 
-export type TerminalConnectionStatus = "connecting" | "live" | "auth-needed" | "closed";
+export type TerminalConnectionStatus = "connecting" | "live" | "closed";
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
@@ -65,18 +63,12 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       options.onStatus?.("connecting");
       try {
         const fetchTicket = options.fetchTicket ?? requestTerminalTicket;
-        const { ticket } = await fetchTicket(options.terminalToken, options.sessionId, abort.signal);
+        const { ticket } = await fetchTicket(options.sessionId, abort.signal);
         if (abort.signal.aborted) return;
         await attachSocket(buildTerminalWsUrl(ticket, options.location), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       } catch (err) {
         if (abort.signal.aborted) return;
-        if (isAuthError(err)) {
-          options.onStatus?.("auth-needed", err instanceof Error ? err.message : undefined);
-          options.onAuthInvalid?.();
-          abort.abort();
-          return;
-        }
         options.onStatus?.("connecting", err instanceof Error ? err.message : String(err));
       }
       await delay(reconnectDelay, abort.signal);

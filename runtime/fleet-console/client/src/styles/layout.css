@@ -13,10 +13,6 @@
   min-height: 0;
 }
 
-.console-body--gate {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 /* Welcome 라우트는 console-shell 2행 전체를 차지하고 내용이 길면 스스로 스크롤한다. */
 .welcome-page {
   min-height: 0;
@@ -106,10 +102,6 @@
   .console-body {
     grid-template-columns: 260px minmax(0, 1fr);
     gap: var(--space-3);
-  }
-
-  .console-body--gate {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .stage-content {

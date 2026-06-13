@@ -1,4 +1,3 @@
-import { AuthGate } from "../components/auth-gate.js";
 import { CarrierCover } from "../components/carrier-cover.js";
 import { OperationsLanding } from "../components/operations-landing.js";
 import { Sidebar } from "../components/sidebar.js";
@@ -10,26 +9,19 @@ interface OperationsProps {
 }
 
 export function Operations({ state }: OperationsProps) {
-  const hasTokens = Boolean(state.token && state.terminalToken);
   return (
-    <div className={`console-body ${hasTokens ? "" : "console-body--gate"}`}>
-      {hasTokens && state.terminalToken ? (
-        <>
-          <Sidebar state={state} />
-          <main className="operations-terminal-stage">
-            {state.activeTerminalSessionId ? (
-              <>
-                <Terminal terminalToken={state.terminalToken} sessionId={state.activeTerminalSessionId} />
-                <CarrierCover state={state} />
-              </>
-            ) : (
-              <OperationsLanding creating={state.creatingTerminalSession} error={state.terminalSessionError} />
-            )}
-          </main>
-        </>
-      ) : (
-        <AuthGate />
-      )}
+    <div className="console-body">
+      <Sidebar state={state} />
+      <main className="operations-terminal-stage">
+        {state.activeTerminalSessionId ? (
+          <>
+            <Terminal key={state.activeTerminalSessionId} sessionId={state.activeTerminalSessionId} />
+            <CarrierCover state={state} />
+          </>
+        ) : (
+          <OperationsLanding creating={state.creatingTerminalSession} error={state.terminalSessionError} />
+        )}
+      </main>
     </div>
   );
 }

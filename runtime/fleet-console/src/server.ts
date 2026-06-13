@@ -240,8 +240,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    const token = readBearerToken(req.headers);
-    if (!lockHandle || token !== lockHandle.payload.terminalToken) {
+    if (!isTerminalAuthorized(req)) {
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
@@ -313,24 +312,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const lookup = readObserverLookup(req, res);
-    if (!lookup) return;
+  function handleObserverStatus(_req: http.IncomingMessage, res: http.ServerResponse): void {
+    const lookup = readObserverLookup();
+    if (lookup.kind !== "aggregate") return;
     writeJson(res, 200, {
       workspaces: observability.listWorkspaces().length,
       jobs: observability.listWorkspaces().reduce((count, workspace) => count + observability.listJobs(workspace.tenantId).length, 0),
     });
   }
 
-  function handleObserverWorkspaces(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const lookup = readObserverLookup(req, res);
-    if (!lookup) return;
+  function handleObserverWorkspaces(_req: http.IncomingMessage, res: http.ServerResponse): void {
+    const lookup = readObserverLookup();
+    if (lookup.kind !== "aggregate") return;
     writeJson(res, 200, { tenants: observability.listWorkspaces() });
   }
 
   function handleObserverJobs(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const lookup = readObserverLookup(req, res);
-    if (!lookup) return;
+    const lookup = readObserverLookup();
+    if (lookup.kind !== "aggregate") return;
     const requestedTenantId = readUrl(req).searchParams.get("tenant");
     const visibleWorkspaces = listVisibleWorkspaces(requestedTenantId);
     if (requestedTenantId && visibleWorkspaces.length === 0) {
@@ -348,8 +347,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function handleObserverEvents(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const lookup = readObserverLookup(req, res);
-    if (!lookup) return;
+    const lookup = readObserverLookup();
+    if (lookup.kind !== "aggregate") return;
     const requestedTenantId = readUrl(req).searchParams.get("tenant");
     const visibleWorkspaces = listVisibleWorkspaces(requestedTenantId);
     if (requestedTenantId && visibleWorkspaces.length === 0) {
@@ -365,19 +364,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     });
   }
 
-  function readObserverLookup(req: http.IncomingMessage, res: http.ServerResponse): ObserverLookup | null {
-    const token = readBearerToken(req.headers);
-    if (token && token === lockHandle?.payload.observerToken) {
-      return { kind: "aggregate" };
-    }
-    writeJson(res, 401, { error: "Unauthorized" });
-    return null;
+  function readObserverLookup(): ObserverLookup {
+    return { kind: "aggregate" };
   }
 
   function isTerminalAuthorized(req: http.IncomingMessage): boolean {
-    const token = readBearerToken(req.headers);
-    if (!lockHandle || token !== lockHandle.payload.terminalToken) return false;
-    // bearer 외에 Origin도 검증해 WS 경로와 동일한 출처 경계를 신규 terminal 라우트에 적용한다.
+    if (!lockHandle) return false;
+    // Origin 검증으로 WS 경로와 동일한 출처 경계를 terminal 라우트에 적용한다.
     return isAllowedTerminalOrigin(req, lockHandle.payload.port ?? port);
   }
 

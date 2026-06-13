@@ -42,7 +42,7 @@ describe("console register ingest", () => {
       "registrationId",
     ]);
 
-    const workspaces = await getJson<{ tenants: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/tenants`, fixture.lock.observerToken);
+    const workspaces = await getJson<{ tenants: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/tenants`);
     expect(JSON.stringify(workspaces)).not.toContain(registration.ingestToken);
     expect(workspaces.tenants[0]).toMatchObject({ tenantId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", status: "online" });
   });
@@ -69,7 +69,6 @@ describe("console register ingest", () => {
 
     const jobs = await getJson<{ tenants: Array<{ readonly tenantId: string; readonly jobs: Array<{ readonly events: Array<{ readonly id: number; readonly type: string; readonly event: Record<string, unknown> }> }> }> }>(
       `${fixture.endpoint}observer/jobs`,
-      fixture.lock.observerToken,
     );
     const alphaEvents = jobs.tenants.find((tenant) => tenant.tenantId === "cli-a")?.jobs[0]?.events ?? [];
     const betaEvents = jobs.tenants.find((tenant) => tenant.tenantId === "cli-b")?.jobs[0]?.events ?? [];
@@ -78,7 +77,6 @@ describe("console register ingest", () => {
     expect(alphaEvents.some((event) => event.type === "observer:truncated")).toBe(false);
     const snapshot = await getJson<{ tenants: Array<{ readonly tenantId: string; readonly jobs: Array<{ readonly events: Array<{ readonly id: number; readonly type: string }> }> }> }>(
       `${fixture.endpoint}observer/jobs?tenant=cli-a`,
-      fixture.lock.observerToken,
     );
     const allAlphaIds = snapshot.tenants[0]?.jobs.flatMap((job) => job.events.map((event) => event.id)) ?? [];
     const stream = await readObserverChunk(fixture);
@@ -148,10 +146,7 @@ describe("console register ingest", () => {
     ]);
 
     const controller = new AbortController();
-    const response = await fetch(`${fixture.endpoint}observer/events`, {
-      headers: { Authorization: `Bearer ${fixture.lock.observerToken}` },
-      signal: controller.signal,
-    });
+    const response = await fetch(`${fixture.endpoint}observer/events`, { signal: controller.signal });
     const chunk = new TextDecoder().decode((await response.body!.getReader().read()).value);
     controller.abort();
 
@@ -172,7 +167,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(indexPath.endsWith(path.join("dist", "client", "index.html"))).toBe(true);
   });
 
-  it("issues terminal tickets only for the browser terminal token and selects registration cwd internally", async () => {
+  it("issues terminal tickets without browser tokens and selects registration cwd internally", async () => {
     const launches: string[] = [];
     const fixture = await startFixture({
       terminalLaunch: (cwd) => {
@@ -182,20 +177,13 @@ describe("console static and terminal ticket boundary", () => {
     });
     const registration = await registerCli(fixture, { cwd: "/repo/selected" });
 
-    const missing = await fetch(`${fixture.endpoint}terminal/ticket`, { method: "POST" });
-    const wrong = await fetch(`${fixture.endpoint}terminal/ticket`, {
-      method: "POST",
-      headers: { Authorization: "Bearer wrong" },
-    });
     const issued = await fetch(`${fixture.endpoint}terminal/ticket`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${fixture.lock.terminalToken}` },
       body: JSON.stringify({ registrationId: registration.registrationId }),
     });
     const payload = await issued.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown; readonly cwd?: unknown };
 
-    expect(missing.status).toBe(401);
-    expect(wrong.status).toBe(401);
+    expect(issued.status).toBe(200);
     expect(typeof payload.ticket).toBe("string");
     expect(payload.ttlMs).toBe(10_000);
     expect(payload.cwd).toBeUndefined();
@@ -209,7 +197,6 @@ describe("console static and terminal ticket boundary", () => {
 
     const response = await fetch(`${fixture.endpoint}terminal/folders/pick`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${fixture.lock.terminalToken}` },
     });
 
     await expect(response.json()).resolves.toEqual({ cancelled: true });
@@ -222,7 +209,7 @@ describe("console static and terminal ticket boundary", () => {
 
     const response = await fetch(`${fixture.endpoint}terminal/folders/pick`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${fixture.lock.terminalToken}`, origin: "http://evil.example" },
+      headers: { origin: "http://evil.example" },
     });
 
     expect(response.status).toBe(401);
@@ -239,7 +226,7 @@ describe("console static and terminal ticket boundary", () => {
         return createMockPty();
       },
     });
-    const headers = { Authorization: `Bearer ${fixture.lock.terminalToken}`, "Content-Type": "application/json" };
+    const headers = { "Content-Type": "application/json" };
 
     const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
     const grant = await picked.json() as { readonly folderGrantId: string };
@@ -382,18 +369,15 @@ async function postEvents(fixture: ServerFixture, token: string, events: unknown
   return response.json();
 }
 
-async function getJson<T>(url: string, token: string): Promise<T> {
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
   expect(response.status).toBe(200);
   return response.json() as Promise<T>;
 }
 
 async function readObserverChunk(fixture: ServerFixture): Promise<string> {
   const controller = new AbortController();
-  const response = await fetch(`${fixture.endpoint}observer/events`, {
-    headers: { Authorization: `Bearer ${fixture.lock.observerToken}` },
-    signal: controller.signal,
-  });
+  const response = await fetch(`${fixture.endpoint}observer/events`, { signal: controller.signal });
   const chunk = new TextDecoder().decode((await response.body!.getReader().read()).value);
   controller.abort();
   return chunk;
