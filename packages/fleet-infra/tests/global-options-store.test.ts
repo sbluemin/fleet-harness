@@ -32,7 +32,6 @@ describe("global options store", () => {
       [["default", "CliId"].join("")]: "codex",
       byCli: {
         codex: {
-          native: true,
           replaceSystemPrompt: true,
           enableMetaphor: true,
         },
@@ -57,7 +56,7 @@ describe("global options store", () => {
   it("sanitizes unknown schema fields and invalid values", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,
-      native: true,
+      obsoleteOption: true,
       replaceSystemPrompt: "yes",
       enableMetaphor: false,
       byCli: { claude: { model: "opus" } },
@@ -68,7 +67,6 @@ describe("global options store", () => {
       changed: true,
       data: {
         version: 1,
-        native: true,
         enableMetaphor: false,
       },
     });
@@ -76,7 +74,7 @@ describe("global options store", () => {
 
   it("ignores stale settings files without the current schema marker", () => {
     expect(sanitizeGlobalOptionsData({
-      native: true,
+      obsoleteOption: true,
       replaceSystemPrompt: true,
       enableMetaphor: true,
       oldSection: {},
@@ -92,7 +90,7 @@ describe("global options store", () => {
     const dataDir = makeTempDir();
     fs.writeFileSync(path.join(dataDir, "settings.json"), JSON.stringify({
       version: 99,
-      native: true,
+      obsoleteOption: true,
       replaceSystemPrompt: true,
       enableMetaphor: true,
     }));
@@ -108,14 +106,12 @@ describe("global options store", () => {
 
     service.save({
       version: 1,
-      native: true,
       replaceSystemPrompt: true,
       enableMetaphor: false,
     });
 
     expect(JSON.parse(fs.readFileSync(path.join(dataDir, "settings.json"), "utf-8"))).toEqual({
       version: 1,
-      native: true,
       replaceSystemPrompt: true,
       enableMetaphor: false,
     });
@@ -174,13 +170,13 @@ describe("global options store", () => {
     const second = createGlobalOptionsStore({ dataDir, timeoutMs: 1_000 });
 
     await Promise.all([
-      Promise.resolve().then(() => first.update((current) => ({ ...current, native: true }))),
+      Promise.resolve().then(() => first.update((current) => ({ ...current, replaceSystemPrompt: false }))),
       Promise.resolve().then(() => second.update((current) => ({ ...current, enableMetaphor: true }))),
     ]);
 
     expect(first.load()).toEqual({
       version: 1,
-      native: true,
+      replaceSystemPrompt: false,
       enableMetaphor: true,
     });
   });

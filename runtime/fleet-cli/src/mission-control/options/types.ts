@@ -8,7 +8,6 @@ export type SessionOptionSource = "arg" | "env" | "global-options" | "default" |
 export interface SessionOptions {
   readonly cliId: AgentCliId;
   readonly model?: string;
-  readonly native: boolean;
   readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
 }
@@ -32,7 +31,6 @@ export interface SessionOptionsRuntime {
   readonly getDraft: () => SessionOptions;
   readonly getStatusLines: () => readonly string[];
   readonly selectCli: (cliId: AgentCliId) => void;
-  readonly toggleNative: () => void;
   readonly toggleReplaceSystemPrompt: () => void;
   readonly toggleEnableMetaphor: () => void;
   readonly setModel: (model: string | undefined) => void;

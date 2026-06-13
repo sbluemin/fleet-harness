@@ -1,6 +1,5 @@
 export interface GlobalOptionsData {
   readonly version: 1;
-  readonly native?: boolean;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
 }

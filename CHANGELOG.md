@@ -23,6 +23,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Gateway auto-refresh now defers stale daemon replacement while active tenants are connected, preserving existing session tokens until an explicit restart.
 
 ### Removed
+- [core] Removed the raw-CLI Native launch mode; dedicated CLIs now always launch with the Fleet persona injected.
 - Removed the `@dotobokuri/core-mcp-server` workspace package; consumers should import generic MCP APIs from `@dotobokuri/core-agent` instead.
 
 ### Breaking Changes
