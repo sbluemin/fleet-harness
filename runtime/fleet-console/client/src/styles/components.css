@@ -1279,15 +1279,27 @@
 }
 
 .cover-panel {
-  width: min(420px, 38vw);
+  width: min(560px, calc(100vw - var(--space-12)));
   max-height: 100%;
-  overflow-y: auto;
-  padding: var(--space-4);
+  display: flex;
+  overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* JobView(.stage)는 넓은 메인 영역(max-width 1040px)용으로 설계됐다. 좁은
+   cover-panel에 넣을 때 min-width:0으로 가로를 패널 폭에 맞추고, flex로 높이를
+   받아 내부 stage-stream이 세로 스크롤되게 한다. stage 자체 overflow:hidden이
+   넘침을 클리핑하므로 패널 폭이 콘텐츠에 맞아야 잘림이 사라진다. */
+.cover-panel .stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  border-radius: 0;
 }
 
 @media (max-width: 760px) {
