@@ -10,7 +10,6 @@ import type { SessionOptions } from "../src/mission-control/options/types.js";
 const DEFAULTS: SessionOptions = {
   cliId: "claude",
   enableMetaphor: false,
-  native: false,
   replaceSystemPrompt: true,
 };
 const EMPTY_GLOBAL_OPTIONS = {
@@ -26,12 +25,10 @@ describe("session options resolver", () => {
       env: {
         FLEET_AGENT_CLI: "claude-kimi",
         FLEET_ENABLE_METAPHOR: "1",
-        FLEET_NATIVE: "1",
         FLEET_REPLACE_SYSTEM_PROMPT: "0",
       },
       globalOptions: {
         version: 1,
-        native: false,
         replaceSystemPrompt: true,
         enableMetaphor: false,
       },
@@ -41,14 +38,12 @@ describe("session options resolver", () => {
     expect(resolved.values).toEqual({
       cliId: "codex",
       enableMetaphor: true,
-      native: true,
       replaceSystemPrompt: false,
     });
     expect(resolved.sources).toEqual({
       cliId: "arg",
       enableMetaphor: "env",
       model: "default",
-      native: "env",
       replaceSystemPrompt: "env",
     });
   });
@@ -60,7 +55,6 @@ describe("session options resolver", () => {
       env: { FLEET_AGENT_CLI: "claude-kimi" },
       globalOptions: {
         version: 1,
-        native: true,
         replaceSystemPrompt: true,
         enableMetaphor: true,
       },
@@ -69,7 +63,7 @@ describe("session options resolver", () => {
 
     expect(resolved.values.cliId).toBe("claude-kimi");
     expect(resolved.sources.cliId).toBe("env");
-    expect(resolved.sources.native).toBe("global-options");
+    expect(resolved.sources.enableMetaphor).toBe("global-options");
   });
 
   it("rejects invalid env CLI IDs", () => {
@@ -88,7 +82,7 @@ describe("session options resolver", () => {
     resolveSessionOptions({
       argv: parseFleetCliOptions([], {}),
       defaults: DEFAULTS,
-      env: { FLEET_NATIVE: "1" },
+      env: { FLEET_ENABLE_METAPHOR: "1" },
       globalOptions: EMPTY_GLOBAL_OPTIONS,
       parseCliId: parseAgentCliId,
     });
@@ -133,12 +127,12 @@ describe("session options runtime", () => {
     });
 
     runtime.setModel("draft-model");
-    runtime.toggleNative();
+    runtime.toggleEnableMetaphor();
     await Promise.resolve();
 
     expect(calls).toEqual([{
       version: 1,
-      native: true,
+      enableMetaphor: true,
     }]);
   });
 
@@ -205,13 +199,13 @@ describe("session options runtime", () => {
       parseCliId: parseAgentCliId,
     });
 
-    runtime.toggleNative();
+    runtime.toggleReplaceSystemPrompt();
     runtime.toggleEnableMetaphor();
     await Promise.resolve();
 
     expect(calls.at(-1)).toEqual({
       version: 1,
-      native: true,
+      replaceSystemPrompt: false,
       enableMetaphor: true,
     });
   });
@@ -233,11 +227,11 @@ describe("session options runtime", () => {
       parseCliId: parseAgentCliId,
     });
 
-    runtime.toggleNative();
+    runtime.toggleEnableMetaphor();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(runtime.getDraft().native).toBe(true);
+    expect(runtime.getDraft().enableMetaphor).toBe(true);
     expect(runtime.getStatusLines()).toEqual(["Save failed: disk full"]);
   });
 });

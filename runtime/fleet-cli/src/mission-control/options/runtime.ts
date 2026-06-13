@@ -27,7 +27,6 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
       } as SessionOptions;
       markSession("cliId");
     },
-    toggleNative: () => updateBoolean("native", !draft.native),
     toggleReplaceSystemPrompt: () => updateBoolean("replaceSystemPrompt", !draft.replaceSystemPrompt),
     toggleEnableMetaphor: () => updateBoolean("enableMetaphor", !draft.enableMetaphor),
     setModel: (model) => {
@@ -64,7 +63,7 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
     sessionFields = new Set(sessionFields).add(field);
   }
 
-  function persistGlobalOptions(field: "native" | "replaceSystemPrompt" | "enableMetaphor", value: boolean): void {
+  function persistGlobalOptions(field: "replaceSystemPrompt" | "enableMetaphor", value: boolean): void {
     statusLines = [];
     void Promise.resolve()
       .then(() => {
@@ -88,7 +87,7 @@ export function createSessionOptionsRuntime(options: CreateSessionOptionsRuntime
     };
   }
 
-  function updateBoolean(field: "native" | "replaceSystemPrompt" | "enableMetaphor", value: boolean): void {
+  function updateBoolean(field: "replaceSystemPrompt" | "enableMetaphor", value: boolean): void {
     globalOptions = { ...globalOptions, [field]: value };
     resolved = resolve();
     draft = { ...draft, [field]: value };

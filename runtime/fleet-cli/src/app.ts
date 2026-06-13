@@ -89,7 +89,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     defaults: {
       cliId: getDefaultAgentCliId(),
       enableMetaphor: false,
-      native: false,
       replaceSystemPrompt: true,
     },
     env: process.env,
@@ -135,18 +134,16 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     carrierRuntime: runtime.carrierRuntime,
     createPtyHost: (profile) => createPtyHost({ profile }),
     injectProfile: (profile, launchOptions) =>
-      (launchOptions ?? sessionOptionsRuntime.getDraft()).native
-        ? Promise.resolve(profile)
-        : injectAgentCliProfile(profile, {
-            buildSystemPrompt,
-            carrierRuntime: runtime.carrierRuntime,
-            dedicatedMcpSession: runtime.dedicatedMcpSession,
-            enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
-            onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
-            replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
-            pluginAssetsDir: options.pluginAssetsDir,
-            pluginEntry: options.pluginEntry,
-          }),
+      injectAgentCliProfile(profile, {
+        buildSystemPrompt,
+        carrierRuntime: runtime.carrierRuntime,
+        dedicatedMcpSession: runtime.dedicatedMcpSession,
+        enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+        onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
+        replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
+        pluginAssetsDir: options.pluginAssetsDir,
+        pluginEntry: options.pluginEntry,
+      }),
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
     onExitFleet: () => stop(),
     onRenderRequest: () => {

@@ -343,10 +343,6 @@ export function createMissionControlController(options: CreateMissionControlCont
         options.sessionOptions?.toggleEnableMetaphor();
         options.onRenderRequest();
       },
-      toggleNative: () => {
-        options.sessionOptions?.toggleNative();
-        options.onRenderRequest();
-      },
       toggleReplaceSystemPrompt: () => {
         options.sessionOptions?.toggleReplaceSystemPrompt();
         options.onRenderRequest();
@@ -453,7 +449,6 @@ function createMissionRootPanel(options: {
   readonly selectedCliId: () => AgentCliId;
   readonly sessionOptions: CreateMissionControlControllerOptions["sessionOptions"];
   readonly toggleEnableMetaphor: () => void;
-  readonly toggleNative: () => void;
   readonly toggleReplaceSystemPrompt: () => void;
 }): MenuPanel {
   return createSectionedListPanel({
@@ -492,8 +487,9 @@ function createMissionRootRows(options: Parameters<typeof createMissionRootPanel
       kind: "toggle",
       id: "option:mode",
       label: "Mode",
-      value: values?.native ? "Native" : "Fleet Action",
-      toggle: options.toggleNative,
+      // Native 모드 제거로 선택값은 "Fleet Action" 하나뿐 — Mode 개념/행은 유지하되 토글은 no-op.
+      value: "Fleet Action",
+      toggle: () => {},
     },
     {
       kind: "toggle",
@@ -660,9 +656,6 @@ function formatSystemPromptOption(sessionOptions: CreateMissionControlController
   const values = sessionOptions?.getResolved().values;
   if (values === undefined) {
     return "Unavailable";
-  }
-  if (values.native) {
-    return "Native";
   }
   return values.replaceSystemPrompt ? "Replace" : "Append";
 }

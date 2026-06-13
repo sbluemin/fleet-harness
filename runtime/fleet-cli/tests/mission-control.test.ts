@@ -224,6 +224,7 @@ describe("Mission Control controller", () => {
     expect(optionsOutput).toContain(FLEET_BANNER_SAMPLE);
     expect(optionsOutput).toContain("OPTION");
     expect(optionsOutput).toContain("Mode");
+    expect(optionsOutput).toContain("Fleet Action");
     expect(optionsOutput).not.toContain(["Save", "defaults"].join(" "));
     const systemController = createTestController({
       sessionOptions: createFakeSessionOptionsRuntime(),
@@ -332,14 +333,14 @@ describe("Mission Control controller", () => {
     const controller = createTestController({ sessionOptions });
 
     openOptions(controller);
+    // OPTION 첫 행은 Mode(no-op) — Enter해도 calls에 기록되지 않는다.
     controller.ptyHost.write("\r");
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
-    await waitForAsyncLaunch();
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
-    expect(sessionOptions.calls).toEqual(["toggleNative", "toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
+    expect(sessionOptions.calls).toEqual(["toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
   });
 
   it("renders auto-save failures without unhandled rejections", async () => {
@@ -372,16 +373,16 @@ describe("Mission Control controller", () => {
 
     openOptions(controller);
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toMatch(/Mode\s+Native/);
+    expect(renderPlain(controller)).toMatch(/Mode\s+Fleet Action/);
 
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toMatch(/System prompt\s+Native/);
+    expect(renderPlain(controller)).toMatch(/System prompt\s+Append/);
 
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     expect(renderPlain(controller)).toMatch(/Metaphor\s+Enabled/);
-    expect(sessionOptions.calls).toEqual(["toggleNative", "toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
+    expect(sessionOptions.calls).toEqual(["toggleReplaceSystemPrompt", "toggleEnableMetaphor"]);
   });
 
   it("edits launch-time model override from the Start panel", () => {
@@ -1138,7 +1139,6 @@ describe("Mission Control controller", () => {
         cliId: "codex" as const,
         enableMetaphor: true,
         model: "draft-model",
-        native: true,
         replaceSystemPrompt: false,
       }),
     };
@@ -1249,7 +1249,6 @@ describe("Mission Control controller", () => {
       cliId: "codex",
       enableMetaphor: true,
       model: "draft-test",
-      native: true,
       replaceSystemPrompt: false,
     });
 
@@ -1309,14 +1308,12 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
     cliId: "claude" as const,
     enableMetaphor: false,
     model: "preset-model",
-    native: false,
     replaceSystemPrompt: true,
   };
   let sources: ResolvedSessionOptions["sources"] = {
     cliId: "default" as const,
     enableMetaphor: "default" as const,
     model: "session" as const,
-    native: "default" as const,
     replaceSystemPrompt: "default" as const,
   };
   return {
@@ -1340,11 +1337,6 @@ function createFakeSessionOptionsRuntime(): SessionOptionsRuntime & { readonly c
       calls.push("toggleEnableMetaphor");
       draft = { ...draft, enableMetaphor: !draft.enableMetaphor };
       sources = { ...sources, enableMetaphor: "session" };
-    },
-    toggleNative: () => {
-      calls.push("toggleNative");
-      draft = { ...draft, native: !draft.native };
-      sources = { ...sources, native: "session" };
     },
     toggleReplaceSystemPrompt: () => {
       calls.push("toggleReplaceSystemPrompt");
