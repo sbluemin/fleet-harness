@@ -1293,12 +1293,6 @@
   background: var(--warn);
 }
 
-.terminal-status-dot.is-live {
-  background: var(--aurora);
-  box-shadow: 0 0 10px 1px var(--aurora-glow);
-  animation: aurora-pulse 2.4s var(--ease-glide) infinite;
-}
-
 .terminal-canvas {
   flex: 1;
   min-height: 0;

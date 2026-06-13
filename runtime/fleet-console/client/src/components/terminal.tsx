@@ -116,13 +116,19 @@ export function Terminal({ terminalToken, sessionId }: TerminalProps) {
     };
   }, [sessionId, terminalToken]);
 
+  // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
+  // connecting/auth-needed/error 등 문제 상황에서만 상태를 노출한다.
+  const isLive = status.startsWith("live");
+
   return (
     <section className="terminal-stage" aria-label="Fleet terminal">
       <div className="terminal-shell">
-        <div className="terminal-status" aria-live="polite">
-          <span className={`terminal-status-dot ${status.startsWith("live") ? "is-live" : ""}`} aria-hidden="true" />
-          {status}
-        </div>
+        {!isLive ? (
+          <div className="terminal-status" aria-live="polite">
+            <span className="terminal-status-dot" aria-hidden="true" />
+            {status}
+          </div>
+        ) : null}
         <div className="terminal-canvas" ref={containerRef} />
       </div>
     </section>
