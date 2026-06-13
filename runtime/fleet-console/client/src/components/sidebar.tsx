@@ -2,8 +2,9 @@ import { memo } from "react";
 
 import { createTerminalSession, pickTerminalFolder } from "../api.js";
 import { describeJobStatus, formatClock, shortJobId, statusTone } from "../format.js";
-import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectCoverJob, selectTerminalSession, sessionActiveJobs } from "../store.js";
-import type { ActiveSessionJob } from "../store.js";
+import { isTerminalJobStatus } from "../reduce.js";
+import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
+import type { SessionJob } from "../store.js";
 import type { ConsoleState, JobView, SessionInfo } from "../types.js";
 
 interface SidebarProps {
@@ -18,8 +19,8 @@ interface JobEntryProps {
 interface SessionEntryProps {
   readonly session: SessionInfo;
   readonly active: boolean;
-  readonly activeJobs: readonly ActiveSessionJob[];
-  readonly coverSelectedJobId: string | null;
+  readonly jobs: readonly SessionJob[];
+  readonly selectedJobId: string | null;
 }
 
 export function Sidebar({ state }: SidebarProps) {
@@ -38,10 +39,10 @@ export function Sidebar({ state }: SidebarProps) {
     }
   };
   return (
-    <nav className="sidebar" aria-label="Workspaces and jobs">
+    <nav className="sidebar" aria-label="Admiral sessions and carrier jobs">
       <div className="sidebar-heading">
-        <p className="sidebar-eyebrow">Workspaces</p>
-        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession} aria-label="Add workspace">
+        <p className="sidebar-eyebrow">Admirals</p>
+        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession} aria-label="Add admiral station">
           +
         </button>
       </div>
@@ -55,8 +56,8 @@ export function Sidebar({ state }: SidebarProps) {
                 key={sessionId}
                 session={session}
                 active={state.activeTerminalSessionId === sessionId}
-                activeJobs={sessionActiveJobs(state, session)}
-                coverSelectedJobId={state.coverSelectedJobId}
+                jobs={sessionJobs(state, session)}
+                selectedJobId={state.selectedJobId}
               />
             );
           })}
@@ -65,17 +66,18 @@ export function Sidebar({ state }: SidebarProps) {
       {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
       {state.sessionOrder.length === 0 ? (
         <p className="sidebar-empty">
-          No terminal sessions yet.
+          No Admiral stations on watch.
           <br />
-          Add a workspace to open a Fleet terminal session.
+          Add a station to bring a Fleet terminal alongside.
         </p>
       ) : null}
     </nav>
   );
 }
 
-const SessionEntry = memo(function SessionEntry({ session, active, activeJobs, coverSelectedJobId }: SessionEntryProps) {
-  const live = activeJobs.length > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
+const SessionEntry = memo(function SessionEntry({ session, active, jobs, selectedJobId }: SessionEntryProps) {
+  const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
+  const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   return (
     <li className={`session-item ${active ? "is-active" : ""}`}>
       <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
@@ -84,14 +86,14 @@ const SessionEntry = memo(function SessionEntry({ session, active, activeJobs, c
           <span className="tenant-label">{session.cwdLabel}</span>
           <span className="tenant-path">{session.status}</span>
         </span>
-        {!active && activeJobs.length > 0 ? <span className="tenant-count">{activeJobs.length}</span> : null}
+        {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
       </button>
       {active ? (
         <ol className="session-job-list">
-          {activeJobs.length > 0 ? (
-            activeJobs.map(({ job }) => <JobEntry key={job.jobId} job={job} active={job.jobId === coverSelectedJobId} />)
+          {jobs.length > 0 ? (
+            jobs.map(({ job }) => <JobEntry key={job.jobId} job={job} active={job.jobId === selectedJobId} />)
           ) : (
-            <li className="job-list-empty">No active jobs in this session.</li>
+            <li className="job-list-empty">No carrier jobs in this session.</li>
           )}
         </ol>
       ) : null}
@@ -106,7 +108,7 @@ const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
       <button
         type="button"
         className={`job-row ${active ? "is-active" : ""}`}
-        onClick={() => selectCoverJob(job.jobId)}
+        onClick={() => selectJob(job.jobId)}
         aria-current={active || undefined}
       >
         <span className={`status-dot status-dot--${tone}`} aria-hidden="true" />

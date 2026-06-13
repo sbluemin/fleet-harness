@@ -7,6 +7,7 @@ export interface TerminalLaunchSpec {
 
 export interface TerminalLaunchContext {
   readonly sessionId?: string;
+  readonly kind?: "fleet" | "shell";
 }
 
 export interface TerminalTicket {
@@ -17,6 +18,7 @@ export interface TerminalTicket {
 export interface TerminalTicketContext {
   readonly cwd: string;
   readonly sessionId: string;
+  readonly kind?: "fleet" | "shell";
 }
 
 export interface TerminalPtyDataDisposable {

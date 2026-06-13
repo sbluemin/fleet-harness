@@ -137,12 +137,6 @@ async function relayToPackageCli(specifier: string, args: readonly string[]): Pr
   });
 }
 
-// 구버전 fleet-wiki-ui에는 ./cli-bin export가 없으므로 자기실행형 ./cli 엔트리로 폴백한다.
 function resolveWikiCliSpecifier(): string {
-  try {
-    require.resolve("@dotobokuri/fleet-wiki-ui/cli-bin");
-    return "@dotobokuri/fleet-wiki-ui/cli-bin";
-  } catch {
-    return "@dotobokuri/fleet-wiki-ui/cli";
-  }
+  return "@dotobokuri/fleet-console/cli-bin";
 }

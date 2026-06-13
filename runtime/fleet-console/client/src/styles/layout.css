@@ -19,6 +19,13 @@
   overflow-y: auto;
 }
 
+.codex-host {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .sidebar {
   min-height: 0;
   overflow-y: auto;
@@ -54,7 +61,7 @@
 }
 
 /* Operations 라우트의 터미널 영역: console-body 2번째 컬럼을 가득 채우고
-   CarrierCover 오버레이(position: absolute)의 기준 컨테이너가 된다. */
+   JobOverlay 오버레이(중앙 카드, position: absolute)의 기준 컨테이너가 된다. */
 .operations-terminal-stage {
   position: relative;
   display: flex;

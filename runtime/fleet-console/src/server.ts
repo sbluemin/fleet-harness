@@ -10,6 +10,7 @@ import type {
 
 import { readBearerToken } from "./auth.js";
 import type { ConsoleHealth, ConsoleObservedWorkspace } from "./api-types.js";
+import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
@@ -29,6 +30,7 @@ export interface ConsoleServerDeps {
   readonly host?: string;
   readonly port?: number;
   readonly version?: string;
+  readonly codexCwd?: string;
   readonly terminalLaunch?: TerminalLaunchResolver;
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly terminalGraceMs?: number;
@@ -48,6 +50,7 @@ type ObserverLookup = { readonly kind: "aggregate" };
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 37283;
 const DEFAULT_TERMINAL_SESSION_ID = "default";
+const SHELL_TERMINAL_SESSION_ID = "shell";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -59,12 +62,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const observability = createConsoleObservabilityStore();
   const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
+  const codex = createCodexGateway({
+    cwd: deps.codexCwd ?? process.cwd(),
+    host,
+    version,
+    getPort: () => lockHandle?.payload.port ?? port,
+    getAdminToken: () => lockHandle?.payload.token ?? null,
+  });
   const pickTerminalFolder = deps.terminalPickFolder ?? createNativeFolderPicker();
   const terminalSessions = createTerminalSessionManager({
     launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver(),
     startShell: deps.terminalStartShell,
     graceMs: deps.terminalGraceMs,
     maxSessions: deps.maxTerminalSessions,
+    // PTY가 종료되면(예: fleet-cli 종료) 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
+    onSessionExit: (sessionId) => observability.removeTerminalSession(sessionId),
   });
   const terminalUpgrade = createTerminalUpgradeHandler({
     expectedHost: host,
@@ -74,15 +86,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     validateHost,
   });
   let server: http.Server | null = null;
+  let loopbackServer: http.Server | null = null;
   let lockHandle: ConsoleLockHandle | null = null;
   let activeEndpoint: string | null = null;
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const pathname = getPathname(req);
+    if (pathname === "/console/codex" || pathname.startsWith("/console/codex/")) {
+      runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
+      return;
+    }
     if (!validateHost(req, lockHandle?.payload.port ?? port)) {
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
-    const pathname = getPathname(req);
     if (tryServeStaticConsole(req, res, pathname)) return;
     if (pathname === "/health") {
       handleHealth(req, res);
@@ -244,15 +261,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    const body = await readJsonBody<{ readonly registrationId?: string; readonly cliRunId?: string; readonly sessionId?: string }>(req);
-    const sessionId = typeof body?.sessionId === "string" && body.sessionId.length > 0 ? body.sessionId : DEFAULT_TERMINAL_SESSION_ID;
+    const body = await readJsonBody<{ readonly registrationId?: string; readonly cliRunId?: string; readonly sessionId?: string; readonly kind?: string }>(req);
+    const kind = body?.kind === "shell" ? "shell" : "fleet";
+    const sessionId = kind === "shell"
+      ? SHELL_TERMINAL_SESSION_ID
+      : typeof body?.sessionId === "string" && body.sessionId.length > 0
+        ? body.sessionId
+        : DEFAULT_TERMINAL_SESSION_ID;
     if (!terminalSessions.canAttach(sessionId)) {
       writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return;
     }
     writeJson(res, 200, terminalTickets.issue({
-      cwd: observability.getLaunchCwd(body?.registrationId, body?.cliRunId),
+      cwd: kind === "shell" ? "" : observability.getLaunchCwd(body?.registrationId, body?.cliRunId),
       sessionId,
+      kind,
     }));
   }
 
@@ -388,27 +411,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
       await new Promise<void>((resolve, reject) => {
-        const srv = http.createServer(handleRequest);
-        srv.timeout = SERVER_TIMEOUT_MS;
-        srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
-        srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
-        srv.on("upgrade", (req, socket, head) => {
-          if (!terminalUpgrade.handleUpgrade(req, socket, head)) socket.destroy();
-        });
+        const srv = createHttpServer(handleRequest, terminalUpgrade);
         srv.once("error", reject);
-        srv.listen(port, host, () => {
+        srv.listen(port, host, async () => {
           srv.off("error", reject);
-          server = srv;
           const address = srv.address();
           const actualPort = typeof address === "object" && address ? address.port : port;
           const endpoint = `http://${host}:${actualPort}/`;
           try {
+            const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
+            server = srv;
+            loopbackServer = localLoopbackServer;
             lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
             activeEndpoint = endpoint;
             resolve();
           } catch (err) {
             srv.close();
             server = null;
+            loopbackServer = null;
             reject(err);
           }
         });
@@ -418,24 +438,75 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     async stop() {
       const current = server;
+      const currentLoopback = loopbackServer;
       const currentLock = lockHandle;
       server = null;
+      loopbackServer = null;
       lockHandle = null;
       activeEndpoint = null;
-      await new Promise<void>((resolve) => {
-        if (!current) {
-          resolve();
-          return;
-        }
-        current.close(() => resolve());
-        current.closeAllConnections?.();
-      });
+      await Promise.all([
+        closeHttpServer(current),
+        closeHttpServer(currentLoopback),
+      ]);
       observability.clear();
       terminalUpgrade.close();
       terminalSessions.stop();
       currentLock?.release();
     },
   };
+}
+
+function createHttpServer(
+  handler: http.RequestListener,
+  terminalUpgrade: ReturnType<typeof createTerminalUpgradeHandler>,
+): http.Server {
+  const srv = http.createServer(handler);
+  srv.timeout = SERVER_TIMEOUT_MS;
+  srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
+  srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
+  srv.on("upgrade", (req, socket, head) => {
+    if (!terminalUpgrade.handleUpgrade(req, socket, head)) socket.destroy();
+  });
+  return srv;
+}
+
+async function maybeStartLoopbackServer(
+  host: string,
+  actualPort: number,
+  handler: http.RequestListener,
+  terminalUpgrade: ReturnType<typeof createTerminalUpgradeHandler>,
+): Promise<http.Server | null> {
+  if (isLoopbackHost(host) || isWildcardHost(host)) return null;
+  const srv = createHttpServer(handler, terminalUpgrade);
+  await new Promise<void>((resolve, reject) => {
+    srv.once("error", reject);
+    srv.listen(actualPort, "127.0.0.1", () => {
+      srv.off("error", reject);
+      resolve();
+    });
+  });
+  return srv;
+}
+
+function closeHttpServer(srv: http.Server | null): Promise<void> {
+  return new Promise((resolve) => {
+    if (!srv) {
+      resolve();
+      return;
+    }
+    srv.close(() => resolve());
+    srv.closeAllConnections?.();
+  });
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
+}
+
+function isWildcardHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return normalized === "0.0.0.0" || normalized === "::" || normalized === "0:0:0:0:0:0:0:0";
 }
 
 function getPathname(req: http.IncomingMessage): string {
@@ -470,6 +541,22 @@ function writeJson(res: http.ServerResponse, status: number, body: unknown): voi
 
 function runAsyncHandler(handler: Promise<void>, res: http.ServerResponse): void {
   void handler.catch(() => {
+    if (res.writableEnded) return;
+    if (res.headersSent) {
+      res.end();
+      return;
+    }
+    writeJson(res, 500, { error: "Internal server error" });
+  });
+}
+
+function runAsyncBooleanHandler(handler: Promise<boolean>, res: http.ServerResponse, fallback?: () => boolean): void {
+  void handler.then((handled) => {
+    if (!handled && !res.writableEnded) {
+      if (fallback?.()) return;
+      writeJson(res, 404, { error: "Not found" });
+    }
+  }).catch(() => {
     if (res.writableEnded) return;
     if (res.headersSent) {
       res.end();

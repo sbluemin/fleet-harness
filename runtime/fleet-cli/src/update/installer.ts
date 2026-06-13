@@ -22,7 +22,7 @@ interface GlobalInstallTarget {
   readonly reason: "local" | "permission" | undefined;
 }
 
-const PACKAGE_NAMES = ["@dotobokuri/fleet-cli", "@dotobokuri/fleet-wiki-ui"] as const;
+const PACKAGE_NAMES = ["@dotobokuri/fleet-cli", "@dotobokuri/fleet-console"] as const;
 const FLEET_CLI_PACKAGE_NAME = "@dotobokuri/fleet-cli";
 const PACKAGE_JSON_CANDIDATES = ["../package.json", "../../package.json"] as const;
 

@@ -4,11 +4,14 @@ import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, Termina
 export interface TerminalSessionManagerDeps {
   readonly launch: TerminalLaunchResolver;
   readonly startShell?: typeof startTerminalShell;
+  // DI 계약 유지용으로 받지만 더 이상 동시 세션 상한을 강제하지 않는다(상한 해제됨).
   readonly maxSessions?: number;
   readonly graceMs?: number;
   readonly scrollbackLimit?: number;
   readonly setTimeout?: typeof setTimeout;
   readonly clearTimeout?: typeof clearTimeout;
+  // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
+  readonly onSessionExit?: (sessionId: string) => void;
 }
 
 interface TerminalSession {
@@ -32,19 +35,18 @@ const DEFAULT_ROWS = 24;
 const DEFAULT_GRACE_MS = 180_000;
 const DEFAULT_SCROLLBACK_LIMIT = 512;
 const WS_OPEN_STATE = 1;
-export const MAX_TERMINAL_SESSIONS = 3;
 
 export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): TerminalSessionManager {
   const startShell = deps.startShell ?? startTerminalShell;
-  const maxSessions = deps.maxSessions ?? MAX_TERMINAL_SESSIONS;
   const graceMs = deps.graceMs ?? DEFAULT_GRACE_MS;
   const scrollbackLimit = deps.scrollbackLimit ?? DEFAULT_SCROLLBACK_LIMIT;
   const setTimeoutImpl = deps.setTimeout ?? setTimeout;
   const clearTimeoutImpl = deps.clearTimeout ?? clearTimeout;
   const sessions = new Map<string, TerminalSession>();
 
-  function canAttach(sessionId: string): boolean {
-    return sessions.has(sessionId) || sessions.size < maxSessions;
+  function canAttach(): boolean {
+    // 동시 세션 상한이 제거되어 항상 새 세션 부착을 허용한다.
+    return true;
   }
 
   function attach(socket: TerminalSocket, context: TerminalTicketContext): void {
@@ -77,8 +79,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   function getOrCreateSession(context: TerminalTicketContext): TerminalSession {
     const current = sessions.get(context.sessionId);
     if (current) return current;
-    if (sessions.size >= maxSessions) throw new Error("Terminal session capacity exhausted");
-    const pty = startShell(deps.launch(context.cwd, { sessionId: context.sessionId }), { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+    const pty = startShell(deps.launch(context.cwd, { sessionId: context.sessionId, kind: context.kind }), { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
     const session: TerminalSession = {
       id: context.sessionId,
       pty,
@@ -143,6 +144,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (!sessions.has(session.id)) return;
     killSession(session, options);
     sessions.delete(session.id);
+    // sessions.has 가드 덕분에 PTY exit·grace 만료·kill 경로가 겹쳐도 세션당 한 번만 통지된다.
+    deps.onSessionExit?.(session.id);
   }
 
   function killSession(session: TerminalSession, options: KillSessionOptions = {}): void {

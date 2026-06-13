@@ -68,4 +68,23 @@ describe("createDefaultTerminalLaunchResolver", () => {
       TERM: "xterm-256color",
     });
   });
+
+  it("launches the user's shell without fleet-cli overrides for shell sessions", () => {
+    const resolve = createDefaultTerminalLaunchResolver({
+      ...baseDeps,
+      env: { FLEET_TERMINAL_CMD: "fleet --headless", SHELL: "/bin/zsh" } as NodeJS.ProcessEnv,
+      exists: (candidate) => candidate === LOCAL_CLI_ENTRY,
+    });
+
+    const spec = resolve("", { sessionId: "shell", kind: "shell" });
+
+    expect(spec).toMatchObject({
+      bin: "/bin/zsh",
+      args: [],
+      cwd: "/work",
+    });
+    expect(spec.env).toMatchObject({ TERM: "xterm-256color" });
+    expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+    expect(spec.env.INIT_CWD).toBeUndefined();
+  });
 });

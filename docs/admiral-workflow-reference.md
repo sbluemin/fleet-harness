@@ -30,7 +30,7 @@ fleet-cli
   -> core-agent
   -> fleet-infra
   -> fleet-console
-  -> fleet-wiki / fleet-wiki-ui
+  -> fleet-wiki / fleet-console Codex surface
 
 core-agent / fleet-carriers / fleet-infra
   -> core-unified-agent

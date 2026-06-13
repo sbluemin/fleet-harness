@@ -1,5 +1,10 @@
 import type { ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
 
+export interface TerminalTicketOptions {
+  readonly kind?: "shell";
+  readonly signal?: AbortSignal;
+}
+
 /** HTTP status를 보존하는 API 오류. */
 export class ApiError extends Error {
   readonly status: number;
@@ -58,12 +63,13 @@ export async function fetchTerminalSessions(signal?: AbortSignal): Promise<reado
   return payload.sessions.map((session) => assertSessionInfo(session, response.status));
 }
 
-export async function requestTerminalTicket(sessionId: string, signal?: AbortSignal): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+export async function requestTerminalTicket(sessionId: string, options?: AbortSignal | TerminalTicketOptions): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+  const ticketOptions = normalizeTerminalTicketOptions(options);
   const response = await fetch("/terminal/ticket", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId }),
-    signal,
+    body: JSON.stringify({ sessionId, ...(ticketOptions.kind ? { kind: ticketOptions.kind } : {}) }),
+    signal: ticketOptions.signal,
   });
   await assertOk(response);
   const payload = (await response.json()) as { ticket?: unknown; ttlMs?: unknown };
@@ -71,6 +77,12 @@ export async function requestTerminalTicket(sessionId: string, signal?: AbortSig
     throw new ApiError(response.status, "Invalid terminal ticket response");
   }
   return { ticket: payload.ticket, ttlMs: payload.ttlMs };
+}
+
+function normalizeTerminalTicketOptions(options: AbortSignal | TerminalTicketOptions | undefined): TerminalTicketOptions {
+  if (!options) return {};
+  if (options instanceof AbortSignal) return { signal: options };
+  return options;
 }
 
 function assertSessionInfo(value: unknown, status: number): SessionInfo {

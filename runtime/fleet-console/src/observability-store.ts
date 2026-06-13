@@ -291,6 +291,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  function removeTerminalSession(sessionId: string): boolean {
+    return terminalSessionsById.delete(sessionId);
+  }
+
   function clear(): void {
     workspacesByCliRunId.clear();
     workspacesByRegistrationId.clear();
@@ -322,6 +326,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     subscribe,
     subscribeAll,
     updateTerminalSessionStatus,
+    removeTerminalSession,
     workspaceCount: () => listWorkspaces().filter((workspace) => workspace.status !== "deregistered").length,
   };
 

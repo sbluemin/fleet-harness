@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { fetchTerminalSessions } from "./api.js";
+import { ShellOverlay } from "./components/shell-overlay.js";
 import { Topbar } from "./components/topbar.js";
 import { startObserverConnection } from "./connection.js";
 import { useConsoleState } from "./hooks/use-store.js";
+import { Codex } from "./pages/codex.js";
 import { Operations } from "./pages/operations.js";
-import { hydrateTerminalSessions, setState } from "./store.js";
+import { hydrateTerminalSessions, setState, toggleShell } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 export function App() {
@@ -27,14 +29,27 @@ export function App() {
     return () => abort.abort();
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "`") {
+        event.preventDefault();
+        toggleShell();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <div className="console-shell">
-      <Topbar connection={state.connection} connectionError={state.connectionError} tenantCount={state.tenants.length} />
+      <Topbar connection={state.connection} connectionError={state.connectionError} />
       <Routes>
         <Route path="/" element={<Welcome state={state} />} />
         <Route path="/operations" element={<Operations state={state} />} />
+        <Route path="/codex/*" element={<Codex />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ShellOverlay state={state} />
     </div>
   );
 }

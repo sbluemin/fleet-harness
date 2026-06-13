@@ -1,21 +1,22 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  activeSessionActiveJobs,
   applyJobsSnapshot,
   applyObservedEvent,
   applyTenantSnapshot,
   applyTruncation,
-  backToCoverList,
   beginCreateTerminalSession,
+  clearSelectedJob,
+  closeShell,
   completeCreateTerminalSession,
   getState,
   hydrateTerminalSessions,
-  selectCoverJob,
+  selectJob,
   selectTerminalSession,
-  selectedCoverJob,
+  selectedJob,
+  sessionJobs,
   setState,
-  toggleCover,
+  toggleShell,
 } from "../client/src/store.js";
 import type { ObservedEvent, ObservedTenant } from "../client/src/types.js";
 
@@ -38,9 +39,8 @@ beforeEach(() => {
     creatingTerminalSession: false,
     terminalSessionError: null,
     timelineOpen: false,
-    coverOpen: false,
-    coverDepth: "list",
-    coverSelectedJobId: null,
+    shellOpen: false,
+    selectedJobId: null,
   });
 });
 
@@ -86,8 +86,8 @@ describe("store", () => {
         ],
       },
     ]);
-    expect(getState().tenantJobs["tenant-1"]?.jobOrder).toEqual(["job-2", "job-1"]);
-    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-2"]);
+    expect(getState().tenantJobs["tenant-1"]?.jobOrder).toEqual(["job-1", "job-2"]);
+    expect(sessionJobs(getState(), getState().sessions["tenant-1"]!).map(({ job }) => job.jobId)).toEqual(["job-1", "job-2"]);
   });
 
   it("applies live events incrementally and reports unknown tenants", () => {
@@ -106,16 +106,16 @@ describe("store", () => {
     selectTerminalSession("tenant-1");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "tenant-1" }]);
     applyObservedEvent(makeEvent(1, "track:text", { trackId: "t1", text: "other" }, "tenant-9", "job-9"));
-    expect(activeSessionActiveJobs(getState())).toEqual([]);
+    expect(sessionJobs(getState(), getState().sessions["tenant-1"]!)).toEqual([]);
     applyObservedEvent(makeEvent(2, "track:text", { trackId: "t1", text: "mine" }, "tenant-1", "job-1"));
-    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-1"]);
+    expect(sessionJobs(getState(), getState().sessions["tenant-1"]!).map(({ job }) => job.jobId)).toEqual(["job-1"]);
   });
 
-  it("keeps active jobs ahead of finished jobs in the rail order", () => {
+  it("keeps jobs in registration order", () => {
     applyObservedEvent(makeEvent(1, "track:text", { trackId: "t1", text: "x" }, "tenant-1", "job-old"));
     applyObservedEvent(makeEvent(2, "job:finalized", { status: "done", finishedAt: 1_003, summary: "ok" }, "tenant-1", "job-old"));
     applyObservedEvent(makeEvent(3, "track:text", { trackId: "t1", text: "y" }, "tenant-1", "job-live"));
-    expect(getState().tenantJobs["tenant-1"]?.jobOrder[0]).toBe("job-live");
+    expect(getState().tenantJobs["tenant-1"]?.jobOrder).toEqual(["job-old", "job-live"]);
   });
 
   it("records truncation for tenants that only arrive via truncation frames", () => {
@@ -132,7 +132,7 @@ describe("store", () => {
     expect(getState().sessions["session-a"]?.tenantId).toBe("tenant-a");
   });
 
-  it("lists active jobs only for the active terminal session", () => {
+  it("lists jobs only for the active terminal session", () => {
     hydrateTerminalSessions([
       { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
       { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
@@ -156,14 +156,15 @@ describe("store", () => {
       },
     ]);
 
-    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-a-live"]);
+    expect(sessionJobs(getState(), getState().sessions["tenant-a"]!).map(({ job }) => job.jobId)).toEqual(["job-a-live", "job-a-done"]);
 
     selectTerminalSession("tenant-b");
-    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-b-live"]);
+    expect(sessionJobs(getState(), getState().sessions["tenant-b"]!).map(({ job }) => job.jobId)).toEqual(["job-b-live"]);
   });
 
   it("tracks operations landing and session creation state", () => {
     expect(getState().activeTerminalSessionId).toBeNull();
+    expect(getState().shellOpen).toBe(false);
     beginCreateTerminalSession();
     expect(getState()).toMatchObject({ creatingTerminalSession: true, terminalSessionError: null });
 
@@ -171,6 +172,16 @@ describe("store", () => {
 
     expect(getState()).toMatchObject({ activeTerminalSessionId: "session-a", creatingTerminalSession: false });
     expect(getState().sessionOrder).toEqual(["session-a"]);
+  });
+
+  it("toggles and closes the free shell overlay", () => {
+    expect(getState().shellOpen).toBe(false);
+
+    toggleShell();
+    expect(getState().shellOpen).toBe(true);
+
+    closeShell();
+    expect(getState().shellOpen).toBe(false);
   });
 
   it("binds hydrated terminal sessions to tenants without changing the active session", () => {
@@ -182,7 +193,7 @@ describe("store", () => {
     expect(getState().activeTerminalSessionId).toBe("session-a");
   });
 
-  it("opens CarrierCover to list and keeps cover detail selection independent", () => {
+  it("selects a job into the centered overlay and toggles it closed", () => {
     hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
     selectTerminalSession("tenant-1");
     applyJobsSnapshot([
@@ -196,18 +207,21 @@ describe("store", () => {
         ],
       },
     ]);
-    toggleCover();
-    expect(getState()).toMatchObject({ coverOpen: true, coverDepth: "list", coverSelectedJobId: null });
 
-    selectCoverJob("job-2");
-    expect(getState()).toMatchObject({ coverOpen: true, coverDepth: "detail", coverSelectedJobId: "job-2" });
-    expect(selectedCoverJob(getState())?.jobId).toBe("job-2");
+    selectJob("job-2");
+    expect(getState().selectedJobId).toBe("job-2");
+    expect(selectedJob(getState())?.jobId).toBe("job-2");
 
-    backToCoverList();
-    expect(getState()).toMatchObject({ coverDepth: "list", coverSelectedJobId: null });
+    selectJob("job-2");
+    expect(getState().selectedJobId).toBeNull();
+
+    selectJob("job-1");
+    expect(getState().selectedJobId).toBe("job-1");
+    clearSelectedJob();
+    expect(getState().selectedJobId).toBeNull();
   });
 
-  it("does not resolve cover detail jobs outside the active terminal session", () => {
+  it("does not resolve overlay jobs outside the active terminal session", () => {
     hydrateTerminalSessions([
       { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
       { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
@@ -228,7 +242,69 @@ describe("store", () => {
       },
     ]);
 
-    selectCoverJob("job-b");
-    expect(selectedCoverJob(getState())).toBeNull();
+    selectJob("job-b");
+    expect(selectedJob(getState())).toBeNull();
+  });
+
+  it("clears selected overlay job when switching terminal sessions", () => {
+    hydrateTerminalSessions([
+      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
+      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
+    ]);
+    selectTerminalSession("tenant-a");
+    applyJobsSnapshot([
+      {
+        tenantId: "tenant-a",
+        tenantLabel: "Alpha",
+        truncation: { droppedCount: 0 },
+        jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_001, events: [] }],
+      },
+      {
+        tenantId: "tenant-b",
+        tenantLabel: "Beta",
+        truncation: { droppedCount: 0 },
+        jobs: [{ jobId: "job-b", status: "active", updatedAt: 1_002, events: [] }],
+      },
+    ]);
+
+    selectJob("job-a");
+    expect(getState().selectedJobId).toBe("job-a");
+
+    selectTerminalSession("tenant-b");
+    expect(getState().selectedJobId).toBeNull();
+  });
+
+  it("clears the selected overlay job when a newly created session becomes active", () => {
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    selectTerminalSession("tenant-1");
+    applyJobsSnapshot([
+      {
+        tenantId: "tenant-1",
+        tenantLabel: "Alpha",
+        truncation: { droppedCount: 0 },
+        jobs: [{ jobId: "job-1", status: "active", updatedAt: 1_001, events: [] }],
+      },
+    ]);
+    selectJob("job-1");
+    expect(getState().selectedJobId).toBe("job-1");
+
+    completeCreateTerminalSession({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 });
+    expect(getState().activeTerminalSessionId).toBe("session-b");
+    expect(getState().selectedJobId).toBeNull();
+  });
+
+  it("retains the most recent jobs in registration order once the per-tenant limit is exceeded", () => {
+    const total = 205;
+    for (let index = 0; index < total; index += 1) {
+      applyObservedEvent(makeEvent(index + 1, "track:text", { trackId: "t1", text: "x" }, "tenant-1", `job-${index}`));
+    }
+    const tenant = getState().tenantJobs["tenant-1"]!;
+    // 등록순(오래된→최신)은 유지하되 보존은 최신 200개여야 한다.
+    expect(tenant.jobOrder).toHaveLength(200);
+    expect(tenant.jobOrder[0]).toBe("job-5");
+    expect(tenant.jobOrder[199]).toBe("job-204");
+    // 가장 오래된 Job은 떨어져 나가고, 최신 Job은 조회 가능해야 한다.
+    expect(tenant.jobs["job-0"]).toBeUndefined();
+    expect(tenant.jobs["job-204"]).toBeDefined();
   });
 });

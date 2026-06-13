@@ -16,12 +16,16 @@
   "main": "./dist/cli.mjs",
   "types": "./dist/cli.d.ts",
   "bin": {
-    "fleet-console": "./dist/cli.mjs"
+    "fleet-console": "./dist/cli.mjs",
+    "fleet-wiki": "./dist/cli-bin.mjs"
   },
   "exports": {
     "./cli": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.mjs"
+    },
+    "./cli-bin": {
+      "default": "./dist/cli-bin.mjs"
     }
   },
   "files": [
@@ -41,9 +45,14 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/fleet-wiki": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^5.5.0",
+    "dompurify": "^3.2.7",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.4.1",
+    "mermaid": "^11.12.1",
     "node-pty": "^1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -2,8 +2,8 @@ import {
   openFleetWikiWorkspace,
   probeFleetWikiDaemon,
   stopDaemon as stopFleetWikiDaemon,
-} from "@dotobokuri/fleet-wiki-ui/cli";
-import type { OpenFleetWikiWorkspaceResult } from "@dotobokuri/fleet-wiki-ui/cli";
+} from "@dotobokuri/fleet-console/cli";
+import type { OpenFleetWikiWorkspaceResult } from "@dotobokuri/fleet-console/cli";
 
 import { renderKeyValueBlock, type KeyValueBlockRow } from "../layout.js";
 import { MISSION_CONTROL_THEME } from "../theme.js";
@@ -46,7 +46,7 @@ export type WikiServerStatus =
   | { readonly state: "running"; readonly host?: string; readonly port: number; readonly pid?: number }
   | { readonly state: "error"; readonly message: string };
 
-const DEFAULT_WIKI_PORT = 3737;
+const DEFAULT_WIKI_PORT = 37283;
 
 export function createWikiProcessController(options: CreateWikiProcessControllerOptions): WikiProcessController {
   let port = DEFAULT_WIKI_PORT;

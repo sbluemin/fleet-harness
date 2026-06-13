@@ -52,6 +52,23 @@ export interface ConsoleStopDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop">;
 }
 
+export interface OpenFleetWikiWorkspaceOptions {
+  readonly cwd: string;
+  readonly host?: string;
+  readonly port?: number;
+}
+
+export interface OpenFleetWikiWorkspaceResult {
+  readonly host: string;
+  readonly pid: number;
+  readonly port: number;
+  readonly url: string;
+}
+
+export interface ProbeFleetWikiDaemonOptions {
+  readonly cwd: string;
+}
+
 export interface BuildConsoleHelpTextOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly isTTY?: boolean;
@@ -114,6 +131,32 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     `  ${command("fleet console", colorEnabled)}`,
     `  ${command("fleet console status", colorEnabled)}`,
     `  ${command("fleet console stop", colorEnabled)}`,
+    "",
+  ];
+  const text = lines.join("\n");
+  return colorEnabled ? text : stripAnsi(text);
+}
+
+export function buildWikiHelpText(options: BuildConsoleHelpTextOptions = {}): string {
+  const colorEnabled = resolveColorEnabled(options);
+  const subtitle = `Fleet Wiki · ${options.release ?? DEFAULT_HELP_RELEASE}`;
+  const lines = [
+    ...ASCII_FLEET_BANNER.map(
+      (line, index) => `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
+    ),
+    dim(subtitle, colorEnabled),
+    "",
+    section("USAGE", colorEnabled),
+    `  ${command("fleet wiki", colorEnabled)} ${dim("[--stop] [--help]", colorEnabled)}`,
+    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-wiki", colorEnabled)} ${dim("[--stop] [--help]", colorEnabled)}`,
+    "",
+    section("OPTIONS", colorEnabled),
+    `  ${option("--stop", colorEnabled)}  ${dim("Stop the local Fleet Console daemon that owns Codex.", colorEnabled)}`,
+    `  ${option("--help", colorEnabled)}  ${dim("Show this help message and exit.", colorEnabled)}`,
+    "",
+    section("EXAMPLES", colorEnabled),
+    `  ${command("fleet wiki", colorEnabled)}`,
+    `  ${command("fleet wiki --stop", colorEnabled)}`,
     "",
   ];
   const text = lines.join("\n");
@@ -217,6 +260,46 @@ export async function openFleetConsole(deps: OpenFleetConsoleDeps = {}): Promise
   return { url };
 }
 
+export async function openFleetWikiWorkspace(options: OpenFleetWikiWorkspaceOptions): Promise<OpenFleetWikiWorkspaceResult> {
+  const lifecycle = createConsoleDaemonLifecycle();
+  await lifecycle.ensureDaemon();
+  const status = await lifecycle.probe();
+  if (!status.healthy || !status.lock) {
+    throw new Error("Fleet Console server is not healthy after ensure");
+  }
+  const response = await fetch(`${status.lock.endpoint}console/codex/api/admin/workspaces`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${status.lock.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ cwd: path.resolve(options.cwd) }),
+  });
+  if (!response.ok) {
+    throw new Error(`Fleet Console Codex workspace registration failed: ${response.status} ${await response.text()}`);
+  }
+  const body = await response.json() as { workspace: { urlPath: string } };
+  const url = new URL(body.workspace.urlPath, status.lock.endpoint).toString();
+  openBrowser(url);
+  return { host: status.lock.host, pid: status.lock.pid, port: status.lock.port, url };
+}
+
+export async function probeFleetWikiDaemon(_options: ProbeFleetWikiDaemonOptions): Promise<OpenFleetWikiWorkspaceResult | null> {
+  const lifecycle = createConsoleDaemonLifecycle();
+  const status = await lifecycle.probe();
+  if (!status.healthy || !status.lock) return null;
+  return {
+    host: status.lock.host,
+    pid: status.lock.pid,
+    port: status.lock.port,
+    url: new URL("console/codex", status.lock.endpoint).toString(),
+  };
+}
+
+export async function stopDaemon(): Promise<void> {
+  await createConsoleDaemonLifecycle().stop();
+}
+
 export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<string> {
   const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   const status = await lifecycle.probe();
@@ -246,6 +329,10 @@ export async function main(): Promise<void> {
     await createConsoleDaemonLifecycle().runServer();
     return;
   }
+  if (process.argv[2] === "codex") {
+    await mainWiki(process.argv.slice(3));
+    return;
+  }
   const mode = parseConsoleCliMode(process.argv.slice(2));
   if (mode === "help") {
     process.stdout.write(`${buildConsoleHelpText({ env: process.env, isTTY: process.stdout.isTTY })}\n`);
@@ -261,6 +348,22 @@ export async function main(): Promise<void> {
   }
   await openFleetConsole();
   process.stdout.write("Fleet Console opened.\n");
+}
+
+export async function mainWiki(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(`${buildWikiHelpText({ env: process.env, isTTY: process.stdout.isTTY })}\n`);
+    return;
+  }
+  if (argv.includes("--stop")) {
+    await stopDaemon();
+    return;
+  }
+  const unsupported = argv.filter((arg) => arg !== "--host" && arg !== "--port" && !arg.startsWith("--host=") && !arg.startsWith("--port="));
+  if (unsupported.length > 0) {
+    throw new Error(`Unknown fleet wiki option: ${unsupported[0]}`);
+  }
+  await openFleetWikiWorkspace({ cwd: process.cwd() });
 }
 
 function resolveDefaultServerModulePath(): string {

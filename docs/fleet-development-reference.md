@@ -11,7 +11,7 @@ Fleet development follows a hard one-way dependency graph:
 - `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/fleet-infra` — host-agnostic auth, data-dir resolution, global options, and durable `fs-store` I/O primitives.
 - `runtime/fleet-console` — standalone loopback HTTP backend for CLI register ingest, observer SSE, terminal WebSocket, and static console serving for a single workspace.
-- `packages/fleet-wiki` and `runtime/fleet-wiki-ui` — Fleet knowledge package and web UI.
+- `packages/fleet-wiki` and `runtime/fleet-console` Codex — Fleet knowledge package and web UI.
 - `packages/core-unified-agent` — independent execution engine client package.
 
 ## 2. Where New Work Goes

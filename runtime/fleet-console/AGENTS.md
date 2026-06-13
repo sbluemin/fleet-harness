@@ -1,6 +1,6 @@
 # Fleet Console Doctrine
 
-`runtime/fleet-console` owns the Fleet Console — a standalone fullstack product: its own loopback HTTP backend plus the React web surface for observing carrier jobs and live output streams from registered fleet-cli workspaces, driven by the `fleet-console` CLI lifecycle. It is an independent runtime project (structured like `runtime/fleet-wiki-ui`), the seed of the unified Fleet GUI, and is expected to absorb additional surfaces (e.g., Fleet Wiki) over time.
+`runtime/fleet-console` owns the Fleet Console — a standalone fullstack product: its own loopback HTTP backend plus the React web surface for observing carrier jobs, live output streams from registered fleet-cli workspaces, and the Codex/Fleet Wiki web surface, driven by the `fleet-console` CLI lifecycle. It is the unified Fleet GUI runtime.
 
 ## Owns
 
@@ -8,9 +8,18 @@
 - The server lifecycle: lock file, runtime paths, health probe, and build-stale detection are console-owned. `fleet-console` is the daemon, not a launcher over someone else's daemon.
 - The `fleet-console` CLI entry point (`./cli` export, `dist/cli.mjs`): `start` (the default when no subcommand is given) ensures the local console server and opens the console URL in a browser; `stop` stops the console server; `status` prints server health, endpoint, console URL, and registered-workspace count. `--help`/`-h` prints the banner-style help. `fleet console <args>` in `fleet-cli` relays the full argument list to this CLI as a child process, so every subcommand works through both `fleet console …` and the standalone `fleet-console …` binary. The root `pnpm fleet-console` script runs it from source via `tsx`.
 - The CLI register-ingest contract (server side): `POST /api/cli/register` (returns only `registrationId`, `ingestToken`, `heartbeatIntervalMs`, `leaseTtlMs`, `maxBatchEvents`), `POST /api/cli/events` (ordered `{cliRunId, seq, at, event}[]` batches authenticated by the ingest token; the console assigns its own `observedId`), `POST /api/cli/heartbeat`, and best-effort `POST /api/cli/deregister`. Registration and ingest are CLI-only; the shared register/ingest data-contract types are owned by `@dotobokuri/core-agent`.
-- The React SPA served from the console backend at `/console/`: layout, components, styles, and visual identity. The Workspaces sidebar lists console-owned terminal sessions; selecting a session scopes the Carrier Cover and job view to that session's active carrier jobs.
+- The React SPA served from the console backend at `/console/`: layout, components, styles, and visual identity. The Workspaces sidebar lists console-owned terminal sessions, each listing its carrier job history (active and finished) in registration order; selecting a job opens a centered streaming overlay over that session's terminal, scoped to the active session's jobs.
+- The Codex/Fleet Wiki web surface under `/console/codex`: the console-owned Codex server gateway, workspace registry, wiki API routes, migrated vanilla TypeScript Maritime Codex client, `fleet wiki` compatibility helpers, and standalone `fleet-wiki` binary shim. Codex must remain mounted under the Fleet Console GNB without an iframe or proxy daemon.
 - The observer-side client contract: REST snapshot fetches and the SSE consumption loop with reconnect/resync.
 - The streaming view model: the event reducer that folds `CarrierJobStreamEvent` timelines into per-job, per-track views with incremental text accumulation.
+
+## Codex / Fleet Wiki Surface
+
+- Canonical Codex workspace routes live under `/console/codex/w/:ws/...`; MRU-compatible API routes live under `/console/codex/api/...`. Do not reintroduce global `/api/...` wiki routes because console owns `/api/cli/*`.
+- The migrated Codex client stays Vanilla TypeScript under `client/src/codex/**`; do not rewrite it into React state or components beyond the React mount host.
+- Preserve Maritime Codex UX: reading flow, raw viewer, Drydock queue, conflicts, index/log views, command palette, language toggle, Manifest/ToC rails, copy-context actions, diagram lightbox, brass/aurora roles, and self-hosted fonts.
+- Preserve wiki security invariants: Host allowlist, Origin guard, write-surface loopback gate, DOMPurify markdown sanitization, Mermaid `securityLevel: "strict"` with `htmlLabels: false` and no `bindFunctions`, path containment, and lockfile bearer auth for admin workspace registration.
+- Browser payloads must not expose CLI ingest tokens, MCP/session tokens, terminal tickets, or Codex admin tokens.
 
 ## Must Not Own
 
@@ -26,7 +35,7 @@
 
 ## Layout
 
-- `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), bearer auth and security headers, static serving (`static-console.ts`), the register-ingest and observer routes, the SSE helper, `terminal/` (PTY ticket/session/ws transport; console terminal sessions launch `fleet-cli --headless --native` so the child Agent CLI owns the PTY while registering with the console), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs`. Depends on `@dotobokuri/core-agent` for the shared register data contract; must **not** depend on the retired gateway package. `help-style.ts` is a CLI-help-only **self-hosted** style helper mirroring `runtime/fleet-wiki-ui/src/help-style.ts` and the `fleet-cli` styles SSoT; it must not import from `fleet-cli`, `packages/*` (beyond the core-agent contract), or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
+- `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), bearer auth and security headers, static serving (`static-console.ts`), the register-ingest and observer routes, the SSE helper, `codex/` (Fleet Wiki/Codex API gateway and workspace registration), `terminal/` (PTY ticket/session/ws transport; console terminal sessions launch `fleet-cli --headless --native` so the child Agent CLI owns the PTY while registering with the console), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `cli-bin.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs` and `dist/cli-bin.mjs`. Depends on `@dotobokuri/core-agent` for the shared register data contract; must **not** depend on the retired gateway package. `help-style.ts` is a CLI-help-only **self-hosted** style helper shared by the console and Codex compatibility CLIs; it must not import from `fleet-cli`, `packages/*` (beyond the core-agent contract), or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
 - `client/` — the Vite React SPA (`client/src/`, `client/index.html`, `client/vite.config.ts`). Must not import Node-only modules or the console backend (`src/`).
 - `tests/` — vitest suites for the reducer, SSE parser, store, register-ingest, terminal, and CLI lifecycle.
 
@@ -49,7 +58,7 @@
 
 The console is the operations variant of Fleet Wiki's **Maritime Codex** language: same deep-water ink, brass instrumentation, aurora life signals, glass surfaces, and codex motion grammar, but tuned for live observation rather than reading. It is a command instrument over the same sea, not an editorial document view.
 
-- **Relationship to Maritime Codex**: `runtime/fleet-wiki-ui` remains the reference doctrine and visual source material. Console may translate the vocabulary for operations needs, but it must stay visibly related through the shared token system, glass atmosphere, brass/aurora pairing, Fraunces display type, and `codex-rise` motion.
+- **Relationship to Maritime Codex**: `client/src/codex/**` owns the migrated Maritime Codex reading surface. Console may translate the vocabulary for operations needs, but it must stay visibly related through the shared token system, glass atmosphere, brass/aurora pairing, Fraunces display type, and `codex-rise` motion.
 - **Color semantics**:
   - `brass` means "지금 보고 있는 곳" — selected job brass dot indicator, active navigation, structural decoration, and non-live active/focus-adjacent emphasis.
   - `aurora` means "지금 살아있는 것" — streaming status, live dots, tenant beacons, stream caret, follow button, and `connection-chip--live`. Unlike Fleet Wiki, console does not reserve aurora only for document linkage because there is no document-link concept here.

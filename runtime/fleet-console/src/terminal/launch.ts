@@ -32,6 +32,9 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
 
   return (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
+    if (context?.kind === "shell") {
+      return { bin: resolveUserShell(env), args: [], cwd, env: buildShellLaunchEnv(env) };
+    }
     const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override) {
@@ -43,6 +46,12 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
     }
     return { bin: "fleet", args: [...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
   };
+}
+
+function resolveUserShell(env: NodeJS.ProcessEnv): string {
+  if (env.SHELL) return env.SHELL;
+  if (process.platform === "win32") return env.ComSpec || "powershell.exe";
+  return "/bin/bash";
 }
 
 export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly cols: number; readonly rows: number }): TerminalPtyHandle {
@@ -87,6 +96,13 @@ function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string |
   return {
     ...env,
     ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
+    TERM: TERMINAL_TERM,
+  };
+}
+
+function buildShellLaunchEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
     TERM: TERMINAL_TERM,
   };
 }

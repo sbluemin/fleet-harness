@@ -93,7 +93,6 @@
   gap: var(--space-4);
 }
 
-.topbar-stat,
 .connection-chip,
 .sidebar-eyebrow,
 .job-summary-eyebrow,
@@ -118,13 +117,6 @@
 .timeline-type,
 .timeline-payload {
   font-family: var(--font-mono);
-}
-
-.topbar-stat {
-  color: var(--ink-fog);
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .connection-chip {
@@ -1046,6 +1038,9 @@
 }
 
 .topbar-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 6px var(--space-3);
   border-radius: var(--radius-xs);
   color: var(--ink-fog);
@@ -1057,6 +1052,18 @@
     background var(--duration-fast) var(--ease-spring);
 }
 
+.topbar-nav-icon {
+  display: grid;
+  place-items: center;
+  color: currentColor;
+}
+
+.topbar-nav-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
 .topbar-nav-link:hover {
   color: var(--ink-pearl);
   background: color-mix(in oklch, var(--brass) 8%, transparent);
@@ -1066,6 +1073,32 @@
 .topbar-nav-link.is-active {
   color: var(--brass-bright);
   background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* Shell 토글 — 박스 없이 이전 Workspaces stat(--ink-fog) 톤의 아이콘+라벨, 클릭만 한다. */
+.topbar-shell-button {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  padding: 6px var(--space-1);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.topbar-shell-button:hover {
+  color: var(--ink-pearl);
+}
+
+.topbar-shell-button svg {
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 /* ── Welcome (메인 대시보드) ───────────────────────────── */
@@ -1360,172 +1393,197 @@
   color: var(--coral) !important;
 }
 
-/* CarrierCover: 터미널 위 우상단 글래스 오버레이. position: absolute로
+/* JobOverlay: 터미널 위 중앙 카드 오버레이. position: absolute로
    normal flow에서 빠져 터미널 높이 계산을 침범하지 않는다. */
-.carrier-cover {
+.job-overlay {
   position: absolute;
-  top: var(--space-4);
-  right: var(--space-4);
-  z-index: 3;
+  inset: 0;
+  z-index: 4;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-2);
-  max-height: calc(100% - var(--space-8));
-}
-
-.cover-toggle {
-  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-spectral);
-  background: var(--surface-glass-strong);
-  border: 1px solid var(--surface-rim);
-  border-radius: 999px;
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
+  justify-content: center;
+  padding: var(--space-6);
 }
 
-.cover-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--aurora);
-  box-shadow: 0 0 10px 1px var(--aurora-glow);
+.job-overlay-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 38%, transparent);
+  backdrop-filter: blur(2px);
+  cursor: default;
 }
 
-.cover-count {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.cover-chevron {
-  color: var(--ink-fog);
-}
-
-.cover-panel {
-  width: min(560px, calc(100vw - var(--space-12)));
-  max-height: 100%;
+.job-overlay-card {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
+  width: min(880px, 88%);
+  height: 86%;
+  max-height: 86%;
   overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 360ms var(--ease-spring) both;
 }
 
-.cover-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-2);
-}
-
-.cover-panel-eyebrow,
-.cover-panel-count {
-  margin: 0;
-  color: var(--ink-fog);
+.job-overlay-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 2;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
+  color: var(--brass-bright);
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.cover-panel-count {
-  color: var(--aurora);
-}
-
-.cover-job-list {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 240px;
-  overflow-y: auto;
-  padding-bottom: var(--space-3);
-}
-
-.cover-job-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0 var(--space-3) var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  text-align: left;
+  font-size: 18px;
+  line-height: 1;
   transition:
     border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
+    background var(--duration-fast) var(--ease-spring);
 }
 
-.cover-job-row:hover {
-  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  transform: translateX(1px);
+.job-overlay-close:hover {
+  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass-strong));
 }
 
-.cover-job-row-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.cover-job-label {
-  overflow: hidden;
-  color: var(--ink-pearl);
-  font-size: 13px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cover-job-meta {
-  overflow: hidden;
-  color: var(--ink-fog);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cover-empty {
-  margin: var(--space-4);
-  color: var(--ink-fog);
-  font-size: 12.5px;
-}
-
-.cover-back-button {
-  align-self: flex-start;
-  margin: var(--space-3) 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* JobView(.stage)는 넓은 메인 영역(max-width 1040px)용으로 설계됐다. 좁은
-   cover-panel에 넣을 때 min-width:0으로 가로를 패널 폭에 맞추고, flex로 높이를
-   받아 내부 stage-stream이 세로 스크롤되게 한다. stage 자체 overflow:hidden이
-   넘침을 클리핑하므로 패널 폭이 콘텐츠에 맞아야 잘림이 사라진다. */
-.cover-panel .stage {
+.job-overlay-card .stage {
   flex: 1;
   min-width: 0;
   min-height: 0;
   width: 100%;
   border-radius: 0;
+}
+
+.shell-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.shell-overlay-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
+  backdrop-filter: blur(4px) saturate(120%);
+  cursor: default;
+}
+
+.shell-overlay-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(1320px, 94vw);
+  height: 90vh;
+  max-height: 90vh;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 360ms var(--ease-spring) both;
+}
+
+.shell-overlay-header {
+  flex: 0 0 auto;
+  padding: var(--space-4) calc(var(--space-6) + 34px) var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--surface-rim);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--brass) 10%, transparent), transparent 68%),
+    color-mix(in oklch, var(--ink-mid) 42%, transparent);
+}
+
+.shell-overlay-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.shell-overlay-header h2 {
+  margin: 0;
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.shell-overlay-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 2;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
+  color: var(--brass-bright);
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.shell-overlay-close:hover {
+  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass-strong));
+}
+
+.shell-overlay-terminal {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  padding: var(--space-3);
+}
+
+.shell-overlay-card .terminal-stage,
+.shell-overlay-card .terminal-shell {
+  width: 100%;
+  min-height: 0;
+}
+
+.shell-overlay-card .terminal-shell {
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-overlay-card,
+  .shell-overlay-card {
+    animation: none;
+  }
 }
 
 @media (max-width: 760px) {
@@ -1561,6 +1619,21 @@
 
   .topbar-nav {
     width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .shell-overlay {
+    padding: var(--space-3);
+  }
+
+  .shell-overlay-card {
+    width: 100%;
+    height: min(82vh, 720px);
+    max-height: calc(100vh - (var(--space-3) * 2));
+  }
+
+  .shell-overlay-header {
+    padding: var(--space-4) calc(var(--space-5) + 34px) var(--space-3) var(--space-4);
   }
 
   .welcome-page {

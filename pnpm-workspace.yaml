@@ -5,7 +5,6 @@ packages:
   - "packages/fleet-admiral"
   - "packages/fleet-carriers"
   - "packages/fleet-wiki"
-  - "runtime/fleet-wiki-ui"
   - "runtime/fleet-console"
   - "runtime/fleet-cli"
 allowBuilds:

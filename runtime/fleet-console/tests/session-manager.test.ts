@@ -19,7 +19,7 @@ interface MockSocket extends TerminalSocket {
 }
 
 describe("terminal session manager", () => {
-  it("creates and attaches multiple sessions up to capacity", () => {
+  it("creates sessions without enforcing a concurrency cap", () => {
     const ptys: MockPty[] = [];
     const manager = createTerminalSessionManager({
       launch: (cwd, context) => ({ bin: "mock", args: [context?.sessionId ?? ""], cwd: cwd ?? "/", env: {} }),
@@ -35,10 +35,11 @@ describe("terminal session manager", () => {
     manager.createSession({ sessionId: "session-a", cwd: "/a" });
     manager.createSession({ sessionId: "session-b", cwd: "/b" });
 
+    // 상한이 제거되어 maxSessions 설정과 무관하게 추가 세션이 허용된다.
     expect(manager.canAttach("session-a")).toBe(true);
-    expect(manager.canAttach("session-c")).toBe(false);
-    expect(ptys.map((pty) => pty.writes[0])).toEqual(["cwd:/a", "cwd:/b"]);
-    expect(() => manager.createSession({ sessionId: "session-c", cwd: "/c" })).toThrow("capacity exhausted");
+    expect(manager.canAttach("session-c")).toBe(true);
+    expect(() => manager.createSession({ sessionId: "session-c", cwd: "/c" })).not.toThrow();
+    expect(ptys.map((pty) => pty.writes[0])).toEqual(["cwd:/a", "cwd:/b", "cwd:/c"]);
   });
 
   it("replaces sockets only within the same session", () => {
@@ -84,6 +85,21 @@ describe("terminal session manager", () => {
 
     expect(secondA.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["alpha"]);
     expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["beta"]);
+  });
+
+  it("passes the terminal kind into the launch resolver", () => {
+    const launchKinds: Array<string | undefined> = [];
+    const manager = createTerminalSessionManager({
+      launch: (cwd, context) => {
+        launchKinds.push(context?.kind);
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: {} };
+      },
+      startShell: () => createMockPty(),
+    });
+
+    manager.attach(createMockSocket(), { sessionId: "shell", cwd: "", kind: "shell" });
+
+    expect(launchKinds).toEqual(["shell"]);
   });
 });
 

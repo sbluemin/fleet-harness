@@ -732,7 +732,7 @@ describe("Mission Control controller", () => {
     });
 
     controller.start();
-    expect(controller.getStatus()).toEqual({ state: "starting", port: 3737 });
+    expect(controller.getStatus()).toEqual({ state: "starting", port: 37283 });
     await waitForAsyncLaunch();
 
     expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });

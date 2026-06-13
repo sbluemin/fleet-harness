@@ -1,4 +1,4 @@
-import { applyEvent, createEmptyJob, isTerminalJobStatus, reduceSnapshotJob } from "./reduce.js";
+import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
 import type {
   ConsoleState,
   JobView,
@@ -12,7 +12,7 @@ import type {
 
 type Listener = () => void;
 
-export interface ActiveSessionJob {
+export interface SessionJob {
   readonly job: JobView;
   readonly tenant: TenantJobsView;
 }
@@ -32,9 +32,8 @@ let state: ConsoleState = {
   tenantJobs: {},
   tenantOrder: [],
   timelineOpen: false,
-  coverOpen: false,
-  coverDepth: "list",
-  coverSelectedJobId: null,
+  shellOpen: false,
+  selectedJobId: null,
 };
 
 export function getState(): ConsoleState {
@@ -65,7 +64,7 @@ export function hydrateTerminalSessions(sessions: readonly SessionInfo[]): void 
 }
 
 export function selectTerminalSession(sessionId: string | null): void {
-  setState({ activeTerminalSessionId: sessionId });
+  setState({ activeTerminalSessionId: sessionId, selectedJobId: null });
 }
 
 export function beginCreateTerminalSession(): void {
@@ -80,6 +79,7 @@ export function completeCreateTerminalSession(session: SessionInfo): void {
     activeTerminalSessionId: normalized.sessionId,
     creatingTerminalSession: false,
     terminalSessionError: null,
+    selectedJobId: null,
   });
 }
 
@@ -91,20 +91,34 @@ export function toggleTimeline(): void {
   setState({ timelineOpen: !state.timelineOpen });
 }
 
-export function toggleCover(): void {
+export function toggleShell(): void {
+  setState({ shellOpen: !state.shellOpen });
+}
+
+export function closeShell(): void {
+  setState({ shellOpen: false });
+}
+
+export function removeTerminalSession(sessionId: string): void {
+  if (!state.sessions[sessionId]) return;
+  const sessions = { ...state.sessions };
+  delete sessions[sessionId];
+  const sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+  const wasActive = state.activeTerminalSessionId === sessionId;
   setState({
-    coverOpen: !state.coverOpen,
-    coverDepth: state.coverOpen ? state.coverDepth : "list",
-    coverSelectedJobId: state.coverOpen ? state.coverSelectedJobId : null,
+    sessions,
+    sessionOrder,
+    activeTerminalSessionId: wasActive ? sessionOrder[0] ?? null : state.activeTerminalSessionId,
+    selectedJobId: wasActive ? null : state.selectedJobId,
   });
 }
 
-export function selectCoverJob(jobId: string): void {
-  setState({ coverOpen: true, coverDepth: "detail", coverSelectedJobId: jobId });
+export function selectJob(jobId: string): void {
+  setState({ selectedJobId: state.selectedJobId === jobId ? null : jobId });
 }
 
-export function backToCoverList(): void {
-  setState({ coverDepth: "list", coverSelectedJobId: null });
+export function clearSelectedJob(): void {
+  setState({ selectedJobId: null });
 }
 
 export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {
@@ -126,11 +140,12 @@ export function applyJobsSnapshot(snapshot: readonly SnapshotTenantJobs[]): void
   const tenantOrder: string[] = [];
   for (const tenant of snapshot) {
     const jobs: Record<string, JobView> = {};
-    const jobOrder: string[] = [];
-    for (const job of [...tenant.jobs].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    for (const job of tenant.jobs) {
       jobs[job.jobId] = reduceSnapshotJob(tenant.tenantId, job);
-      jobOrder.push(job.jobId);
     }
+    const jobOrder = Object.values(jobs)
+      .sort((a, b) => (a.startedAt ?? a.updatedAt) - (b.startedAt ?? b.updatedAt))
+      .map((job) => job.jobId);
     tenantJobs[tenant.tenantId] = {
       tenantId: tenant.tenantId,
       tenantLabel: tenant.tenantLabel,
@@ -164,14 +179,11 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
   if (event.jobId) {
     const existingJob = nextTenant.jobs[event.jobId];
     const job = applyEvent(existingJob ?? createEmptyJob(event.tenantId, event.jobId, event.at), event);
-    const jobOrder = sortJobOrder(
-      existingJob ? nextTenant.jobOrder : [...nextTenant.jobOrder, event.jobId],
-      { ...nextTenant.jobs, [event.jobId]: job },
-    );
+    const jobOrder = existingJob ? nextTenant.jobOrder : [...nextTenant.jobOrder, event.jobId];
     nextTenant = {
       ...nextTenant,
       jobs: pruneJobs({ ...nextTenant.jobs, [event.jobId]: job }, jobOrder),
-      jobOrder: jobOrder.slice(0, TENANT_JOB_LIMIT),
+      jobOrder: jobOrder.slice(-TENANT_JOB_LIMIT),
     };
   }
   const nextTenantJobs = { ...state.tenantJobs, [event.tenantId]: nextTenant };
@@ -200,11 +212,11 @@ export function applyTruncation(tenantId: string, tenantLabel: string | undefine
   });
 }
 
-export function selectedCoverJob(current: ConsoleState): JobView | null {
-  if (!current.coverSelectedJobId) return null;
+export function selectedJob(current: ConsoleState): JobView | null {
+  if (!current.selectedJobId) return null;
   const tenantId = activeSessionTenantId(current);
   if (!tenantId) return null;
-  return current.tenantJobs[tenantId]?.jobs[current.coverSelectedJobId] ?? null;
+  return current.tenantJobs[tenantId]?.jobs[current.selectedJobId] ?? null;
 }
 
 export function activeSessionTenantId(current: ConsoleState): string | null {
@@ -212,30 +224,21 @@ export function activeSessionTenantId(current: ConsoleState): string | null {
   return resolveSessionTenantId(current.sessions[current.activeTerminalSessionId]);
 }
 
-export function activeSessionActiveJobs(current: ConsoleState): readonly ActiveSessionJob[] {
-  const tenantId = activeSessionTenantId(current);
-  if (!tenantId) return [];
-  return activeJobsForTenant(current.tenantJobs[tenantId]);
-}
-
-export function sessionActiveJobs(current: ConsoleState, session: SessionInfo): readonly ActiveSessionJob[] {
+export function sessionJobs(current: ConsoleState, session: SessionInfo): readonly SessionJob[] {
   const tenantId = resolveSessionTenantId(session);
   if (!tenantId) return [];
-  return activeJobsForTenant(current.tenantJobs[tenantId]);
+  const tenant = current.tenantJobs[tenantId];
+  if (!tenant) return [];
+  const jobs: SessionJob[] = [];
+  for (const jobId of tenant.jobOrder) {
+    const job = tenant.jobs[jobId];
+    if (job) jobs.push({ job, tenant });
+  }
+  return jobs;
 }
 
 export function resolveSessionTenantId(session: SessionInfo | undefined): string | null {
   return session?.tenantId ?? session?.sessionId ?? null;
-}
-
-function activeJobsForTenant(tenant: TenantJobsView | undefined): readonly ActiveSessionJob[] {
-  if (!tenant) return [];
-  const jobs: ActiveSessionJob[] = [];
-  for (const jobId of tenant.jobOrder) {
-    const job = tenant.jobs[jobId];
-    if (job && !isTerminalJobStatus(job.status)) jobs.push({ job, tenant });
-  }
-  return jobs;
 }
 
 export function collectSessionTenantIds(sessions: Readonly<Record<string, SessionInfo>>, sessionOrder: readonly string[]): Set<string> {
@@ -271,20 +274,9 @@ function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, te
   return next;
 }
 
-function sortJobOrder(order: readonly string[], jobs: Readonly<Record<string, JobView>>): string[] {
-  return [...order].sort((a, b) => {
-    const jobA = jobs[a];
-    const jobB = jobs[b];
-    const activeA = jobA && !isTerminalJobStatus(jobA.status) ? 1 : 0;
-    const activeB = jobB && !isTerminalJobStatus(jobB.status) ? 1 : 0;
-    if (activeA !== activeB) return activeB - activeA;
-    return (jobB?.updatedAt ?? 0) - (jobA?.updatedAt ?? 0);
-  });
-}
-
 function pruneJobs(jobs: Record<string, JobView>, order: readonly string[]): Record<string, JobView> {
   if (order.length <= TENANT_JOB_LIMIT) return jobs;
-  const keep = new Set(order.slice(0, TENANT_JOB_LIMIT));
+  const keep = new Set(order.slice(-TENANT_JOB_LIMIT));
   const pruned: Record<string, JobView> = {};
   for (const jobId of Object.keys(jobs)) {
     if (keep.has(jobId)) pruned[jobId] = jobs[jobId]!;

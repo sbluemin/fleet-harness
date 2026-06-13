@@ -104,8 +104,6 @@ export interface TenantJobsView {
 
 export type ConnectionState = "connecting" | "live";
 
-export type CoverDepth = "list" | "detail";
-
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
@@ -118,7 +116,6 @@ export interface ConsoleState {
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
   readonly tenantOrder: readonly string[];
   readonly timelineOpen: boolean;
-  readonly coverOpen: boolean;
-  readonly coverDepth: CoverDepth;
-  readonly coverSelectedJobId: string | null;
+  readonly shellOpen: boolean;
+  readonly selectedJobId: string | null;
 }

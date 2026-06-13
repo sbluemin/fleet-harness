@@ -9,6 +9,8 @@ import { createTerminalConnection, type TerminalConnection } from "../terminal-c
 
 interface TerminalProps {
   readonly sessionId: string;
+  readonly kind?: "shell";
+  readonly onExit?: () => void;
 }
 
 const TERMINAL_OPTIONS = {
@@ -43,9 +45,12 @@ const TERMINAL_OPTIONS = {
   },
 };
 
-export function Terminal({ sessionId }: TerminalProps) {
+export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
+  // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
   const [status, setStatus] = useState("connecting");
 
   useEffect(() => {
@@ -88,7 +93,9 @@ export function Terminal({ sessionId }: TerminalProps) {
 
     const connection = createTerminalConnection({
       sessionId,
+      kind,
       terminal,
+      onExit: () => onExitRef.current?.(),
       onStatus: (nextStatus, message) => {
         setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
       },
@@ -107,6 +114,8 @@ export function Terminal({ sessionId }: TerminalProps) {
       if (disposed) return;
       fitAndResize();
       connection.start();
+      // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
+      terminal.focus();
     };
 
     const resizeObserver = new ResizeObserver(fitAndResize);
@@ -129,14 +138,14 @@ export function Terminal({ sessionId }: TerminalProps) {
         // xterm 내부 dispose 버그(위 주석)를 흡수한다.
       }
     };
-  }, [sessionId]);
+  }, [kind, sessionId]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
   const isLive = status.startsWith("live");
 
   return (
-    <section className="terminal-stage" aria-label="Fleet terminal">
+    <section className="terminal-stage" aria-label={kind === "shell" ? "Shell terminal" : "Fleet terminal"}>
       <div className="terminal-shell">
         {!isLive ? (
           <div className="terminal-status" aria-live="polite">
