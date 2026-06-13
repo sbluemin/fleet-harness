@@ -12,6 +12,11 @@ import type {
 
 type Listener = () => void;
 
+export interface ActiveSessionJob {
+  readonly job: JobView;
+  readonly tenant: TenantJobsView;
+}
+
 const TENANT_JOB_LIMIT = 200;
 
 const listeners = new Set<Listener>();
@@ -26,8 +31,6 @@ let state: ConsoleState = {
   terminalSessionError: null,
   tenantJobs: {},
   tenantOrder: [],
-  selectedTenantId: null,
-  selectedJobId: null,
   timelineOpen: false,
   coverOpen: false,
   coverDepth: "list",
@@ -48,16 +51,6 @@ export function subscribe(listener: Listener): () => void {
 export function setState(patch: Partial<ConsoleState>): void {
   state = { ...state, ...patch };
   emit();
-}
-
-export function selectTenant(tenantId: string): void {
-  if (state.selectedTenantId === tenantId) return;
-  const tenant = state.tenantJobs[tenantId];
-  setState({ selectedTenantId: tenantId, selectedJobId: tenant?.jobOrder[0] ?? null });
-}
-
-export function selectJob(tenantId: string, jobId: string): void {
-  setState({ selectedTenantId: tenantId, selectedJobId: jobId });
 }
 
 export function hydrateTerminalSessions(sessions: readonly SessionInfo[]): void {
@@ -107,7 +100,7 @@ export function toggleCover(): void {
 }
 
 export function selectCoverJob(jobId: string): void {
-  setState({ coverDepth: "detail", coverSelectedJobId: jobId });
+  setState({ coverOpen: true, coverDepth: "detail", coverSelectedJobId: jobId });
 }
 
 export function backToCoverList(): void {
@@ -116,15 +109,15 @@ export function backToCoverList(): void {
 
 export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {
   const known = new Set(tenants.map((tenant) => tenant.tenantId));
+  const sessions = mergeTenantBindings(state.sessions, tenants);
   const tenantOrder = [
     ...tenants.map((tenant) => tenant.tenantId),
     ...state.tenantOrder.filter((tenantId) => !known.has(tenantId) && state.tenantJobs[tenantId]),
   ];
   setState({
     tenants,
-    sessions: mergeTenantBindings(state.sessions, tenants),
+    sessions,
     tenantOrder,
-    selectedTenantId: state.selectedTenantId ?? tenantOrder[0] ?? null,
   });
 }
 
@@ -154,8 +147,6 @@ export function applyJobsSnapshot(snapshot: readonly SnapshotTenantJobs[]): void
   setState({
     tenantJobs,
     tenantOrder: mergedOrder.length > 0 ? mergedOrder : tenantOrder,
-    selectedTenantId: pickSelectedTenant(tenantJobs),
-    selectedJobId: pickSelectedJob(tenantJobs),
   });
 }
 
@@ -183,17 +174,13 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
       jobOrder: jobOrder.slice(0, TENANT_JOB_LIMIT),
     };
   }
-  // 자동 선택은 선택된 테넌트가 없거나 이벤트가 그 테넌트의 것일 때만 — 다른 테넌트의 라이브 이벤트가 선택을 선점하지 않는다.
-  const nextSelectedTenantId = state.selectedTenantId ?? event.tenantId;
-  const mayAutoSelectJob = state.selectedJobId === null && nextSelectedTenantId === event.tenantId;
+  const nextTenantJobs = { ...state.tenantJobs, [event.tenantId]: nextTenant };
   state = {
     ...state,
     connection: "live",
     connectionError: null,
-    tenantJobs: { ...state.tenantJobs, [event.tenantId]: nextTenant },
+    tenantJobs: nextTenantJobs,
     tenantOrder: state.tenantOrder.includes(event.tenantId) ? state.tenantOrder : [...state.tenantOrder, event.tenantId],
-    selectedTenantId: nextSelectedTenantId,
-    selectedJobId: mayAutoSelectJob ? event.jobId ?? null : state.selectedJobId,
   };
   emit();
   return { unknownTenant };
@@ -213,39 +200,51 @@ export function applyTruncation(tenantId: string, tenantLabel: string | undefine
   });
 }
 
-export function selectedJob(current: ConsoleState): JobView | null {
-  const tenantId = current.selectedTenantId;
-  if (!tenantId) return null;
-  const tenant = current.tenantJobs[tenantId];
-  if (!tenant) return null;
-  const jobId = current.selectedJobId && tenant.jobs[current.selectedJobId] ? current.selectedJobId : tenant.jobOrder[0];
-  return jobId ? tenant.jobs[jobId] ?? null : null;
-}
-
 export function selectedCoverJob(current: ConsoleState): JobView | null {
   if (!current.coverSelectedJobId) return null;
-  for (const tenant of Object.values(current.tenantJobs)) {
-    const job = tenant.jobs[current.coverSelectedJobId];
-    if (job) return job;
-  }
-  return null;
-}
-
-function pickSelectedTenant(tenantJobs: Record<string, TenantJobsView>): string | null {
-  if (state.selectedTenantId && tenantJobs[state.selectedTenantId]) return state.selectedTenantId;
-  if (state.selectedTenantId && state.tenants.some((tenant) => tenant.tenantId === state.selectedTenantId)) {
-    return state.selectedTenantId;
-  }
-  return Object.keys(tenantJobs)[0] ?? state.tenants[0]?.tenantId ?? null;
-}
-
-function pickSelectedJob(tenantJobs: Record<string, TenantJobsView>): string | null {
-  const tenantId = pickSelectedTenant(tenantJobs);
+  const tenantId = activeSessionTenantId(current);
   if (!tenantId) return null;
-  const tenant = tenantJobs[tenantId];
-  if (!tenant) return null;
-  if (state.selectedJobId && tenant.jobs[state.selectedJobId]) return state.selectedJobId;
-  return tenant.jobOrder[0] ?? null;
+  return current.tenantJobs[tenantId]?.jobs[current.coverSelectedJobId] ?? null;
+}
+
+export function activeSessionTenantId(current: ConsoleState): string | null {
+  if (!current.activeTerminalSessionId) return null;
+  return resolveSessionTenantId(current.sessions[current.activeTerminalSessionId]);
+}
+
+export function activeSessionActiveJobs(current: ConsoleState): readonly ActiveSessionJob[] {
+  const tenantId = activeSessionTenantId(current);
+  if (!tenantId) return [];
+  return activeJobsForTenant(current.tenantJobs[tenantId]);
+}
+
+export function sessionActiveJobs(current: ConsoleState, session: SessionInfo): readonly ActiveSessionJob[] {
+  const tenantId = resolveSessionTenantId(session);
+  if (!tenantId) return [];
+  return activeJobsForTenant(current.tenantJobs[tenantId]);
+}
+
+export function resolveSessionTenantId(session: SessionInfo | undefined): string | null {
+  return session?.tenantId ?? session?.sessionId ?? null;
+}
+
+function activeJobsForTenant(tenant: TenantJobsView | undefined): readonly ActiveSessionJob[] {
+  if (!tenant) return [];
+  const jobs: ActiveSessionJob[] = [];
+  for (const jobId of tenant.jobOrder) {
+    const job = tenant.jobs[jobId];
+    if (job && !isTerminalJobStatus(job.status)) jobs.push({ job, tenant });
+  }
+  return jobs;
+}
+
+export function collectSessionTenantIds(sessions: Readonly<Record<string, SessionInfo>>, sessionOrder: readonly string[]): Set<string> {
+  const ids = new Set<string>();
+  for (const sessionId of sessionOrder) {
+    const tenantId = resolveSessionTenantId(sessions[sessionId]);
+    if (tenantId) ids.add(tenantId);
+  }
+  return ids;
 }
 
 function normalizeSession(session: SessionInfo): SessionInfo {

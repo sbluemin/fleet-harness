@@ -18,9 +18,9 @@ export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchCont
 
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
 const TERMINAL_TERM = "xterm-256color";
-// 콘솔 PTY 터미널은 fleet-cli를 터미널 전용(--native) 모드로 띄운다:
-// 2-pane Fleet TUI 대신 선택한 Agent CLI가 이 터미널을 직접 점유한다.
-const FLEET_NATIVE_TERMINAL_FLAG = "--native";
+// 콘솔 PTY 터미널은 fleet-cli를 headless + native 모드로 띄운다:
+// 별도 TUI 크롬 없이 선택한 Agent CLI가 이 터미널을 직접 점유한다.
+const FLEET_HEADLESS_NATIVE_FLAGS = ["--headless", "--native"] as const;
 const require = createRequire(import.meta.url);
 
 export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
@@ -39,9 +39,9 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
     }
     const localCli = findLocalFleetCliEntry(cwd, exists);
     if (localCli) {
-      return { bin: execPath, args: [localCli, FLEET_NATIVE_TERMINAL_FLAG], cwd, env: launchEnv };
+      return { bin: execPath, args: [localCli, ...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
     }
-    return { bin: "fleet", args: [FLEET_NATIVE_TERMINAL_FLAG], cwd, env: launchEnv };
+    return { bin: "fleet", args: [...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
   };
 }
 

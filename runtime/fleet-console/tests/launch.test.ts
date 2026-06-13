@@ -12,7 +12,7 @@ const baseDeps = {
 };
 
 describe("createDefaultTerminalLaunchResolver", () => {
-  it("launches the local fleet-cli entry in --native terminal mode", () => {
+  it("launches the local fleet-cli entry in --headless --native terminal mode", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       ...baseDeps,
       exists: (candidate) => candidate === LOCAL_CLI_ENTRY,
@@ -21,11 +21,11 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const spec = resolve("/work");
 
     expect(spec.bin).toBe("/usr/bin/node");
-    expect(spec.args).toEqual([LOCAL_CLI_ENTRY, "--native"]);
+    expect(spec.args).toEqual([LOCAL_CLI_ENTRY, "--headless", "--native"]);
     expect(spec.env.TERM).toBe("xterm-256color");
   });
 
-  it("falls back to the fleet binary with --native when no local entry exists", () => {
+  it("falls back to the fleet binary with --headless --native when no local entry exists", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       ...baseDeps,
       exists: () => false,
@@ -34,10 +34,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const spec = resolve("/work");
 
     expect(spec.bin).toBe("fleet");
-    expect(spec.args).toEqual(["--native"]);
+    expect(spec.args).toEqual(["--headless", "--native"]);
   });
 
-  it("honors a FLEET_TERMINAL_CMD override verbatim without forcing --native", () => {
+  it("honors a FLEET_TERMINAL_CMD override verbatim without forcing headless native flags", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       ...baseDeps,
       env: { FLEET_TERMINAL_CMD: "bash -l" } as NodeJS.ProcessEnv,

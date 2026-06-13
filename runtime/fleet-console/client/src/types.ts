@@ -117,8 +117,6 @@ export interface ConsoleState {
   readonly terminalSessionError: string | null;
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
   readonly tenantOrder: readonly string[];
-  readonly selectedTenantId: string | null;
-  readonly selectedJobId: string | null;
   readonly timelineOpen: boolean;
   readonly coverOpen: boolean;
   readonly coverDepth: CoverDepth;

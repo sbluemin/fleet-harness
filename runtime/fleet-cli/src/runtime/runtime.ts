@@ -42,6 +42,7 @@ export interface FleetRuntimeLifecycle {
 }
 
 interface FleetRuntimeLifecycleDeps {
+	readonly consoleRegister?: boolean;
 	readonly dataDir?: string;
 }
 
@@ -154,14 +155,18 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 	});
 	const consolePublisher = createConsoleRegisterPublisher({
 		cwd: process.cwd(),
+		env: process.env,
 		fleetVersion: getRuntimeVersion(),
 		mcpServerName: mcpRuntimes.name,
 		toolCount: mcpRuntimes.mcpRegistry.getAllAgentTools().length,
 	});
-	consolePublisher.start();
-	const unsubscribeConsolePublisher = carrierRuntime.jobs.streaming.register((event) => {
-		consolePublisher.publishJobEvent(event);
-	});
+	let unsubscribeConsolePublisher = () => {};
+	if (deps.consoleRegister === true) {
+		consolePublisher.start();
+		unsubscribeConsolePublisher = carrierRuntime.jobs.streaming.register((event) => {
+			consolePublisher.publishJobEvent(event);
+		});
+	}
 
 	reconcileRuntimeState(carrierRuntime);
 

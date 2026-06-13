@@ -1,6 +1,5 @@
 import { describeJobStatus, formatClock, shortJobId, statusTone } from "../format.js";
-import { isTerminalJobStatus } from "../reduce.js";
-import { selectCoverJob } from "../store.js";
+import { activeSessionActiveJobs, selectCoverJob } from "../store.js";
 import type { ConsoleState, JobView } from "../types.js";
 
 interface CoverJobListProps {
@@ -45,15 +44,9 @@ function CoverJobButton({ row }: { readonly row: CoverJobRow }) {
 }
 
 function listActiveJobs(state: ConsoleState): readonly CoverJobRow[] {
-  const rows: CoverJobRow[] = [];
-  for (const tenantId of state.tenantOrder) {
-    const tenant = state.tenantJobs[tenantId];
-    if (!tenant) continue;
-    const tenantLabel = tenant.tenantLabel ?? state.tenants.find((candidate) => candidate.tenantId === tenantId)?.tenantLabel ?? tenantId;
-    for (const jobId of tenant.jobOrder) {
-      const job = tenant.jobs[jobId];
-      if (job && !isTerminalJobStatus(job.status)) rows.push({ job, tenantLabel });
-    }
-  }
+  const rows = activeSessionActiveJobs(state).map(({ job, tenant }) => ({
+    job,
+    tenantLabel: tenant.tenantLabel ?? job.tenantId,
+  }));
   return rows.sort((a, b) => b.job.updatedAt - a.job.updatedAt);
 }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  activeSessionActiveJobs,
   applyJobsSnapshot,
   applyObservedEvent,
   applyTenantSnapshot,
@@ -10,12 +11,9 @@ import {
   completeCreateTerminalSession,
   getState,
   hydrateTerminalSessions,
-  selectJob,
   selectCoverJob,
-  selectTenant,
   selectTerminalSession,
   selectedCoverJob,
-  selectedJob,
   setState,
   toggleCover,
 } from "../client/src/store.js";
@@ -34,8 +32,6 @@ beforeEach(() => {
     tenants: [],
     tenantJobs: {},
     tenantOrder: [],
-    selectedTenantId: null,
-    selectedJobId: null,
     sessions: {},
     sessionOrder: [],
     activeTerminalSessionId: null,
@@ -49,12 +45,25 @@ beforeEach(() => {
 });
 
 describe("store", () => {
-  it("selects the first tenant after a tenant snapshot", () => {
+  it("applies a tenant snapshot without creating legacy selection state", () => {
     applyTenantSnapshot([TENANT]);
-    expect(getState().selectedTenantId).toBe("tenant-1");
+
+    expect(getState().tenants).toEqual([TENANT]);
+    expect(getState().tenantOrder).toEqual(["tenant-1"]);
   });
 
-  it("builds job views from a jobs snapshot and keeps selection stable across resync", () => {
+  it("binds a tenant snapshot to the active terminal session", () => {
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "starting", createdAt: 1 }]);
+    selectTerminalSession("tenant-1");
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "tenant-1" }]);
+
+    expect(getState().sessions["tenant-1"]).toMatchObject({ status: "registered", tenantId: "tenant-1" });
+    expect(getState().activeTerminalSessionId).toBe("tenant-1");
+  });
+
+  it("builds job views from a jobs snapshot and refreshes them across resync", () => {
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    selectTerminalSession("tenant-1");
     applyJobsSnapshot([
       {
         tenantId: "tenant-1",
@@ -66,7 +75,6 @@ describe("store", () => {
         ],
       },
     ]);
-    selectJob("tenant-1", "job-1");
     applyJobsSnapshot([
       {
         tenantId: "tenant-1",
@@ -78,7 +86,8 @@ describe("store", () => {
         ],
       },
     ]);
-    expect(getState().selectedJobId).toBe("job-1");
+    expect(getState().tenantJobs["tenant-1"]?.jobOrder).toEqual(["job-2", "job-1"]);
+    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-2"]);
   });
 
   it("applies live events incrementally and reports unknown tenants", () => {
@@ -92,14 +101,14 @@ describe("store", () => {
     expect(getState().connection).toBe("live");
   });
 
-  it("does not let another tenant's live event preempt the job selection", () => {
-    applyTenantSnapshot([TENANT]);
-    expect(getState().selectedTenantId).toBe("tenant-1");
+  it("keeps live jobs scoped to the active terminal session when another tenant streams", () => {
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    selectTerminalSession("tenant-1");
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "tenant-1" }]);
     applyObservedEvent(makeEvent(1, "track:text", { trackId: "t1", text: "other" }, "tenant-9", "job-9"));
-    expect(getState().selectedTenantId).toBe("tenant-1");
-    expect(getState().selectedJobId).toBeNull();
+    expect(activeSessionActiveJobs(getState())).toEqual([]);
     applyObservedEvent(makeEvent(2, "track:text", { trackId: "t1", text: "mine" }, "tenant-1", "job-1"));
-    expect(getState().selectedJobId).toBe("job-1");
+    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-1"]);
   });
 
   it("keeps active jobs ahead of finished jobs in the rail order", () => {
@@ -114,21 +123,43 @@ describe("store", () => {
     expect(getState().tenantJobs["tenant-2"]?.truncation.droppedCount).toBe(4);
   });
 
-  it("resolves the selected job falling back to the first job of the tenant", () => {
-    applyObservedEvent(makeEvent(1, "track:text", { trackId: "t1", text: "x" }));
-    selectTenant("tenant-1");
-    expect(selectedJob(getState())?.jobId).toBe("job-1");
-  });
-
-  it("keeps terminal session selection separate from observer selection", () => {
+  it("keeps terminal session selection separate from tenant binding", () => {
     hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
     applyTenantSnapshot([{ ...TENANT, tenantId: "tenant-a", terminalSessionId: "session-a" }]);
     selectTerminalSession("session-a");
-    selectJob("tenant-a", "job-a");
 
     expect(getState().activeTerminalSessionId).toBe("session-a");
-    expect(getState().selectedTenantId).toBe("tenant-a");
-    expect(getState().selectedJobId).toBe("job-a");
+    expect(getState().sessions["session-a"]?.tenantId).toBe("tenant-a");
+  });
+
+  it("lists active jobs only for the active terminal session", () => {
+    hydrateTerminalSessions([
+      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
+      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
+    ]);
+    selectTerminalSession("tenant-a");
+    applyJobsSnapshot([
+      {
+        tenantId: "tenant-a",
+        tenantLabel: "Alpha",
+        truncation: { droppedCount: 0 },
+        jobs: [
+          { jobId: "job-a-live", status: "active", updatedAt: 1_004, events: [] },
+          { jobId: "job-a-done", status: "done", updatedAt: 1_005, events: [] },
+        ],
+      },
+      {
+        tenantId: "tenant-b",
+        tenantLabel: "Beta",
+        truncation: { droppedCount: 0 },
+        jobs: [{ jobId: "job-b-live", status: "active", updatedAt: 1_006, events: [] }],
+      },
+    ]);
+
+    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-a-live"]);
+
+    selectTerminalSession("tenant-b");
+    expect(activeSessionActiveJobs(getState()).map(({ job }) => job.jobId)).toEqual(["job-b-live"]);
   });
 
   it("tracks operations landing and session creation state", () => {
@@ -142,18 +173,18 @@ describe("store", () => {
     expect(getState().sessionOrder).toEqual(["session-a"]);
   });
 
-  it("binds hydrated terminal sessions to tenants without changing selected job", () => {
+  it("binds hydrated terminal sessions to tenants without changing the active session", () => {
     hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "starting", createdAt: 1 }]);
     selectTerminalSession("session-a");
-    selectJob("tenant-1", "job-1");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
 
     expect(getState().sessions["session-a"]).toMatchObject({ status: "registered", tenantId: "tenant-1", registrationId: "registration-a" });
     expect(getState().activeTerminalSessionId).toBe("session-a");
-    expect(getState().selectedJobId).toBe("job-1");
   });
 
   it("opens CarrierCover to list and keeps cover detail selection independent", () => {
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    selectTerminalSession("tenant-1");
     applyJobsSnapshot([
       {
         tenantId: "tenant-1",
@@ -165,17 +196,39 @@ describe("store", () => {
         ],
       },
     ]);
-    selectJob("tenant-1", "job-1");
-
     toggleCover();
-    expect(getState()).toMatchObject({ coverOpen: true, coverDepth: "list", coverSelectedJobId: null, selectedJobId: "job-1" });
+    expect(getState()).toMatchObject({ coverOpen: true, coverDepth: "list", coverSelectedJobId: null });
 
     selectCoverJob("job-2");
-    expect(getState()).toMatchObject({ coverDepth: "detail", coverSelectedJobId: "job-2", selectedJobId: "job-1" });
+    expect(getState()).toMatchObject({ coverOpen: true, coverDepth: "detail", coverSelectedJobId: "job-2" });
     expect(selectedCoverJob(getState())?.jobId).toBe("job-2");
-    expect(selectedJob(getState())?.jobId).toBe("job-1");
 
     backToCoverList();
-    expect(getState()).toMatchObject({ coverDepth: "list", coverSelectedJobId: null, selectedJobId: "job-1" });
+    expect(getState()).toMatchObject({ coverDepth: "list", coverSelectedJobId: null });
+  });
+
+  it("does not resolve cover detail jobs outside the active terminal session", () => {
+    hydrateTerminalSessions([
+      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
+      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
+    ]);
+    selectTerminalSession("tenant-a");
+    applyJobsSnapshot([
+      {
+        tenantId: "tenant-a",
+        tenantLabel: "Alpha",
+        truncation: { droppedCount: 0 },
+        jobs: [{ jobId: "job-a", status: "active", updatedAt: 1_001, events: [] }],
+      },
+      {
+        tenantId: "tenant-b",
+        tenantLabel: "Beta",
+        truncation: { droppedCount: 0 },
+        jobs: [{ jobId: "job-b", status: "active", updatedAt: 1_002, events: [] }],
+      },
+    ]);
+
+    selectCoverJob("job-b");
+    expect(selectedCoverJob(getState())).toBeNull();
   });
 });

@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 
-import { isTerminalJobStatus } from "../reduce.js";
-import { backToCoverList, selectedCoverJob, toggleCover } from "../store.js";
-import type { ConsoleState, TenantJobsView } from "../types.js";
+import { activeSessionActiveJobs, backToCoverList, selectedCoverJob, toggleCover } from "../store.js";
+import type { ConsoleState } from "../types.js";
 import { CoverJobList } from "./cover-job-list.js";
 import { JobView } from "./job-view.js";
 
@@ -11,7 +10,7 @@ interface CarrierCoverProps {
 }
 
 export function CarrierCover({ state }: CarrierCoverProps) {
-  const activeJobCount = countActiveJobs(state.tenantJobs);
+  const activeJobCount = activeSessionActiveJobs(state).length;
   const job = selectedCoverJob(state);
 
   useEffect(() => {
@@ -45,15 +44,4 @@ export function CarrierCover({ state }: CarrierCoverProps) {
       ) : null}
     </aside>
   );
-}
-
-function countActiveJobs(tenantJobs: Readonly<Record<string, TenantJobsView>>): number {
-  let count = 0;
-  for (const tenant of Object.values(tenantJobs)) {
-    for (const jobId of tenant.jobOrder) {
-      const status = tenant.jobs[jobId]?.status;
-      if (status && !isTerminalJobStatus(status)) count += 1;
-    }
-  }
-  return count;
 }

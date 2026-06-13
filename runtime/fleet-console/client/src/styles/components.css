@@ -259,6 +259,16 @@
   list-style: none;
 }
 
+.session-item {
+  border-radius: var(--radius-lg);
+}
+
+.session-item.is-active {
+  padding-bottom: var(--space-2);
+  border: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-mid) 45%, transparent);
+}
+
 .session-row {
   display: flex;
   align-items: center;
@@ -282,6 +292,11 @@
 .session-row.is-active {
   border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, var(--ink-mid));
+}
+
+.session-row .tenant-count {
+  border-color: color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
+  color: var(--aurora);
 }
 
 .sidebar-error {
@@ -361,6 +376,15 @@
 }
 
 .job-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-job-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
