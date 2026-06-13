@@ -217,6 +217,21 @@
     ],
     "updated": "2026-05-23T12:39:41.016Z"
   },
+  "prd-fleet-cli-native-terminal-exclusive-mode": {
+    "path": "wiki/prd-fleet-cli-native-terminal-exclusive-mode.md",
+    "title": "PRD: fleet-cli native terminal exclusive mode 및 전역 단축키/모드 폐기",
+    "tags": [
+      "decision-history",
+      "fleet-cli",
+      "native-terminal",
+      "exclusive-mode",
+      "keyboard",
+      "mouse",
+      "pty",
+      "cognitive-debt"
+    ],
+    "updated": "2026-06-13T07:11:05.945Z"
+  },
   "prd-fleet-cli-update-mechanism": {
     "path": "wiki/prd-fleet-cli-update-mechanism.md",
     "title": "PRD: fleet-cli 자동 업데이트 체크 및 설치 메커니즘",
