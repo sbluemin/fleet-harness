@@ -22,6 +22,8 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 - `<draft>` — `true` | `false`. Optional. Default `false`.
 - `<scope_hint>` — Optional. Free-form note restricting review-fix scope (e.g., "only Codex P1/P2"). If omitted, default to "every actionable, unresolved review comment on the PR".
 - `<review_poll_interval>` — Optional. Cadence for the Codex review wait loop (e.g., `5m`). If omitted, default `5m`.
+- `<repo>` — `owner/name` slug. Optional. If omitted, infer from `gh repo view --json nameWithOwner` (must be `sbluemin/fleet-harness`).
+- `<pr_number>` — Target PR number. When entering at Phase 1 it is produced by Phase 2 (PR creation). When **resuming** at Phase 3/4/5 for an already-open PR it is **required** — if absent, resolve it from the current branch via `gh pr view --json number,headRefName` before polling. `<headRefName>` (the PR head branch) is recorded alongside it and is the only branch Phases 4–5 push to.
 
 ## Goal
 
@@ -80,13 +82,14 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
    EOF
    )" $( [ "$draft" = "true" ] && echo "--draft" )
    ```
-5. Capture the PR number and URL.
+5. Record the PR identity for the rest of the workflow: `<pr_number>` (number), `<repo>`, the PR URL, and `<headRefName>` (= `<head>`, the only branch Phases 4–5 push to). These are the target for Phases 3–6.
 
 ### Phase 3 — Await the Codex review (auto-polled)
 
 The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **arms the wait loop itself** — never ask the Admiral to run `/loop` by hand; automating the wait is the whole point of this workflow.
 
-1. **Arm the poll automatically.** On first entry to Phase 3, call `CronCreate` directly with `cron: "*/5 * * * *"` (or the cadence implied by `<review_poll_interval>`), `recurring: true`, and a `prompt` that re-enters this skill at Phase 3 for `<pr_number>` — e.g. `"Resume pr-workflow Phase 3 for PR <pr_number> on <repo>: check Codex review state and act per the skill."`. Report the armed job ID. Do not block; the cron tick re-invokes the check. Arm exactly once — on later ticks, if a poll job already exists for this PR, do not arm a second.
+0. **Ensure PR metadata.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them.
+1. **Arm the poll automatically.** On first entry to Phase 3, call `CronCreate` directly with `cron: "*/5 * * * *"` (or the cadence implied by `<review_poll_interval>`), `recurring: true`, and a `prompt` that re-enters this skill at Phase 3 carrying `<pr_number>` and `<repo>` explicitly — e.g. `"Resume pr-workflow Phase 3 for PR <pr_number> on <repo>: check Codex review state and act per the skill."`. Report the armed job ID. Do not block; the cron tick re-invokes the check. Arm exactly once — on later ticks, if a poll job already exists for this PR, do not arm a second.
 2. On each check (first entry and every tick), read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; and the **approval signal** — Codex reactions on the PR body: `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`.
 3. **Approval = completion.** When `chatgpt-codex-connector[bot]` leaves a `+1` reaction on the PR body **and** there are no new actionable review comments, the workflow is complete — go to Phase 6. A bare `eyes` reaction means the review is still in progress (pending), not approval.
 4. If new actionable feedback exists, go to Phase 4. If neither (still pending — e.g. only `eyes`, or no reaction yet), do nothing this tick and let the next cron tick check again.
