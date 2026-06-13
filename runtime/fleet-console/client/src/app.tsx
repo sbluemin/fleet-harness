@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { fetchTerminalSessions } from "./api.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
+import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
 import { startObserverConnection } from "./connection.js";
 import { useConsoleState } from "./hooks/use-store.js";
@@ -42,7 +43,7 @@ export function App() {
 
   return (
     <div className="console-shell">
-      <Topbar connection={state.connection} connectionError={state.connectionError} />
+      <Topbar connectionError={state.connectionError} />
       <Routes>
         <Route path="/" element={<Welcome state={state} />} />
         <Route path="/operations" element={<Operations state={state} />} />
@@ -50,6 +51,12 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ShellOverlay state={state} />
+      <Toast
+        open={state.connectionError !== null}
+        tone="error"
+        title="Console link interrupted"
+        message={state.connectionError ?? undefined}
+      />
     </div>
   );
 }

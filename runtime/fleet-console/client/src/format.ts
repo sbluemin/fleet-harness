@@ -22,6 +22,11 @@ export function compactPath(cwd: string): string {
   return `…/${segments.slice(-2).join("/")}`;
 }
 
+export function formatCarrierName(carrierId: string): string {
+  if (!carrierId) return carrierId;
+  return carrierId.charAt(0).toUpperCase() + carrierId.slice(1);
+}
+
 export function describeJobStatus(status: string): string {
   switch (status) {
     case "active":

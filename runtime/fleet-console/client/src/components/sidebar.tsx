@@ -1,7 +1,7 @@
 import { memo } from "react";
 
 import { createTerminalSession, pickTerminalFolder } from "../api.js";
-import { describeJobStatus, formatClock, shortJobId, statusTone } from "../format.js";
+import { describeJobStatus, formatCarrierName, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { SessionJob } from "../store.js";
@@ -78,6 +78,8 @@ export function Sidebar({ state }: SidebarProps) {
 const SessionEntry = memo(function SessionEntry({ session, active, jobs, selectedJobId }: SessionEntryProps) {
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
   const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
+  // 진행 중인 잡을 위로, 완료(terminal)된 잡을 아래로 모은다. 안정 정렬이라 그룹 내부 등록 순서는 그대로 유지된다.
+  const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
   return (
     <li className={`session-item ${active ? "is-active" : ""}`}>
       <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
@@ -90,8 +92,8 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
       </button>
       {active ? (
         <ol className="session-job-list">
-          {jobs.length > 0 ? (
-            jobs.map(({ job }) => <JobEntry key={job.jobId} job={job} active={job.jobId === selectedJobId} />)
+          {orderedJobs.length > 0 ? (
+            orderedJobs.map(({ job }) => <JobEntry key={job.jobId} job={job} active={job.jobId === selectedJobId} />)
           ) : (
             <li className="job-list-empty">No carrier jobs in this session.</li>
           )}
@@ -115,7 +117,7 @@ const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
         <span className="job-row-text">
           <span className="job-row-label">{job.label ?? shortJobId(job.jobId)}</span>
           <span className="job-row-meta">
-            {describeJobStatus(job.status)} · {formatClock(job.updatedAt)}
+            {job.ownerCarrierId ? `${formatCarrierName(job.ownerCarrierId)} · ${describeJobStatus(job.status)}` : describeJobStatus(job.status)}
           </span>
         </span>
       </button>

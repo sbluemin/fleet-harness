@@ -70,6 +70,18 @@
   height: 22px;
 }
 
+/* 연결 이상(connectionError) 시 브랜드 시질을 coral 경보색으로 전환한다 — 무한 모션은 쓰지 않고 색만 바꾼다 */
+.topbar-sigil.is-alert {
+  border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  background:
+    radial-gradient(circle at 32% 24%, var(--coral-glow), transparent 68%),
+    var(--surface-glass-strong);
+  color: var(--coral);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--coral) 24%, transparent),
+    0 12px 32px -16px var(--coral-glow);
+}
+
 .topbar-title {
   margin: 0;
   color: var(--ink-pearl);
@@ -93,7 +105,6 @@
   gap: var(--space-4);
 }
 
-.connection-chip,
 .sidebar-eyebrow,
 .job-summary-eyebrow,
 .job-meta,
@@ -119,25 +130,6 @@
   font-family: var(--font-mono);
 }
 
-.connection-chip {
-  display: inline-flex;
-  align-items: center;
-  max-width: min(42vw, 420px);
-  gap: var(--space-2);
-  overflow: hidden;
-  padding: 6px var(--space-3);
-  border: 1px solid var(--surface-rim);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--ink-mid) 78%, transparent);
-  color: var(--ink-fog);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.connection-dot,
 .status-dot,
 .tenant-beacon {
   width: 8px;
@@ -147,31 +139,11 @@
   background: var(--ink-rim);
 }
 
-.connection-chip--live {
-  border-color: color-mix(in oklch, var(--aurora) 46%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 12%, var(--surface-glass));
-  color: var(--aurora);
-}
-
-.connection-chip--live .connection-dot,
 .status-dot--live,
 .tenant-beacon.is-live {
   background: var(--aurora);
   box-shadow: 0 0 12px var(--aurora-glow);
   animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-/* 연결 시도는 live가 아니다 — aurora 금지, warn 톤으로 진행 중만 알린다 */
-.connection-chip--connecting .connection-dot {
-  background: var(--warn);
-  box-shadow: 0 0 12px var(--warn-glow);
-  animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-.connection-chip--connecting {
-  border-color: color-mix(in oklch, var(--warn) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--warn) 10%, var(--surface-glass));
-  color: var(--warn);
 }
 
 .status-dot--lg {
@@ -180,8 +152,8 @@
 }
 
 .status-dot--ok {
-  background: var(--brass-bright);
-  box-shadow: 0 0 9px var(--brass-glow);
+  background: var(--positive);
+  box-shadow: 0 0 9px var(--positive-glow);
 }
 
 .status-dot--bad {
@@ -1586,6 +1558,113 @@
   }
 }
 
+/* 토스트 — 우하단 고정 알림 스택. 재사용 컴포넌트(toast.tsx)가 렌더하며, tone으로 색을 바꾼다 */
+.app-toast-host {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: min(92vw, 380px);
+  pointer-events: none;
+}
+
+.app-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--shadow-floating);
+  pointer-events: auto;
+  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
+}
+
+.app-toast--error {
+  border-color: color-mix(in oklch, var(--coral) 44%, var(--surface-rim));
+}
+
+.app-toast--warn {
+  border-color: color-mix(in oklch, var(--warn) 44%, var(--surface-rim));
+}
+
+.app-toast--info {
+  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
+}
+
+.app-toast-dot {
+  margin-top: 5px;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--ink-rim);
+}
+
+.app-toast--error .app-toast-dot {
+  background: var(--coral);
+  box-shadow: 0 0 10px var(--coral-glow);
+}
+
+.app-toast--warn .app-toast-dot {
+  background: var(--warn);
+  box-shadow: 0 0 10px var(--warn-glow);
+}
+
+.app-toast--info .app-toast-dot {
+  background: var(--aurora);
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+.app-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-toast-title {
+  margin: 0;
+  color: var(--ink-pearl);
+  font-size: 12.5px;
+  font-weight: 640;
+}
+
+.app-toast-message {
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.app-toast-close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  margin: -2px -4px 0 auto;
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  font-size: 16px;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.app-toast-close:hover {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--ink-fog) 14%, transparent);
+}
+
 @media (max-width: 760px) {
   .topbar {
     align-items: flex-start;
@@ -1597,10 +1676,6 @@
   .topbar-meta {
     width: 100%;
     justify-content: space-between;
-  }
-
-  .connection-chip {
-    max-width: 62vw;
   }
 
   .job-head {

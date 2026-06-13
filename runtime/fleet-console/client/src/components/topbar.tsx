@@ -1,10 +1,8 @@
 import { Link, NavLink } from "react-router-dom";
 
 import { toggleShell } from "../store.js";
-import type { ConnectionState } from "../types.js";
 
 interface TopbarProps {
-  readonly connection: ConnectionState;
   readonly connectionError: string | null;
 }
 
@@ -15,22 +13,19 @@ interface NavItem {
   readonly icon: "operations" | "codex";
 }
 
-const CONNECTION_LABELS: Readonly<Record<ConnectionState, string>> = {
-  connecting: "connecting",
-  live: "live",
-};
-
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operations", end: false, icon: "operations" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
 ];
 
-export function Topbar({ connection, connectionError }: TopbarProps) {
+export function Topbar({ connectionError }: TopbarProps) {
+  // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
+  const alert = connectionError !== null;
   return (
     <header className="topbar">
       <Link className="topbar-brand" to="/" aria-label="Welcome으로 이동">
-        <span className="topbar-sigil" aria-hidden="true">
+        <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={connectionError ?? undefined}>
           <svg viewBox="0 0 16 16" width="16" height="16">
             <path d="M8 1.8 9.5 6.5 14.2 8 9.5 9.5 8 14.2 6.5 9.5 1.8 8 6.5 6.5Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
             <path d="M8 4.7 8.7 7.3 11.3 8 8.7 8.7 8 11.3 7.3 8.7 4.7 8 7.3 7.3Z" fill="currentColor" />
@@ -60,10 +55,6 @@ export function Topbar({ connection, connectionError }: TopbarProps) {
           <ShellIcon />
           <span>Shell</span>
         </button>
-        <span className={`connection-chip connection-chip--${connection}`} title={connectionError ?? undefined}>
-          <span className="connection-dot" aria-hidden="true" />
-          {connectionError ? `${CONNECTION_LABELS[connection]} · ${connectionError}` : CONNECTION_LABELS[connection]}
-        </span>
       </div>
     </header>
   );

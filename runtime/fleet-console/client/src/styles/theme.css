@@ -23,6 +23,9 @@
   --coral-glow: oklch(72% 0.17 25 / 22%);
   --warn: oklch(80% 0.13 85);
   --warn-glow: oklch(80% 0.13 85 / 22%);
+  /* positive: 완료/성공 신호용 에메랄드 그린 — aurora(살아있음)·brass(보는 곳)와 의미가 겹치지 않는 별도 축 */
+  --positive: oklch(80% 0.15 152);
+  --positive-glow: oklch(80% 0.15 152 / 24%);
 
   --surface-glass: oklch(28% 0.04 248 / 60%);
   --surface-glass-strong: oklch(32% 0.04 248 / 78%);
