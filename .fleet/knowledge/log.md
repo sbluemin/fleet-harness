@@ -3667,3 +3667,111 @@
 - result: `accepted`
 - target: `wiki/guide-006-maritime-codex-design-language.md`
 
+## 2026-06-13T05:34:15.691Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-13T07:05:00.163Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-13T07:06:36.217Z — raw source added
+
+- id: `prd-fleet-cli-native-terminal-exclusive-mode-source`
+- raw_source_ref: `raw/2026-06-13-prd-fleet-cli-native-terminal-exclusive-mode-source-f2d75ca1.md`
+- source_type: `inline`
+- tag_count: `8`
+- title: `PRD: fleet-cli native terminal exclusive mode 및 전역 단축키/모드 폐기`
+
+## 2026-06-13T07:06:36.235Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-13T07-06-36-206Z-d3cd0079`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-13-prd-fleet-cli-native-terminal-exclusive-mode-source-f2d75ca1.md`
+- target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
+- warning_count: `0`
+
+## 2026-06-13T07:06:39.530Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-13T07:10:12.052Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `e1b566a9`
+- patch_id: `2026-06-13T07-06-36-206Z-d3cd0079`
+- previous_hash: `bf4c43a1`
+- target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
+
+## 2026-06-13T07:10:19.377Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `9aba96e6`
+- patch_id: `2026-06-13T07-06-36-206Z-d3cd0079`
+- previous_hash: `e1b566a9`
+- target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
+
+## 2026-06-13T07:10:43.513Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `7348a6bf`
+- patch_id: `2026-06-13T07-06-36-206Z-d3cd0079`
+- previous_hash: `9aba96e6`
+- target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
+
+## 2026-06-13T07:10:46.960Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-13T07:11:05.948Z — patch edited
+
+- body_replacements: `1`
+- changed_fields: `body, updated`
+- next_hash: `297f7c09`
+- patch_id: `2026-06-13T07-06-36-206Z-d3cd0079`
+- previous_hash: `7348a6bf`
+- target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
+
+## 2026-06-13T07:11:09.205Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-13T07:11:42.603Z — index rebuilt
+
+- entry_count: `27`
+
+## 2026-06-13T07:11:42.604Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-13T07-06-36-206Z-d3cd0079`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-13-prd-fleet-cli-native-terminal-exclusive-mode-source-f2d75ca1.md`
+- result: `accepted`
+- target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
+

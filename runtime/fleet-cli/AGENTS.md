@@ -1,6 +1,6 @@
 # Fleet CLI Doctrine
 
-`runtime/fleet-cli` is the primary Fleet CLI entry point (`fleet`) that embeds a local CLI process inside a permanent vertical two-pane Fleet TUI.
+`runtime/fleet-cli` is the primary Fleet CLI entry point (`fleet`). The default boot path embeds a local CLI process inside a vertical two-pane Fleet TUI; `fleet --native` is the terminal-exclusive exception.
 
 ## Package Identity & Boundary
 
@@ -23,7 +23,7 @@ Direct dependencies on execution-engine internals or deep implementation files a
 
 ## Canonical Layout
 
-Only the permanent vertical two-pane layout is allowed:
+The default app uses the permanent vertical two-pane layout:
 
 - **Agent CLI PTY**: Upper pane. Hosted by Mission Control as the default upper interaction layer.
 - **Fleet PTY**: Lower pane.
@@ -39,24 +39,26 @@ Only the permanent vertical two-pane layout is allowed:
 - **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
 - **Controls barrel**: `src/controls/index.ts` is an explicit package-local barrel; it is not a public workspace surface.
 - **Process runtime**: `src/process/` owns cross-subsystem binary resolution and Windows shim wrapping; shared by update and agent-cli subsystems.
+- **Native-terminal exception**: `fleet --native` / internal `nativeTerminal` starts with Mission Control only, stops the Fleet TUI during launch, then runs the selected child inside a dedicated node-pty raw byte passthrough. The child owns the PTY while Fleet stays on the master side to relay stdin/stdout bytes directly and inject mid-session carrier result reminders through programmatic input. After child exit, Fleet resumes Mission Control. This path creates no lower Fleet PTY, Mission Bridge, Job Bar, xterm-backed selected-child viewport, or encoded `PtyHost` for the selected child.
 
-## Input & Mode Logic
+## Input Ownership
 
-- `MIRROR` mode forwards Fleet PTY keystrokes to the Agent CLI PTY.
-- `DEDICATED` mode gives exclusive control to the Agent CLI PTY.
-- `Ctrl+T` toggles between modes.
-- The Fleet PTY owns no visible text input.
+- The old Fleet input mode system is retired. There is no mode toggle and no Fleet-owned global `Ctrl+C`, `Ctrl+Q`, or `Ctrl+T` shortcut.
+- Before launch, operator keyboard input belongs to Mission Control launcher and panel controls.
+- After launch in the default two-pane path, operator keyboard input belongs to the active embedded Agent CLI PTY.
+- After launch in `fleet --native`, operator keyboard input is relayed as raw bytes to the foreground child process that owns the dedicated native PTY.
+- Fleet process exit is driven by launcher Exit selection, child process/PTY lifecycle, or process lifecycle cleanup signals; do not add a Fleet global exit shortcut.
 - **Mouse forwarding (Option C)**: Outer terminal motion is enabled via `?1000h?1002h?1006h`. When the active child is in app-mouse mode, press/motion/release/wheel events are forwarded as raw SGR sequences in local coordinates. Non-app-mouse events fall back to viewport scrollback or alt-buffer arrow navigation.
+- **Native terminology**: CLI `--native` / `nativeTerminal` means terminal-exclusive boot. It is unrelated to Fleet persona injection — dedicated CLIs now always launch with the persona injected, since the former `SessionOptions.native` / `FLEET_NATIVE` injection-skip mode was removed in #46.
 
 ## Host Cursor Policy
 
 Outer-terminal cursor sync policy is owned here; `src/tui/` supplies the local renderer and generic anchor primitives (`getCursorAnchor`, `setCursorAnchorTarget`, `cursorSyncEnabled`, post-flush `requestRender` callback).
 
-- **Policy sync**: `createCursorPolicySync()` in `src/controls/render.ts` runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Dedicated PTY view in `MIRROR`/`DEDICATED` when cursor sync is on, mode-toggle suppression is off, the Fleet PTY has no active overlay, and the Mission Control has no active panel; otherwise the target is cleared.
+- **Policy sync**: `createCursorPolicySync()` in `src/controls/render.ts` runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Agent CLI PTY view when cursor sync is on, the Fleet PTY has no active overlay, and Mission Control has no active panel; otherwise the target is cleared.
 - **Windows Claude Code compatibility**: Native Windows (`process.platform === "win32"`) auto-clears the cursor anchor target for Claude-family Agent CLI profiles unless cursor sync was explicitly enabled with `FLEET_CURSOR_SYNC=1`/`true`/`yes`/`on`.
-- **Mode-toggle suppression**: `Ctrl+T` clears the target and schedules one hidden render frame; policy resumes in the renderer post-flush `afterRender` callback (`scheduleRender` → `ui.requestRender(..., callback)`), then a follow-up render — not via independent timer chains.
 - **Off-switch** (read-only env; do not mutate `process.env`): `RunAppOptions.cursorSync` (default on), CLI `--disable-cursor-sync`, and `FLEET_CURSOR_SYNC=0` or `false` parsed in `cli-args.ts` and passed through `index.ts`.
-- **Boundary**: IME/terminal compatibility decisions and overlay/mode gating stay in this package; do not push host policy into generic `src/tui` renderer or anchor types.
+- **Boundary**: IME/terminal compatibility decisions and overlay gating stay in this package; do not push host policy into generic `src/tui` renderer or anchor types.
 
 ## Development & Execution
 

@@ -17,6 +17,27 @@ export interface MissionControlCliOption {
   readonly label: string;
 }
 
+export interface MissionControlEmbeddedLaunch {
+  readonly cleanup?: () => void;
+  readonly host: PtyHost;
+  readonly profile: AgentCliProfile;
+  readonly view: PtyView;
+}
+
+export interface MissionControlLaunchProfileOptions {
+  readonly cols: number;
+  readonly createPtyHost: (profile: PtyLaunchProfile) => PtyHost;
+  readonly createPtyView: (cols: number, rows: number) => PtyView;
+  readonly onActive: (launch: MissionControlEmbeddedLaunch) => void;
+  readonly onExit: (event: PtyExitEvent) => void;
+  readonly onNativeActive: (profile: AgentCliProfile) => void;
+  readonly onRenderRequest: () => void;
+  readonly profile: AgentCliProfile;
+  readonly rows: number;
+}
+
+export type MissionControlLaunchProfile = (options: MissionControlLaunchProfileOptions) => Promise<void> | void;
+
 export type { FleetCliRelease, MissionControlCounts };
 
 export interface MissionControlStateSnapshot {
@@ -74,6 +95,7 @@ export interface CreateMissionControlControllerOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly injectProfile: (profile: AgentCliProfile, launchOptions?: SessionOptions) => Promise<AgentCliProfile>;
   readonly invocationCwd?: string;
+  readonly launchProfile?: MissionControlLaunchProfile;
   readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet: () => void;
   readonly onRenderRequest: () => void;

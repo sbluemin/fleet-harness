@@ -32,15 +32,15 @@ interface FrameBuffer {
 }
 
 type TerminalRestore = () => void;
-type TerminalSignal = "SIGINT" | "SIGTERM";
+type TerminalSignal = "SIGHUP" | "SIGTERM";
 type RenderCallback = () => void;
 
 const DEFAULT_RENDER_INTERVAL_MS = 16;
-const TERMINAL_SIGNALS: readonly TerminalSignal[] = ["SIGINT", "SIGTERM"];
+const TERMINAL_SIGNALS: readonly TerminalSignal[] = ["SIGTERM", "SIGHUP"];
 const activeTerminalRestores = new Set<TerminalRestore>();
 const processSignalHandlers: Record<TerminalSignal, () => void> = {
-  SIGINT: () => {
-    handleProcessSignal("SIGINT");
+  SIGHUP: () => {
+    handleProcessSignal("SIGHUP");
   },
   SIGTERM: () => {
     handleProcessSignal("SIGTERM");

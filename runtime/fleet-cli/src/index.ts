@@ -9,6 +9,7 @@ import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { runApp } from "./app.js";
 import { buildFleetHelpText, parseFleetCliOptions, parseFleetHookCommand } from "./cli-args.js";
 import { runSubagentsContextHook } from "./hooks/subagents-context.js";
+import { runNativeApp } from "./native-app.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 
 const HELP_HINT = "Run 'fleet --help' for usage.";
@@ -70,7 +71,9 @@ if (options.help) {
   process.exit(0);
 }
 
-runApp({
+const runFleetApp = options.nativeTerminal ? runNativeApp : runApp;
+
+runFleetApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
   pluginAssetsDir: PLUGIN_ASSETS_DIR,

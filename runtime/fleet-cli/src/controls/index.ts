@@ -1,4 +1,4 @@
-export { assertInputContract, toggleFleetInputMode } from "./input/contract.js";
+export { assertInputContract } from "./input/contract.js";
 export { createInputKeybindingConfig, createKeybindingRegistry } from "./input/keybindings.js";
 export { createProgrammaticInput } from "./input/programmatic.js";
 export { createInputRouter } from "./input/router.js";
@@ -25,7 +25,6 @@ export type { CsiUInputNormalizer } from "./pty/csi-u.js";
 export type { KeyboardProtocol } from "./pty/keyboard.js";
 export type {
   Component,
-  FleetInputMode,
   FleetPtyApi,
   FleetPtyCustomFactory,
   FleetPtyCustomOptions,

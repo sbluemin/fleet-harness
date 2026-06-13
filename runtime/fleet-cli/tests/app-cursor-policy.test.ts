@@ -17,10 +17,9 @@ describe("app cursor policy", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps mode-toggle cursor suppression through exactly one flushed render", async () => {
+  it("flushes queued render callbacks after the scheduled render", async () => {
     const renderedFrames: string[] = [];
     let cursorTarget: "visible" | undefined = "visible";
-    let modeToggleSuppressed = false;
     const ui = {
       requestRender(_force = false, afterRender?: () => void): void {
         setTimeout(() => {
@@ -30,29 +29,26 @@ describe("app cursor policy", () => {
       },
     };
     const syncCursorPolicy = () => {
-      cursorTarget = modeToggleSuppressed ? undefined : "visible";
+      cursorTarget = "visible";
     };
     const scheduleRender = createRenderScheduler(ui, syncCursorPolicy);
-    const onModeChange = () => {
-      modeToggleSuppressed = true;
+    const queueHiddenFrame = () => {
       cursorTarget = undefined;
       scheduleRender(() => {
-        modeToggleSuppressed = false;
         syncCursorPolicy();
         ui.requestRender();
       });
     };
 
-    onModeChange();
+    queueHiddenFrame();
     await vi.advanceTimersByTimeAsync(RENDER_THROTTLE_MS);
     expect(renderedFrames).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(RENDER_THROTTLE_MS);
-    expect(renderedFrames).toEqual([HIDDEN_CURSOR_FRAME]);
-    expect(modeToggleSuppressed).toBe(false);
+    expect(renderedFrames).toEqual([VISIBLE_CURSOR_FRAME]);
 
     await vi.advanceTimersByTimeAsync(RENDER_THROTTLE_MS + 1);
-    expect(renderedFrames).toEqual([HIDDEN_CURSOR_FRAME, VISIBLE_CURSOR_FRAME]);
+    expect(renderedFrames).toEqual([VISIBLE_CURSOR_FRAME, VISIBLE_CURSOR_FRAME]);
   });
 
   it("clears cursor target while a Mission Control panel is active", () => {
@@ -61,9 +57,7 @@ describe("app cursor policy", () => {
     const syncCursorPolicy = createCursorPolicySync({
       cursorSync: true,
       fleetPty: { hasActiveOverlay: () => false },
-      getMode: () => "DEDICATED",
       hasActiveMissionControlPanel: () => true,
-      isModeToggleSuppressed: () => false,
       ptyView,
       ui: {
         setCursorAnchorTarget(target: unknown): void {
@@ -151,9 +145,7 @@ function runCursorPolicy(options: {
     cursorSyncExplicitlyEnabled: options.cursorSyncExplicitlyEnabled,
     fleetPty: { hasActiveOverlay: () => false },
     getActiveAgentProfileId: options.getActiveAgentProfileId,
-    getMode: () => "DEDICATED",
     hasActiveMissionControlPanel: () => false,
-    isModeToggleSuppressed: () => false,
     ptyView: options.ptyView,
     ui: {
       setCursorAnchorTarget(target: unknown): void {

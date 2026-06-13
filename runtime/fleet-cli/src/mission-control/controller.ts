@@ -17,16 +17,25 @@ import type {
   CreateMissionControlControllerOptions,
   MissionControlCliOption,
   MissionControlController,
+  MissionControlEmbeddedLaunch,
+  MissionControlLaunchProfileOptions,
   MissionControlPanel,
   MissionControlPtyView,
   MissionControlShimmerTimer,
   MissionControlStateKind,
 } from "./types.js";
 
+interface ActiveNative {
+  readonly cleanup?: () => void;
+  readonly profile: AgentCliProfile;
+  readonly terminalExclusive: true;
+}
+
 interface ActivePty {
   readonly cleanup?: () => void;
   readonly host: PtyHost;
   readonly profile: AgentCliProfile;
+  readonly terminalExclusive?: false;
   readonly view: PtyView;
 }
 
@@ -50,6 +59,8 @@ type MissionControlControllerWithReleaseSetter = MissionControlController & {
   readonly setRelease: (release: NonNullable<CreateMissionControlControllerOptions["release"]>) => void;
 };
 
+type ActiveLaunch = ActiveNative | ActivePty;
+
 const EMPTY_MOUSE_PROTOCOL_STATE: MouseProtocolState = {
   activeEncoding: "default",
   activeProtocol: "none",
@@ -70,7 +81,7 @@ export function createMissionControlController(options: CreateMissionControlCont
   let lastExit: PtyExitEvent | undefined;
   let lastLaunchError: string | undefined;
   let lastLaunchWarning: string | undefined;
-  let active: ActivePty | undefined;
+  let active: ActiveLaunch | undefined;
   let activePanel: MissionControlPanel | undefined;
   let cols = 80;
   let rows = 0;
@@ -87,10 +98,10 @@ export function createMissionControlController(options: CreateMissionControlCont
       if (activePanel !== undefined || state !== "active") {
         return null;
       }
-      return active?.view.getCursorAnchor(width) ?? null;
+      return isActivePty(active) ? active.view.getCursorAnchor(width) : null;
     },
     handleInput(data: string): void {
-      if (state === "active" && active !== undefined) {
+      if (state === "active" && isActivePty(active)) {
         active.host.write(data);
         return;
       }
@@ -98,13 +109,15 @@ export function createMissionControlController(options: CreateMissionControlCont
     },
     invalidate(): void {
       activePanel?.component.invalidate();
-      active?.view.invalidate();
+      if (isActivePty(active)) {
+        active.view.invalidate();
+      }
     },
     isAlternateBufferActive(): boolean {
-      return active?.view.isAlternateBufferActive() ?? false;
+      return isActivePty(active) ? active.view.isAlternateBufferActive() : false;
     },
     render(width: number): string[] {
-      if (state === "active" && active !== undefined) {
+      if (state === "active" && isActivePty(active)) {
         return normalizeRenderedRows(active.view.render(width), rows);
       }
       if (activePanel === undefined) {
@@ -141,34 +154,40 @@ export function createMissionControlController(options: CreateMissionControlCont
     resize(nextCols: number, nextRows: number): void {
       cols = nextCols;
       rows = nextRows;
-      active?.view.resize(nextCols, nextRows);
+      if (isActivePty(active)) {
+        active.view.resize(nextCols, nextRows);
+      }
     },
     scrollLines(delta: number): boolean {
       if (activePanel !== undefined) {
         return false;
       }
-      return active?.view.scrollLines(delta) ?? false;
+      return isActivePty(active) ? active.view.scrollLines(delta) : false;
     },
   };
 
   const ptyHost: PtyHost = {
-    getMouseProtocol: () => active?.host.getMouseProtocol?.() ?? EMPTY_MOUSE_PROTOCOL_STATE,
+    getMouseProtocol: () => isActivePty(active) ? active.host.getMouseProtocol?.() ?? EMPTY_MOUSE_PROTOCOL_STATE : EMPTY_MOUSE_PROTOCOL_STATE,
     kill(): void {
       suppressNextExit = true;
       stopShimmer();
       const current = active;
-      current?.host.kill();
+      if (isActivePty(current)) {
+        current.host.kill();
+      }
       current?.cleanup?.();
       active = undefined;
     },
     onData(): void {},
     onExit(): void {},
     resize(nextCols: number, nextRows: number): void {
-      active?.host.resize(nextCols, nextRows);
+      if (isActivePty(active)) {
+        active.host.resize(nextCols, nextRows);
+      }
     },
     start(): void {},
     write(data: string): void {
-      if (state === "active" && active !== undefined) {
+      if (state === "active" && isActivePty(active)) {
         active.host.write(data);
         return;
       }
@@ -251,28 +270,18 @@ export function createMissionControlController(options: CreateMissionControlCont
       const profile = await options.injectProfile(baseProfile, launchOptions);
       lastLaunchWarning = profile.launchWarnings?.[0];
       pendingCleanup = profile.cleanup;
-      const host = options.createPtyHost(profile);
-      const view = (options.createPtyView ?? ((viewCols, viewRows) => new PtyView(viewCols, viewRows)))(cols, rows);
-      active = { cleanup: profile.cleanup, host, profile, view };
-      state = "active";
-      stopShimmer();
-      suppressNextExit = false;
-      host.onData((chunk) => view.append(chunk, options.onRenderRequest));
-      host.onExit((event) => {
-        active?.cleanup?.();
-        if (suppressNextExit) {
-          suppressNextExit = false;
-          return;
-        }
-        active = undefined;
-        lastExit = event;
-        lastLaunchError = undefined;
-        lastLaunchWarning = undefined;
-        state = isFailedExit(event) ? "failed" : "ended";
-        startShimmer();
-        options.onRenderRequest();
+      const launchProfile = options.launchProfile ?? launchEmbeddedProfile;
+      await launchProfile({
+        cols,
+        createPtyHost: options.createPtyHost,
+        createPtyView: options.createPtyView ?? ((viewCols, viewRows) => new PtyView(viewCols, viewRows)),
+        onActive: setActiveEmbeddedLaunch,
+        onExit: completeActiveLaunch,
+        onNativeActive: setActiveNativeLaunch,
+        onRenderRequest: options.onRenderRequest,
+        profile,
+        rows,
       });
-      host.start({ cols, rows });
       pendingCleanup = undefined;
       closePanel();
     } catch (error) {
@@ -378,9 +387,42 @@ export function createMissionControlController(options: CreateMissionControlCont
 
   /** Writes data directly to the active child PTY, bypassing panel input routing. */
   function writeChildInput(data: string): void {
-    if (state === "active" && active !== undefined) {
+    if (state === "active" && isActivePty(active)) {
       active.host.write(data);
     }
+  }
+
+  function setActiveEmbeddedLaunch(launch: MissionControlEmbeddedLaunch): void {
+    active = launch;
+    state = "active";
+    stopShimmer();
+    suppressNextExit = false;
+  }
+
+  function setActiveNativeLaunch(profile: AgentCliProfile): void {
+    active = {
+      cleanup: profile.cleanup,
+      profile,
+      terminalExclusive: true,
+    };
+    state = "active";
+    stopShimmer();
+    suppressNextExit = false;
+  }
+
+  function completeActiveLaunch(event: PtyExitEvent): void {
+    active?.cleanup?.();
+    if (suppressNextExit) {
+      suppressNextExit = false;
+      return;
+    }
+    active = undefined;
+    lastExit = event;
+    lastLaunchError = undefined;
+    lastLaunchWarning = undefined;
+    state = isFailedExit(event) ? "failed" : "ended";
+    startShimmer();
+    options.onRenderRequest();
   }
 
   function dispose(): void {
@@ -420,6 +462,20 @@ export function createMissionControlController(options: CreateMissionControlCont
     const clearShimmerInterval = options.shimmer?.clearInterval ?? clearDefaultShimmerInterval;
     clearShimmerInterval(timer);
   }
+}
+
+function launchEmbeddedProfile(options: MissionControlLaunchProfileOptions): void {
+  const host = options.createPtyHost(options.profile);
+  const view = options.createPtyView(options.cols, options.rows);
+  options.onActive({
+    cleanup: options.profile.cleanup,
+    host,
+    profile: options.profile,
+    view,
+  });
+  host.onData((chunk) => view.append(chunk, options.onRenderRequest));
+  host.onExit(options.onExit);
+  host.start({ cols: options.cols, rows: options.rows });
 }
 
 function clearDefaultShimmerInterval(timer: MissionControlShimmerTimer): void {
@@ -662,6 +718,10 @@ function formatSystemPromptOption(sessionOptions: CreateMissionControlController
 
 function isFailedExit(event: PtyExitEvent): boolean {
   return (event.exitCode !== undefined && event.exitCode !== 0) || (event.signal !== undefined && event.signal !== 0);
+}
+
+function isActivePty(active: ActiveLaunch | undefined): active is ActivePty {
+  return active !== undefined && active.terminalExclusive !== true;
 }
 
 function normalizeRenderedRows(lines: readonly string[], rows: number): string[] {

@@ -11,6 +11,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Mission Control now includes a gateway status panel showing daemon health, tenant count, and last-seen timestamp.
 - [core] The `fleet console` subcommand and the standalone `fleet-console` binary ensure the gateway daemon and open the Fleet Console in a browser.
 - [core] Fleet Gateway can now be published as a standalone package while Fleet CLI consumes it through a host-injected SDK boundary.
+- [core] Added `fleet --native` boot option to run the selected Agent CLI in terminal-exclusive mode, passing keyboard, mouse, drag, and scroll events natively to the child CLI, skipping the bottom Fleet PTY, and injecting a mid-session reminder into the child session when carrier work completes.
 
 ### Changed
 - [core-unified-agent] Claude Code with Moonshot Kimi now runs the Kimi K2.7 coding model as the default, slot-mapped, and subagent model.
@@ -25,6 +26,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Removed
 - [core] Removed the raw-CLI Native launch mode; dedicated CLIs now always launch with the Fleet persona injected.
 - Removed the `@dotobokuri/core-mcp-server` workspace package; consumers should import generic MCP APIs from `@dotobokuri/core-agent` instead.
+- [core] Removed Fleet global shortcuts (Ctrl+C, Ctrl+Q, Ctrl+T) and the MIRROR/DEDICATED input mode toggle from both native and non-native sessions; Fleet exit is now handled through the launcher Exit action or child CLI termination.
 
 ### Breaking Changes
 - The `@dotobokuri/core-mcp-server` package is no longer published or resolvable; migrate imports to `@dotobokuri/core-agent`.

@@ -2,8 +2,6 @@ import type { Component as PrimitiveComponent, TerminalSize } from "../tui/types
 import type { DesiredHeight, PaneSize, ResizeReason, ResizeRequest } from "../tui/layout/split-pane.js";
 import type { RoutedMouseInput } from "./mouse/parser.js";
 
-export type FleetInputMode = "MIRROR" | "DEDICATED";
-
 export type MouseProtocolName = "none" | "x10" | "vt200" | "drag" | "any";
 export type MouseEncodingName = "default" | "sgr" | "sgr-pixels";
 

@@ -6,10 +6,22 @@ describe("fleet CLI args", () => {
   it("enables cursor sync by default", () => {
     expect(parseFleetCliOptions([], {}).cursorSync).toBe(true);
     expect(parseFleetCliOptions([], {}).cursorSyncExplicitlyEnabled).toBe(false);
+    expect(parseFleetCliOptions([], {}).nativeTerminal).toBe(false);
   });
 
   it("parses the cursor sync disable flag", () => {
     expect(parseFleetCliOptions(["--disable-cursor-sync"], {}).cursorSync).toBe(false);
+  });
+
+  it("parses the native terminal boot flag without changing cursor sync", () => {
+    expect(parseFleetCliOptions(["--native"], {})).toMatchObject({
+      cursorSync: true,
+      nativeTerminal: true,
+    });
+    expect(parseFleetCliOptions(["--native", "--disable-cursor-sync"], {})).toMatchObject({
+      cursorSync: false,
+      nativeTerminal: true,
+    });
   });
 
   it("parses the cursor sync environment off-switch without mutating process.env", () => {
@@ -42,6 +54,8 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("console");
     expect(helpText).toContain("Open Fleet Console in your browser.");
     expect(helpText).toContain("-h, --help");
+    expect(helpText).toContain("--native");
+    expect(helpText).toContain("Run the selected Agent CLI in the real terminal");
     expect(helpText).toContain("--disable-cursor-sync");
     expect(helpText).toContain("Claude Code on Windows defaults to disabled");
     expect(helpText).toContain("FLEET_CURSOR_SYNC=1 to override");

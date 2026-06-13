@@ -1,4 +1,4 @@
-export { assertInputContract, isHostExit, isKeyRelease, isModeToggle, toggleFleetInputMode } from "./input/contract.js";
+export { assertInputContract, isKeyRelease } from "./input/contract.js";
 export { createInputKeybindingConfig, createKeybindingRegistry } from "./input/keybindings.js";
 export { createProgrammaticInput } from "./input/programmatic.js";
 export { createInputRouter } from "./input/router.js";

@@ -28,15 +28,11 @@ export interface CreateKeybindingRegistryDeps {
 }
 
 export interface InputKeybindingConfig {
-  readonly exitKeys: ReadonlySet<string>;
-  readonly modeToggleKeys: ReadonlySet<string>;
   readonly registeredKeybindings: readonly KeybindingRegistration[];
   readonly dispatch: (data: string) => boolean;
 }
 
 export interface CreateInputKeybindingConfigDeps {
-  readonly exitKeys: readonly string[];
-  readonly modeToggleKeys: readonly string[];
   readonly registeredKeybindings?: readonly KeybindingRegistration[];
 }
 
@@ -88,13 +84,9 @@ export function createKeybindingRegistry(
 }
 
 export function createInputKeybindingConfig(deps: CreateInputKeybindingConfigDeps): InputKeybindingConfig {
-  const exitKeys = new Set(deps.exitKeys);
-  const modeToggleKeys = new Set(deps.modeToggleKeys);
   const registeredKeybindings = [...deps.registeredKeybindings ?? []];
 
   return {
-    exitKeys,
-    modeToggleKeys,
     registeredKeybindings,
     dispatch(data): boolean {
       for (const registration of registeredKeybindings) {

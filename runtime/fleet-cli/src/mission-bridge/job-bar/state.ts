@@ -66,7 +66,6 @@ export interface AgentPanelState {
   frame: number;
   modelConfig: Record<string, FooterModelInfo>;
   panelJobs: Map<string, MutablePanelJob>;
-  pendingExitWarning: boolean;
   runs: Map<string, PanelRun>;
   serviceLastUpdatedAt: number | null;
   serviceLoading: boolean;
@@ -92,14 +91,12 @@ export interface JobBarState {
   getJobById(jobId: string): PanelJob | undefined;
   getPanelJobs(): Map<string, MutablePanelJob>;
   getPanelRuns(): Map<string, PanelRun>;
-  getPendingExitWarning(): boolean;
   getRegisteredCarrierCols(): AgentCol[];
   getState(): AgentPanelState;
   handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void;
   isRuntimeBound(): boolean;
   makeFooterCols(): AgentCol[];
   schedulePanelRender(animate: boolean): void;
-  setPendingExitWarning(pending: boolean): void;
   syncColsWithRegisteredOrder(): void;
 }
 
@@ -145,14 +142,12 @@ export function createJobBarState(options: JobBarStateOptions): JobBarState {
     getJobById,
     getPanelJobs,
     getPanelRuns,
-    getPendingExitWarning,
     getRegisteredCarrierCols,
     getState,
     handleCarrierJobStreamEvent,
     isRuntimeBound,
     makeFooterCols,
     schedulePanelRender,
-    setPendingExitWarning,
     syncColsWithRegisteredOrder,
   };
 
@@ -167,7 +162,6 @@ function getState(): AgentPanelState {
       frame: 0,
       modelConfig: {},
       panelJobs: new Map(),
-      pendingExitWarning: false,
       runs: new Map(),
       serviceLastUpdatedAt: null,
       serviceLoading: false,
@@ -220,17 +214,6 @@ function getPanelJobs(): Map<string, MutablePanelJob> {
 
 function getPanelRuns(): Map<string, PanelRun> {
   return getState().runs;
-}
-
-function getPendingExitWarning(): boolean {
-  return getState().pendingExitWarning;
-}
-
-function setPendingExitWarning(pending: boolean): void {
-  const state = getState();
-  if (state.pendingExitWarning === pending) return;
-  state.pendingExitWarning = pending;
-  getJobBarStateBindings().onRenderRequest();
 }
 
 function getActiveJobs(): PanelJob[] {

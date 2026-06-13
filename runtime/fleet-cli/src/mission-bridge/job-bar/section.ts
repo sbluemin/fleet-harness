@@ -29,7 +29,6 @@ class JobBarStripSection implements Component {
       carrierRuntime: this.jobBarState.carrierRuntime,
       frame: state.frame,
       jobs: this.jobBarState.getActiveJobs(),
-      pendingExitWarning: this.jobBarState.getPendingExitWarning(),
       runs: this.jobBarState.getPanelRuns(),
       width,
     });
