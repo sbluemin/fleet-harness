@@ -13,6 +13,7 @@
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
     "check:protocol-sync": "node scripts/check-protocol-sync.mjs",
     "fleet": "pnpm --filter @dotobokuri/core-unified-agent build && pnpm --filter @dotobokuri/fleet-cli dev",
+    "fleet-console": "pnpm --filter @dotobokuri/fleet-gateway build && pnpm --filter @dotobokuri/fleet-console cli",
     "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && pnpm -r build"
   },
   "bin": {

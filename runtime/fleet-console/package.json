@@ -34,6 +34,7 @@
   },
   "scripts": {
     "build": "tsup && vite build --config client/vite.config.ts && node ../fleet-gateway/scripts/embed-console.mjs",
+    "cli": "tsx src/cli.ts",
     "dev": "vite --config client/vite.config.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
@@ -53,6 +54,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "tsup": "^8.5.0",
+    "tsx": "^4.20.3",
     "typescript": "^6.0.2",
     "vite": "^7.2.7",
     "vitest": "^4.0.13"

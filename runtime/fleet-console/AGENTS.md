@@ -4,7 +4,7 @@
 
 ## Owns
 
-- The `fleet-console` CLI entry point (`./cli` export, `dist/cli.mjs`): ensures the local gateway daemon through the `@dotobokuri/fleet-gateway` public lifecycle API and opens the console URL in a browser. `fleet console` in `fleet-cli` relays to this CLI as a child process.
+- The `fleet-console` CLI entry point (`./cli` export, `dist/cli.mjs`): a subcommand launcher over the `@dotobokuri/fleet-gateway` public lifecycle API. `start` (the default when no subcommand is given) ensures the local gateway daemon and opens the console URL in a browser; `stop` stops the daemon; `status` prints daemon health, endpoint, console URL, and workspace count. `--help`/`-h` prints the banner-style help. `fleet console <args>` in `fleet-cli` relays the full argument list to this CLI as a child process, so every subcommand works through both `fleet console …` and the standalone `fleet-console …` binary. The root `pnpm fleet-console` script runs it from source via `tsx` after building the gateway.
 - The React SPA served at the gateway's `/console/` path: layout, components, styles, and visual identity.
 - The observer-side client contract: REST snapshot fetches (`/observer/tenants`, `/observer/jobs`) and the `/observer/events` SSE consumption loop with reconnect/resync.
 - The streaming view model: the event reducer that folds `CarrierJobStreamEvent` timelines into per-job, per-track views with incremental text accumulation.
@@ -18,7 +18,7 @@
 
 ## Layout
 
-- `src/` — Node-side CLI launcher (`cli.ts`, `browser.ts`). Built by tsup to `dist/cli.mjs`. May depend on `@dotobokuri/fleet-gateway`; the gateway must stay **external** in the tsup bundle (bundling it would break the gateway's `import.meta.url`-based server module resolution).
+- `src/` — Node-side CLI launcher (`cli.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs`. May depend on `@dotobokuri/fleet-gateway`; the gateway must stay **external** in the tsup bundle (bundling it would break the gateway's `import.meta.url`-based server module resolution). `help-style.ts` is a CLI-help-only **self-hosted** style helper mirroring `runtime/fleet-wiki-ui/src/help-style.ts` and the `fleet-cli` styles SSoT; it must not import from `fleet-cli`, `packages/*`, or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
 - `client/` — the Vite React SPA (`client/src/`, `client/index.html`, `client/vite.config.ts`). Must not import Node-only modules or `@dotobokuri/fleet-gateway`.
 - `tests/` — vitest suites for the reducer, SSE parser, store, and CLI launcher.
 
