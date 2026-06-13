@@ -42,6 +42,21 @@ The gateway replaces per-instance MCP servers with a single local daemon that ru
 - Tenant observer workflow: use the per-tenant observer token returned from registration to inspect `/observer/status`, `/observer/jobs`, or `/observer/events` for that tenant only.
 - Aggregate observer workflow: use the lock-file aggregate observer token for `GET /observer/tenants`, aggregate `GET /observer/jobs`, `GET /observer/jobs?tenant=<tenantId>`, and all-tenant `GET /observer/events` SSE.
 
+## Package shape
+
+The source manifest keeps `private: true`; publishing is performed by CI or an Admiral-authorized release path through `scripts/publish-fleet-gateway.mjs`, which temporarily removes `private`, empties runtime dependencies for the packed artifact, and restores the original manifest in `finally`.
+
+- Binary: `fleet-gateway` resolves to `dist/cli-bin.mjs`.
+- Library CLI entry: `./cli` exposes `dist/cli.mjs` with declarations and no direct-run side effects.
+- Root API: `.` exposes `createGatewayDaemonLifecycle`, `createGatewayConsumerClient`, and gateway-native public protocol types only.
+- Binary export: `./cli-bin` exposes the executable entry without declarations.
+- Embedded console assets are required: `dist/client/index.html` must exist before publish or the publish helper fails hard.
+- Dry-run verification: run `pnpm --filter @dotobokuri/fleet-console build`, `pnpm --filter @dotobokuri/fleet-gateway build`, then `npm pack --dry-run` from `runtime/fleet-gateway` and confirm `dist/client/index.html`, `dist/cli-bin.mjs`, `dist/cli.mjs`, `dist/index.mjs`, and `dist/server.mjs` are listed.
+
+## Consumer SDK
+
+Fleet CLI consumes the gateway through `createGatewayConsumerClient(deps)`. Gateway owns endpoint assembly, daemon ensure, bootstrap-token lookup, tenant registration, control-call SSE consumption, result/event publication, reconnect, lease tracking, duplicate-call suppression, and release. Fleet tool execution stays host-injected through `GatewayToolExecutionPort`, so this package does not import Fleet tool builders, carrier runtime types, or core-agent registry/session shapes.
+
 ## Observability model
 
 - `/observer/tenants` returns tenant id, label, cwd, creation time, and session count without session/control tokens.
@@ -62,5 +77,6 @@ imports -> types/interfaces -> constants -> functions
 
 ```bash
 pnpm --filter @dotobokuri/fleet-gateway test
+pnpm --filter @dotobokuri/fleet-gateway typecheck
 pnpm --filter @dotobokuri/fleet-gateway build
 ```

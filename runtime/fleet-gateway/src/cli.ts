@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import process from "node:process";
 
 import type { GatewayLockPayload } from "./api-types.js";
@@ -111,12 +112,12 @@ export function createGatewayDaemonLifecycle(deps: GatewayDaemonLifecycleDeps = 
 }
 
 function resolveDefaultServerModulePath(): string {
-  const builtPath = new URL("./cli.mjs", import.meta.url).pathname;
+  const builtPath = new URL("./cli-bin.mjs", import.meta.url).pathname;
   if (fs.existsSync(builtPath)) return builtPath;
-  return new URL("../dist/cli.mjs", import.meta.url).pathname;
+  return new URL("../dist/cli-bin.mjs", import.meta.url).pathname;
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const lifecycle = createGatewayDaemonLifecycle();
   const command = process.argv[2] ?? "ensure";
   if (command === "serve") {
@@ -134,9 +135,21 @@ async function main(): Promise<void> {
   process.stdout.write(`${await lifecycle.ensureDaemon()}\n`);
 }
 
-if (process.argv[1] && import.meta.url === new URL(process.argv[1], "file:").href) {
-  void main().catch((err) => {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-    process.exitCode = 1;
-  });
+export function findLocalCliMjs(cwd: string): string | null {
+  let currentDir = path.resolve(cwd);
+  while (true) {
+    const cliBinCandidate = path.join(currentDir, "runtime", "fleet-gateway", "dist", "cli-bin.mjs");
+    if (fs.existsSync(cliBinCandidate)) {
+      return cliBinCandidate;
+    }
+    const legacyCliCandidate = path.join(currentDir, "runtime", "fleet-gateway", "dist", "cli.mjs");
+    if (fs.existsSync(legacyCliCandidate)) {
+      return legacyCliCandidate;
+    }
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
 }

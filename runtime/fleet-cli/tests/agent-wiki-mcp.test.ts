@@ -499,6 +499,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     let ensureCount = 0;
     let registerCount = 0;
     let callStreamCount = 0;
+    let releaseCount = 0;
     const resultPosts: string[] = [];
     const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "pong" }], isError: false }));
     const manager = createGatewayDedicatedSessionManager({
@@ -545,6 +546,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
           return jsonResponse({ ok: true });
         }
         if (target.endsWith("/control/release")) {
+          releaseCount += 1;
           return jsonResponse({ ok: true });
         }
         return jsonResponse({ error: "unexpected" }, 500);
@@ -552,14 +554,16 @@ describe("fleet-cli agent CLI MCP registration", () => {
     });
 
     await manager.issueSessionToken({ label: "agent:test-reconnect", cwd: "/tmp" });
-    await waitFor(() => registerCount >= 2 && resultPosts.length >= 1);
-    manager.releaseSessionToken("agent:test-reconnect");
+    await waitFor(() => callStreamCount >= 2 && resultPosts.length >= 1);
 
-    expect(ensureCount).toBeGreaterThanOrEqual(2);
-    expect(registerCount).toBeGreaterThanOrEqual(2);
+    expect(ensureCount).toBeGreaterThanOrEqual(1);
+    expect(callStreamCount).toBeGreaterThanOrEqual(2);
+    expect(registerCount).toBe(1);
+    expect(releaseCount).toBe(0);
     expect(resultPosts).toEqual(["session-1"]);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(manager.getConnectionState().state).toBe("ready");
+    manager.releaseSessionToken("agent:test-reconnect");
   });
 });
 

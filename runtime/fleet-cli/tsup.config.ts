@@ -7,8 +7,8 @@ export default defineConfig({
   format: ["esm"],
   dts: true,
   target: "node20",
-  noExternal: [/^@dotobokuri\//],
-  external: ["node-pty", "@dotobokuri/fleet-wiki-ui"],
+  noExternal: [/^@dotobokuri\/(?!fleet-wiki-ui$|fleet-gateway$)/],
+  external: ["node-pty", "@dotobokuri/fleet-wiki-ui", "@dotobokuri/fleet-gateway"],
   splitting: false,
   clean: true,
   sourcemap: true

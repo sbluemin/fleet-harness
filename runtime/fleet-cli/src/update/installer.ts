@@ -88,7 +88,7 @@ function detectGlobalRoot(command: "npm" | "pnpm", packageRoot: string, io: Upda
     const globalRoot = execFileSync(resolved.bin, [...resolved.prefixArgs, "root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
     const resolvedRoot = normalizePath(realpathSync(path.resolve(globalRoot)));
     // 직접 경로 포함 확인 (npm 표준 레이아웃)
-    if (isPathInside(normalizePath(packageRoot), resolvedRoot)) {
+    if (isPathInside(normalizeExistingPath(packageRoot), resolvedRoot)) {
       if (!canWrite(resolvedRoot)) {
         return { manager: undefined, reason: "permission" };
       }
@@ -99,7 +99,7 @@ function detectGlobalRoot(command: "npm" | "pnpm", packageRoot: string, io: Upda
     const expectedPkgDir = path.join(globalRoot, FLEET_CLI_PACKAGE_NAME);
     try {
       const resolvedPkgDir = normalizePath(realpathSync(expectedPkgDir));
-      if (resolvedPkgDir === normalizePath(packageRoot)) {
+      if (resolvedPkgDir === normalizeExistingPath(packageRoot)) {
         if (!canWrite(resolvedRoot)) {
           return { manager: undefined, reason: "permission" };
         }
@@ -182,6 +182,14 @@ function isPathInside(child: string, parent: string): boolean {
 function normalizePath(value: string): string {
   const resolved = path.resolve(value);
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function normalizeExistingPath(value: string): string {
+  try {
+    return normalizePath(realpathSync(value));
+  } catch {
+    return normalizePath(value);
+  }
 }
 
 function canWrite(targetPath: string): boolean {
