@@ -58,6 +58,19 @@ export function Terminal({ terminalToken }: TerminalProps) {
     terminal.loadAddon(fitAddon);
     terminal.open(container);
 
+    // Shift+Enter는 개행(LF)으로 처리한다. xterm 기본 동작은 Shift 여부와 무관하게 Enter를
+    // CR(\r)로 보내 TUI가 이를 "제출"로 해석하므로, Shift+Enter는 직접 LF(\n)를 입력시키고
+    // (input()이 onData를 트리거해 기존 전송 경로를 탄다) 기본 CR 전송을 막는다.
+    // 이 핸들러는 keydown뿐 아니라 keypress 이벤트에서도 호출되므로, keydown에서만 LF를 한 번
+    // 입력시키되 false 반환은 모든 이벤트 타입에 적용해야 keypress 경로의 CR 전송까지 차단된다.
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.key === "Enter" && event.shiftKey) {
+        if (event.type === "keydown") terminal.input("\n");
+        return false;
+      }
+      return true;
+    });
+
     // WebGL 렌더러: GPU 가속으로 더 선명하고 빠른 렌더링. 컨텍스트 손실 시 스스로 정리해 DOM 렌더러로 폴백한다.
     // open() 이후에만 로드할 수 있으며, WebGL 미지원 환경에서는 기본 DOM 렌더러를 그대로 사용한다.
     try {
