@@ -89,7 +89,7 @@ export function createConsoleRegisterPublisher(deps: ConsoleRegisterPublisherDep
 	const now = deps.now ?? Date.now;
 	const setTimer = deps.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
 	const clearTimer = deps.clearTimeout ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
-	const cliRunId = deps.cliRunId ?? crypto.randomUUID();
+	const cliRunId = deps.cliRunId ?? deps.env?.FLEET_CONSOLE_SESSION_ID ?? crypto.randomUUID();
 	const startedAt = new Date(now()).toISOString();
 	const buffer: PushEventEnvelope[] = [];
 	let activeRegistration: ActiveRegistration | null = null;

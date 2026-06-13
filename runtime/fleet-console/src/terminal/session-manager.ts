@@ -43,8 +43,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   const clearTimeoutImpl = deps.clearTimeout ?? clearTimeout;
   const sessions = new Map<string, TerminalSession>();
 
-  function canAttach(): boolean {
-    return sessions.has(DEFAULT_TERMINAL_SESSION_ID) || sessions.size < maxSessions;
+  function canAttach(sessionId: string): boolean {
+    return sessions.has(sessionId) || sessions.size < maxSessions;
   }
 
   function attach(socket: TerminalSocket, context: TerminalTicketContext): void {
@@ -71,12 +71,12 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function getOrCreateSession(context: TerminalTicketContext): TerminalSession {
-    const current = sessions.get(DEFAULT_TERMINAL_SESSION_ID);
+    const current = sessions.get(context.sessionId);
     if (current) return current;
     if (sessions.size >= maxSessions) throw new Error("Terminal session capacity exhausted");
     const pty = startShell(deps.launch(context.cwd), { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
     const session: TerminalSession = {
-      id: DEFAULT_TERMINAL_SESSION_ID,
+      id: context.sessionId,
       pty,
       disposables: [],
       scrollback: [],

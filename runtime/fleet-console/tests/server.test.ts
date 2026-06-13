@@ -113,6 +113,32 @@ describe("console register ingest", () => {
     expect(store.getLaunchCwd(registration.registrationId)).toBe("/repo/selected");
   });
 
+  it("binds a pending terminal session by cliRunId and canonical cwd", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    const registration = store.register({ protocolVersion: "1", cliRunId: "session-a", tenantLabel: "Alpha", cwd: dir, pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
+    const workspace = store.listWorkspaces()[0];
+    const session = store.listTerminalSessions()[0];
+
+    expect(workspace).toMatchObject({ cliRunId: "session-a", registrationId: registration.registrationId, terminalSessionId: "session-a" });
+    expect(session).toMatchObject({ sessionId: "session-a", status: "registered", registrationId: registration.registrationId, tenantId: "session-a" });
+  });
+
+  it("rejects pending terminal session binding when cliRunId matches but cwd does not", () => {
+    const first = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-a-"));
+    const second = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-b-"));
+    tempDirs.push(first, second);
+    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: first });
+
+    expect(() => store.register({ protocolVersion: "1", cliRunId: "session-a", tenantLabel: "Alpha", cwd: second, pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" })).toThrow("cwd mismatch");
+    expect(store.listWorkspaces()).toHaveLength(0);
+    expect(store.listTerminalSessions()[0]).toMatchObject({ sessionId: "session-a", status: "starting" });
+  });
+
   it("replays existing observer events over SSE resync", async () => {
     const fixture = await startFixture();
     const registration = await registerCli(fixture);
@@ -196,6 +222,40 @@ describe("console static and terminal ticket boundary", () => {
     );
 
     expect(handled).toBe(true);
+    expect(destroyed).toBe(1);
+    handler.close();
+  });
+
+  it("checks terminal WebSocket capacity with the ticket sessionId", () => {
+    let destroyed = 0;
+    const checkedSessionIds: string[] = [];
+    const handler = createTerminalUpgradeHandler({
+      expectedHost: "127.0.0.1",
+      getExpectedPort: () => 37283,
+      tickets: { consume: () => ({ sessionId: "session-a", cwd: "/tmp" }) },
+      sessions: {
+        canAttach: (sessionId) => {
+          checkedSessionIds.push(sessionId);
+          return false;
+        },
+        attach: () => undefined,
+        stop: () => undefined,
+      },
+      validateHost: () => true,
+    });
+
+    const handled = handler.handleUpgrade(
+      {
+        url: "/terminal/ws?ticket=ticket-a",
+        headers: { origin: "http://127.0.0.1:37283" },
+        rawHeaders: ["Host", "127.0.0.1:37283"],
+      } as never,
+      { destroy: () => { destroyed += 1; } } as never,
+      Buffer.alloc(0),
+    );
+
+    expect(handled).toBe(true);
+    expect(checkedSessionIds).toEqual(["session-a"]);
     expect(destroyed).toBe(1);
     handler.close();
   });

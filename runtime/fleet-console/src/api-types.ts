@@ -32,6 +32,36 @@ export interface ConsoleObservedWorkspace {
   readonly status: CliSession["status"];
   readonly cliRunId: string;
   readonly registrationId: string;
+  readonly terminalSessionId?: string;
+}
+
+export type ConsoleTerminalSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error";
+
+export interface ConsoleTerminalSessionInfo {
+  readonly sessionId: string;
+  readonly terminalSessionId: string;
+  readonly cwdLabel: string;
+  readonly status: ConsoleTerminalSessionStatus;
+  readonly createdAt: number;
+  readonly registrationId?: string;
+  readonly cliRunId?: string;
+  readonly tenantId?: string;
+}
+
+export interface PickTerminalFolderResponse {
+  readonly folderGrantId?: string;
+  readonly cancelled?: true;
+  readonly error?: "unsupported_platform" | "dialog_unavailable" | "dialog_timeout" | "invalid_folder" | "unauthorized";
+}
+
+export interface CreateTerminalSessionRequest {
+  readonly folderGrantId: string;
+}
+
+export interface CreateTerminalSessionResponse extends ConsoleTerminalSessionInfo {}
+
+export interface ListTerminalSessionsResponse {
+  readonly sessions: readonly ConsoleTerminalSessionInfo[];
 }
 
 export interface ConsoleObservedEvent {

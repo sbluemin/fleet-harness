@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 import type {
   CliSession,
@@ -12,6 +14,8 @@ import type {
   ConsoleObservedJob,
   ConsoleObservedWorkspace,
   ConsoleObserverTruncation,
+  ConsoleTerminalSessionInfo,
+  ConsoleTerminalSessionStatus,
 } from "./api-types.js";
 
 export interface ConsoleObservabilityStoreDeps {
@@ -31,8 +35,21 @@ export interface PushEventsResult {
 interface WorkspaceState {
   session: CliSession;
   readonly ingestToken: string;
+  readonly terminalSessionId?: string;
   highestSeq: number;
   readonly seenSeqs: Set<number>;
+}
+
+interface PendingTerminalSessionState {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly canonicalCwd: string;
+  readonly cwdLabel: string;
+  readonly createdAt: number;
+  readonly terminalSessionId: string;
+  status: ConsoleTerminalSessionStatus;
+  registrationId?: string;
+  cliRunId?: string;
 }
 
 interface TenantJobState {
@@ -64,6 +81,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   const eventsByTenant = new Map<string, ConsoleObservedEvent[]>();
   const truncationByTenant = new Map<string, ConsoleObserverTruncation>();
   const jobsByTenant = new Map<string, TenantJobState>();
+  const terminalSessionsById = new Map<string, PendingTerminalSessionState>();
   const listenersByTenant = new Map<string, Set<ConsoleObservedEventListener>>();
   const allListeners = new Set<ConsoleObservedEventListener>();
   let nextObservedId = 1;
@@ -72,6 +90,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     assertRegisterInput(input);
     const previous = workspacesByCliRunId.get(input.cliRunId);
     if (previous) removeWorkspaceIndexes(previous);
+    const terminalSession = bindPendingTerminalSession(input);
 
     const registeredAt = nowIso();
     const registrationId = crypto.randomUUID();
@@ -93,9 +112,15 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const state: WorkspaceState = {
       session,
       ingestToken,
+      terminalSessionId: terminalSession?.terminalSessionId,
       highestSeq: 0,
       seenSeqs: new Set(),
     };
+    if (terminalSession) {
+      terminalSession.status = "registered";
+      terminalSession.registrationId = registrationId;
+      terminalSession.cliRunId = input.cliRunId;
+    }
     workspacesByCliRunId.set(session.cliRunId, state);
     workspacesByRegistrationId.set(session.registrationId, state);
     workspacesByIngestToken.set(ingestToken, state);
@@ -180,6 +205,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
         status: workspace.session.status,
         cliRunId: workspace.session.cliRunId,
         registrationId: workspace.session.registrationId,
+        terminalSessionId: workspace.terminalSessionId,
       }))
       .sort((a, b) => b.createdAt - a.createdAt);
   }
@@ -238,6 +264,26 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return workspace?.session.cwd ?? process.cwd();
   }
 
+  function createPendingTerminalSession(input: { readonly sessionId: string; readonly cwd: string; readonly createdAt?: number }): ConsoleTerminalSessionInfo {
+    if (!path.isAbsolute(input.cwd)) throw new Error("Terminal session cwd must be absolute");
+    const createdAt = input.createdAt ?? now();
+    const state: PendingTerminalSessionState = {
+      sessionId: input.sessionId,
+      cwd: input.cwd,
+      canonicalCwd: canonicalizeCwd(input.cwd),
+      cwdLabel: path.basename(input.cwd) || input.cwd,
+      createdAt,
+      terminalSessionId: input.sessionId,
+      status: "starting",
+    };
+    terminalSessionsById.set(state.sessionId, state);
+    return toTerminalSessionInfo(state);
+  }
+
+  function listTerminalSessions(): readonly ConsoleTerminalSessionInfo[] {
+    return Array.from(terminalSessionsById.values()).map(toTerminalSessionInfo).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
   function clear(): void {
     workspacesByCliRunId.clear();
     workspacesByRegistrationId.clear();
@@ -245,6 +291,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     eventsByTenant.clear();
     truncationByTenant.clear();
     jobsByTenant.clear();
+    terminalSessionsById.clear();
     listenersByTenant.clear();
     allListeners.clear();
   }
@@ -259,10 +306,12 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     heartbeat,
     listEvents,
     listJobs,
+    listTerminalSessions,
     listWorkspaces,
     markExpiredSessions,
     pushEvents,
     register,
+    createPendingTerminalSession,
     subscribe,
     subscribeAll,
     workspaceCount: () => listWorkspaces().filter((workspace) => workspace.status !== "deregistered").length,
@@ -275,6 +324,15 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       missingToSeq: toSeq,
       droppedCount: toSeq - fromSeq + 1,
     });
+  }
+
+  function bindPendingTerminalSession(input: RegisterCliRequest): PendingTerminalSessionState | null {
+    const pending = terminalSessionsById.get(input.cliRunId);
+    if (!pending) return null;
+    if (pending.canonicalCwd !== canonicalizeCwd(input.cwd)) {
+      throw new Error("Terminal session registration cwd mismatch");
+    }
+    return pending;
   }
 
   function storeObservedEvent(event: ConsoleObservedEvent): void {
@@ -333,6 +391,28 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     workspacesByRegistrationId.delete(workspace.session.registrationId);
     workspacesByIngestToken.delete(workspace.ingestToken);
   }
+}
+
+function canonicalizeCwd(cwd: string): string {
+  const resolved = path.resolve(cwd);
+  try {
+    return fs.realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTerminalSessionInfo {
+  return {
+    sessionId: state.sessionId,
+    terminalSessionId: state.terminalSessionId,
+    cwdLabel: state.cwdLabel,
+    status: state.status,
+    createdAt: state.createdAt,
+    registrationId: state.registrationId,
+    cliRunId: state.cliRunId,
+    tenantId: state.cliRunId,
+  };
 }
 
 function assertRegisterInput(input: RegisterCliRequest): void {

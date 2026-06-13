@@ -35,7 +35,7 @@ export function createTerminalUpgradeHandler(deps: TerminalUpgradeHandlerDeps): 
       return true;
     }
     const context = deps.tickets.consume(url.searchParams.get("ticket"));
-    if (!context || !deps.sessions.canAttach()) {
+    if (!context || !deps.sessions.canAttach(context.sessionId)) {
       socket.destroy();
       return true;
     }

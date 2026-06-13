@@ -25,6 +25,43 @@ const TEST_EVENT = {
 } as const;
 
 describe("console register publisher", () => {
+	it("keeps explicit cliRunId ahead of console session env", () => {
+		const publisher = createConsoleRegisterPublisher({
+			cliRunId: "explicit-cli-run",
+			cwd: "/tmp/fleet",
+			fleetVersion: "1.4.0",
+			mcpServerName: "fleet",
+			toolCount: 2,
+			env: { FLEET_CONSOLE_SESSION_ID: "session-from-env" },
+		});
+
+		expect(publisher.cliRunId).toBe("explicit-cli-run");
+	});
+
+	it("uses the console session env as cliRunId when no explicit id is provided", () => {
+		const publisher = createConsoleRegisterPublisher({
+			cwd: "/tmp/fleet",
+			fleetVersion: "1.4.0",
+			mcpServerName: "fleet",
+			toolCount: 2,
+			env: { FLEET_CONSOLE_SESSION_ID: "session-from-env" },
+		});
+
+		expect(publisher.cliRunId).toBe("session-from-env");
+	});
+
+	it("falls back to a UUID cliRunId when explicit id and console session env are absent", () => {
+		const publisher = createConsoleRegisterPublisher({
+			cwd: "/tmp/fleet",
+			fleetVersion: "1.4.0",
+			mcpServerName: "fleet",
+			toolCount: 2,
+			env: {},
+		});
+
+		expect(publisher.cliRunId).toMatch(/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i);
+	});
+
 	it("starts fail-soft when the console is absent", async () => {
 		const timers: TestTimer[] = [];
 		const publisher = createConsoleRegisterPublisher({

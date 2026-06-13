@@ -42,6 +42,7 @@ type ObserverLookup = { readonly kind: "aggregate" };
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 37283;
+const DEFAULT_TERMINAL_SESSION_ID = "default";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -229,13 +230,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    if (!terminalSessions.canAttach()) {
+    const body = await readJsonBody<{ readonly registrationId?: string; readonly cliRunId?: string; readonly sessionId?: string }>(req);
+    const sessionId = typeof body?.sessionId === "string" && body.sessionId.length > 0 ? body.sessionId : DEFAULT_TERMINAL_SESSION_ID;
+    if (!terminalSessions.canAttach(sessionId)) {
       writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return;
     }
-    const body = await readJsonBody<{ readonly registrationId?: string; readonly cliRunId?: string }>(req);
     writeJson(res, 200, terminalTickets.issue({
       cwd: observability.getLaunchCwd(body?.registrationId, body?.cliRunId),
+      sessionId,
     }));
   }
 

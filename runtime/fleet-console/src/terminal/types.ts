@@ -12,6 +12,7 @@ export interface TerminalTicket {
 
 export interface TerminalTicketContext {
   readonly cwd: string;
+  readonly sessionId: string;
 }
 
 export interface TerminalPtyDataDisposable {
@@ -37,7 +38,7 @@ export interface TerminalSocket {
 export type TerminalSocketData = Buffer | ArrayBuffer | Buffer[];
 
 export interface TerminalSessionManager {
-  canAttach(): boolean;
+  canAttach(sessionId: string): boolean;
   attach(socket: TerminalSocket, context: TerminalTicketContext): void;
   stop(): void;
 }
