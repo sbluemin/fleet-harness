@@ -3,10 +3,10 @@ export function AuthGate() {
     <main className="stage">
       <div className="stage-idle">
         <p className="stage-idle-mark" aria-hidden="true">◌</p>
-        <h2>Observer token required</h2>
+        <h2>Console tokens required</h2>
         <p>
-          Open this page through <code>fleet-gateway console</code> so the gateway can hand the
-          observer token to this session.
+          Open this page through <code>fleet console</code> so the console can hand observer and
+          terminal tokens to this session.
         </p>
       </div>
     </main>

@@ -6,11 +6,11 @@ This guide explains how Fleet development is organized.
 
 Fleet development follows a hard one-way dependency graph:
 
-- `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral`.
+- `runtime/fleet-cli` — sole CLI Composition Root and host adapter; consumes Admiral policy from `@dotobokuri/fleet-admiral`; owns one in-process MCP HTTP/JSON-RPC server per CLI process and the console register publisher.
 - `packages/fleet-carriers` — carrier runtime, personas, jobs (including detached jobs), and carrier state.
-- `packages/core-agent` — host-agnostic executor/session/model runtime engine and builtin external MCP catalog.
+- `packages/core-agent` — host-agnostic executor/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, and shared register data contract.
 - `packages/fleet-infra` — host-agnostic auth, data-dir resolution, global options, and durable `fs-store` I/O primitives.
-- `runtime/fleet-gateway` — machine-wide local gateway daemon for MCP pass-through routing and tenant token isolation.
+- `runtime/fleet-console` — standalone loopback HTTP backend for CLI register ingest, observer SSE, terminal WebSocket, and static console serving for a single workspace.
 - `packages/fleet-wiki` and `runtime/fleet-wiki-ui` — Fleet knowledge package and web UI.
 - `packages/core-unified-agent` — independent execution engine client package.
 
@@ -18,7 +18,7 @@ Fleet development follows a hard one-way dependency graph:
 
 ### 2.1 `runtime/fleet-cli`
 
-Put code here when it requires terminal rendering, CLI process lifecycle management, host input routing, concrete service assembly, or Admiral prompt/protocol/tool policy.
+Put code here when it requires terminal rendering, CLI process lifecycle management, host input routing, concrete service assembly, per-process in-process MCP serving, console registration publishing, or Admiral prompt/protocol/tool policy.
 
 ### 2.2 `packages/fleet-carriers`
 
@@ -28,13 +28,13 @@ Put code here when it owns carrier persona metadata, carrier dispatch, carrier j
 
 Put code here when it owns generic auth, data-dir resolution, global options, or durable `fs-store` I/O primitives. Executor/session infrastructure belongs to `packages/core-agent`; detached-job infrastructure belongs to `packages/fleet-carriers`.
 
-### 2.4 `runtime/fleet-gateway`
+### 2.4 `runtime/fleet-console`
 
-Put code here when it owns the machine-wide local gateway daemon, loopback endpoint lifecycle, tenant token isolation, or schema-agnostic MCP pass-through routing.
+Put code here when it owns the standalone loopback HTTP backend for CLI register ingest, observer REST/SSE, terminal WebSocket tickets, static console serving, or console server lifecycle for a single workspace.
 
 ### 2.5 `packages/core-agent`
 
-Put code here when it owns the host-agnostic executor pool/session/model runtime engine or the builtin external MCP catalog.
+Put code here when it owns the host-agnostic executor pool/session/model runtime engine, builtin external MCP catalog, generic in-process MCP server primitives, or shared register data contracts.
 
 ## 3. Import Rules
 

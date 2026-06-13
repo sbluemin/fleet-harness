@@ -28,9 +28,9 @@ export function Sidebar({ state }: SidebarProps) {
       <p className="sidebar-eyebrow">Workspaces</p>
       {tenantIds.length === 0 ? (
         <p className="sidebar-empty">
-          No workspaces connected.
+          No CLI workspaces connected.
           <br />
-          Launch a Fleet session to begin observing.
+          Launch a Fleet CLI session to begin observing.
         </p>
       ) : (
         tenantIds.map((tenantId) => (

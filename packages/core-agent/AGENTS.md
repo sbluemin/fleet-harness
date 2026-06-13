@@ -5,8 +5,9 @@
 ## Owns
 
 - Executor pool lifecycle, session reuse, status tracking, model/effort helpers, and builtin external MCP catalog.
+- Generic in-process MCP HTTP/JSON-RPC server primitives, executor session manager primitives, and the register data contract shared by callers.
 - The two-method `ExecutorPort` policy surface and the separate executor MCP runtime provider.
-- Package-local tests for executor reuse, MCP setup, model helpers, and reset behavior.
+- Package-local tests for executor reuse, MCP setup, register contracts, model helpers, and reset behavior.
 
 ## Boundaries
 
@@ -14,7 +15,8 @@
 - Auth is injected through `AuthEnvResolver`; missing resolver must throw before provider connection.
 - Use `scopeId` at public core boundaries. Fleet callers may map their local `carrierId` to `scopeId`.
 - Public package surface is the single root barrel `@dotobokuri/core-agent`; do not expose `internal/*` subpaths.
-- Fleet reserved MCP IDs are caller policy and must be passed in, not hard-coded here.
+- Fleet reserved MCP IDs, CLI/process identity, lifecycle policy, and browser-facing exposure rules are caller policy and must be passed in, not hard-coded here.
+- Register response contracts must not include MCP session tokens, observer tokens, terminal tokens, URLs, or browser-facing credentials.
 
 ## Tests
 

@@ -1,10 +1,12 @@
+import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { createGatewayDaemonLifecycle } from "@dotobokuri/fleet-gateway";
-
+import type { ConsoleLockPayload } from "./api-types.js";
 import { openBrowser, type OpenBrowserDeps } from "./browser.js";
+import { createConsoleHealthClient } from "./health.js";
 import {
   ASCII_FLEET_BANNER,
   FLEET_COMMAND,
@@ -17,16 +19,24 @@ import {
   section,
   stripAnsi,
 } from "./help-style.js";
+import { createConsoleLock } from "./lock.js";
+import { createConsolePaths } from "./paths.js";
+import { createConsoleServer } from "./server.js";
+import { createConsoleStalePolicy } from "./stale.js";
 
 export type ConsoleCliMode = "start" | "stop" | "status" | "help";
 
-type ConsoleGatewayLifecycle = Pick<
-  ReturnType<typeof createGatewayDaemonLifecycle>,
-  "ensureDaemon" | "probe" | "stop"
->;
+export interface ConsoleDaemonLifecycleDeps {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly execPath?: string;
+  readonly serverModulePath?: string;
+  readonly spawnDetached?: (execPath: string, args: readonly string[], options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore" }) => void;
+  readonly sleep?: (ms: number) => Promise<void>;
+  readonly health?: ReturnType<typeof createConsoleHealthClient>;
+}
 
 export interface OpenFleetConsoleDeps {
-  readonly lifecycle?: Pick<ConsoleGatewayLifecycle, "ensureDaemon" | "probe">;
+  readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "ensureDaemon" | "probe">;
   readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void;
 }
 
@@ -35,11 +45,11 @@ export interface OpenFleetConsoleResult {
 }
 
 export interface ConsoleStatusDeps {
-  readonly lifecycle?: Pick<ConsoleGatewayLifecycle, "probe">;
+  readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "probe">;
 }
 
 export interface ConsoleStopDeps {
-  readonly lifecycle?: Pick<ConsoleGatewayLifecycle, "stop">;
+  readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop">;
 }
 
 export interface BuildConsoleHelpTextOptions {
@@ -48,13 +58,13 @@ export interface BuildConsoleHelpTextOptions {
   readonly release?: string;
 }
 
-const GATEWAY_ENDPOINT_PATH = "/mcp";
-const CONSOLE_BASE_PATH = "/console/";
+const FIXED_HOST = "127.0.0.1";
+const FIXED_PORT = 37283;
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
-  // 인자가 없으면 기본 동작은 start(데몬 보장 + 브라우저 열기)다.
+  // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
   if (argv.length === 0) return "start";
   const [first, ...rest] = argv;
   if (first === "--help" || first === "-h") return "help";
@@ -86,16 +96,16 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     ),
     dim(subtitle, colorEnabled),
     "",
-    dim("Observe Fleet Gateway tenants, carrier jobs, and live output streams.", colorEnabled),
+    dim("Observe registered Fleet CLI workspaces, carrier jobs, live output streams, and terminal sessions.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
     `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|status] [--help]", colorEnabled)}`,
     `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-console", colorEnabled)} ${dim("[start|stop|status]", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
-    `  ${command("start", colorEnabled)}   ${dim("Ensure the gateway daemon, then open Fleet Console in your browser. (default)", colorEnabled)}`,
-    `  ${command("stop", colorEnabled)}    ${dim("Stop the local Fleet Gateway daemon.", colorEnabled)}`,
-    `  ${command("status", colorEnabled)}  ${dim("Show the local Fleet Gateway daemon status.", colorEnabled)}`,
+    `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server, then open it in your browser. (default)", colorEnabled)}`,
+    `  ${command("stop", colorEnabled)}    ${dim("Stop the local Fleet Console server.", colorEnabled)}`,
+    `  ${command("status", colorEnabled)}  ${dim("Show the local Fleet Console server status.", colorEnabled)}`,
     "",
     section("OPTIONS", colorEnabled),
     `  ${option("--help, -h", colorEnabled)}  ${dim("Show this help message and exit.", colorEnabled)}`,
@@ -110,43 +120,136 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
   return colorEnabled ? text : stripAnsi(text);
 }
 
+export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = {}) {
+  const env = deps.env ?? process.env;
+  const execPath = deps.execPath ?? process.execPath;
+  const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
+  const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => { spawn(bin, [...args], options).unref(); });
+  const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const paths = createConsolePaths({ env });
+  const lock = createConsoleLock();
+  const health = deps.health ?? createConsoleHealthClient();
+  const stale = createConsoleStalePolicy();
+
+  async function runServer(): Promise<void> {
+    const server = createConsoleServer();
+    await server.start(paths);
+    await new Promise<void>((resolve) => {
+      process.once("SIGTERM", () => { void server.stop().finally(resolve); });
+      process.once("SIGINT", () => { void server.stop().finally(resolve); });
+    });
+  }
+
+  async function probe() {
+    const payload = readTrustedLock();
+    const probeResult = await health.probe(payload);
+    return { ...probeResult, buildStale: payload ? stale.isBuildStale(payload, serverModulePath) : false };
+  }
+
+  async function stop(): Promise<void> {
+    const payload = readTrustedLock();
+    if (!payload) return;
+    try {
+      process.kill(payload.pid, "SIGTERM");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+    }
+    await sleep(200);
+    try {
+      process.kill(payload.pid, 0);
+      process.kill(payload.pid, "SIGKILL");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+    }
+    lock.removeLock(paths.lockFile, payload.pid);
+  }
+
+  async function ensureDaemon(): Promise<string> {
+    const current = readTrustedLock({ cleanUntrusted: true });
+    const probeResult = await health.probe(current);
+    const isBuildStale = current ? stale.isBuildStale(current, serverModulePath) : false;
+    if (probeResult.healthy && current) {
+      if (!isBuildStale) return current.endpoint;
+      if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
+    }
+    if (current) await stop();
+    spawnDetached(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore" });
+    for (let i = 0; i < 30; i += 1) {
+      await sleep(100);
+      const next = await probe();
+      if (next.healthy && next.lock) return next.lock.endpoint;
+    }
+    throw new Error("Fleet Console server did not become healthy");
+  }
+
+  return { ensureDaemon, probe, runServer, stop };
+
+  function readTrustedLock(options: { readonly cleanUntrusted?: boolean } = {}): ConsoleLockPayload | null {
+    try {
+      const payload = lock.readLock(paths.lockFile);
+      if (!payload) return null;
+      lock.assertTrustedLock({
+        dir: paths.dir,
+        lockFile: paths.lockFile,
+        payload,
+        host: FIXED_HOST,
+        port: FIXED_PORT,
+      });
+      return payload;
+    } catch (err) {
+      if (!options.cleanUntrusted) throw err;
+      // 신뢰할 수 없는 잠금은 프로세스를 종료하지 않고 파일만 폐기한다.
+      lock.removeLock(paths.lockFile);
+      return null;
+    }
+  }
+}
+
 export async function openFleetConsole(deps: OpenFleetConsoleDeps = {}): Promise<OpenFleetConsoleResult> {
-  const lifecycle = deps.lifecycle ?? createGatewayDaemonLifecycle();
+  const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   await lifecycle.ensureDaemon();
   const status = await lifecycle.probe();
   if (!status.healthy || !status.lock) {
-    throw new Error("Fleet Gateway daemon is not healthy after ensure");
+    throw new Error("Fleet Console server is not healthy after ensure");
   }
-  const url = `${status.lock.endpoint.replace(GATEWAY_ENDPOINT_PATH, CONSOLE_BASE_PATH)}#observerToken=${encodeURIComponent(status.lock.observerToken)}`;
+  const fragment = new URLSearchParams({
+    observerToken: status.lock.observerToken,
+    terminalToken: status.lock.terminalToken,
+  });
+  const url = `${status.lock.endpoint}console/#${fragment.toString()}`;
   (deps.openBrowser ?? openBrowser)(url);
   return { url };
 }
 
 export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<string> {
-  const lifecycle = deps.lifecycle ?? createGatewayDaemonLifecycle();
+  const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   const status = await lifecycle.probe();
   if (!status.healthy || !status.lock) {
     const reason = status.error ? ` (${status.error})` : "";
-    return `Fleet Gateway daemon: not running${reason}`;
+    return `Fleet Console server: not running${reason}`;
   }
-  const consoleUrl = status.lock.endpoint.replace(GATEWAY_ENDPOINT_PATH, CONSOLE_BASE_PATH);
-  const tenantCount = typeof status.health?.tenantCount === "number" ? status.health.tenantCount : 0;
+  const consoleUrl = `${status.lock.endpoint}console/`;
+  const workspaceCount = typeof status.health?.workspaceCount === "number" ? status.health.workspaceCount : 0;
   const staleNote = status.buildStale ? " · build stale (restart recommended)" : "";
   return [
-    `Fleet Gateway daemon: running (pid ${status.lock.pid})`,
+    `Fleet Console server: running (pid ${status.lock.pid})`,
     `  endpoint   ${status.lock.endpoint}`,
     `  console    ${consoleUrl}`,
-    `  workspaces ${tenantCount}${staleNote}`,
+    `  workspaces ${workspaceCount}${staleNote}`,
   ].join("\n");
 }
 
 export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string> {
-  const lifecycle = deps.lifecycle ?? createGatewayDaemonLifecycle();
+  const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
   await lifecycle.stop();
-  return "Fleet Gateway daemon stopped.";
+  return "Fleet Console server stopped.";
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
+  if (process.argv[2] === "serve") {
+    await createConsoleDaemonLifecycle().runServer();
+    return;
+  }
   const mode = parseConsoleCliMode(process.argv.slice(2));
   if (mode === "help") {
     process.stdout.write(`${buildConsoleHelpText({ env: process.env, isTTY: process.stdout.isTTY })}\n`);
@@ -162,6 +265,12 @@ async function main(): Promise<void> {
   }
   await openFleetConsole();
   process.stdout.write("Fleet Console opened.\n");
+}
+
+function resolveDefaultServerModulePath(): string {
+  const builtPath = new URL("../dist/cli.mjs", import.meta.url).pathname;
+  if (fs.existsSync(builtPath)) return builtPath;
+  return fileURLToPath(import.meta.url);
 }
 
 const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

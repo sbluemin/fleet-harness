@@ -4,6 +4,9 @@ export interface ObservedTenant {
   readonly cwd: string;
   readonly createdAt: number;
   readonly sessions: number;
+  readonly status?: "online" | "offline" | "deregistered";
+  readonly cliRunId?: string;
+  readonly registrationId?: string;
 }
 
 export interface ObservedEvent {
@@ -90,6 +93,7 @@ export type ConnectionState = "auth-needed" | "connecting" | "live";
 
 export interface ConsoleState {
   readonly token: string | null;
+  readonly terminalToken: string | null;
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly tenants: readonly ObservedTenant[];
@@ -98,4 +102,5 @@ export interface ConsoleState {
   readonly selectedTenantId: string | null;
   readonly selectedJobId: string | null;
   readonly timelineOpen: boolean;
+  readonly coverOpen: boolean;
 }

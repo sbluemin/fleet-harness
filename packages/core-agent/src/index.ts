@@ -1,12 +1,31 @@
 export type {
   AgentToolCtx,
   AgentToolSpec,
+  JsonRpcPayload,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  JsonRpcResultPayload,
   McpCallToolResult,
   McpTool,
   RegisteredTool,
   RegisterExecutorToolOptions,
   TrackStatus,
 } from "./types.js";
+export type {
+  CliSession,
+  DeregisterCliRequest,
+  DeregisterCliResponse,
+  HeartbeatCliRequest,
+  HeartbeatCliResponse,
+  PushEventEnvelope,
+  PushEventSequencePolicy,
+  PushEventsRequest,
+  PushEventsResponse,
+  RegisterCliMcpMetadata,
+  RegisterCliMcpServerMetadata,
+  RegisterCliRequest,
+  RegisterCliResponse,
+} from "./register-contract.js";
 export type {
   ExecutorMcpRuntimeProvider,
   ExecutorMcpRuntimeProviderRuntime,
@@ -27,6 +46,22 @@ export type {
 export type {
   McpToolSnapshotStore,
 } from "./tool-snapshot.js";
+export type {
+  CreateInProcessMcpServerDeps,
+  InProcessMcpServer,
+  InProcessMcpServerInfo,
+} from "./mcp-jsonrpc.js";
+export type {
+  CoreExecutorMcpSession,
+  CoreExecutorMcpSessionRequest,
+  CreateExecutorSessionManagerDeps,
+  ExecutorEndpoint,
+  ExecutorRuntime,
+  ExecutorServerEndpoint,
+  ExecutorServerToken,
+  ExecutorSessionManager,
+  ExecutorSessionRequest,
+} from "./executor-session-manager.js";
 export type { AuthEnvResolver, ExecuteOptions, ExecResult } from "./executor.js";
 export type { ResumeFailureKind } from "./internal/session-errors.js";
 export type {
@@ -47,6 +82,12 @@ export {
   convertToolSchema,
   createMcpToolSnapshotStore,
 } from "./tool-snapshot.js";
+export {
+  createInProcessMcpServer,
+} from "./mcp-jsonrpc.js";
+export {
+  createExecutorSessionManager,
+} from "./executor-session-manager.js";
 export {
   createExecutorMcpRuntimeProviderRuntime,
   createExecutorPortRuntime,

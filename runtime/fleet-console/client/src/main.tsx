@@ -11,11 +11,12 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./app.js";
 import { resetForToken } from "./store.js";
-import { readObserverToken } from "./token-storage.js";
+import { readConsoleTokens } from "./token-storage.js";
 
 const app = document.querySelector("#app");
 if (app) {
-  resetForToken(readObserverToken());
+  const tokens = readConsoleTokens();
+  resetForToken(tokens.observerToken, tokens.terminalToken);
   createRoot(app).render(
     <StrictMode>
       <BrowserRouter basename="/console">

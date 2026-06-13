@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { ConsoleLockPayload } from "../src/api-types.js";
 import {
   buildConsoleHelpText,
   openFleetConsole,
@@ -7,16 +8,16 @@ import {
   runConsoleStatus,
   runConsoleStop,
 } from "../src/cli.js";
-import type { GatewayLockPayload } from "@dotobokuri/fleet-gateway";
 
-const LOCK: GatewayLockPayload = {
+const LOCK: ConsoleLockPayload = {
   pid: 1234,
   host: "127.0.0.1",
   port: 37283,
-  endpoint: "http://127.0.0.1:37283/mcp",
+  endpoint: "http://127.0.0.1:37283/",
   startedAt: 1,
   token: "bootstrap-token",
   observerToken: "observer-token",
+  terminalToken: "terminal-token",
   version: "test",
 };
 
@@ -39,9 +40,10 @@ describe("fleet console CLI", () => {
     expect(helpText).toContain("start");
     expect(helpText).toContain("stop");
     expect(helpText).toContain("status");
+    expect(helpText).not.toContain("Gateway");
   });
 
-  it("ensures the daemon and opens the console with the observer token in the URL fragment only", async () => {
+  it("ensures the server and opens the console with observer and terminal tokens in the URL fragment only", async () => {
     const calls: string[] = [];
     const opened: string[] = [];
 
@@ -62,35 +64,37 @@ describe("fleet console CLI", () => {
     });
 
     expect(calls).toEqual(["ensure", "probe"]);
-    expect(opened).toEqual(["http://127.0.0.1:37283/console/#observerToken=observer-token"]);
+    expect(opened).toEqual(["http://127.0.0.1:37283/console/#observerToken=observer-token&terminalToken=terminal-token"]);
     expect(result.url).toBe(opened[0]);
     expect(opened[0]).not.toContain("?observerToken=");
+    expect(opened[0]).not.toContain("?terminalToken=");
   });
 
-  it("fails when the gateway is not healthy after ensure", async () => {
+  it("fails when the console is not healthy after ensure", async () => {
     await expect(openFleetConsole({
       lifecycle: {
-        ensureDaemon: async () => "http://127.0.0.1:37283/mcp",
+        ensureDaemon: async () => "http://127.0.0.1:37283/",
         probe: async () => ({ healthy: false, lock: null, error: "lock missing", buildStale: false }),
       },
       openBrowser: () => {
-        throw new Error("browser must not open on unhealthy gateway");
+        throw new Error("browser must not open on unhealthy console");
       },
-    })).rejects.toThrow("Fleet Gateway daemon is not healthy after ensure");
+    })).rejects.toThrow("Fleet Console server is not healthy after ensure");
   });
 
-  it("reports a running daemon with the console URL", async () => {
+  it("reports a running server with the console URL", async () => {
     const text = await runConsoleStatus({
       lifecycle: {
-        probe: async () => ({ healthy: true, lock: LOCK, buildStale: false }),
+        probe: async () => ({ healthy: true, lock: LOCK, buildStale: false, health: { ok: true, pid: LOCK.pid, host: LOCK.host, port: LOCK.port, endpoint: LOCK.endpoint, startedAt: LOCK.startedAt, version: LOCK.version, workspaceCount: 2 } }),
       },
     });
     expect(text).toContain("running");
     expect(text).toContain("http://127.0.0.1:37283/console/");
+    expect(text).toContain("workspaces 2");
     expect(text).not.toContain("observerToken");
   });
 
-  it("reports a not-running daemon when the gateway is absent", async () => {
+  it("reports a not-running server when the console is absent", async () => {
     const text = await runConsoleStatus({
       lifecycle: {
         probe: async () => ({ healthy: false, lock: null, error: "lock missing", buildStale: false }),
@@ -100,7 +104,7 @@ describe("fleet console CLI", () => {
     expect(text).toContain("lock missing");
   });
 
-  it("stops the gateway daemon", async () => {
+  it("stops the console server", async () => {
     const calls: string[] = [];
     const text = await runConsoleStop({
       lifecycle: {

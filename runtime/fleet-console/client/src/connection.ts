@@ -8,7 +8,7 @@ import {
   resetForToken,
   setState,
 } from "./store.js";
-import { clearObserverToken } from "./token-storage.js";
+import { clearConsoleTokens } from "./token-storage.js";
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
@@ -48,9 +48,9 @@ async function runConnectionLoop(token: string, signal: AbortSignal): Promise<vo
     } catch (err) {
       if (signal.aborted) return;
       if (isAuthError(err)) {
-        // 게이트웨이 재시작으로 무효화된 토큰은 회복 불가 — 재시도 대신 토큰을 비우고 안내 화면으로 복귀한다.
-        clearObserverToken();
-        resetForToken(null);
+        // console 서버 재시작으로 무효화된 토큰은 회복 불가 — 재시도 대신 토큰을 비우고 안내 화면으로 복귀한다.
+        clearConsoleTokens();
+        resetForToken(null, null);
         return;
       }
       setState({ connection: "connecting", connectionError: err instanceof Error ? err.message : String(err) });

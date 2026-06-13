@@ -35,7 +35,7 @@ Several invariants are guarded by a **single owner** — duplication or shadowin
 |---------|-------|-----------|
 | Carrier session reuse | `packages/core-agent/src/internal/executor-engine.ts` | Live carrier session reuse is in-process executor pool state keyed by `poolKey`; it is not persisted through JSONL custom entries or host adapters. |
 | Track status enum | `packages/core-agent/src/types.ts:TrackStatus` | Six values cover both panel UI and executor lifecycle; `fleet-carriers` re-exports it for carrier job event compatibility. |
-| MCP server URL + token routing | `runtime/fleet-gateway` | One machine-wide local gateway with per-session Bearer tokens and FIFO routing isolated by token; carrier and wiki tool IDs and per-tool access policies remain unchanged. |
+| In-process MCP server primitives + register data contract | `packages/core-agent/src/` | Core-agent owns generic loopback HTTP/JSON-RPC MCP primitives, executor session management, and CLI register/event data shapes. Fleet callers own server assembly, IDs, lifecycle policy, and any browser-facing token exposure. |
 | CLI provider catalog | `@dotobokuri/core-unified-agent`'s `CLI_BACKENDS` | All `TASKFORCE_CLI_TYPES`, display names, and reasoning capabilities derive from this; host presentation colors live in `runtime/fleet-cli/src/styles/`. |
 | Fleet tool catalog | `packages/fleet-admiral/src/tools.ts` backed by `packages/core-agent` registry and explicit use-site registration | Host queries metadata + invokes through the new package facades — never re-implements specs. |
 | Executor MCP tool exposure | `packages/fleet-admiral/src/tools.ts:getExecutorMcpTools()` adapter over `packages/core-agent` | Whitelist-only connect-time MCP exposure for `executeWithPool` / `executeOneShot`. |

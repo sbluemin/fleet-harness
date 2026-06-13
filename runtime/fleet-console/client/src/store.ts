@@ -16,6 +16,7 @@ const TENANT_JOB_LIMIT = 200;
 const listeners = new Set<Listener>();
 let state: ConsoleState = {
   token: null,
+  terminalToken: null,
   connection: "auth-needed",
   connectionError: null,
   tenants: [],
@@ -24,6 +25,7 @@ let state: ConsoleState = {
   selectedTenantId: null,
   selectedJobId: null,
   timelineOpen: false,
+  coverOpen: false,
 };
 
 export function getState(): ConsoleState {
@@ -42,10 +44,11 @@ export function setState(patch: Partial<ConsoleState>): void {
   emit();
 }
 
-export function resetForToken(token: string | null): void {
+export function resetForToken(token: string | null, terminalToken: string | null = state.terminalToken): void {
   state = {
     ...state,
     token,
+    terminalToken,
     connection: token ? "connecting" : "auth-needed",
     connectionError: null,
   };
@@ -64,6 +67,10 @@ export function selectJob(tenantId: string, jobId: string): void {
 
 export function toggleTimeline(): void {
   setState({ timelineOpen: !state.timelineOpen });
+}
+
+export function toggleCover(): void {
+  setState({ coverOpen: !state.coverOpen });
 }
 
 export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {

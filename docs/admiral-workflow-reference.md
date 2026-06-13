@@ -4,12 +4,12 @@ This document is the operational doctrine for Admiral and Carrier agents working
 
 ## 1. Architecture State
 
-- `runtime/fleet-cli` owns the CLI host and Composition Root, and consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`.
+- `runtime/fleet-cli` owns the CLI host and Composition Root, consumes single-fleet Admiral policy from `@dotobokuri/fleet-admiral`, and owns one in-process MCP HTTP/JSON-RPC server per CLI process plus the console register publisher.
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs (including detached jobs), store, and carrier runtime state.
-- `packages/core-agent` owns the host-agnostic executor/session/model runtime engine (`executeWithPool` / `executeOneShot`) and the builtin external MCP catalog.
+- `packages/core-agent` owns the host-agnostic executor/session/model runtime engine (`executeWithPool` / `executeOneShot`), the builtin external MCP catalog, Fleet-domain-agnostic in-process MCP server primitives, and the shared register data contract.
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/fleet-infra` owns host-agnostic auth, data-dir resolution, global options, and the durable `fs-store` I/O primitives.
-- `runtime/fleet-gateway` owns the machine-wide local gateway daemon, loopback endpoint lifecycle, tenant token isolation, and schema-agnostic MCP pass-through routing.
+- `runtime/fleet-console` owns the standalone loopback HTTP backend for CLI register ingest, observer SSE, terminal WebSocket, and static console serving for a single workspace.
 
 ## 2. Ownership Model
 
@@ -29,7 +29,7 @@ fleet-cli
   -> fleet-carriers
   -> core-agent
   -> fleet-infra
-  -> fleet-gateway
+  -> fleet-console
   -> fleet-wiki / fleet-wiki-ui
 
 core-agent / fleet-carriers / fleet-infra

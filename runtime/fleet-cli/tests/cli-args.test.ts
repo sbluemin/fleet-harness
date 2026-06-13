@@ -52,7 +52,7 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("auth");
     expect(helpText).toContain("wiki");
     expect(helpText).toContain("console");
-    expect(helpText).toContain("Open Fleet Console in your browser.");
+    expect(helpText).toContain("Open Fleet Console, or manage the console server");
     expect(helpText).toContain("-h, --help");
     expect(helpText).toContain("--native");
     expect(helpText).toContain("Run the selected Agent CLI in the real terminal");

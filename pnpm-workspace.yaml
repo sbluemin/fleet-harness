@@ -7,7 +7,6 @@ packages:
   - "packages/fleet-wiki"
   - "runtime/fleet-wiki-ui"
   - "runtime/fleet-console"
-  - "runtime/fleet-gateway"
   - "runtime/fleet-cli"
 allowBuilds:
   esbuild: true

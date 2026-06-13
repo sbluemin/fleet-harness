@@ -1,0 +1,81 @@
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+
+import type { TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
+
+export interface TerminalLaunchResolverDeps {
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly execPath?: string;
+  readonly homedir?: () => string;
+  readonly exists?: (path: string) => boolean;
+}
+
+export type TerminalLaunchResolver = (cwd?: string) => TerminalLaunchSpec;
+
+const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
+const TERMINAL_TERM = "xterm-256color";
+const require = createRequire(import.meta.url);
+
+export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
+  const baseCwd = deps.cwd ?? process.cwd();
+  const env = deps.env ?? process.env;
+  const execPath = deps.execPath ?? process.execPath;
+  const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
+  const exists = deps.exists ?? fs.existsSync;
+
+  return (selectedCwd) => {
+    const cwd = selectedCwd || baseCwd || homedir();
+    const launchEnv = { ...env, TERM: TERMINAL_TERM };
+    const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
+    if (override) {
+      return { ...override, cwd, env: launchEnv };
+    }
+    const localCli = findLocalFleetCliEntry(cwd, exists);
+    if (localCli) {
+      return { bin: execPath, args: [localCli], cwd, env: launchEnv };
+    }
+    return { bin: "fleet", args: [], cwd, env: launchEnv };
+  };
+}
+
+export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly cols: number; readonly rows: number }): TerminalPtyHandle {
+  const { spawn: spawnPty } = require("node-pty") as {
+    readonly spawn: (bin: string, args: readonly string[], options: {
+      readonly cols: number;
+      readonly rows: number;
+      readonly cwd: string;
+      readonly env: NodeJS.ProcessEnv;
+      readonly name: string;
+    }) => TerminalPtyHandle;
+  };
+  return spawnPty(launch.bin, [...launch.args], {
+    cols: size.cols,
+    rows: size.rows,
+    cwd: launch.cwd,
+    env: launch.env,
+    name: TERMINAL_TERM,
+  });
+}
+
+export function findLocalFleetCliEntry(cwd: string, exists: (path: string) => boolean = fs.existsSync): string | null {
+  let currentDir = path.resolve(cwd);
+  while (true) {
+    const candidate = path.join(currentDir, "runtime", "fleet-cli", "dist", "index.js");
+    if (exists(candidate)) return candidate;
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) return null;
+    currentDir = parentDir;
+  }
+}
+
+function parseTerminalCommand(command: string | undefined): { readonly bin: string; readonly args: readonly string[] } | null {
+  const parts = command?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (parts.length === 0) return null;
+  const [bin, ...args] = parts;
+  if (!bin) return null;
+  return { bin, args };
+}

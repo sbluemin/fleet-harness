@@ -93,7 +93,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     `  ${command("auth", colorEnabled)}                ${dim("Manage Fleet authentication.", colorEnabled)}`,
     `  ${command("hook", colorEnabled)}                ${dim("Run non-interactive Fleet hook helpers.", colorEnabled)}`,
     `  ${command("wiki", colorEnabled)}                ${dim("Run Fleet Wiki.", colorEnabled)}`,
-    `  ${command("console", colorEnabled)}             ${dim("Open Fleet Console, or manage the gateway daemon (start|stop|status).", colorEnabled)}`,
+    `  ${command("console", colorEnabled)}             ${dim("Open Fleet Console, or manage the console server (start|stop|status).", colorEnabled)}`,
     `  ${command("update", colorEnabled)}              ${dim("Update Fleet CLI packages.", colorEnabled)}`,
     "",
     section("OPTIONS", colorEnabled),

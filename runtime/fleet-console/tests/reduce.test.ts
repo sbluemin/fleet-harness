@@ -97,7 +97,7 @@ describe("applyEvent", () => {
     expect(job.tracks.t1?.sentTextLength).toBe(20_000);
   });
 
-  it("keeps gateway clamping visible through fallback length metadata for text and thought", () => {
+  it("keeps retention clamping visible through fallback length metadata for text and thought", () => {
     let job = createEmptyJob("tenant-1", "job-1", 1_000);
     job = applyEvent(job, makeEvent(1, "track:finalized", {
       trackId: "t1",

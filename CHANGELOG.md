@@ -6,34 +6,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Added
-- [core] Fleet Console, a standalone web surface for gateway observability, ships as its own runtime package and is served by the local gateway daemon — navigable workspace and job rails, smooth incremental streaming of carrier output with reasoning folds and inline tool-call activity, job finalize summaries, and a raw event timeline.
+- [core] Fleet Console, a standalone fullstack control surface, ships as its own runtime package with navigable workspace and job rails, smooth incremental streaming of carrier output with reasoning folds and inline tool-call activity, job finalize summaries, and a raw event timeline.
 - [core] Fleet Console now opens on a Welcome dashboard summarizing live workspace, job, and connection status, with carrier streaming relocated to a dedicated Operations route reachable from top-bar navigation.
-- [core] The Fleet Console CLI gains `start`, `stop`, and `status` subcommands for managing the local gateway daemon, a banner-style help consistent with the other Fleet CLIs, and a `pnpm fleet-console` root script; `fleet console` relays every subcommand to the standalone binary.
-- [core] A machine-wide gateway daemon replaces per-instance MCP servers, exposing a fixed local loopback endpoint with per-session tenant tokens, in-memory call queues, and an observer read-only access mode.
-- [core] Mission Control now includes a gateway status panel showing daemon health, tenant count, and last-seen timestamp.
-- [core] The `fleet console` subcommand and the standalone `fleet-console` binary ensure the gateway daemon and open the Fleet Console in a browser.
-- [core] Fleet Gateway can now be published as a standalone package while Fleet CLI consumes it through a host-injected SDK boundary.
+- [core] The Fleet Console CLI gains `start`, `stop`, and `status` subcommands for managing the local console server, a banner-style help consistent with the other Fleet CLIs, and a `pnpm fleet-console` root script; `fleet console` relays every subcommand to the standalone binary.
 - [core] Added `fleet --native` boot option to run the selected Agent CLI in terminal-exclusive mode, passing keyboard, mouse, drag, and scroll events natively to the child CLI, skipping the bottom Fleet PTY, and injecting a mid-session reminder into the child session when carrier work completes.
+- [core] Fleet now runs Fleet Console as the local fullstack control surface, removes the global gateway daemon, and returns MCP connectivity to per-CLI in-process servers.
+- [core-agent] Added shared CLI registration contracts and generic in-process MCP server primitives for Fleet runtimes.
 
 ### Changed
 - [core-unified-agent] Claude Code with Moonshot Kimi now runs the Kimi K2.7 coding model as the default, slot-mapped, and subagent model.
 - [core] Fleet Console adopts the fleet-wide maritime visual identity — deep-water ink and brass/aurora accents, serif display type, glass surfaces, and codex motion — replacing its previous carbon-and-lime look.
 - [core] Observability events now retain carrier output text in memory with a per-event retention cap instead of redacting it to length metadata, so the console can render live streams; exposure stays loopback-only behind observer tokens.
-- The generic MCP registry, routing, and tool snapshot primitives formerly in `@dotobokuri/core-mcp-server` are now owned by `@dotobokuri/core-agent`.
-- [core][core-agent] Executor sessions connect to the local gateway instead of spawning an in-process MCP server per Fleet CLI instance.
-
-### Fixed
-- [core] Gateway auto-refresh now defers stale daemon replacement while active tenants are connected, preserving existing session tokens until an explicit restart.
+- [core-agent] The generic MCP registry, routing, and tool snapshot primitives formerly in `@dotobokuri/core-mcp-server` are now owned by `@dotobokuri/core-agent`.
 
 ### Removed
 - [core] Removed the raw-CLI Native launch mode; dedicated CLIs now always launch with the Fleet persona injected.
-- Removed the `@dotobokuri/core-mcp-server` workspace package; consumers should import generic MCP APIs from `@dotobokuri/core-agent` instead.
 - [core] Removed Fleet global shortcuts (Ctrl+C, Ctrl+Q, Ctrl+T) and the MIRROR/DEDICATED input mode toggle from both native and non-native sessions; Fleet exit is now handled through the launcher Exit action or child CLI termination.
+- [core-agent] Removed the `@dotobokuri/core-mcp-server` workspace package; consumers should import generic MCP APIs from `@dotobokuri/core-agent` instead.
 
 ### Breaking Changes
-- The `@dotobokuri/core-mcp-server` package is no longer published or resolvable; migrate imports to `@dotobokuri/core-agent`.
+- [core-agent] The `@dotobokuri/core-mcp-server` package is no longer published or resolvable; migrate imports to `@dotobokuri/core-agent`.
 
 ### Fixed
+- [core] Fleet Console now preserves active CLI sessions across local server health refreshes until an explicit restart.
 - [core][wiki-web] Fixed Fleet Wiki web opening automatically in the browser when agent CLI sessions start.
 
 ## [1.4.0] - 2026-06-10

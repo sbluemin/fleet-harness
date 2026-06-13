@@ -27,7 +27,7 @@ export function Welcome({ state }: WelcomeProps) {
     {
       label: "Workspaces",
       value: String(workspaceCount),
-      caption: "Gateway observer tenants",
+      caption: "Registered CLI workspaces",
     },
     {
       label: "Live jobs",
@@ -50,7 +50,7 @@ export function Welcome({ state }: WelcomeProps) {
         <h2 id="welcome-title">Fleet Harness</h2>
         <p className="welcome-tagline">Multi-LLM Orchestration Kit</p>
         <p className="welcome-copy">
-          Observe gateway workspaces, carrier streams, and live orchestration signals from a single maritime console.
+          Observe CLI workspaces, carrier streams, and live orchestration signals from a single maritime console.
         </p>
         <Link className="welcome-cta" to="/operations">
           Enter Operations <span aria-hidden="true">&rarr;</span>
@@ -72,7 +72,7 @@ export function Welcome({ state }: WelcomeProps) {
 
       {state.connection === "auth-needed" ? (
         <aside className="welcome-token-note" aria-label="Observer token guidance">
-          Open this page through <code>fleet-gateway console</code> so the gateway can hand the observer token to this session.
+          Open this page through <code>fleet console</code> so the console can hand browser tokens to this session.
         </aside>
       ) : null}
     </main>

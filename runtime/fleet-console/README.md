@@ -1,49 +1,46 @@
 # Fleet Console
 
-Web surface for observing Fleet Gateway tenants, carrier jobs, and live output streams.
+Standalone loopback web console for observing registered Fleet CLI workspaces, carrier jobs, live output streams, and PTY terminal sessions.
 
-## What it does
+## What It Does
 
-Fleet Console is the operator-facing GUI for the machine-wide Fleet Gateway daemon. It connects to the gateway's read-only observer surface and renders:
+Fleet Console owns its own local HTTP server. Fleet CLI processes register with the console when available, push ordered event batches through the CLI-only ingest API, and continue normally if the console is absent.
 
-- Connected workspaces (tenants) and their observed jobs in a navigable rail.
-- Per-job carrier tracks with smooth, incremental streaming of output text, reasoning folds, and inline tool-call activity.
-- Job lifecycle state (running / done / error / aborted), finalize summaries, and a raw event timeline for debugging.
+- Registered CLI workspaces and observed jobs in a navigable rail.
+- Per-job carrier tracks with incremental output text, reasoning folds, and tool-call activity.
+- Browser observer snapshots and SSE streams backed by console-owned global observed ids.
+- Browser terminal access through short-lived tickets over WebSocket.
 
-The console is the seed of the unified Fleet GUI and is expected to absorb additional surfaces over time.
+## Runtime Channels
 
-## How it is served
+| Channel | Purpose | Token Boundary |
+|---|---|---|
+| `POST /api/cli/register` | CLI registers a workspace session. | Uses the console bootstrap token from the lock file. |
+| `POST /api/cli/events` | CLI pushes `{ cliRunId, seq, at, event }[]` batches. | Uses CLI-only `ingestToken`; never sent to browser code. |
+| `/observer/*` | Browser snapshot and SSE observer surface. | Uses browser observer token only. |
+| `/terminal/ticket` + `/terminal/ws` | Browser terminal PTY transport. | Browser receives a ticket, not the raw terminal token. |
+| `/console/` | Static React client served from this package's `dist/client`. | Browser tokens are handed off once through the URL fragment. |
 
-The package builds a static React SPA (`client/` → `dist/client/`, base path `/console/`) and a CLI launcher (`src/cli.ts` → `dist/cli.mjs`, binary `fleet-console`). The SPA output is embedded into the Fleet Gateway's `dist/client/` at build time and served **loopback-only** under `http://127.0.0.1:<port>/console/`.
-
-Open it with:
+## Usage
 
 ```bash
-fleet console        # via fleet-cli (relays to this package's CLI)
+fleet console        # via fleet-cli
 fleet-console        # standalone binary
+fleet-console status
+fleet-console stop
 ```
 
-The launcher ensures the gateway daemon is running (via the `@dotobokuri/fleet-gateway` lifecycle API) and opens the browser with the aggregate observer token passed once through the URL fragment. The client immediately moves the token to `sessionStorage` and strips it from the address bar. Tokens never travel in query strings.
-
-## Architecture
-
-| Piece | Role |
-|-------|------|
-| `src/cli.ts` | `fleet-console` CLI launcher: ensures the gateway daemon and opens the console in a browser. |
-| `client/src/reduce.ts` | Pure event reducer: folds gateway observability events into per-job/per-track view models. Text events are deltas and accumulate. |
-| `client/src/store.ts` | Framework-agnostic external store (snapshots, live events, selection), bridged to React via `useSyncExternalStore`. |
-| `client/src/connection.ts` | Connection loop: snapshot resync → SSE consume → exponential-backoff reconnect. |
-| `client/src/sse.ts` | Incremental SSE frame parser + observer frame interpretation (aggregate and tenant-scoped shapes). |
-| `client/src/components/` | Topbar, workspace/job rail, job stage, streaming track cards, event timeline. |
-| `client/src/styles/` | Three layers: `theme.css` tokens, `layout.css` shell grid, `components.css` surfaces. |
+The launcher ensures the local console server is running and opens `/console/` with observer and terminal browser tokens in the URL fragment. The client moves them to `sessionStorage` and strips the fragment from the address bar.
 
 ## Development
 
 ```bash
-pnpm --filter @dotobokuri/fleet-console dev        # Vite dev server (UI shell only; observer API needs a running gateway)
-pnpm --filter @dotobokuri/fleet-console test       # vitest (reducer / SSE / store / CLI)
+pnpm --filter @dotobokuri/fleet-console dev
+pnpm --filter @dotobokuri/fleet-console test
 pnpm --filter @dotobokuri/fleet-console typecheck
-pnpm --filter @dotobokuri/fleet-console build      # emits dist/cli.mjs + dist/client, then pushes the gateway embed
+pnpm --filter @dotobokuri/fleet-console build
 ```
 
-See `AGENTS.md` for the design doctrine and streaming invariants.
+`build` emits `dist/cli.mjs` and `dist/client/`. There is no external embed step.
+
+See `AGENTS.md` for ownership, token-boundary, and streaming invariants.

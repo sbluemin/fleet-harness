@@ -1,7 +1,7 @@
 import { AuthGate } from "../components/auth-gate.js";
-import { JobView } from "../components/job-view.js";
+import { CarrierCover } from "../components/carrier-cover.js";
 import { Sidebar } from "../components/sidebar.js";
-import { selectedJob } from "../store.js";
+import { Terminal } from "../components/terminal.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationsProps {
@@ -9,12 +9,16 @@ interface OperationsProps {
 }
 
 export function Operations({ state }: OperationsProps) {
+  const hasTokens = Boolean(state.token && state.terminalToken);
   return (
-    <div className={`console-body ${state.token ? "" : "console-body--gate"}`}>
-      {state.token ? (
+    <div className={`console-body ${hasTokens ? "" : "console-body--gate"}`}>
+      {hasTokens && state.terminalToken ? (
         <>
           <Sidebar state={state} />
-          <JobView job={selectedJob(state)} timelineOpen={state.timelineOpen} />
+          <main className="operations-terminal-stage">
+            <Terminal terminalToken={state.terminalToken} />
+            <CarrierCover state={state} />
+          </main>
         </>
       ) : (
         <AuthGate />

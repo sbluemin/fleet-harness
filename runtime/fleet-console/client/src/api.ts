@@ -34,6 +34,16 @@ export async function openEventsStream(token: string, signal?: AbortSignal): Pro
   return response.body.getReader();
 }
 
+export async function requestTerminalTicket(token: string, signal?: AbortSignal): Promise<{ readonly ticket: string; readonly ttlMs: number }> {
+  const response = await fetch("/terminal/ticket", { method: "POST", headers: authHeaders(token), signal });
+  await assertOk(response);
+  const payload = (await response.json()) as { ticket?: unknown; ttlMs?: unknown };
+  if (typeof payload.ticket !== "string" || typeof payload.ttlMs !== "number") {
+    throw new ApiError(response.status, "Invalid terminal ticket response");
+  }
+  return { ticket: payload.ticket, ttlMs: payload.ttlMs };
+}
+
 function authHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }

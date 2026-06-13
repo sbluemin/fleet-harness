@@ -38,7 +38,6 @@
     "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*",
     "@dotobokuri/fleet-console": "workspace:*",
-    "@dotobokuri/fleet-gateway": "workspace:*",
     "@dotobokuri/core-agent": "workspace:*",
     "@dotobokuri/fleet-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",

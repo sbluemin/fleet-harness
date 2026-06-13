@@ -7,7 +7,6 @@ import { createAboutPanel } from "./menu/about-panel.js";
 import { createActionListPanel } from "./menu/action-list-panel.js";
 import { createAuthPanel } from "./menu/auth-panel.js";
 import { createDiagnosticsPanel } from "./menu/diagnostics-panel.js";
-import { createGatewayPanel } from "./menu/gateway-panel.js";
 import { createInputModal } from "./menu/input-modal.js";
 import { createPanelStack, type MenuPanel, type PanelStack } from "./menu/panel-stack.js";
 import { createSectionedListPanel, type SectionedListRow } from "./menu/sectioned-list-panel.js";
@@ -50,7 +49,6 @@ interface SystemMenuPanelOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly getRelease: () => CreateMissionControlControllerOptions["release"];
   readonly getStack: () => PanelStack;
-  readonly gatewayController: CreateMissionControlControllerOptions["gatewayController"];
   readonly onRenderRequest: () => void;
   readonly wikiController: CreateMissionControlControllerOptions["wikiController"];
 }
@@ -337,7 +335,6 @@ export function createMissionControlController(options: CreateMissionControlCont
           counts: options.loadedCounts,
           cwd: options.invocationCwd ?? process.cwd(),
           env: options.env ?? process.env,
-          gatewayController: options.gatewayController,
           getRelease: () => release,
           getStack: () => stack,
           onRenderRequest: options.onRenderRequest,
@@ -641,18 +638,6 @@ function createSystemMenuPanel(options: SystemMenuPanelOptions): MenuPanel {
             onRenderRequest: options.onRenderRequest,
             stack,
             wiki: options.wikiController,
-          }));
-        },
-      },
-      {
-        id: "gateway",
-        label: "Gateway Status",
-        run: () => {
-          const stack = options.getStack();
-          stack.push(createGatewayPanel({
-            onRenderRequest: options.onRenderRequest,
-            stack,
-            gateway: options.gatewayController,
           }));
         },
       },
