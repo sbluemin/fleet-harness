@@ -11,11 +11,9 @@ import {
 } from "../../src/controls/input.js";
 
 describe("input router keybinding injection", () => {
-  it("routes injected exit, registered, and mode-toggle keybindings", () => {
+  it("routes registered keybindings without Fleet host globals", () => {
     const events: string[] = [];
     const keybindings = createInputKeybindingConfig({
-      exitKeys: ["exit"],
-      modeToggleKeys: ["toggle"],
       registeredKeybindings: [
         {
           action: "custom",
@@ -25,34 +23,21 @@ describe("input router keybinding injection", () => {
       ],
     });
     const router = createInputRouter({
-      initialMode: "MIRROR",
       keybindings,
-      onExit: () => events.push("exit"),
-      onModeChange: (mode) => events.push(`mode:${mode}`),
-      toggleMode: () => "DEDICATED",
       writeDedicated: (data) => events.push(`write:${data}`),
     });
 
     router.route("custom");
-    router.route("toggle");
-    router.route("exit");
+    router.route("\x03\x11\x14");
 
-    assert.deepEqual(events, ["custom", "mode:DEDICATED", "exit"]);
-    assert.equal(router.getMode(), "DEDICATED");
+    assert.deepEqual(events, ["custom", "write:\x03\x11\x14"]);
   });
 
   it("keeps non-keybinding input on the dedicated path", () => {
     const writes: string[] = [];
-    const keybindings = createInputKeybindingConfig({
-      exitKeys: ["exit"],
-      modeToggleKeys: ["toggle"],
-    });
+    const keybindings = createInputKeybindingConfig({});
     const router = createInputRouter({
-      initialMode: "MIRROR",
       keybindings,
-      onExit: () => undefined,
-      onModeChange: () => undefined,
-      toggleMode: (mode) => mode,
       writeDedicated: (data) => writes.push(data),
     });
 
@@ -85,8 +70,6 @@ describe("input router keybinding injection", () => {
   it("routes SGR mouse before keybinding dispatch using current pane geometry", () => {
     const events: string[] = [];
     const keybindings = createInputKeybindingConfig({
-      exitKeys: ["exit"],
-      modeToggleKeys: ["toggle"],
       registeredKeybindings: [
         {
           action: "mouse-looking-key",
@@ -97,10 +80,7 @@ describe("input router keybinding injection", () => {
     });
     const router = createRouter({
       getLayout: () => ({ columns: 20, dedicatedRows: 3, fleetRows: 2, totalRows: 5 }),
-      initialMode: "MIRROR",
       keybindings,
-      onExit: () => events.push("exit"),
-      onModeChange: (mode) => events.push(`mode:${mode}`),
       routeDedicatedMouse: (event) => {
         events.push(`dedicated:${event.localColumn}:${event.localRow}:${event.wheelDirection}`);
         return true;
@@ -109,7 +89,6 @@ describe("input router keybinding injection", () => {
         events.push(`fleet:${event.localColumn}:${event.localRow}:${event.wheelDirection}`);
         return true;
       },
-      toggleMode: () => "DEDICATED",
       writeDedicated: (data) => events.push(`write:${data}`),
     });
 
@@ -122,16 +101,9 @@ describe("input router keybinding injection", () => {
 
   it("rejects non-SGR and malformed mouse input without changing routing", () => {
     const writes: string[] = [];
-    const keybindings = createInputKeybindingConfig({
-      exitKeys: ["exit"],
-      modeToggleKeys: ["toggle"],
-    });
+    const keybindings = createInputKeybindingConfig({});
     const router = createInputRouter({
-      initialMode: "MIRROR",
       keybindings,
-      onExit: () => undefined,
-      onModeChange: () => undefined,
-      toggleMode: (mode) => mode,
       writeDedicated: (data) => writes.push(data),
     });
 
@@ -145,8 +117,10 @@ describe("input router keybinding injection", () => {
 
   it("detects conflicting injected keybindings", () => {
     const keybindings = createInputKeybindingConfig({
-      exitKeys: ["same"],
-      modeToggleKeys: ["same"],
+      registeredKeybindings: [
+        { action: "first", key: "same", handler: () => undefined },
+        { action: "second", key: "same", handler: () => undefined },
+      ],
     });
 
     assert.throws(() => assertInputContract(keybindings), /must not conflict/);

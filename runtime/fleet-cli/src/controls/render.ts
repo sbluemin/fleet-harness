@@ -1,7 +1,7 @@
 import { LocalTui } from "../tui/renderer.js";
 
 import type { AgentCliId } from "../agent-cli/types.js";
-import type { Component, FleetInputMode, FleetPtyApi } from "./types.js";
+import type { Component, FleetPtyApi } from "./types.js";
 
 export type RenderCallback = () => void;
 export type RenderScheduler = (afterRender?: RenderCallback) => void;
@@ -59,16 +59,13 @@ export function createCursorPolicySync(options: {
   readonly cursorSyncExplicitlyEnabled?: boolean;
   readonly fleetPty: FleetPtyApi;
   readonly getActiveAgentProfileId?: () => AgentCliId | undefined;
-  readonly getMode: () => FleetInputMode;
   readonly hasActiveMissionControlPanel: () => boolean;
-  readonly isModeToggleSuppressed: () => boolean;
   readonly ptyView: Component;
   readonly ui: LocalTui;
 }): () => void {
   return () => {
     if (
       !options.cursorSync
-      || options.isModeToggleSuppressed()
       || options.hasActiveMissionControlPanel()
       || options.fleetPty.hasActiveOverlay()
       || shouldAutoDisableCursorSync(options.getActiveAgentProfileId?.(), options.cursorSyncExplicitlyEnabled === true)
@@ -77,8 +74,7 @@ export function createCursorPolicySync(options: {
       return;
     }
 
-    const mode = options.getMode();
-    options.ui.setCursorAnchorTarget(mode === "MIRROR" || mode === "DEDICATED" ? options.ptyView : undefined);
+    options.ui.setCursorAnchorTarget(options.ptyView);
   };
 }
 

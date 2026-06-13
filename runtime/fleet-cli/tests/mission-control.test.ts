@@ -6,7 +6,7 @@ import { visibleWidth, type Component, type PtyExitEvent, type PtyHost, type Pty
 import { createMissionControlController } from "../src/mission-control/controller.js";
 import { renderMissionControl } from "../src/mission-control/renderer.js";
 import { buildFleetBanner, gradientLine } from "../src/mission-control/welcome.js";
-import type { MissionControlCliOption, MissionControlShimmerOptions, MissionControlShimmerTimer } from "../src/mission-control/types.js";
+import type { MissionControlCliOption, MissionControlLaunchProfile, MissionControlShimmerOptions, MissionControlShimmerTimer } from "../src/mission-control/types.js";
 import { getAgentCliMetadata, resolveAgentCliId } from "../src/agent-cli/registry.js";
 import type { AgentCliId, AgentCliProfile } from "../src/agent-cli/types.js";
 import { createWikiProcessController } from "../src/mission-control/menu/wiki-panel.js";
@@ -896,6 +896,30 @@ describe("Mission Control controller", () => {
     expect(hosts).toHaveLength(1);
   });
 
+  it("launches through an injected strategy with the resolved profile", async () => {
+    const launchProfile = vi.fn<MissionControlLaunchProfile>((launch) => {
+      launch.onNativeActive(launch.profile);
+      launch.onExit({ exitCode: 0, signal: undefined });
+    });
+    const controller = createTestController({
+      injectProfile: (profile) => Promise.resolve({
+        ...profile,
+        args: ["--ready"],
+        launchWarnings: ["native warning"],
+      }),
+      launchProfile,
+    });
+
+    await controller.launchSelected();
+
+    expect(launchProfile).toHaveBeenCalledTimes(1);
+    expect(launchProfile.mock.calls[0]?.[0].profile.args).toEqual(["--ready"]);
+    expect(controller.getState()).toMatchObject({
+      kind: "ended",
+      lastExit: { exitCode: 0, signal: undefined },
+    });
+  });
+
   it("runs shimmer only on inactive Mission Control screens and disposes the timer", async () => {
     let renderRequests = 0;
     const hosts: FakeHost[] = [];
@@ -1266,6 +1290,7 @@ function createTestController(options: {
   readonly hosts?: FakeHost[];
   readonly injectProfile?: (profile: AgentCliProfile) => Promise<AgentCliProfile>;
   readonly invocationCwd?: string;
+  readonly launchProfile?: MissionControlLaunchProfile;
   readonly loadedCounts?: MissionControlCounts;
   readonly onExitFleet?: () => void;
   readonly onRenderRequest?: () => void;
@@ -1290,6 +1315,7 @@ function createTestController(options: {
     invocationCwd: options.invocationCwd ?? "/tmp/mission-control",
     loadedCounts: options.loadedCounts,
     injectProfile: options.injectProfile ?? ((profile) => Promise.resolve(profile)),
+    launchProfile: options.launchProfile,
     onExitFleet: options.onExitFleet ?? (() => undefined),
     onRenderRequest: options.onRenderRequest ?? (() => undefined),
     release: options.release,

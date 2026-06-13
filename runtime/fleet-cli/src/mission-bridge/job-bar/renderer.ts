@@ -47,7 +47,6 @@ export interface CarrierJobHudRenderOptions {
   readonly frame: number;
   readonly jobs?: readonly PanelJob[];
   readonly now?: number;
-  readonly pendingExitWarning?: boolean;
   readonly runs?: ReadonlyMap<string, PanelRunViewModelSource>;
   readonly theme?: FleetPtyTheme;
   readonly width: number;
@@ -79,7 +78,6 @@ const HUD_LINE_BREAKS = /[\r\n]+/g;
 const HUD_MULTILINE_CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f]/g;
 const HUD_SPOOFING_FORMAT_CHARS = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufe00-\ufe0f\ufeff]/gi;
 const DEFAULT_SAFE_LABEL = "(unnamed)";
-const EXIT_WARNING_TEXT = "Press Ctrl+C again to exit";
 const KIND_LABELS: Record<string, string> = {
   carrier: "Carrier",
   sortie: "Sortie",
@@ -99,14 +97,8 @@ export function renderCarrierJobHud(options: CarrierJobHudRenderOptions): string
 
 export function renderCarrierJobHudStrip(options: CarrierJobHudRenderOptions): string[] {
   const carriers = buildCarrierTiles(options.carrierRuntime, getActiveJobs(options.jobs));
-  if (carriers.length === 0 && options.pendingExitWarning !== true) return [];
-  return renderCarrierHudStrip(
-    options.width,
-    carriers,
-    options.frame,
-    options.theme,
-    options.pendingExitWarning === true,
-  );
+  if (carriers.length === 0) return [];
+  return renderCarrierHudStrip(options.width, carriers, options.frame, options.theme);
 }
 
 function waveText(
@@ -201,11 +193,10 @@ function renderCarrierHudStrip(
   carriers: CarrierHudTile[],
   frame: number,
   theme: FleetPtyTheme | undefined,
-  pendingExitWarning: boolean,
 ): string[] {
   const tiles = carriers.map((carrier) => formatCarrierTile(carrier, frame));
   const line = centerLine(tiles.join(tileSeparator(theme)), width);
-  return [prependExitWarning(line, width, pendingExitWarning)];
+  return [line];
 }
 
 function appendWidgetJobSummary(
@@ -328,33 +319,6 @@ function centerLine(line: string, width: number): string {
 
 function centerPadding(line: string, width: number): number {
   return Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
-}
-
-function prependExitWarning(line: string, width: number, pending: boolean): string {
-  if (!pending) return line;
-  const warning = formatExitWarning();
-  const warningWidth = visibleWidth(warning);
-  const trimmed = line.trimStart();
-  const leftPadding = visibleWidth(line) - visibleWidth(trimmed);
-
-  // 좌측 패딩이 경고 + 1칸 간격을 수용할 수 있으면 패딩 자리에 경고를 덮어써서
-  // 캐리어 로스터의 중앙정렬 상태를 유지한다.
-  if (leftPadding >= warningWidth + 1) {
-    const remainingPad = leftPadding - warningWidth;
-    return truncateToWidth(`${warning}${" ".repeat(remainingPad)}${trimmed}`, width);
-  }
-
-  // 좌측 패딩이 부족한 극단적 경우(로스터가 폭의 대부분을 차지)에만
-  // 기존처럼 좌측 정렬 fallback으로 경고와 로스터를 모두 노출한다.
-  const gapWidth = warningWidth < width ? 1 : 0;
-  const contentWidth = Math.max(0, width - warningWidth - gapWidth);
-  const content = truncateToWidth(trimmed, contentWidth);
-  const gap = gapWidth === 1 && visibleWidth(content) > 0 ? " " : "";
-  return truncateToWidth(`${warning}${gap}${content}`, width);
-}
-
-function formatExitWarning(): string {
-  return `${PANEL_DIM_COLOR}${EXIT_WARNING_TEXT}${ANSI_RESET}`;
 }
 
 function formatCarrierTile(carrier: CarrierHudTile, frame: number): string {

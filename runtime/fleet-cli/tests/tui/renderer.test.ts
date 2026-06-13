@@ -294,47 +294,51 @@ describe("LocalTui", () => {
   it("installs one process signal listener for multiple active TUIs", () => {
     const initialSigintListeners = process.listenerCount("SIGINT");
     const initialSigtermListeners = process.listenerCount("SIGTERM");
+    const initialSighupListeners = process.listenerCount("SIGHUP");
     const firstTui = new LocalTui({ renderIntervalMs: 1000 });
     const secondTui = new LocalTui({ renderIntervalMs: 1000 });
 
     firstTui.start();
     secondTui.start();
 
-    assert.equal(process.listenerCount("SIGINT"), initialSigintListeners + 1);
+    assert.equal(process.listenerCount("SIGINT"), initialSigintListeners);
     assert.equal(process.listenerCount("SIGTERM"), initialSigtermListeners + 1);
+    assert.equal(process.listenerCount("SIGHUP"), initialSighupListeners + 1);
 
     firstTui.stop();
-    assert.equal(process.listenerCount("SIGINT"), initialSigintListeners + 1);
+    assert.equal(process.listenerCount("SIGINT"), initialSigintListeners);
     assert.equal(process.listenerCount("SIGTERM"), initialSigtermListeners + 1);
+    assert.equal(process.listenerCount("SIGHUP"), initialSighupListeners + 1);
 
     secondTui.stop();
     assert.equal(process.listenerCount("SIGINT"), initialSigintListeners);
     assert.equal(process.listenerCount("SIGTERM"), initialSigtermListeners);
+    assert.equal(process.listenerCount("SIGHUP"), initialSighupListeners);
   });
 
   it("does not re-enter external signal handlers during signal cleanup", () => {
     const tui = new LocalTui({ renderIntervalMs: 1000 });
     let killCalls = 0;
-    let externalSigintCalls = 0;
-    const externalSigintHandler = () => {
-      externalSigintCalls += 1;
+    let externalSighupCalls = 0;
+    const externalSighupHandler = () => {
+      externalSighupCalls += 1;
     };
 
     process.kill = (() => {
       killCalls += 1;
       return true;
     }) as typeof process.kill;
-    process.on("SIGINT", externalSigintHandler);
+    process.on("SIGHUP", externalSighupHandler);
     try {
       tui.start();
-      process.emit("SIGINT");
+      process.emit("SIGHUP");
 
-      assert.equal(externalSigintCalls, 1);
+      assert.equal(externalSighupCalls, 1);
       assert.equal(killCalls, 0);
       assert.equal(writes.join("").includes("\x1b[?1049l"), true);
       assert.equal(writes.join("").includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"), true);
     } finally {
-      process.removeListener("SIGINT", externalSigintHandler);
+      process.removeListener("SIGHUP", externalSighupHandler);
       tui.stop();
     }
   });
@@ -360,6 +364,7 @@ describe("LocalTui", () => {
   it("cancels pending renders on stop and restores terminal once during process panic cleanup", async () => {
     const initialSigintListeners = process.listenerCount("SIGINT");
     const initialSigtermListeners = process.listenerCount("SIGTERM");
+    const initialSighupListeners = process.listenerCount("SIGHUP");
     const initialPanicListeners = process.listenerCount("uncaughtExceptionMonitor");
     const component = mutableComponent(["alpha"]);
     const tui = new LocalTui({ renderIntervalMs: 20 });
@@ -383,6 +388,7 @@ describe("LocalTui", () => {
     assert.equal(countWrites("\x1b[?1049l"), 1);
     assert.equal(process.listenerCount("SIGINT"), initialSigintListeners);
     assert.equal(process.listenerCount("SIGTERM"), initialSigtermListeners);
+    assert.equal(process.listenerCount("SIGHUP"), initialSighupListeners);
     assert.equal(process.listenerCount("uncaughtExceptionMonitor"), initialPanicListeners);
     tui.stop();
   });
@@ -390,6 +396,7 @@ describe("LocalTui", () => {
   it("preserves external signal listeners during process panic cleanup", () => {
     const initialSigintListeners = process.listenerCount("SIGINT");
     const initialSigtermListeners = process.listenerCount("SIGTERM");
+    const initialSighupListeners = process.listenerCount("SIGHUP");
     const initialPanicListeners = process.listenerCount("uncaughtExceptionMonitor");
     const tui = new LocalTui({ renderIntervalMs: 1000 });
     let externalSigintCalls = 0;
@@ -404,6 +411,7 @@ describe("LocalTui", () => {
 
       assert.equal(process.listenerCount("SIGINT"), initialSigintListeners + 1);
       assert.equal(process.listenerCount("SIGTERM"), initialSigtermListeners);
+      assert.equal(process.listenerCount("SIGHUP"), initialSighupListeners);
       assert.equal(process.listenerCount("uncaughtExceptionMonitor"), initialPanicListeners);
 
       process.emit("SIGINT");

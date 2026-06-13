@@ -17,6 +17,7 @@ export interface FleetCliOptions {
   readonly cursorSyncExplicitlyEnabled: boolean;
   readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
+  readonly nativeTerminal: boolean;
 }
 
 export interface FleetCliArgOverrides {
@@ -45,11 +46,14 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
   let cursorSync = cursorSyncEnv.value;
   let cursorSyncExplicitlyEnabled = cursorSyncEnv.explicitlyEnabled;
   let help = false;
+  let nativeTerminal = false;
   const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       help = true;
+    } else if (arg === "--native") {
+      nativeTerminal = true;
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
       cursorSyncExplicitlyEnabled = false;
@@ -58,7 +62,7 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cursorSync, cursorSyncExplicitlyEnabled, argvOverrides, help };
+  return { cursorSync, cursorSyncExplicitlyEnabled, argvOverrides, help, nativeTerminal };
 }
 
 export function parseFleetHookCommand(argv: readonly string[]): FleetHookCommand {
@@ -94,6 +98,8 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     "",
     section("OPTIONS", colorEnabled),
     `  ${option("-h, --help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
+    `  ${option("--native", colorEnabled)}           ${dim("Run the selected Agent CLI in the real terminal", colorEnabled)}`,
+    `                      ${dim("after the Mission Control launcher.", colorEnabled)}`,
     `  ${option("--disable-cursor-sync", colorEnabled)}`,
     `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
     `                      ${dim("with problematic IME cursor anchoring.", colorEnabled)}`,

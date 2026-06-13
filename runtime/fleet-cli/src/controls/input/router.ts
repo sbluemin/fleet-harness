@@ -1,34 +1,24 @@
-import type { FleetInputMode } from "../types.js";
 import { parseSgrMouseInput, type InputRouterLayout, type RoutedMouseInput } from "../mouse/parser.js";
 import { routeMouseInput } from "../mouse/router.js";
-import { isHostExit, isKeyRelease, isModeToggle } from "./contract.js";
+import { isKeyRelease } from "./contract.js";
 import type { InputKeybindingConfig } from "./keybindings.js";
 
 type InputToken = string;
 
-export interface InputRouterOptions<TMode extends string = string> {
+export interface InputRouterOptions {
   readonly getLayout?: () => InputRouterLayout;
-  readonly initialMode: TMode;
   readonly keybindings: InputKeybindingConfig;
-  readonly onExit: () => void;
-  readonly onModeChange: (mode: TMode) => void;
   readonly routeDedicatedMouse?: (event: RoutedMouseInput) => boolean;
-  readonly routeFleetInput?: (data: string) => boolean;
   readonly routeFleetMouse?: (event: RoutedMouseInput) => boolean;
-  readonly toggleMode: (mode: TMode) => TMode;
   readonly writeDedicated: (data: string) => void;
 }
 
-export interface InputRouter<TMode extends string = string> {
-  readonly getMode: () => TMode;
+export interface InputRouter {
   readonly route: (data: string) => { readonly consume: boolean };
 }
 
-export function createInputRouter<TMode extends string = FleetInputMode>(options: InputRouterOptions<TMode>): InputRouter<TMode> {
-  let mode = options.initialMode;
-
+export function createInputRouter(options: InputRouterOptions): InputRouter {
   return {
-    getMode: () => mode,
     route(data: string) {
       let dedicatedOutput = "";
       for (const token of splitInputChunk(data)) {
@@ -37,33 +27,11 @@ export function createInputRouter<TMode extends string = FleetInputMode>(options
           continue;
         }
 
-        if (isHostExit(token, options.keybindings)) {
-          if (dedicatedOutput.length > 0) {
-            options.writeDedicated(dedicatedOutput);
-          }
-          options.onExit();
-          return { consume: true };
-        }
-
         if (isKeyRelease(token)) {
           continue;
         }
 
         if (options.keybindings.dispatch(token)) {
-          continue;
-        }
-
-        if (isModeToggle(token, options.keybindings)) {
-          if (dedicatedOutput.length > 0) {
-            options.writeDedicated(dedicatedOutput);
-            dedicatedOutput = "";
-          }
-          mode = options.toggleMode(mode);
-          options.onModeChange(mode);
-          continue;
-        }
-
-        if (options.routeFleetInput?.(token)) {
           continue;
         }
 
