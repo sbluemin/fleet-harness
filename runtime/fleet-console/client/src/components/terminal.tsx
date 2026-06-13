@@ -10,6 +10,7 @@ import { clearTerminalToken } from "../token-storage.js";
 
 interface TerminalProps {
   readonly terminalToken: string;
+  readonly sessionId: string;
 }
 
 const TERMINAL_OPTIONS = {
@@ -44,7 +45,7 @@ const TERMINAL_OPTIONS = {
   },
 };
 
-export function Terminal({ terminalToken }: TerminalProps) {
+export function Terminal({ terminalToken, sessionId }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const [status, setStatus] = useState("connecting");
@@ -83,6 +84,7 @@ export function Terminal({ terminalToken }: TerminalProps) {
 
     const connection = createTerminalConnection({
       terminalToken,
+      sessionId,
       terminal,
       onAuthInvalid: clearTerminalToken,
       onStatus: (nextStatus, message) => {
@@ -112,7 +114,7 @@ export function Terminal({ terminalToken }: TerminalProps) {
       connectionRef.current = null;
       terminal.dispose();
     };
-  }, [terminalToken]);
+  }, [sessionId, terminalToken]);
 
   return (
     <section className="terminal-stage" aria-label="Fleet terminal">

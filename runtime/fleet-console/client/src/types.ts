@@ -7,6 +7,19 @@ export interface ObservedTenant {
   readonly status?: "online" | "offline" | "deregistered";
   readonly cliRunId?: string;
   readonly registrationId?: string;
+  readonly terminalSessionId?: string;
+}
+
+export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error";
+
+export interface SessionInfo {
+  readonly sessionId: string;
+  readonly terminalSessionId: string;
+  readonly cwdLabel: string;
+  readonly status: SessionStatus;
+  readonly createdAt: number;
+  readonly tenantId?: string;
+  readonly registrationId?: string;
 }
 
 export interface ObservedEvent {
@@ -97,6 +110,11 @@ export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly tenants: readonly ObservedTenant[];
+  readonly sessions: Readonly<Record<string, SessionInfo>>;
+  readonly sessionOrder: readonly string[];
+  readonly activeTerminalSessionId: string | null;
+  readonly creatingTerminalSession: boolean;
+  readonly terminalSessionError: string | null;
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
   readonly tenantOrder: readonly string[];
   readonly selectedTenantId: string | null;

@@ -7,6 +7,7 @@ export interface TerminalLike {
 
 export interface TerminalConnectionOptions {
   readonly terminalToken: string;
+  readonly sessionId: string;
   readonly terminal: TerminalLike;
   readonly onAuthInvalid?: () => void;
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
@@ -64,7 +65,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       options.onStatus?.("connecting");
       try {
         const fetchTicket = options.fetchTicket ?? requestTerminalTicket;
-        const { ticket } = await fetchTicket(options.terminalToken, abort.signal);
+        const { ticket } = await fetchTicket(options.terminalToken, options.sessionId, abort.signal);
         if (abort.signal.aborted) return;
         await attachSocket(buildTerminalWsUrl(ticket, options.location), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;

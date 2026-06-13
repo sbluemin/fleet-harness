@@ -218,6 +218,85 @@
   text-transform: uppercase;
 }
 
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.sidebar-heading .sidebar-eyebrow {
+  margin-bottom: 0;
+}
+
+.workspace-add-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.workspace-add-button:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  transform: translateY(-1px);
+}
+
+.workspace-add-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-2);
+  padding: 9px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.session-row:hover {
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  transform: translateX(1px);
+}
+
+.session-row.is-active {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 12%, var(--ink-mid));
+}
+
+.sidebar-error {
+  margin: 0 var(--space-2) var(--space-3);
+  color: var(--coral);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .sidebar-empty {
   margin: var(--space-5) var(--space-2);
   color: var(--ink-fog);
@@ -1230,6 +1309,63 @@
 .terminal-canvas .xterm,
 .terminal-canvas .xterm-viewport {
   height: 100%;
+}
+
+.operations-landing {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: clamp(var(--space-5), 5vw, var(--space-10));
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.operations-landing-mark {
+  width: 52px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brass), var(--aurora));
+  box-shadow: 0 0 18px color-mix(in oklch, var(--aurora) 38%, transparent);
+}
+
+.operations-landing-eyebrow,
+.operations-landing-status {
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.operations-landing h1 {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: clamp(32px, 5vw, 58px);
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.operations-landing p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--ink-spectral);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.operations-landing-status.is-live {
+  color: var(--aurora);
+}
+
+.operations-landing-error {
+  color: var(--coral) !important;
 }
 
 /* CarrierCover: 터미널 위 우상단 글래스 오버레이. position: absolute로

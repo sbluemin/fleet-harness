@@ -1,5 +1,6 @@
 import { AuthGate } from "../components/auth-gate.js";
 import { CarrierCover } from "../components/carrier-cover.js";
+import { OperationsLanding } from "../components/operations-landing.js";
 import { Sidebar } from "../components/sidebar.js";
 import { Terminal } from "../components/terminal.js";
 import type { ConsoleState } from "../types.js";
@@ -16,8 +17,14 @@ export function Operations({ state }: OperationsProps) {
         <>
           <Sidebar state={state} />
           <main className="operations-terminal-stage">
-            <Terminal terminalToken={state.terminalToken} />
-            <CarrierCover state={state} />
+            {state.activeTerminalSessionId ? (
+              <>
+                <Terminal terminalToken={state.terminalToken} sessionId={state.activeTerminalSessionId} />
+                <CarrierCover state={state} />
+              </>
+            ) : (
+              <OperationsLanding creating={state.creatingTerminalSession} error={state.terminalSessionError} />
+            )}
           </main>
         </>
       ) : (

@@ -5,10 +5,14 @@ import {
   applyObservedEvent,
   applyTenantSnapshot,
   applyTruncation,
+  beginCreateTerminalSession,
+  completeCreateTerminalSession,
   getState,
+  hydrateTerminalSessions,
   resetForToken,
   selectJob,
   selectTenant,
+  selectTerminalSession,
   selectedJob,
   setState,
 } from "../client/src/store.js";
@@ -28,6 +32,11 @@ beforeEach(() => {
     tenantOrder: [],
     selectedTenantId: null,
     selectedJobId: null,
+    sessions: {},
+    sessionOrder: [],
+    activeTerminalSessionId: null,
+    creatingTerminalSession: false,
+    terminalSessionError: null,
     timelineOpen: false,
   });
 });
@@ -102,5 +111,38 @@ describe("store", () => {
     applyObservedEvent(makeEvent(1, "track:text", { trackId: "t1", text: "x" }));
     selectTenant("tenant-1");
     expect(selectedJob(getState())?.jobId).toBe("job-1");
+  });
+
+  it("keeps terminal session selection separate from observer selection", () => {
+    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    applyTenantSnapshot([{ ...TENANT, tenantId: "tenant-a", terminalSessionId: "session-a" }]);
+    selectTerminalSession("session-a");
+    selectJob("tenant-a", "job-a");
+
+    expect(getState().activeTerminalSessionId).toBe("session-a");
+    expect(getState().selectedTenantId).toBe("tenant-a");
+    expect(getState().selectedJobId).toBe("job-a");
+  });
+
+  it("tracks operations landing and session creation state", () => {
+    expect(getState().activeTerminalSessionId).toBeNull();
+    beginCreateTerminalSession();
+    expect(getState()).toMatchObject({ creatingTerminalSession: true, terminalSessionError: null });
+
+    completeCreateTerminalSession({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 });
+
+    expect(getState()).toMatchObject({ activeTerminalSessionId: "session-a", creatingTerminalSession: false });
+    expect(getState().sessionOrder).toEqual(["session-a"]);
+  });
+
+  it("binds hydrated terminal sessions to tenants without changing selected job", () => {
+    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "starting", createdAt: 1 }]);
+    selectTerminalSession("session-a");
+    selectJob("tenant-1", "job-1");
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    expect(getState().sessions["session-a"]).toMatchObject({ status: "registered", tenantId: "tenant-1", registrationId: "registration-a" });
+    expect(getState().activeTerminalSessionId).toBe("session-a");
+    expect(getState().selectedJobId).toBe("job-1");
   });
 });

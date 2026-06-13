@@ -5,6 +5,7 @@ import type {
   ObservedEvent,
   ObservedTenant,
   ObserverTruncation,
+  SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
 } from "./types.js";
@@ -20,6 +21,11 @@ let state: ConsoleState = {
   connection: "auth-needed",
   connectionError: null,
   tenants: [],
+  sessions: {},
+  sessionOrder: [],
+  activeTerminalSessionId: null,
+  creatingTerminalSession: false,
+  terminalSessionError: null,
   tenantJobs: {},
   tenantOrder: [],
   selectedTenantId: null,
@@ -65,6 +71,40 @@ export function selectJob(tenantId: string, jobId: string): void {
   setState({ selectedTenantId: tenantId, selectedJobId: jobId });
 }
 
+export function hydrateTerminalSessions(sessions: readonly SessionInfo[]): void {
+  const byId: Record<string, SessionInfo> = {};
+  for (const session of sessions) byId[session.sessionId] = normalizeSession(session);
+  const sessionOrder = [...sessions].sort((a, b) => b.createdAt - a.createdAt).map((session) => session.sessionId);
+  setState({
+    sessions: mergeTenantBindings(byId, state.tenants),
+    sessionOrder,
+    activeTerminalSessionId: state.activeTerminalSessionId && byId[state.activeTerminalSessionId] ? state.activeTerminalSessionId : state.activeTerminalSessionId,
+  });
+}
+
+export function selectTerminalSession(sessionId: string | null): void {
+  setState({ activeTerminalSessionId: sessionId });
+}
+
+export function beginCreateTerminalSession(): void {
+  setState({ creatingTerminalSession: true, terminalSessionError: null });
+}
+
+export function completeCreateTerminalSession(session: SessionInfo): void {
+  const normalized = normalizeSession(session);
+  setState({
+    sessions: { ...state.sessions, [normalized.sessionId]: normalized },
+    sessionOrder: [normalized.sessionId, ...state.sessionOrder.filter((sessionId) => sessionId !== normalized.sessionId)],
+    activeTerminalSessionId: normalized.sessionId,
+    creatingTerminalSession: false,
+    terminalSessionError: null,
+  });
+}
+
+export function failCreateTerminalSession(error: string): void {
+  setState({ creatingTerminalSession: false, terminalSessionError: error });
+}
+
 export function toggleTimeline(): void {
   setState({ timelineOpen: !state.timelineOpen });
 }
@@ -81,6 +121,7 @@ export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {
   ];
   setState({
     tenants,
+    sessions: mergeTenantBindings(state.sessions, tenants),
     tenantOrder,
     selectedTenantId: state.selectedTenantId ?? tenantOrder[0] ?? null,
   });
@@ -195,6 +236,30 @@ function pickSelectedJob(tenantJobs: Record<string, TenantJobsView>): string | n
   if (!tenant) return null;
   if (state.selectedJobId && tenant.jobs[state.selectedJobId]) return state.selectedJobId;
   return tenant.jobOrder[0] ?? null;
+}
+
+function normalizeSession(session: SessionInfo): SessionInfo {
+  return {
+    ...session,
+    terminalSessionId: session.terminalSessionId ?? session.sessionId,
+    status: session.status === "starting" && session.tenantId ? "registered" : session.status,
+  };
+}
+
+function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, tenants: readonly ObservedTenant[]): Record<string, SessionInfo> {
+  const next = { ...sessions };
+  for (const tenant of tenants) {
+    if (!tenant.terminalSessionId) continue;
+    const session = next[tenant.terminalSessionId];
+    if (!session) continue;
+    next[tenant.terminalSessionId] = {
+      ...session,
+      status: tenant.status === "deregistered" ? "closed" : "registered",
+      tenantId: tenant.tenantId,
+      registrationId: tenant.registrationId,
+    };
+  }
+  return next;
 }
 
 function sortJobOrder(order: readonly string[], jobs: Readonly<Record<string, JobView>>): string[] {

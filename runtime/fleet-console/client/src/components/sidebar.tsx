@@ -1,8 +1,9 @@
 import { memo } from "react";
 
+import { createTerminalSession, pickTerminalFolder } from "../api.js";
 import { compactPath, describeJobStatus, formatClock, shortJobId, statusTone } from "../format.js";
-import { selectJob, selectTenant } from "../store.js";
-import type { ConsoleState, JobView, ObservedTenant, TenantJobsView } from "../types.js";
+import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTenant, selectTerminalSession } from "../store.js";
+import type { ConsoleState, JobView, ObservedTenant, SessionInfo, TenantJobsView } from "../types.js";
 
 interface SidebarProps {
   readonly state: ConsoleState;
@@ -21,11 +22,44 @@ interface JobEntryProps {
   readonly active: boolean;
 }
 
+interface SessionEntryProps {
+  readonly session: SessionInfo;
+  readonly active: boolean;
+}
+
 export function Sidebar({ state }: SidebarProps) {
   const tenantIds = state.tenantOrder.length > 0 ? state.tenantOrder : state.tenants.map((tenant) => tenant.tenantId);
+  const handleCreateSession = async () => {
+    if (!state.terminalToken || state.creatingTerminalSession) return;
+    beginCreateTerminalSession();
+    try {
+      const picked = await pickTerminalFolder(state.terminalToken);
+      if ("cancelled" in picked) {
+        failCreateTerminalSession("");
+        return;
+      }
+      completeCreateTerminalSession(await createTerminalSession(state.terminalToken, picked.folderGrantId));
+    } catch (error) {
+      failCreateTerminalSession(error instanceof Error ? error.message : String(error));
+    }
+  };
   return (
     <nav className="sidebar" aria-label="Workspaces and jobs">
-      <p className="sidebar-eyebrow">Workspaces</p>
+      <div className="sidebar-heading">
+        <p className="sidebar-eyebrow">Workspaces</p>
+        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession} aria-label="Add workspace">
+          +
+        </button>
+      </div>
+      {state.sessionOrder.length > 0 ? (
+        <ol className="session-list">
+          {state.sessionOrder.map((sessionId) => {
+            const session = state.sessions[sessionId];
+            return session ? <SessionEntry key={sessionId} session={session} active={state.activeTerminalSessionId === sessionId} /> : null;
+          })}
+        </ol>
+      ) : null}
+      {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
       {tenantIds.length === 0 ? (
         <p className="sidebar-empty">
           No CLI workspaces connected.
@@ -47,6 +81,21 @@ export function Sidebar({ state }: SidebarProps) {
     </nav>
   );
 }
+
+const SessionEntry = memo(function SessionEntry({ session, active }: SessionEntryProps) {
+  const live = session.status === "registered" || session.status === "live" || session.status === "terminal-only";
+  return (
+    <li>
+      <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
+        <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+        <span className="tenant-row-text">
+          <span className="tenant-label">{session.cwdLabel}</span>
+          <span className="tenant-path">{session.status}</span>
+        </span>
+      </button>
+    </li>
+  );
+});
 
 const TenantGroup = memo(function TenantGroup({ tenant, tenantId, jobs, expanded, selectedJobId }: TenantGroupProps) {
   const label = tenant?.tenantLabel ?? jobs?.tenantLabel ?? tenantId;
