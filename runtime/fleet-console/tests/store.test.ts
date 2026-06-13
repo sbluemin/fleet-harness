@@ -5,16 +5,20 @@ import {
   applyObservedEvent,
   applyTenantSnapshot,
   applyTruncation,
+  backToCoverList,
   beginCreateTerminalSession,
   completeCreateTerminalSession,
   getState,
   hydrateTerminalSessions,
   resetForToken,
   selectJob,
+  selectCoverJob,
   selectTenant,
   selectTerminalSession,
+  selectedCoverJob,
   selectedJob,
   setState,
+  toggleCover,
 } from "../client/src/store.js";
 import type { ObservedEvent, ObservedTenant } from "../client/src/types.js";
 
@@ -38,6 +42,9 @@ beforeEach(() => {
     creatingTerminalSession: false,
     terminalSessionError: null,
     timelineOpen: false,
+    coverOpen: false,
+    coverDepth: "list",
+    coverSelectedJobId: null,
   });
 });
 
@@ -144,5 +151,31 @@ describe("store", () => {
     expect(getState().sessions["session-a"]).toMatchObject({ status: "registered", tenantId: "tenant-1", registrationId: "registration-a" });
     expect(getState().activeTerminalSessionId).toBe("session-a");
     expect(getState().selectedJobId).toBe("job-1");
+  });
+
+  it("opens CarrierCover to list and keeps cover detail selection independent", () => {
+    applyJobsSnapshot([
+      {
+        tenantId: "tenant-1",
+        tenantLabel: "Alpha",
+        truncation: { droppedCount: 0 },
+        jobs: [
+          { jobId: "job-1", status: "active", updatedAt: 1_001, events: [makeEvent(1, "track:text", { trackId: "t1", text: "a" })] },
+          { jobId: "job-2", status: "active", updatedAt: 1_002, events: [makeEvent(2, "track:text", { trackId: "t1", text: "b" }, "tenant-1", "job-2")] },
+        ],
+      },
+    ]);
+    selectJob("tenant-1", "job-1");
+
+    toggleCover();
+    expect(getState()).toMatchObject({ coverOpen: true, coverDepth: "list", coverSelectedJobId: null, selectedJobId: "job-1" });
+
+    selectCoverJob("job-2");
+    expect(getState()).toMatchObject({ coverDepth: "detail", coverSelectedJobId: "job-2", selectedJobId: "job-1" });
+    expect(selectedCoverJob(getState())?.jobId).toBe("job-2");
+    expect(selectedJob(getState())?.jobId).toBe("job-1");
+
+    backToCoverList();
+    expect(getState()).toMatchObject({ coverDepth: "list", coverSelectedJobId: null, selectedJobId: "job-1" });
   });
 });

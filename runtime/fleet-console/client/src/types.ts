@@ -104,6 +104,8 @@ export interface TenantJobsView {
 
 export type ConnectionState = "auth-needed" | "connecting" | "live";
 
+export type CoverDepth = "list" | "detail";
+
 export interface ConsoleState {
   readonly token: string | null;
   readonly terminalToken: string | null;
@@ -121,4 +123,6 @@ export interface ConsoleState {
   readonly selectedJobId: string | null;
   readonly timelineOpen: boolean;
   readonly coverOpen: boolean;
+  readonly coverDepth: CoverDepth;
+  readonly coverSelectedJobId: string | null;
 }

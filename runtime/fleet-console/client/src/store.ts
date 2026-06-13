@@ -32,6 +32,8 @@ let state: ConsoleState = {
   selectedJobId: null,
   timelineOpen: false,
   coverOpen: false,
+  coverDepth: "list",
+  coverSelectedJobId: null,
 };
 
 export function getState(): ConsoleState {
@@ -110,7 +112,19 @@ export function toggleTimeline(): void {
 }
 
 export function toggleCover(): void {
-  setState({ coverOpen: !state.coverOpen });
+  setState({
+    coverOpen: !state.coverOpen,
+    coverDepth: state.coverOpen ? state.coverDepth : "list",
+    coverSelectedJobId: state.coverOpen ? state.coverSelectedJobId : null,
+  });
+}
+
+export function selectCoverJob(jobId: string): void {
+  setState({ coverDepth: "detail", coverSelectedJobId: jobId });
+}
+
+export function backToCoverList(): void {
+  setState({ coverDepth: "list", coverSelectedJobId: null });
 }
 
 export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {
@@ -219,6 +233,15 @@ export function selectedJob(current: ConsoleState): JobView | null {
   if (!tenant) return null;
   const jobId = current.selectedJobId && tenant.jobs[current.selectedJobId] ? current.selectedJobId : tenant.jobOrder[0];
   return jobId ? tenant.jobs[jobId] ?? null : null;
+}
+
+export function selectedCoverJob(current: ConsoleState): JobView | null {
+  if (!current.coverSelectedJobId) return null;
+  for (const tenant of Object.values(current.tenantJobs)) {
+    const job = tenant.jobs[current.coverSelectedJobId];
+    if (job) return job;
+  }
+  return null;
 }
 
 function pickSelectedTenant(tenantJobs: Record<string, TenantJobsView>): string | null {

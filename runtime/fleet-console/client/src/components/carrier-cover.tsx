@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 
-import { selectedJob, toggleCover } from "../store.js";
+import { isTerminalJobStatus } from "../reduce.js";
+import { backToCoverList, selectedCoverJob, toggleCover } from "../store.js";
 import type { ConsoleState, TenantJobsView } from "../types.js";
+import { CoverJobList } from "./cover-job-list.js";
 import { JobView } from "./job-view.js";
 
 interface CarrierCoverProps {
@@ -10,7 +12,7 @@ interface CarrierCoverProps {
 
 export function CarrierCover({ state }: CarrierCoverProps) {
   const activeJobCount = countActiveJobs(state.tenantJobs);
-  const job = selectedJob(state);
+  const job = selectedCoverJob(state);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -29,7 +31,16 @@ export function CarrierCover({ state }: CarrierCoverProps) {
       </button>
       {state.coverOpen ? (
         <div className="cover-panel">
-          <JobView job={job} timelineOpen={state.timelineOpen} />
+          {state.coverDepth === "detail" ? (
+            <>
+              <button type="button" className="cover-back-button" onClick={backToCoverList}>
+                Back
+              </button>
+              <JobView job={job} timelineOpen={state.timelineOpen} />
+            </>
+          ) : (
+            <CoverJobList state={state} />
+          )}
         </div>
       ) : null}
     </aside>
@@ -41,7 +52,7 @@ function countActiveJobs(tenantJobs: Readonly<Record<string, TenantJobsView>>): 
   for (const tenant of Object.values(tenantJobs)) {
     for (const jobId of tenant.jobOrder) {
       const status = tenant.jobs[jobId]?.status;
-      if (status && status !== "done" && status !== "error" && status !== "cancelled") count += 1;
+      if (status && !isTerminalJobStatus(status)) count += 1;
     }
   }
   return count;

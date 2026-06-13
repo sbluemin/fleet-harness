@@ -1418,12 +1418,110 @@
   width: min(560px, calc(100vw - var(--space-12)));
   max-height: 100%;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(18px) saturate(140%);
+}
+
+.cover-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.cover-panel-eyebrow,
+.cover-panel-count {
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cover-panel-count {
+  color: var(--aurora);
+}
+
+.cover-job-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 240px;
+  overflow-y: auto;
+  padding-bottom: var(--space-3);
+}
+
+.cover-job-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.cover-job-row:hover {
+  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  transform: translateX(1px);
+}
+
+.cover-job-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cover-job-label {
+  overflow: hidden;
+  color: var(--ink-pearl);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cover-job-meta {
+  overflow: hidden;
+  color: var(--ink-fog);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cover-empty {
+  margin: var(--space-4);
+  color: var(--ink-fog);
+  font-size: 12.5px;
+}
+
+.cover-back-button {
+  align-self: flex-start;
+  margin: var(--space-3) 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* JobView(.stage)는 넓은 메인 영역(max-width 1040px)용으로 설계됐다. 좁은
