@@ -7,12 +7,16 @@
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
     "directory": "runtime/fleet-gateway"
   },
+  "homepage": "https://github.com/sbluemin/fleet-harness#readme",
+  "bugs": {
+    "url": "https://github.com/sbluemin/fleet-harness/issues"
+  },
   "private": true,
   "type": "module",
   "main": "./dist/cli.mjs",
   "types": "./dist/cli.d.ts",
   "bin": {
-    "fleet-gateway": "./dist/cli.mjs"
+    "fleet-gateway": "./dist/cli-bin.mjs"
   },
   "exports": {
     ".": {
@@ -22,6 +26,9 @@
     "./cli": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.mjs"
+    },
+    "./cli-bin": {
+      "default": "./dist/cli-bin.mjs"
     }
   },
   "files": [
@@ -34,6 +41,7 @@
   },
   "scripts": {
     "build": "tsup && node ./scripts/embed-console.mjs",
+    "publish:npm": "node ../../scripts/publish-fleet-gateway.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

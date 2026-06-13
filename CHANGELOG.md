@@ -10,6 +10,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] A machine-wide gateway daemon replaces per-instance MCP servers, exposing a fixed local loopback endpoint with per-session tenant tokens, in-memory call queues, and an observer read-only access mode.
 - [core] Mission Control now includes a gateway status panel showing daemon health, tenant count, and last-seen timestamp.
 - [core] The `fleet console` subcommand and the standalone `fleet-console` binary ensure the gateway daemon and open the Fleet Console in a browser.
+- [core] Fleet Gateway can now be published as a standalone package while Fleet CLI consumes it through a host-injected SDK boundary.
 
 ### Changed
 - [core-unified-agent] Claude Code with Moonshot Kimi now runs the Kimi K2.7 coding model as the default, slot-mapped, and subagent model.

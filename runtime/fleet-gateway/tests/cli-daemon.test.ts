@@ -104,4 +104,55 @@ describe("gateway daemon lifecycle", () => {
     expect(fs.lstatSync(lockFile).isSymbolicLink()).toBe(false);
     expect(probeCount).toBe(2);
   });
+
+  it("spawns the separated cli-bin entry with serve", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-gateway-cli-bin-"));
+    tempDirs.push(dir);
+    const lockFile = path.join(dir, "gateway.lock");
+    const startedAt = Date.now();
+    let spawnArgs: readonly string[] = [];
+    fs.chmodSync(dir, 0o700);
+    const lifecycle = createGatewayDaemonLifecycle({
+      env: { FLEET_GATEWAY_DIR: dir },
+      execPath: "/usr/local/bin/node",
+      serverModulePath: "/repo/runtime/fleet-gateway/dist/cli-bin.mjs",
+      sleep: async () => undefined,
+      health: {
+        probe: async (payload) => {
+          if (!payload) return { healthy: false, lock: null, error: "lock missing" };
+          return {
+            healthy: true,
+            lock: payload,
+            health: {
+              ok: true,
+              pid: payload.pid,
+              host: payload.host,
+              port: payload.port,
+              endpoint: payload.endpoint,
+              startedAt: payload.startedAt,
+              version: payload.version,
+              tenantCount: 0,
+            },
+          };
+        },
+      },
+      spawnDetached: (_execPath, args) => {
+        spawnArgs = args;
+        fs.writeFileSync(lockFile, JSON.stringify({
+          pid: process.pid,
+          host: "127.0.0.1",
+          port: 37283,
+          endpoint: "http://127.0.0.1:37283/mcp",
+          startedAt,
+          token: "bootstrap-token",
+          observerToken: "observer-token",
+          version: "test",
+        }));
+        fs.chmodSync(lockFile, 0o600);
+      },
+    });
+
+    await expect(lifecycle.ensureDaemon()).resolves.toBe("http://127.0.0.1:37283/mcp");
+    expect(spawnArgs).toEqual(["/repo/runtime/fleet-gateway/dist/cli-bin.mjs", "serve"]);
+  });
 });

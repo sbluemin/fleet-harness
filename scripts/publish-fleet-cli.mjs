@@ -11,11 +11,14 @@ const args = process.argv.slice(2);
 const tag = args.find((a) => a.startsWith("--tag="))?.split("=")[1] ?? "beta";
 const version = args.find((a) => a.startsWith("--version="))?.split("=")[1];
 const wikiWebVersion = args.find((a) => a.startsWith("--wiki-web-version="))?.split("=")[1];
+const gatewayVersion = args.find((a) => a.startsWith("--gateway-version="))?.split("=")[1];
 const dryRun = args.includes("--dry-run");
 
 const isPrerelease = version && version.includes("-");
 const wikiWebRange = wikiWebVersion
   ?? (isPrerelease ? version : "^1.3.0");
+const gatewayRange = gatewayVersion
+  ?? (isPrerelease ? version : "^1.4.0");
 
 // 배포 산출물에서 external로 유지할 패키지 이름 목록 — 버전은 원본 package.json에서 읽는다.
 const EXTERNAL_DEP_NAMES = ["@clack/prompts", "@xterm/headless", "node-pty"];
@@ -26,6 +29,7 @@ const pkgName = originalPkg.name;
 const targetVersion = version ?? originalPkg.version;
 
 const EXTERNAL_DEPS = {
+  "@dotobokuri/fleet-gateway": gatewayRange,
   "@dotobokuri/fleet-wiki-ui": wikiWebRange,
 };
 for (const name of EXTERNAL_DEP_NAMES) {

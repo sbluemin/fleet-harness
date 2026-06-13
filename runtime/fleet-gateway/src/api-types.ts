@@ -55,6 +55,39 @@ export interface GatewayToolCallResult {
   readonly isError: boolean;
 }
 
+export interface GatewayToolExecutionPort {
+  listTools(): readonly GatewayToolSnapshot[];
+  execute(call: GatewayQueuedToolCall, ctx: { readonly cwd: string; readonly signal: AbortSignal }): Promise<GatewayToolCallResult>;
+}
+
+export interface GatewayConsumerClientDeps {
+  readonly name: string;
+  readonly cwd: string;
+  readonly executionPort: GatewayToolExecutionPort;
+  readonly lifecycle?: {
+    ensureDaemon(): Promise<string>;
+  };
+  readonly fetch?: typeof fetch;
+  readonly readBootstrapToken?: () => Promise<string>;
+  readonly sleep?: (ms: number) => Promise<void>;
+  readonly signal?: AbortSignal;
+}
+
+export interface GatewayConsumerClientConnectionState {
+  readonly state: "ready" | "retrying" | "degraded";
+  readonly attempts: number;
+  readonly message: string;
+}
+
+export interface GatewayConsumerClient {
+  connect(): Promise<GatewayRegisterTenantResponse>;
+  getEndpoint(): Promise<string>;
+  getRegistration(): GatewayRegisterTenantResponse | null;
+  getConnectionState(): GatewayConsumerClientConnectionState;
+  publishEvent(event: unknown): void;
+  release(): void;
+}
+
 export interface GatewayObservedTenant {
   readonly tenantId: string;
   readonly tenantLabel: string;

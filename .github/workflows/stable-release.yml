@@ -231,12 +231,19 @@ jobs:
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
         run: node scripts/publish-fleet-wiki-ui.mjs --tag=latest --version=$NEXT_VERSION
 
+      - name: Publish fleet-gateway
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: node scripts/publish-fleet-gateway.mjs --tag=latest --version=$NEXT_VERSION
+
       - name: Publish fleet-cli
         if: steps.version.outputs.should_release == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
-        run: node scripts/publish-fleet-cli.mjs --tag=latest --version=$NEXT_VERSION --wiki-web-version=$NEXT_VERSION
+        run: node scripts/publish-fleet-cli.mjs --tag=latest --version=$NEXT_VERSION --wiki-web-version=$NEXT_VERSION --gateway-version=$NEXT_VERSION
 
       - name: Commit release changes
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
