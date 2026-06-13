@@ -376,7 +376,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function isTerminalAuthorized(req: http.IncomingMessage): boolean {
     const token = readBearerToken(req.headers);
-    return Boolean(lockHandle && token === lockHandle.payload.terminalToken);
+    if (!lockHandle || token !== lockHandle.payload.terminalToken) return false;
+    // bearer 외에 Origin도 검증해 WS 경로와 동일한 출처 경계를 신규 terminal 라우트에 적용한다.
+    return isAllowedTerminalOrigin(req, lockHandle.payload.port ?? port);
   }
 
   function listVisibleWorkspaces(requestedTenantId: string | null): readonly ConsoleObservedWorkspace[] {
@@ -491,4 +493,12 @@ function validateHost(req: http.IncomingMessage, expectedPort: number): boolean 
   const hostHeader = req.headers.host;
   if (!hostHeader) return false;
   return hostHeader === `127.0.0.1:${expectedPort}`;
+}
+
+// 신규 terminal 라우트의 출처 경계. 브라우저 요청은 console origin과 일치해야 하고,
+// Origin 헤더가 없는 비브라우저(CLI/도구) 호출은 허용한다(기존 register 채널과의 호환).
+function isAllowedTerminalOrigin(req: http.IncomingMessage, expectedPort: number): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  return origin === `http://127.0.0.1:${expectedPort}`;
 }

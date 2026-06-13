@@ -30,6 +30,18 @@ describe("folder grants", () => {
     expect(() => validateAbsoluteDirectory(file)).toThrow("invalid_folder");
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("expires folder grants after the TTL so a leaked grant cannot be reused later", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-grant-"));
+    let clock = 1_000;
+    const store = createFolderGrantStore({ randomId: () => "grant-ttl", ttlMs: 500, now: () => clock });
+
+    const grantId = store.issue(dir);
+    clock += 600; // TTL(500ms) 초과
+
+    expect(store.consume(grantId)).toBeNull();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("native folder picker", () => {

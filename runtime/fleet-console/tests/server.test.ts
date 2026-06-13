@@ -215,6 +215,19 @@ describe("console static and terminal ticket boundary", () => {
     await expect(response.json()).resolves.toEqual({ cancelled: true });
   });
 
+  it("rejects terminal routes when the browser Origin is not the console origin", async () => {
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "cancelled" }),
+    });
+
+    const response = await fetch(`${fixture.endpoint}terminal/folders/pick`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lock.terminalToken}`, origin: "http://evil.example" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
   it("creates terminal sessions from one-use folder grants and rejects raw cwd", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-"));
     tempDirs.push(dir);
