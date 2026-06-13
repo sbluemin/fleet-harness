@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { ExecutorSessionManager } from "@dotobokuri/core-mcp-server";
 import {
   type CarrierRuntime,
   type ClaudeSubagentDefinition,
@@ -22,7 +21,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg, AgentCliProfile } 
 export interface InjectAgentCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
   readonly carrierRuntime: CarrierRuntime;
-  readonly dedicatedMcpSession: ExecutorSessionManager;
+  readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
@@ -41,6 +40,21 @@ export interface FleetHookCommandEntry {
 interface CodexFleetProfile {
   readonly profileName: string;
   readonly profilePath: string;
+}
+
+interface DedicatedMcpSession {
+  getEndpoint(): Promise<ExecutorEndpoint>;
+  issueSessionToken(request: { readonly label: string; readonly cwd: string; readonly signal?: AbortSignal }): readonly ExecutorServerToken[] | Promise<readonly ExecutorServerToken[]>;
+  releaseSessionToken(label: string): void;
+}
+
+interface ExecutorEndpoint {
+  readonly servers: readonly { readonly name: string; readonly url: string }[];
+}
+
+interface ExecutorServerToken {
+  readonly name: string;
+  readonly token: string;
 }
 
 type StartupNativeDefinitions =
@@ -67,7 +81,7 @@ export async function injectAgentCliProfile(
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const startupDefinitions = buildStartupNativeDefinitions(profile.id, options.carrierRuntime);
   const tokenLabel = `agent:${profile.id}:${crypto.randomUUID()}`;
-  const tokens = options.dedicatedMcpSession.issueSessionToken({ cwd: profile.cwd, label: tokenLabel });
+  const tokens = await options.dedicatedMcpSession.issueSessionToken({ cwd: profile.cwd, label: tokenLabel });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
   const doctrine = options.buildSystemPrompt(injectTone);
   const tempCleanups: Array<() => void> = [];

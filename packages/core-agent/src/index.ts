@@ -1,19 +1,52 @@
 export type {
+  AgentToolCtx,
   AgentToolSpec,
+  McpCallToolResult,
+  McpTool,
+  RegisteredTool,
+  RegisterExecutorToolOptions,
   TrackStatus,
 } from "./types.js";
 export type {
   ExecutorMcpRuntimeProvider,
   ExecutorMcpRuntimeProviderRuntime,
   ExecutorMcpRouterRuntime,
+  ExecutorMcpSession,
+  ExecutorMcpSessionRequest,
   ExecutorPort,
   ExecutorPortRuntime,
 } from "./executor-port.js";
+export type {
+  McpRouterRuntime,
+  McpRouterServer,
+  ToolCallArrivedCallback,
+} from "./mcp-router.js";
+export type {
+  McpToolRegistry,
+} from "./tool-registry.js";
+export type {
+  McpToolSnapshotStore,
+} from "./tool-snapshot.js";
 export type { AuthEnvResolver, ExecuteOptions, ExecResult } from "./executor.js";
 export type { ResumeFailureKind } from "./internal/session-errors.js";
 export type {
   SelectableThinkingLevel,
 } from "./models.js";
+export {
+  cleanupExecutorSession,
+  detachExecutorMcpForReuse,
+  detachExecutorToolCallRouter,
+  installExecutorToolCallRouter,
+  registerExecutorSessionTools,
+  specToMcpTool,
+} from "./mcp-router.js";
+export {
+  createMcpToolRegistry,
+} from "./tool-registry.js";
+export {
+  convertToolSchema,
+  createMcpToolSnapshotStore,
+} from "./tool-snapshot.js";
 export {
   createExecutorMcpRuntimeProviderRuntime,
   createExecutorPortRuntime,

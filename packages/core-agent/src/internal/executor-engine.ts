@@ -24,17 +24,16 @@ import {
 
 import {
   cleanupExecutorSession as cleanupExecutorMcpSession,
-  convertToolSchema,
   detachExecutorMcpForReuse as detachExecutorMcpForSessionReuse,
   installExecutorToolCallRouter,
   registerExecutorSessionTools,
-  type AgentToolSpec,
-  type McpRouterRuntime,
-} from "@dotobokuri/core-mcp-server";
+} from "../mcp-router.js";
 
-import { executorMcpRuntimeProviderRuntime, executorPortRuntime } from "../executor-port.js";
+import { executorMcpRuntimeProviderRuntime, executorPortRuntime, type ExecutorMcpSession } from "../executor-port.js";
 import { resolveBuiltinExternalMcpServers } from "../external-mcp.js";
-import type { TrackStatus } from "../types.js";
+import type { AgentToolSpec, TrackStatus } from "../types.js";
+import type { McpRouterRuntime } from "../mcp-router.js";
+import { convertToolSchema } from "../tool-snapshot.js";
 import { classifyResumeFailure } from "./session-errors.js";
 import { applyPostConnectConfig } from "./post-connect.js";
 
@@ -96,6 +95,7 @@ type ToolCallLike = (AcpToolCall | AcpToolCallUpdate) & {
 export interface ExecutorMcpSessionToken {
   readonly serverName: string;
   readonly token: string;
+  readonly session?: ExecutorMcpSession;
 }
 
 interface ExecutorMcpSetup {
@@ -687,14 +687,22 @@ function getMcpRouterRuntime(serverName: string): McpRouterRuntime | undefined {
 }
 
 function cleanupExecutorSessions(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
-  for (const { serverName, token } of sessionTokens) {
+  for (const { serverName, token, session } of sessionTokens) {
+    if (session) {
+      session.cleanup();
+      continue;
+    }
     const runtime = getMcpRouterRuntime(serverName);
     if (runtime) cleanupExecutorMcpSession(runtime, token);
   }
 }
 
 function detachExecutorMcpForReuse(sessionTokens: readonly ExecutorMcpSessionToken[]): void {
-  for (const { serverName, token } of sessionTokens) {
+  for (const { serverName, token, session } of sessionTokens) {
+    if (session) {
+      session.detachForReuse?.();
+      continue;
+    }
     const runtime = getMcpRouterRuntime(serverName);
     if (runtime) detachExecutorMcpForSessionReuse(runtime, token);
   }
@@ -704,7 +712,11 @@ function installActiveExecutorToolCallRouter(
   sessionTokens: readonly ExecutorMcpSessionToken[],
   ctx: { cwd: string; signal?: AbortSignal },
 ): void {
-  for (const { serverName, token } of sessionTokens) {
+  for (const { serverName, token, session } of sessionTokens) {
+    if (session) {
+      session.installForReuse?.(ctx);
+      continue;
+    }
     const runtime = getMcpRouterRuntime(serverName);
     if (runtime) installExecutorToolCallRouter(runtime, token, ctx);
   }
@@ -991,11 +1003,18 @@ async function setupExecutorMcp(
   if (signal?.aborted) return null;
   const tokens: ExecutorMcpSessionToken[] = [];
   const mcpServers: McpServerConfig[] = [];
+  const provider = executorMcpRuntimeProviderRuntime.getProvider();
 
-  for (const { name, runtime } of executorMcpRuntimeProviderRuntime.getExecutorMcpRouterRuntimes()) {
+  for (const { name, runtime } of provider.getExecutorMcpRouterRuntimes()) {
     const specs = executorPortRuntime.getExecutorMcpTools(name, scopeId);
     if (specs.length === 0) continue;
     try {
+      if (provider.createExecutorMcpSession) {
+        const session = await provider.createExecutorMcpSession({ serverName: name, specs, cwd, signal });
+        tokens.push({ serverName: name, token: session.token, session });
+        mcpServers.push(session.mcpServer);
+        continue;
+      }
       const mcpUrl = await runtime.server.start();
       const token = randomUUID();
       registerActiveExecutorSessionTools(runtime, token, [...specs]);

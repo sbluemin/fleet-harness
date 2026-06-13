@@ -15,6 +15,7 @@ import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
 import { buildFleetHookCommand, injectAgentCliProfile } from "../src/agent-cli/injection.js";
 import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
 import type { CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
+import { createGatewayDedicatedSessionManager } from "../src/runtime/gateway.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -68,7 +69,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
     lifecycle = createFleetRuntimeLifecycle();
     const runtime = await lifecycle.start();
     const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
-    const tokens = runtime.dedicatedMcpSession.issueSessionToken({
+    const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
       label: "agent:test-wiki",
       cwd: process.cwd(),
     });
@@ -493,6 +494,73 @@ describe("fleet-cli agent CLI MCP registration", () => {
       rmSync(codexHome, { recursive: true, force: true });
     }
   });
+
+  it("reconnects the gateway call consumer without executing duplicate calls", async () => {
+    let ensureCount = 0;
+    let registerCount = 0;
+    let callStreamCount = 0;
+    const resultPosts: string[] = [];
+    const invoke = vi.fn(async () => ({ content: [{ type: "text", text: "pong" }], isError: false }));
+    const manager = createGatewayDedicatedSessionManager({
+      name: "fleet",
+      lifecycle: {
+        ensureDaemon: async () => {
+          ensureCount += 1;
+          return "http://127.0.0.1:37283/mcp";
+        },
+      } as never,
+      readBootstrapToken: async () => "bootstrap",
+      sleep: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      },
+      registry: {
+        getAllAgentTools: () => [{ id: "ping", description: "Ping", parameters: {} }],
+        invoke,
+      } as never,
+      fetch: (async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.endsWith("/admin/register")) {
+          registerCount += 1;
+          return jsonResponse({
+            tenantId: `tenant-${registerCount}`,
+            sessionId: `session-${registerCount}`,
+            endpoint: "http://127.0.0.1:37283/mcp",
+            controlToken: `control-${registerCount}`,
+            sessionToken: `session-token-${registerCount}`,
+            observerToken: `observer-${registerCount}`,
+          });
+        }
+        if (target.endsWith("/control/calls")) {
+          callStreamCount += 1;
+          return new Response(sseStream({
+            callId: "call-1",
+            sessionId: `session-${callStreamCount}`,
+            toolName: "ping",
+            args: {},
+            createdAt: Date.now(),
+          }, callStreamCount === 1), { status: 200 });
+        }
+        if (target.includes("/control/results/")) {
+          resultPosts.push(JSON.parse(String(init?.body)).sessionId as string);
+          return jsonResponse({ ok: true });
+        }
+        if (target.endsWith("/control/release")) {
+          return jsonResponse({ ok: true });
+        }
+        return jsonResponse({ error: "unexpected" }, 500);
+      }) as typeof fetch,
+    });
+
+    await manager.issueSessionToken({ label: "agent:test-reconnect", cwd: "/tmp" });
+    await waitFor(() => registerCount >= 2 && resultPosts.length >= 1);
+    manager.releaseSessionToken("agent:test-reconnect");
+
+    expect(ensureCount).toBeGreaterThanOrEqual(2);
+    expect(registerCount).toBeGreaterThanOrEqual(2);
+    expect(resultPosts).toEqual(["session-1"]);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(manager.getConnectionState().state).toBe("ready");
+  });
 });
 
 async function listMcpTools(url: string, token: string): Promise<Set<string>> {
@@ -514,6 +582,31 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
 
 function readJson(filePath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function sseStream(body: unknown, close = true): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(body)}\n\n`));
+      if (close) controller.close();
+    },
+  });
+}
+
+async function waitFor(assertion: () => boolean): Promise<void> {
+  const startedAt = Date.now();
+  while (!assertion()) {
+    if (Date.now() - startedAt > 1_000) throw new Error("Timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {

@@ -39,6 +39,8 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("OPTIONS");
     expect(helpText).toContain("auth");
     expect(helpText).toContain("wiki");
+    expect(helpText).toContain("console");
+    expect(helpText).toContain("Open Fleet Console in your browser.");
     expect(helpText).toContain("-h, --help");
     expect(helpText).toContain("--disable-cursor-sync");
     expect(helpText).toContain("Claude Code on Windows defaults to disabled");

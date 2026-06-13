@@ -1,7 +1,7 @@
 import {
   type AgentToolCtx,
   type AgentToolSpec,
-} from "@dotobokuri/core-mcp-server";
+} from "@dotobokuri/core-agent";
 
 import { buildBriefingToolConfig } from "./tools/briefing.js";
 import { buildCompileSourceToolConfig } from "./tools/compile-source.js";
@@ -34,7 +34,7 @@ interface WikiAgentToolConfig {
 // Constants — build specs (uses hoisted function declarations below)
 // ═══════════════════════════════════════
 
-// fleet-wiki가 @dotobokuri/core-mcp-server registry에 노출하는 10종 wiki tool ID 카탈로그 상수.
+// fleet-wiki가 @dotobokuri/core-agent registry에 노출하는 10종 wiki tool ID 카탈로그 상수.
 // 실제 등록은 fleet-cli runtime.ts가 getWikiToolSpecs() 순회로 직접 수행하며,
 // 이 상수는 테스트(wiki-patch-edit.test.ts)가 도구 ID 명세를 고정하는 용도로만 쓰인다.
 export const FLEET_WIKI_AGENT_TOOL_IDS = [

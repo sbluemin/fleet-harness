@@ -64,7 +64,7 @@ export function writeAtomicSync(
 
 /**
  * async 원자쓰기: temp+rename, 선택 fsync (동기 표면 없는 async 경로용).
- * fleet-wiki는 계층 그래프상(fleet-wiki -> core-mcp-server) fleet-infra에 의존할 수 없어
+ * fleet-wiki는 계층 그래프상(fleet-wiki -> core-agent) fleet-infra에 의존할 수 없어
  * 자체 writeAtomic을 유지한다. 이 함수는 현재 1차 소비자가 없으며,
  * fs-store 비동기 쓰기의 검증 표면(패키지 테스트)으로 유지된다.
  */

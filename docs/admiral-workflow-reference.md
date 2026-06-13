@@ -9,7 +9,7 @@ This document is the operational doctrine for Admiral and Carrier agents working
 - `packages/core-agent` owns the host-agnostic executor/session/model runtime engine (`executeWithPool` / `executeOneShot`) and the builtin external MCP catalog.
 - `packages/core-unified-agent` owns the unified ACP CLI backend client engine and the `CLI_BACKENDS` provider catalog.
 - `packages/fleet-infra` owns host-agnostic auth, data-dir resolution, global options, and the durable `fs-store` I/O primitives.
-- `packages/core-mcp-server` owns the generic MCP registry/server, token isolation, and tool snapshots.
+- `runtime/fleet-gateway` owns the machine-wide local gateway daemon, loopback endpoint lifecycle, tenant token isolation, and schema-agnostic MCP pass-through routing.
 
 ## 2. Ownership Model
 
@@ -29,7 +29,7 @@ fleet-cli
   -> fleet-carriers
   -> core-agent
   -> fleet-infra
-  -> core-mcp-server
+  -> fleet-gateway
   -> fleet-wiki / fleet-wiki-ui
 
 core-agent / fleet-carriers / fleet-infra

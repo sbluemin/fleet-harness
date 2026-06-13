@@ -1,9 +1,12 @@
-import type { ExecutorRuntime } from "@dotobokuri/core-mcp-server";
+import type { McpServerConfig } from "@dotobokuri/core-unified-agent";
 
+import type { McpRouterRuntime } from "./mcp-router.js";
 import type { AgentToolSpec } from "./types.js";
 
-// 구조 동일 타입의 SSoT는 core-mcp-server의 ExecutorRuntime — 기존 공개 이름은 별칭으로 유지한다.
-export type ExecutorMcpRouterRuntime = ExecutorRuntime;
+export interface ExecutorMcpRouterRuntime {
+  readonly name: string;
+  readonly runtime: McpRouterRuntime;
+}
 
 export interface ExecutorPort {
   getScopeExternalMcpServerIds(scopeId?: string): readonly string[];
@@ -17,6 +20,23 @@ export interface ExecutorPortRuntime extends ExecutorPort {
 
 export interface ExecutorMcpRuntimeProvider {
   getExecutorMcpRouterRuntimes(): readonly ExecutorMcpRouterRuntime[];
+  createExecutorMcpSession?(request: ExecutorMcpSessionRequest): Promise<ExecutorMcpSession>;
+}
+
+export interface ExecutorMcpSessionRequest {
+  readonly serverName: string;
+  readonly specs: readonly AgentToolSpec[];
+  readonly cwd: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface ExecutorMcpSession {
+  readonly serverName: string;
+  readonly token: string;
+  readonly mcpServer: McpServerConfig;
+  cleanup(): void;
+  detachForReuse?(): void;
+  installForReuse?(ctx: { readonly cwd: string; readonly signal?: AbortSignal }): void;
 }
 
 export interface ExecutorMcpRuntimeProviderRuntime extends ExecutorMcpRuntimeProvider {

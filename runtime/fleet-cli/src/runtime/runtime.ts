@@ -5,32 +5,25 @@ import {
 	registerAgentToolDefaults,
 } from "@dotobokuri/fleet-admiral";
 import {
+	createMcpToolRegistry,
 	disconnectAll,
 	executorMcpRuntimeProviderRuntime,
 	executorPortRuntime,
 	type AuthEnvResolver,
+	type McpToolRegistry,
 } from "@dotobokuri/core-agent";
 import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
-import {
-	createMcpServer,
-	createMcpToolRegistry,
-	createMcpToolSnapshotStore,
-	createExecutorSessionManager,
-	type ExecutorSessionManager,
-	type McpServer,
-	type McpToolRegistry,
-	type McpToolSnapshotStore,
-} from "@dotobokuri/core-mcp-server";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
+import { createGatewayDedicatedSessionManager, type GatewayDedicatedSessionManager } from "./gateway.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
 export interface RuntimeServices {
 	readonly carrierRuntime: CarrierRuntime;
-	readonly dedicatedMcpSession: ExecutorSessionManager;
+	readonly dedicatedMcpSession: GatewayDedicatedSessionManager;
 	readonly infraServices: InfraServices;
 	readonly mcpRegistry: readonly McpToolRegistry[];
 }
@@ -48,8 +41,6 @@ interface FleetRuntimeLifecycleDeps {
 interface RuntimeMcpServices {
 	readonly name: string;
 	readonly mcpRegistry: McpToolRegistry;
-	readonly mcpServer: McpServer;
-	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
 }
 
 interface StartedRuntime {
@@ -97,20 +88,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			return getExecutorMcpTools(mcpRuntimes.mcpRegistry, carrierRuntime, scopeId);
 		},
 	});
-	executorMcpRuntimeProviderRuntime.register({
-		getExecutorMcpRouterRuntimes() {
-			return [
-				{
-					name: mcpRuntimes.name,
-					runtime: {
-						registry: mcpRuntimes.mcpRegistry,
-						server: mcpRuntimes.mcpServer,
-						snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
-					},
-				},
-			];
-		},
-	});
 	carrierRuntime.store.initStore(dataDir);
 	carrierRuntime.registerCarrierDefaults();
 
@@ -134,20 +111,42 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 			mcpRuntimes.mcpRegistry.registerExecutorTool(spec);
 		}
 	}
-	const dedicatedMcpSession = createExecutorSessionManager({
-		runtimes: [
-			{
-				name: mcpRuntimes.name,
-				runtime: {
-					registry: mcpRuntimes.mcpRegistry,
-					server: mcpRuntimes.mcpServer,
-					snapshotStore: mcpRuntimes.mcpToolSnapshotStore,
-				},
-			},
-		],
+	const dedicatedMcpSession = createGatewayDedicatedSessionManager({
+		name: mcpRuntimes.name,
+		registry: mcpRuntimes.mcpRegistry,
 	});
-	void mcpRuntimes.mcpServer.start().catch((error: unknown) => {
-		console.error("[fleet-cli] Failed to start MCP server", error);
+	executorMcpRuntimeProviderRuntime.register({
+		getExecutorMcpRouterRuntimes() {
+			return [
+				{
+					name: mcpRuntimes.name,
+					runtime: {
+						registry: mcpRuntimes.mcpRegistry,
+						server: {
+							start: async () => {
+								throw new Error("Executor MCP sessions are provided by Fleet Gateway");
+							},
+							setOnToolCallArrived: () => undefined,
+							resolveNextToolCall: () => undefined,
+							clearPendingForSession: () => undefined,
+						},
+						snapshotStore: {
+							registerToolsForSession: () => undefined,
+							removeToolsForSession: () => undefined,
+							clearAllTools: () => undefined,
+							getToolsForSession: () => [],
+							getToolNamesForSession: () => new Set<string>(),
+						},
+					},
+				},
+			];
+		},
+		createExecutorMcpSession(request) {
+			return dedicatedMcpSession.createExecutorMcpSession(request);
+		},
+	});
+	const unsubscribeGatewayJobPublisher = carrierRuntime.jobs.streaming.register((event) => {
+		dedicatedMcpSession.publishJobEvent(event);
 	});
 
 	reconcileRuntimeState(carrierRuntime);
@@ -161,8 +160,8 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		},
 		async shutdown() {
 			dedicatedMcpSession.cleanup();
+			unsubscribeGatewayJobPublisher();
 			await disconnectAll();
-			await mcpRuntimes.mcpServer.stop();
 		},
 	};
 }
@@ -173,10 +172,5 @@ function createRuntimeMcpServices(): RuntimeMcpServices {
 
 function createRuntimeMcpBundle(name: string): RuntimeMcpServices {
 	const mcpRegistry = createMcpToolRegistry();
-	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
-	const mcpServer = createMcpServer({
-		serverInfo: { name },
-		toolSnapshotStore: mcpToolSnapshotStore,
-	});
-	return { name, mcpRegistry, mcpServer, mcpToolSnapshotStore };
+	return { name, mcpRegistry };
 }

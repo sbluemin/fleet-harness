@@ -7,7 +7,7 @@ Fleet now uses explicit package ownership without standalone Admiral compatibili
 - `runtime/fleet-cli` owns CLI lifecycle wiring, TUI rendering, host-specific adapters, and concrete runtime assembly; it consumes Admiral policy from `@dotobokuri/fleet-admiral`.
 - `packages/fleet-carriers` owns carrier personas, dispatch, carrier jobs, and carrier state.
 - `packages/fleet-infra` owns host-agnostic infrastructure and I/O gateways.
-- `packages/core-mcp-server` owns generic MCP registry/server behavior.
+- `runtime/fleet-gateway` owns the machine-wide local gateway daemon and MCP pass-through routing.
 - `@dotobokuri/core-unified-agent` remains the independent backend client package.
 
 ## Purpose
@@ -17,7 +17,7 @@ The follow-up keeps lower packages host-agnostic while preserving a clear home f
 ## Current State
 
 - **Logical ownership:** Final package homes are split by domain.
-- **Dependency direction:** `fleet-cli` -> `fleet-carriers` -> `fleet-infra`, with `core-mcp-server` consumed as a generic leaf.
+- **Dependency direction:** `fleet-cli` -> `fleet-carriers` -> `fleet-infra`, with `fleet-gateway` and `core-agent` consumed as generic leaves.
 
 ## Goals
 

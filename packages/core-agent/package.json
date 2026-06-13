@@ -30,7 +30,6 @@
     }
   },
   "dependencies": {
-    "@dotobokuri/core-mcp-server": "workspace:*",
     "@dotobokuri/core-unified-agent": "workspace:*"
   },
   "devDependencies": {
