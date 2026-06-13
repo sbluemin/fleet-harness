@@ -42,6 +42,7 @@
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^5.5.0",
     "node-pty": "^1.0.0",
     "react": "^19.0.0",
@@ -50,6 +51,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@fontsource-variable/cascadia-code": "^5.2.2",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/manrope": "^5.2.8",

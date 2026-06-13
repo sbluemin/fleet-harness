@@ -1,6 +1,7 @@
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/cascadia-code";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";

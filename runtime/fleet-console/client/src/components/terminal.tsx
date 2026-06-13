@@ -1,6 +1,7 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 
@@ -16,9 +17,9 @@ const TERMINAL_OPTIONS = {
   convertEol: true,
   cursorBlink: true,
   cursorStyle: "block" as const,
-  fontFamily: "\"JetBrains Mono Variable\", \"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, monospace",
-  fontSize: 13,
-  lineHeight: 1.35,
+  fontFamily: "\"Cascadia Code\", \"Cascadia Mono\", \"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+  fontSize: 14,
+  lineHeight: 1.2,
   theme: {
     background: "oklch(18% 0.045 248)",
     foreground: "oklch(86% 0.018 90)",
@@ -56,6 +57,16 @@ export function Terminal({ terminalToken }: TerminalProps) {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
+
+    // WebGL 렌더러: GPU 가속으로 더 선명하고 빠른 렌더링. 컨텍스트 손실 시 스스로 정리해 DOM 렌더러로 폴백한다.
+    // open() 이후에만 로드할 수 있으며, WebGL 미지원 환경에서는 기본 DOM 렌더러를 그대로 사용한다.
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => webglAddon.dispose());
+      terminal.loadAddon(webglAddon);
+    } catch {
+      // WebGL 컨텍스트 생성 실패 — DOM 렌더러 유지
+    }
 
     const connection = createTerminalConnection({
       terminalToken,
