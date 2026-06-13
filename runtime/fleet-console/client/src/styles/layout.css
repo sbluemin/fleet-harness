@@ -57,9 +57,19 @@
   padding: var(--space-5) var(--space-8) var(--space-10);
 }
 
+/* Operations 라우트의 터미널 영역: console-body 2번째 컬럼을 가득 채우고
+   CarrierCover 오버레이(position: absolute)의 기준 컨테이너가 된다. */
+.operations-terminal-stage {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
 .topbar,
 .sidebar,
 .stage,
+.operations-terminal-stage,
 .welcome-page {
   animation: codex-rise 720ms var(--ease-spring) both;
 }
@@ -72,7 +82,8 @@
   animation-delay: 120ms;
 }
 
-.stage {
+.stage,
+.operations-terminal-stage {
   animation-delay: 200ms;
 }
 

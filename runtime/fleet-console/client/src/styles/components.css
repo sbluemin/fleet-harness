@@ -1168,6 +1168,128 @@
   font-size: 11.5px;
 }
 
+/* ── Operations 터미널 ─────────────────────────────────────────────
+   높이 전파 체인(stage → shell → canvas)을 flex로 확정해 xterm FitAddon이
+   올바른 rows/cols를 계산하도록 한다. 컨테이너 높이가 비면 rows가 1로 붕괴해
+   멀티라인 TUI(예: Claude Code 배너)가 한 줄로 평탄화된다. */
+.terminal-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.terminal-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-fog);
+}
+
+.terminal-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--warn);
+}
+
+.terminal-status-dot.is-live {
+  background: var(--aurora);
+  box-shadow: 0 0 10px 1px var(--aurora-glow);
+  animation: aurora-pulse 2.4s var(--ease-glide) infinite;
+}
+
+.terminal-canvas {
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.terminal-canvas .xterm,
+.terminal-canvas .xterm-viewport {
+  height: 100%;
+}
+
+/* CarrierCover: 터미널 위 우상단 글래스 오버레이. position: absolute로
+   normal flow에서 빠져 터미널 높이 계산을 침범하지 않는다. */
+.carrier-cover {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-height: calc(100% - var(--space-8));
+}
+
+.cover-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-spectral);
+  background: var(--surface-glass-strong);
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.cover-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--aurora);
+  box-shadow: 0 0 10px 1px var(--aurora-glow);
+}
+
+.cover-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.cover-chevron {
+  color: var(--ink-fog);
+}
+
+.cover-panel {
+  width: min(420px, 38vw);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
 @media (max-width: 760px) {
   .topbar {
     align-items: flex-start;
