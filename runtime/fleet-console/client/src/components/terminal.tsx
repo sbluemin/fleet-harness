@@ -21,7 +21,7 @@ const TERMINAL_OPTIONS = {
   fontSize: 14,
   lineHeight: 1.2,
   theme: {
-    background: "oklch(18% 0.045 248)",
+    background: "oklch(23% 0.03 248)",
     foreground: "oklch(86% 0.018 90)",
     cursor: "oklch(82% 0.13 195)",
     selectionBackground: "oklch(78% 0.13 75 / 28%)",
