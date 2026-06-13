@@ -75,7 +75,12 @@ export function Terminal({ sessionId }: TerminalProps) {
     // open() 이후에만 로드할 수 있으며, WebGL 미지원 환경에서는 기본 DOM 렌더러를 그대로 사용한다.
     try {
       const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => webglAddon.dispose());
+      // 런타임 중 실제 GPU 컨텍스트가 손실되면 addon을 정리해 DOM 렌더러로 폴백한다. 단,
+      // 언마운트(세션 전환)로 인한 terminal.dispose()는 addon을 이미 정리하므로, 그때 발생하는
+      // 컨텍스트 손실 콜백에서 또 dispose하지 않도록 disposed로 가드해 중복 정리를 막는다.
+      webglAddon.onContextLoss(() => {
+        if (!disposed) webglAddon.dispose();
+      });
       terminal.loadAddon(webglAddon);
     } catch {
       // WebGL 컨텍스트 생성 실패 — DOM 렌더러 유지
@@ -113,7 +118,16 @@ export function Terminal({ sessionId }: TerminalProps) {
       resizeObserver.disconnect();
       connection.dispose();
       connectionRef.current = null;
-      terminal.dispose();
+      // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
+      // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
+      // useEffect cleanup 밖으로 전파되면 error boundary가 없는 React 트리가 통째로 언마운트되어
+      // (빈 화면) 새로고침 전까지 복구되지 않는다. 정리 단계의 예외이므로 컴포넌트 경계에서
+      // 격리해 트리를 보호한다 — DOM 노드는 key 재마운트로 어차피 교체된다.
+      try {
+        terminal.dispose();
+      } catch {
+        // xterm 내부 dispose 버그(위 주석)를 흡수한다.
+      }
     };
   }, [sessionId]);
 
