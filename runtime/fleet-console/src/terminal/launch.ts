@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import type { TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
+import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -14,7 +14,7 @@ export interface TerminalLaunchResolverDeps {
   readonly exists?: (path: string) => boolean;
 }
 
-export type TerminalLaunchResolver = (cwd?: string) => TerminalLaunchSpec;
+export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => TerminalLaunchSpec;
 
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
 const TERMINAL_TERM = "xterm-256color";
@@ -30,9 +30,9 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const exists = deps.exists ?? fs.existsSync;
 
-  return (selectedCwd) => {
+  return (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
-    const launchEnv = { ...env, TERM: TERMINAL_TERM };
+    const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override) {
       return { ...override, cwd, env: launchEnv };
@@ -81,4 +81,12 @@ function parseTerminalCommand(command: string | undefined): { readonly bin: stri
   const [bin, ...args] = parts;
   if (!bin) return null;
   return { bin, args };
+}
+
+function buildLaunchEnv(env: NodeJS.ProcessEnv, cwd: string, sessionId: string | undefined): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    ...(sessionId ? { FLEET_CONSOLE_SESSION_ID: sessionId, INIT_CWD: cwd, PWD: cwd } : {}),
+    TERM: TERMINAL_TERM,
+  };
 }

@@ -284,6 +284,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return Array.from(terminalSessionsById.values()).map(toTerminalSessionInfo).sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  function updateTerminalSessionStatus(sessionId: string, status: ConsoleTerminalSessionStatus): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    session.status = status;
+    return toTerminalSessionInfo(session);
+  }
+
   function clear(): void {
     workspacesByCliRunId.clear();
     workspacesByRegistrationId.clear();
@@ -314,6 +321,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     createPendingTerminalSession,
     subscribe,
     subscribeAll,
+    updateTerminalSessionStatus,
     workspaceCount: () => listWorkspaces().filter((workspace) => workspace.status !== "deregistered").length,
   };
 

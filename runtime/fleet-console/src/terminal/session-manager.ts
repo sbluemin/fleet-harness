@@ -63,6 +63,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     socket.once("close", () => detachSocket(session, socket));
   }
 
+  function createSession(context: TerminalTicketContext): void {
+    getOrCreateSession(context);
+  }
+
   function stop(): void {
     for (const session of sessions.values()) {
       killSession(session);
@@ -74,7 +78,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     const current = sessions.get(context.sessionId);
     if (current) return current;
     if (sessions.size >= maxSessions) throw new Error("Terminal session capacity exhausted");
-    const pty = startShell(deps.launch(context.cwd), { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+    const pty = startShell(deps.launch(context.cwd, { sessionId: context.sessionId }), { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
     const session: TerminalSession = {
       id: context.sessionId,
       pty,
@@ -153,7 +157,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (killPty) session.pty.kill();
   }
 
-  return { canAttach, attach, stop };
+  return { canAttach, createSession, attach, stop };
 }
 
 function toBuffer(data: TerminalSocketData): Buffer {

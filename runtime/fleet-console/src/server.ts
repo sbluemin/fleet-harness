@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import http from "node:http";
 
 import type {
@@ -14,6 +15,9 @@ import { writeAggregateObserverEvents, writeObserverEvents } from "./observabili
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { tryServeStaticConsole } from "./static-console.js";
+import type { FolderPickerResult } from "./terminal/folder-picker.js";
+import { createNativeFolderPicker } from "./terminal/folder-picker.js";
+import { createFolderGrantStore } from "./terminal/folder-grants.js";
 import { createDefaultTerminalLaunchResolver, type TerminalLaunchResolver, startTerminalShell } from "./terminal/launch.js";
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
 import { createTerminalTicketRegistry } from "./terminal/tickets.js";
@@ -29,6 +33,7 @@ export interface ConsoleServerDeps {
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly terminalGraceMs?: number;
   readonly maxTerminalSessions?: number;
+  readonly terminalPickFolder?: () => Promise<FolderPickerResult>;
 }
 
 export interface ConsoleServer {
@@ -53,6 +58,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const lock = createConsoleLock({ hostname: () => host });
   const observability = createConsoleObservabilityStore();
   const terminalTickets = createTerminalTicketRegistry();
+  const folderGrants = createFolderGrantStore();
+  const pickTerminalFolder = deps.terminalPickFolder ?? createNativeFolderPicker();
   const terminalSessions = createTerminalSessionManager({
     launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver(),
     startShell: deps.terminalStartShell,
@@ -99,6 +106,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === TERMINAL_TICKET_PATH) {
       runAsyncHandler(handleTerminalTicket(req, res), res);
+      return;
+    }
+    if (pathname === "/terminal/folders/pick") {
+      runAsyncHandler(handleTerminalFolderPick(req, res), res);
+      return;
+    }
+    if (pathname === "/terminal/sessions") {
+      runAsyncHandler(handleTerminalSessions(req, res), res);
       return;
     }
     if (pathname === "/observer/status") {
@@ -242,6 +257,62 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }));
   }
 
+  async function handleTerminalFolderPick(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const result = await pickTerminalFolder();
+    if (result.kind === "cancelled") {
+      writeJson(res, 200, { cancelled: true });
+      return;
+    }
+    if (result.kind === "error") {
+      writeJson(res, result.error === "invalid_folder" ? 400 : 503, { error: result.error });
+      return;
+    }
+    writeJson(res, 200, { folderGrantId: folderGrants.issue(result.cwd) });
+  }
+
+  async function handleTerminalSessions(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (req.method === "GET") {
+      writeJson(res, 200, { sessions: observability.listTerminalSessions() });
+      return;
+    }
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const body = await readJsonBody<{ readonly folderGrantId?: unknown; readonly cwd?: unknown }>(req);
+    if (!body || typeof body.folderGrantId !== "string" || "cwd" in body) {
+      writeJson(res, 400, { error: "invalid_folder_grant" });
+      return;
+    }
+    const cwd = folderGrants.consume(body.folderGrantId);
+    if (!cwd) {
+      writeJson(res, 400, { error: "invalid_folder_grant" });
+      return;
+    }
+    const sessionId = crypto.randomUUID();
+    const session = observability.createPendingTerminalSession({ sessionId, cwd });
+    try {
+      terminalSessions.createSession({ sessionId, cwd });
+      const created = observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
+      writeJson(res, 200, created);
+    } catch (error) {
+      observability.updateTerminalSessionStatus(sessionId, "error");
+      writeJson(res, 503, { error: error instanceof Error ? error.message : "terminal_unavailable" });
+    }
+  }
+
   function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const lookup = readObserverLookup(req, res);
     if (!lookup) return;
@@ -301,6 +372,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     writeJson(res, 401, { error: "Unauthorized" });
     return null;
+  }
+
+  function isTerminalAuthorized(req: http.IncomingMessage): boolean {
+    const token = readBearerToken(req.headers);
+    return Boolean(lockHandle && token === lockHandle.payload.terminalToken);
   }
 
   function listVisibleWorkspaces(requestedTenantId: string | null): readonly ConsoleObservedWorkspace[] {

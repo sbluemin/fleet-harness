@@ -8,6 +8,7 @@ import type { ConsoleLockPayload } from "../src/api-types.js";
 import { createConsoleLock } from "../src/lock.js";
 import { createConsoleObservabilityStore } from "../src/observability-store.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../src/server.js";
+import type { TerminalLaunchSpec, TerminalPtyHandle } from "../src/terminal/types.js";
 import { createTerminalUpgradeHandler } from "../src/terminal/ws-handler.js";
 
 interface ServerFixture {
@@ -201,13 +202,75 @@ describe("console static and terminal ticket boundary", () => {
     expect(launches).toEqual([]);
   });
 
+  it("returns folder picker cancellation without creating a grant", async () => {
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "cancelled" }),
+    });
+
+    const response = await fetch(`${fixture.endpoint}terminal/folders/pick`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${fixture.lock.terminalToken}` },
+    });
+
+    await expect(response.json()).resolves.toEqual({ cancelled: true });
+  });
+
+  it("creates terminal sessions from one-use folder grants and rejects raw cwd", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-"));
+    tempDirs.push(dir);
+    const launches: TerminalLaunchSpec[] = [];
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalStartShell: (launch) => {
+        launches.push(launch);
+        return createMockPty();
+      },
+    });
+    const headers = { Authorization: `Bearer ${fixture.lock.terminalToken}`, "Content-Type": "application/json" };
+
+    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
+    const grant = await picked.json() as { readonly folderGrantId: string };
+    const rawCwd = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ cwd: dir }),
+    });
+    const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    });
+    const replay = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    });
+    const list = await fetch(`${fixture.endpoint}terminal/sessions`, { headers });
+    const session = await created.json() as { readonly sessionId: string; readonly status: string; readonly cwd?: unknown };
+
+    expect(rawCwd.status).toBe(400);
+    expect(created.status).toBe(200);
+    expect(replay.status).toBe(400);
+    expect(session.status).toBe("terminal-only");
+    expect(session.cwd).toBeUndefined();
+    expect(launches).toHaveLength(1);
+    expect(launches[0]?.cwd).toBe(dir);
+    expect(launches[0]?.env).toMatchObject({
+      FLEET_CONSOLE_SESSION_ID: session.sessionId,
+      INIT_CWD: dir,
+      PWD: dir,
+      TERM: "xterm-256color",
+    });
+    await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
+  });
+
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
     let destroyed = 0;
     const handler = createTerminalUpgradeHandler({
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, attach: () => undefined, stop: () => undefined },
+      sessions: { canAttach: () => true, createSession: () => undefined, attach: () => undefined, stop: () => undefined },
       validateHost: () => true,
     });
 
@@ -238,6 +301,7 @@ describe("console static and terminal ticket boundary", () => {
           checkedSessionIds.push(sessionId);
           return false;
         },
+        createSession: () => undefined,
         attach: () => undefined,
         stop: () => undefined,
       },
@@ -261,11 +325,15 @@ describe("console static and terminal ticket boundary", () => {
   });
 });
 
-async function startFixture(options: { readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"] } = {}): Promise<ServerFixture> {
+async function startFixture(options: {
+  readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
+  readonly terminalPickFolder?: ConsoleServerDeps["terminalPickFolder"];
+  readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
+} = {}): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
-  const server = createConsoleServer({ port: 0, version: "test", terminalLaunch: options.terminalLaunch });
+  const server = createConsoleServer({ port: 0, version: "test", terminalLaunch: options.terminalLaunch, terminalPickFolder: options.terminalPickFolder, terminalStartShell: options.terminalStartShell });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
   const lock = createConsoleLock().readLock(lockFile)!;
@@ -337,4 +405,14 @@ function restoreStaticIndex(): void {
     fs.writeFileSync(indexPath, previousStaticIndex);
   }
   previousStaticIndex = undefined;
+}
+
+function createMockPty(): TerminalPtyHandle {
+  return {
+    onData: () => ({ dispose: () => undefined }),
+    onExit: () => ({ dispose: () => undefined }),
+    write: () => undefined,
+    resize: () => undefined,
+    kill: () => undefined,
+  };
 }

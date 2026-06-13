@@ -49,4 +49,23 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.bin).toBe("bash");
     expect(spec.args).toEqual(["-l"]);
   });
+
+  it("injects selected cwd and console session env for spawned terminal sessions", () => {
+    const resolve = createDefaultTerminalLaunchResolver({
+      ...baseDeps,
+      env: { EXISTING: "kept" } as NodeJS.ProcessEnv,
+      exists: () => false,
+    });
+
+    const spec = resolve("/work/project", { sessionId: "session-a" });
+
+    expect(spec.cwd).toBe("/work/project");
+    expect(spec.env).toMatchObject({
+      EXISTING: "kept",
+      FLEET_CONSOLE_SESSION_ID: "session-a",
+      INIT_CWD: "/work/project",
+      PWD: "/work/project",
+      TERM: "xterm-256color",
+    });
+  });
 });

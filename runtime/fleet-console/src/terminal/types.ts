@@ -5,6 +5,10 @@ export interface TerminalLaunchSpec {
   readonly env: NodeJS.ProcessEnv;
 }
 
+export interface TerminalLaunchContext {
+  readonly sessionId?: string;
+}
+
 export interface TerminalTicket {
   readonly ticket: string;
   readonly ttlMs: number;
@@ -39,6 +43,7 @@ export type TerminalSocketData = Buffer | ArrayBuffer | Buffer[];
 
 export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
+  createSession(context: TerminalTicketContext): void;
   attach(socket: TerminalSocket, context: TerminalTicketContext): void;
   stop(): void;
 }
