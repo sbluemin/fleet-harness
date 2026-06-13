@@ -7,6 +7,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [core] Fleet Console, a standalone web surface for gateway observability, ships as its own runtime package and is served by the local gateway daemon — navigable workspace and job rails, smooth incremental streaming of carrier output with reasoning folds and inline tool-call activity, job finalize summaries, and a raw event timeline.
+- [core] Fleet Console now opens on a Welcome dashboard summarizing live workspace, job, and connection status, with carrier streaming relocated to a dedicated Operations route reachable from top-bar navigation.
 - [core] A machine-wide gateway daemon replaces per-instance MCP servers, exposing a fixed local loopback endpoint with per-session tenant tokens, in-memory call queues, and an observer read-only access mode.
 - [core] Mission Control now includes a gateway status panel showing daemon health, tenant count, and last-seen timestamp.
 - [core] The `fleet console` subcommand and the standalone `fleet-console` binary ensure the gateway daemon and open the Fleet Console in a browser.

@@ -41,6 +41,12 @@
   align-items: center;
   min-width: 0;
   gap: var(--space-3);
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+/* 브랜드 로고는 Welcome으로 가는 링크 — 클릭 가능함을 미세하게 알린다. */
+.topbar-brand:hover {
+  opacity: 0.82;
 }
 
 .topbar-sigil {
@@ -935,6 +941,233 @@
   white-space: nowrap;
 }
 
+/* ── GNB (Topbar 내비게이션) ───────────────────────────── */
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.topbar-nav-link {
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.topbar-nav-link:hover {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+}
+
+/* 활성 네비는 "지금 보고 있는 곳" — brass 강조 */
+.topbar-nav-link.is-active {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* ── Welcome (메인 대시보드) ───────────────────────────── */
+.welcome-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-6) var(--space-10);
+}
+
+.welcome-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  overflow: hidden;
+  padding: var(--space-12) var(--space-10);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.welcome-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brass), var(--aurora), transparent);
+  pointer-events: none;
+}
+
+.welcome-kicker {
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.welcome-hero h2 {
+  margin: 0;
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: clamp(40px, 6vw, 62px);
+  font-variation-settings: "opsz" 60;
+  font-weight: 560;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+.welcome-tagline {
+  margin: 0;
+  color: var(--brass-bright);
+  font-family: var(--font-display);
+  font-size: clamp(18px, 2.4vw, 24px);
+  font-weight: 440;
+  font-style: italic;
+}
+
+.welcome-copy {
+  max-width: 560px;
+  margin: var(--space-2) 0 0;
+  color: var(--ink-fog);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.welcome-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: 12px var(--space-6);
+  border: 1px solid color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--brass) 16%, var(--surface-glass-strong));
+  color: var(--brass-bright);
+  font-size: 12.5px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-anchor);
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.welcome-cta:hover {
+  transform: translateY(-1px);
+  background: color-mix(in oklch, var(--brass) 24%, var(--surface-glass-strong));
+}
+
+.welcome-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* 라이브 신호가 있는 카드만 aurora 림 — "지금 살아있는 것" */
+.welcome-card--live {
+  border-color: color-mix(in oklch, var(--aurora) 32%, var(--surface-rim));
+}
+
+.welcome-card-label {
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.welcome-card-value-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.welcome-card-value-row strong {
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-variation-settings: "opsz" 40;
+  font-weight: 560;
+  line-height: 1.05;
+  word-break: break-word;
+}
+
+.welcome-card p {
+  margin: 0;
+  color: var(--ink-fog);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.welcome-live-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--ink-rim);
+}
+
+.welcome-live-dot--live {
+  background: var(--aurora);
+  box-shadow: 0 0 12px var(--aurora-glow);
+  animation: aurora-pulse 1.8s ease-in-out infinite;
+}
+
+/* 연결 시도는 live가 아니다 — warn 톤으로만 진행 중을 알린다 */
+.welcome-live-dot--connecting {
+  background: var(--warn);
+  box-shadow: 0 0 12px var(--warn-glow);
+  animation: aurora-pulse 1.8s ease-in-out infinite;
+}
+
+.welcome-live-dot--auth-needed {
+  background: var(--warn);
+}
+
+.welcome-token-note {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid color-mix(in oklch, var(--warn) 36%, var(--surface-rim));
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--warn) 8%, var(--surface-glass));
+  color: var(--ink-fog);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.welcome-token-note code {
+  color: var(--brass-bright);
+  font-size: 11.5px;
+}
+
 @media (max-width: 760px) {
   .topbar {
     align-items: flex-start;
@@ -964,5 +1197,21 @@
 
   .timeline-row {
     grid-template-columns: 64px minmax(88px, 0.5fr) minmax(0, 1fr);
+  }
+
+  .topbar-nav {
+    width: 100%;
+  }
+
+  .welcome-page {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .welcome-hero {
+    padding: var(--space-8) var(--space-5);
+  }
+
+  .welcome-summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

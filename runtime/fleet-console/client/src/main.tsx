@@ -7,6 +7,7 @@ import "./styles/components.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./app.js";
 import { resetForToken } from "./store.js";
@@ -17,7 +18,9 @@ if (app) {
   resetForToken(readObserverToken());
   createRoot(app).render(
     <StrictMode>
-      <App />
+      <BrowserRouter basename="/console">
+        <App />
+      </BrowserRouter>
     </StrictMode>,
   );
 }

@@ -24,7 +24,7 @@
 
 ## Tech Stack (deliberate)
 
-- **React 19 + Vite + TypeScript.** Chosen because the console's core requirement is smooth incremental streaming UI and the package is slated to grow into the unified Fleet GUI. Do not replace with hand-rolled DOM rendering; do not add a router or state-management library until a second surface actually lands.
+- **React 19 + Vite + TypeScript.** Chosen because the console's core requirement is smooth incremental streaming UI and the package is slated to grow into the unified Fleet GUI. Do not replace with hand-rolled DOM rendering. A second surface has now landed (the Welcome dashboard), so `react-router-dom` (`BrowserRouter` with `basename="/console"`) is the sanctioned client router. Routes: `/` renders **Welcome** (the live dashboard, no token gate); `/operations` renders the carrier observation surface (Sidebar + JobView, behind the observer-token gate); unknown paths redirect to `/`. The gateway already serves extensionless `/console/*` paths as `index.html` (SPA fallback in `static-console.ts`), so client-side routes require **no** gateway change. Routing state belongs to react-router; observation data stays in the external `store.ts`. Do not add a state-management library until that store proves insufficient.
 - State lives in a framework-agnostic external store (`client/src/store.ts`) bridged via `useSyncExternalStore`. Pure reduction logic stays in `client/src/reduce.ts` and must remain React-free and unit-tested.
 - Web fonts are self-hosted via `@fontsource-variable/*`. External font CDNs are forbidden.
 - Browser launch must use OS-level commands via `child_process.spawn`; do not add an `open` dependency.
