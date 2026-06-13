@@ -82,14 +82,14 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
    ```
 5. Capture the PR number and URL.
 
-### Phase 3 — Await the Codex review
+### Phase 3 — Await the Codex review (auto-polled)
 
-The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. Poll rather than block.
+The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **arms the wait loop itself** — never ask the Admiral to run `/loop` by hand; automating the wait is the whole point of this workflow.
 
-1. Offer the Admiral a recurring wait loop at `<review_poll_interval>` (default `5m`), e.g. `/loop 5m <resume this skill at Phase 3>`. The loop checks the PR each tick and does nothing when there is no new feedback.
-2. On each check, read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; and the **approval signal** — Codex reactions on the PR body: `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`.
-3. **Approval = completion.** When `chatgpt-codex-connector[bot]` leaves a `+1` reaction on the PR body **and** there are no new actionable review comments, the workflow is complete — go to Phase 6.
-4. If new actionable feedback exists, go to Phase 4. If neither (still pending), do nothing this tick and let the loop check again.
+1. **Arm the poll automatically.** On first entry to Phase 3, call `CronCreate` directly with `cron: "*/5 * * * *"` (or the cadence implied by `<review_poll_interval>`), `recurring: true`, and a `prompt` that re-enters this skill at Phase 3 for `<pr_number>` — e.g. `"Resume pr-workflow Phase 3 for PR <pr_number> on <repo>: check Codex review state and act per the skill."`. Report the armed job ID. Do not block; the cron tick re-invokes the check. Arm exactly once — on later ticks, if a poll job already exists for this PR, do not arm a second.
+2. On each check (first entry and every tick), read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; and the **approval signal** — Codex reactions on the PR body: `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`.
+3. **Approval = completion.** When `chatgpt-codex-connector[bot]` leaves a `+1` reaction on the PR body **and** there are no new actionable review comments, the workflow is complete — go to Phase 6. A bare `eyes` reaction means the review is still in progress (pending), not approval.
+4. If new actionable feedback exists, go to Phase 4. If neither (still pending — e.g. only `eyes`, or no reaction yet), do nothing this tick and let the next cron tick check again.
 
 ### Phase 4 — Judge & apply feedback
 
@@ -123,7 +123,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 
 ### Phase 6 — Completion
 
-Stop the wait loop (CronDelete the `/loop` job if one was armed). Report in Korean:
+Stop the wait loop (`CronDelete` the poll job armed in Phase 3). Report in Korean:
 - PR number, title, head/base, URL, draft flag.
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
 - Files changed, commit SHA(s), push target(s).
