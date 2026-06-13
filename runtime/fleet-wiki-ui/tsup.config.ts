@@ -27,8 +27,23 @@ export default defineConfig([
       cli: "src/cli.ts"
     },
     format: ["esm"],
-    banner: { js: "#!/usr/bin/env node" },
     dts: true,
+    sourcemap: false,
+    clean: false,
+    noExternal: [/^@dotobokuri\//],
+    splitting: false,
+    treeshake: true,
+    target: "node20",
+    outDir: "dist",
+    outExtension: () => ({ js: ".mjs" }),
+  },
+  {
+    entry: {
+      "cli-bin": "src/cli-bin.ts"
+    },
+    format: ["esm"],
+    banner: { js: "#!/usr/bin/env node" },
+    dts: false,
     sourcemap: false,
     clean: false,
     noExternal: [/^@dotobokuri\//],

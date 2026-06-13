@@ -27,6 +27,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Breaking Changes
 - The `@dotobokuri/core-mcp-server` package is no longer published or resolvable; migrate imports to `@dotobokuri/core-agent`.
 
+### Fixed
+- [core][wiki-web] Fixed Fleet Wiki web opening automatically in the browser when agent CLI sessions start.
+
 ## [1.4.0] - 2026-06-10
 
 ### Added

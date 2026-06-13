@@ -4,7 +4,7 @@
 
 ## Owns
 
-- The `fleet-wiki` CLI entry point. 글로벌 `fleet-wiki` CLI 진입점은 `process.cwd()`에서 부모 방향으로 가장 가까운 `runtime/fleet-wiki-ui/dist/cli.mjs`를 탐색해 자기 자신과 다르면 그 경로로 재spawn(`spawnSync`, `stdio: inherit`)한다. 이를 통해 git worktree 안에서도 worktree-local dist가 자동 사용된다. 무한 재spawn은 경로 비교 + `FLEET_WIKI_TRAMPOLINED=1` 보조 가드로 방지.
+- The `fleet-wiki` CLI entry point. 글로벌 `fleet-wiki` binary 진입점은 `dist/cli-bin.mjs`이며, `process.cwd()`에서 부모 방향으로 가장 가까운 `runtime/fleet-wiki-ui/dist/cli-bin.mjs`를 우선 탐색하고 구버전 worktree 호환을 위해 `dist/cli.mjs`로 폴백해 자기 자신과 다르면 그 경로로 재spawn(`spawnSync`, `stdio: inherit`)한다. 이를 통해 git worktree 안에서도 worktree-local dist가 자동 사용된다. 무한 재spawn은 경로 비교 + `FLEET_WIKI_TRAMPOLINED=1` 보조 가드로 방지. `dist/cli.mjs`는 `./cli` export의 부수효과 없는 라이브러리 엔트리다.
 - The detached per-user local HTTP daemon for Fleet Wiki browsing.
 - Web API routing, daemon PID/port lock handling, in-memory workspace registration, browser launch helpers, and the standalone Vite client SPA.
 - The full visual identity of the Fleet Wiki reading experience — typography, color, spatial composition, motion, and atmosphere.
@@ -69,7 +69,8 @@ POST Origin guard for browser-facing queue mutations, lockfile bearer auth for C
 
 ## Build Output
 
-- `dist/cli.mjs` is the package binary and the worktree-aware trampoline entry point.
+- `dist/cli.mjs` is the side-effect-free `./cli` library entry.
+- `dist/cli-bin.mjs` is the package binary and the worktree-aware trampoline entry point.
 - `dist/server.mjs` is the detached server entry.
 - `dist/client/` is produced by Vite and contains `index.html`, bundled `assets/*.js`, `assets/*.css`, and font `assets/*.woff2` shards.
 

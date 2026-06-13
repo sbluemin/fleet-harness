@@ -17,10 +17,10 @@ afterEach(async () => {
 });
 
 describe("findLocalCliMjs", () => {
-  it("runtime/fleet-wiki-ui/dist/cli.mjs를 부모 방향으로 탐색해 찾는다", async () => {
+  it("runtime/fleet-wiki-ui/dist/cli-bin.mjs를 부모 방향으로 탐색해 찾는다", async () => {
     const distDir = path.join(tempDir, "runtime", "fleet-wiki-ui", "dist");
     await mkdir(distDir, { recursive: true });
-    const cliPath = path.join(distDir, "cli.mjs");
+    const cliPath = path.join(distDir, "cli-bin.mjs");
     await writeFile(cliPath, "// stub\n", "utf8");
 
     const nestedCwd = path.join(tempDir, "packages", "some-package", "src");
@@ -28,6 +28,25 @@ describe("findLocalCliMjs", () => {
 
     expect(findLocalCliMjs(nestedCwd)).toBe(cliPath);
     expect(findLocalCliMjs(tempDir)).toBe(cliPath);
+  });
+
+  it("cli-bin.mjs가 없으면 구버전 worktree 호환을 위해 cli.mjs로 폴백한다", async () => {
+    const distDir = path.join(tempDir, "runtime", "fleet-wiki-ui", "dist");
+    await mkdir(distDir, { recursive: true });
+    const legacyCliPath = path.join(distDir, "cli.mjs");
+    await writeFile(legacyCliPath, "// stub\n", "utf8");
+
+    expect(findLocalCliMjs(tempDir)).toBe(legacyCliPath);
+  });
+
+  it("cli-bin.mjs를 cli.mjs보다 우선한다", async () => {
+    const distDir = path.join(tempDir, "runtime", "fleet-wiki-ui", "dist");
+    await mkdir(distDir, { recursive: true });
+    const cliBinPath = path.join(distDir, "cli-bin.mjs");
+    await writeFile(cliBinPath, "// stub\n", "utf8");
+    await writeFile(path.join(distDir, "cli.mjs"), "// legacy stub\n", "utf8");
+
+    expect(findLocalCliMjs(tempDir)).toBe(cliBinPath);
   });
 
   it("로컬 dist가 없으면 null을 반환한다", () => {
