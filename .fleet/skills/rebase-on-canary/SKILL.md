@@ -1,20 +1,22 @@
 ---
-name: rebase-worktree-on-canary
-description: 별도 워크트리의 토픽 브랜치를 canary 기준으로 리베이스하는 절차를 정의합니다.
+name: rebase-on-canary
+description: 별도 워크트리 또는 현재 체크아웃된 브랜치의 토픽 브랜치를 canary 기준으로 리베이스하는 절차를 정의합니다.
 ---
 
-# Rebase Worktree on Canary
+# Rebase on Canary
 
-Use this skill to rebase a topic branch checked out in a separate `git worktree` onto the latest `canary`. The skill keeps the main worktree (the one currently driving the Admiral session) intact and only rewrites the topic branch in the target worktree on top of the synchronized `canary` ref. Topic-branch commit SHAs are rewritten by the rebase — this is intentional and the report must flag it so the Admiral of the Navy can decide whether a force-push is needed.
+Use this skill to rebase a topic branch onto the latest `canary`. The target branch may live in a separate `git worktree` (the default, safest case — the main worktree driving this Admiral session is left intact) or be the branch **currently checked out** in the worktree this skill is invoked from. When the Admiral of the Navy explicitly targets the current branch (no separate worktree given, or `<worktree_path>` resolves to the current worktree), the skill rebases that checked-out branch in place — rewriting the current worktree's HEAD is then the intended action, not a safety violation. Topic-branch commit SHAs are rewritten by the rebase — this is intentional and the report must flag it so the Admiral of the Navy can decide whether a force-push is needed.
 
 ## Inputs
 
 Replace each `<placeholder>` before running. Optional inputs may be left blank — defaults will be inferred.
 
-- `<worktree_path>` — Absolute path to the target worktree (required, e.g., `/Users/sbluemin/workspace/fleet-harness-worktrees/fix-harness-btw-scroll-dropdown`).
+- `<worktree_path>` — Absolute path to the target worktree. Optional. When omitted (or set to the path of the worktree this skill runs in), the skill targets the branch **currently checked out** in the current worktree (current-branch mode). Provide an explicit separate-worktree path to rebase another branch without disturbing the current one.
 - `<base>` — Base branch name. Optional. Default `canary`. `main` / `master` are rejected unless the Admiral of the Navy explicitly overrides.
 - `<remote>` — Remote name. Optional. Default `origin`.
 - `<sync_local_base>` — `yes` | `no`. Optional. Default `yes`. When `yes`, fast-forward the local `<base>` to `<remote>/<base>` before rebasing.
+
+> **Target resolution**: With `<worktree_path>` set to a *separate* worktree, that worktree's HEAD is rewritten and the main worktree stays untouched (default). With `<worktree_path>` omitted or pointing at the *current* worktree, the skill rebases the current branch in place — apply every precondition (clean tree, conflict-stop, no auto-resolve) to the current worktree just the same. If the local `<base>` branch is not checked out anywhere, skip the local-base mirror (step 6) and rebase directly onto `<remote>/<base>`.
 
 ## Goal
 
@@ -100,7 +102,7 @@ Rebase the topic branch in `<worktree_path>` onto `<remote>/<base>` (mirrored in
 - Do not fast-forward local `<base>` from a worktree that has uncommitted changes — stop and report.
 - Do not accept `main` or `master` as `<base>` without explicit override.
 - Do not bypass Git hooks (`--no-verify`, `--no-gpg-sign`, etc.).
-- Do not modify the main worktree's working tree beyond a fast-forward `git merge --ff-only` of local `<base>`.
+- Do not modify the main worktree's working tree beyond a fast-forward `git merge --ff-only` of local `<base>` — **unless** the Admiral of the Navy explicitly invokes current-branch mode, in which case rebasing the currently checked-out branch in place (rewriting that worktree's HEAD) is the intended action.
 - Korean for the final report prose; English for any commit messages the Admiral of the Navy may request afterwards.
 
 ## Carrier Delegation Guidance
