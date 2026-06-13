@@ -28,5 +28,5 @@ Apply this Standing Order at checkpoint boundaries declared in the active protoc
 3. **Post-Checkpoint Self-Check** — After each checkpoint, output exactly one short alignment line:
    ${"``"}Aligned? [yes / partial — adjust / drift — halt]${"``"}
 4. **Drift Recovery** — If the self-check is ${"``"}partial — adjust${"``"} or ${"``"}drift — halt${"``"}, do not enter the next checkpoint. Return to the original user request, re-derive the anchor, and continue only after the objective is clear.
-5. **Compact Mode** — For tasks running under ${"`"}fleet-protocol-trivial${"`"}, or single-checkpoint tasks with no more than 3 changed lines, state the Objective once and omit per-checkpoint Anchor Recall lines. Multi-checkpoint tasks never use this exemption.`,
+5. **Compact Mode** — For tasks running under ${"`"}protocol-baseline${"`"}, or single-checkpoint tasks with no more than 3 changed lines, state the Objective once and omit per-checkpoint Anchor Recall lines. Multi-checkpoint tasks never use this exemption.`,
 };

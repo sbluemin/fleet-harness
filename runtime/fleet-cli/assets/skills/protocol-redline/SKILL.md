@@ -1,11 +1,11 @@
 ---
-name: fleet-protocol-high-risk
+name: protocol-redline
 description: Use the risk-controlled Fleet protocol mode for irreversible, structural, multi-module, or prompt-policy work.
 ---
 
-# Fleet Protocol: High Risk
+# Fleet Protocol: Redline
 
-Use this mode for irreversible operations, structural/API changes, cross-module edits, doctrine or prompt-policy edits, security-sensitive work, or any operational request needing explicit risk controls. Escalate to `fleet-protocol-multi-agent` when multiple Carriers or parallel ownership boundaries are required.
+Use this mode for irreversible operations, structural/API changes, cross-module edits, doctrine or prompt-policy edits, security-sensitive work, or any operational request needing explicit risk controls. Escalate to `protocol-frontline` when multiple Carriers or parallel ownership boundaries are required.
 
 ## Checkpoints
 
@@ -27,7 +27,7 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 - [ ] **Impact radius** — flag public-surface or API impact, irreversibility, and any security-sensitive surface. → report `impact: <…>`
 - [ ] **Rollback** — identify a rollback-safe checkpoint and any Admiral of the Navy approval point before execution begins. → report `rollback: <…>`
 - [ ] **Isolation** — confirm a working branch or worktree isolates the change; no direct work on the default branch. → report `isolation: <branch>`
-- [ ] **Escalation** — if multiple carriers or parallel ownership boundaries are required, re-classify under multi-agent. → report `escalation: clear`
+- [ ] **Escalation** — if multiple carriers or parallel ownership boundaries are required, re-classify under frontline. → report `escalation: clear`
 
 ## Workflow
 

@@ -1,9 +1,9 @@
 ---
-name: fleet-protocol-trivial
+name: protocol-baseline
 description: Use the compact Fleet protocol mode for simple, reversible, single-surface work.
 ---
 
-# Fleet Protocol: Trivial
+# Fleet Protocol: Baseline
 
 Use this mode only for simple, reversible, single-surface operational work.
 
@@ -11,7 +11,7 @@ At any point during the work, if a Downward Guard trigger appears, stop and re-c
 
 ## Checkpoints
 
-None. Selecting trivial implies Mission Anchor Compact Mode.
+None. Selecting baseline implies Mission Anchor Compact Mode.
 
 ## Reporting Cadence
 

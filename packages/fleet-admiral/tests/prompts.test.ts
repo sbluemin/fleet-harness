@@ -43,12 +43,12 @@ describe("Admiral prompts", () => {
 
     expect(prompt).toContain("Conversational");
     expect(prompt).toContain("answer normally without loading a protocol skill");
-    expect(prompt).toContain("fleet-protocol-trivial");
-    expect(prompt).toContain("fleet-protocol-standard");
-    expect(prompt).toContain("fleet-protocol-high-risk");
-    expect(prompt).toContain("fleet-protocol-multi-agent");
-    expect(prompt).toContain("fall back to `fleet-protocol-standard`");
-    expect(prompt).toContain("Never choose `fleet-protocol-trivial` or `fleet-protocol-standard`");
+    expect(prompt).toContain("protocol-baseline");
+    expect(prompt).toContain("protocol-midline");
+    expect(prompt).toContain("protocol-redline");
+    expect(prompt).toContain("protocol-frontline");
+    expect(prompt).toContain("fall back to `protocol-midline`");
+    expect(prompt).toContain("Never choose `protocol-baseline` or `protocol-midline`");
     expect(prompt).toContain("irreversible operations, structural/API changes, multi-module edits, or doctrine/prompt-policy edits");
     expect(prompt).toContain("Mode Mapping (examples)");
     expect(prompt).not.toContain("# Fleet Action Protocol — Operational Doctrine");

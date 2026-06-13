@@ -1,11 +1,11 @@
 ---
-name: fleet-protocol-multi-agent
+name: protocol-frontline
 description: Use the coordinated Fleet protocol mode for multi-carrier or parallel ownership work.
 ---
 
-# Fleet Protocol: Multi-Agent
+# Fleet Protocol: Frontline
 
-Use this mode when operational work requires multiple Carriers, independent parallel workstreams, cross-carrier review loops, or file ownership coordination. If the work is high risk but single-owner, use `fleet-protocol-high-risk` instead.
+Use this mode when operational work requires multiple Carriers, independent parallel workstreams, cross-carrier review loops, or file ownership coordination. If the work is high risk but single-owner, use `protocol-redline` instead.
 
 ## Checkpoints
 

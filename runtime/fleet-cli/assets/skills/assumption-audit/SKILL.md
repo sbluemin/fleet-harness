@@ -1,5 +1,5 @@
 ---
-name: fleet-assumption-audit
+name: assumption-audit
 description: Resolve decision-shaped Context Confidence gate failures one blocking gap at a time before the active protocol re-applies its planning boundary.
 ---
 

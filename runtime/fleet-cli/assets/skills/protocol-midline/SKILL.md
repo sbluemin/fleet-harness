@@ -1,9 +1,9 @@
 ---
-name: fleet-protocol-standard
+name: protocol-midline
 description: Use the normal Fleet protocol mode for bounded operational work without downward-guard triggers.
 ---
 
-# Fleet Protocol: Standard
+# Fleet Protocol: Midline
 
 Use this mode for ordinary bounded operational work.
 

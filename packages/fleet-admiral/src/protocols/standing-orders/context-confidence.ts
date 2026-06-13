@@ -29,7 +29,7 @@ Confidence is determined by the resolution status of knowledge gaps identified d
 | **partial** | At least one blocking gap remains unresolved. |
 | **speculative** | Two or more blocking gaps remain unresolved, OR confidence has not been deliberately evaluated. |
 
-The terms *blocking* and *confirmatory* are assigned during the reconnaissance checkpoint's gap identification step. They are the evidence-criticality axis — not a free-form judgment. Keep this axis separate from the later re-entry resolution-path taxonomy owned by ${"`"}fleet-assumption-audit${"`"}.
+The terms *blocking* and *confirmatory* are assigned during the reconnaissance checkpoint's gap identification step. They are the evidence-criticality axis — not a free-form judgment. Keep this axis separate from the later re-entry resolution-path taxonomy owned by ${"`"}assumption-audit${"`"}.
 
 ### Evidence Checklist
 
@@ -56,7 +56,7 @@ Threshold selection follows proportionality:
 If confidence is below the required threshold, do NOT proceed to the gated checkpoint. Instead:
 
 1. Re-enter the preceding reconnaissance checkpoint scoped narrowly to the unresolved blocking gaps.
-2. Triage each unresolved blocking gap by the scout-shaped, decision-shaped, or escalation-shaped taxonomy defined in ${"`"}fleet-assumption-audit${"`"}.
+2. Triage each unresolved blocking gap by the scout-shaped, decision-shaped, or escalation-shaped taxonomy defined in ${"`"}assumption-audit${"`"}.
 3. Re-evaluate confidence after gap resolution.
 4. Re-apply the gate.
 

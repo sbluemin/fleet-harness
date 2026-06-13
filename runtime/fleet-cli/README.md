@@ -27,7 +27,7 @@ After installation, run `fleet` from any directory.
 ## Session Plugins
 
 Dedicated Claude and Codex sessions receive Fleet context through generated plugin assets rendered under `~/.fleet/marketplace/plugins/fleet`.
-The Fleet system prompt is injected at CLI launch time via temporary prompt files for Claude and a dedicated Codex profile, while provider-shared skill files and Claude subagent definitions are generated inside the plugin bundle from packaged assets. Built-in skills include Fleet Wiki usage plus the four protocol-mode skills used by the Admiral protocol gate: `fleet-protocol-trivial`, `fleet-protocol-standard`, `fleet-protocol-high-risk`, and `fleet-protocol-multi-agent`.
+The Fleet system prompt is injected at CLI launch time via temporary prompt files for Claude and a dedicated Codex profile, while provider-shared skill files and Claude subagent definitions are generated inside the plugin bundle from packaged assets. Built-in skills include Fleet Wiki usage plus the four protocol-mode skills used by the Admiral protocol gate: `protocol-baseline`, `protocol-midline`, `protocol-redline`, and `protocol-frontline`.
 The carrier and wiki MCP servers are not rendered into the plugin bundle; they are injected at spawn time as launch arguments (`--mcp-config` for Claude and `-c mcp_servers.*` for Codex).
 
 Claude launches with `--plugin-dir ~/.fleet/marketplace/plugins/fleet` and discovers enabled carrier agents from plugin `agents/*.md`.
