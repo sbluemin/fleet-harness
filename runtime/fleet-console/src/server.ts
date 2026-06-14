@@ -33,8 +33,6 @@ import { createTerminalUpgradeHandler, TERMINAL_TICKET_PATH } from "./terminal/w
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
 
-declare const __PKG_VERSION__: string | undefined;
-
 export interface ConsoleServerDeps {
   readonly host?: string;
   readonly port?: number;
@@ -68,7 +66,10 @@ const MAX_BODY_BYTES = 1024 * 1024;
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
   const port = deps.port ?? DEFAULT_PORT;
-  const version = deps.version ?? (typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev");
+  // 버전은 런타임에 package.json을 읽는 release.ts SSoT에서 해석한다(channel과 동일 경로).
+  // 과거 빌드타임 상수(__PKG_VERSION__)는 tsup define에 주입된 적이 없어 항상 "0.0.0-dev"로
+  // 폴백되는 죽은 경로였다. deps.version은 테스트 오버라이드용으로 유지한다.
+  const version = deps.version ?? readFleetConsoleRelease().version;
   const channel = readConsoleChannel();
   const carrierRegistry = createCarrierRegistry();
   registerDefaultCarriers(carrierRegistry);

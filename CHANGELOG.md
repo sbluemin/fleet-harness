@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+- [core] Fleet Console now reports its actual installed package version instead of always showing a placeholder development version.
+
 ## [1.5.0] - 2026-06-14
 
 ### Added
