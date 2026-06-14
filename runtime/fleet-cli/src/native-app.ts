@@ -1,5 +1,7 @@
 import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
 import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
 import type { IDisposable, IPty } from "node-pty";
 
 import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/injection.js";
@@ -28,14 +30,11 @@ import { getTerminalSize } from "./tui/terminal-size.js";
 import { checkForUpdate } from "./update/check.js";
 
 export interface NativeTerminalLaunchStrategyDeps {
-  readonly detachInput: () => void;
   readonly getTerminalSize?: () => { readonly columns: number; readonly rows: number };
   readonly onActiveChildChange?: (child: NativeActiveChild | undefined) => void;
   readonly onAfterResume?: () => void;
-  readonly registerInput: () => void;
   readonly runCleanup: () => void;
   readonly startShell?: ShellStarter;
-  readonly stdin?: NativeInputStream;
   readonly stdout?: Pick<NodeJS.WriteStream, "write">;
   readonly ui: Pick<LocalTui, "refreshSize" | "start" | "stop">;
 }
@@ -52,16 +51,6 @@ export interface NativeActiveChild {
   readonly profile: AgentCliProfile;
 }
 
-interface NativeInputStream {
-  on(event: "data", listener: (data: Buffer | string) => void): NativeInputStream;
-  off(event: "data", listener: (data: Buffer | string) => void): NativeInputStream;
-  resume(): NativeInputStream;
-  setEncoding(encoding: BufferEncoding): NativeInputStream;
-  setRawMode?(mode: boolean): NativeInputStream;
-  readonly isRaw?: boolean;
-  readonly isTTY?: boolean;
-}
-
 interface NativeRawPtySession {
   readonly bridge: NativeRawPtyBridge;
   readonly dispose: () => void;
@@ -69,6 +58,7 @@ interface NativeRawPtySession {
 }
 
 type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
+type NativeInputDebugDetail = Readonly<Record<string, unknown>>;
 
 export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
   const argvOptions = options.argvOptions ?? createRunNativeAppArgOptions(options);
@@ -76,11 +66,11 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
   const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
   const invocationCwd = resolveInvocationCwd();
+  const debugNativeInput = createNativeInputDebugger(invocationCwd);
   const ui = new LocalTui({ cursorSyncEnabled: true });
   const initialStdinRaw = process.stdin.isRaw;
   let activeNativeChild: NativeActiveChild | undefined;
   let disposeCarrierReminderSubscription = () => {};
-  let disposeInputStream = () => {};
   let disposeMissionControlInput = () => {};
   let stopping = false;
   let shutdownExitCode = 0;
@@ -119,27 +109,36 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     onChange: scheduleRender,
   });
   const release = readFleetCliRelease();
-  const detachInput = () => {
-    disposeInputStream();
-    disposeInputStream = () => {};
-    disposeMissionControlInput();
-    disposeMissionControlInput = () => {};
-  };
-  const registerInput = () => {
-    detachInput();
-    disposeMissionControlInput = ui.addInputListener((data) => {
-      missionControl.component.handleInput?.(data);
+  const onStdinData = (data: Buffer | string) => {
+    const text = Buffer.isBuffer(data) ? data.toString("utf8") : data;
+    const child = activeNativeChild;
+    debugNativeInput("stdin-data", {
+      flowing: process.stdin.readableFlowing,
+      isRaw: process.stdin.isRaw,
+      len: text.length,
+      sink: child === undefined ? "launcher" : "child",
     });
-    disposeInputStream = attachNativeInputStream(ui);
+    if (child !== undefined) {
+      child.bridge.writeRaw(text);
+      return;
+    }
+    ui.emitInput(text);
   };
   let resumeHook = scheduleRender;
   const launchProfile = createNativeTerminalLaunchStrategy({
-    detachInput,
     onActiveChildChange: (child) => {
       activeNativeChild = child;
+      if (child !== undefined) {
+        debugNativeInput("child-enter", {});
+        return;
+      }
+      debugNativeInput("resume", {
+        flowing: process.stdin.readableFlowing,
+        isRaw: process.stdin.isRaw,
+        listenerCount: process.stdin.listenerCount("data"),
+      });
     },
     onAfterResume: () => resumeHook(),
-    registerInput,
     runCleanup: runAgentCliCleanup,
     ui,
   });
@@ -208,7 +207,9 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     stop();
   };
   const cleanupTerminal = () => {
-    detachInput();
+    process.stdin.off("data", onStdinData);
+    disposeMissionControlInput();
+    disposeMissionControlInput = () => {};
     disposeCarrierReminderSubscription();
     disposeCarrierReminderSubscription = () => {};
     const activeChild = activeNativeChild;
@@ -238,7 +239,20 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
   applyMissionControlSize();
   ui.start();
   process.stdout.write(KITTY_ENABLE);
-  registerInput();
+  disposeMissionControlInput = ui.addInputListener((data) => {
+    missionControl.component.handleInput?.(data);
+  });
+  process.stdin.setEncoding("utf8");
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.resume();
+  process.stdin.on("data", onStdinData);
+  debugNativeInput("boot-attach", {
+    isRaw: process.stdin.isRaw,
+    isTTY: process.stdin.isTTY,
+    listenerCount: process.stdin.listenerCount("data"),
+  });
   const resize = () => {
     const size = getTerminalSize();
     if (activeNativeChild !== undefined) {
@@ -253,13 +267,13 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
 
 export function createNativeTerminalLaunchStrategy(deps: NativeTerminalLaunchStrategyDeps): MissionControlLaunchProfile {
   const stdout = deps.stdout ?? process.stdout;
-  const stdin = deps.stdin ?? process.stdin;
   const readTerminalSize = deps.getTerminalSize ?? getTerminalSize;
   const startShellFn = deps.startShell ?? startShell;
 
   return async (launch: MissionControlLaunchProfileOptions): Promise<void> => {
     let cleanupRan = false;
     let rawSession: NativeRawPtySession | undefined;
+    let activeChildCleared = false;
     let resumed = false;
     const runCleanupOnce = () => {
       if (cleanupRan) {
@@ -272,28 +286,32 @@ export function createNativeTerminalLaunchStrategy(deps: NativeTerminalLaunchStr
       rawSession?.dispose();
       rawSession = undefined;
     };
+    const clearActiveChildOnce = () => {
+      if (activeChildCleared) {
+        return;
+      }
+      activeChildCleared = true;
+      deps.onActiveChildChange?.(undefined);
+    };
     const resumeFleetOnce = () => {
       if (resumed) {
         return;
       }
       resumed = true;
       disposeRawSession();
-      deps.onActiveChildChange?.(undefined);
+      clearActiveChildOnce();
       deps.ui.refreshSize(readTerminalSize());
       deps.ui.start();
       stdout.write(KITTY_ENABLE);
-      deps.registerInput();
       deps.onAfterResume?.();
     };
 
-    deps.detachInput();
     stdout.write(KITTY_DISABLE);
     deps.ui.stop();
     try {
       rawSession = startNativeRawPtySession({
         launch,
         startShell: startShellFn,
-        stdin,
         stdout,
       });
       deps.onActiveChildChange?.({
@@ -301,16 +319,17 @@ export function createNativeTerminalLaunchStrategy(deps: NativeTerminalLaunchStr
         dispose: disposeRawSession,
         profile: launch.profile,
       });
+      activeChildCleared = false;
       launch.onNativeActive(launch.profile);
       const event = await rawSession.waitExit();
+      clearActiveChildOnce();
       disposeRawSession();
-      deps.onActiveChildChange?.(undefined);
       runCleanupOnce();
       launch.onExit(event);
       resumeFleetOnce();
     } catch (error) {
       disposeRawSession();
-      deps.onActiveChildChange?.(undefined);
+      clearActiveChildOnce();
       runCleanupOnce();
       resumeFleetOnce();
       throw error;
@@ -334,22 +353,21 @@ function resolveInvocationCwd(): string {
   return process.env.INIT_CWD || process.cwd();
 }
 
-function attachNativeInputStream(ui: LocalTui): () => void {
-  const stdin = process.stdin;
-  const onData = (data: Buffer | string) => {
-    ui.emitInput(Buffer.isBuffer(data) ? data.toString("utf8") : data);
-  };
-
-  stdin.setEncoding("utf8");
-  if (stdin.isTTY) {
-    stdin.setRawMode(true);
+function createNativeInputDebugger(invocationCwd: string): (event: string, detail: NativeInputDebugDetail) => void {
+  const debugValue = process.env.FLEET_DEBUG_NATIVE_INPUT;
+  if (debugValue === undefined || debugValue === "" || debugValue === "0") {
+    return () => undefined;
   }
-  stdin.resume();
-  stdin.on("data", onData);
-
-  return createOnce(() => {
-    stdin.off("data", onData);
-  });
+  const logPath = debugValue === "1" || debugValue === "true"
+    ? join(invocationCwd, "fleet-native-input-debug.log")
+    : debugValue;
+  return (event, detail) => {
+    try {
+      appendFileSync(logPath, `${JSON.stringify({ ts: Date.now(), event, ...detail })}\n`);
+    } catch {
+      // 진단 로그 실패는 native 입력 경로를 방해하지 않는다.
+    }
+  };
 }
 
 function restoreNativeInputRawMode(initialRaw: boolean | undefined): void {
@@ -361,10 +379,9 @@ function restoreNativeInputRawMode(initialRaw: boolean | undefined): void {
 function startNativeRawPtySession(options: {
   readonly launch: MissionControlLaunchProfileOptions;
   readonly startShell: ShellStarter;
-  readonly stdin: NativeInputStream;
   readonly stdout: Pick<NodeJS.WriteStream, "write">;
 }): NativeRawPtySession {
-  const { launch, stdin, stdout } = options;
+  const { launch, stdout } = options;
   const pty = options.startShell({
     profile: {
       ...launch.profile,
@@ -373,20 +390,11 @@ function startNativeRawPtySession(options: {
   }, {
     cols: launch.cols,
     rows: launch.rows,
-    // Windows ConPTY backend를 OS 내장 conhost 대신 번들 conpty.dll로 전환한다. 기본 경로는
-    // child kill 시 conpty_console_list_agent를 부모와 같은 콘솔에 fork하고 ClosePseudoConsole로
-    // 정리하는데, 이 과정이 부모 콘솔 입력 핸들/read-loop를 교란해 child 종료 후 Mission Control
-    // 키 입력이 죽는다. conpty.dll 경로는 cleanup/release 순서가 달라 이 교란을 피한다. node-pty
-    // #894(PowerShell 출력 지연) 리스크가 있어 Windows에만 적용한다.
-    useConptyDll: process.platform === "win32",
   });
   const dataDisposable = pty.onData((chunk) => {
     stdout.write(chunk);
   });
   let exitDisposable: IDisposable | undefined;
-  const rawInput = (data: Buffer | string) => {
-    pty.write(Buffer.isBuffer(data) ? data.toString("utf8") : data);
-  };
   const exitPromise = new Promise<PtyExitEvent>((resolve) => {
     exitDisposable = pty.onExit((event) => {
       exitDisposable?.dispose();
@@ -397,11 +405,7 @@ function startNativeRawPtySession(options: {
       });
     });
   });
-  const disposeRawInput = createOnce(() => {
-    stdin.off("data", rawInput);
-  });
   const dispose = createOnce(() => {
-    disposeRawInput();
     dataDisposable.dispose();
     exitDisposable?.dispose();
     exitDisposable = undefined;
@@ -411,10 +415,6 @@ function startNativeRawPtySession(options: {
     resize: (cols, rows) => pty.resize(cols, rows),
     writeRaw: (data) => pty.write(data),
   };
-
-  stdin.setEncoding("utf8");
-  stdin.resume();
-  stdin.on("data", rawInput);
 
   return {
     bridge,

@@ -11,7 +11,6 @@ export function startShell(config: PtyLaunchConfig, opts: PtyStartOptions): IPty
     env: config.profile.env,
     name: config.profile.terminalName,
     rows: opts.rows,
-    useConptyDll: opts.useConptyDll,
   });
 }
 
