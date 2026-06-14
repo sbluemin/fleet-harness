@@ -7,7 +7,6 @@ import { renderCopyContextActions } from "./copy-context-actions";
 import { rawPath } from "../router";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
-import { t } from "../i18n/t";
 
 const ARROW_ICON = `
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -30,43 +29,43 @@ export function renderManifestPanel(
 
   const tagsHtml = frontmatter.tags.length > 0
     ? `<div class="queue-card-chips">${frontmatter.tags.map((t_) => `<span class="chip chip-muted">${escapeHtml(t_)}</span>`).join("")}</div>`
-    : `<span class="queue-dl-muted">${t("common.none")}</span>`;
+    : `<span class="queue-dl-muted">None</span>`;
 
   const rawRefHtml = frontmatter.rawSourceRef
     ? `<a class="manifest-link queue-raw-link" href="${escapeAttribute(rawPath(frontmatter.rawSourceRef))}" data-raw-ref="${escapeAttribute(frontmatter.rawSourceRef)}">
         <span class="manifest-ref">${escapeHtml(frontmatter.rawSourceRef)}</span>
         <span class="manifest-arrow" aria-hidden="true">${ARROW_ICON}</span>
       </a>`
-    : `<span class="queue-dl-muted">${t("common.none")}</span>`;
+    : `<span class="queue-dl-muted">None</span>`;
 
   return `
     <aside class="manifest-card">
       <div class="manifest-header">
         <div class="manifest-titles">
           <p class="drydock-eyebrow">MANIFEST · CODEX</p>
-          <p class="manifest-subtitle">${t("manifest.subtitle")}</p>
+          <p class="manifest-subtitle">Document Manifest</p>
         </div>
       </div>
       <dl class="queue-dl">
-        <dt class="queue-dl-key">${t("manifest.created")}</dt>
+        <dt class="queue-dl-key">Created</dt>
         <dd class="queue-dl-value queue-dl-time">
           <time datetime="${escapeAttribute(frontmatter.created)}" title="${escapeAttribute(absoluteCreated)}">
             ${escapeHtml(absoluteCreated)}
             <span class="queue-dl-relative">(${escapeHtml(relCreated)})</span>
           </time>
         </dd>
-        <dt class="queue-dl-key">${t("manifest.updated")}</dt>
+        <dt class="queue-dl-key">Updated</dt>
         <dd class="queue-dl-value queue-dl-time">
           <time datetime="${escapeAttribute(frontmatter.updated)}" title="${escapeAttribute(absoluteUpdated)}">
             ${escapeHtml(absoluteUpdated)}
             <span class="queue-dl-relative">(${escapeHtml(relUpdated)})</span>
           </time>
         </dd>
-        <dt class="queue-dl-key">${t("manifest.version")}</dt>
+        <dt class="queue-dl-key">Version</dt>
         <dd class="queue-dl-value queue-dl-mono">v${frontmatter.version}</dd>
-        <dt class="queue-dl-key">${t("manifest.tags")}</dt>
+        <dt class="queue-dl-key">Tags</dt>
         <dd class="queue-dl-value">${tagsHtml}</dd>
-        <dt class="queue-dl-key">${t("manifest.rawSource")}</dt>
+        <dt class="queue-dl-key">Source</dt>
         <dd class="queue-dl-value">${rawRefHtml}</dd>
       </dl>
       ${actionsHtml ? `<div class="manifest-actions">${actionsHtml}</div>` : ""}

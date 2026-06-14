@@ -22,9 +22,6 @@ import { renderQueueList } from "./components/queue-list";
 import { renderQueueDetail } from "./components/queue-detail";
 import { renderToc } from "./components/toc";
 import { renderLogView } from "./components/log-view";
-import { initLanguage, setLanguage, subscribeLanguage } from "./i18n/store";
-import type { SupportedLanguage } from "./i18n/types";
-import { t } from "./i18n/t";
 import { clearQueueState, getQueueState, loadPatchDetail, loadQueueList, rejectCurrentPatch, subscribeQueueState, approveCurrentPatch } from "./queue-state";
 import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
 import {
@@ -69,11 +66,10 @@ interface MountCodexAppOptions {
 export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions = {}): CodexAppController {
   app = root;
   shellPainted = false;
-  initLanguage();
+  document.documentElement.lang = "en";
   initRouter();
   initCommandPalette();
   initNavTree();
-  const unsubscribeLanguage = subscribeLanguage(() => render());
   const unsubscribeState = subscribeState(() => render());
   const unsubscribeRawState = subscribeRawState(() => render());
   const unsubscribeQueueState = subscribeQueueState(() => render());
@@ -94,7 +90,6 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
       if (currentWorkspaceId() !== workspaceId) navigate(workspaceHomePath(workspaceId));
     },
     destroy(): void {
-      unsubscribeLanguage();
       unsubscribeState();
       unsubscribeRawState();
       unsubscribeQueueState();
@@ -189,7 +184,7 @@ function renderAppShell(state: AppState, route: Route): void {
   configureCommandPalette(state.index, state.recentIds);
   app.innerHTML = `
     <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}">
-      <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="${t("nav.ariaMenuOpen")}">
+      <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="Open menu">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
@@ -267,13 +262,6 @@ function handleDocumentClick(event: MouseEvent): void {
     render();
     return;
   }
-  if (actionElement?.dataset.action === "set-language") {
-    const lang = actionElement.dataset.lang as SupportedLanguage | undefined;
-    if (lang === "ko" || lang === "en") {
-      setLanguage(lang);
-    }
-    return;
-  }
   if (actionElement?.dataset.action === "copy-code") {
     void copyCode(actionElement);
     return;
@@ -281,21 +269,21 @@ function handleDocumentClick(event: MouseEvent): void {
   if (actionElement?.dataset.action === "copy-compact-context") {
     const state = getState();
     if (state.currentEntry) {
-      void copyText(buildCompactContext(state.currentEntry), t("entry.copyCompactContextDone"));
+      void copyText(buildCompactContext(state.currentEntry), "Copied compact context.");
     }
     return;
   }
   if (actionElement?.dataset.action === "copy-provenance-context") {
     const state = getState();
     if (state.currentEntry) {
-      void copyText(buildProvenanceContext(state.currentEntry), t("entry.copyWithProvenanceDone"));
+      void copyText(buildProvenanceContext(state.currentEntry), "Copied provenance context.");
     }
     return;
   }
   if (actionElement?.dataset.action === "copy-related-context") {
     const state = getState();
     if (state.currentEntry) {
-      void copyText(buildRelatedContextPack(state.currentEntry, state.index), t("entry.copyRelatedContextDone"));
+      void copyText(buildRelatedContextPack(state.currentEntry, state.index), "Copied related context pack.");
     }
     return;
   }
@@ -308,7 +296,7 @@ function handleDocumentClick(event: MouseEvent): void {
   }
   if (actionElement?.dataset.action === "queue-approve") {
     if (getQueueState().actionPending) return;
-    if (!confirm(t("queue.confirmApprove"))) return;
+    if (!confirm("Approve this patch?")) return;
     actionElement.setAttribute("disabled", "");
     void approveCurrentPatch();
     return;
@@ -362,7 +350,7 @@ async function copyCode(button: HTMLElement): Promise<void> {
   const block = button.closest<HTMLElement>(".code-block");
   const code = block?.dataset.code ?? "";
   if (!code) return;
-  await copyText(code, t("common.codeCopied"));
+  await copyText(code, "Code copied.");
 }
 
 async function copyText(text: string, successMessage: string): Promise<void> {
@@ -370,7 +358,7 @@ async function copyText(text: string, successMessage: string): Promise<void> {
     await navigator.clipboard.writeText(text);
     showToast(successMessage);
   } catch {
-    showToast(t("entry.copyFailed"));
+    showToast("Failed to copy to clipboard.");
   }
 }
 

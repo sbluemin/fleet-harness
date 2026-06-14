@@ -1,6 +1,5 @@
 import { renderMarkdown } from "../markdown/renderer";
 import type { RawSourceState } from "../raw-state";
-import { t } from "../i18n/t";
 import { escapeHtml } from "../utils/html";
 
 const BACK_ICON = `
@@ -20,11 +19,11 @@ export function renderRawView(state: RawSourceState): string {
   const ref = state.ref ?? "";
   let body: string;
   if (state.loading) {
-    body = `<p class="loading">${t("raw.loading")}</p>`;
+    body = `<p class="loading">Loading source</p>`;
   } else if (state.error) {
-    body = `<p class="error-box">${t("raw.errorLoad")} — ${escapeHtml(state.error)}</p>`;
+    body = `<p class="error-box">Failed to load source — ${escapeHtml(state.error)}</p>`;
   } else if (!state.content) {
-    body = `<p class="empty-state">${t("raw.emptyContent")}</p>`;
+    body = `<p class="empty-state">Source is empty.</p>`;
   } else {
     const rendered = renderMarkdown(state.content);
     body = `<div class="markdown-body">${rendered.html}</div>`;
@@ -32,7 +31,7 @@ export function renderRawView(state: RawSourceState): string {
   return `
     <div class="raw-shell">
       <header class="raw-header">
-        <a class="raw-back" href="/" data-action="navigate-home" aria-label="${t("raw.ariaBackToCodex")}">
+        <a class="raw-back" href="/" data-action="navigate-home" aria-label="Back to Codex">
           ${BACK_ICON}
           <span>Codex</span>
         </a>

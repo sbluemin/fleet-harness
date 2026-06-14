@@ -9,7 +9,6 @@ import type {
   QueuePatchSetResponse,
   WorkspaceMetadata,
 } from "../../../src/codex/api-types";
-import { t } from "./i18n/t";
 
 export type {
   ConflictDetailResponse,
@@ -254,5 +253,5 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
 async function buildRequestError(url: string, response: Response): Promise<string> {
   const json = await response.json().catch(() => null) as { error?: string } | null;
-  return json?.error ?? t("errors.requestFailed", { url, status: response.status });
+  return json?.error ?? `${url} request failed: ${response.status}`;
 }

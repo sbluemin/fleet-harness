@@ -3,7 +3,6 @@ import { renderRelatedList } from "./related-list";
 import { renderMarkdown } from "../markdown/renderer";
 import type { TocItem } from "../markdown/renderer";
 import type { WikiEntryResponse, WikiIndexEntry } from "../api";
-import { t } from "../i18n/t";
 import { entryPath } from "../router";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
@@ -29,18 +28,18 @@ export function renderWelcome(entries: WikiIndexEntry[], cwd: string | null, has
         <h1>The <em>Codex</em></h1>
       </header>
       <div class="welcome-divider"></div>
-      <p class="lead">${t("markdown.welcomeLead")}</p>
+      <p class="lead">Navigate your workspace Fleet Wiki. Browse entries by tag from the left compass, or jump instantly with the <kbd>⌘K</kbd> command palette.</p>
       ${hasWorkspace ? "" : `<p class="error-box">No workspace is registered in this daemon. Re-run <code>fleet-wiki</code> in the target directory.</p>`}
       <div class="workspace-meta">
-        <span class="chip chip-aurora">${t("markdown.entriesCount", { n: total })}</span>
+        <span class="chip chip-aurora">${total} entries</span>
         ${cwd ? `<span class="workspace-path">${escapeHtml(cwd)}</span>` : ""}
       </div>
       ${firstEntry ? `
         <a class="primary-link" href="${escapeAttribute(entryPath(firstEntry.id))}" data-entry-id="${escapeAttribute(firstEntry.id)}">
-          <span>${t("markdown.openFirstPrefix")} ${escapeHtml(firstEntry.title)}</span>
+          <span>Open first entry — ${escapeHtml(firstEntry.title)}</span>
           ${ARROW_ICON}
         </a>
-      ` : `<p class="empty-state">${t("markdown.emptyWiki")}</p>`}
+      ` : `<p class="empty-state">No wiki entries yet. Add entries with <code>wiki_ingest</code>.</p>`}
       ${featured.length > 0 ? `
         <div class="welcome-grid">
           ${featured.map((entry) => `
@@ -65,7 +64,7 @@ export function renderMarkdownView(
     html: `
     <article class="document">
       <header class="document-header">
-        <p class="eyebrow">${t("markdown.wikiEntry")}</p>
+        <p class="eyebrow">Wiki Entry</p>
         <h1>${escapeHtml(entry.frontmatter.title)}</h1>
         ${renderMetaChips(entry.frontmatter)}
       </header>
@@ -81,7 +80,7 @@ export function renderMarkdownView(
 export function renderLoading(): string {
   return `
     <article class="document">
-      <p class="loading">${t("markdown.loadingEntry")}</p>
+      <p class="loading">Loading entry</p>
     </article>
   `;
 }

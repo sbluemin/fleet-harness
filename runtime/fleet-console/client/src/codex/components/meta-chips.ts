@@ -1,6 +1,4 @@
 import type { WikiEntryFrontmatter, WikiIndexEntry } from "../api";
-import { t } from "../i18n/t";
-import { languageLocale } from "../i18n/store";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
 export interface EntryStatusBadge {
@@ -16,7 +14,7 @@ export function renderMetaChips(frontmatter: WikiEntryFrontmatter | WikiIndexEnt
     <div class="meta-chips">
       ${tags}
       ${badge}
-      <span class="chip">${t("meta.updatedPrefix")} ${escapeHtml(formatDate(frontmatter.updated))}</span>
+      <span class="chip">Updated ${escapeHtml(formatDate(frontmatter.updated))}</span>
     </div>
   `;
 }
@@ -28,7 +26,7 @@ export function renderTagChips(tags: string[]): string {
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(languageLocale(), {
+  return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",

@@ -18,7 +18,7 @@
 - Canonical Codex workspace routes live under `/console/codex/w/:ws/...`; MRU-compatible API routes live under `/console/codex/api/...`. Do not reintroduce global `/api/...` wiki routes because console owns `/api/cli/*`.
 - The console-level **Theater** is the parent concept for project roots. Codex workspaces share the same id space (`workspaceHash(realpath(dir))`) but are a strict subset of the Theater registry (`hasWiki=true`). The Codex left workspace switcher is removed; Theater selection in the global navigation bar is the only workspace switch, and Theaters without a Fleet Wiki knowledge root render a "Codex 없음" state instead of mounting a wiki surface.
 - The migrated Codex client stays Vanilla TypeScript under `client/src/codex/**`; do not rewrite it into React state or components beyond the React mount host.
-- Preserve Maritime Codex UX: reading flow, raw viewer, Drydock queue, conflicts, index/log views, command palette, language toggle, Manifest/ToC rails, copy-context actions, diagram lightbox, brass/aurora roles, and self-hosted fonts.
+- Preserve Maritime Codex UX: reading flow, raw viewer, Drydock queue, conflicts, index/log views, command palette, Manifest/ToC rails, copy-context actions, diagram lightbox, brass/aurora roles, and self-hosted fonts.
 - Preserve wiki security invariants: Host allowlist, Origin guard, write-surface loopback gate, DOMPurify markdown sanitization, Mermaid `securityLevel: "strict"` with `htmlLabels: false` and no `bindFunctions`, path containment, and lockfile bearer auth for admin workspace registration.
 - Browser payloads must not expose CLI ingest tokens, MCP/session tokens, terminal tickets, or Codex admin tokens.
 

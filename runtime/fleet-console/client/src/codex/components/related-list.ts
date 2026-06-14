@@ -1,8 +1,6 @@
 import { renderTagChips } from "./meta-chips";
 import { entryPath } from "../router";
 import type { WikiIndexEntry } from "../api";
-import { t } from "../i18n/t";
-import { languageLocale } from "../i18n/store";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
 interface RelatedEntry {
@@ -15,7 +13,7 @@ export function renderRelatedList(currentId: string, currentTags: string[], entr
   if (related.length === 0) return "";
   return `
     <section class="related-list">
-      <h2>${t("related.heading")}</h2>
+      <h2>Related entries</h2>
       <div class="related-items">
         ${related.map((item) => `
           <a class="related-card" href="${entryPath(item.entry.id)}" data-entry-id="${escapeAttribute(item.entry.id)}">
@@ -30,7 +28,7 @@ export function renderRelatedList(currentId: string, currentTags: string[], entr
 
 function relatedEntries(currentId: string, currentTags: string[], entries: WikiIndexEntry[]): RelatedEntry[] {
   const tagSet = new Set(currentTags);
-  const locale = languageLocale();
+  const locale = "en-US";
   return entries
     .filter((entry) => entry.id !== currentId)
     .map((entry) => ({

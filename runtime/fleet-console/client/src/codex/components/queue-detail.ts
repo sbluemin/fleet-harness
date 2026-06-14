@@ -6,7 +6,6 @@ import { renderMarkdown } from "../markdown/renderer";
 import type { TocItem } from "../markdown/renderer";
 import { formatAbsoluteDate, relativeTime } from "../utils/time";
 import { escapeAttribute, escapeHtml } from "../utils/html";
-import { t } from "../i18n/t";
 
 const BACK_ICON = `
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -24,13 +23,13 @@ export function renderQueueDetail(state: QueueState): string {
   const { current, loading, error } = state;
 
   if (loading) {
-    return `<div class="queue-detail-view"><p class="loading">${t("drydock.loadingPatch")}</p></div>`;
+    return `<div class="queue-detail-view"><p class="loading">Loading patch</p></div>`;
   }
   if (error) {
-    return `<div class="queue-detail-view"><p class="error-box">${t("drydock.errorLoadPatch")} — ${escapeHtml(error)}</p></div>`;
+    return `<div class="queue-detail-view"><p class="error-box">Failed to load patch — ${escapeHtml(error)}</p></div>`;
   }
   if (!current) {
-    return `<div class="queue-detail-view"><p class="empty-state">${t("drydock.notFound")}</p></div>`;
+    return `<div class="queue-detail-view"><p class="empty-state">Patch not found.</p></div>`;
   }
 
   return renderPatchDetail(current, state);
@@ -46,7 +45,7 @@ function renderPatchDetail(detail: PatchDetailResponse, state: QueueState): stri
     <div class="queue-detail-view">
       <div class="queue-detail-layout">
         <div class="queue-detail-main">
-          <a class="raw-back queue-back" href="${escapeAttribute(queuePath())}" aria-label="${t("drydock.ariaBackToDrydock")}">
+          <a class="raw-back queue-back" href="${escapeAttribute(queuePath())}" aria-label="Back to Drydock">
             ${BACK_ICON}
             <span>Drydock</span>
           </a>
@@ -87,10 +86,10 @@ function renderPatchManifestCard(detail: PatchDetailResponse, rawRef: string | u
           <span class="manifest-arrow">${ARROW_ICON}</span>
         </a>
       </dd>`
-    : `<dd class="queue-dl-value queue-dl-muted">${t("common.none")}</dd>`;
+    : `<dd class="queue-dl-value queue-dl-muted">None</dd>`;
 
   const warningsHtml = warnings.length > 0
-    ? `<dt class="queue-dl-key">${t("drydock.warnings")}</dt>
+    ? `<dt class="queue-dl-key">Warnings</dt>
        <dd class="queue-dl-value">
          <div class="queue-card-chips">
            ${warnings.map((w) => `<span class="chip chip-muted">${escapeHtml(w)}</span>`).join("")}
@@ -102,25 +101,25 @@ function renderPatchManifestCard(detail: PatchDetailResponse, rawRef: string | u
     <div class="queue-rail-card">
       <div class="queue-rail-header">
         <p class="drydock-eyebrow">MANIFEST · PATCH</p>
-        <p class="queue-rail-subtitle">${t("drydock.patchManifestSubtitle")}</p>
+        <p class="queue-rail-subtitle">Patch Manifest</p>
       </div>
       <dl class="queue-dl">
-        <dt class="queue-dl-key">${t("drydock.op")}</dt>
+        <dt class="queue-dl-key">OP</dt>
         <dd class="queue-dl-value">${opBadge}</dd>
-        <dt class="queue-dl-key">${t("drydock.target")}</dt>
+        <dt class="queue-dl-key">Target</dt>
         <dd class="queue-dl-value queue-dl-mono">${escapeHtml(frontmatter.target)}</dd>
-        <dt class="queue-dl-key">${t("drydock.proposer")}</dt>
+        <dt class="queue-dl-key">Proposer</dt>
         <dd class="queue-dl-value">${escapeHtml(frontmatter.proposer)}</dd>
-        <dt class="queue-dl-key">${t("drydock.createdAt")}</dt>
+        <dt class="queue-dl-key">Created</dt>
         <dd class="queue-dl-value queue-dl-time">
           <time datetime="${escapeAttribute(meta.createdAt)}" title="${escapeAttribute(absoluteDate)}">
             ${escapeHtml(absoluteDate)}
             <span class="queue-dl-relative">(${escapeHtml(relDate)})</span>
           </time>
         </dd>
-        <dt class="queue-dl-key">${t("drydock.status")}</dt>
+        <dt class="queue-dl-key">Status</dt>
         <dd class="queue-dl-value queue-dl-status">${statusDot}<span>${escapeHtml(meta.status)}</span></dd>
-        <dt class="queue-dl-key">${t("drydock.rawSource")}</dt>
+        <dt class="queue-dl-key">Source</dt>
         ${rawRefHtml}
         ${warningsHtml}
       </dl>
@@ -141,35 +140,35 @@ function renderQueueActionsCard(detail: PatchDetailResponse, state: QueueState):
     : "";
 
   const spinnerHtml = actionPending
-    ? `<span class="queue-action-spinner" aria-label="${t("queue.ariaProcessing")}"></span>`
+    ? `<span class="queue-action-spinner" aria-label="Processing"></span>`
     : "";
 
   return `
     <div class="queue-rail-card queue-actions-card">
       <div class="queue-rail-header">
-        <p class="drydock-eyebrow">${t("queue.actionsTitle")}</p>
-        <p class="queue-rail-subtitle">${t("queue.actionsSubtitle")}</p>
+        <p class="drydock-eyebrow">ACTIONS</p>
+        <p class="queue-rail-subtitle">Decision</p>
       </div>
       ${spinnerHtml}
       <div class="queue-action-buttons">
         <button class="queue-action-btn queue-action-btn--approve" type="button"
           data-action="queue-approve" data-patch-id="${safePatchId}"${disabledAttr}
-          aria-label="${t("queue.ariaApprove")}">
+          aria-label="Approve this patch">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          ${t("queue.approve")}
+          Approve
         </button>
         <button class="queue-action-btn queue-action-btn--reject" type="button"
           data-action="queue-reject-toggle"${disabledAttr}
-          aria-label="${t("queue.ariaReject")}">
+          aria-label="Reject this patch">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          ${t("queue.reject")}
+          Reject
         </button>
       </div>
       <form class="queue-reject-form" hidden data-action="queue-reject-submit" data-patch-id="${safePatchId}">
-        <textarea class="queue-reject-textarea" name="reason" minlength="1" maxlength="256" required placeholder="${t("queue.rejectPlaceholder")}"></textarea>
+        <textarea class="queue-reject-textarea" name="reason" minlength="1" maxlength="256" required placeholder="Enter rejection reason (max 256 chars)"></textarea>
         <div class="queue-action-buttons">
-          <button class="queue-action-btn queue-action-btn--reject-submit" type="submit"${disabledAttr}>${t("common.confirm")}</button>
-          <button class="queue-action-btn queue-action-btn--cancel" type="button" data-action="queue-reject-cancel"${disabledAttr}>${t("common.cancel")}</button>
+          <button class="queue-action-btn queue-action-btn--reject-submit" type="submit"${disabledAttr}>Confirm</button>
+          <button class="queue-action-btn queue-action-btn--cancel" type="button" data-action="queue-reject-cancel"${disabledAttr}>Cancel</button>
         </div>
       </form>
       ${errorHtml}
@@ -184,7 +183,7 @@ function renderPatchSetCard(detail: PatchDetailResponse): string {
     <div class="queue-rail-card">
       <div class="queue-rail-header">
         <p class="drydock-eyebrow">MANIFEST · DRYDOCK</p>
-        <p class="queue-rail-subtitle">${t("queue.patchSetSubtitle")}</p>
+        <p class="queue-rail-subtitle">Patch Set</p>
       </div>
       <p class="queue-patch-id">${escapeHtml(patchSet.id)}</p>
       <ul class="patch-set-list">
@@ -212,7 +211,7 @@ function renderQueueRailToc(items: TocItem[]): string {
       <div class="queue-rail-header">
         <p class="drydock-eyebrow">CONTENTS</p>
       </div>
-      <nav class="queue-toc-nav" aria-label="${t("toc.ariaLabel")}">
+      <nav class="queue-toc-nav" aria-label="Table of contents">
         ${links}
       </nav>
     </div>

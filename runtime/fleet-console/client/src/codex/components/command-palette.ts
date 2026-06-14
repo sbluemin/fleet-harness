@@ -2,7 +2,6 @@ import { fetchSearch } from "../api";
 import { entryPath, navigate } from "../router";
 import { rememberMatchHint } from "../state";
 import type { BriefingHit, WikiIndexEntry } from "../api";
-import { t } from "../i18n/t";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 
 interface CommandPaletteState {
@@ -209,7 +208,7 @@ function updatePaletteResults(): void {
   const list = document.querySelector<HTMLElement>("#command-results-list");
   if (!list) return;
   if (state.results.length === 0) {
-    list.innerHTML = `<p class="empty-state">${escapeHtml(t("command.emptyResults"))}</p>`;
+    list.innerHTML = `<p class="empty-state">${escapeHtml("No results found.")}</p>`;
     return;
   }
   list.innerHTML = state.query ? state.results.map(renderResult).join("") : renderDefaultResults();
@@ -225,8 +224,8 @@ function syncPaletteHighlight(options: { scroll: boolean } = { scroll: true }): 
 }
 
 function paletteShellHtml(): string {
-  const ariaLabel = escapeAttribute(t("command.ariaLabel"));
-  const placeholder = escapeAttribute(t("command.placeholder"));
+  const ariaLabel = escapeAttribute("Command palette");
+  const placeholder = escapeAttribute("Search titles · tags · content");
   return `
     <div class="command-overlay">
       <section class="command-card" role="dialog" aria-modal="true" aria-label="${ariaLabel}" tabindex="-1">
@@ -273,8 +272,8 @@ function renderDefaultResults(): string {
   const recentResults = state.results.slice(0, recentCount);
   const allResults = state.results.slice(recentCount);
   return [
-    recentResults.length > 0 ? renderDefaultSection(t("command.recentSection"), recentResults, 0) : "",
-    allResults.length > 0 ? renderDefaultSection(t("command.allSection"), allResults, recentCount) : "",
+    recentResults.length > 0 ? renderDefaultSection("Recent", recentResults, 0) : "",
+    allResults.length > 0 ? renderDefaultSection("All", allResults, recentCount) : "",
   ].join("");
 }
 
@@ -398,17 +397,17 @@ function renderHighlightedTitle(title: string, query: string): string {
 function formatMatchLocation(result: BriefingHit): string {
   switch (result.reason) {
     case "id":
-      return t("command.matchId");
+      return "id match";
     case "alias":
-      return t("command.matchAlias");
+      return "alias match";
     case "tag":
-      return t("command.matchTag");
+      return "tag match";
     case "title":
-      return t("command.matchTitle");
+      return "title match";
     case "body":
-      return t("command.matchBody");
+      return "body match";
     default:
-      return t("command.matchOther");
+      return "match";
   }
 }
 

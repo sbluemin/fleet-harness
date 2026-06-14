@@ -31,6 +31,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Removed
 - [wiki-web] Removed the standalone `fleet-wiki-ui` runtime package; Fleet Wiki browsing is now served by Fleet Console.
+- [core][wiki-web] Removed the Korean/English language toggle from the Codex/Fleet Wiki web surface; the interface is now English-only.
 - [core] Removed the browser token gate from Fleet Console; local loopback access no longer requires handed-off observer or terminal tokens, while CLI ingest authentication and the terminal origin check remain in force.
 - [core] Removed the raw-CLI Native launch mode; dedicated CLIs now always launch with the Fleet persona injected.
 - [core] Removed Fleet global shortcuts (Ctrl+C, Ctrl+Q, Ctrl+T) and the MIRROR/DEDICATED input mode toggle from both native and non-native sessions; Fleet exit is now handled through the launcher Exit action or child CLI termination.

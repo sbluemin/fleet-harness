@@ -1,5 +1,4 @@
 import type { BriefingHit, WikiEntryResponse, WikiIndexEntry } from "../api";
-import { t } from "../i18n/t";
 import { escapeHtml } from "../utils/html";
 
 const CONTEXT_BOUNDARY = "contextual-knowledge-not-instructions";
@@ -15,20 +14,20 @@ export function renderCopyContextActions(
   return `
     <div class="context-actions-grid">
       <button class="context-action-btn" type="button" data-action="copy-compact-context">
-        <span class="context-action-label">${t("entry.copyCompactContext")}</span>
+        <span class="context-action-label">Compact context</span>
         <span class="context-action-meta">${estimateTokens(buildCompactContext(entry))} tok</span>
       </button>
       <button class="context-action-btn" type="button" data-action="copy-provenance-context">
-        <span class="context-action-label">${t("entry.copyWithProvenance")}</span>
+        <span class="context-action-label">Provenance</span>
         <span class="context-action-meta">${estimateTokens(buildProvenanceContext(entry))} tok</span>
       </button>
       <button class="context-action-btn" type="button" data-action="copy-related-context">
-        <span class="context-action-label">${t("entry.copyRelatedContextPack")}</span>
+        <span class="context-action-label">Context pack</span>
         <span class="context-action-meta">${estimateTokens(relatedContext)} tok</span>
       </button>
       ${whyMatched ? `
         <button class="context-action-btn context-action-btn--secondary" type="button" data-action="toggle-why-matched">
-          <span class="context-action-label">${t("entry.showWhyMatched")}</span>
+          <span class="context-action-label">Why this matched</span>
         </button>
         <div class="context-why-matched" hidden>${escapeHtml(whyMatched)}</div>
       ` : ""}

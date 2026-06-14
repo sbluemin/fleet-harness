@@ -1,9 +1,6 @@
 import { CODEX_BASE_PATH, conflictsPath, entryPath, indexMdPath, logPath, queuePath } from "../router";
 import type { WikiIndexEntry } from "../api";
-import { t } from "../i18n/t";
-import { getLanguage, languageLocale } from "../i18n/store";
 import { escapeAttribute, escapeHtml } from "../utils/html";
-import { renderLangToggle } from "./lang-toggle";
 
 export type NavMode = "tags" | "entries";
 
@@ -61,17 +58,17 @@ export function renderNavTree(
   const total = entries.length;
   const tagGroupCount = countTags(entries);
   const body = total === 0
-    ? `<p class="empty-state">${t("nav.emptyEntries")}</p>`
+    ? `<p class="empty-state">No wiki entries yet.</p>`
     : navMode === "tags"
       ? renderTagsView(entries, currentId)
       : renderEntriesView(entries, currentId);
 
   const sectionLabel = navMode === "tags"
-    ? t("nav.sectionTags", { n: tagGroupCount })
-    : t("nav.sectionEntries", { n: total });
+    ? `Tags · ${tagGroupCount}`
+    : `Entries · ${total}`;
 
   const navClass = navMode === "tags" ? "tag-tree" : "entry-list";
-  const navAriaLabel = navMode === "tags" ? t("nav.ariaTaggedDocs") : t("nav.ariaAllDocs");
+  const navAriaLabel = navMode === "tags" ? "Entries by tag" : "All entries";
 
   const pathname = stripWorkspacePath(currentPathname ?? (typeof window !== "undefined" ? window.location.pathname : ""));
   const isDrydockActive = pathname.startsWith("/queue");
@@ -86,20 +83,19 @@ export function renderNavTree(
   return `
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <a class="brand" href="/" data-action="navigate-home" aria-label="${t("nav.ariaHome")}">
+        <a class="brand" href="/" data-action="navigate-home" aria-label="Go to home">
           <span class="brand-mark">${COMPASS_MARK}</span>
           <div class="brand-text">
             <p class="eyebrow">Fleet · Codex</p>
-            <h1>${t("nav.sidebarTitle")}</h1>
+            <h1>Knowledge</h1>
           </div>
         </a>
         <div class="sidebar-header-actions">
-          ${renderLangToggle(getLanguage())}
-          <button class="icon-button mobile-close" type="button" data-action="toggle-nav" aria-label="${t("nav.ariaClose")}">${CLOSE_ICON}</button>
+          <button class="icon-button mobile-close" type="button" data-action="toggle-nav" aria-label="Close">${CLOSE_ICON}</button>
         </div>
       </div>
       <button class="command-entry" type="button" data-action="open-command">
-        <span class="command-entry-label">${SEARCH_ICON}<span>${t("nav.searchLabel")}</span></span>
+        <span class="command-entry-label">${SEARCH_ICON}<span>Search entries</span></span>
         <kbd>⌘K</kbd>
       </button>
       <div class="nav-drydock-section">
@@ -118,12 +114,12 @@ export function renderNavTree(
           <span class="nav-drydock-label">Conflicts</span>
         </a>
       </div>
-      <div class="nav-tabs" role="tablist" aria-label="${t("nav.ariaNavMode")}">
+      <div class="nav-tabs" role="tablist" aria-label="Navigation mode">
         <button class="nav-tab${navMode === "entries" ? " active" : ""}" type="button" role="tab" aria-selected="${navMode === "entries"}" data-action="set-nav-mode" data-mode="entries">
-          ${t("nav.tabEntries")}
+          Entries
         </button>
         <button class="nav-tab${navMode === "tags" ? " active" : ""}" type="button" role="tab" aria-selected="${navMode === "tags"}" data-action="set-nav-mode" data-mode="tags">
-          ${t("nav.tabTags")}
+          Tags
         </button>
       </div>
       <p class="nav-section-label">${sectionLabel}</p>
@@ -170,7 +166,7 @@ function renderTagsView(entries: WikiIndexEntry[], currentId: string | null): st
 }
 
 function renderEntriesView(entries: WikiIndexEntry[], currentId: string | null): string {
-  const locale = languageLocale();
+  const locale = "en-US";
   const sorted = [...entries].sort((left, right) =>
     left.title.localeCompare(right.title, locale, { sensitivity: "base", numeric: true }),
   );
@@ -178,7 +174,7 @@ function renderEntriesView(entries: WikiIndexEntry[], currentId: string | null):
 }
 
 function buildTagGroups(entries: WikiIndexEntry[]): TagGroup[] {
-  const locale = languageLocale();
+  const locale = "en-US";
   const byTag = new Map<string, WikiIndexEntry[]>();
   for (const entry of entries) {
     const tags = entry.tags.length > 0 ? entry.tags : ["untagged"];
@@ -209,7 +205,7 @@ function renderGroup(group: TagGroup, currentId: string | null): string {
     <section class="tag-group" data-collapsed="${collapsed ? "true" : "false"}">
       <button class="tag-group-button" type="button" data-action="toggle-tag" data-tag="${escapeAttribute(group.tag)}">
         ${CARET}
-        <span>${group.tag === "untagged" ? t("nav.untagged") : escapeHtml(group.tag)}</span>
+        <span>${group.tag === "untagged" ? "Untagged" : escapeHtml(group.tag)}</span>
         <span class="count">${group.entries.length}</span>
       </button>
       <div class="tag-group-list">${entries}</div>

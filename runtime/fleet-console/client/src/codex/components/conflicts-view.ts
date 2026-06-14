@@ -1,7 +1,6 @@
 import { renderMarkdown } from "../markdown/renderer";
 import { conflictDetailPath } from "../router";
 import type { ConflictDetailResponse, ConflictListItem } from "../api";
-import { t } from "../i18n/t";
 import { escapeHtml } from "../utils/html";
 
 export function renderConflictsList(conflicts: ConflictListItem[]): string {
@@ -9,7 +8,7 @@ export function renderConflictsList(conflicts: ConflictListItem[]): string {
     <article class="document">
       <header class="document-header">
         <p class="eyebrow">MANIFEST · DRYDOCK</p>
-        <h1>${t("conflicts.title")}</h1>
+        <h1>Conflicts</h1>
       </header>
       ${conflicts.length > 0 ? `
         <ul class="conflict-list">
@@ -25,16 +24,16 @@ export function renderConflictsList(conflicts: ConflictListItem[]): string {
             </li>
           `).join("")}
         </ul>
-      ` : `<p class="empty-state">${t("conflicts.empty")}</p>`}
+      ` : `<p class="empty-state">No conflicts to display.</p>`}
     </article>
   `;
 }
 
 export function renderConflictDetail(detail: ConflictDetailResponse): string {
   const sections = [
-    renderConflictSection(t("conflicts.current"), detail.current),
-    renderConflictSection(t("conflicts.proposed"), detail.proposed),
-    renderConflictSection(t("conflicts.rawSource"), detail.rawSource),
+    renderConflictSection("Current", detail.current),
+    renderConflictSection("Proposed", detail.proposed),
+    renderConflictSection("Raw Source", detail.rawSource),
   ].filter(Boolean).join("");
 
   return `
@@ -49,7 +48,7 @@ export function renderConflictDetail(detail: ConflictDetailResponse): string {
       <section class="conflict-meta-card">
         <pre>${escapeHtml(JSON.stringify(detail.meta, null, 2))}</pre>
       </section>
-      ${sections || `<p class="empty-state">${t("conflicts.empty")}</p>`}
+      ${sections || `<p class="empty-state">No conflicts to display.</p>`}
     </article>
   `;
 }

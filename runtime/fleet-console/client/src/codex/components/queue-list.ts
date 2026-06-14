@@ -2,7 +2,6 @@ import { queueDetailPath, queuePath } from "../router";
 import type { QueueListItem } from "../api";
 import type { QueueState } from "../queue-state";
 import { renderOpBadge } from "./op-badge";
-import { t } from "../i18n/t";
 import { escapeAttribute, escapeHtml } from "../utils/html";
 import { relativeTime } from "../utils/time";
 
@@ -10,10 +9,10 @@ export function renderQueueList(state: QueueState): string {
   const { tab, items, pendingCount, archivedCount, loading, error } = state;
 
   if (loading && items.length === 0) {
-    return `<div class="queue-view"><p class="loading">${t("drydock.loadingQueue")}</p></div>`;
+    return `<div class="queue-view"><p class="loading">Loading patch queue</p></div>`;
   }
   if (error) {
-    return `<div class="queue-view"><p class="error-box">${t("drydock.errorLoadQueue")} — ${escapeHtml(error)}</p></div>`;
+    return `<div class="queue-view"><p class="error-box">Failed to load queue — ${escapeHtml(error)}</p></div>`;
   }
 
   const body = items.length === 0
@@ -31,20 +30,20 @@ export function renderQueueList(state: QueueState): string {
     <div class="queue-view">
       <div class="queue-header">
         <p class="drydock-eyebrow">MANIFEST · DRYDOCK</p>
-        <h1 class="queue-title">${t("drydock.queueTitle")}</h1>
+        <h1 class="queue-title">Patch Queue</h1>
       </div>
-      <div class="queue-tabs" role="tablist" aria-label="${t("drydock.ariaQueueTabs")}">
+      <div class="queue-tabs" role="tablist" aria-label="Queue tabs">
         <a class="queue-tab${tab === "pending" ? " active" : ""}"
            href="${escapeAttribute(queuePath("pending"))}"
            role="tab"
            aria-selected="${tab === "pending"}">
-          ${t("drydock.tabPending")}${pendingBadge}
+          Pending${pendingBadge}
         </a>
         <a class="queue-tab${tab === "archived" ? " active" : ""}"
            href="${escapeAttribute(queuePath("archived"))}"
            role="tab"
            aria-selected="${tab === "archived"}">
-          ${t("drydock.tabArchived")}${archivedBadge}
+          Archived${archivedBadge}
         </a>
       </div>
       <div class="queue-list">
@@ -55,7 +54,7 @@ export function renderQueueList(state: QueueState): string {
 }
 
 function renderQueueEmpty(tab: "pending" | "archived"): string {
-  const label = tab === "pending" ? t("drydock.emptyPending") : t("drydock.emptyArchived");
+  const label = tab === "pending" ? "No pending patches." : "No archived patches.";
   return `<p class="queue-empty">${label}</p>`;
 }
 
