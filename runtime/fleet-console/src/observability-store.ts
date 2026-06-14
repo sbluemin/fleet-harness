@@ -13,6 +13,7 @@ import type {
   ConsoleObservedJob,
   ConsoleObservedWorkspace,
   ConsoleObserverTruncation,
+  ConsoleSessionUpdatedEvent,
   ConsoleTerminalSessionInfo,
   ConsoleTerminalSessionStatus,
 } from "./api-types.js";
@@ -46,6 +47,8 @@ interface PendingTerminalSessionState {
   readonly cwd: string;
   readonly canonicalCwd: string;
   readonly cwdLabel: string;
+  readonly sequence: number;
+  label?: string;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly terminalSessionId: string;
@@ -60,6 +63,7 @@ interface TenantJobState {
 }
 
 type ConsoleObservedEventListener = (event: ConsoleObservedEvent) => void;
+type ConsoleAllEventListener = (event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent) => void;
 
 const TENANT_EVENT_LIMIT = 1_000;
 const JOB_EVENT_LIMIT = 200;
@@ -84,8 +88,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   const truncationByTenant = new Map<string, ConsoleObserverTruncation>();
   const jobsByTenant = new Map<string, TenantJobState>();
   const terminalSessionsById = new Map<string, PendingTerminalSessionState>();
+  // Theater별로 격리된 세션 순번 카운터. 단조 증가하며 재사용하지 않아 세션 수명 동안 #N이 안정적이다.
+  const terminalSequenceByTheater = new Map<string, number>();
   const listenersByTenant = new Map<string, Set<ConsoleObservedEventListener>>();
-  const allListeners = new Set<ConsoleObservedEventListener>();
+  const allListeners = new Set<ConsoleAllEventListener>();
   let nextObservedId = 1;
 
   function register(input: RegisterCliRequest): RegisterCliResponse {
@@ -239,7 +245,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     };
   }
 
-  function subscribeAll(listener: ConsoleObservedEventListener): () => void {
+  function subscribeAll(listener: ConsoleAllEventListener): () => void {
     allListeners.add(listener);
     return () => {
       allListeners.delete(listener);
@@ -270,13 +276,18 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function createPendingTerminalSession(input: { readonly sessionId: string; readonly cwd: string; readonly createdAt?: number }): ConsoleTerminalSessionInfo {
     if (!path.isAbsolute(input.cwd)) throw new Error("Terminal session cwd must be absolute");
     const createdAt = input.createdAt ?? now();
+    const canonicalCwd = canonicalizeTheaterPathSync(input.cwd);
+    const theaterId = workspaceHash(canonicalCwd);
+    const sequence = (terminalSequenceByTheater.get(theaterId) ?? 0) + 1;
+    terminalSequenceByTheater.set(theaterId, sequence);
     const state: PendingTerminalSessionState = {
       sessionId: input.sessionId,
       cwd: input.cwd,
-      canonicalCwd: canonicalizeTheaterPathSync(input.cwd),
+      canonicalCwd,
       cwdLabel: path.basename(input.cwd) || input.cwd,
+      sequence,
       createdAt,
-      theaterId: workspaceHash(canonicalizeTheaterPathSync(input.cwd)),
+      theaterId,
       terminalSessionId: input.sessionId,
       status: "starting",
     };
@@ -295,6 +306,24 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  function renameTerminalSession(sessionId: string, rawLabel: string): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const label = rawLabel.trim().slice(0, 200);
+    if (label.length === 0) {
+      delete session.label;
+    } else {
+      session.label = label;
+    }
+    return toTerminalSessionInfo(session);
+  }
+
+  function notifySessionUpdated(session: ConsoleTerminalSessionInfo): void {
+    const event: ConsoleSessionUpdatedEvent = { type: "session:updated", session };
+    // 세션 메타 프레임은 job observedId 흐름과 분리해 aggregate 구독자에게만 흘린다.
+    for (const listener of allListeners) listener(event);
+  }
+
   function removeTerminalSession(sessionId: string): boolean {
     return terminalSessionsById.delete(sessionId);
   }
@@ -307,6 +336,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     truncationByTenant.clear();
     jobsByTenant.clear();
     terminalSessionsById.clear();
+    terminalSequenceByTheater.clear();
     listenersByTenant.clear();
     allListeners.clear();
   }
@@ -327,6 +357,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     pushEvents,
     register,
     createPendingTerminalSession,
+    notifySessionUpdated,
+    renameTerminalSession,
     subscribe,
     subscribeAll,
     updateTerminalSessionStatus,
@@ -415,6 +447,8 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     sessionId: state.sessionId,
     terminalSessionId: state.terminalSessionId,
     cwdLabel: state.cwdLabel,
+    sequence: state.sequence,
+    label: state.label,
     status: state.status,
     createdAt: state.createdAt,
     theaterId: state.theaterId,

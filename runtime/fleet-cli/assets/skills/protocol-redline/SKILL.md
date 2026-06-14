@@ -26,7 +26,6 @@ Confirm each readiness check below before the Workflow. Work through them in ord
 - [ ] **Doctrine** — enumerate the applicable AGENTS.md files to load for the affected scope. → report `doctrine: <…>`
 - [ ] **Impact radius** — flag public-surface or API impact, irreversibility, and any security-sensitive surface. → report `impact: <…>`
 - [ ] **Rollback** — identify a rollback-safe checkpoint and any Admiral of the Navy approval point before execution begins. → report `rollback: <…>`
-- [ ] **Isolation** — confirm a working branch or worktree isolates the change; no direct work on the default branch. → report `isolation: <branch>`
 - [ ] **Escalation** — if multiple carriers or parallel ownership boundaries are required, re-classify under frontline. → report `escalation: clear`
 
 ## Workflow

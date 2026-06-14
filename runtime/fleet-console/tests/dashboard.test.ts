@@ -37,7 +37,7 @@ describe("dashboard bridge derivation", () => {
         { tenantId: "tenant-old", tenantLabel: "Old CLI", createdAt: 900, sessions: 0, status: "deregistered", theaterId: "theater-a" },
       ],
       sessions: {
-        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "registered", createdAt: 1_500, theaterId: "theater-a", tenantId: "tenant-a" },
+        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "registered", createdAt: 1_500, theaterId: "theater-a", tenantId: "tenant-a" },
       },
       sessionOrder: ["session-a"],
       activeTerminalSessionId: "session-a",
@@ -70,7 +70,7 @@ describe("dashboard bridge derivation", () => {
       lastActivityAt: Date.parse("2026-06-13T00:00:02.000Z"),
     });
     expect(view.readiness).toMatchObject({
-      activeSessionLabel: "alpha",
+      activeSessionLabel: "#1 Operation",
       liveJobCount: 1,
       completedJobCount: 1,
       failedJobCount: 1,
@@ -92,7 +92,7 @@ describe("dashboard bridge derivation", () => {
     const noJobs: ConsoleState = {
       ...noSessions,
       sessions: {
-        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1_000, theaterId: "theater-a" },
+        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1_000, theaterId: "theater-a" },
       },
       sessionOrder: ["session-a"],
     };

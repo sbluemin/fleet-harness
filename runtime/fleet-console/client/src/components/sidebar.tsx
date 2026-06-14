@@ -1,9 +1,9 @@
-import { memo } from "react";
+import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { createTheaterTerminalSession, terminateTerminalSession } from "../api.js";
-import { describeJobStatus, formatCarrierName, latestStreamLine, shortJobId, statusTone } from "../format.js";
+import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
+import { describeJobStatus, formatCarrierName, latestStreamLine, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
+import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
 import type { ConsoleState, JobView, SessionInfo } from "../types.js";
 
@@ -72,26 +72,105 @@ export function Sidebar({ state }: SidebarProps) {
 }
 
 const SessionEntry = memo(function SessionEntry({ session, active, jobs, selectedJobId }: SessionEntryProps) {
+  const [renaming, setRenaming] = useState(false);
+  const [draftLabel, setDraftLabel] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const committingRef = useRef(false);
+  const skipBlurCommitRef = useRef(false);
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
   const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
+  const displayLabel = sessionDisplayLabel(session);
   // 진행 중인 잡을 위로, 완료(terminal)된 잡을 아래로 모은다. 안정 정렬이라 그룹 내부 등록 순서는 그대로 유지된다.
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
+
+  useEffect(() => {
+    if (!renaming) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [renaming]);
+
+  // 세션 행 더블클릭으로 이름 변경 입력에 진입한다.
+  const beginRename = () => {
+    skipBlurCommitRef.current = false;
+    setDraftLabel(displayLabel);
+    setRenaming(true);
+  };
+
+  const cancelRename = () => {
+    skipBlurCommitRef.current = true;
+    setRenaming(false);
+    setDraftLabel("");
+  };
+
+  const commitRename = async () => {
+    if (committingRef.current) return;
+    committingRef.current = true;
+    try {
+      applySessionUpdate(await renameTerminalSession(session.sessionId, draftLabel));
+    } catch (error) {
+      failRenameTerminalSession(error instanceof Error ? error.message : String(error));
+    } finally {
+      committingRef.current = false;
+      skipBlurCommitRef.current = true;
+      setRenaming(false);
+    }
+  };
+
+  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commitRename();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename();
+    }
+  };
+
   return (
     <li className={`session-item ${active ? "is-active" : ""}`}>
       <div className="session-row-shell">
-        <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
-          <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
-          <span className="tenant-row-text">
-            <span className="tenant-label">{session.cwdLabel}</span>
-            <span className="tenant-path">{session.status}</span>
-          </span>
-          {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
-        </button>
+        {renaming ? (
+          <div className={`session-row session-row-edit ${active ? "is-active" : ""}`}>
+            <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+            <input
+              ref={inputRef}
+              className="session-rename-input"
+              value={draftLabel}
+              aria-label={`${displayLabel} 이름 변경`}
+              onChange={(event) => setDraftLabel(event.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              onBlur={() => {
+                if (skipBlurCommitRef.current) {
+                  skipBlurCommitRef.current = false;
+                  return;
+                }
+                void commitRename();
+              }}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={`session-row ${active ? "is-active" : ""}`}
+            onClick={() => selectTerminalSession(session.sessionId)}
+            onDoubleClick={beginRename}
+            aria-current={active || undefined}
+            aria-label={`Operation ${displayLabel}`}
+          >
+            <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+            <span className="tenant-row-text">
+              <span className="tenant-label">{displayLabel}</span>
+            </span>
+            {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
+          </button>
+        )}
         <button
           type="button"
           className="session-close"
           onClick={() => { void closeSession(session.sessionId); }}
-          aria-label={`Terminate operation ${session.cwdLabel}`}
+          aria-label={`Terminate operation ${displayLabel}`}
           title="Terminate operation"
         >
           <CloseIcon />

@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Removed
+- [core] The redline and frontline protocol modes no longer include a working-branch isolation readiness check before their workflow begins.
+
 ### Fixed
 - [core] Fleet Console now reports its actual installed package version instead of always showing a placeholder development version.
 - [core] Fleet Console no longer terminates a terminal session when its browser view disconnects; sessions now persist across operation switches and console-web closure, ending only on explicit close, the underlying process exiting, or server shutdown.

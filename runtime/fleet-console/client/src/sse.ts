@@ -1,4 +1,4 @@
-import type { ObservedEvent, ObserverTruncation } from "./types.js";
+import type { ObservedEvent, ObserverTruncation, SessionInfo } from "./types.js";
 
 export interface SseFrame {
   readonly event: string;
@@ -6,17 +6,19 @@ export interface SseFrame {
 }
 
 export interface ObserverFrame {
-  readonly kind: "event" | "truncation";
+  readonly kind: "event" | "truncation" | "session";
   readonly tenantId: string;
   readonly tenantLabel?: string;
   readonly event?: ObservedEvent;
   readonly truncation?: ObserverTruncation;
+  readonly session?: SessionInfo;
 }
 
 interface AggregateFramePayload {
   readonly tenant?: { readonly tenantId?: string; readonly tenantLabel?: string };
   readonly event?: Partial<ObservedEvent>;
   readonly truncation?: ObserverTruncation;
+  readonly session?: Partial<SessionInfo>;
 }
 
 /** SSE 바이트 스트림을 프레임 단위로 잘라내는 증분 파서. */
@@ -51,6 +53,11 @@ export function interpretObserverFrame(frame: SseFrame): ObserverFrame | null {
     if (!tenantId || !parsed.truncation) return null;
     return { kind: "truncation", tenantId, tenantLabel: parsed.tenant?.tenantLabel, truncation: parsed.truncation };
   }
+  if (frame.event === "session:updated") {
+    const session = readSessionInfo(parsed.session);
+    if (!session) return null;
+    return { kind: "session", tenantId: session.tenantId ?? session.sessionId, session };
+  }
   const event = readObservedEvent(parsed.event) ?? readObservedEvent(parsed);
   if (!event) return null;
   return { kind: "event", tenantId: event.tenantId, tenantLabel: parsed.tenant?.tenantLabel, event };
@@ -77,4 +84,32 @@ function readObservedEvent(value: unknown): ObservedEvent | null {
     return { ...(event as ObservedEvent), event: {} };
   }
   return event as ObservedEvent;
+}
+
+function readSessionInfo(value: unknown): SessionInfo | null {
+  if (typeof value !== "object" || value === null) return null;
+  const session = value as Partial<SessionInfo> & { readonly cwd?: unknown; readonly canonicalCwd?: unknown };
+  if (
+    typeof session.sessionId !== "string"
+    || typeof session.cwdLabel !== "string"
+    || typeof session.sequence !== "number"
+    || typeof session.status !== "string"
+    || typeof session.createdAt !== "number"
+    || "cwd" in session
+    || "canonicalCwd" in session
+  ) {
+    return null;
+  }
+  return {
+    sessionId: session.sessionId,
+    terminalSessionId: typeof session.terminalSessionId === "string" ? session.terminalSessionId : session.sessionId,
+    cwdLabel: session.cwdLabel,
+    sequence: session.sequence,
+    label: typeof session.label === "string" ? session.label : undefined,
+    status: session.status,
+    createdAt: session.createdAt,
+    theaterId: typeof session.theaterId === "string" ? session.theaterId : undefined,
+    tenantId: typeof session.tenantId === "string" ? session.tenantId : undefined,
+    registrationId: typeof session.registrationId === "string" ? session.registrationId : undefined,
+  };
 }

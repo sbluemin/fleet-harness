@@ -1,7 +1,12 @@
-import type { JobView, TrackView } from "./types.js";
+import type { JobView, SessionInfo, TrackView } from "./types.js";
 
 export function formatClock(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour12: false });
+}
+
+// 세션 표시 명칭: 사용자가 지정한 라벨이 있으면 우선하고, 없으면 Theater별 순번 기반 기본 명칭을 쓴다.
+export function sessionDisplayLabel(session: SessionInfo): string {
+  return session.label?.trim() || `#${session.sequence} Operation`;
 }
 
 export function formatElapsed(from: number, to: number): string {

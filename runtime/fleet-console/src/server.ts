@@ -149,7 +149,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const terminalSessionItemMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)$/);
     if (terminalSessionItemMatch) {
-      handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? ""));
+      runAsyncHandler(handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? "")), res);
       return;
     }
     if (pathname === "/observer/theaters") {
@@ -358,13 +358,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     await createTerminalSessionForCwd(cwd, res);
   }
 
-  function handleTerminalSessionItem(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): void {
-    if (req.method !== "DELETE") {
+  async function handleTerminalSessionItem(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
+    if (req.method !== "DELETE" && req.method !== "PATCH") {
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
     if (!isTerminalAuthorized(req)) {
       writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (req.method === "PATCH") {
+      const body = await readJsonBody<{ readonly label?: unknown }>(req);
+      if (!body || (body.label !== undefined && typeof body.label !== "string")) {
+        writeJson(res, 400, { error: "invalid_session_label" });
+        return;
+      }
+      const updated = observability.renameTerminalSession(sessionId, body.label ?? "");
+      if (!updated) {
+        writeJson(res, 404, { error: "session_not_found" });
+        return;
+      }
+      // 세션 이름은 PTY 생명주기 인메모리 메타만 갱신하고, raw cwd는 계속 직렬화하지 않는다.
+      observability.notifySessionUpdated(updated);
+      writeJson(res, 200, updated);
       return;
     }
     // 운영자 X 버튼 종료 — PTY 자식을 끝내고(멱등) 콘솔 세션 목록에서도 제거한다. 이미 종료된 세션이어도 200으로 멱등 처리한다.

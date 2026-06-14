@@ -86,12 +86,19 @@ export interface ConsoleTerminalSessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
+  readonly sequence: number;
+  readonly label?: string;
   readonly status: ConsoleTerminalSessionStatus;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;
   readonly cliRunId?: string;
   readonly tenantId?: string;
+}
+
+export interface ConsoleSessionUpdatedEvent {
+  readonly type: "session:updated";
+  readonly session: ConsoleTerminalSessionInfo;
 }
 
 export interface PickTerminalFolderResponse {

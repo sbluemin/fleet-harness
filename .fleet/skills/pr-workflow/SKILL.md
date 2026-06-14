@@ -71,7 +71,7 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
 1. Resolve `<head>` (default current branch) and `<base>` (default `canary`; reject `main`/`master` unless overridden). If `<head>` equals `<base>`, stop and ask.
 2. `git push -u origin <head>` and verify `git status --short --branch` reports up-to-date with the remote.
 3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided.
-4. Confirm the final title/body/base/head/draft with the Admiral of the Navy unless pre-authorized, then create:
+4. Echo the final title/body/base/head/draft once for the record, then create directly — invoking this skill is itself the authorization to open the PR, so do not pause for a separate confirmation round-trip. The safety guards still bind: the base-branch guard rejects `main`/`master` unless explicitly overridden, and `<head>` must not equal `<base>` (step 1). Pause for the Admiral of the Navy only when metadata is genuinely ambiguous or a safety guard trips.
    ```bash
    gh pr create --repo sbluemin/fleet-harness --base "$base" --head "$head" \
      --title "$title" --body "$(cat <<'EOF'

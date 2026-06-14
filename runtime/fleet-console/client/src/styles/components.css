@@ -114,7 +114,6 @@
 .job-summary-eyebrow,
 .job-meta,
 .job-id,
-.tenant-path,
 .tenant-count,
 .job-row-meta,
 .track-tag,
@@ -328,9 +327,35 @@
   background: color-mix(in oklch, var(--brass) 12%, var(--ink-mid));
 }
 
+.session-row-edit {
+  padding-right: var(--space-3);
+}
+
 .session-row .tenant-count {
   border-color: color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
   color: var(--aurora);
+}
+
+.session-rename-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid color-mix(in oklch, var(--brass) 44%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
+  color: var(--ink-pearl);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 680;
+  outline: none;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+.session-rename-input:focus {
+  border-color: color-mix(in oklch, var(--brass) 68%, var(--surface-rim));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--brass) 20%, transparent),
+    0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
 .sidebar-error {
@@ -389,14 +414,6 @@
   color: var(--ink-pearl);
   font-size: 13px;
   font-weight: 680;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tenant-path {
-  overflow: hidden;
-  color: var(--ink-fog);
-  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

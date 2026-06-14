@@ -159,6 +159,21 @@ export function completeCreateTerminalSession(session: SessionInfo): void {
   });
 }
 
+export function applySessionUpdate(session: SessionInfo): void {
+  const current = state.sessions[session.sessionId];
+  const normalized = normalizeSession({ ...(current ?? {}), ...session });
+  const known = Boolean(current);
+  const sessions = { ...state.sessions, [normalized.sessionId]: normalized };
+  const sessionOrder = known
+    ? state.sessionOrder
+    : [normalized.sessionId, ...state.sessionOrder.filter((sessionId) => sessionId !== normalized.sessionId)];
+  setState({
+    sessions,
+    sessionOrder,
+    activeTerminalSessionId: resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
+  });
+}
+
 export function failCreateTerminalSession(error: string): void {
   setState({ creatingTerminalSession: false, terminalSessionError: error });
 }
@@ -185,6 +200,11 @@ export function closeShell(): void {
 
 export function failTerminateTerminalSession(error: string): void {
   // 종료 실패 시 카드는 남기고 사이드바 오류 라인에만 사유를 표기한다(살아있는 PTY를 숨기지 않는다).
+  setState({ terminalSessionError: error });
+}
+
+export function failRenameTerminalSession(error: string): void {
+  // 이름 변경 실패 시 세션 카드는 그대로 두고 사이드바 오류 라인에만 사유를 표기한다.
   setState({ terminalSessionError: error });
 }
 
