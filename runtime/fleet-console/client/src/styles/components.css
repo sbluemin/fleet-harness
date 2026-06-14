@@ -2062,7 +2062,8 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: min(1320px, 94vw);
+  /* 오버레이는 콘솔 창(뷰포트) 전체를 덮으므로, 카드 폭은 콘솔 전체 가로폭의 80%로 맞춘다. */
+  width: 80vw;
   height: 90vh;
   max-height: 90vh;
   overflow: hidden;
