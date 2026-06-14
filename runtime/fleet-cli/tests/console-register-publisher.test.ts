@@ -1,6 +1,10 @@
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { createConsoleRegisterPublisher } from "../src/runtime/console-register-publisher.js";
+import type { FleetCliChannel } from "../src/release.js";
 
 interface PostedRequest {
 	readonly body: unknown;
@@ -13,6 +17,8 @@ interface TestTimer {
 	readonly ms: number;
 	unref(): void;
 }
+
+type ConsolePublisherFs = NonNullable<Parameters<typeof createConsoleRegisterPublisher>[0]["fs"]>;
 
 const TEST_EVENT = {
 	type: "job:registered",
@@ -83,6 +89,35 @@ describe("console register publisher", () => {
 			bufferedEvents: 0,
 		});
 		expect(timers[0]?.ms).toBe(500);
+		await publisher.cleanup();
+	});
+
+	it.each(["local", "stable"] as const)("discovers the default %s channel console lock path", async (channel) => {
+		const posts: PostedRequest[] = [];
+		const readFiles: string[] = [];
+		const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+		const lockFile = path.join(os.tmpdir(), `fleet-console-${uid}-${channel}`, "console.lock");
+		const publisher = createConsoleRegisterPublisher({
+			channel,
+			cliRunId: "cli-run",
+			cwd: "/tmp/fleet",
+			fleetVersion: "1.4.0",
+			mcpServerName: "fleet",
+			toolCount: 2,
+			env: {},
+			fetch: createFetchStub(posts),
+			fs: createConsoleLockFs(lockFile, {
+				endpoint: "http://127.0.0.1:37283",
+				token: `${channel}-bootstrap-token`,
+			}, readFiles),
+		});
+
+		publisher.start();
+		await waitFor(() => posts.length === 1);
+
+		expect(readFiles).toContain(lockFile);
+		expect(posts[0]?.path).toBe("/api/cli/register");
+		expect(posts[0]?.token).toBe(`${channel}-bootstrap-token`);
 		await publisher.cleanup();
 	});
 
@@ -281,6 +316,25 @@ function registerResponse() {
 	};
 }
 
+function createConsoleLockFs(lockFile: string, payload: unknown, readFiles: string[]): ConsolePublisherFs {
+	const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+	return {
+		lstatSync(file) {
+			if (file !== lockFile) throw createEnoentError(file);
+			return { isSymbolicLink: () => false } as ReturnType<ConsolePublisherFs["lstatSync"]>;
+		},
+		readFileSync(file) {
+			if (file !== lockFile) throw createEnoentError(file);
+			readFiles.push(file);
+			return JSON.stringify(payload);
+		},
+		statSync(file) {
+			if (file !== lockFile && file !== path.dirname(lockFile)) throw createEnoentError(file);
+			return { uid } as ReturnType<ConsolePublisherFs["statSync"]>;
+		},
+	};
+}
+
 function jsonResponse(body: unknown): Response {
 	return new Response(JSON.stringify(body), {
 		status: 200,
@@ -292,6 +346,12 @@ function parseBearerToken(headers: HeadersInit | undefined): string | undefined 
 	if (!headers || Array.isArray(headers)) return undefined;
 	if (headers instanceof Headers) return headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
 	return (headers as Record<string, string>).Authorization?.replace(/^Bearer\s+/i, "");
+}
+
+function createEnoentError(file: string): NodeJS.ErrnoException {
+	const error = new Error(`ENOENT: no such file or directory, open '${file}'`) as NodeJS.ErrnoException;
+	error.code = "ENOENT";
+	return error;
 }
 
 async function settleAsync(): Promise<void> {

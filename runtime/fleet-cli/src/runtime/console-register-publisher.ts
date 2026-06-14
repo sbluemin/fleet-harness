@@ -11,6 +11,9 @@ import type {
 } from "@dotobokuri/core-agent";
 import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 
+import { readFleetCliRelease } from "../release.js";
+import type { FleetCliChannel } from "../release.js";
+
 export interface ConsoleRegisterPublisher {
 	readonly cliRunId: string;
 	getConnectionState(): ConsoleRegistrationState;
@@ -24,6 +27,7 @@ export interface ConsoleRegisterPublisherDeps {
 	readonly fleetVersion: string;
 	readonly mcpServerName: string;
 	readonly toolCount: number;
+	readonly channel?: FleetCliChannel;
 	readonly cliRunId?: string;
 	readonly env?: NodeJS.ProcessEnv;
 	readonly fetch?: typeof fetch;
@@ -90,6 +94,8 @@ export function createConsoleRegisterPublisher(deps: ConsoleRegisterPublisherDep
 	const setTimer = deps.setTimeout ?? ((callback, ms) => setTimeout(callback, ms));
 	const clearTimer = deps.clearTimeout ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
 	const cliRunId = deps.cliRunId ?? deps.env?.FLEET_CONSOLE_SESSION_ID ?? crypto.randomUUID();
+	// 릴리스 채널은 프로세스 수명 동안 고정되므로 팩토리 진입 시 한 번만 확인한다.
+	const channel = deps.channel ?? readFleetCliRelease().channel;
 	const startedAt = new Date(now()).toISOString();
 	const buffer: PushEventEnvelope[] = [];
 	let activeRegistration: ActiveRegistration | null = null;
@@ -254,7 +260,7 @@ export function createConsoleRegisterPublisher(deps: ConsoleRegisterPublisherDep
 	}
 
 	function readConsoleLock(): ConsoleLockPayload | null {
-		const lockFile = deps.env?.FLEET_CONSOLE_LOCK_FILE ?? path.join(defaultConsoleBaseDir(), DEFAULT_CONSOLE_LOCK_FILE_NAME);
+		const lockFile = deps.env?.FLEET_CONSOLE_LOCK_FILE ?? path.join(defaultConsoleBaseDir(channel), DEFAULT_CONSOLE_LOCK_FILE_NAME);
 		try {
 			const stat = fsImpl.lstatSync(lockFile);
 			if (stat.isSymbolicLink()) {
@@ -378,9 +384,9 @@ function buildUrl(baseUrl: string, pathname: string): string {
 	return `${baseUrl}${pathname}`;
 }
 
-function defaultConsoleBaseDir(): string {
+function defaultConsoleBaseDir(channel: FleetCliChannel): string {
 	const uid = typeof process.getuid === "function" ? process.getuid() : 0;
-	return path.join(os.tmpdir(), `${DEFAULT_CONSOLE_LOCK_DIR_NAME}-${uid}`);
+	return path.join(os.tmpdir(), `${DEFAULT_CONSOLE_LOCK_DIR_NAME}-${uid}-${channel}`);
 }
 
 function isLoopbackHost(hostname: string): boolean {
