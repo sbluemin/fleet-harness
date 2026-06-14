@@ -87,6 +87,29 @@ describe("terminal session manager", () => {
     expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["beta"]);
   });
 
+  it("terminates a session, killing the pty and notifying exit exactly once", () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+
+    manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(manager.terminate("session-a")).toBe(true);
+    expect(ptys.get("session-a")?.killed()).toBe(true);
+    expect(exits).toEqual(["session-a"]);
+    // 멱등 — 이미 종료된 세션 재종료는 false이고 중복 통지하지 않는다.
+    expect(manager.terminate("session-a")).toBe(false);
+    expect(exits).toEqual(["session-a"]);
+  });
+
   it("passes the terminal kind into the launch resolver", () => {
     const launchKinds: Array<string | undefined> = [];
     const manager = createTerminalSessionManager({

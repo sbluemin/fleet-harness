@@ -1,9 +1,9 @@
 import { memo } from "react";
 
-import { createTheaterTerminalSession } from "../api.js";
+import { createTheaterTerminalSession, terminateTerminalSession } from "../api.js";
 import { describeJobStatus, formatCarrierName, latestStreamLine, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
+import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
 import type { ConsoleState, JobView, SessionInfo } from "../types.js";
 
@@ -39,7 +39,7 @@ export function Sidebar({ state }: SidebarProps) {
       <div className="sidebar-heading">
         <p className="sidebar-eyebrow">Operations</p>
         <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId} aria-label="Launch operation">
-          +
+          <PlusIcon />
         </button>
       </div>
       {visibleSessionOrder.length > 0 ? (
@@ -78,14 +78,25 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
   return (
     <li className={`session-item ${active ? "is-active" : ""}`}>
-      <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
-        <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
-        <span className="tenant-row-text">
-          <span className="tenant-label">{session.cwdLabel}</span>
-          <span className="tenant-path">{session.status}</span>
-        </span>
-        {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
-      </button>
+      <div className="session-row-shell">
+        <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
+          <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+          <span className="tenant-row-text">
+            <span className="tenant-label">{session.cwdLabel}</span>
+            <span className="tenant-path">{session.status}</span>
+          </span>
+          {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
+        </button>
+        <button
+          type="button"
+          className="session-close"
+          onClick={() => { void closeSession(session.sessionId); }}
+          aria-label={`Terminate operation ${session.cwdLabel}`}
+          title="Terminate operation"
+        >
+          <CloseIcon />
+        </button>
+      </div>
       {active ? (
         <ol className="session-job-list">
           {orderedJobs.length > 0 ? (
@@ -123,3 +134,33 @@ const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
     </li>
   );
 });
+
+// X 버튼 종료 — 백엔드 PTY 세션을 끝낸 뒤에만 카드를 내린다. DELETE는 이미 없는 세션도 200 멱등 처리하므로
+// throw는 진짜 실패(네트워크/401/5xx)뿐 — 이때는 카드를 남기고 오류를 표기해 살아있는 PTY를 은폐하지 않는다.
+async function closeSession(sessionId: string): Promise<void> {
+  try {
+    await terminateTerminalSession(sessionId);
+  } catch (error) {
+    failTerminateTerminalSession(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  removeTerminalSession(sessionId);
+}
+
+function PlusIcon() {
+  // Theater 박스 메뉴의 PlusIcon과 같은 가는 stroke·둥근 끝 마크를 공유한다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  // Operation 종료 — Theater 박스 아이콘과 같은 가는 stroke·둥근 끝 언어를 공유하는 X 마크.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}

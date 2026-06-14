@@ -173,6 +173,11 @@ export function closeShell(): void {
   setState({ shellOpen: false });
 }
 
+export function failTerminateTerminalSession(error: string): void {
+  // 종료 실패 시 카드는 남기고 사이드바 오류 라인에만 사유를 표기한다(살아있는 PTY를 숨기지 않는다).
+  setState({ terminalSessionError: error });
+}
+
 export function removeTerminalSession(sessionId: string): void {
   if (!state.sessions[sessionId]) return;
   const sessions = { ...state.sessions };
