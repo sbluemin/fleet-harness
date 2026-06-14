@@ -40,7 +40,6 @@ export interface ConsoleServerDeps {
   readonly codexCwd?: string;
   readonly terminalLaunch?: TerminalLaunchResolver;
   readonly terminalStartShell?: typeof startTerminalShell;
-  readonly terminalGraceMs?: number;
   readonly maxTerminalSessions?: number;
   readonly terminalPickFolder?: () => Promise<FolderPickerResult>;
 }
@@ -89,7 +88,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const terminalSessions = createTerminalSessionManager({
     launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver(),
     startShell: deps.terminalStartShell,
-    graceMs: deps.terminalGraceMs,
     maxSessions: deps.maxTerminalSessions,
     // PTY가 종료되면(예: fleet-cli 종료) 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
     onSessionExit: (sessionId) => observability.removeTerminalSession(sessionId),

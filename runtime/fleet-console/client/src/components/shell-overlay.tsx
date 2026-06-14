@@ -1,14 +1,12 @@
 import { useEffect, useRef } from "react";
 
-import { closeShell } from "../store.js";
+import { closeShell, SHELL_SESSION_ID } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { Terminal } from "./terminal.js";
 
 interface ShellOverlayProps {
   readonly state: ConsoleState;
 }
-
-const SHELL_SESSION_ID = "shell";
 
 export function ShellOverlay({ state }: ShellOverlayProps) {
   // 셸을 열기 직전의 포커스(예: Admiral 터미널)를 보관했다가 닫을 때 복원한다.

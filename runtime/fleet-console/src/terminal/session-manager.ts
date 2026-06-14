@@ -6,10 +6,7 @@ export interface TerminalSessionManagerDeps {
   readonly startShell?: typeof startTerminalShell;
   // DI 계약 유지용으로 받지만 더 이상 동시 세션 상한을 강제하지 않는다(상한 해제됨).
   readonly maxSessions?: number;
-  readonly graceMs?: number;
   readonly scrollbackLimit?: number;
-  readonly setTimeout?: typeof setTimeout;
-  readonly clearTimeout?: typeof clearTimeout;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
   readonly onSessionExit?: (sessionId: string) => void;
 }
@@ -20,7 +17,6 @@ interface TerminalSession {
   readonly disposables: { dispose(): void }[];
   readonly scrollback: Buffer[];
   activeSocket: TerminalSocket | null;
-  graceTimer: ReturnType<typeof setTimeout> | null;
   cols: number;
   rows: number;
 }
@@ -32,16 +28,12 @@ interface KillSessionOptions {
 const DEFAULT_TERMINAL_SESSION_ID = "default";
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
-const DEFAULT_GRACE_MS = 180_000;
 const DEFAULT_SCROLLBACK_LIMIT = 512;
 const WS_OPEN_STATE = 1;
 
 export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): TerminalSessionManager {
   const startShell = deps.startShell ?? startTerminalShell;
-  const graceMs = deps.graceMs ?? DEFAULT_GRACE_MS;
   const scrollbackLimit = deps.scrollbackLimit ?? DEFAULT_SCROLLBACK_LIMIT;
-  const setTimeoutImpl = deps.setTimeout ?? setTimeout;
-  const clearTimeoutImpl = deps.clearTimeout ?? clearTimeout;
   const sessions = new Map<string, TerminalSession>();
 
   function canAttach(): boolean {
@@ -53,10 +45,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     const session = getOrCreateSession(context);
     if (session.activeSocket && session.activeSocket !== socket) {
       session.activeSocket.close(4000, "terminal_replaced");
-    }
-    if (session.graceTimer) {
-      clearTimeoutImpl(session.graceTimer);
-      session.graceTimer = null;
     }
     session.activeSocket = socket;
     session.pty.resize(session.cols, session.rows);
@@ -94,7 +82,6 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       disposables: [],
       scrollback: [],
       activeSocket: null,
-      graceTimer: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
     };
@@ -137,8 +124,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   function detachSocket(session: TerminalSession, socket: TerminalSocket): void {
     if (session.activeSocket !== socket) return;
+    // 소켓이 끊겨도(콘솔 웹 종료·세션 전환 언마운트) PTY 세션은 유지한다. activeSocket만 비워
+    // 죽은 소켓으로의 전송을 막고, 출력은 scrollback에 계속 쌓여 재연결 시 attach가 그대로 재생한다.
+    // PTY는 오직 PTY 자가종료·운영자 terminate·서버 stop에서만 죽는다(자동 종료 grace 타이머는 제거됨).
     session.activeSocket = null;
-    session.graceTimer = setTimeoutImpl(() => removeSession(session), graceMs);
   }
 
   function replayScrollback(session: TerminalSession, socket: TerminalSocket): void {
@@ -152,16 +141,12 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (!sessions.has(session.id)) return;
     killSession(session, options);
     sessions.delete(session.id);
-    // sessions.has 가드 덕분에 PTY exit·grace 만료·kill 경로가 겹쳐도 세션당 한 번만 통지된다.
+    // sessions.has 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
     deps.onSessionExit?.(session.id);
   }
 
   function killSession(session: TerminalSession, options: KillSessionOptions = {}): void {
     const killPty = options.killPty ?? true;
-    if (session.graceTimer) {
-      clearTimeoutImpl(session.graceTimer);
-      session.graceTimer = null;
-    }
     session.activeSocket?.close(4001, "terminal_closed");
     session.activeSocket = null;
     for (const disposable of session.disposables) disposable.dispose();
