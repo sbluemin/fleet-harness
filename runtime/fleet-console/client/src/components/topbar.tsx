@@ -55,6 +55,17 @@ export function Topbar({ state }: TopbarProps) {
       </Link>
       <TheaterControl state={state} />
       <div className="topbar-meta">
+        {state.updateAvailable ? (
+          <a
+            className="topbar-update-badge"
+            href="https://www.npmjs.com/package/@dotobokuri/fleet-console"
+            target="_blank"
+            rel="noreferrer"
+            title={state.latestVersion ? `Latest version: ${state.latestVersion}` : "Update available"}
+          >
+            Update available
+          </a>
+        ) : null}
         <nav className="topbar-nav" aria-label="주 내비게이션">
           {NAV_ITEMS.map((item) => (
             <NavLink

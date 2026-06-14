@@ -8,6 +8,7 @@
 - Generic in-process MCP HTTP/JSON-RPC server primitives, executor session manager primitives, and the register data contract shared by callers.
 - The two-method `ExecutorPort` policy surface and the separate executor MCP runtime provider.
 - Windows binary resolution helpers (`resolveBinary`, `resolvePathBinary`, `createChildEnv`) for PATH/PATHEXT lookup and `.cmd`/`.bat` wrapping.
+- Domain-agnostic version check pure functions shared by callers.
 - Package-local tests for executor reuse, MCP setup, register contracts, model helpers, and reset behavior.
 
 ## Boundaries

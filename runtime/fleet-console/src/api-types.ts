@@ -49,6 +49,8 @@ export interface ConsoleObserverStatus {
   readonly jobs: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
+  readonly updateAvailable: boolean;
+  readonly latestVersion?: string;
   readonly port: number;
   readonly wikiServerStatus: ConsoleObserverWikiServerStatus;
 }

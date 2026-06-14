@@ -71,6 +71,9 @@ export type {
   ResolvedBinary,
   ResolveBinaryOptions,
 } from "./bin-resolver.js";
+export type {
+  UpdateChannel,
+} from "./version-check.js";
 export {
   cleanupExecutorSession,
   detachExecutorMcpForReuse,
@@ -124,3 +127,7 @@ export {
 export {
   classifyResumeFailure,
 } from "./internal/session-errors.js";
+export {
+  fetchLatestVersion,
+  isVersionGreater,
+} from "./version-check.js";

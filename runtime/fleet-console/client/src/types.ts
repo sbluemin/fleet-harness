@@ -26,6 +26,8 @@ export interface ObserverStatus {
   readonly jobs: number;
   readonly version: string;
   readonly channel: "stable" | "local" | "unknown";
+  readonly updateAvailable: boolean;
+  readonly latestVersion?: string;
   readonly port: number;
   readonly wikiServerStatus: "available" | "unavailable" | "unknown";
 }
@@ -144,6 +146,8 @@ export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly activeTheme: ThemeId;
+  readonly updateAvailable: boolean;
+  readonly latestVersion: string | null;
   readonly tenants: readonly ObservedTenant[];
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;

@@ -1,7 +1,8 @@
+import { isVersionGreater } from "@dotobokuri/core-agent";
+
 import type { FleetCliRelease } from "../release.js";
 import { readCachedLatestVersion, writeCachedLatestVersion } from "./cache.js";
 import { fetchLatestFleetCliVersion, type UpdateChannel } from "./registry.js";
-import { isVersionGreater } from "./semver.js";
 
 export type UpdateCheckResult =
   | { readonly status: "current"; readonly latest: string }

@@ -373,6 +373,7 @@ describe("console static and terminal ticket boundary", () => {
       workspaces: 0,
       jobs: 0,
       version: "test",
+      updateAvailable: false,
       port: fixture.lock.port,
       wikiServerStatus: "available",
     });
@@ -655,6 +656,7 @@ async function startFixture(options: {
   readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
   readonly terminalPickFolder?: ConsoleServerDeps["terminalPickFolder"];
   readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
+  readonly updateCheck?: ConsoleServerDeps["updateCheck"];
 } = {}): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
   const carrierStoreDir = path.join(dir, "fleet-home");
@@ -667,6 +669,7 @@ async function startFixture(options: {
     terminalLaunch: options.terminalLaunch,
     terminalPickFolder: options.terminalPickFolder,
     terminalStartShell: options.terminalStartShell,
+    updateCheck: options.updateCheck,
   });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });

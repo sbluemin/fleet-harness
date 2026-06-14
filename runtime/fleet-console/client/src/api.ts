@@ -207,6 +207,8 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     || typeof payload.jobs !== "number"
     || typeof payload.version !== "string"
     || (payload.channel !== "stable" && payload.channel !== "local" && payload.channel !== "unknown")
+    || typeof payload.updateAvailable !== "boolean"
+    || (payload.latestVersion !== undefined && typeof payload.latestVersion !== "string")
     || typeof payload.port !== "number"
     || (payload.wikiServerStatus !== "available" && payload.wikiServerStatus !== "unavailable" && payload.wikiServerStatus !== "unknown")
     || "token" in payload
@@ -221,6 +223,8 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     jobs: payload.jobs,
     version: payload.version,
     channel: payload.channel,
+    updateAvailable: payload.updateAvailable,
+    ...(payload.latestVersion !== undefined ? { latestVersion: payload.latestVersion } : {}),
     port: payload.port,
     wikiServerStatus: payload.wikiServerStatus,
   };
