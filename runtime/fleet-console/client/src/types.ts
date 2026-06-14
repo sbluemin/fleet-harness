@@ -1,7 +1,8 @@
+export type ThemeId = "maritime" | "carbon";
+
 export interface ObservedTenant {
   readonly tenantId: string;
   readonly tenantLabel: string;
-  readonly cwd: string;
   readonly createdAt: number;
   readonly sessions: number;
   readonly status?: "online" | "offline" | "deregistered";
@@ -14,11 +15,32 @@ export interface ObservedTenant {
 export interface TheaterInfo {
   readonly id: string;
   readonly label: string;
-  readonly path: string;
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
+}
+
+export interface ObserverStatus {
+  readonly workspaces: number;
+  readonly jobs: number;
+  readonly version: string;
+  readonly channel: "stable" | "local" | "unknown";
+  readonly port: number;
+  readonly wikiServerStatus: "available" | "unavailable" | "unknown";
+}
+
+export interface CarrierReadinessEntry {
+  readonly carrierId: string;
+  readonly displayName: string;
+  readonly role: string | null;
+  readonly model: string;
+  readonly effort: string | null;
+  readonly taskForceBackendCount: number;
+  readonly subagentMode: boolean;
+  readonly category?: "strategy" | "planning" | "operations";
+  readonly slot: number;
+  readonly cliType: string;
 }
 
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error";
@@ -119,6 +141,7 @@ export type ConnectionState = "connecting" | "live";
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
+  readonly activeTheme: ThemeId;
   readonly tenants: readonly ObservedTenant[];
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;

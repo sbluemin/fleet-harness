@@ -3831,3 +3831,11 @@
 - ok: `true`
 - warning_count: `7`
 
+## 2026-06-14T04:55:30.680Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+

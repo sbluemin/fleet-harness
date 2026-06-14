@@ -7,12 +7,19 @@ import type {
   PushEventsRequest,
   RegisterCliRequest,
 } from "@dotobokuri/core-agent";
+import {
+  createCarrierRegistry,
+  readCarrierStatusEntries,
+  registerDefaultCarriers,
+  type CarrierStatusEntry,
+} from "@dotobokuri/fleet-carriers";
 
 import { readBearerToken } from "./auth.js";
-import type { ConsoleHealth, ConsoleObservedWorkspace, ConsoleTheaterInfo } from "./api-types.js";
+import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
+import { readFleetConsoleRelease } from "./release.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { tryServeStaticConsole } from "./static-console.js";
@@ -62,6 +69,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const host = deps.host ?? DEFAULT_HOST;
   const port = deps.port ?? DEFAULT_PORT;
   const version = deps.version ?? (typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev");
+  const channel = readConsoleChannel();
+  const carrierRegistry = createCarrierRegistry();
+  registerDefaultCarriers(carrierRegistry);
   const lock = createConsoleLock({ hostname: () => host });
   const observability = createConsoleObservabilityStore();
   const theaters = new TheaterRegistry();
@@ -149,6 +159,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/observer/status") {
       handleObserverStatus(req, res);
+      return;
+    }
+    if (pathname === "/observer/carriers") {
+      handleObserverCarriers(req, res);
       return;
     }
     if (pathname === "/observer/tenants") {
@@ -405,12 +419,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  function handleObserverStatus(_req: http.IncomingMessage, res: http.ServerResponse): void {
+  function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
     const lookup = readObserverLookup();
     if (lookup.kind !== "aggregate") return;
-    writeJson(res, 200, {
+    const theaterId = readUrl(req).searchParams.get("theaterId");
+    const payload: ConsoleObserverStatus = {
       workspaces: observability.listWorkspaces().length,
       jobs: observability.listWorkspaces().reduce((count, workspace) => count + observability.listJobs(workspace.tenantId).length, 0),
+      version,
+      channel,
+      port: lockHandle?.payload.port ?? port,
+      wikiServerStatus: resolveWikiServerStatus(theaterId),
+    };
+    writeJson(res, 200, payload);
+  }
+
+  function handleObserverCarriers(_req: http.IncomingMessage, res: http.ServerResponse): void {
+    writeJson(res, 200, {
+      carriers: readCarrierStatusEntries(carrierRegistry).map(toCarrierReadinessEntry),
     });
   }
 
@@ -483,7 +509,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return {
       id: theater.id,
       label: theater.label,
-      path: theater.path,
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
       hasWiki,
@@ -491,6 +516,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         .filter((workspace) => workspace.theaterId === theater.id && workspace.status !== "deregistered")
         .length,
     };
+  }
+
+  function toCarrierReadinessEntry(entry: CarrierStatusEntry): ConsoleCarrierReadinessEntry {
+    return {
+      carrierId: entry.carrierId,
+      displayName: entry.displayName,
+      role: entry.role,
+      model: entry.model,
+      effort: entry.effort,
+      taskForceBackendCount: entry.taskForceBackendCount,
+      subagentMode: entry.subagentMode,
+      ...(entry.category ? { category: entry.category } : {}),
+      slot: entry.slot,
+      cliType: entry.cliType,
+    };
+  }
+
+  function resolveWikiServerStatus(theaterId: string | null): ConsoleObserverStatus["wikiServerStatus"] {
+    if (!theaterId) return "unknown";
+    if (!theaters.get(theaterId)) return "unknown";
+    return codex.getWorkspace(theaterId) ? "available" : "unavailable";
   }
 
   return {
@@ -542,6 +588,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       currentLock?.release();
     },
   };
+}
+
+function readConsoleChannel(): ConsoleObserverStatus["channel"] {
+  try {
+    return readFleetConsoleRelease().channel;
+  } catch {
+    return "unknown";
+  }
 }
 
 function createHttpServer(

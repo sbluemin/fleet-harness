@@ -24,7 +24,6 @@ export interface ConsoleHealth {
 export interface ConsoleObservedWorkspace {
   readonly tenantId: string;
   readonly tenantLabel: string;
-  readonly cwd: string;
   readonly createdAt: number;
   readonly sessions: number;
   readonly status: CliSession["status"];
@@ -37,11 +36,38 @@ export interface ConsoleObservedWorkspace {
 export interface ConsoleTheaterInfo {
   readonly id: string;
   readonly label: string;
-  readonly path: string;
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
+}
+
+export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unknown";
+
+export interface ConsoleObserverStatus {
+  readonly workspaces: number;
+  readonly jobs: number;
+  readonly version: string;
+  readonly channel: "stable" | "local" | "unknown";
+  readonly port: number;
+  readonly wikiServerStatus: ConsoleObserverWikiServerStatus;
+}
+
+export interface ConsoleCarrierReadinessEntry {
+  readonly carrierId: string;
+  readonly displayName: string;
+  readonly role: string | null;
+  readonly model: string;
+  readonly effort: string | null;
+  readonly taskForceBackendCount: number;
+  readonly subagentMode: boolean;
+  readonly category?: "strategy" | "planning" | "operations";
+  readonly slot: number;
+  readonly cliType: string;
+}
+
+export interface ConsoleObserverCarriersResponse {
+  readonly carriers: readonly ConsoleCarrierReadinessEntry[];
 }
 
 export interface ConsoleObserverTheatersResponse {

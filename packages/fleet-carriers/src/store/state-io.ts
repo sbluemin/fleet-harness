@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { ensureSafeDirectory, NOFOLLOW_FLAG, withDirectoryLock, writeAtomicSync } from "@dotobokuri/fleet-infra/fs-store";
@@ -19,6 +20,7 @@ interface StateIoRuntimeState {
 }
 
 const FILENAME = "carriers.json";
+const DEFAULT_STORE_DIRNAME = ".fleet";
 const STALE_SUBAGENT_MODE_FILENAME = "carrier-subagent.json";
 const LOCK_DIRNAME = "carriers.json.lock";
 const LOCK_OWNER_FILENAME = "owner.json";
@@ -46,6 +48,10 @@ export function resetStoreForTests(): void {
 
 export function readRawCarriers(): FleetCarriers {
   return readCarriers();
+}
+
+export function readRawCarriersOrDefaultStore(): FleetCarriers {
+  return runtimeState.storeDir ? readCarriers() : readCarriersFromDir(resolveDefaultStoreDir());
 }
 
 export function getCarriersFilePath(): string | null {
@@ -77,7 +83,15 @@ export function withStoreLock<T>(operation: () => T): T {
 
 function readCarriers(): FleetCarriers {
   if (!runtimeState.storeDir) return {};
-  const filePath = path.join(runtimeState.storeDir, FILENAME);
+  return readCarriersFromDir(runtimeState.storeDir);
+}
+
+function resolveDefaultStoreDir(): string {
+  return path.join(os.homedir(), DEFAULT_STORE_DIRNAME);
+}
+
+function readCarriersFromDir(dir: string): FleetCarriers {
+  const filePath = path.join(dir, FILENAME);
   let fd: number | undefined;
   try {
     // fd 기반 심링크 방어: lstatSync isFile + O_RDONLY|O_NOFOLLOW + fstatSync isFile

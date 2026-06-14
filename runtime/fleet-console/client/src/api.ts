@@ -1,4 +1,4 @@
-import type { ObservedTenant, SessionInfo, SnapshotTenantJobs, TheaterInfo } from "./types.js";
+import type { CarrierReadinessEntry, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterInfo } from "./types.js";
 
 export interface TerminalTicketOptions {
   readonly kind?: "shell";
@@ -19,7 +19,9 @@ export class ApiError extends Error {
 export async function fetchTenants(signal?: AbortSignal): Promise<readonly ObservedTenant[]> {
   const response = await fetch("/observer/tenants", { signal });
   await assertOk(response);
-  return ((await response.json()) as { tenants: readonly ObservedTenant[] }).tenants;
+  const payload = (await response.json()) as { tenants?: unknown };
+  if (!Array.isArray(payload.tenants)) throw new ApiError(response.status, "Invalid tenants response");
+  return payload.tenants.map((tenant) => assertObservedTenant(tenant, response.status));
 }
 
 export async function fetchJobs(signal?: AbortSignal): Promise<readonly SnapshotTenantJobs[]> {
@@ -41,6 +43,21 @@ export async function fetchTheaters(signal?: AbortSignal): Promise<readonly Thea
   const payload = (await response.json()) as { theaters?: unknown };
   if (!Array.isArray(payload.theaters)) throw new ApiError(response.status, "Invalid Theater response");
   return payload.theaters.map((theater) => assertTheaterInfo(theater, response.status));
+}
+
+export async function fetchObserverStatus(theaterId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
+  const suffix = theaterId ? `?theaterId=${encodeURIComponent(theaterId)}` : "";
+  const response = await fetch(`/observer/status${suffix}`, { signal });
+  await assertOk(response);
+  return assertObserverStatus(await response.json(), response.status);
+}
+
+export async function fetchCarriers(signal?: AbortSignal): Promise<readonly CarrierReadinessEntry[]> {
+  const response = await fetch("/observer/carriers", { signal });
+  await assertOk(response);
+  const payload = (await response.json()) as { carriers?: unknown };
+  if (!Array.isArray(payload.carriers)) throw new ApiError(response.status, "Invalid carrier readiness response");
+  return payload.carriers.map((carrier) => assertCarrierReadinessEntry(carrier, response.status));
 }
 
 export async function addTheater(signal?: AbortSignal): Promise<TheaterInfo | { readonly cancelled: true }> {
@@ -126,13 +143,120 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
   };
 }
 
+function assertObservedTenant(value: unknown, status: number): ObservedTenant {
+  const payload = value as Partial<ObservedTenant> & { readonly cwd?: unknown };
+  if (
+    !payload
+    || typeof payload.tenantId !== "string"
+    || typeof payload.tenantLabel !== "string"
+    || typeof payload.createdAt !== "number"
+    || typeof payload.sessions !== "number"
+    || "cwd" in payload
+  ) {
+    throw new ApiError(status, "Invalid tenants response");
+  }
+  return {
+    tenantId: payload.tenantId,
+    tenantLabel: payload.tenantLabel,
+    createdAt: payload.createdAt,
+    sessions: payload.sessions,
+    status: payload.status,
+    cliRunId: typeof payload.cliRunId === "string" ? payload.cliRunId : undefined,
+    registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
+    theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
+    terminalSessionId: typeof payload.terminalSessionId === "string" ? payload.terminalSessionId : undefined,
+  };
+}
+
+function assertObserverStatus(value: unknown, status: number): ObserverStatus {
+  const payload = value as Partial<ObserverStatus> & {
+    readonly token?: unknown;
+    readonly path?: unknown;
+    readonly cwd?: unknown;
+    readonly knowledgeRoot?: unknown;
+  };
+  if (
+    !payload
+    || typeof payload.workspaces !== "number"
+    || typeof payload.jobs !== "number"
+    || typeof payload.version !== "string"
+    || (payload.channel !== "stable" && payload.channel !== "local" && payload.channel !== "unknown")
+    || typeof payload.port !== "number"
+    || (payload.wikiServerStatus !== "available" && payload.wikiServerStatus !== "unavailable" && payload.wikiServerStatus !== "unknown")
+    || "token" in payload
+    || "path" in payload
+    || "cwd" in payload
+    || "knowledgeRoot" in payload
+  ) {
+    throw new ApiError(status, "Invalid observer status response");
+  }
+  return {
+    workspaces: payload.workspaces,
+    jobs: payload.jobs,
+    version: payload.version,
+    channel: payload.channel,
+    port: payload.port,
+    wikiServerStatus: payload.wikiServerStatus,
+  };
+}
+
+function assertCarrierReadinessEntry(value: unknown, status: number): CarrierReadinessEntry {
+  const payload = value as Partial<CarrierReadinessEntry> & {
+    readonly token?: unknown;
+    readonly key?: unknown;
+    readonly credential?: unknown;
+    readonly cwd?: unknown;
+    readonly path?: unknown;
+    readonly persona?: unknown;
+    readonly prompt?: unknown;
+    readonly toolAllowlist?: unknown;
+    readonly allowedExecutorTools?: unknown;
+  };
+  if (
+    !payload
+    || typeof payload.carrierId !== "string"
+    || typeof payload.displayName !== "string"
+    || (payload.role !== null && typeof payload.role !== "string")
+    || typeof payload.model !== "string"
+    || (payload.effort !== null && typeof payload.effort !== "string")
+    || typeof payload.taskForceBackendCount !== "number"
+    || typeof payload.subagentMode !== "boolean"
+    || (payload.category !== undefined && payload.category !== "strategy" && payload.category !== "planning" && payload.category !== "operations")
+    || typeof payload.slot !== "number"
+    || typeof payload.cliType !== "string"
+    || "token" in payload
+    || "key" in payload
+    || "credential" in payload
+    || "cwd" in payload
+    || "path" in payload
+    || "persona" in payload
+    || "prompt" in payload
+    || "toolAllowlist" in payload
+    || "allowedExecutorTools" in payload
+  ) {
+    throw new ApiError(status, "Invalid carrier readiness response");
+  }
+  return {
+    carrierId: payload.carrierId,
+    displayName: payload.displayName,
+    role: payload.role,
+    model: payload.model,
+    effort: payload.effort,
+    taskForceBackendCount: payload.taskForceBackendCount,
+    subagentMode: payload.subagentMode,
+    ...(payload.category ? { category: payload.category } : {}),
+    slot: payload.slot,
+    cliType: payload.cliType,
+  };
+}
+
 function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
-  const payload = value as Partial<TheaterInfo>;
+  const payload = value as Partial<TheaterInfo> & { readonly path?: unknown };
   if (
     !payload
     || typeof payload.id !== "string"
     || typeof payload.label !== "string"
-    || typeof payload.path !== "string"
+    || "path" in payload
     || typeof payload.createdAt !== "string"
     || typeof payload.lastOpenedAt !== "string"
     || typeof payload.hasWiki !== "boolean"
@@ -143,7 +267,6 @@ function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
   return {
     id: payload.id,
     label: payload.label,
-    path: payload.path,
     createdAt: payload.createdAt,
     lastOpenedAt: payload.lastOpenedAt,
     hasWiki: payload.hasWiki,

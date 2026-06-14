@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater } from "../api.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, toggleShell } from "../store.js";
-import type { ConsoleState } from "../types.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, setActiveTheme, toggleShell } from "../store.js";
+import type { ConsoleState, ThemeId } from "../types.js";
 
 interface TopbarProps {
   readonly state: ConsoleState;
@@ -16,10 +16,21 @@ interface NavItem {
   readonly icon: "operations" | "codex";
 }
 
+interface ThemeOption {
+  readonly id: ThemeId;
+  readonly label: string;
+  readonly swatch: readonly [string, string, string];
+}
+
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
+];
+
+const THEMES: readonly ThemeOption[] = [
+  { id: "maritime", label: "Maritime", swatch: ["oklch(78% 0.13 75)", "oklch(82% 0.13 195)", "oklch(32% 0.04 248)"] },
+  { id: "carbon", label: "Carbon", swatch: ["oklch(76% 0.115 62)", "oklch(80% 0.105 205)", "oklch(25% 0.007 252)"] },
 ];
 
 export function Topbar({ state }: TopbarProps) {
@@ -63,6 +74,7 @@ export function Topbar({ state }: TopbarProps) {
           <ShellIcon />
           <span>Shell</span>
         </button>
+        <ThemeControl activeTheme={state.activeTheme} />
       </div>
     </header>
   );
@@ -141,6 +153,8 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
 
   return (
     <div className="theater-control" ref={containerRef}>
+      {/* 필드 캡션 — 박스가 Theater 선택기임을 조용히 표기한다. 트리거 aria-label이 이미 "Theater"라 중복 낭독을 막으려 장식 처리. */}
+      <span className="theater-eyebrow" aria-hidden="true">Theater</span>
       <button
         type="button"
         ref={triggerRef}
@@ -148,7 +162,7 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Theater"
-        title={active?.path ?? state.theaterError ?? undefined}
+        title={active?.label ?? state.theaterError ?? undefined}
         onClick={() => setOpen((value) => !value)}
       >
         <span className="theater-trigger-sigil" aria-hidden="true"><TheaterSigil /></span>
@@ -169,7 +183,7 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
                       aria-checked={isActive}
                       data-active={isActive ? "true" : undefined}
                       className={`theater-menu-item ${isActive ? "is-active" : ""}`}
-                      title={theater.path}
+                      title={theater.label}
                       onClick={() => handleSelect(theater.id)}
                     >
                       <span className="theater-menu-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
@@ -200,6 +214,100 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
   );
 }
 
+function ThemeControl({ activeTheme }: { readonly activeTheme: ThemeId }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const active = THEMES.find((theme) => theme.id === activeTheme) ?? THEMES[0]!;
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointer = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const target = menu.querySelector<HTMLElement>('[data-active="true"]') ?? menu.querySelector<HTMLElement>("[role^='menuitem']");
+    target?.focus();
+  }, [open]);
+
+  const handleSelect = (theme: ThemeId) => {
+    setActiveTheme(theme);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const next = (current + delta + items.length) % items.length;
+    items[next]?.focus();
+  };
+
+  return (
+    <div className="theme-control" ref={containerRef}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={`theme-trigger ${open ? "is-open" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Theme"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ThemeIcon />
+        <span className="theme-trigger-label">{active.label}</span>
+        <span className="theme-trigger-caret" aria-hidden="true"><CaretIcon /></span>
+      </button>
+      {open ? (
+        <div className="theme-menu" role="menu" aria-label="Theme" ref={menuRef} onKeyDown={handleMenuKeyDown}>
+          {THEMES.map((theme) => {
+            const isActive = theme.id === activeTheme;
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                data-active={isActive ? "true" : undefined}
+                className={`theme-menu-item ${isActive ? "is-active" : ""}`}
+                onClick={() => handleSelect(theme.id)}
+              >
+                <span className="theme-swatch" aria-hidden="true">
+                  {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
+                </span>
+                <span className="theme-menu-label">{theme.label}</span>
+                <span className="theme-menu-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TheaterSigil() {
   // 작전지역(Theater) — 닻 모티프로 '정박/거점'을 표상한다.
   return (
@@ -222,6 +330,18 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 8.5 6.5 11.5 12.5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ThemeIcon() {
+  // Theme — 세 톤 팔레트 모티프.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.6a5.4 5.4 0 0 0-5.4 5.5c0 2.4 1.8 4.5 4.2 5 .8.2 1.2-.2 1.2-.8 0-.5-.4-.8-.4-1.3 0-.7.6-1.1 1.3-1.1h1.1c1.9 0 3.4-1.5 3.4-3.3C13.4 4.4 11 2.6 8 2.6Z" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" />
+      <circle cx="5.6" cy="6.4" r=".75" fill="currentColor" />
+      <circle cx="8" cy="5.2" r=".75" fill="currentColor" />
+      <circle cx="10.4" cy="6.5" r=".75" fill="currentColor" />
     </svg>
   );
 }

@@ -11,6 +11,9 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./app.js";
+import { initThemeFromStorage } from "./store.js";
+
+initThemeFromStorage();
 
 const app = document.querySelector("#app");
 if (app) {

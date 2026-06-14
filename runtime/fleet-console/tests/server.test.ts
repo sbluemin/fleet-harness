@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { initStore, resetStoreForTests } from "@dotobokuri/fleet-carriers";
+
 import type { ConsoleLockPayload } from "../src/api-types.js";
 import { createConsoleLock } from "../src/lock.js";
 import { createConsoleObservabilityStore } from "../src/observability-store.js";
@@ -16,6 +18,7 @@ import { createTerminalUpgradeHandler } from "../src/terminal/ws-handler.js";
 
 interface ServerFixture {
   readonly dir: string;
+  readonly carrierStoreDir: string;
   readonly lockFile: string;
   readonly server: ConsoleServer;
   readonly endpoint: string;
@@ -28,6 +31,7 @@ let previousStaticIndex: string | null | undefined;
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
+  resetStoreForTests();
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   restoreStaticIndex();
 });
@@ -47,7 +51,9 @@ describe("console register ingest", () => {
 
     const workspaces = await getJson<{ tenants: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/tenants`);
     expect(JSON.stringify(workspaces)).not.toContain(registration.ingestToken);
-    expect(workspaces.tenants[0]).toMatchObject({ tenantId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", status: "online", theaterId: workspaceHash("/repo/a") });
+    expect(workspaces.tenants[0]).toMatchObject({ tenantId: "cli-a", tenantLabel: "Alpha", status: "online", theaterId: workspaceHash("/repo/a") });
+    expect(workspaces.tenants[0]).not.toHaveProperty("cwd");
+    expect(JSON.stringify(workspaces)).not.toContain("/repo/a");
   });
 
   it("requires ingest auth, ignores duplicate seq, emits gap truncation, and assigns global observedId", async () => {
@@ -284,13 +290,15 @@ describe("console static and terminal ticket boundary", () => {
     expect(payload).toMatchObject({
       id: workspaceHash(fs.realpathSync.native(dir)),
       label: path.basename(dir),
-      path: dir,
       hasWiki: false,
       activeAdmiralCount: 0,
     });
     expect(typeof payload.createdAt).toBe("string");
     expect(typeof payload.lastOpenedAt).toBe("string");
     expect(listed.theaters).toHaveLength(1);
+    expect(payload).not.toHaveProperty("path");
+    expect(listed.theaters[0]).not.toHaveProperty("path");
+    expect(serialized).not.toContain(dir);
     expect(serialized).not.toContain(fixture.lock.token);
     expect(serialized).not.toContain("ingestToken");
     expect(serialized).not.toContain("folderGrantId");
@@ -312,6 +320,100 @@ describe("console static and terminal ticket boundary", () => {
     expect(created.status).toBe(200);
     expect(payload).toMatchObject({ id: workspaceHash(fs.realpathSync.native(dir)), hasWiki: true });
     expect(health.status).toBe(200);
+  });
+
+  it("serves sanitized observer status with active Theater wiki availability", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-status-wiki-"));
+    tempDirs.push(dir);
+    createWikiRoot(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+    });
+
+    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const theater = await created.json() as { readonly id: string };
+    const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}observer/status?theaterId=${encodeURIComponent(theater.id)}`);
+    const serialized = JSON.stringify(status);
+
+    expect(status).toMatchObject({
+      workspaces: 0,
+      jobs: 0,
+      version: "test",
+      port: fixture.lock.port,
+      wikiServerStatus: "available",
+    });
+    expect(status.channel === "local" || status.channel === "stable" || status.channel === "unknown").toBe(true);
+    expect(status).not.toHaveProperty("token");
+    expect(status).not.toHaveProperty("path");
+    expect(status).not.toHaveProperty("cwd");
+    expect(status).not.toHaveProperty("knowledgeRoot");
+    expect(status).not.toHaveProperty("providerAuthStatus");
+    expect(serialized).not.toContain(fixture.lock.token);
+    expect(serialized).not.toContain(dir);
+  });
+
+  it("serves sanitized carrier readiness entries without persona or credential details", async () => {
+    const fixture = await startFixture();
+
+    const payload = await getJson<{ readonly carriers: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/carriers`);
+    const first = payload.carriers[0];
+    const serialized = JSON.stringify(payload);
+
+    expect(payload.carriers.length).toBeGreaterThan(0);
+    expect(first).toBeDefined();
+    expect(Object.keys(first ?? {}).sort()).toEqual([
+      "carrierId",
+      "category",
+      "cliType",
+      "displayName",
+      "effort",
+      "model",
+      "role",
+      "slot",
+      "subagentMode",
+      "taskForceBackendCount",
+    ]);
+    expect(first).toMatchObject({
+      carrierId: expect.any(String),
+      displayName: expect.any(String),
+      model: expect.any(String),
+      role: expect.any(String),
+      slot: expect.any(Number),
+      subagentMode: expect.any(Boolean),
+      taskForceBackendCount: expect.any(Number),
+    });
+    for (const carrier of payload.carriers) {
+      expect(carrier).not.toHaveProperty("token");
+      expect(carrier).not.toHaveProperty("key");
+      expect(carrier).not.toHaveProperty("credential");
+      expect(carrier).not.toHaveProperty("cwd");
+      expect(carrier).not.toHaveProperty("path");
+      expect(carrier).not.toHaveProperty("persona");
+      expect(carrier).not.toHaveProperty("prompt");
+      expect(carrier).not.toHaveProperty("toolAllowlist");
+      expect(carrier).not.toHaveProperty("allowedExecutorTools");
+    }
+    expect(serialized).not.toContain(fixture.lock.token);
+    expect(serialized).not.toContain("permissions");
+    expect(serialized).not.toContain("outputFormat");
+    expect(serialized).not.toContain("allowedExecutorTools");
+  });
+
+  it("serves carrier readiness from the persisted carrier store", async () => {
+    const fixture = await startFixture();
+    fs.writeFileSync(path.join(fixture.carrierStoreDir, "carriers.json"), JSON.stringify({
+      carriers: {
+        nimitz: { displayName: "Nimitz Persisted" },
+      },
+    }), "utf8");
+
+    const payload = await getJson<{ readonly carriers: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/carriers`);
+    const nimitz = payload.carriers.find((carrier) => carrier.carrierId === "nimitz");
+
+    expect(nimitz).toMatchObject({
+      carrierId: "nimitz",
+      displayName: "Nimitz Persisted",
+    });
   });
 
   it("keeps Theater, Codex workspace, and session ids aligned for case-variant native realpaths", async () => {
@@ -370,12 +472,15 @@ describe("console static and terminal ticket boundary", () => {
     const unknown = await fetch(`${fixture.endpoint}observer/theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
     const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/ignored" }) });
     const session = await created.json() as { readonly sessionId: string; readonly theaterId: string; readonly cwd?: unknown };
-    const sessions = await getJson<{ sessions: ReadonlyArray<{ readonly theaterId: string }> }>(`${fixture.endpoint}terminal/sessions`);
+    const sessions = await getJson<{ sessions: ReadonlyArray<{ readonly theaterId: string; readonly cwd?: unknown }> }>(`${fixture.endpoint}terminal/sessions`);
+    const serialized = JSON.stringify({ session, sessions });
 
     expect(unknown.status).toBe(404);
     expect(created.status).toBe(200);
     expect(session).toMatchObject({ theaterId: theater.id });
     expect(session.cwd).toBeUndefined();
+    expect(sessions.sessions[0]).not.toHaveProperty("cwd");
+    expect(serialized).not.toContain(dir);
     expect(launches[0]?.cwd).toBe(dir);
     expect(sessions.sessions[0]?.theaterId).toBe(theater.id);
   });
@@ -447,13 +552,21 @@ async function startFixture(options: {
   readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
 } = {}): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
+  const carrierStoreDir = path.join(dir, "fleet-home");
+  initStore(carrierStoreDir);
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
-  const server = createConsoleServer({ port: 0, version: "test", terminalLaunch: options.terminalLaunch, terminalPickFolder: options.terminalPickFolder, terminalStartShell: options.terminalStartShell });
+  const server = createConsoleServer({
+    port: 0,
+    version: "test",
+    terminalLaunch: options.terminalLaunch,
+    terminalPickFolder: options.terminalPickFolder,
+    terminalStartShell: options.terminalStartShell,
+  });
   servers.push(server);
   const endpoint = await server.start({ dir, lockFile });
   const lock = createConsoleLock().readLock(lockFile)!;
-  return { dir, lockFile, server, endpoint, lock };
+  return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
 }
 
 async function registerCli(fixture: ServerFixture, overrides: Partial<{ readonly cliRunId: string; readonly tenantLabel: string; readonly cwd: string }> = {}) {

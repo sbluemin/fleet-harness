@@ -35,6 +35,15 @@
 - The CLI `ingestToken` and any MCP session token must never reach browser code, URL query strings, SSE payloads, terminal tickets, logs, or static assets.
 - Theater routes likewise do not expose admin bearer tokens, ingest tokens, MCP/session tokens, terminal tickets, folder-grant identifiers, or raw working-directory paths to the browser.
 
+## Carrier Readiness Boundary
+
+- `runtime/fleet-console/src/**` may import `@dotobokuri/fleet-carriers` public root exports to consume read-only Carrier Readiness read models for browser-safe observer payloads.
+- `runtime/fleet-console/client/**` must not import `@dotobokuri/fleet-carriers`, carrier persona modules, deep carrier paths, or Node-only carrier runtime modules.
+- Fleet Console may render display-safe carrier readiness data such as carrier id, display name, role/category, resolved model/effort, Task Force backend count, and subagent mode/tag.
+- `fleet-carriers` remains the source of truth for carrier persona defaults, carrier-store interpretation, and carrier read-model construction. Console must not copy, reconstruct, mutate, or persist carrier persona policy or carrier runtime state.
+- Console must not deep-import `@dotobokuri/fleet-carriers/src/**`, `packages/fleet-carriers/src/**`, `runtime/fleet-cli/**`, or `@dotobokuri/fleet-cli`.
+- Carrier readiness browser payloads must not serialize prompt bodies, raw persona instructions, executor tool allowlists, tokens, credential values, auth env details, terminal/session/admin tickets, or raw filesystem paths.
+
 ## Layout
 
 - `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), bearer auth and security headers, static serving (`static-console.ts`), the register-ingest and observer routes (including `/observer/theaters*` Theater registry and session launch), the SSE helper, `codex/` (Fleet Wiki/Codex API gateway and workspace registration), `theaters.ts` (console-level in-memory TheaterRegistry), `theater.ts` (Theater id hash, realpath canonicalization, and label helpers), `terminal/` (PTY ticket/session/ws transport; console terminal sessions launch `fleet-cli --headless --native` so the child Agent CLI owns the PTY while registering with the console), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `cli-bin.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs` and `dist/cli-bin.mjs`. Depends on `@dotobokuri/core-agent` for the shared register data contract; must **not** depend on the retired gateway package. `help-style.ts` is a CLI-help-only **self-hosted** style helper shared by the console and Codex compatibility CLIs; it must not import from `fleet-cli`, `packages/*` (beyond the core-agent contract), or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.

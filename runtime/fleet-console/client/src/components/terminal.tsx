@@ -2,10 +2,12 @@ import "@xterm/xterm/css/xterm.css";
 
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal as XtermTerminal } from "@xterm/xterm";
+import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 
+import { useConsoleState } from "../hooks/use-store.js";
 import { createTerminalConnection, type TerminalConnection } from "../terminal-connection.js";
+import type { ThemeId } from "../types.js";
 
 interface TerminalProps {
   readonly sessionId: string;
@@ -21,32 +23,58 @@ const TERMINAL_OPTIONS = {
   fontFamily: "\"Cascadia Code\", \"Cascadia Mono\", \"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
   fontSize: 14,
   lineHeight: 1.2,
-  theme: {
-    background: "oklch(23% 0.03 248)",
-    foreground: "oklch(86% 0.018 90)",
-    cursor: "oklch(82% 0.13 195)",
-    selectionBackground: "oklch(78% 0.13 75 / 28%)",
-    black: "oklch(18% 0.045 248)",
-    brightBlack: "oklch(48% 0.03 248)",
-    red: "oklch(72% 0.17 25)",
-    green: "oklch(82% 0.13 195)",
-    yellow: "oklch(86% 0.16 78)",
-    blue: "oklch(70% 0.08 248)",
-    magenta: "oklch(75% 0.11 320)",
-    cyan: "oklch(82% 0.13 195)",
-    white: "oklch(82% 0.018 90)",
-    brightRed: "oklch(78% 0.18 25)",
-    brightGreen: "oklch(88% 0.14 195)",
-    brightYellow: "oklch(90% 0.16 78)",
-    brightBlue: "oklch(78% 0.09 248)",
-    brightMagenta: "oklch(82% 0.12 320)",
-    brightCyan: "oklch(88% 0.14 195)",
-    brightWhite: "oklch(96% 0.012 88)",
-  },
+};
+
+const MARITIME_TERMINAL_THEME: ITheme = {
+  background: "oklch(23% 0.03 248)",
+  foreground: "oklch(86% 0.018 90)",
+  cursor: "oklch(82% 0.13 195)",
+  selectionBackground: "oklch(78% 0.13 75 / 28%)",
+  black: "oklch(18% 0.045 248)",
+  brightBlack: "oklch(48% 0.03 248)",
+  red: "oklch(72% 0.17 25)",
+  green: "oklch(82% 0.13 195)",
+  yellow: "oklch(86% 0.16 78)",
+  blue: "oklch(70% 0.08 248)",
+  magenta: "oklch(75% 0.11 320)",
+  cyan: "oklch(82% 0.13 195)",
+  white: "oklch(82% 0.018 90)",
+  brightRed: "oklch(78% 0.18 25)",
+  brightGreen: "oklch(88% 0.14 195)",
+  brightYellow: "oklch(90% 0.16 78)",
+  brightBlue: "oklch(78% 0.09 248)",
+  brightMagenta: "oklch(82% 0.12 320)",
+  brightCyan: "oklch(88% 0.14 195)",
+  brightWhite: "oklch(96% 0.012 88)",
+};
+
+const CARBON_TERMINAL_THEME: ITheme = {
+  background: "oklch(19% 0.008 252)",
+  foreground: "oklch(85% 0.005 250)",
+  cursor: "oklch(80% 0.105 205)",
+  selectionBackground: "oklch(76% 0.115 62 / 28%)",
+  black: "oklch(16% 0.008 252)",
+  brightBlack: "oklch(46% 0.006 250)",
+  red: "oklch(72% 0.17 25)",
+  green: "oklch(80% 0.11 205)",
+  yellow: "oklch(84% 0.14 64)",
+  blue: "oklch(68% 0.05 250)",
+  magenta: "oklch(75% 0.11 320)",
+  cyan: "oklch(80% 0.11 205)",
+  white: "oklch(81% 0.005 250)",
+  brightRed: "oklch(78% 0.18 25)",
+  brightGreen: "oklch(86% 0.13 205)",
+  brightYellow: "oklch(88% 0.15 66)",
+  brightBlue: "oklch(74% 0.06 250)",
+  brightMagenta: "oklch(82% 0.12 320)",
+  brightCyan: "oklch(86% 0.13 205)",
+  brightWhite: "oklch(95% 0.003 250)",
 };
 
 export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
+  const activeTheme = useConsoleState().activeTheme;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
@@ -58,7 +86,8 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
     if (!container) return;
 
     let disposed = false;
-    const terminal = new XtermTerminal(TERMINAL_OPTIONS);
+    const terminal = new XtermTerminal({ ...TERMINAL_OPTIONS, theme: terminalThemeFor(activeTheme) });
+    terminalRef.current = terminal;
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
@@ -126,6 +155,7 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       disposed = true;
       resizeObserver.disconnect();
       connection.dispose();
+      terminalRef.current = null;
       connectionRef.current = null;
       // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
       // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
@@ -139,6 +169,12 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       }
     };
   }, [kind, sessionId]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.theme = terminalThemeFor(activeTheme);
+  }, [activeTheme]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
@@ -157,4 +193,8 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       </div>
     </section>
   );
+}
+
+function terminalThemeFor(theme: ThemeId): ITheme {
+  return theme === "carbon" ? CARBON_TERMINAL_THEME : MARITIME_TERMINAL_THEME;
 }

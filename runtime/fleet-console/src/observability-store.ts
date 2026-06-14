@@ -202,7 +202,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       .map((workspace) => ({
         tenantId: workspace.session.cliRunId,
         tenantLabel: workspace.session.tenantLabel,
-        cwd: workspace.session.cwd,
         createdAt: Date.parse(workspace.session.registeredAt),
         sessions: workspace.session.status === "deregistered" ? 0 : 1,
         status: workspace.session.status,

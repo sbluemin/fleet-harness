@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/fleet-carriers": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.19.0",

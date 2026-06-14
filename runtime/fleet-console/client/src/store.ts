@@ -8,6 +8,7 @@ import type {
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
+  ThemeId,
   TheaterInfo,
 } from "./types.js";
 
@@ -20,11 +21,14 @@ export interface SessionJob {
 
 const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
+const THEME_STORAGE_KEY = "fleet-console.activeTheme";
+const DEFAULT_THEME: ThemeId = "maritime";
 
 const listeners = new Set<Listener>();
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
+  activeTheme: readStoredTheme(),
   tenants: [],
   theaters: [],
   activeTheaterId: null,
@@ -56,6 +60,25 @@ export function subscribe(listener: Listener): () => void {
 export function setState(patch: Partial<ConsoleState>): void {
   state = { ...state, ...patch };
   emit();
+}
+
+export function initThemeFromStorage(): void {
+  applyThemeToDocument(readStoredTheme());
+}
+
+export function setActiveTheme(theme: ThemeId): void {
+  writeStoredTheme(theme);
+  applyThemeToDocument(theme);
+  setState({ activeTheme: theme });
+}
+
+export function applyThemeToDocument(theme: ThemeId): void {
+  if (typeof document === "undefined") return;
+  if (theme === "maritime") {
+    document.documentElement.removeAttribute("data-theme");
+    return;
+  }
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
 export function hydrateTerminalSessions(sessions: readonly SessionInfo[]): void {
@@ -382,6 +405,25 @@ function writeStoredActiveTheaterId(theaterId: string | null): void {
     } else {
       window.localStorage.removeItem(ACTIVE_THEATER_STORAGE_KEY);
     }
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
+function readStoredTheme(): ThemeId {
+  if (typeof window === "undefined") return DEFAULT_THEME;
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "maritime" || stored === "carbon" ? stored : DEFAULT_THEME;
+  } catch {
+    return DEFAULT_THEME;
+  }
+}
+
+function writeStoredTheme(theme: ThemeId): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
     // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

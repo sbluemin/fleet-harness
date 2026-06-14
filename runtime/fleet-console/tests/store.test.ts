@@ -25,9 +25,9 @@ import {
 } from "../client/src/store.js";
 import type { ObservedEvent, ObservedTenant, TheaterInfo } from "../client/src/types.js";
 
-const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", cwd: "/repo/alpha", createdAt: 1, sessions: 1, theaterId: "theater-a" };
-const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", path: "/repo/alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
-const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", path: "/repo/beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
+const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", createdAt: 1, sessions: 1, theaterId: "theater-a" };
+const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
+const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, tenantId = "tenant-1", jobId = "job-1"): ObservedEvent {
   return { id, tenantId, jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };

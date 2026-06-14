@@ -113,6 +113,14 @@ body::before {
     var(--ink-abyss);
 }
 
+:root[data-theme="carbon"] body::before {
+  background:
+    radial-gradient(900px 720px at 8% 4%, oklch(40% 0.04 230 / 18%), transparent 60%),
+    radial-gradient(820px 700px at 92% 96%, oklch(46% 0.08 55 / 14%), transparent 62%),
+    radial-gradient(560px 520px at 70% 18%, oklch(48% 0.05 260 / 9%), transparent 68%),
+    var(--ink-abyss);
+}
+
 body::after {
   background-image: var(--grain);
   background-size: 220px 220px;
