@@ -1,4 +1,5 @@
-import { createChildEnv, resolveBinary } from "../../process/resolve-bin.js";
+import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
+
 import type { AgentCliDefinition, AgentCliProfileOptions } from "../types.js";
 
 export const codexCli: AgentCliDefinition = {

@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+import { resolvePathBinary } from "@dotobokuri/core-agent";
+
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "../release.js";
-import { resolvePathBinary } from "./resolve-bin.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
 
 export interface TerminalLaunchResolverDeps {
@@ -41,7 +42,7 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
   return (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
     if (context?.kind === "shell") {
-      const shell = resolveWindowsLaunchBinary(resolveUserShell(env, platform), [], env, exists, platform, "user shell");
+      const shell = resolveWindowsLaunchBinary(resolveUserShell(env, platform), [], env, platform, "user shell");
       return { bin: shell.bin, args: shell.args, cwd, env: buildShellLaunchEnv(env) };
     }
     const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
@@ -51,7 +52,6 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
         override.bin,
         override.args,
         env,
-        exists,
         platform,
         "FLEET_TERMINAL_CMD",
       );
@@ -75,7 +75,6 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
       "fleet",
       [...FLEET_HEADLESS_NATIVE_FLAGS],
       env,
-      exists,
       platform,
       "fleet stable terminal binary",
     );
@@ -112,14 +111,13 @@ function resolveWindowsLaunchBinary(
   bin: string,
   args: readonly string[],
   env: NodeJS.ProcessEnv,
-  exists: (path: string) => boolean,
   platform: NodeJS.Platform,
   label: string,
 ): { readonly bin: string; readonly args: readonly string[] } {
   if (platform !== "win32") {
     return { bin, args };
   }
-  const resolved = resolvePathBinary(bin, env, { exists, platform });
+  const resolved = resolvePathBinary(bin, env, { platform });
   if (!resolved) {
     throw new Error(`${label} "${bin}" was not found on PATH; provide an absolute path or install it before launching a terminal session.`);
   }
