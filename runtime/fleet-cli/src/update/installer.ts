@@ -4,7 +4,7 @@ import { accessSync, constants, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { resolvePathBinary, type ResolvedBinary } from "../process/resolve-bin.js";
+import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-agent";
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
 import { stopRunningConsoleBeforeUpdate } from "./stop-console.js";

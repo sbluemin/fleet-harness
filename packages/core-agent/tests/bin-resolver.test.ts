@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolvePathBinary } from "../src/process/resolve-bin.js";
+import { resolvePathBinary } from "../src/bin-resolver.js";
 
 const TEMP_DIRS: string[] = [];
 

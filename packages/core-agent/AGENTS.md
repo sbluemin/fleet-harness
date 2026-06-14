@@ -7,6 +7,7 @@
 - Executor pool lifecycle, session reuse, status tracking, model/effort helpers, and builtin external MCP catalog.
 - Generic in-process MCP HTTP/JSON-RPC server primitives, executor session manager primitives, and the register data contract shared by callers.
 - The two-method `ExecutorPort` policy surface and the separate executor MCP runtime provider.
+- Windows binary resolution helpers (`resolveBinary`, `resolvePathBinary`, `createChildEnv`) for PATH/PATHEXT lookup and `.cmd`/`.bat` wrapping.
 - Package-local tests for executor reuse, MCP setup, register contracts, model helpers, and reset behavior.
 
 ## Boundaries

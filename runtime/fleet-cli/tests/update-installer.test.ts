@@ -6,7 +6,7 @@ import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolvePathBinary } from "../src/process/resolve-bin.js";
+import { resolvePathBinary } from "@dotobokuri/core-agent";
 import { readFleetCliRelease } from "../src/release.js";
 import { checkUpdateStatus } from "../src/update/check.js";
 import { __installerTestHooks, runFleetUpdate } from "../src/update/installer.js";
@@ -44,8 +44,8 @@ vi.mock("../src/update/check.js", () => ({
   resolveUpdateChannel: vi.fn(() => "latest"),
 }));
 
-vi.mock("../src/process/resolve-bin.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/process/resolve-bin.js")>();
+vi.mock("@dotobokuri/core-agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dotobokuri/core-agent")>();
   return {
     ...actual,
     resolvePathBinary: vi.fn(),

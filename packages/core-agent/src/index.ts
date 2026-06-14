@@ -67,6 +67,10 @@ export type { ResumeFailureKind } from "./internal/session-errors.js";
 export type {
   SelectableThinkingLevel,
 } from "./models.js";
+export type {
+  ResolvedBinary,
+  ResolveBinaryOptions,
+} from "./bin-resolver.js";
 export {
   cleanupExecutorSession,
   detachExecutorMcpForReuse,
@@ -102,6 +106,11 @@ export {
 export {
   resolveBuiltinExternalMcpServers,
 } from "./external-mcp.js";
+export {
+  createChildEnv,
+  resolveBinary,
+  resolvePathBinary,
+} from "./bin-resolver.js";
 export {
   disconnect,
   disconnectAll,
