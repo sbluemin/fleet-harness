@@ -485,13 +485,42 @@ describe("console static and terminal ticket boundary", () => {
     expect(sessions.sessions[0]?.theaterId).toBe(theater.id);
   });
 
+  it("terminates a terminal session over DELETE and drops it from the session list", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-delete-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalStartShell: () => createMockPty(),
+    });
+    const headers = { "Content-Type": "application/json" };
+
+    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
+    const grant = await picked.json() as { readonly folderGrantId: string };
+    const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    });
+    const session = await created.json() as { readonly sessionId: string };
+    const deleted = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, { method: "DELETE" });
+    const afterList = await getJson<{ sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
+    // 이미 종료된 세션 재삭제도 200으로 멱등 처리한다.
+    const repeat = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, { method: "DELETE" });
+
+    expect(created.status).toBe(200);
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toEqual({ ok: true });
+    expect(afterList.sessions).toHaveLength(0);
+    expect(repeat.status).toBe(200);
+  });
+
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
     let destroyed = 0;
     const handler = createTerminalUpgradeHandler({
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: () => undefined, attach: () => undefined, stop: () => undefined },
+      sessions: { canAttach: () => true, createSession: () => undefined, attach: () => undefined, terminate: () => false, stop: () => undefined },
       validateHost: () => true,
     });
 
@@ -524,6 +553,7 @@ describe("console static and terminal ticket boundary", () => {
         },
         createSession: () => undefined,
         attach: () => undefined,
+        terminate: () => false,
         stop: () => undefined,
       },
       validateHost: () => true,

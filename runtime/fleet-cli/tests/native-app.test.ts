@@ -89,13 +89,20 @@ describe("native terminal app", () => {
     const handleInput = vi.fn();
     const missionControlResize = vi.fn();
     const addInputListener = vi.fn();
+    const stdinListeners = new Set<(data: Buffer | string) => void>();
     const processOn = vi.spyOn(process, "on").mockImplementation(() => process);
     const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.spyOn(process.stdout, "on").mockImplementation(() => process.stdout);
     vi.spyOn(process.stdin, "setEncoding").mockImplementation(() => process.stdin);
     vi.spyOn(process.stdin, "resume").mockImplementation(() => process.stdin);
-    vi.spyOn(process.stdin, "on").mockImplementation(() => process.stdin);
-    vi.spyOn(process.stdin, "off").mockImplementation(() => process.stdin);
+    const stdinOn = vi.spyOn(process.stdin, "on").mockImplementation((_event, listener) => {
+      stdinListeners.add(listener as (data: Buffer | string) => void);
+      return process.stdin;
+    });
+    const stdinOff = vi.spyOn(process.stdin, "off").mockImplementation((_event, listener) => {
+      stdinListeners.delete(listener as (data: Buffer | string) => void);
+      return process.stdin;
+    });
 
     class FakeLocalTui {
       private listeners: Array<(data: string) => void> = [];
@@ -217,11 +224,15 @@ describe("native terminal app", () => {
     const { runNativeApp } = await import("../src/native-app.js");
 
     await runNativeApp();
-    tuiInstances[0]?.emitInput("\r");
+    for (const listener of stdinListeners) {
+      listener(Buffer.from("\r"));
+    }
 
     expect(tuiInstances).toHaveLength(1);
     expect(addInputListener).toHaveBeenCalledTimes(1);
     expect(handleInput).toHaveBeenCalledWith("\r");
+    expect(stdinOn).toHaveBeenCalledTimes(1);
+    expect(stdinOff).not.toHaveBeenCalled();
     // 런처가 빈 화면이 되지 않도록 Mission Control에 터미널 크기가 전파되어야 한다.
     expect(missionControlResize).toHaveBeenCalled();
     expect(processOn).toHaveBeenCalled();
@@ -232,6 +243,7 @@ describe("native terminal app", () => {
     vi.resetModules();
     const pty = new FakePty();
     const stdinListeners = new Set<(data: Buffer | string) => void>();
+    const handleInput = vi.fn();
     const unregisterCarrierStream = vi.fn();
     const missionControlResize = vi.fn();
     let carrierStreamHandler: ((event: {
@@ -257,11 +269,11 @@ describe("native terminal app", () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.spyOn(process.stdin, "setEncoding").mockImplementation(() => process.stdin);
     vi.spyOn(process.stdin, "resume").mockImplementation(() => process.stdin);
-    vi.spyOn(process.stdin, "on").mockImplementation((_event: string | symbol, listener: (...args: unknown[]) => void) => {
+    const stdinOn = vi.spyOn(process.stdin, "on").mockImplementation((_event: string | symbol, listener: (...args: unknown[]) => void) => {
       stdinListeners.add(listener as (data: Buffer | string) => void);
       return process.stdin;
     });
-    vi.spyOn(process.stdin, "off").mockImplementation((_event: string | symbol, listener: (...args: unknown[]) => void) => {
+    const stdinOff = vi.spyOn(process.stdin, "off").mockImplementation((_event: string | symbol, listener: (...args: unknown[]) => void) => {
       stdinListeners.delete(listener as (data: Buffer | string) => void);
       return process.stdin;
     });
@@ -275,10 +287,21 @@ describe("native terminal app", () => {
     }));
     vi.doMock("../src/tui/renderer.js", () => ({
       LocalTui: class {
-        addInputListener(): () => void {
-          return () => undefined;
+        private listeners: Array<(data: string) => void> = [];
+
+        addInputListener(listener: (data: string) => void): () => void {
+          this.listeners.push(listener);
+          return () => {
+            this.listeners = this.listeners.filter((candidate) => candidate !== listener);
+          };
         }
-        emitInput(): void {}
+
+        emitInput(data: string): void {
+          for (const listener of this.listeners) {
+            listener(data);
+          }
+        }
+
         refreshSize(): void {}
         requestRender(): void {}
         setChildren(): void {}
@@ -317,7 +340,7 @@ describe("native terminal app", () => {
         launchProfile = options.launchProfile;
         return {
           component: {
-            handleInput: () => undefined,
+            handleInput,
             invalidate: () => undefined,
             render: () => [],
           },
@@ -407,43 +430,36 @@ describe("native terminal app", () => {
     carrierStreamHandler?.(finalizedReminderEvent("after exit"));
 
     expect(startShell).toHaveBeenCalledTimes(1);
+    expect(stdinOn).toHaveBeenCalledTimes(1);
+    expect(stdinOff).not.toHaveBeenCalled();
     expect(pty.resizes).toEqual([{ cols: 120, rows: 50 }]);
     expect(pty.writes).toEqual(["active reminder\r", "typed"]);
     expect(exits).toEqual([{ exitCode: 0, signal: undefined }]);
+    for (const listener of stdinListeners) {
+      listener("after-exit-input");
+    }
+    expect(handleInput).toHaveBeenCalledWith("after-exit-input");
     expect(unregisterCarrierStream).not.toHaveBeenCalled();
   });
 
   it("hands off to a raw node-pty bridge and resumes Fleet in order", async () => {
     const events: string[] = [];
     const pty = new FakePty();
-    const stdinListeners = new Set<(data: Buffer | string) => void>();
-    const stdin = {
-      off: vi.fn((_event: "data", listener: (data: Buffer | string) => void) => {
-        stdinListeners.delete(listener);
-        events.push("stdin-off");
-        return stdin;
-      }),
-      on: vi.fn((_event: "data", listener: (data: Buffer | string) => void) => {
-        stdinListeners.add(listener);
-        events.push("stdin-on");
-        return stdin;
-      }),
-      resume: vi.fn(() => stdin),
-      setEncoding: vi.fn(() => stdin),
-    };
+    let activeChild: { readonly bridge: { readonly writeRaw: (data: string) => void } } | undefined;
     const startShellCalls: Array<{ readonly args: readonly string[]; readonly env: Record<string, string> }> = [];
     const launch = createNativeTerminalLaunchStrategy({
-      detachInput: () => events.push("detach"),
       getTerminalSize: () => ({ columns: 100, rows: 40 }),
+      onActiveChildChange: (child) => {
+        activeChild = child;
+        events.push(child === undefined ? "active-child:clear" : "active-child:set");
+      },
       onAfterResume: () => events.push("render"),
-      registerInput: () => events.push("reattach"),
       runCleanup: () => events.push("cleanup"),
       startShell: ((config, opts) => {
         events.push(`start:${config.profile.bin}:${opts.cols}x${opts.rows}`);
         startShellCalls.push({ args: config.profile.args, env: { ...config.profile.env } });
         return pty as never;
       }) as never,
-      stdin,
       stdout: {
         write: (chunk: string) => {
           events.push(chunk === KITTY_DISABLE ? "kitty-disable" : chunk === KITTY_ENABLE ? "kitty-enable" : `stdout:${chunk}`);
@@ -476,38 +492,32 @@ describe("native terminal app", () => {
     });
 
     expect(events).toEqual([
-      "detach",
       "kitty-disable",
       "ui-stop",
       "start:codex:80x24",
-      "stdin-on",
+      "active-child:set",
       "native-active",
     ]);
-    for (const listener of stdinListeners) {
-      listener("raw\r");
-    }
+    activeChild?.bridge.writeRaw("raw\r");
     pty.emitData("child-output");
     pty.emitExit({ exitCode: 0 });
     await promise;
 
     expect(events).toEqual([
-      "detach",
       "kitty-disable",
       "ui-stop",
       "start:codex:80x24",
-      "stdin-on",
+      "active-child:set",
       "native-active",
       "stdout:child-output",
-      "stdin-off",
+      "active-child:clear",
       "cleanup",
       "resize:100x40",
       "ui-start",
       "kitty-enable",
-      "reattach",
       "render",
     ]);
     expect(pty.writes).toEqual(["raw\r"]);
-    expect(stdin.off).toHaveBeenCalledTimes(1);
     expect(startShellCalls).toEqual([{ args: ["--model", "test"], env: { FLEET_TEST: "1" } }]);
     expect(startShellCalls[0]?.env).not.toBe(TEST_PROFILE.env);
     expect(exitEvents).toEqual([{ exitCode: 0, signal: undefined }]);
@@ -516,16 +526,8 @@ describe("native terminal app", () => {
   it("preserves node-pty signal exits for Mission Control diagnostics", async () => {
     const pty = new FakePty();
     const launch = createNativeTerminalLaunchStrategy({
-      detachInput: () => undefined,
-      registerInput: () => undefined,
       runCleanup: () => undefined,
       startShell: (() => pty as never) as never,
-      stdin: {
-        off: () => undefined as never,
-        on: () => undefined as never,
-        resume: () => undefined as never,
-        setEncoding: () => undefined as never,
-      },
       stdout: { write: () => true },
       ui: {
         refreshSize: () => undefined,
@@ -559,19 +561,16 @@ describe("native terminal app", () => {
   it("restores Fleet when native PTY startup throws", async () => {
     const events: string[] = [];
     const launch = createNativeTerminalLaunchStrategy({
-      detachInput: () => events.push("detach"),
-      registerInput: () => events.push("reattach"),
       runCleanup: () => events.push("cleanup"),
       startShell: (() => {
         throw new Error("spawn failed");
       }) as never,
-      stdin: {
-        off: () => undefined as never,
-        on: () => undefined as never,
-        resume: () => undefined as never,
-        setEncoding: () => undefined as never,
+      stdout: {
+        write: (chunk: string) => {
+          events.push(chunk === KITTY_DISABLE ? "kitty-disable" : chunk === KITTY_ENABLE ? "kitty-enable" : `stdout:${chunk}`);
+          return true;
+        },
       },
-      stdout: { write: () => true },
       ui: {
         refreshSize: () => events.push("resize"),
         start: () => events.push("ui-start"),
@@ -595,7 +594,7 @@ describe("native terminal app", () => {
     });
 
     await expect(promise).rejects.toThrow("spawn failed");
-    expect(events).toEqual(["detach", "ui-stop", "cleanup", "resize", "ui-start", "reattach"]);
+    expect(events).toEqual(["kitty-disable", "ui-stop", "cleanup", "resize", "ui-start", "kitty-enable"]);
   });
 });
 

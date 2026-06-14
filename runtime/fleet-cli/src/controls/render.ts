@@ -1,6 +1,5 @@
 import { LocalTui } from "../tui/renderer.js";
 
-import type { AgentCliId } from "../agent-cli/types.js";
 import type { Component, FleetPtyApi } from "./types.js";
 
 export type RenderCallback = () => void;
@@ -11,7 +10,6 @@ interface RenderSchedulerUi {
 }
 
 const RENDER_THROTTLE_MS = 16;
-const CLAUDE_CODE_AGENT_IDS = new Set<AgentCliId>(["claude", "claude-kimi"]);
 
 export function createRenderScheduler(ui: RenderSchedulerUi, beforeRender: () => void): RenderScheduler {
   let renderPending = false;
@@ -56,9 +54,7 @@ export function createFleetPtyViewport(fleetPty: FleetPtyApi): Component {
 
 export function createCursorPolicySync(options: {
   readonly cursorSync: boolean;
-  readonly cursorSyncExplicitlyEnabled?: boolean;
   readonly fleetPty: FleetPtyApi;
-  readonly getActiveAgentProfileId?: () => AgentCliId | undefined;
   readonly hasActiveMissionControlPanel: () => boolean;
   readonly ptyView: Component;
   readonly ui: LocalTui;
@@ -68,7 +64,6 @@ export function createCursorPolicySync(options: {
       !options.cursorSync
       || options.hasActiveMissionControlPanel()
       || options.fleetPty.hasActiveOverlay()
-      || shouldAutoDisableCursorSync(options.getActiveAgentProfileId?.(), options.cursorSyncExplicitlyEnabled === true)
     ) {
       options.ui.setCursorAnchorTarget(undefined);
       return;
@@ -76,11 +71,4 @@ export function createCursorPolicySync(options: {
 
     options.ui.setCursorAnchorTarget(options.ptyView);
   };
-}
-
-function shouldAutoDisableCursorSync(
-  profileId: AgentCliId | undefined,
-  cursorSyncExplicitlyEnabled = false,
-): boolean {
-  return process.platform === "win32" && !cursorSyncExplicitlyEnabled && profileId !== undefined && CLAUDE_CODE_AGENT_IDS.has(profileId);
 }

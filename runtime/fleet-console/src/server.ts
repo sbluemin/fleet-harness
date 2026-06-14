@@ -148,6 +148,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTerminalSessions(req, res), res);
       return;
     }
+    const terminalSessionItemMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)$/);
+    if (terminalSessionItemMatch) {
+      handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? ""));
+      return;
+    }
     if (pathname === "/observer/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
@@ -352,6 +357,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     await createTerminalSessionForCwd(cwd, res);
+  }
+
+  function handleTerminalSessionItem(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): void {
+    if (req.method !== "DELETE") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    // 운영자 X 버튼 종료 — PTY 자식을 끝내고(멱등) 콘솔 세션 목록에서도 제거한다. 이미 종료된 세션이어도 200으로 멱등 처리한다.
+    terminalSessions.terminate(sessionId);
+    observability.removeTerminalSession(sessionId);
+    writeJson(res, 200, { ok: true });
   }
 
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

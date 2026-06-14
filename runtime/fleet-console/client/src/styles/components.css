@@ -198,19 +198,29 @@
   width: 30px;
   height: 30px;
   place-items: center;
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 18px;
-  line-height: 1;
+  /* Theater 박스(theater-trigger)와 같은 글라스 웰 + 중립 헤어라인 + 브래스 아이콘 언어를 공유한다. */
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  color: var(--brass);
   transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring),
     transform var(--duration-fast) var(--ease-spring);
 }
 
+.workspace-add-button svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
 .workspace-add-button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  /* hover에서만 brass로 리프트 — theater-trigger:hover와 동일 교리. */
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
   transform: translateY(-1px);
 }
 
@@ -230,6 +240,61 @@
 
 .session-item {
   border-radius: var(--radius-lg);
+}
+
+/* Operation 카드 = 세션 행 위에 종료(X) 버튼을 우측 안쪽으로 겹쳐 앉히기 위한 포지셔닝 컨텍스트. */
+.session-row-shell {
+  position: relative;
+}
+
+.session-close {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  /* Theater 박스 아이콘 언어(가는 stroke·둥근 끝)를 공유하되, 종료=파괴 동작이라 hover에서 coral로 신호한다. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-spring);
+}
+
+.session-close svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+/* 행 hover·키보드 포커스·활성 세션에서만 X를 드러낸다 — 휴지 상태는 조용히 유지(계기판 언어). */
+.session-row-shell:hover .session-close,
+.session-row-shell:focus-within .session-close,
+.session-item.is-active .session-close {
+  opacity: 0.72;
+  pointer-events: auto;
+}
+
+/* X가 드러날 때 우측 카운트 배지와 겹치지 않도록 카운트를 가린다. */
+.session-row-shell:hover .tenant-count,
+.session-row-shell:focus-within .tenant-count {
+  opacity: 0;
+}
+
+.session-close:hover,
+.session-close:focus-visible {
+  opacity: 1;
+  color: var(--coral);
+  border-color: color-mix(in oklch, var(--coral) 42%, transparent);
+  background: color-mix(in oklch, var(--coral) 14%, transparent);
 }
 
 .session-item.is-active {
@@ -342,6 +407,7 @@
   border-radius: 999px;
   color: var(--ink-spectral);
   font-size: 10px;
+  transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
 .job-list {

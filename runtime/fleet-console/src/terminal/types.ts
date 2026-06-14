@@ -47,5 +47,7 @@ export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
   createSession(context: TerminalTicketContext): void;
   attach(socket: TerminalSocket, context: TerminalTicketContext): void;
+  // 운영자 종료(X 버튼) — PTY 자식까지 끝내고 onSessionExit로 콘솔 목록을 정리한다. 세션이 없으면 false(멱등).
+  terminate(sessionId: string): boolean;
   stop(): void;
 }

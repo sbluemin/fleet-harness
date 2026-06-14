@@ -69,6 +69,14 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     getOrCreateSession(context);
   }
 
+  function terminate(sessionId: string): boolean {
+    const session = sessions.get(sessionId);
+    if (!session) return false;
+    // PTY 자식까지 죽이고(removeSession 기본 killPty: true) onSessionExit로 콘솔 세션 목록을 정리한다.
+    removeSession(session);
+    return true;
+  }
+
   function stop(): void {
     for (const session of sessions.values()) {
       killSession(session);
@@ -160,7 +168,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     if (killPty) session.pty.kill();
   }
 
-  return { canAttach, createSession, attach, stop };
+  return { canAttach, createSession, attach, terminate, stop };
 }
 
 function toBuffer(data: TerminalSocketData): Buffer {

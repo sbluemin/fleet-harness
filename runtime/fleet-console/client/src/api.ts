@@ -96,6 +96,11 @@ export async function createTerminalSession(folderGrantId: string, signal?: Abor
   return assertSessionInfo(await response.json(), response.status);
 }
 
+export async function terminateTerminalSession(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/terminal/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", signal });
+  await assertOk(response);
+}
+
 export async function fetchTerminalSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
   const response = await fetch("/terminal/sessions", { signal });
   await assertOk(response);

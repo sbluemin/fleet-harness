@@ -17,6 +17,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Added `fleet --headless` flag to opt a session into registration with a running Fleet Console for live observation.
 - [core] Fleet now runs Fleet Console as the local fullstack control surface, removes the global gateway daemon, and returns MCP connectivity to per-CLI in-process servers.
 - [core-agent] Added shared CLI registration contracts and generic in-process MCP server primitives for Fleet runtimes.
+- [core] Fleet Console's Operations sidebar now has a close control on each operation card that terminates the underlying session and removes it from the rail.
 
 ### Changed
 - [core-unified-agent] Claude Code with Moonshot Kimi now runs the Kimi K2.7 coding model as the default, slot-mapped, and subagent model.
@@ -32,6 +33,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core] Renamed the Admiral protocol-mode skills to `protocol-baseline`, `protocol-midline`, `protocol-redline`, and `protocol-frontline`, and the auxiliary gap-audit skill to `assumption-audit`, dropping the redundant `fleet-` prefix from built-in skill identifiers.
 - [core] Fleet Console's native folder picker now opens the modern Windows Explorer-style folder dialog (address bar, search, path paste) instead of the legacy folder-tree dialog on both native Windows and WSL, and under WSL it starts in the Linux filesystem so WSL folders are reachable from the navigation pane without typing the path.
 - [core] Fleet Console browser payloads no longer expose raw working-directory paths; observer Theater and workspace rows now carry display labels only.
+- [core] Fleet Console's Operations launch (+) control now adopts the Theater selector's glass-well instrument styling with a vector plus mark.
 
 ### Removed
 - [wiki-web] Removed the standalone `fleet-wiki-ui` runtime package; Fleet Wiki browsing is now served by Fleet Console.
@@ -45,6 +47,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - [core-agent] The `@dotobokuri/core-mcp-server` package is no longer published or resolvable; migrate imports to `@dotobokuri/core-agent`.
 
 ### Fixed
+- [core] Claude Code on Windows now shows the terminal cursor and accepts Korean/CJK IME input correctly in the default (non-native) mode; previously the cursor was hidden and stray spaces were inserted while composing. Pass `--disable-cursor-sync` or set `FLEET_CURSOR_SYNC=0` to opt out on terminals where cursor projection still misbehaves.
 - [core] Fleet Console now preserves active CLI sessions across local server health refreshes until an explicit restart.
 - [core][wiki-web] Fixed Fleet Wiki web opening automatically in the browser when agent CLI sessions start.
 - [core] Fleet Console's native folder picker now works under WSL by opening the Windows folder dialog through interop and translating the chosen Windows or WSL path back to a native Linux path.
