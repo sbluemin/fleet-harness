@@ -1,4 +1,4 @@
-import { closeSync, mkdtempSync, openSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -139,6 +139,35 @@ describe("createDefaultTerminalLaunchResolver", () => {
       PWD: "/work/project",
       TERM: "xterm-256color",
     });
+  });
+
+  it("resolves an extensionless console entry symlink before building hook commands", async () => {
+    const binDir = makeTempDir();
+    const realEntry = touch(path.join(binDir, "cli.mjs"));
+    const symlinkEntry = path.join(binDir, "fleet-console");
+    const hookCommands: unknown[] = [];
+    symlinkSync(realEntry, symlinkEntry);
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      entryPath: symlinkEntry,
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      execPath: "/node",
+      agentRuntime: createFakeRuntime() as never,
+      injectProfile: (async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
+        hookCommands.push(options.hookExec);
+        return profile;
+      }) as never,
+      resolveProfile: (async () => baseProfile) as never,
+    });
+
+    await resolve("/work/project", { sessionId: "session-a" });
+
+    expect(hookCommands).toEqual([
+      {
+        command: "/node",
+        args: [realpathSync(realEntry), "hook", "subagents-context"],
+      },
+    ]);
   });
 
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {

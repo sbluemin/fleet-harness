@@ -1,5 +1,7 @@
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
+import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +47,7 @@ export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchCont
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
 const TERMINAL_TERM = "xterm-256color";
 const CONSOLE_ENTRY_PATH = fileURLToPath(import.meta.url);
+const HOOK_ENTRY_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".mjs", ".mts", ".ts", ".tsx"]);
 const require = createRequire(import.meta.url);
 
 export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
@@ -53,7 +56,7 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
   const execPath = deps.execPath ?? process.execPath;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const platform = deps.platform ?? process.platform;
-  const entryPath = deps.entryPath ?? process.argv[1] ?? CONSOLE_ENTRY_PATH;
+  const entryPath = resolveHookEntryPath(deps.entryPath ?? process.argv[1]);
   const tsxLoaderPath = deps.tsxLoaderPath ?? resolveOptionalPackage("tsx");
   const dataDir = deps.dataDir ?? getFleetDataDir();
   const infraServices = deps.infraServices ?? createInfraServices();
@@ -96,6 +99,23 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
       sessionId,
     });
   };
+}
+
+function resolveHookEntryPath(candidate: string | undefined): string {
+  if (candidate && hasHookEntryExtension(candidate)) return candidate;
+  if (candidate) {
+    try {
+      const realPath = fs.realpathSync(candidate);
+      if (hasHookEntryExtension(realPath)) return realPath;
+    } catch {
+      // 실행 엔트리 symlink 해석 실패 시 번들 엔트리로 폴백한다.
+    }
+  }
+  return CONSOLE_ENTRY_PATH;
+}
+
+function hasHookEntryExtension(entryPath: string): boolean {
+  return HOOK_ENTRY_EXTENSIONS.has(path.extname(entryPath));
 }
 
 export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly cols: number; readonly rows: number }): TerminalPtyHandle {

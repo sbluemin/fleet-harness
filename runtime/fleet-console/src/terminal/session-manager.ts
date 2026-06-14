@@ -39,6 +39,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   const startShell = deps.startShell ?? startTerminalShell;
   const scrollbackLimit = deps.scrollbackLimit ?? DEFAULT_SCROLLBACK_LIMIT;
   const sessions = new Map<string, TerminalSession>();
+  const pendingSessions = new Map<string, Promise<TerminalSession>>();
 
   function canAttach(): boolean {
     // 동시 세션 상한이 제거되어 항상 새 세션 부착을 허용한다.
@@ -85,13 +86,34 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   async function stop(): Promise<void> {
-    await Promise.all([...sessions.values()].map((session) => killSession(session)));
+    const pending = [...pendingSessions.values()];
+    pendingSessions.clear();
+    const launched = await Promise.allSettled(pending);
+    const sessionsToKill = new Set(sessions.values());
+    for (const result of launched) {
+      if (result.status === "fulfilled") sessionsToKill.add(result.value);
+    }
+    await Promise.all([...sessionsToKill].map((session) => killSession(session)));
     sessions.clear();
   }
 
   async function getOrCreateSession(context: TerminalTicketContext): Promise<TerminalSession> {
     const current = sessions.get(context.sessionId);
     if (current) return current;
+    const pending = pendingSessions.get(context.sessionId);
+    if (pending) return pending;
+    const pendingLaunch = launchSession(context);
+    pendingSessions.set(context.sessionId, pendingLaunch);
+    try {
+      return await pendingLaunch;
+    } finally {
+      if (pendingSessions.get(context.sessionId) === pendingLaunch) {
+        pendingSessions.delete(context.sessionId);
+      }
+    }
+  }
+
+  async function launchSession(context: TerminalTicketContext): Promise<TerminalSession> {
     const launch = await deps.launch(context.cwd, { sessionId: context.sessionId, kind: context.kind });
     let pty: TerminalPtyHandle;
     try {
@@ -164,10 +186,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function removeSession(session: TerminalSession, options: KillSessionOptions = {}): void {
-    if (!sessions.has(session.id)) return;
+    if (sessions.get(session.id) !== session) return;
     void killSession(session, options);
     sessions.delete(session.id);
-    // sessions.has 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
+    // 인스턴스 일치 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
     deps.onSessionExit?.(session.id);
   }
 
