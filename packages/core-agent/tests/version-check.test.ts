@@ -31,8 +31,8 @@ describe("version-check", () => {
   it("스코프 패키지 URL과 Accept 헤더를 사용해 latest dist-tag를 읽는다", async () => {
     const fetchMock = mockFetch(new Response(JSON.stringify({ "dist-tags": { latest: "1.2.3" } }), { status: 200 }));
 
-    await expect(fetchLatestVersion("@dotobokuri/fleet-cli")).resolves.toBe("1.2.3");
-    expect(fetchMock).toHaveBeenCalledWith("https://registry.npmjs.org/@dotobokuri%2ffleet-cli", expect.objectContaining({
+    await expect(fetchLatestVersion("@scope/widget")).resolves.toBe("1.2.3");
+    expect(fetchMock).toHaveBeenCalledWith("https://registry.npmjs.org/@scope%2fwidget", expect.objectContaining({
       headers: {
         Accept: "application/vnd.npm.install-v1+json",
       },
