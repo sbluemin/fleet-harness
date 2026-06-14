@@ -16,6 +16,19 @@ import { WorkspaceRegistry } from "../src/codex/workspaces.js";
 import type { TerminalLaunchSpec, TerminalPtyHandle } from "../src/terminal/types.js";
 import { createTerminalUpgradeHandler } from "../src/terminal/ws-handler.js";
 
+const fleetAdmiralMock = vi.hoisted(() => ({
+  agentRuntimeQueue: [] as unknown[],
+}));
+
+vi.mock("@dotobokuri/fleet-admiral", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dotobokuri/fleet-admiral")>();
+  return {
+    ...actual,
+    createFleetAgentRuntimeLifecycle: (deps: Parameters<typeof actual.createFleetAgentRuntimeLifecycle>[0]) =>
+      fleetAdmiralMock.agentRuntimeQueue.shift() ?? actual.createFleetAgentRuntimeLifecycle(deps),
+  };
+});
+
 interface ServerFixture {
   readonly dir: string;
   readonly carrierStoreDir: string;
@@ -50,6 +63,7 @@ let previousStaticIndex: string | null | undefined;
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
+  fleetAdmiralMock.agentRuntimeQueue.length = 0;
   resetStoreForTests();
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   restoreStaticIndex();
@@ -413,7 +427,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("originSessionId");
 
     await fixture.server.stop();
-    expect(runtime.cleanup).toHaveBeenCalledTimes(1);
+    expect(runtime.cleanup).not.toHaveBeenCalled();
   });
 
   it("injects finalized carrier reminders only into the originating live terminal session", async () => {
@@ -500,18 +514,36 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("sessionToken");
   });
 
-  it("releases server resources even when shared runtime cleanup rejects", async () => {
+  it("leaves injected agent runtime cleanup to the caller when the server stops", async () => {
     const runtime = createFakeConsoleRuntime([], []);
-    runtime.cleanup.mockRejectedValueOnce(new Error("cleanup boom"));
     const fixture = await startFixture({
       agentRuntime: runtime as never,
     });
 
-    await expect(fixture.server.stop()).rejects.toThrow("cleanup boom");
-    expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
-
     await expect(fixture.server.stop()).resolves.toBeUndefined();
-    expect(runtime.cleanup).toHaveBeenCalledTimes(2);
+    expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
+    expect(runtime.cleanup).not.toHaveBeenCalled();
+  });
+
+  it("cleans up internally created agent runtime when console startup fails before lock commit", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-start-fail-"));
+    const carrierStoreDir = path.join(dir, "fleet-home");
+    const lockDirFile = path.join(dir, "not-a-dir");
+    const runtime = createFakeConsoleRuntime([], []);
+    tempDirs.push(dir);
+    initStore(carrierStoreDir);
+    fs.writeFileSync(lockDirFile, "block lock dir");
+    fleetAdmiralMock.agentRuntimeQueue.push(runtime);
+    const server = createConsoleServer({
+      port: 0,
+      version: "test",
+      dataDir: carrierStoreDir,
+    });
+
+    await expect(server.start({ dir: lockDirFile, lockFile: path.join(lockDirFile, "console.lock") })).rejects.toThrow();
+    expect(runtime.cleanup).toHaveBeenCalledTimes(1);
+    await expect(server.stop()).resolves.toBeUndefined();
+    expect(runtime.cleanup).toHaveBeenCalledTimes(1);
   });
 
   it("returns folder picker cancellation without creating a grant", async () => {

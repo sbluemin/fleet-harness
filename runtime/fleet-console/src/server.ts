@@ -90,6 +90,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const infraServices = createInfraServices();
   const dataDir = deps.dataDir ?? getFleetDataDir();
   const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
+  const ownsAgentRuntime = deps.agentRuntime === undefined;
   const agentRuntime = deps.agentRuntime ?? createFleetAgentRuntimeLifecycle({
     authEnvResolver,
     dataDir,
@@ -160,6 +161,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let lockHandle: ConsoleLockHandle | null = null;
   let activeEndpoint: string | null = null;
   let agentRuntimeStopped = false;
+  let consoleResourcesDisposed = false;
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -554,34 +556,76 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return codex.getWorkspace(theaterId) ? "available" : "unavailable";
   }
 
+  async function cleanupOwnedAgentRuntime(): Promise<void> {
+    if (!ownsAgentRuntime || agentRuntimeStopped) return;
+    await agentRuntime.cleanup();
+    agentRuntimeStopped = true;
+  }
+
+  async function cleanupAfterFailedStart(): Promise<void> {
+    const current = server;
+    const currentLoopback = loopbackServer;
+    const currentLock = lockHandle;
+    server = null;
+    loopbackServer = null;
+    lockHandle = null;
+    activeEndpoint = null;
+    await Promise.all([
+      closeHttpServer(current),
+      closeHttpServer(currentLoopback),
+    ]);
+    await terminalSessions.stop();
+    await cleanupOwnedAgentRuntime();
+    disposeConsoleResources(currentLock);
+  }
+
+  function disposeConsoleResources(currentLock: ConsoleLockHandle | null): void {
+    if (consoleResourcesDisposed) {
+      currentLock?.release();
+      return;
+    }
+    consoleResourcesDisposed = true;
+    unsubscribeCarrierReminderRouter();
+    unsubscribeCarrierStream();
+    observability.clear();
+    terminalUpgrade.close();
+    currentLock?.release();
+  }
+
   return {
     host,
     port,
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
-      await new Promise<void>((resolve, reject) => {
-        const srv = createHttpServer(handleRequest, terminalUpgrade);
-        srv.once("error", reject);
-        srv.listen(port, host, async () => {
-          srv.off("error", reject);
-          const address = srv.address();
-          const actualPort = typeof address === "object" && address ? address.port : port;
-          const endpoint = `http://${host}:${actualPort}/`;
-          try {
-            const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
-            server = srv;
-            loopbackServer = localLoopbackServer;
-            lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
-            activeEndpoint = endpoint;
-            resolve();
-          } catch (err) {
-            srv.close();
-            server = null;
-            loopbackServer = null;
-            reject(err);
-          }
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const srv = createHttpServer(handleRequest, terminalUpgrade);
+          srv.once("error", reject);
+          srv.listen(port, host, async () => {
+            srv.off("error", reject);
+            const address = srv.address();
+            const actualPort = typeof address === "object" && address ? address.port : port;
+            const endpoint = `http://${host}:${actualPort}/`;
+            try {
+              const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
+              server = srv;
+              loopbackServer = localLoopbackServer;
+              lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
+              activeEndpoint = endpoint;
+              resolve();
+            } catch (err) {
+              await closeHttpServer(srv);
+              await closeHttpServer(loopbackServer);
+              server = null;
+              loopbackServer = null;
+              reject(err);
+            }
+          });
         });
-      });
+      } catch (error) {
+        await cleanupAfterFailedStart();
+        throw error;
+      }
       if (!activeEndpoint) throw new Error("Console endpoint unavailable");
       void updateCheck.refresh();
       return activeEndpoint;
@@ -603,18 +647,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         await terminalSessions.stop();
         if (!agentRuntimeStopped) {
           try {
-            await agentRuntime.cleanup();
-            agentRuntimeStopped = true;
+            if (ownsAgentRuntime) await cleanupOwnedAgentRuntime();
           } catch (error) {
             cleanupError = error;
           }
         }
       } finally {
-        unsubscribeCarrierReminderRouter();
-        unsubscribeCarrierStream();
-        observability.clear();
-        terminalUpgrade.close();
-        currentLock?.release();
+        disposeConsoleResources(currentLock);
       }
       if (cleanupError) throw cleanupError;
     },
