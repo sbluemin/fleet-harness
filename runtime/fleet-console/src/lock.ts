@@ -97,6 +97,11 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   }
 
   function assertLockModes(lockFile: string): void {
+    // POSIX 권한 비트(0700/0600)는 POSIX 플랫폼에서만 의미가 있다. Windows는 chmod로
+    // 이 모드를 강제할 수 없어 mode가 항상 0666으로 보고되므로, 같은 환경에서 uid 검사를
+    // 건너뛰는 것과 동일한 기준(getuid 부재)으로 POSIX 권한 검증도 건너뛴다.
+    // Windows에서는 사용자 프로필 하위 임시 디렉터리 ACL이 보호를 대신한다.
+    if (typeof process.getuid !== "function") return;
     const dir = path.dirname(lockFile);
     const dirMode = fsImpl.statSync(dir).mode & 0o777;
     const fileMode = fsImpl.statSync(lockFile).mode & 0o777;
