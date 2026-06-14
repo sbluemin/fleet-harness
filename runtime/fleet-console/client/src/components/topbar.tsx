@@ -1,9 +1,12 @@
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink } from "react-router-dom";
 
-import { toggleShell } from "../store.js";
+import { addTheater } from "../api.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, toggleShell } from "../store.js";
+import type { ConsoleState } from "../types.js";
 
 interface TopbarProps {
-  readonly connectionError: string | null;
+  readonly state: ConsoleState;
 }
 
 interface NavItem {
@@ -19,13 +22,13 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
 ];
 
-export function Topbar({ connectionError }: TopbarProps) {
+export function Topbar({ state }: TopbarProps) {
   // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
-  const alert = connectionError !== null;
+  const alert = state.connectionError !== null;
   return (
     <header className="topbar">
       <Link className="topbar-brand" to="/" aria-label="Welcome으로 이동">
-        <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={connectionError ?? undefined}>
+        <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={state.connectionError ?? undefined}>
           <svg viewBox="0 0 16 16" width="16" height="16">
             <path d="M8 1.8 9.5 6.5 14.2 8 9.5 9.5 8 14.2 6.5 9.5 1.8 8 6.5 6.5Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
             <path d="M8 4.7 8.7 7.3 11.3 8 8.7 8.7 8 11.3 7.3 8.7 4.7 8 7.3 7.3Z" fill="currentColor" />
@@ -35,28 +38,187 @@ export function Topbar({ connectionError }: TopbarProps) {
           Fleet<span className="topbar-title-thin">Console</span>
         </h1>
       </Link>
-      <nav className="topbar-nav" aria-label="주 내비게이션">
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
-          >
-            <span className="topbar-nav-icon" aria-hidden="true">
-              {item.icon === "operations" ? <OperationsIcon /> : <CodexIcon />}
-            </span>
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
-      </nav>
+      <TheaterControl state={state} />
       <div className="topbar-meta">
+        <nav className="topbar-nav" aria-label="주 내비게이션">
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
+            >
+              <span className="topbar-nav-icon" aria-hidden="true">
+                {item.icon === "operations" ? <OperationsIcon /> : <CodexIcon />}
+              </span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
         <button type="button" className="topbar-shell-button" onMouseDown={(event) => event.preventDefault()} onClick={toggleShell} aria-label="Shell" title="Shell (⌘`)">
           <ShellIcon />
           <span>Shell</span>
         </button>
       </div>
     </header>
+  );
+}
+
+// Theater 선택과 추가를 하나의 메뉴 컨트롤로 통합한다 — 트리거(현재 Theater) → 팝오버(목록 + 추가 액션).
+function TheaterControl({ state }: { readonly state: ConsoleState }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const active = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
+  const triggerLabel = active?.label ?? (state.theaters.length === 0 ? "No Theaters" : "Theater");
+
+  // 메뉴가 열린 동안에만 바깥 클릭/Escape로 닫는다.
+  useEffect(() => {
+    if (!open) return;
+    const handlePointer = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  // 열리는 순간 활성 항목(없으면 첫 항목)으로 포커스를 옮긴다.
+  useEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const target = menu.querySelector<HTMLElement>('[data-active="true"]') ?? menu.querySelector<HTMLElement>("[role^='menuitem']");
+    target?.focus();
+  }, [open]);
+
+  const handleSelect = (theaterId: string) => {
+    setActiveTheater(theaterId);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const handleAdd = async () => {
+    setOpen(false);
+    beginAddTheater();
+    try {
+      const result = await addTheater();
+      if ("cancelled" in result) {
+        cancelAddTheater();
+        return;
+      }
+      completeAddTheater(result);
+    } catch (error) {
+      failAddTheater(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  // 메뉴 안에서 ↑/↓로 항목 간 포커스를 순환 이동한다.
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const next = (current + delta + items.length) % items.length;
+    items[next]?.focus();
+  };
+
+  return (
+    <div className="theater-control" ref={containerRef}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={`theater-trigger ${open ? "is-open" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Theater"
+        title={active?.path ?? state.theaterError ?? undefined}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="theater-trigger-sigil" aria-hidden="true"><TheaterSigil /></span>
+        <span className="theater-trigger-label">{triggerLabel}</span>
+        <span className="theater-trigger-caret" aria-hidden="true"><CaretIcon /></span>
+      </button>
+      {open ? (
+        <div className="theater-menu" role="menu" aria-label="Theater" ref={menuRef} onKeyDown={handleMenuKeyDown}>
+          {state.theaters.length > 0 ? (
+            <ul className="theater-menu-list">
+              {state.theaters.map((theater) => {
+                const isActive = theater.id === state.activeTheaterId;
+                return (
+                  <li key={theater.id}>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isActive}
+                      data-active={isActive ? "true" : undefined}
+                      className={`theater-menu-item ${isActive ? "is-active" : ""}`}
+                      title={theater.path}
+                      onClick={() => handleSelect(theater.id)}
+                    >
+                      <span className="theater-menu-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+                      <span className="theater-menu-label">{theater.label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="theater-menu-empty">No Theaters yet.</p>
+          )}
+          <div className="theater-menu-divider" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="theater-menu-item theater-menu-add"
+            disabled={state.addingTheater}
+            onClick={handleAdd}
+          >
+            <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
+            <span className="theater-menu-label">{state.addingTheater ? "Theater 추가 중…" : "Theater 추가…"}</span>
+          </button>
+          {state.theaterError ? <p className="theater-menu-error">{state.theaterError}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TheaterSigil() {
+  // 작전지역(Theater) — 닻 모티프로 '정박/거점'을 표상한다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="3.2" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8 4.7v8.1M4.3 8.2H11.7M3.4 9.1A4.7 4.7 0 0 0 12.6 9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CaretIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.5 6.5 8 10l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 8.5 6.5 11.5 12.5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -78,6 +240,14 @@ function CodexIcon() {
       <path d="M8 2.9 9.6 8 8 13.1 6.4 8Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
       <path d="M8 2.9 9.6 8 6.4 8Z" fill="currentColor" />
       <circle cx="8" cy="8" r="0.85" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }

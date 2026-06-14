@@ -37,7 +37,10 @@ const LOOPBACK_ACCESS_HOSTS = ["127.0.0.1", "::1"];
 const LOOPBACK_HOST = "127.0.0.1";
 
 export interface CodexGateway {
+  getWorkspace(id: string): WorkspaceRegistration | null;
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
+  listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
+  registerWorkspace(cwd: string): Promise<WorkspaceRegistration>;
 }
 
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
@@ -104,7 +107,12 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     return initialWorkspace;
   }
 
-  return { handle };
+  return {
+    getWorkspace: (id) => workspaces.get(id),
+    handle,
+    listWorkspaceRegistrations: () => workspaces.listRegistrations(),
+    registerWorkspace: (cwd) => workspaces.register(cwd),
+  };
 }
 
 export function buildAllowedAccessSets(

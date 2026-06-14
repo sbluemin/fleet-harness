@@ -8,6 +8,7 @@ import type {
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
+  TheaterInfo,
 } from "./types.js";
 
 type Listener = () => void;
@@ -18,12 +19,17 @@ export interface SessionJob {
 }
 
 const TENANT_JOB_LIMIT = 200;
+const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 
 const listeners = new Set<Listener>();
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
   tenants: [],
+  theaters: [],
+  activeTheaterId: null,
+  addingTheater: false,
+  theaterError: null,
   sessions: {},
   sessionOrder: [],
   activeTerminalSessionId: null,
@@ -56,11 +62,56 @@ export function hydrateTerminalSessions(sessions: readonly SessionInfo[]): void 
   const byId: Record<string, SessionInfo> = {};
   for (const session of sessions) byId[session.sessionId] = normalizeSession(session);
   const sessionOrder = [...sessions].sort((a, b) => b.createdAt - a.createdAt).map((session) => session.sessionId);
+  const merged = mergeTenantBindings(byId, state.tenants);
   setState({
-    sessions: mergeTenantBindings(byId, state.tenants),
+    sessions: merged,
     sessionOrder,
-    activeTerminalSessionId: state.activeTerminalSessionId && byId[state.activeTerminalSessionId] ? state.activeTerminalSessionId : state.activeTerminalSessionId,
+    activeTerminalSessionId: resolveVisibleSessionId(state.activeTheaterId, merged, sessionOrder, state.activeTerminalSessionId),
   });
+}
+
+export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {
+  const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId);
+  setState({
+    theaters,
+    activeTheaterId,
+    activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, state.sessions, state.sessionOrder, state.activeTerminalSessionId),
+    selectedJobId: null,
+  });
+}
+
+export function setActiveTheater(theaterId: string | null): void {
+  writeStoredActiveTheaterId(theaterId);
+  setState({
+    activeTheaterId: theaterId,
+    activeTerminalSessionId: resolveVisibleSessionId(theaterId, state.sessions, state.sessionOrder, null),
+    selectedJobId: null,
+  });
+}
+
+export function beginAddTheater(): void {
+  setState({ addingTheater: true, theaterError: null });
+}
+
+export function completeAddTheater(theater: TheaterInfo): void {
+  const theaters = [theater, ...state.theaters.filter((item) => item.id !== theater.id)];
+  writeStoredActiveTheaterId(theater.id);
+  setState({
+    theaters,
+    activeTheaterId: theater.id,
+    addingTheater: false,
+    theaterError: null,
+    activeTerminalSessionId: resolveVisibleSessionId(theater.id, state.sessions, state.sessionOrder, null),
+    selectedJobId: null,
+  });
+}
+
+export function cancelAddTheater(): void {
+  setState({ addingTheater: false, theaterError: null });
+}
+
+export function failAddTheater(error: string): void {
+  setState({ addingTheater: false, theaterError: error });
 }
 
 export function selectTerminalSession(sessionId: string | null): void {
@@ -76,7 +127,7 @@ export function completeCreateTerminalSession(session: SessionInfo): void {
   setState({
     sessions: { ...state.sessions, [normalized.sessionId]: normalized },
     sessionOrder: [normalized.sessionId, ...state.sessionOrder.filter((sessionId) => sessionId !== normalized.sessionId)],
-    activeTerminalSessionId: normalized.sessionId,
+    activeTerminalSessionId: !state.activeTheaterId || sessionBelongsToTheater(normalized, state.activeTheaterId) ? normalized.sessionId : state.activeTerminalSessionId,
     creatingTerminalSession: false,
     terminalSessionError: null,
     selectedJobId: null,
@@ -132,6 +183,7 @@ export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {
     tenants,
     sessions,
     tenantOrder,
+    activeTerminalSessionId: resolveVisibleSessionId(state.activeTheaterId, sessions, state.sessionOrder, state.activeTerminalSessionId),
   });
 }
 
@@ -214,6 +266,7 @@ export function applyTruncation(tenantId: string, tenantLabel: string | undefine
 
 export function selectedJob(current: ConsoleState): JobView | null {
   if (!current.selectedJobId) return null;
+  if (current.activeTheaterId && current.activeTerminalSessionId && !theaterSessionOrder(current).includes(current.activeTerminalSessionId)) return null;
   const tenantId = activeSessionTenantId(current);
   if (!tenantId) return null;
   return current.tenantJobs[tenantId]?.jobs[current.selectedJobId] ?? null;
@@ -222,6 +275,19 @@ export function selectedJob(current: ConsoleState): JobView | null {
 export function activeSessionTenantId(current: ConsoleState): string | null {
   if (!current.activeTerminalSessionId) return null;
   return resolveSessionTenantId(current.sessions[current.activeTerminalSessionId]);
+}
+
+export function activeTheater(current: ConsoleState): TheaterInfo | null {
+  return current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
+}
+
+export function theaterSessions(current: ConsoleState): readonly SessionInfo[] {
+  return theaterSessionOrder(current).map((sessionId) => current.sessions[sessionId]).filter((session): session is SessionInfo => Boolean(session));
+}
+
+export function theaterSessionOrder(current: ConsoleState): readonly string[] {
+  if (!current.activeTheaterId) return [];
+  return current.sessionOrder.filter((sessionId) => sessionBelongsToTheater(current.sessions[sessionId], current.activeTheaterId));
 }
 
 export function sessionJobs(current: ConsoleState, session: SessionInfo): readonly SessionJob[] {
@@ -269,9 +335,56 @@ function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, te
       status: tenant.status === "deregistered" ? "closed" : "registered",
       tenantId: tenant.tenantId,
       registrationId: tenant.registrationId,
+      theaterId: tenant.theaterId ?? session.theaterId,
     };
   }
   return next;
+}
+
+function chooseActiveTheaterId(theaters: readonly TheaterInfo[], currentActiveId: string | null): string | null {
+  const ids = new Set(theaters.map((theater) => theater.id));
+  const stored = readStoredActiveTheaterId();
+  if (stored && ids.has(stored)) return stored;
+  if (currentActiveId && ids.has(currentActiveId)) return currentActiveId;
+  return theaters[0]?.id ?? null;
+}
+
+function resolveVisibleSessionId(
+  theaterId: string | null,
+  sessions: Readonly<Record<string, SessionInfo>>,
+  sessionOrder: readonly string[],
+  preferredSessionId: string | null,
+): string | null {
+  if (!theaterId) return preferredSessionId && sessions[preferredSessionId] ? preferredSessionId : sessionOrder[0] ?? null;
+  if (preferredSessionId && sessionBelongsToTheater(sessions[preferredSessionId], theaterId)) return preferredSessionId;
+  return sessionOrder.find((sessionId) => sessionBelongsToTheater(sessions[sessionId], theaterId)) ?? null;
+}
+
+function sessionBelongsToTheater(session: SessionInfo | undefined, theaterId: string | null): boolean {
+  if (!session || !theaterId) return false;
+  return session.theaterId === theaterId;
+}
+
+function readStoredActiveTheaterId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(ACTIVE_THEATER_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredActiveTheaterId(theaterId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (theaterId) {
+      window.localStorage.setItem(ACTIVE_THEATER_STORAGE_KEY, theaterId);
+    } else {
+      window.localStorage.removeItem(ACTIVE_THEATER_STORAGE_KEY);
+    }
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
 }
 
 function pruneJobs(jobs: Record<string, JobView>, order: readonly string[]): Record<string, JobView> {

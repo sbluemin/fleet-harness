@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 
 import type {
@@ -17,6 +16,7 @@ import type {
   ConsoleTerminalSessionInfo,
   ConsoleTerminalSessionStatus,
 } from "./api-types.js";
+import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
 
 export interface ConsoleObservabilityStoreDeps {
   readonly now?: () => number;
@@ -35,6 +35,7 @@ export interface PushEventsResult {
 interface WorkspaceState {
   session: CliSession;
   readonly ingestToken: string;
+  readonly theaterId: string;
   readonly terminalSessionId?: string;
   highestSeq: number;
   readonly seenSeqs: Set<number>;
@@ -46,6 +47,7 @@ interface PendingTerminalSessionState {
   readonly canonicalCwd: string;
   readonly cwdLabel: string;
   readonly createdAt: number;
+  readonly theaterId: string;
   readonly terminalSessionId: string;
   status: ConsoleTerminalSessionStatus;
   registrationId?: string;
@@ -112,6 +114,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const state: WorkspaceState = {
       session,
       ingestToken,
+      theaterId: workspaceHash(canonicalizeTheaterPathSync(input.cwd)),
       terminalSessionId: terminalSession?.terminalSessionId,
       highestSeq: 0,
       seenSeqs: new Set(),
@@ -205,6 +208,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
         status: workspace.session.status,
         cliRunId: workspace.session.cliRunId,
         registrationId: workspace.session.registrationId,
+        theaterId: workspace.theaterId,
         terminalSessionId: workspace.terminalSessionId,
       }))
       .sort((a, b) => b.createdAt - a.createdAt);
@@ -270,9 +274,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const state: PendingTerminalSessionState = {
       sessionId: input.sessionId,
       cwd: input.cwd,
-      canonicalCwd: canonicalizeCwd(input.cwd),
+      canonicalCwd: canonicalizeTheaterPathSync(input.cwd),
       cwdLabel: path.basename(input.cwd) || input.cwd,
       createdAt,
+      theaterId: workspaceHash(canonicalizeTheaterPathSync(input.cwd)),
       terminalSessionId: input.sessionId,
       status: "starting",
     };
@@ -342,7 +347,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function bindPendingTerminalSession(input: RegisterCliRequest): PendingTerminalSessionState | null {
     const pending = terminalSessionsById.get(input.cliRunId);
     if (!pending) return null;
-    if (pending.canonicalCwd !== canonicalizeCwd(input.cwd)) {
+    if (pending.canonicalCwd !== canonicalizeTheaterPathSync(input.cwd)) {
       throw new Error("Terminal session registration cwd mismatch");
     }
     return pending;
@@ -406,15 +411,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 }
 
-function canonicalizeCwd(cwd: string): string {
-  const resolved = path.resolve(cwd);
-  try {
-    return fs.realpathSync.native(resolved);
-  } catch {
-    return resolved;
-  }
-}
-
 function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTerminalSessionInfo {
   return {
     sessionId: state.sessionId,
@@ -422,6 +418,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     cwdLabel: state.cwdLabel,
     status: state.status,
     createdAt: state.createdAt,
+    theaterId: state.theaterId,
     registrationId: state.registrationId,
     cliRunId: state.cliRunId,
     tenantId: state.cliRunId,

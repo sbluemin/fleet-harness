@@ -9,7 +9,7 @@ import type {
 } from "@dotobokuri/core-agent";
 
 import { readBearerToken } from "./auth.js";
-import type { ConsoleHealth, ConsoleObservedWorkspace } from "./api-types.js";
+import type { ConsoleHealth, ConsoleObservedWorkspace, ConsoleTheaterInfo } from "./api-types.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
@@ -23,6 +23,8 @@ import { createDefaultTerminalLaunchResolver, type TerminalLaunchResolver, start
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
 import { createTerminalTicketRegistry } from "./terminal/tickets.js";
 import { createTerminalUpgradeHandler, TERMINAL_TICKET_PATH } from "./terminal/ws-handler.js";
+import type { TheaterRegistration } from "./theaters.js";
+import { TheaterRegistry } from "./theaters.js";
 
 declare const __PKG_VERSION__: string | undefined;
 
@@ -60,6 +62,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const version = deps.version ?? (typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev");
   const lock = createConsoleLock({ hostname: () => host });
   const observability = createConsoleObservabilityStore();
+  const theaters = new TheaterRegistry();
   const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
   const codex = createCodexGateway({
@@ -131,6 +134,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/terminal/sessions") {
       runAsyncHandler(handleTerminalSessions(req, res), res);
+      return;
+    }
+    if (pathname === "/observer/theaters") {
+      runAsyncHandler(handleObserverTheaters(req, res), res);
+      return;
+    }
+    const theaterSessionMatch = pathname.match(/^\/observer\/theaters\/([^/]+)\/sessions$/);
+    if (theaterSessionMatch) {
+      runAsyncHandler(handleObserverTheaterSessions(req, res, decodeURIComponent(theaterSessionMatch[1] ?? "")), res);
       return;
     }
     if (pathname === "/observer/status") {
@@ -323,6 +335,62 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
+    await createTerminalSessionForCwd(cwd, res);
+  }
+
+  async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method === "GET") {
+      writeJson(res, 200, { theaters: listTheaterInfos() });
+      return;
+    }
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const result = await pickTerminalFolder();
+    if (result.kind === "cancelled") {
+      writeJson(res, 200, { cancelled: true });
+      return;
+    }
+    if (result.kind === "error") {
+      writeJson(res, result.error === "invalid_folder" ? 400 : 503, { error: result.error });
+      return;
+    }
+    const theater = await theaters.register(result.cwd);
+    let hasWiki = false;
+    try {
+      await codex.registerWorkspace(result.cwd);
+      hasWiki = true;
+    } catch (error) {
+      if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
+        console.warn(`[fleet-console] Codex workspace registration skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    writeJson(res, 200, toTheaterInfo(theater, hasWiki));
+  }
+
+  async function handleObserverTheaterSessions(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const theater = theaters.get(theaterId);
+    if (!theater) {
+      writeJson(res, 404, { error: "theater_not_found" });
+      return;
+    }
+    await createTerminalSessionForCwd(theater.path, res);
+  }
+
+  async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse): Promise<void> {
     const sessionId = crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd });
     try {
@@ -403,6 +471,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return workspace ? [workspace] : [];
     }
     return observability.listWorkspaces();
+  }
+
+  function listTheaterInfos(): readonly ConsoleTheaterInfo[] {
+    return theaters.list().map((theater) => toTheaterInfo(theater, codex.getWorkspace(theater.id) !== null));
+  }
+
+  function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
+    return {
+      id: theater.id,
+      label: theater.label,
+      path: theater.path,
+      createdAt: theater.registeredAt,
+      lastOpenedAt: theater.lastOpenedAt,
+      hasWiki,
+      activeAdmiralCount: observability.listWorkspaces()
+        .filter((workspace) => workspace.theaterId === theater.id && workspace.status !== "deregistered")
+        .length,
+    };
   }
 
   return {

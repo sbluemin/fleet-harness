@@ -2,12 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConsoleLockPayload } from "../src/api-types.js";
 import { createConsoleLock } from "../src/lock.js";
 import { createConsoleObservabilityStore } from "../src/observability-store.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../src/server.js";
+import { workspaceHash } from "../src/theater.js";
+import { TheaterRegistry } from "../src/theaters.js";
+import { WorkspaceRegistry } from "../src/codex/workspaces.js";
 import type { TerminalLaunchSpec, TerminalPtyHandle } from "../src/terminal/types.js";
 import { createTerminalUpgradeHandler } from "../src/terminal/ws-handler.js";
 
@@ -44,7 +47,7 @@ describe("console register ingest", () => {
 
     const workspaces = await getJson<{ tenants: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/tenants`);
     expect(JSON.stringify(workspaces)).not.toContain(registration.ingestToken);
-    expect(workspaces.tenants[0]).toMatchObject({ tenantId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", status: "online" });
+    expect(workspaces.tenants[0]).toMatchObject({ tenantId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", status: "online", theaterId: workspaceHash("/repo/a") });
   });
 
   it("requires ingest auth, ignores duplicate seq, emits gap truncation, and assigns global observedId", async () => {
@@ -123,7 +126,8 @@ describe("console register ingest", () => {
     const session = store.listTerminalSessions()[0];
 
     expect(workspace).toMatchObject({ cliRunId: "session-a", registrationId: registration.registrationId, terminalSessionId: "session-a" });
-    expect(session).toMatchObject({ sessionId: "session-a", status: "registered", registrationId: registration.registrationId, tenantId: "session-a" });
+    expect(workspace?.theaterId).toBe(workspaceHash(fs.realpathSync.native(dir)));
+    expect(session).toMatchObject({ sessionId: "session-a", status: "registered", registrationId: registration.registrationId, tenantId: "session-a", theaterId: workspaceHash(fs.realpathSync.native(dir)) });
   });
 
   it("rejects pending terminal session binding when cliRunId matches but cwd does not", () => {
@@ -262,6 +266,118 @@ describe("console static and terminal ticket boundary", () => {
       TERM: "xterm-256color",
     });
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
+  });
+
+  it("registers wiki-less Theaters as the observer superset without browser tokens", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+    });
+
+    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const payload = await created.json() as Record<string, unknown>;
+    const listed = await getJson<{ theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/theaters`);
+    const serialized = JSON.stringify({ payload, listed });
+
+    expect(created.status).toBe(200);
+    expect(payload).toMatchObject({
+      id: workspaceHash(fs.realpathSync.native(dir)),
+      label: path.basename(dir),
+      path: dir,
+      hasWiki: false,
+      activeAdmiralCount: 0,
+    });
+    expect(typeof payload.createdAt).toBe("string");
+    expect(typeof payload.lastOpenedAt).toBe("string");
+    expect(listed.theaters).toHaveLength(1);
+    expect(serialized).not.toContain(fixture.lock.token);
+    expect(serialized).not.toContain("ingestToken");
+    expect(serialized).not.toContain("folderGrantId");
+    expect(serialized).not.toContain("ticket");
+  });
+
+  it("marks wiki-backed Theaters as the Codex workspace subset", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-wiki-"));
+    tempDirs.push(dir);
+    createWikiRoot(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+    });
+
+    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const payload = await created.json() as { readonly id: string; readonly hasWiki: boolean };
+    const health = await fetch(`${fixture.endpoint}console/codex/w/${payload.id}/api/health`);
+
+    expect(created.status).toBe(200);
+    expect(payload).toMatchObject({ id: workspaceHash(fs.realpathSync.native(dir)), hasWiki: true });
+    expect(health.status).toBe(200);
+  });
+
+  it("keeps Theater, Codex workspace, and session ids aligned for case-variant native realpaths", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-case-"));
+    const variantDir = path.join(path.dirname(dir), path.basename(dir).toUpperCase());
+    tempDirs.push(dir);
+    createWikiRoot(dir);
+    const nativeRealpath = fs.realpathSync.native;
+    const realpathSpy = vi.spyOn(fs.realpathSync, "native").mockImplementation((input) => {
+      if (path.resolve(String(input)) === path.resolve(variantDir)) return nativeRealpath(dir);
+      return nativeRealpath(input);
+    });
+    try {
+      const theaters = new TheaterRegistry();
+      const codexWorkspaces = new WorkspaceRegistry();
+      const observability = createConsoleObservabilityStore({ randomToken: () => "token" });
+      const theater = await theaters.register(variantDir);
+      const codexWorkspace = await codexWorkspaces.register(variantDir);
+      observability.register({ protocolVersion: "1", cliRunId: "cli-a", tenantLabel: "Alpha", cwd: variantDir, pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
+      const session = observability.listWorkspaces()[0];
+
+      expect(theater.id).toBe(workspaceHash(nativeRealpath(dir)));
+      expect(codexWorkspace.id).toBe(theater.id);
+      expect(session?.theaterId).toBe(theater.id);
+    } finally {
+      realpathSpy.mockRestore();
+    }
+  });
+
+  it("handles Theater picker cancellation and errors", async () => {
+    const cancelled = await startFixture({
+      terminalPickFolder: async () => ({ kind: "cancelled" }),
+    });
+    const failed = await startFixture({
+      terminalPickFolder: async () => ({ kind: "error", error: "invalid_folder" }),
+    });
+
+    await expect((await fetch(`${cancelled.endpoint}observer/theaters`, { method: "POST" })).json()).resolves.toEqual({ cancelled: true });
+    const errorResponse = await fetch(`${failed.endpoint}observer/theaters`, { method: "POST" });
+    await expect(errorResponse.json()).resolves.toEqual({ error: "invalid_folder" });
+    expect(errorResponse.status).toBe(400);
+  });
+
+  it("launches Theater sessions from the registered path and rejects unknown Theater ids", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-launch-"));
+    tempDirs.push(dir);
+    const launches: TerminalLaunchSpec[] = [];
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalStartShell: (launch) => {
+        launches.push(launch);
+        return createMockPty();
+      },
+    });
+    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+    const unknown = await fetch(`${fixture.endpoint}observer/theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
+    const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/ignored" }) });
+    const session = await created.json() as { readonly sessionId: string; readonly theaterId: string; readonly cwd?: unknown };
+    const sessions = await getJson<{ sessions: ReadonlyArray<{ readonly theaterId: string }> }>(`${fixture.endpoint}terminal/sessions`);
+
+    expect(unknown.status).toBe(404);
+    expect(created.status).toBe(200);
+    expect(session).toMatchObject({ theaterId: theater.id });
+    expect(session.cwd).toBeUndefined();
+    expect(launches[0]?.cwd).toBe(dir);
+    expect(sessions.sessions[0]?.theaterId).toBe(theater.id);
   });
 
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
@@ -412,4 +528,15 @@ function createMockPty(): TerminalPtyHandle {
     resize: () => undefined,
     kill: () => undefined,
   };
+}
+
+function createWikiRoot(cwd: string): void {
+  const knowledgeRoot = path.join(cwd, ".fleet", "knowledge");
+  fs.mkdirSync(path.join(knowledgeRoot, "wiki"), { recursive: true });
+  fs.mkdirSync(path.join(knowledgeRoot, "raw"), { recursive: true });
+  fs.mkdirSync(path.join(knowledgeRoot, "queue"), { recursive: true });
+  fs.mkdirSync(path.join(knowledgeRoot, "archive"), { recursive: true });
+  fs.mkdirSync(path.join(knowledgeRoot, "conflicts"), { recursive: true });
+  fs.writeFileSync(path.join(knowledgeRoot, "wiki", "index.md"), "# Index\n");
+  fs.writeFileSync(path.join(knowledgeRoot, "log.md"), "## Log\n");
 }

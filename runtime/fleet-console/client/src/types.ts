@@ -7,7 +7,18 @@ export interface ObservedTenant {
   readonly status?: "online" | "offline" | "deregistered";
   readonly cliRunId?: string;
   readonly registrationId?: string;
+  readonly theaterId?: string;
   readonly terminalSessionId?: string;
+}
+
+export interface TheaterInfo {
+  readonly id: string;
+  readonly label: string;
+  readonly path: string;
+  readonly createdAt: string;
+  readonly lastOpenedAt: string;
+  readonly hasWiki: boolean;
+  readonly activeAdmiralCount: number;
 }
 
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error";
@@ -18,6 +29,7 @@ export interface SessionInfo {
   readonly cwdLabel: string;
   readonly status: SessionStatus;
   readonly createdAt: number;
+  readonly theaterId?: string;
   readonly tenantId?: string;
   readonly registrationId?: string;
 }
@@ -108,6 +120,10 @@ export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly tenants: readonly ObservedTenant[];
+  readonly theaters: readonly TheaterInfo[];
+  readonly activeTheaterId: string | null;
+  readonly addingTheater: boolean;
+  readonly theaterError: string | null;
   readonly sessions: Readonly<Record<string, SessionInfo>>;
   readonly sessionOrder: readonly string[];
   readonly activeTerminalSessionId: string | null;

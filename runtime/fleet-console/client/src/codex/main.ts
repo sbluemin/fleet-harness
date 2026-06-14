@@ -29,13 +29,16 @@ import { clearQueueState, getQueueState, loadPatchDetail, loadQueueList, rejectC
 import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
 import {
   conflictDetailPath,
+  currentWorkspaceId,
   currentRoute,
   entryPath,
   homePath,
   initRouter,
   logPath,
   navigate,
+  replace,
   subscribeRoute,
+  workspaceHomePath,
 } from "./router";
 import type { Route } from "./router";
 import {
@@ -54,7 +57,16 @@ import type { AppState } from "./state";
 let app: HTMLElement;
 let shellPainted = false;
 
-export function mountCodexApp(root: HTMLElement): () => void {
+export interface CodexAppController {
+  navigateToWorkspace(workspaceId: string): void;
+  destroy(): void;
+}
+
+interface MountCodexAppOptions {
+  readonly initialWorkspaceId?: string | null;
+}
+
+export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions = {}): CodexAppController {
   app = root;
   shellPainted = false;
   initLanguage();
@@ -72,17 +84,25 @@ export function mountCodexApp(root: HTMLElement): () => void {
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("submit", handleDocumentSubmit);
   installDiagramHydrator(root);
+  if (options.initialWorkspaceId && currentWorkspaceId() !== options.initialWorkspaceId) {
+    replace(workspaceHomePath(options.initialWorkspaceId));
+  }
   void boot();
 
-  return () => {
-    unsubscribeLanguage();
-    unsubscribeState();
-    unsubscribeRawState();
-    unsubscribeQueueState();
-    unsubscribeRoute();
-    document.removeEventListener("click", handleDocumentClick);
-    document.removeEventListener("submit", handleDocumentSubmit);
-    root.innerHTML = "";
+  return {
+    navigateToWorkspace(workspaceId: string): void {
+      if (currentWorkspaceId() !== workspaceId) navigate(workspaceHomePath(workspaceId));
+    },
+    destroy(): void {
+      unsubscribeLanguage();
+      unsubscribeState();
+      unsubscribeRawState();
+      unsubscribeQueueState();
+      unsubscribeRoute();
+      document.removeEventListener("click", handleDocumentClick);
+      document.removeEventListener("submit", handleDocumentSubmit);
+      root.innerHTML = "";
+    },
   };
 }
 

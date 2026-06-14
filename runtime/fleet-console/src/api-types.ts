@@ -30,8 +30,29 @@ export interface ConsoleObservedWorkspace {
   readonly status: CliSession["status"];
   readonly cliRunId: string;
   readonly registrationId: string;
+  readonly theaterId: string;
   readonly terminalSessionId?: string;
 }
+
+export interface ConsoleTheaterInfo {
+  readonly id: string;
+  readonly label: string;
+  readonly path: string;
+  readonly createdAt: string;
+  readonly lastOpenedAt: string;
+  readonly hasWiki: boolean;
+  readonly activeAdmiralCount: number;
+}
+
+export interface ConsoleObserverTheatersResponse {
+  readonly theaters: readonly ConsoleTheaterInfo[];
+}
+
+export interface CreateTheaterCancelledResponse {
+  readonly cancelled: true;
+}
+
+export interface CreateTheaterResponse extends ConsoleTheaterInfo {}
 
 export type ConsoleTerminalSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error";
 
@@ -41,6 +62,7 @@ export interface ConsoleTerminalSessionInfo {
   readonly cwdLabel: string;
   readonly status: ConsoleTerminalSessionStatus;
   readonly createdAt: number;
+  readonly theaterId: string;
   readonly registrationId?: string;
   readonly cliRunId?: string;
   readonly tenantId?: string;
@@ -57,6 +79,8 @@ export interface CreateTerminalSessionRequest {
 }
 
 export interface CreateTerminalSessionResponse extends ConsoleTerminalSessionInfo {}
+
+export interface CreateTheaterSessionResponse extends ConsoleTerminalSessionInfo {}
 
 export interface ListTerminalSessionsResponse {
   readonly sessions: readonly ConsoleTerminalSessionInfo[];

@@ -1,4 +1,4 @@
-import type { ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
+import type { ObservedTenant, SessionInfo, SnapshotTenantJobs, TheaterInfo } from "./types.js";
 
 export interface TerminalTicketOptions {
   readonly kind?: "shell";
@@ -33,6 +33,30 @@ export async function openEventsStream(signal?: AbortSignal): Promise<ReadableSt
   await assertOk(response);
   if (!response.body) throw new ApiError(response.status, "Observer stream unavailable");
   return response.body.getReader();
+}
+
+export async function fetchTheaters(signal?: AbortSignal): Promise<readonly TheaterInfo[]> {
+  const response = await fetch("/observer/theaters", { signal });
+  await assertOk(response);
+  const payload = (await response.json()) as { theaters?: unknown };
+  if (!Array.isArray(payload.theaters)) throw new ApiError(response.status, "Invalid Theater response");
+  return payload.theaters.map((theater) => assertTheaterInfo(theater, response.status));
+}
+
+export async function addTheater(signal?: AbortSignal): Promise<TheaterInfo | { readonly cancelled: true }> {
+  const response = await fetch("/observer/theaters", { method: "POST", signal });
+  await assertOk(response);
+  const payload = await response.json() as unknown;
+  if (typeof payload === "object" && payload !== null && (payload as { cancelled?: unknown }).cancelled === true) {
+    return { cancelled: true };
+  }
+  return assertTheaterInfo(payload, response.status);
+}
+
+export async function createTheaterTerminalSession(theaterId: string, signal?: AbortSignal): Promise<SessionInfo> {
+  const response = await fetch(`/observer/theaters/${encodeURIComponent(theaterId)}/sessions`, { method: "POST", signal });
+  await assertOk(response);
+  return assertSessionInfo(await response.json(), response.status);
 }
 
 export async function pickTerminalFolder(signal?: AbortSignal): Promise<{ readonly folderGrantId: string } | { readonly cancelled: true }> {
@@ -96,8 +120,34 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     cwdLabel: payload.cwdLabel,
     status: payload.status,
     createdAt: payload.createdAt,
+    theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
+  };
+}
+
+function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
+  const payload = value as Partial<TheaterInfo>;
+  if (
+    !payload
+    || typeof payload.id !== "string"
+    || typeof payload.label !== "string"
+    || typeof payload.path !== "string"
+    || typeof payload.createdAt !== "string"
+    || typeof payload.lastOpenedAt !== "string"
+    || typeof payload.hasWiki !== "boolean"
+    || typeof payload.activeAdmiralCount !== "number"
+  ) {
+    throw new ApiError(status, "Invalid Theater response");
+  }
+  return {
+    id: payload.id,
+    label: payload.label,
+    path: payload.path,
+    createdAt: payload.createdAt,
+    lastOpenedAt: payload.lastOpenedAt,
+    hasWiki: payload.hasWiki,
+    activeAdmiralCount: payload.activeAdmiralCount,
   };
 }
 

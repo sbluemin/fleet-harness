@@ -6,21 +6,28 @@ import {
   applyTenantSnapshot,
   applyTruncation,
   beginCreateTerminalSession,
+  completeAddTheater,
   clearSelectedJob,
   closeShell,
   completeCreateTerminalSession,
   getState,
   hydrateTerminalSessions,
+  hydrateTheaters,
   selectJob,
   selectTerminalSession,
   selectedJob,
   sessionJobs,
+  setActiveTheater,
   setState,
+  theaterSessionOrder,
+  theaterSessions,
   toggleShell,
 } from "../client/src/store.js";
-import type { ObservedEvent, ObservedTenant } from "../client/src/types.js";
+import type { ObservedEvent, ObservedTenant, TheaterInfo } from "../client/src/types.js";
 
-const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", cwd: "/repo/alpha", createdAt: 1, sessions: 1 };
+const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", cwd: "/repo/alpha", createdAt: 1, sessions: 1, theaterId: "theater-a" };
+const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", path: "/repo/alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
+const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", path: "/repo/beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, tenantId = "tenant-1", jobId = "job-1"): ObservedEvent {
   return { id, tenantId, jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };
@@ -31,6 +38,10 @@ beforeEach(() => {
     connection: "connecting",
     connectionError: null,
     tenants: [],
+    theaters: [],
+    activeTheaterId: null,
+    addingTheater: false,
+    theaterError: null,
     tenantJobs: {},
     tenantOrder: [],
     sessions: {},
@@ -53,7 +64,8 @@ describe("store", () => {
   });
 
   it("binds a tenant snapshot to the active terminal session", () => {
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "starting", createdAt: 1 }]);
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "starting", createdAt: 1, theaterId: "theater-a" }]);
     selectTerminalSession("tenant-1");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "tenant-1" }]);
 
@@ -168,7 +180,8 @@ describe("store", () => {
     beginCreateTerminalSession();
     expect(getState()).toMatchObject({ creatingTerminalSession: true, terminalSessionError: null });
 
-    completeCreateTerminalSession({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 });
+    hydrateTheaters([THEATER_A]);
+    completeCreateTerminalSession({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" });
 
     expect(getState()).toMatchObject({ activeTerminalSessionId: "session-a", creatingTerminalSession: false });
     expect(getState().sessionOrder).toEqual(["session-a"]);
@@ -275,7 +288,8 @@ describe("store", () => {
   });
 
   it("clears the selected overlay job when a newly created session becomes active", () => {
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" }]);
     selectTerminalSession("tenant-1");
     applyJobsSnapshot([
       {
@@ -288,9 +302,66 @@ describe("store", () => {
     selectJob("job-1");
     expect(getState().selectedJobId).toBe("job-1");
 
-    completeCreateTerminalSession({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 });
+    completeCreateTerminalSession({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2, theaterId: "theater-a" });
     expect(getState().activeTerminalSessionId).toBe("session-b");
     expect(getState().selectedJobId).toBeNull();
+  });
+
+  it("hydrates Theaters and keeps hasWiki while choosing the active Theater", () => {
+    hydrateTheaters([THEATER_A, THEATER_B]);
+
+    expect(getState().activeTheaterId).toBe("theater-a");
+    expect(getState().theaters.map((theater) => theater.hasWiki)).toEqual([true, false]);
+
+    setActiveTheater("theater-b");
+    hydrateTheaters([THEATER_A, THEATER_B]);
+
+    expect(getState().activeTheaterId).toBe("theater-b");
+  });
+
+  it("activates newly added Theaters and preserves hasWiki", () => {
+    hydrateTheaters([THEATER_A]);
+    completeAddTheater(THEATER_B);
+
+    expect(getState().activeTheaterId).toBe("theater-b");
+    expect(getState().theaters[0]).toMatchObject({ id: "theater-b", hasWiki: false });
+  });
+
+  it("filters terminal sessions to the active Theater", () => {
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
+    ]);
+
+    expect(theaterSessionOrder(getState())).toEqual(["session-a"]);
+    expect(theaterSessions(getState()).map((session) => session.sessionId)).toEqual(["session-a"]);
+
+    setActiveTheater("theater-b");
+    expect(theaterSessionOrder(getState())).toEqual(["session-b"]);
+    expect(getState().activeTerminalSessionId).toBe("session-b");
+  });
+
+  it("preserves theaterId across tenant snapshots and hides jobs from other Theaters", () => {
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    applyTenantSnapshot([
+      { ...TENANT, tenantId: "tenant-a", terminalSessionId: "session-a", theaterId: "theater-a" },
+      { ...TENANT, tenantId: "tenant-b", terminalSessionId: "session-b", theaterId: "theater-b" },
+    ]);
+    applyJobsSnapshot([
+      { tenantId: "tenant-a", tenantLabel: "Alpha", truncation: { droppedCount: 0 }, jobs: [{ jobId: "job-a", status: "active", updatedAt: 1, events: [] }] },
+      { tenantId: "tenant-b", tenantLabel: "Beta", truncation: { droppedCount: 0 }, jobs: [{ jobId: "job-b", status: "active", updatedAt: 2, events: [] }] },
+    ]);
+
+    selectJob("job-b");
+
+    expect(getState().sessions["session-a"]?.theaterId).toBe("theater-a");
+    expect(getState().sessions["session-b"]?.theaterId).toBe("theater-b");
+    expect(selectedJob(getState())).toBeNull();
   });
 
   it("retains the most recent jobs in registration order once the per-tenant limit is exceeded", () => {

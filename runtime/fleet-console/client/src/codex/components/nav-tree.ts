@@ -1,6 +1,5 @@
-import { CODEX_BASE_PATH, conflictsPath, entryPath, indexMdPath, logPath, queuePath, workspaceHomePath } from "../router";
+import { CODEX_BASE_PATH, conflictsPath, entryPath, indexMdPath, logPath, queuePath } from "../router";
 import type { WikiIndexEntry } from "../api";
-import type { WorkspaceMetadata } from "../api";
 import { t } from "../i18n/t";
 import { getLanguage, languageLocale } from "../i18n/store";
 import { escapeAttribute, escapeHtml } from "../utils/html";
@@ -51,15 +50,12 @@ const ANCHOR_ICON = `
   </svg>
 `;
 
-const WORKSPACE_LISTBOX_ID = "workspace-switcher-listbox";
-const WORKSPACE_OPTION_PREFIX = "workspace-option-";
-
 export function renderNavTree(
   entries: WikiIndexEntry[],
   currentId: string | null,
   pendingPatchCount: number,
-  workspaces: WorkspaceMetadata[] = [],
-  currentWorkspaceId: string | null = null,
+  _workspaces: unknown[] = [],
+  _currentWorkspaceId: string | null = null,
   currentPathname?: string,
 ): string {
   const total = entries.length;
@@ -102,7 +98,6 @@ export function renderNavTree(
           <button class="icon-button mobile-close" type="button" data-action="toggle-nav" aria-label="${t("nav.ariaClose")}">${CLOSE_ICON}</button>
         </div>
       </div>
-      ${renderWorkspaceSwitcher(workspaces, currentWorkspaceId)}
       <button class="command-entry" type="button" data-action="open-command">
         <span class="command-entry-label">${SEARCH_ICON}<span>${t("nav.searchLabel")}</span></span>
         <kbd>⌘K</kbd>
@@ -139,49 +134,6 @@ export function renderNavTree(
   `;
 }
 
-function renderWorkspaceSwitcher(workspaces: WorkspaceMetadata[], currentWorkspaceId: string | null): string {
-  if (workspaces.length === 0) return "";
-  const current = workspaces.find((workspace) => workspace.id === currentWorkspaceId) ?? workspaces[0];
-  if (!current) return "";
-  const duplicateBasenames = findDuplicateBasenames(workspaces);
-  const currentBasename = workspaceBasename(current);
-  const currentTitle = workspaceTitle(current);
-  if (workspaces.length === 1) {
-    return `
-      <div class="workspace-switcher workspace-switcher--single" title="${escapeAttribute(currentTitle)}">
-        <span class="workspace-switcher-label">Workspace</span>
-        <span class="workspace-chip">
-          <span class="workspace-trigger-text">${escapeHtml(currentBasename)}</span>
-        </span>
-      </div>
-    `;
-  }
-  return `
-    <div class="workspace-switcher" data-workspace-switcher>
-      <span class="workspace-switcher-label">Workspace</span>
-      <button
-        class="workspace-trigger"
-        type="button"
-        data-action="toggle-workspace-list"
-        aria-label="Workspace"
-        aria-haspopup="listbox"
-        aria-expanded="false"
-        aria-controls="${WORKSPACE_LISTBOX_ID}"
-        aria-activedescendant="${workspaceOptionId(current.id)}"
-        title="${escapeAttribute(currentTitle)}"
-      >
-        <span class="workspace-trigger-text">${escapeHtml(currentBasename)}</span>
-        ${CARET}
-      </button>
-      <div class="workspace-listbox" id="${WORKSPACE_LISTBOX_ID}" role="listbox" aria-label="Workspace" hidden>
-        ${workspaces.map((workspace) => `
-          ${renderWorkspaceOption(workspace, workspace.id === current.id, duplicateBasenames.has(workspaceBasename(workspace)))}
-        `).join("")}
-      </div>
-    </div>
-  `;
-}
-
 export function toggleTag(tag: string): void {
   if (collapsedTags.has(tag)) {
     collapsedTags.delete(tag);
@@ -198,8 +150,6 @@ export function setNavMode(mode: NavMode): void {
 // 부트스트랩 책임은 main.ts에 있다 — 모듈 평가 부수효과로 호출하지 말 것.
 export function initNavTree(): void {
   if (typeof document === "undefined") return;
-  document.addEventListener("click", handleWorkspaceSwitcherClick);
-  document.addEventListener("keydown", handleWorkspaceSwitcherKeydown);
 }
 
 function countTags(entries: WikiIndexEntry[]): number {
@@ -275,167 +225,6 @@ function renderEntry(entry: WikiIndexEntry, currentId: string | null): string {
       <span class="nav-entry-text">${escapeHtml(entry.title)}</span>
     </a>
   `;
-}
-
-function renderWorkspaceOption(workspace: WorkspaceMetadata, isActive: boolean, needsSuffix: boolean): string {
-  const suffix = needsSuffix
-    ? `<span class="workspace-option-suffix" aria-hidden="true">· ${escapeHtml(workspace.id.slice(0, 6))}</span>`
-    : "";
-  return `
-    <a
-      class="workspace-option${isActive ? " active" : ""}"
-      id="${workspaceOptionId(workspace.id)}"
-      href="${escapeAttribute(workspaceHomePath(workspace.id))}"
-      role="option"
-      aria-selected="${isActive}"
-      data-action="select-workspace"
-      data-workspace-id="${escapeAttribute(workspace.id)}"
-      title="${escapeAttribute(workspaceTitle(workspace))}"
-    >
-      <span class="workspace-option-label">${escapeHtml(workspace.label)}</span>
-      ${suffix}
-    </a>
-  `;
-}
-
-function workspaceTitle(workspace: WorkspaceMetadata): string {
-  return `${workspace.label} · ${workspace.cwd}`;
-}
-
-function workspaceBasename(workspace: WorkspaceMetadata): string {
-  const normalized = workspace.cwd.replace(/[\\/]+$/, "");
-  const basename = normalized.split(/[\\/]/).pop();
-  return basename && basename.length > 0 ? basename : workspace.label;
-}
-
-function findDuplicateBasenames(workspaces: WorkspaceMetadata[]): Set<string> {
-  const counts = new Map<string, number>();
-  for (const workspace of workspaces) {
-    const basename = workspaceBasename(workspace);
-    counts.set(basename, (counts.get(basename) ?? 0) + 1);
-  }
-  return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([basename]) => basename));
-}
-
-function workspaceOptionId(workspaceId: string): string {
-  return `${WORKSPACE_OPTION_PREFIX}${workspaceId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
-}
-
-function handleWorkspaceSwitcherClick(event: MouseEvent): void {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  const switcher = target.closest<HTMLElement>("[data-workspace-switcher]");
-  const action = target.closest<HTMLElement>("[data-action]");
-  if (!switcher) {
-    closeWorkspaceSwitchers();
-    return;
-  }
-  if (action?.dataset.action === "toggle-workspace-list") {
-    event.preventDefault();
-    toggleWorkspaceSwitcher(switcher);
-    return;
-  }
-  if (action?.dataset.action === "select-workspace") {
-    const workspaceId = action.dataset.workspaceId;
-    if (!workspaceId) return;
-    event.preventDefault();
-    window.location.assign(workspaceHomePath(workspaceId));
-  }
-}
-
-function handleWorkspaceSwitcherKeydown(event: KeyboardEvent): void {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  const switcher = target.closest<HTMLElement>("[data-workspace-switcher]");
-  if (!switcher) return;
-  const options = workspaceOptions(switcher);
-  if (options.length === 0) return;
-  const currentIndex = Math.max(0, options.findIndex((option) => option === document.activeElement));
-  if (event.key === "Escape") {
-    closeWorkspaceSwitcher(switcher);
-    workspaceTrigger(switcher)?.focus();
-    event.preventDefault();
-    return;
-  }
-  if (event.key === "Enter" || event.key === " ") {
-    if (target.matches("[data-action='toggle-workspace-list']")) {
-      openWorkspaceSwitcher(switcher);
-      activeWorkspaceOption(switcher)?.focus();
-      event.preventDefault();
-      return;
-    }
-    if (target instanceof HTMLElement && target.dataset.action === "select-workspace") {
-      const workspaceId = target.dataset.workspaceId;
-      if (!workspaceId) return;
-      event.preventDefault();
-      window.location.assign(workspaceHomePath(workspaceId));
-    }
-    return;
-  }
-  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    openWorkspaceSwitcher(switcher);
-    const delta = event.key === "ArrowDown" ? 1 : -1;
-    const nextIndex = target.matches("[data-action='toggle-workspace-list']")
-      ? Math.max(0, options.findIndex((option) => option.classList.contains("active")))
-      : (currentIndex + delta + options.length) % options.length;
-    options[nextIndex]?.focus();
-    event.preventDefault();
-    return;
-  }
-  if (event.key === "Home" || event.key === "End") {
-    openWorkspaceSwitcher(switcher);
-    options[event.key === "Home" ? 0 : options.length - 1]?.focus();
-    event.preventDefault();
-  }
-}
-
-function toggleWorkspaceSwitcher(switcher: HTMLElement): void {
-  const listbox = workspaceListbox(switcher);
-  if (!listbox) return;
-  if (listbox.hidden) {
-    openWorkspaceSwitcher(switcher);
-    return;
-  }
-  closeWorkspaceSwitcher(switcher);
-}
-
-function openWorkspaceSwitcher(switcher: HTMLElement): void {
-  closeWorkspaceSwitchers(switcher);
-  const listbox = workspaceListbox(switcher);
-  const trigger = workspaceTrigger(switcher);
-  if (!listbox || !trigger) return;
-  listbox.hidden = false;
-  trigger.setAttribute("aria-expanded", "true");
-}
-
-function closeWorkspaceSwitcher(switcher: HTMLElement): void {
-  const listbox = workspaceListbox(switcher);
-  const trigger = workspaceTrigger(switcher);
-  if (!listbox || !trigger) return;
-  listbox.hidden = true;
-  trigger.setAttribute("aria-expanded", "false");
-}
-
-function closeWorkspaceSwitchers(except?: HTMLElement): void {
-  for (const switcher of document.querySelectorAll<HTMLElement>("[data-workspace-switcher]")) {
-    if (switcher !== except) closeWorkspaceSwitcher(switcher);
-  }
-}
-
-function workspaceTrigger(switcher: HTMLElement): HTMLButtonElement | null {
-  return switcher.querySelector<HTMLButtonElement>("[data-action='toggle-workspace-list']");
-}
-
-function workspaceListbox(switcher: HTMLElement): HTMLElement | null {
-  return switcher.querySelector<HTMLElement>(".workspace-listbox");
-}
-
-function workspaceOptions(switcher: HTMLElement): HTMLAnchorElement[] {
-  return [...switcher.querySelectorAll<HTMLAnchorElement>("[role='option']")];
-}
-
-function activeWorkspaceOption(switcher: HTMLElement): HTMLAnchorElement | null {
-  return switcher.querySelector<HTMLAnchorElement>("[role='option'].active") ?? workspaceOptions(switcher)[0] ?? null;
 }
 
 function stripWorkspacePath(pathname: string): string {

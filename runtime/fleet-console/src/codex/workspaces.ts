@@ -1,11 +1,11 @@
-import { realpath, stat } from "node:fs/promises";
-import crypto from "node:crypto";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveMemoryPaths as resolveFleetWikiMemoryPaths } from "@dotobokuri/fleet-wiki";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
 
 import type { WorkspaceMetadata } from "./api-types.js";
+import { canonicalizeTheaterPath, workspaceHash } from "../theater.js";
 
 export interface WorkspaceRegistration {
   id: string;
@@ -23,7 +23,7 @@ export class WorkspaceRegistry {
 
   async register(cwdInput: string): Promise<WorkspaceRegistration> {
     const cwd = path.resolve(cwdInput);
-    const real = await realpath(cwd);
+    const real = await canonicalizeTheaterPath(cwd);
     const paths = resolveFleetWikiMemoryPaths(real);
     if (!(await directoryExists(paths.root))) {
       throw new Error("knowledge_root_missing");
@@ -57,9 +57,12 @@ export class WorkspaceRegistry {
   }
 
   list(): WorkspaceMetadata[] {
+    return this.listRegistrations().map(toMetadata);
+  }
+
+  listRegistrations(): readonly WorkspaceRegistration[] {
     return [...this.#items.values()]
-      .sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt))
-      .map(toMetadata);
+      .sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt));
   }
 }
 
@@ -72,10 +75,6 @@ export function toMetadata(item: WorkspaceRegistration): WorkspaceMetadata {
     lastOpenedAt: item.lastOpenedAt,
     urlPath: `/console/codex/w/${encodeURIComponent(item.id)}/`,
   };
-}
-
-function workspaceHash(cwd: string): string {
-  return crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 12);
 }
 
 async function directoryExists(dirPath: string): Promise<boolean> {

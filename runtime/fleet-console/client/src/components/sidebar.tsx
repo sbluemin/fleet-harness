@@ -1,9 +1,9 @@
 import { memo } from "react";
 
-import { createTerminalSession, pickTerminalFolder } from "../api.js";
+import { createTheaterTerminalSession } from "../api.js";
 import { describeJobStatus, formatCarrierName, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
+import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
 import type { ConsoleState, JobView, SessionInfo } from "../types.js";
 
@@ -24,16 +24,12 @@ interface SessionEntryProps {
 }
 
 export function Sidebar({ state }: SidebarProps) {
+  const visibleSessionOrder = theaterSessionOrder(state);
   const handleCreateSession = async () => {
-    if (state.creatingTerminalSession) return;
+    if (state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId) return;
     beginCreateTerminalSession();
     try {
-      const picked = await pickTerminalFolder();
-      if ("cancelled" in picked) {
-        failCreateTerminalSession("");
-        return;
-      }
-      completeCreateTerminalSession(await createTerminalSession(picked.folderGrantId));
+      completeCreateTerminalSession(await createTheaterTerminalSession(state.activeTheaterId));
     } catch (error) {
       failCreateTerminalSession(error instanceof Error ? error.message : String(error));
     }
@@ -42,13 +38,13 @@ export function Sidebar({ state }: SidebarProps) {
     <nav className="sidebar" aria-label="Admiral sessions and carrier jobs">
       <div className="sidebar-heading">
         <p className="sidebar-eyebrow">Admirals</p>
-        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession} aria-label="Add admiral station">
+        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId} aria-label="Add admiral station">
           +
         </button>
       </div>
-      {state.sessionOrder.length > 0 ? (
+      {visibleSessionOrder.length > 0 ? (
         <ol className="session-list">
-          {state.sessionOrder.map((sessionId) => {
+          {visibleSessionOrder.map((sessionId) => {
             const session = state.sessions[sessionId];
             if (!session) return null;
             return (
@@ -64,11 +60,11 @@ export function Sidebar({ state }: SidebarProps) {
         </ol>
       ) : null}
       {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
-      {state.sessionOrder.length === 0 ? (
+      {visibleSessionOrder.length === 0 ? (
         <p className="sidebar-empty">
-          No Admiral stations on watch.
+          {state.activeTheaterId ? "No Admiral stations in this Theater." : "No Theaters registered."}
           <br />
-          Add a station to bring a Fleet terminal alongside.
+          {state.activeTheaterId ? "Use + to launch one here." : "Add a Theater from the top bar."}
         </p>
       ) : null}
     </nav>

@@ -2,7 +2,7 @@ import { JobOverlay } from "../components/job-overlay.js";
 import { OperationsLanding } from "../components/operations-landing.js";
 import { Sidebar } from "../components/sidebar.js";
 import { Terminal } from "../components/terminal.js";
-import { removeTerminalSession } from "../store.js";
+import { removeTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationsProps {
@@ -10,7 +10,9 @@ interface OperationsProps {
 }
 
 export function Operations({ state }: OperationsProps) {
-  const activeSessionId = state.activeTerminalSessionId;
+  const activeSessionId = state.activeTerminalSessionId && theaterSessionOrder(state).includes(state.activeTerminalSessionId)
+    ? state.activeTerminalSessionId
+    : null;
   return (
     <div className="console-body">
       <Sidebar state={state} />
@@ -21,7 +23,7 @@ export function Operations({ state }: OperationsProps) {
             <JobOverlay state={state} />
           </>
         ) : (
-          <OperationsLanding creating={state.creatingTerminalSession} error={state.terminalSessionError} />
+          <OperationsLanding creating={state.creatingTerminalSession} error={state.terminalSessionError} hasTheaters={state.theaters.length > 0} activeTheaterId={state.activeTheaterId} />
         )}
       </main>
     </div>

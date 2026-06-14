@@ -44,4 +44,10 @@ describe("Codex router", () => {
     expect(homePath()).toBe("/console/codex/");
     expect(entryPath("guide-003")).toBe("/console/codex/entry/guide-003");
   });
+
+  it("builds workspace home paths under the console Codex mount", async () => {
+    const { workspaceHomePath } = await import("../client/src/codex/router");
+
+    expect(workspaceHomePath("ws-a")).toBe("/console/codex/w/ws-a/");
+  });
 });
