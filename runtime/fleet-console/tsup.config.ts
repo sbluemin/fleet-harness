@@ -9,6 +9,10 @@ export default defineConfig([
     dts: true,
     sourcemap: false,
     clean: false,
+    // workspace 패키지(@dotobokuri/*)는 npm에 개별 발행하지 않으므로 번들에 인라인한다.
+    // native(node-pty)·동적 require(ws)는 정적 분석 대상이 아니라 external로 남으며,
+    // publish 스크립트가 이 둘만 dependencies로 유지한다.
+    noExternal: [/^@dotobokuri\//],
     splitting: false,
     treeshake: true,
     target: "node20",

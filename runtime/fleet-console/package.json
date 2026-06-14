@@ -30,6 +30,7 @@
   },
   "files": [
     "dist",
+    "postinstall.mjs",
     "AGENTS.md",
     "README.md"
   ],
@@ -40,6 +41,7 @@
     "build": "tsup && vite build --config client/vite.config.ts",
     "cli": "tsx src/cli.ts",
     "dev": "vite --config client/vite.config.ts",
+    "publish:npm": "node ../../scripts/publish-fleet-console.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
   },

@@ -83,6 +83,7 @@ imports -> types/interfaces -> constants -> functions/components
 
 - `pnpm --filter @dotobokuri/fleet-console build` runs tsup (`src/cli.ts` → `dist/cli.mjs`) and Vite (`client/` → `dist/client/` with `base: "/console/"`). There is **no** embed step: the console backend serves its own `dist/client/` directly under `/console/` (loopback-only). Changing `base` or the output layout breaks the static-serving contract.
 - This package **is** the HTTP server. The backend owns its own loopback server, lifecycle, and `/console/` serving; the CLI starts and stops that server rather than launching a separate daemon.
+- **npm publish contract**: tsup bundles every `@dotobokuri/*` workspace dependency inline (`noExternal: [/^@dotobokuri\//]`) so the published package is self-contained; only `node-pty` (native binding) and `ws` (dynamic `require`) stay external. `scripts/publish-fleet-console.mjs` drops `private`, replaces `dependencies` with just those two externals, and injects the `node-pty` `postinstall`. Do **not** add a statically-imported workspace package without confirming it bundles, and re-verify the published manifest with `npm pack` after touching `noExternal` or runtime deps — leaving a `workspace:*` dependency in the manifest breaks `npm install`.
 
 ## Tests
 
