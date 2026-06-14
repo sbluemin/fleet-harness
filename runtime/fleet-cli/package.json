@@ -28,6 +28,7 @@
     "boundary:guard": "node ../../scripts/guard-fleet-agent-boundary.mjs",
     "build": "pnpm boundary:guard && tsc",
     "build:bundle": "tsup",
+    "typecheck": "tsc --noEmit",
     "publish:npm": "node ../../scripts/publish-fleet-cli.mjs",
     "dev": "tsx src/index.ts",
     "fleet": "tsx src/index.ts",

@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [core][core-agent] Fleet Console now shows an "Update available" badge in the global navigation bar when a newer console release has been published to npm.
+
 ### Changed
 - [core] Fleet Console's local shell overlay now spans 80% of the console width instead of being capped at a fixed maximum, so it no longer looks narrow on wide displays.
 

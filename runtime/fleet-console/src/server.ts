@@ -32,6 +32,7 @@ import { createTerminalTicketRegistry } from "./terminal/tickets.js";
 import { createTerminalUpgradeHandler, TERMINAL_TICKET_PATH } from "./terminal/ws-handler.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
+import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "./update-check.js";
 
 export interface ConsoleServerDeps {
   readonly host?: string;
@@ -42,6 +43,7 @@ export interface ConsoleServerDeps {
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
   readonly terminalPickFolder?: () => Promise<FolderPickerResult>;
+  readonly updateCheck?: ConsoleUpdateCheckService;
 }
 
 export interface ConsoleServer {
@@ -74,6 +76,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   registerDefaultCarriers(carrierRegistry);
   const lock = createConsoleLock({ hostname: () => host });
   const observability = createConsoleObservabilityStore();
+  const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService();
   const theaters = new TheaterRegistry();
   const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
@@ -463,6 +466,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       jobs: observability.listWorkspaces().reduce((count, workspace) => count + observability.listJobs(workspace.tenantId).length, 0),
       version,
       channel,
+      ...updateCheck.getStatus(),
       port: lockHandle?.payload.port ?? port,
       wikiServerStatus: resolveWikiServerStatus(theaterId),
     };
@@ -603,6 +607,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         });
       });
       if (!activeEndpoint) throw new Error("Console endpoint unavailable");
+      void updateCheck.refresh();
       return activeEndpoint;
     },
     async stop() {

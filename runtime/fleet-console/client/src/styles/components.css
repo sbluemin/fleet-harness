@@ -110,6 +110,36 @@
   gap: var(--space-4);
 }
 
+.topbar-update-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 5px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--warn) 13%, transparent);
+  box-shadow: 0 0 18px -10px var(--warn-glow);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.topbar-update-badge:hover {
+  border-color: color-mix(in oklch, var(--warn) 72%, var(--surface-rim));
+  background: color-mix(in oklch, var(--warn) 18%, transparent);
+  color: var(--ink-pearl);
+}
+
 .sidebar-eyebrow,
 .job-summary-eyebrow,
 .job-meta,

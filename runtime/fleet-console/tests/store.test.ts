@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyJobsSnapshot,
   applyObservedEvent,
+  applyObserverStatus,
   applySessionUpdate,
   applyTenantSnapshot,
   applyTruncation,
@@ -38,6 +39,8 @@ beforeEach(() => {
   setState({
     connection: "connecting",
     connectionError: null,
+    updateAvailable: false,
+    latestVersion: null,
     tenants: [],
     theaters: [],
     activeTheaterId: null,
@@ -57,6 +60,22 @@ beforeEach(() => {
 });
 
 describe("store", () => {
+  it("applies observer update status to the global state", () => {
+    applyObserverStatus({
+      workspaces: 0,
+      jobs: 0,
+      version: "1.0.0",
+      channel: "stable",
+      updateAvailable: true,
+      latestVersion: "1.1.0",
+      port: 1234,
+      wikiServerStatus: "unknown",
+    });
+
+    expect(getState().updateAvailable).toBe(true);
+    expect(getState().latestVersion).toBe("1.1.0");
+  });
+
   it("applies a tenant snapshot without creating legacy selection state", () => {
     applyTenantSnapshot([TENANT]);
 

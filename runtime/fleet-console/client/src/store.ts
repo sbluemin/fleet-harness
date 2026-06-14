@@ -5,6 +5,7 @@ import type {
   JobView,
   ObservedEvent,
   ObservedTenant,
+  ObserverStatus,
   ObserverTruncation,
   SessionInfo,
   SnapshotTenantJobs,
@@ -31,6 +32,8 @@ let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
   activeTheme: readStoredTheme(),
+  updateAvailable: false,
+  latestVersion: null,
   tenants: [],
   theaters: [],
   activeTheaterId: null,
@@ -72,6 +75,13 @@ export function setActiveTheme(theme: ThemeId): void {
   writeStoredTheme(theme);
   applyThemeToDocument(theme);
   setState({ activeTheme: theme });
+}
+
+export function applyObserverStatus(status: ObserverStatus): void {
+  setState({
+    updateAvailable: status.updateAvailable,
+    latestVersion: status.latestVersion ?? null,
+  });
 }
 
 export function applyThemeToDocument(theme: ThemeId): void {

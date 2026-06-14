@@ -7,6 +7,8 @@ const BASE_STATE: ConsoleState = {
   connection: "live",
   connectionError: null,
   activeTheme: "maritime",
+  updateAvailable: false,
+  latestVersion: null,
   tenants: [],
   theaters: [],
   activeTheaterId: null,
