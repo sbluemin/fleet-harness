@@ -51,3 +51,11 @@ export {
   type FleetAgentRuntimeServices,
   type FleetAgentRuntimeToolRegistration,
 } from "./agent-runtime/index.js";
+
+// Carrier result reminder 주입 종단
+export {
+  createCarrierResultReminderRouter,
+  formatCarrierResultReminderMessage,
+  sanitizeCarrierResultReminder,
+  type PtyWriteSink,
+} from "./agent-runtime/reminder-router.js";

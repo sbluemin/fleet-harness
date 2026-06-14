@@ -41,7 +41,7 @@ The default app uses the permanent vertical two-pane layout:
 - **Shared controls types**: `src/controls/types.ts` owns PTY/input/panel/render types used by this host.
 - **Controls barrel**: `src/controls/index.ts` is an explicit package-local barrel; it is not a public workspace surface.
 - **Process runtime**: Cross-subsystem binary resolution and Windows shim wrapping are consumed from `@dotobokuri/core-agent`; update and agent-cli subsystems use that root API.
-- **Native-terminal exception**: `fleet --native` / internal `nativeTerminal` starts with Mission Control only, stops the Fleet TUI during launch, then runs the selected child inside a dedicated node-pty raw byte passthrough. The child owns the PTY while Fleet stays on the master side to relay stdin/stdout bytes directly and inject mid-session carrier result reminders through programmatic input. After child exit, Fleet resumes Mission Control. This path creates no lower Fleet PTY, Mission Bridge, Job Bar, xterm-backed selected-child viewport, or encoded `PtyHost` for the selected child.
+- **Native-terminal exception**: `fleet --native` / internal `nativeTerminal` starts with Mission Control only, stops the Fleet TUI during launch, then runs the selected child inside a dedicated node-pty raw byte passthrough. The child owns the PTY while Fleet stays on the master side to relay stdin/stdout bytes directly and inject mid-session carrier result reminders through the shared `@dotobokuri/fleet-admiral` reminder endpoint and host programmatic input. After child exit, Fleet resumes Mission Control. This path creates no lower Fleet PTY, Mission Bridge, Job Bar, xterm-backed selected-child viewport, or encoded `PtyHost` for the selected child.
 
 ## Input Ownership
 

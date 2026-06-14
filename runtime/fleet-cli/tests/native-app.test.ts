@@ -63,6 +63,10 @@ const TEST_PROFILE: AgentCliProfile = {
   env: { FLEET_TEST: "1" },
   id: "codex",
   label: "Codex",
+  messagePolicy: {
+    bracketedPaste: true,
+    multilineStrategy: "paste-mode",
+  },
   terminalName: "xterm-256color",
 };
 
@@ -212,13 +216,17 @@ describe("native terminal app", () => {
     vi.doMock("../src/update/check.js", () => ({
       checkForUpdate: async () => undefined,
     }));
-    vi.doMock("@dotobokuri/fleet-admiral", () => ({
-      createSystemPromptBuilder: () => ({ build: () => "prompt" }),
-      getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
-      getDefaultAgentCliId: () => "codex",
-      injectAgentCliProfile: async (profile: AgentCliProfile) => profile,
-      parseAgentCliId: (value: string | undefined) => value,
-    }));
+    vi.doMock("@dotobokuri/fleet-admiral", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@dotobokuri/fleet-admiral")>();
+      return {
+        ...actual,
+        createSystemPromptBuilder: () => ({ build: () => "prompt" }),
+        getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
+        getDefaultAgentCliId: () => "codex",
+        injectAgentCliProfile: async (profile: AgentCliProfile) => profile,
+        parseAgentCliId: (value: string | undefined) => value,
+      };
+    });
 
     const { runNativeApp } = await import("../src/native-app.js");
 
@@ -382,13 +390,17 @@ describe("native terminal app", () => {
     vi.doMock("../src/update/check.js", () => ({
       checkForUpdate: async () => undefined,
     }));
-    vi.doMock("@dotobokuri/fleet-admiral", () => ({
-      createSystemPromptBuilder: () => ({ build: () => "prompt" }),
-      getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
-      getDefaultAgentCliId: () => "codex",
-      injectAgentCliProfile: async (profile: AgentCliProfile) => profile,
-      parseAgentCliId: (value: string | undefined) => value,
-    }));
+    vi.doMock("@dotobokuri/fleet-admiral", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@dotobokuri/fleet-admiral")>();
+      return {
+        ...actual,
+        createSystemPromptBuilder: () => ({ build: () => "prompt" }),
+        getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
+        getDefaultAgentCliId: () => "codex",
+        injectAgentCliProfile: async (profile: AgentCliProfile) => profile,
+        parseAgentCliId: (value: string | undefined) => value,
+      };
+    });
 
     const { runNativeApp } = await import("../src/native-app.js");
 
@@ -431,7 +443,7 @@ describe("native terminal app", () => {
     expect(stdinOn).toHaveBeenCalledTimes(1);
     expect(stdinOff).not.toHaveBeenCalled();
     expect(pty.resizes).toEqual([{ cols: 120, rows: 50 }]);
-    expect(pty.writes).toEqual(["active reminder\r", "typed"]);
+    expect(pty.writes).toEqual(["\x1b[200~active reminder\x1b[201~", "\r", "typed"]);
     expect(exits).toEqual([{ exitCode: 0, signal: undefined }]);
     for (const listener of stdinListeners) {
       listener("after-exit-input");

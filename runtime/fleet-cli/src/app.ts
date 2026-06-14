@@ -1,4 +1,5 @@
 import {
+  createCarrierResultReminderRouter,
   createSystemPromptBuilder,
   getAgentCliMetadata,
   getDefaultAgentCliId,
@@ -16,7 +17,6 @@ import {
   createDedicatedMouseRouter,
   createInputKeybindingConfig,
   createInputRouter,
-  createProgrammaticInput,
   createPtyHost,
   createRenderScheduler,
   createTuiPtyManager,
@@ -104,7 +104,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const ui = new LocalTui({ cursorSyncEnabled: true });
   let ptyManager: TuiPtyManager | undefined;
   let syncCursorPolicy = () => {};
-  let sendCarrierResultReminder = (_text: string) => {};
+  let disposeCarrierReminderSubscription = () => {};
   const scheduleRender = createRenderScheduler(ui, () => syncCursorPolicy());
   const buildSystemPrompt = createSystemPromptBuilder({
     carrierRuntime: runtime.carrierRuntime,
@@ -172,13 +172,24 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     carrierRuntime: runtime.carrierRuntime,
     getColumns: () => ui.columns,
     getRows: () => ptyManager?.getCurrentRequest().fleetRows ?? Math.max(0, ui.rows - missionControl.ptyView.maxRows),
-    onCarrierResultReminder: (text) => sendCarrierResultReminder(text),
     onJobBarRenderRequest: () => {
       ptyManager?.requestResize("programmatic");
       scheduleRender();
     },
     requestResize: () => ptyManager?.requestResize("fleet-overlay"),
     requestRender: scheduleRender,
+  });
+  disposeCarrierReminderSubscription = createCarrierResultReminderRouter({
+    streamRegister: runtime.carrierRuntime.jobs.streaming.register,
+    resolveSink: () => {
+      if (missionControl.getActiveProfile() === undefined) {
+        return undefined;
+      }
+      return {
+        write: (data) => missionControl.writeChildInput(data),
+      };
+    },
+    resolvePolicy: () => missionControl.getActiveProfile()?.messagePolicy ?? {},
   });
   ptyManager = createTuiPtyManager({
     fleetPty: missionBridge.ptyApi,
@@ -187,16 +198,6 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     refreshSize: (size) => ui.refreshSize(size),
     requestRender: scheduleRender,
   });
-  sendCarrierResultReminder = (text) => {
-    const activeProfile = missionControl.getActiveProfile();
-    if (activeProfile === undefined) {
-      return;
-    }
-    createProgrammaticInput({
-      ...missionControl.ptyHost,
-      write: (data) => missionControl.writeChildInput(data),
-    }, activeProfile).sendMessage(text);
-  };
   let stopping = false;
   let disposeInputStream = () => {};
   let shutdownExitCode = 0;
@@ -213,6 +214,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       missionControl.ptyHost,
       resize,
       disposeInputStream,
+      disposeCarrierReminderSubscription,
       missionBridge.dispose,
       runtimeLifecycle,
       agentCliCleanupCallbacks,
@@ -294,6 +296,7 @@ function stopApp(
   ptyHost: PtyHost,
   resize: () => void,
   disposeInputStream: () => void,
+  disposeCarrierReminderSubscription: () => void,
   disposeMissionBridge: () => void,
   runtimeLifecycle: FleetRuntimeLifecycle,
   cleanupCallbacks: Iterable<() => void>,
@@ -302,6 +305,7 @@ function stopApp(
   process.stdout.off("resize", resize);
   process.off("SIGWINCH", resize);
   disposeInputStream();
+  disposeCarrierReminderSubscription();
   disposeMissionControl();
   disposeMissionBridge();
   process.stdout.write(KITTY_DISABLE);

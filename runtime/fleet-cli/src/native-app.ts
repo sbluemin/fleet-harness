@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  createCarrierResultReminderRouter,
   createSystemPromptBuilder,
   getAgentCliMetadata,
   getDefaultAgentCliId,
@@ -9,7 +10,6 @@ import {
   parseAgentCliId,
   type AgentCliProfile,
 } from "@dotobokuri/fleet-admiral";
-import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 import type { IDisposable, IPty } from "node-pty";
 
 import {
@@ -20,13 +20,10 @@ import {
 import { createMissionControlProfileConfig, type RunAppOptions } from "./app.js";
 import { type FleetCliOptions } from "./cli-args.js";
 import {
-  createProgrammaticInput,
   KITTY_DISABLE,
   KITTY_ENABLE,
   type PtyExitEvent,
-  type PtyHost,
 } from "./controls/index.js";
-import { sanitizeCarrierResultReminder } from "./mission-bridge/job-bar/register.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
 import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
@@ -188,10 +185,19 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     wikiController,
   });
   missionControlDispose = missionControl.dispose;
-  disposeCarrierReminderSubscription = subscribeNativeCarrierReminders(
-    runtime.carrierRuntime.jobs.streaming.register,
-    () => activeNativeChild,
-  );
+  disposeCarrierReminderSubscription = createOnce(createCarrierResultReminderRouter({
+    streamRegister: runtime.carrierRuntime.jobs.streaming.register,
+    resolveSink: () => {
+      const activeChild = activeNativeChild;
+      if (activeChild === undefined) {
+        return undefined;
+      }
+      return {
+        write: (data) => activeChild.bridge.writeRaw(data),
+      };
+    },
+    resolvePolicy: () => activeNativeChild?.profile.messagePolicy ?? {},
+  }));
   checkForUpdate(release)
     .then((latestVersion) => {
       if (latestVersion !== undefined) {
@@ -436,37 +442,6 @@ function startNativeRawPtySession(options: {
     dispose,
     waitExit: () => exitPromise.finally(dispose),
   };
-}
-
-function subscribeNativeCarrierReminders(
-  register: (handler: (event: CarrierJobStreamEvent) => void) => () => void,
-  getActiveChild: () => NativeActiveChild | undefined,
-): () => void {
-  const unsubscribe = register((event) => {
-    const reminder = extractCarrierResultSystemReminder(event);
-    if (reminder === undefined) {
-      return;
-    }
-    const activeChild = getActiveChild();
-    if (activeChild === undefined) {
-      return;
-    }
-    createProgrammaticInput({
-      write: (data) => activeChild.bridge.writeRaw(data),
-    } as Pick<PtyHost, "write"> as PtyHost, activeChild.profile).sendMessage(reminder);
-  });
-
-  return createOnce(unsubscribe);
-}
-
-function extractCarrierResultSystemReminder(event: CarrierJobStreamEvent): string | undefined {
-  if (event.type !== "job:finalized") {
-    return undefined;
-  }
-  if (typeof event.systemReminder !== "string" || event.systemReminder.trim().length === 0) {
-    return undefined;
-  }
-  return sanitizeCarrierResultReminder(event.systemReminder);
 }
 
 function createOnce(callback: () => void): () => void {

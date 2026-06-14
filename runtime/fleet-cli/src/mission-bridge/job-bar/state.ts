@@ -76,7 +76,6 @@ export interface AgentPanelState {
 
 export interface JobBarStateOptions {
   readonly carrierRuntime: CarrierRuntime;
-  readonly onCarrierResultReminder?: (text: string) => void;
   readonly onRenderRequest?: () => void;
 }
 
@@ -112,7 +111,6 @@ type MutablePanelJob = Omit<PanelJob, "tracks"> & {
 };
 
 type JobBarStateBindings = {
-  onCarrierResultReminder: (text: string) => void;
   onRenderRequest: () => void;
 };
 
@@ -129,7 +127,6 @@ export const PANEL_JOB_RETENTION = 8;
 export function createJobBarState(options: JobBarStateOptions): JobBarState {
   let stateValue: AgentPanelState | null = null;
   const bindings: JobBarStateBindings = {
-    onCarrierResultReminder: options.onCarrierResultReminder ?? noop,
     onRenderRequest: options.onRenderRequest ?? noop,
   };
 
@@ -294,7 +291,6 @@ function handleCarrierJobStreamEvent(event: CarrierJobStreamEvent): void {
     case "job:finalized":
       finalizeStreamJob(event);
       schedulePanelRender(false);
-      dispatchCarrierResultSystemReminder(event);
       return;
     case "track:begin":
       beginTrack(event);
@@ -371,11 +367,6 @@ function ensurePanelAnimTimer(): void {
     getJobBarStateBindings().onRenderRequest();
     stopPanelAnimTimerIfIdle();
   }, ANIM_INTERVAL_MS);
-}
-
-function dispatchCarrierResultSystemReminder(event: Extract<CarrierJobStreamEvent, { type: "job:finalized" }>): void {
-  if (typeof event.systemReminder !== "string" || event.systemReminder.trim().length === 0) return;
-  getJobBarStateBindings().onCarrierResultReminder(event.systemReminder);
 }
 
 function registerStreamJob(event: Extract<CarrierJobStreamEvent, { type: "job:registered" }>): void {

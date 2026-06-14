@@ -110,6 +110,56 @@ describe("terminal session manager", () => {
     expect(exits).toEqual(["session-a"]);
   });
 
+  it("writes only to an existing live session and returns false after termination", async () => {
+    const ptys = new Map<string, MockPty>();
+    const launches: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        launches.push(context?.sessionId ?? "");
+        return {
+          bin: "mock",
+          args: [],
+          cwd: cwd ?? "/",
+          env: { SESSION: context?.sessionId },
+          messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
+        };
+      },
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+    });
+
+    expect(manager.writeToSession("session-a", "missing")).toBe(false);
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(manager.writeToSession("session-a", "hello")).toBe(true);
+    expect(manager.getSessionMessagePolicy("session-a")).toEqual({ bracketedPaste: true, multilineStrategy: "paste-mode" });
+    expect(ptys.get("session-a")?.writes).toEqual(["hello"]);
+    expect(launches).toEqual(["session-a"]);
+
+    expect(manager.terminate("session-a")).toBe(true);
+    expect(manager.writeToSession("session-a", "after")).toBe(false);
+    expect(ptys.get("session-a")?.writes).toEqual(["hello"]);
+  });
+
+  it("returns false when the session pty rejects programmatic writes", async () => {
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => ({
+        ...createMockPty(),
+        write() {
+          throw new Error("not writable");
+        },
+      }),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(manager.writeToSession("session-a", "hello")).toBe(false);
+  });
+
   it("keeps the pty alive when the active socket closes, surviving reconnect", async () => {
     const ptys = new Map<string, MockPty>();
     const exits: string[] = [];

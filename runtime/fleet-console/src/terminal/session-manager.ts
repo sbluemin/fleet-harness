@@ -1,3 +1,5 @@
+import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
+
 import { startTerminalShell, type TerminalLaunchResolver } from "./launch.js";
 import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext } from "./types.js";
 
@@ -17,6 +19,7 @@ interface TerminalSession {
   readonly disposables: { dispose(): void }[];
   readonly scrollback: Buffer[];
   readonly cleanup?: () => void | Promise<void>;
+  readonly messagePolicy?: CliMessagePolicy;
   activeSocket: TerminalSocket | null;
   cols: number;
   rows: number;
@@ -66,6 +69,21 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     return true;
   }
 
+  function getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined {
+    return sessions.get(sessionId)?.messagePolicy;
+  }
+
+  function writeToSession(sessionId: string, data: string): boolean {
+    const session = sessions.get(sessionId);
+    if (!session || typeof session.pty.write !== "function") return false;
+    try {
+      session.pty.write(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function stop(): Promise<void> {
     await Promise.all([...sessions.values()].map((session) => killSession(session)));
     sessions.clear();
@@ -88,6 +106,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       disposables: [],
       scrollback: [],
       cleanup: launch.cleanup,
+      messagePolicy: launch.messagePolicy,
       activeSocket: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
@@ -161,7 +180,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     await runLaunchCleanup(session.cleanup);
   }
 
-  return { canAttach, createSession, attach, terminate, stop };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

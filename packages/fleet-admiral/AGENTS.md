@@ -28,7 +28,7 @@
 
 ## Public Surface
 
-The root barrel is whitelist-only. It may export exactly the existing prompt/tool exports plus the approved Agent CLI runtime exports listed in `.fleet/plans/admiral-agent-runtime.md`. Do not use `export *`, subpath exports, or deep-import compatibility paths.
+The root barrel is whitelist-only. It may export exactly the existing prompt/tool exports plus the approved Agent CLI runtime exports listed in `.fleet/plans/admiral-agent-runtime.md` and the carrier-result reminder endpoint exports (`PtyWriteSink`, `createCarrierResultReminderRouter`, `sanitizeCarrierResultReminder`, `formatCarrierResultReminderMessage`) approved in `.fleet/plans/console-carrier-reminder.md`. Do not use `export *`, subpath exports, or deep-import compatibility paths.
 
 ## DI Factory Discipline
 

@@ -30,6 +30,7 @@ const baseProfile = {
   args: ["--model", "sonnet"],
   cwd: "/work",
   env: { PATH: "/bin", TERM: "xterm-256color" },
+  messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
   terminalName: "xterm-256color",
 } as const;
 
@@ -72,6 +73,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
         PWD: "/work/project",
         TERM: "xterm-256color",
       }),
+      messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
       terminalName: "xterm-256color",
     });
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ authEnvResolver: expect.any(Function) }));

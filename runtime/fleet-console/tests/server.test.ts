@@ -90,6 +90,7 @@ describe("console register ingest", () => {
       { cliRunId: "cli-a", seq: 1, at: "2026-06-13T00:00:00.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "a" } },
       { cliRunId: "cli-a", seq: 1, at: "2026-06-13T00:00:00.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "duplicate" } },
       { cliRunId: "cli-a", seq: 3, at: "2026-06-13T00:00:01.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "b" } },
+      { cliRunId: "cli-a", seq: 4, at: "2026-06-13T00:00:02.000Z", event: { type: "job:finalized", jobId: "job-a", status: "done", finishedAt: 1, summary: "done", systemReminder: "cli-secret-reminder" } },
     ]);
     await postEvents(fixture, second.ingestToken, [
       { cliRunId: "cli-b", seq: 1, at: "2026-06-13T00:00:02.000Z", event: { type: "track:text", jobId: "job-b", trackId: "t1", text: "c" } },
@@ -108,9 +109,14 @@ describe("console register ingest", () => {
     );
     const allAlphaIds = snapshot.tenants[0]?.jobs.flatMap((job) => job.events.map((event) => event.id)) ?? [];
     const stream = await readObserverChunk(fixture);
-    expect(allAlphaIds).toEqual([1, 3]);
-    expect(betaEvents[0]?.id).toBe(4);
+    const serializedSnapshot = JSON.stringify(snapshot);
+    expect(allAlphaIds).toEqual([1, 3, 4]);
+    expect(betaEvents[0]?.id).toBe(5);
     expect(stream).toContain("observer:truncated");
+    expect(serializedSnapshot).not.toContain("systemReminder");
+    expect(serializedSnapshot).not.toContain("cli-secret-reminder");
+    expect(stream).not.toContain("systemReminder");
+    expect(stream).not.toContain("cli-secret-reminder");
   });
 
   it("marks heartbeat-missed sessions offline without deleting history, then deregisters best-effort", () => {
@@ -172,6 +178,34 @@ describe("console register ingest", () => {
     expect(jobs[0]?.events[0]?.event).toMatchObject({ text: "hello" });
     expect(serialized).not.toContain("cli-ingest-token");
     expect(serialized).not.toContain(dir);
+  });
+
+  it("redacts system reminders from browser observer payloads for CLI ingest and terminal runtime events", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-redact-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore({ randomToken: () => "cli-ingest-token" });
+    const cliRegistration = store.register({ protocolVersion: "1", cliRunId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
+
+    store.pushEvents(cliRegistration.ingestToken, [{
+      cliRunId: "cli-a",
+      seq: 1,
+      at: "2026-06-13T00:00:00.000Z",
+      event: { type: "job:finalized", jobId: "job-cli", status: "done", finishedAt: 1, summary: "done", systemReminder: "cli-secret" },
+    }]);
+    store.appendTerminalRuntimeEvent("session-a", { type: "job:finalized", jobId: "job-runtime", status: "done", finishedAt: 2, summary: "done", systemReminder: "runtime-secret" }, 2_000);
+
+    const serialized = JSON.stringify({
+      cliJobs: store.listJobs("cli-a"),
+      runtimeJobs: store.listJobs("session-a"),
+    });
+
+    expect(serialized).not.toContain("systemReminder");
+    expect(serialized).not.toContain("cli-secret");
+    expect(serialized).not.toContain("runtime-secret");
+    expect(serialized).toContain("job-cli");
+    expect(serialized).toContain("job-runtime");
   });
 
   it("numbers pending terminal sessions per Theater, isolating the #1 starting value", () => {
@@ -362,6 +396,91 @@ describe("console static and terminal ticket boundary", () => {
 
     await fixture.server.stop();
     expect(runtime.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("injects finalized carrier reminders only into the originating live terminal session", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-reminder-"));
+    tempDirs.push(dir);
+    const runtime = createFakeConsoleRuntime([], []);
+    const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: async (cwd, context) => ({
+        bin: "mock",
+        args: [],
+        cwd: cwd ?? "/",
+        env: {
+          ...(context?.sessionId ? { FLEET_CONSOLE_SESSION_ID: context.sessionId, INIT_CWD: cwd ?? "/", PWD: cwd ?? "/" } : {}),
+          TERM: "xterm-256color",
+        },
+        messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
+      }),
+      terminalStartShell: (launch) => {
+        const pty = createRecordingPty();
+        ptys.set(String(launch.env.FLEET_CONSOLE_SESSION_ID), pty);
+        return pty;
+      },
+    });
+    const headers = { "Content-Type": "application/json" };
+    const first = await createTerminalSession(fixture, headers);
+    const second = await createTerminalSession(fixture, headers);
+
+    runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "progress" });
+    runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "ignored", systemReminder: "not-final" });
+    runtime.emit({ type: "job:finalized", jobId: "missing-origin", status: "done", finishedAt: 1, summary: "missing", systemReminder: "drop me" });
+    runtime.emit({ type: "job:finalized", jobId: "job-a", status: "done", finishedAt: 2, summary: "done", systemReminder: "line 1\nline 2\x1b[201~\x07" });
+
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~", "\r"]);
+    expect(ptys.get(second.sessionId)?.writes).toEqual([]);
+
+    runtime.emit({ type: "track:text", jobId: "job-b", originSessionId: second.sessionId, trackId: "t1", text: "progress" });
+    const deleted = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(second.sessionId)}`, { method: "DELETE" });
+    runtime.emit({ type: "job:finalized", jobId: "job-b", status: "done", finishedAt: 3, summary: "done", systemReminder: "after delete" });
+    runtime.emit({ type: "job:finalized", jobId: "job-c", originSessionId: "unknown", status: "done", finishedAt: 4, summary: "done", systemReminder: "unknown" });
+
+    expect(deleted.status).toBe(200);
+    expect(ptys.get(second.sessionId)?.writes).toEqual([]);
+    expect(ptys.get(first.sessionId)?.writes).toEqual(["\x1b[200~line 1\nline 2\x1b[201~", "\r"]);
+  });
+
+  it("keeps carrier reminder payloads out of browser snapshots and SSE frames", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-reminder-browser-"));
+    tempDirs.push(dir);
+    const runtime = createFakeConsoleRuntime([], []);
+    const secret = "server-only-system-reminder-secret";
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: async (cwd, context) => ({
+        bin: "mock",
+        args: [],
+        cwd: cwd ?? "/",
+        env: {
+          ...(context?.sessionId ? { FLEET_CONSOLE_SESSION_ID: context.sessionId, INIT_CWD: cwd ?? "/", PWD: cwd ?? "/" } : {}),
+          TERM: "xterm-256color",
+        },
+        messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
+      }),
+      terminalStartShell: () => createRecordingPty(),
+    });
+    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" });
+
+    runtime.emit({ type: "track:text", jobId: "job-secret", originSessionId: session.sessionId, trackId: "t1", text: "visible" });
+    runtime.emit({ type: "job:finalized", jobId: "job-secret", status: "done", finishedAt: 1, summary: "done", systemReminder: secret });
+
+    const terminalSessions = await getJson<unknown>(`${fixture.endpoint}terminal/sessions`);
+    const observerTenants = await getJson<unknown>(`${fixture.endpoint}observer/tenants`);
+    const observerJobs = await getJson<unknown>(`${fixture.endpoint}observer/jobs`);
+    const sse = await readObserverChunk(fixture);
+    const serialized = JSON.stringify({ terminalSessions, observerTenants, observerJobs, sse });
+
+    expect(serialized).not.toContain("systemReminder");
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain(fixture.lock.token);
+    expect(serialized).not.toContain("ingestToken");
+    expect(serialized).not.toContain("terminalTicket");
+    expect(serialized).not.toContain("sessionToken");
   });
 
   it("releases server resources even when shared runtime cleanup rejects", async () => {
@@ -747,7 +866,7 @@ describe("console static and terminal ticket boundary", () => {
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, terminate: () => false, stop: async () => undefined },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
       validateHost: () => true,
     });
 
@@ -780,8 +899,10 @@ describe("console static and terminal ticket boundary", () => {
         },
         createSession: async () => undefined,
         attach: async () => undefined,
+        getSessionMessagePolicy: () => undefined,
         terminate: () => false,
         stop: async () => undefined,
+        writeToSession: () => false,
       },
       validateHost: () => true,
     });
@@ -958,6 +1079,19 @@ function createMockPty(): TerminalPtyHandle {
     onData: () => ({ dispose: () => undefined }),
     onExit: () => ({ dispose: () => undefined }),
     write: () => undefined,
+    resize: () => undefined,
+    kill: () => undefined,
+  };
+}
+
+function createRecordingPty(): TerminalPtyHandle & { readonly writes: string[] } {
+  return {
+    writes: [],
+    onData: () => ({ dispose: () => undefined }),
+    onExit: () => ({ dispose: () => undefined }),
+    write(data) {
+      this.writes.push(data);
+    },
     resize: () => undefined,
     kill: () => undefined,
   };

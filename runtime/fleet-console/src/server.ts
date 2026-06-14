@@ -15,6 +15,7 @@ import {
   type CarrierStatusEntry,
 } from "@dotobokuri/fleet-carriers";
 import {
+  createCarrierResultReminderRouter,
   createFleetAgentRuntimeLifecycle,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
@@ -135,6 +136,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     maxSessions: deps.maxTerminalSessions,
     // PTY가 종료되면 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
     onSessionExit: (sessionId) => observability.removeTerminalSession(sessionId),
+  });
+  const unsubscribeCarrierReminderRouter = createCarrierResultReminderRouter({
+    streamRegister: agentRuntime.carrierRuntime.jobs.streaming.register,
+    resolveSink: (event) => {
+      const sessionId = resolveCarrierEventOrigin(event, jobOriginById);
+      if (!sessionId) return undefined;
+      return {
+        write: (data) => {
+          terminalSessions.writeToSession(sessionId, data);
+        },
+      };
+    },
+    resolvePolicy: (event) => {
+      const sessionId = resolveCarrierEventOrigin(event, jobOriginById);
+      return sessionId ? terminalSessions.getSessionMessagePolicy(sessionId) ?? {} : {};
+    },
   });
   const terminalUpgrade = createTerminalUpgradeHandler({
     expectedHost: host,
@@ -678,6 +695,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           }
         }
       } finally {
+        unsubscribeCarrierReminderRouter();
         unsubscribeCarrierStream();
         observability.clear();
         terminalUpgrade.close();
@@ -700,12 +718,16 @@ function resolveCarrierEventOrigin(event: ConsoleCarrierJobStreamEvent, jobOrigi
   const originSessionId = event.originSessionId;
   if (originSessionId) {
     jobOriginById.set(event.jobId, originSessionId);
-    if (event.type === "job:finalized") jobOriginById.delete(event.jobId);
+    if (event.type === "job:finalized") queueOriginCleanup(event.jobId, jobOriginById);
     return originSessionId;
   }
   const knownOrigin = jobOriginById.get(event.jobId);
-  if (event.type === "job:finalized") jobOriginById.delete(event.jobId);
+  if (event.type === "job:finalized") queueOriginCleanup(event.jobId, jobOriginById);
   return knownOrigin ?? null;
+}
+
+function queueOriginCleanup(jobId: string, jobOriginById: Map<string, string>): void {
+  queueMicrotask(() => jobOriginById.delete(jobId));
 }
 
 function createHttpServer(

@@ -1,9 +1,12 @@
+import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
+
 export interface TerminalLaunchSpec {
   readonly bin: string;
   readonly args: readonly string[];
   readonly cleanup?: () => void | Promise<void>;
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly messagePolicy?: CliMessagePolicy;
   readonly terminalName?: string;
 }
 
@@ -49,7 +52,9 @@ export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
   createSession(context: TerminalTicketContext): Promise<void>;
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
+  getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   // 운영자 종료(X 버튼) — PTY 자식까지 끝내고 onSessionExit로 콘솔 목록을 정리한다. 세션이 없으면 false(멱등).
   terminate(sessionId: string): boolean;
   stop(): Promise<void>;
+  writeToSession(sessionId: string, data: string): boolean;
 }

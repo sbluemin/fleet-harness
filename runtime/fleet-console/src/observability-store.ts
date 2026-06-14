@@ -560,7 +560,6 @@ function normalizeEventPayload(event: unknown): Record<string, unknown> {
         finishedAt: safeNumber(obj.finishedAt),
         error: safeOptionalString(obj.error),
         summary: safeString(obj.summary),
-        systemReminder: safeOptionalString(obj.systemReminder),
       };
     case "track:begin":
       return {
