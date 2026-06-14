@@ -440,6 +440,17 @@
   color: var(--brass-bright);
 }
 
+.job-row-stream {
+  overflow: hidden;
+  margin: 1px 0;
+  color: color-mix(in oklch, var(--aurora) 72%, var(--ink-fog));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .job-row-meta {
   color: var(--ink-fog);
   font-size: 9.5px;
@@ -1084,13 +1095,16 @@
 }
 
 .theater-trigger {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
   min-width: 0;
   width: 100%;
   height: 32px;
-  padding: 0 var(--space-2) 0 var(--space-3);
+  /* sigil+label을 박스 중앙에 두고, caret은 우측에 절대배치하므로 좌우 패딩을 caret 폭만큼 대칭으로 확보한다. */
+  padding: 0 calc(var(--space-2) + 14px);
   border: 1px solid color-mix(in oklch, var(--brass) 35%, var(--surface-rim));
   border-radius: var(--radius-sm);
   background:
@@ -1138,10 +1152,13 @@
 }
 
 .theater-trigger-caret {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
   display: grid;
   place-items: center;
   flex: none;
-  margin-left: auto;
   opacity: 0.65;
 }
 

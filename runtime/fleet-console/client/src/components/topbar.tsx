@@ -18,7 +18,7 @@ interface NavItem {
 
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/operations", label: "Operations", end: false, icon: "operations" },
+  { to: "/operations", label: "Operation", end: false, icon: "operations" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
 ];
 
@@ -191,7 +191,7 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
             onClick={handleAdd}
           >
             <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
-            <span className="theater-menu-label">{state.addingTheater ? "Theater 추가 중…" : "Theater 추가…"}</span>
+            <span className="theater-menu-label">{state.addingTheater ? "Adding Theater…" : "Add Theater…"}</span>
           </button>
           {state.theaterError ? <p className="theater-menu-error">{state.theaterError}</p> : null}
         </div>
