@@ -107,3 +107,157 @@ describe("native folder picker", () => {
     await expect(pick()).resolves.toEqual({ kind: "error", error: "invalid_folder" });
   });
 });
+
+describe("native folder picker — WSL", () => {
+  const mockStatSync = (() => ({ isDirectory: () => true })) as unknown as typeof fs.statSync;
+
+  it("converts a Windows drive path via wslpath and returns selected", async () => {
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "Linux version 5.15.0-43-generic Microsoft WSL2",
+      env: {},
+      runCommand: async (bin) => {
+        if (bin === "powershell.exe") return { stdout: "C:\\Users\\x\r\n" };
+        if (bin === "wslpath") return { stdout: "/mnt/c/Users/x\n" };
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+      statSync: mockStatSync,
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "selected", cwd: "/mnt/c/Users/x" });
+  });
+
+  it("converts a UNC wsl.localhost path via wslpath and returns selected", async () => {
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: { WSL_DISTRO_NAME: "Ubuntu-26.04" },
+      runCommand: async (bin) => {
+        if (bin === "powershell.exe") return { stdout: "\\\\wsl.localhost\\Ubuntu-26.04\\home\\u\r\n" };
+        if (bin === "wslpath") return { stdout: "/home/u\n" };
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+      statSync: mockStatSync,
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "selected", cwd: "/home/u" });
+  });
+
+  it("wslpath failure yields invalid_folder and not cancelled", async () => {
+    // 등록되지 않은 네트워크 공유 등 wslpath가 변환 불가한 경로: rc=1 → invalid_folder
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: { WSL_DISTRO_NAME: "Ubuntu-26.04" },
+      runCommand: async (bin) => {
+        if (bin === "powershell.exe") return { stdout: "\\\\fileserver\\share\\proj\r\n" };
+        if (bin === "wslpath") throw new Error("wslpath: failed to retrieve drive or UNC path");
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+      statSync: mockStatSync,
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "error", error: "invalid_folder" });
+  });
+
+  it("all commands ENOENT in WSL yields dialog_unavailable", async () => {
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: { WSL_INTEROP: "/run/WSL/1_interop" },
+      runCommand: async () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "error", error: "dialog_unavailable" });
+  });
+
+  it("powershell non-ENOENT exit (user cancel) yields cancelled before zenity/kdialog", async () => {
+    // PowerShell exit 1(취소)는 non-ENOENT이므로 cancelled를 즉시 반환해야 한다.
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: { WSL_DISTRO_NAME: "Ubuntu-26.04" },
+      runCommand: async (bin) => {
+        if (bin === "powershell.exe") throw new Error("Command failed: powershell.exe");
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "cancelled" });
+  });
+
+  it("non-WSL linux never invokes powershell, only zenity then kdialog", async () => {
+    const invocations: string[] = [];
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: {},
+      runCommand: async (bin) => {
+        invocations.push(bin);
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+    });
+
+    await pick();
+    expect(invocations).not.toContain("powershell.exe");
+    expect(invocations).toEqual(["zenity", "kdialog"]);
+  });
+
+  it("WSL detection works via WSL_INTEROP env var when /proc/version is empty", async () => {
+    const invocations: string[] = [];
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: { WSL_INTEROP: "/run/WSL/1_interop" },
+      runCommand: async (bin) => {
+        invocations.push(bin);
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+    });
+
+    await pick();
+    expect(invocations[0]).toBe("powershell.exe");
+  });
+
+  it("injects the WSL home as the IFileOpenDialog start folder and drops FORCEFILESYSTEM", async () => {
+    let powershellArgs: readonly string[] = [];
+    const pick = createNativeFolderPicker({
+      platform: "linux",
+      readProcVersion: () => "",
+      env: { WSL_DISTRO_NAME: "Ubuntu-26.04", HOME: "/home/u" },
+      runCommand: async (bin, args) => {
+        if (bin === "powershell.exe") {
+          powershellArgs = args;
+          return { stdout: "\\\\wsl.localhost\\Ubuntu-26.04\\home\\u\r\n" };
+        }
+        if (bin === "wslpath") return { stdout: "/home/u\n" };
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+      statSync: mockStatSync,
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "selected", cwd: "/home/u" });
+    const script = powershellArgs.join("\n");
+    expect(script).toContain("\\\\wsl.localhost\\Ubuntu-26.04\\home\\u");
+    expect(script).toContain("[FleetPicker.Picker]::Pick(");
+    expect(script).not.toContain("FORCEFILESYSTEM");
+  });
+
+  it("win32 builds the modern IFileOpenDialog command with an empty start folder", async () => {
+    let powershellArgs: readonly string[] = [];
+    const pick = createNativeFolderPicker({
+      platform: "win32",
+      runCommand: async (bin, args) => {
+        powershellArgs = args;
+        throw new Error("cancel"); // 경로 검증까지 갈 필요 없이 args만 캡처
+      },
+    });
+
+    await pick();
+    const script = powershellArgs.join("\n");
+    expect(script).toContain("[FleetPicker.Picker]::Pick('')");
+    expect(script).toContain("IFileOpenDialog");
+  });
+});
