@@ -57,9 +57,8 @@ The default app uses the permanent vertical two-pane layout:
 
 Outer-terminal cursor sync policy is owned here; `src/tui/` supplies the local renderer and generic anchor primitives (`getCursorAnchor`, `setCursorAnchorTarget`, `cursorSyncEnabled`, post-flush `requestRender` callback).
 
-- **Policy sync**: `createCursorPolicySync()` in `src/controls/render.ts` runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Agent CLI PTY view when cursor sync is on, the Fleet PTY has no active overlay, and Mission Control has no active panel; otherwise the target is cleared.
-- **Windows Claude Code compatibility**: Native Windows (`process.platform === "win32"`) auto-clears the cursor anchor target for Claude-family Agent CLI profiles unless cursor sync was explicitly enabled with `FLEET_CURSOR_SYNC=1`/`true`/`yes`/`on`.
-- **Off-switch** (read-only env; do not mutate `process.env`): `RunAppOptions.cursorSync` (default on), CLI `--disable-cursor-sync`, and `FLEET_CURSOR_SYNC=0` or `false` parsed in `cli-args.ts` and passed through `index.ts`.
+- **Policy sync**: `createCursorPolicySync()` in `src/controls/render.ts` runs before each scheduled render and sets `LocalTui.setCursorAnchorTarget(...)`. Active target is the Agent CLI PTY view when cursor sync is on, the Fleet PTY has no active overlay, and Mission Control has no active panel; otherwise the target is cleared. Cursor sync defaults on for all platforms and Agent CLI profiles — the trailing-padding-trim projection in `src/controls/terminal-view.ts` keeps the Windows ConPTY/Ink cursor anchored at the input cell, so the former `win32`+Claude-family auto-disable was removed (it hid the cursor entirely and broke CJK IME composition; see CHANGELOG).
+- **Off-switch** (read-only env; do not mutate `process.env`): `RunAppOptions.cursorSync` (default on), CLI `--disable-cursor-sync`, and `FLEET_CURSOR_SYNC=0` or `false` parsed in `cli-args.ts` and passed through `index.ts`. This is the escape hatch for any terminal whose IME anchoring still misbehaves.
 - **Boundary**: IME/terminal compatibility decisions and overlay gating stay in this package; do not push host policy into generic `src/tui` renderer or anchor types.
 
 ## Development & Execution

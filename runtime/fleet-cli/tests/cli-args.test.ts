@@ -5,7 +5,6 @@ import { buildFleetHelpText, parseFleetCliOptions } from "../src/cli-args.js";
 describe("fleet CLI args", () => {
   it("enables cursor sync by default", () => {
     expect(parseFleetCliOptions([], {}).cursorSync).toBe(true);
-    expect(parseFleetCliOptions([], {}).cursorSyncExplicitlyEnabled).toBe(false);
     expect(parseFleetCliOptions([], {}).headless).toBe(false);
     expect(parseFleetCliOptions([], {}).nativeTerminal).toBe(false);
   });
@@ -41,18 +40,18 @@ describe("fleet CLI args", () => {
   it("parses the cursor sync environment off-switch without mutating process.env", () => {
     const before = { ...process.env };
 
-    expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: "0" }).cursorSync).toBe(false);
-    expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: "false" }).cursorSync).toBe(false);
-    expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: "1" }).cursorSync).toBe(true);
-    expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: "1" }).cursorSyncExplicitlyEnabled).toBe(true);
-    expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: "true" }).cursorSyncExplicitlyEnabled).toBe(true);
+    for (const off of ["0", "false", "no", "off"]) {
+      expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: off }).cursorSync).toBe(false);
+    }
+    for (const on of ["1", "true", "yes", "on", "anything-else"]) {
+      expect(parseFleetCliOptions([], { FLEET_CURSOR_SYNC: on }).cursorSync).toBe(true);
+    }
     expect(process.env).toEqual(before);
   });
 
-  it("does not treat disable flags as explicit cursor sync enablement", () => {
+  it("lets the disable flag override an enabling env value", () => {
     expect(parseFleetCliOptions(["--disable-cursor-sync"], { FLEET_CURSOR_SYNC: "1" })).toMatchObject({
       cursorSync: false,
-      cursorSyncExplicitlyEnabled: false,
     });
   });
 
@@ -73,8 +72,7 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("--headless");
     expect(helpText).toContain("Register this session to a running Fleet Console");
     expect(helpText).toContain("--disable-cursor-sync");
-    expect(helpText).toContain("Claude Code on Windows defaults to disabled");
-    expect(helpText).toContain("FLEET_CURSOR_SYNC=1 to override");
+    expect(helpText).toContain("problematic IME cursor anchoring (or FLEET_CURSOR_SYNC=0)");
     expect(helpText).not.toContain("\x1b[");
     expect(helpText).not.toContain("fleet —");
   });
