@@ -24,6 +24,7 @@ describe("fleet console CLI", () => {
     expect(parseConsoleCliMode([])).toBe("start");
     expect(parseConsoleCliMode(["start"])).toBe("start");
     expect(parseConsoleCliMode(["stop"])).toBe("stop");
+    expect(parseConsoleCliMode(["restart"])).toBe("restart");
     expect(parseConsoleCliMode(["status"])).toBe("status");
     expect(parseConsoleCliMode(["--help"])).toBe("help");
     expect(parseConsoleCliMode(["-h"])).toBe("help");
@@ -37,6 +38,7 @@ describe("fleet console CLI", () => {
     expect(helpText).toContain("fleet-console");
     expect(helpText).toContain("start");
     expect(helpText).toContain("stop");
+    expect(helpText).toContain("restart");
     expect(helpText).toContain("status");
     expect(helpText).not.toContain("Gateway");
   });

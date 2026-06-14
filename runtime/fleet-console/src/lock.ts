@@ -30,7 +30,6 @@ export interface ConsoleLockTrustInput {
   readonly lockFile: string;
   readonly payload: ConsoleLockPayload;
   readonly host: string;
-  readonly port: number;
 }
 
 export const LOCK_DIR_MODE = 0o700;
@@ -127,18 +126,20 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     if (input.payload.host !== input.host) {
       throw new Error(`Console lock host must match ${input.host}: ${input.payload.host}`);
     }
-    if (input.payload.port !== input.port) {
-      throw new Error(`Console lock port must be ${input.port}, got ${input.payload.port}`);
+    // 포트는 OS가 할당하는 랜덤 포트이므로 고정값을 강제하지 않는다.
+    // 대신 유효한 TCP 포트인지와 endpoint가 host:port와 내부적으로 일관되는지만 검증한다.
+    if (!Number.isInteger(input.payload.port) || input.payload.port < 1 || input.payload.port > 65535) {
+      throw new Error(`Console lock port must be a valid TCP port, got ${input.payload.port}`);
     }
     const endpoint = new URL(input.payload.endpoint);
     if (endpoint.protocol !== "http:" || endpoint.pathname !== "/") {
       throw new Error("Console lock endpoint must be the loopback server root");
     }
-    if (endpoint.hostname !== input.host || Number(endpoint.port) !== input.port) {
-      throw new Error("Console lock endpoint must use the fixed loopback host and port");
+    if (endpoint.hostname !== input.host || Number(endpoint.port) !== input.payload.port) {
+      throw new Error("Console lock endpoint must use the loopback host and the lock port");
     }
-    if (input.payload.endpoint !== `http://${input.host}:${input.port}/`) {
-      throw new Error("Console lock endpoint must match the fixed endpoint");
+    if (input.payload.endpoint !== `http://${input.host}:${input.payload.port}/`) {
+      throw new Error("Console lock endpoint must match the lock host and port");
     }
   }
 

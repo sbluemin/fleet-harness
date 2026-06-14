@@ -50,7 +50,9 @@ export interface ConsoleServer {
 type ObserverLookup = { readonly kind: "aggregate" };
 
 const DEFAULT_HOST = "127.0.0.1";
-const DEFAULT_PORT = 37283;
+// 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
+// start()에서 srv.address()의 actualPort로 캡처해 락 파일에 기록한다.
+const DEFAULT_PORT = 0;
 const DEFAULT_TERMINAL_SESSION_ID = "default";
 const SHELL_TERMINAL_SESSION_ID = "shell";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;

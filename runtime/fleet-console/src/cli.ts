@@ -24,7 +24,7 @@ import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
 import { createConsoleStalePolicy } from "./stale.js";
 
-export type ConsoleCliMode = "start" | "stop" | "status" | "help";
+export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
 
 export interface ConsoleDaemonLifecycleDeps {
   readonly env?: NodeJS.ProcessEnv;
@@ -52,6 +52,11 @@ export interface ConsoleStopDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop">;
 }
 
+export interface ConsoleRestartDeps {
+  readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop" | "ensureDaemon" | "probe">;
+  readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void;
+}
+
 export interface OpenFleetWikiWorkspaceOptions {
   readonly cwd: string;
   readonly host?: string;
@@ -76,7 +81,6 @@ export interface BuildConsoleHelpTextOptions {
 }
 
 const FIXED_HOST = "127.0.0.1";
-const FIXED_PORT = 37283;
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
 
@@ -91,6 +95,8 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
     mode = "start";
   } else if (first === "stop") {
     mode = "stop";
+  } else if (first === "restart") {
+    mode = "restart";
   } else if (first === "status") {
     mode = "status";
   } else {
@@ -116,12 +122,13 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     dim("Observe registered Fleet CLI workspaces, carrier jobs, live output streams, and terminal sessions.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
-    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|status] [--help]", colorEnabled)}`,
-    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-console", colorEnabled)} ${dim("[start|stop|status]", colorEnabled)}`,
+    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
+    `  ${dim("Standalone binary:", colorEnabled)} ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status]", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server, then open it in your browser. (default)", colorEnabled)}`,
     `  ${command("stop", colorEnabled)}    ${dim("Stop the local Fleet Console server.", colorEnabled)}`,
+    `  ${command("restart", colorEnabled)} ${dim("Restart the local Fleet Console server, then open it in your browser.", colorEnabled)}`,
     `  ${command("status", colorEnabled)}  ${dim("Show the local Fleet Console server status.", colorEnabled)}`,
     "",
     section("OPTIONS", colorEnabled),
@@ -130,6 +137,7 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     section("EXAMPLES", colorEnabled),
     `  ${command("fleet console", colorEnabled)}`,
     `  ${command("fleet console status", colorEnabled)}`,
+    `  ${command("fleet console restart", colorEnabled)}`,
     `  ${command("fleet console stop", colorEnabled)}`,
     "",
   ];
@@ -236,7 +244,6 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
         lockFile: paths.lockFile,
         payload,
         host: FIXED_HOST,
-        port: FIXED_PORT,
       });
       return payload;
     } catch (err) {
@@ -324,6 +331,13 @@ export async function runConsoleStop(deps: ConsoleStopDeps = {}): Promise<string
   return "Fleet Console server stopped.";
 }
 
+export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<OpenFleetConsoleResult> {
+  const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
+  // 기존 데몬을 정지한 뒤 새 데몬을 띄우고 브라우저를 연다.
+  await lifecycle.stop();
+  return openFleetConsole({ lifecycle, openBrowser: deps.openBrowser });
+}
+
 export async function main(): Promise<void> {
   if (process.argv[2] === "serve") {
     await createConsoleDaemonLifecycle().runServer();
@@ -344,6 +358,11 @@ export async function main(): Promise<void> {
   }
   if (mode === "stop") {
     process.stdout.write(`${await runConsoleStop()}\n`);
+    return;
+  }
+  if (mode === "restart") {
+    await runConsoleRestart();
+    process.stdout.write("Fleet Console restarted.\n");
     return;
   }
   await openFleetConsole();
