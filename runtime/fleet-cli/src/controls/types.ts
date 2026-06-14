@@ -24,6 +24,9 @@ export interface MouseProtocolState {
 export interface PtyStartOptions {
   readonly cols: number;
   readonly rows: number;
+  // Windows ConPTY 전용: true면 node-pty가 OS 내장 conhost 대신 번들 conpty.dll을 사용한다.
+  // 비-Windows에서는 무시된다. 미지정 시 node-pty 기본값(false).
+  readonly useConptyDll?: boolean;
 }
 
 export interface PtyLaunchProfile {

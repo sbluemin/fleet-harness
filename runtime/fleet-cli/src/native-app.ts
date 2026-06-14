@@ -318,23 +318,6 @@ export function createNativeTerminalLaunchStrategy(deps: NativeTerminalLaunchStr
   };
 }
 
-export function resyncNativeInputRawMode(stdin: NativeInputStream = process.stdin): void {
-  if (!stdin.isTTY || stdin.setRawMode === undefined) {
-    return;
-  }
-  // Windows 콘솔 한정 회귀 방어: 직전에 종료된 native child(node-pty/ConPTY)가 실제
-  // 콘솔 입력 모드를 cooked(line/echo)로 되돌려 놓지만, libuv `uv_tty_set_mode`는 내부
-  // 모드 캐시가 이미 RAW이면 `setRawMode(true)`를 early-return으로 no-op 처리해 실제
-  // `SetConsoleMode`를 호출하지 않는다(win/tty.c). 그 결과 콘솔이 cooked로 남아 Mission
-  // Control이 키 입력(raw byte)을 받지 못한다. NORMAL을 한 번 경유시켜 libuv 캐시를
-  // 무효화하면 다음 `setRawMode(true)`가 실제 콘솔 모드를 RAW로 강제 재설정한다. termios
-  // 기반 macOS/Linux는 child PTY가 부모 stdin 모드를 오염시키지 않으므로 토글이 불필요하다.
-  if (process.platform === "win32") {
-    stdin.setRawMode(false);
-  }
-  stdin.setRawMode(true);
-}
-
 function createRunNativeAppArgOptions(options: RunAppOptions): FleetCliOptions {
   return {
     argvOverrides: {
@@ -358,7 +341,9 @@ function attachNativeInputStream(ui: LocalTui): () => void {
   };
 
   stdin.setEncoding("utf8");
-  resyncNativeInputRawMode(stdin);
+  if (stdin.isTTY) {
+    stdin.setRawMode(true);
+  }
   stdin.resume();
   stdin.on("data", onData);
 
@@ -388,6 +373,12 @@ function startNativeRawPtySession(options: {
   }, {
     cols: launch.cols,
     rows: launch.rows,
+    // Windows ConPTY backend를 OS 내장 conhost 대신 번들 conpty.dll로 전환한다. 기본 경로는
+    // child kill 시 conpty_console_list_agent를 부모와 같은 콘솔에 fork하고 ClosePseudoConsole로
+    // 정리하는데, 이 과정이 부모 콘솔 입력 핸들/read-loop를 교란해 child 종료 후 Mission Control
+    // 키 입력이 죽는다. conpty.dll 경로는 cleanup/release 순서가 달라 이 교란을 피한다. node-pty
+    // #894(PowerShell 출력 지연) 리스크가 있어 Windows에만 적용한다.
+    useConptyDll: process.platform === "win32",
   });
   const dataDisposable = pty.onData((chunk) => {
     stdout.write(chunk);
