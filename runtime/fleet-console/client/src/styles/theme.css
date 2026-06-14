@@ -23,6 +23,19 @@
   --coral-glow: oklch(72% 0.17 25 / 22%);
   --warn: oklch(80% 0.13 85);
   --warn-glow: oklch(80% 0.13 85 / 22%);
+  /* positive: 완료/성공 신호용 에메랄드 그린 — aurora(살아있음)·brass(보는 곳)와 의미가 겹치지 않는 별도 축 */
+  --positive: oklch(80% 0.15 152);
+  --positive-glow: oklch(80% 0.15 152 / 24%);
+
+  /* 캐리어 시그니처 색 — fleet-cli PROVIDER_RGBS(runtime/fleet-cli/src/styles/carriers.ts) 미러.
+     프로바이더 정체성 축으로 상태색과 의미가 겹치지 않으며, brand 고정값이라 테마 불변(carbon에서 재정의하지 않음). */
+  --carrier-claude: rgb(255 149 0);
+  --carrier-claude-zai: rgb(0 200 120);
+  --carrier-claude-kimi: rgb(180 100 255);
+  --carrier-codex: rgb(169 169 169);
+  --carrier-opencode-go: rgb(0 200 160);
+  --carrier-cursor: rgb(0 122 204);
+  --carrier-taskforce: rgb(100 180 255);
 
   --surface-glass: oklch(28% 0.04 248 / 60%);
   --surface-glass-strong: oklch(32% 0.04 248 / 78%);
@@ -61,6 +74,41 @@
   --duration-slow: 360ms;
 
   --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.93  0 0 0 0 0.86  0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/></svg>");
+}
+
+:root[data-theme="carbon"] {
+  --ink-abyss: oklch(14% 0.006 255);
+  --ink-deep: oklch(18% 0.007 255);
+  --ink-mid: oklch(25% 0.007 252);
+  --ink-veil: oklch(33% 0.006 252);
+  --ink-rim: oklch(45% 0.005 252);
+  --ink-fog: oklch(67% 0.005 250);
+  --ink-spectral: oklch(81% 0.004 250);
+  --ink-pearl: oklch(95% 0.003 250);
+
+  --brass: oklch(76% 0.115 62);
+  --brass-bright: oklch(84% 0.14 64);
+  --brass-deep: oklch(54% 0.11 55);
+  --brass-glow: oklch(80% 0.14 60 / 26%);
+
+  --aurora: oklch(80% 0.105 205);
+  --aurora-deep: oklch(56% 0.11 208);
+  --aurora-glow: oklch(80% 0.11 205 / 20%);
+
+  --coral: oklch(70% 0.16 25);
+  --coral-glow: oklch(70% 0.16 25 / 22%);
+  --warn: oklch(79% 0.12 80);
+  --warn-glow: oklch(79% 0.12 80 / 22%);
+  --positive: oklch(78% 0.13 158);
+  --positive-glow: oklch(78% 0.13 158 / 24%);
+
+  --surface-glass: oklch(25% 0.006 252 / 62%);
+  --surface-glass-strong: oklch(29% 0.007 252 / 80%);
+  --surface-pillar: oklch(20% 0.008 252 / 88%);
+  --surface-rim: oklch(62% 0.006 252 / 22%);
+  --surface-rim-strong: oklch(70% 0.007 252 / 36%);
+
+  --shadow-anchor: 0 0 0 1px oklch(76% 0.115 62 / 16%), 0 12px 32px -16px oklch(76% 0.115 62 / 30%);
 }
 
 *,
@@ -118,6 +166,15 @@ body::before {
     radial-gradient(820px 700px at 92% 96%, oklch(52% 0.13 60 / 18%), transparent 62%),
     radial-gradient(640px 520px at 68% 14%, oklch(82% 0.13 195 / 10%), transparent 68%),
     radial-gradient(520px 480px at 28% 98%, oklch(78% 0.13 75 / 11%), transparent 70%),
+    var(--ink-abyss);
+}
+
+:root[data-theme="carbon"] body::before {
+  background:
+    radial-gradient(900px 720px at 8% 4%, oklch(40% 0.04 230 / 18%), transparent 60%),
+    radial-gradient(820px 700px at 92% 96%, oklch(46% 0.08 55 / 14%), transparent 62%),
+    radial-gradient(640px 520px at 68% 14%, oklch(70% 0.05 205 / 7%), transparent 68%),
+    radial-gradient(520px 480px at 28% 98%, oklch(70% 0.10 60 / 8%), transparent 70%),
     var(--ink-abyss);
 }
 

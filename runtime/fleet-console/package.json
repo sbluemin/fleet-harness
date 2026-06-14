@@ -1,7 +1,7 @@
 {
   "name": "@dotobokuri/fleet-console",
   "version": "1.4.0",
-  "description": "Fleet Console - web surface for observing Fleet Gateway tenants, carrier jobs, and live output streams.",
+  "description": "Fleet Console - standalone web surface for observing Fleet CLI workspaces, carrier jobs, live output streams, and terminals.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
@@ -16,38 +16,64 @@
   "main": "./dist/cli.mjs",
   "types": "./dist/cli.d.ts",
   "bin": {
-    "fleet-console": "./dist/cli.mjs"
+    "fleet-console": "./dist/cli.mjs",
+    "fleet-wiki": "./dist/cli-bin.mjs"
   },
   "exports": {
     "./cli": {
       "types": "./dist/cli.d.ts",
       "default": "./dist/cli.mjs"
+    },
+    "./cli-bin": {
+      "default": "./dist/cli-bin.mjs"
     }
   },
-  "files": ["dist", "AGENTS.md", "README.md"],
+  "files": [
+    "dist",
+    "postinstall.mjs",
+    "AGENTS.md",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsup && vite build --config client/vite.config.ts && node ../fleet-gateway/scripts/embed-console.mjs",
+    "build": "tsup && vite build --config client/vite.config.ts",
+    "cli": "tsx src/cli.ts",
     "dev": "vite --config client/vite.config.ts",
+    "publish:npm": "node ../../scripts/publish-fleet-console.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
   },
   "dependencies": {
-    "@dotobokuri/fleet-gateway": "workspace:*",
+    "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/fleet-carriers": "workspace:*",
+    "@dotobokuri/fleet-wiki": "workspace:*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^5.5.0",
+    "dompurify": "^3.2.7",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.4.1",
+    "mermaid": "^11.12.1",
+    "node-pty": "^1.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.17.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@fontsource-variable/cascadia-code": "^5.2.2",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/manrope": "^5.2.8",
     "@types/node": "^24.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.5.12",
     "@vitejs/plugin-react": "^5.0.0",
     "tsup": "^8.5.0",
+    "tsx": "^4.20.3",
     "typescript": "^6.0.2",
     "vite": "^7.2.7",
     "vitest": "^4.0.13"

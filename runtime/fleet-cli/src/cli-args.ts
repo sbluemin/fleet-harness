@@ -17,6 +17,7 @@ export interface FleetCliOptions {
   readonly cursorSyncExplicitlyEnabled: boolean;
   readonly argvOverrides: FleetCliArgOverrides;
   readonly help: boolean;
+  readonly headless: boolean;
   readonly nativeTerminal: boolean;
 }
 
@@ -46,6 +47,7 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
   let cursorSync = cursorSyncEnv.value;
   let cursorSyncExplicitlyEnabled = cursorSyncEnv.explicitlyEnabled;
   let help = false;
+  let headless = false;
   let nativeTerminal = false;
   const argvOverrides = createEmptyArgOverrides();
   for (let index = 0; index < argv.length; index += 1) {
@@ -54,6 +56,8 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       help = true;
     } else if (arg === "--native") {
       nativeTerminal = true;
+    } else if (arg === "--headless") {
+      headless = true;
     } else if (arg === "--disable-cursor-sync") {
       cursorSync = false;
       cursorSyncExplicitlyEnabled = false;
@@ -62,7 +66,7 @@ export function parseFleetCliOptions(argv: readonly string[], env: NodeJS.Proces
       throw new Error(formatUnknownFleetOption(arg));
     }
   }
-  return { cursorSync, cursorSyncExplicitlyEnabled, argvOverrides, help, nativeTerminal };
+  return { cursorSync, cursorSyncExplicitlyEnabled, argvOverrides, help, headless, nativeTerminal };
 }
 
 export function parseFleetHookCommand(argv: readonly string[]): FleetHookCommand {
@@ -86,20 +90,21 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     `  ${command("fleet auth", colorEnabled)} ${dim("<login|list|logout> [claude-zai|claude-kimi]", colorEnabled)}`,
     `  ${command("fleet hook subagents-context", colorEnabled)}`,
     `  ${command("fleet wiki", colorEnabled)} ${dim("[--host <addr>] [--port <port>] [--stop] [--help]", colorEnabled)}`,
-    `  ${command("fleet console", colorEnabled)} ${dim("[--help]", colorEnabled)}`,
+    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|status] [--help]", colorEnabled)}`,
     `  ${command("fleet update", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("auth", colorEnabled)}                ${dim("Manage Fleet authentication.", colorEnabled)}`,
     `  ${command("hook", colorEnabled)}                ${dim("Run non-interactive Fleet hook helpers.", colorEnabled)}`,
     `  ${command("wiki", colorEnabled)}                ${dim("Run Fleet Wiki.", colorEnabled)}`,
-    `  ${command("console", colorEnabled)}             ${dim("Open Fleet Console in your browser.", colorEnabled)}`,
+    `  ${command("console", colorEnabled)}             ${dim("Open Fleet Console, or manage the console server (start|stop|status).", colorEnabled)}`,
     `  ${command("update", colorEnabled)}              ${dim("Update Fleet CLI packages.", colorEnabled)}`,
     "",
     section("OPTIONS", colorEnabled),
     `  ${option("-h, --help", colorEnabled)}          ${dim("Show this help message and exit.", colorEnabled)}`,
     `  ${option("--native", colorEnabled)}           ${dim("Run the selected Agent CLI in the real terminal", colorEnabled)}`,
     `                      ${dim("after the Mission Control launcher.", colorEnabled)}`,
+    `  ${option("--headless", colorEnabled)}         ${dim("Register this session to a running Fleet Console for live observation.", colorEnabled)}`,
     `  ${option("--disable-cursor-sync", colorEnabled)}`,
     `                      ${dim("Disable outer-terminal cursor projection for terminals", colorEnabled)}`,
     `                      ${dim("with problematic IME cursor anchoring.", colorEnabled)}`,

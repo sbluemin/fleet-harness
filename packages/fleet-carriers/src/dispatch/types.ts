@@ -330,6 +330,7 @@ export interface CarrierStatusEntry {
   effort: string | null;
   role: string | null;
   roleDescription: string | null;
+  subagentMode: boolean;
   taskForceBackendCount: number;
   category?: CarrierCategory;
 }

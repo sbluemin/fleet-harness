@@ -1,3 +1,5 @@
+import type { JobView, TrackView } from "./types.js";
+
 export function formatClock(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour12: false });
 }
@@ -20,6 +22,11 @@ export function compactPath(cwd: string): string {
   const segments = cwd.split("/").filter(Boolean);
   if (segments.length <= 3) return cwd;
   return `…/${segments.slice(-2).join("/")}`;
+}
+
+export function formatCarrierName(carrierId: string): string {
+  if (!carrierId) return carrierId;
+  return carrierId.charAt(0).toUpperCase() + carrierId.slice(1);
 }
 
 export function describeJobStatus(status: string): string {
@@ -70,4 +77,43 @@ export function statusTone(status: string): "live" | "ok" | "bad" | "idle" {
     default:
       return "idle";
   }
+}
+
+/**
+ * 진행 중인 잡의 "지금 스트리밍 중인 최신 한 줄"을 도출한다. fleet-cli job bar의 inline 표시와
+ * 동일하게 가장 최근 비어있지 않은 출력 라인을 반환하며, 잡이 종료(active가 아님)되면 null을 돌려
+ * 호출 측이 해당 영역을 제거하도록 한다. 활성(stream/conn) 트랙을 우선 보고, 없으면 전체 트랙에서 찾는다.
+ */
+export function latestStreamLine(job: JobView): string | null {
+  if (job.status !== "active") return null;
+  const tracks = job.trackOrder
+    .map((trackId) => job.tracks[trackId])
+    .filter((track): track is TrackView => Boolean(track));
+  const streaming = tracks.filter((track) => track.status === "stream" || track.status === "conn");
+  const pool = streaming.length > 0 ? streaming : tracks;
+  for (let index = pool.length - 1; index >= 0; index--) {
+    const track = pool[index];
+    const line = track ? trackTailLine(track) : null;
+    if (line) return line;
+  }
+  return null;
+}
+
+function trackTailLine(track: TrackView): string | null {
+  return (
+    lastNonEmptyLine(track.text)
+    ?? lastNonEmptyLine(track.thought)
+    ?? track.tools[track.tools.length - 1]?.title
+    ?? null
+  );
+}
+
+function lastNonEmptyLine(text: string): string | null {
+  if (!text) return null;
+  const lines = text.split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const trimmed = lines[index]?.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
 }

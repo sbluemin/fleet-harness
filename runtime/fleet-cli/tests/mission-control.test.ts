@@ -11,7 +11,6 @@ import { getAgentCliMetadata, resolveAgentCliId } from "../src/agent-cli/registr
 import type { AgentCliId, AgentCliProfile } from "../src/agent-cli/types.js";
 import { createWikiProcessController } from "../src/mission-control/menu/wiki-panel.js";
 import type { WikiProcessController, WikiServerStatus } from "../src/mission-control/menu/wiki-panel.js";
-import type { GatewayProcessController, GatewayStatus } from "../src/mission-control/menu/gateway-panel.js";
 import type { FleetCliRelease, MissionControlCounts } from "../src/mission-control/types.js";
 import type { ResolvedSessionOptions, SessionOptions, SessionOptionsRuntime } from "../src/mission-control/options/types.js";
 
@@ -268,7 +267,7 @@ describe("Mission Control controller", () => {
 
     openSystemMenu(controller);
     const lines = stripAnsi(controller.component.render(100).join("\n")).split("\n");
-    const labels = ["Authentication", "Wiki Server", "Gateway Status", "Diagnostics", "About"];
+    const labels = ["Authentication", "Wiki Server", "Diagnostics", "About"];
     const rows = labels.map((label) => {
       const row = lines.find((line) => line.match(/[▸ ]/) && line.includes(label));
       expect(row).toBeDefined();
@@ -594,7 +593,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\x1b[2J",
     });
 
-    openSystemMenuItem(controller, 3);
+    openSystemMenuItem(controller, 2);
     let diagnosticsOutput = controller.component.render(80).join("\n");
     expect(stripAnsi(diagnosticsOutput)).toContain("Diagnostics");
     expect(stripAnsi(diagnosticsOutput)).not.toContain(["Log", "Viewer"].join(" "));
@@ -624,7 +623,7 @@ describe("Mission Control controller", () => {
       invocationCwd: "/tmp/project\nspoofed-cwd",
     });
 
-    openSystemMenuItem(controller, 3);
+    openSystemMenuItem(controller, 2);
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
 
@@ -733,7 +732,7 @@ describe("Mission Control controller", () => {
     });
 
     controller.start();
-    expect(controller.getStatus()).toEqual({ state: "starting", port: 3737 });
+    expect(controller.getStatus()).toEqual({ state: "starting", port: 37283 });
     await waitForAsyncLaunch();
 
     expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
@@ -778,37 +777,13 @@ describe("Mission Control controller", () => {
     expect(controller.getStatus()).toEqual({ state: "running", host: "127.0.0.1", port: 4400, pid: 12345 });
   });
 
-  it("opens Gateway Status and runs gateway actions without exposing tokens", () => {
-    const gatewayController = createFakeGatewayController();
-    const controller = createTestController({ gatewayController });
-
-    openSystemMenuItem(controller, 2);
-    let output = controller.component.render(90).join("\n");
-    expect(stripAnsi(output)).toContain("Gateway Status");
-    expect(stripAnsi(output)).toContain("stopped");
-    expect(stripAnsi(output)).toContain("Endpoint");
-    expect(stripAnsi(output)).not.toContain("token");
-
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Start Gateway");
-    controller.ptyHost.write("\r");
-    expect(gatewayController.calls).toEqual(["start"]);
-    controller.ptyHost.write("\x1b");
-    output = controller.component.render(90).join("\n");
-    expect(stripAnsi(output)).toContain("running");
-    expect(stripAnsi(output)).toContain("http://127.0.0.1:37283/mcp");
-
-    controller.ptyHost.write("\r");
-    expect(renderPlain(controller)).toContain("Stop Gateway");
-  });
-
   it("renders about panel with counts and placeholder docs link", () => {
     const controller = createTestController({
       loadedCounts: { carriers: 8, queuedPatches: 3, wikiEntries: 17 },
       release: { channel: "stable", version: "0.22.1" },
     });
 
-    openSystemMenuItem(controller, 4);
+    openSystemMenuItem(controller, 3);
     const output = controller.component.render(80).join("\n");
 
     expect(renderPlain(controller)).toContain("Version: 0.22.1");
@@ -1286,7 +1261,6 @@ function createTestController(options: {
   readonly createPtyHost?: (profile: PtyLaunchProfile) => PtyHost;
   readonly initialCliId?: AgentCliId;
   readonly env?: NodeJS.ProcessEnv;
-  readonly gatewayController?: GatewayProcessController;
   readonly hosts?: FakeHost[];
   readonly injectProfile?: (profile: AgentCliProfile) => Promise<AgentCliProfile>;
   readonly invocationCwd?: string;
@@ -1311,7 +1285,6 @@ function createTestController(options: {
     authService: options.authService,
     initialCliId: options.initialCliId ?? "claude",
     env: options.env,
-    gatewayController: options.gatewayController,
     invocationCwd: options.invocationCwd ?? "/tmp/mission-control",
     loadedCounts: options.loadedCounts,
     injectProfile: options.injectProfile ?? ((profile) => Promise.resolve(profile)),
@@ -1416,32 +1389,6 @@ function createFakeWikiController(): WikiProcessController & { readonly calls: s
     stop: () => {
       calls.push("stop");
       status = { state: "stopped" };
-    },
-  };
-}
-
-function createFakeGatewayController(): GatewayProcessController & { readonly calls: string[] } {
-  const calls: string[] = [];
-  let status: GatewayStatus = { state: "stopped" };
-  return {
-    calls,
-    getStatus: () => status,
-    start: () => {
-      calls.push("start");
-      status = {
-        state: "running",
-        endpoint: "http://127.0.0.1:37283/mcp",
-        pid: 12345,
-        lastHealth: "2026-06-11T00:00:00.000Z",
-      };
-    },
-    stop: () => {
-      calls.push("stop");
-      status = { state: "stopped", lastHealth: "2026-06-11T00:00:01.000Z" };
-    },
-    restart: () => {
-      calls.push("restart");
-      status = { state: "starting" };
     },
   };
 }

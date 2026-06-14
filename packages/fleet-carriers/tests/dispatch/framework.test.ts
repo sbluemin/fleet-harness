@@ -8,7 +8,9 @@ import type { AgentToolCtx } from "@dotobokuri/core-agent";
 import { getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
+  buildCarrierStatusEntries,
   PRIOR_JOBS_REQUEST_HINT,
+  readCarrierStatusEntries,
   type CarrierConfig,
   type CarrierJobStreamEvent,
   createCarrierRegistry,
@@ -84,6 +86,71 @@ describe("carrier displayName resolution", () => {
 
     updateCarrierDisplayName("custom_alpha", "Alpha Prime", getCarrierSourceDisplayName(registry, "custom_alpha"));
     expect(resolveCarrierDisplayName(registry, "custom_alpha")).toBe("Alpha Prime");
+  });
+
+  it("builds display-safe carrier status entries from the carrier-owned read model", () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, {
+      ...createConfig("custom_alpha", "Alpha"),
+      carrierMetadata: {
+        category: "operations",
+        outputFormat: "",
+        permissions: [],
+        requestBlocks: [],
+        summary: "Coordinates local execution",
+        title: "Operator",
+        whenNotToUse: [],
+        whenToUse: [],
+      },
+      defaultAgentMode: "subagent",
+      defaultModel: firstModel("claude"),
+    });
+
+    const entries = buildCarrierStatusEntries(registry);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      carrierId: "custom_alpha",
+      category: "operations",
+      cliType: "claude",
+      defaultCliType: "claude",
+      displayName: "Alpha",
+      role: "Operator",
+      roleDescription: "Operator - Coordinates local execution",
+      slot: 1,
+      subagentMode: true,
+      taskForceBackendCount: 0,
+    });
+    expect(JSON.stringify(entries[0])).not.toContain("permissions");
+    expect(JSON.stringify(entries[0])).not.toContain("outputFormat");
+    expect(JSON.stringify(entries[0])).not.toContain("allowedExecutorTools");
+  });
+
+  it("reads persisted carrier status entries from the carrier store file", () => {
+    writeStates({
+      carriers: {
+        custom_alpha: {
+          agentCli: {
+            claude: {
+              model: firstModel("claude"),
+              effort: firstEffort("claude", firstModel("claude")),
+            },
+          },
+          displayName: "Alpha Persisted",
+        },
+      },
+    });
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("custom_alpha", "Alpha"));
+
+    const entries = readCarrierStatusEntries(registry);
+
+    expect(entries[0]).toMatchObject({
+      carrierId: "custom_alpha",
+      displayName: "Alpha Persisted",
+      model: firstModel("claude"),
+      effort: firstEffort("claude", firstModel("claude")),
+    });
   });
 });
 

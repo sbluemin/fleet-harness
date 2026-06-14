@@ -13,8 +13,17 @@
   min-height: 0;
 }
 
-.console-body--gate {
-  grid-template-columns: minmax(0, 1fr);
+/* Welcome 라우트는 console-shell 2행 전체를 차지하고 내용이 길면 스스로 스크롤한다. */
+.welcome-page {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.codex-host {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar {
@@ -51,9 +60,26 @@
   padding: var(--space-5) var(--space-8) var(--space-10);
 }
 
+/* Operations 라우트의 터미널 영역: console-body 2번째 컬럼을 가득 채우고
+   JobOverlay 오버레이(중앙 카드, position: absolute)의 기준 컨테이너가 된다. */
+.operations-terminal-stage {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.operations-landing {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .topbar,
 .sidebar,
-.stage {
+.stage,
+.operations-terminal-stage,
+.welcome-page {
   animation: codex-rise 720ms var(--ease-spring) both;
 }
 
@@ -65,8 +91,13 @@
   animation-delay: 120ms;
 }
 
-.stage {
+.stage,
+.operations-terminal-stage {
   animation-delay: 200ms;
+}
+
+.welcome-page {
+  animation-delay: 160ms;
 }
 
 @media (max-width: 1100px) {
@@ -78,10 +109,6 @@
   .console-body {
     grid-template-columns: 260px minmax(0, 1fr);
     gap: var(--space-3);
-  }
-
-  .console-body--gate {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .stage-content {

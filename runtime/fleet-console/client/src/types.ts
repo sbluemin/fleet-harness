@@ -1,9 +1,59 @@
+export type ThemeId = "maritime" | "carbon";
+
 export interface ObservedTenant {
   readonly tenantId: string;
   readonly tenantLabel: string;
-  readonly cwd: string;
   readonly createdAt: number;
   readonly sessions: number;
+  readonly status?: "online" | "offline" | "deregistered";
+  readonly cliRunId?: string;
+  readonly registrationId?: string;
+  readonly theaterId?: string;
+  readonly terminalSessionId?: string;
+}
+
+export interface TheaterInfo {
+  readonly id: string;
+  readonly label: string;
+  readonly createdAt: string;
+  readonly lastOpenedAt: string;
+  readonly hasWiki: boolean;
+  readonly activeAdmiralCount: number;
+}
+
+export interface ObserverStatus {
+  readonly workspaces: number;
+  readonly jobs: number;
+  readonly version: string;
+  readonly channel: "stable" | "local" | "unknown";
+  readonly port: number;
+  readonly wikiServerStatus: "available" | "unavailable" | "unknown";
+}
+
+export interface CarrierReadinessEntry {
+  readonly carrierId: string;
+  readonly displayName: string;
+  readonly role: string | null;
+  readonly model: string;
+  readonly effort: string | null;
+  readonly taskForceBackendCount: number;
+  readonly subagentMode: boolean;
+  readonly category?: "strategy" | "planning" | "operations";
+  readonly slot: number;
+  readonly cliType: string;
+}
+
+export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error";
+
+export interface SessionInfo {
+  readonly sessionId: string;
+  readonly terminalSessionId: string;
+  readonly cwdLabel: string;
+  readonly status: SessionStatus;
+  readonly createdAt: number;
+  readonly theaterId?: string;
+  readonly tenantId?: string;
+  readonly registrationId?: string;
 }
 
 export interface ObservedEvent {
@@ -86,16 +136,25 @@ export interface TenantJobsView {
   readonly truncation: ObserverTruncation;
 }
 
-export type ConnectionState = "auth-needed" | "connecting" | "live";
+export type ConnectionState = "connecting" | "live";
 
 export interface ConsoleState {
-  readonly token: string | null;
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
+  readonly activeTheme: ThemeId;
   readonly tenants: readonly ObservedTenant[];
+  readonly theaters: readonly TheaterInfo[];
+  readonly activeTheaterId: string | null;
+  readonly addingTheater: boolean;
+  readonly theaterError: string | null;
+  readonly sessions: Readonly<Record<string, SessionInfo>>;
+  readonly sessionOrder: readonly string[];
+  readonly activeTerminalSessionId: string | null;
+  readonly creatingTerminalSession: boolean;
+  readonly terminalSessionError: string | null;
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
   readonly tenantOrder: readonly string[];
-  readonly selectedTenantId: string | null;
-  readonly selectedJobId: string | null;
   readonly timelineOpen: boolean;
+  readonly shellOpen: boolean;
+  readonly selectedJobId: string | null;
 }

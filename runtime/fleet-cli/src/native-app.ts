@@ -71,10 +71,10 @@ interface NativeRawPtySession {
 type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
 
 export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
-  const runtimeLifecycle = createFleetRuntimeLifecycle();
+  const argvOptions = options.argvOptions ?? createRunNativeAppArgOptions(options);
+  const runtimeLifecycle = createFleetRuntimeLifecycle({ consoleRegister: argvOptions.headless });
   const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
-  const argvOptions = options.argvOptions ?? createRunNativeAppArgOptions(options);
   const invocationCwd = resolveInvocationCwd();
   const ui = new LocalTui({ cursorSyncEnabled: true });
   const initialStdinRaw = process.stdin.isRaw;
@@ -326,6 +326,7 @@ function createRunNativeAppArgOptions(options: RunAppOptions): FleetCliOptions {
     cursorSync: options.cursorSync !== false,
     cursorSyncExplicitlyEnabled: false,
     help: false,
+    headless: false,
     nativeTerminal: true,
   };
 }

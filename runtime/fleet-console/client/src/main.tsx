@@ -1,23 +1,27 @@
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/cascadia-code";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./app.js";
-import { resetForToken } from "./store.js";
-import { readObserverToken } from "./token-storage.js";
+import { initThemeFromStorage } from "./store.js";
+
+initThemeFromStorage();
 
 const app = document.querySelector("#app");
 if (app) {
-  resetForToken(readObserverToken());
   createRoot(app).render(
     <StrictMode>
-      <App />
+      <BrowserRouter basename="/console">
+        <App />
+      </BrowserRouter>
     </StrictMode>,
   );
 }

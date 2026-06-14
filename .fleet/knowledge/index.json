@@ -361,5 +361,19 @@
     "title": "PRD: Fleet Wiki 템플릿 기반 스키마 검증",
     "tags": [],
     "updated": "2026-05-25T04:28:05.901Z"
+  },
+  "synthesis-fleet-console-main-dashboard-research": {
+    "path": "wiki/synthesis-fleet-console-main-dashboard-research.md",
+    "title": "Fleet Console 메인 대시보드 개선 조사",
+    "tags": [
+      "synthesis",
+      "fleet-console",
+      "fleet-cli",
+      "mission-control",
+      "dashboard",
+      "ux",
+      "product"
+    ],
+    "updated": "2026-06-14T03:13:07.212Z"
   }
 }

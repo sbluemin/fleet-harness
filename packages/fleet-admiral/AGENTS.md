@@ -18,7 +18,7 @@
 ## Import Boundaries
 
 - May depend on `@dotobokuri/fleet-carriers` and `@dotobokuri/core-agent`.
-- Must not import `@dotobokuri/fleet-cli`, `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-wiki-ui`, `@dotobokuri/fleet-infra`, or `runtime/fleet-cli`.
+- Must not import `@dotobokuri/fleet-cli`, `@dotobokuri/fleet-wiki`, `@dotobokuri/fleet-console`, `@dotobokuri/fleet-infra`, or `runtime/fleet-cli`.
 - Consumers import only from the root package entry `@dotobokuri/fleet-admiral`; do not add subpath exports or deep-import compatibility paths.
 
 ## Public Surface

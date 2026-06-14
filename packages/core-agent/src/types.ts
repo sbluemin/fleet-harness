@@ -40,4 +40,22 @@ export interface RegisterExecutorToolOptions {
   readonly allowedScopes?: readonly string[];
 }
 
+export interface JsonRpcRequest {
+  readonly jsonrpc: "2.0";
+  readonly id?: string | number | null;
+  readonly method: string;
+  readonly params?: unknown;
+}
+
+export interface JsonRpcResponse {
+  readonly jsonrpc: "2.0";
+  readonly id: string | number | null;
+  readonly result?: unknown;
+  readonly error?: { readonly code: number; readonly message: string; readonly data?: unknown };
+}
+
+export type JsonRpcPayload = JsonRpcRequest | readonly JsonRpcRequest[];
+
+export type JsonRpcResultPayload = JsonRpcResponse | readonly JsonRpcResponse[] | null;
+
 export type TrackStatus = "queued" | "conn" | "stream" | "done" | "err" | "aborted";

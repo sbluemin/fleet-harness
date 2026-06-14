@@ -7,6 +7,8 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.dirname(scriptDir);
 const protocolGatePath = path.join(repoRoot, "packages", "fleet-admiral", "src", "protocols", "fleet-action.ts");
 const skillRoot = path.join(repoRoot, "runtime", "fleet-cli", "assets", "skills");
+// Protocol mode 스킬은 공통 접두사가 없으므로 명시적 집합으로 SSoT를 고정한다(gate ↔ skill 디렉토리 양방향 검증의 기대값).
+const PROTOCOL_MODE_DIRS = ["protocol-baseline", "protocol-midline", "protocol-redline", "protocol-frontline"];
 const findings = [];
 
 checkProtocolModes();
@@ -19,21 +21,23 @@ if (findings.length > 0) {
 }
 
 function checkProtocolModes() {
+  const expected = [...PROTOCOL_MODE_DIRS].sort();
   const gateText = readFileSync(protocolGatePath, "utf8");
   const modeGateSection = gateText.split("## Mode Gate")[1]?.split("If operational mode is ambiguous")[0] ?? "";
-  const gateModes = unique([...modeGateSection.matchAll(/fleet-protocol-([a-z-]+)/g)].map((match) => match[1])).sort();
+  // gate 소스에서 mode 이름은 백틱 escaping(`${"`"}<mode>${"`"}`)으로 등장한다.
+  const gateModes = expected.filter((mode) => modeGateSection.includes(backtickWrapped(mode)));
   const skillModes = readdirSync(skillRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith("fleet-protocol-"))
-    .map((entry) => entry.name.replace(/^fleet-protocol-/, ""))
+    .filter((entry) => entry.isDirectory() && PROTOCOL_MODE_DIRS.includes(entry.name))
+    .map((entry) => entry.name)
     .sort();
 
-  const gateOnly = gateModes.filter((mode) => !skillModes.includes(mode));
-  const skillOnly = skillModes.filter((mode) => !gateModes.includes(mode));
-  if (gateOnly.length > 0) {
-    findings.push(`${relative(protocolGatePath)}: gate modes missing skill directories: ${gateOnly.join(", ")}`);
+  const gateMissing = expected.filter((mode) => !gateModes.includes(mode));
+  const skillMissing = expected.filter((mode) => !skillModes.includes(mode));
+  if (gateMissing.length > 0) {
+    findings.push(`${relative(protocolGatePath)}: Mode Gate missing expected protocol modes: ${gateMissing.join(", ")}`);
   }
-  if (skillOnly.length > 0) {
-    findings.push(`${relative(skillRoot)}: skill directories missing gate modes: ${skillOnly.join(", ")}`);
+  if (skillMissing.length > 0) {
+    findings.push(`${relative(skillRoot)}: skill directories missing expected protocol modes: ${skillMissing.join(", ")}`);
   }
 }
 
@@ -126,11 +130,11 @@ function normalizeGuardPhrase(value) {
 function isAllowedGuardPhraseContext(file, line, index) {
   const fileName = path.basename(path.dirname(file));
   const isFrontMatterDescription = index < 4 && /^description: /.test(line);
-  const isEscalationCheck = /\*\*Escalation\*\*.*re-classify under multi-agent/.test(line);
-  if (fileName === "fleet-protocol-high-risk") {
+  const isEscalationCheck = /\*\*Escalation\*\*.*re-classify under frontline/.test(line);
+  if (fileName === "protocol-redline") {
     return isFrontMatterDescription || /^Use this mode /.test(line) || isEscalationCheck;
   }
-  if (fileName === "fleet-protocol-multi-agent") {
+  if (fileName === "protocol-frontline") {
     return isFrontMatterDescription || /^Use this mode /.test(line);
   }
   return false;
@@ -138,7 +142,7 @@ function isAllowedGuardPhraseContext(file, line, index) {
 
 function protocolSkillFiles() {
   return readdirSync(skillRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith("fleet-protocol-"))
+    .filter((entry) => entry.isDirectory() && PROTOCOL_MODE_DIRS.includes(entry.name))
     .map((entry) => path.join(skillRoot, entry.name, "SKILL.md"))
     .filter((file) => {
       try {
@@ -155,4 +159,9 @@ function relative(file) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+// gate TS 소스에서 mode 이름은 백틱 escaping 패턴 `${"`"}<mode>${"`"}` 으로 인라인된다.
+function backtickWrapped(value) {
+  return `\${"\`"}${value}\${"\`"}`;
 }

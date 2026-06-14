@@ -22,6 +22,7 @@ export * as store from "./store/index.js";
 export * from "./subagents/index.js";
 export * from "./dispatch/framework.js";
 export * from "./dispatch/prompt.js";
+export * from "./dispatch/readiness.js";
 export * from "./dispatch/status-overlay.js";
 export * from "./dispatch/taskforce.js";
 export * from "./dispatch/tool-spec.js";

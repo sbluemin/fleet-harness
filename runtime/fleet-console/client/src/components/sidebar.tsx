@@ -1,19 +1,14 @@
 import { memo } from "react";
 
-import { compactPath, describeJobStatus, formatClock, shortJobId, statusTone } from "../format.js";
-import { selectJob, selectTenant } from "../store.js";
-import type { ConsoleState, JobView, ObservedTenant, TenantJobsView } from "../types.js";
+import { createTheaterTerminalSession } from "../api.js";
+import { describeJobStatus, formatCarrierName, latestStreamLine, shortJobId, statusTone } from "../format.js";
+import { isTerminalJobStatus } from "../reduce.js";
+import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
+import type { SessionJob } from "../store.js";
+import type { ConsoleState, JobView, SessionInfo } from "../types.js";
 
 interface SidebarProps {
   readonly state: ConsoleState;
-}
-
-interface TenantGroupProps {
-  readonly tenant: ObservedTenant | undefined;
-  readonly tenantId: string;
-  readonly jobs: TenantJobsView | undefined;
-  readonly expanded: boolean;
-  readonly selectedJobId: string | null;
 }
 
 interface JobEntryProps {
@@ -21,81 +16,107 @@ interface JobEntryProps {
   readonly active: boolean;
 }
 
+interface SessionEntryProps {
+  readonly session: SessionInfo;
+  readonly active: boolean;
+  readonly jobs: readonly SessionJob[];
+  readonly selectedJobId: string | null;
+}
+
 export function Sidebar({ state }: SidebarProps) {
-  const tenantIds = state.tenantOrder.length > 0 ? state.tenantOrder : state.tenants.map((tenant) => tenant.tenantId);
+  const visibleSessionOrder = theaterSessionOrder(state);
+  const handleCreateSession = async () => {
+    if (state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId) return;
+    beginCreateTerminalSession();
+    try {
+      completeCreateTerminalSession(await createTheaterTerminalSession(state.activeTheaterId));
+    } catch (error) {
+      failCreateTerminalSession(error instanceof Error ? error.message : String(error));
+    }
+  };
   return (
-    <nav className="sidebar" aria-label="Workspaces and jobs">
-      <p className="sidebar-eyebrow">Workspaces</p>
-      {tenantIds.length === 0 ? (
+    <nav className="sidebar" aria-label="Operation sessions and carrier jobs">
+      <div className="sidebar-heading">
+        <p className="sidebar-eyebrow">Operations</p>
+        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId} aria-label="Launch operation">
+          +
+        </button>
+      </div>
+      {visibleSessionOrder.length > 0 ? (
+        <ol className="session-list">
+          {visibleSessionOrder.map((sessionId) => {
+            const session = state.sessions[sessionId];
+            if (!session) return null;
+            return (
+              <SessionEntry
+                key={sessionId}
+                session={session}
+                active={state.activeTerminalSessionId === sessionId}
+                jobs={sessionJobs(state, session)}
+                selectedJobId={state.selectedJobId}
+              />
+            );
+          })}
+        </ol>
+      ) : null}
+      {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
+      {visibleSessionOrder.length === 0 ? (
         <p className="sidebar-empty">
-          No workspaces connected.
+          {state.activeTheaterId ? "No operations in this Theater." : "No Theaters registered."}
           <br />
-          Launch a Fleet session to begin observing.
+          {state.activeTheaterId ? "Use + to launch one here." : "Add a Theater from the top bar."}
         </p>
-      ) : (
-        tenantIds.map((tenantId) => (
-          <TenantGroup
-            key={tenantId}
-            tenantId={tenantId}
-            tenant={state.tenants.find((candidate) => candidate.tenantId === tenantId)}
-            jobs={state.tenantJobs[tenantId]}
-            expanded={state.selectedTenantId === tenantId}
-            selectedJobId={state.selectedJobId}
-          />
-        ))
-      )}
+      ) : null}
     </nav>
   );
 }
 
-const TenantGroup = memo(function TenantGroup({ tenant, tenantId, jobs, expanded, selectedJobId }: TenantGroupProps) {
-  const label = tenant?.tenantLabel ?? jobs?.tenantLabel ?? tenantId;
-  const jobCount = jobs?.jobOrder.length ?? 0;
-  const liveCount = jobs ? jobs.jobOrder.filter((jobId) => statusTone(jobs.jobs[jobId]?.status ?? "") === "live").length : 0;
+const SessionEntry = memo(function SessionEntry({ session, active, jobs, selectedJobId }: SessionEntryProps) {
+  const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
+  const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
+  // 진행 중인 잡을 위로, 완료(terminal)된 잡을 아래로 모은다. 안정 정렬이라 그룹 내부 등록 순서는 그대로 유지된다.
+  const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
   return (
-    <section className={`tenant-group ${expanded ? "is-expanded" : ""}`}>
-      <button type="button" className="tenant-row" onClick={() => selectTenant(tenantId)} aria-current={expanded || undefined}>
-        <span className={`tenant-beacon ${liveCount > 0 ? "is-live" : ""}`} aria-hidden="true" />
+    <li className={`session-item ${active ? "is-active" : ""}`}>
+      <button type="button" className={`session-row ${active ? "is-active" : ""}`} onClick={() => selectTerminalSession(session.sessionId)} aria-current={active || undefined}>
+        <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
         <span className="tenant-row-text">
-          <span className="tenant-label">{label}</span>
-          {tenant ? <span className="tenant-path">{compactPath(tenant.cwd)}</span> : null}
+          <span className="tenant-label">{session.cwdLabel}</span>
+          <span className="tenant-path">{session.status}</span>
         </span>
-        <span className="tenant-count">{jobCount}</span>
+        {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
       </button>
-      {expanded ? (
-        <ol className="job-list">
-          {jobs && jobs.truncation.droppedCount > 0 ? (
-            <li className="job-list-notice">{jobs.truncation.droppedCount} older events dropped by retention</li>
-          ) : null}
-          {jobs && jobs.jobOrder.length > 0 ? (
-            jobs.jobOrder.map((jobId) => {
-              const job = jobs.jobs[jobId];
-              return job ? <JobEntry key={jobId} job={job} active={jobId === selectedJobId} /> : null;
-            })
+      {active ? (
+        <ol className="session-job-list">
+          {orderedJobs.length > 0 ? (
+            orderedJobs.map(({ job }) => <JobEntry key={job.jobId} job={job} active={job.jobId === selectedJobId} />)
           ) : (
-            <li className="job-list-empty">No jobs observed yet.</li>
+            <li className="job-list-empty">No carrier jobs in this session.</li>
           )}
         </ol>
       ) : null}
-    </section>
+    </li>
   );
 });
 
 const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
   const tone = statusTone(job.status);
+  // 진행 중인 잡에 한해 job bar가 스트리밍하는 최신 한 줄을 노출하고, 완료되면 null이라 영역 자체가 사라진다.
+  const streamLine = latestStreamLine(job);
   return (
     <li>
       <button
         type="button"
         className={`job-row ${active ? "is-active" : ""}`}
-        onClick={() => selectJob(job.tenantId, job.jobId)}
+        onClick={() => selectJob(job.jobId)}
         aria-current={active || undefined}
       >
         <span className={`status-dot status-dot--${tone}`} aria-hidden="true" />
         <span className="job-row-text">
           <span className="job-row-label">{job.label ?? shortJobId(job.jobId)}</span>
+          {streamLine ? <span className="job-row-stream">{streamLine}</span> : null}
           <span className="job-row-meta">
-            {describeJobStatus(job.status)} · {formatClock(job.updatedAt)}
+            {job.ownerCarrierId ? `${formatCarrierName(job.ownerCarrierId)} · ${describeJobStatus(job.status)}` : describeJobStatus(job.status)}
           </span>
         </span>
       </button>

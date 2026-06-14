@@ -13,7 +13,7 @@ import {
   sanitizeGeneration,
   sanitizeTaskforce,
 } from "./sanitize.js";
-import { readRawCarriers, updateCarriers } from "./state-io.js";
+import { readRawCarriers, readRawCarriersOrDefaultStore, updateCarriers } from "./state-io.js";
 import type {
   AgentCliSelection,
   CarrierModelDefaults,
@@ -32,11 +32,13 @@ export function loadCarrierStates(defaultsByCarrier?: Record<string, CliType | C
 export function readCarriersSnapshot(
   defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
 ): FleetStoreSnapshot {
-  const raw = readRawCarriers();
-  return {
-    generation: sanitizeGeneration(raw._meta?.generation),
-    carriers: resolveCarriersRecord(raw, defaultsByCarrier, resolveSnapshotCarrierState),
-  };
+  return buildCarriersSnapshot(readRawCarriers(), defaultsByCarrier);
+}
+
+export function readFileBackedCarriersSnapshot(
+  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults> = {},
+): FleetStoreSnapshot {
+  return buildCarriersSnapshot(readRawCarriersOrDefaultStore(), defaultsByCarrier);
 }
 
 export async function updateAgentCliSelection(
@@ -125,6 +127,16 @@ function resolveSnapshotCarrierState(
     sanitizeAgentCliType(state.agentCliType) ?? defaults?.cliType ?? "claude",
     sanitizeTaskforce(state.taskforce),
   );
+}
+
+function buildCarriersSnapshot(
+  raw: FleetCarriers,
+  defaultsByCarrier: Record<string, CliType | CarrierModelDefaults>,
+): FleetStoreSnapshot {
+  return {
+    generation: sanitizeGeneration(raw._meta?.generation),
+    carriers: resolveCarriersRecord(raw, defaultsByCarrier, resolveSnapshotCarrierState),
+  };
 }
 
 /** carrierIds 합집합(raw 키 + defaults 키)을 순회하며 상태를 해석하는 공통 흐름 */

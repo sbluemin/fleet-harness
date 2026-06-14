@@ -163,7 +163,7 @@ describe("update installer process invocation", () => {
     await expect(statusPromise).resolves.toBe(0);
     expect(mockedSpawn).toHaveBeenCalledWith(
       "C:\\Windows\\System32\\cmd.exe",
-      ["/d", "/s", "/c", "call", "C:\\tools\\pnpm.cmd ", "i", "-g", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-wiki-ui@latest"],
+      ["/d", "/s", "/c", "call", "C:\\tools\\pnpm.cmd ", "i", "-g", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-console@latest"],
       { stdio: "inherit" },
     );
     expect(io.stderr.toString()).toBe("");
@@ -188,7 +188,7 @@ describe("update installer process invocation", () => {
     await expect(statusPromise).resolves.toBe(0);
     expect(mockedSpawn).toHaveBeenCalledWith(
       "/usr/local/bin/npm",
-      ["i", "-g", "@dotobokuri/fleet-cli@1.2.3", "@dotobokuri/fleet-wiki-ui@1.2.3"],
+      ["i", "-g", "@dotobokuri/fleet-cli@1.2.3", "@dotobokuri/fleet-console@1.2.3"],
       { stdio: "inherit" },
     );
   });
@@ -249,8 +249,8 @@ describe("update installer process invocation", () => {
       [
         "Fleet could not detect its global npm or pnpm installation, so no installer was run.",
         "Run one of these commands manually:",
-        "npm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-wiki-ui@latest",
-        "pnpm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-wiki-ui@latest",
+        "npm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-console@latest",
+        "pnpm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-console@latest",
         "",
       ].join("\n"),
     );
@@ -274,8 +274,8 @@ describe("update installer process invocation", () => {
       [
         "Fleet's global install location is not writable, so no installer was run.",
         "Run one of these commands manually:",
-        "npm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-wiki-ui@latest",
-        "pnpm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-wiki-ui@latest",
+        "npm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-console@latest",
+        "pnpm i -g @dotobokuri/fleet-cli@latest @dotobokuri/fleet-console@latest",
         "",
       ].join("\n"),
     );
@@ -298,7 +298,7 @@ describe("update installer process invocation", () => {
     expect(io.stdout.toString()).toBe("Updating Fleet packages with npm (1.3.0)...\n");
     expect(mockedSpawn).toHaveBeenCalledWith(
       "npm",
-      ["i", "-g", "@dotobokuri/fleet-cli@1.3.0", "@dotobokuri/fleet-wiki-ui@1.3.0"],
+      ["i", "-g", "@dotobokuri/fleet-cli@1.3.0", "@dotobokuri/fleet-console@1.3.0"],
       { stdio: "inherit" },
     );
   });
@@ -318,7 +318,7 @@ describe("update installer process invocation", () => {
     expect(io.stdout.toString()).toBe("Could not reach the npm registry to check for updates; reinstalling the latest published version with npm...\n");
     expect(mockedSpawn).toHaveBeenCalledWith(
       "npm",
-      ["i", "-g", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-wiki-ui@latest"],
+      ["i", "-g", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-console@latest"],
       { stdio: "inherit" },
     );
   });
