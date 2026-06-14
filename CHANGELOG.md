@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-06-14
+
 ### Fixed
 - [core] Fleet Console job overlay no longer clips its content on the right edge; long tool-call labels now truncate with an ellipsis and stay within the card.
 - [core] Fixed Fleet Console terminal sessions failing to start on Windows when launched from an npm-installed stable package.
