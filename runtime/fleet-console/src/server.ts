@@ -1,12 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
 
-import type {
-  DeregisterCliRequest,
-  HeartbeatCliRequest,
-  PushEventsRequest,
-  RegisterCliRequest,
-} from "@dotobokuri/core-agent";
 import {
   createCarrierRegistry,
   readCarrierStatusEntries,
@@ -24,7 +18,6 @@ import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
-import { readBearerToken } from "./auth.js";
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -74,7 +67,6 @@ const DEFAULT_HOST = "127.0.0.1";
 // 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
 // start()에서 srv.address()의 actualPort로 캡처해 락 파일에 기록한다.
 const DEFAULT_PORT = 0;
-const DEFAULT_TERMINAL_SESSION_ID = "default";
 const SHELL_TERMINAL_SESSION_ID = "shell";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -181,22 +173,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       handleHealth(req, res);
       return;
     }
-    if (pathname === "/api/cli/register") {
-      runAsyncHandler(handleCliRegister(req, res), res);
-      return;
-    }
-    if (pathname === "/api/cli/events") {
-      runAsyncHandler(handleCliEvents(req, res), res);
-      return;
-    }
-    if (pathname === "/api/cli/heartbeat") {
-      runAsyncHandler(handleCliHeartbeat(req, res), res);
-      return;
-    }
-    if (pathname === "/api/cli/deregister") {
-      runAsyncHandler(handleCliDeregister(req, res), res);
-      return;
-    }
     if (pathname === TERMINAL_TICKET_PATH) {
       runAsyncHandler(handleTerminalTicket(req, res), res);
       return;
@@ -254,7 +230,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    observability.markExpiredSessions();
     const payload = handle.payload;
     const body: ConsoleHealth = {
       ok: true,
@@ -269,83 +244,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, body);
   }
 
-  async function handleCliRegister(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const handle = lockHandle;
-    const token = readBearerToken(req.headers);
-    if (!handle || token !== handle.payload.token) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    const input = await readJsonBody<RegisterCliRequest>(req);
-    if (!input) {
-      writeJson(res, 400, { error: "Invalid registration payload" });
-      return;
-    }
-    try {
-      writeJson(res, 200, observability.register(input));
-    } catch (err) {
-      writeJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
-  async function handleCliEvents(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const token = readBearerToken(req.headers);
-    const input = await readJsonBody<PushEventsRequest>(req);
-    if (!token || !Array.isArray(input)) {
-      writeJson(res, token ? 400 : 401, { error: token ? "Invalid event payload" : "Unauthorized" });
-      return;
-    }
-    const result = observability.pushEvents(token, input);
-    if (!result) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    writeJson(res, 200, result);
-  }
-
-  async function handleCliHeartbeat(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const token = readBearerToken(req.headers);
-    const input = await readJsonBody<HeartbeatCliRequest>(req);
-    if (!token || !input?.cliRunId || !input.registrationId) {
-      writeJson(res, token ? 400 : 401, { error: token ? "Invalid heartbeat payload" : "Unauthorized" });
-      return;
-    }
-    const result = observability.heartbeat(token, input.cliRunId, input.registrationId);
-    if (!result) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    writeJson(res, 200, result);
-  }
-
-  async function handleCliDeregister(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const token = readBearerToken(req.headers);
-    const input = await readJsonBody<DeregisterCliRequest>(req);
-    if (!token || !input?.cliRunId || !input.registrationId) {
-      writeJson(res, token ? 400 : 401, { error: token ? "Invalid deregister payload" : "Unauthorized" });
-      return;
-    }
-    writeJson(res, 200, {
-      accepted: observability.deregister(token, input.cliRunId, input.registrationId),
-    });
-  }
-
   async function handleTerminalTicket(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -355,19 +253,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    const body = await readJsonBody<{ readonly registrationId?: string; readonly cliRunId?: string; readonly sessionId?: string; readonly kind?: string }>(req);
+    const body = await readJsonBody<{ readonly sessionId?: string; readonly kind?: string }>(req);
     const kind = body?.kind === "shell" ? "shell" : "fleet";
-    const sessionId = kind === "shell"
-      ? SHELL_TERMINAL_SESSION_ID
-      : typeof body?.sessionId === "string" && body.sessionId.length > 0
-        ? body.sessionId
-        : DEFAULT_TERMINAL_SESSION_ID;
+    const requestedSessionId = body?.sessionId;
+    let sessionId: string;
+    if (kind === "shell") {
+      sessionId = SHELL_TERMINAL_SESSION_ID;
+    } else if (typeof requestedSessionId === "string" && requestedSessionId.length > 0) {
+      sessionId = requestedSessionId;
+    } else {
+      writeJson(res, 400, { error: "terminal_session_not_found" });
+      return;
+    }
+    const cwd = kind === "shell" ? "" : observability.getLaunchCwd(sessionId);
+    if (cwd === null) {
+      writeJson(res, 404, { error: "terminal_session_not_found" });
+      return;
+    }
     if (!terminalSessions.canAttach(sessionId)) {
       writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return;
     }
     writeJson(res, 200, terminalTickets.issue({
-      cwd: kind === "shell" ? "" : observability.getLaunchCwd(body?.registrationId, body?.cliRunId),
+      cwd,
       sessionId,
       kind,
     }));
@@ -613,7 +521,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lastOpenedAt: theater.lastOpenedAt,
       hasWiki,
       activeAdmiralCount: observability.listWorkspaces()
-        .filter((workspace) => workspace.theaterId === theater.id && workspace.status !== "deregistered")
+        .filter((workspace) => workspace.theaterId === theater.id)
         .length,
     };
   }

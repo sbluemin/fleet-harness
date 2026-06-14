@@ -69,7 +69,7 @@ type NativeInputDebugDetail = Readonly<Record<string, unknown>>;
 
 export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
   const argvOptions = options.argvOptions ?? createRunNativeAppArgOptions(options);
-  const runtimeLifecycle = createFleetRuntimeLifecycle({ consoleRegister: argvOptions.headless });
+  const runtimeLifecycle = createFleetRuntimeLifecycle();
   const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
   const invocationCwd = resolveInvocationCwd();
@@ -365,7 +365,6 @@ function createRunNativeAppArgOptions(options: RunAppOptions): FleetCliOptions {
     },
     cursorSync: options.cursorSync !== false,
     help: false,
-    headless: false,
     nativeTerminal: true,
   };
 }

@@ -1,6 +1,5 @@
 import type { AuthEnvResolver, ExecutorSessionManager, McpToolRegistry } from "@dotobokuri/core-agent";
 import {
-	FLEET_MCP_SERVER_NAME,
 	createFleetAgentRuntimeLifecycle,
 	type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
@@ -10,14 +9,12 @@ import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
-import { createConsoleRegisterPublisher, type ConsoleRegisterPublisher } from "./console-register-publisher.js";
 import { reconcileRuntimeState } from "./reconciliation.js";
 import { createWorkspaceChangeScanner } from "./workspace-scanner.js";
 
 export interface RuntimeServices {
 	readonly authEnvResolver: AuthEnvResolver;
 	readonly carrierRuntime: CarrierRuntime;
-	readonly consolePublisher: ConsoleRegisterPublisher;
 	readonly dataDir: string;
 	readonly dedicatedMcpSession: ExecutorSessionManager;
 	readonly infraServices: InfraServices;
@@ -31,7 +28,6 @@ export interface FleetRuntimeLifecycle {
 }
 
 interface FleetRuntimeLifecycleDeps {
-	readonly consoleRegister?: boolean;
 	readonly dataDir?: string;
 }
 
@@ -76,21 +72,6 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		workspaceChangeScanner: createWorkspaceChangeScanner(),
 		wikiToolSpecs: getWikiToolSpecs(),
 	});
-	const consolePublisher = createConsoleRegisterPublisher({
-		cwd: process.cwd(),
-		env: process.env,
-		fleetVersion: getRuntimeVersion(),
-		mcpServerName: FLEET_MCP_SERVER_NAME,
-		toolCount: agentRuntime.mcpRegistry.getAllAgentTools().length,
-	});
-	let unsubscribeConsolePublisher = () => {};
-	if (deps.consoleRegister === true) {
-		consolePublisher.start();
-		unsubscribeConsolePublisher = agentRuntime.carrierRuntime.jobs.streaming.register((event) => {
-			consolePublisher.publishJobEvent(event);
-		});
-	}
-
 	reconcileRuntimeState(agentRuntime.carrierRuntime);
 
 	return {
@@ -98,20 +79,13 @@ async function startRuntime(deps: FleetRuntimeLifecycleDeps): Promise<StartedRun
 		services: {
 			authEnvResolver,
 			carrierRuntime: agentRuntime.carrierRuntime,
-			consolePublisher,
 			dataDir,
 			dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
 			infraServices,
 			mcpRegistry: [agentRuntime.mcpRegistry],
 		},
 		async shutdown() {
-			unsubscribeConsolePublisher();
-			await consolePublisher.cleanup();
 			await agentRuntime.cleanup();
 		},
 	};
-}
-
-function getRuntimeVersion(): string {
-	return typeof process.env.npm_package_version === "string" ? process.env.npm_package_version : "0.0.0-dev";
 }

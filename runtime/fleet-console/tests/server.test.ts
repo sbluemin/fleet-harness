@@ -55,116 +55,25 @@ afterEach(async () => {
   restoreStaticIndex();
 });
 
-describe("console register ingest", () => {
-  it("returns the exact register response shape and keeps ingest token out of browser snapshots", async () => {
-    const fixture = await startFixture();
-    const registration = await registerCli(fixture);
-
-    expect(Object.keys(registration).sort()).toEqual([
-      "heartbeatIntervalMs",
-      "ingestToken",
-      "leaseTtlMs",
-      "maxBatchEvents",
-      "registrationId",
-    ]);
-
-    const workspaces = await getJson<{ tenants: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/tenants`);
-    expect(JSON.stringify(workspaces)).not.toContain(registration.ingestToken);
-    expect(workspaces.tenants[0]).toMatchObject({ tenantId: "cli-a", tenantLabel: "Alpha", status: "online", theaterId: workspaceHash("/repo/a") });
-    expect(workspaces.tenants[0]).not.toHaveProperty("cwd");
-    expect(JSON.stringify(workspaces)).not.toContain("/repo/a");
-  });
-
-  it("requires ingest auth, ignores duplicate seq, emits gap truncation, and assigns global observedId", async () => {
-    const fixture = await startFixture();
-    const first = await registerCli(fixture, { cliRunId: "cli-a", tenantLabel: "Alpha" });
-    const second = await registerCli(fixture, { cliRunId: "cli-b", tenantLabel: "Beta" });
-
-    const unauthorized = await fetch(`${fixture.endpoint}api/cli/events`, {
-      method: "POST",
-      body: JSON.stringify([]),
-    });
-    expect(unauthorized.status).toBe(401);
-
-    await postEvents(fixture, first.ingestToken, [
-      { cliRunId: "cli-a", seq: 1, at: "2026-06-13T00:00:00.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "a" } },
-      { cliRunId: "cli-a", seq: 1, at: "2026-06-13T00:00:00.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "duplicate" } },
-      { cliRunId: "cli-a", seq: 3, at: "2026-06-13T00:00:01.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "b" } },
-      { cliRunId: "cli-a", seq: 4, at: "2026-06-13T00:00:02.000Z", event: { type: "job:finalized", jobId: "job-a", status: "done", finishedAt: 1, summary: "done", systemReminder: "cli-secret-reminder" } },
-    ]);
-    await postEvents(fixture, second.ingestToken, [
-      { cliRunId: "cli-b", seq: 1, at: "2026-06-13T00:00:02.000Z", event: { type: "track:text", jobId: "job-b", trackId: "t1", text: "c" } },
-    ]);
-
-    const jobs = await getJson<{ tenants: Array<{ readonly tenantId: string; readonly jobs: Array<{ readonly events: Array<{ readonly id: number; readonly type: string; readonly event: Record<string, unknown> }> }> }> }>(
-      `${fixture.endpoint}observer/jobs`,
-    );
-    const alphaEvents = jobs.tenants.find((tenant) => tenant.tenantId === "cli-a")?.jobs[0]?.events ?? [];
-    const betaEvents = jobs.tenants.find((tenant) => tenant.tenantId === "cli-b")?.jobs[0]?.events ?? [];
-
-    expect(alphaEvents.map((event) => event.event.text).filter(Boolean)).toEqual(["a", "b"]);
-    expect(alphaEvents.some((event) => event.type === "observer:truncated")).toBe(false);
-    const snapshot = await getJson<{ tenants: Array<{ readonly tenantId: string; readonly jobs: Array<{ readonly events: Array<{ readonly id: number; readonly type: string }> }> }> }>(
-      `${fixture.endpoint}observer/jobs?tenant=cli-a`,
-    );
-    const allAlphaIds = snapshot.tenants[0]?.jobs.flatMap((job) => job.events.map((event) => event.id)) ?? [];
-    const stream = await readObserverChunk(fixture);
-    const serializedSnapshot = JSON.stringify(snapshot);
-    expect(allAlphaIds).toEqual([1, 3, 4]);
-    expect(betaEvents[0]?.id).toBe(5);
-    expect(stream).toContain("observer:truncated");
-    expect(serializedSnapshot).not.toContain("systemReminder");
-    expect(serializedSnapshot).not.toContain("cli-secret-reminder");
-    expect(stream).not.toContain("systemReminder");
-    expect(stream).not.toContain("cli-secret-reminder");
-  });
-
-  it("marks heartbeat-missed sessions offline without deleting history, then deregisters best-effort", () => {
-    let now = 1_000;
-    const store = createConsoleObservabilityStore({
-      now: () => now,
-      nowIso: () => new Date(now).toISOString(),
-      randomToken: () => `token-${now}`,
-      leaseTtlMs: 10,
-    });
-    const registration = store.register({ protocolVersion: "1", cliRunId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
-    store.pushEvents(registration.ingestToken, [{ cliRunId: "cli-a", seq: 1, at: "2026-06-13T00:00:00.000Z", event: { type: "track:text", jobId: "job-a", text: "kept" } }]);
-
-    now = 2_000;
-    store.markExpiredSessions();
-
-    expect(store.listWorkspaces()[0]?.status).toBe("offline");
-    expect(store.listJobs("cli-a")[0]?.events).toHaveLength(1);
-    expect(store.deregister(registration.ingestToken, "cli-a", registration.registrationId)).toBe(true);
-    expect(store.listWorkspaces()[0]?.status).toBe("deregistered");
-  });
-
-  it("resolves terminal launch cwd from the selected registration", () => {
-    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
-    const registration = store.register({ protocolVersion: "1", cliRunId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/selected", pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
-
-    expect(store.getLaunchCwd(registration.registrationId)).toBe("/repo/selected");
-  });
-
-  it("binds a pending terminal session by cliRunId and canonical cwd", () => {
+describe("console terminal observability", () => {
+  it("resolves terminal launch cwd from the selected console-owned session", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-"));
     tempDirs.push(dir);
-    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+    const store = createConsoleObservabilityStore();
     store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
 
-    const registration = store.register({ protocolVersion: "1", cliRunId: "session-a", tenantLabel: "Alpha", cwd: dir, pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
-    const workspace = store.listWorkspaces()[0];
-    const session = store.listTerminalSessions()[0];
+    expect(store.getLaunchCwd("session-a")).toBe(dir);
+    expect(store.getLaunchCwd("missing-session")).toBeNull();
 
-    expect(workspace).toMatchObject({ cliRunId: "session-a", registrationId: registration.registrationId, terminalSessionId: "session-a" });
-    expect(workspace?.theaterId).toBe(workspaceHash(fs.realpathSync.native(dir)));
-    expect(session).toMatchObject({ sessionId: "session-a", status: "registered", registrationId: registration.registrationId, tenantId: "session-a", theaterId: workspaceHash(fs.realpathSync.native(dir)) });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
+
+    expect(store.getLaunchCwd("session-a")).toBe(dir);
   });
 
   it("registers console-owned terminal runtime sessions without CLI ingest tokens and appends carrier events", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-direct-runtime-"));
     tempDirs.push(dir);
-    const store = createConsoleObservabilityStore({ randomToken: () => "cli-ingest-token" });
+    const store = createConsoleObservabilityStore();
     store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
 
     const session = store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
@@ -176,35 +85,24 @@ describe("console register ingest", () => {
     expect(session).toMatchObject({ sessionId: "session-a", status: "registered", cliRunId: "session-a", tenantId: "session-a" });
     expect(workspaces[0]).toMatchObject({ tenantId: "session-a", tenantLabel: "Claude Code", terminalSessionId: "session-a" });
     expect(jobs[0]?.events[0]?.event).toMatchObject({ text: "hello" });
-    expect(serialized).not.toContain("cli-ingest-token");
     expect(serialized).not.toContain(dir);
   });
 
-  it("redacts system reminders from browser observer payloads for CLI ingest and terminal runtime events", () => {
+  it("redacts system reminders from browser observer payloads for terminal runtime events", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-redact-"));
     tempDirs.push(dir);
-    const store = createConsoleObservabilityStore({ randomToken: () => "cli-ingest-token" });
-    const cliRegistration = store.register({ protocolVersion: "1", cliRunId: "cli-a", tenantLabel: "Alpha", cwd: "/repo/a", pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
+    const store = createConsoleObservabilityStore();
     store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
     store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
 
-    store.pushEvents(cliRegistration.ingestToken, [{
-      cliRunId: "cli-a",
-      seq: 1,
-      at: "2026-06-13T00:00:00.000Z",
-      event: { type: "job:finalized", jobId: "job-cli", status: "done", finishedAt: 1, summary: "done", systemReminder: "cli-secret" },
-    }]);
     store.appendTerminalRuntimeEvent("session-a", { type: "job:finalized", jobId: "job-runtime", status: "done", finishedAt: 2, summary: "done", systemReminder: "runtime-secret" }, 2_000);
 
     const serialized = JSON.stringify({
-      cliJobs: store.listJobs("cli-a"),
       runtimeJobs: store.listJobs("session-a"),
     });
 
     expect(serialized).not.toContain("systemReminder");
-    expect(serialized).not.toContain("cli-secret");
     expect(serialized).not.toContain("runtime-secret");
-    expect(serialized).toContain("job-cli");
     expect(serialized).toContain("job-runtime");
   });
 
@@ -212,7 +110,7 @@ describe("console register ingest", () => {
     const theaterA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-a-"));
     const theaterB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-b-"));
     tempDirs.push(theaterA, theaterB);
-    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+    const store = createConsoleObservabilityStore();
 
     const a1 = store.createPendingTerminalSession({ sessionId: "a1", cwd: theaterA, createdAt: 1 });
     const a2 = store.createPendingTerminalSession({ sessionId: "a2", cwd: theaterA, createdAt: 2 });
@@ -226,7 +124,7 @@ describe("console register ingest", () => {
   it("renames pending terminal sessions in memory and emits a separate session update frame", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rename-"));
     tempDirs.push(dir);
-    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+    const store = createConsoleObservabilityStore();
     const frames: unknown[] = [];
     store.subscribeAll((event) => frames.push(event));
     store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
@@ -242,27 +140,33 @@ describe("console register ingest", () => {
     expect(JSON.stringify(renamed)).not.toContain(dir);
   });
 
-  it("rejects pending terminal session binding when cliRunId matches but cwd does not", () => {
-    const first = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-a-"));
-    const second = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-b-"));
-    tempDirs.push(first, second);
-    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd: first });
-
-    expect(() => store.register({ protocolVersion: "1", cliRunId: "session-a", tenantLabel: "Alpha", cwd: second, pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" })).toThrow("cwd mismatch");
-    expect(store.listWorkspaces()).toHaveLength(0);
-    expect(store.listTerminalSessions()[0]).toMatchObject({ sessionId: "session-a", status: "starting" });
-  });
-
   it("replays existing observer events over SSE resync", async () => {
-    const fixture = await startFixture();
-    const registration = await registerCli(fixture);
-    await postEvents(fixture, registration.ingestToken, [
-      { cliRunId: "cli-a", seq: 1, at: "2026-06-13T00:00:00.000Z", event: { type: "track:text", jobId: "job-a", trackId: "t1", text: "hello" } },
-    ]);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-sse-"));
+    tempDirs.push(dir);
+    const runtime = createFakeConsoleRuntime([], []);
+    const runtimeFixture = await startFixture({
+      agentRuntime: runtime as never,
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunchResolverDeps: {
+        cwd: dir,
+        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
+        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+          id: "claude",
+          label: "Claude Code",
+          bin: "/bin/claude",
+          args: [],
+          cwd,
+          env: { ...env },
+        })) as never,
+      },
+      terminalStartShell: () => createMockPty(),
+    });
+    const session = await createTerminalSession(runtimeFixture, { "Content-Type": "application/json" });
+    runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: session.sessionId, trackId: "t1", text: "hello" });
 
     const controller = new AbortController();
-    const response = await fetch(`${fixture.endpoint}observer/events`, { signal: controller.signal });
+    const response = await fetch(`${runtimeFixture.endpoint}observer/events`, { signal: controller.signal });
     const chunk = new TextDecoder().decode((await response.body!.getReader().read()).value);
     controller.abort();
 
@@ -283,19 +187,24 @@ describe("console static and terminal ticket boundary", () => {
     expect(indexPath.endsWith(path.join("dist", "client", "index.html"))).toBe(true);
   });
 
-  it("issues terminal tickets without browser tokens and selects registration cwd internally", async () => {
+  it("issues terminal tickets without browser tokens and selects session cwd internally", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-ticket-cwd-"));
+    tempDirs.push(dir);
     const launches: string[] = [];
     const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: async (cwd) => {
         launches.push(cwd ?? "");
         return { bin: "mock", args: [], cwd: cwd ?? "/", env: { TERM: "xterm-256color" } };
       },
+      terminalStartShell: () => createMockPty(),
     });
-    const registration = await registerCli(fixture, { cwd: "/repo/selected" });
+    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" });
+    launches.length = 0;
 
     const issued = await fetch(`${fixture.endpoint}terminal/ticket`, {
       method: "POST",
-      body: JSON.stringify({ registrationId: registration.registrationId }),
+      body: JSON.stringify({ sessionId: session.sessionId }),
     });
     const payload = await issued.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown; readonly cwd?: unknown };
 
@@ -304,6 +213,37 @@ describe("console static and terminal ticket boundary", () => {
     expect(payload.ttlMs).toBe(10_000);
     expect(payload.cwd).toBeUndefined();
     expect(launches).toEqual([]);
+  });
+
+  it("rejects terminal tickets for unknown session ids without falling back to process cwd", async () => {
+    const fixture = await startFixture();
+
+    const missingSession = await fetch(`${fixture.endpoint}terminal/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "missing-session" }),
+    });
+    const missingBody = await missingSession.json();
+    const missingId = await fetch(`${fixture.endpoint}terminal/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const missingIdBody = await missingId.json();
+    const shell = await fetch(`${fixture.endpoint}terminal/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "shell" }),
+    });
+    const shellBody = await shell.json() as { readonly ticket?: unknown; readonly cwd?: unknown };
+
+    expect(missingSession.status).toBe(404);
+    expect(missingBody).toEqual({ error: "terminal_session_not_found" });
+    expect(missingId.status).toBe(400);
+    expect(missingIdBody).toEqual({ error: "terminal_session_not_found" });
+    expect(shell.status).toBe(200);
+    expect(typeof shellBody.ticket).toBe("string");
+    expect(shellBody.cwd).toBeUndefined();
   });
 
   it("keeps MCP bearer tokens out of terminal tickets, observer snapshots, SSE frames, static HTML, and launch errors", async () => {
@@ -339,7 +279,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(failedBody).toEqual({ error: "terminal_unavailable" });
     expect(serialized).not.toContain(fakeToken);
     expect(serialized).not.toContain(dir);
-    expect(serialized).not.toContain("ingestToken");
   });
 
   it("keeps one shared runtime active across two terminal sessions and releases only the closed session token", async () => {
@@ -478,7 +417,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("systemReminder");
     expect(serialized).not.toContain(secret);
     expect(serialized).not.toContain(fixture.lock.token);
-    expect(serialized).not.toContain("ingestToken");
     expect(serialized).not.toContain("terminalTicket");
     expect(serialized).not.toContain("sessionToken");
   });
@@ -598,7 +536,6 @@ describe("console static and terminal ticket boundary", () => {
     expect(listed.theaters[0]).not.toHaveProperty("path");
     expect(serialized).not.toContain(dir);
     expect(serialized).not.toContain(fixture.lock.token);
-    expect(serialized).not.toContain("ingestToken");
     expect(serialized).not.toContain("folderGrantId");
     expect(serialized).not.toContain("ticket");
   });
@@ -731,10 +668,11 @@ describe("console static and terminal ticket boundary", () => {
     try {
       const theaters = new TheaterRegistry();
       const codexWorkspaces = new WorkspaceRegistry();
-      const observability = createConsoleObservabilityStore({ randomToken: () => "token" });
+      const observability = createConsoleObservabilityStore();
       const theater = await theaters.register(variantDir);
       const codexWorkspace = await codexWorkspaces.register(variantDir);
-      observability.register({ protocolVersion: "1", cliRunId: "cli-a", tenantLabel: "Alpha", cwd: variantDir, pid: 1, startedAt: "2026-06-13T00:00:00.000Z", fleetVersion: "test" });
+      observability.createPendingTerminalSession({ sessionId: "session-a", cwd: variantDir });
+      observability.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Alpha", mcpToolCount: 1 });
       const session = observability.listWorkspaces()[0];
 
       expect(theater.id).toBe(workspaceHash(nativeRealpath(dir)));
@@ -1008,35 +946,6 @@ function createFakePty(): TerminalPtyHandle {
     resize: () => undefined,
     kill: () => undefined,
   };
-}
-
-async function registerCli(fixture: ServerFixture, overrides: Partial<{ readonly cliRunId: string; readonly tenantLabel: string; readonly cwd: string }> = {}) {
-  const response = await fetch(`${fixture.endpoint}api/cli/register`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${fixture.lock.token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      protocolVersion: "1",
-      cliRunId: overrides.cliRunId ?? "cli-a",
-      tenantLabel: overrides.tenantLabel ?? "Alpha",
-      cwd: overrides.cwd ?? "/repo/a",
-      pid: 123,
-      startedAt: "2026-06-13T00:00:00.000Z",
-      fleetVersion: "test",
-      mcp: { servers: [{ name: "tools", toolCount: 2 }] },
-    }),
-  });
-  expect(response.status).toBe(200);
-  return response.json() as Promise<{ readonly registrationId: string; readonly ingestToken: string; readonly heartbeatIntervalMs: number; readonly leaseTtlMs: number; readonly maxBatchEvents: number }>;
-}
-
-async function postEvents(fixture: ServerFixture, token: string, events: unknown[]) {
-  const response = await fetch(`${fixture.endpoint}api/cli/events`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(events),
-  });
-  expect(response.status).toBe(200);
-  return response.json();
 }
 
 async function getJson<T>(url: string): Promise<T> {

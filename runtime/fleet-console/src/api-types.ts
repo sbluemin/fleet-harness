@@ -1,5 +1,3 @@
-import type { CliSession } from "@dotobokuri/core-agent";
-
 export interface ConsoleLockPayload {
   readonly pid: number;
   readonly host: string;
@@ -26,7 +24,7 @@ export interface ConsoleObservedWorkspace {
   readonly tenantLabel: string;
   readonly createdAt: number;
   readonly sessions: number;
-  readonly status: CliSession["status"];
+  readonly status: "live" | "closed";
   readonly cliRunId: string;
   readonly registrationId: string;
   readonly theaterId: string;

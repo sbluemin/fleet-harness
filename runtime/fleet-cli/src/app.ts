@@ -81,7 +81,7 @@ export function createMissionControlProfileConfig(
 
 export async function runApp(options: RunAppOptions = {}): Promise<void> {
   const argvOptions = options.argvOptions ?? createRunAppArgOptions(options);
-  const runtimeLifecycle = createFleetRuntimeLifecycle({ consoleRegister: argvOptions.headless });
+  const runtimeLifecycle = createFleetRuntimeLifecycle();
   const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
   const sessionOptionsRuntime = createSessionOptionsRuntime({
@@ -280,7 +280,6 @@ function createRunAppArgOptions(options: RunAppOptions): FleetCliOptions {
       cursorSync: options.cursorSync === false,
     },
     cursorSync: options.cursorSync !== false,
-    headless: false,
     nativeTerminal: false,
     help: false,
   };

@@ -399,7 +399,7 @@ function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, te
     if (!session) continue;
     next[tenant.terminalSessionId] = {
       ...session,
-      status: tenant.status === "deregistered" ? "closed" : "registered",
+      status: tenant.status === "closed" ? "closed" : "registered",
       tenantId: tenant.tenantId,
       registrationId: tenant.registrationId,
       theaterId: tenant.theaterId ?? session.theaterId,

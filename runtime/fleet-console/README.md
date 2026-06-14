@@ -1,14 +1,14 @@
 # Fleet Console
 
-Standalone loopback web console for observing registered Fleet CLI workspaces, carrier jobs, live output streams, and multi-session PTY terminal workspaces.
+Standalone loopback web console for observing carrier jobs, live output streams, and multi-session PTY terminal workspaces.
 
 ## What It Does
 
-Fleet Console owns its own local HTTP server. Fleet CLI processes register with the console when available, push ordered event batches through the CLI-only ingest API, and continue normally if the console is absent.
+Fleet Console owns its own local HTTP server. Terminal sessions are spawned by the console server and observed in-process; carrier events are streamed to the browser through the observer API.
 
-- Registered CLI workspaces and observed jobs in a navigable rail.
+- Console-owned terminal sessions and observed jobs in a navigable rail.
 - Workspace hub sessions created from OS-native folder selection.
-- Console-spawned `fleet-cli --native` PTYs with deterministic registration binding.
+- Console-spawned Agent CLI PTYs with in-process observation.
 - Per-job carrier tracks with incremental output text, reasoning folds, and tool-call activity.
 - Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
@@ -18,27 +18,25 @@ Fleet Console owns its own local HTTP server. Fleet CLI processes register with 
 
 | Channel | Purpose | Token Boundary |
 |---|---|---|
-| `POST /api/cli/register` | CLI registers a workspace session. | Uses the console bootstrap token from the lock file. |
-| `POST /api/cli/events` | CLI pushes `{ cliRunId, seq, at, event }[]` batches. | Uses CLI-only `ingestToken`; never sent to browser code. |
 | `/observer/*` | Browser snapshot and SSE observer surface. | Loopback-only; no browser bearer token. |
 | `POST /terminal/folders/pick` | Opens a native folder picker and returns a one-use folder grant, or `{ cancelled: true }`. | Requires the terminal Origin boundary; selected paths are kept server-side. |
-| `POST /terminal/sessions` | Consumes `{ folderGrantId }` to create a console-spawned `fleet-cli --native` PTY session. | Raw cwd values from browser requests are rejected. |
+| `POST /terminal/sessions` | Consumes `{ folderGrantId }` to create a console-spawned Agent CLI PTY session. | Raw cwd values from browser requests are rejected. |
 | `GET /terminal/sessions` | Lists non-secret terminal session metadata for hydration. | Requires the terminal Origin boundary. |
 | `POST /terminal/ticket` + `/terminal/ws` | Browser terminal PTY transport; ticket requests may include `{ sessionId }` and default to `"default"` for compatibility. | Browser receives a one-use ticket. |
 | `/console/` | Static React client served from this package's `dist/client`. | Served directly from the loopback console URL. |
 | `/console/codex/*` | Console-owned Codex/Fleet Wiki web, workspace API, and migrated Maritime Codex client. | Admin workspace registration uses the lock bearer token; browser reads stay token-free on allowed local origins. |
 
-`/observer/tenants` may include `terminalSessionId` when a registered CLI workspace is deterministically bound to a console-spawned terminal session. `/terminal/ws` keeps the same path and query shape.
+`/observer/tenants` may include `terminalSessionId` for console-owned terminal sessions. `/terminal/ws` keeps the same path and query shape.
 
 ## Session Binding
 
-When the console creates a terminal session, it generates a session id and launches `fleet-cli --native` with `FLEET_CONSOLE_SESSION_ID`, `INIT_CWD`, and `PWD` set to the selected absolute cwd. Fleet CLI uses that session id as `cliRunId` unless an explicit `cliRunId` was provided. The console binds registration metadata to a pending terminal session only when `cliRunId === sessionId` and the canonical cwd matches. It does not use pid matching or cwd/time proximity fallback.
+When the console creates a terminal session, it generates a session id, resolves the selected Agent CLI through the shared fleet-admiral runtime, and keeps the selected absolute cwd server-side. The console records non-secret session metadata for observer hydration.
 
 Folder grants are one-use and in-memory. Folder picker cancellation is a normal response. Picker failures are reported with typed errors such as `unsupported_platform`, `dialog_unavailable`, `dialog_timeout`, and `invalid_folder`.
 
 ## Security Notes
 
-HTTP surfaces are loopback-only. CLI ingest remains protected by bearer tokens, while browser observer routes are directly available on loopback and terminal routes retain their Origin boundary. CLI `ingestToken`, MCP session tokens, bootstrap tokens, and selected absolute paths are not exposed through browser payloads, URL query strings, SSE frames, terminal tickets, logs, or static assets.
+HTTP surfaces are loopback-only. Browser observer routes are directly available on loopback and terminal routes retain their Origin boundary. MCP session tokens, bootstrap tokens, and selected absolute paths are not exposed through browser payloads, URL query strings, SSE frames, terminal tickets, logs, or static assets.
 
 Codex/Fleet Wiki routes preserve the migrated wiki security boundary: Host allowlist, Origin checks for write routes, loopback write gates, path containment, DOMPurify markdown sanitization, strict Mermaid rendering, and lockfile bearer auth for workspace registration.
 

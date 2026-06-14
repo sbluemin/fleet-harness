@@ -1,12 +1,4 @@
-import crypto from "node:crypto";
 import path from "node:path";
-
-import type {
-  CliSession,
-  PushEventEnvelope,
-  RegisterCliRequest,
-  RegisterCliResponse,
-} from "@dotobokuri/core-agent";
 
 import type {
   ConsoleObservedEvent,
@@ -22,24 +14,26 @@ import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
 export interface ConsoleObservabilityStoreDeps {
   readonly now?: () => number;
   readonly nowIso?: () => string;
-  readonly randomToken?: () => string;
-  readonly heartbeatIntervalMs?: number;
-  readonly leaseTtlMs?: number;
-  readonly maxBatchEvents?: number;
 }
 
-export interface PushEventsResult {
-  readonly accepted: number;
-  readonly highestContiguousSeq: number;
+interface WorkspaceInfo {
+  readonly registrationId: string;
+  readonly cliRunId: string;
+  readonly tenantLabel: string;
+  readonly cwd: string;
+  readonly registeredAt: string;
+  readonly mcp?: {
+    readonly servers?: readonly {
+      readonly name: string;
+      readonly toolCount: number;
+    }[];
+  };
 }
 
 interface WorkspaceState {
-  session: CliSession;
-  readonly ingestToken?: string;
+  readonly session: WorkspaceInfo;
   readonly theaterId: string;
   readonly terminalSessionId?: string;
-  highestSeq: number;
-  readonly seenSeqs: Set<number>;
 }
 
 interface PendingTerminalSessionState {
@@ -70,20 +64,12 @@ const JOB_EVENT_LIMIT = 200;
 const TENANT_FINALIZED_JOB_LIMIT = 100;
 const TENANT_JOB_LIMIT = 200;
 const EVENT_TEXT_RETENTION_LIMIT = 8_192;
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000;
-const DEFAULT_LEASE_TTL_MS = 20_000;
-const DEFAULT_MAX_BATCH_EVENTS = 200;
 
 export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreDeps = {}) {
   const now = deps.now ?? Date.now;
   const nowIso = deps.nowIso ?? (() => new Date(now()).toISOString());
-  const randomToken = deps.randomToken ?? (() => crypto.randomBytes(32).toString("base64url"));
-  const heartbeatIntervalMs = deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
-  const leaseTtlMs = deps.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS;
-  const maxBatchEvents = deps.maxBatchEvents ?? DEFAULT_MAX_BATCH_EVENTS;
   const workspacesByCliRunId = new Map<string, WorkspaceState>();
   const workspacesByRegistrationId = new Map<string, WorkspaceState>();
-  const workspacesByIngestToken = new Map<string, WorkspaceState>();
   const eventsByTenant = new Map<string, ConsoleObservedEvent[]>();
   const truncationByTenant = new Map<string, ConsoleObserverTruncation>();
   const jobsByTenant = new Map<string, TenantJobState>();
@@ -93,99 +79,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   const listenersByTenant = new Map<string, Set<ConsoleObservedEventListener>>();
   const allListeners = new Set<ConsoleAllEventListener>();
   let nextObservedId = 1;
-
-  function register(input: RegisterCliRequest): RegisterCliResponse {
-    assertRegisterInput(input);
-    const previous = workspacesByCliRunId.get(input.cliRunId);
-    if (previous) removeWorkspaceIndexes(previous);
-    const terminalSession = bindPendingTerminalSession(input);
-
-    const registeredAt = nowIso();
-    const registrationId = crypto.randomUUID();
-    const ingestToken = randomToken();
-    const session: CliSession = {
-      registrationId,
-      cliRunId: input.cliRunId,
-      tenantLabel: input.tenantLabel,
-      cwd: input.cwd,
-      pid: input.pid,
-      startedAt: input.startedAt,
-      fleetVersion: input.fleetVersion,
-      registeredAt,
-      lastHeartbeatAt: registeredAt,
-      leaseExpiresAt: new Date(Date.parse(registeredAt) + leaseTtlMs).toISOString(),
-      status: "online",
-      mcp: input.mcp,
-    };
-    const state: WorkspaceState = {
-      session,
-      ingestToken,
-      theaterId: workspaceHash(canonicalizeTheaterPathSync(input.cwd)),
-      terminalSessionId: terminalSession?.terminalSessionId,
-      highestSeq: 0,
-      seenSeqs: new Set(),
-    };
-    if (terminalSession) {
-      terminalSession.status = "registered";
-      terminalSession.registrationId = registrationId;
-      terminalSession.cliRunId = input.cliRunId;
-    }
-    workspacesByCliRunId.set(session.cliRunId, state);
-    workspacesByRegistrationId.set(session.registrationId, state);
-    workspacesByIngestToken.set(ingestToken, state);
-    return {
-      registrationId,
-      ingestToken,
-      heartbeatIntervalMs,
-      leaseTtlMs,
-      maxBatchEvents,
-    };
-  }
-
-  function pushEvents(token: string, events: readonly PushEventEnvelope[]): PushEventsResult | null {
-    markExpiredSessions();
-    const workspace = workspacesByIngestToken.get(token);
-    if (!workspace || workspace.session.status === "deregistered") return null;
-    let accepted = 0;
-    for (const envelope of events.slice(0, maxBatchEvents)) {
-      if (envelope.cliRunId !== workspace.session.cliRunId) continue;
-      if (!Number.isSafeInteger(envelope.seq) || envelope.seq <= 0) continue;
-      if (workspace.seenSeqs.has(envelope.seq) || envelope.seq <= workspace.highestSeq) continue;
-      if (envelope.seq > workspace.highestSeq + 1) {
-        appendSyntheticTruncation(workspace, workspace.highestSeq + 1, envelope.seq - 1);
-      }
-      append(workspace.session.cliRunId, envelope.event, parseTime(envelope.at));
-      workspace.seenSeqs.add(envelope.seq);
-      workspace.highestSeq = envelope.seq;
-      accepted += 1;
-    }
-    return { accepted, highestContiguousSeq: workspace.highestSeq };
-  }
-
-  function heartbeat(token: string, cliRunId: string, registrationId: string): { readonly accepted: boolean; readonly leaseExpiresAt: string } | null {
-    const workspace = workspacesByIngestToken.get(token);
-    if (!workspace || workspace.session.cliRunId !== cliRunId || workspace.session.registrationId !== registrationId || workspace.session.status === "deregistered") {
-      return null;
-    }
-    const heartbeatAt = nowIso();
-    const leaseExpiresAt = new Date(Date.parse(heartbeatAt) + leaseTtlMs).toISOString();
-    workspace.session = {
-      ...workspace.session,
-      status: "online",
-      lastHeartbeatAt: heartbeatAt,
-      leaseExpiresAt,
-    };
-    return { accepted: true, leaseExpiresAt };
-  }
-
-  function deregister(token: string, cliRunId: string, registrationId: string): boolean {
-    const workspace = workspacesByIngestToken.get(token);
-    if (!workspace || workspace.session.cliRunId !== cliRunId || workspace.session.registrationId !== registrationId) {
-      return false;
-    }
-    workspace.session = { ...workspace.session, status: "deregistered" };
-    return true;
-  }
 
   function append(tenantId: string, rawEvent: unknown, at = now()): ConsoleObservedEvent {
     const eventObject = typeof rawEvent === "object" && rawEvent !== null ? rawEvent as Record<string, unknown> : {};
@@ -208,26 +101,18 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const previous = workspacesByCliRunId.get(input.sessionId);
     if (previous) removeWorkspaceIndexes(previous);
     const registeredAt = nowIso();
-    const session: CliSession = {
+    const session: WorkspaceInfo = {
       registrationId: input.sessionId,
       cliRunId: input.sessionId,
       tenantLabel: input.label,
       cwd: terminalSession.cwd,
-      pid: process.pid,
-      startedAt: new Date(terminalSession.createdAt).toISOString(),
-      fleetVersion: "fleet-console",
       registeredAt,
-      lastHeartbeatAt: registeredAt,
-      leaseExpiresAt: new Date(Date.parse(registeredAt) + leaseTtlMs).toISOString(),
-      status: "online",
       mcp: { servers: [{ name: "fleet", toolCount: input.mcpToolCount }] },
     };
     const state: WorkspaceState = {
       session,
       theaterId: terminalSession.theaterId,
       terminalSessionId: terminalSession.terminalSessionId,
-      highestSeq: 0,
-      seenSeqs: new Set(),
     };
     terminalSession.status = "registered";
     terminalSession.registrationId = session.registrationId;
@@ -243,14 +128,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function listWorkspaces(): readonly ConsoleObservedWorkspace[] {
-    markExpiredSessions();
     return Array.from(workspacesByCliRunId.values())
       .map((workspace) => ({
         tenantId: workspace.session.cliRunId,
         tenantLabel: workspace.session.tenantLabel,
         createdAt: Date.parse(workspace.session.registeredAt),
-        sessions: workspace.session.status === "deregistered" ? 0 : 1,
-        status: workspace.session.status,
+        sessions: 1,
+        status: "live" as const,
         cliRunId: workspace.session.cliRunId,
         registrationId: workspace.session.registrationId,
         theaterId: workspace.theaterId,
@@ -292,25 +176,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     };
   }
 
-  function markExpiredSessions(): void {
-    const current = now();
-    for (const workspace of workspacesByCliRunId.values()) {
-      if (workspace.session.status !== "online") continue;
-      if (Date.parse(workspace.session.leaseExpiresAt) <= current) {
-        workspace.session = { ...workspace.session, status: "offline" };
-      }
-    }
-  }
-
-  function getLaunchCwd(registrationId?: string | null, cliRunId?: string | null): string {
-    markExpiredSessions();
-    const workspace = registrationId
-      ? workspacesByRegistrationId.get(registrationId)
-      : cliRunId
-        ? workspacesByCliRunId.get(cliRunId)
-        : Array.from(workspacesByCliRunId.values()).find((candidate) => candidate.session.status === "online")
-          ?? Array.from(workspacesByCliRunId.values())[0];
-    return workspace?.session.cwd ?? process.cwd();
+  function getLaunchCwd(sessionId: string): string | null {
+    return terminalSessionsById.get(sessionId)?.cwd
+      ?? workspacesByCliRunId.get(sessionId)?.session.cwd
+      ?? null;
   }
 
   function createPendingTerminalSession(input: { readonly sessionId: string; readonly cwd: string; readonly createdAt?: number }): ConsoleTerminalSessionInfo {
@@ -376,7 +245,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function clear(): void {
     workspacesByCliRunId.clear();
     workspacesByRegistrationId.clear();
-    workspacesByIngestToken.clear();
     eventsByTenant.clear();
     truncationByTenant.clear();
     jobsByTenant.clear();
@@ -389,18 +257,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   return {
     append,
     clear,
-    deregister,
     getLaunchCwd,
     getTruncation,
     getWorkspace,
-    heartbeat,
     listEvents,
     listJobs,
     listTerminalSessions,
     listWorkspaces,
-    markExpiredSessions,
-    pushEvents,
-    register,
     appendTerminalRuntimeEvent,
     createPendingTerminalSession,
     notifySessionUpdated,
@@ -410,26 +273,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     updateTerminalSessionStatus,
     removeTerminalSession,
     registerTerminalRuntimeSession,
-    workspaceCount: () => listWorkspaces().filter((workspace) => workspace.status !== "deregistered").length,
+    workspaceCount: () => listWorkspaces().length,
   };
-
-  function appendSyntheticTruncation(workspace: WorkspaceState, fromSeq: number, toSeq: number): void {
-    append(workspace.session.cliRunId, {
-      type: "observer:truncated",
-      missingFromSeq: fromSeq,
-      missingToSeq: toSeq,
-      droppedCount: toSeq - fromSeq + 1,
-    });
-  }
-
-  function bindPendingTerminalSession(input: RegisterCliRequest): PendingTerminalSessionState | null {
-    const pending = terminalSessionsById.get(input.cliRunId);
-    if (!pending) return null;
-    if (pending.canonicalCwd !== canonicalizeTheaterPathSync(input.cwd)) {
-      throw new Error("Terminal session registration cwd mismatch");
-    }
-    return pending;
-  }
 
   function storeObservedEvent(event: ConsoleObservedEvent): void {
     const list = eventsByTenant.get(event.tenantId) ?? [];
@@ -485,9 +330,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   function removeWorkspaceIndexes(workspace: WorkspaceState): void {
     workspacesByRegistrationId.delete(workspace.session.registrationId);
-    if (workspace.ingestToken) {
-      workspacesByIngestToken.delete(workspace.ingestToken);
-    }
   }
 }
 
@@ -505,20 +347,6 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     cliRunId: state.cliRunId,
     tenantId: state.cliRunId,
   };
-}
-
-function assertRegisterInput(input: RegisterCliRequest): void {
-  if (!input.protocolVersion || !input.cliRunId || !input.tenantLabel || !input.cwd || !input.fleetVersion) {
-    throw new Error("Invalid registration payload");
-  }
-  if (!Number.isSafeInteger(input.pid) || input.pid <= 0) {
-    throw new Error("Invalid registration pid");
-  }
-}
-
-function parseTime(value: string): number {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
 function pruneTenantJobs(state: TenantJobState): void {

@@ -35,8 +35,7 @@ describe("dashboard bridge derivation", () => {
       ],
       activeTheaterId: "theater-a",
       tenants: [
-        { tenantId: "tenant-a", tenantLabel: "Alpha CLI", createdAt: 1_000, sessions: 1, status: "online", theaterId: "theater-a", terminalSessionId: "session-a" },
-        { tenantId: "tenant-old", tenantLabel: "Old CLI", createdAt: 900, sessions: 0, status: "deregistered", theaterId: "theater-a" },
+        { tenantId: "tenant-a", tenantLabel: "Alpha CLI", createdAt: 1_000, sessions: 1, status: "live", theaterId: "theater-a", terminalSessionId: "session-a" },
       ],
       sessions: {
         "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "registered", createdAt: 1_500, theaterId: "theater-a", tenantId: "tenant-a" },
@@ -68,7 +67,6 @@ describe("dashboard bridge derivation", () => {
       activeAdmiralCount: 1,
       terminalSessionCount: 1,
       registeredTenantCount: 1,
-      deregisteredTenantCount: 1,
       lastActivityAt: Date.parse("2026-06-13T00:00:02.000Z"),
     });
     expect(view.readiness).toMatchObject({
@@ -109,7 +107,7 @@ describe("dashboard bridge derivation", () => {
         { id: "theater-b", label: "Beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 },
       ],
       activeTheaterId: "theater-b",
-      tenants: [{ tenantId: "tenant-b", tenantLabel: "Beta CLI", createdAt: 2_000, sessions: 1, status: "online", theaterId: "theater-b" }],
+      tenants: [{ tenantId: "tenant-b", tenantLabel: "Beta CLI", createdAt: 2_000, sessions: 1, status: "live", theaterId: "theater-b" }],
       tenantJobs: {
         "tenant-b": {
           tenantId: "tenant-b",

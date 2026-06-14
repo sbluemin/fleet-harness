@@ -5,7 +5,7 @@ export interface ObservedTenant {
   readonly tenantLabel: string;
   readonly createdAt: number;
   readonly sessions: number;
-  readonly status?: "online" | "offline" | "deregistered";
+  readonly status?: "live" | "closed";
   readonly cliRunId?: string;
   readonly registrationId?: string;
   readonly theaterId?: string;

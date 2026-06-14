@@ -1,13 +1,13 @@
 # Fleet Console Doctrine
 
-`runtime/fleet-console` owns the Fleet Console — a standalone fullstack product: its own loopback HTTP backend plus the React web surface for observing carrier jobs, live output streams from registered fleet-cli workspaces, and the Codex/Fleet Wiki web surface, driven by the `fleet-console` CLI lifecycle. It is the unified Fleet GUI runtime.
+`runtime/fleet-console` owns the Fleet Console — a standalone fullstack product: its own loopback HTTP backend plus the React web surface for observing carrier jobs, live output streams from console-owned terminal sessions, and the Codex/Fleet Wiki web surface, driven by the `fleet-console` CLI lifecycle. It is the unified Fleet GUI runtime.
 
 ## Owns
 
-- The console HTTP backend (loopback-only): its own server skeleton, CLI ingest bearer auth, security headers, static `/console/` serving of its own `dist/client/`, the CLI register-ingest API, the browser observer REST/SSE surface, and the terminal PTY WebSocket. The console no longer imports or launches the retired gateway package.
+- The console HTTP backend (loopback-only): its own server skeleton, security headers, static `/console/` serving of its own `dist/client/`, the browser observer REST/SSE surface, and the terminal PTY WebSocket. The console no longer imports or launches the retired gateway package.
 - The server lifecycle: lock file, runtime paths, health probe, and build-stale detection are console-owned. `fleet-console` is the daemon, not a launcher over someone else's daemon.
 - The `fleet-console` CLI entry point (`./cli` export, `dist/cli.mjs`): `start` (the default when no subcommand is given) ensures the local console server and opens the console URL in a browser; if a healthy daemon already exists, it opens that daemon's URL without starting a new server or erroring. `stop` stops the console server; `restart` stops the console server then starts a fresh one and opens it; `status` prints server health, endpoint, console URL, and registered-workspace count. The server binds to an OS-assigned random loopback port and records the actual port in the lock file, so consumers discover the port from the lock endpoint. `--help`/`-h` prints the banner-style help. `fleet console <args>` in `fleet-cli` relays the full argument list to this CLI as a child process, so every subcommand works through both `fleet console …` and the standalone `fleet-console …` binary. The root `pnpm fleet-console` script runs it from source via `tsx`.
-- The CLI register-ingest contract (server side): `POST /api/cli/register` (returns only `registrationId`, `ingestToken`, `heartbeatIntervalMs`, `leaseTtlMs`, `maxBatchEvents`), `POST /api/cli/events` (ordered `{cliRunId, seq, at, event}[]` batches authenticated by the ingest token; the console assigns its own `observedId`), `POST /api/cli/heartbeat`, and best-effort `POST /api/cli/deregister`. Registration and ingest are CLI-only; the shared register/ingest data-contract types are owned by `@dotobokuri/core-agent`.
+- Console-owned terminal sessions are spawned server-side and observed in-process; carrier events flow directly into the observer store and browser SSE without a separate fleet-cli registration channel.
 - The React SPA served from the console backend at `/console/`: layout, components, styles, and visual identity. The global navigation bar owns **Theater** selection — a project root directory that groups console-owned terminal sessions and Codex wiki context. The Operations sidebar (under the Operation nav tab) lists terminal sessions filtered to the active Theater, each listing its carrier job history (active and finished) in registration order; selecting a job opens a centered streaming overlay over that session's terminal, scoped to the active session's jobs.
 - The Codex/Fleet Wiki web surface under `/console/codex`: the console-owned Codex server gateway, workspace registry, wiki API routes, migrated vanilla TypeScript Maritime Codex client, `fleet wiki` compatibility helpers, and standalone `fleet-wiki` binary shim. The console-level **TheaterRegistry** is the source of truth for project roots and does not require a Fleet Wiki knowledge root; the Codex `WorkspaceRegistry` is the subset of Theaters whose directories contain a Fleet Wiki knowledge root. Codex must remain mounted under the Fleet Console GNB without an iframe or proxy daemon.
 - The observer-side client contract: REST snapshot fetches and the SSE consumption loop with reconnect/resync.
@@ -15,16 +15,16 @@
 
 ## Codex / Fleet Wiki Surface
 
-- Canonical Codex workspace routes live under `/console/codex/w/:ws/...`; MRU-compatible API routes live under `/console/codex/api/...`. Do not reintroduce global `/api/...` wiki routes because console owns `/api/cli/*`.
+- Canonical Codex workspace routes live under `/console/codex/w/:ws/...`; MRU-compatible API routes live under `/console/codex/api/...`. Do not reintroduce global `/api/...` wiki routes because console owns its own local API namespace.
 - The console-level **Theater** is the parent concept for project roots. Codex workspaces share the same id space (`workspaceHash(realpath(dir))`) but are a strict subset of the Theater registry (`hasWiki=true`). The Codex left workspace switcher is removed; Theater selection in the global navigation bar is the only workspace switch, and Theaters without a Fleet Wiki knowledge root render a "Codex 없음" state instead of mounting a wiki surface.
 - The migrated Codex client stays Vanilla TypeScript under `client/src/codex/**`; do not rewrite it into React state or components beyond the React mount host.
 - Preserve Maritime Codex UX: reading flow, raw viewer, Drydock queue, conflicts, index/log views, command palette, Manifest/ToC rails, copy-context actions, diagram lightbox, brass/aurora roles, and self-hosted fonts.
 - Preserve wiki security invariants: Host allowlist, Origin guard, write-surface loopback gate, DOMPurify markdown sanitization, Mermaid `securityLevel: "strict"` with `htmlLabels: false` and no `bindFunctions`, path containment, and lockfile bearer auth for admin workspace registration.
-- Browser payloads must not expose CLI ingest tokens, MCP/session tokens, terminal tickets, or Codex admin tokens.
+- Browser payloads must not expose MCP/session tokens, terminal tickets, or Codex admin tokens.
 
 ## Must Not Own
 
-- Multi-tenant aggregation or tenant/session token issuance — the console observes a single workspace's registered fleet-cli sessions; it does not re-implement the retired gateway tenant model.
+- Multi-tenant aggregation or tenant/session token issuance — the console observes local console-owned terminal sessions; it does not re-implement the retired gateway tenant model.
 - Browser-facing MCP transport or MCP proxying. Console server-side terminal sessions may create per-session Fleet MCP runtimes and executor session tokens only through `@dotobokuri/fleet-admiral`; tokens remain server-only and must never reach browser payloads, tickets, logs, URLs, or static assets.
 - Fleet tool builders, carrier persona policy, or provider-specific launch logic. Console may consume the `@dotobokuri/fleet-admiral` root launch/runtime API but must not copy, fork, or deep-import provider-specific launch builders.
 
@@ -32,8 +32,8 @@
 
 - Browser observer routes are loopback-only and do not use browser bearer tokens.
 - Terminal HTTP routes do not use browser bearer tokens, but must retain the terminal Origin check; the terminal WebSocket is reached through a one-use ticket.
-- The CLI `ingestToken` and any MCP session token must never reach browser code, URL query strings, SSE payloads, terminal tickets, logs, or static assets.
-- Theater routes likewise do not expose admin bearer tokens, ingest tokens, MCP/session tokens, terminal tickets, folder-grant identifiers, or raw working-directory paths to the browser.
+- MCP session tokens must never reach browser code, URL query strings, SSE payloads, terminal tickets, logs, or static assets.
+- Theater routes likewise do not expose admin bearer tokens, MCP/session tokens, terminal tickets, folder-grant identifiers, or raw working-directory paths to the browser.
 
 ## Carrier Readiness Boundary
 
@@ -50,9 +50,9 @@
 
 ## Layout
 
-- `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), bearer auth and security headers, static serving (`static-console.ts`), the register-ingest and observer routes (including `/observer/theaters*` Theater registry and session launch), the SSE helper, `codex/` (Fleet Wiki/Codex API gateway and workspace registration), `theaters.ts` (console-level in-memory TheaterRegistry), `theater.ts` (Theater id hash, realpath canonicalization, and label helpers), `terminal/` (PTY ticket/session/ws transport; console terminal sessions resolve Agent CLI launch specs through `@dotobokuri/fleet-admiral`, spawn the selected provider CLI directly, inject carrier job completion system-reminders only into the originating session's PTY, and bridge carrier runtime events into console-owned observability without exposing MCP/session tokens, terminal tickets, or system reminders to the browser; closing the browser view or switching Operations does not terminate the PTY — sessions persist until the child process exits, an operator explicitly terminates the session, or the server stops), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `cli-bin.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs` and `dist/cli-bin.mjs`. Depends on `@dotobokuri/core-agent` for the shared register data contract; must **not** depend on the retired gateway package. `help-style.ts` is a CLI-help-only **self-hosted** style helper shared by the console and Codex compatibility CLIs; it must not import from `fleet-cli`, `packages/*` (beyond the core-agent contract), or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
+- `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), security headers, static serving (`static-console.ts`), observer routes (including `/observer/theaters*` Theater registry and session launch), the SSE helper, `codex/` (Fleet Wiki/Codex API gateway and workspace registration), `theaters.ts` (console-level in-memory TheaterRegistry), `theater.ts` (Theater id hash, realpath canonicalization, and label helpers), `terminal/` (PTY ticket/session/ws transport; console terminal sessions resolve Agent CLI launch specs through `@dotobokuri/fleet-admiral`, spawn the selected provider CLI directly, inject carrier job completion system-reminders only into the originating session's PTY, and bridge carrier runtime events into console-owned observability without exposing MCP/session tokens, terminal tickets, or system reminders to the browser; closing the browser view or switching Operations does not terminate the PTY — sessions persist until the child process exits, an operator explicitly terminates the session, or the server stops), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `cli-bin.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs` and `dist/cli-bin.mjs`. `help-style.ts` is a CLI-help-only **self-hosted** style helper shared by the console and Codex compatibility CLIs; it must not import from `fleet-cli`, `packages/*`, or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
 - `client/` — the Vite React SPA (`client/src/`, `client/index.html`, `client/vite.config.ts`). Must not import Node-only modules or the console backend (`src/`).
-- `tests/` — vitest suites for the reducer, SSE parser, store, register-ingest, terminal, and CLI lifecycle.
+- `tests/` — vitest suites for the reducer, SSE parser, store, terminal, and CLI lifecycle.
 
 ## Tech Stack (deliberate)
 
