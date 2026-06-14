@@ -3775,3 +3775,59 @@
 - result: `accepted`
 - target: `wiki/prd-fleet-cli-native-terminal-exclusive-mode.md`
 
+## 2026-06-14T03:12:04.428Z — drydock run
+
+- error_count: `0`
+- info_count: `9`
+- issue_count: `16`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-14T03:13:07.224Z — raw source added
+
+- id: `synthesis-fleet-console-main-dashboard-research-source`
+- raw_source_ref: `raw/2026-06-14-synthesis-fleet-console-main-dashboard-research-source-d0bb6521.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `2026-06-14 Fleet Console main dashboard and Mission Control investigation`
+
+## 2026-06-14T03:13:07.227Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-14T03-13-07-212Z-83051e38`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-14-synthesis-fleet-console-main-dashboard-research-source-d0bb6521.md`
+- target: `wiki/synthesis-fleet-console-main-dashboard-research.md`
+- warning_count: `0`
+
+## 2026-06-14T03:13:11.271Z — drydock run
+
+- error_count: `0`
+- info_count: `9`
+- issue_count: `16`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-14T03:13:16.818Z — index rebuilt
+
+- entry_count: `28`
+
+## 2026-06-14T03:13:16.820Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-14T03-13-07-212Z-83051e38`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-14-synthesis-fleet-console-main-dashboard-research-source-d0bb6521.md`
+- result: `accepted`
+- target: `wiki/synthesis-fleet-console-main-dashboard-research.md`
+
+## 2026-06-14T03:13:21.761Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
