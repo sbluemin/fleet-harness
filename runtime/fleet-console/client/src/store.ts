@@ -1,3 +1,4 @@
+import { terminateTerminalSession } from "./api.js";
 import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
 import type {
   ConsoleState,
@@ -23,6 +24,7 @@ const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
 const DEFAULT_THEME: ThemeId = "maritime";
+export const SHELL_SESSION_ID = "shell";
 
 const listeners = new Set<Listener>();
 let state: ConsoleState = {
@@ -166,11 +168,19 @@ export function toggleTimeline(): void {
 }
 
 export function toggleShell(): void {
-  setState({ shellOpen: !state.shellOpen });
+  if (state.shellOpen) {
+    closeShell();
+    return;
+  }
+  setState({ shellOpen: true });
 }
 
 export function closeShell(): void {
+  if (!state.shellOpen) return;
   setState({ shellOpen: false });
+  // 오버레이를 명시적으로 닫는 것은(X·Escape·scrim·토글) 사용자의 종료 의사다 — 비활성 전환 같은
+  // 자동/유휴 종료가 아니므로 shell PTY를 즉시 terminate한다. 실패해도 UI는 이미 닫혔으니 무시한다.
+  void terminateTerminalSession(SHELL_SESSION_ID).catch(() => {});
 }
 
 export function failTerminateTerminalSession(error: string): void {
