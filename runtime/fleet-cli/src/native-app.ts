@@ -318,6 +318,23 @@ export function createNativeTerminalLaunchStrategy(deps: NativeTerminalLaunchStr
   };
 }
 
+export function resyncNativeInputRawMode(stdin: NativeInputStream = process.stdin): void {
+  if (!stdin.isTTY || stdin.setRawMode === undefined) {
+    return;
+  }
+  // Windows 콘솔 한정 회귀 방어: 직전에 종료된 native child(node-pty/ConPTY)가 실제
+  // 콘솔 입력 모드를 cooked(line/echo)로 되돌려 놓지만, libuv `uv_tty_set_mode`는 내부
+  // 모드 캐시가 이미 RAW이면 `setRawMode(true)`를 early-return으로 no-op 처리해 실제
+  // `SetConsoleMode`를 호출하지 않는다(win/tty.c). 그 결과 콘솔이 cooked로 남아 Mission
+  // Control이 키 입력(raw byte)을 받지 못한다. NORMAL을 한 번 경유시켜 libuv 캐시를
+  // 무효화하면 다음 `setRawMode(true)`가 실제 콘솔 모드를 RAW로 강제 재설정한다. termios
+  // 기반 macOS/Linux는 child PTY가 부모 stdin 모드를 오염시키지 않으므로 토글이 불필요하다.
+  if (process.platform === "win32") {
+    stdin.setRawMode(false);
+  }
+  stdin.setRawMode(true);
+}
+
 function createRunNativeAppArgOptions(options: RunAppOptions): FleetCliOptions {
   return {
     argvOverrides: {
@@ -342,9 +359,7 @@ function attachNativeInputStream(ui: LocalTui): () => void {
   };
 
   stdin.setEncoding("utf8");
-  if (stdin.isTTY) {
-    stdin.setRawMode(true);
-  }
+  resyncNativeInputRawMode(stdin);
   stdin.resume();
   stdin.on("data", onData);
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile } from "../src/agent-cli/types.js";
 import { KITTY_DISABLE, KITTY_ENABLE, type PtyExitEvent } from "../src/controls/index.js";
-import { createNativeTerminalLaunchStrategy } from "../src/native-app.js";
+import { createNativeTerminalLaunchStrategy, resyncNativeInputRawMode } from "../src/native-app.js";
 
 class FakePty {
   readonly writes: string[] = [];
@@ -596,6 +596,56 @@ describe("native terminal app", () => {
 
     await expect(promise).rejects.toThrow("spawn failed");
     expect(events).toEqual(["detach", "ui-stop", "cleanup", "resize", "ui-start", "reattach"]);
+  });
+});
+
+describe("resyncNativeInputRawMode", () => {
+  const originalPlatform = process.platform;
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { configurable: true, value: originalPlatform });
+  });
+
+  function createRawModeProbe(isTTY: boolean): {
+    readonly calls: boolean[];
+    readonly stdin: Parameters<typeof resyncNativeInputRawMode>[0];
+  } {
+    const calls: boolean[] = [];
+    const stdin = {
+      isTTY,
+      setRawMode(mode: boolean) {
+        calls.push(mode);
+        return stdin;
+      },
+    };
+    return { calls, stdin: stdin as unknown as Parameters<typeof resyncNativeInputRawMode>[0] };
+  }
+
+  it("toggles raw mode off then on under Windows to bypass the libuv mode cache", () => {
+    Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+    const probe = createRawModeProbe(true);
+
+    resyncNativeInputRawMode(probe.stdin);
+
+    expect(probe.calls).toEqual([false, true]);
+  });
+
+  it("sets raw mode once on non-Windows platforms", () => {
+    Object.defineProperty(process, "platform", { configurable: true, value: "linux" });
+    const probe = createRawModeProbe(true);
+
+    resyncNativeInputRawMode(probe.stdin);
+
+    expect(probe.calls).toEqual([true]);
+  });
+
+  it("leaves raw mode untouched when stdin is not a TTY", () => {
+    Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+    const probe = createRawModeProbe(false);
+
+    resyncNativeInputRawMode(probe.stdin);
+
+    expect(probe.calls).toEqual([]);
   });
 });
 
