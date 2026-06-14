@@ -1,4 +1,3 @@
-import { terminateTerminalSession } from "./api.js";
 import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
 import type {
   ConsoleState,
@@ -202,10 +201,10 @@ export function toggleShell(): void {
 
 export function closeShell(): void {
   if (!state.shellOpen) return;
+  // 오버레이를 닫아도(X·Escape·scrim·토글) shell PTY는 종료하지 않는다 — 오버레이는 숨겨질 뿐이고
+  // 백엔드 세션은 살아남아, 다시 열 때 기존 셸 프로세스·scrollback·cwd에 그대로 재부착된다.
+  // shell PTY는 셸이 스스로 종료(exit)하거나 콘솔 서버가 멈출 때만 사라진다.
   setState({ shellOpen: false });
-  // 오버레이를 명시적으로 닫는 것은(X·Escape·scrim·토글) 사용자의 종료 의사다 — 비활성 전환 같은
-  // 자동/유휴 종료가 아니므로 shell PTY를 즉시 terminate한다. 실패해도 UI는 이미 닫혔으니 무시한다.
-  void terminateTerminalSession(SHELL_SESSION_ID).catch(() => {});
 }
 
 export function failTerminateTerminalSession(error: string): void {
