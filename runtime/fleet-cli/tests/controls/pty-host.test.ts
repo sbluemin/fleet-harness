@@ -34,6 +34,28 @@ describe("PtyHost exit lifecycle", () => {
     assert.deepEqual(events, [{ exitCode: 7, signal: 15 }]);
   });
 
+  it("ignores resize attempts on a pty that has already exited", () => {
+    const fake = createFakePty();
+    fake.resize = () => {
+      throw new Error("Cannot resize a pty that has already exited");
+    };
+    const host = createPtyHost(TEST_CONFIG, { startShell: () => fake });
+    host.start({ cols: 80, rows: 24 });
+
+    assert.doesNotThrow(() => host.resize(100, 30));
+  });
+
+  it("propagates resize errors that are not the exit race", () => {
+    const fake = createFakePty();
+    fake.resize = () => {
+      throw new Error("resizing must be done using positive cols and rows");
+    };
+    const host = createPtyHost(TEST_CONFIG, { startShell: () => fake });
+    host.start({ cols: 80, rows: 24 });
+
+    assert.throws(() => host.resize(0, 0), /positive cols and rows/);
+  });
+
   it("allows multiple exit handlers and ignores duplicate notifications", () => {
     const fake = createFakePty();
     const host = createPtyHost(TEST_CONFIG, { startShell: () => fake });
