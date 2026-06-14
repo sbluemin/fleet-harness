@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater } from "../api.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, toggleShell } from "../store.js";
@@ -25,14 +25,18 @@ const NAV_ITEMS: readonly NavItem[] = [
 export function Topbar({ state }: TopbarProps) {
   // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
   const alert = state.connectionError !== null;
+  // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다 — GNB nav 아이콘과 같은 도형을 공유해 일치를 보장한다. Welcome 등 그 외 라우트는 기본 Fleet 시질을 유지한다.
+  const pathname = useLocation().pathname;
+  const sigil = pathname.startsWith("/codex")
+    ? <CodexIcon />
+    : pathname.startsWith("/operations")
+      ? <OperationsIcon />
+      : <FleetSigil />;
   return (
     <header className="topbar">
       <Link className="topbar-brand" to="/" aria-label="Welcome으로 이동">
         <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={state.connectionError ?? undefined}>
-          <svg viewBox="0 0 16 16" width="16" height="16">
-            <path d="M8 1.8 9.5 6.5 14.2 8 9.5 9.5 8 14.2 6.5 9.5 1.8 8 6.5 6.5Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-            <path d="M8 4.7 8.7 7.3 11.3 8 8.7 8.7 8 11.3 7.3 8.7 4.7 8 7.3 7.3Z" fill="currentColor" />
-          </svg>
+          {sigil}
         </span>
         <h1 className="topbar-title">
           Fleet<span className="topbar-title-thin">Console</span>
@@ -222,7 +226,18 @@ function CheckIcon() {
   );
 }
 
+function FleetSigil() {
+  // Fleet 기본 브랜드 시질 — 이중 별/반짝임 모티프.
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16">
+      <path d="M8 1.8 9.5 6.5 14.2 8 9.5 9.5 8 14.2 6.5 9.5 1.8 8 6.5 6.5Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M8 4.7 8.7 7.3 11.3 8 8.7 8.7 8 11.3 7.3 8.7 4.7 8 7.3 7.3Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 function OperationsIcon() {
+  // Operations 시그니처 — 레이더/측위 모티프. GNB nav 아이콘과 Operations 라우트 브랜드 시질이 같은 도형을 공유한다.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
@@ -233,13 +248,13 @@ function OperationsIcon() {
 }
 
 function CodexIcon() {
-  // Codex는 Maritime 항법 지식의 표상 — 문서가 아니라 나침반(컴퍼스 로즈)으로 표현한다.
+  // Codex 시그니처 — 나침반 마크. GNB nav 아이콘과 Codex 라우트 브랜드 시질이 같은 도형을 공유한다(Codex 좌측 Pane에서 끌어올린 원본).
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M8 2.9 9.6 8 8 13.1 6.4 8Z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M8 2.9 9.6 8 6.4 8Z" fill="currentColor" />
-      <circle cx="8" cy="8" r="0.85" fill="currentColor" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" opacity="0.16" />
+      <path d="M12 3v3.6M12 17.4V21M3 12h3.6M17.4 12H21" />
+      <path d="M12 8.6 14.2 12 12 15.4 9.8 12Z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

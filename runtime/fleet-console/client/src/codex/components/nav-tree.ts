@@ -12,15 +12,6 @@ interface TagGroup {
 const collapsedTags = new Set<string>();
 let navMode: NavMode = "entries";
 
-const COMPASS_MARK = `
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <circle cx="12" cy="12" r="9" />
-    <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" opacity="0.16" />
-    <path d="M12 3v3.6M12 17.4V21M3 12h3.6M17.4 12H21" />
-    <path d="M12 8.6 14.2 12 12 15.4 9.8 12Z" fill="currentColor" stroke="none" />
-  </svg>
-`;
-
 const SEARCH_ICON = `
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <circle cx="11" cy="11" r="6.5" />
@@ -83,13 +74,6 @@ export function renderNavTree(
   return `
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <a class="brand" href="/" data-action="navigate-home" aria-label="Go to home">
-          <span class="brand-mark">${COMPASS_MARK}</span>
-          <div class="brand-text">
-            <p class="eyebrow">Fleet · Codex</p>
-            <h1>Knowledge</h1>
-          </div>
-        </a>
         <div class="sidebar-header-actions">
           <button class="icon-button mobile-close" type="button" data-action="toggle-nav" aria-label="Close">${CLOSE_ICON}</button>
         </div>

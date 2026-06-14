@@ -5,65 +5,6 @@
   gap: var(--space-3);
 }
 
-.brand {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-width: 0;
-  text-decoration: none;
-  color: inherit;
-  border-radius: var(--radius-sm);
-  transition:
-    opacity var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.brand:hover {
-  opacity: 0.92;
-  transform: translateX(1px);
-}
-
-.brand:hover .brand-mark {
-  border-color: oklch(78% 0.13 75 / 55%);
-  box-shadow:
-    0 0 0 1px oklch(78% 0.13 75 / 30%),
-    0 16px 36px -18px oklch(78% 0.13 75 / 50%);
-}
-
-.brand:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
-}
-
-.brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background:
-    radial-gradient(circle at 30% 25%, oklch(86% 0.16 78 / 35%), transparent 70%),
-    oklch(28% 0.04 248 / 70%);
-  border: 1px solid oklch(78% 0.13 75 / 35%);
-  box-shadow: var(--shadow-anchor);
-  color: var(--brass-bright);
-  flex-shrink: 0;
-}
-
-.brand-mark svg {
-  width: 22px;
-  height: 22px;
-  display: block;
-}
-
-.brand-text {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
 .eyebrow {
   margin: 0;
   color: var(--brass-bright);
@@ -72,17 +13,6 @@
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-}
-
-.brand-text h1 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  font-variation-settings: "opsz" 16;
-  color: var(--ink-pearl);
-  line-height: 1.1;
 }
 
 .sidebar-header-actions {
