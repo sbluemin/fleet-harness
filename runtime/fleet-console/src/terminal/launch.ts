@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+import { readFleetConsoleRelease, type FleetConsoleRelease } from "../release.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
 
 export interface TerminalLaunchResolverDeps {
@@ -12,6 +13,8 @@ export interface TerminalLaunchResolverDeps {
   readonly execPath?: string;
   readonly homedir?: () => string;
   readonly exists?: (path: string) => boolean;
+  // dev/prod 채널과 콘솔 패키지 루트를 주입 가능(테스트·임베드용). 미주입 시 콘솔 자신의 릴리스를 읽는다.
+  readonly release?: FleetConsoleRelease;
 }
 
 export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => TerminalLaunchSpec;
@@ -29,6 +32,8 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
   const execPath = deps.execPath ?? process.execPath;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const exists = deps.exists ?? fs.existsSync;
+  // 채널은 프로세스 수명 동안 불변이므로 resolver 생성 시 1회만 평가한다.
+  const release = deps.release ?? readFleetConsoleRelease();
 
   return (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
@@ -40,18 +45,22 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
     if (override) {
       return { ...override, cwd, env: launchEnv };
     }
-    const localCli = findLocalFleetCliEntry(cwd, exists);
-    if (localCli) {
+    // dev/prod 판별은 cwd(=선택한 Theater)가 아니라 콘솔 자신의 릴리스 채널로 한다.
+    // local: 모노레포 형제 디렉터리의 빌드된 fleet-cli를 node로 실행한다(Theater 위치와 무관).
+    // stable: 글로벌 설치된 `fleet` 바이너리를 PATH에서 실행한다.
+    if (release.channel === "local") {
+      const localCli = resolveSiblingFleetCliEntry(release.packageRoot, exists);
+      if (!localCli) {
+        // local 빌드에서 형제 fleet-cli 산출물이 없으면 글로벌 `fleet`로 조용히 폴백하지 않고 명확히 실패한다
+        // (잘못된 바이너리를 띄우는 대신 빌드 누락을 즉시 드러낸다). server.ts가 이 throw를 503으로 표면화한다.
+        throw new Error(
+          `Fleet Console is running from a local build (channel=local) but the sibling fleet-cli build was not found at ${expectedSiblingFleetCliEntry(release.packageRoot)}. Run \`pnpm build\` in runtime/fleet-cli before launching a terminal session.`,
+        );
+      }
       return { bin: execPath, args: [localCli, ...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
     }
     return { bin: "fleet", args: [...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
   };
-}
-
-function resolveUserShell(env: NodeJS.ProcessEnv): string {
-  if (env.SHELL) return env.SHELL;
-  if (process.platform === "win32") return env.ComSpec || "powershell.exe";
-  return "/bin/bash";
 }
 
 export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly cols: number; readonly rows: number }): TerminalPtyHandle {
@@ -73,15 +82,20 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
   });
 }
 
-export function findLocalFleetCliEntry(cwd: string, exists: (path: string) => boolean = fs.existsSync): string | null {
-  let currentDir = path.resolve(cwd);
-  while (true) {
-    const candidate = path.join(currentDir, "runtime", "fleet-cli", "dist", "index.js");
-    if (exists(candidate)) return candidate;
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) return null;
-    currentDir = parentDir;
-  }
+function resolveUserShell(env: NodeJS.ProcessEnv): string {
+  if (env.SHELL) return env.SHELL;
+  if (process.platform === "win32") return env.ComSpec || "powershell.exe";
+  return "/bin/bash";
+}
+
+function resolveSiblingFleetCliEntry(consolePackageRoot: string, exists: (path: string) => boolean = fs.existsSync): string | null {
+  const candidate = expectedSiblingFleetCliEntry(consolePackageRoot);
+  return exists(candidate) ? candidate : null;
+}
+
+function expectedSiblingFleetCliEntry(consolePackageRoot: string): string {
+  // 모노레포 레이아웃: runtime/fleet-console 과 runtime/fleet-cli 는 형제 디렉터리다.
+  return path.join(consolePackageRoot, "..", "fleet-cli", "dist", "index.js");
 }
 
 function parseTerminalCommand(command: string | undefined): { readonly bin: string; readonly args: readonly string[] } | null {
