@@ -136,6 +136,40 @@ describe("console register ingest", () => {
     expect(session).toMatchObject({ sessionId: "session-a", status: "registered", registrationId: registration.registrationId, tenantId: "session-a", theaterId: workspaceHash(fs.realpathSync.native(dir)) });
   });
 
+  it("numbers pending terminal sessions per Theater, isolating the #1 starting value", () => {
+    const theaterA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-a-"));
+    const theaterB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-b-"));
+    tempDirs.push(theaterA, theaterB);
+    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+
+    const a1 = store.createPendingTerminalSession({ sessionId: "a1", cwd: theaterA, createdAt: 1 });
+    const a2 = store.createPendingTerminalSession({ sessionId: "a2", cwd: theaterA, createdAt: 2 });
+    const b1 = store.createPendingTerminalSession({ sessionId: "b1", cwd: theaterB, createdAt: 3 });
+
+    expect(a1.sequence).toBe(1);
+    expect(a2.sequence).toBe(2);
+    expect(b1.sequence).toBe(1);
+  });
+
+  it("renames pending terminal sessions in memory and emits a separate session update frame", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rename-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore({ randomToken: () => "token" });
+    const frames: unknown[] = [];
+    store.subscribeAll((event) => frames.push(event));
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    const longLabel = `  ${"x".repeat(205)}  `;
+    const renamed = store.renameTerminalSession("session-a", longLabel);
+    store.notifySessionUpdated(renamed!);
+    const reset = store.renameTerminalSession("session-a", "   ");
+
+    expect(renamed?.label).toHaveLength(200);
+    expect(reset?.label).toBeUndefined();
+    expect(frames).toEqual([{ type: "session:updated", session: renamed }]);
+    expect(JSON.stringify(renamed)).not.toContain(dir);
+  });
+
   it("rejects pending terminal session binding when cliRunId matches but cwd does not", () => {
     const first = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-a-"));
     const second = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-bind-b-"));
@@ -512,6 +546,47 @@ describe("console static and terminal ticket boundary", () => {
     await expect(deleted.json()).resolves.toEqual({ ok: true });
     expect(afterList.sessions).toHaveLength(0);
     expect(repeat.status).toBe(200);
+  });
+
+  it("renames a terminal session over PATCH without exposing raw cwd", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-rename-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalStartShell: () => createMockPty(),
+    });
+    const headers = { "Content-Type": "application/json" };
+
+    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
+    const grant = await picked.json() as { readonly folderGrantId: string };
+    const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    });
+    const session = await created.json() as { readonly sessionId: string };
+    const renamed = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ label: "  Bridge Watch  " }),
+    });
+    const renamedBody = await renamed.json() as { readonly label?: string; readonly cwd?: unknown };
+    const reset = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ label: "" }),
+    });
+    const resetBody = await reset.json() as { readonly label?: string };
+    const listed = await getJson<{ sessions: ReadonlyArray<{ readonly label?: string; readonly cwd?: unknown }> }>(`${fixture.endpoint}terminal/sessions`);
+    const serialized = JSON.stringify({ renamedBody, resetBody, listed });
+
+    expect(renamed.status).toBe(200);
+    expect(renamedBody).toMatchObject({ label: "Bridge Watch" });
+    expect(reset.status).toBe(200);
+    expect(resetBody.label).toBeUndefined();
+    expect(listed.sessions[0]?.label).toBeUndefined();
+    expect(serialized).not.toContain(dir);
+    expect(renamedBody.cwd).toBeUndefined();
   });
 
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {

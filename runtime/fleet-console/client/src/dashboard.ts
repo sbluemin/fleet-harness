@@ -1,4 +1,4 @@
-import { statusTone } from "./format.js";
+import { sessionDisplayLabel, statusTone } from "./format.js";
 import { isTerminalJobStatus } from "./reduce.js";
 import type { ConsoleState, JobView, ObservedTenant, SessionInfo, TheaterInfo } from "./types.js";
 
@@ -83,7 +83,7 @@ export function summarizeOperationsReadiness(state: ConsoleState, theaterId: str
   const failedJobCount = jobs.filter((job) => isTerminalJobStatus(job.status) && (job.status === "error" || job.status === "aborted")).length;
   const activeSession = state.activeTerminalSessionId ? state.sessions[state.activeTerminalSessionId] : undefined;
   return {
-    activeSessionLabel: activeSession && theaterId && activeSession.theaterId === theaterId ? activeSession.cwdLabel : "No active session",
+    activeSessionLabel: activeSession && theaterId && activeSession.theaterId === theaterId ? sessionDisplayLabel(activeSession) : "No active session",
     terminalSessionCount: sessions.length,
     liveJobCount,
     completedJobCount,

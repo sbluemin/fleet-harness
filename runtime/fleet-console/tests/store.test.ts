@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyJobsSnapshot,
   applyObservedEvent,
+  applySessionUpdate,
   applyTenantSnapshot,
   applyTruncation,
   beginCreateTerminalSession,
@@ -65,7 +66,7 @@ describe("store", () => {
 
   it("binds a tenant snapshot to the active terminal session", () => {
     hydrateTheaters([THEATER_A]);
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "starting", createdAt: 1, theaterId: "theater-a" }]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", sequence: 1, status: "starting", createdAt: 1, theaterId: "theater-a" }]);
     selectTerminalSession("tenant-1");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "tenant-1" }]);
 
@@ -74,7 +75,7 @@ describe("store", () => {
   });
 
   it("builds job views from a jobs snapshot and refreshes them across resync", () => {
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 }]);
     selectTerminalSession("tenant-1");
     applyJobsSnapshot([
       {
@@ -114,7 +115,7 @@ describe("store", () => {
   });
 
   it("keeps live jobs scoped to the active terminal session when another tenant streams", () => {
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 }]);
     selectTerminalSession("tenant-1");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "tenant-1" }]);
     applyObservedEvent(makeEvent(1, "track:text", { trackId: "t1", text: "other" }, "tenant-9", "job-9"));
@@ -136,7 +137,7 @@ describe("store", () => {
   });
 
   it("keeps terminal session selection separate from tenant binding", () => {
-    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 }]);
     applyTenantSnapshot([{ ...TENANT, tenantId: "tenant-a", terminalSessionId: "session-a" }]);
     selectTerminalSession("session-a");
 
@@ -146,8 +147,8 @@ describe("store", () => {
 
   it("lists jobs only for the active terminal session", () => {
     hydrateTerminalSessions([
-      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
-      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
+      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 },
+      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2 },
     ]);
     selectTerminalSession("tenant-a");
     applyJobsSnapshot([
@@ -181,7 +182,7 @@ describe("store", () => {
     expect(getState()).toMatchObject({ creatingTerminalSession: true, terminalSessionError: null });
 
     hydrateTheaters([THEATER_A]);
-    completeCreateTerminalSession({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" });
+    completeCreateTerminalSession({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1, theaterId: "theater-a" });
 
     expect(getState()).toMatchObject({ activeTerminalSessionId: "session-a", creatingTerminalSession: false });
     expect(getState().sessionOrder).toEqual(["session-a"]);
@@ -198,7 +199,7 @@ describe("store", () => {
   });
 
   it("binds hydrated terminal sessions to tenants without changing the active session", () => {
-    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "starting", createdAt: 1 }]);
+    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "starting", createdAt: 1 }]);
     selectTerminalSession("session-a");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
 
@@ -206,8 +207,18 @@ describe("store", () => {
     expect(getState().activeTerminalSessionId).toBe("session-a");
   });
 
+  it("applies terminal session rename updates without losing tenant bindings", () => {
+    hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "starting", createdAt: 1, theaterId: "theater-a" }]);
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "terminal-only", createdAt: 1 });
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    expect(getState().sessions["session-a"]).toMatchObject({ label: "Bridge", tenantId: "tenant-1", registrationId: "registration-a", theaterId: "theater-a" });
+  });
+
   it("selects a job into the centered overlay and toggles it closed", () => {
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 }]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 }]);
     selectTerminalSession("tenant-1");
     applyJobsSnapshot([
       {
@@ -236,8 +247,8 @@ describe("store", () => {
 
   it("does not resolve overlay jobs outside the active terminal session", () => {
     hydrateTerminalSessions([
-      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
-      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
+      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 },
+      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2 },
     ]);
     selectTerminalSession("tenant-a");
     applyJobsSnapshot([
@@ -261,8 +272,8 @@ describe("store", () => {
 
   it("clears selected overlay job when switching terminal sessions", () => {
     hydrateTerminalSessions([
-      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1 },
-      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2 },
+      { sessionId: "tenant-a", terminalSessionId: "tenant-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 },
+      { sessionId: "tenant-b", terminalSessionId: "tenant-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2 },
     ]);
     selectTerminalSession("tenant-a");
     applyJobsSnapshot([
@@ -289,7 +300,7 @@ describe("store", () => {
 
   it("clears the selected overlay job when a newly created session becomes active", () => {
     hydrateTheaters([THEATER_A]);
-    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" }]);
+    hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1, theaterId: "theater-a" }]);
     selectTerminalSession("tenant-1");
     applyJobsSnapshot([
       {
@@ -302,7 +313,7 @@ describe("store", () => {
     selectJob("job-1");
     expect(getState().selectedJobId).toBe("job-1");
 
-    completeCreateTerminalSession({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2, theaterId: "theater-a" });
+    completeCreateTerminalSession({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2, theaterId: "theater-a" });
     expect(getState().activeTerminalSessionId).toBe("session-b");
     expect(getState().selectedJobId).toBeNull();
   });
@@ -330,8 +341,8 @@ describe("store", () => {
   it("filters terminal sessions to the active Theater", () => {
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
-      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
-      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
     ]);
 
     expect(theaterSessionOrder(getState())).toEqual(["session-a"]);
@@ -345,8 +356,8 @@ describe("store", () => {
   it("preserves theaterId across tenant snapshots and hides jobs from other Theaters", () => {
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
-      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
-      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
     ]);
     applyTenantSnapshot([
       { ...TENANT, tenantId: "tenant-a", terminalSessionId: "session-a", theaterId: "theater-a" },

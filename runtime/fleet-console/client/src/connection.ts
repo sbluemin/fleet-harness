@@ -3,6 +3,7 @@ import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
 import {
   applyJobsSnapshot,
   applyObservedEvent,
+  applySessionUpdate,
   applyTenantSnapshot,
   applyTruncation,
   setState,
@@ -68,6 +69,10 @@ async function consumeStream(
       if (!interpreted) continue;
       if (interpreted.kind === "truncation" && interpreted.truncation) {
         applyTruncation(interpreted.tenantId, interpreted.tenantLabel, interpreted.truncation);
+        continue;
+      }
+      if (interpreted.kind === "session" && interpreted.session) {
+        applySessionUpdate(interpreted.session);
         continue;
       }
       if (interpreted.event) {

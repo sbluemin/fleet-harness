@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { ConsoleObservedEvent, ConsoleObservedWorkspace } from "./api-types.js";
+import type { ConsoleObservedEvent, ConsoleObservedWorkspace, ConsoleSessionUpdatedEvent } from "./api-types.js";
 import type { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 
@@ -61,6 +61,10 @@ export function writeAggregateObserverEvents(
   const unsubscribers = options.subscribeAll
     ? [
       store.subscribeAll((event) => {
+        if (isSessionUpdatedEvent(event)) {
+          writeEvent(res, 0, event.type, { session: event.session });
+          return;
+        }
         writeEvent(res, event.id, event.type, { tenant: resolvedWorkspaceSnapshot(resolveWorkspace, event.tenantId), event });
       }),
     ]
@@ -80,6 +84,10 @@ function writeEvent(res: http.ServerResponse, id: number, event: string, data: u
   if (id > 0) res.write(`id: ${id}\n`);
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function isSessionUpdatedEvent(event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent): event is ConsoleSessionUpdatedEvent {
+  return event.type === "session:updated" && "session" in event;
 }
 
 function workspaceSnapshot(workspace: ConsoleObservedWorkspace) {

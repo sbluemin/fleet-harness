@@ -49,6 +49,8 @@ export interface SessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
+  readonly sequence: number;
+  readonly label?: string;
   readonly status: SessionStatus;
   readonly createdAt: number;
   readonly theaterId?: string;

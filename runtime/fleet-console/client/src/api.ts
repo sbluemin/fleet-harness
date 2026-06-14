@@ -101,6 +101,16 @@ export async function terminateTerminalSession(sessionId: string, signal?: Abort
   await assertOk(response);
 }
 
+export async function renameTerminalSession(sessionId: string, label: string): Promise<SessionInfo> {
+  const response = await fetch(`/terminal/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+  await assertOk(response);
+  return assertSessionInfo(await response.json(), response.status);
+}
+
 export async function fetchTerminalSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
   const response = await fetch("/terminal/sessions", { signal });
   await assertOk(response);
@@ -132,14 +142,25 @@ function normalizeTerminalTicketOptions(options: AbortSignal | TerminalTicketOpt
 }
 
 function assertSessionInfo(value: unknown, status: number): SessionInfo {
-  const payload = value as Partial<SessionInfo>;
-  if (!payload || typeof payload.sessionId !== "string" || typeof payload.cwdLabel !== "string" || typeof payload.status !== "string" || typeof payload.createdAt !== "number") {
+  const payload = value as Partial<SessionInfo> & { readonly cwd?: unknown; readonly canonicalCwd?: unknown };
+  if (
+    !payload
+    || typeof payload.sessionId !== "string"
+    || typeof payload.cwdLabel !== "string"
+    || typeof payload.sequence !== "number"
+    || typeof payload.status !== "string"
+    || typeof payload.createdAt !== "number"
+    || "cwd" in payload
+    || "canonicalCwd" in payload
+  ) {
     throw new ApiError(status, "Invalid terminal session response");
   }
   return {
     sessionId: payload.sessionId,
     terminalSessionId: typeof payload.terminalSessionId === "string" ? payload.terminalSessionId : payload.sessionId,
     cwdLabel: payload.cwdLabel,
+    sequence: payload.sequence,
+    label: typeof payload.label === "string" ? payload.label : undefined,
     status: payload.status,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,

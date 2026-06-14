@@ -49,6 +49,26 @@ describe("interpretObserverFrame", () => {
     expect(frame).toMatchObject({ kind: "truncation", truncation: { droppedCount: 12 } });
   });
 
+  it("reads terminal session update frames separately from observed events", () => {
+    const frame = interpretObserverFrame({
+      event: "session:updated",
+      data: JSON.stringify({
+        session: {
+          sessionId: "session-a",
+          terminalSessionId: "session-a",
+          cwdLabel: "alpha",
+          sequence: 1,
+          label: "Bridge",
+          status: "terminal-only",
+          createdAt: 1_000,
+        },
+      }),
+    });
+
+    expect(frame).toMatchObject({ kind: "session", session: { sessionId: "session-a", label: "Bridge" } });
+    expect(frame?.event).toBeUndefined();
+  });
+
   it("returns null for malformed payloads", () => {
     expect(interpretObserverFrame({ event: "message", data: "not-json" })).toBeNull();
     expect(interpretObserverFrame({ event: "message", data: "{}" })).toBeNull();
