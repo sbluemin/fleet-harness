@@ -110,6 +110,55 @@ describe("terminal session manager", () => {
     expect(exits).toEqual(["session-a"]);
   });
 
+  it("keeps the pty alive when the active socket closes, surviving reconnect", () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+    const first = createMockSocket();
+    const second = createMockSocket();
+
+    manager.attach(first, { sessionId: "session-a", cwd: "/a" });
+    ptys.get("session-a")?.emitData("before-detach");
+    first.emitClose();
+
+    // 소켓이 끊겨도(콘솔 웹 종료·세션 전환) PTY는 살아있고 세션도 정리되지 않는다 — 자동 종료 없음.
+    expect(ptys.get("session-a")?.killed()).toBe(false);
+    expect(exits).toEqual([]);
+
+    // 재연결하면 같은 세션에 다시 붙어 scrollback을 그대로 재생한다.
+    manager.attach(second, { sessionId: "session-a", cwd: "/a" });
+    expect(second.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["before-detach"]);
+    expect(ptys.get("session-a")?.killed()).toBe(false);
+  });
+
+  it("removes the session and notifies exit when the pty exits on its own", () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+
+    manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    ptys.get("session-a")?.emitExit();
+
+    // PTY 자가종료는 여전히 세션을 정리하고 콘솔 목록에 정확히 한 번 통지한다(독립 종료 경로 잔존).
+    expect(exits).toEqual(["session-a"]);
+  });
+
   it("passes the terminal kind into the launch resolver", () => {
     const launchKinds: Array<string | undefined> = [];
     const manager = createTerminalSessionManager({
