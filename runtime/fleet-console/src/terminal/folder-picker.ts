@@ -82,19 +82,17 @@ async function runPickerCommand(runCommand: (bin: string, args: readonly string[
   try {
     return await runCommand(command.bin, command.args);
   } catch (error) {
-    const err = error as NodeJS.ErrnoException & { readonly stderr?: string };
+    const err = error as NodeJS.ErrnoException;
     if (err.code === "ENOENT") return { kind: "unavailable" };
     if (err.code === "ETIMEDOUT") return { kind: "timeout" };
-    if (isCancelError(err.stderr ?? err.message)) return { kind: "cancelled" };
-    return { kind: "unavailable" };
+    // 다이얼로그 바이너리가 실행된 뒤 경로 없이 비정상 종료하면 사용자 취소로 간주한다.
+    // osascript의 취소 메시지는 로케일마다 달라 텍스트 매칭이 불가하지만 코드 -128로 종료하고,
+    // zenity/kdialog/powershell 취소도 종료코드 1로 알린다. 따라서 텍스트가 아닌 종료 방식으로 판정한다.
+    return { kind: "cancelled" };
   }
 }
 
 async function runNativeCommand(bin: string, args: readonly string[]): Promise<CommandResult> {
   const result = await execFileAsync(bin, [...args], { timeout: DIALOG_TIMEOUT_MS });
   return { stdout: result.stdout, stderr: result.stderr };
-}
-
-function isCancelError(message: string | undefined): boolean {
-  return /cancel|canceled|cancelled/i.test(message ?? "");
 }

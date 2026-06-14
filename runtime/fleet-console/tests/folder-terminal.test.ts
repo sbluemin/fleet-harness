@@ -58,6 +58,20 @@ describe("native folder picker", () => {
     await expect(pick()).resolves.toEqual({ kind: "cancelled" });
   });
 
+  it("treats a non-zero dialog exit without an English cancel message as cancelled", async () => {
+    const pick = createNativeFolderPicker({
+      platform: "darwin",
+      runCommand: async () => {
+        // 비영어(예: 한국어) macOS에서 osascript 취소 메시지는 로케일화되어 "cancel" 텍스트가 없다.
+        const error = new Error("Command failed: osascript") as NodeJS.ErrnoException & { stderr?: string };
+        error.stderr = "execution error: 사용자가 취소했습니다. (-128)";
+        throw error;
+      },
+    });
+
+    await expect(pick()).resolves.toEqual({ kind: "cancelled" });
+  });
+
   it("returns dialog_unavailable when platform commands are missing", async () => {
     const pick = createNativeFolderPicker({
       platform: "linux",
