@@ -19,6 +19,7 @@ import {
   section,
   stripAnsi,
 } from "./help-style.js";
+import { runSubagentsContextHook } from "./hooks/subagents-context.js";
 import { createConsoleLock } from "./lock.js";
 import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
@@ -83,6 +84,7 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
+const CONSOLE_HOOK_COMMANDS = new Set(["subagents-context"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -108,6 +110,14 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
     throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet console --help' for usage.`);
   }
   return mode;
+}
+
+export function parseConsoleHookCommand(argv: readonly string[]): "subagents-context" {
+  const [commandName, ...rest] = argv;
+  if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName) || rest.length > 0) {
+    throw new Error("Unknown fleet-console hook command");
+  }
+  return "subagents-context";
 }
 
 export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}): string {
@@ -342,6 +352,13 @@ export async function main(): Promise<void> {
   if (process.argv[2] === "serve") {
     await createConsoleDaemonLifecycle().runServer();
     return;
+  }
+  if (process.argv[2] === "hook") {
+    const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
+    if (hookCommand === "subagents-context") {
+      process.stdout.write(`${runSubagentsContextHook(process.env)}\n`);
+      return;
+    }
   }
   if (process.argv[2] === "codex") {
     await mainWiki(process.argv.slice(3));

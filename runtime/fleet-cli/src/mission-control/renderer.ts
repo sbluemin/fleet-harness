@@ -1,8 +1,9 @@
+import type { AgentCliId } from "@dotobokuri/fleet-admiral";
+
 import { ANSI_RESET } from "../styles/index.js";
 import { getCarrierAnsi } from "../styles/carriers.js";
 import { truncateToWidth, visibleWidth, type PtyExitEvent } from "../controls/index.js";
 
-import type { AgentCliId } from "../agent-cli/types.js";
 import { computeBlockLeftPad, maxVisibleWidth } from "./layout.js";
 import type { FleetCliRelease } from "../release.js";
 import type { MissionControlCounts } from "./loaded-counts.js";

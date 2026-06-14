@@ -4,17 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+import {
+  createSystemPromptBuilder,
+  injectAgentCliProfile,
+  type CodexPluginRegistrationCommand,
+} from "@dotobokuri/fleet-admiral";
 import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
 import {
   executorMcpRuntimeProviderRuntime,
   executorPortRuntime,
 } from "@dotobokuri/core-agent";
-import { buildClaudeNativeArgs } from "../src/agent-cli/builders/claude.js";
-import { buildCodexNativeArgs } from "../src/agent-cli/builders/codex.js";
-import { buildFleetHookCommand, injectAgentCliProfile } from "../src/agent-cli/injection.js";
-import type { AgentCliInjectionContext } from "../src/agent-cli/types.js";
-import type { CodexPluginRegistrationCommand } from "../src/agent-cli/plugin/types.js";
+import { buildFleetHookCommand } from "../src/agent-cli/host-hooks.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "../src/runtime/runtime.js";
 
 interface McpToolListResponse {
@@ -49,12 +49,12 @@ const CHRONICLE_ONLY_WIKI_TOOL_IDS = [
 ] as const;
 const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const FLEET_PROFILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const PLUGIN_ASSETS_DIR = path.resolve("assets");
 const TEST_HOOK_ENTRY = {
   entryPath: "/opt/fleet/dist/index.js",
   execPath: "/opt/node/bin/node",
 };
 const TEST_HOOK_EXEC = buildFleetHookCommand(TEST_HOOK_ENTRY);
+const WITH_TEST_MARKETPLACE_LOCK = <T>(_target: string, fn: () => T): T => fn();
 
 describe("fleet-cli agent CLI MCP registration", () => {
   let lifecycle: FleetRuntimeLifecycle | undefined;
@@ -129,50 +129,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
     expect(roughTokens).toBeLessThanOrEqual(8_500);
   });
 
-  it("builds provider args with plugin activation and spawn-time MCP injection", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-args-"));
-    const context = makeAgentCliInjectionContext(root);
-    try {
-      expect(buildClaudeNativeArgs(context)).toEqual([
-        "--system-prompt-file",
-        context.systemPromptFile,
-        "--plugin-dir",
-        context.pluginRoots[0],
-        "--mcp-config",
-        JSON.stringify({
-          mcpServers: {
-            fleet: {
-              type: "http",
-              url: "http://127.0.0.1:1000/fleet",
-              headers: { Authorization: "Bearer fleet-token" },
-            },
-          },
-        }),
-        "--dangerously-skip-permissions",
-      ]);
-      expect(buildCodexNativeArgs(context)).toEqual([
-        "--enable",
-        "plugins",
-        "--enable",
-        "child_agents_md",
-        "--profile",
-        context.codexProfileName,
-        "-c",
-        'approval_policy="never"',
-        "-c",
-        'sandbox_mode="danger-full-access"',
-        "-c",
-        'mcp_servers.fleet.url="http://127.0.0.1:1000/fleet"',
-        "-c",
-        'mcp_servers.fleet.http_headers={"Authorization" = "Bearer fleet-token"}',
-        "-c",
-        "mcp_servers.fleet.tool_timeout_sec=1800",
-      ]);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("injects rendered plugin paths, child env, Claude agents, and cleanup", async () => {
     const cleanups: Array<() => void> = [];
     const rootDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-root-"));
@@ -189,6 +145,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
       }, {
         buildSystemPrompt: () => "private fleet prompt",
         carrierRuntime: createCarrierRuntime(),
+        dataDir: rootDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({
             servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
@@ -196,10 +153,10 @@ describe("fleet-cli agent CLI MCP registration", () => {
           issueSessionToken: () => [{ name: "fleet", token: "fleet-token" }],
           releaseSessionToken,
         } as never,
+        hookExec: TEST_HOOK_EXEC,
         onCleanup: (cleanup) => cleanups.push(cleanup),
         pluginRootDir: rootDir,
-        pluginAssetsDir: PLUGIN_ASSETS_DIR,
-        pluginEntry: TEST_HOOK_ENTRY,
+        withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
       });
       const pluginRoots = pluginDirArgs(profile.args);
       const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
@@ -295,6 +252,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
 	          }
           return { status: 0, stderr: "", stdout: "" };
         },
+        dataDir: rootDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({
             servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
@@ -303,7 +261,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
           releaseSessionToken,
         } as never,
         pluginRootDir: rootDir,
-        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+        withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
       });
 
       expect(commands).toEqual([
@@ -398,6 +356,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
           }
           return { status: 0, stderr: "", stdout: "" };
         },
+        dataDir: rootDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({
             servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
@@ -406,7 +365,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
           releaseSessionToken: vi.fn(),
         } as never,
         pluginRootDir: rootDir,
-        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+        withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
       });
 
       expect(commands).toEqual([
@@ -459,6 +418,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
         buildSystemPrompt: () => "private fleet prompt",
         carrierRuntime: createCarrierRuntime(),
         codexCommandRunner: () => ({ status: 1, stderr: "codex plugin exploded", stdout: "" }),
+        dataDir: rootDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({
             servers: [{ name: "fleet", url: "http://127.0.0.1:1000/fleet" }],
@@ -467,7 +427,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
           releaseSessionToken: vi.fn(),
         } as never,
         pluginRootDir: rootDir,
-        pluginAssetsDir: PLUGIN_ASSETS_DIR,
+        withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
       });
 
       expect(profile.args).toContain("child_agents_md");
@@ -515,22 +475,6 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
 
 function readJson(filePath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
-}
-
-function makeAgentCliInjectionContext(root: string): AgentCliInjectionContext {
-  const pluginRoot = path.join(root, "marketplace", "plugins", "fleet");
-  mkdirSync(pluginRoot, { recursive: true, mode: 0o700 });
-  return {
-    cliId: "codex",
-    mcpServers: [
-      { name: "fleet", endpointUrl: "http://127.0.0.1:1000/fleet", bearerToken: "fleet-token" },
-    ],
-    pluginRoot,
-    pluginRoots: [pluginRoot],
-    codexProfileName: "fleet-00000000-0000-4000-8000-000000000000",
-    replaceSystemPrompt: true,
-    systemPromptFile: path.join(root, "system-prompt.md"),
-  };
 }
 
 function projectMarketplaceNameForCwd(cwd: string): string {

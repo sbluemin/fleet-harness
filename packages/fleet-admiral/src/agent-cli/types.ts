@@ -1,5 +1,3 @@
-import type { AuthService } from "@dotobokuri/fleet-infra/auth";
-
 export type AgentCliId = "claude" | "claude-kimi" | "codex";
 
 export interface AgentCliProfile {
@@ -30,9 +28,21 @@ export interface AgentCliDefinition {
   createProfile(options: AgentCliProfileOptions): Promise<AgentCliProfile>;
 }
 
+export interface AuthServiceLike {
+  deleteApiKey(providerId: string): Promise<boolean>;
+  getApiKey(providerId: string): Promise<string | undefined>;
+  listProviderIds(): Promise<string[]>;
+  setApiKey(providerId: string, key: string): Promise<void>;
+}
+
+export interface AuthEnvResolver {
+  (cliId: AgentCliId, options: { readonly authService?: AuthServiceLike }): Promise<Readonly<Record<string, string>>> | Readonly<Record<string, string>>;
+}
+
 export interface AgentCliProfileOptions {
-  // Composition Root가 주입하는 인증 서비스 — 미주입 시 fleet-infra 기본 경로로 fallback한다.
-  readonly authService?: AuthService;
+  // Composition Root가 주입하는 인증 서비스와 env resolver. fleet-admiral은 fleet-infra를 직접 import하지 않는다.
+  readonly authEnvResolver?: AuthEnvResolver;
+  readonly authService?: AuthServiceLike;
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;
@@ -62,6 +72,24 @@ export interface AgentCliInjectionCapabilityEnabled {
 export interface AgentCliInjectionCapabilityDisabled {
   readonly enabled: false;
   readonly reason: "native-builder-not-implemented";
+}
+
+export interface FleetHookExec {
+  readonly args: readonly string[];
+  readonly command: string;
+}
+
+export interface CodexCommandResult {
+  readonly status: number | null;
+  readonly stderr: string;
+  readonly stdout: string;
+}
+
+export interface CodexPluginRegistrationCommand {
+  readonly args: readonly string[];
+  readonly bin: string;
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string>>;
 }
 
 export type AgentCliInjectionCapability =

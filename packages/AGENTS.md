@@ -10,12 +10,13 @@ The Fleet codebase is built on **five core principles**. Every contribution and 
 
 The final Fleet graph is layered and enforced by build/grep gates:
 
-- `fleet-cli` owns host assembly and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy.
-- `fleet-cli` assembles `core-agent`, `fleet-infra`, and `fleet-carriers` through direct leaf service calls.
-- `fleet-cli` consumes `fleet-admiral`, `fleet-carriers`, `core-agent`, and `fleet-infra` through public package surfaces only.
-- Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the `fleet-cli` side.
+- `fleet-cli` owns CLI host assembly and consumes `@dotobokuri/fleet-admiral` for single-fleet Admiral policy, Agent CLI launch/runtime assembly, and Fleet activation rendering.
+- `fleet-console` owns the Console server/browser product and consumes `@dotobokuri/fleet-admiral` server-side for direct terminal Agent CLI launch/runtime assembly.
+- `fleet-cli` and `fleet-console` assemble host-specific Fleet Infra dependencies through direct leaf service calls, then pass narrow dependency objects into fleet-admiral factories.
+- Host packages consume `fleet-admiral`, `fleet-carriers`, `core-agent`, and `fleet-infra` through public package surfaces only.
+- Host UI, host event hooks, and any host-specific lifecycle dependency belong exclusively to the host side (`fleet-cli` or `fleet-console`).
 - The embedded TUI engine under `src/tui/` is owned exclusively by `fleet-cli`.
-- Mixed modules must keep host adapters in `fleet-cli` and domain policy in the owning Fleet package.
+- Mixed modules must keep host adapters in the host package and domain policy in the owning Fleet package.
 
 ### 2. Executor Pattern Only
 

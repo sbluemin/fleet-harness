@@ -11,8 +11,17 @@ import {
   createCarrierRegistry,
   readCarrierStatusEntries,
   registerDefaultCarriers,
+  type CarrierJobStreamEvent,
   type CarrierStatusEntry,
 } from "@dotobokuri/fleet-carriers";
+import {
+  createFleetAgentRuntimeLifecycle,
+  type FleetAgentRuntimeLifecycle,
+} from "@dotobokuri/fleet-admiral";
+import { createInfraServices } from "@dotobokuri/fleet-infra";
+import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
+import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
+import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import { readBearerToken } from "./auth.js";
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
@@ -26,9 +35,10 @@ import { tryServeStaticConsole } from "./static-console.js";
 import type { FolderPickerResult } from "./terminal/folder-picker.js";
 import { createNativeFolderPicker } from "./terminal/folder-picker.js";
 import { createFolderGrantStore } from "./terminal/folder-grants.js";
-import { createDefaultTerminalLaunchResolver, type TerminalLaunchResolver, startTerminalShell } from "./terminal/launch.js";
+import { createDefaultTerminalLaunchResolver, type TerminalLaunchResolver, type TerminalLaunchResolverDeps, startTerminalShell } from "./terminal/launch.js";
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
 import { createTerminalTicketRegistry } from "./terminal/tickets.js";
+import { createWorkspaceChangeScanner } from "./terminal/workspace-scanner.js";
 import { createTerminalUpgradeHandler, TERMINAL_TICKET_PATH } from "./terminal/ws-handler.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
@@ -39,7 +49,10 @@ export interface ConsoleServerDeps {
   readonly port?: number;
   readonly version?: string;
   readonly codexCwd?: string;
+  readonly dataDir?: string;
   readonly terminalLaunch?: TerminalLaunchResolver;
+  readonly terminalLaunchResolverDeps?: Omit<TerminalLaunchResolverDeps, "agentRuntime" | "dataDir" | "infraServices" | "onRuntimeSessionStart">;
+  readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
   readonly terminalPickFolder?: () => Promise<FolderPickerResult>;
@@ -54,6 +67,7 @@ export interface ConsoleServer {
 }
 
 type ObserverLookup = { readonly kind: "aggregate" };
+type ConsoleCarrierJobStreamEvent = CarrierJobStreamEvent & { readonly originSessionId?: string };
 
 const DEFAULT_HOST = "127.0.0.1";
 // 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
@@ -80,6 +94,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaters = new TheaterRegistry();
   const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
+  const infraServices = createInfraServices();
+  const dataDir = deps.dataDir ?? getFleetDataDir();
+  const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
+  const agentRuntime = deps.agentRuntime ?? createFleetAgentRuntimeLifecycle({
+    authEnvResolver,
+    dataDir,
+    onMcpServerStartError: (error) => {
+      console.error("[fleet-console] Failed to start MCP server", error);
+    },
+    workspaceChangeScanner: createWorkspaceChangeScanner(),
+    wikiToolSpecs: getWikiToolSpecs(),
+  });
+  const jobOriginById = new Map<string, string>();
+  const unsubscribeCarrierStream = agentRuntime.carrierRuntime.jobs.streaming.register((event) => {
+    const sessionId = resolveCarrierEventOrigin(event, jobOriginById);
+    if (!sessionId) return;
+    observability.appendTerminalRuntimeEvent(sessionId, event);
+  });
   const codex = createCodexGateway({
     cwd: deps.codexCwd ?? process.cwd(),
     host,
@@ -89,10 +121,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const pickTerminalFolder = deps.terminalPickFolder ?? createNativeFolderPicker();
   const terminalSessions = createTerminalSessionManager({
-    launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver(),
+    launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver({
+      ...deps.terminalLaunchResolverDeps,
+      agentRuntime,
+      dataDir,
+      infraServices,
+      onRuntimeSessionStart: (session) => {
+        const updated = observability.registerTerminalRuntimeSession(session);
+        if (updated) observability.notifySessionUpdated(updated);
+      },
+    }),
     startShell: deps.terminalStartShell,
     maxSessions: deps.maxTerminalSessions,
-    // PTY가 종료되면(예: fleet-cli 종료) 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
+    // PTY가 종료되면 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
     onSessionExit: (sessionId) => observability.removeTerminalSession(sessionId),
   });
   const terminalUpgrade = createTerminalUpgradeHandler({
@@ -106,6 +147,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let loopbackServer: http.Server | null = null;
   let lockHandle: ConsoleLockHandle | null = null;
   let activeEndpoint: string | null = null;
+  let agentRuntimeStopped = false;
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -448,12 +490,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const sessionId = crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd });
     try {
-      terminalSessions.createSession({ sessionId, cwd });
-      const created = observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
+      await terminalSessions.createSession({ sessionId, cwd });
+      const created = observability.listWorkspaces().some((workspace) => workspace.terminalSessionId === sessionId)
+        ? observability.listTerminalSessions().find((candidate) => candidate.sessionId === sessionId) ?? session
+        : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
       writeJson(res, 200, created);
     } catch (error) {
       observability.updateTerminalSessionStatus(sessionId, "error");
-      writeJson(res, 503, { error: error instanceof Error ? error.message : "terminal_unavailable" });
+      writeJson(res, 503, { error: "terminal_unavailable" });
     }
   }
 
@@ -614,18 +658,32 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const current = server;
       const currentLoopback = loopbackServer;
       const currentLock = lockHandle;
+      let cleanupError: unknown;
       server = null;
       loopbackServer = null;
       lockHandle = null;
       activeEndpoint = null;
-      await Promise.all([
-        closeHttpServer(current),
-        closeHttpServer(currentLoopback),
-      ]);
-      observability.clear();
-      terminalUpgrade.close();
-      terminalSessions.stop();
-      currentLock?.release();
+      try {
+        await Promise.all([
+          closeHttpServer(current),
+          closeHttpServer(currentLoopback),
+        ]);
+        await terminalSessions.stop();
+        if (!agentRuntimeStopped) {
+          try {
+            await agentRuntime.cleanup();
+            agentRuntimeStopped = true;
+          } catch (error) {
+            cleanupError = error;
+          }
+        }
+      } finally {
+        unsubscribeCarrierStream();
+        observability.clear();
+        terminalUpgrade.close();
+        currentLock?.release();
+      }
+      if (cleanupError) throw cleanupError;
     },
   };
 }
@@ -636,6 +694,18 @@ function readConsoleChannel(): ConsoleObserverStatus["channel"] {
   } catch {
     return "unknown";
   }
+}
+
+function resolveCarrierEventOrigin(event: ConsoleCarrierJobStreamEvent, jobOriginById: Map<string, string>): string | null {
+  const originSessionId = event.originSessionId;
+  if (originSessionId) {
+    jobOriginById.set(event.jobId, originSessionId);
+    if (event.type === "job:finalized") jobOriginById.delete(event.jobId);
+    return originSessionId;
+  }
+  const knownOrigin = jobOriginById.get(event.jobId);
+  if (event.type === "job:finalized") jobOriginById.delete(event.jobId);
+  return knownOrigin ?? null;
 }
 
 function createHttpServer(

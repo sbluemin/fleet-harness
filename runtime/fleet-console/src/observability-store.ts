@@ -35,7 +35,7 @@ export interface PushEventsResult {
 
 interface WorkspaceState {
   session: CliSession;
-  readonly ingestToken: string;
+  readonly ingestToken?: string;
   readonly theaterId: string;
   readonly terminalSessionId?: string;
   highestSeq: number;
@@ -202,6 +202,46 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return event;
   }
 
+  function registerTerminalRuntimeSession(input: { readonly sessionId: string; readonly label: string; readonly mcpToolCount: number }): ConsoleTerminalSessionInfo | null {
+    const terminalSession = terminalSessionsById.get(input.sessionId);
+    if (!terminalSession) return null;
+    const previous = workspacesByCliRunId.get(input.sessionId);
+    if (previous) removeWorkspaceIndexes(previous);
+    const registeredAt = nowIso();
+    const session: CliSession = {
+      registrationId: input.sessionId,
+      cliRunId: input.sessionId,
+      tenantLabel: input.label,
+      cwd: terminalSession.cwd,
+      pid: process.pid,
+      startedAt: new Date(terminalSession.createdAt).toISOString(),
+      fleetVersion: "fleet-console",
+      registeredAt,
+      lastHeartbeatAt: registeredAt,
+      leaseExpiresAt: new Date(Date.parse(registeredAt) + leaseTtlMs).toISOString(),
+      status: "online",
+      mcp: { servers: [{ name: "fleet", toolCount: input.mcpToolCount }] },
+    };
+    const state: WorkspaceState = {
+      session,
+      theaterId: terminalSession.theaterId,
+      terminalSessionId: terminalSession.terminalSessionId,
+      highestSeq: 0,
+      seenSeqs: new Set(),
+    };
+    terminalSession.status = "registered";
+    terminalSession.registrationId = session.registrationId;
+    terminalSession.cliRunId = session.cliRunId;
+    workspacesByCliRunId.set(session.cliRunId, state);
+    workspacesByRegistrationId.set(session.registrationId, state);
+    return toTerminalSessionInfo(terminalSession);
+  }
+
+  function appendTerminalRuntimeEvent(sessionId: string, rawEvent: unknown, at = now()): ConsoleObservedEvent | null {
+    if (!workspacesByCliRunId.has(sessionId)) return null;
+    return append(sessionId, rawEvent, at);
+  }
+
   function listWorkspaces(): readonly ConsoleObservedWorkspace[] {
     markExpiredSessions();
     return Array.from(workspacesByCliRunId.values())
@@ -325,6 +365,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function removeTerminalSession(sessionId: string): boolean {
+    const workspace = workspacesByCliRunId.get(sessionId);
+    if (workspace?.terminalSessionId === sessionId) {
+      removeWorkspaceIndexes(workspace);
+      workspacesByCliRunId.delete(sessionId);
+    }
     return terminalSessionsById.delete(sessionId);
   }
 
@@ -356,6 +401,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     markExpiredSessions,
     pushEvents,
     register,
+    appendTerminalRuntimeEvent,
     createPendingTerminalSession,
     notifySessionUpdated,
     renameTerminalSession,
@@ -363,6 +409,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     subscribeAll,
     updateTerminalSessionStatus,
     removeTerminalSession,
+    registerTerminalRuntimeSession,
     workspaceCount: () => listWorkspaces().filter((workspace) => workspace.status !== "deregistered").length,
   };
 
@@ -438,7 +485,9 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
 
   function removeWorkspaceIndexes(workspace: WorkspaceState): void {
     workspacesByRegistrationId.delete(workspace.session.registrationId);
-    workspacesByIngestToken.delete(workspace.ingestToken);
+    if (workspace.ingestToken) {
+      workspacesByIngestToken.delete(workspace.ingestToken);
+    }
   }
 }
 
@@ -491,26 +540,122 @@ function inferStatus(type: string, event: Record<string, unknown>, previousStatu
 function normalizeEventPayload(event: unknown): Record<string, unknown> {
   if (typeof event !== "object" || event === null) return {};
   const obj = event as Record<string, unknown>;
-  if (obj.type === "track:text" || obj.type === "track:thought") {
-    return {
-      ...obj,
-      text: clampText(obj.text),
-      textLength: typeof obj.text === "string" ? obj.text.length : 0,
-    };
+  switch (obj.type) {
+    case "job:registered":
+      return {
+        type: "job:registered",
+        jobId: safeString(obj.jobId),
+        kind: safeString(obj.kind),
+        ownerCarrierId: safeString(obj.ownerCarrierId),
+        label: safeString(obj.label),
+        startedAt: safeNumber(obj.startedAt),
+        activeJobToolCallId: safeOptionalString(obj.activeJobToolCallId),
+        tracks: Array.isArray(obj.tracks) ? obj.tracks.map(normalizeTrackMeta) : [],
+      };
+    case "job:finalized":
+      return {
+        type: "job:finalized",
+        jobId: safeString(obj.jobId),
+        status: safeString(obj.status),
+        finishedAt: safeNumber(obj.finishedAt),
+        error: safeOptionalString(obj.error),
+        summary: safeString(obj.summary),
+        systemReminder: safeOptionalString(obj.systemReminder),
+      };
+    case "track:begin":
+      return {
+        type: "track:begin",
+        jobId: safeString(obj.jobId),
+        trackId: safeString(obj.trackId),
+        startedAt: safeOptionalNumber(obj.startedAt),
+        requestPreview: safeOptionalString(obj.requestPreview),
+      };
+    case "track:status":
+      return {
+        type: "track:status",
+        jobId: safeString(obj.jobId),
+        trackId: safeString(obj.trackId),
+        status: safeString(obj.status),
+      };
+    case "track:runId":
+      return {
+        type: "track:runId",
+        jobId: safeString(obj.jobId),
+        trackId: safeString(obj.trackId),
+        runId: safeString(obj.runId),
+      };
+    case "track:text":
+    case "track:thought":
+      return {
+        type: obj.type,
+        jobId: safeString(obj.jobId),
+        trackId: safeString(obj.trackId),
+        text: clampText(obj.text),
+        textLength: typeof obj.text === "string" ? obj.text.length : 0,
+      };
+    case "track:tool":
+      return {
+        type: "track:tool",
+        jobId: safeString(obj.jobId),
+        trackId: safeString(obj.trackId),
+        detailChars: safeOptionalNumber(obj.detailChars),
+        toolCallId: safeOptionalString(obj.toolCallId),
+        title: safeString(obj.title),
+        status: safeString(obj.status),
+      };
+    case "track:finalized":
+      return {
+        type: "track:finalized",
+        jobId: safeString(obj.jobId),
+        trackId: safeString(obj.trackId),
+        status: safeString(obj.status),
+        finishedAt: safeOptionalNumber(obj.finishedAt),
+        error: safeOptionalString(obj.error),
+        sessionId: safeOptionalString(obj.sessionId),
+        fallbackText: clampText(obj.fallbackText),
+        fallbackTextLength: typeof obj.fallbackText === "string" ? obj.fallbackText.length : undefined,
+        fallbackThought: clampText(obj.fallbackThought),
+        fallbackThoughtLength: typeof obj.fallbackThought === "string" ? obj.fallbackThought.length : undefined,
+      };
+    default:
+      return { type: safeString(obj.type) || "event" };
   }
-  if (obj.type === "track:finalized") {
-    return {
-      ...obj,
-      fallbackText: clampText(obj.fallbackText),
-      fallbackTextLength: typeof obj.fallbackText === "string" ? obj.fallbackText.length : undefined,
-      fallbackThought: clampText(obj.fallbackThought),
-      fallbackThoughtLength: typeof obj.fallbackThought === "string" ? obj.fallbackThought.length : undefined,
-    };
-  }
-  return obj;
 }
 
 function clampText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   return value.length > EVENT_TEXT_RETENTION_LIMIT ? value.slice(0, EVENT_TEXT_RETENTION_LIMIT) : value;
+}
+
+function normalizeTrackMeta(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return {};
+  const track = value as Record<string, unknown>;
+  return {
+    trackId: safeString(track.trackId),
+    streamKey: safeString(track.streamKey),
+    displayCli: safeString(track.displayCli),
+    displayName: safeString(track.displayName),
+    effort: safeOptionalString(track.effort),
+    model: safeOptionalString(track.model),
+    subtitle: safeOptionalString(track.subtitle),
+    startedAt: safeOptionalNumber(track.startedAt),
+    kind: safeString(track.kind),
+    runId: safeOptionalString(track.runId),
+  };
+}
+
+function safeString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function safeOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function safeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function safeOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

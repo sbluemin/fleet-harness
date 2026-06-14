@@ -175,7 +175,7 @@ export interface TrackMeta {
   runId?: string;
 }
 
-export type CarrierJobStreamEvent =
+export type CarrierJobStreamEvent = { readonly originSessionId?: string } & (
   | {
     type: "job:registered";
     jobId: string;
@@ -245,7 +245,8 @@ export type CarrierJobStreamEvent =
     sessionId?: string;
     fallbackText?: string;
     fallbackThought?: string;
-  };
+  }
+);
 
 export type CarrierJobStreamHandler = (event: CarrierJobStreamEvent) => void;
 

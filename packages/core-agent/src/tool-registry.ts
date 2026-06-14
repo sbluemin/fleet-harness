@@ -93,6 +93,7 @@ export function createMcpToolRegistry(): McpToolRegistry {
     async invoke(name, args, ctx) {
       const fullCtx: AgentToolCtx = {
         cwd: ctx?.cwd ?? process.cwd(),
+        sessionLabel: ctx?.sessionLabel,
         toolCallId: ctx?.toolCallId,
         signal: ctx?.signal,
       };

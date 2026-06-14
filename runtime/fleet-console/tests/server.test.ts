@@ -25,6 +25,25 @@ interface ServerFixture {
   readonly lock: ConsoleLockPayload;
 }
 
+interface FakeConsoleRuntime {
+  readonly carrierRuntime: {
+    readonly jobs: {
+      readonly streaming: {
+        register(callback: (event: unknown) => void): () => void;
+      };
+    };
+  };
+  readonly dedicatedMcpSession: {
+    issueSessionToken(request: { readonly label: string; readonly cwd: string }): readonly { readonly name: string; readonly token: string }[];
+    releaseSessionToken(label: string): void;
+  };
+  readonly mcpRegistry: {
+    getAllAgentTools(): readonly unknown[];
+  };
+  readonly cleanup: ReturnType<typeof vi.fn>;
+  emit(event: unknown): void;
+}
+
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];
 let previousStaticIndex: string | null | undefined;
@@ -136,6 +155,25 @@ describe("console register ingest", () => {
     expect(session).toMatchObject({ sessionId: "session-a", status: "registered", registrationId: registration.registrationId, tenantId: "session-a", theaterId: workspaceHash(fs.realpathSync.native(dir)) });
   });
 
+  it("registers console-owned terminal runtime sessions without CLI ingest tokens and appends carrier events", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-direct-runtime-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore({ randomToken: () => "cli-ingest-token" });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    const session = store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
+    store.appendTerminalRuntimeEvent("session-a", { type: "track:text", jobId: "job-a", text: "hello" }, 2_000);
+    const workspaces = store.listWorkspaces();
+    const jobs = store.listJobs("session-a");
+    const serialized = JSON.stringify({ session, workspaces, jobs });
+
+    expect(session).toMatchObject({ sessionId: "session-a", status: "registered", cliRunId: "session-a", tenantId: "session-a" });
+    expect(workspaces[0]).toMatchObject({ tenantId: "session-a", tenantLabel: "Claude Code", terminalSessionId: "session-a" });
+    expect(jobs[0]?.events[0]?.event).toMatchObject({ text: "hello" });
+    expect(serialized).not.toContain("cli-ingest-token");
+    expect(serialized).not.toContain(dir);
+  });
+
   it("numbers pending terminal sessions per Theater, isolating the #1 starting value", () => {
     const theaterA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-a-"));
     const theaterB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-seq-b-"));
@@ -214,7 +252,7 @@ describe("console static and terminal ticket boundary", () => {
   it("issues terminal tickets without browser tokens and selects registration cwd internally", async () => {
     const launches: string[] = [];
     const fixture = await startFixture({
-      terminalLaunch: (cwd) => {
+      terminalLaunch: async (cwd) => {
         launches.push(cwd ?? "");
         return { bin: "mock", args: [], cwd: cwd ?? "/", env: { TERM: "xterm-256color" } };
       },
@@ -232,6 +270,112 @@ describe("console static and terminal ticket boundary", () => {
     expect(payload.ttlMs).toBe(10_000);
     expect(payload.cwd).toBeUndefined();
     expect(launches).toEqual([]);
+  });
+
+  it("keeps MCP bearer tokens out of terminal tickets, observer snapshots, SSE frames, static HTML, and launch errors", async () => {
+    const fakeToken = "mcp-token-seeded-secret";
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-token-boundary-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: async () => {
+        throw new Error(fakeToken);
+      },
+    });
+    ensureStaticIndex();
+    const headers = { "Content-Type": "application/json" };
+
+    const ticket = await (await fetch(`${fixture.endpoint}terminal/ticket`, { method: "POST", headers })).json();
+    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
+    const grant = await picked.json() as { readonly folderGrantId: string };
+    const failedLaunch = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    });
+    const failedBody = await failedLaunch.json();
+    const terminalSessions = await getJson<unknown>(`${fixture.endpoint}terminal/sessions`);
+    const observerTenants = await getJson<unknown>(`${fixture.endpoint}observer/tenants`);
+    const observerJobs = await getJson<unknown>(`${fixture.endpoint}observer/jobs`);
+    const sse = await readObserverChunk(fixture);
+    const staticHtml = await (await fetch(`${fixture.endpoint}console/`)).text();
+    const serialized = JSON.stringify({ ticket, failedBody, terminalSessions, observerTenants, observerJobs, sse, staticHtml });
+
+    expect(failedLaunch.status).toBe(503);
+    expect(failedBody).toEqual({ error: "terminal_unavailable" });
+    expect(serialized).not.toContain(fakeToken);
+    expect(serialized).not.toContain(dir);
+    expect(serialized).not.toContain("ingestToken");
+  });
+
+  it("keeps one shared runtime active across two terminal sessions and releases only the closed session token", async () => {
+    const fakeToken = "mcp-success-flow-secret";
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-shared-runtime-"));
+    tempDirs.push(dir);
+    const issuedLabels: string[] = [];
+    const releasedLabels: string[] = [];
+    const runtime = createFakeConsoleRuntime(issuedLabels, releasedLabels);
+    const terminalLaunchResolverDeps = {
+      cwd: dir,
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }, options: { readonly dedicatedMcpSession: FakeConsoleRuntime["dedicatedMcpSession"]; readonly onCleanup?: (cleanup: () => void) => void }) => {
+        const opts = options as typeof options & { readonly mcpSessionLabel: string };
+        options.dedicatedMcpSession.issueSessionToken({ label: opts.mcpSessionLabel, cwd: profile.cwd });
+        options.onCleanup?.(() => options.dedicatedMcpSession.releaseSessionToken(opts.mcpSessionLabel));
+        return { ...profile, args: [...profile.args, "--fleet-test"] };
+      }) as never,
+      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+        id: "claude",
+        label: "Claude Code",
+        bin: "/bin/claude",
+        args: [],
+        cwd,
+        env: { ...env },
+      })) as never,
+    };
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+      terminalLaunchResolverDeps,
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalStartShell: () => createFakePty(),
+    });
+    const headers = { "Content-Type": "application/json" };
+
+    const first = await createTerminalSession(fixture, headers);
+    runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "a", mcpToken: fakeToken });
+    const second = await createTerminalSession(fixture, headers);
+    runtime.emit({ type: "track:text", jobId: "job-a2", originSessionId: first.sessionId, trackId: "t1", text: "a2" });
+    const stopSecond = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(second.sessionId)}`, { method: "DELETE" });
+    runtime.emit({ type: "track:text", jobId: "job-a3", originSessionId: first.sessionId, trackId: "t1", text: "a3" });
+    const jobsBeforeStop = await getJson<{ tenants: Array<{ readonly tenantId: string; readonly jobs: Array<{ readonly jobId: string }> }> }>(`${fixture.endpoint}observer/jobs`);
+    const sse = await readObserverChunk(fixture);
+    const serialized = JSON.stringify({ jobsBeforeStop, sse });
+    const firstTenant = jobsBeforeStop.tenants.find((tenant) => tenant.tenantId === first.sessionId);
+
+    expect(stopSecond.status).toBe(200);
+    expect(issuedLabels).toEqual([first.sessionId, second.sessionId]);
+    expect(releasedLabels).toEqual([second.sessionId]);
+    expect(runtime.cleanup).not.toHaveBeenCalled();
+    expect(firstTenant?.jobs.map((job) => job.jobId).sort()).toEqual(["job-a", "job-a2", "job-a3"]);
+    expect(serialized).not.toContain(fakeToken);
+    expect(serialized).not.toContain("originSessionId");
+
+    await fixture.server.stop();
+    expect(runtime.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases server resources even when shared runtime cleanup rejects", async () => {
+    const runtime = createFakeConsoleRuntime([], []);
+    runtime.cleanup.mockRejectedValueOnce(new Error("cleanup boom"));
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+    });
+
+    await expect(fixture.server.stop()).rejects.toThrow("cleanup boom");
+    expect(createConsoleLock().readLock(fixture.lockFile)).toBeNull();
+
+    await expect(fixture.server.stop()).resolves.toBeUndefined();
+    expect(runtime.cleanup).toHaveBeenCalledTimes(2);
   });
 
   it("returns folder picker cancellation without creating a grant", async () => {
@@ -265,6 +409,7 @@ describe("console static and terminal ticket boundary", () => {
     const launches: TerminalLaunchSpec[] = [];
     const fixture = await startFixture({
       terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
       terminalStartShell: (launch) => {
         launches.push(launch);
         return createMockPty();
@@ -435,12 +580,15 @@ describe("console static and terminal ticket boundary", () => {
   });
 
   it("serves carrier readiness from the persisted carrier store", async () => {
-    const fixture = await startFixture();
-    fs.writeFileSync(path.join(fixture.carrierStoreDir, "carriers.json"), JSON.stringify({
-      carriers: {
-        nimitz: { displayName: "Nimitz Persisted" },
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        fs.writeFileSync(path.join(carrierStoreDir, "carriers.json"), JSON.stringify({
+          carriers: {
+            nimitz: { displayName: "Nimitz Persisted" },
+          },
+        }), "utf8");
       },
-    }), "utf8");
+    });
 
     const payload = await getJson<{ readonly carriers: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/carriers`);
     const nimitz = payload.carriers.find((carrier) => carrier.carrierId === "nimitz");
@@ -498,6 +646,7 @@ describe("console static and terminal ticket boundary", () => {
     const launches: TerminalLaunchSpec[] = [];
     const fixture = await startFixture({
       terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
       terminalStartShell: (launch) => {
         launches.push(launch);
         return createMockPty();
@@ -525,6 +674,7 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const fixture = await startFixture({
       terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
       terminalStartShell: () => createMockPty(),
     });
     const headers = { "Content-Type": "application/json" };
@@ -554,6 +704,7 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const fixture = await startFixture({
       terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
       terminalStartShell: () => createMockPty(),
     });
     const headers = { "Content-Type": "application/json" };
@@ -596,7 +747,7 @@ describe("console static and terminal ticket boundary", () => {
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: () => undefined, attach: () => undefined, terminate: () => false, stop: () => undefined },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, terminate: () => false, stop: async () => undefined },
       validateHost: () => true,
     });
 
@@ -627,10 +778,10 @@ describe("console static and terminal ticket boundary", () => {
           checkedSessionIds.push(sessionId);
           return false;
         },
-        createSession: () => undefined,
-        attach: () => undefined,
+        createSession: async () => undefined,
+        attach: async () => undefined,
         terminate: () => false,
-        stop: () => undefined,
+        stop: async () => undefined,
       },
       validateHost: () => true,
     });
@@ -653,7 +804,10 @@ describe("console static and terminal ticket boundary", () => {
 });
 
 async function startFixture(options: {
+  readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
+  readonly beforeCreateServer?: (paths: { readonly carrierStoreDir: string }) => void;
   readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
+  readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
   readonly terminalPickFolder?: ConsoleServerDeps["terminalPickFolder"];
   readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
@@ -661,12 +815,16 @@ async function startFixture(options: {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
   const carrierStoreDir = path.join(dir, "fleet-home");
   initStore(carrierStoreDir);
+  options.beforeCreateServer?.({ carrierStoreDir });
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
   const server = createConsoleServer({
     port: 0,
     version: "test",
+    agentRuntime: options.agentRuntime,
+    dataDir: carrierStoreDir,
     terminalLaunch: options.terminalLaunch,
+    terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
     terminalPickFolder: options.terminalPickFolder,
     terminalStartShell: options.terminalStartShell,
     updateCheck: options.updateCheck,
@@ -675,6 +833,60 @@ async function startFixture(options: {
   const endpoint = await server.start({ dir, lockFile });
   const lock = createConsoleLock().readLock(lockFile)!;
   return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
+}
+
+async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
+  const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
+  const grant = await picked.json() as { readonly folderGrantId: string };
+  const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+  });
+  expect(created.status).toBe(200);
+  return created.json() as Promise<{ readonly sessionId: string }>;
+}
+
+function createFakeConsoleRuntime(issuedLabels: string[], releasedLabels: string[]): FakeConsoleRuntime {
+  const handlers = new Set<(event: unknown) => void>();
+  return {
+    carrierRuntime: {
+      jobs: {
+        streaming: {
+          register(callback) {
+            handlers.add(callback);
+            return () => handlers.delete(callback);
+          },
+        },
+      },
+    },
+    dedicatedMcpSession: {
+      issueSessionToken(request) {
+        issuedLabels.push(request.label);
+        return [{ name: "fleet-tools", token: `token-${request.label}` }];
+      },
+      releaseSessionToken(label) {
+        releasedLabels.push(label);
+      },
+    },
+    mcpRegistry: {
+      getAllAgentTools: () => [{ name: "carrier_dispatch" }],
+    },
+    cleanup: vi.fn(async () => undefined),
+    emit(event) {
+      for (const handler of handlers) handler(event);
+    },
+  };
+}
+
+function createFakePty(): TerminalPtyHandle {
+  return {
+    onData: () => ({ dispose: () => undefined }),
+    onExit: () => ({ dispose: () => undefined }),
+    write: () => undefined,
+    resize: () => undefined,
+    kill: () => undefined,
+  };
 }
 
 async function registerCli(fixture: ServerFixture, overrides: Partial<{ readonly cliRunId: string; readonly tenantLabel: string; readonly cwd: string }> = {}) {
@@ -748,6 +960,18 @@ function createMockPty(): TerminalPtyHandle {
     write: () => undefined,
     resize: () => undefined,
     kill: () => undefined,
+  };
+}
+
+async function createMockLaunch(cwd?: string, context?: { readonly sessionId?: string }): Promise<TerminalLaunchSpec> {
+  return {
+    bin: "mock",
+    args: [],
+    cwd: cwd ?? "/",
+    env: {
+      ...(context?.sessionId ? { FLEET_CONSOLE_SESSION_ID: context.sessionId, INIT_CWD: cwd ?? "/", PWD: cwd ?? "/" } : {}),
+      TERM: "xterm-256color",
+    },
   };
 }
 

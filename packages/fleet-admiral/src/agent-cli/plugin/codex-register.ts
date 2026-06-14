@@ -1,19 +1,27 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { neutralizeCodexFleetPluginConfig } from "./codex-config.js";
 import { writePrivateFile } from "./fs.js";
-import type { CodexCommandResult, CodexPluginRegistration, CodexPluginRegistrationCommand } from "./types.js";
+import type {
+  AgentCliPluginMarketplaceLock,
+  CodexCommandResult,
+  CodexCommandRunner,
+  CodexPluginRegistration,
+  CodexPluginRegistrationCommand,
+} from "./types.js";
 
-export function ensureCodexPluginRegistered(
+export async function ensureCodexPluginRegistered(
   registration: CodexPluginRegistration,
   command: CodexPluginRegistrationCommand,
-  runCommand: (command: CodexPluginRegistrationCommand) => CodexCommandResult = runCodexCommand,
-): string | undefined {
+  runCommand: CodexCommandRunner,
+  withMarketplaceLock: AgentCliPluginMarketplaceLock,
+): Promise<string | undefined> {
   try {
-    ensureCodexPluginRegisteredOrThrow(registration, command, runCommand);
+    await withMarketplaceLock(registration.marketplaceDir, () => {
+      ensureCodexPluginRegisteredOrThrow(registration, command, runCommand);
+    });
     return undefined;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -23,7 +31,7 @@ export function ensureCodexPluginRegistered(
 function ensureCodexPluginRegisteredOrThrow(
   registration: CodexPluginRegistration,
   command: CodexPluginRegistrationCommand,
-  runCommand: (command: CodexPluginRegistrationCommand) => CodexCommandResult,
+  runCommand: CodexCommandRunner,
 ): void {
   // command.args는 Windows에서 cmd.exe 셸 래핑 인자(/d /s /c codex.cmd)를 담을 수 있으므로
   // 각 서브커맨드 인자 앞에 항상 보존한다. POSIX에서는 빈 배열이라 동작이 동일하다.
@@ -70,19 +78,6 @@ function ensureCodexPluginRegisteredOrThrow(
     pluginKey,
   });
   writePrivateFile(registration.hashPath, `${registration.contentHash}\n`, path.dirname(registration.hashPath));
-}
-
-function runCodexCommand(command: CodexPluginRegistrationCommand): CodexCommandResult {
-  const result = spawnSync(command.bin, command.args, {
-    cwd: command.cwd,
-    encoding: "utf8",
-    env: command.env,
-  });
-  return {
-    status: result.status,
-    stderr: result.stderr ?? "",
-    stdout: result.stdout ?? "",
-  };
 }
 
 function assertCommandSucceeded(label: string, result: CodexCommandResult): void {

@@ -8,7 +8,9 @@ import type { AgentToolCtx } from "@dotobokuri/core-agent";
 import { getEffort, getProviderModels, type CliType } from "@dotobokuri/core-unified-agent";
 import {
   buildCarrierDispatchToolSpec,
+  buildCarrierExecutorPoolKey,
   buildCarrierStatusEntries,
+  buildTaskForceRunId,
   PRIOR_JOBS_REQUEST_HINT,
   readCarrierStatusEntries,
   type CarrierConfig,
@@ -346,6 +348,83 @@ describe("carrier_dispatch effort resolution", () => {
   });
 });
 
+describe("carrier_dispatch executor pool origin isolation", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-pool-origin-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("namespaces same-carrier pool keys by console terminal origin", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    await tool.execute({ carrier_id: "ohio", label: "A dispatch", request: "Run from A." }, {
+      cwd: "/tmp",
+      sessionLabel: "terminal-a",
+      toolCallId: "dispatch-origin-a",
+    });
+    await tool.execute({ carrier_id: "ohio", label: "B dispatch", request: "Run from B." }, {
+      cwd: "/tmp",
+      sessionLabel: "terminal-b",
+      toolCallId: "dispatch-origin-b",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(2);
+    });
+    expect(executeWithPool).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      poolKey: "terminal-a:ohio",
+      scopeId: "ohio",
+    }));
+    expect(executeWithPool).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      poolKey: "terminal-b:ohio",
+      scopeId: "ohio",
+    }));
+  });
+
+  it("keeps fleet-cli style repeated dispatches on one stable process label in the same pool", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+    const sessionLabel = "agent:claude:stable-process";
+
+    await tool.execute({ carrier_id: "ohio", label: "First dispatch", request: "Run first." }, {
+      cwd: "/tmp",
+      sessionLabel,
+      toolCallId: "dispatch-reuse-a",
+    });
+    await tool.execute({ carrier_id: "ohio", label: "Second dispatch", request: "Run second." }, {
+      cwd: "/tmp",
+      sessionLabel,
+      toolCallId: "dispatch-reuse-b",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(2);
+    });
+    const poolKeys = vi.mocked(executeWithPool).mock.calls.map(([options]) => options.poolKey);
+    expect(poolKeys).toEqual([
+      "agent:claude:stable-process:ohio",
+      "agent:claude:stable-process:ohio",
+    ]);
+    expect(buildCarrierExecutorPoolKey("ohio", undefined)).toBe("ohio");
+  });
+});
+
 describe("carrier_dispatch native subagent mode delegation", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-subagent-mode-"));
@@ -666,6 +745,42 @@ describe("carrier_dispatch taskforce stream metadata", () => {
         model: codexModel,
       }),
     ]);
+  });
+
+  it("namespaces Task Force backend pool keys by console terminal origin", async () => {
+    const claudeModel = firstModel("claude");
+    const codexModel = firstModel("codex");
+    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    setCarrierAgentMode("ohio", false, "subagent");
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    await tool.execute({ carrier_id: "ohio", label: "Task Force A", request: "Run from A." }, {
+      cwd: "/tmp",
+      sessionLabel: "terminal-a",
+      toolCallId: "taskforce-origin-a",
+    });
+    await tool.execute({ carrier_id: "ohio", label: "Task Force B", request: "Run from B." }, {
+      cwd: "/tmp",
+      sessionLabel: "terminal-b",
+      toolCallId: "taskforce-origin-b",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(4);
+    });
+    const poolKeys = vi.mocked(executeWithPool).mock.calls.map(([options]) => options.poolKey).sort();
+    expect(poolKeys).toEqual([
+      `terminal-a:${buildTaskForceRunId("ohio", "claude")}`,
+      `terminal-a:${buildTaskForceRunId("ohio", "codex")}`,
+      `terminal-b:${buildTaskForceRunId("ohio", "claude")}`,
+      `terminal-b:${buildTaskForceRunId("ohio", "codex")}`,
+    ].sort());
+    for (const [options] of vi.mocked(executeWithPool).mock.calls) {
+      expect(options.scopeId).toBe("ohio");
+    }
   });
 
   it("stores a window-approximate workspace manifest on Task Force finalization", async () => {

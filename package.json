@@ -14,7 +14,7 @@
     "check:protocol-sync": "node scripts/check-protocol-sync.mjs",
     "fleet": "pnpm --filter @dotobokuri/core-unified-agent build && pnpm --filter @dotobokuri/fleet-cli dev",
     "fleet-console": "pnpm --filter @dotobokuri/fleet-console cli",
-    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && pnpm -r build"
+    "postinstall": "node scripts/fix-node-pty-spawn-helper.mjs && node scripts/generate-fleet-admiral-assets.mjs && pnpm -r build"
   },
   "bin": {
     "fleet": "./runtime/fleet-cli/bin/fleet"

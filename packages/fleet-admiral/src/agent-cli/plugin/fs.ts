@@ -23,10 +23,9 @@ export function writePrivateFile(filePath: string, content: string, rootBase: st
 }
 
 export function linkPrivateSymlink(linkPath: string, target: string, rootBase: string): void {
-  // Mirrors a user .fleet source symlink into the managed tree as a symlink (passthrough),
-  // instead of deep-copying the target content. The link location stays inside the hardened
-  // root (validated below); only its resolved target may point outside, which is the
-  // intentional, Admiral-accepted behavior for user-controlled .fleet sources.
+  // 사용자 .fleet 소스 심링크는 대상 내용을 복사하지 않고 managed tree 안에 심링크로 보존한다.
+  // 링크 위치는 강화된 root 내부로 검증하고, 해소된 대상만 root 밖을 가리킬 수 있다.
+  // 이는 사용자 제어 .fleet 소스를 통과시키기 위한 Admiral 승인 동작이다.
   const resolvedBase = ensureRootBase(rootBase);
   ensurePathWithinRoot(resolvedBase, linkPath);
   ensureDirectorySegments(resolvedBase, path.dirname(linkPath));

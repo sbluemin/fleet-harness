@@ -4,19 +4,15 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAgentCliInjectionCapability } from "../../src/agent-cli/capabilities.js";
 import {
+  getAgentCliInjectionCapability,
   getAgentCliIds,
   parseAgentCliId,
   resolveAgentCliProfile,
-} from "../../src/agent-cli/registry.js";
+} from "@dotobokuri/fleet-admiral";
 
 const mocks = vi.hoisted(() => ({
   resolveAuthEnvMock: vi.fn(),
-}));
-
-vi.mock("@dotobokuri/fleet-infra/auth", () => ({
-  resolveAuthEnv: mocks.resolveAuthEnvMock,
 }));
 
 const tempRoots: string[] = [];
@@ -82,7 +78,10 @@ describe("agent CLI catalog", () => {
   it("resolves Claude Kimi auth env before profile creation succeeds", async () => {
     const env = createEnvWithBins();
 
-    const profile = await resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" });
+    const profile = await resolveAgentCliProfile(env, "/tmp", {
+      authEnvResolver: mocks.resolveAuthEnvMock,
+      cliId: "claude-kimi",
+    });
 
     expect(mocks.resolveAuthEnvMock).toHaveBeenCalledWith("claude-kimi", { authService: undefined });
     expect(profile.env.ANTHROPIC_AUTH_TOKEN).toBe("variant-token");
@@ -93,14 +92,20 @@ describe("agent CLI catalog", () => {
     const env = createEnvWithBins();
     mocks.resolveAuthEnvMock.mockRejectedValue(new Error("Validation failed"));
 
-    await expect(resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" })).rejects.toThrow("Validation failed");
+    await expect(resolveAgentCliProfile(env, "/tmp", {
+      authEnvResolver: mocks.resolveAuthEnvMock,
+      cliId: "claude-kimi",
+    })).rejects.toThrow("Validation failed");
   });
 
   it("does not mutate process.env while creating profiles", async () => {
     const env = createEnvWithBins();
     const before = { ...process.env };
 
-    await resolveAgentCliProfile(env, "/tmp", { cliId: "claude-kimi" });
+    await resolveAgentCliProfile(env, "/tmp", {
+      authEnvResolver: mocks.resolveAuthEnvMock,
+      cliId: "claude-kimi",
+    });
 
     expect(process.env).toEqual(before);
   });

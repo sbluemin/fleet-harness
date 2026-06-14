@@ -198,9 +198,15 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../packages/core-agent
+      '@dotobokuri/fleet-admiral':
+        specifier: workspace:*
+        version: link:../../packages/fleet-admiral
       '@dotobokuri/fleet-carriers':
         specifier: workspace:*
         version: link:../../packages/fleet-carriers
+      '@dotobokuri/fleet-infra':
+        specifier: workspace:*
+        version: link:../../packages/fleet-infra
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki

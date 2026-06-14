@@ -33,11 +33,11 @@ export function specToMcpTool(spec: AgentToolSpec): McpTool {
 export function installExecutorToolCallRouter(
   runtime: McpRouterRuntime,
   sessionToken: string,
-  ctx: { cwd: string; signal?: AbortSignal },
+  ctx: { cwd: string; sessionLabel?: string; signal?: AbortSignal },
 ): void {
   runtime.server.setOnToolCallArrived(sessionToken, (toolName, args) => {
     const toolCallId = crypto.randomUUID();
-    void runtime.registry.invoke(toolName, args, { cwd: ctx.cwd, toolCallId, signal: ctx.signal })
+    void runtime.registry.invoke(toolName, args, { cwd: ctx.cwd, sessionLabel: ctx.sessionLabel, toolCallId, signal: ctx.signal })
       .then((result) => runtime.server.resolveNextToolCall(sessionToken, toolCallId, result))
       .catch((err) => {
         runtime.server.resolveNextToolCall(sessionToken, toolCallId, {

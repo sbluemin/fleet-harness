@@ -38,16 +38,21 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "tsup && vite build --config client/vite.config.ts",
+    "build": "pnpm generate:admiral-assets && tsup && vite build --config client/vite.config.ts",
     "cli": "tsx src/cli.ts",
     "dev": "vite --config client/vite.config.ts",
+    "generate:admiral-assets": "node ../../scripts/generate-fleet-admiral-assets.mjs",
+    "prepack": "node ../../scripts/pack-fleet-console-manifest.mjs prepack",
+    "postpack": "node ../../scripts/pack-fleet-console-manifest.mjs postpack",
     "publish:npm": "node ../../scripts/publish-fleet-console.mjs",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
+    "test": "pnpm generate:admiral-assets && vitest run",
+    "typecheck": "pnpm generate:admiral-assets && tsc --noEmit -p tsconfig.json && tsc --noEmit -p client/tsconfig.json"
   },
   "dependencies": {
     "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/fleet-admiral": "workspace:*",
     "@dotobokuri/fleet-carriers": "workspace:*",
+    "@dotobokuri/fleet-infra": "workspace:*",
     "@dotobokuri/fleet-wiki": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.19.0",

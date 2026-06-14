@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 interface RuntimeHarness {
+	readonly agentRuntimeCleanup: ReturnType<typeof vi.fn>;
 	readonly cleanupPublisher: ReturnType<typeof vi.fn>;
 	readonly createPublisher: ReturnType<typeof vi.fn>;
-	readonly mcpServerStop: ReturnType<typeof vi.fn>;
 	readonly publishJobEvent: ReturnType<typeof vi.fn>;
 	readonly startPublisher: ReturnType<typeof vi.fn>;
 	readonly streamRegister: ReturnType<typeof vi.fn>;
@@ -71,8 +71,8 @@ describe("fleet runtime console registration gating", () => {
 });
 
 function mockRuntimeDeps(): RuntimeHarness {
+	const agentRuntimeCleanup = vi.fn(async () => undefined);
 	const cleanupPublisher = vi.fn(async () => undefined);
-	const mcpServerStop = vi.fn(async () => undefined);
 	const publishJobEvent = vi.fn();
 	const startPublisher = vi.fn();
 	const streamUnsubscribe = vi.fn();
@@ -83,48 +83,30 @@ function mockRuntimeDeps(): RuntimeHarness {
 		start: startPublisher,
 	}));
 
-	vi.doMock("@dotobokuri/fleet-carriers", () => ({
-		createCarrierRuntime: () => ({
+	vi.doMock("@dotobokuri/fleet-admiral", () => ({
+		FLEET_MCP_SERVER_NAME: "fleet",
+		createFleetAgentRuntimeLifecycle: vi.fn(() => ({
+			cleanup: agentRuntimeCleanup,
+			dedicatedMcpSession: {},
 			jobs: {
 				streaming: {
 					register: streamRegister,
 				},
 			},
-			registerCarrierDefaults: vi.fn(),
-			registry: {
-				getState: () => ({ modes: new Map() }),
+			carrierRuntime: {
+				jobs: {
+					streaming: {
+						register: streamRegister,
+					},
+				},
+				registry: {
+					getState: () => ({ modes: new Map() }),
+				},
 			},
-			store: {
-				initStore: vi.fn(),
+			mcpRegistry: {
+				getAllAgentTools: () => [],
 			},
-		}),
-	}));
-	vi.doMock("@dotobokuri/fleet-admiral", () => ({
-		FLEET_MCP_SERVER_NAME: "fleet",
-		getExecutorMcpTools: () => [],
-		registerAgentToolDefaults: vi.fn(),
-	}));
-	vi.doMock("@dotobokuri/core-agent", () => ({
-		createExecutorSessionManager: () => ({
-			cleanup: vi.fn(),
-			createExecutorMcpSession: vi.fn(),
-		}),
-		createInProcessMcpServer: () => ({
-			start: vi.fn(async () => undefined),
-			stop: mcpServerStop,
-		}),
-		createMcpToolRegistry: () => ({
-			getAllAgentTools: () => [],
-			registerExecutorTool: vi.fn(),
-		}),
-		createMcpToolSnapshotStore: () => ({}),
-		disconnectAll: vi.fn(async () => undefined),
-		executorMcpRuntimeProviderRuntime: {
-			register: vi.fn(),
-		},
-		executorPortRuntime: {
-			register: vi.fn(),
-		},
+		})),
 	}));
 	vi.doMock("@dotobokuri/fleet-infra", () => ({
 		createInfraServices: () => ({
@@ -151,9 +133,9 @@ function mockRuntimeDeps(): RuntimeHarness {
 	}));
 
 	return {
+		agentRuntimeCleanup,
 		cleanupPublisher,
 		createPublisher,
-		mcpServerStop,
 		publishJobEvent,
 		startPublisher,
 		streamRegister,

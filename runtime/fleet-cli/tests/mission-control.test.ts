@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  getAgentCliMetadata,
+  resolveAgentCliId,
+  type AgentCliId,
+  type AgentCliProfile,
+} from "@dotobokuri/fleet-admiral";
+
 import { createMissionControlProfileConfig } from "../src/app.js";
 import { createProgrammaticInput } from "../src/controls/index.js";
 import { visibleWidth, type Component, type PtyExitEvent, type PtyHost, type PtyLaunchProfile } from "../src/controls/index.js";
@@ -7,8 +14,6 @@ import { createMissionControlController } from "../src/mission-control/controlle
 import { renderMissionControl } from "../src/mission-control/renderer.js";
 import { buildFleetBanner, gradientLine } from "../src/mission-control/welcome.js";
 import type { MissionControlCliOption, MissionControlLaunchProfile, MissionControlShimmerOptions, MissionControlShimmerTimer } from "../src/mission-control/types.js";
-import { getAgentCliMetadata, resolveAgentCliId } from "../src/agent-cli/registry.js";
-import type { AgentCliId, AgentCliProfile } from "../src/agent-cli/types.js";
 import { createWikiProcessController } from "../src/mission-control/menu/wiki-panel.js";
 import type { WikiProcessController, WikiServerStatus } from "../src/mission-control/menu/wiki-panel.js";
 import type { FleetCliRelease, MissionControlCounts } from "../src/mission-control/types.js";

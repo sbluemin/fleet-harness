@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { parseAgentCliId } from "@dotobokuri/fleet-admiral";
 import type { GlobalOptionsData } from "@dotobokuri/fleet-infra/global-options";
-import { parseAgentCliId } from "../src/agent-cli/registry.js";
+
 import { parseFleetCliOptions } from "../src/cli-args.js";
 import { resolveSessionOptions } from "../src/mission-control/options/resolver.js";
 import { createSessionOptionsRuntime } from "../src/mission-control/options/runtime.js";

@@ -138,6 +138,43 @@ describe("executor session manager", () => {
     manager.cleanup();
     expect(snapshotStore.getToolsForSession(mainTokens[0]!.token)).toHaveLength(0);
   });
+
+  it("issued session labels reach agent tool execution through the MCP router", async () => {
+    const registry = createMcpToolRegistry();
+    const snapshotStore = createMcpToolSnapshotStore();
+    const server = createInProcessMcpServer({ toolSnapshotStore: snapshotStore });
+    activeServers.push(server);
+    const runtime: McpRouterRuntime = { registry, server, snapshotStore };
+    const seenSessionLabels: Array<string | undefined> = [];
+    registry.registerAgentTool({
+      ...makeToolSpec("session_label_probe"),
+      async execute(_args, ctx) {
+        seenSessionLabels.push(ctx.sessionLabel);
+        return "ok";
+      },
+    });
+    const manager = createExecutorSessionManager({
+      runtimes: [{ name: "tools", runtime }],
+    });
+
+    const tokens = manager.issueSessionToken({
+      label: "terminal-a",
+      cwd: process.cwd(),
+    });
+    const response = await postJsonRpc(await server.start(), tokens[0]!.token, {
+      jsonrpc: "2.0",
+      id: "call",
+      method: "tools/call",
+      params: { name: "session_label_probe", arguments: {} },
+    });
+
+    expect(response.result).toEqual({
+      content: [{ type: "text", text: "ok" }],
+      isError: false,
+    });
+    expect(seenSessionLabels).toEqual(["terminal-a"]);
+    manager.cleanup();
+  });
 });
 
 function makeToolSpec(id: string): AgentToolSpec {

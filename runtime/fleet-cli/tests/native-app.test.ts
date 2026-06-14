@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentCliProfile } from "../src/agent-cli/types.js";
+import type { AgentCliProfile } from "@dotobokuri/fleet-admiral";
+
 import { KITTY_DISABLE, KITTY_ENABLE, type PtyExitEvent } from "../src/controls/index.js";
 import { createNativeTerminalLaunchStrategy } from "../src/native-app.js";
 
@@ -79,7 +80,6 @@ afterEach(() => {
   vi.doUnmock("../src/tui/terminal-size.js");
   vi.doUnmock("../src/release.js");
   vi.doUnmock("../src/update/check.js");
-  vi.doUnmock("../src/agent-cli/registry.js");
   vi.doUnmock("@dotobokuri/fleet-admiral");
 });
 
@@ -212,13 +212,12 @@ describe("native terminal app", () => {
     vi.doMock("../src/update/check.js", () => ({
       checkForUpdate: async () => undefined,
     }));
-    vi.doMock("../src/agent-cli/registry.js", () => ({
-      getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
-      getDefaultAgentCliId: () => "codex",
-      parseAgentCliId: (value: string | undefined) => value,
-    }));
     vi.doMock("@dotobokuri/fleet-admiral", () => ({
       createSystemPromptBuilder: () => ({ build: () => "prompt" }),
+      getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
+      getDefaultAgentCliId: () => "codex",
+      injectAgentCliProfile: async (profile: AgentCliProfile) => profile,
+      parseAgentCliId: (value: string | undefined) => value,
     }));
 
     const { runNativeApp } = await import("../src/native-app.js");
@@ -383,13 +382,12 @@ describe("native terminal app", () => {
     vi.doMock("../src/update/check.js", () => ({
       checkForUpdate: async () => undefined,
     }));
-    vi.doMock("../src/agent-cli/registry.js", () => ({
-      getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
-      getDefaultAgentCliId: () => "codex",
-      parseAgentCliId: (value: string | undefined) => value,
-    }));
     vi.doMock("@dotobokuri/fleet-admiral", () => ({
       createSystemPromptBuilder: () => ({ build: () => "prompt" }),
+      getAgentCliMetadata: () => [{ id: "codex", label: "Codex" }],
+      getDefaultAgentCliId: () => "codex",
+      injectAgentCliProfile: async (profile: AgentCliProfile) => profile,
+      parseAgentCliId: (value: string | undefined) => value,
     }));
 
     const { runNativeApp } = await import("../src/native-app.js");

@@ -41,11 +41,9 @@ export function createTerminalUpgradeHandler(deps: TerminalUpgradeHandlerDeps): 
     }
     const server = getWebSocketServer();
     server.handleUpgrade(req, socket, head, (ws) => {
-      try {
-        deps.sessions.attach(ws, context);
-      } catch {
+      deps.sessions.attach(ws, context).catch(() => {
         ws.close(1013, "terminal_unavailable");
-      }
+      });
     });
     return true;
   }

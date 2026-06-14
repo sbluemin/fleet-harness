@@ -1,6 +1,7 @@
+import type { AgentCliId, AgentCliProfile } from "@dotobokuri/fleet-admiral";
+
 import { type Component, type MouseProtocolState, type PtyExitEvent, type PtyHost } from "../controls/index.js";
 
-import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import { PtyView } from "../controls/terminal-view.js";
 import { createCarrierRosterPanel } from "./carrier-roster/register.js";
 import { createAboutPanel } from "./menu/about-panel.js";

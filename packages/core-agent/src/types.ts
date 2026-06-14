@@ -5,6 +5,7 @@ export interface McpCallToolResult {
 
 export interface AgentToolCtx {
   readonly cwd: string;
+  readonly sessionLabel?: string;
   readonly toolCallId?: string;
   readonly signal?: AbortSignal;
 }

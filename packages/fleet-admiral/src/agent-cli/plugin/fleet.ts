@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
-import { copyDirectoryIntoPlugin } from "./internal.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
 
 const CLAUDE_AGENT_FILE_STEM_ALLOWLIST = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
@@ -22,15 +21,7 @@ export function renderAssetPluginRoot(
   bundle: AssetPluginBundle,
   options: CreateAgentCliPluginOptions,
 ): void {
-  copyDirectoryIntoPlugin(
-    path.join(requiredAssetsDir(options), "skills"),
-    pluginRoot,
-    "skills",
-    {
-      label: "skills",
-      required: true,
-    },
-  );
+  renderEmbeddedSkillAssets(pluginRoot);
   if (bundle.includeClaudeAgents) {
     for (const subagent of options.claudeDefinitions) {
       const fileStem = parseClaudeAgentFileStem(subagent.name);
@@ -53,13 +44,6 @@ export function validateClaudeAgentFileStems(
 function parseClaudeAgentFileStem(name: string): string {
   if (CLAUDE_AGENT_FILE_STEM_ALLOWLIST.test(name) && path.basename(name) === name) return name;
   throw new Error(`Invalid Claude agent file name: ${name}`);
-}
-
-function requiredAssetsDir(options: CreateAgentCliPluginOptions): string {
-  if (!options.assetsDir) {
-    throw new Error("Fleet plugin assets directory is required");
-  }
-  return options.assetsDir;
 }
 
 function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
@@ -99,4 +83,10 @@ function claudeAgentFile(subagent: CreateAgentCliPluginOptions["claudeDefinition
 
 function yamlScalar(value: string): string {
   return JSON.stringify(value);
+}
+
+function renderEmbeddedSkillAssets(pluginRoot: string): void {
+  for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+    writePrivateFile(path.join(pluginRoot, "skills", asset.relativePath), asset.content, pluginRoot);
+  }
 }

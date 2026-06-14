@@ -1,18 +1,26 @@
 import type { ClaudeSubagentDefinition } from "@dotobokuri/fleet-carriers";
 
-export interface FleetHookExec {
-  readonly args: readonly string[];
-  readonly command: string;
+import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "../types.js";
+export type { CodexCommandResult, CodexPluginRegistrationCommand } from "../types.js";
+
+export interface AgentCliPluginMarketplaceLock {
+  <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;
+}
+
+export interface CodexCommandRunner {
+  (command: CodexPluginRegistrationCommand): CodexCommandResult;
 }
 
 export interface CreateAgentCliPluginOptions {
-  readonly assetsDir?: string;
   readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
   readonly cliId: string;
+  readonly codexCommandRunner?: CodexCommandRunner;
   readonly cwd: string;
+  readonly dataDir: string;
   readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
+  readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
 }
 
 export interface CodexPluginRegistration {
@@ -22,19 +30,6 @@ export interface CodexPluginRegistration {
   readonly marketplaceName: string;
   readonly pluginName: string;
   readonly pluginRoot: string;
-}
-
-export interface CodexCommandResult {
-  readonly status: number | null;
-  readonly stderr: string;
-  readonly stdout: string;
-}
-
-export interface CodexPluginRegistrationCommand {
-  readonly args: readonly string[];
-  readonly bin: string;
-  readonly cwd: string;
-  readonly env: Readonly<Record<string, string>>;
 }
 
 export interface AgentCliPlugin {

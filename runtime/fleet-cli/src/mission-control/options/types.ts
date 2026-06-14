@@ -1,6 +1,6 @@
+import type { AgentCliId } from "@dotobokuri/fleet-admiral";
 import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/fleet-infra/global-options";
 
-import type { AgentCliId } from "../../agent-cli/types.js";
 import type { FleetCliOptions } from "../../cli-args.js";
 
 export type SessionOptionSource = "arg" | "env" | "global-options" | "default" | "session";

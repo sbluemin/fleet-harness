@@ -1,7 +1,15 @@
-import { attachInputStream } from "./tui/input-stream.js";
-import { LocalTui } from "./tui/renderer.js";
-import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
+import {
+  createSystemPromptBuilder,
+  getAgentCliMetadata,
+  getDefaultAgentCliId,
+  injectAgentCliProfile,
+  parseAgentCliId,
+  resolveAgentCliId,
+  resolveAgentCliProfile,
+  type ResolveAgentCliProfileOptions,
+} from "@dotobokuri/fleet-admiral";
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
+
 import {
   assertInputContract,
   createCursorPolicySync,
@@ -17,25 +25,29 @@ import {
   type PtyHost,
   type TuiPtyManager,
 } from "./controls/index.js";
-
-import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/injection.js";
-import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId, resolveAgentCliId, resolveAgentCliProfile } from "./agent-cli/registry.js";
+import {
+  buildFleetHookCommand,
+  runCodexCommand,
+  withFleetMarketplaceLock,
+  type FleetHookCommandEntry,
+} from "./agent-cli/host-hooks.js";
 import type { FleetCliOptions } from "./cli-args.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
-import { readFleetCliRelease } from "./release.js";
 import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
-import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
-import { createMissionBridgeController } from "./mission-bridge/controller.js";
 import { createSessionOptionsRuntime } from "./mission-control/options/runtime.js";
 import type { SessionOptions } from "./mission-control/options/types.js";
+import type { CreateMissionControlControllerOptions } from "./mission-control/types.js";
+import { createMissionBridgeController } from "./mission-bridge/controller.js";
+import { readFleetCliRelease } from "./release.js";
 import { createFleetRuntimeLifecycle, type FleetRuntimeLifecycle } from "./runtime/runtime.js";
+import { attachInputStream } from "./tui/input-stream.js";
+import { LocalTui } from "./tui/renderer.js";
 import { checkForUpdate } from "./update/check.js";
 
 export interface RunAppOptions {
   readonly cursorSync?: boolean;
   readonly argvOptions?: FleetCliOptions;
-  readonly pluginAssetsDir?: string;
   readonly pluginEntry?: FleetHookCommandEntry;
 }
 
@@ -43,6 +55,7 @@ type MissionControlProfileConfig = Pick<CreateMissionControlControllerOptions, "
 type ProcessFatalEvent = "uncaughtException" | "unhandledRejection";
 
 export interface CreateMissionControlProfileConfigOptions {
+  readonly authEnvResolver?: ResolveAgentCliProfileOptions["authEnvResolver"];
   readonly authService?: AuthService;
   readonly env: NodeJS.ProcessEnv;
   readonly invocationCwd: string;
@@ -58,6 +71,7 @@ export function createMissionControlProfileConfig(
     initialCliId: resolveAgentCliId(options.env),
     resolveProfile: (selectedCliId, launchOptions?: SessionOptions) =>
       resolveAgentCliProfile(options.env, options.invocationCwd, {
+        authEnvResolver: options.authEnvResolver,
         authService: options.authService,
         cliId: selectedCliId,
         model: launchOptions?.model,
@@ -97,6 +111,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   }).build;
   const invocationCwd = resolveInvocationCwd();
   const missionControlProfileConfig = createMissionControlProfileConfig({
+    authEnvResolver: runtime.authEnvResolver,
     // claude-kimi 프로필의 resolveAuthEnv까지 Composition Root의 authService를 명시 주입한다.
     authService: runtime.infraServices.authService,
     env: process.env,
@@ -122,12 +137,16 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
       injectAgentCliProfile(profile, {
         buildSystemPrompt,
         carrierRuntime: runtime.carrierRuntime,
+        codexCommandRunner: runCodexCommand,
+        dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+        hookExec: profile.id === "claude" || profile.id === "claude-kimi"
+          ? buildFleetHookCommand(options.pluginEntry)
+          : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
         replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
-        pluginAssetsDir: options.pluginAssetsDir,
-        pluginEntry: options.pluginEntry,
+        withMarketplaceLock: withFleetMarketplaceLock,
       }),
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
     onExitFleet: () => stop(),

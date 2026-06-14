@@ -1,12 +1,22 @@
-import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
-import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
+
+import {
+  createSystemPromptBuilder,
+  getAgentCliMetadata,
+  getDefaultAgentCliId,
+  injectAgentCliProfile,
+  parseAgentCliId,
+  type AgentCliProfile,
+} from "@dotobokuri/fleet-admiral";
+import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 import type { IDisposable, IPty } from "node-pty";
 
-import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/injection.js";
-import type { AgentCliProfile } from "./agent-cli/types.js";
-import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId } from "./agent-cli/registry.js";
+import {
+  buildFleetHookCommand,
+  runCodexCommand,
+  withFleetMarketplaceLock,
+} from "./agent-cli/host-hooks.js";
 import { createMissionControlProfileConfig, type RunAppOptions } from "./app.js";
 import { type FleetCliOptions } from "./cli-args.js";
 import {
@@ -100,6 +110,7 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     carrierRuntime: runtime.carrierRuntime,
   }).build;
   const missionControlProfileConfig = createMissionControlProfileConfig({
+    authEnvResolver: runtime.authEnvResolver,
     authService: runtime.infraServices.authService,
     env: process.env,
     invocationCwd,
@@ -155,12 +166,16 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
       injectAgentCliProfile(profile, {
         buildSystemPrompt,
         carrierRuntime: runtime.carrierRuntime,
+        codexCommandRunner: runCodexCommand,
+        dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+        hookExec: profile.id === "claude" || profile.id === "claude-kimi"
+          ? buildFleetHookCommand(options.pluginEntry)
+          : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
         replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
-        pluginAssetsDir: options.pluginAssetsDir,
-        pluginEntry: options.pluginEntry,
+        withMarketplaceLock: withFleetMarketplaceLock,
       }),
     launchProfile,
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),

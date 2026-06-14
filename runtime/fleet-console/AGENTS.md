@@ -25,8 +25,8 @@
 ## Must Not Own
 
 - Multi-tenant aggregation or tenant/session token issuance — the console observes a single workspace's registered fleet-cli sessions; it does not re-implement the retired gateway tenant model.
-- MCP transport — the MCP HTTP/JSON-RPC server is owned by `fleet-cli` in-process (assembled from `@dotobokuri/core-agent` primitives). The console never proxies or owns MCP tool-call routing.
-- Fleet tool builders, carrier persona policy, or provider-specific launch logic.
+- Browser-facing MCP transport or MCP proxying. Console server-side terminal sessions may create per-session Fleet MCP runtimes and executor session tokens only through `@dotobokuri/fleet-admiral`; tokens remain server-only and must never reach browser payloads, tickets, logs, URLs, or static assets.
+- Fleet tool builders, carrier persona policy, or provider-specific launch logic. Console may consume the `@dotobokuri/fleet-admiral` root launch/runtime API but must not copy, fork, or deep-import provider-specific launch builders.
 
 ## Token Boundary (hard rule)
 
@@ -44,9 +44,13 @@
 - Console must not deep-import `@dotobokuri/fleet-carriers/src/**`, `packages/fleet-carriers/src/**`, `runtime/fleet-cli/**`, or `@dotobokuri/fleet-cli`.
 - Carrier readiness browser payloads must not serialize prompt bodies, raw persona instructions, executor tool allowlists, tokens, credential values, auth env details, terminal/session/admin tickets, or raw filesystem paths.
 
+## Server-side Dependency Boundary
+
+- `runtime/fleet-console/src/**` may import `@dotobokuri/fleet-admiral` public root exports for server-only Agent CLI launch/runtime assembly. `runtime/fleet-console/client/**` must not import `@dotobokuri/fleet-admiral`.
+
 ## Layout
 
-- `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), bearer auth and security headers, static serving (`static-console.ts`), the register-ingest and observer routes (including `/observer/theaters*` Theater registry and session launch), the SSE helper, `codex/` (Fleet Wiki/Codex API gateway and workspace registration), `theaters.ts` (console-level in-memory TheaterRegistry), `theater.ts` (Theater id hash, realpath canonicalization, and label helpers), `terminal/` (PTY ticket/session/ws transport; console terminal sessions launch `fleet-cli --headless --native` so the child Agent CLI owns the PTY while registering with the console; closing the browser view or switching Operations does not terminate the PTY — sessions persist until the child process exits, an operator explicitly terminates the session, or the server stops), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `cli-bin.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs` and `dist/cli-bin.mjs`. Depends on `@dotobokuri/core-agent` for the shared register data contract; must **not** depend on the retired gateway package. `help-style.ts` is a CLI-help-only **self-hosted** style helper shared by the console and Codex compatibility CLIs; it must not import from `fleet-cli`, `packages/*` (beyond the core-agent contract), or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
+- `src/` — Node-side backend and CLI lifecycle: the HTTP server (`server.ts`), bearer auth and security headers, static serving (`static-console.ts`), the register-ingest and observer routes (including `/observer/theaters*` Theater registry and session launch), the SSE helper, `codex/` (Fleet Wiki/Codex API gateway and workspace registration), `theaters.ts` (console-level in-memory TheaterRegistry), `theater.ts` (Theater id hash, realpath canonicalization, and label helpers), `terminal/` (PTY ticket/session/ws transport; console terminal sessions resolve Agent CLI launch specs through `@dotobokuri/fleet-admiral`, spawn the selected provider CLI directly, and bridge carrier runtime events into console-owned observability without exposing MCP/session tokens to the browser; closing the browser view or switching Operations does not terminate the PTY — sessions persist until the child process exits, an operator explicitly terminates the session, or the server stops), the lifecycle modules (`lock.ts`, `paths.ts`, `health.ts`, `stale.ts`), and the CLI (`cli.ts`, `cli-bin.ts`, `browser.ts`, `help-style.ts`). Built by tsup to `dist/cli.mjs` and `dist/cli-bin.mjs`. Depends on `@dotobokuri/core-agent` for the shared register data contract; must **not** depend on the retired gateway package. `help-style.ts` is a CLI-help-only **self-hosted** style helper shared by the console and Codex compatibility CLIs; it must not import from `fleet-cli`, `packages/*` (beyond the core-agent contract), or `client/`, and changes to the shared banner/SGR vocabulary require manual sync across those copies.
 - `client/` — the Vite React SPA (`client/src/`, `client/index.html`, `client/vite.config.ts`). Must not import Node-only modules or the console backend (`src/`).
 - `tests/` — vitest suites for the reducer, SSE parser, store, register-ingest, terminal, and CLI lifecycle.
 

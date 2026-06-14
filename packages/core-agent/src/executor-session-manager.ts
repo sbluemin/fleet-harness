@@ -37,7 +37,7 @@ export interface CoreExecutorMcpSession {
   readonly mcpServer: McpServerConfig;
   cleanup(): void;
   detachForReuse(): void;
-  installForReuse(ctx: { readonly cwd: string; readonly signal?: AbortSignal }): void;
+  installForReuse(ctx: { readonly cwd: string; readonly sessionLabel?: string; readonly signal?: AbortSignal }): void;
 }
 
 export interface CoreExecutorMcpSessionRequest {
@@ -133,6 +133,7 @@ function createExecutorMcpSession(
     installForReuse: (ctx) => {
       installExecutorToolCallRouter(runtime.runtime, token, {
         cwd: ctx.cwd,
+        sessionLabel: ctx.sessionLabel,
         signal: ctx.signal,
       });
     },
@@ -177,7 +178,7 @@ function issueSessionToken(
       assertNonEmptyExecutorTools(name, tools);
       const token = crypto.randomUUID();
       registerExecutorSessionTools(runtime, token, tools);
-      installExecutorToolCallRouter(runtime, token, { cwd, signal: request.signal });
+      installExecutorToolCallRouter(runtime, token, { cwd, sessionLabel: label, signal: request.signal });
       tokens.push({ name, token });
     }
   } catch (error) {
