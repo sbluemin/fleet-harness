@@ -94,6 +94,20 @@
     ],
     "updated": "2026-06-12T16:31:53.920Z"
   },
+  "guide-007-package-structure-admiral-runtime": {
+    "path": "wiki/guide-007-package-structure-admiral-runtime.md",
+    "title": "Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)",
+    "tags": [
+      "guide",
+      "fleet-harness",
+      "architecture",
+      "package-structure",
+      "fleet-admiral",
+      "fleet-console",
+      "target"
+    ],
+    "updated": "2026-06-14T12:06:45.215Z"
+  },
   "guide-unified-agent-cursor-composer-25": {
     "path": "wiki/guide-unified-agent-cursor-composer-25.md",
     "title": "Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결",
