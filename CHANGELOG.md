@@ -5,6 +5,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+- [core] Fixed Fleet Console terminal sessions failing to start on Windows when launched from an npm-installed stable package.
+
 ## [1.5.1] - 2026-06-14
 
 ### Removed

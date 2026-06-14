@@ -5,6 +5,9 @@ import type { FleetConsoleRelease } from "../src/release.js";
 
 const CONSOLE_PACKAGE_ROOT = "/work/runtime/fleet-console";
 const LOCAL_CLI_ENTRY = "/work/runtime/fleet-cli/dist/index.js";
+const WINDOWS_CODEX_SHIM = "C:/Users/operator/AppData/Roaming/npm/codex.cmd";
+const WINDOWS_FLEET_SHIM = "C:/Users/operator/AppData/Roaming/npm/fleet.cmd";
+const WINDOWS_COMSPEC = "C:/Windows/System32/cmd.exe";
 const LOCAL_RELEASE: FleetConsoleRelease = { channel: "local", version: "0.0.0", packageRoot: CONSOLE_PACKAGE_ROOT };
 const STABLE_RELEASE: FleetConsoleRelease = { channel: "stable", version: "1.4.0", packageRoot: CONSOLE_PACKAGE_ROOT };
 
@@ -43,7 +46,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.args).toEqual([LOCAL_CLI_ENTRY, "--headless", "--native"]);
   });
 
-  it("uses the global fleet binary with --headless --native on the stable channel", () => {
+  it("uses the bare global fleet binary with --headless --native on the stable channel outside Windows", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       ...baseDeps,
       release: STABLE_RELEASE,
@@ -54,6 +57,25 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec.bin).toBe("fleet");
     expect(spec.args).toEqual(["--headless", "--native"]);
+  });
+
+  it("wraps the npm fleet.cmd shim through ComSpec on the stable channel on Windows", () => {
+    const resolve = createDefaultTerminalLaunchResolver({
+      ...baseDeps,
+      env: {
+        ComSpec: WINDOWS_COMSPEC,
+        PATH: "C:/Users/operator/AppData/Roaming/npm",
+        PATHEXT: ".com;.exe;.bat;.cmd",
+      } as NodeJS.ProcessEnv,
+      exists: (candidate) => candidate === WINDOWS_FLEET_SHIM,
+      platform: "win32",
+      release: STABLE_RELEASE,
+    });
+
+    const spec = resolve("/work");
+
+    expect(spec.bin).toBe(WINDOWS_COMSPEC);
+    expect(spec.args).toEqual(["/d", "/s", "/c", "call", `${WINDOWS_FLEET_SHIM} `, "--headless", "--native"]);
   });
 
   it("throws on the local channel when the sibling fleet-cli build is missing instead of falling back to the global binary", () => {
@@ -76,6 +98,25 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec.bin).toBe("bash");
     expect(spec.args).toEqual(["-l"]);
+  });
+
+  it("wraps a FLEET_TERMINAL_CMD Windows shim without forcing headless native flags", () => {
+    const resolve = createDefaultTerminalLaunchResolver({
+      ...baseDeps,
+      env: {
+        ComSpec: WINDOWS_COMSPEC,
+        FLEET_TERMINAL_CMD: "codex --resume",
+        PATH: "C:/Users/operator/AppData/Roaming/npm",
+        PATHEXT: ".cmd",
+      } as NodeJS.ProcessEnv,
+      exists: (candidate) => candidate === WINDOWS_CODEX_SHIM,
+      platform: "win32",
+    });
+
+    const spec = resolve("/work");
+
+    expect(spec.bin).toBe(WINDOWS_COMSPEC);
+    expect(spec.args).toEqual(["/d", "/s", "/c", "call", `${WINDOWS_CODEX_SHIM} `, "--resume"]);
   });
 
   it("injects selected cwd and console session env for spawned terminal sessions", () => {
@@ -109,6 +150,29 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec).toMatchObject({
       bin: "/bin/zsh",
+      args: [],
+      cwd: "/work",
+    });
+    expect(spec.env).toMatchObject({ TERM: "xterm-256color" });
+    expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+    expect(spec.env.INIT_CWD).toBeUndefined();
+  });
+
+  it("resolves the user's Windows shell without fleet-cli overrides for shell sessions", () => {
+    const resolve = createDefaultTerminalLaunchResolver({
+      ...baseDeps,
+      env: {
+        ComSpec: WINDOWS_COMSPEC,
+        PATH: "C:/Windows/System32",
+      } as NodeJS.ProcessEnv,
+      exists: (candidate) => candidate === WINDOWS_COMSPEC,
+      platform: "win32",
+    });
+
+    const spec = resolve("", { sessionId: "shell", kind: "shell" });
+
+    expect(spec).toMatchObject({
+      bin: WINDOWS_COMSPEC,
       args: [],
       cwd: "/work",
     });

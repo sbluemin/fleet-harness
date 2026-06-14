@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "../release.js";
+import { resolvePathBinary } from "./resolve-bin.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
 
 export interface TerminalLaunchResolverDeps {
@@ -13,6 +14,7 @@ export interface TerminalLaunchResolverDeps {
   readonly execPath?: string;
   readonly homedir?: () => string;
   readonly exists?: (path: string) => boolean;
+  readonly platform?: NodeJS.Platform;
   // dev/prod 채널과 콘솔 패키지 루트를 주입 가능(테스트·임베드용). 미주입 시 콘솔 자신의 릴리스를 읽는다.
   readonly release?: FleetConsoleRelease;
 }
@@ -32,18 +34,28 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
   const execPath = deps.execPath ?? process.execPath;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const exists = deps.exists ?? fs.existsSync;
+  const platform = deps.platform ?? process.platform;
   // 채널은 프로세스 수명 동안 불변이므로 resolver 생성 시 1회만 평가한다.
   const release = deps.release ?? readFleetConsoleRelease();
 
   return (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
     if (context?.kind === "shell") {
-      return { bin: resolveUserShell(env), args: [], cwd, env: buildShellLaunchEnv(env) };
+      const shell = resolveWindowsLaunchBinary(resolveUserShell(env, platform), [], env, exists, platform, "user shell");
+      return { bin: shell.bin, args: shell.args, cwd, env: buildShellLaunchEnv(env) };
     }
     const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override) {
-      return { ...override, cwd, env: launchEnv };
+      const resolvedOverride = resolveWindowsLaunchBinary(
+        override.bin,
+        override.args,
+        env,
+        exists,
+        platform,
+        "FLEET_TERMINAL_CMD",
+      );
+      return { ...resolvedOverride, cwd, env: launchEnv };
     }
     // dev/prod 판별은 cwd(=선택한 Theater)가 아니라 콘솔 자신의 릴리스 채널로 한다.
     // local: 모노레포 형제 디렉터리의 빌드된 fleet-cli를 node로 실행한다(Theater 위치와 무관).
@@ -59,7 +71,15 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
       }
       return { bin: execPath, args: [localCli, ...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
     }
-    return { bin: "fleet", args: [...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
+    const stableFleet = resolveWindowsLaunchBinary(
+      "fleet",
+      [...FLEET_HEADLESS_NATIVE_FLAGS],
+      env,
+      exists,
+      platform,
+      "fleet stable terminal binary",
+    );
+    return { ...stableFleet, cwd, env: launchEnv };
   };
 }
 
@@ -82,10 +102,28 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
   });
 }
 
-function resolveUserShell(env: NodeJS.ProcessEnv): string {
+function resolveUserShell(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
   if (env.SHELL) return env.SHELL;
-  if (process.platform === "win32") return env.ComSpec || "powershell.exe";
+  if (platform === "win32") return env.ComSpec || "powershell.exe";
   return "/bin/bash";
+}
+
+function resolveWindowsLaunchBinary(
+  bin: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  exists: (path: string) => boolean,
+  platform: NodeJS.Platform,
+  label: string,
+): { readonly bin: string; readonly args: readonly string[] } {
+  if (platform !== "win32") {
+    return { bin, args };
+  }
+  const resolved = resolvePathBinary(bin, env, { exists, platform });
+  if (!resolved) {
+    throw new Error(`${label} "${bin}" was not found on PATH; provide an absolute path or install it before launching a terminal session.`);
+  }
+  return { bin: resolved.bin, args: [...resolved.prefixArgs, ...args] };
 }
 
 function resolveSiblingFleetCliEntry(consolePackageRoot: string, exists: (path: string) => boolean = fs.existsSync): string | null {
