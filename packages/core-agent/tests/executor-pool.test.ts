@@ -27,7 +27,7 @@ vi.mock("@dotobokuri/core-unified-agent", async (importOriginal) => {
   };
 });
 
-const { executeOneShot, executeWithPool, disconnectAll, getSessionIdFor } = await import("../src/index.js");
+const { executeOneShot, executeWithPool, disconnectAll, getSessionIdFor, listActivePoolKeys } = await import("../src/index.js");
 const { executorMcpRuntimeProviderRuntime, executorPortRuntime } = await import("../src/executor-port.js");
 
 class FakeClient extends EventEmitter implements IUnifiedAgentClient {
@@ -308,6 +308,16 @@ describe("executeWithPool in-memory reuse", () => {
     expect(buildMock).toHaveBeenCalledTimes(2);
     expect(fakeClients[1]!.connectCalls[0]!.sessionId).toBeUndefined();
     expect(fakeClients[1]!.messages).toEqual(["second"]);
+  });
+
+  it("listActivePoolKeys는 현재 pooled client의 opaque poolKey 목록을 반환한다", async () => {
+    await executeWithPool(buildOptions("first", { poolKey: "carrier-a" }));
+    await executeWithPool(buildOptions("second", { poolKey: "session-a:carrier-b", scopeId: "carrier-b" }));
+
+    expect(listActivePoolKeys().sort()).toEqual(["carrier-a", "session-a:carrier-b"]);
+
+    await disconnectAll();
+    expect(listActivePoolKeys()).toEqual([]);
   });
 
   it("getSessionIdFor는 busy connecting entry를 제거하지 않는다", async () => {

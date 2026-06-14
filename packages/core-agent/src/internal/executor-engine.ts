@@ -593,6 +593,11 @@ export async function engineDisconnectAll(): Promise<void> {
   launchConfigs.clear();
 }
 
+/** connections.ts에서 호출 — 현재 executor 풀에 등록된 opaque poolKey 목록 조회 */
+export function engineListActivePoolKeys(): string[] {
+  return Array.from(clientPool.keys());
+}
+
 /** connections.ts에서 호출 — busy가 아닌 클라이언트 정리 (풀 축소) */
 export function engineCleanIdle(): void {
   for (const [key, entries] of clientPool) {

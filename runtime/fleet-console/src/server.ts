@@ -29,7 +29,7 @@ import { tryServeStaticConsole } from "./static-console.js";
 import type { FolderPickerResult } from "./terminal/folder-picker.js";
 import { createNativeFolderPicker } from "./terminal/folder-picker.js";
 import { createFolderGrantStore } from "./terminal/folder-grants.js";
-import { createDefaultTerminalLaunchResolver, type TerminalLaunchResolver, type TerminalLaunchResolverDeps, startTerminalShell } from "./terminal/launch.js";
+import { createDefaultTerminalLaunchResolver, type ConsoleRuntimeSessionInfo, type TerminalLaunchResolver, type TerminalLaunchResolverDeps, startTerminalShell } from "./terminal/launch.js";
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
 import { createTerminalTicketRegistry } from "./terminal/tickets.js";
 import { createWorkspaceChangeScanner } from "./terminal/workspace-scanner.js";
@@ -113,6 +113,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     getAdminToken: () => lockHandle?.payload.token ?? null,
   });
   const pickTerminalFolder = deps.terminalPickFolder ?? createNativeFolderPicker();
+  const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const terminalSessions = createTerminalSessionManager({
     launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver({
       ...deps.terminalLaunchResolverDeps,
@@ -120,14 +121,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       dataDir,
       infraServices,
       onRuntimeSessionStart: (session) => {
-        const updated = observability.registerTerminalRuntimeSession(session);
-        if (updated) observability.notifySessionUpdated(updated);
+        pendingRuntimeSessions.set(session.sessionId, session);
       },
     }),
     startShell: deps.terminalStartShell,
     maxSessions: deps.maxTerminalSessions,
     // PTY가 종료되면 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
-    onSessionExit: (sessionId) => observability.removeTerminalSession(sessionId),
+    onSessionExit: (sessionId) => {
+      pendingRuntimeSessions.delete(sessionId);
+      observability.removeTerminalSession(sessionId);
+    },
   });
   const unsubscribeCarrierReminderRouter = createCarrierResultReminderRouter({
     streamRegister: agentRuntime.carrierRuntime.jobs.streaming.register,
@@ -416,11 +419,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const session = observability.createPendingTerminalSession({ sessionId, cwd });
     try {
       await terminalSessions.createSession({ sessionId, cwd });
-      const created = observability.listWorkspaces().some((workspace) => workspace.terminalSessionId === sessionId)
-        ? observability.listTerminalSessions().find((candidate) => candidate.sessionId === sessionId) ?? session
+      const runtimeSession = pendingRuntimeSessions.get(sessionId);
+      pendingRuntimeSessions.delete(sessionId);
+      const created = runtimeSession
+        ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
+      observability.notifySessionUpdated(created);
       writeJson(res, 200, created);
     } catch (error) {
+      pendingRuntimeSessions.delete(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
       writeJson(res, 503, { error: "terminal_unavailable" });
     }

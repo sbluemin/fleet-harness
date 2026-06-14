@@ -104,6 +104,7 @@ export {
   disconnectAll,
   cleanIdle,
   getSessionIdFor,
+  listActivePoolKeys,
 } from "./connections.js";
 export {
   executeWithPool,

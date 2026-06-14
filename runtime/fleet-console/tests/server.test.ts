@@ -173,6 +173,85 @@ describe("console terminal observability", () => {
     expect(chunk).toContain("event: track:text");
     expect(chunk).toContain("\"id\":1");
   });
+
+  it("does not expose a live workspace when PTY spawn fails after runtime profile injection", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-spawn-fail-"));
+    tempDirs.push(dir);
+    const runtime = createFakeConsoleRuntime([], []);
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunchResolverDeps: {
+        cwd: dir,
+        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
+        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+          id: "claude",
+          label: "Claude Code",
+          bin: "/bin/claude",
+          args: [],
+          cwd,
+          env: { ...env },
+        })) as never,
+      },
+      terminalStartShell: () => {
+        throw new Error("spawn failed");
+      },
+    });
+    const headers = { "Content-Type": "application/json" };
+
+    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
+    const grant = await picked.json() as { readonly folderGrantId: string };
+    const failed = await fetch(`${fixture.endpoint}terminal/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    });
+    const failedBody = await failed.json();
+    const observerTenants = await getJson<{ readonly tenants: readonly unknown[] }>(`${fixture.endpoint}observer/tenants`);
+    const observerStatus = await getJson<{ readonly workspaces: number }>(`${fixture.endpoint}observer/status`);
+    const terminalSessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly status: string }> }>(`${fixture.endpoint}terminal/sessions`);
+
+    expect(failed.status).toBe(503);
+    expect(failedBody).toEqual({ error: "terminal_unavailable" });
+    expect(observerTenants.tenants).toEqual([]);
+    expect(observerStatus.workspaces).toBe(0);
+    expect(terminalSessions.sessions[0]?.status).toBe("error");
+  });
+
+  it("registers the runtime workspace only after PTY spawn succeeds", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-spawn-success-"));
+    tempDirs.push(dir);
+    const runtime = createFakeConsoleRuntime([], []);
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunchResolverDeps: {
+        cwd: dir,
+        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
+        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+          id: "claude",
+          label: "Claude Code",
+          bin: "/bin/claude",
+          args: [],
+          cwd,
+          env: { ...env },
+        })) as never,
+      },
+      terminalStartShell: () => createMockPty(),
+    });
+    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" });
+    runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: session.sessionId, trackId: "t1", text: "hello" });
+
+    const observerTenants = await getJson<{ readonly tenants: ReadonlyArray<{ readonly tenantId: string; readonly tenantLabel: string; readonly terminalSessionId?: string }> }>(`${fixture.endpoint}observer/tenants`);
+    const observerJobs = await getJson<{ readonly tenants: ReadonlyArray<{ readonly jobs: ReadonlyArray<{ readonly jobId: string }> }> }>(`${fixture.endpoint}observer/jobs`);
+
+    expect(observerTenants.tenants).toEqual([
+      expect.objectContaining({ tenantId: session.sessionId, tenantLabel: "Claude Code", terminalSessionId: session.sessionId }),
+    ]);
+    expect(observerJobs.tenants[0]?.jobs[0]?.jobId).toBe("job-a");
+  });
 });
 
 describe("console static and terminal ticket boundary", () => {
