@@ -7,6 +7,7 @@ import path from "node:path";
 import { resolvePathBinary, type ResolvedBinary } from "../process/resolve-bin.js";
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
+import { stopRunningConsoleBeforeUpdate } from "./stop-console.js";
 import type { UpdateChannel } from "./registry.js";
 import type { UpdateCommandIo } from "./types.js";
 
@@ -54,6 +55,7 @@ export async function runFleetUpdate(io: UpdateCommandIo): Promise<number> {
   } else {
     io.stdout.write(`Updating Fleet packages with ${target.manager.command} (${versionOrChannel})...\n`);
   }
+  await stopRunningConsoleBeforeUpdate(io);
   const status = await installFleetPackages(target.manager, versionOrChannel, io);
   if (status !== 0) {
     io.stderr.write(`Fleet update did not complete. You can run this manually:\n${formatInstallCommand(target.manager.command, target.channel)}\n`);
@@ -130,7 +132,7 @@ function getCurrentPackageRoot(): string | undefined {
 }
 
 function installFleetPackages(manager: PackageManagerInstall, versionOrChannel: string, io: UpdateCommandIo): Promise<number> {
-  const child = spawn(manager.resolved.bin, [...manager.resolved.prefixArgs, "i", "-g", ...PACKAGE_NAMES.map((name) => `${name}@${versionOrChannel}`)], {
+  const child = spawn(manager.resolved.bin, [...manager.resolved.prefixArgs, "i", "-g", "--force", ...PACKAGE_NAMES.map((name) => `${name}@${versionOrChannel}`)], {
     stdio: "inherit",
   });
   return new Promise((resolve) => {

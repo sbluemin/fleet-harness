@@ -52,6 +52,10 @@ vi.mock("../src/process/resolve-bin.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../src/update/stop-console.js", () => ({
+  stopRunningConsoleBeforeUpdate: vi.fn().mockResolvedValue(undefined),
+}));
+
 const TEMP_DIRS: string[] = [];
 const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedCheckUpdateStatus = vi.mocked(checkUpdateStatus);
@@ -163,7 +167,7 @@ describe("update installer process invocation", () => {
     await expect(statusPromise).resolves.toBe(0);
     expect(mockedSpawn).toHaveBeenCalledWith(
       "C:\\Windows\\System32\\cmd.exe",
-      ["/d", "/s", "/c", "call", "C:\\tools\\pnpm.cmd ", "i", "-g", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-console@latest"],
+      ["/d", "/s", "/c", "call", "C:\\tools\\pnpm.cmd ", "i", "-g", "--force", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-console@latest"],
       { stdio: "inherit" },
     );
     expect(io.stderr.toString()).toBe("");
@@ -188,7 +192,7 @@ describe("update installer process invocation", () => {
     await expect(statusPromise).resolves.toBe(0);
     expect(mockedSpawn).toHaveBeenCalledWith(
       "/usr/local/bin/npm",
-      ["i", "-g", "@dotobokuri/fleet-cli@1.2.3", "@dotobokuri/fleet-console@1.2.3"],
+      ["i", "-g", "--force", "@dotobokuri/fleet-cli@1.2.3", "@dotobokuri/fleet-console@1.2.3"],
       { stdio: "inherit" },
     );
   });
@@ -298,7 +302,7 @@ describe("update installer process invocation", () => {
     expect(io.stdout.toString()).toBe("Updating Fleet packages with npm (1.3.0)...\n");
     expect(mockedSpawn).toHaveBeenCalledWith(
       "npm",
-      ["i", "-g", "@dotobokuri/fleet-cli@1.3.0", "@dotobokuri/fleet-console@1.3.0"],
+      ["i", "-g", "--force", "@dotobokuri/fleet-cli@1.3.0", "@dotobokuri/fleet-console@1.3.0"],
       { stdio: "inherit" },
     );
   });
@@ -318,7 +322,7 @@ describe("update installer process invocation", () => {
     expect(io.stdout.toString()).toBe("Could not reach the npm registry to check for updates; reinstalling the latest published version with npm...\n");
     expect(mockedSpawn).toHaveBeenCalledWith(
       "npm",
-      ["i", "-g", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-console@latest"],
+      ["i", "-g", "--force", "@dotobokuri/fleet-cli@latest", "@dotobokuri/fleet-console@latest"],
       { stdio: "inherit" },
     );
   });
