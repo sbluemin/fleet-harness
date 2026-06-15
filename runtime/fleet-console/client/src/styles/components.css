@@ -53,6 +53,43 @@
   opacity: 0.82;
 }
 
+/* 브랜드 + 리서치 프리뷰 배지를 GNB 첫 컬럼에 함께 묶어 grid(1fr auto 1fr) 3컬럼 구조를 보존한다. */
+.topbar-lead {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  min-width: 0;
+  gap: var(--space-3);
+}
+
+/* 리서치 프리뷰 배지 — 보더리스 미니멀. brass dot + mono 대문자 텍스트만으로 GNB를 가볍게 유지한다.
+   brass는 '구조적/정체성' 역할이라 aurora=live, coral=error, warn=connecting 의미와 충돌하지 않는다. */
+.topbar-preview-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* 시작 신호용 brass dot — 살아있음(aurora 펄스)이 아닌 정적 정체성 표식이라 무한 모션 없이 은은한 glow만 준다. */
+.topbar-preview-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brass-bright);
+  box-shadow: 0 0 8px var(--brass-glow);
+}
+
 .topbar-sigil {
   display: grid;
   place-items: center;

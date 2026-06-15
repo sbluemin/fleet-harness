@@ -45,14 +45,18 @@ export function Topbar({ state }: TopbarProps) {
       : <FleetSigil />;
   return (
     <header className="topbar">
-      <Link className="topbar-brand" to="/" aria-label="Welcome으로 이동">
-        <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={state.connectionError ?? undefined}>
-          {sigil}
-        </span>
-        <h1 className="topbar-title">
-          Fleet<span className="topbar-title-thin">Console</span>
-        </h1>
-      </Link>
+      <div className="topbar-lead">
+        <Link className="topbar-brand" to="/" aria-label="Welcome으로 이동">
+          <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={state.connectionError ?? undefined}>
+            {sigil}
+          </span>
+          <h1 className="topbar-title">
+            Fleet<span className="topbar-title-thin">Console</span>
+          </h1>
+        </Link>
+        {/* 리서치 프리뷰 단계임을 GNB에 상시 표기한다 — brass 정체성 배지(대문자 변환은 CSS가 담당). */}
+        <span className="topbar-preview-badge">Research Preview</span>
+      </div>
       <TheaterControl state={state} />
       <div className="topbar-meta">
         {state.updateAvailable ? (
