@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
-import { describeJobStatus, formatCarrierName, latestStreamLine, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
+import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
@@ -272,8 +272,6 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
 
 const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
   const tone = statusTone(job.status);
-  // 진행 중인 잡에 한해 job bar가 스트리밍하는 최신 한 줄을 노출하고, 완료되면 null이라 영역 자체가 사라진다.
-  const streamLine = latestStreamLine(job);
   return (
     <li>
       <button
@@ -285,7 +283,6 @@ const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
         <span className={`status-dot status-dot--${tone}`} aria-hidden="true" />
         <span className="job-row-text">
           <span className="job-row-label">{job.label ?? shortJobId(job.jobId)}</span>
-          {streamLine ? <span className="job-row-stream">{streamLine}</span> : null}
           <span className="job-row-meta">
             {job.ownerCarrierId ? `${formatCarrierName(job.ownerCarrierId)} · ${describeJobStatus(job.status)}` : describeJobStatus(job.status)}
           </span>

@@ -26,6 +26,7 @@ const BASE_STATE: ConsoleState = {
   timelineOpen: false,
   shellOpen: false,
   selectedJobId: null,
+  expandedSessionIds: [],
 };
 
 describe("dashboard bridge derivation", () => {
