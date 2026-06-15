@@ -5,13 +5,21 @@ import type { PtyLaunchConfig, PtyStartOptions } from "../types.js";
 export type ShellStarter = (config: PtyLaunchConfig, opts: PtyStartOptions) => IPty;
 
 export function startShell(config: PtyLaunchConfig, opts: PtyStartOptions): IPty {
+  const useConptyDll = resolveUseConptyDll(process.platform, process.env);
   return spawn(config.profile.bin, [...config.profile.args], {
     cols: opts.cols,
     cwd: config.profile.cwd,
     env: config.profile.env,
     name: config.profile.terminalName,
     rows: opts.rows,
+    ...(useConptyDll ? { useConptyDll: true } : {}),
   });
+}
+
+export function resolveUseConptyDll(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): boolean {
+  if (platform !== "win32") return false;
+  const override = env.FLEET_USE_CONPTY_DLL?.toLowerCase();
+  return override !== "0" && override !== "false";
 }
 
 export function resizeShell(child: IPty | undefined, cols: number, rows: number): void {
@@ -32,10 +40,10 @@ export function resizeShell(child: IPty | undefined, cols: number, rows: number)
   }
 }
 
-function isPtyAlreadyExitedError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("already exited");
-}
-
 export function killShell(child: IPty | undefined): void {
   child?.kill();
+}
+
+function isPtyAlreadyExitedError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("already exited");
 }

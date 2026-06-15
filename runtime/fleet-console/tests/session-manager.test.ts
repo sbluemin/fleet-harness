@@ -7,8 +7,11 @@ interface MockPty extends TerminalPtyHandle {
   readonly writes: string[];
   readonly resizes: Array<{ readonly cols: number; readonly rows: number }>;
   readonly killed: () => boolean;
+  readonly killCount: () => number;
   emitData(data: string): void;
   emitExit(): void;
+  throwAlreadyExitedOnKill(): void;
+  throwUnexpectedOnKill(): void;
 }
 
 interface MockSocket extends TerminalSocket {
@@ -19,10 +22,10 @@ interface MockSocket extends TerminalSocket {
 }
 
 describe("terminal session manager", () => {
-  it("creates sessions without enforcing a concurrency cap", () => {
+  it("creates sessions without enforcing a concurrency cap", async () => {
     const ptys: MockPty[] = [];
     const manager = createTerminalSessionManager({
-      launch: (cwd, context) => ({ bin: "mock", args: [context?.sessionId ?? ""], cwd: cwd ?? "/", env: {} }),
+      launch: async (cwd, context) => ({ bin: "mock", args: [context?.sessionId ?? ""], cwd: cwd ?? "/", env: {} }),
       startShell: (launch) => {
         const pty = createMockPty();
         ptys.push(pty);
@@ -32,19 +35,111 @@ describe("terminal session manager", () => {
       maxSessions: 2,
     });
 
-    manager.createSession({ sessionId: "session-a", cwd: "/a" });
-    manager.createSession({ sessionId: "session-b", cwd: "/b" });
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    await manager.createSession({ sessionId: "session-b", cwd: "/b" });
 
     // 상한이 제거되어 maxSessions 설정과 무관하게 추가 세션이 허용된다.
     expect(manager.canAttach("session-a")).toBe(true);
     expect(manager.canAttach("session-c")).toBe(true);
-    expect(() => manager.createSession({ sessionId: "session-c", cwd: "/c" })).not.toThrow();
+    await expect(manager.createSession({ sessionId: "session-c", cwd: "/c" })).resolves.toBeUndefined();
     expect(ptys.map((pty) => pty.writes[0])).toEqual(["cwd:/a", "cwd:/b", "cwd:/c"]);
   });
 
-  it("replaces sockets only within the same session", () => {
+  it("coalesces concurrent creates for the same session id into one pty", async () => {
+    const launchGate = createDeferred<void>();
+    const ptys: MockPty[] = [];
+    const launchSessionIds: string[] = [];
     const manager = createTerminalSessionManager({
-      launch: (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      launch: async (cwd, context) => {
+        launchSessionIds.push(context?.sessionId ?? "");
+        await launchGate.promise;
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } };
+      },
+      startShell: () => {
+        const pty = createMockPty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+
+    const first = manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    const second = manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(launchSessionIds).toEqual(["session-a"]);
+    launchGate.resolve();
+    await Promise.all([first, second]);
+
+    expect(ptys).toHaveLength(1);
+    expect(manager.terminate("session-a")).toBe(true);
+    expect(ptys[0]?.killed()).toBe(true);
+  });
+
+  it("clears a failed in-flight session launch so the session can be retried", async () => {
+    let launchCount = 0;
+    const ptys: MockPty[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        launchCount += 1;
+        if (launchCount === 1) throw new Error("launch failed");
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } };
+      },
+      startShell: () => {
+        const pty = createMockPty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+
+    await expect(manager.createSession({ sessionId: "session-a", cwd: "/a" })).rejects.toThrow("launch failed");
+    await expect(manager.createSession({ sessionId: "session-a", cwd: "/a" })).resolves.toBeUndefined();
+
+    expect(launchCount).toBe(2);
+    expect(ptys).toHaveLength(1);
+  });
+
+  it("passes the selected Agent CLI id into the launch context", async () => {
+    const launchCliIds: Array<string | undefined> = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        launchCliIds.push(context?.cliId);
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: {} };
+      },
+      startShell: () => createMockPty(),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a", cliId: "codex" });
+
+    expect(launchCliIds).toEqual(["codex"]);
+  });
+
+  it("stops a session that finishes launching while server shutdown is waiting", async () => {
+    const launchGate = createDeferred<void>();
+    const ptys: MockPty[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        await launchGate.promise;
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } };
+      },
+      startShell: () => {
+        const pty = createMockPty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+
+    const created = manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    const stopped = manager.stop();
+    launchGate.resolve();
+    await Promise.all([created, stopped]);
+
+    expect(ptys).toHaveLength(1);
+    expect(ptys[0]?.killed()).toBe(true);
+    expect(manager.writeToSession("session-a", "after-stop")).toBe(false);
+  });
+
+  it("replaces sockets only within the same session", async () => {
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
       startShell: () => createMockPty(),
       maxSessions: 2,
     });
@@ -52,19 +147,19 @@ describe("terminal session manager", () => {
     const secondA = createMockSocket();
     const firstB = createMockSocket();
 
-    manager.attach(firstA, { sessionId: "session-a", cwd: "/a" });
-    manager.attach(firstB, { sessionId: "session-b", cwd: "/b" });
-    manager.attach(secondA, { sessionId: "session-a", cwd: "/a" });
+    await manager.attach(firstA, { sessionId: "session-a", cwd: "/a" });
+    await manager.attach(firstB, { sessionId: "session-b", cwd: "/b" });
+    await manager.attach(secondA, { sessionId: "session-a", cwd: "/a" });
 
     expect(firstA.closed).toEqual([{ code: 4000, reason: "terminal_replaced" }]);
     expect(firstB.closed).toEqual([]);
     expect(secondA.closed).toEqual([]);
   });
 
-  it("keeps scrollback isolated per session", () => {
+  it("keeps scrollback isolated per session", async () => {
     const ptys = new Map<string, MockPty>();
     const manager = createTerminalSessionManager({
-      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
       startShell: (launch) => {
         const pty = createMockPty();
         ptys.set(String(launch.env.SESSION), pty);
@@ -76,22 +171,22 @@ describe("terminal session manager", () => {
     const secondA = createMockSocket();
     const firstB = createMockSocket();
 
-    manager.attach(firstA, { sessionId: "session-a", cwd: "/a" });
-    manager.attach(firstB, { sessionId: "session-b", cwd: "/b" });
+    await manager.attach(firstA, { sessionId: "session-a", cwd: "/a" });
+    await manager.attach(firstB, { sessionId: "session-b", cwd: "/b" });
     ptys.get("session-a")?.emitData("alpha");
     ptys.get("session-b")?.emitData("beta");
     firstA.emitClose();
-    manager.attach(secondA, { sessionId: "session-a", cwd: "/a" });
+    await manager.attach(secondA, { sessionId: "session-a", cwd: "/a" });
 
     expect(secondA.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["alpha"]);
     expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["beta"]);
   });
 
-  it("terminates a session, killing the pty and notifying exit exactly once", () => {
+  it("terminates a session, killing the pty and notifying exit exactly once", async () => {
     const ptys = new Map<string, MockPty>();
     const exits: string[] = [];
     const manager = createTerminalSessionManager({
-      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
       startShell: (launch) => {
         const pty = createMockPty();
         ptys.set(String(launch.env.SESSION), pty);
@@ -100,7 +195,7 @@ describe("terminal session manager", () => {
       onSessionExit: (sessionId) => exits.push(sessionId),
     });
 
-    manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
 
     expect(manager.terminate("session-a")).toBe(true);
     expect(ptys.get("session-a")?.killed()).toBe(true);
@@ -110,11 +205,61 @@ describe("terminal session manager", () => {
     expect(exits).toEqual(["session-a"]);
   });
 
-  it("keeps the pty alive when the active socket closes, surviving reconnect", () => {
+  it("writes only to an existing live session and returns false after termination", async () => {
+    const ptys = new Map<string, MockPty>();
+    const launches: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        launches.push(context?.sessionId ?? "");
+        return {
+          bin: "mock",
+          args: [],
+          cwd: cwd ?? "/",
+          env: { SESSION: context?.sessionId },
+          messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
+        };
+      },
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+    });
+
+    expect(manager.writeToSession("session-a", "missing")).toBe(false);
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(manager.writeToSession("session-a", "hello")).toBe(true);
+    expect(manager.getSessionMessagePolicy("session-a")).toEqual({ bracketedPaste: true, multilineStrategy: "paste-mode" });
+    expect(ptys.get("session-a")?.writes).toEqual(["hello"]);
+    expect(launches).toEqual(["session-a"]);
+
+    expect(manager.terminate("session-a")).toBe(true);
+    expect(manager.writeToSession("session-a", "after")).toBe(false);
+    expect(ptys.get("session-a")?.writes).toEqual(["hello"]);
+  });
+
+  it("returns false when the session pty rejects programmatic writes", async () => {
+    const manager = createTerminalSessionManager({
+      launch: async (cwd) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: {} }),
+      startShell: () => ({
+        ...createMockPty(),
+        write() {
+          throw new Error("not writable");
+        },
+      }),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(manager.writeToSession("session-a", "hello")).toBe(false);
+  });
+
+  it("keeps the pty alive when the active socket closes, surviving reconnect", async () => {
     const ptys = new Map<string, MockPty>();
     const exits: string[] = [];
     const manager = createTerminalSessionManager({
-      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
       startShell: (launch) => {
         const pty = createMockPty();
         ptys.set(String(launch.env.SESSION), pty);
@@ -125,7 +270,7 @@ describe("terminal session manager", () => {
     const first = createMockSocket();
     const second = createMockSocket();
 
-    manager.attach(first, { sessionId: "session-a", cwd: "/a" });
+    await manager.attach(first, { sessionId: "session-a", cwd: "/a" });
     ptys.get("session-a")?.emitData("before-detach");
     first.emitClose();
 
@@ -134,16 +279,16 @@ describe("terminal session manager", () => {
     expect(exits).toEqual([]);
 
     // 재연결하면 같은 세션에 다시 붙어 scrollback을 그대로 재생한다.
-    manager.attach(second, { sessionId: "session-a", cwd: "/a" });
+    await manager.attach(second, { sessionId: "session-a", cwd: "/a" });
     expect(second.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["before-detach"]);
     expect(ptys.get("session-a")?.killed()).toBe(false);
   });
 
-  it("removes the session and notifies exit when the pty exits on its own", () => {
+  it("removes the session and notifies exit when the pty exits on its own", async () => {
     const ptys = new Map<string, MockPty>();
     const exits: string[] = [];
     const manager = createTerminalSessionManager({
-      launch: (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
       startShell: (launch) => {
         const pty = createMockPty();
         ptys.set(String(launch.env.SESSION), pty);
@@ -152,24 +297,80 @@ describe("terminal session manager", () => {
       onSessionExit: (sessionId) => exits.push(sessionId),
     });
 
-    manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
     ptys.get("session-a")?.emitExit();
 
-    // PTY 자가종료는 여전히 세션을 정리하고 콘솔 목록에 정확히 한 번 통지한다(독립 종료 경로 잔존).
+    // PTY 자가종료도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
+    expect(ptys.get("session-a")?.killed()).toBe(true);
     expect(exits).toEqual(["session-a"]);
   });
 
-  it("passes the terminal kind into the launch resolver", () => {
+  it("cleans up and notifies exit when natural-exit kill reports the pty already exited", async () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        pty.throwAlreadyExitedOnKill();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(() => ptys.get("session-a")?.emitExit()).not.toThrow();
+    expect(ptys.get("session-a")?.killCount()).toBe(1);
+    expect(exits).toEqual(["session-a"]);
+    expect(manager.writeToSession("session-a", "after-exit")).toBe(false);
+  });
+
+  it("cleans up and notifies exit when natural-exit kill throws an unexpected error", async () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    let cleanupCount = 0;
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({
+        bin: "mock",
+        args: [],
+        cwd: cwd ?? "/",
+        env: { SESSION: context?.sessionId },
+        cleanup: () => {
+          cleanupCount += 1;
+        },
+      }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        pty.throwUnexpectedOnKill();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(() => ptys.get("session-a")?.emitExit()).not.toThrow();
+    await Promise.resolve();
+    expect(ptys.get("session-a")?.killCount()).toBe(1);
+    expect(exits).toEqual(["session-a"]);
+    expect(cleanupCount).toBe(1);
+    expect(manager.writeToSession("session-a", "after-exit")).toBe(false);
+  });
+
+  it("passes the terminal kind into the launch resolver", async () => {
     const launchKinds: Array<string | undefined> = [];
     const manager = createTerminalSessionManager({
-      launch: (cwd, context) => {
+      launch: async (cwd, context) => {
         launchKinds.push(context?.kind);
         return { bin: "mock", args: [], cwd: cwd ?? "/", env: {} };
       },
       startShell: () => createMockPty(),
     });
 
-    manager.attach(createMockSocket(), { sessionId: "shell", cwd: "", kind: "shell" });
+    await manager.attach(createMockSocket(), { sessionId: "shell", cwd: "", kind: "shell" });
 
     expect(launchKinds).toEqual(["shell"]);
   });
@@ -179,15 +380,25 @@ function createMockPty(): MockPty {
   const dataListeners: Array<(data: string) => void> = [];
   const exitListeners: Array<() => void> = [];
   let killed = false;
+  let killCount = 0;
+  let throwAlreadyExited = false;
+  let throwUnexpected = false;
   return {
     writes: [],
     resizes: [],
     killed: () => killed,
+    killCount: () => killCount,
     emitData(data) {
       for (const listener of dataListeners) listener(data);
     },
     emitExit() {
       for (const listener of exitListeners) listener();
+    },
+    throwAlreadyExitedOnKill() {
+      throwAlreadyExited = true;
+    },
+    throwUnexpectedOnKill() {
+      throwUnexpected = true;
     },
     onData(callback) {
       dataListeners.push(callback);
@@ -204,6 +415,9 @@ function createMockPty(): MockPty {
       this.resizes.push({ cols, rows });
     },
     kill() {
+      killCount += 1;
+      if (throwAlreadyExited) throw new Error("Cannot kill a pty that has already exited");
+      if (throwUnexpected) throw new Error("unexpected kill failure");
       killed = true;
     },
   };
@@ -244,4 +458,12 @@ function createDisposable<T>(list: T[], item: T): TerminalPtyDataDisposable {
       if (index >= 0) list.splice(index, 1);
     },
   };
+}
+
+function createDeferred<T>(): { readonly promise: Promise<T>; resolve(value: T | PromiseLike<T>): void } {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }

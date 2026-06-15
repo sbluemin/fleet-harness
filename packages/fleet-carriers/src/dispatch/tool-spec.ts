@@ -31,6 +31,7 @@ import {
   loadCarrierStates,
 } from "../store/index.js";
 import { launchTaskForceJob } from "./taskforce.js";
+import { buildCarrierExecutorPoolKey } from "./pool-key.js";
 import {
   buildCarrierSystemPrompt,
   validateRequiredRequestBlocks,
@@ -67,6 +68,7 @@ interface CarrierBackgroundOptions {
   registry: CarrierRegistry;
   jobId: string;
   carrierId: string;
+  originSessionId?: string;
   trackModelInfo: CarrierTrackModelInfo;
   label: string;
   request: string;
@@ -247,12 +249,13 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
       });
       if (!launch.accepted) return launch.response;
 
-      emitJobRegistered(registry, jobId, carrierId, toolCallId, label, t0, trackModelInfo);
+      emitJobRegistered(registry, jobId, carrierId, ctx.sessionLabel, toolCallId, label, t0, trackModelInfo);
 
       void runCarrierJobInBackground({
         registry,
         jobId,
         carrierId,
+        originSessionId: ctx.sessionLabel,
         trackModelInfo,
         label,
         request,
@@ -314,6 +317,7 @@ async function runCarrierJobInBackground(opts: CarrierBackgroundOptions): Promis
     emitStreamEvent(opts.registry, {
       type: "job:finalized",
       jobId: opts.jobId,
+      originSessionId: opts.originSessionId,
       status: finalStatus,
       finishedAt,
       error: finalError,
@@ -340,6 +344,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
   emitStreamEvent(opts.registry, {
     type: "track:begin",
     jobId: opts.jobId,
+    originSessionId: opts.originSessionId,
     trackId: opts.carrierId,
     startedAt: execStartedAt,
     requestPreview: opts.request.trim().split(/\r?\n/, 1)[0],
@@ -347,7 +352,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
 
   try {
     const execResult = await executeWithPool({
-      poolKey: opts.carrierId,
+      poolKey: buildCarrierExecutorPoolKey(opts.carrierId, opts.originSessionId),
       scopeId: opts.carrierId,
       authEnvResolver: opts.deps.authEnvResolver,
       reservedExternalMcpServerIds: opts.deps.reservedExternalMcpServerIds,
@@ -362,17 +367,17 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
         sessionId = info.sessionId;
       },
       onStatusChange: (status) => {
-        emitStreamEvent(opts.registry, { type: "track:status", jobId: opts.jobId, trackId: opts.carrierId, status });
+        emitStreamEvent(opts.registry, { type: "track:status", jobId: opts.jobId, originSessionId: opts.originSessionId, trackId: opts.carrierId, status });
       },
       onMessageChunk: (text) => {
         const cleanText = sanitizeChunk(text);
         appendBlock(opts.jobId, toArchiveBlock("text", opts.carrierId, text));
-        emitStreamEvent(opts.registry, { type: "track:text", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
+        emitStreamEvent(opts.registry, { type: "track:text", jobId: opts.jobId, originSessionId: opts.originSessionId, trackId: opts.carrierId, text: cleanText });
       },
       onThoughtChunk: (text) => {
         const cleanText = sanitizeChunk(text);
         appendBlock(opts.jobId, toArchiveBlock("thought", opts.carrierId, text));
-        emitStreamEvent(opts.registry, { type: "track:thought", jobId: opts.jobId, trackId: opts.carrierId, text: cleanText });
+        emitStreamEvent(opts.registry, { type: "track:thought", jobId: opts.jobId, originSessionId: opts.originSessionId, trackId: opts.carrierId, text: cleanText });
       },
       onToolCall: (toolTitle, toolStatus, rawOutput, toolCallId) => {
         const title = sanitizeToolLabel(toolTitle);
@@ -380,6 +385,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
         emitStreamEvent(opts.registry, {
           type: "track:tool",
           jobId: opts.jobId,
+          originSessionId: opts.originSessionId,
           trackId: opts.carrierId,
           detailChars: rawOutput?.length ?? 0,
           title,
@@ -392,6 +398,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
     emitStreamEvent(opts.registry, {
       type: "track:finalized",
       jobId: opts.jobId,
+      originSessionId: opts.originSessionId,
       trackId: opts.carrierId,
       status: toTrackFinalStatus(finalStatus),
       finishedAt: Date.now(),
@@ -415,6 +422,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
     emitStreamEvent(opts.registry, {
       type: "track:finalized",
       jobId: opts.jobId,
+      originSessionId: opts.originSessionId,
       trackId: opts.carrierId,
       status: "err",
       finishedAt: Date.now(),
@@ -428,6 +436,7 @@ function emitJobRegistered(
   registry: CarrierRegistry,
   jobId: string,
   carrierId: string,
+  originSessionId: string | undefined,
   sortieKey: string,
   label: string,
   startedAt: number,
@@ -448,6 +457,7 @@ function emitJobRegistered(
   emitStreamEvent(registry, {
     type: "job:registered",
     jobId,
+    originSessionId,
     kind: "carrier",
     ownerCarrierId: carrierId,
     label,

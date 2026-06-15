@@ -1,11 +1,11 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
-import { describeJobStatus, formatCarrierName, latestStreamLine, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
+import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
-import type { ConsoleState, JobView, SessionInfo } from "../types.js";
+import type { AgentCliMetadata, ConsoleState, JobView, SessionInfo } from "../types.js";
 
 interface SidebarProps {
   readonly state: ConsoleState;
@@ -14,6 +14,10 @@ interface SidebarProps {
 interface JobEntryProps {
   readonly job: JobView;
   readonly active: boolean;
+}
+
+interface OperationLaunchMenuProps {
+  readonly state: ConsoleState;
 }
 
 interface SessionEntryProps {
@@ -25,22 +29,11 @@ interface SessionEntryProps {
 
 export function Sidebar({ state }: SidebarProps) {
   const visibleSessionOrder = theaterSessionOrder(state);
-  const handleCreateSession = async () => {
-    if (state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId) return;
-    beginCreateTerminalSession();
-    try {
-      completeCreateTerminalSession(await createTheaterTerminalSession(state.activeTheaterId));
-    } catch (error) {
-      failCreateTerminalSession(error instanceof Error ? error.message : String(error));
-    }
-  };
   return (
-    <nav className="sidebar" aria-label="Operation sessions and carrier jobs">
+    <nav className="operations-sidebar" aria-label="Operation sessions and carrier jobs">
       <div className="sidebar-heading">
         <p className="sidebar-eyebrow">Operations</p>
-        <button type="button" className="workspace-add-button" onClick={handleCreateSession} disabled={state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId} aria-label="Launch operation">
-          <PlusIcon />
-        </button>
+        <OperationLaunchMenu state={state} />
       </div>
       {visibleSessionOrder.length > 0 ? (
         <ol className="session-list">
@@ -68,6 +61,94 @@ export function Sidebar({ state }: SidebarProps) {
         </p>
       ) : null}
     </nav>
+  );
+}
+
+function OperationLaunchMenu({ state }: OperationLaunchMenuProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const disabled = state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId || state.agentClis.length === 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointer = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    menu.querySelector<HTMLElement>("[role^='menuitem']")?.focus();
+  }, [open]);
+
+  const handleSelect = async (cli: AgentCliMetadata) => {
+    if (state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId) return;
+    setOpen(false);
+    triggerRef.current?.focus();
+    beginCreateTerminalSession();
+    try {
+      completeCreateTerminalSession(await createTheaterTerminalSession(state.activeTheaterId, cli.id));
+    } catch (error) {
+      failCreateTerminalSession(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const next = (current + delta + items.length) % items.length;
+    items[next]?.focus();
+  };
+
+  return (
+    <div className="operation-launch-control" ref={containerRef}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={`workspace-add-button ${open ? "is-open" : ""}`}
+        onClick={() => setOpen((value) => !value)}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Launch operation"
+      >
+        <PlusIcon />
+      </button>
+      {open ? (
+        <div className="operation-launch-menu theater-menu" role="menu" aria-label="Launch operation" ref={menuRef} onKeyDown={handleMenuKeyDown}>
+          <ul className="theater-menu-list">
+            {state.agentClis.map((cli) => (
+              <li key={cli.id}>
+                <button type="button" role="menuitem" className="theater-menu-item operation-launch-menu-item" onClick={() => { void handleSelect(cli); }}>
+                  <span className="theater-menu-check" aria-hidden="true">{agentCliIcon(cli.id)}</span>
+                  <span className="theater-menu-label">{cli.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -191,8 +272,6 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
 
 const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
   const tone = statusTone(job.status);
-  // 진행 중인 잡에 한해 job bar가 스트리밍하는 최신 한 줄을 노출하고, 완료되면 null이라 영역 자체가 사라진다.
-  const streamLine = latestStreamLine(job);
   return (
     <li>
       <button
@@ -204,7 +283,6 @@ const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
         <span className={`status-dot status-dot--${tone}`} aria-hidden="true" />
         <span className="job-row-text">
           <span className="job-row-label">{job.label ?? shortJobId(job.jobId)}</span>
-          {streamLine ? <span className="job-row-stream">{streamLine}</span> : null}
           <span className="job-row-meta">
             {job.ownerCarrierId ? `${formatCarrierName(job.ownerCarrierId)} · ${describeJobStatus(job.status)}` : describeJobStatus(job.status)}
           </span>
@@ -231,6 +309,52 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function agentCliIcon(id: string) {
+  // Agent CLI별로 시각 구별 마크를 부여한다: Claude=스파크, Claude Kimi=초승달(Moonshot Kimi),
+  // Codex=꺾쇠. 알 수 없는 id는 기본 터미널 마크로 폴백한다.
+  if (id === "claude") return <ClaudeMarkIcon />;
+  if (id === "claude-kimi") return <ClaudeKimiMarkIcon />;
+  if (id === "codex") return <CodexMarkIcon />;
+  return <TerminalIcon />;
+}
+
+function ClaudeMarkIcon() {
+  // Claude — 4각 스파크. 다른 아이콘과 같은 가는 stroke·둥근 join 언어를 공유한다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.6 9.15 6.85 13.4 8 9.15 9.15 8 13.4 6.85 9.15 2.6 8 6.85 6.85Z" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ClaudeKimiMarkIcon() {
+  // Claude Kimi — Moonshot Kimi 백엔드를 뜻하는 초승달 마크.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M9.7 3.2A5 5 0 1 0 9.7 12.8 4 4 0 1 1 9.7 3.2Z" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CodexMarkIcon() {
+  // Codex — 코드 꺾쇠(< >) 마크.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.2 4.8 3.2 8 6.2 11.2M9.8 4.8 12.8 8 9.8 11.2" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TerminalIcon() {
+  // Operation launch — 선택한 Agent CLI로 새 터미널을 여는 작은 화면 마크(폴백).
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.8" y="3.4" width="10.4" height="8.2" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.15" />
+      <path d="M5 6.2 6.7 8 5 9.8M7.8 9.8h3" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

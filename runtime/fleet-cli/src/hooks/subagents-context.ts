@@ -2,16 +2,33 @@ import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { createCarrierRuntime } from "@dotobokuri/fleet-carriers";
-
-import { buildClaudeNativeSubagentPlan } from "../agent-cli/carrier-defaults.js";
-import { assetBundle } from "../agent-cli/plugin/fleet.js";
+import {
+  buildCarrierModelDefaults,
+  buildClaudeSubagentDefinitions,
+  createCarrierRuntime,
+  getCarrierConfig,
+  getEnabledCarrierSubagentIds,
+  getRegisteredOrder,
+  readCarrierAgentModeSnapshot,
+  resolveAgentCliType,
+  type CarrierConfig,
+  type CarrierModelDefaults,
+  type CarrierRegistry,
+  type ClaudeSubagentDefinition,
+} from "@dotobokuri/fleet-carriers";
 
 interface SubagentSectionEntry {
   readonly carrierId: string;
   readonly displayName?: string;
   readonly nativeName: string;
 }
+
+interface ClaudeNativeSubagentPlan {
+  readonly carrierConfigs: CarrierConfig[];
+  readonly definitions: ClaudeSubagentDefinition[];
+}
+
+const FLEET_PLUGIN_NAME = "fleet";
 
 export function runSubagentsContextHook(env: NodeJS.ProcessEnv): string {
   const fleetRoot = env.FLEET_ROOT ?? path.join(env.HOME ?? os.homedir(), ".fleet");
@@ -27,9 +44,38 @@ export function runSubagentsContextHook(env: NodeJS.ProcessEnv): string {
     carrierId: definition.carrierId,
     displayName: configsById.get(definition.carrierId)?.displayName,
     // Claude Code는 plugin 에이전트를 `<pluginName>:<name>`으로 등록하므로 호출명에 plugin 네임스페이스를 부착한다.
-    nativeName: `${assetBundle.name}:${definition.name}`,
+    nativeName: `${FLEET_PLUGIN_NAME}:${definition.name}`,
   }))) ?? "";
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } });
+}
+
+function buildClaudeNativeSubagentPlan(registry: CarrierRegistry): ClaudeNativeSubagentPlan {
+  const carrierIds = getRegisteredOrder(registry);
+  const carrierConfigs = carrierIds
+    .map((carrierId) => getCarrierConfig(registry, carrierId))
+    .filter((config): config is NonNullable<typeof config> => config !== undefined);
+  const defaultsByCarrier = Object.fromEntries(
+    carrierConfigs.map((config) => [config.id, buildHostCarrierModelDefaults(config)]),
+  );
+  const enabledCarrierIds = getEnabledCarrierSubagentIds(
+    readCarrierAgentModeSnapshot(defaultsByCarrier),
+    carrierIds,
+  );
+  return {
+    carrierConfigs,
+    definitions: buildClaudeSubagentDefinitions({ carrierConfigs, enabledCarrierIds }),
+  };
+}
+
+function buildHostCarrierModelDefaults(config: CarrierConfig): CarrierModelDefaults {
+  const cliType = resolveAgentCliType(config.id, config.defaultCliType);
+  const cliDefaults = buildCarrierModelDefaults(config, cliType);
+  return {
+    cliType,
+    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
+    ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
+    ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
+  };
 }
 
 function buildSubagentsSection(entries: readonly SubagentSectionEntry[]): string | undefined {

@@ -5,7 +5,7 @@ import {
   type FleetPtySection,
 } from "../controls/index.js";
 import { FleetStatusSection } from "./fleet-status-section.js";
-import { sanitizeCarrierResultReminder, subscribeJobBar } from "./job-bar/register.js";
+import { subscribeJobBar } from "./job-bar/register.js";
 import { createJobBarSections } from "./job-bar/section.js";
 import { createJobBarState } from "./job-bar/state.js";
 import type { CreateMissionBridgeControllerOptions, MissionBridgeController } from "./types.js";
@@ -13,9 +13,6 @@ import type { CreateMissionBridgeControllerOptions, MissionBridgeController } fr
 export function createMissionBridgeController(options: CreateMissionBridgeControllerOptions): MissionBridgeController {
   const jobBarState = createJobBarState({
     carrierRuntime: options.carrierRuntime,
-    onCarrierResultReminder: options.onCarrierResultReminder === undefined
-      ? undefined
-      : (text) => options.onCarrierResultReminder?.(sanitizeCarrierResultReminder(text)),
     onRenderRequest: options.onJobBarRenderRequest,
   });
   const sections = [

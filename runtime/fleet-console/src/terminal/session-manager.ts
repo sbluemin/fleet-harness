@@ -1,3 +1,5 @@
+import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
+
 import { startTerminalShell, type TerminalLaunchResolver } from "./launch.js";
 import type { TerminalPtyHandle, TerminalSessionManager, TerminalSocket, TerminalSocketData, TerminalTicketContext } from "./types.js";
 
@@ -16,6 +18,8 @@ interface TerminalSession {
   readonly pty: TerminalPtyHandle;
   readonly disposables: { dispose(): void }[];
   readonly scrollback: Buffer[];
+  readonly cleanup?: () => void | Promise<void>;
+  readonly messagePolicy?: CliMessagePolicy;
   activeSocket: TerminalSocket | null;
   cols: number;
   rows: number;
@@ -35,14 +39,15 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   const startShell = deps.startShell ?? startTerminalShell;
   const scrollbackLimit = deps.scrollbackLimit ?? DEFAULT_SCROLLBACK_LIMIT;
   const sessions = new Map<string, TerminalSession>();
+  const pendingSessions = new Map<string, Promise<TerminalSession>>();
 
   function canAttach(): boolean {
     // 동시 세션 상한이 제거되어 항상 새 세션 부착을 허용한다.
     return true;
   }
 
-  function attach(socket: TerminalSocket, context: TerminalTicketContext): void {
-    const session = getOrCreateSession(context);
+  async function attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void> {
+    const session = await getOrCreateSession(context);
     if (session.activeSocket && session.activeSocket !== socket) {
       session.activeSocket.close(4000, "terminal_replaced");
     }
@@ -53,8 +58,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     socket.once("close", () => detachSocket(session, socket));
   }
 
-  function createSession(context: TerminalTicketContext): void {
-    getOrCreateSession(context);
+  async function createSession(context: TerminalTicketContext): Promise<void> {
+    await getOrCreateSession(context);
   }
 
   function terminate(sessionId: string): boolean {
@@ -65,28 +70,72 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     return true;
   }
 
-  function stop(): void {
-    for (const session of sessions.values()) {
-      killSession(session);
+  function getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined {
+    return sessions.get(sessionId)?.messagePolicy;
+  }
+
+  function writeToSession(sessionId: string, data: string): boolean {
+    const session = sessions.get(sessionId);
+    if (!session || typeof session.pty.write !== "function") return false;
+    try {
+      session.pty.write(data);
+      return true;
+    } catch {
+      return false;
     }
+  }
+
+  async function stop(): Promise<void> {
+    const pending = [...pendingSessions.values()];
+    pendingSessions.clear();
+    const launched = await Promise.allSettled(pending);
+    const sessionsToKill = new Set(sessions.values());
+    for (const result of launched) {
+      if (result.status === "fulfilled") sessionsToKill.add(result.value);
+    }
+    await Promise.all([...sessionsToKill].map((session) => killSession(session)));
     sessions.clear();
   }
 
-  function getOrCreateSession(context: TerminalTicketContext): TerminalSession {
+  async function getOrCreateSession(context: TerminalTicketContext): Promise<TerminalSession> {
     const current = sessions.get(context.sessionId);
     if (current) return current;
-    const pty = startShell(deps.launch(context.cwd, { sessionId: context.sessionId, kind: context.kind }), { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+    const pending = pendingSessions.get(context.sessionId);
+    if (pending) return pending;
+    const pendingLaunch = launchSession(context);
+    pendingSessions.set(context.sessionId, pendingLaunch);
+    try {
+      return await pendingLaunch;
+    } finally {
+      if (pendingSessions.get(context.sessionId) === pendingLaunch) {
+        pendingSessions.delete(context.sessionId);
+      }
+    }
+  }
+
+  async function launchSession(context: TerminalTicketContext): Promise<TerminalSession> {
+    const launch = await deps.launch(context.cwd, { sessionId: context.sessionId, kind: context.kind, cliId: context.cliId });
+    let pty: TerminalPtyHandle;
+    try {
+      pty = startShell(launch, { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+    } catch (error) {
+      await runLaunchCleanup(launch.cleanup);
+      throw error;
+    }
     const session: TerminalSession = {
       id: context.sessionId,
       pty,
       disposables: [],
       scrollback: [],
+      cleanup: launch.cleanup,
+      messagePolicy: launch.messagePolicy,
       activeSocket: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
     };
     const dataDisposable = pty.onData((data) => handlePtyData(session, data));
-    const exitDisposable = pty.onExit(() => removeSession(session, { killPty: false }));
+    // 자연종료 후에도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
+    const exitDisposable = pty.onExit(() => removeSession(session));
     session.disposables.push(dataDisposable, exitDisposable);
     sessions.set(session.id, session);
     return session;
@@ -138,22 +187,42 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   function removeSession(session: TerminalSession, options: KillSessionOptions = {}): void {
-    if (!sessions.has(session.id)) return;
-    killSession(session, options);
+    if (sessions.get(session.id) !== session) return;
+    void killSession(session, options);
     sessions.delete(session.id);
-    // sessions.has 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
+    // 인스턴스 일치 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
     deps.onSessionExit?.(session.id);
   }
 
-  function killSession(session: TerminalSession, options: KillSessionOptions = {}): void {
+  async function killSession(session: TerminalSession, options: KillSessionOptions = {}): Promise<void> {
     const killPty = options.killPty ?? true;
     session.activeSocket?.close(4001, "terminal_closed");
     session.activeSocket = null;
     for (const disposable of session.disposables) disposable.dispose();
-    if (killPty) session.pty.kill();
+    try {
+      if (killPty) killPtyBestEffort(session.pty);
+    } finally {
+      await runLaunchCleanup(session.cleanup);
+    }
   }
 
-  return { canAttach, createSession, attach, terminate, stop };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, terminate, stop, writeToSession };
+}
+
+async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {
+  try {
+    await cleanup?.();
+  } catch {
+    // 서버 종료/PTY 종료 경로에서는 cleanup 실패를 브라우저로 노출하지 않는다.
+  }
+}
+
+function killPtyBestEffort(pty: TerminalPtyHandle): void {
+  try {
+    pty.kill();
+  } catch {
+    // Teardown-only cleanup: kill failures must not block session exit or launch cleanup.
+  }
 }
 
 function toBuffer(data: TerminalSocketData): Buffer {

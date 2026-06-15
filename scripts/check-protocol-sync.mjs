@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,11 +7,13 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.dirname(scriptDir);
 const protocolGatePath = path.join(repoRoot, "packages", "fleet-admiral", "src", "protocols", "fleet-action.ts");
-const skillRoot = path.join(repoRoot, "runtime", "fleet-cli", "assets", "skills");
+const embeddedSkillManifestPath = path.join(repoRoot, "packages", "fleet-admiral", "src", "agent-cli", "assets.generated.ts");
 // Protocol mode 스킬은 공통 접두사가 없으므로 명시적 집합으로 SSoT를 고정한다(gate ↔ skill 디렉토리 양방향 검증의 기대값).
 const PROTOCOL_MODE_DIRS = ["protocol-baseline", "protocol-midline", "protocol-redline", "protocol-frontline"];
 const findings = [];
 
+generateEmbeddedAssets();
+const protocolSkills = readEmbeddedProtocolSkills();
 checkProtocolModes();
 checkDownwardGuardDuplication();
 checkReportTokens();
@@ -26,9 +29,8 @@ function checkProtocolModes() {
   const modeGateSection = gateText.split("## Mode Gate")[1]?.split("If operational mode is ambiguous")[0] ?? "";
   // gate 소스에서 mode 이름은 백틱 escaping(`${"`"}<mode>${"`"}`)으로 등장한다.
   const gateModes = expected.filter((mode) => modeGateSection.includes(backtickWrapped(mode)));
-  const skillModes = readdirSync(skillRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && PROTOCOL_MODE_DIRS.includes(entry.name))
-    .map((entry) => entry.name)
+  const skillModes = protocolSkills
+    .map((entry) => path.dirname(entry.relativePath))
     .sort();
 
   const gateMissing = expected.filter((mode) => !gateModes.includes(mode));
@@ -37,7 +39,7 @@ function checkProtocolModes() {
     findings.push(`${relative(protocolGatePath)}: Mode Gate missing expected protocol modes: ${gateMissing.join(", ")}`);
   }
   if (skillMissing.length > 0) {
-    findings.push(`${relative(skillRoot)}: skill directories missing expected protocol modes: ${skillMissing.join(", ")}`);
+    findings.push(`${relative(embeddedSkillManifestPath)}: embedded skill assets missing expected protocol modes: ${skillMissing.join(", ")}`);
   }
 }
 
@@ -51,8 +53,8 @@ function checkDownwardGuardDuplication() {
     /downward-guard:/i,
   ];
 
-  for (const file of protocolSkillFiles()) {
-    const lines = readFileSync(file, "utf8").split(/\r?\n/);
+  for (const skill of protocolSkills) {
+    const lines = skill.content.split(/\r?\n/);
     lines.forEach((line, index) => {
       const staleMatch =
         /Downward-guard|downward-guard|structural|API|doctrine|multi-module|multi-carrier|boundary map|risk review|parallel ownership/i.test(
@@ -62,10 +64,10 @@ function checkDownwardGuardDuplication() {
       if (!staleMatch && copiedGatePhrase === undefined) {
         return;
       }
-      if (copiedGatePhrase !== undefined && isAllowedGuardPhraseContext(file, line, index)) {
+      if (copiedGatePhrase !== undefined && isAllowedGuardPhraseContext(skill.relativePath, line, index)) {
         return;
       }
-      findings.push(`${relative(file)}:${index + 1}: duplicated Downward Guard enumeration: ${line.trim()}`);
+      findings.push(`${assetLabel(skill.relativePath)}:${index + 1}: duplicated Downward Guard enumeration: ${line.trim()}`);
     });
   }
 }
@@ -74,20 +76,20 @@ function checkReportTokens() {
   const tokenPattern = /→ report\s+`([^`]+)`/;
   const validToken = /^[a-z]+: .+$/;
 
-  for (const file of protocolSkillFiles()) {
-    const lines = readFileSync(file, "utf8").split(/\r?\n/);
+  for (const skill of protocolSkills) {
+    const lines = skill.content.split(/\r?\n/);
     lines.forEach((line, index) => {
       if (!line.includes("→ report")) {
         return;
       }
       const match = line.match(tokenPattern);
       if (match === null) {
-        findings.push(`${relative(file)}:${index + 1}: report token must be backtick-wrapped: ${line.trim()}`);
+        findings.push(`${assetLabel(skill.relativePath)}:${index + 1}: report token must be backtick-wrapped: ${line.trim()}`);
         return;
       }
       const token = match[1];
       if (!validToken.test(token)) {
-        findings.push(`${relative(file)}:${index + 1}: invalid report token grammar: ${token}`);
+        findings.push(`${assetLabel(skill.relativePath)}:${index + 1}: invalid report token grammar: ${token}`);
       }
     });
   }
@@ -127,8 +129,8 @@ function normalizeGuardPhrase(value) {
     .trim();
 }
 
-function isAllowedGuardPhraseContext(file, line, index) {
-  const fileName = path.basename(path.dirname(file));
+function isAllowedGuardPhraseContext(relativePath, line, index) {
+  const fileName = path.basename(path.dirname(relativePath));
   const isFrontMatterDescription = index < 4 && /^description: /.test(line);
   const isEscalationCheck = /\*\*Escalation\*\*.*re-classify under frontline/.test(line);
   if (fileName === "protocol-redline") {
@@ -140,21 +142,36 @@ function isAllowedGuardPhraseContext(file, line, index) {
   return false;
 }
 
-function protocolSkillFiles() {
-  return readdirSync(skillRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && PROTOCOL_MODE_DIRS.includes(entry.name))
-    .map((entry) => path.join(skillRoot, entry.name, "SKILL.md"))
-    .filter((file) => {
-      try {
-        return statSync(file).isFile();
-      } catch {
-        return false;
-      }
-    });
-}
-
 function relative(file) {
   return path.relative(repoRoot, file);
+}
+
+function assetLabel(relativePath) {
+  return `${relative(embeddedSkillManifestPath)}:${relativePath}`;
+}
+
+function generateEmbeddedAssets() {
+  execFileSync(process.execPath, [path.join(repoRoot, "scripts", "generate-fleet-admiral-assets.mjs")], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
+
+function readEmbeddedProtocolSkills() {
+  const manifest = readFileSync(embeddedSkillManifestPath, "utf8");
+  const entries = [];
+  const entryPattern = /\{\s*relativePath:\s*"((?:\\.|[^"\\])*)",\s*content:\s*"((?:\\.|[^"\\])*)"\s*\}/g;
+  for (const match of manifest.matchAll(entryPattern)) {
+    const relativePath = JSON.parse(`"${match[1]}"`);
+    if (!PROTOCOL_MODE_DIRS.includes(path.dirname(relativePath)) || path.basename(relativePath) !== "SKILL.md") {
+      continue;
+    }
+    entries.push({
+      content: JSON.parse(`"${match[2]}"`),
+      relativePath,
+    });
+  }
+  return entries;
 }
 
 function unique(values) {

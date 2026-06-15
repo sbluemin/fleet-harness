@@ -1,0 +1,96 @@
+---
+id: "guide-007-package-structure-admiral-runtime"
+title: "Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)"
+tags: ["guide", "fleet-harness", "architecture", "package-structure", "fleet-admiral", "fleet-console", "target"]
+created: "2026-06-14T12:06:45.215Z"
+updated: "2026-06-14T12:06:45.215Z"
+version: 1
+rawSourceRef: "raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md"
+template_id: "freestyle"
+rawSourceRefs: "[{\"ref\":\"raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md\",\"title\":\"Admiral directive — post-change package structure (admiral-agent-runtime consolidation)\",\"hash\":\"4088997b\"}]"
+---
+# fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
+
+## Overview
+
+이 문서는 결정된 **목표 구조**를 기술한다. `agent-cli` 실행·Fleet 플러그인 렌더·MCP 서버 조립/세션을 `fleet-admiral`로 일반화 이관하고, `fleet-console`을 `fleet-cli` 의존 없이 self-contained로 만드는 결정(대원수 재가, 2026-06-14)에 따른 변경 *이후*의 모습이다. 결정·계획은 완료되었으며 구현이 진행 중인 단계의 청사진이다. 실행 계획은 `.fleet/plans/admiral-agent-runtime.md`가 보유한다.
+
+## 결정 요약 (왜)
+
+이전 상태에서는 "Agent CLI를 Fleet 에이전트로 띄우는 능력" 전체 — 프로파일 해석, Fleet 플러그인/페르소나 렌더, in-process MCP 서버 조립 — 을 `fleet-cli` 호스트가 단독 소유했다. 그 결과 `fleet-console`은 동일 능력을 쓰기 위해 매번 `fleet-cli`를 headless+native 모드의 자식 프로세스로 띄우는 우회에 의존했다.
+
+이 단일 소유 구조의 구조적 인지 부채는 세 가지였다. 첫째, 호스트가 늘어날수록 실행 로직이 중복된다. 둘째, 콘솔이 형제 `fleet-cli` 빌드 또는 전역 바이너리 존재에 종속되어 독립 배포·실행이 불가능했다. 셋째, "Fleet 활성화 능력"이 호스트에 묶여 재사용 단위가 되지 못했다. 해소책은 이 능력들을 정책 계층인 `fleet-admiral`로 끌어올려, 두 호스트가 동일한 공개 API로 소비하도록 만드는 것이다.
+
+## 패키지 인벤토리 (변경 후)
+
+### packages/ — 1차 도메인 라이브러리
+
+| 패키지 | 책임 | 변경 |
+|---|---|---|
+| core-agent | 도메인 비의존 executor 기질, in-process MCP HTTP/JSON-RPC 프리미티브, register 데이터 계약 | 불변 (프리미티브 SSoT) |
+| core-unified-agent | CLI provider 카탈로그 / ACP SDK 메타데이터 | 불변 |
+| fleet-admiral | Admiral 정책(프롬프트·프로토콜·스탠딩오더·툴 카탈로그) **+ Agent CLI launch spec 빌드 + Fleet 플러그인/페르소나 렌더 + Fleet MCP 서버 조립·세션** | **확장 (신규 소유)** |
+| fleet-carriers | 캐리어 페르소나 기본값·런타임·detached job | 불변 |
+| fleet-infra | auth · session · durable fs-store(원자적 쓰기·advisory lock) | 불변 (admiral에 DI로 주입) |
+| fleet-wiki | Fleet Wiki 스토어·패치큐·ingest | 불변 |
+
+### runtime/ — 호스트 런타임
+
+| 패키지 | 책임 | 변경 |
+|---|---|---|
+| fleet-cli | 로컬 TUI 호스트 + 단일 Composition Root; PTY·xterm·native 패스스루·mission-control·mission-bridge 소유 | **경량화** — 에이전트 런타임을 fleet-admiral에서 소비 |
+| fleet-console | 풀스택 콘솔(loopback HTTP 백엔드 + React SPA); 터미널 PTY/WS 전송, observer, Codex/Fleet Wiki 웹 | **self-contained** — fleet-admiral로 직접 agent-cli 실행, fleet-cli spawn 제거 |
+
+### 제거된 패키지 (잔존 산출물만 존재)
+
+`core-mcp-server`, `fleet-gateway`, `fleet-wiki-ui`는 소스가 이미 제거되었고 빌드 잔존물만 남아 있다. 각 능력은 흡수되었다 — MCP 프리미티브는 core-agent로, 게이트웨이 데몬은 console 풀스택으로, 위키 UI는 console 웹 표면으로.
+
+## 의존성 그래프 (변경 후)
+
+```
+                      core-agent
+   (도메인 비의존: executor 풀 + in-process MCP 프리미티브 + register 계약)
+              ▲                         ▲
+      core-unified-agent          fleet-carriers
+     (CLI provider 카탈로그)      (캐리어 페르소나·런타임)
+                                        ▲
+                                  fleet-admiral
+   Admiral 정책(프롬프트·프로토콜·스탠딩오더·툴)
+   + Fleet 에이전트 런타임(Agent CLI launch spec · 플러그인/페르소나 렌더 · MCP 서버 조립·세션)
+                    ▲                          ▲
+               fleet-cli                  fleet-console
+          (TUI 호스트 · PTY ·          (풀스택 HTTP+React ·
+           Composition Root)            터미널 PTY/WS · observer)
+
+   fleet-infra (auth · data-dir · durable fs-store)
+        └─ 호스트가 create*(deps) DI로 fleet-admiral에 주입 (admiral은 직접 import 안 함)
+```
+
+핵심 규칙:
+
+- **core-\* → fleet-\* 의존 금지** — core 패키지는 도메인 비의존을 유지한다.
+- **fleet-admiral은 fleet-infra를 직접 import하지 않는다** — auth·dataDir·advisory lock·codex 명령 러너·hook executable은 호스트가 `create*(deps)` 의존 객체로 주입한다.
+- **fleet-console → fleet-admiral 신규 의존** — 서버측 전용이며, 브라우저 클라이언트는 fleet-admiral을 import하지 않는다.
+- **fleet-cli → fleet-console 의존은 유지** — `fleet wiki` / `fleet console` 서브커맨드가 콘솔 CLI로 relay하는 역방향 관계로, 본 통합과 무관하다.
+
+## 소유권 이동 요약
+
+**이관 → fleet-admiral**: Agent CLI 프로파일/레지스트리, launch 인자·env·cwd 빌드, 바이너리 해석, Fleet 플러그인·스킬·훅·페르소나 렌더, in-process MCP 서버 조립과 executor 세션/토큰 발급, 시스템 프롬프트 주입(replace/append)과 메타포 톤 주입.
+
+**잔류 → 각 호스트**: 실제 PTY/프로세스 spawn, xterm 뷰포트, native 패스스루, TUI/mission-control 표면, 콘솔 PTY/WS 전송·티켓·브라우저 페이로드, 메타포/시스템프롬프트 토글 UI, hook executable 어댑터, codex 명령 실행 러너.
+
+## fleet-console self-containment
+
+변경 후 console은 fleet-cli에 대한 패키지 의존·코드 import·기본 경로 spawn이 전무하다. 형제 fleet-cli 빌드(local 채널)나 전역 `fleet` 바이너리(stable 채널) 없이, fleet-admiral과 자기 의존만으로 빌드·타입체크·테스트·게시·실행하며, 터미널 세션마다 fleet-admiral로 per-session Fleet MCP 런타임과 세션 토큰을 직접 생성·정리한다. 콘솔 직접 실행 Agent CLI는 fleet-cli와 동일한 Fleet 페르소나·독트린·메타포를 받는다. (콘솔의 CLI-help 스타일 헬퍼는 import가 아니라 수동 동기화 사본으로, 빌드/런타임 의존이 아닌 유지보수 결합으로만 남는다.)
+
+## 불변식 (토큰 경계 · 공유자원)
+
+- MCP bearer/세션 토큰은 서버 메모리와 자식 프로세스 env/args 전용이다 — 브라우저 페이로드·SSE·터미널 티켓·로그·정적 자산에 절대 노출되지 않는다.
+- 두 호스트가 공유하는 `~/.fleet/marketplace` 렌더는 주입형 advisory lock으로 직렬화되어, 동시 실행에서도 멱등하게 유지된다.
+
+## Related
+
+- [[wiki:guide-001-fleet-harness-overview]]
+- [[wiki:prd-fleet-agent-composition-root-consolidation]]
+- [[wiki:prd-core-infra-extraction]]
+- [[wiki:prd-mcp-server-surface-split]]

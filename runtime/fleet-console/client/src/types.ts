@@ -1,11 +1,13 @@
 export type ThemeId = "maritime" | "carbon";
 
+export type TerminalRenderer = "webgl" | "dom";
+
 export interface ObservedTenant {
   readonly tenantId: string;
   readonly tenantLabel: string;
   readonly createdAt: number;
   readonly sessions: number;
-  readonly status?: "online" | "offline" | "deregistered";
+  readonly status?: "live" | "closed";
   readonly cliRunId?: string;
   readonly registrationId?: string;
   readonly theaterId?: string;
@@ -19,6 +21,16 @@ export interface TheaterInfo {
   readonly lastOpenedAt: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
+}
+
+export interface AgentCliMetadata {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface TheaterBootstrap {
+  readonly theaters: readonly TheaterInfo[];
+  readonly agentClis: readonly AgentCliMetadata[];
 }
 
 export interface ObserverStatus {
@@ -53,6 +65,8 @@ export interface SessionInfo {
   readonly cwdLabel: string;
   readonly sequence: number;
   readonly label?: string;
+  readonly cliId?: string;
+  readonly cliLabel?: string;
   readonly status: SessionStatus;
   readonly createdAt: number;
   readonly theaterId?: string;
@@ -146,10 +160,12 @@ export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly activeTheme: ThemeId;
+  readonly terminalRenderer: TerminalRenderer;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;
   readonly tenants: readonly ObservedTenant[];
   readonly theaters: readonly TheaterInfo[];
+  readonly agentClis: readonly AgentCliMetadata[];
   readonly activeTheaterId: string | null;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
@@ -163,4 +179,5 @@ export interface ConsoleState {
   readonly timelineOpen: boolean;
   readonly shellOpen: boolean;
   readonly selectedJobId: string | null;
+  readonly expandedSessionIds: readonly string[];
 }

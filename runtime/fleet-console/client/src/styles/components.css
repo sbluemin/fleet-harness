@@ -1,5 +1,5 @@
 .topbar,
-.sidebar,
+.operations-sidebar,
 .stage,
 .timeline-dock,
 .job-summary {
@@ -11,7 +11,7 @@
 }
 
 .topbar,
-.sidebar,
+.operations-sidebar,
 .stage {
   border-radius: var(--radius-xl);
 }
@@ -51,6 +51,43 @@
 /* 브랜드 로고는 Welcome으로 가는 링크 — 클릭 가능함을 미세하게 알린다. */
 .topbar-brand:hover {
   opacity: 0.82;
+}
+
+/* 브랜드 + 리서치 프리뷰 배지를 GNB 첫 컬럼에 함께 묶어 grid(1fr auto 1fr) 3컬럼 구조를 보존한다. */
+.topbar-lead {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  min-width: 0;
+  gap: var(--space-3);
+}
+
+/* 리서치 프리뷰 배지 — 보더리스 미니멀. brass dot + mono 대문자 텍스트만으로 GNB를 가볍게 유지한다.
+   brass는 '구조적/정체성' 역할이라 aurora=live, coral=error, warn=connecting 의미와 충돌하지 않는다. */
+.topbar-preview-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* 시작 신호용 brass dot — 살아있음(aurora 펄스)이 아닌 정적 정체성 표식이라 무한 모션 없이 은은한 glow만 준다. */
+.topbar-preview-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brass-bright);
+  box-shadow: 0 0 8px var(--brass-glow);
 }
 
 .topbar-sigil {
@@ -222,6 +259,10 @@
   margin-bottom: 0;
 }
 
+.operation-launch-control {
+  position: relative;
+}
+
 .workspace-add-button {
   display: grid;
   width: 30px;
@@ -253,9 +294,27 @@
   transform: translateY(-1px);
 }
 
+.workspace-add-button.is-open {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 50%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass));
+}
+
 .workspace-add-button:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+.operation-launch-control .operation-launch-menu {
+  top: calc(100% + var(--space-2));
+  /* '+' 버튼 왼쪽 모서리에 정렬해 오른쪽으로 펼친다(왼쪽 전개는 이질적이라는 UX 피드백). */
+  left: 0;
+  right: auto;
+  min-width: 168px;
+}
+
+.operation-launch-control .operation-launch-menu-item .theater-menu-check {
+  color: var(--brass);
 }
 
 .session-list {
@@ -265,6 +324,12 @@
   margin: 0 0 var(--space-4);
   padding: 0;
   list-style: none;
+  /* 사이드바(.operations-sidebar)는 overflow:visible이라 '+' 팝오버가 카드 밖으로
+     떠오른다. 대신 긴 세션 목록의 스크롤 책임을 여기로 이전한다: flex 컬럼에서 남는
+     높이를 차지하고(flex:1) min-height:0으로 줄어들어 내부 스크롤이 작동한다. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .session-item {
@@ -551,17 +616,6 @@
 
 .job-row.is-active .job-row-label {
   color: var(--brass-bright);
-}
-
-.job-row-stream {
-  overflow: hidden;
-  margin: 1px 0;
-  color: color-mix(in oklch, var(--aurora) 72%, var(--ink-fog));
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.01em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .job-row-meta {
@@ -1935,6 +1989,140 @@
 .terminal-canvas .xterm,
 .terminal-canvas .xterm-viewport {
   height: 100%;
+}
+
+.terminal-zoom-toggle {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: var(--ink-spectral);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.terminal-zoom-toggle:hover {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 9%, var(--surface-glass));
+  transform: translateY(-1px);
+}
+
+.terminal-zoom-toggle.is-expanded {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim));
+}
+
+.terminal-zoom-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+
+.terminal-job-dock {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  right: var(--space-4);
+  z-index: 2;
+  max-height: 40%;
+  overflow-y: auto;
+  padding: var(--space-2) calc(var(--space-4) + 44px) var(--space-2) var(--space-2);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.terminal-job-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terminal-job-line {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: var(--space-2);
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--ink-spectral);
+  text-align: left;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.terminal-job-line:hover {
+  background: color-mix(in oklch, var(--brass) 7%, transparent);
+  transform: translateX(1px);
+}
+
+.terminal-job-line.is-active {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+.terminal-job-line-label,
+.terminal-job-line-meta,
+.terminal-job-line-sep,
+.terminal-job-line-stream {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-job-line-label {
+  flex: 0 1 auto;
+  max-width: 28%;
+  color: var(--ink-spectral);
+  font-size: 11.5px;
+  font-weight: 640;
+}
+
+.terminal-job-line.is-active .terminal-job-line-label {
+  color: var(--brass-bright);
+}
+
+.terminal-job-line-stream {
+  flex: 1 1 auto;
+  color: color-mix(in oklch, var(--aurora) 72%, var(--ink-fog));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.01em;
+}
+
+.terminal-job-line-meta {
+  flex: 0 1 auto;
+  max-width: 30%;
+  color: var(--ink-fog);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+
+.terminal-job-line-sep {
+  flex: 0 0 auto;
+  color: var(--ink-fog);
+  font-size: 10px;
 }
 
 .operations-landing {

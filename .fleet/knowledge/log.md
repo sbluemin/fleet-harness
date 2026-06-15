@@ -3839,3 +3839,43 @@
 - ok: `true`
 - warning_count: `7`
 
+## 2026-06-14T12:06:45.234Z — raw source added
+
+- id: `guide-007-package-structure-admiral-runtime-source`
+- raw_source_ref: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
+- source_type: `inline`
+- tag_count: `7`
+- title: `Admiral directive — post-change package structure (admiral-agent-runtime consolidation)`
+
+## 2026-06-14T12:06:45.239Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-14T12-06-45-215Z-2334063b`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
+- target: `wiki/guide-007-package-structure-admiral-runtime.md`
+- warning_count: `0`
+
+## 2026-06-14T12:06:54.868Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-14T12:07:12.788Z — index rebuilt
+
+- entry_count: `29`
+
+## 2026-06-14T12:07:12.791Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-14T12-06-45-215Z-2334063b`
+- patch_set_id: `null`
+- proposer: `admiral`
+- raw_source_ref: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
+- result: `accepted`
+- target: `wiki/guide-007-package-structure-admiral-runtime.md`
+

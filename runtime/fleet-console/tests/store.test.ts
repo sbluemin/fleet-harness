@@ -15,11 +15,13 @@ import {
   getState,
   hydrateTerminalSessions,
   hydrateTheaters,
+  readStoredRenderer,
   selectJob,
   selectTerminalSession,
   selectedJob,
   sessionJobs,
   setActiveTheater,
+  setTerminalRenderer,
   setState,
   theaterSessionOrder,
   theaterSessions,
@@ -30,15 +32,32 @@ import type { ObservedEvent, ObservedTenant, TheaterInfo } from "../client/src/t
 const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", createdAt: 1, sessions: 1, theaterId: "theater-a" };
 const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
 const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
+const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, tenantId = "tenant-1", jobId = "job-1"): ObservedEvent {
   return { id, tenantId, jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };
 }
 
+function mockLocalStorage(storage: Map<string, string>): void {
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+      },
+    },
+  });
+}
+
 beforeEach(() => {
+  Reflect.deleteProperty(globalThis, "window");
   setState({
     connection: "connecting",
     connectionError: null,
+    terminalRenderer: "webgl",
     updateAvailable: false,
     latestVersion: null,
     tenants: [],
@@ -60,6 +79,31 @@ beforeEach(() => {
 });
 
 describe("store", () => {
+  it("reads the stored terminal renderer with webgl as the default", () => {
+    expect(readStoredRenderer()).toBe("webgl");
+
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    expect(readStoredRenderer()).toBe("webgl");
+
+    storage.set(RENDERER_STORAGE_KEY, "dom");
+    expect(readStoredRenderer()).toBe("dom");
+
+    storage.set(RENDERER_STORAGE_KEY, "canvas");
+    expect(readStoredRenderer()).toBe("webgl");
+  });
+
+  it("persists terminal renderer changes into state and localStorage", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    setTerminalRenderer("dom");
+
+    expect(getState().terminalRenderer).toBe("dom");
+    expect(storage.get(RENDERER_STORAGE_KEY)).toBe("dom");
+  });
+
   it("applies observer update status to the global state", () => {
     applyObserverStatus({
       workspaces: 0,

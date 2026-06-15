@@ -213,6 +213,9 @@ async function runPickerCommand(runCommand: (bin: string, args: readonly string[
 }
 
 async function runNativeCommand(bin: string, args: readonly string[]): Promise<CommandResult> {
-  const result = await execFileAsync(bin, [...args], { timeout: DIALOG_TIMEOUT_MS });
+  // windowsHide: true가 없으면 powershell.exe가 콘솔 창을 새로 띄워 파일 탐색기와 함께 깜빡인다.
+  // 이 플래그는 자식 프로세스의 콘솔 창만 숨길 뿐, COM으로 띄우는 IFileOpenDialog(별도 GUI 창)는
+  // 그대로 표시되므로 폴더 선택 다이얼로그는 정상 노출된다.
+  const result = await execFileAsync(bin, [...args], { timeout: DIALOG_TIMEOUT_MS, windowsHide: true });
   return { stdout: result.stdout, stderr: result.stderr };
 }

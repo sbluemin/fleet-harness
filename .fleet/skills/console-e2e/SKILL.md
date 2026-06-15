@@ -135,6 +135,134 @@ Bash cannot display the image — read it back with the Read tool (`/tmp/console
 
 For a **backend** header/CSP fix, also verify the raw response after a server restart: `curl -s -I http://127.0.0.1:<port>/console/ | grep -i content-security-policy` (and confirm the offending console error is gone in `state.logs` after reload).
 
+### Scenario — Windows ConPTY 깨짐 A/B 검증
+
+#### 배경
+
+Windows CMD/PowerShell에서 드물게 발생하던 터미널 깨짐은 OS conhost ConPTY의 재생성(render→diff) 모델과 문자폭/리사이즈 엣지 조건에서 비롯된다. 이를 (①) 번들 신형 ConPTY DLL, (②) 리사이즈 디바운스+refresh, (③) Unicode11 폭 정합, (④) WebGL/DOM 렌더러 토글의 네 가지 개선으로 완화하였으며, 이 시나리오는 그 효과를 A/B 실측으로 비교한다.
+
+> **Windows 호스트 전용**: ConPTY 경로의 차이는 Windows에서만 나타난다. macOS/Linux 호스트에서는 이 시나리오를 실행해도 의미 있는 차이를 관측할 수 없다.
+
+#### 토글 계약
+
+두 가지 독립 토글로 A/B 축을 구성한다.
+
+**useConptyDll** — 환경변수 `FLEET_USE_CONPTY_DLL`
+
+- Windows에서 기본 ON(번들 ConPTY DLL 사용).
+- `FLEET_USE_CONPTY_DLL=0`(또는 `false`)으로 끄고 재기동하면 OS conhost ConPTY로 대조할 수 있다.
+- 백엔드 변경이므로 콘솔 서버 **재기동** 필요 — Prerequisites의 static-serve/재기동 규칙 참조. 재기동 후 번들 해시가 바뀔 수 있으므로 Phase 1을 다시 수행해 새 URL로 `goto`한다.
+
+```powershell
+# A 상태 (기본): FLEET_USE_CONPTY_DLL 환경변수 미설정 또는 1
+# B 상태 (대조):
+$env:FLEET_USE_CONPTY_DLL = "0"
+pnpm fleet-console          # 서버 재기동
+```
+
+**렌더러** — topbar 토글 / localStorage 키 `fleet-console.terminalRenderer`
+
+- 기본값 `webgl`. topbar 토글로 WebGL ↔ DOM 전환.
+- 클라이언트 상태이므로 토글 즉시 적용(서버 재기동 불요).
+- 토글은 라이브 xterm 인스턴스에 WebGL 애드온만 붙였다 떼는 방식이며, WebSocket 세션과 서버 연결은 유지된다. 토글 전후로 `state.sockets`에 새 `close` 이벤트가 없는지 확인해 세션이 끊기지 않았음을 검증한다.
+
+```bash
+# playwriter로 렌더러 상태 읽기 / 직접 전환
+playwriter -s <id> -e "$(cat <<'EOF'
+const renderer = await state.page.evaluate(() => localStorage.getItem('fleet-console.terminalRenderer') ?? 'webgl');
+console.log('current renderer:', renderer);
+EOF
+)"
+```
+
+topbar 토글 버튼을 클릭하거나 localStorage를 직접 쓴 뒤 페이지를 리로드해도 전환된다:
+
+```bash
+playwriter -s <id> -e "$(cat <<'EOF'
+await state.page.evaluate(() => localStorage.setItem('fleet-console.terminalRenderer', 'dom'));
+await state.page.reload({ waitUntil: 'domcontentloaded' });
+await waitForPageLoad({ page: state.page, timeout: 6000 });
+console.log('renderer set to dom, page reloaded');
+EOF
+)"
+```
+
+#### 깨짐 유발(스트레스) 입력
+
+터미널 세션 안에서 아래 명령을 붙여 실행한다. 셸 세션에 타이핑하거나, playwriter로 xterm 입력 포커스를 잡은 뒤 `page.keyboard.type()`으로 주입해도 된다.
+
+**CJK + 박스드로잉 TUI 프레임 — PowerShell**:
+
+```powershell
+# 한글/CJK 와이드 문자와 박스드로잉을 혼합 출력해 폭 정합 엣지를 노린다
+1..30 | ForEach-Object { Write-Host "┌─────────────────────────────┐"; Write-Host "│ 가나다라마바사 $_ 테스트 출력 │"; Write-Host "└─────────────────────────────┘" }
+```
+
+**고속 리페인트 루프 — PowerShell**:
+
+```powershell
+# clear + 재출력을 빠르게 반복해 conhost 재생성 경쟁을 유발한다
+1..60 | ForEach-Object { Clear-Host; Write-Host "리페인트 $_: $(Get-Date -Format 'HH:mm:ss.fff')"; Start-Sleep -Milliseconds 80 }
+```
+
+**CMD 환경(cmd.exe)**:
+
+```cmd
+for /l %i in (1,1,50) do (cls & echo 박스 %i: [└─┐│┘├┼] & timeout /t 0 /nobreak >nul)
+```
+
+**창 리사이즈**: 스트레스 루프 실행 중 브라우저 창을 마우스로 드래그해 리사이즈한다. conhost↔xterm 그리드 불일치 창을 노리는 핵심 트리거다.
+
+#### 관찰·캡처 절차
+
+A/B 각 상태에서 스트레스 입력 후 아래 probe를 실행하고 스크린샷을 남긴다.
+
+```bash
+playwriter -s <id> -e "$(cat <<'EOF'
+const probe = () => state.page.evaluate(() => {
+  const q = s => document.querySelector(s);
+  const canvas = q('.terminal-canvas');
+  const xterm = canvas ? canvas.querySelector('.xterm') : null;
+  return {
+    hasXterm: !!xterm,
+    canvasCount: canvas ? canvas.querySelectorAll('canvas').length : 0,
+    appLen: (q('#app') || document.body).innerHTML.length,
+    renderer: localStorage.getItem('fleet-console.terminalRenderer') ?? 'webgl',
+  };
+});
+const result = await probe();
+const socketsClosed = state.sockets.filter(s => s.closed).length;
+console.log('probe:', JSON.stringify(result));
+console.log('sockets closed:', socketsClosed, '/ total:', state.sockets.length);
+console.log('pageerrors:', JSON.stringify(state.logs.filter(l => l.startsWith('[pageerror]'))));
+await state.page.screenshot({ path: '/tmp/conpty-ab-' + result.renderer + '.png', scale: 'css' });
+await resizeImageForAgent({ input: '/tmp/conpty-ab-' + result.renderer + '.png', maxDimension: 1100 });
+EOF
+)"
+```
+
+스크린샷을 읽어 시각 확인: `Read /tmp/conpty-ab-webgl.png`, `Read /tmp/conpty-ab-dom.png`.
+
+#### 비교 체크리스트
+
+스트레스 입력 종료 직후 A/B 각각에 대해 아래 항목을 확인한다.
+
+| 항목 | 건강한 상태 | 깨짐 징후 |
+|------|------------|----------|
+| 셀 정렬 | 박스드로잉 문자가 열(column)에 맞게 연속 | 문자가 겹치거나 열이 어긋남 |
+| 박스 연속성 | `└─┐` 등 선이 끊기지 않고 이어짐 | 선 단절 또는 문자가 잘려 나타남 |
+| 잔상 | 이전 출력이 남지 않음 | clear 후에도 이전 줄이 남음 |
+| `canvasCount` | `3` (xterm WebGL 3레이어) | `0` 또는 `1` — WebGL 초기화 실패 |
+| `appLen` | 수천 이상 | 0에 가까우면 React 트리 언마운트(블랭크) |
+| WS 세션 유지 | 렌더러 토글 전후 `sockets closed` 증가 없음 | 새 close 발생 시 세션 끊김 |
+| `pageerror` | 없음 | WebGL context lost 또는 dispose 예외 |
+
+#### 한계
+
+깨짐은 "드물게" 발생하는 타이밍 의존 현상이므로 1회 관측으로 개선 여부를 단정할 수 없다. 스트레스 루프를 여러 번(최소 3회) 반복하고, A/B 간 깨짐 **빈도**를 비교해 판단한다. 이 하니스는 Windows 호스트에서만 의미 있으며, macOS/Linux에서는 ConPTY 경로가 다르므로 비교 결과가 무효다.
+
+---
+
 ## Fleet-console specifics (gotchas)
 
 - **Static-serve reflection**: client changes need `build` + reload; backend (`src/**`) changes need `build` + **server restart**. A "fix that didn't work" is often just an unrestarted server or a stale bundle — verify the served `index-*.js` hash matches `dist` before re-debugging.

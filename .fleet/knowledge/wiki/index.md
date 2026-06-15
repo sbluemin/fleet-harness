@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `28`
+- total_entries: `29`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -77,6 +77,16 @@
 - summary: `# Maritime Codex 디자인 언어`
 - raw_source_ref: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
 - raw_source_refs: `raw/2026-06-12-guide-006-maritime-codex-design-language-source-9004c762.md`
+
+### guide-007-package-structure-admiral-runtime
+
+- title: `Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)`
+- path: `wiki/guide-007-package-structure-admiral-runtime.md`
+- tags: `guide, fleet-harness, architecture, package-structure, fleet-admiral, fleet-console, target`
+- updated: `2026-06-14T12:06:45.215Z`
+- summary: `# fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)`
+- raw_source_ref: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
+- raw_source_refs: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
 
 ### guide-unified-agent-cursor-composer-25
 
@@ -312,6 +322,7 @@
 
 ### architecture
 
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 - [[wiki:prd-core-infra-extraction]] — PRD: fleet-core 인프라 계층 독립 패키지 분리
@@ -453,6 +464,7 @@
 
 ### fleet-admiral
 
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 - [[wiki:prd-core-dismantling-di-architecture]] — PRD: fleet-core 도메인 재편과 의존성 주입 아키텍처 확립
 
 ### fleet-admiralty
@@ -488,6 +500,7 @@
 
 ### fleet-console
 
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 - [[wiki:synthesis-fleet-console-main-dashboard-research]] — Fleet Console 메인 대시보드 개선 조사
 
 ### fleet-core
@@ -501,6 +514,7 @@
 ### fleet-harness
 
 - [[wiki:guide-001-fleet-harness-overview]] — Guide - 001 fleet-harness 소개
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 
 ### fleet-infra
 
@@ -547,6 +561,7 @@
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
 - [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 - [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 
 ### hooks
 
@@ -651,6 +666,10 @@
 - [[wiki:prd-carrier-runtime-migration]] — PRD: 캐리어 런타임 도메인의 fleet-carriers 이관
 - [[wiki:prd-infra-agent-executor-migration]] — PRD: Agent Executor 엔진의 인프라 계층 이전
 
+### package-structure
+
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
+
 ### panel-stack
 
 - [[wiki:prd-fleet-menu-t3-full]] — PRD: Fleet Menu T3 풀 구현 (Authentication / Wiki Server / Diagnostics / About)
@@ -719,6 +738,10 @@
 ### synthesis
 
 - [[wiki:synthesis-fleet-console-main-dashboard-research]] — Fleet Console 메인 대시보드 개선 조사
+
+### target
+
+- [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
 
 ### tool-scoping
 

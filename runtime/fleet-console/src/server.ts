@@ -1,20 +1,26 @@
 import crypto from "node:crypto";
 import http from "node:http";
 
-import type {
-  DeregisterCliRequest,
-  HeartbeatCliRequest,
-  PushEventsRequest,
-  RegisterCliRequest,
-} from "@dotobokuri/core-agent";
 import {
   createCarrierRegistry,
   readCarrierStatusEntries,
   registerDefaultCarriers,
+  type CarrierJobStreamEvent,
   type CarrierStatusEntry,
 } from "@dotobokuri/fleet-carriers";
+import {
+  createCarrierResultReminderRouter,
+  createFleetAgentRuntimeLifecycle,
+  getAgentCliMetadata,
+  parseAgentCliId,
+  type AgentCliId,
+  type FleetAgentRuntimeLifecycle,
+} from "@dotobokuri/fleet-admiral";
+import { createInfraServices } from "@dotobokuri/fleet-infra";
+import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
+import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
+import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
-import { readBearerToken } from "./auth.js";
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
@@ -26,9 +32,10 @@ import { tryServeStaticConsole } from "./static-console.js";
 import type { FolderPickerResult } from "./terminal/folder-picker.js";
 import { createNativeFolderPicker } from "./terminal/folder-picker.js";
 import { createFolderGrantStore } from "./terminal/folder-grants.js";
-import { createDefaultTerminalLaunchResolver, type TerminalLaunchResolver, startTerminalShell } from "./terminal/launch.js";
+import { createDefaultTerminalLaunchResolver, type ConsoleRuntimeSessionInfo, type TerminalLaunchResolver, type TerminalLaunchResolverDeps, startTerminalShell } from "./terminal/launch.js";
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
 import { createTerminalTicketRegistry } from "./terminal/tickets.js";
+import { createWorkspaceChangeScanner } from "./terminal/workspace-scanner.js";
 import { createTerminalUpgradeHandler, TERMINAL_TICKET_PATH } from "./terminal/ws-handler.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
@@ -39,7 +46,10 @@ export interface ConsoleServerDeps {
   readonly port?: number;
   readonly version?: string;
   readonly codexCwd?: string;
+  readonly dataDir?: string;
   readonly terminalLaunch?: TerminalLaunchResolver;
+  readonly terminalLaunchResolverDeps?: Omit<TerminalLaunchResolverDeps, "agentRuntime" | "dataDir" | "infraServices" | "onRuntimeSessionStart">;
+  readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
   readonly terminalPickFolder?: () => Promise<FolderPickerResult>;
@@ -54,12 +64,14 @@ export interface ConsoleServer {
 }
 
 type ObserverLookup = { readonly kind: "aggregate" };
+type ConsoleCarrierJobStreamEvent = CarrierJobStreamEvent & { readonly originSessionId?: string };
+type CreateTerminalSessionBody = { readonly folderGrantId?: unknown; readonly cwd?: unknown; readonly cliId?: unknown };
+type CreateTheaterSessionBody = { readonly cliId?: unknown };
 
 const DEFAULT_HOST = "127.0.0.1";
 // 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
 // start()에서 srv.address()의 actualPort로 캡처해 락 파일에 기록한다.
 const DEFAULT_PORT = 0;
-const DEFAULT_TERMINAL_SESSION_ID = "default";
 const SHELL_TERMINAL_SESSION_ID = "shell";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -80,6 +92,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaters = new TheaterRegistry();
   const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
+  const infraServices = createInfraServices();
+  const dataDir = deps.dataDir ?? getFleetDataDir();
+  const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
+  const ownsAgentRuntime = deps.agentRuntime === undefined;
+  const agentRuntime = deps.agentRuntime ?? createFleetAgentRuntimeLifecycle({
+    authEnvResolver,
+    dataDir,
+    onMcpServerStartError: (error) => {
+      console.error("[fleet-console] Failed to start MCP server", error);
+    },
+    workspaceChangeScanner: createWorkspaceChangeScanner(),
+    wikiToolSpecs: getWikiToolSpecs(),
+  });
+  const jobOriginById = new Map<string, string>();
+  const unsubscribeCarrierStream = agentRuntime.carrierRuntime.jobs.streaming.register((event) => {
+    const sessionId = resolveCarrierEventOrigin(event, jobOriginById);
+    if (!sessionId) return;
+    observability.appendTerminalRuntimeEvent(sessionId, event);
+  });
   const codex = createCodexGateway({
     cwd: deps.codexCwd ?? process.cwd(),
     host,
@@ -88,12 +119,40 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     getAdminToken: () => lockHandle?.payload.token ?? null,
   });
   const pickTerminalFolder = deps.terminalPickFolder ?? createNativeFolderPicker();
+  const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const terminalSessions = createTerminalSessionManager({
-    launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver(),
+    launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver({
+      ...deps.terminalLaunchResolverDeps,
+      agentRuntime,
+      dataDir,
+      infraServices,
+      onRuntimeSessionStart: (session) => {
+        pendingRuntimeSessions.set(session.sessionId, session);
+      },
+    }),
     startShell: deps.terminalStartShell,
     maxSessions: deps.maxTerminalSessions,
-    // PTY가 종료되면(예: fleet-cli 종료) 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
-    onSessionExit: (sessionId) => observability.removeTerminalSession(sessionId),
+    // PTY가 종료되면 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
+    onSessionExit: (sessionId) => {
+      pendingRuntimeSessions.delete(sessionId);
+      observability.removeTerminalSession(sessionId);
+    },
+  });
+  const unsubscribeCarrierReminderRouter = createCarrierResultReminderRouter({
+    streamRegister: agentRuntime.carrierRuntime.jobs.streaming.register,
+    resolveSink: (event) => {
+      const sessionId = resolveCarrierEventOrigin(event, jobOriginById);
+      if (!sessionId) return undefined;
+      return {
+        write: (data) => {
+          terminalSessions.writeToSession(sessionId, data);
+        },
+      };
+    },
+    resolvePolicy: (event) => {
+      const sessionId = resolveCarrierEventOrigin(event, jobOriginById);
+      return sessionId ? terminalSessions.getSessionMessagePolicy(sessionId) ?? {} : {};
+    },
   });
   const terminalUpgrade = createTerminalUpgradeHandler({
     expectedHost: host,
@@ -106,6 +165,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let loopbackServer: http.Server | null = null;
   let lockHandle: ConsoleLockHandle | null = null;
   let activeEndpoint: string | null = null;
+  let agentRuntimeStopped = false;
+  let consoleResourcesDisposed = false;
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -120,22 +181,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (tryServeStaticConsole(req, res, pathname)) return;
     if (pathname === "/health") {
       handleHealth(req, res);
-      return;
-    }
-    if (pathname === "/api/cli/register") {
-      runAsyncHandler(handleCliRegister(req, res), res);
-      return;
-    }
-    if (pathname === "/api/cli/events") {
-      runAsyncHandler(handleCliEvents(req, res), res);
-      return;
-    }
-    if (pathname === "/api/cli/heartbeat") {
-      runAsyncHandler(handleCliHeartbeat(req, res), res);
-      return;
-    }
-    if (pathname === "/api/cli/deregister") {
-      runAsyncHandler(handleCliDeregister(req, res), res);
       return;
     }
     if (pathname === TERMINAL_TICKET_PATH) {
@@ -195,7 +240,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    observability.markExpiredSessions();
     const payload = handle.payload;
     const body: ConsoleHealth = {
       ok: true,
@@ -210,83 +254,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, body);
   }
 
-  async function handleCliRegister(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const handle = lockHandle;
-    const token = readBearerToken(req.headers);
-    if (!handle || token !== handle.payload.token) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    const input = await readJsonBody<RegisterCliRequest>(req);
-    if (!input) {
-      writeJson(res, 400, { error: "Invalid registration payload" });
-      return;
-    }
-    try {
-      writeJson(res, 200, observability.register(input));
-    } catch (err) {
-      writeJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
-  async function handleCliEvents(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const token = readBearerToken(req.headers);
-    const input = await readJsonBody<PushEventsRequest>(req);
-    if (!token || !Array.isArray(input)) {
-      writeJson(res, token ? 400 : 401, { error: token ? "Invalid event payload" : "Unauthorized" });
-      return;
-    }
-    const result = observability.pushEvents(token, input);
-    if (!result) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    writeJson(res, 200, result);
-  }
-
-  async function handleCliHeartbeat(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const token = readBearerToken(req.headers);
-    const input = await readJsonBody<HeartbeatCliRequest>(req);
-    if (!token || !input?.cliRunId || !input.registrationId) {
-      writeJson(res, token ? 400 : 401, { error: token ? "Invalid heartbeat payload" : "Unauthorized" });
-      return;
-    }
-    const result = observability.heartbeat(token, input.cliRunId, input.registrationId);
-    if (!result) {
-      writeJson(res, 401, { error: "Unauthorized" });
-      return;
-    }
-    writeJson(res, 200, result);
-  }
-
-  async function handleCliDeregister(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const token = readBearerToken(req.headers);
-    const input = await readJsonBody<DeregisterCliRequest>(req);
-    if (!token || !input?.cliRunId || !input.registrationId) {
-      writeJson(res, token ? 400 : 401, { error: token ? "Invalid deregister payload" : "Unauthorized" });
-      return;
-    }
-    writeJson(res, 200, {
-      accepted: observability.deregister(token, input.cliRunId, input.registrationId),
-    });
-  }
-
   async function handleTerminalTicket(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -296,19 +263,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    const body = await readJsonBody<{ readonly registrationId?: string; readonly cliRunId?: string; readonly sessionId?: string; readonly kind?: string }>(req);
+    const body = await readJsonBody<{ readonly sessionId?: string; readonly kind?: string }>(req);
     const kind = body?.kind === "shell" ? "shell" : "fleet";
-    const sessionId = kind === "shell"
-      ? SHELL_TERMINAL_SESSION_ID
-      : typeof body?.sessionId === "string" && body.sessionId.length > 0
-        ? body.sessionId
-        : DEFAULT_TERMINAL_SESSION_ID;
+    const requestedSessionId = body?.sessionId;
+    let sessionId: string;
+    if (kind === "shell") {
+      sessionId = SHELL_TERMINAL_SESSION_ID;
+    } else if (typeof requestedSessionId === "string" && requestedSessionId.length > 0) {
+      sessionId = requestedSessionId;
+    } else {
+      writeJson(res, 400, { error: "terminal_session_not_found" });
+      return;
+    }
+    const cwd = kind === "shell" ? "" : observability.getLaunchCwd(sessionId);
+    if (cwd === null) {
+      writeJson(res, 404, { error: "terminal_session_not_found" });
+      return;
+    }
     if (!terminalSessions.canAttach(sessionId)) {
       writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return;
     }
     writeJson(res, 200, terminalTickets.issue({
-      cwd: kind === "shell" ? "" : observability.getLaunchCwd(body?.registrationId, body?.cliRunId),
+      cwd,
       sessionId,
       kind,
     }));
@@ -348,17 +325,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    const body = await readJsonBody<{ readonly folderGrantId?: unknown; readonly cwd?: unknown }>(req);
+    const body = await readJsonBody<CreateTerminalSessionBody>(req);
     if (!body || typeof body.folderGrantId !== "string" || "cwd" in body) {
       writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
+    const cliId = readOptionalAgentCliId(body.cliId, res);
+    if (cliId === false) return;
     const cwd = folderGrants.consume(body.folderGrantId);
     if (!cwd) {
       writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
-    await createTerminalSessionForCwd(cwd, res);
+    await createTerminalSessionForCwd(cwd, res, cliId);
   }
 
   async function handleTerminalSessionItem(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
@@ -394,7 +373,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method === "GET") {
-      writeJson(res, 200, { theaters: listTheaterInfos() });
+      writeJson(res, 200, { theaters: listTheaterInfos(), agentClis: getAgentCliMetadata() });
       return;
     }
     if (req.method !== "POST") {
@@ -441,19 +420,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 404, { error: "theater_not_found" });
       return;
     }
-    await createTerminalSessionForCwd(theater.path, res);
+    const body = await readJsonBody<CreateTheaterSessionBody>(req);
+    const cliId = readOptionalAgentCliId(body?.cliId, res);
+    if (cliId === false) return;
+    await createTerminalSessionForCwd(theater.path, res, cliId);
   }
 
-  async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse): Promise<void> {
+  async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse, cliId?: AgentCliId): Promise<void> {
     const sessionId = crypto.randomUUID();
-    const session = observability.createPendingTerminalSession({ sessionId, cwd });
+    const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     try {
-      terminalSessions.createSession({ sessionId, cwd });
-      const created = observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
+      await terminalSessions.createSession({ sessionId, cwd, cliId });
+      const runtimeSession = pendingRuntimeSessions.get(sessionId);
+      pendingRuntimeSessions.delete(sessionId);
+      const created = runtimeSession
+        ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
+        : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
+      observability.notifySessionUpdated(created);
       writeJson(res, 200, created);
     } catch (error) {
+      pendingRuntimeSessions.delete(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
-      writeJson(res, 503, { error: error instanceof Error ? error.message : "terminal_unavailable" });
+      writeJson(res, 503, { error: "terminal_unavailable" });
     }
   }
 
@@ -552,7 +540,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       lastOpenedAt: theater.lastOpenedAt,
       hasWiki,
       activeAdmiralCount: observability.listWorkspaces()
-        .filter((workspace) => workspace.theaterId === theater.id && workspace.status !== "deregistered")
+        .filter((workspace) => workspace.theaterId === theater.id)
         .length,
     };
   }
@@ -578,34 +566,76 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return codex.getWorkspace(theaterId) ? "available" : "unavailable";
   }
 
+  async function cleanupOwnedAgentRuntime(): Promise<void> {
+    if (!ownsAgentRuntime || agentRuntimeStopped) return;
+    await agentRuntime.cleanup();
+    agentRuntimeStopped = true;
+  }
+
+  async function cleanupAfterFailedStart(): Promise<void> {
+    const current = server;
+    const currentLoopback = loopbackServer;
+    const currentLock = lockHandle;
+    server = null;
+    loopbackServer = null;
+    lockHandle = null;
+    activeEndpoint = null;
+    await Promise.all([
+      closeHttpServer(current),
+      closeHttpServer(currentLoopback),
+    ]);
+    await terminalSessions.stop();
+    await cleanupOwnedAgentRuntime();
+    disposeConsoleResources(currentLock);
+  }
+
+  function disposeConsoleResources(currentLock: ConsoleLockHandle | null): void {
+    if (consoleResourcesDisposed) {
+      currentLock?.release();
+      return;
+    }
+    consoleResourcesDisposed = true;
+    unsubscribeCarrierReminderRouter();
+    unsubscribeCarrierStream();
+    observability.clear();
+    terminalUpgrade.close();
+    currentLock?.release();
+  }
+
   return {
     host,
     port,
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
-      await new Promise<void>((resolve, reject) => {
-        const srv = createHttpServer(handleRequest, terminalUpgrade);
-        srv.once("error", reject);
-        srv.listen(port, host, async () => {
-          srv.off("error", reject);
-          const address = srv.address();
-          const actualPort = typeof address === "object" && address ? address.port : port;
-          const endpoint = `http://${host}:${actualPort}/`;
-          try {
-            const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
-            server = srv;
-            loopbackServer = localLoopbackServer;
-            lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
-            activeEndpoint = endpoint;
-            resolve();
-          } catch (err) {
-            srv.close();
-            server = null;
-            loopbackServer = null;
-            reject(err);
-          }
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const srv = createHttpServer(handleRequest, terminalUpgrade);
+          srv.once("error", reject);
+          srv.listen(port, host, async () => {
+            srv.off("error", reject);
+            const address = srv.address();
+            const actualPort = typeof address === "object" && address ? address.port : port;
+            const endpoint = `http://${host}:${actualPort}/`;
+            try {
+              const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
+              server = srv;
+              loopbackServer = localLoopbackServer;
+              lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
+              activeEndpoint = endpoint;
+              resolve();
+            } catch (err) {
+              await closeHttpServer(srv);
+              await closeHttpServer(loopbackServer);
+              server = null;
+              loopbackServer = null;
+              reject(err);
+            }
+          });
         });
-      });
+      } catch (error) {
+        await cleanupAfterFailedStart();
+        throw error;
+      }
       if (!activeEndpoint) throw new Error("Console endpoint unavailable");
       void updateCheck.refresh();
       return activeEndpoint;
@@ -614,18 +644,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const current = server;
       const currentLoopback = loopbackServer;
       const currentLock = lockHandle;
+      let cleanupError: unknown;
       server = null;
       loopbackServer = null;
       lockHandle = null;
       activeEndpoint = null;
-      await Promise.all([
-        closeHttpServer(current),
-        closeHttpServer(currentLoopback),
-      ]);
-      observability.clear();
-      terminalUpgrade.close();
-      terminalSessions.stop();
-      currentLock?.release();
+      try {
+        await Promise.all([
+          closeHttpServer(current),
+          closeHttpServer(currentLoopback),
+        ]);
+        await terminalSessions.stop();
+        if (!agentRuntimeStopped) {
+          try {
+            if (ownsAgentRuntime) await cleanupOwnedAgentRuntime();
+          } catch (error) {
+            cleanupError = error;
+          }
+        }
+      } finally {
+        disposeConsoleResources(currentLock);
+      }
+      if (cleanupError) throw cleanupError;
     },
   };
 }
@@ -636,6 +676,22 @@ function readConsoleChannel(): ConsoleObserverStatus["channel"] {
   } catch {
     return "unknown";
   }
+}
+
+function resolveCarrierEventOrigin(event: ConsoleCarrierJobStreamEvent, jobOriginById: Map<string, string>): string | null {
+  const originSessionId = event.originSessionId;
+  if (originSessionId) {
+    jobOriginById.set(event.jobId, originSessionId);
+    if (event.type === "job:finalized") queueOriginCleanup(event.jobId, jobOriginById);
+    return originSessionId;
+  }
+  const knownOrigin = jobOriginById.get(event.jobId);
+  if (event.type === "job:finalized") queueOriginCleanup(event.jobId, jobOriginById);
+  return knownOrigin ?? null;
+}
+
+function queueOriginCleanup(jobId: string, jobOriginById: Map<string, string>): void {
+  queueMicrotask(() => jobOriginById.delete(jobId));
 }
 
 function createHttpServer(
@@ -697,6 +753,20 @@ function getPathname(req: http.IncomingMessage): string {
 
 function readUrl(req: http.IncomingMessage): URL {
   return new URL(req.url ?? "/", "http://127.0.0.1");
+}
+
+function readOptionalAgentCliId(value: unknown, res: http.ServerResponse): AgentCliId | undefined | false {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    writeJson(res, 400, { error: "invalid_agent_cli" });
+    return false;
+  }
+  try {
+    return parseAgentCliId(value);
+  } catch {
+    writeJson(res, 400, { error: "invalid_agent_cli" });
+    return false;
+  }
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {

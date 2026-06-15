@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { chmodSync, closeSync, constants, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import {
   type CarrierRuntime,
@@ -15,26 +14,32 @@ import { buildCodexNativeArgs } from "./builders/codex.js";
 import { escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
-import type { CodexCommandResult, CodexPluginRegistrationCommand, FleetHookExec } from "./plugin/types.js";
-import type { AgentCliInjectionContext, AgentCliMcpServerArg, AgentCliProfile } from "./types.js";
+import type {
+  AgentCliInjectionContext,
+  AgentCliMcpServerArg,
+  AgentCliProfile,
+  CodexCommandResult,
+  CodexPluginRegistrationCommand,
+  FleetHookExec,
+} from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
   readonly buildSystemPrompt: (injectTone: boolean) => string;
   readonly carrierRuntime: CarrierRuntime;
+  readonly dataDir: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
+  readonly mcpSessionLabel?: string;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
+  readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
-  readonly pluginAssetsDir?: string;
-  readonly pluginEntry?: FleetHookCommandEntry;
   readonly pluginRootDir?: string;
+  readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
 }
 
-export interface FleetHookCommandEntry {
-  readonly entryPath: string;
-  readonly execPath: string;
-  readonly tsxLoaderPath?: string;
+interface AgentCliPluginMarketplaceLock {
+  <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;
 }
 
 interface CodexFleetProfile {
@@ -65,8 +70,6 @@ const CODEX_FLEET_PROFILE_FILE_NAME_PATTERN = /^fleet-[0-9a-f]{8}-[0-9a-f]{4}-4[
 const CODEX_FLEET_PROFILE_MARKER = "# Fleet-managed Codex session profile";
 const CODEX_STALE_PROFILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SYSTEM_PROMPT_FILE_MODE = 0o600;
-const JAVASCRIPT_ENTRY_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
-const TYPESCRIPT_ENTRY_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"]);
 
 export async function injectAgentCliProfile(
   profile: AgentCliProfile,
@@ -80,7 +83,7 @@ export async function injectAgentCliProfile(
   const injectTone = options.enableMetaphor ?? false;
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const startupDefinitions = buildStartupNativeDefinitions(profile.id, options.carrierRuntime);
-  const tokenLabel = `agent:${profile.id}:${crypto.randomUUID()}`;
+  const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({ cwd: profile.cwd, label: tokenLabel });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
   const doctrine = options.buildSystemPrompt(injectTone);
@@ -89,15 +92,15 @@ export async function injectAgentCliProfile(
     const systemPromptFile = profile.id === "claude" || profile.id === "claude-kimi"
       ? writeSystemPromptFile(profile.id, doctrine, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
-    const plugin = createAgentCliPlugin({
+    const plugin = await createAgentCliPlugin({
       claudeDefinitions: startupDefinitions.host === "claude" ? startupDefinitions.definitions : [],
       cliId: profile.id,
+      codexCommandRunner: options.codexCommandRunner,
       cwd: profile.cwd,
+      dataDir: options.dataDir,
       rootDir: options.pluginRootDir,
-      assetsDir: options.pluginAssetsDir,
-      hookExec: startupDefinitions.host === "claude"
-        ? buildFleetHookCommand(options.pluginEntry)
-        : undefined,
+      hookExec: startupDefinitions.host === "claude" ? requireHookExec(options.hookExec) : undefined,
+      withMarketplaceLock: options.withMarketplaceLock,
     });
     const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
     const codexProfile = profile.id === "codex"
@@ -107,12 +110,12 @@ export async function injectAgentCliProfile(
     // Codex CLI가 Windows .cmd shim이면 profile.bin은 cmd.exe, binPrefixArgs는 /d /s /c <shim>이다.
     // 등록 명령은 이 prefixArgs를 base args로 실어야 PTY 실행 경로와 동일하게 codex가 호출된다(POSIX에선 빈 배열).
     for (const registration of plugin.codexRegistrations) {
-      const registrationWarning = ensureCodexPluginRegistered(registration, {
+      const registrationWarning = await ensureCodexPluginRegistered(registration, {
         args: [...(profile.binPrefixArgs ?? [])],
         bin: profile.bin,
         cwd: profile.cwd,
         env: { ...profile.env },
-      }, options.codexCommandRunner);
+      }, requireCodexCommandRunner(options.codexCommandRunner), options.withMarketplaceLock);
       if (registrationWarning !== undefined) {
         launchWarnings.push(`Fleet Codex plugin registration failed for ${registration.pluginName}: ${registrationWarning}`);
       }
@@ -148,31 +151,6 @@ export async function injectAgentCliProfile(
     options.dedicatedMcpSession.releaseSessionToken(tokenLabel);
     throw error;
   }
-}
-
-export function buildFleetHookCommand(entry: FleetHookCommandEntry | undefined): FleetHookExec {
-  if (entry === undefined) {
-    throw new Error("Fleet session hook command requires the current Fleet entry path");
-  }
-  const extension = path.extname(entry.entryPath);
-  if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {
-    // exec form: 셸 인용이 없으므로 공백 포함 경로(예: C:\Program Files\nodejs\node.exe)도 그대로 안전하다.
-    return {
-      command: entry.execPath,
-      args: [entry.entryPath, "hook", "subagents-context"],
-    };
-  }
-  if (TYPESCRIPT_ENTRY_EXTENSIONS.has(extension)) {
-    if (!entry.tsxLoaderPath) {
-      throw new Error("Fleet session hook command for TypeScript entries requires a tsx loader path");
-    }
-    // node --import는 Windows에서 절대경로(C:\...)를 c: URL scheme으로 오인하므로 file:// URL로 변환한다.
-    return {
-      command: entry.execPath,
-      args: ["--import", pathToFileURL(entry.tsxLoaderPath).href, entry.entryPath, "hook", "subagents-context"],
-    };
-  }
-  throw new Error(`Unsupported Fleet session hook entry extension: ${extension}`);
 }
 
 function buildStartupNativeDefinitions(
@@ -313,6 +291,18 @@ function unlinkBestEffort(targetPath: string): void {
   } catch {
     // stale profile 정리는 검증 뒤 파일이 바뀌거나 사라져도 세션 시작을 막지 않는다.
   }
+}
+
+function requireHookExec(hookExec: FleetHookExec | undefined): FleetHookExec {
+  if (hookExec) return hookExec;
+  throw new Error("Fleet session hook executable is required for Claude native injection");
+}
+
+function requireCodexCommandRunner(
+  codexCommandRunner: InjectAgentCliProfileOptions["codexCommandRunner"],
+): (command: CodexPluginRegistrationCommand) => CodexCommandResult {
+  if (codexCommandRunner) return codexCommandRunner;
+  throw new Error("Codex plugin registration requires an injected command runner");
 }
 
 function buildAgentCliArgs(

@@ -17,7 +17,6 @@ export interface TheaterBrief {
   readonly activeAdmiralCount: number;
   readonly terminalSessionCount: number;
   readonly registeredTenantCount: number;
-  readonly deregisteredTenantCount: number;
   readonly lastActivityAt: number | null;
 }
 
@@ -104,8 +103,7 @@ function buildTheaterBrief(state: ConsoleState): TheaterBrief | null {
     hasWiki: theater.hasWiki,
     activeAdmiralCount: theater.activeAdmiralCount,
     terminalSessionCount: sessions.length,
-    registeredTenantCount: tenants.filter((tenant) => tenant.status !== "deregistered").length,
-    deregisteredTenantCount: tenants.filter((tenant) => tenant.status === "deregistered").length,
+    registeredTenantCount: tenants.filter((tenant) => tenant.status !== "closed").length,
     lastActivityAt: latestTimestamp([
       Date.parse(theater.lastOpenedAt),
       ...sessions.map((session) => session.createdAt),

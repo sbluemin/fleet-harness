@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -15,7 +14,6 @@ import { dispatchUpdateCommand } from "./update/dispatcher.js";
 const HELP_HINT = "Run 'fleet --help' for usage.";
 const require = createRequire(import.meta.url);
 const FLEET_ENTRY_PATH = fileURLToPath(import.meta.url);
-const PLUGIN_ASSETS_DIR = path.join(dirname(dirname(FLEET_ENTRY_PATH)), "assets");
 const PLUGIN_TSX_LOADER_PATH = resolveOptionalPackage("tsx");
 const PLUGIN_ENTRY = {
   entryPath: FLEET_ENTRY_PATH,
@@ -76,7 +74,6 @@ const runFleetApp = options.nativeTerminal ? runNativeApp : runApp;
 runFleetApp({
   argvOptions: options,
   cursorSync: options.cursorSync,
-  pluginAssetsDir: PLUGIN_ASSETS_DIR,
   pluginEntry: PLUGIN_ENTRY,
 }).catch((error: unknown) => {
   const message = error instanceof Error ? error.stack ?? error.message : String(error);

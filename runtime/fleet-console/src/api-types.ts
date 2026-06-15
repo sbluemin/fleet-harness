@@ -1,5 +1,3 @@
-import type { CliSession } from "@dotobokuri/core-agent";
-
 export interface ConsoleLockPayload {
   readonly pid: number;
   readonly host: string;
@@ -26,7 +24,7 @@ export interface ConsoleObservedWorkspace {
   readonly tenantLabel: string;
   readonly createdAt: number;
   readonly sessions: number;
-  readonly status: CliSession["status"];
+  readonly status: "live" | "closed";
   readonly cliRunId: string;
   readonly registrationId: string;
   readonly theaterId: string;
@@ -40,6 +38,11 @@ export interface ConsoleTheaterInfo {
   readonly lastOpenedAt: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
+}
+
+export interface ConsoleAgentCliMetadata {
+  readonly id: string;
+  readonly label: string;
 }
 
 export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unknown";
@@ -74,6 +77,7 @@ export interface ConsoleObserverCarriersResponse {
 
 export interface ConsoleObserverTheatersResponse {
   readonly theaters: readonly ConsoleTheaterInfo[];
+  readonly agentClis?: readonly ConsoleAgentCliMetadata[];
 }
 
 export interface CreateTheaterCancelledResponse {
@@ -90,6 +94,8 @@ export interface ConsoleTerminalSessionInfo {
   readonly cwdLabel: string;
   readonly sequence: number;
   readonly label?: string;
+  readonly cliId?: string;
+  readonly cliLabel?: string;
   readonly status: ConsoleTerminalSessionStatus;
   readonly createdAt: number;
   readonly theaterId: string;
@@ -111,6 +117,7 @@ export interface PickTerminalFolderResponse {
 
 export interface CreateTerminalSessionRequest {
   readonly folderGrantId: string;
+  readonly cliId?: string;
 }
 
 export interface CreateTerminalSessionResponse extends ConsoleTerminalSessionInfo {}

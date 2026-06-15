@@ -3,30 +3,54 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-import { resolvePathBinary } from "@dotobokuri/core-agent";
+import { resolvePathBinary, type AuthEnvResolver } from "@dotobokuri/core-agent";
+import {
+  createSystemPromptBuilder,
+  injectAgentCliProfile,
+  resolveAgentCliProfile,
+  type AgentCliId,
+  type AgentCliProfile,
+  type FleetAgentRuntimeLifecycle,
+} from "@dotobokuri/fleet-admiral";
+import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
+import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
+import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 
-import { readFleetConsoleRelease, type FleetConsoleRelease } from "../release.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
+import { buildConsoleHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
   readonly homedir?: () => string;
-  readonly exists?: (path: string) => boolean;
   readonly platform?: NodeJS.Platform;
-  // dev/prod 채널과 콘솔 패키지 루트를 주입 가능(테스트·임베드용). 미주입 시 콘솔 자신의 릴리스를 읽는다.
-  readonly release?: FleetConsoleRelease;
+  readonly entryPath?: string;
+  readonly tsxLoaderPath?: string;
+  readonly dataDir?: string;
+  readonly infraServices?: InfraServices;
+  readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly injectProfile?: typeof injectAgentCliProfile;
+  readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
+  readonly resolveProfile?: typeof resolveAgentCliProfile;
 }
 
-export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => TerminalLaunchSpec;
+export interface ConsoleRuntimeSessionInfo {
+  readonly cliId: AgentCliId;
+  readonly cliLabel: string;
+  readonly label: string;
+  readonly mcpToolCount: number;
+  readonly sessionId: string;
+}
+
+export type TerminalLaunchResolver = (cwd?: string, context?: TerminalLaunchContext) => Promise<TerminalLaunchSpec>;
 
 const DEFAULT_TERMINAL_CWD_FALLBACK = os.homedir;
 const TERMINAL_TERM = "xterm-256color";
-// 콘솔 PTY 터미널은 fleet-cli를 headless + native 모드로 띄운다:
-// 별도 TUI 크롬 없이 선택한 Agent CLI가 이 터미널을 직접 점유한다.
-const FLEET_HEADLESS_NATIVE_FLAGS = ["--headless", "--native"] as const;
+const CONSOLE_ENTRY_PATH = fileURLToPath(import.meta.url);
+const HOOK_ENTRY_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".mjs", ".mts", ".ts", ".tsx"]);
 const require = createRequire(import.meta.url);
 
 export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
@@ -34,16 +58,22 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
   const env = deps.env ?? process.env;
   const execPath = deps.execPath ?? process.execPath;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
-  const exists = deps.exists ?? fs.existsSync;
   const platform = deps.platform ?? process.platform;
-  // 채널은 프로세스 수명 동안 불변이므로 resolver 생성 시 1회만 평가한다.
-  const release = deps.release ?? readFleetConsoleRelease();
+  const entryPath = resolveHookEntryPath(deps.entryPath ?? process.argv[1]);
+  const tsxLoaderPath = deps.tsxLoaderPath ?? resolveOptionalPackage("tsx");
+  const dataDir = deps.dataDir ?? getFleetDataDir();
+  const infraServices = deps.infraServices ?? createInfraServices();
+  const agentRuntime = deps.agentRuntime;
+  const injectProfile = deps.injectProfile ?? injectAgentCliProfile;
+  const resolveProfile = deps.resolveProfile ?? resolveAgentCliProfile;
+  const authEnvResolver: AuthEnvResolver = (cli) => resolveAuthEnv(cli as Parameters<typeof resolveAuthEnv>[0], { authService: infraServices.authService });
+  const hookEntry: ConsoleHookCommandEntry = { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
 
-  return (selectedCwd, context) => {
+  return async (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
     if (context?.kind === "shell") {
       const shell = resolveWindowsLaunchBinary(resolveUserShell(env, platform), [], env, platform, "user shell");
-      return { bin: shell.bin, args: shell.args, cwd, env: buildShellLaunchEnv(env) };
+      return { bin: shell.bin, args: shell.args, cwd, env: buildShellLaunchEnv(env), terminalName: TERMINAL_TERM };
     }
     const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
@@ -55,31 +85,41 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
         platform,
         "FLEET_TERMINAL_CMD",
       );
-      return { ...resolvedOverride, cwd, env: launchEnv };
+      return { ...resolvedOverride, cwd, env: launchEnv, terminalName: TERMINAL_TERM };
     }
-    // dev/prod 판별은 cwd(=선택한 Theater)가 아니라 콘솔 자신의 릴리스 채널로 한다.
-    // local: 모노레포 형제 디렉터리의 빌드된 fleet-cli를 node로 실행한다(Theater 위치와 무관).
-    // stable: 글로벌 설치된 `fleet` 바이너리를 PATH에서 실행한다.
-    if (release.channel === "local") {
-      const localCli = resolveSiblingFleetCliEntry(release.packageRoot, exists);
-      if (!localCli) {
-        // local 빌드에서 형제 fleet-cli 산출물이 없으면 글로벌 `fleet`로 조용히 폴백하지 않고 명확히 실패한다
-        // (잘못된 바이너리를 띄우는 대신 빌드 누락을 즉시 드러낸다). server.ts가 이 throw를 503으로 표면화한다.
-        throw new Error(
-          `Fleet Console is running from a local build (channel=local) but the sibling fleet-cli build was not found at ${expectedSiblingFleetCliEntry(release.packageRoot)}. Run \`pnpm build\` in runtime/fleet-cli before launching a terminal session.`,
-        );
-      }
-      return { bin: execPath, args: [localCli, ...FLEET_HEADLESS_NATIVE_FLAGS], cwd, env: launchEnv };
-    }
-    const stableFleet = resolveWindowsLaunchBinary(
-      "fleet",
-      [...FLEET_HEADLESS_NATIVE_FLAGS],
-      env,
-      platform,
-      "fleet stable terminal binary",
-    );
-    return { ...stableFleet, cwd, env: launchEnv };
+    const sessionId = context?.sessionId ?? "default";
+    return createAgentCliLaunchSpec({
+      authEnvResolver,
+      agentRuntime,
+      cwd,
+      dataDir,
+      env: launchEnv,
+      hookEntry,
+      infraServices,
+      injectProfile,
+      onRuntimeSessionStart: deps.onRuntimeSessionStart,
+      resolveProfile,
+      cliId: context?.cliId,
+      sessionId,
+    });
   };
+}
+
+function resolveHookEntryPath(candidate: string | undefined): string {
+  if (candidate && hasHookEntryExtension(candidate)) return candidate;
+  if (candidate) {
+    try {
+      const realPath = fs.realpathSync(candidate);
+      if (hasHookEntryExtension(realPath)) return realPath;
+    } catch {
+      // 실행 엔트리 symlink 해석 실패 시 번들 엔트리로 폴백한다.
+    }
+  }
+  return CONSOLE_ENTRY_PATH;
+}
+
+function hasHookEntryExtension(entryPath: string): boolean {
+  return HOOK_ENTRY_EXTENSIONS.has(path.extname(entryPath));
 }
 
 export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly cols: number; readonly rows: number }): TerminalPtyHandle {
@@ -90,15 +130,111 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
       readonly cwd: string;
       readonly env: NodeJS.ProcessEnv;
       readonly name: string;
+      readonly useConptyDll?: boolean;
     }) => TerminalPtyHandle;
   };
+  const useConptyDll = resolveUseConptyDll(process.platform, process.env);
   return spawnPty(launch.bin, [...launch.args], {
     cols: size.cols,
     rows: size.rows,
     cwd: launch.cwd,
     env: launch.env,
-    name: TERMINAL_TERM,
+    name: launch.terminalName ?? TERMINAL_TERM,
+    ...(useConptyDll ? { useConptyDll: true } : {}),
   });
+}
+
+export function resolveUseConptyDll(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): boolean {
+  if (platform !== "win32") return false;
+  const override = env.FLEET_USE_CONPTY_DLL?.toLowerCase();
+  return override !== "0" && override !== "false";
+}
+
+async function createAgentCliLaunchSpec(options: {
+  readonly authEnvResolver: AuthEnvResolver;
+  readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly cliId?: string;
+  readonly cwd: string;
+  readonly dataDir: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly hookEntry: ConsoleHookCommandEntry;
+  readonly infraServices: InfraServices;
+  readonly injectProfile: typeof injectAgentCliProfile;
+  readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
+  readonly resolveProfile: typeof resolveAgentCliProfile;
+  readonly sessionId: string;
+}): Promise<TerminalLaunchSpec> {
+  const cleanupStack: Array<() => void | Promise<void>> = [];
+  try {
+    const agentRuntime = options.agentRuntime;
+    if (!agentRuntime) {
+      throw new Error("Fleet Console agent runtime is unavailable.");
+    }
+    const profile = await options.resolveProfile(options.env, options.cwd, {
+      authEnvResolver: options.authEnvResolver,
+      authService: options.infraServices.authService,
+      cliId: options.cliId,
+    });
+    const injectedProfile = await options.injectProfile(profile, {
+      buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
+      carrierRuntime: agentRuntime.carrierRuntime,
+      codexCommandRunner: runCodexCommand,
+      dataDir: options.dataDir,
+      dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
+      enableMetaphor: false,
+      hookExec: buildConsoleHookCommand(options.hookEntry),
+      onCleanup: (cleanup) => cleanupStack.push(cleanup),
+      replaceSystemPrompt: true,
+      withMarketplaceLock: withConsoleMarketplaceLock,
+      mcpSessionLabel: options.sessionId,
+    } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });
+    options.onRuntimeSessionStart?.({
+      cliId: injectedProfile.id,
+      cliLabel: injectedProfile.label,
+      label: injectedProfile.label,
+      mcpToolCount: countMcpTools(agentRuntime),
+      sessionId: options.sessionId,
+    });
+    return toLaunchSpec(injectedProfile, createOnceCleanup(async () => {
+      for (const cleanup of [...cleanupStack].reverse()) {
+        await cleanup();
+      }
+    }));
+  } catch (error) {
+    for (const cleanup of [...cleanupStack].reverse()) {
+      try {
+        await cleanup();
+      } catch {
+        // 실패 launch의 cleanup 에러는 원래 실패 원인을 덮지 않는다.
+      }
+    }
+    throw error;
+  }
+}
+
+function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>): TerminalLaunchSpec {
+  return {
+    args: [...profile.args],
+    bin: profile.bin,
+    cleanup,
+    cwd: profile.cwd,
+    env: { ...profile.env },
+    messagePolicy: profile.messagePolicy,
+    terminalName: profile.terminalName,
+  };
+}
+
+function countMcpTools(agentRuntime: FleetAgentRuntimeLifecycle): number {
+  return agentRuntime.mcpRegistry.getAllAgentTools().length;
+}
+
+function createOnceCleanup(cleanup: () => void | Promise<void>): () => Promise<void> {
+  let done = false;
+  return async () => {
+    if (done) return;
+    done = true;
+    await cleanup();
+  };
 }
 
 function resolveUserShell(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
@@ -124,16 +260,6 @@ function resolveWindowsLaunchBinary(
   return { bin: resolved.bin, args: [...resolved.prefixArgs, ...args] };
 }
 
-function resolveSiblingFleetCliEntry(consolePackageRoot: string, exists: (path: string) => boolean = fs.existsSync): string | null {
-  const candidate = expectedSiblingFleetCliEntry(consolePackageRoot);
-  return exists(candidate) ? candidate : null;
-}
-
-function expectedSiblingFleetCliEntry(consolePackageRoot: string): string {
-  // 모노레포 레이아웃: runtime/fleet-console 과 runtime/fleet-cli 는 형제 디렉터리다.
-  return path.join(consolePackageRoot, "..", "fleet-cli", "dist", "index.js");
-}
-
 function parseTerminalCommand(command: string | undefined): { readonly bin: string; readonly args: readonly string[] } | null {
   const parts = command?.trim().split(/\s+/).filter(Boolean) ?? [];
   if (parts.length === 0) return null;
@@ -155,4 +281,12 @@ function buildShellLaunchEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     ...env,
     TERM: TERMINAL_TERM,
   };
+}
+
+function resolveOptionalPackage(id: string): string | undefined {
+  try {
+    return require.resolve(id);
+  } catch {
+    return undefined;
+  }
 }

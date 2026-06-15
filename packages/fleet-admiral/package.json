@@ -14,9 +14,12 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "tsup",
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "pnpm generate && tsup",
+    "generate": "node ../../scripts/generate-fleet-admiral-assets.mjs",
+    "prepare": "pnpm generate",
+    "prepack": "pnpm generate",
+    "test": "pnpm generate && vitest run --passWithNoTests",
+    "typecheck": "pnpm generate && tsc --noEmit -p tsconfig.json"
   },
   "exports": {
     ".": {

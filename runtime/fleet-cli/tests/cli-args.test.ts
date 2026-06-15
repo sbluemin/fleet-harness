@@ -5,7 +5,6 @@ import { buildFleetHelpText, parseFleetCliOptions } from "../src/cli-args.js";
 describe("fleet CLI args", () => {
   it("enables cursor sync by default", () => {
     expect(parseFleetCliOptions([], {}).cursorSync).toBe(true);
-    expect(parseFleetCliOptions([], {}).headless).toBe(false);
     expect(parseFleetCliOptions([], {}).nativeTerminal).toBe(false);
   });
 
@@ -16,23 +15,10 @@ describe("fleet CLI args", () => {
   it("parses the native terminal boot flag without changing cursor sync", () => {
     expect(parseFleetCliOptions(["--native"], {})).toMatchObject({
       cursorSync: true,
-      headless: false,
       nativeTerminal: true,
     });
     expect(parseFleetCliOptions(["--native", "--disable-cursor-sync"], {})).toMatchObject({
       cursorSync: false,
-      headless: false,
-      nativeTerminal: true,
-    });
-  });
-
-  it("parses the headless console registration flag independently from native boot", () => {
-    expect(parseFleetCliOptions(["--headless"], {})).toMatchObject({
-      headless: true,
-      nativeTerminal: false,
-    });
-    expect(parseFleetCliOptions(["--headless", "--native"], {})).toMatchObject({
-      headless: true,
       nativeTerminal: true,
     });
   });
@@ -69,8 +55,6 @@ describe("fleet CLI args", () => {
     expect(helpText).toContain("-h, --help");
     expect(helpText).toContain("--native");
     expect(helpText).toContain("Run the selected Agent CLI in the real terminal");
-    expect(helpText).toContain("--headless");
-    expect(helpText).toContain("Register this session to a running Fleet Console");
     expect(helpText).toContain("--disable-cursor-sync");
     expect(helpText).toContain("problematic IME cursor anchoring (or FLEET_CURSOR_SYNC=0)");
     expect(helpText).not.toContain("\x1b[");

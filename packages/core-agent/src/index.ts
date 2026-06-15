@@ -12,21 +12,6 @@ export type {
   TrackStatus,
 } from "./types.js";
 export type {
-  CliSession,
-  DeregisterCliRequest,
-  DeregisterCliResponse,
-  HeartbeatCliRequest,
-  HeartbeatCliResponse,
-  PushEventEnvelope,
-  PushEventSequencePolicy,
-  PushEventsRequest,
-  PushEventsResponse,
-  RegisterCliMcpMetadata,
-  RegisterCliMcpServerMetadata,
-  RegisterCliRequest,
-  RegisterCliResponse,
-} from "./register-contract.js";
-export type {
   ExecutorMcpRuntimeProvider,
   ExecutorMcpRuntimeProviderRuntime,
   ExecutorMcpRouterRuntime,
@@ -119,6 +104,7 @@ export {
   disconnectAll,
   cleanIdle,
   getSessionIdFor,
+  listActivePoolKeys,
 } from "./connections.js";
 export {
   executeWithPool,

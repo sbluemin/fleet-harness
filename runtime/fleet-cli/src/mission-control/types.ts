@@ -1,7 +1,7 @@
+import type { AgentCliId, AgentCliProfile } from "@dotobokuri/fleet-admiral";
 import type { AuthService } from "@dotobokuri/fleet-infra/auth";
 import type { CarrierRuntime } from "@dotobokuri/fleet-carriers";
 
-import type { AgentCliId, AgentCliProfile } from "../agent-cli/types.js";
 import type { Component, PtyExitEvent, PtyHost, PtyLaunchProfile } from "../controls/index.js";
 import type { PtyView } from "../controls/terminal-view.js";
 import type { SessionOptions, SessionOptionsRuntime } from "./options/types.js";

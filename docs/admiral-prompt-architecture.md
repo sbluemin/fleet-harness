@@ -60,9 +60,7 @@ functional identifiers such as skill IDs and report-token keys remain fixed.
 The full protocol workflows are not inlined into the static Admiral prompt.
 Operational requests load exactly one built-in protocol skill on demand:
 `protocol-baseline`, `protocol-midline`,
-`protocol-redline`, or `protocol-frontline`. The Fleet CLI
-owns those packaged skill assets and marketplace rendering; `fleet-admiral`
-owns only the prompt gate and Standing Order policy. There is still no protocol
+`protocol-redline`, or `protocol-frontline`. `packages/fleet-admiral` owns those packaged skill assets and Fleet plugin/persona/marketplace rendering; `fleet-cli` and `fleet-console` consume them through the public root package API. `fleet-admiral` owns the prompt gate and Standing Order policy. There is still no protocol
 registry, persisted mode setting, runtime switching API, or Fleet CLI protocol
 selector UI.
 
@@ -96,7 +94,7 @@ Context Confidence.
 Runtime state is read through direct owners:
 
 - Protocol gate and Standing Order policy: `packages/fleet-admiral/src/protocols/**`
-- Built-in protocol skill assets: `runtime/fleet-cli/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline}/SKILL.md`
+- Built-in protocol skill assets: committed source at `packages/fleet-admiral/assets/skills/{protocol-baseline,protocol-midline,protocol-redline,protocol-frontline}/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`
 - Carrier registry and display state: `@dotobokuri/fleet-carriers`
 - Carrier store, job stream state, and per-job workspace change manifest policy: `@dotobokuri/fleet-carriers`
 - Workspace git-status scanner implementation: `runtime/fleet-cli`

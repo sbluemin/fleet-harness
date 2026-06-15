@@ -9,7 +9,9 @@ import type {
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
+  TerminalRenderer,
   ThemeId,
+  TheaterBootstrap,
   TheaterInfo,
 } from "./types.js";
 
@@ -23,7 +25,10 @@ export interface SessionJob {
 const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
+const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
+const EXPANDED_SESSIONS_STORAGE_KEY = "fleet-console.expandedSessions";
 const DEFAULT_THEME: ThemeId = "maritime";
+const DEFAULT_RENDERER: TerminalRenderer = "webgl";
 export const SHELL_SESSION_ID = "shell";
 
 const listeners = new Set<Listener>();
@@ -31,10 +36,12 @@ let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
   activeTheme: readStoredTheme(),
+  terminalRenderer: readStoredRenderer(),
   updateAvailable: false,
   latestVersion: null,
   tenants: [],
   theaters: [],
+  agentClis: [],
   activeTheaterId: null,
   addingTheater: false,
   theaterError: null,
@@ -48,6 +55,7 @@ let state: ConsoleState = {
   timelineOpen: false,
   shellOpen: false,
   selectedJobId: null,
+  expandedSessionIds: readStoredExpandedSessions(),
 };
 
 export function getState(): ConsoleState {
@@ -74,6 +82,21 @@ export function setActiveTheme(theme: ThemeId): void {
   writeStoredTheme(theme);
   applyThemeToDocument(theme);
   setState({ activeTheme: theme });
+}
+
+export function setTerminalRenderer(renderer: TerminalRenderer): void {
+  writeStoredRenderer(renderer);
+  setState({ terminalRenderer: renderer });
+}
+
+export function readStoredRenderer(): TerminalRenderer {
+  if (typeof window === "undefined") return DEFAULT_RENDERER;
+  try {
+    const stored = window.localStorage.getItem(RENDERER_STORAGE_KEY);
+    return stored === "webgl" || stored === "dom" ? stored : DEFAULT_RENDERER;
+  } catch {
+    return DEFAULT_RENDERER;
+  }
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
@@ -108,6 +131,17 @@ export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId);
   setState({
     theaters,
+    activeTheaterId,
+    activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, state.sessions, state.sessionOrder, state.activeTerminalSessionId),
+    selectedJobId: null,
+  });
+}
+
+export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
+  const activeTheaterId = chooseActiveTheaterId(bootstrap.theaters, state.activeTheaterId);
+  setState({
+    theaters: bootstrap.theaters,
+    agentClis: bootstrap.agentClis,
     activeTheaterId,
     activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, state.sessions, state.sessionOrder, state.activeTerminalSessionId),
     selectedJobId: null,
@@ -207,6 +241,14 @@ export function closeShell(): void {
   setState({ shellOpen: false });
 }
 
+export function toggleTerminalZoom(sessionId: string): void {
+  const expandedSessionIds = state.expandedSessionIds.includes(sessionId)
+    ? state.expandedSessionIds.filter((id) => id !== sessionId)
+    : [...state.expandedSessionIds, sessionId];
+  writeStoredExpandedSessions(expandedSessionIds);
+  setState({ expandedSessionIds });
+}
+
 export function failTerminateTerminalSession(error: string): void {
   // 종료 실패 시 카드는 남기고 사이드바 오류 라인에만 사유를 표기한다(살아있는 PTY를 숨기지 않는다).
   setState({ terminalSessionError: error });
@@ -222,12 +264,15 @@ export function removeTerminalSession(sessionId: string): void {
   const sessions = { ...state.sessions };
   delete sessions[sessionId];
   const sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
+  const expandedSessionIds = state.expandedSessionIds.filter((id) => id !== sessionId);
   const wasActive = state.activeTerminalSessionId === sessionId;
+  writeStoredExpandedSessions(expandedSessionIds);
   setState({
     sessions,
     sessionOrder,
     activeTerminalSessionId: wasActive ? sessionOrder[0] ?? null : state.activeTerminalSessionId,
     selectedJobId: wasActive ? null : state.selectedJobId,
+    expandedSessionIds,
   });
 }
 
@@ -370,6 +415,11 @@ export function sessionJobs(current: ConsoleState, session: SessionInfo): readon
   return jobs;
 }
 
+export function isSessionExpanded(current: ConsoleState, sessionId: string | null): boolean {
+  if (!sessionId) return false;
+  return current.expandedSessionIds.includes(sessionId);
+}
+
 export function resolveSessionTenantId(session: SessionInfo | undefined): string | null {
   return session?.tenantId ?? session?.sessionId ?? null;
 }
@@ -399,7 +449,7 @@ function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, te
     if (!session) continue;
     next[tenant.terminalSessionId] = {
       ...session,
-      status: tenant.status === "deregistered" ? "closed" : "registered",
+      status: tenant.status === "closed" ? "closed" : "registered",
       tenantId: tenant.tenantId,
       registrationId: tenant.registrationId,
       theaterId: tenant.theaterId ?? session.theaterId,
@@ -464,10 +514,40 @@ function readStoredTheme(): ThemeId {
   }
 }
 
+function readStoredExpandedSessions(): readonly string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(EXPANDED_SESSIONS_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function writeStoredTheme(theme: ThemeId): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
+function writeStoredRenderer(renderer: TerminalRenderer): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RENDERER_STORAGE_KEY, renderer);
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
+function writeStoredExpandedSessions(ids: readonly string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(EXPANDED_SESSIONS_STORAGE_KEY, JSON.stringify(ids));
   } catch {
     // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

@@ -1,16 +1,18 @@
 import {
+  buildCarrierModelDefaults,
   getCarrierConfig,
   getConfiguredTaskForceBackendsFromSnapshot,
   getRegisteredOrder,
   readCarriersSnapshot,
   readCarrierAgentModeSnapshot,
+  resolveAgentCliType,
   resolveCarrierDisplayName,
+  type CarrierConfig,
   type CarrierModelDefaults,
   type CarrierRuntime,
 } from "@dotobokuri/fleet-carriers";
 import { sanitizeToolBlockLabel } from "@dotobokuri/fleet-carriers";
 
-import { buildHostCarrierModelDefaults } from "../../agent-cli/carrier-defaults.js";
 import { getAvailableModels } from "./model-info.js";
 import type { GroupedEntries, StatusOverlayViewModel } from "./render-types.js";
 import type { CarrierCliType, CarrierStatusEntry, FleetStoreSnapshot } from "./types.js";
@@ -152,6 +154,17 @@ function cliTypeForCarrierFromSnapshot(
   defaultCliType: CarrierCliType,
 ): CarrierCliType {
   return snapshot.carriers[carrierId]?.agentCliType ?? defaultCliType;
+}
+
+function buildHostCarrierModelDefaults(config: CarrierConfig): CarrierModelDefaults {
+  const cliType = resolveAgentCliType(config.id, config.defaultCliType);
+  const cliDefaults = buildCarrierModelDefaults(config, cliType);
+  return {
+    cliType,
+    ...(config.defaultAgentMode ? { defaultAgentMode: config.defaultAgentMode } : {}),
+    ...(cliDefaults.defaultEffort ? { defaultEffort: cliDefaults.defaultEffort } : {}),
+    ...(cliDefaults.defaultModel ? { defaultModel: cliDefaults.defaultModel } : {}),
+  };
 }
 
 function buildRoleDescription(role: string | null, summary: string | null): string | null {

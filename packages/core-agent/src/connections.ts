@@ -9,6 +9,7 @@
 import {
   engineDisconnect,
   engineDisconnectAll,
+  engineListActivePoolKeys,
   engineCleanIdle,
   engineGetPooledSessionId,
 } from "./internal/executor-engine.js";
@@ -30,6 +31,11 @@ export async function disconnect(poolKey: string): Promise<boolean> {
 /** executor 풀 전체 정리 */
 export async function disconnectAll(): Promise<void> {
   await engineDisconnectAll();
+}
+
+/** 현재 executor 풀에 등록된 opaque poolKey 목록 조회 */
+export function listActivePoolKeys(): string[] {
+  return engineListActivePoolKeys();
 }
 
 /** busy가 아닌 executor 클라이언트 정리 */

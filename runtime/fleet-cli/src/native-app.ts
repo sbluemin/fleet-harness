@@ -1,22 +1,29 @@
-import { createSystemPromptBuilder } from "@dotobokuri/fleet-admiral";
-import type { CarrierJobStreamEvent } from "@dotobokuri/fleet-carriers";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
+
+import {
+  createCarrierResultReminderRouter,
+  createSystemPromptBuilder,
+  getAgentCliMetadata,
+  getDefaultAgentCliId,
+  injectAgentCliProfile,
+  parseAgentCliId,
+  type AgentCliProfile,
+} from "@dotobokuri/fleet-admiral";
 import type { IDisposable, IPty } from "node-pty";
 
-import { injectAgentCliProfile, type FleetHookCommandEntry } from "./agent-cli/injection.js";
-import type { AgentCliProfile } from "./agent-cli/types.js";
-import { getAgentCliMetadata, getDefaultAgentCliId, parseAgentCliId } from "./agent-cli/registry.js";
+import {
+  buildFleetHookCommand,
+  runCodexCommand,
+  withFleetMarketplaceLock,
+} from "./agent-cli/host-hooks.js";
 import { createMissionControlProfileConfig, type RunAppOptions } from "./app.js";
 import { type FleetCliOptions } from "./cli-args.js";
 import {
-  createProgrammaticInput,
   KITTY_DISABLE,
   KITTY_ENABLE,
   type PtyExitEvent,
-  type PtyHost,
 } from "./controls/index.js";
-import { sanitizeCarrierResultReminder } from "./mission-bridge/job-bar/register.js";
 import { createMissionControlController } from "./mission-control/controller.js";
 import { discoverMissionControlCounts } from "./mission-control/loaded-counts.js";
 import { createWikiProcessController } from "./mission-control/menu/wiki-panel.js";
@@ -62,7 +69,7 @@ type NativeInputDebugDetail = Readonly<Record<string, unknown>>;
 
 export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
   const argvOptions = options.argvOptions ?? createRunNativeAppArgOptions(options);
-  const runtimeLifecycle = createFleetRuntimeLifecycle({ consoleRegister: argvOptions.headless });
+  const runtimeLifecycle = createFleetRuntimeLifecycle();
   const agentCliCleanupCallbacks = new Set<() => void>();
   const runtime = await runtimeLifecycle.start();
   const invocationCwd = resolveInvocationCwd();
@@ -100,6 +107,7 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     carrierRuntime: runtime.carrierRuntime,
   }).build;
   const missionControlProfileConfig = createMissionControlProfileConfig({
+    authEnvResolver: runtime.authEnvResolver,
     authService: runtime.infraServices.authService,
     env: process.env,
     invocationCwd,
@@ -155,12 +163,16 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
       injectAgentCliProfile(profile, {
         buildSystemPrompt,
         carrierRuntime: runtime.carrierRuntime,
+        codexCommandRunner: runCodexCommand,
+        dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
+        hookExec: profile.id === "claude" || profile.id === "claude-kimi"
+          ? buildFleetHookCommand(options.pluginEntry)
+          : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),
         replaceSystemPrompt: (launchOptions ?? sessionOptionsRuntime.getDraft()).replaceSystemPrompt,
-        pluginAssetsDir: options.pluginAssetsDir,
-        pluginEntry: options.pluginEntry,
+        withMarketplaceLock: withFleetMarketplaceLock,
       }),
     launchProfile,
     loadedCounts: discoverMissionControlCounts({ invocationCwd }),
@@ -173,10 +185,19 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     wikiController,
   });
   missionControlDispose = missionControl.dispose;
-  disposeCarrierReminderSubscription = subscribeNativeCarrierReminders(
-    runtime.carrierRuntime.jobs.streaming.register,
-    () => activeNativeChild,
-  );
+  disposeCarrierReminderSubscription = createOnce(createCarrierResultReminderRouter({
+    streamRegister: runtime.carrierRuntime.jobs.streaming.register,
+    resolveSink: () => {
+      const activeChild = activeNativeChild;
+      if (activeChild === undefined) {
+        return undefined;
+      }
+      return {
+        write: (data) => activeChild.bridge.writeRaw(data),
+      };
+    },
+    resolvePolicy: () => activeNativeChild?.profile.messagePolicy ?? {},
+  }));
   checkForUpdate(release)
     .then((latestVersion) => {
       if (latestVersion !== undefined) {
@@ -344,7 +365,6 @@ function createRunNativeAppArgOptions(options: RunAppOptions): FleetCliOptions {
     },
     cursorSync: options.cursorSync !== false,
     help: false,
-    headless: false,
     nativeTerminal: true,
   };
 }
@@ -421,37 +441,6 @@ function startNativeRawPtySession(options: {
     dispose,
     waitExit: () => exitPromise.finally(dispose),
   };
-}
-
-function subscribeNativeCarrierReminders(
-  register: (handler: (event: CarrierJobStreamEvent) => void) => () => void,
-  getActiveChild: () => NativeActiveChild | undefined,
-): () => void {
-  const unsubscribe = register((event) => {
-    const reminder = extractCarrierResultSystemReminder(event);
-    if (reminder === undefined) {
-      return;
-    }
-    const activeChild = getActiveChild();
-    if (activeChild === undefined) {
-      return;
-    }
-    createProgrammaticInput({
-      write: (data) => activeChild.bridge.writeRaw(data),
-    } as Pick<PtyHost, "write"> as PtyHost, activeChild.profile).sendMessage(reminder);
-  });
-
-  return createOnce(unsubscribe);
-}
-
-function extractCarrierResultSystemReminder(event: CarrierJobStreamEvent): string | undefined {
-  if (event.type !== "job:finalized") {
-    return undefined;
-  }
-  if (typeof event.systemReminder !== "string" || event.systemReminder.trim().length === 0) {
-    return undefined;
-  }
-  return sanitizeCarrierResultReminder(event.systemReminder);
 }
 
 function createOnce(callback: () => void): () => void {
