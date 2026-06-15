@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
 
-import { createDefaultTerminalLaunchResolver } from "../src/terminal/launch.js";
+import { createDefaultTerminalLaunchResolver, resolveUseConptyDll } from "../src/terminal/launch.js";
 import type { TerminalLaunchSpec } from "../src/terminal/types.js";
 
 interface FakeRuntime {
@@ -254,6 +254,29 @@ describe("createDefaultTerminalLaunchResolver", () => {
     await spec.cleanup?.();
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(runtimeCleanup).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveUseConptyDll", () => {
+  it("defaults on for Windows", () => {
+    expect(resolveUseConptyDll("win32", {})).toBe(true);
+  });
+
+  it("is always off for Linux and Darwin", () => {
+    expect(resolveUseConptyDll("linux", { FLEET_USE_CONPTY_DLL: "1" })).toBe(false);
+    expect(resolveUseConptyDll("darwin", { FLEET_USE_CONPTY_DLL: "1" })).toBe(false);
+  });
+
+  it("honors the Windows zero override", () => {
+    expect(resolveUseConptyDll("win32", { FLEET_USE_CONPTY_DLL: "0" })).toBe(false);
+  });
+
+  it("honors the Windows false override case-insensitively", () => {
+    expect(resolveUseConptyDll("win32", { FLEET_USE_CONPTY_DLL: "FALSE" })).toBe(false);
+  });
+
+  it("honors the Windows enabled override", () => {
+    expect(resolveUseConptyDll("win32", { FLEET_USE_CONPTY_DLL: "1" })).toBe(true);
   });
 });
 

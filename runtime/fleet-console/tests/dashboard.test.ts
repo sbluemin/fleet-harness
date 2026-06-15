@@ -7,6 +7,7 @@ const BASE_STATE: ConsoleState = {
   connection: "live",
   connectionError: null,
   activeTheme: "maritime",
+  terminalRenderer: "webgl",
   updateAvailable: false,
   latestVersion: null,
   tenants: [],

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater } from "../api.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, setActiveTheme, toggleShell } from "../store.js";
-import type { ConsoleState, ThemeId } from "../types.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
+import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
 
 interface TopbarProps {
   readonly state: ConsoleState;
@@ -86,6 +86,7 @@ export function Topbar({ state }: TopbarProps) {
           <span>Shell</span>
         </button>
         <ThemeControl activeTheme={state.activeTheme} />
+        <RendererToggle renderer={state.terminalRenderer} />
       </div>
     </header>
   );
@@ -319,12 +320,38 @@ function ThemeControl({ activeTheme }: { readonly activeTheme: ThemeId }) {
   );
 }
 
+function RendererToggle({ renderer }: { readonly renderer: TerminalRenderer }) {
+  const nextRenderer = renderer === "webgl" ? "dom" : "webgl";
+  const label = renderer === "webgl" ? "WebGL" : "DOM";
+  return (
+    <button
+      type="button"
+      className="theme-trigger"
+      aria-label={`Terminal renderer: ${label}`}
+      title={`Terminal renderer: ${label}`}
+      onClick={() => setTerminalRenderer(nextRenderer)}
+    >
+      <RendererIcon />
+      <span className="theme-trigger-label">{label}</span>
+    </button>
+  );
+}
+
 function TheaterSigil() {
   // 작전지역(Theater) — 닻 모티프로 '정박/거점'을 표상한다.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <circle cx="8" cy="3.2" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
       <path d="M8 4.7v8.1M4.3 8.2H11.7M3.4 9.1A4.7 4.7 0 0 0 12.6 9.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RendererIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="3" width="11" height="8" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M5.2 13h5.6M8 11v2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }

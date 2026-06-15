@@ -134,7 +134,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       rows: DEFAULT_ROWS,
     };
     const dataDisposable = pty.onData((data) => handlePtyData(session, data));
-    const exitDisposable = pty.onExit(() => removeSession(session, { killPty: false }));
+    // 자연종료 후에도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
+    const exitDisposable = pty.onExit(() => removeSession(session));
     session.disposables.push(dataDisposable, exitDisposable);
     sessions.set(session.id, session);
     return session;
@@ -198,8 +199,11 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.activeSocket?.close(4001, "terminal_closed");
     session.activeSocket = null;
     for (const disposable of session.disposables) disposable.dispose();
-    if (killPty) session.pty.kill();
-    await runLaunchCleanup(session.cleanup);
+    try {
+      if (killPty) killPtyBestEffort(session.pty);
+    } finally {
+      await runLaunchCleanup(session.cleanup);
+    }
   }
 
   return { canAttach, createSession, attach, getSessionMessagePolicy, terminate, stop, writeToSession };
@@ -210,6 +214,14 @@ async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefine
     await cleanup?.();
   } catch {
     // 서버 종료/PTY 종료 경로에서는 cleanup 실패를 브라우저로 노출하지 않는다.
+  }
+}
+
+function killPtyBestEffort(pty: TerminalPtyHandle): void {
+  try {
+    pty.kill();
+  } catch {
+    // Teardown-only cleanup: kill failures must not block session exit or launch cleanup.
   }
 }
 

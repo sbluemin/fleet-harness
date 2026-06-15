@@ -130,15 +130,24 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
       readonly cwd: string;
       readonly env: NodeJS.ProcessEnv;
       readonly name: string;
+      readonly useConptyDll?: boolean;
     }) => TerminalPtyHandle;
   };
+  const useConptyDll = resolveUseConptyDll(process.platform, process.env);
   return spawnPty(launch.bin, [...launch.args], {
     cols: size.cols,
     rows: size.rows,
     cwd: launch.cwd,
     env: launch.env,
     name: launch.terminalName ?? TERMINAL_TERM,
+    ...(useConptyDll ? { useConptyDll: true } : {}),
   });
+}
+
+export function resolveUseConptyDll(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): boolean {
+  if (platform !== "win32") return false;
+  const override = env.FLEET_USE_CONPTY_DLL?.toLowerCase();
+  return override !== "0" && override !== "false";
 }
 
 async function createAgentCliLaunchSpec(options: {

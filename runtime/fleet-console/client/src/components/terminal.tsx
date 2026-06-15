@@ -1,6 +1,7 @@
 import "@xterm/xterm/css/xterm.css";
 
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
@@ -16,7 +17,9 @@ interface TerminalProps {
 }
 
 const TERMINAL_OPTIONS = {
-  allowProposedApi: false,
+  // Unicode11Addon은 terminal.unicode(proposed API)를 사용하므로 이 옵션이 true여야 한다.
+  // false이면 addon.activate()가 "must set allowProposedApi" 오류를 던져 터미널 마운트가 깨진다.
+  allowProposedApi: true,
   convertEol: true,
   cursorBlink: true,
   cursorStyle: "block" as const,
@@ -24,6 +27,8 @@ const TERMINAL_OPTIONS = {
   fontSize: 14,
   lineHeight: 1.2,
 };
+
+const RESIZE_DEBOUNCE_MS = 80;
 
 const MARITIME_TERMINAL_THEME: ITheme = {
   background: "oklch(23% 0.03 248)",
@@ -72,10 +77,11 @@ const CARBON_TERMINAL_THEME: ITheme = {
 };
 
 export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
-  const activeTheme = useConsoleState().activeTheme;
+  const { activeTheme, terminalRenderer } = useConsoleState();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
+  const webglAddonRef = useRef<WebglAddon | null>(null);
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
@@ -91,6 +97,8 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(container);
+    terminal.loadAddon(new Unicode11Addon());
+    terminal.unicode.activeVersion = "11";
 
     // Shift+Enter는 개행(LF)으로 처리한다. xterm 기본 동작은 Shift 여부와 무관하게 Enter를
     // CR(\r)로 보내 TUI가 이를 "제출"로 해석하므로, Shift+Enter는 직접 LF(\n)를 입력시키고
@@ -105,21 +113,6 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       return true;
     });
 
-    // WebGL 렌더러: GPU 가속으로 더 선명하고 빠른 렌더링. 컨텍스트 손실 시 스스로 정리해 DOM 렌더러로 폴백한다.
-    // open() 이후에만 로드할 수 있으며, WebGL 미지원 환경에서는 기본 DOM 렌더러를 그대로 사용한다.
-    try {
-      const webglAddon = new WebglAddon();
-      // 런타임 중 실제 GPU 컨텍스트가 손실되면 addon을 정리해 DOM 렌더러로 폴백한다. 단,
-      // 언마운트(세션 전환)로 인한 terminal.dispose()는 addon을 이미 정리하므로, 그때 발생하는
-      // 컨텍스트 손실 콜백에서 또 dispose하지 않도록 disposed로 가드해 중복 정리를 막는다.
-      webglAddon.onContextLoss(() => {
-        if (!disposed) webglAddon.dispose();
-      });
-      terminal.loadAddon(webglAddon);
-    } catch {
-      // WebGL 컨텍스트 생성 실패 — DOM 렌더러 유지
-    }
-
     const connection = createTerminalConnection({
       sessionId,
       kind,
@@ -131,9 +124,21 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
     });
     connectionRef.current = connection;
 
+    let resizeDebounce: ReturnType<typeof setTimeout> | null = null;
     const fitAndResize = () => {
       fitAddon.fit();
       connection.resize(terminal.cols, terminal.rows);
+    };
+    const fitResizeAndRefresh = () => {
+      fitAndResize();
+      terminal.refresh(0, terminal.rows - 1);
+    };
+    const scheduleFitAndResize = () => {
+      if (resizeDebounce) clearTimeout(resizeDebounce);
+      resizeDebounce = setTimeout(() => {
+        resizeDebounce = null;
+        if (!disposed) fitResizeAndRefresh();
+      }, RESIZE_DEBOUNCE_MS);
     };
 
     const runInitialFit = async () => {
@@ -147,13 +152,14 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       terminal.focus();
     };
 
-    const resizeObserver = new ResizeObserver(fitAndResize);
+    const resizeObserver = new ResizeObserver(scheduleFitAndResize);
     resizeObserver.observe(container);
     void runInitialFit();
 
     return () => {
       disposed = true;
       resizeObserver.disconnect();
+      if (resizeDebounce) clearTimeout(resizeDebounce);
       connection.dispose();
       terminalRef.current = null;
       connectionRef.current = null;
@@ -169,6 +175,54 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       }
     };
   }, [kind, sessionId]);
+
+  // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+
+    let disposed = false;
+
+    if (terminalRenderer === "webgl") {
+      try {
+        const webglAddon = new WebglAddon();
+        webglAddonRef.current = webglAddon;
+        // 런타임 중 실제 GPU 컨텍스트가 손실되면 addon을 정리해 DOM 렌더러로 폴백한다. 단,
+        // 언마운트(세션 전환)로 인한 terminal.dispose()는 addon을 이미 정리하므로, 그때 발생하는
+        // 컨텍스트 손실 콜백에서 또 dispose하지 않도록 disposed로 가드해 중복 정리를 막는다.
+        webglAddon.onContextLoss(() => {
+          if (disposed) return;
+          try {
+            webglAddon.dispose();
+          } catch {
+            // xterm WebglAddon dispose 버그를 렌더러 폴백 경로에서도 흡수한다.
+          }
+          if (webglAddonRef.current === webglAddon) webglAddonRef.current = null;
+        });
+        terminal.loadAddon(webglAddon);
+      } catch {
+        // WebGL 컨텍스트 생성 실패 — DOM 렌더러 유지
+        try {
+          webglAddonRef.current?.dispose();
+        } catch {
+          // xterm WebglAddon dispose 버그를 WebGL 초기화 실패 경로에서도 흡수한다.
+        }
+        webglAddonRef.current = null;
+      }
+    }
+
+    return () => {
+      disposed = true;
+      const webglAddon = webglAddonRef.current;
+      if (!webglAddon) return;
+      webglAddonRef.current = null;
+      try {
+        webglAddon.dispose();
+      } catch {
+        // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
+      }
+    };
+  }, [terminalRenderer, kind, sessionId]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

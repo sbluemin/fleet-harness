@@ -9,6 +9,7 @@ import type {
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
+  TerminalRenderer,
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
@@ -24,7 +25,9 @@ export interface SessionJob {
 const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
+const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
 const DEFAULT_THEME: ThemeId = "maritime";
+const DEFAULT_RENDERER: TerminalRenderer = "webgl";
 export const SHELL_SESSION_ID = "shell";
 
 const listeners = new Set<Listener>();
@@ -32,6 +35,7 @@ let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
   activeTheme: readStoredTheme(),
+  terminalRenderer: readStoredRenderer(),
   updateAvailable: false,
   latestVersion: null,
   tenants: [],
@@ -76,6 +80,21 @@ export function setActiveTheme(theme: ThemeId): void {
   writeStoredTheme(theme);
   applyThemeToDocument(theme);
   setState({ activeTheme: theme });
+}
+
+export function setTerminalRenderer(renderer: TerminalRenderer): void {
+  writeStoredRenderer(renderer);
+  setState({ terminalRenderer: renderer });
+}
+
+export function readStoredRenderer(): TerminalRenderer {
+  if (typeof window === "undefined") return DEFAULT_RENDERER;
+  try {
+    const stored = window.localStorage.getItem(RENDERER_STORAGE_KEY);
+    return stored === "webgl" || stored === "dom" ? stored : DEFAULT_RENDERER;
+  } catch {
+    return DEFAULT_RENDERER;
+  }
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
@@ -481,6 +500,15 @@ function writeStoredTheme(theme: ThemeId): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
+function writeStoredRenderer(renderer: TerminalRenderer): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RENDERER_STORAGE_KEY, renderer);
   } catch {
     // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

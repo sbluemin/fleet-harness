@@ -7,8 +7,11 @@ interface MockPty extends TerminalPtyHandle {
   readonly writes: string[];
   readonly resizes: Array<{ readonly cols: number; readonly rows: number }>;
   readonly killed: () => boolean;
+  readonly killCount: () => number;
   emitData(data: string): void;
   emitExit(): void;
+  throwAlreadyExitedOnKill(): void;
+  throwUnexpectedOnKill(): void;
 }
 
 interface MockSocket extends TerminalSocket {
@@ -297,8 +300,64 @@ describe("terminal session manager", () => {
     await manager.createSession({ sessionId: "session-a", cwd: "/a" });
     ptys.get("session-a")?.emitExit();
 
-    // PTY 자가종료는 여전히 세션을 정리하고 콘솔 목록에 정확히 한 번 통지한다(독립 종료 경로 잔존).
+    // PTY 자가종료도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
+    expect(ptys.get("session-a")?.killed()).toBe(true);
     expect(exits).toEqual(["session-a"]);
+  });
+
+  it("cleans up and notifies exit when natural-exit kill reports the pty already exited", async () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        pty.throwAlreadyExitedOnKill();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(() => ptys.get("session-a")?.emitExit()).not.toThrow();
+    expect(ptys.get("session-a")?.killCount()).toBe(1);
+    expect(exits).toEqual(["session-a"]);
+    expect(manager.writeToSession("session-a", "after-exit")).toBe(false);
+  });
+
+  it("cleans up and notifies exit when natural-exit kill throws an unexpected error", async () => {
+    const ptys = new Map<string, MockPty>();
+    const exits: string[] = [];
+    let cleanupCount = 0;
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({
+        bin: "mock",
+        args: [],
+        cwd: cwd ?? "/",
+        env: { SESSION: context?.sessionId },
+        cleanup: () => {
+          cleanupCount += 1;
+        },
+      }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        pty.throwUnexpectedOnKill();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+      onSessionExit: (sessionId) => exits.push(sessionId),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+
+    expect(() => ptys.get("session-a")?.emitExit()).not.toThrow();
+    await Promise.resolve();
+    expect(ptys.get("session-a")?.killCount()).toBe(1);
+    expect(exits).toEqual(["session-a"]);
+    expect(cleanupCount).toBe(1);
+    expect(manager.writeToSession("session-a", "after-exit")).toBe(false);
   });
 
   it("passes the terminal kind into the launch resolver", async () => {
@@ -321,15 +380,25 @@ function createMockPty(): MockPty {
   const dataListeners: Array<(data: string) => void> = [];
   const exitListeners: Array<() => void> = [];
   let killed = false;
+  let killCount = 0;
+  let throwAlreadyExited = false;
+  let throwUnexpected = false;
   return {
     writes: [],
     resizes: [],
     killed: () => killed,
+    killCount: () => killCount,
     emitData(data) {
       for (const listener of dataListeners) listener(data);
     },
     emitExit() {
       for (const listener of exitListeners) listener();
+    },
+    throwAlreadyExitedOnKill() {
+      throwAlreadyExited = true;
+    },
+    throwUnexpectedOnKill() {
+      throwUnexpected = true;
     },
     onData(callback) {
       dataListeners.push(callback);
@@ -346,6 +415,9 @@ function createMockPty(): MockPty {
       this.resizes.push({ cols, rows });
     },
     kill() {
+      killCount += 1;
+      if (throwAlreadyExited) throw new Error("Cannot kill a pty that has already exited");
+      if (throwUnexpected) throw new Error("unexpected kill failure");
       killed = true;
     },
   };

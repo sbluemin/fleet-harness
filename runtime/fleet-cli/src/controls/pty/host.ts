@@ -3,7 +3,7 @@ import type { IPty } from "node-pty";
 import { createMouseProtocol } from "../mouse/protocol.js";
 import type { KeyboardProtocolState, PtyExitEvent, PtyHost, PtyLaunchConfig, PtyStartOptions } from "../types.js";
 import { createKeyboardProtocol, encodeTerminalInput } from "./keyboard.js";
-import { killShell, resizeShell, startShell, type ShellStarter } from "./shell.js";
+import { resizeShell, startShell, type ShellStarter } from "./shell.js";
 
 interface CreatePtyHostDeps {
   readonly startShell?: ShellStarter;
@@ -42,10 +42,14 @@ export function createPtyHost(config: PtyLaunchConfig, deps: CreatePtyHostDeps =
         }
 
         exitNotified = true;
-        child = undefined;
         const exitEvent = normalizeExitEvent(event);
-        for (const handler of exitHandlers) {
-          handler(exitEvent);
+        try {
+          killPtyBestEffort(child);
+        } finally {
+          child = undefined;
+          for (const handler of exitHandlers) {
+            handler(exitEvent);
+          }
         }
       });
     },
@@ -75,10 +79,22 @@ export function createPtyHost(config: PtyLaunchConfig, deps: CreatePtyHostDeps =
     },
 
     kill(): void {
-      killShell(child);
-      child = undefined;
+      try {
+        killPtyBestEffort(child);
+      } finally {
+        child = undefined;
+      }
     },
   };
+}
+
+function killPtyBestEffort(child: IPty | undefined): void {
+  if (child === undefined) return;
+  try {
+    child.kill();
+  } catch {
+    // Teardown-only cleanup: kill failures must not block exit notification.
+  }
 }
 
 function normalizeExitEvent(event: { readonly exitCode?: number; readonly signal?: number }): PtyExitEvent {

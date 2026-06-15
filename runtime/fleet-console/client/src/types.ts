@@ -1,5 +1,7 @@
 export type ThemeId = "maritime" | "carbon";
 
+export type TerminalRenderer = "webgl" | "dom";
+
 export interface ObservedTenant {
   readonly tenantId: string;
   readonly tenantLabel: string;
@@ -158,6 +160,7 @@ export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
   readonly activeTheme: ThemeId;
+  readonly terminalRenderer: TerminalRenderer;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;
   readonly tenants: readonly ObservedTenant[];
