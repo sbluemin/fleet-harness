@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/core-unified-agent",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "private": true,
   "description": "Codex CLI와 Claude Code를 통합하는 TypeScript 기반 SDK",
   "repository": {
