@@ -1,5 +1,5 @@
 .topbar,
-.sidebar,
+.operations-sidebar,
 .stage,
 .timeline-dock,
 .job-summary {
@@ -11,7 +11,7 @@
 }
 
 .topbar,
-.sidebar,
+.operations-sidebar,
 .stage {
   border-radius: var(--radius-xl);
 }
@@ -222,6 +222,10 @@
   margin-bottom: 0;
 }
 
+.operation-launch-control {
+  position: relative;
+}
+
 .workspace-add-button {
   display: grid;
   width: 30px;
@@ -253,9 +257,27 @@
   transform: translateY(-1px);
 }
 
+.workspace-add-button.is-open {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 50%, transparent);
+  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass));
+}
+
 .workspace-add-button:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+.operation-launch-control .operation-launch-menu {
+  top: calc(100% + var(--space-2));
+  /* '+' 버튼 왼쪽 모서리에 정렬해 오른쪽으로 펼친다(왼쪽 전개는 이질적이라는 UX 피드백). */
+  left: 0;
+  right: auto;
+  min-width: 168px;
+}
+
+.operation-launch-control .operation-launch-menu-item .theater-menu-check {
+  color: var(--brass);
 }
 
 .session-list {
@@ -265,6 +287,12 @@
   margin: 0 0 var(--space-4);
   padding: 0;
   list-style: none;
+  /* 사이드바(.operations-sidebar)는 overflow:visible이라 '+' 팝오버가 카드 밖으로
+     떠오른다. 대신 긴 세션 목록의 스크롤 책임을 여기로 이전한다: flex 컬럼에서 남는
+     높이를 차지하고(flex:1) min-height:0으로 줄어들어 내부 스크롤이 작동한다. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .session-item {

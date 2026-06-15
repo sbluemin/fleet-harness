@@ -94,6 +94,21 @@ describe("terminal session manager", () => {
     expect(ptys).toHaveLength(1);
   });
 
+  it("passes the selected Agent CLI id into the launch context", async () => {
+    const launchCliIds: Array<string | undefined> = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        launchCliIds.push(context?.cliId);
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: {} };
+      },
+      startShell: () => createMockPty(),
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a", cliId: "codex" });
+
+    expect(launchCliIds).toEqual(["codex"]);
+  });
+
   it("stops a session that finishes launching while server shutdown is waiting", async () => {
     const launchGate = createDeferred<void>();
     const ptys: MockPty[] = [];

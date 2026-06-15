@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { fetchObserverStatus, fetchTerminalSessions, fetchTheaters } from "./api.js";
+import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
@@ -9,7 +9,7 @@ import { startObserverConnection } from "./connection.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { Codex } from "./pages/codex.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaters, setState, toggleShell } from "./store.js";
+import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleShell } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
@@ -25,8 +25,8 @@ export function App() {
 
   useEffect(() => {
     const abort = new AbortController();
-    void fetchTheaters(abort.signal)
-      .then(hydrateTheaters)
+    void fetchTheaterBootstrap(abort.signal)
+      .then(hydrateTheaterBootstrap)
       .catch((error) => {
         if (abort.signal.aborted) return;
         setState({ theaterError: error instanceof Error ? error.message : String(error) });

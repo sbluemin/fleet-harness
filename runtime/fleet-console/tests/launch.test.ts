@@ -81,6 +81,23 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(events).toEqual([]);
   });
 
+  it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {
+    const runtime = createFakeRuntime(() => undefined);
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "codex" as const, label: "Codex", cwd, env: { ...env } }));
+    const injectProfile = vi.fn(async (profile) => profile);
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: runtime as never,
+      injectProfile: injectProfile as never,
+      resolveProfile: resolveProfile as never,
+    });
+
+    await resolve("/work/project", { sessionId: "session-a", cliId: "codex" });
+
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "codex" }));
+  });
+
   it("honors a FLEET_TERMINAL_CMD override verbatim as an explicit operator override", async () => {
     const resolveProfile = vi.fn();
     const resolve = createDefaultTerminalLaunchResolver({

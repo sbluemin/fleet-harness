@@ -10,6 +10,7 @@ import type {
   SnapshotTenantJobs,
   TenantJobsView,
   ThemeId,
+  TheaterBootstrap,
   TheaterInfo,
 } from "./types.js";
 
@@ -35,6 +36,7 @@ let state: ConsoleState = {
   latestVersion: null,
   tenants: [],
   theaters: [],
+  agentClis: [],
   activeTheaterId: null,
   addingTheater: false,
   theaterError: null,
@@ -108,6 +110,17 @@ export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId);
   setState({
     theaters,
+    activeTheaterId,
+    activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, state.sessions, state.sessionOrder, state.activeTerminalSessionId),
+    selectedJobId: null,
+  });
+}
+
+export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
+  const activeTheaterId = chooseActiveTheaterId(bootstrap.theaters, state.activeTheaterId);
+  setState({
+    theaters: bootstrap.theaters,
+    agentClis: bootstrap.agentClis,
     activeTheaterId,
     activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, state.sessions, state.sessionOrder, state.activeTerminalSessionId),
     selectedJobId: null,

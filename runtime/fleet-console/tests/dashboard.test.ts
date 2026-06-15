@@ -11,6 +11,7 @@ const BASE_STATE: ConsoleState = {
   latestVersion: null,
   tenants: [],
   theaters: [],
+  agentClis: [],
   activeTheaterId: null,
   addingTheater: false,
   theaterError: null,

@@ -43,6 +43,8 @@ interface PendingTerminalSessionState {
   readonly cwdLabel: string;
   readonly sequence: number;
   label?: string;
+  cliId?: string;
+  cliLabel?: string;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly terminalSessionId: string;
@@ -95,7 +97,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return event;
   }
 
-  function registerTerminalRuntimeSession(input: { readonly sessionId: string; readonly label: string; readonly mcpToolCount: number }): ConsoleTerminalSessionInfo | null {
+  function registerTerminalRuntimeSession(input: { readonly sessionId: string; readonly cliId?: string; readonly cliLabel?: string; readonly label: string; readonly mcpToolCount: number }): ConsoleTerminalSessionInfo | null {
     const terminalSession = terminalSessionsById.get(input.sessionId);
     if (!terminalSession) return null;
     const previous = workspacesByCliRunId.get(input.sessionId);
@@ -115,6 +117,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       terminalSessionId: terminalSession.terminalSessionId,
     };
     terminalSession.status = "registered";
+    terminalSession.cliId = input.cliId;
+    terminalSession.cliLabel = input.cliLabel;
     terminalSession.registrationId = session.registrationId;
     terminalSession.cliRunId = session.cliRunId;
     workspacesByCliRunId.set(session.cliRunId, state);
@@ -182,7 +186,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       ?? null;
   }
 
-  function createPendingTerminalSession(input: { readonly sessionId: string; readonly cwd: string; readonly createdAt?: number }): ConsoleTerminalSessionInfo {
+  function createPendingTerminalSession(input: { readonly sessionId: string; readonly cwd: string; readonly cliId?: string; readonly createdAt?: number }): ConsoleTerminalSessionInfo {
     if (!path.isAbsolute(input.cwd)) throw new Error("Terminal session cwd must be absolute");
     const createdAt = input.createdAt ?? now();
     const canonicalCwd = canonicalizeTheaterPathSync(input.cwd);
@@ -195,6 +199,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       canonicalCwd,
       cwdLabel: path.basename(input.cwd) || input.cwd,
       sequence,
+      cliId: input.cliId,
       createdAt,
       theaterId,
       terminalSessionId: input.sessionId,
@@ -340,6 +345,8 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     cwdLabel: state.cwdLabel,
     sequence: state.sequence,
     label: state.label,
+    cliId: state.cliId,
+    cliLabel: state.cliLabel,
     status: state.status,
     createdAt: state.createdAt,
     theaterId: state.theaterId,

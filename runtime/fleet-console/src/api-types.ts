@@ -40,6 +40,11 @@ export interface ConsoleTheaterInfo {
   readonly activeAdmiralCount: number;
 }
 
+export interface ConsoleAgentCliMetadata {
+  readonly id: string;
+  readonly label: string;
+}
+
 export type ConsoleObserverWikiServerStatus = "available" | "unavailable" | "unknown";
 
 export interface ConsoleObserverStatus {
@@ -72,6 +77,7 @@ export interface ConsoleObserverCarriersResponse {
 
 export interface ConsoleObserverTheatersResponse {
   readonly theaters: readonly ConsoleTheaterInfo[];
+  readonly agentClis?: readonly ConsoleAgentCliMetadata[];
 }
 
 export interface CreateTheaterCancelledResponse {
@@ -88,6 +94,8 @@ export interface ConsoleTerminalSessionInfo {
   readonly cwdLabel: string;
   readonly sequence: number;
   readonly label?: string;
+  readonly cliId?: string;
+  readonly cliLabel?: string;
   readonly status: ConsoleTerminalSessionStatus;
   readonly createdAt: number;
   readonly theaterId: string;
@@ -109,6 +117,7 @@ export interface PickTerminalFolderResponse {
 
 export interface CreateTerminalSessionRequest {
   readonly folderGrantId: string;
+  readonly cliId?: string;
 }
 
 export interface CreateTerminalSessionResponse extends ConsoleTerminalSessionInfo {}

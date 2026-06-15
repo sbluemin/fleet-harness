@@ -11,6 +11,9 @@ import {
 import {
   createCarrierResultReminderRouter,
   createFleetAgentRuntimeLifecycle,
+  getAgentCliMetadata,
+  parseAgentCliId,
+  type AgentCliId,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices } from "@dotobokuri/fleet-infra";
@@ -62,6 +65,8 @@ export interface ConsoleServer {
 
 type ObserverLookup = { readonly kind: "aggregate" };
 type ConsoleCarrierJobStreamEvent = CarrierJobStreamEvent & { readonly originSessionId?: string };
+type CreateTerminalSessionBody = { readonly folderGrantId?: unknown; readonly cwd?: unknown; readonly cliId?: unknown };
+type CreateTheaterSessionBody = { readonly cliId?: unknown };
 
 const DEFAULT_HOST = "127.0.0.1";
 // 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
@@ -320,17 +325,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    const body = await readJsonBody<{ readonly folderGrantId?: unknown; readonly cwd?: unknown }>(req);
+    const body = await readJsonBody<CreateTerminalSessionBody>(req);
     if (!body || typeof body.folderGrantId !== "string" || "cwd" in body) {
       writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
+    const cliId = readOptionalAgentCliId(body.cliId, res);
+    if (cliId === false) return;
     const cwd = folderGrants.consume(body.folderGrantId);
     if (!cwd) {
       writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
-    await createTerminalSessionForCwd(cwd, res);
+    await createTerminalSessionForCwd(cwd, res, cliId);
   }
 
   async function handleTerminalSessionItem(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
@@ -366,7 +373,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method === "GET") {
-      writeJson(res, 200, { theaters: listTheaterInfos() });
+      writeJson(res, 200, { theaters: listTheaterInfos(), agentClis: getAgentCliMetadata() });
       return;
     }
     if (req.method !== "POST") {
@@ -413,14 +420,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 404, { error: "theater_not_found" });
       return;
     }
-    await createTerminalSessionForCwd(theater.path, res);
+    const body = await readJsonBody<CreateTheaterSessionBody>(req);
+    const cliId = readOptionalAgentCliId(body?.cliId, res);
+    if (cliId === false) return;
+    await createTerminalSessionForCwd(theater.path, res, cliId);
   }
 
-  async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse): Promise<void> {
+  async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse, cliId?: AgentCliId): Promise<void> {
     const sessionId = crypto.randomUUID();
-    const session = observability.createPendingTerminalSession({ sessionId, cwd });
+    const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     try {
-      await terminalSessions.createSession({ sessionId, cwd });
+      await terminalSessions.createSession({ sessionId, cwd, cliId });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -743,6 +753,20 @@ function getPathname(req: http.IncomingMessage): string {
 
 function readUrl(req: http.IncomingMessage): URL {
   return new URL(req.url ?? "/", "http://127.0.0.1");
+}
+
+function readOptionalAgentCliId(value: unknown, res: http.ServerResponse): AgentCliId | undefined | false {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    writeJson(res, 400, { error: "invalid_agent_cli" });
+    return false;
+  }
+  try {
+    return parseAgentCliId(value);
+  } catch {
+    writeJson(res, 400, { error: "invalid_agent_cli" });
+    return false;
+  }
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {

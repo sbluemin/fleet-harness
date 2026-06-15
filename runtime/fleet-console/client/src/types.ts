@@ -21,6 +21,16 @@ export interface TheaterInfo {
   readonly activeAdmiralCount: number;
 }
 
+export interface AgentCliMetadata {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface TheaterBootstrap {
+  readonly theaters: readonly TheaterInfo[];
+  readonly agentClis: readonly AgentCliMetadata[];
+}
+
 export interface ObserverStatus {
   readonly workspaces: number;
   readonly jobs: number;
@@ -53,6 +63,8 @@ export interface SessionInfo {
   readonly cwdLabel: string;
   readonly sequence: number;
   readonly label?: string;
+  readonly cliId?: string;
+  readonly cliLabel?: string;
   readonly status: SessionStatus;
   readonly createdAt: number;
   readonly theaterId?: string;
@@ -150,6 +162,7 @@ export interface ConsoleState {
   readonly latestVersion: string | null;
   readonly tenants: readonly ObservedTenant[];
   readonly theaters: readonly TheaterInfo[];
+  readonly agentClis: readonly AgentCliMetadata[];
   readonly activeTheaterId: string | null;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;

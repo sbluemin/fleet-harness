@@ -10,6 +10,7 @@ import {
   createSystemPromptBuilder,
   injectAgentCliProfile,
   resolveAgentCliProfile,
+  type AgentCliId,
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
@@ -37,6 +38,8 @@ export interface TerminalLaunchResolverDeps {
 }
 
 export interface ConsoleRuntimeSessionInfo {
+  readonly cliId: AgentCliId;
+  readonly cliLabel: string;
   readonly label: string;
   readonly mcpToolCount: number;
   readonly sessionId: string;
@@ -96,6 +99,7 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
+      cliId: context?.cliId,
       sessionId,
     });
   };
@@ -140,6 +144,7 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
 async function createAgentCliLaunchSpec(options: {
   readonly authEnvResolver: AuthEnvResolver;
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  readonly cliId?: string;
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
@@ -159,6 +164,7 @@ async function createAgentCliLaunchSpec(options: {
     const profile = await options.resolveProfile(options.env, options.cwd, {
       authEnvResolver: options.authEnvResolver,
       authService: options.infraServices.authService,
+      cliId: options.cliId,
     });
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
@@ -174,6 +180,8 @@ async function createAgentCliLaunchSpec(options: {
       mcpSessionLabel: options.sessionId,
     } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });
     options.onRuntimeSessionStart?.({
+      cliId: injectedProfile.id,
+      cliLabel: injectedProfile.label,
       label: injectedProfile.label,
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,

@@ -630,7 +630,7 @@ describe("console static and terminal ticket boundary", () => {
 
     const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
     const payload = await created.json() as Record<string, unknown>;
-    const listed = await getJson<{ theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/theaters`);
+    const listed = await getJson<{ agentClis?: readonly Record<string, unknown>[]; theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/theaters`);
     const serialized = JSON.stringify({ payload, listed });
 
     expect(created.status).toBe(200);
@@ -643,6 +643,11 @@ describe("console static and terminal ticket boundary", () => {
     expect(typeof payload.createdAt).toBe("string");
     expect(typeof payload.lastOpenedAt).toBe("string");
     expect(listed.theaters).toHaveLength(1);
+    expect(listed.agentClis).toEqual([
+      { id: "claude", label: "Claude" },
+      { id: "claude-kimi", label: "Claude Kimi" },
+      { id: "codex", label: "Codex" },
+    ]);
     expect(payload).not.toHaveProperty("path");
     expect(listed.theaters[0]).not.toHaveProperty("path");
     expect(serialized).not.toContain(dir);
@@ -812,9 +817,13 @@ describe("console static and terminal ticket boundary", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-launch-"));
     tempDirs.push(dir);
     const launches: TerminalLaunchSpec[] = [];
+    const cliIds: Array<string | undefined> = [];
     const fixture = await startFixture({
       terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
-      terminalLaunch: createMockLaunch,
+      terminalLaunch: async (cwd, context) => {
+        cliIds.push(context?.cliId);
+        return createMockLaunch(cwd, context);
+      },
       terminalStartShell: (launch) => {
         launches.push(launch);
         return createMockPty();
@@ -822,18 +831,21 @@ describe("console static and terminal ticket boundary", () => {
     });
     const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
     const unknown = await fetch(`${fixture.endpoint}observer/theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
-    const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/ignored" }) });
-    const session = await created.json() as { readonly sessionId: string; readonly theaterId: string; readonly cwd?: unknown };
+    const invalid = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "bogus" }) });
+    const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "codex", cwd: "/tmp/ignored" }) });
+    const session = await created.json() as { readonly sessionId: string; readonly theaterId: string; readonly cliId?: string; readonly cwd?: unknown };
     const sessions = await getJson<{ sessions: ReadonlyArray<{ readonly theaterId: string; readonly cwd?: unknown }> }>(`${fixture.endpoint}terminal/sessions`);
     const serialized = JSON.stringify({ session, sessions });
 
     expect(unknown.status).toBe(404);
+    expect(invalid.status).toBe(400);
     expect(created.status).toBe(200);
-    expect(session).toMatchObject({ theaterId: theater.id });
+    expect(session).toMatchObject({ theaterId: theater.id, cliId: "codex" });
     expect(session.cwd).toBeUndefined();
     expect(sessions.sessions[0]).not.toHaveProperty("cwd");
     expect(serialized).not.toContain(dir);
     expect(launches[0]?.cwd).toBe(dir);
+    expect(cliIds).toEqual(["codex"]);
     expect(sessions.sessions[0]?.theaterId).toBe(theater.id);
   });
 

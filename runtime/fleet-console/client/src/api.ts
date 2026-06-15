@@ -1,4 +1,4 @@
-import type { CarrierReadinessEntry, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterInfo } from "./types.js";
+import type { AgentCliMetadata, CarrierReadinessEntry, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TerminalTicketOptions {
   readonly kind?: "shell";
@@ -38,11 +38,16 @@ export async function openEventsStream(signal?: AbortSignal): Promise<ReadableSt
 }
 
 export async function fetchTheaters(signal?: AbortSignal): Promise<readonly TheaterInfo[]> {
+  return (await fetchTheaterBootstrap(signal)).theaters;
+}
+
+export async function fetchTheaterBootstrap(signal?: AbortSignal): Promise<TheaterBootstrap> {
   const response = await fetch("/observer/theaters", { signal });
   await assertOk(response);
-  const payload = (await response.json()) as { theaters?: unknown };
+  const payload = (await response.json()) as { theaters?: unknown; agentClis?: unknown };
   if (!Array.isArray(payload.theaters)) throw new ApiError(response.status, "Invalid Theater response");
-  return payload.theaters.map((theater) => assertTheaterInfo(theater, response.status));
+  const agentClis = Array.isArray(payload.agentClis) ? payload.agentClis.map((item) => assertAgentCliMetadata(item, response.status)) : [];
+  return { theaters: payload.theaters.map((theater) => assertTheaterInfo(theater, response.status)), agentClis };
 }
 
 export async function fetchObserverStatus(theaterId: string | null, signal?: AbortSignal): Promise<ObserverStatus> {
@@ -70,8 +75,12 @@ export async function addTheater(signal?: AbortSignal): Promise<TheaterInfo | { 
   return assertTheaterInfo(payload, response.status);
 }
 
-export async function createTheaterTerminalSession(theaterId: string, signal?: AbortSignal): Promise<SessionInfo> {
-  const response = await fetch(`/observer/theaters/${encodeURIComponent(theaterId)}/sessions`, { method: "POST", signal });
+export async function createTheaterTerminalSession(theaterId: string, cliId?: string, signal?: AbortSignal): Promise<SessionInfo> {
+  const response = await fetch(`/observer/theaters/${encodeURIComponent(theaterId)}/sessions`, {
+    method: "POST",
+    ...(cliId ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cliId }) } : {}),
+    signal,
+  });
   await assertOk(response);
   return assertSessionInfo(await response.json(), response.status);
 }
@@ -161,12 +170,22 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     cwdLabel: payload.cwdLabel,
     sequence: payload.sequence,
     label: typeof payload.label === "string" ? payload.label : undefined,
+    cliId: typeof payload.cliId === "string" ? payload.cliId : undefined,
+    cliLabel: typeof payload.cliLabel === "string" ? payload.cliLabel : undefined,
     status: payload.status,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
   };
+}
+
+function assertAgentCliMetadata(value: unknown, status: number): AgentCliMetadata {
+  const payload = value as Partial<AgentCliMetadata>;
+  if (!payload || typeof payload.id !== "string" || typeof payload.label !== "string") {
+    throw new ApiError(status, "Invalid Agent CLI metadata response");
+  }
+  return { id: payload.id, label: payload.label };
 }
 
 function assertObservedTenant(value: unknown, status: number): ObservedTenant {
