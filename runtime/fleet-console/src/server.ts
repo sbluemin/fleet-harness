@@ -11,8 +11,10 @@ import {
 import {
   createCarrierResultReminderRouter,
   createFleetAgentRuntimeLifecycle,
+  formatCarrierResultReminderMessage,
   getAgentCliMetadata,
   parseAgentCliId,
+  sanitizeCarrierResultReminder,
   type AgentCliId,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
@@ -340,6 +342,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     await createTerminalSessionForCwd(cwd, res, cliId);
   }
 
+  // 작전(터미널 세션) 이름 변경 시, 실행 중인 Agent CLI에 '/rename <라벨>' 슬래시 명령을 주입한다.
+  // carrier 결과 system-reminder와 동일한 주입 경로(messagePolicy 포맷 + writeToSession)를 재사용하므로
+  // CLI별 lineTerminator/bracketed-paste 처리가 자동으로 일관되게 적용된다.
+  function injectRenameCommand(sessionId: string, label: string | undefined): void {
+    if (!label) return;
+    // 라벨을 먼저 단일 라인으로 정규화(개행·탭 → 공백)하고 제어문자를 제거한다. 개행/캐리지리턴은
+    // '/rename' 한 줄을 분리해 추가 명령을 주입하는 통로가 되므로 carrier 리마인더와 동일한
+    // sanitize를 라벨에 직접 적용한다. '/rename' prefix를 붙이기 전에 라벨 자체를 검사해, 제어문자만
+    // 있던 라벨(콘솔 기본 표시명으로 복귀)이 인자 없는 bare '/rename'으로 새는 것을 막는다.
+    const safeLabel = sanitizeCarrierResultReminder(label.replace(/[\r\n\t]+/g, " ")).trim();
+    if (safeLabel.length === 0) return;
+    // messagePolicy는 carrier 리마인더와 동일 소스를 써서 CLI별 lineTerminator/bracketed-paste 처리가
+    // 일관되게 적용된다. 세션이 아직 PTY를 띄우지 않았거나 종료된 경우 writeToSession이 무시한다.
+    const policy = terminalSessions.getSessionMessagePolicy(sessionId) ?? {};
+    for (const chunk of formatCarrierResultReminderMessage(policy, `/rename ${safeLabel}`)) {
+      terminalSessions.writeToSession(sessionId, chunk);
+    }
+  }
+
   async function handleTerminalSessionItem(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
     if (req.method !== "DELETE" && req.method !== "PATCH") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -362,6 +383,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       }
       // 세션 이름은 PTY 생명주기 인메모리 메타만 갱신하고, raw cwd는 계속 직렬화하지 않는다.
       observability.notifySessionUpdated(updated);
+      // 작전 이름 변경을 실행 중인 Agent CLI 세션에도 동기화한다: carrier 결과 system-reminder와
+      // 동일한 PTY 주입 파이프라인을 재사용해 '/rename <라벨>' 슬래시 명령을 해당 세션에 주입한다.
+      injectRenameCommand(sessionId, updated.label);
       writeJson(res, 200, updated);
       return;
     }

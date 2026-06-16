@@ -921,6 +921,44 @@ describe("console static and terminal ticket boundary", () => {
     expect(renamedBody.cwd).toBeUndefined();
   });
 
+  it("injects '/rename <label>' into the session PTY and neutralizes control characters", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rename-inject-"));
+    tempDirs.push(dir);
+    const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: (launch) => {
+        const pty = createRecordingPty();
+        ptys.set(String(launch.env.FLEET_CONSOLE_SESSION_ID), pty);
+        return pty;
+      },
+    });
+    const headers = { "Content-Type": "application/json" };
+    const session = await createTerminalSession(fixture, headers);
+    const patchLabel = (label: string) =>
+      fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ label }),
+      });
+
+    // 정상 라벨 → '/rename <label>'과 엔터('\r')가 정확히 한 번 주입된다.
+    await patchLabel("  Bridge Watch  ");
+    // 개행/캐리지리턴/ESC/bell을 섞은 악성 라벨 → 단일 라인으로 강제되고 제어문자(ESC·bell)가
+    // 제거되어 '/rename' 한 줄을 분리하는 추가 명령 주입이 불가능하다([31m은 ESC가 빠져 무해한 텍스트).
+    await patchLabel("x\r\n/evil --pwn\u001b[31m\u0007");
+    // 빈 라벨(콘솔 기본 표시명 복귀)에는 주입하지 않는다.
+    await patchLabel("   ");
+    // 제어문자만 있는 라벨 → sanitize 후 빈 값이므로 인자 없는 bare '/rename'을 주입하지 않는다.
+    await patchLabel("\u0007\u001b");
+
+    expect(ptys.get(session.sessionId)?.writes).toEqual([
+      "/rename Bridge Watch\r",
+      "/rename x /evil --pwn[31m\r",
+    ]);
+  });
+
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
     let destroyed = 0;
     const handler = createTerminalUpgradeHandler({
