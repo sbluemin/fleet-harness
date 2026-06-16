@@ -14,7 +14,7 @@ interface NavItem {
   readonly to: string;
   readonly label: string;
   readonly end: boolean;
-  readonly icon: "operations" | "codex" | "settings";
+  readonly icon: "operations" | "codex";
 }
 
 interface ThemeOption {
@@ -26,7 +26,6 @@ interface ThemeOption {
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
-  { to: "/carrier-settings", label: "Settings", end: false, icon: "settings" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
 ];
 
@@ -85,7 +84,7 @@ export function Topbar({ state }: TopbarProps) {
                 className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
               >
                 <span className="topbar-nav-icon" aria-hidden="true">
-                  {item.icon === "operations" ? <OperationsIcon /> : item.icon === "settings" ? <SettingsIcon /> : <CodexIcon />}
+                  {item.icon === "operations" ? <OperationsIcon /> : <CodexIcon />}
                 </span>
                 <span>{item.label}</span>
               </NavLink>
@@ -100,6 +99,14 @@ export function Topbar({ state }: TopbarProps) {
         <button type="button" className="topbar-shell-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
           <KeyboardIcon />
         </button>
+        <NavLink
+          to="/carrier-settings"
+          className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
+          title="Carrier settings"
+        >
+          <span className="topbar-nav-icon" aria-hidden="true"><SettingsIcon /></span>
+          <span>Settings</span>
+        </NavLink>
         <ThemeControl activeTheme={state.activeTheme} />
         <RendererToggle renderer={state.terminalRenderer} />
       </div>
