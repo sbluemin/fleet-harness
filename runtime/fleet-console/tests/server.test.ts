@@ -644,9 +644,9 @@ describe("console static and terminal ticket boundary", () => {
     expect(typeof payload.lastOpenedAt).toBe("string");
     expect(listed.theaters).toHaveLength(1);
     expect(listed.agentClis).toEqual([
-      { id: "claude", label: "Claude" },
-      { id: "claude-kimi", label: "Claude Kimi" },
-      { id: "codex", label: "Codex" },
+      { id: "claude", label: "Claude", renameCommand: "/rename" },
+      { id: "claude-kimi", label: "Claude Kimi", renameCommand: "/rename" },
+      { id: "codex", label: "Codex", renameCommand: "/rename" },
     ]);
     expect(payload).not.toHaveProperty("path");
     expect(listed.theaters[0]).not.toHaveProperty("path");
@@ -935,7 +935,8 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const headers = { "Content-Type": "application/json" };
-    const session = await createTerminalSession(fixture, headers);
+    // Claude 계열은 rename 슬래시 명령 '/rename'을 지원하므로 주입 대상이다.
+    const session = await createTerminalSession(fixture, headers, "claude");
     const patchLabel = (label: string) =>
       fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
         method: "PATCH",
@@ -957,6 +958,31 @@ describe("console static and terminal ticket boundary", () => {
       "/rename Bridge Watch\r",
       "/rename x /evil --pwn[31m\r",
     ]);
+  });
+
+  it("skips rename injection for sessions without a rename-capable CLI", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rename-skip-"));
+    tempDirs.push(dir);
+    const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: (launch) => {
+        const pty = createRecordingPty();
+        ptys.set(String(launch.env.FLEET_CONSOLE_SESSION_ID), pty);
+        return pty;
+      },
+    });
+    const headers = { "Content-Type": "application/json" };
+    // cliId 없이 생성된 세션은 rename 지원 CLI를 특정할 수 없으므로 미지원 명령을 주입하지 않는다.
+    const session = await createTerminalSession(fixture, headers);
+    await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ label: "Bridge Watch" }),
+    });
+
+    expect(ptys.get(session.sessionId)?.writes).toEqual([]);
   });
 
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
@@ -1055,13 +1081,13 @@ async function startFixture(options: {
   return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
 }
 
-async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
+async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>, cliId?: string): Promise<{ readonly sessionId: string }> {
   const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
   const grant = await picked.json() as { readonly folderGrantId: string };
   const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+    body: JSON.stringify({ folderGrantId: grant.folderGrantId, ...(cliId ? { cliId } : {}) }),
   });
   expect(created.status).toBe(200);
   return created.json() as Promise<{ readonly sessionId: string }>;

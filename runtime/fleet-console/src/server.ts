@@ -345,18 +345,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 작전(터미널 세션) 이름 변경 시, 실행 중인 Agent CLI에 '/rename <라벨>' 슬래시 명령을 주입한다.
   // carrier 결과 system-reminder와 동일한 주입 경로(messagePolicy 포맷 + writeToSession)를 재사용하므로
   // CLI별 lineTerminator/bracketed-paste 처리가 자동으로 일관되게 적용된다.
-  function injectRenameCommand(sessionId: string, label: string | undefined): void {
+  function injectRenameCommand(sessionId: string, label: string | undefined, cliId: string | undefined): void {
     if (!label) return;
+    // 세션을 띄운 Agent CLI가 지원하는 rename 슬래시 명령을 fleet-admiral 메타데이터(SSoT)에서 조회한다.
+    // rename 슬래시 명령을 지원하지 않는 CLI(또는 cliId 미상)에는 미지원 명령을 주입하지 않도록 건너뛴다.
+    const renameCommand = resolveRenameCommand(cliId);
+    if (!renameCommand) return;
     // 라벨을 먼저 단일 라인으로 정규화(개행·탭 → 공백)하고 제어문자를 제거한다. 개행/캐리지리턴은
-    // '/rename' 한 줄을 분리해 추가 명령을 주입하는 통로가 되므로 carrier 리마인더와 동일한
-    // sanitize를 라벨에 직접 적용한다. '/rename' prefix를 붙이기 전에 라벨 자체를 검사해, 제어문자만
-    // 있던 라벨(콘솔 기본 표시명으로 복귀)이 인자 없는 bare '/rename'으로 새는 것을 막는다.
+    // 명령 한 줄을 분리해 추가 명령을 주입하는 통로가 되므로 carrier 리마인더와 동일한 sanitize를
+    // 라벨에 직접 적용한다. rename 명령 prefix를 붙이기 전에 라벨 자체를 검사해, 제어문자만 있던
+    // 라벨(콘솔 기본 표시명으로 복귀)이 인자 없는 bare 명령으로 새는 것을 막는다.
     const safeLabel = sanitizeCarrierResultReminder(label.replace(/[\r\n\t]+/g, " ")).trim();
     if (safeLabel.length === 0) return;
     // messagePolicy는 carrier 리마인더와 동일 소스를 써서 CLI별 lineTerminator/bracketed-paste 처리가
     // 일관되게 적용된다. 세션이 아직 PTY를 띄우지 않았거나 종료된 경우 writeToSession이 무시한다.
     const policy = terminalSessions.getSessionMessagePolicy(sessionId) ?? {};
-    for (const chunk of formatCarrierResultReminderMessage(policy, `/rename ${safeLabel}`)) {
+    for (const chunk of formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`)) {
       terminalSessions.writeToSession(sessionId, chunk);
     }
   }
@@ -384,8 +388,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 세션 이름은 PTY 생명주기 인메모리 메타만 갱신하고, raw cwd는 계속 직렬화하지 않는다.
       observability.notifySessionUpdated(updated);
       // 작전 이름 변경을 실행 중인 Agent CLI 세션에도 동기화한다: carrier 결과 system-reminder와
-      // 동일한 PTY 주입 파이프라인을 재사용해 '/rename <라벨>' 슬래시 명령을 해당 세션에 주입한다.
-      injectRenameCommand(sessionId, updated.label);
+      // 동일한 PTY 주입 파이프라인을 재사용해 해당 CLI의 rename 슬래시 명령을 그 세션에 주입한다.
+      injectRenameCommand(sessionId, updated.label, updated.cliId);
       writeJson(res, 200, updated);
       return;
     }
@@ -777,6 +781,13 @@ function getPathname(req: http.IncomingMessage): string {
 
 function readUrl(req: http.IncomingMessage): URL {
   return new URL(req.url ?? "/", "http://127.0.0.1");
+}
+
+function resolveRenameCommand(cliId: string | undefined): string | undefined {
+  // fleet-admiral CLI 메타데이터(SSoT)에서 해당 CLI의 rename 슬래시 명령을 찾는다. cliId가 없거나
+  // 알 수 없는 값이면 undefined를 반환해 호출부가 rename 주입을 건너뛰게 한다.
+  if (!cliId) return undefined;
+  return getAgentCliMetadata().find((entry) => entry.id === cliId)?.renameCommand;
 }
 
 function readOptionalAgentCliId(value: unknown, res: http.ServerResponse): AgentCliId | undefined | false {

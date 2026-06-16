@@ -25,6 +25,9 @@ export interface CliMessagePolicy {
 export interface AgentCliDefinition {
   readonly id: AgentCliId;
   readonly label: string;
+  // 작전 이름 변경을 이 CLI 세션에 동기화하기 위해 PTY로 주입할 슬래시 명령(예: "/rename").
+  // rename 슬래시 명령을 지원하지 않는 CLI는 생략하며, 그 경우 호스트는 rename 주입을 건너뛴다.
+  readonly renameCommand?: string;
   createProfile(options: AgentCliProfileOptions): Promise<AgentCliProfile>;
 }
 

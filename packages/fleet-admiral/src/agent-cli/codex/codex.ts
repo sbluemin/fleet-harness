@@ -5,6 +5,8 @@ import type { AgentCliDefinition, AgentCliProfileOptions } from "../types.js";
 export const codexCli: AgentCliDefinition = {
   id: "codex",
   label: "Codex",
+  // Codex CLI도 세션 이름 변경 슬래시 명령 `/rename`을 지원한다.
+  renameCommand: "/rename",
   async createProfile(options: AgentCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
