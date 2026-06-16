@@ -1,4 +1,5 @@
 import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
+import { buildOperationSearchEntries } from "./operation-search.js";
 import type {
   ConsoleState,
   JobView,
@@ -54,6 +55,7 @@ let state: ConsoleState = {
   tenantOrder: [],
   timelineOpen: false,
   shellOpen: false,
+  operationSearchOpen: false,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
 };
@@ -184,6 +186,29 @@ export function failAddTheater(error: string): void {
 
 export function selectTerminalSession(sessionId: string | null): void {
   setState({ activeTerminalSessionId: sessionId, selectedJobId: null });
+}
+
+export function focusOperation(sessionId: string): void {
+  const session = state.sessions[sessionId];
+  if (!session) return;
+  writeStoredActiveTheaterId(session.theaterId ?? null);
+  setState({
+    activeTheaterId: session.theaterId ?? null,
+    activeTerminalSessionId: sessionId,
+    selectedJobId: null,
+  });
+}
+
+export function openOperationSearch(): void {
+  setState({ operationSearchOpen: true });
+}
+
+export function closeOperationSearch(): void {
+  setState({ operationSearchOpen: false });
+}
+
+export function toggleOperationSearch(): void {
+  setState({ operationSearchOpen: !state.operationSearchOpen });
 }
 
 export function beginCreateTerminalSession(): void {
@@ -400,6 +425,10 @@ export function theaterSessions(current: ConsoleState): readonly SessionInfo[] {
 export function theaterSessionOrder(current: ConsoleState): readonly string[] {
   if (!current.activeTheaterId) return [];
   return current.sessionOrder.filter((sessionId) => sessionBelongsToTheater(current.sessions[sessionId], current.activeTheaterId));
+}
+
+export function operationSearchEntries(current: ConsoleState) {
+  return buildOperationSearchEntries(current);
 }
 
 export function sessionJobs(current: ConsoleState, session: SessionInfo): readonly SessionJob[] {
