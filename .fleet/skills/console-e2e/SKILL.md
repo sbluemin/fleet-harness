@@ -19,7 +19,7 @@ This skill **depends on the `playwriter` skill**. Read its full docs first (`pla
 
 Replace each `<placeholder>` before running. Optional inputs default as noted.
 
-- `<port>` — console loopback port. Required. Find it from the URL the user gives, or `fleet-console status`, or `lsof -nP -iTCP -sTCP:LISTEN | grep node`.
+- `<port>` — console loopback port. Required. Find it from the URL the user gives, or `fleet-console status`, or `lsof -nP -iTCP -sTCP:LISTEN | grep node`. For an **isolated instance** (see Prerequisites #1), read it from `<FLEET_CONSOLE_DIR>/console.lock`.
 - `<route>` — `/console/operations` (terminal + sidebar) or `/console/` (Welcome). Default `/console/operations`.
 - `<scenario>` — the interaction to drive (e.g., "switch between two terminal-only sessions"). Required for a bug repro.
 - `<symptom>` — observable failure to reproduce (e.g., "terminal area goes blank, needs refresh"). Optional but recommended.
@@ -27,6 +27,14 @@ Replace each `<placeholder>` before running. Optional inputs default as noted.
 ## Prerequisites (confirm first)
 
 1. **Console is running and serving**: `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:<port>/console/operations` → expect `200`. If not, start it (`pnpm fleet-console` from repo root, or `fleet-console start`).
+   - **Testing your own build? Isolate it — do NOT reuse or restart the user's daemon.** `fleet-console start` is a singleton per runtime dir: if a healthy daemon already exists it just **opens that daemon**, so it serves the *user's* running bundle, not your freshly-built one, and you would silently test the wrong code. To verify YOUR build (e.g. a worktree) without disturbing the user's daemon, launch a throwaway isolated instance with its own runtime dir + port:
+     ```bash
+     pnpm --filter @dotobokuri/fleet-console build                       # build the bundle you want to test
+     FLEET_CONSOLE_DIR=/tmp/fleet-console-e2e node runtime/fleet-console/dist/cli.mjs start
+     PORT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/fleet-console-e2e/console.lock')).port)")
+     ```
+     `FLEET_CONSOLE_DIR` gives the instance its own lock + OS-assigned random port — read both from `<dir>/console.lock` — fully separate from the user's daemon. **Confirm it serves your bundle** (the hash check in Prerequisite #2) before driving, then `FLEET_CONSOLE_DIR=/tmp/fleet-console-e2e node runtime/fleet-console/dist/cli.mjs stop` when done. **Never `stop`/`restart` the user's shared daemon just to test your build — isolate instead.**
+   - **Seeding sessions without the OS folder picker.** A fresh isolated instance has no sessions, and the `+` Add-Theater button is an OS-native folder dialog that cannot be automated. The `console.lock` carries a bearer `token`; use it to create sessions through the authorized API instead: `curl -X POST -H "Authorization: Bearer <token>" -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" -d '{}' http://127.0.0.1:<port>/observer/theaters/<theaterId>/sessions` (optional `cliId` in the body; omitting it uses the default Agent CLI, which spawns a real CLI child process). List Theaters first with `GET /observer/theaters` (unauthenticated, loopback) — an isolated instance may already surface previously-registered Theaters, but registering a *new* Theater still requires the OS picker. Clean up seeded sessions with `DELETE /terminal/sessions/<id>` (authorized) or just `stop` the instance.
 2. **Reflecting your code?** The console serves **static `dist/client/`** (`Cache-Control: no-store`), so a client change needs `pnpm --filter @dotobokuri/fleet-console build` + a browser **reload** (no server restart). A **backend** change (`src/**` — server, security headers, terminal transport) needs `build` **and a server restart** to take effect. Confirm the served bundle matches your build: compare `grep -o 'assets/index-[A-Za-z0-9_-]*\.js' dist/client/index.html` against `curl -s http://127.0.0.1:<port>/console/ | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'`.
 3. **playwriter is available** and Chrome is running. Create a session; if multiple Chrome profiles are detected, re-run with `--browser <key>` (any profile works — console session state lives in the backend and is profile-independent).
 
@@ -64,7 +72,7 @@ EOF
 - Snapshot the sidebar to read the workspace/session list and pick targets:
   `playwriter -s <id> -e 'await snapshot({ locator: state.page.locator(".sidebar") }).then(console.log)'`
 - Session rows are `.session-row` buttons; terminal-only sessions show status text `terminal-only`. **At least 2 sessions are needed to test switching.**
-- **The `+` (Add workspace) button opens an OS-native folder dialog** — it is NOT controllable from the browser. Do not try to create sessions via playwriter; rely on sessions the user already created.
+- **The `+` (Add workspace) button opens an OS-native folder dialog** — it is NOT controllable from the browser. Do not try to create sessions via playwriter; rely on sessions the user already created, or seed them through the authorized API (see Prerequisites #1).
 
 ### Phase 3 — Drive the interaction (observe → act → observe)
 
@@ -268,7 +276,7 @@ EOF
 - **Static-serve reflection**: client changes need `build` + reload; backend (`src/**`) changes need `build` + **server restart**. A "fix that didn't work" is often just an unrestarted server or a stale bundle — verify the served `index-*.js` hash matches `dist` before re-debugging.
 - **Auth/route**: when the console runs loopback-only without a browser token gate, `/console/operations` renders directly. If a token handoff is in force, the launcher passes tokens once via the URL **fragment** (never a query string) — never inject tokens into query strings or logs.
 - **Sessions are backend-shared**: any Chrome profile observes the same registered sessions; profile choice doesn't change what you see.
-- **Folder picker is OS-native**: cannot be automated; reuse existing sessions for switch tests.
+- **Folder picker is OS-native**: cannot be automated; reuse existing sessions for switch tests, or seed sessions via the authorized `POST /observer/theaters/<id>/sessions` API (see Prerequisites #1) — handy for a fresh isolated instance.
 - **Terminal stack**: xterm.js + `@xterm/addon-webgl` (WebGL renderer, DOM fallback). A healthy `.terminal-canvas` holds 3 `canvas` layers. Watch for WebGL `context lost` and dispose-time exceptions on unmount.
 
 ## Safety rules
