@@ -34,6 +34,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { combos: [["Tab"]], description: "Move focus within the command palette" },
       { combos: [["Esc"]], description: "Close the command palette or diagram lightbox" },
       { combos: [["+"], ["−"], ["0"]], description: "Zoom the diagram lightbox in / out / reset" },
+      { combos: [["F"]], description: "Fit the diagram lightbox to the viewport" },
     ],
   },
 ];
