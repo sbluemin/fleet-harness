@@ -1017,6 +1017,11 @@
   animation: aurora-pulse 1.8s ease-in-out infinite;
 }
 
+.tenant-beacon.is-dormant {
+  background: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+  box-shadow: 0 0 8px color-mix(in oklch, var(--brass) 30%, transparent);
+}
+
 .status-dot--lg {
   width: 10px;
   height: 10px;
@@ -1638,6 +1643,15 @@
 .floating-job-overlay .job-overlay {
   z-index: 1;
   pointer-events: auto;
+}
+
+.theater-menu-forget {
+  color: var(--ink-fog);
+}
+
+.theater-menu-forget:hover,
+.theater-menu-forget:focus-visible {
+  color: var(--coral);
 }
 
 .session-list {

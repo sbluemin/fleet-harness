@@ -176,7 +176,6 @@ function renderPluginRoot(
   const stagedPluginRoot = path.join(stageParent, path.basename(pluginRoot));
   try {
     ensurePrivateDir(stagedPluginRoot, stagedPluginRoot);
-    writePrivateJson(path.join(stagedPluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle), stagedPluginRoot);
     writePrivateJson(path.join(stagedPluginRoot, ".claude-plugin", "plugin.json"), claudeManifest(bundle), stagedPluginRoot);
     switch (bundle.source) {
       case "asset":
@@ -191,6 +190,7 @@ function renderPluginRoot(
         renderGlobalPluginRoot(stagedPluginRoot, fleetRoot);
         break;
     }
+    writePrivateJson(path.join(stagedPluginRoot, ".codex-plugin", "plugin.json"), codexManifest(bundle, stagedPluginRoot), stagedPluginRoot);
     removePrivatePath(pluginRoot, parentRoot);
     renameSync(stagedPluginRoot, pluginRoot);
   } finally {
@@ -354,13 +354,37 @@ function marketplacePluginPath(target: MarketplaceTarget, bundle: PluginBundle):
   return `./${PLUGIN_BUNDLES_DIR_NAME}/${bundle.directoryName}`;
 }
 
-function codexManifest(bundle: PluginBundle): unknown {
+function codexManifest(bundle: PluginBundle, pluginRoot: string): unknown {
   return {
     name: bundle.name,
-    version: "0.0.0",
+    version: codexManifestVersion(bundle, pluginRoot),
     description: bundle.description,
     skills: "./skills/",
   };
+}
+
+function codexManifestVersion(bundle: PluginBundle, pluginRoot: string): string {
+  const hash = crypto.createHash("sha256");
+  hash.update(bundle.name);
+  hash.update("\0");
+  hash.update(bundle.description);
+  hash.update("\0");
+  for (const filePath of listCodexEffectivePluginFiles(pluginRoot)) {
+    const relativePath = path.relative(pluginRoot, filePath);
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(readFileSync(filePath));
+    hash.update("\0");
+  }
+  return `0.0.0+${hash.digest("hex").slice(0, 12)}`;
+}
+
+function listCodexEffectivePluginFiles(pluginRoot: string): string[] {
+  const skillsPath = path.join(pluginRoot, "skills");
+  if (!existsSync(skillsPath)) return [];
+  const files: string[] = [];
+  collectRenderableFiles(pluginRoot, skillsPath, files, new Set());
+  return files.sort();
 }
 
 function claudeManifest(bundle: PluginBundle): unknown {

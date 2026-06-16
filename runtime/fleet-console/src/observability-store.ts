@@ -9,6 +9,7 @@ import type {
   ConsoleTerminalSessionInfo,
   ConsoleTerminalSessionStatus,
 } from "./api-types.js";
+import type { DurableOperation, ProviderSession } from "./durable-state.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
 
 export interface ConsoleObservabilityStoreDeps {
@@ -51,6 +52,7 @@ interface PendingTerminalSessionState {
   status: ConsoleTerminalSessionStatus;
   registrationId?: string;
   cliRunId?: string;
+  providerSession?: ProviderSession;
 }
 
 interface TenantJobState {
@@ -209,14 +211,75 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(state);
   }
 
+  function injectDormantOperation(operation: DurableOperation): ConsoleTerminalSessionInfo {
+    const currentSequence = terminalSequenceByTheater.get(operation.theaterId) ?? 0;
+    terminalSequenceByTheater.set(operation.theaterId, Math.max(currentSequence, operation.sequence));
+    const state: PendingTerminalSessionState = {
+      sessionId: operation.sessionId,
+      cwd: operation.cwd,
+      canonicalCwd: canonicalizeTheaterPathSync(operation.cwd),
+      cwdLabel: operation.cwdLabel,
+      sequence: operation.sequence,
+      label: operation.label,
+      cliId: operation.cliId,
+      cliLabel: operation.cliLabel,
+      createdAt: operation.createdAt,
+      theaterId: operation.theaterId,
+      terminalSessionId: operation.sessionId,
+      status: "dormant",
+      providerSession: operation.providerSession,
+    };
+    terminalSessionsById.set(state.sessionId, state);
+    return toTerminalSessionInfo(state);
+  }
+
   function listTerminalSessions(): readonly ConsoleTerminalSessionInfo[] {
     return Array.from(terminalSessionsById.values()).map(toTerminalSessionInfo).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  function listDurableOperations(): readonly DurableOperation[] {
+    return Array.from(terminalSessionsById.values()).map((session) => ({
+      sessionId: session.sessionId,
+      theaterId: session.theaterId,
+      cwd: session.cwd,
+      cwdLabel: session.cwdLabel,
+      sequence: session.sequence,
+      ...(session.label ? { label: session.label } : {}),
+      ...(session.cliId ? { cliId: session.cliId } : {}),
+      ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
+      createdAt: session.createdAt,
+      ...(session.providerSession ? { providerSession: session.providerSession } : {}),
+    }));
+  }
+
+  function getDurableOperation(sessionId: string): DurableOperation | null {
+    return listDurableOperations().find((operation) => operation.sessionId === sessionId) ?? null;
+  }
+
+  function updateTerminalSessionProviderSession(sessionId: string, providerSession: ProviderSession): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    session.providerSession = providerSession;
+    return toTerminalSessionInfo(session);
   }
 
   function updateTerminalSessionStatus(sessionId: string, status: ConsoleTerminalSessionStatus): ConsoleTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     session.status = status;
+    return toTerminalSessionInfo(session);
+  }
+
+  function transitionTerminalSessionToDormant(sessionId: string, providerSession: ProviderSession): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const workspace = workspacesByCliRunId.get(sessionId);
+    if (workspace?.terminalSessionId === sessionId) {
+      removeWorkspaceIndexes(workspace);
+      workspacesByCliRunId.delete(sessionId);
+    }
+    session.status = "dormant";
+    session.providerSession = providerSession;
     return toTerminalSessionInfo(session);
   }
 
@@ -264,18 +327,23 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     clear,
     getLaunchCwd,
     getTruncation,
+    getDurableOperation,
     getWorkspace,
     listEvents,
     listJobs,
+    listDurableOperations,
     listTerminalSessions,
     listWorkspaces,
     appendTerminalRuntimeEvent,
     createPendingTerminalSession,
+    injectDormantOperation,
     notifySessionUpdated,
     renameTerminalSession,
     subscribe,
     subscribeAll,
+    updateTerminalSessionProviderSession,
     updateTerminalSessionStatus,
+    transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
     workspaceCount: () => listWorkspaces().length,
@@ -353,6 +421,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     registrationId: state.registrationId,
     cliRunId: state.cliRunId,
     tenantId: state.cliRunId,
+    resumeAvailable: state.providerSession !== undefined,
   };
 }
 

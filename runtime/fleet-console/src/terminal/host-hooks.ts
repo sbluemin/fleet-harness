@@ -8,6 +8,7 @@ import type {
   CodexPluginRegistrationCommand,
   FleetHookExec,
 } from "@dotobokuri/fleet-admiral";
+import { createSessionCaptureHookExec, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { withDirectoryLock } from "@dotobokuri/fleet-infra";
 
 export interface ConsoleHookCommandEntry {
@@ -15,6 +16,8 @@ export interface ConsoleHookCommandEntry {
   readonly execPath: string;
   readonly tsxLoaderPath?: string;
 }
+
+export type ConsoleCaptureProvider = "claude" | "codex";
 
 const JAVASCRIPT_ENTRY_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
 const TYPESCRIPT_ENTRY_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"]);
@@ -41,6 +44,33 @@ export function buildConsoleHookCommand(entry: ConsoleHookCommandEntry | undefin
     };
   }
   throw new Error(`Unsupported Fleet Console session hook entry extension: ${extension}`);
+}
+
+export function buildConsoleCaptureHookCommand(entry: ConsoleHookCommandEntry, cliId: AgentCliId): FleetHookExec {
+  const extension = path.extname(entry.entryPath);
+  if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {
+    return createSessionCaptureHookExec({
+      entryPath: entry.entryPath,
+      execPath: entry.execPath,
+      provider: toCaptureProvider(cliId),
+    });
+  }
+  if (TYPESCRIPT_ENTRY_EXTENSIONS.has(extension)) {
+    if (!entry.tsxLoaderPath) {
+      throw new Error("Fleet Console capture session hook requires a tsx loader path");
+    }
+    return createSessionCaptureHookExec({
+      entryPath: entry.entryPath,
+      execPath: entry.execPath,
+      provider: toCaptureProvider(cliId),
+      tsxLoader: entry.tsxLoaderPath,
+    });
+  }
+  throw new Error(`Unsupported Fleet Console session hook entry extension: ${extension}`);
+}
+
+export function toCaptureProvider(cliId: AgentCliId): ConsoleCaptureProvider {
+  return cliId === "codex" ? "codex" : "claude";
 }
 
 export function runCodexCommand(command: CodexPluginRegistrationCommand): CodexCommandResult {

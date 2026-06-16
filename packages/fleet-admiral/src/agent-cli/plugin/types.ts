@@ -13,6 +13,7 @@ export interface CodexCommandRunner {
 
 export interface CreateAgentCliPluginOptions {
   readonly claudeDefinitions: readonly ClaudeSubagentDefinition[];
+  readonly captureSessionHookExec?: FleetHookExec;
   readonly cliId: string;
   readonly codexCommandRunner?: CodexCommandRunner;
   readonly cwd: string;

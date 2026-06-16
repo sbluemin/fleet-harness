@@ -51,18 +51,31 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   if (!hookExec) {
     throw new Error("Fleet Claude session hook command is required");
   }
+  const captureSessionHookExec = options.captureSessionHookExec;
   return {
     hooks: {
       SessionStart: [{
-        hooks: [{
-          // exec 형식: command는 직접 spawn되는 실행 파일, args는 셸 토크나이징 없이 그대로 전달된다.
-          // Windows cmd/powershell의 따옴표 규칙과 무관하게 동작하며 공백 포함 경로도 안전하다.
-          args: [...hookExec.args],
-          command: hookExec.command,
-          type: "command",
-        }],
+        hooks: [claudeCommandHook(hookExec)],
       }],
+      ...(captureSessionHookExec ? {
+        UserPromptSubmit: [{
+          hooks: [claudeCommandHook(captureSessionHookExec)],
+        }],
+      } : {}),
     },
+  };
+}
+
+function claudeCommandHook(hookExec: CreateAgentCliPluginOptions["hookExec"]): unknown {
+  if (!hookExec) {
+    throw new Error("Fleet Claude session hook command is required");
+  }
+  return {
+    // exec 형식: command는 직접 spawn되는 실행 파일, args는 셸 토크나이징 없이 그대로 전달된다.
+    // Windows cmd/powershell의 따옴표 규칙과 무관하게 동작하며 공백 포함 경로도 안전하다.
+    args: [...hookExec.args],
+    command: hookExec.command,
+    type: "command",
   };
 }
 

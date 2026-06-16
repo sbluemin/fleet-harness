@@ -23,6 +23,7 @@ import { runSubagentsContextHook } from "./hooks/subagents-context.js";
 import { createConsoleLock } from "./lock.js";
 import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
+import { runCaptureSessionHook } from "./session-capture.js";
 import { createConsoleStalePolicy } from "./stale.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
@@ -84,7 +85,7 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
-const CONSOLE_HOOK_COMMANDS = new Set(["subagents-context"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "subagents-context"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -112,12 +113,14 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   return mode;
 }
 
-export function parseConsoleHookCommand(argv: readonly string[]): "subagents-context" {
+export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "subagents-context" } {
   const [commandName, ...rest] = argv;
-  if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName) || rest.length > 0) {
+  if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName)) {
     throw new Error("Unknown fleet-console hook command");
   }
-  return "subagents-context";
+  if (commandName === "subagents-context" && rest.length === 0) return { command: "subagents-context" };
+  if (commandName === "capture-session" && rest.length === 1 && rest[0]) return { command: "capture-session", provider: rest[0] };
+  throw new Error("Unknown fleet-console hook command");
 }
 
 export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}): string {
@@ -355,10 +358,12 @@ export async function main(): Promise<void> {
   }
   if (process.argv[2] === "hook") {
     const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
-    if (hookCommand === "subagents-context") {
+    if (hookCommand.command === "subagents-context") {
       process.stdout.write(`${runSubagentsContextHook(process.env)}\n`);
       return;
     }
+    await runCaptureSessionHook(hookCommand.provider, process.env);
+    return;
   }
   if (process.argv[2] === "codex") {
     await mainWiki(process.argv.slice(3));

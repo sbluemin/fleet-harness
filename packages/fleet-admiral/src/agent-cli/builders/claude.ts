@@ -3,6 +3,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string[] {
   const systemPromptArg = context.replaceSystemPrompt ? "--system-prompt-file" : "--append-system-prompt-file";
   return [
+    ...buildResumeArgs(context.resumeSessionId),
     systemPromptArg,
     requireSystemPromptFile(context),
     ...context.pluginRoots.flatMap((pluginRoot) => [
@@ -12,6 +13,10 @@ export function buildClaudeNativeArgs(context: AgentCliInjectionContext): string
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
     "--dangerously-skip-permissions",
   ];
+}
+
+function buildResumeArgs(resumeSessionId: string | undefined): string[] {
+  return resumeSessionId === undefined ? [] : ["--resume", resumeSessionId];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

@@ -24,7 +24,7 @@ export interface ConsoleObservedWorkspace {
   readonly tenantLabel: string;
   readonly createdAt: number;
   readonly sessions: number;
-  readonly status: "live" | "closed";
+  readonly status: "live" | "closed" | "dormant";
   readonly cliRunId: string;
   readonly registrationId: string;
   readonly theaterId: string;
@@ -86,7 +86,7 @@ export interface CreateTheaterCancelledResponse {
 
 export interface CreateTheaterResponse extends ConsoleTheaterInfo {}
 
-export type ConsoleTerminalSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error";
+export type ConsoleTerminalSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error" | "dormant";
 
 export interface ConsoleTerminalSessionInfo {
   readonly sessionId: string;
@@ -102,6 +102,7 @@ export interface ConsoleTerminalSessionInfo {
   readonly registrationId?: string;
   readonly cliRunId?: string;
   readonly tenantId?: string;
+  readonly resumeAvailable: boolean;
 }
 
 export interface ConsoleSessionUpdatedEvent {

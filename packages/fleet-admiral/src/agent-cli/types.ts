@@ -50,6 +50,7 @@ export interface AgentCliProfileOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly model?: string;
+  readonly resumeSessionId?: string;
 }
 
 export interface AgentCliMcpServerArg {
@@ -65,6 +66,7 @@ export interface AgentCliInjectionContext {
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
   readonly replaceSystemPrompt?: boolean;
+  readonly resumeSessionId?: string;
   readonly systemPromptFile?: string;
 }
 

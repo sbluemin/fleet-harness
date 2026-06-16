@@ -88,7 +88,14 @@ function readObservedEvent(value: unknown): ObservedEvent | null {
 
 function readSessionInfo(value: unknown): SessionInfo | null {
   if (typeof value !== "object" || value === null) return null;
-  const session = value as Partial<SessionInfo> & { readonly cwd?: unknown; readonly canonicalCwd?: unknown };
+  const session = value as Partial<SessionInfo> & {
+    readonly canonicalCwd?: unknown;
+    readonly cwd?: unknown;
+    readonly providerSession?: unknown;
+    readonly ticket?: unknown;
+    readonly token?: unknown;
+    readonly transcriptPath?: unknown;
+  };
   if (
     typeof session.sessionId !== "string"
     || typeof session.cwdLabel !== "string"
@@ -97,6 +104,10 @@ function readSessionInfo(value: unknown): SessionInfo | null {
     || typeof session.createdAt !== "number"
     || "cwd" in session
     || "canonicalCwd" in session
+    || "providerSession" in session
+    || "ticket" in session
+    || "token" in session
+    || "transcriptPath" in session
   ) {
     return null;
   }
@@ -113,5 +124,6 @@ function readSessionInfo(value: unknown): SessionInfo | null {
     theaterId: typeof session.theaterId === "string" ? session.theaterId : undefined,
     tenantId: typeof session.tenantId === "string" ? session.tenantId : undefined,
     registrationId: typeof session.registrationId === "string" ? session.registrationId : undefined,
+    resumeAvailable: session.resumeAvailable === true,
   };
 }

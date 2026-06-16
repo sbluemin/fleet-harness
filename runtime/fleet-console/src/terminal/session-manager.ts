@@ -119,7 +119,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
   }
 
   async function launchSession(context: TerminalTicketContext): Promise<TerminalSession> {
-    const launch = await deps.launch(context.cwd, { sessionId: context.sessionId, kind: context.kind, cliId: context.cliId });
+    const launch = await deps.launch(context.cwd, { sessionId: context.sessionId, kind: context.kind, cliId: context.cliId, resumeSessionId: context.resumeSessionId });
     let pty: TerminalPtyHandle;
     try {
       pty = startShell(launch, { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });

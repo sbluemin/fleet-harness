@@ -1,10 +1,10 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
+import { createTheaterTerminalSession, renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { OperationLaunchMenu } from "./operation-launch-menu.js";
 import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
+import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
 import type { AgentCliMetadata, ConsoleState, JobView, SessionInfo } from "../types.js";
 
@@ -69,6 +69,7 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
   const skipBlurCommitRef = useRef(false);
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
   const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
+  const dormant = session.status === "dormant";
   const displayLabel = sessionDisplayLabel(session);
   // 진행 중인 잡을 위로, 완료(terminal)된 잡을 아래로 모은다. 안정 정렬이라 그룹 내부 등록 순서는 그대로 유지된다.
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
@@ -118,6 +119,20 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
     }
   };
 
+  const openSession = async () => {
+    if (!dormant) {
+      selectTerminalSession(session.sessionId);
+      return;
+    }
+    try {
+      const resumed = await resumeTerminalSession(session.sessionId);
+      applySessionUpdate(resumed);
+      selectTerminalSession(resumed.sessionId);
+    } catch (error) {
+      failResumeTerminalSession(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <li className={`session-item ${active ? "is-active" : ""}`}>
       <div className="session-row-shell">
@@ -144,16 +159,17 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
           <button
             type="button"
             className={`session-row ${active ? "is-active" : ""}`}
-            onClick={() => selectTerminalSession(session.sessionId)}
+            onClick={() => { void openSession(); }}
             onDoubleClick={beginRename}
             aria-current={active || undefined}
             aria-label={`Operation ${displayLabel}`}
           >
-            <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+            <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
             <span className="tenant-row-text">
               <span className="tenant-label">{displayLabel}</span>
+              {dormant ? <span className="job-row-meta">Dormant</span> : null}
             </span>
-            {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
+            {dormant ? <span className="tenant-count">Open</span> : !active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
           </button>
         )}
         <button

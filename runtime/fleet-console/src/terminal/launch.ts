@@ -14,12 +14,11 @@ import {
   type AgentCliProfile,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, type InfraServices } from "@dotobokuri/fleet-infra";
+import { createInfraServices, getFleetDataDir, type InfraServices } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
-import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
-import { buildConsoleHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleCaptureHookCommand, buildConsoleHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -100,6 +99,7 @@ export function createDefaultTerminalLaunchResolver(deps: TerminalLaunchResolver
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
       cliId: context?.cliId,
+      resumeSessionId: context?.resumeSessionId,
       sessionId,
     });
   };
@@ -162,6 +162,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly injectProfile: typeof injectAgentCliProfile;
   readonly onRuntimeSessionStart?: (session: ConsoleRuntimeSessionInfo) => void;
   readonly resolveProfile: typeof resolveAgentCliProfile;
+  readonly resumeSessionId?: string;
   readonly sessionId: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
@@ -174,6 +175,7 @@ async function createAgentCliLaunchSpec(options: {
       authEnvResolver: options.authEnvResolver,
       authService: options.infraServices.authService,
       cliId: options.cliId,
+      resumeSessionId: options.resumeSessionId,
     });
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
@@ -182,9 +184,11 @@ async function createAgentCliLaunchSpec(options: {
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       enableMetaphor: false,
+      captureSessionHookExec: buildConsoleCaptureHookCommand(options.hookEntry, profile.id),
       hookExec: buildConsoleHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       replaceSystemPrompt: false,
+      resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
     } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });

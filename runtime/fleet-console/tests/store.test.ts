@@ -14,6 +14,7 @@ import {
   closeShell,
   completeCreateTerminalSession,
   closeOperationSearch,
+  failResumeTerminalSession,
   focusOperation,
   getState,
   hydrateTerminalSessions,
@@ -259,6 +260,59 @@ describe("store", () => {
 
     expect(getState()).toMatchObject({ activeTerminalSessionId: "session-a", creatingTerminalSession: false });
     expect(getState().sessionOrder).toEqual(["session-a"]);
+  });
+
+  it("keeps restored dormant operations visible without auto-selecting them", () => {
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "dormant", createdAt: 1, theaterId: "theater-a", resumeAvailable: true },
+    ]);
+
+    expect(theaterSessions(getState()).map((session) => session.sessionId)).toEqual(["session-a"]);
+    expect(getState().activeTerminalSessionId).toBeNull();
+
+    applySessionUpdate({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, status: "dormant", createdAt: 2, theaterId: "theater-a", resumeAvailable: true });
+    expect(getState().sessionOrder).toEqual(["session-b", "session-a"]);
+    expect(getState().activeTerminalSessionId).toBeNull();
+  });
+
+  it("continues auto-selecting live terminal sessions", () => {
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1, theaterId: "theater-a", resumeAvailable: false },
+    ]);
+
+    expect(getState().activeTerminalSessionId).toBe("session-a");
+  });
+
+  it("keeps a dormant operation intact when resume fails and activates only after success", () => {
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "dormant", createdAt: 1, theaterId: "theater-a", resumeAvailable: true },
+    ]);
+
+    failResumeTerminalSession("resume_unavailable");
+    expect(getState().sessions["session-a"]).toMatchObject({ status: "dormant", resumeAvailable: true });
+    expect(getState().activeTerminalSessionId).toBeNull();
+
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "registered", createdAt: 1, theaterId: "theater-a", resumeAvailable: true });
+    selectTerminalSession("session-a");
+    expect(getState().activeTerminalSessionId).toBe("session-a");
+    expect(getState().sessions["session-a"]).toMatchObject({ status: "registered", resumeAvailable: true });
+  });
+
+  it("keeps a session card when the server reports dormant after terminal close", () => {
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "registered", createdAt: 1, theaterId: "theater-a", resumeAvailable: true },
+    ]);
+    expect(getState().activeTerminalSessionId).toBe("session-a");
+
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "dormant", createdAt: 1, theaterId: "theater-a", resumeAvailable: true });
+
+    expect(getState().sessions["session-a"]).toMatchObject({ status: "dormant", resumeAvailable: true });
+    expect(getState().sessionOrder).toEqual(["session-a"]);
+    expect(getState().activeTerminalSessionId).toBeNull();
   });
 
   it("toggles and closes the free shell overlay", () => {

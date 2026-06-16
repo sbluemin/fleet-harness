@@ -19,16 +19,17 @@ import {
   type AgentCliId,
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices } from "@dotobokuri/fleet-infra";
+import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
-import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
+import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
+import { createConsoleDataPaths } from "./paths.js";
 import { readFleetConsoleRelease } from "./release.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
@@ -99,6 +100,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const infraServices = createInfraServices();
   const dataDir = deps.dataDir ?? getFleetDataDir();
   initStore(dataDir);
+  const durablePaths = createConsoleDataPaths({ fleetDataDir: dataDir });
+  const durableStateStore = createConsoleDurableStateStore({ paths: durablePaths });
   const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
   const ownsAgentRuntime = deps.agentRuntime === undefined;
   const agentRuntime = deps.agentRuntime ?? createFleetAgentRuntimeLifecycle({
@@ -137,10 +140,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }),
     startShell: deps.terminalStartShell,
     maxSessions: deps.maxTerminalSessions,
-    // PTY가 종료되면 콘솔 세션 목록에서도 제거해 잔존/재실행을 막는다.
     onSessionExit: (sessionId) => {
       pendingRuntimeSessions.delete(sessionId);
-      observability.removeTerminalSession(sessionId);
+      const operation = observability.getDurableOperation(sessionId);
+      const providerSession = operation?.providerSession ?? readProviderSessionCapture(sessionId, { capturesDir: durablePaths.capturesDir });
+      if (providerSession) {
+        observability.updateTerminalSessionProviderSession(sessionId, providerSession);
+        const dormant = observability.transitionTerminalSessionToDormant(sessionId, providerSession);
+        if (dormant) observability.notifySessionUpdated(dormant);
+      } else {
+        observability.removeTerminalSession(sessionId);
+      }
+      persistDurableState();
     },
   });
   const unsubscribeCarrierReminderRouter = createCarrierResultReminderRouter({
@@ -206,6 +217,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTerminalSessions(req, res), res);
       return;
     }
+    const terminalSessionResumeMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)\/resume$/);
+    if (terminalSessionResumeMatch) {
+      runAsyncHandler(handleTerminalSessionResume(req, res, decodeURIComponent(terminalSessionResumeMatch[1] ?? "")), res);
+      return;
+    }
     const terminalSessionItemMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)$/);
     if (terminalSessionItemMatch) {
       runAsyncHandler(handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? "")), res);
@@ -213,6 +229,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/observer/theaters") {
       runAsyncHandler(handleObserverTheaters(req, res), res);
+      return;
+    }
+    const theaterItemMatch = pathname.match(/^\/observer\/theaters\/([^/]+)$/);
+    if (theaterItemMatch) {
+      runAsyncHandler(handleObserverTheaterItem(req, res, decodeURIComponent(theaterItemMatch[1] ?? "")), res);
       return;
     }
     const theaterSessionMatch = pathname.match(/^\/observer\/theaters\/([^/]+)\/sessions$/);
@@ -403,13 +424,64 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 작전 이름 변경을 실행 중인 Agent CLI 세션에도 동기화한다: carrier 결과 system-reminder와
       // 동일한 PTY 주입 파이프라인을 재사용해 해당 CLI의 rename 슬래시 명령을 그 세션에 주입한다.
       injectRenameCommand(sessionId, updated.label);
+      persistDurableState();
       writeJson(res, 200, updated);
       return;
     }
-    // 운영자 X 버튼 종료 — PTY 자식을 끝내고(멱등) 콘솔 세션 목록에서도 제거한다. 이미 종료된 세션이어도 200으로 멱등 처리한다.
-    terminalSessions.terminate(sessionId);
-    observability.removeTerminalSession(sessionId);
+    // 운영자 X 버튼은 영구 삭제다. 라이브 PTY를 끝내고, dormant/live durable operation과 capture까지 함께 잊는다.
+    forgetTerminalSession(sessionId);
     writeJson(res, 200, { ok: true });
+  }
+
+  async function handleTerminalSessionResume(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const dormantSession = observability.listTerminalSessions().find((session) => session.sessionId === sessionId && session.status === "dormant");
+    const operation = dormantSession ? observability.getDurableOperation(sessionId) : null;
+    if (!operation) {
+      writeJson(res, 404, { error: "session_not_found" });
+      return;
+    }
+    const cliId = readDurableAgentCliId(operation);
+    if (!cliId) {
+      writeJson(res, 409, { error: "resume_unavailable" });
+      return;
+    }
+    const providerSession = operation.providerSession ?? readProviderSessionCapture(sessionId, { capturesDir: durablePaths.capturesDir });
+    if (!providerSession) {
+      writeJson(res, 409, { error: "resume_unavailable" });
+      return;
+    }
+    observability.updateTerminalSessionProviderSession(sessionId, providerSession);
+    const starting = observability.updateTerminalSessionStatus(sessionId, "starting");
+    if (starting) observability.notifySessionUpdated(starting);
+    try {
+      await terminalSessions.createSession({ sessionId, cwd: operation.cwd, cliId, resumeSessionId: providerSession.sessionId });
+      const runtimeSession = pendingRuntimeSessions.get(sessionId);
+      pendingRuntimeSessions.delete(sessionId);
+      const resumed = runtimeSession
+        ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting
+        : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
+      if (!resumed) {
+        writeJson(res, 404, { error: "session_not_found" });
+        return;
+      }
+      observability.notifySessionUpdated(resumed);
+      persistDurableState();
+      writeJson(res, 200, resumed);
+    } catch {
+      pendingRuntimeSessions.delete(sessionId);
+      const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
+      if (reverted) observability.notifySessionUpdated(reverted);
+      persistDurableState();
+      writeJson(res, 503, { error: "terminal_unavailable" });
+    }
   }
 
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -444,7 +516,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         console.warn(`[fleet-console] Codex workspace registration skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    persistDurableState();
     writeJson(res, 200, toTheaterInfo(theater, hasWiki));
+  }
+
+  async function handleObserverTheaterItem(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
+    if (req.method !== "DELETE") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const operations = observability.listDurableOperations().filter((operation) => operation.theaterId === theaterId);
+    const removed = theaters.remove(theaterId);
+    if (!removed) {
+      writeJson(res, 404, { error: "theater_not_found" });
+      return;
+    }
+    for (const operation of operations) forgetTerminalSession(operation.sessionId, { persist: false });
+    persistDurableState();
+    writeJson(res, 200, { ok: true });
   }
 
   async function handleObserverTheaterSessions(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
@@ -478,6 +571,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
       observability.notifySessionUpdated(created);
+      persistDurableState();
       writeJson(res, 200, created);
     } catch (error) {
       pendingRuntimeSessions.delete(sessionId);
@@ -573,6 +667,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return theaters.list().map((theater) => toTheaterInfo(theater, codex.getWorkspace(theater.id) !== null));
   }
 
+  function forgetTerminalSession(sessionId: string, options: { readonly persist?: boolean } = {}): void {
+    terminalSessions.terminate(sessionId);
+    pendingRuntimeSessions.delete(sessionId);
+    observability.removeTerminalSession(sessionId);
+    unlinkProviderSessionCapture(sessionId, { capturesDir: durablePaths.capturesDir });
+    if (options.persist !== false) persistDurableState();
+  }
+
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
     return {
       id: theater.id,
@@ -643,12 +745,72 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     currentLock?.release();
   }
 
+  function rehydrateDurableState(): void {
+    let state: DurableConsoleState;
+    try {
+      state = durableStateStore.load();
+      theaters.restore(state.theaters);
+    } catch (error) {
+      console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
+      state = emptyDurableConsoleState();
+      theaters.restore([]);
+    }
+    const merged = mergeProviderSessionCaptures(state, { capturesDir: durablePaths.capturesDir });
+    syncProviderSessionsToObservability(merged);
+    const restorable = {
+      ...merged,
+      operations: merged.operations.filter((operation) => operation.providerSession),
+    };
+    if (merged !== state || restorable.operations.length !== merged.operations.length) {
+      try {
+        durableStateStore.save(restorable);
+        cleanupProviderSessionCaptures(restorable, { capturesDir: durablePaths.capturesDir });
+      } catch (error) {
+        console.warn(`[fleet-console] Durable state capture merge was not persisted: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } else {
+      cleanupProviderSessionCaptures(restorable, { capturesDir: durablePaths.capturesDir });
+    }
+    for (const operation of restorable.operations) {
+      if (theaters.get(operation.theaterId)) observability.injectDormantOperation(operation);
+    }
+  }
+
+  function persistDurableState(): void {
+    try {
+      const state = mergeProviderSessionCaptures({
+        version: 1,
+        theaters: theaters.list(),
+        operations: observability.listDurableOperations(),
+      }, { capturesDir: durablePaths.capturesDir });
+      syncProviderSessionsToObservability(state);
+      const operationsWithProviderSession = state.operations.filter((operation) => operation.providerSession);
+      durableStateStore.save({
+        version: state.version,
+        theaters: state.theaters,
+        // 대화 없는 빈 Operation 드롭은 rehydrate에서 capture 머지 뒤에만 수행한다.
+        // create 시점의 메타데이터를 먼저 남겨야 이후 도착한 capture 파일이 재시작 때 병합될 수 있다.
+        operations: state.operations,
+      });
+      cleanupProviderSessionCaptures({ ...state, operations: operationsWithProviderSession }, { capturesDir: durablePaths.capturesDir });
+    } catch (error) {
+      console.warn(`[fleet-console] Durable state save failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function syncProviderSessionsToObservability(state: DurableConsoleState): void {
+    for (const operation of state.operations) {
+      if (operation.providerSession) observability.updateTerminalSessionProviderSession(operation.sessionId, operation.providerSession);
+    }
+  }
+
   return {
     host,
     port,
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
+        rehydrateDurableState();
         await new Promise<void>((resolve, reject) => {
           const srv = createHttpServer(handleRequest, terminalUpgrade);
           srv.once("error", reject);
@@ -733,6 +895,15 @@ function resolveCarrierEventOrigin(event: ConsoleCarrierJobStreamEvent, jobOrigi
 
 function queueOriginCleanup(jobId: string, jobOriginById: Map<string, string>): void {
   queueMicrotask(() => jobOriginById.delete(jobId));
+}
+
+function readDurableAgentCliId(operation: DurableOperation): AgentCliId | null {
+  if (!operation.cliId) return null;
+  try {
+    return parseAgentCliId(operation.cliId) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function createHttpServer(

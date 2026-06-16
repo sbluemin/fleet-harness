@@ -8,7 +8,7 @@ export const codexCli: AgentCliDefinition = {
   async createProfile(options: AgentCliProfileOptions) {
     const { bin, prefixArgs } = resolveBinary("codex", "CODEX_BIN", options.env);
     return {
-      args: [...prefixArgs, "--no-alt-screen", ...buildModelArgs(options.model)],
+      args: [...prefixArgs, ...buildResumeArgs(options.resumeSessionId), "--no-alt-screen", ...buildModelArgs(options.model)],
       bin,
       binPrefixArgs: prefixArgs,
       cwd: options.cwd,
@@ -26,6 +26,10 @@ export const codexCli: AgentCliDefinition = {
     };
   },
 };
+
+function buildResumeArgs(resumeSessionId: string | undefined): string[] {
+  return resumeSessionId === undefined ? [] : ["resume", resumeSessionId];
+}
 
 function buildModelArgs(model: string | undefined): string[] {
   return model === undefined ? [] : ["--model", model];

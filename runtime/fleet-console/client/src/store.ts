@@ -23,6 +23,8 @@ export interface SessionJob {
   readonly tenant: TenantJobsView;
 }
 
+type SessionInput = Omit<SessionInfo, "resumeAvailable"> & { readonly resumeAvailable?: boolean };
+
 const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
@@ -119,7 +121,7 @@ export function applyThemeToDocument(theme: ThemeId): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
 
-export function hydrateTerminalSessions(sessions: readonly SessionInfo[]): void {
+export function hydrateTerminalSessions(sessions: readonly SessionInput[]): void {
   const byId: Record<string, SessionInfo> = {};
   for (const session of sessions) byId[session.sessionId] = normalizeSession(session);
   const sessionOrder = [...sessions].sort((a, b) => b.createdAt - a.createdAt).map((session) => session.sessionId);
@@ -224,7 +226,7 @@ export function beginCreateTerminalSession(): void {
   setState({ creatingTerminalSession: true, terminalSessionError: null });
 }
 
-export function completeCreateTerminalSession(session: SessionInfo): void {
+export function completeCreateTerminalSession(session: SessionInput): void {
   const normalized = normalizeSession(session);
   setState({
     sessions: { ...state.sessions, [normalized.sessionId]: normalized },
@@ -236,7 +238,7 @@ export function completeCreateTerminalSession(session: SessionInfo): void {
   });
 }
 
-export function applySessionUpdate(session: SessionInfo): void {
+export function applySessionUpdate(session: SessionInput): void {
   const current = state.sessions[session.sessionId];
   const normalized = normalizeSession({ ...(current ?? {}), ...session });
   const known = Boolean(current);
@@ -302,9 +304,38 @@ export function failTerminateTerminalSession(error: string): void {
   setState({ terminalSessionError: error });
 }
 
+export function failResumeTerminalSession(error: string): void {
+  setState({ terminalSessionError: error });
+}
+
 export function failRenameTerminalSession(error: string): void {
   // 이름 변경 실패 시 세션 카드는 그대로 두고 사이드바 오류 라인에만 사유를 표기한다.
   setState({ terminalSessionError: error });
+}
+
+export function removeTheater(theaterId: string): void {
+  const theaters = state.theaters.filter((theater) => theater.id !== theaterId);
+  const sessions: Record<string, SessionInfo> = {};
+  const sessionOrder: string[] = [];
+  for (const sessionId of state.sessionOrder) {
+    const session = state.sessions[sessionId];
+    if (!session || session.theaterId === theaterId) continue;
+    sessions[sessionId] = session;
+    sessionOrder.push(sessionId);
+  }
+  const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId === theaterId ? null : state.activeTheaterId);
+  const expandedSessionIds = state.expandedSessionIds.filter((id) => sessions[id]);
+  writeStoredActiveTheaterId(activeTheaterId);
+  writeStoredExpandedSessions(expandedSessionIds);
+  setState({
+    theaters,
+    sessions,
+    sessionOrder,
+    activeTheaterId,
+    activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
+    selectedJobId: null,
+    expandedSessionIds,
+  });
 }
 
 export function removeTerminalSession(sessionId: string): void {
@@ -318,7 +349,7 @@ export function removeTerminalSession(sessionId: string): void {
   setState({
     sessions,
     sessionOrder,
-    activeTerminalSessionId: wasActive ? sessionOrder[0] ?? null : state.activeTerminalSessionId,
+    activeTerminalSessionId: wasActive ? resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, null) : state.activeTerminalSessionId,
     selectedJobId: wasActive ? null : state.selectedJobId,
     expandedSessionIds,
   });
@@ -485,11 +516,12 @@ export function collectSessionTenantIds(sessions: Readonly<Record<string, Sessio
   return ids;
 }
 
-function normalizeSession(session: SessionInfo): SessionInfo {
+function normalizeSession(session: SessionInput): SessionInfo {
   return {
     ...session,
     terminalSessionId: session.terminalSessionId ?? session.sessionId,
     status: session.status === "starting" && session.tenantId ? "registered" : session.status,
+    resumeAvailable: session.resumeAvailable === true,
   };
 }
 
@@ -501,7 +533,7 @@ function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, te
     if (!session) continue;
     next[tenant.terminalSessionId] = {
       ...session,
-      status: tenant.status === "closed" ? "closed" : "registered",
+      status: tenant.status === "closed" ? "closed" : tenant.status === "dormant" ? "dormant" : "registered",
       tenantId: tenant.tenantId,
       registrationId: tenant.registrationId,
       theaterId: tenant.theaterId ?? session.theaterId,
@@ -524,14 +556,21 @@ function resolveVisibleSessionId(
   sessionOrder: readonly string[],
   preferredSessionId: string | null,
 ): string | null {
-  if (!theaterId) return preferredSessionId && sessions[preferredSessionId] ? preferredSessionId : sessionOrder[0] ?? null;
-  if (preferredSessionId && sessionBelongsToTheater(sessions[preferredSessionId], theaterId)) return preferredSessionId;
-  return sessionOrder.find((sessionId) => sessionBelongsToTheater(sessions[sessionId], theaterId)) ?? null;
+  if (!theaterId) {
+    if (preferredSessionId && sessions[preferredSessionId] && isAutoSelectableSession(sessions[preferredSessionId])) return preferredSessionId;
+    return sessionOrder.find((sessionId) => isAutoSelectableSession(sessions[sessionId])) ?? null;
+  }
+  if (preferredSessionId && sessionBelongsToTheater(sessions[preferredSessionId], theaterId) && isAutoSelectableSession(sessions[preferredSessionId])) return preferredSessionId;
+  return sessionOrder.find((sessionId) => sessionBelongsToTheater(sessions[sessionId], theaterId) && isAutoSelectableSession(sessions[sessionId])) ?? null;
 }
 
 function sessionBelongsToTheater(session: SessionInfo | undefined, theaterId: string | null): boolean {
   if (!session || !theaterId) return false;
   return session.theaterId === theaterId;
+}
+
+function isAutoSelectableSession(session: SessionInfo | undefined): boolean {
+  return Boolean(session && session.status !== "dormant");
 }
 
 function readStoredActiveTheaterId(): string | null {

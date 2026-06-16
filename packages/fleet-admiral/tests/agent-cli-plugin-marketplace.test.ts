@@ -12,6 +12,10 @@ interface Deferred<T> {
   resolve(value: T): void;
 }
 
+interface CodexPluginManifest {
+  readonly version?: unknown;
+}
+
 const tempDirs: string[] = [];
 
 afterEach(() => {
@@ -120,6 +124,47 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(findStagingEntries(homeMarketplace)).toEqual([]);
     expect(findStagingEntries(projectFleetRoot)).toEqual([]);
   });
+
+  it("derives Codex plugin manifest versions from effective skill content", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-version-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    const skillPath = path.join(dataDir, "skills", "custom", "SKILL.md");
+    mkdirSync(cwd, { recursive: true });
+    mkdirSync(path.dirname(skillPath), { recursive: true });
+    writeFileSync(skillPath, "# Custom\n\nFirst\n", { flag: "wx" });
+
+    const first = await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      dataDir,
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+    const firstVersion = readCodexManifestVersion(first.codexRegistrations.find((registration) => registration.pluginName === "fleet-global")!.pluginRoot);
+    const second = await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      dataDir,
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+    const secondVersion = readCodexManifestVersion(second.codexRegistrations.find((registration) => registration.pluginName === "fleet-global")!.pluginRoot);
+    writeFileSync(skillPath, "# Custom\n\nSecond\n");
+    const third = await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      dataDir,
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+    const thirdVersion = readCodexManifestVersion(third.codexRegistrations.find((registration) => registration.pluginName === "fleet-global")!.pluginRoot);
+
+    expect(firstVersion).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
+    expect(secondVersion).toBe(firstVersion);
+    expect(thirdVersion).not.toBe(firstVersion);
+  });
 });
 
 function createDeferred<T>(): Deferred<T> {
@@ -134,6 +179,12 @@ function findStagingEntries(root: string): string[] {
   const entries: string[] = [];
   collectStagingEntries(root, entries);
   return entries.sort();
+}
+
+function readCodexManifestVersion(pluginRoot: string): string {
+  const manifest = JSON.parse(readFileSync(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")) as CodexPluginManifest;
+  expect(typeof manifest.version).toBe("string");
+  return manifest.version as string;
 }
 
 function collectStagingEntries(current: string, entries: string[]): void {

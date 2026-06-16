@@ -8,6 +8,7 @@ export interface ResolveAgentCliProfileOptions {
   readonly authService?: AuthServiceLike;
   readonly cliId?: string;
   readonly model?: string;
+  readonly resumeSessionId?: string;
 }
 
 export interface AgentCliMetadata {
@@ -34,6 +35,7 @@ export async function resolveAgentCliProfile(
     cwd,
     env,
     model: options.model,
+    resumeSessionId: options.resumeSessionId,
   });
 }
 

@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
-import { addTheater } from "../api.js";
+import { addTheater, forgetTheater } from "../api.js";
 import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
 
 interface TopbarProps {
@@ -198,6 +198,17 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
     }
   };
 
+  const handleForget = async () => {
+    if (!active) return;
+    setOpen(false);
+    try {
+      await forgetTheater(active.id);
+      removeTheater(active.id);
+    } catch (error) {
+      failAddTheater(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   // 메뉴 안에서 ↑/↓로 항목 간 포커스를 순환 이동한다.
   const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -256,6 +267,20 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
             <p className="theater-menu-empty">No Theaters yet.</p>
           )}
           <div className="theater-menu-divider" role="separator" />
+          {active ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="theater-menu-item theater-menu-forget"
+                onClick={handleForget}
+              >
+                <span className="theater-menu-check" aria-hidden="true"><CloseIcon /></span>
+                <span className="theater-menu-label">Forget Theater</span>
+              </button>
+              <div className="theater-menu-divider" role="separator" />
+            </>
+          ) : null}
           <button
             type="button"
             role="menuitem"
@@ -415,6 +440,14 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 8.5 6.5 11.5 12.5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.7 4.7 11.3 11.3M11.3 4.7 4.7 11.3" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
     </svg>
   );
 }
