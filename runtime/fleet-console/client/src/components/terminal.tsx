@@ -87,6 +87,9 @@ export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [status, setStatus] = useState("connecting");
 
   useEffect(() => {
@@ -151,7 +154,9 @@ export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
       fitAndResize();
       connection.start();
       // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
-      terminal.focus();
+      // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
+      // 단일 터미널(Shell/Helm, active===undefined)은 기존대로 포커스한다.
+      if (activeRef.current !== false) terminal.focus();
     };
 
     const resizeObserver = new ResizeObserver(scheduleFitAndResize);

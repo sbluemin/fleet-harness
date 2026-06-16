@@ -5,7 +5,7 @@ import { CarrierJobLines } from "../components/carrier-job-lines.js";
 import { Terminal } from "../components/terminal.js";
 import { sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { failTerminateTerminalSession, removeTerminalSession, selectTerminalSession, sessionJobs } from "../store.js";
+import { failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
 import { focusPanel, setPanelGeometry, setViewport, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
@@ -38,6 +38,13 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   const bringToFront = () => {
     selectTerminalSession(session.sessionId);
     setPanelGeometry(session.sessionId, geometry);
+  };
+
+  // dock의 job을 선택할 때, 비활성 패널이면 먼저 그 세션을 활성화해야 JobOverlay가 해당 tenant에서
+  // job을 찾는다(selectedJob은 activeTerminalSessionId의 tenant 기준). 활성 패널이면 toggle 동작을 유지한다.
+  const selectDockJob = (jobId: string) => {
+    if (!active) selectTerminalSession(session.sessionId);
+    selectJob(jobId);
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -163,7 +170,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         data-canvas-blocker
         aria-label={`Active carrier jobs for ${displayLabel}`}
       >
-        <CarrierJobLines jobs={activeJobs} selectedJobId={state.selectedJobId} />
+        <CarrierJobLines jobs={activeJobs} selectedJobId={state.selectedJobId} onSelect={selectDockJob} />
       </div>
     ) : null}
     </>
