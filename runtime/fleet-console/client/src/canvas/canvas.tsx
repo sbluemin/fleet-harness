@@ -20,7 +20,7 @@ interface LaunchRequest {
   readonly anchor: CanvasPoint;
 }
 
-const EMPTY_GUIDE = "Shift-drag to create an Operation. Drag or scroll to pan; Ctrl/⌘ + scroll to zoom.";
+const EMPTY_GUIDE = "Shift-drag to create an Operation. Drag to pan; scroll to zoom.";
 
 export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);

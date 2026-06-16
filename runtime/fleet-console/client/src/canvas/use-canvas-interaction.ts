@@ -127,20 +127,13 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     event.preventDefault();
     const screen = eventScreenPoint(event);
     const current = viewportRef.current;
-    if (event.ctrlKey || event.metaKey) {
-      const zoom = clamp(current.zoom * Math.exp(-event.deltaY * ZOOM_STEP), MIN_ZOOM, MAX_ZOOM);
-      const canvas = screenToCanvas(screen, current);
-      onViewportChange({
-        x: screen.x - canvas.x * zoom,
-        y: screen.y - canvas.y * zoom,
-        zoom,
-      });
-      return;
-    }
+    // 기본 휠 업/다운으로 포인터 위치를 기준점 삼아 줌 인/아웃한다(Ctrl/⌘ 보조키 없이). 맵 이동은 드래그가 담당한다.
+    const zoom = clamp(current.zoom * Math.exp(-event.deltaY * ZOOM_STEP), MIN_ZOOM, MAX_ZOOM);
+    const canvas = screenToCanvas(screen, current);
     onViewportChange({
-      ...current,
-      x: current.x - event.deltaX,
-      y: current.y - event.deltaY,
+      x: screen.x - canvas.x * zoom,
+      y: screen.y - canvas.y * zoom,
+      zoom,
     });
   };
 
