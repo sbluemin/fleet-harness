@@ -19,7 +19,7 @@ This skill **depends on the `playwriter` skill**. Read its full docs first (`pla
 
 Replace each `<placeholder>` before running. Optional inputs default as noted.
 
-- `<port>` — console loopback port. Required. Find it from the URL the user gives, or `fleet-console status`, or `lsof -nP -iTCP -sTCP:LISTEN | grep node`. For an **isolated instance** (see Prerequisites #1), read it from `<FLEET_CONSOLE_DIR>/console.lock`.
+- `<port>` — console loopback port. Required. Find it from the URL the user gives, or `fleet-console status`, or `lsof -nP -iTCP -sTCP:LISTEN | grep node`. A default source/`pnpm fleet-console` dev instance (no `FLEET_CONSOLE_DIR`) writes its lock to `<repo>/.fleet/console/console.lock`; published builds use the OS temp dir. For an **isolated instance** (see Prerequisites #1), read it from `<FLEET_CONSOLE_DIR>/console.lock`.
 - `<route>` — `/console/operations` (terminal + sidebar) or `/console/` (Welcome). Default `/console/operations`.
 - `<scenario>` — the interaction to drive (e.g., "switch between two terminal-only sessions"). Required for a bug repro.
 - `<symptom>` — observable failure to reproduce (e.g., "terminal area goes blank, needs refresh"). Optional but recommended.
@@ -27,7 +27,7 @@ Replace each `<placeholder>` before running. Optional inputs default as noted.
 ## Prerequisites (confirm first)
 
 1. **Console is running and serving**: `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:<port>/console/operations` → expect `200`. If not, start it (`pnpm fleet-console` from repo root, or `fleet-console start`).
-   - **Testing your own build? Isolate it — do NOT reuse or restart the user's daemon.** `fleet-console start` is a singleton per runtime dir: if a healthy daemon already exists it just **opens that daemon**, so it serves the *user's* running bundle, not your freshly-built one, and you would silently test the wrong code. To verify YOUR build (e.g. a worktree) without disturbing the user's daemon, launch a throwaway isolated instance with its own runtime dir + port:
+   - **Testing your own build? Isolate it — do NOT reuse or restart the user's daemon.** `fleet-console start` is a singleton per runtime dir (for source/`pnpm` runs that dir now defaults to `<repo>/.fleet/console`, shared with the user's own dev daemon unless `FLEET_CONSOLE_DIR` is set): if a healthy daemon already exists it just **opens that daemon**, so it serves the *user's* running bundle, not your freshly-built one, and you would silently test the wrong code. To verify YOUR build (e.g. a worktree) without disturbing the user's daemon, launch a throwaway isolated instance with its own runtime dir + port:
      ```bash
      pnpm --filter @dotobokuri/fleet-console build                       # build the bundle you want to test
      FLEET_CONSOLE_DIR=/tmp/fleet-console-e2e node runtime/fleet-console/dist/cli.mjs start

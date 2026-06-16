@@ -11,10 +11,12 @@ export interface ConsolePaths {
 export interface CreateConsolePathsDeps {
   readonly channel?: FleetConsoleChannel;
   readonly env?: NodeJS.ProcessEnv;
+  readonly packageRoot?: string;
   readonly uid?: number;
 }
 
 const LOCK_DIR_NAME = "fleet-console";
+const CONSOLE_RUNTIME_DIR_NAME = "console";
 const LOCK_FILE_NAME = "console.lock";
 
 export function createConsolePaths(deps: CreateConsolePathsDeps = {}): ConsolePaths {
@@ -25,8 +27,15 @@ export function createConsolePaths(deps: CreateConsolePathsDeps = {}): ConsolePa
 }
 
 function defaultConsoleBaseDir(deps: CreateConsolePathsDeps): string {
+  let release: ReturnType<typeof readFleetConsoleRelease> | undefined;
+  const channel = deps.channel ?? (release = readFleetConsoleRelease()).channel;
+
+  if (channel === "local") {
+    const packageRoot = deps.packageRoot ?? (release ??= readFleetConsoleRelease()).packageRoot;
+    // local 개발 실행은 워크트리/체크아웃별 데몬 슬롯을 분리하기 위해 프로젝트 .fleet 하위에 격리한다.
+    return path.join(path.resolve(packageRoot, "..", ".."), ".fleet", CONSOLE_RUNTIME_DIR_NAME);
+  }
+
   const uid = deps.uid ?? (typeof process.getuid === "function" ? process.getuid() : 0);
-  const channel = deps.channel ?? readFleetConsoleRelease().channel;
-  // stable/local 채널별로 락 디렉터리를 분리해 글로벌 설치본과 개발 실행본의 데몬 슬롯을 격리한다.
   return path.join(os.tmpdir(), `${LOCK_DIR_NAME}-${uid}-${channel}`);
 }
