@@ -644,9 +644,9 @@ describe("console static and terminal ticket boundary", () => {
     expect(typeof payload.lastOpenedAt).toBe("string");
     expect(listed.theaters).toHaveLength(1);
     expect(listed.agentClis).toEqual([
-      { id: "claude", label: "Claude", renameCommand: "/rename" },
-      { id: "claude-kimi", label: "Claude Kimi", renameCommand: "/rename" },
-      { id: "codex", label: "Codex", renameCommand: "/rename" },
+      { id: "claude", label: "Claude" },
+      { id: "claude-kimi", label: "Claude Kimi" },
+      { id: "codex", label: "Codex" },
     ]);
     expect(payload).not.toHaveProperty("path");
     expect(listed.theaters[0]).not.toHaveProperty("path");
@@ -927,7 +927,8 @@ describe("console static and terminal ticket boundary", () => {
     const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
     const fixture = await startFixture({
       terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
-      terminalLaunch: createMockLaunch,
+      // rename 슬래시 명령을 지원하는 CLI 프로파일로 launch된 세션(launch spec에 renameCommand 포함).
+      terminalLaunch: async (cwd, context) => ({ ...(await createMockLaunch(cwd, context)), renameCommand: "/rename" }),
       terminalStartShell: (launch) => {
         const pty = createRecordingPty();
         ptys.set(String(launch.env.FLEET_CONSOLE_SESSION_ID), pty);
@@ -935,8 +936,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const headers = { "Content-Type": "application/json" };
-    // Claude 계열은 rename 슬래시 명령 '/rename'을 지원하므로 주입 대상이다.
-    const session = await createTerminalSession(fixture, headers, "claude");
+    const session = await createTerminalSession(fixture, headers);
     const patchLabel = (label: string) =>
       fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
         method: "PATCH",
@@ -974,7 +974,8 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const headers = { "Content-Type": "application/json" };
-    // cliId 없이 생성된 세션은 rename 지원 CLI를 특정할 수 없으므로 미지원 명령을 주입하지 않는다.
+    // createMockLaunch는 renameCommand 없는 launch spec을 반환한다(FLEET_TERMINAL_CMD 임의 override·미지원
+    // CLI 모사). 따라서 이 세션의 rename은 미지원 명령을 주입하지 않는다.
     const session = await createTerminalSession(fixture, headers);
     await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
       method: "PATCH",
@@ -991,7 +992,7 @@ describe("console static and terminal ticket boundary", () => {
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
       validateHost: () => true,
     });
 
@@ -1025,6 +1026,7 @@ describe("console static and terminal ticket boundary", () => {
         createSession: async () => undefined,
         attach: async () => undefined,
         getSessionMessagePolicy: () => undefined,
+        getSessionRenameCommand: () => undefined,
         terminate: () => false,
         stop: async () => undefined,
         writeToSession: () => false,
@@ -1081,13 +1083,13 @@ async function startFixture(options: {
   return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
 }
 
-async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>, cliId?: string): Promise<{ readonly sessionId: string }> {
+async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
   const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
   const grant = await picked.json() as { readonly folderGrantId: string };
   const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ folderGrantId: grant.folderGrantId, ...(cliId ? { cliId } : {}) }),
+    body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
   });
   expect(created.status).toBe(200);
   return created.json() as Promise<{ readonly sessionId: string }>;

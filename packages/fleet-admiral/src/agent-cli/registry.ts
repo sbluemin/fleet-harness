@@ -13,8 +13,6 @@ export interface ResolveAgentCliProfileOptions {
 export interface AgentCliMetadata {
   readonly id: AgentCliId;
   readonly label: string;
-  // 이 CLI가 지원하는 작전 이름 변경 슬래시 명령. 미지원이면 undefined.
-  readonly renameCommand?: string;
 }
 
 const DEFAULT_CLI_ID: AgentCliId = "claude";
@@ -59,7 +57,6 @@ export function getAgentCliMetadata(ids: readonly AgentCliId[] = getAgentCliIds(
   return ids.map((id) => ({
     id,
     label: DEFINITIONS[id].label,
-    renameCommand: DEFINITIONS[id].renameCommand,
   }));
 }
 
