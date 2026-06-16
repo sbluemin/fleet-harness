@@ -41,15 +41,17 @@ export function ShortcutsOverlay({ state }: ShortcutsOverlayProps) {
     if (!state.shortcutsOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        // 최상위 모달이므로 Esc를 소비해, 배경에 떠 있는 다른 오버레이(JobOverlay/ShellOverlay)의
-        // window Esc 리스너가 같은 키 입력으로 함께 닫히는 것을 막는다.
-        event.stopImmediatePropagation();
-        event.preventDefault();
         closeShortcuts();
-        return;
+        event.preventDefault();
+      } else if (event.key === "Tab") {
+        // Tab/Shift+Tab은 카드 안에 포커스를 가둔다.
+        trapFocus(event, cardRef.current);
       }
-      // aria-modal 다이얼로그이므로 Tab/Shift+Tab이 모달 밖(토버·터미널)으로 새지 않게 카드 안에 포커스를 가둔다.
-      if (event.key === "Tab") trapFocus(event, cardRef.current);
+      // aria-modal 다이얼로그가 열린 동안에는 모든 키 입력을 이 모달이 소비해, 배경 단축키
+      // (App의 ⌘`/Ctrl+` 셸 토글, Codex의 ⌘K/Ctrl+K 팔레트, 다른 오버레이의 Esc 등)가
+      // 함께 발동하는 것을 막는다. capture 단계 + stopImmediatePropagation으로 먼저 등록된
+      // window/document 리스너를 선점하되, 기본 동작(버튼 활성화 등)은 유지하려 preventDefault는 Esc에만 건다.
+      event.stopImmediatePropagation();
     };
     closeButtonRef.current?.focus();
     // capture 단계로 등록해야 먼저 마운트된 배경 오버레이의 bubble 단계 Esc 리스너보다 앞서 이벤트를 소비할 수 있다.
