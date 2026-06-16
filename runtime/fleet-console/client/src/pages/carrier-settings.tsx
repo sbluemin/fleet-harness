@@ -445,7 +445,9 @@ function hasCarrierDraftChanges(carrier: CarrierSettingsCarrier, draft: CarrierS
   if (draft.model !== carrier.model) return true;
   if ((draft.effort || "") !== (carrier.effort || "")) return true;
   if (draft.agentMode !== carrier.agentMode) return true;
-  if (draft.agentMode === "subagent") return false;
+  // subagent인데 서버에 TF 백엔드가 남아 있으면(불일치 데이터) 정리 대상이므로 dirty로 본다.
+  // 그래야 Save가 활성화되어 saveCarrierAll의 stale TF 정리 경로가 실제로 실행된다.
+  if (draft.agentMode === "subagent") return carrier.taskForceBackendCount > 0;
   return hasTaskForceChanges(carrier, rows, draft.taskforce);
 }
 
