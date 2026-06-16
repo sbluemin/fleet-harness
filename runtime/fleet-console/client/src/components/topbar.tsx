@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater } from "../api.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
 
 interface TopbarProps {
@@ -88,6 +88,9 @@ export function Topbar({ state }: TopbarProps) {
         <button type="button" className="topbar-shell-button" onMouseDown={(event) => event.preventDefault()} onClick={toggleShell} aria-label="Shell" title="Shell (⌘`)">
           <ShellIcon />
           <span>Shell</span>
+        </button>
+        <button type="button" className="topbar-shell-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
+          <KeyboardIcon />
         </button>
         <ThemeControl activeTheme={state.activeTheme} />
         <RendererToggle renderer={state.terminalRenderer} />
@@ -434,6 +437,15 @@ function ShellIcon() {
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M2.8 4.2h10.4v7.6H2.8z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
       <path d="M5 6.7 6.8 8 5 9.3M8.2 9.4h2.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function KeyboardIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.4" y="4.1" width="11.2" height="7.8" rx="1.8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M4.5 6.3h.1M6.8 6.3h.1M9.1 6.3h.1M11.4 6.3h.1M4.5 8.2h.1M6.8 8.2h.1M9.1 8.2h.1M11.4 8.2h.1M5.8 10.1h4.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }

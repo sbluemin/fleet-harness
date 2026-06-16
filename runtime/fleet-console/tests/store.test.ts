@@ -10,6 +10,7 @@ import {
   beginCreateTerminalSession,
   completeAddTheater,
   clearSelectedJob,
+  closeShortcuts,
   closeShell,
   completeCreateTerminalSession,
   closeOperationSearch,
@@ -18,6 +19,7 @@ import {
   hydrateTerminalSessions,
   hydrateTheaters,
   openOperationSearch,
+  openShortcuts,
   readStoredRenderer,
   selectJob,
   selectTerminalSession,
@@ -29,6 +31,7 @@ import {
   theaterSessionOrder,
   theaterSessions,
   toggleOperationSearch,
+  toggleShortcuts,
   toggleShell,
 } from "../client/src/store.js";
 import type { ObservedEvent, ObservedTenant, TheaterInfo } from "../client/src/types.js";
@@ -79,6 +82,7 @@ beforeEach(() => {
     timelineOpen: false,
     shellOpen: false,
     operationSearchOpen: false,
+    shortcutsOpen: false,
     selectedJobId: null,
   });
 });
@@ -280,6 +284,28 @@ describe("store", () => {
 
     closeOperationSearch();
     expect(getState().operationSearchOpen).toBe(false);
+  });
+
+  it("opens, closes, and toggles the keyboard shortcuts overlay", () => {
+    expect(getState().shortcutsOpen).toBe(false);
+
+    openShortcuts();
+    expect(getState().shortcutsOpen).toBe(true);
+
+    openShortcuts();
+    expect(getState().shortcutsOpen).toBe(true);
+
+    closeShortcuts();
+    expect(getState().shortcutsOpen).toBe(false);
+
+    closeShortcuts();
+    expect(getState().shortcutsOpen).toBe(false);
+
+    toggleShortcuts();
+    expect(getState().shortcutsOpen).toBe(true);
+
+    toggleShortcuts();
+    expect(getState().shortcutsOpen).toBe(false);
   });
 
   it("binds hydrated terminal sessions to tenants without changing the active session", () => {

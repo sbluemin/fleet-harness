@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
+import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
@@ -87,6 +88,7 @@ export function App() {
       </Routes>
       <ShellOverlay state={state} />
       <OperationSearch state={state} />
+      <ShortcutsOverlay state={state} />
       <Toast
         open={state.connectionError !== null}
         tone="error"

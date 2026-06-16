@@ -179,6 +179,7 @@ export interface ConsoleState {
   readonly timelineOpen: boolean;
   readonly shellOpen: boolean;
   readonly operationSearchOpen: boolean;
+  readonly shortcutsOpen: boolean;
   readonly selectedJobId: string | null;
   readonly expandedSessionIds: readonly string[];
 }
