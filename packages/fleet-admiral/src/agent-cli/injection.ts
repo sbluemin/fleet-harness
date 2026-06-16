@@ -134,7 +134,7 @@ export async function injectAgentCliProfile(
       pluginRoot: plugin.pluginRoot,
       pluginRoots: plugin.pluginRoots,
       codexProfileName: codexProfile?.profileName,
-      replaceSystemPrompt: options.replaceSystemPrompt ?? true,
+      replaceSystemPrompt: options.replaceSystemPrompt ?? false,
       systemPromptFile,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);

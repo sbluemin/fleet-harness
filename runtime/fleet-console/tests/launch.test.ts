@@ -49,7 +49,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile, options) => {
       expect(options.enableMetaphor).toBe(false);
-      expect(options.replaceSystemPrompt).toBe(true);
+      expect(options.replaceSystemPrompt).toBe(false);
       expect(options.buildSystemPrompt).toEqual(expect.any(Function));
       return { ...profile, args: [...profile.args, "--fleet"] };
     });

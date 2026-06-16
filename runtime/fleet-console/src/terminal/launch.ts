@@ -184,7 +184,7 @@ async function createAgentCliLaunchSpec(options: {
       enableMetaphor: false,
       hookExec: buildConsoleHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
-      replaceSystemPrompt: true,
+      replaceSystemPrompt: false,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
     } as Parameters<typeof injectAgentCliProfile>[1] & { readonly mcpSessionLabel: string });

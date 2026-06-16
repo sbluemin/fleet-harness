@@ -89,7 +89,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
     defaults: {
       cliId: getDefaultAgentCliId(),
       enableMetaphor: false,
-      replaceSystemPrompt: true,
+      replaceSystemPrompt: false,
     },
     env: process.env,
     globalOptionsService: runtime.infraServices.globalOptionsService,

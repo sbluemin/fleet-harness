@@ -160,7 +160,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
       });
       const pluginRoots = pluginDirArgs(profile.args);
       const pluginRoot = path.join(rootDir, "marketplace", "plugins", "fleet");
-      const systemPromptFile = argValue(profile.args, "--system-prompt-file");
+      const systemPromptFile = argValue(profile.args, "--append-system-prompt-file");
 
       expect(pluginRoots).toEqual([pluginRoot]);
       expect(systemPromptFile).toBeDefined();

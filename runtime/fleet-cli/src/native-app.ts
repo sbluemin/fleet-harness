@@ -96,7 +96,7 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
     defaults: {
       cliId: getDefaultAgentCliId(),
       enableMetaphor: false,
-      replaceSystemPrompt: true,
+      replaceSystemPrompt: false,
     },
     env: process.env,
     globalOptionsService: runtime.infraServices.globalOptionsService,
