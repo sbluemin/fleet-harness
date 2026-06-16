@@ -24,6 +24,12 @@ const opus1mProbe = installed ? probeCliModelAvailability('claude', 'opus[1m]') 
 const explicitOpus46_1mProbe = installed
   ? probeCliModelAvailability('claude', 'claude-opus-4-6[1m]')
   : { available: false };
+const explicitOpus47_1mProbe = installed
+  ? probeCliModelAvailability('claude', 'claude-opus-4-7[1m]')
+  : { available: false };
+const explicitOpus48_1mProbe = installed
+  ? probeCliModelAvailability('claude', 'claude-opus-4-8[1m]')
+  : { available: false };
 
 describe.skipIf(!installed)('E2E: Claude ACP', () => {
   let client: IUnifiedAgentClient | null = null;
@@ -145,6 +151,36 @@ describe.skipIf(!installed)('E2E: Claude ACP', () => {
       async () => {
         const { stdout, exitCode } = await runCli(
           ['--json', '-c', 'claude', '-m', 'claude-opus-4-6[1m]', SIMPLE_PROMPT],
+        );
+
+        expect(exitCode).toBe(0);
+        const result: CliJsonResult = JSON.parse(stdout.trim());
+        expect(result.response).toContain('2');
+        expect(result.cli).toBe('claude');
+      },
+      180_000,
+    );
+
+    it.skipIf(!explicitOpus47_1mProbe.available)(
+      'CLI: 모델 claude-opus-4-7[1m] → 프롬프트 → 응답 검증',
+      async () => {
+        const { stdout, exitCode } = await runCli(
+          ['--json', '-c', 'claude', '-m', 'claude-opus-4-7[1m]', SIMPLE_PROMPT],
+        );
+
+        expect(exitCode).toBe(0);
+        const result: CliJsonResult = JSON.parse(stdout.trim());
+        expect(result.response).toContain('2');
+        expect(result.cli).toBe('claude');
+      },
+      180_000,
+    );
+
+    it.skipIf(!explicitOpus48_1mProbe.available)(
+      'CLI: 모델 claude-opus-4-8[1m] → 프롬프트 → 응답 검증',
+      async () => {
+        const { stdout, exitCode } = await runCli(
+          ['--json', '-c', 'claude', '-m', 'claude-opus-4-8[1m]', SIMPLE_PROMPT],
         );
 
         expect(exitCode).toBe(0);

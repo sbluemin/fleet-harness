@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-13T00:00:00Z",
+  "updatedAt": "2026-06-16T00:00:00Z",
   "providers": {
     "claude": {
       "name": "Claude Code with Anthropic",
@@ -10,7 +10,9 @@
         { "modelId": "sonnet", "name": "Claude Sonnet", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "medium" } },
         { "modelId": "opus", "name": "Claude Opus", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
         { "modelId": "opus[1m]", "name": "Claude Opus [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh" } },
-        { "modelId": "claude-opus-4-6[1m]", "name": "Claude Opus 4.6 [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } }
+        { "modelId": "claude-opus-4-6[1m]", "name": "Claude Opus 4.6 [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } },
+        { "modelId": "claude-opus-4-7[1m]", "name": "Claude Opus 4.7 [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } },
+        { "modelId": "claude-opus-4-8[1m]", "name": "Claude Opus 4.8 [1M]", "effort": { "supported": true, "levels": ["low", "medium", "high", "xhigh", "max"], "default": "high" } }
       ]
     },
     "claude-zai": {

@@ -9,6 +9,8 @@ describe('ModelRegistry', () => {
 
     expect(modelIds).toContain('opus[1m]');
     expect(modelIds).toContain('claude-opus-4-6[1m]');
+    expect(modelIds).toContain('claude-opus-4-7[1m]');
+    expect(modelIds).toContain('claude-opus-4-8[1m]');
     expect(modelIds).not.toContain('sonnet[1m]');
   });
 
