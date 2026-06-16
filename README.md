@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-    <strong>A multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface — using native CLIs directly, no API wrapping or proxying.</strong>
+    <strong>A multi-LLM orchestration kit that operates Claude Code and Codex CLI through a single unified interface — in your terminal or a local web console — using native CLIs directly, no API wrapping or proxying.</strong>
 </p>
 
 <p align="center">
@@ -34,11 +34,22 @@
 
 ## Quick Start
 
-Install the Fleet CLI globally via npm and launch it:
+Install the Fleet CLI globally via npm:
 
 ```bash
 npm install -g @dotobokuri/fleet-cli
+```
+
+Launch the terminal interface:
+
+```bash
 fleet
+```
+
+Or open the **Fleet Console** — a local, loopback-only web GUI for the same fleet:
+
+```bash
+fleet console
 ```
 
 See [SETUP.md](SETUP.md) for step-by-step instructions.
@@ -68,7 +79,7 @@ A **Carrier** is an execution instance of a CLI tool with isolated configuration
 
 ## Carriers
 
-> Per-carrier configuration (model selection, reasoning level, etc.) can be adjusted from the Carrier Roster entry in the Mission Control menu.
+> Per-carrier configuration (model, reasoning level, Task Force, SubAgent mode, etc.) can be adjusted from the **Carrier Settings** surface in the Fleet Console, or the Carrier Roster entry in the CLI's Mission Control menu.
 
 Eight built-in Carriers, each with a distinct operational role:
 
@@ -81,9 +92,7 @@ Eight built-in Carriers, each with a distinct operational role:
 - **Tempest** — Forward External Intelligence Strike. GitHub intelligence and external repo analysis.
 - **Chronicle** — Chief Knowledge Officer. Documentation, changelogs, and change-impact reporting.
 
-## Features
-
-### Multi-LLM Orchestration
+## Multi-LLM Orchestration
 
 Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CLI tools directly**. Each carrier spawns the actual CLI binary and communicates through its official protocol (ACP), giving you the full native capabilities of each tool within a unified command structure.
 
@@ -98,15 +107,55 @@ Fleet does not wrap APIs or run proxies — it orchestrates **native frontier CL
 
 Every carrier runs in parallel under a single command structure, with unified progress tracking so you always know the status of the entire fleet. Fine-tune each carrier independently — select models, set reasoning levels, and adjust parameters without leaving the fleet interface. Fleet Action provides the autonomous operating framework for routing, delegation, review, and documentation.
 
+Fleet gives you **two ways to command the same fleet** — the **Fleet Console**, a local web GUI, and the **Fleet CLI**, a terminal interface. Both drive the same carriers, orchestration engine, and project plugins; pick whichever fits the moment.
+
+---
+
+## 🖥️ Fleet Console
+
+`fleet console` opens the Fleet Console — a local web command center for the same fleet you run in the terminal. It runs as a loopback-only server on your own machine (no cloud, no proxy) and serves a live, streaming GUI for observing and operating every carrier. *(Research preview.)*
+
+### Live dashboard
+
+<img src=".github/console-bridge.png" alt="Fleet Console dashboard" width="100%" />
+
+The landing view is a readiness board for the whole operation: a Theater capability matrix (project roots, with Codex and live-terminal status), a carrier readiness matrix showing each carrier's CLI, model, reasoning effort, Task Force, and mode, a Codex knowledge panel, and runtime status — all kept current in real time.
+
+### Operations Map
+
+<img src=".github/console-operations.png" alt="Operations Map canvas" width="100%" />
+
+A free-placement canvas where each carrier terminal is a panel you can pan, zoom, and arrange spatially. Shift-drag to draw a new operation, scroll to zoom, drag to pan — watch multiple live agent sessions side by side, drop into any terminal inline, and open a centered stream overlay for any carrier job. Prefer a focused layout? Flip to **Helm** for the classic single-terminal view.
+
+### Carrier Settings
+
+<img src=".github/console-carriers.png" alt="Carrier Settings" width="100%" />
+
+Configure every carrier from the browser — pick its CLI backend, model, and reasoning effort, rename it, toggle SubAgent mode, or compose a multi-CLI Task Force. No config files to hand-edit; changes apply fleet-wide.
+
+### Codex / Fleet Wiki
+
+<img src=".github/console-codex.png" alt="Codex / Fleet Wiki" width="100%" />
+
+Your project's knowledge base, mounted right inside the console: browse Fleet Wiki entries, search instantly with `⌘K`, review the Drydock queue, and read decision logs and diagrams — under the same roof as your live operations.
+
+Terminal sessions are server-owned and survive browser disconnects, so closing the tab leaves your agents running. Every surface is loopback-only, and MCP/session tokens never reach the browser.
+
+---
+
+## ⌨️ Fleet CLI
+
+`fleet` launches the Fleet CLI — the terminal-native command center that plans, dispatches, and monitors the fleet without ever leaving your shell.
+
 ### Fleet Bridge
 
 <img src=".github/hud.png" alt="Fleet Bridge HUD" width="100%" />
 
-Fleet Bridge is your mission control center. The integrated heads-up display puts everything you need in one view — a full-featured editor, a real-time status bar, and a contextual footer that tracks session state, token usage, and cost. Metaphor-based directive refinement breaks complex requests into clear operational sections, while automatic session summaries and a built-in thinking timer keep your workflow transparent and measurable.
+Fleet Bridge is your mission control center in the terminal. The integrated heads-up display puts everything you need in one view — a full-featured editor, a real-time status bar, and a contextual footer that tracks session state, token usage, and cost. Metaphor-based directive refinement breaks complex requests into clear operational sections, while automatic session summaries and a built-in thinking timer keep your workflow transparent and measurable.
 
 Watch every active carrier stream results in real time, navigate between carrier slots inline, and toggle a detailed focus view when you need to drill down into a specific agent's output. All from a single, unified interface.
 
-### Carrier
+### Carrier Dispatch
 
 <img src=".github/carrier_status.png" alt="Carrier Roster" width="100%" />
 
@@ -120,7 +169,9 @@ Deploy one carrier or an entire wing with a single command. Sortie supports fire
 
 Task Force runs the same mission across multiple CLI backends at once, then surfaces a cross-model consensus. Use it to validate critical decisions, compare how different models approach the same problem, and eliminate single-model blind spots before committing to a course of action.
 
-### Unified Project Plugins
+---
+
+## Unified Project Plugins
 
 Every CLI invents its own home for project extensions — hooks, subagents, skills, and MCP servers each live under a different vendor-specific directory and format. Keeping the same capabilities across Claude Code, Codex, and the rest means duplicating one intent into several incompatible layouts.
 
