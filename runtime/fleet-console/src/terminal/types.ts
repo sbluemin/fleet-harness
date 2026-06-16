@@ -7,6 +7,7 @@ export interface TerminalLaunchSpec {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
   readonly messagePolicy?: CliMessagePolicy;
+  readonly renameCommand?: string;
   readonly terminalName?: string;
 }
 
@@ -55,6 +56,8 @@ export interface TerminalSessionManager {
   createSession(context: TerminalTicketContext): Promise<void>;
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
+  // 세션이 실제로 launch한 Agent CLI 프로파일이 제공한 rename 슬래시 명령. 없으면 undefined.
+  getSessionRenameCommand(sessionId: string): string | undefined;
   // 운영자 종료(X 버튼) — PTY 자식까지 끝내고 onSessionExit로 콘솔 목록을 정리한다. 세션이 없으면 false(멱등).
   terminate(sessionId: string): boolean;
   stop(): Promise<void>;

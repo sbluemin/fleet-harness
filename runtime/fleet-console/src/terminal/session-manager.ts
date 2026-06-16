@@ -20,6 +20,7 @@ interface TerminalSession {
   readonly scrollback: Buffer[];
   readonly cleanup?: () => void | Promise<void>;
   readonly messagePolicy?: CliMessagePolicy;
+  readonly renameCommand?: string;
   activeSocket: TerminalSocket | null;
   cols: number;
   rows: number;
@@ -72,6 +73,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   function getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined {
     return sessions.get(sessionId)?.messagePolicy;
+  }
+
+  function getSessionRenameCommand(sessionId: string): string | undefined {
+    return sessions.get(sessionId)?.renameCommand;
   }
 
   function writeToSession(sessionId: string, data: string): boolean {
@@ -129,6 +134,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       scrollback: [],
       cleanup: launch.cleanup,
       messagePolicy: launch.messagePolicy,
+      renameCommand: launch.renameCommand,
       activeSocket: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
@@ -206,7 +212,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
   }
 
-  return { canAttach, createSession, attach, getSessionMessagePolicy, terminate, stop, writeToSession };
+  return { canAttach, createSession, attach, getSessionMessagePolicy, getSessionRenameCommand, terminate, stop, writeToSession };
 }
 
 async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefined): Promise<void> {

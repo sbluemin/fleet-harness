@@ -220,6 +220,7 @@ function toLaunchSpec(profile: AgentCliProfile, cleanup: () => Promise<void>): T
     cwd: profile.cwd,
     env: { ...profile.env },
     messagePolicy: profile.messagePolicy,
+    renameCommand: profile.renameCommand,
     terminalName: profile.terminalName,
   };
 }

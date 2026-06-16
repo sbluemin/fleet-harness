@@ -921,13 +921,78 @@ describe("console static and terminal ticket boundary", () => {
     expect(renamedBody.cwd).toBeUndefined();
   });
 
+  it("injects '/rename <label>' into the session PTY and neutralizes control characters", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rename-inject-"));
+    tempDirs.push(dir);
+    const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      // rename 슬래시 명령을 지원하는 CLI 프로파일로 launch된 세션(launch spec에 renameCommand 포함).
+      terminalLaunch: async (cwd, context) => ({ ...(await createMockLaunch(cwd, context)), renameCommand: "/rename" }),
+      terminalStartShell: (launch) => {
+        const pty = createRecordingPty();
+        ptys.set(String(launch.env.FLEET_CONSOLE_SESSION_ID), pty);
+        return pty;
+      },
+    });
+    const headers = { "Content-Type": "application/json" };
+    const session = await createTerminalSession(fixture, headers);
+    const patchLabel = (label: string) =>
+      fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ label }),
+      });
+
+    // 정상 라벨 → '/rename <label>'과 엔터('\r')가 정확히 한 번 주입된다.
+    await patchLabel("  Bridge Watch  ");
+    // 개행/캐리지리턴/ESC/bell을 섞은 악성 라벨 → 단일 라인으로 강제되고 제어문자(ESC·bell)가
+    // 제거되어 '/rename' 한 줄을 분리하는 추가 명령 주입이 불가능하다([31m은 ESC가 빠져 무해한 텍스트).
+    await patchLabel("x\r\n/evil --pwn\u001b[31m\u0007");
+    // 빈 라벨(콘솔 기본 표시명 복귀)에는 주입하지 않는다.
+    await patchLabel("   ");
+    // 제어문자만 있는 라벨 → sanitize 후 빈 값이므로 인자 없는 bare '/rename'을 주입하지 않는다.
+    await patchLabel("\u0007\u001b");
+
+    expect(ptys.get(session.sessionId)?.writes).toEqual([
+      "/rename Bridge Watch\r",
+      "/rename x /evil --pwn[31m\r",
+    ]);
+  });
+
+  it("skips rename injection for sessions without a rename-capable CLI", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rename-skip-"));
+    tempDirs.push(dir);
+    const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: (launch) => {
+        const pty = createRecordingPty();
+        ptys.set(String(launch.env.FLEET_CONSOLE_SESSION_ID), pty);
+        return pty;
+      },
+    });
+    const headers = { "Content-Type": "application/json" };
+    // createMockLaunch는 renameCommand 없는 launch spec을 반환한다(FLEET_TERMINAL_CMD 임의 override·미지원
+    // CLI 모사). 따라서 이 세션의 rename은 미지원 명령을 주입하지 않는다.
+    const session = await createTerminalSession(fixture, headers);
+    await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ label: "Bridge Watch" }),
+    });
+
+    expect(ptys.get(session.sessionId)?.writes).toEqual([]);
+  });
+
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
     let destroyed = 0;
     const handler = createTerminalUpgradeHandler({
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
       validateHost: () => true,
     });
 
@@ -961,6 +1026,7 @@ describe("console static and terminal ticket boundary", () => {
         createSession: async () => undefined,
         attach: async () => undefined,
         getSessionMessagePolicy: () => undefined,
+        getSessionRenameCommand: () => undefined,
         terminate: () => false,
         stop: async () => undefined,
         writeToSession: () => false,
