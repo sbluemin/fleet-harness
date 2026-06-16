@@ -45,7 +45,9 @@ export function CarrierSettings() {
   const [taskForceRows, setTaskForceRows] = useState<readonly string[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const taskForceDraftActive = taskForceRows.length > 0;
-  const subagentDraftOn = settings.draft.agentMode === "subagent" && !taskForceDraftActive;
+  // raw draft.agentMode 기준. TF 백엔드가 함께 있는 불일치 상태에서도 subagent가 켜진 것으로
+  // 보고 끌 수 있어야 하므로 !taskForceDraftActive로 배제하지 않는다.
+  const subagentSelected = settings.draft.agentMode === "subagent";
   const taskForceDisabled = settings.draft.agentMode === "subagent";
   const isSavingAll = settings.savingActionId === "save-all";
   const dirty = activeCarrier ? hasCarrierDraftChanges(activeCarrier, settings.draft, taskForceRows) : false;
@@ -226,17 +228,18 @@ export function CarrierSettings() {
                     <p className="carrier-settings-resp-title">SubAgent</p>
                     <p className="carrier-settings-help">{taskForceDraftActive ? "Task Force draft is present. Remove every backend to enable SubAgent." : activeCli.supportsSubagent ? "Enabling SubAgent clears Task Force backends when saved." : "This CLI does not support SubAgent mode."}</p>
                   </div>
-                  {/* 켜는 경로만 막는다. 비지원 CLI/TF draft 상태에서도 이미 subagent로 켜진 캐리어는
-                      끌 수 있어야 한다(서버는 비지원 CLI의 cli 전환을 허용). 끄기까지 막으면 codex+subagent
-                      같은 불일치 상태에 갇힌다. */}
+                  {/* 켜는 경로만 막는다. 이미 subagent로 켜진 캐리어는 비지원 CLI든 TF 백엔드가 함께
+                      있는 불일치 상태든 끌 수 있어야 한다(서버는 어느 CLI에서도 cli 전환을 허용). 끄기까지
+                      막으면 codex+subagent 또는 subagent+TF 같은 상태에서 양쪽 다 못 끄는 교착에 갇힌다.
+                      SA를 끄면 TF 패널 비활성이 풀려 TF 행을 정리할 수 있다. */}
                   <button
                     type="button"
-                    className={`carrier-settings-toggle ${subagentDraftOn ? "is-on" : ""}`}
-                    disabled={isSavingAll || (!subagentDraftOn && (!activeCli.supportsSubagent || taskForceDraftActive))}
-                    aria-pressed={subagentDraftOn}
-                    onClick={() => updateCarrierSettingsDraft({ agentMode: subagentDraftOn ? "cli" : "subagent" })}
+                    className={`carrier-settings-toggle ${subagentSelected ? "is-on" : ""}`}
+                    disabled={isSavingAll || (!subagentSelected && (!activeCli.supportsSubagent || taskForceDraftActive))}
+                    aria-pressed={subagentSelected}
+                    onClick={() => updateCarrierSettingsDraft({ agentMode: subagentSelected ? "cli" : "subagent" })}
                   >
-                    <span>{subagentDraftOn ? "On" : "Off"}</span>
+                    <span>{subagentSelected ? "On" : "Off"}</span>
                   </button>
                 </div>
               </div>
