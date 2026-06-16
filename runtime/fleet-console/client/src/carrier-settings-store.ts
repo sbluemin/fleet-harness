@@ -135,10 +135,15 @@ export async function saveCarrierAll(desiredTaskForce: readonly CarrierSettingsT
     if (draft.displayName !== carrier.displayName) {
       latestState = (await updateCarrierDisplayName(carrier.carrierId, draft.displayName)).state;
     }
-    if (draft.cliType !== carrier.cliType) {
+    const cliChanged = draft.cliType !== carrier.cliType;
+    if (cliChanged) {
       latestState = (await updateCarrierCli(carrier.carrierId, draft.cliType)).state;
     }
-    if (draft.model !== carrier.model || (draft.effort || "") !== (carrier.effort || "")) {
+    // CLI 변경 시 updateCarrierCli가 대상 CLI에 저장돼 있던 이전 선택을 복원할 수 있다.
+    // 변경 전(구 CLI) carrier와의 모델 비교만으로 PUT을 건너뛰면, 신 CLI 기본값이 구 CLI
+    // 모델과 우연히 같을 때 복원된 선택이 draft와 다르게 저장된다. CLI가 바뀌었으면 항상
+    // draft 모델을 명시 전송해 사용자가 본 draft 선택이 우선되게 한다.
+    if (cliChanged || draft.model !== carrier.model || (draft.effort || "") !== (carrier.effort || "")) {
       latestState = (await updateCarrierModel(carrier.carrierId, selectionFromDraft(draft))).state;
     }
     if (draft.agentMode === "subagent") {
