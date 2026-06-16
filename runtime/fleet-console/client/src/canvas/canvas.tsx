@@ -36,6 +36,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     onCreate: (rect, anchor) => setLaunchRequest({ rect, anchor }),
     consumePointerDown: launchRequest !== null,
     onConsumePointerDown: () => setLaunchRequest(null),
+    onClick: clearTerminalFocus,
   });
 
   const handleLaunch = async (cli: AgentCliMetadata) => {
@@ -133,6 +134,15 @@ function viewportBoundsFor(element: HTMLElement | null): { readonly width: numbe
   if (!element) return undefined;
   const rect = element.getBoundingClientRect();
   return { width: rect.width, height: rect.height };
+}
+
+// 빈 캔버스 단일 클릭(캔버스 제어 의도): 포커스된 터미널을 blur하고 활성 선택을 해제한다.
+function clearTerminalFocus(): void {
+  if (typeof document !== "undefined") {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  }
+  selectTerminalSession(null);
 }
 
 function rectToGeometry(rect: CanvasRect): PanelGeometry {

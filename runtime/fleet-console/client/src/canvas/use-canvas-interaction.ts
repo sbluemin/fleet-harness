@@ -9,6 +9,7 @@ interface CanvasInteractionOptions {
   readonly onViewportChange: (viewport: CanvasViewport) => void;
   readonly onCreate: (rect: CanvasRect, anchor: CanvasPoint) => void;
   readonly onConsumePointerDown?: () => void;
+  readonly onClick?: () => void;
 }
 
 interface CanvasInteractionResult {
@@ -35,11 +36,11 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 const MIN_CREATE_WIDTH = 200;
 const MIN_CREATE_HEIGHT = 150;
-const DEFAULT_CREATE_WIDTH = 640;
-const DEFAULT_CREATE_HEIGHT = 400;
+// 이 픽셀(화면 좌표) 미만의 포인터 이동은 드래그가 아니라 단일 클릭으로 간주한다.
+const CLICK_MOVE_THRESHOLD = 5;
 const ZOOM_STEP = 0.0018;
 
-export function useCanvasInteraction({ viewport, disabled = false, consumePointerDown = false, onViewportChange, onCreate, onConsumePointerDown }: CanvasInteractionOptions): CanvasInteractionResult {
+export function useCanvasInteraction({ viewport, disabled = false, consumePointerDown = false, onViewportChange, onCreate, onConsumePointerDown, onClick }: CanvasInteractionOptions): CanvasInteractionResult {
   const dragRef = useRef<DragState | null>(null);
   const viewportRef = useRef(viewport);
   const [rubberBand, setRubberBand] = useState<CanvasRect | null>(null);
@@ -143,15 +144,21 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     event.currentTarget.releasePointerCapture(event.pointerId);
     setRubberBand(null);
     if (!commit || drag.mode !== "create") return;
+    // 거의 움직이지 않았으면(=단일 클릭) 생성하지 않고 캔버스 제어 의도로 본다 — 호출 측에서 터미널 포커스를 해제한다.
+    const moveX = Math.abs(drag.currentScreen.x - drag.startScreen.x);
+    const moveY = Math.abs(drag.currentScreen.y - drag.startScreen.y);
+    if (moveX < CLICK_MOVE_THRESHOLD && moveY < CLICK_MOVE_THRESHOLD) {
+      onClick?.();
+      return;
+    }
+    // 실제 드래그 → 드래그한 사각형으로 생성하되, 너무 작으면 최소 크기로 클램프해 사용 가능하게 한다.
     const raw = rectFromScreens(drag.startScreen, drag.currentScreen, viewportRef.current);
-    const rect = raw.width < MIN_CREATE_WIDTH || raw.height < MIN_CREATE_HEIGHT
-      ? {
-          x: screenToCanvas(drag.startScreen, viewportRef.current).x,
-          y: screenToCanvas(drag.startScreen, viewportRef.current).y,
-          width: DEFAULT_CREATE_WIDTH,
-          height: DEFAULT_CREATE_HEIGHT,
-        }
-      : raw;
+    const rect: CanvasRect = {
+      x: raw.x,
+      y: raw.y,
+      width: Math.max(raw.width, MIN_CREATE_WIDTH),
+      height: Math.max(raw.height, MIN_CREATE_HEIGHT),
+    };
     onCreate(rect, drag.currentScreen);
   };
 
