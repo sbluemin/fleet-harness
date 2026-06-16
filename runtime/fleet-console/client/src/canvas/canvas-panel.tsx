@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
 import { terminateTerminalSession } from "../api.js";
+import { CarrierJobLines } from "../components/carrier-job-lines.js";
 import { Terminal } from "../components/terminal.js";
 import { sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
@@ -29,7 +30,8 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   const dragRef = useRef<DragState | null>(null);
   const [restoreViewport, setRestoreViewport] = useState<CanvasViewport | null>(null);
   const jobs = sessionJobs(state, session);
-  const activeJobCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
+  const activeJobs = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).map(({ job }) => job);
+  const activeJobCount = activeJobs.length;
   const live = activeJobCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   const displayLabel = sessionDisplayLabel(session);
 
@@ -100,6 +102,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   };
 
   return (
+    <>
     <article
       className={`canvas-panel ${active ? "is-active" : ""}`}
       style={{
@@ -151,6 +154,19 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(nextGeometry) => setPanelGeometry(session.sessionId, nextGeometry)} />
     </article>
+    {activeJobs.length > 0 ? (
+      // 캔버스 공간을 살려 진행 중 캐리어 스트림을 패널 '바깥 위'에 floating으로 띄운다(터미널 출력을 가리지 않음).
+      // world 좌표계에 두어 패널과 함께 이동·확대되며, CSS translateY로 패널 상단 위에 정렬한다.
+      <div
+        className="canvas-panel-jobdock"
+        style={{ left: geometry.x, top: geometry.y, width: geometry.width, zIndex: geometry.zIndex }}
+        data-canvas-blocker
+        aria-label={`Active carrier jobs for ${displayLabel}`}
+      >
+        <CarrierJobLines jobs={activeJobs} selectedJobId={state.selectedJobId} />
+      </div>
+    ) : null}
+    </>
   );
 }
 

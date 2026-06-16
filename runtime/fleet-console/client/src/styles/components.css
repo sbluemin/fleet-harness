@@ -1297,6 +1297,23 @@
     0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
+/* 진행 중 캐리어 스트림을 패널 바깥 위에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
+   인라인으로 받고, translateY로 자기 높이만큼 위로 올려 터미널을 가리지 않게 패널 상단 위에 정렬한다. */
+.canvas-panel-jobdock {
+  position: absolute;
+  transform: translateY(calc(-100% - var(--space-2)));
+  box-sizing: border-box;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
 .canvas-panel-titlebar {
   display: flex;
   align-items: center;
