@@ -83,6 +83,7 @@ beforeEach(() => {
     shellOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
+    pendingOperationFocus: null,
     selectedJobId: null,
   });
 });

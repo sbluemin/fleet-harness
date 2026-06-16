@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater } from "../api.js";
+import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
 
@@ -13,7 +14,7 @@ interface NavItem {
   readonly to: string;
   readonly label: string;
   readonly end: boolean;
-  readonly icon: "operations" | "codex" | "settings";
+  readonly icon: "operations" | "codex";
 }
 
 interface ThemeOption {
@@ -25,7 +26,6 @@ interface ThemeOption {
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
-  { to: "/carrier-settings", label: "Settings", end: false, icon: "settings" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
 ];
 
@@ -39,6 +39,8 @@ export function Topbar({ state }: TopbarProps) {
   const alert = state.connectionError !== null;
   // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다 — GNB nav 아이콘과 같은 도형을 공유해 일치를 보장한다. Welcome 등 그 외 라우트는 기본 Fleet 시질을 유지한다.
   const pathname = useLocation().pathname;
+  const operationsMode = useOperationsMode();
+  const operationsRoute = pathname.startsWith("/operations");
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
     : pathname.startsWith("/carrier-settings")
@@ -75,17 +77,19 @@ export function Topbar({ state }: TopbarProps) {
         ) : null}
         <nav className="topbar-nav" aria-label="주 내비게이션">
           {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
-            >
-              <span className="topbar-nav-icon" aria-hidden="true">
-                {item.icon === "operations" ? <OperationsIcon /> : item.icon === "settings" ? <SettingsIcon /> : <CodexIcon />}
-              </span>
-              <span>{item.label}</span>
-            </NavLink>
+            <Fragment key={item.to}>
+              <NavLink
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
+              >
+                <span className="topbar-nav-icon" aria-hidden="true">
+                  {item.icon === "operations" ? <OperationsIcon /> : <CodexIcon />}
+                </span>
+                <span>{item.label}</span>
+              </NavLink>
+              {item.icon === "operations" && operationsRoute ? <OperationsModeToggle mode={operationsMode} /> : null}
+            </Fragment>
           ))}
         </nav>
         <button type="button" className="topbar-shell-button" onMouseDown={(event) => event.preventDefault()} onClick={toggleShell} aria-label="Shell" title="Shell (⌘`)">
@@ -95,10 +99,43 @@ export function Topbar({ state }: TopbarProps) {
         <button type="button" className="topbar-shell-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
           <KeyboardIcon />
         </button>
+        <NavLink
+          to="/carrier-settings"
+          className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
+          title="Carrier settings"
+        >
+          <span className="topbar-nav-icon" aria-hidden="true"><SettingsIcon /></span>
+          <span>Settings</span>
+        </NavLink>
         <ThemeControl activeTheme={state.activeTheme} />
         <RendererToggle renderer={state.terminalRenderer} />
       </div>
     </header>
+  );
+}
+
+function OperationsModeToggle({ mode }: { readonly mode: OperationsMode }) {
+  return (
+    <div className="operations-mode-toggle" role="group" aria-label="Operation view mode">
+      <button
+        type="button"
+        className={`operations-mode-option ${mode === "canvas" ? "is-active" : ""}`}
+        onClick={() => setOperationsMode("canvas")}
+        aria-pressed={mode === "canvas"}
+        title="Operation mode: Map"
+      >
+        Map
+      </button>
+      <button
+        type="button"
+        className={`operations-mode-option ${mode === "classic" ? "is-active" : ""}`}
+        onClick={() => setOperationsMode("classic")}
+        aria-pressed={mode === "classic"}
+        title="Operation mode: Helm"
+      >
+        Helm
+      </button>
+    </div>
   );
 }
 

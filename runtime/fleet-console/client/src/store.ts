@@ -57,6 +57,7 @@ let state: ConsoleState = {
   shellOpen: false,
   operationSearchOpen: false,
   shortcutsOpen: false,
+  pendingOperationFocus: null,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
 };
@@ -197,7 +198,14 @@ export function focusOperation(sessionId: string): void {
     activeTheaterId: session.theaterId ?? null,
     activeTerminalSessionId: sessionId,
     selectedJobId: null,
+    pendingOperationFocus: sessionId,
   });
+}
+
+// Map 모드가 pendingOperationFocus를 처리한 뒤 호출해 일회성 이동 신호를 비운다.
+export function consumeOperationFocus(): void {
+  if (state.pendingOperationFocus === null) return;
+  setState({ pendingOperationFocus: null });
 }
 
 export function openOperationSearch(): void {

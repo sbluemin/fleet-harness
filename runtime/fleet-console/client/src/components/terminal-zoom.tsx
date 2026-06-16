@@ -1,7 +1,7 @@
-import { describeJobStatus, formatCarrierName, latestStreamLine, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { selectJob, sessionJobs, toggleTerminalZoom } from "../store.js";
-import type { ConsoleState, JobView } from "../types.js";
+import { sessionJobs, toggleTerminalZoom } from "../store.js";
+import type { ConsoleState } from "../types.js";
+import { CarrierJobLines } from "./carrier-job-lines.js";
 
 interface TerminalZoomProps {
   readonly state: ConsoleState;
@@ -9,14 +9,9 @@ interface TerminalZoomProps {
   readonly expanded: boolean;
 }
 
-interface TerminalJobLineProps {
-  readonly job: JobView;
-  readonly active: boolean;
-}
-
 export function TerminalZoom({ state, sessionId, expanded }: TerminalZoomProps) {
   const session = state.sessions[sessionId];
-  const jobs = session ? sessionJobs(state, session).filter(({ job }) => !isTerminalJobStatus(job.status)) : [];
+  const jobs = session ? sessionJobs(state, session).filter(({ job }) => !isTerminalJobStatus(job.status)).map(({ job }) => job) : [];
   return (
     <>
       <button
@@ -30,40 +25,10 @@ export function TerminalZoom({ state, sessionId, expanded }: TerminalZoomProps) 
       </button>
       {jobs.length > 0 ? (
         <div className="terminal-job-dock" aria-label="Active carrier jobs in terminal">
-          <ol className="terminal-job-lines">
-            {jobs.map(({ job }) => (
-              <TerminalJobLine key={job.jobId} job={job} active={state.selectedJobId === job.jobId} />
-            ))}
-          </ol>
+          <CarrierJobLines jobs={jobs} selectedJobId={state.selectedJobId} />
         </div>
       ) : null}
     </>
-  );
-}
-
-function TerminalJobLine({ job, active }: TerminalJobLineProps) {
-  const tone = statusTone(job.status);
-  const streamLine = latestStreamLine(job);
-  const meta = job.ownerCarrierId ? `${formatCarrierName(job.ownerCarrierId)} · ${describeJobStatus(job.status)}` : describeJobStatus(job.status);
-  return (
-    <li>
-      <button
-        type="button"
-        className={`terminal-job-line ${active ? "is-active" : ""}`}
-        onClick={() => selectJob(job.jobId)}
-        aria-current={active || undefined}
-      >
-        <span className={`status-dot status-dot--${tone}`} aria-hidden="true" />
-        <span className="terminal-job-line-label">{job.label ?? shortJobId(job.jobId)}</span>
-        <span className="terminal-job-line-meta">{meta}</span>
-        {streamLine ? (
-          <>
-            <span className="terminal-job-line-sep" aria-hidden="true">-</span>
-            <span className="terminal-job-line-stream">{streamLine}</span>
-          </>
-        ) : null}
-      </button>
-    </li>
   );
 }
 

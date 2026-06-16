@@ -14,6 +14,8 @@ interface TerminalProps {
   readonly sessionId: string;
   readonly kind?: "shell";
   readonly onExit?: () => void;
+  // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
+  readonly active?: boolean;
 }
 
 const TERMINAL_OPTIONS = {
@@ -76,7 +78,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(95% 0.003 250)",
 };
 
-export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
+export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
   const { activeTheme, terminalRenderer } = useConsoleState();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
@@ -85,6 +87,9 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  // 비활성 Map 패널의 마운트 자동 포커스를 억제하기 위해 최신 active를 ref로 들고 있는다(마운트 effect는 재실행하지 않음).
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [status, setStatus] = useState("connecting");
 
   useEffect(() => {
@@ -149,7 +154,9 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       fitAndResize();
       connection.start();
       // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
-      terminal.focus();
+      // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
+      // 단일 터미널(Shell/Helm, active===undefined)은 기존대로 포커스한다.
+      if (activeRef.current !== false) terminal.focus();
     };
 
     const resizeObserver = new ResizeObserver(scheduleFitAndResize);
@@ -175,6 +182,12 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       }
     };
   }, [kind, sessionId]);
+
+  // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 줘
+  // 마우스 클릭 없이 바로 입력되게 한다. 비활성 전환에서는 아무 것도 하지 않는다.
+  useEffect(() => {
+    if (active) terminalRef.current?.focus();
+  }, [active]);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
   useEffect(() => {

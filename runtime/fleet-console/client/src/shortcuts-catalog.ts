@@ -12,6 +12,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Console",
     entries: [
+      { combos: [["Mod", "K"]], description: "Search Operations across Theaters" },
       { combos: [["Mod", "`"]], description: "Toggle the local shell" },
       { combos: [["Esc"]], description: "Close the open overlay or menu" },
     ],
@@ -23,6 +24,16 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { combos: [["Shift", "Enter"]], description: "Insert a newline in the terminal instead of submitting" },
       { combos: [["Enter"], ["Esc"]], description: "Confirm or cancel a session rename" },
       { combos: [["↑"], ["↓"]], description: "Move between Theater, Theme, and launch menu items" },
+    ],
+  },
+  {
+    title: "Map",
+    entries: [
+      { combos: [["Drag"]], description: "Pan the operations map" },
+      { combos: [["Shift", "Drag"]], description: "Draw a new Operation terminal" },
+      { combos: [["Space", "Drag"]], description: "Pan even while a terminal has focus" },
+      { combos: [["Scroll"]], description: "Zoom the map in or out" },
+      { combos: [["Click"]], description: "Clear terminal focus on the empty canvas" },
     ],
   },
   {

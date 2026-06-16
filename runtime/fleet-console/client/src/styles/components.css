@@ -177,6 +177,42 @@
   color: var(--ink-pearl);
 }
 
+.operations-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.operations-mode-option {
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.operations-mode-option:hover,
+.operations-mode-option:focus-visible,
+.operations-mode-option.is-active {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 13%, transparent);
+}
+
 .sidebar-eyebrow,
 .job-summary-eyebrow,
 .job-meta,
@@ -1027,6 +1063,11 @@
   position: relative;
 }
 
+.operation-launch-control--canvas {
+  position: absolute;
+  z-index: 30;
+}
+
 .workspace-add-button {
   display: grid;
   width: 30px;
@@ -1077,8 +1118,526 @@
   min-width: 168px;
 }
 
+.operation-launch-control--canvas .operation-launch-menu {
+  top: 0;
+  min-width: 184px;
+}
+
 .operation-launch-control .operation-launch-menu-item .theater-menu-check {
   color: var(--brass);
+}
+
+/* 메뉴 컨테이너는 키보드 탐색용으로만 포커스를 받으므로(첫 항목 자동 강조 회피) 외곽선을 숨긴다. */
+.operation-launch-control .operation-launch-menu:focus {
+  outline: none;
+}
+
+.operations-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: oklch(7% 0.015 246);
+  box-shadow: var(--shadow-soft);
+  touch-action: none;
+  user-select: none;
+  /* 기본 제스처가 맵 이동(pan)이므로 손 모양 커서. Shift를 누르면 생성 모드(crosshair)로 바뀐다. */
+  cursor: grab;
+}
+
+.operations-canvas:active,
+.operations-canvas.is-panning:active {
+  cursor: grabbing;
+}
+
+.operations-canvas.is-panning {
+  cursor: grab;
+}
+
+.operations-canvas.is-creating,
+.operations-canvas.is-creating:active {
+  cursor: crosshair;
+}
+
+.operations-canvas-background,
+.operations-canvas-sea,
+.operations-canvas-grid,
+.operations-radar {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.operations-canvas-sea {
+  background:
+    radial-gradient(ellipse at 48% 42%, oklch(15% 0.03 235 / 82%), transparent 38%),
+    radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) 7%, transparent), transparent 34%),
+    radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) 5%, transparent), transparent 36%),
+    linear-gradient(145deg, oklch(9% 0.02 242), oklch(7% 0.015 246) 58%, oklch(6% 0.012 250));
+}
+
+.operations-canvas-grid {
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px),
+    radial-gradient(circle, color-mix(in oklch, var(--aurora) 11%, transparent) 1px, transparent 1.4px);
+  opacity: 0.42;
+}
+
+.operations-radar {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  opacity: 0.72;
+}
+
+.operations-radar-ring,
+.operations-radar-sweep {
+  position: absolute;
+  width: min(86vw, 86vh);
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.operations-radar-ring {
+  border: 1px dashed color-mix(in oklch, var(--brass) 16%, transparent);
+}
+
+.operations-radar-ring--middle {
+  width: min(62vw, 62vh);
+  border-color: color-mix(in oklch, var(--aurora) 12%, transparent);
+}
+
+.operations-radar-ring--inner {
+  width: min(38vw, 38vh);
+  border-color: color-mix(in oklch, var(--ink-rim) 42%, transparent);
+}
+
+.operations-radar-sweep {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in oklch, var(--brass) 0%, transparent) 282deg,
+    color-mix(in oklch, var(--brass) 8%, transparent) 348deg,
+    transparent 360deg
+  );
+  animation: radar-sweep 16s linear infinite;
+}
+
+.canvas-background-toggle {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 14;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 80%, var(--ink-deep));
+  color: var(--ink-fog);
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-background-toggle:hover,
+.canvas-background-toggle:focus-visible,
+.canvas-background-toggle.is-active {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
+}
+
+.canvas-background-toggle svg {
+  display: block;
+  width: 19px;
+  height: 19px;
+}
+
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.operations-canvas-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.canvas-panel {
+  position: absolute;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  min-width: 320px;
+  min-height: 200px;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--surface-glass-strong) 78%, var(--ink-deep));
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.canvas-panel.is-active {
+  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent);
+}
+
+/* 진행 중 캐리어 스트림을 패널 바깥 위에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
+   인라인으로 받고, translateY로 자기 높이만큼 위로 올려 터미널을 가리지 않게 패널 상단 위에 정렬한다. */
+.canvas-panel-jobdock {
+  position: absolute;
+  transform: translateY(calc(-100% - var(--space-2)));
+  box-sizing: border-box;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.canvas-panel-titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 42px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-deep) 28%, transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas-panel-titlebar:active {
+  cursor: grabbing;
+}
+
+.canvas-panel-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-pearl);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-panel-cli,
+.canvas-panel-job-count {
+  flex: none;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  color: var(--aurora);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.canvas-panel-cli {
+  margin-left: auto;
+}
+
+.canvas-panel-job-count {
+  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
+.canvas-panel-icon-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-panel-icon-button:hover,
+.canvas-panel-icon-button:focus-visible,
+.canvas-panel-icon-button.is-active {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+}
+
+.canvas-panel-icon-button svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.canvas-panel-terminal {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-pillar));
+}
+
+.canvas-panel-terminal .terminal-stage,
+.canvas-panel-terminal .terminal-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.canvas-panel-terminal .terminal-shell {
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.canvas-panel-resize {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+}
+
+.canvas-panel-resize--n,
+.canvas-panel-resize--s {
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.canvas-panel-resize--n {
+  top: -4px;
+}
+
+.canvas-panel-resize--s {
+  bottom: -4px;
+}
+
+.canvas-panel-resize--e,
+.canvas-panel-resize--w {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.canvas-panel-resize--e {
+  right: -4px;
+}
+
+.canvas-panel-resize--w {
+  left: -4px;
+}
+
+.canvas-panel-resize--ne,
+.canvas-panel-resize--se,
+.canvas-panel-resize--sw,
+.canvas-panel-resize--nw {
+  width: 14px;
+  height: 14px;
+}
+
+.canvas-panel-resize--ne {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.canvas-panel-resize--se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+
+.canvas-panel-resize--sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.canvas-panel-resize--nw {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.canvas-rubber-band {
+  position: absolute;
+  z-index: 20;
+  border: 1px dashed var(--brass-bright);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent),
+    0 0 24px -12px var(--brass-glow);
+  pointer-events: none;
+}
+
+.operations-canvas-empty {
+  position: absolute;
+  left: clamp(var(--space-5), 7vw, var(--space-10));
+  bottom: clamp(var(--space-5), 7vw, var(--space-10));
+  z-index: 5;
+  display: grid;
+  gap: var(--space-3);
+  max-width: 420px;
+  padding: var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--surface-glass) 82%, var(--ink-deep));
+  color: var(--ink-spectral);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.operations-canvas-empty p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.operations-canvas-empty-mark {
+  width: 44px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brass), var(--aurora));
+  box-shadow: 0 0 18px color-mix(in oklch, var(--aurora) 34%, transparent);
+}
+
+.operations-canvas-error {
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.floating-sidebar-layer {
+  position: absolute;
+  top: var(--space-4);
+  bottom: var(--space-4);
+  left: var(--space-4);
+  z-index: 12;
+  width: min(304px, calc(100% - var(--space-8)));
+  pointer-events: none;
+}
+
+.floating-sidebar {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  min-height: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  pointer-events: auto;
+  animation: codex-rise 520ms var(--ease-spring) both;
+}
+
+.floating-sidebar-layer.is-collapsed {
+  width: auto;
+  bottom: auto;
+}
+
+.floating-sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.floating-sidebar-heading .sidebar-eyebrow {
+  margin-bottom: 0;
+}
+
+.floating-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.floating-sidebar-toggle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  color: var(--brass);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.floating-sidebar-toggle:hover,
+.floating-sidebar-toggle:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+}
+
+.floating-sidebar-toggle svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.floating-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.floating-job-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.floating-job-overlay .job-overlay {
+  z-index: 1;
+  pointer-events: auto;
 }
 
 .session-list {
@@ -3349,6 +3908,10 @@
   .shell-overlay-card,
   .operation-search-overlay,
   .shortcuts-overlay-card {
+    animation: none;
+  }
+
+  .operations-radar-sweep {
     animation: none;
   }
 }

@@ -7,13 +7,23 @@
 }
 
 .console-body {
-  display: grid;
-  grid-template-columns: 304px minmax(0, 1fr);
-  gap: var(--space-4);
+  position: relative;
   min-height: 0;
 }
 
-.console-body.is-expanded {
+.console-body.is-canvas {
+  display: block;
+  overflow: hidden;
+}
+
+.console-body.is-classic {
+  display: grid;
+  grid-template-columns: 304px minmax(0, 1fr);
+  gap: var(--space-4);
+  overflow: visible;
+}
+
+.console-body.is-classic.is-expanded {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -84,8 +94,11 @@
   padding: var(--space-5) var(--space-8) var(--space-10);
 }
 
-/* Operations 라우트의 터미널 영역: console-body 2번째 컬럼을 가득 채우고
-   JobOverlay 오버레이(중앙 카드, position: absolute)의 기준 컨테이너가 된다. */
+.operations-canvas {
+  animation: codex-rise 720ms var(--ease-spring) both;
+  animation-delay: 200ms;
+}
+
 .operations-terminal-stage {
   position: relative;
   display: flex;
@@ -116,7 +129,8 @@
 }
 
 .stage,
-.operations-terminal-stage {
+.operations-terminal-stage,
+.operations-canvas {
   animation-delay: 200ms;
 }
 
@@ -130,13 +144,13 @@
     gap: var(--space-3);
   }
 
-  .console-body {
-    grid-template-columns: 260px minmax(0, 1fr);
-    gap: var(--space-3);
-  }
-
   .stage-content {
     padding: var(--space-4) var(--space-5) var(--space-8);
+  }
+
+  .console-body.is-classic {
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: var(--space-3);
   }
 }
 
@@ -146,7 +160,11 @@
     padding: var(--space-2);
   }
 
-  .console-body {
+  .console-body.is-canvas {
+    overflow: hidden;
+  }
+
+  .console-body.is-classic {
     grid-template-columns: minmax(0, 1fr);
     overflow-y: auto;
   }
