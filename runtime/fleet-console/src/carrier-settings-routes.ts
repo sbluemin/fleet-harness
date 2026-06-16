@@ -227,6 +227,16 @@ async function mutateCarrierCli(
     return;
   }
   await controller.changeCliType(carrierId, cliType);
+  // 비지원(비-Claude) CLI로 전환하면 SubAgent는 유효하지 않다. agent-mode 라우트는 비지원 CLI의
+  // SA enable을 거부하지만 CLI 변경 경로는 그 가드를 우회하므로, 여기서 SA를 해제해 codex+subagent
+  // 같은 불일치 상태가 서버에 영속되지 않게 한다.
+  if (!SUBAGENT_CLI_TYPES.has(cliType)) {
+    const resolved = readCarriersSnapshot(buildDefaultsByCarrier(deps.registry)).carriers[carrierId];
+    if (resolved?.agentMode === "subagent") {
+      const config = requireCarrierConfig(deps.registry, carrierId);
+      updateCarrierAgentModeAtomically(carrierId, "cli", config.defaultAgentMode ?? "cli");
+    }
+  }
   writeMutationState(res, deps);
 }
 
