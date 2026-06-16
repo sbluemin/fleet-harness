@@ -1127,6 +1127,11 @@
   color: var(--brass);
 }
 
+/* 메뉴 컨테이너는 키보드 탐색용으로만 포커스를 받으므로(첫 항목 자동 강조 회피) 외곽선을 숨긴다. */
+.operation-launch-control .operation-launch-menu:focus {
+  outline: none;
+}
+
 .operations-canvas {
   position: relative;
   width: 100%;

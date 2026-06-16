@@ -50,9 +50,9 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
 
   useEffect(() => {
     if (!menuOpen) return;
-    const menu = menuRef.current;
-    if (!menu) return;
-    menu.querySelector<HTMLElement>("[role^='menuitem']")?.focus();
+    // 메뉴를 열 때 첫 항목을 강제 포커스하지 않는다 — 마우스로 연 경우 첫 CLI(Claude)가 '이미 선택된 것처럼'
+    // 강조되는 UX를 피한다. 대신 메뉴 컨테이너에 포커스를 둬 화살표 키 탐색만 가능하게 한다.
+    menuRef.current?.focus();
   }, [menuOpen]);
 
   const closeMenu = () => {
@@ -73,8 +73,10 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
     const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
     if (items.length === 0) return;
     const current = items.indexOf(document.activeElement as HTMLElement);
-    const delta = event.key === "ArrowDown" ? 1 : -1;
-    const next = (current + delta + items.length) % items.length;
+    // 아직 아무 항목도 포커스되지 않았으면(메뉴 컨테이너 포커스 상태) ArrowDown=첫 항목, ArrowUp=마지막 항목.
+    const next = current === -1
+      ? (event.key === "ArrowDown" ? 0 : items.length - 1)
+      : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
     items[next]?.focus();
   };
 
@@ -100,7 +102,7 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
         </button>
       ) : null}
       {menuOpen ? (
-        <div className="operation-launch-menu theater-menu" role="menu" aria-label="Launch operation" ref={menuRef} onKeyDown={handleMenuKeyDown}>
+        <div className="operation-launch-menu theater-menu" role="menu" aria-label="Launch operation" tabIndex={-1} ref={menuRef} onKeyDown={handleMenuKeyDown}>
           {state.agentClis.length > 0 ? (
             <ul className="theater-menu-list">
               {state.agentClis.map((cli) => (
