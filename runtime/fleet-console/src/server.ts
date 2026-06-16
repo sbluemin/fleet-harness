@@ -3,6 +3,7 @@ import http from "node:http";
 
 import {
   createCarrierRegistry,
+  initStore,
   readCarrierStatusEntries,
   registerDefaultCarriers,
   type CarrierJobStreamEvent,
@@ -24,6 +25,7 @@ import { getFleetDataDir } from "@dotobokuri/fleet-infra/data-dir";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
+import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
@@ -96,6 +98,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const folderGrants = createFolderGrantStore();
   const infraServices = createInfraServices();
   const dataDir = deps.dataDir ?? getFleetDataDir();
+  initStore(dataDir);
   const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
   const ownsAgentRuntime = deps.agentRuntime === undefined;
   const agentRuntime = deps.agentRuntime ?? createFleetAgentRuntimeLifecycle({
@@ -169,6 +172,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let activeEndpoint: string | null = null;
   let agentRuntimeStopped = false;
   let consoleResourcesDisposed = false;
+  const carrierSettingsRouter = createCarrierSettingsRouter({
+    registry: carrierRegistry,
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    writeJson,
+  });
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -217,6 +226,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/observer/carriers") {
       handleObserverCarriers(req, res);
+      return;
+    }
+    if (pathname === "/carrier-settings" || pathname.startsWith("/carrier-settings/")) {
+      runAsyncBooleanHandler(carrierSettingsRouter({ req, res, pathname }), res);
       return;
     }
     if (pathname === "/observer/tenants") {

@@ -1,4 +1,5 @@
 import "@fontsource-variable/fraunces";
+import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/cascadia-code";

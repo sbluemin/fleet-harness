@@ -27,15 +27,22 @@
   --positive: oklch(80% 0.15 152);
   --positive-glow: oklch(80% 0.15 152 / 24%);
 
-  /* 캐리어 시그니처 색 — fleet-cli PROVIDER_RGBS(runtime/fleet-cli/src/styles/carriers.ts) 미러.
-     프로바이더 정체성 축으로 상태색과 의미가 겹치지 않으며, brand 고정값이라 테마 불변(carbon에서 재정의하지 않음). */
-  --carrier-claude: rgb(255 149 0);
-  --carrier-claude-zai: rgb(0 200 120);
-  --carrier-claude-kimi: rgb(180 100 255);
-  --carrier-codex: rgb(169 169 169);
-  --carrier-opencode-go: rgb(0 200 160);
-  --carrier-cursor: rgb(0 122 204);
-  --carrier-taskforce: rgb(100 180 255);
+  /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. */
+  --carrier-claude: oklch(78% 0.15 62);
+  --carrier-claude-zai: oklch(76% 0.13 155);
+  --carrier-claude-kimi: oklch(75% 0.15 315);
+  --carrier-codex: oklch(78% 0.035 248);
+  --carrier-opencode-go: oklch(76% 0.12 184);
+  --carrier-cursor: oklch(72% 0.13 238);
+  --carrier-taskforce: oklch(78% 0.12 216);
+  --captain-nimitz: #d4af37;
+  --captain-kirov: #e8a854;
+  --captain-genesis: #ff6b6b;
+  --captain-ohio: #a78bfa;
+  --captain-sentinel: #fb7185;
+  --captain-vanguard: #5fd673;
+  --captain-tempest: #3dd5f3;
+  --captain-chronicle: #3dd5f3;
 
   --surface-glass: oklch(28% 0.04 248 / 60%);
   --surface-glass-strong: oklch(32% 0.04 248 / 78%);

@@ -13,7 +13,7 @@ interface NavItem {
   readonly to: string;
   readonly label: string;
   readonly end: boolean;
-  readonly icon: "operations" | "codex";
+  readonly icon: "operations" | "codex" | "settings";
 }
 
 interface ThemeOption {
@@ -25,6 +25,7 @@ interface ThemeOption {
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
+  { to: "/carrier-settings", label: "Settings", end: false, icon: "settings" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
 ];
 
@@ -40,6 +41,8 @@ export function Topbar({ state }: TopbarProps) {
   const pathname = useLocation().pathname;
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
+    : pathname.startsWith("/carrier-settings")
+      ? <SettingsIcon />
     : pathname.startsWith("/operations")
       ? <OperationsIcon />
       : <FleetSigil />;
@@ -79,7 +82,7 @@ export function Topbar({ state }: TopbarProps) {
               className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
             >
               <span className="topbar-nav-icon" aria-hidden="true">
-                {item.icon === "operations" ? <OperationsIcon /> : <CodexIcon />}
+                {item.icon === "operations" ? <OperationsIcon /> : item.icon === "settings" ? <SettingsIcon /> : <CodexIcon />}
               </span>
               <span>{item.label}</span>
             </NavLink>
@@ -420,6 +423,18 @@ function CodexIcon() {
       <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" opacity="0.16" />
       <path d="M12 3v3.6M12 17.4V21M3 12h3.6M17.4 12H21" />
       <path d="M12 8.6 14.2 12 12 15.4 9.8 12Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  // Settings 시그니처 — 조정 노브 모티프. carrier 설정 화면과 GNB nav가 같은 도형을 공유한다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   );
 }
