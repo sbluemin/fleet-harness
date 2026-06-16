@@ -14,6 +14,8 @@ interface TerminalProps {
   readonly sessionId: string;
   readonly kind?: "shell";
   readonly onExit?: () => void;
+  // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
+  readonly active?: boolean;
 }
 
 const TERMINAL_OPTIONS = {
@@ -76,7 +78,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(95% 0.003 250)",
 };
 
-export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
+export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
   const { activeTheme, terminalRenderer } = useConsoleState();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
@@ -175,6 +177,12 @@ export function Terminal({ sessionId, kind, onExit }: TerminalProps) {
       }
     };
   }, [kind, sessionId]);
+
+  // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 줘
+  // 마우스 클릭 없이 바로 입력되게 한다. 비활성 전환에서는 아무 것도 하지 않는다.
+  useEffect(() => {
+    if (active) terminalRef.current?.focus();
+  }, [active]);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
   useEffect(() => {

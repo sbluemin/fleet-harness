@@ -27,6 +27,17 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     ],
   },
   {
+    title: "Map",
+    entries: [
+      { combos: [["Drag"]], description: "Pan the operations map" },
+      { combos: [["Shift", "Drag"]], description: "Draw a new Operation terminal" },
+      { combos: [["Space", "Drag"]], description: "Pan even while a terminal has focus" },
+      { combos: [["Scroll"]], description: "Pan with the wheel or trackpad" },
+      { combos: [["Mod", "Scroll"]], description: "Zoom the map in or out" },
+      { combos: [["Click"]], description: "Clear terminal focus on the empty canvas" },
+    ],
+  },
+  {
     title: "Codex",
     entries: [
       { combos: [["Mod", "K"]], description: "Toggle the command palette" },

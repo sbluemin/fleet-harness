@@ -147,7 +147,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         </button>
       </div>
       <div className="canvas-panel-terminal" onPointerDown={stopCanvasPointer} onWheel={stopCanvasWheel} data-canvas-blocker>
-        <Terminal sessionId={session.sessionId} onExit={() => removeTerminalSession(session.sessionId)} />
+        <Terminal sessionId={session.sessionId} active={active} onExit={() => removeTerminalSession(session.sessionId)} />
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(nextGeometry) => setPanelGeometry(session.sessionId, nextGeometry)} />
     </article>

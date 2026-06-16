@@ -1140,11 +1140,22 @@
   box-shadow: var(--shadow-soft);
   touch-action: none;
   user-select: none;
-  cursor: crosshair;
+  /* 기본 제스처가 맵 이동(pan)이므로 손 모양 커서. Shift를 누르면 생성 모드(crosshair)로 바뀐다. */
+  cursor: grab;
+}
+
+.operations-canvas:active,
+.operations-canvas.is-panning:active {
+  cursor: grabbing;
 }
 
 .operations-canvas.is-panning {
   cursor: grab;
+}
+
+.operations-canvas.is-creating,
+.operations-canvas.is-creating:active {
+  cursor: crosshair;
 }
 
 .operations-canvas-background,

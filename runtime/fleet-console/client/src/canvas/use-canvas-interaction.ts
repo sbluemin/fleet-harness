@@ -15,6 +15,7 @@ interface CanvasInteractionOptions {
 interface CanvasInteractionResult {
   readonly rubberBand: CanvasRect | null;
   readonly spaceActive: boolean;
+  readonly shiftActive: boolean;
   readonly onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -45,6 +46,7 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
   const viewportRef = useRef(viewport);
   const [rubberBand, setRubberBand] = useState<CanvasRect | null>(null);
   const [spaceActive, setSpaceActive] = useState(false);
+  const [shiftActive, setShiftActive] = useState(false);
 
   useEffect(() => {
     viewportRef.current = viewport;
@@ -52,6 +54,8 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Shift는 생성 모드 커서(crosshair) 표시용이라 입력 필드 포커스 여부와 무관하게 추적한다.
+      if (event.key === "Shift") setShiftActive(true);
       if (isEditableTarget(event.target)) return;
       if (event.code === "Space") {
         event.preventDefault();
@@ -59,6 +63,7 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
       }
     };
     const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") setShiftActive(false);
       if (event.code === "Space") setSpaceActive(false);
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -78,7 +83,9 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
       return;
     }
     const screen = eventScreenPoint(event);
-    const mode: DragMode = event.button === 1 || spaceActive ? "pan" : "create";
+    // 기본 드래그는 맵 이동(pan). Shift+좌클릭 드래그만 새 Operation 생성(create).
+    // 중간 버튼(button 1)과 Space 길게 누름은 보조 pan 경로로 유지한다.
+    const mode: DragMode = event.shiftKey && event.button === 0 && !spaceActive ? "create" : "pan";
     dragRef.current = {
       pointerId: event.pointerId,
       mode,
@@ -143,14 +150,16 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     dragRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
     setRubberBand(null);
-    if (!commit || drag.mode !== "create") return;
-    // 거의 움직이지 않았으면(=단일 클릭) 생성하지 않고 캔버스 제어 의도로 본다 — 호출 측에서 터미널 포커스를 해제한다.
+    if (!commit) return;
+    // 거의 움직이지 않았으면(=단일 클릭) 모드와 무관하게 캔버스 제어 의도로 본다 — 호출 측에서 터미널 포커스를 해제한다.
     const moveX = Math.abs(drag.currentScreen.x - drag.startScreen.x);
     const moveY = Math.abs(drag.currentScreen.y - drag.startScreen.y);
     if (moveX < CLICK_MOVE_THRESHOLD && moveY < CLICK_MOVE_THRESHOLD) {
       onClick?.();
       return;
     }
+    // pan 드래그는 onPointerMove에서 이미 viewport를 옮겼다. 생성은 Shift+드래그(create)일 때만.
+    if (drag.mode !== "create") return;
     // 실제 드래그 → 드래그한 사각형으로 생성하되, 너무 작으면 최소 크기로 클램프해 사용 가능하게 한다.
     const raw = rectFromScreens(drag.startScreen, drag.currentScreen, viewportRef.current);
     const rect: CanvasRect = {
@@ -162,7 +171,7 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     onCreate(rect, drag.currentScreen);
   };
 
-  return { rubberBand, spaceActive, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onWheel };
+  return { rubberBand, spaceActive, shiftActive, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onWheel };
 }
 
 function rectFromScreens(start: CanvasPoint, current: CanvasPoint, viewport: CanvasViewport): CanvasRect {

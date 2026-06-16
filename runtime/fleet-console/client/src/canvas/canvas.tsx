@@ -20,7 +20,7 @@ interface LaunchRequest {
   readonly anchor: CanvasPoint;
 }
 
-const EMPTY_GUIDE = "Drag to create an operation. Hold Space or use the middle button to pan.";
+const EMPTY_GUIDE = "Shift-drag to create an Operation. Drag or scroll to pan; Ctrl/⌘ + scroll to zoom.";
 
 export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -55,7 +55,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
 
   return (
     <main
-      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""}`}
+      className={`operations-canvas ${interaction.spaceActive ? "is-panning" : ""} ${interaction.shiftActive ? "is-creating" : ""}`}
       onPointerDown={interaction.onPointerDown}
       onPointerMove={interaction.onPointerMove}
       onPointerUp={interaction.onPointerUp}
