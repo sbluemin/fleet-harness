@@ -198,6 +198,9 @@ importers:
       '@dotobokuri/core-agent':
         specifier: workspace:*
         version: link:../../packages/core-agent
+      '@dotobokuri/core-unified-agent':
+        specifier: workspace:*
+        version: link:../../packages/core-unified-agent
       '@dotobokuri/fleet-admiral':
         specifier: workspace:*
         version: link:../../packages/fleet-admiral

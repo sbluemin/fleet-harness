@@ -9,6 +9,7 @@ import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
 import { startObserverConnection } from "./connection.js";
 import { useConsoleState } from "./hooks/use-store.js";
+import { CarrierSettings } from "./pages/carrier-settings.js";
 import { Codex } from "./pages/codex.js";
 import { Operations } from "./pages/operations.js";
 import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
@@ -83,6 +84,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<Welcome state={state} />} />
         <Route path="/operations" element={<Operations state={state} />} />
+        <Route path="/carrier-settings" element={<CarrierSettings />} />
         <Route path="/codex/*" element={<Codex state={state} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

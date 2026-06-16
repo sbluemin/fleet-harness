@@ -35,14 +35,14 @@
 - MCP session tokens must never reach browser code, URL query strings, SSE payloads, terminal tickets, logs, or static assets.
 - Theater routes likewise do not expose admin bearer tokens, MCP/session tokens, terminal tickets, folder-grant identifiers, or raw working-directory paths to the browser.
 
-## Carrier Readiness Boundary
+## Carrier Readiness/Settings Boundary
 
-- `runtime/fleet-console/src/**` may import `@dotobokuri/fleet-carriers` public root exports to consume read-only Carrier Readiness read models for browser-safe observer payloads.
+- `runtime/fleet-console/src/**` may import `@dotobokuri/fleet-carriers` public root exports to consume Carrier Readiness read models and mutate global Carrier Settings through the carrier store.
 - `runtime/fleet-console/client/**` must not import `@dotobokuri/fleet-carriers`, carrier persona modules, deep carrier paths, or Node-only carrier runtime modules.
-- Fleet Console may render display-safe carrier readiness data such as carrier id, display name, role/category, resolved model/effort, Task Force backend count, and subagent mode/tag.
-- `fleet-carriers` remains the source of truth for carrier persona defaults, carrier-store interpretation, and carrier read-model construction. Console must not copy, reconstruct, mutate, or persist carrier persona policy or carrier runtime state.
+- Fleet Console may render and edit display-safe carrier settings data such as carrier id, display name, role/category, resolved CLI/model/effort, Task Force backend count/configuration, and subagent mode/tag.
+- `fleet-carriers` remains the source of truth for carrier persona defaults, carrier-store interpretation, store mutation, and carrier read-model construction. Console must not copy or reconstruct carrier persona policy or carrier runtime state.
 - Console must not deep-import `@dotobokuri/fleet-carriers/src/**`, `packages/fleet-carriers/src/**`, `runtime/fleet-cli/**`, or `@dotobokuri/fleet-cli`.
-- Carrier readiness browser payloads must not serialize prompt bodies, raw persona instructions, executor tool allowlists, tokens, credential values, auth env details, terminal/session/admin tickets, or raw filesystem paths.
+- Carrier readiness/settings browser payloads must not serialize prompt bodies, raw persona instructions, executor tool allowlists, tokens, credential values, auth env details, terminal/session/admin tickets, or raw filesystem paths.
 
 ## Server-side Dependency Boundary
 
