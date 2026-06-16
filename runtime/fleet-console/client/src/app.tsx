@@ -3,13 +3,14 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
+import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
 import { startObserverConnection } from "./connection.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { Codex } from "./pages/codex.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleShell } from "./store.js";
+import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
@@ -53,6 +54,19 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (window.location.pathname.includes("/codex")) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        toggleOperationSearch();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "`") {
         event.preventDefault();
         toggleShell();
@@ -72,6 +86,7 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ShellOverlay state={state} />
+      <OperationSearch state={state} />
       <Toast
         open={state.connectionError !== null}
         tone="error"

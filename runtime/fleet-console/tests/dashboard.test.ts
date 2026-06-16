@@ -25,6 +25,7 @@ const BASE_STATE: ConsoleState = {
   tenantOrder: [],
   timelineOpen: false,
   shellOpen: false,
+  operationSearchOpen: false,
   selectedJobId: null,
   expandedSessionIds: [],
 };

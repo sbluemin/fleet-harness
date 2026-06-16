@@ -12,9 +12,12 @@ import {
   clearSelectedJob,
   closeShell,
   completeCreateTerminalSession,
+  closeOperationSearch,
+  focusOperation,
   getState,
   hydrateTerminalSessions,
   hydrateTheaters,
+  openOperationSearch,
   readStoredRenderer,
   selectJob,
   selectTerminalSession,
@@ -25,6 +28,7 @@ import {
   setState,
   theaterSessionOrder,
   theaterSessions,
+  toggleOperationSearch,
   toggleShell,
 } from "../client/src/store.js";
 import type { ObservedEvent, ObservedTenant, TheaterInfo } from "../client/src/types.js";
@@ -74,6 +78,7 @@ beforeEach(() => {
     terminalSessionError: null,
     timelineOpen: false,
     shellOpen: false,
+    operationSearchOpen: false,
     selectedJobId: null,
   });
 });
@@ -261,6 +266,22 @@ describe("store", () => {
     expect(getState().shellOpen).toBe(false);
   });
 
+  it("toggles and closes the operation search modal state", () => {
+    expect(getState().operationSearchOpen).toBe(false);
+
+    openOperationSearch();
+    expect(getState().operationSearchOpen).toBe(true);
+
+    toggleOperationSearch();
+    expect(getState().operationSearchOpen).toBe(false);
+
+    toggleOperationSearch();
+    expect(getState().operationSearchOpen).toBe(true);
+
+    closeOperationSearch();
+    expect(getState().operationSearchOpen).toBe(false);
+  });
+
   it("binds hydrated terminal sessions to tenants without changing the active session", () => {
     hydrateTerminalSessions([{ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "starting", createdAt: 1 }]);
     selectTerminalSession("session-a");
@@ -414,6 +435,26 @@ describe("store", () => {
     setActiveTheater("theater-b");
     expect(theaterSessionOrder(getState())).toEqual(["session-b"]);
     expect(getState().activeTerminalSessionId).toBe("session-b");
+  });
+
+  it("focuses an operation across Theater boundaries in one state update", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, status: "terminal-only", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    selectJob("job-a");
+
+    focusOperation("session-b");
+
+    expect(getState()).toMatchObject({
+      activeTheaterId: "theater-b",
+      activeTerminalSessionId: "session-b",
+      selectedJobId: null,
+    });
+    expect(storage.get("fleet-console.activeTheaterId")).toBe("theater-b");
   });
 
   it("preserves theaterId across tenant snapshots and hides jobs from other Theaters", () => {
