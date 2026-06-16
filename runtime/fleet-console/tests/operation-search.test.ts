@@ -32,6 +32,7 @@ function makeState(sessions: readonly SessionInfo[], theaters: readonly TheaterI
     shellOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
+    pendingOperationFocus: null,
     selectedJobId: null,
     expandedSessionIds: [],
   };

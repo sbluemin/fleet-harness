@@ -12,6 +12,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Console",
     entries: [
+      { combos: [["Mod", "K"]], description: "Search Operations across Theaters" },
       { combos: [["Mod", "`"]], description: "Toggle the local shell" },
       { combos: [["Esc"]], description: "Close the open overlay or menu" },
     ],
