@@ -5,11 +5,9 @@ export function formatClock(at: number): string {
 }
 
 // 세션 표시 명칭: 사용자가 지정한 라벨이 있으면 우선하고, 없으면 Theater별 순번 기반 기본 명칭을 쓴다.
-export function sessionDisplayName(session: SessionInfo): string {
+export function sessionDisplayLabel(session: SessionInfo): string {
   return session.label?.trim() || `#${session.sequence} Operation`;
 }
-
-export const sessionDisplayLabel = sessionDisplayName;
 
 export function formatElapsed(from: number, to: number): string {
   const totalSeconds = Math.max(0, Math.round((to - from) / 1000));

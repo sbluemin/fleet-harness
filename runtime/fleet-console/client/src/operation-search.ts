@@ -1,4 +1,4 @@
-import { sessionDisplayName } from "./format.js";
+import { sessionDisplayLabel } from "./format.js";
 import type { ConsoleState, SessionInfo, SessionStatus, TheaterInfo } from "./types.js";
 
 export interface OperationSearchEntry {
@@ -65,7 +65,7 @@ function toOperationSearchEntry(session: SessionInfo, theater: TheaterInfo | und
     sessionId: session.sessionId,
     theaterId: session.theaterId ?? null,
     theaterLabel: theater?.label ?? session.theaterId ?? "",
-    operationName: sessionDisplayName(session),
+    operationName: sessionDisplayLabel(session),
     cliLabel: session.cliLabel,
     status: session.status,
   };

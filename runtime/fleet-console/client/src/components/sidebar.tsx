@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
-import { describeJobStatus, formatCarrierName, sessionDisplayName, shortJobId, statusTone } from "../format.js";
+import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
@@ -160,7 +160,7 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
   const skipBlurCommitRef = useRef(false);
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
   const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
-  const displayLabel = sessionDisplayName(session);
+  const displayLabel = sessionDisplayLabel(session);
   // 진행 중인 잡을 위로, 완료(terminal)된 잡을 아래로 모은다. 안정 정렬이라 그룹 내부 등록 순서는 그대로 유지된다.
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
 
