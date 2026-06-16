@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-16
+
 ### Added
 - [core] Added a Fleet Console carrier settings page to edit each carrier's CLI, model, SubAgent mode, Task Force backends, and display name, committed with a single per-carrier save.
 - [core] Fleet Console Operations now opens as a freeform terminal canvas for arranging live operation sessions.
