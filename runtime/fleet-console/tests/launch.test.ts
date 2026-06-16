@@ -51,6 +51,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       expect(options.enableMetaphor).toBe(false);
       expect(options.replaceSystemPrompt).toBe(false);
       expect(options.buildSystemPrompt).toEqual(expect.any(Function));
+      expect(options.captureSessionHookExec).toMatchObject({ command: process.execPath });
+      expect(options.captureSessionHookExec?.args).toContain("capture-session");
+      expect(options.captureSessionHookExec?.args).toContain("claude");
       return { ...profile, args: [...profile.args, "--fleet"] };
     });
     const resolve = createDefaultTerminalLaunchResolver({
@@ -79,6 +82,38 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ authEnvResolver: expect.any(Function) }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
+  });
+
+  it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {
+    const runtime = createFakeRuntime(() => undefined);
+    const injectedOptions: InjectAgentCliProfileOptions[] = [];
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "codex" as const, label: "Codex", cwd, env: { ...env } }));
+    const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
+      injectedOptions.push(options);
+      return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
+    });
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      entryPath: "/console/cli.ts",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      execPath: "/node",
+      tsxLoaderPath: "/loader/tsx.mjs",
+      agentRuntime: runtime as never,
+      injectProfile: injectProfile as never,
+      resolveProfile: resolveProfile as never,
+    });
+
+    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "codex", resumeSessionId: "provider-session-a" });
+
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({
+      cliId: "codex",
+      resumeSessionId: "provider-session-a",
+    }));
+    expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "provider-session-a" });
+    expect(injectedOptions[0]?.captureSessionHookExec).toEqual({
+      command: "/node",
+      args: ["--import", "file:///loader/tsx.mjs", "/console/cli.ts", "hook", "capture-session", "codex"],
+    });
   });
 
   it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {

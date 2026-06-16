@@ -57,6 +57,10 @@ interface FakeConsoleRuntime {
   emit(event: unknown): void;
 }
 
+interface ExitablePty extends TerminalPtyHandle {
+  emitExit(): void;
+}
+
 const tempDirs: string[] = [];
 const servers: ConsoleServer[] = [];
 let previousStaticIndex: string | null | undefined;
@@ -133,6 +137,60 @@ describe("console terminal observability", () => {
     expect(a1.sequence).toBe(1);
     expect(a2.sequence).toBe(2);
     expect(b1.sequence).toBe(1);
+  });
+
+  it("injects dormant durable operations without exposing server-only provider data", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-store-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+
+    const session = store.injectDormantOperation({
+      sessionId: "session-a",
+      theaterId: workspaceHash(fs.realpathSync.native(dir)),
+      cwd: dir,
+      cwdLabel: path.basename(dir),
+      sequence: 7,
+      cliId: "claude",
+      cliLabel: "Claude",
+      createdAt: 1_000,
+      providerSession: {
+        provider: "claude",
+        sessionId: "provider-session-secret",
+        transcriptPath: "/secret/transcript.jsonl",
+        source: "startup",
+        capturedAt: "2026-06-16T00:00:00.000Z",
+      },
+    });
+    const serialized = JSON.stringify({ session, sessions: store.listTerminalSessions() });
+
+    expect(session).toMatchObject({
+      sessionId: "session-a",
+      status: "dormant",
+      sequence: 7,
+      resumeAvailable: true,
+    });
+    expect(serialized).not.toContain(dir);
+    expect(serialized).not.toContain("provider-session-secret");
+    expect(serialized).not.toContain("transcript");
+    expect(serialized).not.toContain("providerSession");
+  });
+
+  it("drops live workspace indexes when a terminal session transitions to dormant", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-index-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+    store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
+
+    const dormant = store.transitionTerminalSessionToDormant("session-a", {
+      provider: "claude",
+      sessionId: "provider-session-secret",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    expect(dormant).toMatchObject({ status: "dormant", resumeAvailable: true });
+    expect(store.listWorkspaces()).toEqual([]);
+    expect(store.getWorkspace("session-a")).toBeNull();
   });
 
   it("renames pending terminal sessions in memory and emits a separate session update frame", () => {
@@ -255,7 +313,10 @@ describe("console terminal observability", () => {
       },
       terminalStartShell: () => createMockPty(),
     });
-    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" });
+    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+    const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
+    expect(created.status).toBe(200);
+    const session = await created.json() as { readonly sessionId: string };
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: session.sessionId, trackId: "t1", text: "hello" });
 
     const observerTenants = await getJson<{ readonly tenants: ReadonlyArray<{ readonly tenantId: string; readonly tenantLabel: string; readonly terminalSessionId?: string }> }>(`${fixture.endpoint}observer/tenants`);
@@ -618,7 +679,549 @@ describe("console static and terminal ticket boundary", () => {
       PWD: dir,
       TERM: "xterm-256color",
     });
+    const stateFile = path.join(fixture.carrierStoreDir, "console", "state.json");
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { readonly version: number; readonly operations: readonly Record<string, unknown>[] };
+    expect(state.version).toBe(1);
+    expect(state.operations).toHaveLength(1);
+    expect(state.operations[0]).toMatchObject({ sessionId: session.sessionId, cwd: dir });
+    expect(state.operations[0]?.providerSession).toBeUndefined();
+    expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
+  });
+
+  it("rehydrates a created operation from a later capture without an intermediate persist", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-"));
+    tempDirs.push(dir);
+    const startedShells: string[] = [];
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: (launch) => {
+        startedShells.push(launch.cwd);
+        return createMockPty();
+      },
+    });
+    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    })).json() as { readonly id: string };
+    const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cliId: "codex" }),
+    });
+    const session = await created.json() as { readonly sessionId: string; readonly status: string };
+    const statePath = path.join(fixture.carrierStoreDir, "console", "state.json");
+    const initialState = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown; readonly sessionId?: unknown }> };
+    const capturesDir = path.join(fixture.carrierStoreDir, "console", "captures");
+    const capturePath = path.join(capturesDir, `${session.sessionId}.json`);
+
+    fs.mkdirSync(capturesDir, { recursive: true });
+    fs.writeFileSync(capturePath, JSON.stringify({
+      provider: "codex",
+      sessionId: "codex-provider-session-secret",
+      transcriptPath: "/secret/codex/transcript.jsonl",
+      source: "user-prompt-submit",
+      capturedAt: "2026-06-16T00:00:02.000Z",
+    }));
+    await fixture.server.stop();
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({
+      port: 0,
+      version: "test",
+      dataDir: fixture.carrierStoreDir,
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: (launch) => {
+        startedShells.push(launch.cwd);
+        return createMockPty();
+      },
+    });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${restartedEndpoint}terminal/sessions`);
+    const persistedState = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+    const serialized = JSON.stringify(sessions);
+
+    expect(created.status).toBe(200);
+    expect(session.status).toBe("terminal-only");
+    expect(initialState.operations[0]).toMatchObject({ sessionId: session.sessionId });
+    expect(initialState.operations[0]?.providerSession).toBeUndefined();
+    expect(startedShells).toEqual([dir]);
+    expect(sessions.sessions[0]).toMatchObject({ sessionId: session.sessionId, status: "dormant", resumeAvailable: true });
+    expect(persistedState.operations[0]?.providerSession).toMatchObject({ provider: "codex", sessionId: "codex-provider-session-secret" });
+    expect(fs.existsSync(capturePath)).toBe(false);
+    expect(serialized).not.toContain(dir);
+    expect(serialized).not.toContain("codex-provider-session-secret");
+    expect(serialized).not.toContain("transcript");
+    expect(serialized).not.toContain("providerSession");
+  });
+
+  it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const startedShells: string[] = [];
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        const capturesDir = path.join(consoleDir, "captures");
+        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [{
+            sessionId: "session-a",
+            theaterId,
+            cwd: dir,
+            cwdLabel: path.basename(dir),
+            sequence: 1,
+            cliId: "claude",
+            cliLabel: "Claude",
+            createdAt: 1_000,
+          }],
+        }));
+        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
+          provider: "claude",
+          sessionId: "provider-session-secret",
+          transcriptPath: "/secret/transcript.jsonl",
+          source: "startup",
+          capturedAt: "2026-06-16T00:00:02.000Z",
+        }));
+      },
+      terminalStartShell: (launch) => {
+        startedShells.push(launch.cwd);
+        return createMockPty();
+      },
+    });
+
+    const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/theaters`);
+    const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}terminal/sessions`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+    const serialized = JSON.stringify({ theaters, sessions });
+
+    expect(startedShells).toEqual([]);
+    expect(theaters.theaters[0]).toMatchObject({ id: theaterId, label: path.basename(dir) });
+    expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
+    expect(state.operations[0]?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json"))).toBe(false);
+    expect(serialized).not.toContain(dir);
+    expect(serialized).not.toContain("provider-session-secret");
+    expect(serialized).not.toContain("transcript");
+    expect(serialized).not.toContain("providerSession");
+  });
+
+  it("does not restore durable operations without provider sessions", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-empty-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        fs.mkdirSync(consoleDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [{
+            sessionId: "empty-session",
+            theaterId,
+            cwd: dir,
+            cwdLabel: path.basename(dir),
+            sequence: 1,
+            cliId: "claude",
+            createdAt: 1_000,
+          }],
+        }));
+      },
+    });
+
+    const sessions = await getJson<{ readonly sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: readonly unknown[] };
+
+    expect(sessions.sessions).toEqual([]);
+    expect(state.operations).toEqual([]);
+  });
+
+  it("returns 404 or 409 for unavailable dormant resume requests", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-resume-unavailable-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        fs.mkdirSync(consoleDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [
+            {
+              sessionId: "missing-provider",
+              theaterId,
+              cwd: dir,
+              cwdLabel: path.basename(dir),
+              sequence: 1,
+              cliId: "claude",
+              createdAt: 1_000,
+            },
+            {
+              sessionId: "missing-cli",
+              theaterId,
+              cwd: dir,
+              cwdLabel: path.basename(dir),
+              sequence: 2,
+              createdAt: 2_000,
+              providerSession: {
+                provider: "claude",
+                sessionId: "provider-session-secret",
+                capturedAt: "2026-06-16T00:00:00.000Z",
+              },
+            },
+          ],
+        }));
+      },
+    });
+
+    const missing = await fetch(`${fixture.endpoint}terminal/sessions/nope/resume`, { method: "POST" });
+    const noProvider = await fetch(`${fixture.endpoint}terminal/sessions/missing-provider/resume`, { method: "POST" });
+    const noCli = await fetch(`${fixture.endpoint}terminal/sessions/missing-cli/resume`, { method: "POST" });
+
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toEqual({ error: "session_not_found" });
+    expect(noProvider.status).toBe(404);
+    await expect(noProvider.json()).resolves.toEqual({ error: "session_not_found" });
+    expect(noCli.status).toBe(409);
+    await expect(noCli.json()).resolves.toEqual({ error: "resume_unavailable" });
+  });
+
+  it("resumes a dormant operation lazily with provider session id kept server-side", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-resume-success-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const injectedResumeIds: Array<string | undefined> = [];
+    const launchedArgs: Array<readonly string[]> = [];
+    const runtime = createFakeConsoleRuntime([], []);
+    const fixture = await startFixture({
+      agentRuntime: runtime as never,
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        const capturesDir = path.join(consoleDir, "captures");
+        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [{
+            sessionId: "session-a",
+            theaterId,
+            cwd: dir,
+            cwdLabel: path.basename(dir),
+            sequence: 1,
+            cliId: "claude",
+            cliLabel: "Claude",
+            createdAt: 1_000,
+          }],
+        }));
+        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
+          provider: "claude",
+          sessionId: "provider-session-secret",
+          transcriptPath: "/secret/transcript.jsonl",
+          source: "resume",
+          capturedAt: "2026-06-16T00:00:02.000Z",
+        }));
+      },
+      terminalLaunchResolverDeps: {
+        cwd: dir,
+        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+        injectProfile: (async (profile: { readonly args: readonly string[] }, options: { readonly resumeSessionId?: string }) => {
+          injectedResumeIds.push(options.resumeSessionId);
+          return { ...profile, args: [...profile.args, "--resume-from-admiral"] };
+        }) as never,
+        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+          id: "claude",
+          label: "Claude Code",
+          bin: "/bin/claude",
+          args: [],
+          cwd,
+          env: { ...env },
+          terminalName: "xterm-256color",
+        })) as never,
+      },
+      terminalStartShell: (launch) => {
+        launchedArgs.push(launch.args);
+        return createMockPty();
+      },
+    });
+    const capturePath = path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json");
+
+    const before = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
+    const resumed = await fetch(`${fixture.endpoint}terminal/sessions/session-a/resume`, { method: "POST" });
+    const body = await resumed.json() as Record<string, unknown>;
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+    const serialized = JSON.stringify(body);
+
+    expect(before.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
+    expect(resumed.status).toBe(200);
+    expect(body).toMatchObject({ sessionId: "session-a", status: "registered", resumeAvailable: true });
+    expect(injectedResumeIds).toEqual(["provider-session-secret"]);
+    expect(launchedArgs).toEqual([["--resume-from-admiral"]]);
+    expect(state.operations[0]?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(fs.existsSync(capturePath)).toBe(false);
+    expect(serialized).not.toContain(dir);
+    expect(serialized).not.toContain("provider-session-secret");
+    expect(serialized).not.toContain("transcript");
+    expect(serialized).not.toContain("providerSession");
+  });
+
+  it("forgets dormant terminal sessions from durable state and capture files", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-dormant-delete-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        const capturesDir = path.join(consoleDir, "captures");
+        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [{
+            sessionId: "session-a",
+            theaterId,
+            cwd: dir,
+            cwdLabel: path.basename(dir),
+            sequence: 1,
+            cliId: "claude",
+            createdAt: 1_000,
+            providerSession: {
+              provider: "claude",
+              sessionId: "provider-session-secret",
+              capturedAt: "2026-06-16T00:00:02.000Z",
+            },
+          }],
+        }));
+        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
+          provider: "claude",
+          sessionId: "provider-session-secret",
+          capturedAt: "2026-06-16T00:00:02.000Z",
+        }));
+      },
+    });
+
+    const deleted = await fetch(`${fixture.endpoint}terminal/sessions/session-a`, { method: "DELETE" });
+    const sessions = await getJson<{ readonly sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: readonly unknown[] };
+
+    expect(deleted.status).toBe(200);
+    expect(sessions.sessions).toEqual([]);
+    expect(state.operations).toEqual([]);
+    expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json"))).toBe(false);
+  });
+
+  it("forgets a Theater with its child operations and capture files", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-delete-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        const capturesDir = path.join(consoleDir, "captures");
+        fs.mkdirSync(capturesDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [{
+            sessionId: "session-a",
+            theaterId,
+            cwd: dir,
+            cwdLabel: path.basename(dir),
+            sequence: 1,
+            cliId: "claude",
+            createdAt: 1_000,
+            providerSession: {
+              provider: "claude",
+              sessionId: "provider-session-secret",
+              capturedAt: "2026-06-16T00:00:02.000Z",
+            },
+          }],
+        }));
+        fs.writeFileSync(path.join(capturesDir, "session-a.json"), JSON.stringify({
+          provider: "claude",
+          sessionId: "provider-session-secret",
+          capturedAt: "2026-06-16T00:00:02.000Z",
+        }));
+      },
+    });
+
+    const deleted = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE" });
+    const theaters = await getJson<{ readonly theaters: readonly unknown[] }>(`${fixture.endpoint}observer/theaters`);
+    const sessions = await getJson<{ readonly sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly theaters: readonly unknown[]; readonly operations: readonly unknown[] };
+
+    expect(deleted.status).toBe(200);
+    expect(theaters.theaters).toEqual([]);
+    expect(sessions.sessions).toEqual([]);
+    expect(state.theaters).toEqual([]);
+    expect(state.operations).toEqual([]);
+    expect(fs.existsSync(path.join(fixture.carrierStoreDir, "console", "captures", "session-a.json"))).toBe(false);
+  });
+
+  it("moves a resumed live session with provider state back to dormant on natural PTY exit", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-natural-dormant-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const theaterId = workspaceHash(realpath);
+    const ptys: ExitablePty[] = [];
+    const fixture = await startFixture({
+      beforeCreateServer: ({ carrierStoreDir }) => {
+        const consoleDir = path.join(carrierStoreDir, "console");
+        fs.mkdirSync(consoleDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 1,
+          theaters: [{
+            id: theaterId,
+            path: dir,
+            realpath,
+            label: path.basename(dir),
+            registeredAt: "2026-06-16T00:00:00.000Z",
+            lastOpenedAt: "2026-06-16T00:00:01.000Z",
+          }],
+          operations: [{
+            sessionId: "session-a",
+            theaterId,
+            cwd: dir,
+            cwdLabel: path.basename(dir),
+            sequence: 1,
+            cliId: "claude",
+            createdAt: 1_000,
+            providerSession: {
+              provider: "claude",
+              sessionId: "provider-session-secret",
+              capturedAt: "2026-06-16T00:00:02.000Z",
+            },
+          }],
+        }));
+      },
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: () => {
+        const pty = createExitablePty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+
+    const resumed = await fetch(`${fixture.endpoint}terminal/sessions/session-a/resume`, { method: "POST" });
+    expect(ptys).toHaveLength(1);
+    ptys[0]!.emitExit();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+
+    expect(resumed.status).toBe(200);
+    expect(sessions.sessions[0]).toMatchObject({ status: "dormant", resumeAvailable: true });
+    expect(state.operations[0]?.providerSession).toBeDefined();
+  });
+
+  it("keeps a newly captured live session dormant after natural PTY exit", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-exit-"));
+    tempDirs.push(dir);
+    const ptys: ExitablePty[] = [];
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalLaunchResolverDeps: {
+        cwd: dir,
+        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
+        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+          id: "claude",
+          label: "Claude Code",
+          bin: "/bin/claude",
+          args: [],
+          cwd,
+          env: { ...env },
+        })) as never,
+      },
+      terminalStartShell: () => {
+        const pty = createExitablePty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+    const theaterResponse = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    expect(theaterResponse.status).toBe(200);
+    const theater = await theaterResponse.json() as { readonly id: string };
+    const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
+    expect(created.status).toBe(200);
+    const session = await created.json() as { readonly sessionId: string };
+    const capturesDir = path.join(fixture.carrierStoreDir, "console", "captures");
+    const capturePath = path.join(capturesDir, `${session.sessionId}.json`);
+    fs.mkdirSync(capturesDir, { recursive: true });
+    fs.writeFileSync(capturePath, JSON.stringify({
+      provider: "claude",
+      sessionId: "provider-session-secret",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    }));
+
+    expect(ptys).toHaveLength(1);
+    ptys[0]!.emitExit();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
+    const tenants = await getJson<{ readonly tenants: readonly unknown[] }>(`${fixture.endpoint}observer/tenants`);
+    const theaters = await getJson<{ readonly theaters: ReadonlyArray<{ readonly activeAdmiralCount: number }> }>(`${fixture.endpoint}observer/theaters`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+
+    expect(sessions.sessions[0]).toMatchObject({ sessionId: session.sessionId, status: "dormant", resumeAvailable: true });
+    expect(tenants.tenants).toEqual([]);
+    expect(theaters.theaters[0]?.activeAdmiralCount).toBe(0);
+    expect(state.operations[0]?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(fs.existsSync(capturePath)).toBe(false);
   });
 
   it("registers wiki-less Theaters as the observer superset without browser tokens", async () => {
@@ -799,6 +1402,31 @@ describe("console static and terminal ticket boundary", () => {
     }
   });
 
+  it("restores and removes Theaters while preserving id collision checks", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-restore-theater-"));
+    tempDirs.push(dir);
+    const realpath = fs.realpathSync.native(dir);
+    const id = workspaceHash(realpath);
+    const theaters = new TheaterRegistry();
+
+    theaters.restore([{
+      id,
+      path: dir,
+      realpath,
+      label: path.basename(dir),
+      registeredAt: "2026-06-16T00:00:00.000Z",
+      lastOpenedAt: "2026-06-16T00:00:01.000Z",
+    }]);
+
+    expect(theaters.get(id)?.path).toBe(dir);
+    expect(theaters.remove(id)).toBe(true);
+    expect(theaters.get(id)).toBeNull();
+    expect(() => theaters.restore([
+      { id, path: "/a", realpath: "/a", label: "a", registeredAt: "1", lastOpenedAt: "1" },
+      { id, path: "/b", realpath: "/b", label: "b", registeredAt: "2", lastOpenedAt: "2" },
+    ])).toThrow("theater_id_collision");
+  });
+
   it("handles Theater picker cancellation and errors", async () => {
     const cancelled = await startFixture({
       terminalPickFolder: async () => ({ kind: "cancelled" }),
@@ -869,6 +1497,7 @@ describe("console static and terminal ticket boundary", () => {
     const session = await created.json() as { readonly sessionId: string };
     const deleted = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, { method: "DELETE" });
     const afterList = await getJson<{ sessions: readonly unknown[] }>(`${fixture.endpoint}terminal/sessions`);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operations: readonly unknown[] };
     // 이미 종료된 세션 재삭제도 200으로 멱등 처리한다.
     const repeat = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, { method: "DELETE" });
 
@@ -876,6 +1505,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(deleted.status).toBe(200);
     await expect(deleted.json()).resolves.toEqual({ ok: true });
     expect(afterList.sessions).toHaveLength(0);
+    expect(state.operations).toEqual([]);
     expect(repeat.status).toBe(200);
   });
 
@@ -1176,6 +1806,28 @@ function createMockPty(): TerminalPtyHandle {
   return {
     onData: () => ({ dispose: () => undefined }),
     onExit: () => ({ dispose: () => undefined }),
+    write: () => undefined,
+    resize: () => undefined,
+    kill: () => undefined,
+  };
+}
+
+function createExitablePty(): ExitablePty {
+  const exitListeners: Array<() => void> = [];
+  return {
+    emitExit() {
+      for (const listener of exitListeners) listener();
+    },
+    onData: () => ({ dispose: () => undefined }),
+    onExit(callback) {
+      exitListeners.push(callback);
+      return {
+        dispose() {
+          const index = exitListeners.indexOf(callback);
+          if (index >= 0) exitListeners.splice(index, 1);
+        },
+      };
+    },
     write: () => undefined,
     resize: () => undefined,
     kill: () => undefined,

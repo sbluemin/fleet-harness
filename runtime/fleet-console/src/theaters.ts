@@ -37,6 +37,28 @@ export class TheaterRegistry {
     return item;
   }
 
+  load(items: readonly TheaterRegistration[]): void {
+    this.restore(items);
+  }
+
+  restore(items: readonly TheaterRegistration[]): void {
+    const restored = new Map<string, TheaterRegistration>();
+    let mruId: string | null = null;
+    for (const item of items) {
+      const existing = restored.get(item.id);
+      if (existing && existing.realpath !== item.realpath) {
+        throw new Error("theater_id_collision");
+      }
+      restored.set(item.id, item);
+      if (!mruId || item.lastOpenedAt.localeCompare(restored.get(mruId)?.lastOpenedAt ?? "") > 0) {
+        mruId = item.id;
+      }
+    }
+    this.#items.clear();
+    for (const [id, item] of restored) this.#items.set(id, item);
+    this.#mruId = mruId;
+  }
+
   get(id: string): TheaterRegistration | null {
     return this.#items.get(id) ?? null;
   }
@@ -47,5 +69,11 @@ export class TheaterRegistry {
 
   list(): readonly TheaterRegistration[] {
     return [...this.#items.values()].sort((left, right) => right.lastOpenedAt.localeCompare(left.lastOpenedAt));
+  }
+
+  remove(id: string): boolean {
+    const removed = this.#items.delete(id);
+    if (this.#mruId === id) this.#mruId = this.list()[0]?.id ?? null;
+    return removed;
   }
 }

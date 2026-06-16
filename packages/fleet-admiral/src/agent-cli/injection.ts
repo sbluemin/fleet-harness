@@ -11,7 +11,7 @@ import {
 import { buildClaudeNativeSubagentPlan } from "./carrier-defaults.js";
 import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
-import { escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
+import { buildPosixShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
 import type {
@@ -31,10 +31,12 @@ export interface InjectAgentCliProfileOptions {
   readonly mcpSessionLabel?: string;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
+  readonly captureSessionHookExec?: FleetHookExec;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
   readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly pluginRootDir?: string;
+  readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
 }
 
@@ -99,12 +101,13 @@ export async function injectAgentCliProfile(
       cwd: profile.cwd,
       dataDir: options.dataDir,
       rootDir: options.pluginRootDir,
+      captureSessionHookExec: options.captureSessionHookExec,
       hookExec: startupDefinitions.host === "claude" ? requireHookExec(options.hookExec) : undefined,
       withMarketplaceLock: options.withMarketplaceLock,
     });
     const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
     const codexProfile = profile.id === "codex"
-      ? writeCodexFleetProfile(profile.env, doctrine, codexPluginKeys, (cleanup) => tempCleanups.push(cleanup))
+      ? writeCodexFleetProfile(profile.env, doctrine, codexPluginKeys, options.captureSessionHookExec, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const launchWarnings: string[] = [];
     // Codex CLI가 Windows .cmd shim이면 profile.bin은 cmd.exe, binPrefixArgs는 /d /s /c <shim>이다.
@@ -135,12 +138,13 @@ export async function injectAgentCliProfile(
       pluginRoots: plugin.pluginRoots,
       codexProfileName: codexProfile?.profileName,
       replaceSystemPrompt: options.replaceSystemPrompt ?? false,
+      resumeSessionId: options.resumeSessionId,
       systemPromptFile,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     return {
       ...profile,
-      args: [...profile.args, ...injectedArgs],
+      args: mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs),
       cleanup,
       launchWarnings: [...(profile.launchWarnings ?? []), ...launchWarnings],
     };
@@ -201,6 +205,7 @@ function writeCodexFleetProfile(
   env: Readonly<Record<string, string>>,
   doctrine: string,
   pluginKeys: readonly string[],
+  captureSessionHookExec: FleetHookExec | undefined,
   onCleanup: (cleanup: () => void) => void,
 ): CodexFleetProfile {
   const codexHome = env.CODEX_HOME ?? path.join(env.HOME ?? os.homedir(), ".codex");
@@ -222,9 +227,20 @@ function writeCodexFleetProfile(
       "enabled = true",
       "",
     ]),
+    ...codexCaptureHookConfig(captureSessionHookExec),
   ].join("\n"));
   chmodBestEffort(profilePath, SYSTEM_PROMPT_FILE_MODE);
   return { profileName, profilePath };
+}
+
+function codexCaptureHookConfig(captureSessionHookExec: FleetHookExec | undefined): string[] {
+  if (captureSessionHookExec === undefined) return [];
+  const command = buildPosixShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]);
+  return [
+    "[hooks]",
+    `UserPromptSubmit = [{ hooks = [{ type = "command", command = "${escapeTomlBasicString(command)}" }] }]`,
+    "",
+  ];
 }
 
 function writeFileNoFollow(filePath: string, content: string): void {
@@ -315,6 +331,31 @@ function buildAgentCliArgs(
     case "codex-native":
       return buildCodexNativeArgs(context);
   }
+}
+
+function mergeAgentCliArgs(
+  profile: AgentCliProfile,
+  builderId: "claude-native" | "codex-native",
+  context: AgentCliInjectionContext,
+  injectedArgs: readonly string[],
+): string[] {
+  if (builderId !== "codex-native" || context.resumeSessionId === undefined) {
+    return [...profile.args, ...injectedArgs];
+  }
+  const resumeSessionId = context.resumeSessionId;
+  const prefixLength = profile.binPrefixArgs?.length ?? 0;
+  const codexResumeArgs = ["resume", resumeSessionId];
+  const injectedTail = injectedArgs.slice(codexResumeArgs.length);
+  return [
+    ...profile.args.slice(0, prefixLength),
+    ...codexResumeArgs,
+    ...profile.args.slice(prefixLength).filter((arg, index, args) => !isCodexResumeArgAt(args, index, resumeSessionId)),
+    ...injectedTail,
+  ];
+}
+
+function isCodexResumeArgAt(args: readonly string[], index: number, resumeSessionId: string): boolean {
+  return (args[index] === "resume" && args[index + 1] === resumeSessionId) || (args[index] === resumeSessionId && args[index - 1] === "resume");
 }
 
 function createOnceCleanup(cleanup: () => void): () => void {

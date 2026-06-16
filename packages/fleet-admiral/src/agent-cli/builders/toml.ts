@@ -51,3 +51,11 @@ export function escapeTomlMultilineString(value: string): string {
   });
   return result;
 }
+
+export function buildPosixShellCommand(values: readonly string[]): string {
+  return values.map(posixShellQuote).join(" ");
+}
+
+function posixShellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}

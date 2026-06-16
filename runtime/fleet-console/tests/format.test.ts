@@ -11,6 +11,7 @@ function makeSession(overrides: Partial<SessionInfo>): SessionInfo {
     sequence: 1,
     status: "terminal-only",
     createdAt: 1,
+    resumeAvailable: false,
     ...overrides,
   };
 }

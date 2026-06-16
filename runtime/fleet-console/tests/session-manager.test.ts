@@ -112,6 +112,29 @@ describe("terminal session manager", () => {
     expect(launchCliIds).toEqual(["codex"]);
   });
 
+  it("passes resumeSessionId into the launch context without changing the fleet session id", async () => {
+    const contexts: unknown[] = [];
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => {
+        contexts.push({ cwd, context });
+        return { bin: "mock", args: [], cwd: cwd ?? "/", env: {} };
+      },
+      startShell: () => createMockPty(),
+    });
+
+    await manager.createSession({ sessionId: "fleet-session-a", cwd: "/a", cliId: "claude", resumeSessionId: "provider-session-a" });
+
+    expect(contexts).toEqual([{
+      cwd: "/a",
+      context: {
+        sessionId: "fleet-session-a",
+        kind: undefined,
+        cliId: "claude",
+        resumeSessionId: "provider-session-a",
+      },
+    }]);
+  });
+
   it("stops a session that finishes launching while server shutdown is waiting", async () => {
     const launchGate = createDeferred<void>();
     const ptys: MockPty[] = [];

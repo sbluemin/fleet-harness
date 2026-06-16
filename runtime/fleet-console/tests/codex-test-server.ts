@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import { createConsoleServer } from "../src/server.js";
 
@@ -15,14 +15,16 @@ export interface CodexTestServer {
 }
 
 export async function startCodexTestServer(options: StartCodexTestServerOptions): Promise<CodexTestServer> {
+  const lockDir = dirname(options.lockPath);
   const server = createConsoleServer({
     host: options.host ?? "127.0.0.1",
     port: options.port ?? 0,
     version: "0.0.0",
     codexCwd: options.cwd,
+    dataDir: join(lockDir, "fleet-data"),
   });
   const endpoint = await server.start({
-    dir: dirname(options.lockPath),
+    dir: lockDir,
     lockFile: options.lockPath,
   });
   const port = Number(new URL(endpoint).port);

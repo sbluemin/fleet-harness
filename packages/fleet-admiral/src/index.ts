@@ -39,6 +39,10 @@ export { getAgentCliInjectionCapability } from "./agent-cli/capabilities.js";
 
 // Agent CLI 프로파일/플러그인/인자 주입 조립
 export {
+  createSessionCaptureHookExec,
+} from "./agent-cli/session-capture-hook.js";
+
+export {
   injectAgentCliProfile,
   type InjectAgentCliProfileOptions,
 } from "./agent-cli/injection.js";

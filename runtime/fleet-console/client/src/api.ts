@@ -5,6 +5,8 @@ export interface TerminalTicketOptions {
   readonly signal?: AbortSignal;
 }
 
+const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "ticket", "token", "transcriptPath"] as const;
+
 /** HTTP status를 보존하는 API 오류. */
 export class ApiError extends Error {
   readonly status: number;
@@ -110,6 +112,17 @@ export async function terminateTerminalSession(sessionId: string, signal?: Abort
   await assertOk(response);
 }
 
+export async function resumeTerminalSession(sessionId: string, signal?: AbortSignal): Promise<SessionInfo> {
+  const response = await fetch(`/terminal/sessions/${encodeURIComponent(sessionId)}/resume`, { method: "POST", signal });
+  await assertOk(response);
+  return assertSessionInfo(await response.json(), response.status);
+}
+
+export async function forgetTheater(theaterId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/observer/theaters/${encodeURIComponent(theaterId)}`, { method: "DELETE", signal });
+  await assertOk(response);
+}
+
 export async function renameTerminalSession(sessionId: string, label: string): Promise<SessionInfo> {
   const response = await fetch(`/terminal/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
@@ -151,7 +164,7 @@ function normalizeTerminalTicketOptions(options: AbortSignal | TerminalTicketOpt
 }
 
 function assertSessionInfo(value: unknown, status: number): SessionInfo {
-  const payload = value as Partial<SessionInfo> & { readonly cwd?: unknown; readonly canonicalCwd?: unknown };
+  const payload = value as Partial<SessionInfo>;
   if (
     !payload
     || typeof payload.sessionId !== "string"
@@ -159,8 +172,7 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     || typeof payload.sequence !== "number"
     || typeof payload.status !== "string"
     || typeof payload.createdAt !== "number"
-    || "cwd" in payload
-    || "canonicalCwd" in payload
+    || hasForbiddenBrowserPayloadKey(payload)
   ) {
     throw new ApiError(status, "Invalid terminal session response");
   }
@@ -177,6 +189,7 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
+    resumeAvailable: payload.resumeAvailable === true,
   };
 }
 
@@ -189,14 +202,14 @@ function assertAgentCliMetadata(value: unknown, status: number): AgentCliMetadat
 }
 
 function assertObservedTenant(value: unknown, status: number): ObservedTenant {
-  const payload = value as Partial<ObservedTenant> & { readonly cwd?: unknown };
+  const payload = value as Partial<ObservedTenant>;
   if (
     !payload
     || typeof payload.tenantId !== "string"
     || typeof payload.tenantLabel !== "string"
     || typeof payload.createdAt !== "number"
     || typeof payload.sessions !== "number"
-    || "cwd" in payload
+    || hasForbiddenBrowserPayloadKey(payload)
   ) {
     throw new ApiError(status, "Invalid tenants response");
   }
@@ -211,6 +224,10 @@ function assertObservedTenant(value: unknown, status: number): ObservedTenant {
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     terminalSessionId: typeof payload.terminalSessionId === "string" ? payload.terminalSessionId : undefined,
   };
+}
+
+function hasForbiddenBrowserPayloadKey(payload: object): boolean {
+  return FORBIDDEN_BROWSER_PAYLOAD_KEYS.some((key) => key in payload);
 }
 
 function assertObserverStatus(value: unknown, status: number): ObserverStatus {

@@ -1,11 +1,11 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
-import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
+import { createTheaterTerminalSession, renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { ensureDefaultGeometry, focusPanel } from "../canvas/canvas-store.js";
 import { OperationLaunchMenu } from "./operation-launch-menu.js";
 import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
+import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
 import type { AgentCliMetadata, ConsoleState, JobView, SessionInfo } from "../types.js";
 
@@ -31,11 +31,23 @@ export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps
   const [collapsed, setCollapsed] = useState(false);
   const visibleSessionOrder = theaterSessionOrder(state);
 
-  const focusSession = (sessionId: string) => {
-    selectTerminalSession(sessionId);
-    ensureDefaultGeometry(sessionId);
+  const focusSession = async (sessionId: string) => {
+    const session = state.sessions[sessionId];
+    let focusedSessionId = sessionId;
+    if (session?.status === "dormant") {
+      try {
+        const resumed = await resumeTerminalSession(sessionId);
+        applySessionUpdate(resumed);
+        focusedSessionId = resumed.sessionId;
+      } catch (error) {
+        failResumeTerminalSession(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+    selectTerminalSession(focusedSessionId);
+    ensureDefaultGeometry(focusedSessionId);
     const viewportSize = getViewportSize();
-    if (viewportSize) focusPanel(sessionId, viewportSize);
+    if (viewportSize) focusPanel(focusedSessionId, viewportSize);
   };
 
   const launchSession = async (cli: AgentCliMetadata) => {
@@ -44,7 +56,7 @@ export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps
     try {
       const session = await createTheaterTerminalSession(state.activeTheaterId, cli.id);
       completeCreateTerminalSession(session);
-      focusSession(session.sessionId);
+      void focusSession(session.sessionId);
     } catch (error) {
       failCreateTerminalSession(error instanceof Error ? error.message : String(error));
     }
@@ -110,6 +122,7 @@ const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, activ
   const committingRef = useRef(false);
   const skipBlurCommitRef = useRef(false);
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
+  const dormant = session.status === "dormant";
   const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   const displayLabel = sessionDisplayLabel(session);
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
@@ -163,7 +176,7 @@ const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, activ
       <div className="session-row-shell">
         {renaming ? (
           <div className={`session-row session-row-edit ${active ? "is-active" : ""}`}>
-            <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+            <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
             <input
               ref={inputRef}
               className="session-rename-input"
@@ -184,24 +197,25 @@ const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, activ
           <button
             type="button"
             className={`session-row ${active ? "is-active" : ""}`}
-            onClick={() => onFocus(session.sessionId)}
+            onClick={() => { onFocus(session.sessionId); }}
             onDoubleClick={beginRename}
             aria-current={active || undefined}
             aria-label={`Operation ${displayLabel}`}
           >
-            <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+            <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
             <span className="tenant-row-text">
               <span className="tenant-label">{displayLabel}</span>
+              {dormant ? <span className="job-row-meta">Dormant</span> : null}
             </span>
-            {!active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
+            {dormant ? <span className="tenant-count">Open</span> : !active && jobs.length > 0 ? <span className="tenant-count">{jobs.length}</span> : null}
           </button>
         )}
         <button
           type="button"
           className="session-close"
           onClick={() => { void closeSession(session.sessionId); }}
-          aria-label={`Terminate operation ${displayLabel}`}
-          title="Terminate operation"
+          aria-label={`${dormant ? "Forget" : "Terminate"} operation ${displayLabel}`}
+          title={dormant ? "Forget operation" : "Terminate operation"}
         >
           <CloseIcon />
         </button>

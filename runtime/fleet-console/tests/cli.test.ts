@@ -1,13 +1,19 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { ConsoleLockPayload } from "../src/api-types.js";
 import {
   buildConsoleHelpText,
   openFleetConsole,
   parseConsoleCliMode,
+  parseConsoleHookCommand,
   runConsoleStatus,
   runConsoleStop,
 } from "../src/cli.js";
+import { captureSession } from "../src/session-capture.js";
 
 const LOCK: ConsoleLockPayload = {
   pid: 1234,
@@ -18,6 +24,11 @@ const LOCK: ConsoleLockPayload = {
   token: "bootstrap-token",
   version: "test",
 };
+const TEMP_DIRS: string[] = [];
+
+afterEach(() => {
+  for (const dir of TEMP_DIRS.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 describe("fleet console CLI", () => {
   it("parses subcommands and help flags, rejecting unknown commands", () => {
@@ -30,6 +41,79 @@ describe("fleet console CLI", () => {
     expect(parseConsoleCliMode(["-h"])).toBe("help");
     expect(() => parseConsoleCliMode(["--stop"])).toThrow("Unknown fleet console command: --stop");
     expect(() => parseConsoleCliMode(["start", "--bogus"])).toThrow("Unknown fleet console option: --bogus");
+  });
+
+  it("parses hook capture-session commands", () => {
+    expect(parseConsoleHookCommand(["subagents-context"])).toEqual({ command: "subagents-context" });
+    expect(parseConsoleHookCommand(["capture-session", "claude"])).toEqual({ command: "capture-session", provider: "claude" });
+    expect(parseConsoleHookCommand(["capture-session", "codex"])).toEqual({ command: "capture-session", provider: "codex" });
+    expect(() => parseConsoleHookCommand(["capture-session"])).toThrow("Unknown fleet-console hook command");
+  });
+
+  it("records capture-session hook stdin to the fleet session capture path atomically", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cli-"));
+    TEMP_DIRS.push(dir);
+    const paths = {
+      dir: path.join(dir, "console"),
+      stateFile: path.join(dir, "console", "state.json"),
+      capturesDir: path.join(dir, "console", "captures"),
+    };
+
+    const result = captureSession({
+      env: { FLEET_CONSOLE_SESSION_ID: "fleet-session-a" } as NodeJS.ProcessEnv,
+      input: JSON.stringify({
+        session_id: "provider-session-secret",
+        transcript_path: "/secret/transcript.jsonl",
+        cwd: "/ignored",
+        source: "startup",
+      }),
+      now: () => new Date("2026-06-16T00:00:00.000Z"),
+      paths,
+      provider: "claude",
+    });
+    const files = fs.readdirSync(paths.capturesDir);
+    const written = JSON.parse(fs.readFileSync(path.join(paths.capturesDir, "fleet-session-a.json"), "utf8")) as Record<string, unknown>;
+
+    if (!result) throw new Error("expected capture result");
+    expect(result.path).toBe(path.join(paths.capturesDir, "fleet-session-a.json"));
+    expect(written).toEqual({
+      provider: "claude",
+      sessionId: "provider-session-secret",
+      transcriptPath: "/secret/transcript.jsonl",
+      source: "startup",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+    expect(files).toEqual(["fleet-session-a.json"]);
+  });
+
+  it("skips capture-session without fleet env or with an invalid provider without writing a capture", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-cli-"));
+    TEMP_DIRS.push(dir);
+    const paths = {
+      dir: path.join(dir, "console"),
+      stateFile: path.join(dir, "console", "state.json"),
+      capturesDir: path.join(dir, "console", "captures"),
+    };
+    const input = JSON.stringify({ session_id: "provider-session-secret", source: "startup" });
+    const diagnostics: string[] = [];
+
+    expect(captureSession({
+      diagnostics: { write: (chunk: string | Uint8Array) => { diagnostics.push(String(chunk)); return true; } },
+      env: {},
+      input,
+      paths,
+      provider: "claude",
+    })).toBeNull();
+    expect(captureSession({
+      diagnostics: { write: (chunk: string | Uint8Array) => { diagnostics.push(String(chunk)); return true; } },
+      env: { FLEET_CONSOLE_SESSION_ID: "fleet-session-a" },
+      input,
+      paths,
+      provider: "bad",
+    })).toBeNull();
+    expect(fs.existsSync(paths.capturesDir)).toBe(false);
+    expect(diagnostics.join("")).toContain("missing_fleet_session_id");
+    expect(diagnostics.join("")).toContain("invalid_provider");
   });
 
   it("documents the usage entry points and subcommands in help text", () => {

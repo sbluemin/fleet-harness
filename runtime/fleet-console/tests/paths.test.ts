@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createConsolePaths } from "../src/paths.js";
+import { createConsoleDataPaths, createConsolePaths } from "../src/paths.js";
 
 const TEST_UID = 42;
 
@@ -33,5 +33,18 @@ describe("createConsolePaths", () => {
     expect(stable.dir).toBe(overrideDir);
     expect(local.lockFile).toBe(path.join(overrideDir, "console.lock"));
     expect(stable.lockFile).toBe(path.join(overrideDir, "console.lock"));
+  });
+});
+
+describe("createConsoleDataPaths", () => {
+  it("places durable console state under the Fleet data directory without changing lock paths", () => {
+    const fleetDataDir = path.join(os.tmpdir(), "fleet-data-root");
+    const lock = createConsolePaths({ channel: "stable", env: {}, uid: TEST_UID });
+    const data = createConsoleDataPaths({ fleetDataDir });
+
+    expect(lock.dir).toBe(path.join(os.tmpdir(), `fleet-console-${TEST_UID}-stable`));
+    expect(data.dir).toBe(path.join(fleetDataDir, "console"));
+    expect(data.stateFile).toBe(path.join(fleetDataDir, "console", "state.json"));
+    expect(data.capturesDir).toBe(path.join(fleetDataDir, "console", "captures"));
   });
 });

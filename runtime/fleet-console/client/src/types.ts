@@ -7,7 +7,7 @@ export interface ObservedTenant {
   readonly tenantLabel: string;
   readonly createdAt: number;
   readonly sessions: number;
-  readonly status?: "live" | "closed";
+  readonly status?: "live" | "closed" | "dormant";
   readonly cliRunId?: string;
   readonly registrationId?: string;
   readonly theaterId?: string;
@@ -118,7 +118,7 @@ export interface CarrierSettingsMutationResult {
   readonly state: CarrierSettingsState;
 }
 
-export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error";
+export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
 export interface SessionInfo {
   readonly sessionId: string;
@@ -133,6 +133,7 @@ export interface SessionInfo {
   readonly theaterId?: string;
   readonly tenantId?: string;
   readonly registrationId?: string;
+  readonly resumeAvailable: boolean;
 }
 
 export interface ObservedEvent {
