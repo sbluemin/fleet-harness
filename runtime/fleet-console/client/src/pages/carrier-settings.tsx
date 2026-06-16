@@ -226,10 +226,13 @@ export function CarrierSettings() {
                     <p className="carrier-settings-resp-title">SubAgent</p>
                     <p className="carrier-settings-help">{taskForceDraftActive ? "Task Force draft is present. Remove every backend to enable SubAgent." : activeCli.supportsSubagent ? "Enabling SubAgent clears Task Force backends when saved." : "This CLI does not support SubAgent mode."}</p>
                   </div>
+                  {/* 켜는 경로만 막는다. 비지원 CLI/TF draft 상태에서도 이미 subagent로 켜진 캐리어는
+                      끌 수 있어야 한다(서버는 비지원 CLI의 cli 전환을 허용). 끄기까지 막으면 codex+subagent
+                      같은 불일치 상태에 갇힌다. */}
                   <button
                     type="button"
                     className={`carrier-settings-toggle ${subagentDraftOn ? "is-on" : ""}`}
-                    disabled={!activeCli.supportsSubagent || taskForceDraftActive || isSavingAll}
+                    disabled={isSavingAll || (!subagentDraftOn && (!activeCli.supportsSubagent || taskForceDraftActive))}
                     aria-pressed={subagentDraftOn}
                     onClick={() => updateCarrierSettingsDraft({ agentMode: subagentDraftOn ? "cli" : "subagent" })}
                   >
