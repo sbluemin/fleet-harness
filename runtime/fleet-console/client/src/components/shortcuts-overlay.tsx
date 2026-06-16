@@ -41,6 +41,10 @@ export function ShortcutsOverlay({ state }: ShortcutsOverlayProps) {
     if (!state.shortcutsOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // 최상위 모달이므로 Esc를 소비해, 배경에 떠 있는 다른 오버레이(JobOverlay/ShellOverlay)의
+        // window Esc 리스너가 같은 키 입력으로 함께 닫히는 것을 막는다.
+        event.stopImmediatePropagation();
+        event.preventDefault();
         closeShortcuts();
         return;
       }
@@ -48,9 +52,10 @@ export function ShortcutsOverlay({ state }: ShortcutsOverlayProps) {
       if (event.key === "Tab") trapFocus(event, cardRef.current);
     };
     closeButtonRef.current?.focus();
-    window.addEventListener("keydown", handleKeyDown);
+    // capture 단계로 등록해야 먼저 마운트된 배경 오버레이의 bubble 단계 Esc 리스너보다 앞서 이벤트를 소비할 수 있다.
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
       const target = returnFocusRef.current;
       returnFocusRef.current = null;
       target?.focus?.();
