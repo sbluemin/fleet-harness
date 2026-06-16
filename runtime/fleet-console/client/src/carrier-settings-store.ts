@@ -147,7 +147,9 @@ export async function saveCarrierAll(desiredTaskForce: readonly CarrierSettingsT
       latestState = (await updateCarrierModel(carrier.carrierId, selectionFromDraft(draft))).state;
     }
     if (draft.agentMode === "subagent") {
-      if (carrier.agentMode !== "subagent") {
+      // 이미 subagent여도 서버에 TF 백엔드가 남아 있으면(불일치 데이터) SA-enable PUT을 보내
+      // 서버가 TF를 원자적으로 정리하게 한다. carrier.agentMode만 보고 스킵하면 stale TF가 남는다.
+      if (carrier.agentMode !== "subagent" || carrier.taskForceBackendCount > 0) {
         latestState = (await updateCarrierAgentMode(carrier.carrierId, "subagent")).state;
       }
     } else {
