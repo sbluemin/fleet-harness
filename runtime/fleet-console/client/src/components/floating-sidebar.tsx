@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { createTheaterTerminalSession, renameTerminalSession, terminateTerminalSession } from "../api.js";
+import { ensureDefaultGeometry, focusPanel } from "../canvas/canvas-store.js";
 import { OperationLaunchMenu } from "./operation-launch-menu.js";
 import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
@@ -8,60 +9,101 @@ import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalS
 import type { SessionJob } from "../store.js";
 import type { AgentCliMetadata, ConsoleState, JobView, SessionInfo } from "../types.js";
 
-interface SidebarProps {
+interface FloatingSidebarProps {
   readonly state: ConsoleState;
+  readonly getViewportSize: () => { readonly width: number; readonly height: number } | null;
 }
 
-interface JobEntryProps {
-  readonly job: JobView;
-  readonly active: boolean;
-}
-
-interface SessionEntryProps {
+interface FloatingSessionEntryProps {
   readonly session: SessionInfo;
   readonly active: boolean;
   readonly jobs: readonly SessionJob[];
   readonly selectedJobId: string | null;
+  readonly onFocus: (sessionId: string) => void;
 }
 
-export function Sidebar({ state }: SidebarProps) {
+interface FloatingJobEntryProps {
+  readonly job: JobView;
+  readonly active: boolean;
+}
+
+export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const visibleSessionOrder = theaterSessionOrder(state);
+
+  const focusSession = (sessionId: string) => {
+    selectTerminalSession(sessionId);
+    ensureDefaultGeometry(sessionId);
+    const viewportSize = getViewportSize();
+    if (viewportSize) focusPanel(sessionId, viewportSize);
+  };
+
+  const launchSession = async (cli: AgentCliMetadata) => {
+    if (state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId) return;
+    beginCreateTerminalSession();
+    try {
+      const session = await createTheaterTerminalSession(state.activeTheaterId, cli.id);
+      completeCreateTerminalSession(session);
+      focusSession(session.sessionId);
+    } catch (error) {
+      failCreateTerminalSession(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
-    <nav className="operations-sidebar" aria-label="Operation sessions and carrier jobs">
-      <div className="sidebar-heading">
-        <p className="sidebar-eyebrow">Operations</p>
-        <OperationLaunchMenu state={state} onSelect={(cli) => launchSidebarSession(state, cli)} />
-      </div>
-      {visibleSessionOrder.length > 0 ? (
-        <ol className="session-list">
-          {visibleSessionOrder.map((sessionId) => {
-            const session = state.sessions[sessionId];
-            if (!session) return null;
-            return (
-              <SessionEntry
-                key={sessionId}
-                session={session}
-                active={state.activeTerminalSessionId === sessionId}
-                jobs={sessionJobs(state, session)}
-                selectedJobId={state.selectedJobId}
-              />
-            );
-          })}
-        </ol>
-      ) : null}
-      {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
-      {visibleSessionOrder.length === 0 ? (
-        <p className="sidebar-empty">
-          {state.activeTheaterId ? "No operations in this Theater." : "No Theaters registered."}
-          <br />
-          {state.activeTheaterId ? "Use + to launch one here." : "Add a Theater from the top bar."}
-        </p>
-      ) : null}
-    </nav>
+    <aside className={`floating-sidebar-layer ${collapsed ? "is-collapsed" : ""}`} data-canvas-blocker>
+      <section className="floating-sidebar" aria-label="Floating operations list">
+        <div className="floating-sidebar-heading">
+          <p className="sidebar-eyebrow">Operations</p>
+          <div className="floating-sidebar-actions">
+            <OperationLaunchMenu state={state} onSelect={launchSession} />
+            <button
+              type="button"
+              className="floating-sidebar-toggle"
+              onClick={() => setCollapsed((value) => !value)}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Operations 목록 펼치기" : "Operations 목록 접기"}
+            >
+              {collapsed ? <ExpandListIcon /> : <CollapseListIcon />}
+            </button>
+          </div>
+        </div>
+        {!collapsed ? (
+          <>
+            {visibleSessionOrder.length > 0 ? (
+              <ol className="floating-session-list">
+                {visibleSessionOrder.map((sessionId) => {
+                  const session = state.sessions[sessionId];
+                  if (!session) return null;
+                  return (
+                    <FloatingSessionEntry
+                      key={sessionId}
+                      session={session}
+                      active={state.activeTerminalSessionId === sessionId}
+                      jobs={sessionJobs(state, session)}
+                      selectedJobId={state.selectedJobId}
+                      onFocus={focusSession}
+                    />
+                  );
+                })}
+              </ol>
+            ) : null}
+            {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
+            {visibleSessionOrder.length === 0 ? (
+              <p className="sidebar-empty">
+                {state.activeTheaterId ? "No operations in this Theater." : "No Theaters registered."}
+                <br />
+                {state.activeTheaterId ? "Drag on the canvas or use +." : "Add a Theater from the top bar."}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+    </aside>
   );
 }
 
-const SessionEntry = memo(function SessionEntry({ session, active, jobs, selectedJobId }: SessionEntryProps) {
+const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, active, jobs, selectedJobId, onFocus }: FloatingSessionEntryProps) {
   const [renaming, setRenaming] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -70,7 +112,6 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
   const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   const displayLabel = sessionDisplayLabel(session);
-  // 진행 중인 잡을 위로, 완료(terminal)된 잡을 아래로 모은다. 안정 정렬이라 그룹 내부 등록 순서는 그대로 유지된다.
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
 
   useEffect(() => {
@@ -79,7 +120,6 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
     inputRef.current?.select();
   }, [renaming]);
 
-  // 세션 행 더블클릭으로 이름 변경 입력에 진입한다.
   const beginRename = () => {
     skipBlurCommitRef.current = false;
     setDraftLabel(displayLabel);
@@ -144,7 +184,7 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
           <button
             type="button"
             className={`session-row ${active ? "is-active" : ""}`}
-            onClick={() => selectTerminalSession(session.sessionId)}
+            onClick={() => onFocus(session.sessionId)}
             onDoubleClick={beginRename}
             aria-current={active || undefined}
             aria-label={`Operation ${displayLabel}`}
@@ -169,7 +209,7 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
       {active ? (
         <ol className="session-job-list">
           {orderedJobs.length > 0 ? (
-            orderedJobs.map(({ job }) => <JobEntry key={job.jobId} job={job} active={job.jobId === selectedJobId} />)
+            orderedJobs.map(({ job }) => <FloatingJobEntry key={job.jobId} job={job} active={job.jobId === selectedJobId} />)
           ) : (
             <li className="job-list-empty">No carrier jobs in this session.</li>
           )}
@@ -179,7 +219,7 @@ const SessionEntry = memo(function SessionEntry({ session, active, jobs, selecte
   );
 });
 
-const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
+const FloatingJobEntry = memo(function FloatingJobEntry({ job, active }: FloatingJobEntryProps) {
   const tone = statusTone(job.status);
   return (
     <li>
@@ -201,8 +241,6 @@ const JobEntry = memo(function JobEntry({ job, active }: JobEntryProps) {
   );
 });
 
-// X 버튼 종료 — 백엔드 PTY 세션을 끝낸 뒤에만 카드를 내린다. DELETE는 이미 없는 세션도 200 멱등 처리하므로
-// throw는 진짜 실패(네트워크/401/5xx)뿐 — 이때는 카드를 남기고 오류를 표기해 살아있는 PTY를 은폐하지 않는다.
 async function closeSession(sessionId: string): Promise<void> {
   try {
     await terminateTerminalSession(sessionId);
@@ -213,18 +251,24 @@ async function closeSession(sessionId: string): Promise<void> {
   removeTerminalSession(sessionId);
 }
 
-async function launchSidebarSession(state: ConsoleState, cli: AgentCliMetadata): Promise<void> {
-  if (state.creatingTerminalSession || state.addingTheater || !state.activeTheaterId) return;
-  beginCreateTerminalSession();
-  try {
-    completeCreateTerminalSession(await createTheaterTerminalSession(state.activeTheaterId, cli.id));
-  } catch (error) {
-    failCreateTerminalSession(error instanceof Error ? error.message : String(error));
-  }
+function CollapseListIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4 5h8M4 8h5.5M4 11h8" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ExpandListIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5 4.6 9 8l-4 3.4M10.5 4.6 14 8l-3.5 3.4" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function CloseIcon() {
-  // Operation 종료 — Theater 박스 아이콘과 같은 가는 stroke·둥근 끝 언어를 공유하는 X 마크.
+  // Operation 종료 — 기존 sidebar X 마크와 같은 stroke 언어를 유지한다.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />

@@ -1,9 +1,10 @@
-import { JobOverlay } from "../components/job-overlay.js";
-import { OperationsLanding } from "../components/operations-landing.js";
-import { Sidebar } from "../components/sidebar.js";
-import { Terminal } from "../components/terminal.js";
-import { TerminalZoom } from "../components/terminal-zoom.js";
-import { isSessionExpanded, removeTerminalSession, theaterSessionOrder } from "../store.js";
+import { useEffect, useRef } from "react";
+
+import { OperationsCanvas } from "../canvas/canvas.js";
+import { ensureDefaultGeometry, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
+import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
+import { FloatingSidebar } from "../components/floating-sidebar.js";
+import { theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationsProps {
@@ -11,24 +12,29 @@ interface OperationsProps {
 }
 
 export function Operations({ state }: OperationsProps) {
-  const activeSessionId = state.activeTerminalSessionId && theaterSessionOrder(state).includes(state.activeTerminalSessionId)
-    ? state.activeTerminalSessionId
-    : null;
-  const expanded = activeSessionId ? isSessionExpanded(state, activeSessionId) : false;
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const sessionOrder = theaterSessionOrder(state);
+
+  useEffect(() => {
+    loadForTheater(state.activeTheaterId);
+  }, [state.activeTheaterId]);
+
+  useEffect(() => {
+    for (const sessionId of sessionOrder) ensureDefaultGeometry(sessionId);
+    prunePanels(sessionOrder);
+  }, [sessionOrder]);
+
   return (
-    <div className={`console-body ${expanded ? "is-expanded" : ""}`}>
-      {expanded ? null : <Sidebar state={state} />}
-      <main className="operations-terminal-stage">
-        {activeSessionId ? (
-          <>
-            <Terminal key={activeSessionId} sessionId={activeSessionId} onExit={() => removeTerminalSession(activeSessionId)} />
-            <TerminalZoom state={state} sessionId={activeSessionId} expanded={expanded} />
-            <JobOverlay state={state} />
-          </>
-        ) : (
-          <OperationsLanding creating={state.creatingTerminalSession} error={state.terminalSessionError} hasTheaters={state.theaters.length > 0} activeTheaterId={state.activeTheaterId} />
-        )}
-      </main>
+    <div className="console-body" ref={bodyRef}>
+      <OperationsCanvas state={state} />
+      <FloatingSidebar state={state} getViewportSize={() => viewportSizeFor(bodyRef.current)} />
+      <FloatingJobOverlay state={state} />
     </div>
   );
+}
+
+function viewportSizeFor(element: HTMLElement | null): { readonly width: number; readonly height: number } | null {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
 }
