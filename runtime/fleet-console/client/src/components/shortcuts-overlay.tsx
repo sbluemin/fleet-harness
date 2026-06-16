@@ -18,10 +18,21 @@ interface NavigatorWithUserAgentData extends Navigator {
 // 대소문자 무시(i)로 두 표기를 모두 Apple 플랫폼으로 인식해야 ⌘가 올바르게 표시된다.
 const MAC_PLATFORM_PATTERN = /mac|iphone|ipad|ipod/i;
 
+// aria-modal 다이얼로그 안에 포커스를 가두기 위한 포커스 가능 요소 선택자(Codex 팔레트/라이트박스와 동일 관례).
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
 export function ShortcutsOverlay({ state }: ShortcutsOverlayProps) {
   // 단축키 맵을 열기 직전의 포커스를 저장해 닫힐 때 GNB/본문 조작 흐름을 복원한다.
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const cardRef = useRef<HTMLElement | null>(null);
   if (state.shortcutsOpen && returnFocusRef.current === null) {
     returnFocusRef.current = document.activeElement as HTMLElement | null;
   }
@@ -29,7 +40,12 @@ export function ShortcutsOverlay({ state }: ShortcutsOverlayProps) {
   useEffect(() => {
     if (!state.shortcutsOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeShortcuts();
+      if (event.key === "Escape") {
+        closeShortcuts();
+        return;
+      }
+      // aria-modal 다이얼로그이므로 Tab/Shift+Tab이 모달 밖(토버·터미널)으로 새지 않게 카드 안에 포커스를 가둔다.
+      if (event.key === "Tab") trapFocus(event, cardRef.current);
     };
     closeButtonRef.current?.focus();
     window.addEventListener("keydown", handleKeyDown);
@@ -48,7 +64,7 @@ export function ShortcutsOverlay({ state }: ShortcutsOverlayProps) {
   return (
     <div className="shortcuts-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
       <button type="button" className="shortcuts-overlay-scrim" onClick={closeShortcuts} aria-label="Close keyboard shortcuts" />
-      <section className="shortcuts-overlay-card">
+      <section className="shortcuts-overlay-card" ref={cardRef}>
         <header className="shortcuts-overlay-header">
           <span className="shortcuts-overlay-kicker">Reference Map</span>
           <h2>Keyboard Shortcuts</h2>
@@ -91,4 +107,20 @@ function resolveModLabel(): string {
   const userAgentDataPlatform = (navigator as NavigatorWithUserAgentData).userAgentData?.platform;
   const platform = userAgentDataPlatform ?? navigator.platform;
   return MAC_PLATFORM_PATTERN.test(platform) ? "⌘" : "Ctrl";
+}
+
+// Tab 포커스를 카드 경계에서 순환시켜 모달 밖으로 벗어나지 못하게 한다.
+function trapFocus(event: KeyboardEvent, container: HTMLElement | null): void {
+  if (!container) return;
+  const focusable = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!first || !last) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
