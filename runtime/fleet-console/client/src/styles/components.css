@@ -1257,6 +1257,10 @@
   height: 15px;
 }
 
+.topbar-shortcuts-button {
+  padding-inline: var(--space-1);
+}
+
 .theme-control {
   position: relative;
   display: inline-flex;
@@ -2369,10 +2373,218 @@
   box-shadow: none;
 }
 
+.shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.shortcuts-overlay-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
+  backdrop-filter: blur(4px) saturate(120%);
+  cursor: default;
+}
+
+.shortcuts-overlay-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  /* Local Shell 오버레이와 동일하게 콘솔 가로폭의 80%를 차지하는 대형 카드로 띄운다. */
+  width: 80vw;
+  height: 90vh;
+  max-height: 90vh;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 360ms var(--ease-spring) both;
+}
+
+.shortcuts-overlay-header {
+  flex: 0 0 auto;
+  padding: var(--space-5) calc(var(--space-6) + 34px) var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--surface-rim);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--brass) 10%, transparent), transparent 68%),
+    color-mix(in oklch, var(--ink-mid) 42%, transparent);
+}
+
+.shortcuts-overlay-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.shortcuts-overlay-header h2 {
+  margin: 0;
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.shortcuts-overlay-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 2;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
+  color: var(--brass-bright);
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.shortcuts-overlay-close:hover {
+  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass-strong));
+}
+
+.shortcuts-overlay-groups {
+  /* 헤더 아래 남은 카드 높이를 모두 채워 Local Shell처럼 꽉 찬 대형 프레임을 만든다. */
+  flex: 1 1 auto;
+  display: grid;
+  /* 섹션을 세로로 쌓지 않고 Console/Operations/Codex를 3-컬럼으로 펼치고, 한 행이 높이를 채운다. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--space-4);
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5);
+}
+
+.shortcuts-group {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 76%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-mid) 24%, transparent);
+}
+
+.shortcuts-group h3 {
+  margin: 0;
+  color: var(--brass-bright);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.shortcuts-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.shortcuts-entry {
+  display: grid;
+  /* 3-컬럼 안에서는 폭이 좁으므로 키 조합을 위, 설명을 아래로 쌓아 가독성을 지킨다. */
+  gap: var(--space-2);
+  align-items: start;
+  padding: var(--space-3) 0;
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 56%, transparent);
+}
+
+.shortcuts-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.shortcuts-entry:last-child {
+  padding-bottom: 0;
+}
+
+.shortcuts-combos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+}
+
+.shortcuts-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shortcuts-combo-separator {
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.shortcuts-keyset {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.shortcuts-keyset kbd {
+  display: inline-grid;
+  min-width: 30px;
+  min-height: 28px;
+  place-items: center;
+  padding: 0 var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--brass) 8%, transparent), transparent),
+    color-mix(in oklch, var(--surface-glass-strong) 78%, transparent);
+  color: var(--ink-pearl);
+  box-shadow: var(--shadow-anchor);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.shortcuts-entry dd {
+  margin: 0;
+  color: var(--ink-spectral);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .job-overlay-card,
   .shell-overlay-card,
-  .operation-search-overlay {
+  .operation-search-overlay,
+  .shortcuts-overlay-card {
     animation: none;
   }
 }
@@ -2768,6 +2980,32 @@
 
   .shell-overlay-header {
     padding: var(--space-4) calc(var(--space-5) + 34px) var(--space-3) var(--space-4);
+  }
+
+  .shortcuts-overlay {
+    padding: var(--space-3);
+  }
+
+  .shortcuts-overlay-card {
+    width: 100%;
+    height: auto;
+    max-height: calc(100vh - (var(--space-3) * 2));
+  }
+
+  .shortcuts-overlay-header {
+    padding: var(--space-4) calc(var(--space-5) + 34px) var(--space-3) var(--space-4);
+  }
+
+  .shortcuts-overlay-groups {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    padding: var(--space-4);
+  }
+
+  .shortcuts-entry {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: start;
   }
 
   .welcome-page {

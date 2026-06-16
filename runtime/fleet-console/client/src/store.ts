@@ -56,6 +56,7 @@ let state: ConsoleState = {
   timelineOpen: false,
   shellOpen: false,
   operationSearchOpen: false,
+  shortcutsOpen: false,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
 };
@@ -264,6 +265,20 @@ export function closeShell(): void {
   // 백엔드 세션은 살아남아, 다시 열 때 기존 셸 프로세스·scrollback·cwd에 그대로 재부착된다.
   // shell PTY는 셸이 스스로 종료(exit)하거나 콘솔 서버가 멈출 때만 사라진다.
   setState({ shellOpen: false });
+}
+
+export function openShortcuts(): void {
+  if (state.shortcutsOpen) return;
+  setState({ shortcutsOpen: true });
+}
+
+export function closeShortcuts(): void {
+  if (!state.shortcutsOpen) return;
+  setState({ shortcutsOpen: false });
+}
+
+export function toggleShortcuts(): void {
+  setState({ shortcutsOpen: !state.shortcutsOpen });
 }
 
 export function toggleTerminalZoom(sessionId: string): void {
