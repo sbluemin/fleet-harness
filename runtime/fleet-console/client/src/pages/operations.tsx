@@ -2,11 +2,12 @@ import { useEffect, useRef } from "react";
 
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
+import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { FloatingSidebar } from "../components/floating-sidebar.js";
 import { useOperationsMode } from "../operations-mode.js";
 import { OperationsClassic } from "./operations-classic.js";
-import { consumeOperationFocus, theaterSessionOrder } from "../store.js";
+import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationsProps {
@@ -33,11 +34,43 @@ export function Operations({ state }: OperationsProps) {
   useEffect(() => {
     const sessionId = state.pendingOperationFocus;
     if (sessionId === null) return;
-    if (mode !== "classic") {
-      const viewportSize = viewportSizeFor(bodyRef.current);
-      if (viewportSize) focusPanel(sessionId, viewportSize);
+    // Helm(classic)은 사이드바 선택만으로 보이므로 확대 없이 신호만 비운다.
+    if (mode === "classic") {
+      consumeOperationFocus();
+      return;
     }
-    consumeOperationFocus();
+    // consumeOperationFocus()는 pendingOperationFocus를 비워 이 effect를 재실행시킨다. 최상단에서
+    // 동기로 비우면 resume await 도중 cleanup이 cancelled를 세워 자기-취소되어(점프가 resume만 하고
+    // 확대를 건너뜀) 버린다. 그래서 모든 작업을 마친 뒤 마지막에 비운다. sessions도 의존성에서 제외해
+    // resume이 유발하는 sessions 갱신이 in-flight 작업을 취소하지 않게 한다(트리거 시점 스냅샷 사용).
+    let cancelled = false;
+    const focusPendingOperation = async () => {
+      let focusedSessionId = sessionId;
+      const session = state.sessions[sessionId];
+      if (session?.status === "dormant") {
+        try {
+          const resumed = await resumeTerminalSession(sessionId);
+          if (cancelled) return;
+          applySessionUpdate(resumed);
+          selectTerminalSession(resumed.sessionId);
+          focusedSessionId = resumed.sessionId;
+        } catch (error) {
+          if (!cancelled) failResumeTerminalSession(error instanceof Error ? error.message : String(error));
+          consumeOperationFocus();
+          return;
+        }
+      }
+      if (cancelled) return;
+      const viewportSize = viewportSizeFor(bodyRef.current);
+      if (viewportSize) focusPanel(focusedSessionId, viewportSize);
+      consumeOperationFocus();
+    };
+    void focusPendingOperation();
+    return () => {
+      cancelled = true;
+    };
+    // sessions는 의도적으로 의존성에서 제외한다(위 주석).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.pendingOperationFocus, mode]);
 
   if (mode === "classic") return <OperationsClassic state={state} />;

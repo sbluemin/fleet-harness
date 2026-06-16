@@ -1194,42 +1194,53 @@
 
 .operations-radar {
   z-index: 1;
-  display: grid;
-  place-items: center;
-  opacity: 0.72;
+  opacity: 0.62;
+  overflow: hidden;
 }
 
-.operations-radar-ring,
-.operations-radar-sweep {
-  position: absolute;
-  width: min(86vw, 86vh);
-  aspect-ratio: 1;
-  border-radius: 50%;
+@property --radar-sweep-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
 .operations-radar-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  aspect-ratio: 1;
+  border-radius: 50%;
   border: 1px dashed color-mix(in oklch, var(--brass) 16%, transparent);
+  transform: translate(-50%, -50%);
+}
+
+.operations-radar-ring--outer {
+  width: 86vmax;
 }
 
 .operations-radar-ring--middle {
-  width: min(62vw, 62vh);
+  width: 58vmax;
   border-color: color-mix(in oklch, var(--aurora) 12%, transparent);
 }
 
 .operations-radar-ring--inner {
-  width: min(38vw, 38vh);
+  width: 34vmax;
   border-color: color-mix(in oklch, var(--ink-rim) 42%, transparent);
 }
 
 .operations-radar-sweep {
+  position: absolute;
+  inset: 0;
   background: conic-gradient(
-    from 0deg,
+    from var(--radar-sweep-angle) at 50% 50%,
     transparent 0deg,
-    color-mix(in oklch, var(--brass) 0%, transparent) 282deg,
-    color-mix(in oklch, var(--brass) 8%, transparent) 348deg,
+    transparent 326deg,
+    color-mix(in oklch, var(--aurora) 3%, transparent) 348deg,
+    color-mix(in oklch, var(--brass) 8%, transparent) 357deg,
     transparent 360deg
   );
-  animation: radar-sweep 16s linear infinite;
+  animation: radar-sweep 18s linear infinite;
+  mix-blend-mode: screen;
 }
 
 .canvas-background-toggle {
@@ -1270,11 +1281,11 @@
 
 @keyframes radar-sweep {
   from {
-    transform: rotate(0deg);
+    --radar-sweep-angle: 0deg;
   }
 
   to {
-    transform: rotate(360deg);
+    --radar-sweep-angle: 360deg;
   }
 }
 
@@ -1424,6 +1435,51 @@
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.canvas-panel-dormant {
+  display: grid;
+  place-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 34%),
+    color-mix(in oklch, var(--ink-deep) 74%, transparent);
+  color: var(--ink-pearl);
+  cursor: pointer;
+}
+
+.canvas-panel-dormant:hover,
+.canvas-panel-dormant:focus-visible {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 16%, transparent), transparent 38%),
+    color-mix(in oklch, var(--ink-deep) 68%, transparent);
+}
+
+.canvas-panel-dormant-status {
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.canvas-panel-dormant-action {
+  min-width: 118px;
+  padding: 10px var(--space-5);
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+  color: var(--brass-bright);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 0 18px color-mix(in oklch, var(--brass) 12%, transparent);
 }
 
 .canvas-panel-resize {

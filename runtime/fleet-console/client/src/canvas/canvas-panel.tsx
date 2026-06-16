@@ -1,11 +1,11 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
-import { terminateTerminalSession } from "../api.js";
+import { resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { CarrierJobLines } from "../components/carrier-job-lines.js";
 import { Terminal } from "../components/terminal.js";
 import { sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
+import { applySessionUpdate, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
 import { focusPanel, setPanelGeometry, setViewport, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
@@ -32,6 +32,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   const jobs = sessionJobs(state, session);
   const activeJobs = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).map(({ job }) => job);
   const activeJobCount = activeJobs.length;
+  const dormant = session.status === "dormant";
   const live = activeJobCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   const displayLabel = sessionDisplayLabel(session);
 
@@ -131,7 +132,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         onPointerCancel={endDrag}
         data-canvas-blocker
       >
-        <span className={`tenant-beacon ${live ? "is-live" : ""}`} aria-hidden="true" />
+        <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
         <span className="canvas-panel-title">{displayLabel}</span>
         <span className="canvas-panel-cli">{session.cliLabel ?? session.cliId ?? "CLI"}</span>
         {activeJobCount > 0 ? <span className="canvas-panel-job-count">{activeJobCount}</span> : null}
@@ -150,14 +151,21 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
           onClick={() => { void closeSession(session.sessionId); }}
-          aria-label={`Terminate operation ${displayLabel}`}
-          title="Terminate operation"
+          aria-label={`${dormant ? "Forget" : "Terminate"} operation ${displayLabel}`}
+          title={dormant ? "Forget operation" : "Terminate operation"}
         >
           <CloseIcon />
         </button>
       </div>
       <div className="canvas-panel-terminal" onPointerDown={stopCanvasPointer} onWheel={stopCanvasWheel} data-canvas-blocker>
-        <Terminal sessionId={session.sessionId} active={active} onExit={() => removeTerminalSession(session.sessionId)} />
+        {dormant ? (
+          <button type="button" className="canvas-panel-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
+            <span className="canvas-panel-dormant-status">Dormant</span>
+            <span className="canvas-panel-dormant-action">Resume</span>
+          </button>
+        ) : (
+          <Terminal sessionId={session.sessionId} active={active} onExit={() => removeTerminalSession(session.sessionId)} />
+        )}
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(nextGeometry) => setPanelGeometry(session.sessionId, nextGeometry)} />
     </article>
@@ -175,6 +183,16 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
     ) : null}
     </>
   );
+}
+
+async function resumeSession(sessionId: string): Promise<void> {
+  try {
+    const resumed = await resumeTerminalSession(sessionId);
+    applySessionUpdate(resumed);
+    selectTerminalSession(resumed.sessionId);
+  } catch (error) {
+    failResumeTerminalSession(error instanceof Error ? error.message : String(error));
+  }
 }
 
 async function closeSession(sessionId: string): Promise<void> {
