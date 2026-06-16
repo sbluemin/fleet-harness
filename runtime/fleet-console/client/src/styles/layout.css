@@ -8,12 +8,22 @@
 
 .console-body {
   position: relative;
-  display: block;
   min-height: 0;
+}
+
+.console-body.is-canvas {
+  display: block;
   overflow: hidden;
 }
 
-.console-body.is-expanded {
+.console-body.is-classic {
+  display: grid;
+  grid-template-columns: 304px minmax(0, 1fr);
+  gap: var(--space-4);
+  overflow: visible;
+}
+
+.console-body.is-classic.is-expanded {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -89,6 +99,13 @@
   animation-delay: 200ms;
 }
 
+.operations-terminal-stage {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
 .operations-landing {
   flex: 1;
   min-width: 0;
@@ -98,6 +115,7 @@
 .topbar,
 .operations-sidebar,
 .stage,
+.operations-terminal-stage,
 .welcome-page {
   animation: codex-rise 720ms var(--ease-spring) both;
 }
@@ -111,6 +129,7 @@
 }
 
 .stage,
+.operations-terminal-stage,
 .operations-canvas {
   animation-delay: 200ms;
 }
@@ -128,6 +147,11 @@
   .stage-content {
     padding: var(--space-4) var(--space-5) var(--space-8);
   }
+
+  .console-body.is-classic {
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
 }
 
 @media (max-width: 760px) {
@@ -136,8 +160,13 @@
     padding: var(--space-2);
   }
 
-  .console-body {
+  .console-body.is-canvas {
     overflow: hidden;
+  }
+
+  .console-body.is-classic {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
   }
 
   .operations-sidebar {

@@ -177,6 +177,42 @@
   color: var(--ink-pearl);
 }
 
+.operations-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.operations-mode-option {
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.operations-mode-option:hover,
+.operations-mode-option:focus-visible,
+.operations-mode-option.is-active {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 13%, transparent);
+}
+
 .sidebar-eyebrow,
 .job-summary-eyebrow,
 .job-meta,

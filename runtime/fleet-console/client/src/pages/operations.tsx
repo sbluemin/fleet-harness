@@ -4,6 +4,8 @@ import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { FloatingSidebar } from "../components/floating-sidebar.js";
+import { useOperationsMode } from "../operations-mode.js";
+import { OperationsClassic } from "./operations-classic.js";
 import { theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
@@ -13,6 +15,7 @@ interface OperationsProps {
 
 export function Operations({ state }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const mode = useOperationsMode();
   const sessionOrder = theaterSessionOrder(state);
 
   useEffect(() => {
@@ -24,8 +27,10 @@ export function Operations({ state }: OperationsProps) {
     prunePanels(sessionOrder);
   }, [sessionOrder]);
 
+  if (mode === "classic") return <OperationsClassic state={state} />;
+
   return (
-    <div className="console-body" ref={bodyRef}>
+    <div className="console-body is-canvas" ref={bodyRef}>
       <OperationsCanvas state={state} />
       <FloatingSidebar state={state} getViewportSize={() => viewportSizeFor(bodyRef.current)} />
       <FloatingJobOverlay state={state} />
