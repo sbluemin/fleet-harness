@@ -154,6 +154,14 @@
   }
 }
 
+/* GNB가 2행으로 stack되는 폭(components.css의 ≤1080px ladder)에서는 고정 64px topbar 행으로는
+   부족하므로, topbar 행을 내용 높이에 맞춰 본문으로 흘러내리지 않게 한다. */
+@media (max-width: 1080px) {
+  .console-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 760px) {
   .console-shell {
     grid-template-rows: auto minmax(0, 1fr);
