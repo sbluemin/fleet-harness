@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import type { CanvasViewport } from "./coordinates.js";
 
 interface CanvasGridProps {
@@ -5,7 +7,23 @@ interface CanvasGridProps {
   readonly backgroundAnimationEnabled: boolean;
 }
 
+const RADAR_PAUSED_CLASS = "is-animation-paused";
+
 export function CanvasGrid({ viewport, backgroundAnimationEnabled }: CanvasGridProps) {
+  const [radarAnimationPaused, setRadarAnimationPaused] = useState(() => document.hidden);
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      setRadarAnimationPaused(document.hidden);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   return (
     <div className="operations-canvas-background" aria-hidden="true">
       <div className="operations-canvas-sea" />
@@ -17,7 +35,7 @@ export function CanvasGrid({ viewport, backgroundAnimationEnabled }: CanvasGridP
         }}
       />
       {backgroundAnimationEnabled ? (
-        <div className="operations-radar">
+        <div className={`operations-radar${radarAnimationPaused ? ` ${RADAR_PAUSED_CLASS}` : ""}`}>
           <span className="operations-radar-ring operations-radar-ring--outer" />
           <span className="operations-radar-ring operations-radar-ring--middle" />
           <span className="operations-radar-ring operations-radar-ring--inner" />

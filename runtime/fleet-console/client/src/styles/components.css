@@ -1198,12 +1198,6 @@
   overflow: hidden;
 }
 
-@property --radar-sweep-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
 .operations-radar-ring {
   position: absolute;
   top: 50%;
@@ -1230,17 +1224,26 @@
 
 .operations-radar-sweep {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  width: 122vmax;
+  aspect-ratio: 1;
   background: conic-gradient(
-    from var(--radar-sweep-angle) at 50% 50%,
+    from 0deg at 50% 50%,
     transparent 0deg,
     transparent 326deg,
-    color-mix(in oklch, var(--aurora) 3%, transparent) 348deg,
-    color-mix(in oklch, var(--brass) 8%, transparent) 357deg,
+    color-mix(in oklch, var(--aurora) 7%, transparent) 348deg,
+    color-mix(in oklch, var(--brass) 15%, transparent) 357deg,
     transparent 360deg
   );
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: 50% 50%;
   animation: radar-sweep 18s linear infinite;
-  mix-blend-mode: screen;
+  will-change: transform;
+}
+
+.operations-radar.is-animation-paused .operations-radar-sweep {
+  animation-play-state: paused;
 }
 
 .canvas-background-toggle {
@@ -1281,11 +1284,11 @@
 
 @keyframes radar-sweep {
   from {
-    --radar-sweep-angle: 0deg;
+    transform: translate(-50%, -50%) rotate(0deg);
   }
 
   to {
-    --radar-sweep-angle: 360deg;
+    transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 
