@@ -1,4 +1,5 @@
 import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
+import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import type {
   ConsoleState,
@@ -7,6 +8,8 @@ import type {
   ObservedTenant,
   ObserverStatus,
   ObserverTruncation,
+  OperationToast,
+  OperationToastKind,
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
@@ -14,6 +17,7 @@ import type {
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
+  TurnState,
 } from "./types.js";
 
 type Listener = () => void;
@@ -23,7 +27,7 @@ export interface SessionJob {
   readonly tenant: TenantJobsView;
 }
 
-type SessionInput = Omit<SessionInfo, "resumeAvailable"> & { readonly resumeAvailable?: boolean };
+type SessionInput = Omit<SessionInfo, "resumeAvailable" | "turnState"> & { readonly resumeAvailable?: boolean; readonly turnState?: TurnState };
 
 const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
@@ -62,7 +66,13 @@ let state: ConsoleState = {
   pendingOperationFocus: null,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
+  operationToasts: [],
 };
+
+// 초기 SSE replay(재연결 포함)가 과거 job 이벤트를 재전송하므로, carrier-call 토스트는
+// 이벤트가 충분히 최신일 때만 띄워 과거/재연결 폭주를 막는다. session:updated는 라이브 전용이라 무관.
+const OPERATION_TOAST_FRESH_MS = 10_000;
+let operationToastSeq = 0;
 
 export function getState(): ConsoleState {
   return state;
@@ -257,11 +267,18 @@ export function applySessionUpdate(session: SessionInput): void {
   const sessionOrder = known
     ? state.sessionOrder
     : [normalized.sessionId, ...state.sessionOrder.filter((sessionId) => sessionId !== normalized.sessionId)];
+  // 기존 세션의 턴 상태 전이만 알림(신규 세션의 첫 프레임은 전이가 아니므로 제외).
+  const turnToasts = current ? buildTurnTransitionToasts(current, normalized) : [];
   setState({
     sessions,
     sessionOrder,
     activeTerminalSessionId: resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
+    operationToasts: turnToasts.length > 0 ? [...state.operationToasts, ...turnToasts] : state.operationToasts,
   });
+}
+
+export function dismissOperationToast(id: number): void {
+  setState({ operationToasts: state.operationToasts.filter((toast) => toast.id !== id) });
 }
 
 export function failCreateTerminalSession(error: string): void {
@@ -430,8 +447,14 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
     truncation: { droppedCount: 0 },
   };
   let nextTenant = tenantLabel && tenant.tenantLabel !== tenantLabel ? { ...tenant, tenantLabel } : tenant;
+  let carrierToast: OperationToast | null = null;
   if (event.jobId) {
     const existingJob = nextTenant.jobs[event.jobId];
+    // 새 jobId가 처음 등장 = 캐리어 호출(carrier_dispatch). 라이브 이벤트(최신)에 한해 알림한다.
+    if (!existingJob && Date.now() - event.at < OPERATION_TOAST_FRESH_MS) {
+      const session = state.sessions[event.tenantId];
+      if (session && !isActiveOperation(session)) carrierToast = makeOperationToast("carrier-call", session);
+    }
     const job = applyEvent(existingJob ?? createEmptyJob(event.tenantId, event.jobId, event.at), event);
     const jobOrder = existingJob ? nextTenant.jobOrder : [...nextTenant.jobOrder, event.jobId];
     nextTenant = {
@@ -447,6 +470,7 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
     connectionError: null,
     tenantJobs: nextTenantJobs,
     tenantOrder: state.tenantOrder.includes(event.tenantId) ? state.tenantOrder : [...state.tenantOrder, event.tenantId],
+    operationToasts: carrierToast ? [...state.operationToasts, carrierToast] : state.operationToasts,
   };
   emit();
   return { unknownTenant };
@@ -532,8 +556,37 @@ function normalizeSession(session: SessionInput): SessionInfo {
     ...session,
     terminalSessionId: session.terminalSessionId ?? session.sessionId,
     status: session.status === "starting" && session.tenantId ? "registered" : session.status,
+    turnState: session.turnState ?? "none",
     resumeAvailable: session.resumeAvailable === true,
   };
+}
+
+// 현재 보고 있는 Operation(활성 Theater + 활성 세션)인지. 활성 Operation은 토스트를 억제한다.
+function isActiveOperation(session: SessionInfo): boolean {
+  return state.activeTheaterId === (session.theaterId ?? null) && state.activeTerminalSessionId === session.sessionId;
+}
+
+function theaterLabelFor(theaterId: string | undefined): string {
+  if (!theaterId) return "—";
+  return state.theaters.find((theater) => theater.id === theaterId)?.label ?? theaterId;
+}
+
+function makeOperationToast(kind: OperationToastKind, session: SessionInfo): OperationToast {
+  operationToastSeq += 1;
+  return {
+    id: operationToastSeq,
+    kind,
+    sessionId: session.sessionId,
+    theaterLabel: theaterLabelFor(session.theaterId),
+    operationLabel: sessionDisplayLabel(session),
+  };
+}
+
+function buildTurnTransitionToasts(prev: SessionInfo, next: SessionInfo): readonly OperationToast[] {
+  if (isActiveOperation(next)) return [];
+  // 작업 완료(턴 종료)만 알린다. 턴 진행 시작(running)은 알리지 않는다.
+  if (prev.turnState !== "ended" && next.turnState === "ended") return [makeOperationToast("ended", next)];
+  return [];
 }
 
 function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, tenants: readonly ObservedTenant[]): Record<string, SessionInfo> {

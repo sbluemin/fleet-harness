@@ -19,6 +19,9 @@ export interface CreateAgentCliPluginOptions {
   readonly cwd: string;
   readonly dataDir: string;
   readonly hookExec?: FleetHookExec;
+  // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.
+  readonly turnStartHookExec?: FleetHookExec;
+  readonly turnEndHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;

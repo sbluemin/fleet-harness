@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
+import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "./types.js";
 
 const CLAUDE_AGENT_FILE_STEM_ALLOWLIST = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
@@ -51,15 +52,25 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   if (!hookExec) {
     throw new Error("Fleet Claude session hook command is required");
   }
-  const captureSessionHookExec = options.captureSessionHookExec;
+  // UserPromptSubmit: 세션 캡처 + 턴 시작 신호를 같은 이벤트에 함께 건다(배열 순서대로 실행).
+  const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  // Stop: 턴 종료 신호.
+  const stopExecs = [options.turnEndHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
   return {
     hooks: {
       SessionStart: [{
         hooks: [claudeCommandHook(hookExec)],
       }],
-      ...(captureSessionHookExec ? {
+      ...(userPromptSubmitExecs.length > 0 ? {
         UserPromptSubmit: [{
-          hooks: [claudeCommandHook(captureSessionHookExec)],
+          hooks: userPromptSubmitExecs.map(claudeCommandHook),
+        }],
+      } : {}),
+      ...(stopExecs.length > 0 ? {
+        Stop: [{
+          hooks: stopExecs.map(claudeCommandHook),
         }],
       } : {}),
     },
