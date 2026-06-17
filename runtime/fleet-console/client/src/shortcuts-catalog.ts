@@ -29,10 +29,13 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Map",
     entries: [
+      { combos: [["Alt", "←"], ["Alt", "→"]], description: "Focus the previous / next Operation (also in Helm)" },
       { combos: [["Drag"]], description: "Pan the operations map" },
       { combos: [["Shift", "Drag"]], description: "Draw a new Operation terminal" },
       { combos: [["Space", "Drag"]], description: "Pan even while a terminal has focus" },
       { combos: [["Scroll"]], description: "Zoom the map in or out" },
+      { combos: [["Right-click"]], description: "Open the canvas actions menu" },
+      { combos: [["Double-click"]], description: "Focus a panel from its title bar; rename from its name" },
       { combos: [["Click"]], description: "Clear terminal focus on the empty canvas" },
     ],
   },

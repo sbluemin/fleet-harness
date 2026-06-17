@@ -1409,6 +1409,155 @@
   pointer-events: none;
 }
 
+/* 좌하단 Map 단축키 도움 — 레이더 계기와 같은 심해 글래스 카드. 접으면 '?' FAB만 남는다. */
+.map-shortcuts {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 13;
+  width: 250px;
+  max-height: min(56%, 380px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--brass) 26%, var(--surface-rim));
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 90% at 0% 100%, color-mix(in oklch, var(--brass) 8%, transparent), transparent 60%),
+    color-mix(in oklch, var(--surface-glass) 62%, color-mix(in oklch, var(--ink-deep) 70%, transparent));
+  box-shadow:
+    var(--shadow-floating),
+    inset 0 1px 0 color-mix(in oklch, var(--brass) 22%, transparent);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  animation: codex-rise 520ms var(--ease-spring) both;
+}
+
+.map-shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.map-shortcuts-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--brass-bright) 78%, var(--ink-fog));
+}
+
+.map-shortcuts-toggle,
+.map-shortcuts-fab {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  color: var(--brass);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.map-shortcuts-toggle {
+  width: 24px;
+  height: 24px;
+}
+
+.map-shortcuts-toggle:hover,
+.map-shortcuts-toggle:focus-visible,
+.map-shortcuts-fab:hover,
+.map-shortcuts-fab:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
+}
+
+.map-shortcuts-fab {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 13;
+  width: 36px;
+  height: 36px;
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 420ms var(--ease-spring) both;
+}
+
+.map-shortcuts-toggle svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.map-shortcuts-fab svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.map-shortcuts-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.map-shortcuts-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.map-shortcuts-combos {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.map-shortcuts-or {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-fog);
+}
+
+.map-shortcuts-keyset {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.map-shortcuts kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-deep) 70%, var(--surface-glass));
+  color: color-mix(in oklch, var(--brass-bright) 72%, var(--ink-pearl));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.map-shortcuts-entry dd {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-fog);
+}
+
 @keyframes radar-sweep {
   from {
     transform: translate(-50%, -50%) rotate(0deg);

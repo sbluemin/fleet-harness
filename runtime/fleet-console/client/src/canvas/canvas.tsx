@@ -9,6 +9,7 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasPanel } from "./canvas-panel.js";
 import { CanvasGrid } from "./canvas-grid.js";
+import { MapShortcuts } from "./map-shortcuts.js";
 import { RubberBand } from "./rubber-band.js";
 import { ShellCanvasPanel } from "./shell-canvas-panel.js";
 import { addShellPanel, useShellPanels } from "./shell-panels.js";
@@ -234,6 +235,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           zoom: canvas.viewport.zoom,
         })}
       />
+      <MapShortcuts />
     </main>
   );
 }
