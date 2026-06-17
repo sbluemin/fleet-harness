@@ -235,7 +235,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           zoom: canvas.viewport.zoom,
         })}
       />
-      <MapShortcuts />
+      {/* 콘텐츠가 없을 때는 좌하단 빈 상태 안내가 핵심 단축키를 이미 알려주므로, 겹침을 막기 위해 단축키 맵을 숨긴다. */}
+      {hasContent ? <MapShortcuts /> : null}
     </main>
   );
 }
