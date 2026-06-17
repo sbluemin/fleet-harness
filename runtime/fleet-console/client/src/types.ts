@@ -222,6 +222,18 @@ export interface TenantJobsView {
 
 export type ConnectionState = "connecting" | "live";
 
+// Operation 상태 전이 알림 토스트. kind는 인디케이터 상태에 대응:
+//   carrier-call=캐리어 출격(Job 발생, aurora) · ended=작업 완료(턴 종료, 그린).
+export type OperationToastKind = "carrier-call" | "ended";
+
+export interface OperationToast {
+  readonly id: number;
+  readonly kind: OperationToastKind;
+  readonly sessionId: string;
+  readonly theaterLabel: string;
+  readonly operationLabel: string;
+}
+
 export interface ConsoleState {
   readonly connection: ConnectionState;
   readonly connectionError: string | null;
@@ -250,4 +262,6 @@ export interface ConsoleState {
   readonly pendingOperationFocus: string | null;
   readonly selectedJobId: string | null;
   readonly expandedSessionIds: readonly string[];
+  // Theater 무관 전역 Operation 상태 전이 알림 토스트 큐(현재 보는 Operation은 억제).
+  readonly operationToasts: readonly OperationToast[];
 }

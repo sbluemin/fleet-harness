@@ -7,6 +7,7 @@ import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } fro
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
+import { OperationToastHost } from "./components/operation-toasts.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
 import { startObserverConnection } from "./connection.js";
@@ -122,6 +123,7 @@ export function App() {
         title="Console link interrupted"
         message={state.connectionError ?? undefined}
       />
+      <OperationToastHost toasts={state.operationToasts} />
     </div>
   );
 }

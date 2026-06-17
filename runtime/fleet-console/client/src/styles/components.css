@@ -4517,6 +4517,141 @@
   background: color-mix(in oklch, var(--ink-fog) 14%, transparent);
 }
 
+/* Operation 상태 전이 알림 토스트 — 상단 중앙 정렬 스택(연결 토스트의 우하단 host와 분리). */
+.operation-toast-stack {
+  top: var(--space-5);
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  align-items: center;
+  max-width: min(94vw, 620px);
+}
+
+/* 한 줄 레이아웃: 상태 점 · 텍스트(말줄임) · 액션. 좌측에 상태색 계기 레일. */
+.operation-toast {
+  align-items: center;
+  width: max-content;
+  max-width: min(94vw, 620px);
+  border-left-width: 2.5px;
+}
+
+.operation-toast .app-toast-dot {
+  margin-top: 0;
+}
+
+/* 인디케이터와 동일한 색의 좌측 액센트 레일(계기판 느낌). */
+.operation-toast--carrier-call {
+  border-left-color: var(--aurora);
+}
+
+.operation-toast--ended {
+  border-left-color: var(--positive);
+}
+
+/* 캐리어 출격은 살아있는 상태(aurora) — beacon의 is-live와 동일하게 펄스. */
+.operation-toast--carrier-call .app-toast-dot {
+  animation: aurora-pulse 1.8s ease-in-out infinite;
+}
+
+.operation-toast-text {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* 강조 1순위 — Theater. */
+.operation-toast-theater {
+  flex: none;
+  color: var(--ink-pearl);
+  font-weight: 650;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+
+/* brass = 항행/내비게이션 역할 — Theater → Operation 구분자(chevron). */
+.operation-toast-sep {
+  flex: none;
+  color: color-mix(in oklch, var(--brass) 72%, var(--ink-fog));
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* 강조 2순위 — Operation(길면 말줄임). */
+.operation-toast-op {
+  min-width: 0;
+  color: var(--ink-pearl);
+  font-weight: 560;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 상태는 비강조 — 인디케이터 색이 상태를 전달하므로 muted mono eyebrow로 후행 표기. */
+.operation-toast-status {
+  flex: none;
+  margin-left: 2px;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.78;
+}
+
+.operation-toast--carrier-call {
+  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
+}
+
+.operation-toast--ended {
+  border-color: color-mix(in oklch, var(--positive) 40%, var(--surface-rim));
+}
+
+.operation-toast--carrier-call .app-toast-dot {
+  background: var(--aurora);
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+.operation-toast--ended .app-toast-dot {
+  background: var(--positive);
+  box-shadow: 0 0 9px var(--positive-glow);
+}
+
+.operation-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* 내비게이션 = brass 역할(doctrine: brass="지금 보고 있는 곳"). */
+.operation-toast-go {
+  flex: none;
+  padding: 4px 11px;
+  border: 1px solid color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--brass) 13%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.operation-toast-go:hover {
+  background: color-mix(in oklch, var(--brass) 24%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 64%, var(--surface-rim));
+}
+
 .operation-search-overlay {
   position: fixed;
   inset: 0;

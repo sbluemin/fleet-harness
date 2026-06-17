@@ -4,6 +4,7 @@ import { buildBridgeView, collectTheaterReadiness, summarizeOperationsReadiness 
 import type { ConsoleState, JobView } from "../client/src/types.js";
 
 const BASE_STATE: ConsoleState = {
+  operationToasts: [],
   connection: "live",
   connectionError: null,
   activeTheme: "maritime",
