@@ -1,5 +1,20 @@
 import type { AgentCliMetadata, CarrierReadinessEntry, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
 
+export interface TerminalFolderListEntry {
+  readonly name: string;
+  readonly path: string;
+  readonly kind: "dir";
+  readonly accessible: boolean;
+}
+
+export interface TerminalFolderListResponse {
+  readonly path: string;
+  readonly parentPath: string | null;
+  readonly roots: readonly string[];
+  readonly entries: readonly TerminalFolderListEntry[];
+  readonly truncated?: true;
+}
+
 export interface TerminalTicketOptions {
   readonly kind?: "shell";
   // theater-shell(shell:<seq>) 티켓에서만 사용 — 서버가 이 id로 Theater 디렉터리를 cwd로 해석한다(raw 경로는 클라이언트에 없음).
@@ -69,13 +84,15 @@ export async function fetchCarriers(signal?: AbortSignal): Promise<readonly Carr
   return payload.carriers.map((carrier) => assertCarrierReadinessEntry(carrier, response.status));
 }
 
-export async function addTheater(signal?: AbortSignal): Promise<TheaterInfo | { readonly cancelled: true }> {
-  const response = await fetch("/observer/theaters", { method: "POST", signal });
+export async function addTheater(folderGrantId: string, signal?: AbortSignal): Promise<TheaterInfo> {
+  const response = await fetch("/observer/theaters", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folderGrantId }),
+    signal,
+  });
   await assertOk(response);
   const payload = await response.json() as unknown;
-  if (typeof payload === "object" && payload !== null && (payload as { cancelled?: unknown }).cancelled === true) {
-    return { cancelled: true };
-  }
   return assertTheaterInfo(payload, response.status);
 }
 
@@ -89,13 +106,28 @@ export async function createTheaterTerminalSession(theaterId: string, cliId?: st
   return assertSessionInfo(await response.json(), response.status);
 }
 
-export async function pickTerminalFolder(signal?: AbortSignal): Promise<{ readonly folderGrantId: string } | { readonly cancelled: true }> {
-  const response = await fetch("/terminal/folders/pick", { method: "POST", signal });
+export async function listTerminalFolders(path: string | null, signal?: AbortSignal): Promise<TerminalFolderListResponse> {
+  const response = await fetch("/terminal/folders/list", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+    signal,
+  });
   await assertOk(response);
-  const payload = (await response.json()) as { folderGrantId?: unknown; cancelled?: unknown };
-  if (payload.cancelled === true) return { cancelled: true };
-  if (typeof payload.folderGrantId !== "string") throw new ApiError(response.status, "Invalid folder picker response");
-  return { folderGrantId: payload.folderGrantId };
+  return assertTerminalFolderList(await response.json(), response.status);
+}
+
+export async function issueTerminalFolderGrant(path: string, signal?: AbortSignal): Promise<string> {
+  const response = await fetch("/terminal/folders/grants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+    signal,
+  });
+  await assertOk(response);
+  const payload = (await response.json()) as { folderGrantId?: unknown };
+  if (typeof payload.folderGrantId !== "string") throw new ApiError(response.status, "Invalid folder grant response");
+  return payload.folderGrantId;
 }
 
 export async function createTerminalSession(folderGrantId: string, signal?: AbortSignal): Promise<SessionInfo> {
@@ -197,6 +229,41 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     registrationId: typeof payload.registrationId === "string" ? payload.registrationId : undefined,
     resumeAvailable: payload.resumeAvailable === true,
   };
+}
+
+function assertTerminalFolderList(value: unknown, status: number): TerminalFolderListResponse {
+  const payload = value as Partial<TerminalFolderListResponse>;
+  if (
+    !payload
+    || typeof payload.path !== "string"
+    || (payload.parentPath !== null && typeof payload.parentPath !== "string")
+    || !Array.isArray(payload.roots)
+    || !payload.roots.every((root) => typeof root === "string")
+    || !Array.isArray(payload.entries)
+  ) {
+    throw new ApiError(status, "Invalid folder list response");
+  }
+  return {
+    path: payload.path,
+    parentPath: payload.parentPath,
+    roots: payload.roots,
+    entries: payload.entries.map((entry) => assertTerminalFolderListEntry(entry, status)),
+    ...(payload.truncated === true ? { truncated: true } : {}),
+  };
+}
+
+function assertTerminalFolderListEntry(value: unknown, status: number): TerminalFolderListEntry {
+  const payload = value as Partial<TerminalFolderListEntry>;
+  if (
+    !payload
+    || typeof payload.name !== "string"
+    || typeof payload.path !== "string"
+    || payload.kind !== "dir"
+    || typeof payload.accessible !== "boolean"
+  ) {
+    throw new ApiError(status, "Invalid folder list response");
+  }
+  return { name: payload.name, path: payload.path, kind: "dir", accessible: payload.accessible };
 }
 
 function assertAgentCliMetadata(value: unknown, status: number): AgentCliMetadata {

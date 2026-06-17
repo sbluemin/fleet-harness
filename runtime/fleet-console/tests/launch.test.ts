@@ -1,6 +1,7 @@
 import { closeSync, mkdtempSync, openSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
@@ -112,7 +113,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "provider-session-a" });
     expect(injectedOptions[0]?.captureSessionHookExec).toEqual({
       command: "/node",
-      args: ["--import", "file:///loader/tsx.mjs", "/console/cli.ts", "hook", "capture-session", "codex"],
+      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "codex"],
     });
   });
 
@@ -138,6 +139,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
       env: { FLEET_TERMINAL_CMD: "bash -l" } as NodeJS.ProcessEnv,
+      platform: "linux",
       resolveProfile: resolveProfile as never,
     });
 
@@ -227,6 +229,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
       env: { FLEET_TERMINAL_CMD: "bash -l", SHELL: "/bin/zsh" } as NodeJS.ProcessEnv,
+      platform: "linux",
       resolveProfile: resolveProfile as never,
     });
 

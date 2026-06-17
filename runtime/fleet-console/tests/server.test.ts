@@ -218,7 +218,6 @@ describe("console terminal observability", () => {
     const runtime = createFakeConsoleRuntime([], []);
     const runtimeFixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunchResolverDeps: {
         cwd: dir,
         env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -234,7 +233,7 @@ describe("console terminal observability", () => {
       },
       terminalStartShell: () => createMockPty(),
     });
-    const session = await createTerminalSession(runtimeFixture, { "Content-Type": "application/json" });
+    const session = await createTerminalSession(runtimeFixture, { "Content-Type": "application/json" }, dir);
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: session.sessionId, trackId: "t1", text: "hello" });
 
     const controller = new AbortController();
@@ -252,7 +251,6 @@ describe("console terminal observability", () => {
     const runtime = createFakeConsoleRuntime([], []);
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunchResolverDeps: {
         cwd: dir,
         env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -272,8 +270,7 @@ describe("console terminal observability", () => {
     });
     const headers = { "Content-Type": "application/json" };
 
-    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
-    const grant = await picked.json() as { readonly folderGrantId: string };
+    const grant = await issueFolderGrant(fixture, dir, headers);
     const failed = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -297,7 +294,6 @@ describe("console terminal observability", () => {
     const runtime = createFakeConsoleRuntime([], []);
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunchResolverDeps: {
         cwd: dir,
         env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -313,7 +309,7 @@ describe("console terminal observability", () => {
       },
       terminalStartShell: () => createMockPty(),
     });
-    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+    const theater = await createTheater(fixture, dir);
     const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
     expect(created.status).toBe(200);
     const session = await created.json() as { readonly sessionId: string };
@@ -346,14 +342,13 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const launches: string[] = [];
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: async (cwd) => {
         launches.push(cwd ?? "");
         return { bin: "mock", args: [], cwd: cwd ?? "/", env: { TERM: "xterm-256color" } };
       },
       terminalStartShell: () => createMockPty(),
     });
-    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" });
+    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
     launches.length = 0;
 
     const issued = await fetch(`${fixture.endpoint}terminal/ticket`, {
@@ -404,10 +399,9 @@ describe("console static and terminal ticket boundary", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-shell-"));
     tempDirs.push(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalStartShell: () => createMockPty(),
     });
-    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+    const theater = await createTheater(fixture, dir);
 
     const issued = await fetch(`${fixture.endpoint}terminal/ticket`, {
       method: "POST",
@@ -436,7 +430,6 @@ describe("console static and terminal ticket boundary", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-token-boundary-"));
     tempDirs.push(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: async () => {
         throw new Error(fakeToken);
       },
@@ -445,8 +438,7 @@ describe("console static and terminal ticket boundary", () => {
     const headers = { "Content-Type": "application/json" };
 
     const ticket = await (await fetch(`${fixture.endpoint}terminal/ticket`, { method: "POST", headers })).json();
-    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
-    const grant = await picked.json() as { readonly folderGrantId: string };
+    const grant = await issueFolderGrant(fixture, dir, headers);
     const failedLaunch = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -494,14 +486,13 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
       agentRuntime: runtime as never,
       terminalLaunchResolverDeps,
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalStartShell: () => createFakePty(),
     });
     const headers = { "Content-Type": "application/json" };
 
-    const first = await createTerminalSession(fixture, headers);
+    const first = await createTerminalSession(fixture, headers, dir);
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "a", mcpToken: fakeToken });
-    const second = await createTerminalSession(fixture, headers);
+    const second = await createTerminalSession(fixture, headers, dir);
     runtime.emit({ type: "track:text", jobId: "job-a2", originSessionId: first.sessionId, trackId: "t1", text: "a2" });
     const stopSecond = await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(second.sessionId)}`, { method: "DELETE" });
     runtime.emit({ type: "track:text", jobId: "job-a3", originSessionId: first.sessionId, trackId: "t1", text: "a3" });
@@ -529,7 +520,6 @@ describe("console static and terminal ticket boundary", () => {
     const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: async (cwd, context) => ({
         bin: "mock",
         args: [],
@@ -547,8 +537,8 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const headers = { "Content-Type": "application/json" };
-    const first = await createTerminalSession(fixture, headers);
-    const second = await createTerminalSession(fixture, headers);
+    const first = await createTerminalSession(fixture, headers, dir);
+    const second = await createTerminalSession(fixture, headers, dir);
 
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "progress" });
     runtime.emit({ type: "track:text", jobId: "job-a", originSessionId: first.sessionId, trackId: "t1", text: "ignored", systemReminder: "not-final" });
@@ -575,7 +565,6 @@ describe("console static and terminal ticket boundary", () => {
     const secret = "server-only-system-reminder-secret";
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: async (cwd, context) => ({
         bin: "mock",
         args: [],
@@ -588,7 +577,7 @@ describe("console static and terminal ticket boundary", () => {
       }),
       terminalStartShell: () => createRecordingPty(),
     });
-    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" });
+    const session = await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
 
     runtime.emit({ type: "track:text", jobId: "job-secret", originSessionId: session.sessionId, trackId: "t1", text: "visible" });
     runtime.emit({ type: "job:finalized", jobId: "job-secret", status: "done", finishedAt: 1, summary: "done", systemReminder: secret });
@@ -638,26 +627,27 @@ describe("console static and terminal ticket boundary", () => {
     expect(runtime.cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it("returns folder picker cancellation without creating a grant", async () => {
-    const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "cancelled" }),
-    });
+  it("lists terminal folders through the browser API without native cancellation", async () => {
+    const response = await fetchWithBlockedPortRetry((fixture) =>
+      fetch(`${fixture.endpoint}terminal/folders/list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: null }),
+      }));
+    const body = await response.json() as { readonly path?: unknown; readonly entries?: unknown };
 
-    const response = await fetch(`${fixture.endpoint}terminal/folders/pick`, {
-      method: "POST",
-    });
-
-    await expect(response.json()).resolves.toEqual({ cancelled: true });
+    expect(response.status).toBe(200);
+    expect(typeof body.path).toBe("string");
+    expect(Array.isArray(body.entries)).toBe(true);
   });
 
   it("rejects terminal routes when the browser Origin is not the console origin", async () => {
-    const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "cancelled" }),
-    });
+    const fixture = await startFixture();
 
-    const response = await fetch(`${fixture.endpoint}terminal/folders/pick`, {
+    const response = await fetch(`${fixture.endpoint}terminal/folders/list`, {
       method: "POST",
-      headers: { origin: "http://evil.example" },
+      headers: { origin: "http://evil.example", "Content-Type": "application/json" },
+      body: JSON.stringify({ path: null }),
     });
 
     expect(response.status).toBe(401);
@@ -668,7 +658,6 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const launches: TerminalLaunchSpec[] = [];
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: createMockLaunch,
       terminalStartShell: (launch) => {
         launches.push(launch);
@@ -677,8 +666,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const headers = { "Content-Type": "application/json" };
 
-    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
-    const grant = await picked.json() as { readonly folderGrantId: string };
+    const grant = await issueFolderGrant(fixture, dir, headers);
     const rawCwd = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -716,7 +704,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(state.operations).toHaveLength(1);
     expect(state.operations[0]).toMatchObject({ sessionId: session.sessionId, cwd: dir });
     expect(state.operations[0]?.providerSession).toBeUndefined();
-    expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
     await expect(list.json()).resolves.toMatchObject({ sessions: [{ sessionId: session.sessionId, status: "terminal-only" }] });
   });
 
@@ -725,17 +713,13 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const startedShells: string[] = [];
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: createMockLaunch,
       terminalStartShell: (launch) => {
         startedShells.push(launch.cwd);
         return createMockPty();
       },
     });
-    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    })).json() as { readonly id: string };
+    const theater = await createTheater(fixture, dir);
     const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1205,7 +1189,6 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const ptys: ExitablePty[] = [];
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunchResolverDeps: {
         cwd: dir,
         env: { PATH: "/bin" } as NodeJS.ProcessEnv,
@@ -1225,7 +1208,8 @@ describe("console static and terminal ticket boundary", () => {
         return pty;
       },
     });
-    const theaterResponse = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const theaterResponse = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     expect(theaterResponse.status).toBe(200);
     const theater = await theaterResponse.json() as { readonly id: string };
     const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "claude" }) });
@@ -1259,10 +1243,10 @@ describe("console static and terminal ticket boundary", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-"));
     tempDirs.push(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
     });
 
-    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as Record<string, unknown>;
     const listed = await getJson<{ agentClis?: readonly Record<string, unknown>[]; theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}observer/theaters`);
     const serialized = JSON.stringify({ payload, listed });
@@ -1295,10 +1279,10 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     createWikiRoot(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
     });
 
-    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as { readonly id: string; readonly hasWiki: boolean };
     const health = await fetch(`${fixture.endpoint}console/codex/w/${payload.id}/api/health`);
 
@@ -1312,10 +1296,10 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     createWikiRoot(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
     });
 
-    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" });
+    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const created = await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const theater = await created.json() as { readonly id: string };
     const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}observer/status?theaterId=${encodeURIComponent(theater.id)}`);
     const serialized = JSON.stringify(status);
@@ -1458,17 +1442,15 @@ describe("console static and terminal ticket boundary", () => {
     ])).toThrow("theater_id_collision");
   });
 
-  it("handles Theater picker cancellation and errors", async () => {
-    const cancelled = await startFixture({
-      terminalPickFolder: async () => ({ kind: "cancelled" }),
-    });
-    const failed = await startFixture({
-      terminalPickFolder: async () => ({ kind: "error", error: "invalid_folder" }),
-    });
+  it("rejects Theater registration without a valid folder grant", async () => {
+    const failed = await startFixture();
 
-    await expect((await fetch(`${cancelled.endpoint}observer/theaters`, { method: "POST" })).json()).resolves.toEqual({ cancelled: true });
-    const errorResponse = await fetch(`${failed.endpoint}observer/theaters`, { method: "POST" });
-    await expect(errorResponse.json()).resolves.toEqual({ error: "invalid_folder" });
+    const errorResponse = await fetch(`${failed.endpoint}observer/theaters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folderGrantId: "missing-grant" }),
+    });
+    await expect(errorResponse.json()).resolves.toEqual({ error: "invalid_folder_grant" });
     expect(errorResponse.status).toBe(400);
   });
 
@@ -1478,7 +1460,6 @@ describe("console static and terminal ticket boundary", () => {
     const launches: TerminalLaunchSpec[] = [];
     const cliIds: Array<string | undefined> = [];
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: async (cwd, context) => {
         cliIds.push(context?.cliId);
         return createMockLaunch(cwd, context);
@@ -1488,7 +1469,7 @@ describe("console static and terminal ticket boundary", () => {
         return createMockPty();
       },
     });
-    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+    const theater = await createTheater(fixture, dir);
     const unknown = await fetch(`${fixture.endpoint}observer/theaters/missing/sessions`, { method: "POST", body: JSON.stringify({ cwd: "/tmp/other" }) });
     const invalid = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "bogus" }) });
     const created = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, { method: "POST", body: JSON.stringify({ cliId: "codex", cwd: "/tmp/ignored" }) });
@@ -1512,14 +1493,12 @@ describe("console static and terminal ticket boundary", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-delete-"));
     tempDirs.push(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: createMockLaunch,
       terminalStartShell: () => createMockPty(),
     });
     const headers = { "Content-Type": "application/json" };
 
-    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
-    const grant = await picked.json() as { readonly folderGrantId: string };
+    const grant = await issueFolderGrant(fixture, dir, headers);
     const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -1544,14 +1523,12 @@ describe("console static and terminal ticket boundary", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-rename-"));
     tempDirs.push(dir);
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: createMockLaunch,
       terminalStartShell: () => createMockPty(),
     });
     const headers = { "Content-Type": "application/json" };
 
-    const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
-    const grant = await picked.json() as { readonly folderGrantId: string };
+    const grant = await issueFolderGrant(fixture, dir, headers);
     const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -1587,7 +1564,6 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       // rename 슬래시 명령을 지원하는 CLI 프로파일로 launch된 세션(launch spec에 renameCommand 포함).
       terminalLaunch: async (cwd, context) => ({ ...(await createMockLaunch(cwd, context)), renameCommand: "/rename" }),
       terminalStartShell: (launch) => {
@@ -1597,7 +1573,7 @@ describe("console static and terminal ticket boundary", () => {
       },
     });
     const headers = { "Content-Type": "application/json" };
-    const session = await createTerminalSession(fixture, headers);
+    const session = await createTerminalSession(fixture, headers, dir);
     const patchLabel = (label: string) =>
       fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
         method: "PATCH",
@@ -1626,7 +1602,6 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const ptys = new Map<string, TerminalPtyHandle & { readonly writes: string[] }>();
     const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
       terminalLaunch: createMockLaunch,
       terminalStartShell: (launch) => {
         const pty = createRecordingPty();
@@ -1637,7 +1612,7 @@ describe("console static and terminal ticket boundary", () => {
     const headers = { "Content-Type": "application/json" };
     // createMockLaunch는 renameCommand 없는 launch spec을 반환한다(FLEET_TERMINAL_CMD 임의 override·미지원
     // CLI 모사). 따라서 이 세션의 rename은 미지원 명령을 주입하지 않는다.
-    const session = await createTerminalSession(fixture, headers);
+    const session = await createTerminalSession(fixture, headers, dir);
     await fetch(`${fixture.endpoint}terminal/sessions/${encodeURIComponent(session.sessionId)}`, {
       method: "PATCH",
       headers,
@@ -1715,10 +1690,8 @@ describe("console static and terminal ticket boundary", () => {
 describe("observer theater forget", () => {
   it("forgets a Theater whose directory was deleted on disk", async () => {
     const theaterDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-forget-deleted-"));
-    const fixture = await startFixture({
-      terminalPickFolder: async () => ({ kind: "selected", cwd: theaterDir }),
-    });
-    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, theaterDir);
 
     // 사용자 시나리오: 추가된 Theater의 디렉터리가 파일시스템에서 사라진 뒤 forget을 수행한다.
     fs.rmSync(theaterDir, { recursive: true, force: true });
@@ -1744,7 +1717,6 @@ async function startFixture(options: {
   readonly beforeCreateServer?: (paths: { readonly carrierStoreDir: string }) => void;
   readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
   readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
-  readonly terminalPickFolder?: ConsoleServerDeps["terminalPickFolder"];
   readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
 } = {}): Promise<ServerFixture> {
@@ -1761,7 +1733,6 @@ async function startFixture(options: {
     dataDir: carrierStoreDir,
     terminalLaunch: options.terminalLaunch,
     terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
-    terminalPickFolder: options.terminalPickFolder,
     terminalStartShell: options.terminalStartShell,
     updateCheck: options.updateCheck,
   });
@@ -1771,9 +1742,8 @@ async function startFixture(options: {
   return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
 }
 
-async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
-  const picked = await fetch(`${fixture.endpoint}terminal/folders/pick`, { method: "POST", headers });
-  const grant = await picked.json() as { readonly folderGrantId: string };
+async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>, cwd: string): Promise<{ readonly sessionId: string }> {
+  const grant = await issueFolderGrant(fixture, cwd, headers);
   const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
     method: "POST",
     headers,
@@ -1781,6 +1751,41 @@ async function createTerminalSession(fixture: ServerFixture, headers: Record<str
   });
   expect(created.status).toBe(200);
   return created.json() as Promise<{ readonly sessionId: string }>;
+}
+
+async function issueFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
+  const response = await fetch(`${fixture.endpoint}terminal/folders/grants`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ path: cwd }),
+  });
+  expect(response.status).toBe(200);
+  return response.json() as Promise<{ readonly folderGrantId: string }>;
+}
+
+async function createTheater(fixture: ServerFixture, cwd: string): Promise<{ readonly id: string }> {
+  const grant = await issueFolderGrant(fixture, cwd);
+  const response = await fetch(`${fixture.endpoint}observer/theaters`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folderGrantId: grant.folderGrantId }),
+  });
+  expect(response.status).toBe(200);
+  return response.json() as Promise<{ readonly id: string }>;
+}
+
+async function fetchWithBlockedPortRetry(request: (fixture: ServerFixture) => Promise<Response>): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const fixture = await startFixture();
+    try {
+      return await request(fixture);
+    } catch (error) {
+      lastError = error;
+      if (!String(error).includes("bad port")) throw error;
+    }
+  }
+  throw lastError;
 }
 
 function createFakeConsoleRuntime(issuedLabels: string[], releasedLabels: string[]): FakeConsoleRuntime {

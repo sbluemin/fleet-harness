@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { buildConsoleCaptureHookCommand } from "../src/terminal/host-hooks.js";
@@ -26,7 +28,7 @@ describe("console terminal host hooks", () => {
       command: "/usr/local/bin/node",
       args: [
         "--import",
-        "file:///app/fleet-console/node_modules/tsx/dist/loader.mjs",
+        pathToFileURL("/app/fleet-console/node_modules/tsx/dist/loader.mjs").href,
         "/app/fleet-console/src/cli.ts",
         "hook",
         "capture-session",

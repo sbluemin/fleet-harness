@@ -23,7 +23,7 @@ import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
-import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo } from "./api-types.js";
+import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, TerminalFolderListResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
@@ -34,8 +34,7 @@ import { readFleetConsoleRelease } from "./release.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { tryServeStaticConsole } from "./static-console.js";
-import type { FolderPickerResult } from "./terminal/folder-picker.js";
-import { createNativeFolderPicker } from "./terminal/folder-picker.js";
+import { listTerminalFolders, TerminalFolderListError } from "./terminal/folder-browser.js";
 import { createFolderGrantStore } from "./terminal/folder-grants.js";
 import { createDefaultTerminalLaunchResolver, type ConsoleRuntimeSessionInfo, type TerminalLaunchResolver, type TerminalLaunchResolverDeps, startTerminalShell } from "./terminal/launch.js";
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
@@ -57,7 +56,6 @@ export interface ConsoleServerDeps {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
-  readonly terminalPickFolder?: () => Promise<FolderPickerResult>;
   readonly updateCheck?: ConsoleUpdateCheckService;
 }
 
@@ -70,7 +68,10 @@ export interface ConsoleServer {
 
 type ObserverLookup = { readonly kind: "aggregate" };
 type ConsoleCarrierJobStreamEvent = CarrierJobStreamEvent & { readonly originSessionId?: string };
+type TerminalFolderListBody = { readonly path?: unknown };
+type TerminalFolderGrantBody = { readonly path?: unknown };
 type CreateTerminalSessionBody = { readonly folderGrantId?: unknown; readonly cwd?: unknown; readonly cliId?: unknown };
+type CreateTheaterBody = { readonly folderGrantId?: unknown };
 type CreateTheaterSessionBody = { readonly cliId?: unknown };
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -128,7 +129,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     getPort: () => lockHandle?.payload.port ?? port,
     getAdminToken: () => lockHandle?.payload.token ?? null,
   });
-  const pickTerminalFolder = deps.terminalPickFolder ?? createNativeFolderPicker();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const terminalSessions = createTerminalSessionManager({
     launch: deps.terminalLaunch ?? createDefaultTerminalLaunchResolver({
@@ -211,8 +211,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTerminalTicket(req, res), res);
       return;
     }
-    if (pathname === "/terminal/folders/pick") {
-      runAsyncHandler(handleTerminalFolderPick(req, res), res);
+    if (pathname === "/terminal/folders/list") {
+      runAsyncHandler(handleTerminalFoldersList(req, res), res);
+      return;
+    }
+    if (pathname === "/terminal/folders/grants") {
+      runAsyncHandler(handleTerminalFolderGrants(req, res), res);
       return;
     }
     if (pathname === "/terminal/sessions") {
@@ -344,7 +348,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }));
   }
 
-  async function handleTerminalFolderPick(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function handleTerminalFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
       return;
@@ -353,16 +357,42 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    const result = await pickTerminalFolder();
-    if (result.kind === "cancelled") {
-      writeJson(res, 200, { cancelled: true });
+    const body = await readJsonBody<TerminalFolderListBody>(req);
+    if (!isPlainObject(body) || (body.path !== undefined && body.path !== null && typeof body.path !== "string")) {
+      writeJson(res, 400, { error: "invalid_path" });
       return;
     }
-    if (result.kind === "error") {
-      writeJson(res, result.error === "invalid_folder" ? 400 : 503, { error: result.error });
+    try {
+      const payload: TerminalFolderListResponse = await listTerminalFolders(body.path === undefined ? null : body.path);
+      writeJson(res, 200, payload);
+    } catch (error) {
+      if (error instanceof TerminalFolderListError) {
+        writeJson(res, terminalFolderListStatus(error), { error: error.code });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async function handleTerminalFolderGrants(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    writeJson(res, 200, { folderGrantId: folderGrants.issue(result.cwd) });
+    if (!isTerminalAuthorized(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const body = await readJsonBody<TerminalFolderGrantBody>(req);
+    if (!isPlainObject(body) || typeof body.path !== "string") {
+      writeJson(res, 400, { error: "invalid_folder" });
+      return;
+    }
+    try {
+      writeJson(res, 200, { folderGrantId: folderGrants.issue(body.path) });
+    } catch {
+      writeJson(res, 400, { error: "invalid_folder" });
+    }
   }
 
   async function handleTerminalSessions(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -514,19 +544,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    const result = await pickTerminalFolder();
-    if (result.kind === "cancelled") {
-      writeJson(res, 200, { cancelled: true });
+    const body = await readJsonBody<CreateTheaterBody>(req);
+    if (!isPlainObject(body) || typeof body.folderGrantId !== "string") {
+      writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
-    if (result.kind === "error") {
-      writeJson(res, result.error === "invalid_folder" ? 400 : 503, { error: result.error });
+    const cwd = folderGrants.consume(body.folderGrantId);
+    if (!cwd) {
+      writeJson(res, 400, { error: "invalid_folder_grant" });
       return;
     }
-    const theater = await theaters.register(result.cwd);
+    const theater = await theaters.register(cwd);
     let hasWiki = false;
     try {
-      await codex.registerWorkspace(result.cwd);
+      await codex.registerWorkspace(cwd);
       hasWiki = true;
     } catch (error) {
       if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
@@ -994,6 +1025,16 @@ function readOptionalAgentCliId(value: unknown, res: http.ServerResponse): Agent
     writeJson(res, 400, { error: "invalid_agent_cli" });
     return false;
   }
+}
+
+function terminalFolderListStatus(error: TerminalFolderListError): number {
+  if (error.code === "forbidden") return 403;
+  if (error.code === "not_found") return 404;
+  return 400;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {

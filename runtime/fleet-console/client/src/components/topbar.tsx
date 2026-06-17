@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
-import { addTheater, ApiError, forgetTheater } from "../api.js";
+import { addTheater, ApiError, forgetTheater, issueTerminalFolderGrant } from "../api.js";
 import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
+import { DirectoryBrowserModal } from "./directory-browser-modal.js";
 
 interface TopbarProps {
   readonly state: ConsoleState;
@@ -142,6 +143,7 @@ function OperationsModeToggle({ mode }: { readonly mode: OperationsMode }) {
 // Theater 선택과 추가를 하나의 메뉴 컨트롤로 통합한다 — 트리거(현재 Theater) → 팝오버(목록 + 추가 액션).
 function TheaterControl({ state }: { readonly state: ConsoleState }) {
   const [open, setOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -185,13 +187,20 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
 
   const handleAdd = async () => {
     setOpen(false);
+    setBrowserOpen(true);
+  };
+
+  const handleBrowserCancel = () => {
+    setBrowserOpen(false);
+    cancelAddTheater();
+  };
+
+  const handleBrowserConfirm = async (path: string) => {
+    setBrowserOpen(false);
     beginAddTheater();
     try {
-      const result = await addTheater();
-      if ("cancelled" in result) {
-        cancelAddTheater();
-        return;
-      }
+      const folderGrantId = await issueTerminalFolderGrant(path);
+      const result = await addTheater(folderGrantId);
       completeAddTheater(result);
     } catch (error) {
       failAddTheater(error instanceof Error ? error.message : String(error));
@@ -299,6 +308,7 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
           {state.theaterError ? <p className="theater-menu-error">{state.theaterError}</p> : null}
         </div>
       ) : null}
+      <DirectoryBrowserModal open={browserOpen} onCancel={handleBrowserCancel} onConfirm={handleBrowserConfirm} />
     </div>
   );
 }

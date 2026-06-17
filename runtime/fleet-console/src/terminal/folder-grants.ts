@@ -58,8 +58,14 @@ export function createFolderGrantStore(deps: FolderGrantStoreDeps = {}): FolderG
 }
 
 export function validateAbsoluteDirectory(cwd: string, statSync: typeof fs.statSync = fs.statSync): string {
-  if (!path.isAbsolute(cwd)) throw new Error("invalid_folder");
+  if (typeof cwd !== "string" || cwd.length === 0 || cwd.includes("\0")) throw new Error("invalid_folder");
+  if (isWindowsAmbiguousPath(cwd) || !path.isAbsolute(cwd)) throw new Error("invalid_folder");
   const normalized = path.resolve(cwd);
   if (!statSync(normalized).isDirectory()) throw new Error("invalid_folder");
   return normalized;
+}
+
+function isWindowsAmbiguousPath(value: string): boolean {
+  if (process.platform !== "win32") return false;
+  return /^[a-zA-Z]:(?![\\/])/.test(value) || /^[\\/](?![\\/])/.test(value);
 }

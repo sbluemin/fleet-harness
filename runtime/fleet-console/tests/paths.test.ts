@@ -10,7 +10,7 @@ const TEST_UID = 42;
 describe("createConsolePaths", () => {
   it("creates separate default lock directories for local and stable channels", () => {
     const packageRoot = "/repo/runtime/fleet-console";
-    const expectedLocalDir = path.join("/repo", ".fleet", "console");
+    const expectedLocalDir = path.join(path.resolve(packageRoot, "..", ".."), ".fleet", "console");
 
     const local = createConsolePaths({ channel: "local", env: {}, packageRoot, uid: TEST_UID });
     const stable = createConsolePaths({ channel: "stable", env: {}, packageRoot, uid: TEST_UID });

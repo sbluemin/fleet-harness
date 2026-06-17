@@ -4741,6 +4741,220 @@
   letter-spacing: 0.04em;
 }
 
+.directory-browser-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+
+.directory-browser-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
+  backdrop-filter: blur(4px) saturate(120%);
+  cursor: default;
+}
+
+.directory-browser-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  /* Keyboard Shortcuts·Local Shell 오버레이와 동일한 대형 카드 규격(80vw×90vh)으로 맞춘다.
+     작은 카드는 큰 화면에서 scrim 영역이 넓게 노출돼 동일 scrim 값이어도 배경이 비쳐
+     백그라운드 처리가 다르게 보였다. 카드를 표준 규격으로 키워 배경 노출을 제거한다. */
+  width: 80vw;
+  height: 90vh;
+  max-height: 90vh;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 360ms var(--ease-spring) both;
+}
+
+.directory-browser-header {
+  position: relative;
+  flex: none;
+  padding: var(--space-5) calc(var(--space-6) + 34px) var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--surface-rim);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--brass) 10%, transparent), transparent 68%),
+    color-mix(in oklch, var(--ink-mid) 42%, transparent);
+}
+
+.directory-browser-kicker,
+.directory-browser-path,
+.directory-browser-root,
+.directory-browser-button,
+.directory-browser-error,
+.directory-browser-empty,
+.directory-browser-note,
+.directory-browser-row-state {
+  font-family: var(--font-mono);
+}
+
+.directory-browser-kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--brass-bright);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.directory-browser-header h2 {
+  margin: 0;
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.directory-browser-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
+  color: var(--brass-bright);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.directory-browser-body {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-4);
+}
+
+.directory-browser-path {
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
+  color: var(--ink-pearl);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-browser-roots,
+.directory-browser-toolbar,
+.directory-browser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.directory-browser-root,
+.directory-browser-button {
+  min-height: 32px;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
+  color: var(--ink-fog);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.directory-browser-button.is-primary,
+.directory-browser-root:hover,
+.directory-browser-button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 48%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-bright);
+}
+
+.directory-browser-button:disabled {
+  color: var(--ink-rim);
+  cursor: not-allowed;
+}
+
+.directory-browser-error {
+  margin: 0;
+  color: var(--coral);
+  font-size: 11px;
+}
+
+.directory-browser-list {
+  display: grid;
+  /* 대형 카드(80vw)를 채우도록 폴더 항목을 다단으로 배치한다. 좁은 화면에서는 자동으로
+     컬럼 수가 줄어 1열까지 수렴한다(auto-fill + minmax). */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-content: start;
+  gap: 4px var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.directory-browser-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--ink-spectral);
+  text-align: left;
+}
+
+.directory-browser-row:hover:not(:disabled),
+.directory-browser-row.is-selected {
+  border-color: color-mix(in oklch, var(--brass) 30%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  color: var(--ink-pearl);
+}
+
+.directory-browser-row:disabled {
+  color: var(--ink-rim);
+  cursor: not-allowed;
+}
+
+.directory-browser-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-browser-row-state,
+.directory-browser-empty,
+.directory-browser-note {
+  margin: 0;
+  color: var(--ink-fog);
+  font-size: 11px;
+}
+
+.directory-browser-actions {
+  flex: none;
+  justify-content: flex-end;
+  padding: var(--space-4);
+  border-top: 1px solid var(--surface-rim);
+}
+
 /* === GNB 반응형 ladder — 중앙 THEATER 보존 (실측 기반) ===
    .topbar는 minmax(0,1fr) auto minmax(0,1fr)로 중앙 240px THEATER를 양쪽 1fr가 감싸 중앙 정렬한다.
    우측 toolbar(meta)의 고유폭이 한쪽 트랙을 넘으면 중앙 THEATER로 침범하므로, 폭이 줄수록 라벨을

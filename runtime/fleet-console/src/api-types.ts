@@ -110,10 +110,23 @@ export interface ConsoleSessionUpdatedEvent {
   readonly session: ConsoleTerminalSessionInfo;
 }
 
-export interface PickTerminalFolderResponse {
-  readonly folderGrantId?: string;
-  readonly cancelled?: true;
-  readonly error?: "unsupported_platform" | "dialog_unavailable" | "dialog_timeout" | "invalid_folder" | "unauthorized";
+export interface TerminalFolderListEntry {
+  readonly name: string;
+  readonly path: string;
+  readonly kind: "dir";
+  readonly accessible: boolean;
+}
+
+export interface TerminalFolderListResponse {
+  readonly path: string;
+  readonly parentPath: string | null;
+  readonly roots: readonly string[];
+  readonly entries: readonly TerminalFolderListEntry[];
+  readonly truncated?: true;
+}
+
+export interface TerminalFolderGrantResponse {
+  readonly folderGrantId: string;
 }
 
 export interface CreateTerminalSessionRequest {
