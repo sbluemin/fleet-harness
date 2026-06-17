@@ -5,6 +5,8 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-17
+
 ### Added
 - [core] The Fleet Console Operations Map now zooms smoothly with interpolated wheel zoom while panning stays immediate.
 - [core] The Fleet Console Operations Map can open plain user-shell terminal panels in the active Theater's directory; activating one brings it to the front and highlights it as the active panel just like Operation panels, and they are not tracked as Operations or kept across reloads.
