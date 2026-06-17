@@ -4894,15 +4894,16 @@
   z-index: 95;
   display: grid;
   place-items: center;
-  padding: var(--space-5);
+  padding: var(--space-6);
 }
 
 .directory-browser-scrim {
   position: absolute;
   inset: 0;
   border: 0;
-  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
-  backdrop-filter: blur(4px) saturate(120%);
+  /* 카드를 집중형 규격으로 좁힌 만큼, 배경 노출은 더 짙은 scrim으로 막는다(카드 크기로 막던 종전 방식 폐기). */
+  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  backdrop-filter: blur(6px) saturate(118%);
   cursor: default;
 }
 
@@ -4911,49 +4912,57 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  /* Keyboard Shortcuts·Local Shell 오버레이와 동일한 대형 카드 규격(80vw×90vh)으로 맞춘다.
-     작은 카드는 큰 화면에서 scrim 영역이 넓게 노출돼 동일 scrim 값이어도 배경이 비쳐
-     백그라운드 처리가 다르게 보였다. 카드를 표준 규격으로 키워 배경 노출을 제거한다. */
-  width: 80vw;
-  height: 90vh;
-  max-height: 90vh;
+  gap: var(--space-3);
+  /* 피커는 대시보드가 아니라 계기다 — 80vw×90vh 과대 카드 대신 집중형 규격. */
+  width: min(640px, 92vw);
+  height: min(680px, 86vh);
+  padding: var(--space-5) var(--space-5) var(--space-4);
   overflow: hidden;
-  border: 1px solid var(--surface-rim);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
+  background:
+    radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
+    var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating), var(--shadow-anchor);
+  backdrop-filter: blur(20px) saturate(140%);
   animation: codex-rise 360ms var(--ease-spring) both;
 }
 
 .directory-browser-header {
-  position: relative;
   flex: none;
-  padding: var(--space-5) calc(var(--space-6) + 34px) var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--surface-rim);
-  background:
-    linear-gradient(90deg, color-mix(in oklch, var(--brass) 10%, transparent), transparent 68%),
-    color-mix(in oklch, var(--ink-mid) 42%, transparent);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
 }
 
-.directory-browser-kicker,
-.directory-browser-path,
-.directory-browser-root,
-.directory-browser-button,
-.directory-browser-error,
-.directory-browser-empty,
-.directory-browser-note,
-.directory-browser-row-state {
-  font-family: var(--font-mono);
+.directory-browser-sigil {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in oklch, var(--brass) 38%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-bright);
+}
+
+.directory-browser-sigil svg {
+  width: 22px;
+  height: 22px;
+}
+
+.directory-browser-heading {
+  min-width: 0;
 }
 
 .directory-browser-kicker {
   display: block;
-  margin-bottom: var(--space-1);
   color: var(--brass-bright);
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
@@ -4961,77 +4970,388 @@
   margin: 0;
   color: var(--ink-pearl);
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 23px;
   font-weight: 560;
   letter-spacing: 0;
+  line-height: 1.1;
 }
 
 .directory-browser-close {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
   display: grid;
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
-  color: var(--brass-bright);
+  color: var(--ink-fog);
   font-size: 18px;
   line-height: 1;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
 }
 
-.directory-browser-body {
-  flex: 1;
-  display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
-  gap: var(--space-3);
-  min-height: 0;
-  padding: var(--space-4);
+.directory-browser-close:hover {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  color: var(--brass-bright);
 }
 
-.directory-browser-path {
-  overflow: hidden;
-  padding: var(--space-3);
+/* 항로(course) breadcrumb — 죽은 path 스트립을 대체하는 클릭형 경로 마디. */
+.directory-browser-course {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
+  background: color-mix(in oklch, var(--ink-deep) 55%, transparent);
+}
+
+.directory-browser-course-seg {
+  display: inline-flex;
+  align-items: center;
+}
+
+.directory-browser-course-sep {
+  margin: 0 1px;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.directory-browser-crumb {
+  max-width: 220px;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-crumb:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-bright);
+}
+
+.directory-browser-crumb.is-current {
   color: var(--ink-pearl);
+  font-weight: 600;
+  cursor: default;
+}
+
+.directory-browser-toolbar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.directory-browser-filter {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
+  transition: border-color var(--duration-fast) var(--ease-glide), box-shadow var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-filter:focus-within {
+  border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.directory-browser-filter-glyph {
+  display: grid;
+  place-items: center;
+  color: var(--ink-rim);
+}
+
+.directory-browser-filter-glyph svg {
+  width: 15px;
+  height: 15px;
+}
+
+.directory-browser-filter-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.directory-browser-filter-input::placeholder {
+  color: var(--ink-rim);
+}
+
+.directory-browser-filter-input:focus {
+  outline: none;
+}
+
+.directory-browser-up {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-up svg {
+  width: 14px;
+  height: 14px;
+}
+
+.directory-browser-up:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
+.directory-browser-up:disabled {
+  color: var(--ink-rim);
+  cursor: not-allowed;
+}
+
+.directory-browser-error {
+  flex: none;
+  margin: 0;
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* sector 리스트 — 단일 컬럼 스캔형 + 옅은 해도(chart) 좌표 그리드 텍스처. */
+.directory-browser-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background-color: color-mix(in oklch, var(--ink-abyss) 32%, transparent);
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--brass) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--brass) 5%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px;
+  overflow-y: auto;
+}
+
+.directory-browser-sector {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 9px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink-spectral);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-sector-glyph {
+  display: grid;
+  place-items: center;
+  color: var(--ink-rim);
+  transition: color var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-sector-glyph svg {
+  width: 18px;
+  height: 18px;
+}
+
+.directory-browser-sector-name {
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-browser-sector-advance {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  opacity: 0;
+  transform: translateX(-3px);
+  transition: opacity var(--duration-fast) var(--ease-glide), transform var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-sector:hover,
+.directory-browser-sector.is-active {
+  border-color: color-mix(in oklch, var(--brass) 34%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--ink-pearl);
+}
+
+.directory-browser-sector:hover .directory-browser-sector-glyph,
+.directory-browser-sector.is-active .directory-browser-sector-glyph {
+  color: var(--brass-bright);
+}
+
+.directory-browser-sector:hover .directory-browser-sector-advance,
+.directory-browser-sector.is-active .directory-browser-sector-advance {
+  color: var(--brass-bright);
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.directory-browser-sector.is-locked {
+  color: var(--ink-rim);
+  cursor: not-allowed;
+}
+
+.directory-browser-sector.is-locked:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-rim);
+}
+
+.directory-browser-sector.is-locked .directory-browser-sector-glyph {
+  color: var(--ink-veil);
+}
+
+.directory-browser-sector-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.directory-browser-sector-lock svg {
+  width: 13px;
+  height: 13px;
+}
+
+.directory-browser-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4) var(--space-3);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.directory-browser-state.is-live {
+  color: var(--aurora);
+}
+
+.directory-browser-scan-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--aurora);
+  box-shadow: 0 0 0 0 var(--aurora-glow);
+  animation: aurora-pulse 1.4s var(--ease-glide) infinite;
+}
+
+.directory-browser-note {
+  flex: none;
+  margin: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.directory-browser-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.directory-browser-target {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.directory-browser-target-label {
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.directory-browser-target-path {
+  overflow: hidden;
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.directory-browser-roots,
-.directory-browser-toolbar,
-.directory-browser-actions {
+.directory-browser-buttons {
+  flex: none;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-2);
 }
 
-.directory-browser-root,
 .directory-browser-button {
-  min-height: 32px;
-  padding: 6px var(--space-3);
+  min-height: 36px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
   color: var(--ink-fog);
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
 
-.directory-browser-button.is-primary,
-.directory-browser-root:hover,
 .directory-browser-button:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--brass) 48%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
   color: var(--brass-bright);
+}
+
+.directory-browser-button.is-primary {
+  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-bright);
+}
+
+.directory-browser-button.is-primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
 }
 
 .directory-browser-button:disabled {
@@ -5039,67 +5359,10 @@
   cursor: not-allowed;
 }
 
-.directory-browser-error {
-  margin: 0;
-  color: var(--coral);
-  font-size: 11px;
-}
-
-.directory-browser-list {
-  display: grid;
-  /* 대형 카드(80vw)를 채우도록 폴더 항목을 다단으로 배치한다. 좁은 화면에서는 자동으로
-     컬럼 수가 줄어 1열까지 수렴한다(auto-fill + minmax). */
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  align-content: start;
-  gap: 4px var(--space-2);
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.directory-browser-row {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 10px var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  color: var(--ink-spectral);
-  text-align: left;
-}
-
-.directory-browser-row:hover:not(:disabled),
-.directory-browser-row.is-selected {
-  border-color: color-mix(in oklch, var(--brass) 30%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--ink-pearl);
-}
-
-.directory-browser-row:disabled {
-  color: var(--ink-rim);
-  cursor: not-allowed;
-}
-
-.directory-browser-row-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.directory-browser-row-state,
-.directory-browser-empty,
-.directory-browser-note {
-  margin: 0;
-  color: var(--ink-fog);
-  font-size: 11px;
-}
-
-.directory-browser-actions {
-  flex: none;
-  justify-content: flex-end;
-  padding: var(--space-4);
-  border-top: 1px solid var(--surface-rim);
+@media (prefers-reduced-motion: reduce) {
+  .directory-browser-card { animation: none; }
+  .directory-browser-scan-dot { animation: none; }
+  .directory-browser-sector-advance { transition: none; }
 }
 
 /* === GNB 반응형 ladder — 중앙 THEATER 보존 (실측 기반) ===
