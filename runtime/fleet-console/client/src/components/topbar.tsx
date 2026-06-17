@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
-import { addTheater, forgetTheater } from "../api.js";
+import { addTheater, ApiError, forgetTheater } from "../api.js";
 import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
@@ -205,6 +205,11 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
       await forgetTheater(active.id);
       removeTheater(active.id);
     } catch (error) {
+      // 서버에 이미 없는 Theater(404)는 forget 목표가 이미 달성된 상태다 → 로컬 목록에서도 제거해 유령 항목이 남지 않게 한다.
+      if (error instanceof ApiError && error.status === 404) {
+        removeTheater(active.id);
+        return;
+      }
       failAddTheater(error instanceof Error ? error.message : String(error));
     }
   };

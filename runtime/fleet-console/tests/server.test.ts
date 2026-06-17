@@ -1712,6 +1712,33 @@ describe("console static and terminal ticket boundary", () => {
   });
 });
 
+describe("observer theater forget", () => {
+  it("forgets a Theater whose directory was deleted on disk", async () => {
+    const theaterDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-forget-deleted-"));
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: theaterDir }),
+    });
+    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+
+    // 사용자 시나리오: 추가된 Theater의 디렉터리가 파일시스템에서 사라진 뒤 forget을 수행한다.
+    fs.rmSync(theaterDir, { recursive: true, force: true });
+
+    const forget = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    expect(forget.status).toBe(200);
+
+    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}observer/theaters`);
+    expect(remaining.theaters).toEqual([]);
+  });
+
+  it("treats forget of an unknown/already-removed Theater as success (idempotent DELETE)", async () => {
+    const fixture = await startFixture();
+
+    const forget = await fetch(`${fixture.endpoint}observer/theaters/deadbeefdead`, { method: "DELETE" });
+    expect(forget.status).toBe(200);
+    expect(await forget.json()).toEqual({ ok: true });
+  });
+});
+
 async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
   readonly beforeCreateServer?: (paths: { readonly carrierStoreDir: string }) => void;

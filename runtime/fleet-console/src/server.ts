@@ -547,11 +547,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     const operations = observability.listDurableOperations().filter((operation) => operation.theaterId === theaterId);
-    const removed = theaters.remove(theaterId);
-    if (!removed) {
-      writeJson(res, 404, { error: "theater_not_found" });
-      return;
-    }
+    // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
+    // 이미 달성된 것이므로 404가 아닌 성공으로 처리하고, 남아 있을 수 있는 소속 Operation도 함께 정리한다.
+    theaters.remove(theaterId);
     for (const operation of operations) forgetTerminalSession(operation.sessionId, { persist: false });
     persistDurableState();
     writeJson(res, 200, { ok: true });
