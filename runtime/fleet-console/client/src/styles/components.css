@@ -1306,47 +1306,106 @@
   color: var(--ink-fog);
 }
 
-/* 우하단 캔버스 미니맵 — 패널 분포와 현재 뷰포트 위치를 한눈에 보여주고, 드래그로 이동한다. */
+/* 우하단 캔버스 미니맵 — 해군 레이더 스코프. 심해 글래스 위에 동심 링/그리드 텍스처를 깔고
+   현재 뷰포트를 발광 브래스 렌즈로 표시한다(브래스="보는 곳", 아우로라="살아있는 셸"). */
 .canvas-minimap {
   position: absolute;
   right: var(--space-4);
   bottom: var(--space-4);
   z-index: 14;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 82%, var(--ink-deep));
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(130% 100% at 50% 0%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 62%),
+    color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  box-shadow:
+    var(--shadow-floating),
+    inset 0 1px 0 color-mix(in oklch, var(--brass) 24%, transparent);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
   overflow: hidden;
+  animation: codex-rise 520ms var(--ease-spring) both;
+}
+
+/* 계기 캡션 — JetBrains Mono 대문자 트래킹. */
+.canvas-minimap-label {
+  position: absolute;
+  top: 7px;
+  left: 12px;
+  z-index: 3;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--brass-bright) 78%, var(--ink-fog));
+  pointer-events: none;
 }
 
 .canvas-minimap-inner {
   position: absolute;
+  border-radius: var(--radius-md);
+  overflow: hidden;
   cursor: crosshair;
   touch-action: none;
+  background:
+    radial-gradient(ellipse at 50% 48%, color-mix(in oklch, var(--ink-deep) 50%, transparent), transparent 72%),
+    linear-gradient(150deg, color-mix(in oklch, var(--ink-deep) 38%, transparent), transparent 70%);
 }
 
-/* Operation 패널 마커 — 중립 톤(브래스/아우로라 역할과 섞지 않는다). */
+/* 동심 레이더 링(구조 장식=브래스). */
+.canvas-minimap-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-radial-gradient(
+    circle at 50% 50%,
+    transparent 0 15px,
+    color-mix(in oklch, var(--brass) 11%, transparent) 15px 16px
+  );
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* 미세 그리드 점 — 캔버스 그리드와 동일 언어(아우로라). */
+.canvas-minimap-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, color-mix(in oklch, var(--aurora) 16%, transparent) 0.5px, transparent 1px);
+  background-size: 13px 13px;
+  opacity: 0.32;
+  pointer-events: none;
+}
+
+/* Operation 패널 블립 — 중립 진주 톤 글래스(브래스/아우로라 역할과 섞지 않는다). */
 .canvas-minimap-panel {
   position: absolute;
-  border-radius: 2px;
-  background: color-mix(in oklch, var(--ink-fog) 30%, transparent);
-  border: 1px solid color-mix(in oklch, var(--ink-fog) 52%, transparent);
+  z-index: 1;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--ink-pearl) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-pearl) 40%, transparent);
+  box-shadow: 0 0 7px color-mix(in oklch, var(--ink-rim) 45%, transparent);
 }
 
-/* 순정 셸 패널 마커 — '살아있는 것' 아우로라. */
+/* 순정 셸 블립 — '살아있는 것' 아우로라 발광. */
 .canvas-minimap-panel.is-shell {
-  background: color-mix(in oklch, var(--aurora) 26%, transparent);
-  border-color: color-mix(in oklch, var(--aurora) 52%, transparent);
+  background: color-mix(in oklch, var(--aurora) 22%, transparent);
+  border-color: color-mix(in oklch, var(--aurora) 58%, transparent);
+  box-shadow: 0 0 9px color-mix(in oklch, var(--aurora) 38%, transparent);
 }
 
-/* 현재 뷰포트 인디케이터 — '지금 보고 있는 곳' 브래스. */
+/* 현재 뷰포트 렌즈 — '지금 보고 있는 곳' 발광 브래스 스코프. */
 .canvas-minimap-view {
   position: absolute;
-  border: 1px solid color-mix(in oklch, var(--brass-bright) 72%, transparent);
-  border-radius: 2px;
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  z-index: 2;
+  border: 1.5px solid color-mix(in oklch, var(--brass-bright) 80%, transparent);
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--brass) 13%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--brass) 22%, transparent),
+    0 0 14px color-mix(in oklch, var(--brass) 32%, transparent),
+    inset 0 0 12px color-mix(in oklch, var(--brass) 18%, transparent);
   pointer-events: none;
 }
 

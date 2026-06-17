@@ -22,9 +22,9 @@ interface MiniRect {
   readonly height: number;
 }
 
-const MINIMAP_WIDTH = 200;
-const MINIMAP_HEIGHT = 132;
-const MINIMAP_PADDING = 10;
+const MINIMAP_WIDTH = 256;
+const MINIMAP_HEIGHT = 176;
+const MINIMAP_PADDING = 12;
 // 패널/뷰포트 묶음 주변에 두는 world 여유 — 가장자리에 붙지 않게 한다.
 const WORLD_MARGIN = 220;
 
@@ -102,6 +102,7 @@ export function CanvasMinimap({ panels, shellPanels, viewport, canvasSize, onJum
 
   return (
     <div className="canvas-minimap" data-canvas-blocker style={{ width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }}>
+      <span className="canvas-minimap-label" aria-hidden="true">Radar</span>
       <div
         ref={innerRef}
         className="canvas-minimap-inner"
