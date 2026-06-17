@@ -24,6 +24,8 @@ interface TerminalSession {
   activeSocket: TerminalSocket | null;
   cols: number;
   rows: number;
+  // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
+  graceTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface KillSessionOptions {
@@ -35,6 +37,10 @@ const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 const DEFAULT_SCROLLBACK_LIMIT = 512;
 const WS_OPEN_STATE = 1;
+// 캔버스 순정 셸 패널 세션 id 접두사(싱글톤 오버레이 "shell"과 구별).
+const THEATER_SHELL_SESSION_PREFIX = "shell:";
+// theater-shell 소켓 단절 후 PTY를 정리하기까지의 유예(일시적 WS 끊김 재연결을 흡수).
+const THEATER_SHELL_DETACH_GRACE_MS = 4_000;
 
 export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): TerminalSessionManager {
   const startShell = deps.startShell ?? startTerminalShell;
@@ -49,6 +55,8 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   async function attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void> {
     const session = await getOrCreateSession(context);
+    // (재)연결이 들어오면 theater-shell 정리 grace 타이머를 취소한다.
+    clearGraceTimer(session);
     if (session.activeSocket && session.activeSocket !== socket) {
       session.activeSocket.close(4000, "terminal_replaced");
     }
@@ -138,6 +146,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       activeSocket: null,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
+      graceTimer: null,
     };
     const dataDisposable = pty.onData((data) => handlePtyData(session, data));
     // 자연종료 후에도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
@@ -183,6 +192,15 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     // 죽은 소켓으로의 전송을 막고, 출력은 scrollback에 계속 쌓여 재연결 시 attach가 그대로 재생한다.
     // PTY는 오직 PTY 자가종료·운영자 terminate·서버 stop에서만 죽는다(자동 종료 grace 타이머는 제거됨).
     session.activeSocket = null;
+    // 예외: theater-shell(캔버스 순정 셸)은 "상태 미유지" 요구에 따라 소켓 단절 후 짧은 grace 뒤 PTY를 정리한다.
+    // 패널 닫기·새로고침이 이 경로로 흘러 orphan PTY를 막는다. 재연결이 들어오면 attach가 타이머를 취소한다.
+    if (isTheaterShell(session.id)) {
+      clearGraceTimer(session);
+      session.graceTimer = setTimeout(() => {
+        session.graceTimer = null;
+        if (session.activeSocket === null) removeSession(session);
+      }, THEATER_SHELL_DETACH_GRACE_MS);
+    }
   }
 
   function replayScrollback(session: TerminalSession, socket: TerminalSocket): void {
@@ -202,6 +220,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   async function killSession(session: TerminalSession, options: KillSessionOptions = {}): Promise<void> {
     const killPty = options.killPty ?? true;
+    clearGraceTimer(session);
     session.activeSocket?.close(4001, "terminal_closed");
     session.activeSocket = null;
     for (const disposable of session.disposables) disposable.dispose();
@@ -229,6 +248,16 @@ function killPtyBestEffort(pty: TerminalPtyHandle): void {
   } catch {
     // Teardown-only cleanup: kill failures must not block session exit or launch cleanup.
   }
+}
+
+function isTheaterShell(sessionId: string): boolean {
+  return sessionId.startsWith(THEATER_SHELL_SESSION_PREFIX);
+}
+
+function clearGraceTimer(session: TerminalSession): void {
+  if (session.graceTimer === null) return;
+  clearTimeout(session.graceTimer);
+  session.graceTimer = null;
 }
 
 function toBuffer(data: TerminalSocketData): Buffer {

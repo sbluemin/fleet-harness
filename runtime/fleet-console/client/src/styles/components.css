@@ -1285,6 +1285,27 @@
   height: 19px;
 }
 
+/* 맵 최대화 토글 — 레이더(배경 애니메이션) 토글 바로 왼쪽에 같은 칩 스타일로 배치한다. */
+.canvas-maximize-toggle {
+  right: calc(var(--space-4) + 36px + var(--space-2));
+}
+
+/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
+.canvas-panel--shell .canvas-panel-titlebar {
+  background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
+}
+
+/* 우클릭 캔버스 컨텍스트 메뉴의 그룹(섹션) 라벨. */
+.canvas-context-menu-group {
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-fog);
+}
+
 @keyframes radar-sweep {
   from {
     transform: translate(-50%, -50%) rotate(0deg);
@@ -1324,11 +1345,11 @@
     0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-/* 진행 중 캐리어 스트림을 패널 바깥 위에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
-   인라인으로 받고, translateY로 자기 높이만큼 위로 올려 터미널을 가리지 않게 패널 상단 위에 정렬한다. */
+/* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
+   인라인으로 받고(top=패널 하단 모서리), translateY로 작은 간격만큼 아래로 내려 패널 하단에 정렬한다. */
 .canvas-panel-jobdock {
   position: absolute;
-  transform: translateY(calc(-100% - var(--space-2)));
+  transform: translateY(var(--space-2));
   box-sizing: border-box;
   max-height: 40vh;
   overflow-y: auto;
@@ -1633,9 +1654,44 @@
   animation: codex-rise 520ms var(--ease-spring) both;
 }
 
+/* 접힘: OPERATIONS 패널은 렌더되지 않고, 화면 왼쪽 세로 중앙에 펼치기 버튼만 떠 있는다. */
 .floating-sidebar-layer.is-collapsed {
   width: auto;
-  bottom: auto;
+  display: flex;
+  align-items: center;
+}
+
+.floating-sidebar-collapsed-toggle {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 46px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
+  color: var(--brass);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 520ms var(--ease-spring) both;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.floating-sidebar-collapsed-toggle:hover,
+.floating-sidebar-collapsed-toggle:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
+}
+
+.floating-sidebar-collapsed-toggle svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .floating-sidebar-heading {

@@ -1,6 +1,8 @@
 import { useEffect } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import { setMaximized, useMaximized } from "./canvas/canvas-store.js";
+import { useOperationsMode } from "./operations-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
@@ -21,10 +23,29 @@ const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 
 export function App() {
   const state = useConsoleState();
+  const pathname = useLocation().pathname;
+  const maximized = useMaximized();
+  const operationsMode = useOperationsMode();
+  // 최대화는 localStorage에 영속되지만, GNB 숨김은 Map(canvas) Operations 화면에서만 적용한다 —
+  // 다른 라우트(Welcome/Codex/Helm)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
+  const maximizedActive = maximized && pathname.startsWith("/operations") && operationsMode === "canvas";
 
   useEffect(() => {
     return startObserverConnection();
   }, []);
+
+  // 최대화 중 Esc로 해제한다. 단, 상위 모달(셸 오버레이·검색·단축키)이나 열린 메뉴가 있으면 그쪽 Esc에 양보한다.
+  useEffect(() => {
+    if (!maximizedActive) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (state.shellOpen || state.operationSearchOpen || state.shortcutsOpen) return;
+      if (document.querySelector('[role="menu"], [role="dialog"]')) return;
+      setMaximized(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [maximizedActive, state.shellOpen, state.operationSearchOpen, state.shortcutsOpen]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -79,7 +100,7 @@ export function App() {
   }, []);
 
   return (
-    <div className="console-shell">
+    <div className={`console-shell ${maximizedActive ? "is-maximized" : ""}`}>
       <Topbar state={state} />
       <Routes>
         <Route path="/" element={<Welcome state={state} />} />

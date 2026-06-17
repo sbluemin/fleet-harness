@@ -13,6 +13,8 @@ import type { ThemeId } from "../types.js";
 interface TerminalProps {
   readonly sessionId: string;
   readonly kind?: "shell";
+  // theater-shell 패널에서만 지정 — Theater cwd 셸 ticket 발급에 쓰인다.
+  readonly theaterId?: string;
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
@@ -78,7 +80,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(95% 0.003 250)",
 };
 
-export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
+export function Terminal({ sessionId, kind, theaterId, onExit, active }: TerminalProps) {
   const { activeTheme, terminalRenderer } = useConsoleState();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
@@ -121,6 +123,7 @@ export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
     const connection = createTerminalConnection({
       sessionId,
       kind,
+      theaterId,
       terminal,
       onExit: () => onExitRef.current?.(),
       onStatus: (nextStatus, message) => {
@@ -181,7 +184,7 @@ export function Terminal({ sessionId, kind, onExit, active }: TerminalProps) {
         // xterm 내부 dispose 버그(위 주석)를 흡수한다.
       }
     };
-  }, [kind, sessionId]);
+  }, [kind, sessionId, theaterId]);
 
   // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 줘
   // 마우스 클릭 없이 바로 입력되게 한다. 비활성 전환에서는 아무 것도 하지 않는다.

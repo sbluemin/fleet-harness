@@ -140,7 +140,7 @@ function PlusIcon() {
   );
 }
 
-function agentCliIcon(id: string) {
+export function agentCliIcon(id: string) {
   // Agent CLI별로 시각 구별 마크를 부여한다: Claude=스파크, Claude Kimi=초승달, Codex=꺾쇠.
   if (id === "claude") return <ClaudeMarkIcon />;
   if (id === "claude-kimi") return <ClaudeKimiMarkIcon />;

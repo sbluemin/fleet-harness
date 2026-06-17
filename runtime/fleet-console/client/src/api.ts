@@ -2,6 +2,8 @@ import type { AgentCliMetadata, CarrierReadinessEntry, ObservedTenant, ObserverS
 
 export interface TerminalTicketOptions {
   readonly kind?: "shell";
+  // theater-shell(shell:<seq>) 티켓에서만 사용 — 서버가 이 id로 Theater 디렉터리를 cwd로 해석한다(raw 경로는 클라이언트에 없음).
+  readonly theaterId?: string;
   readonly signal?: AbortSignal;
 }
 
@@ -146,7 +148,11 @@ export async function requestTerminalTicket(sessionId: string, options?: AbortSi
   const response = await fetch("/terminal/ticket", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, ...(ticketOptions.kind ? { kind: ticketOptions.kind } : {}) }),
+    body: JSON.stringify({
+      sessionId,
+      ...(ticketOptions.kind ? { kind: ticketOptions.kind } : {}),
+      ...(ticketOptions.theaterId ? { theaterId: ticketOptions.theaterId } : {}),
+    }),
     signal: ticketOptions.signal,
   });
   await assertOk(response);

@@ -5,8 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+- [core] The Fleet Console Operations Map now zooms smoothly with interpolated wheel zoom while panning stays immediate.
+- [core] The Fleet Console Operations Map can open plain user-shell terminal panels in the active Theater's directory; they are not tracked as Operations and are not kept across reloads.
+- [core] The Fleet Console Operations Map adds a right-click canvas menu to start a new Operation, open a shell, or reset the view at the cursor position.
+- [core] Fleet Console Operations Map panels can now be focused by double-clicking their title tab, in addition to the focus button.
+- [core] The Fleet Console Operations Map adds a maximize control next to the radar toggle that hides the global navigation bar with an animation; exit with the control or Esc, remembered per browser.
+
 ### Changed
 - [core] The Fleet Console Operations radar sweep animation now consumes far less CPU and pauses automatically while the browser tab is hidden.
+- [core] The Fleet Console Operations Map now shows each panel's in-progress carrier job stream below the panel instead of above it.
+- [core] Collapsing the Fleet Console Operations Map sidebar now hides the whole panel, leaving only a fixed expand control on the left edge.
 
 ### Fixed
 - [core] The Fleet Console global navigation bar no longer overlaps the centered Theater selector with the toolbar at narrower window widths; the toolbar now progressively collapses its labels to icons and wraps onto a second row as the window shrinks, keeping the Theater selector centered.

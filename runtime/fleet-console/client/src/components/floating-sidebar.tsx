@@ -62,8 +62,26 @@ export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps
     }
   };
 
+  // 접힘: OPERATIONS 패널 전체를 제거하고, 화면 왼쪽에 고정된 펼치기 버튼만 남긴다.
+  if (collapsed) {
+    return (
+      <aside className="floating-sidebar-layer is-collapsed" data-canvas-blocker>
+        <button
+          type="button"
+          className="floating-sidebar-collapsed-toggle"
+          onClick={() => setCollapsed(false)}
+          aria-expanded={false}
+          aria-label="Operations 목록 펼치기"
+          title="Show Operations"
+        >
+          <ExpandListIcon />
+        </button>
+      </aside>
+    );
+  }
+
   return (
-    <aside className={`floating-sidebar-layer ${collapsed ? "is-collapsed" : ""}`} data-canvas-blocker>
+    <aside className="floating-sidebar-layer" data-canvas-blocker>
       <section className="floating-sidebar" aria-label="Floating operations list">
         <div className="floating-sidebar-heading">
           <p className="sidebar-eyebrow">Operations</p>
@@ -72,43 +90,39 @@ export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps
             <button
               type="button"
               className="floating-sidebar-toggle"
-              onClick={() => setCollapsed((value) => !value)}
-              aria-expanded={!collapsed}
-              aria-label={collapsed ? "Operations 목록 펼치기" : "Operations 목록 접기"}
+              onClick={() => setCollapsed(true)}
+              aria-expanded={true}
+              aria-label="Operations 목록 접기"
             >
-              {collapsed ? <ExpandListIcon /> : <CollapseListIcon />}
+              <CollapseListIcon />
             </button>
           </div>
         </div>
-        {!collapsed ? (
-          <>
-            {visibleSessionOrder.length > 0 ? (
-              <ol className="floating-session-list">
-                {visibleSessionOrder.map((sessionId) => {
-                  const session = state.sessions[sessionId];
-                  if (!session) return null;
-                  return (
-                    <FloatingSessionEntry
-                      key={sessionId}
-                      session={session}
-                      active={state.activeTerminalSessionId === sessionId}
-                      jobs={sessionJobs(state, session)}
-                      selectedJobId={state.selectedJobId}
-                      onFocus={focusSession}
-                    />
-                  );
-                })}
-              </ol>
-            ) : null}
-            {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
-            {visibleSessionOrder.length === 0 ? (
-              <p className="sidebar-empty">
-                {state.activeTheaterId ? "No operations in this Theater." : "No Theaters registered."}
-                <br />
-                {state.activeTheaterId ? "Drag on the canvas or use +." : "Add a Theater from the top bar."}
-              </p>
-            ) : null}
-          </>
+        {visibleSessionOrder.length > 0 ? (
+          <ol className="floating-session-list">
+            {visibleSessionOrder.map((sessionId) => {
+              const session = state.sessions[sessionId];
+              if (!session) return null;
+              return (
+                <FloatingSessionEntry
+                  key={sessionId}
+                  session={session}
+                  active={state.activeTerminalSessionId === sessionId}
+                  jobs={sessionJobs(state, session)}
+                  selectedJobId={state.selectedJobId}
+                  onFocus={focusSession}
+                />
+              );
+            })}
+          </ol>
+        ) : null}
+        {state.terminalSessionError ? <p className="sidebar-error">{state.terminalSessionError}</p> : null}
+        {visibleSessionOrder.length === 0 ? (
+          <p className="sidebar-empty">
+            {state.activeTheaterId ? "No operations in this Theater." : "No Theaters registered."}
+            <br />
+            {state.activeTheaterId ? "Drag on the canvas or use +." : "Add a Theater from the top bar."}
+          </p>
         ) : null}
       </section>
     </aside>

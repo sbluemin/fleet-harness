@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
+import { clearShellPanels } from "../canvas/shell-panels.js";
 import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { FloatingSidebar } from "../components/floating-sidebar.js";
@@ -21,6 +22,8 @@ export function Operations({ state }: OperationsProps) {
 
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
+    // Theater가 바뀌면 이전 Theater cwd에 묶인 ephemeral 셸 패널을 비운다(언마운트 → 백엔드 grace 정리).
+    clearShellPanels();
   }, [state.activeTheaterId]);
 
   useEffect(() => {

@@ -4,6 +4,27 @@
   height: 100%;
   padding: var(--space-4);
   gap: var(--space-4);
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-spring),
+    gap var(--duration-slow) var(--ease-spring),
+    padding var(--duration-slow) var(--ease-spring);
+}
+
+/* 맵 최대화: GNB(topbar) 행을 0으로 접고 셸 여백을 없애 캔버스를 전체로 채운다(app.tsx가 Map canvas 화면에서만 부여). */
+.console-shell.is-maximized {
+  grid-template-rows: 0 minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.console-shell.is-maximized .topbar {
+  /* codex-rise 첫-페인트 애니메이션이 both fill로 opacity/transform 끝상태를 잡고 있어
+     이를 해제해야 아래 fade+slide가 .topbar transition을 타고 적용된다. */
+  animation: none;
+  opacity: 0;
+  transform: translateY(-12px);
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .console-body {
@@ -122,6 +143,9 @@
 
 .topbar {
   animation-delay: 40ms;
+  transition:
+    opacity var(--duration-base) ease,
+    transform var(--duration-slow) var(--ease-spring);
 }
 
 .operations-sidebar {
