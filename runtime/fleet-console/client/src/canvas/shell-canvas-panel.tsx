@@ -2,16 +2,17 @@ import { useRef, type PointerEvent as ReactPointerEvent, type WheelEvent as Reac
 
 import { terminateTerminalSession } from "../api.js";
 import { Terminal } from "../components/terminal.js";
-import { failTerminateTerminalSession } from "../store.js";
-import type { CanvasViewport, PanelGeometry } from "./canvas-store.js";
+import { failTerminateTerminalSession, selectTerminalSession } from "../store.js";
+import { claimTopZIndex, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
-import { removeShellPanel, setShellPanelGeometry } from "./shell-panels.js";
+import { removeShellPanel, setActiveShellPanel, setShellPanelGeometry } from "./shell-panels.js";
 
 interface ShellCanvasPanelProps {
   readonly id: string;
   readonly theaterId: string;
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
+  readonly active: boolean;
 }
 
 interface DragState {
@@ -21,11 +22,15 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function ShellCanvasPanel({ id, theaterId, geometry, viewport }: ShellCanvasPanelProps) {
+export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active }: ShellCanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
 
+  // 활성화: ① Operations 선택 해제(상호배타 — selectTerminalSession(null)) ② 이 셸을 활성으로 표시
+  // ③ 공유 z 카운터에서 최상단 값을 받아 맨 앞으로. 종류와 무관하게 활성화한 패널이 맨 앞·하이라이트된다.
   const bringToFront = () => {
-    setShellPanelGeometry(id, { ...geometry, zIndex: Date.now() });
+    selectTerminalSession(null);
+    setActiveShellPanel(id);
+    setShellPanelGeometry(id, { ...geometry, zIndex: claimTopZIndex() });
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -80,7 +85,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport }: ShellCan
 
   return (
     <article
-      className="canvas-panel canvas-panel--shell"
+      className={`canvas-panel canvas-panel--shell ${active ? "is-active" : ""}`}
       style={{
         left: geometry.x,
         top: geometry.y,

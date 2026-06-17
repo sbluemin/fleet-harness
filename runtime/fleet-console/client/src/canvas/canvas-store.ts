@@ -55,6 +55,9 @@ let maximized = readStoredMaximized();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
+// 모든 패널(Operations + 셸)이 공유하는 단조 증가 z-index 발급기.
+// 두 레지스트리가 같은 카운터에서 값을 받아 "활성화한 패널이 최상단"이 패널 종류를 가로질러 성립한다.
+let topZIndex = 0;
 
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);
@@ -109,12 +112,19 @@ export function animateViewportTo(viewport: CanvasViewport): void {
 }
 
 export function setPanelGeometry(sessionId: string, geometry: PanelGeometry): void {
+  const zIndex = claimTopZIndex();
   setState({
     panels: {
       ...state.panels,
-      [sessionId]: { ...normalizePanelGeometry(geometry, nextZIndex()), zIndex: nextZIndex() },
+      [sessionId]: { ...normalizePanelGeometry(geometry, zIndex), zIndex },
     },
   });
+}
+
+// 공유 z-index 카운터에서 다음 최상단 값을 발급한다(Operations·셸 공통). 패널을 활성화·생성할 때 호출한다.
+export function claimTopZIndex(): number {
+  topZIndex += 1;
+  return topZIndex;
 }
 
 export function ensureDefaultGeometry(sessionId: string): PanelGeometry {
@@ -126,9 +136,9 @@ export function ensureDefaultGeometry(sessionId: string): PanelGeometry {
     y: index * DEFAULT_PANEL_OFFSET,
     width: DEFAULT_PANEL_WIDTH,
     height: DEFAULT_PANEL_HEIGHT,
-    zIndex: nextZIndex(),
+    zIndex: claimTopZIndex(),
   };
-  setPanelGeometry(sessionId, geometry);
+  setState({ panels: { ...state.panels, [sessionId]: geometry } });
   return geometry;
 }
 
@@ -152,6 +162,8 @@ export function loadForTheater(theaterId: string | null): void {
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
   targetViewport = state.viewport;
+  // 복원된 패널의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
+  topZIndex = Math.max(topZIndex, maxZIndexOf(state.panels));
   emit();
 }
 
@@ -170,11 +182,12 @@ export function focusPanel(sessionId: string, viewportSize: CanvasViewportSize):
   // 진행 중 줌 보간을 취소하고 target을 포커스 결과로 맞춰, 마지막 tween 프레임이 포커스를 되돌리지 못하게 한다.
   cancelZoomTween();
   targetViewport = focusedViewport;
+  const zIndex = claimTopZIndex();
   setState({
     viewport: focusedViewport,
     panels: {
       ...state.panels,
-      [sessionId]: { ...normalizePanelGeometry(geometry, nextZIndex()), zIndex: nextZIndex() },
+      [sessionId]: { ...normalizePanelGeometry(geometry, zIndex), zIndex },
     },
   });
 }
@@ -393,12 +406,12 @@ function normalizePanelGeometry(value: unknown, fallbackZIndex: number): PanelGe
   };
 }
 
-function nextZIndex(): number {
-  return nextZIndexForPanels(state.panels);
+function nextZIndexForPanels(panels: Record<string, PanelGeometry>): number {
+  return maxZIndexOf(panels) + 1;
 }
 
-function nextZIndexForPanels(panels: Record<string, PanelGeometry>): number {
-  return Math.max(0, ...Object.values(panels).map((panel) => panel.zIndex)) + 1;
+function maxZIndexOf(panels: Record<string, PanelGeometry>): number {
+  return Math.max(0, ...Object.values(panels).map((panel) => panel.zIndex));
 }
 
 function readFiniteNumber(value: unknown, fallback: number): number {

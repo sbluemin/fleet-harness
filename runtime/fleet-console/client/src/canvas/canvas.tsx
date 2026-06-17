@@ -4,7 +4,7 @@ import { createTheaterTerminalSession } from "../api.js";
 import { OperationLaunchMenu } from "../components/operation-launch-menu.js";
 import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectTerminalSession, theaterSessions } from "../store.js";
 import type { AgentCliMetadata, ConsoleState } from "../types.js";
-import { animateViewportTo, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMaximized, useBackgroundAnimation, useCanvasState, useMaximized, type PanelGeometry } from "./canvas-store.js";
+import { animateViewportTo, claimTopZIndex, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMaximized, useBackgroundAnimation, useCanvasState, useMaximized, type PanelGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasPanel } from "./canvas-panel.js";
@@ -12,7 +12,7 @@ import { CanvasGrid } from "./canvas-grid.js";
 import { MapShortcuts } from "./map-shortcuts.js";
 import { RubberBand } from "./rubber-band.js";
 import { ShellCanvasPanel } from "./shell-canvas-panel.js";
-import { addShellPanel, useShellPanels } from "./shell-panels.js";
+import { addShellPanel, setActiveShellPanel, useActiveShellId, useShellPanels } from "./shell-panels.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 
@@ -45,6 +45,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const backgroundAnimationEnabled = useBackgroundAnimation();
   const maximized = useMaximized();
   const shellPanels = useShellPanels();
+  const activeShellId = useActiveShellId();
   const sessions = theaterSessions(state);
   const [launchRequest, setLaunchRequest] = useState<LaunchRequest | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -61,6 +62,11 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  // 상호배타 단일 지점: 어떤 Operation이든 활성화되면(=activeTerminalSessionId 비-null) 셸 활성 하이라이트를 해제한다.
+  // 패널 클릭·사이드바·Alt+화살표·검색 점프 등 selectTerminalSession을 거치는 모든 경로를 여기서 한 번에 커버한다.
+  useEffect(() => {
+    if (state.activeTerminalSessionId !== null) setActiveShellPanel(null);
+  }, [state.activeTerminalSessionId]);
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
     disabled,
@@ -104,11 +110,15 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   };
 
   // 순정 셸 패널을 우클릭 지점에 띄운다(Operation 미분류·비영속).
+  // Operations 패널과 동일한 공유 z 카운터에서 최상단 값을 받아 생성 즉시 맨 앞에 온다.
   const handleOpenShell = () => {
     const point = contextMenu?.canvasPoint;
     setContextMenu(null);
     if (!state.activeTheaterId || !point) return;
-    addShellPanel(state.activeTheaterId, geometryAt(point, DEFAULT_SHELL_WIDTH, DEFAULT_SHELL_HEIGHT));
+    // 새 셸은 생성 즉시 활성: Operations 선택을 해제하고 이 셸을 활성으로 표시한다.
+    selectTerminalSession(null);
+    const id = addShellPanel(state.activeTheaterId, { ...geometryAt(point, DEFAULT_SHELL_WIDTH, DEFAULT_SHELL_HEIGHT), zIndex: claimTopZIndex() });
+    setActiveShellPanel(id);
   };
 
   const handleResetView = () => {
@@ -190,6 +200,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
             theaterId={entry.theaterId}
             geometry={entry.geometry}
             viewport={canvas.viewport}
+            active={activeShellId === id}
           />
         ))}
       </div>
@@ -276,22 +287,24 @@ function viewportBoundsFor(element: HTMLElement | null): { readonly width: numbe
   return { width: rect.width, height: rect.height };
 }
 
-// 빈 캔버스 단일 클릭(캔버스 제어 의도): 포커스된 터미널을 blur하고 활성 선택을 해제한다.
+// 빈 캔버스 단일 클릭(캔버스 제어 의도): 포커스된 터미널을 blur하고 활성 선택을 해제한다(Operations·셸 모두).
 function clearTerminalFocus(): void {
   if (typeof document !== "undefined") {
     const active = document.activeElement;
     if (active instanceof HTMLElement) active.blur();
   }
   selectTerminalSession(null);
+  setActiveShellPanel(null);
 }
 
+// zIndex는 setPanelGeometry(Operations)·claimTopZIndex(셸)가 발급하므로 여기서는 placeholder(0)만 둔다.
 function rectToGeometry(rect: CanvasRect): PanelGeometry {
   return {
     x: rect.x,
     y: rect.y,
     width: rect.width,
     height: rect.height,
-    zIndex: Date.now(),
+    zIndex: 0,
   };
 }
 
@@ -302,6 +315,6 @@ function geometryAt(point: CanvasPoint, width: number, height: number): PanelGeo
     y: point.y,
     width,
     height,
-    zIndex: Date.now(),
+    zIndex: 0,
   };
 }

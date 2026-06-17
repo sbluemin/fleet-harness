@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { addShellPanel, clearShellPanels, getShellPanels, removeShellPanel, setShellPanelGeometry } from "../client/src/canvas/shell-panels.js";
+import { addShellPanel, clearShellPanels, getActiveShellId, getShellPanels, removeShellPanel, setActiveShellPanel, setShellPanelGeometry } from "../client/src/canvas/shell-panels.js";
 
 const GEOMETRY = { x: 10, y: 20, width: 300, height: 200, zIndex: 1 } as const;
 
@@ -38,5 +38,40 @@ describe("ephemeral shell panel registry", () => {
     expect(Object.keys(getShellPanels())).toHaveLength(1);
     clearShellPanels();
     expect(Object.keys(getShellPanels())).toHaveLength(0);
+  });
+});
+
+describe("active shell highlight", () => {
+  afterEach(() => {
+    clearShellPanels();
+  });
+
+  it("tracks the active shell id and is null by default", () => {
+    expect(getActiveShellId()).toBeNull();
+    const id = addShellPanel("t", { ...GEOMETRY });
+    setActiveShellPanel(id);
+    expect(getActiveShellId()).toBe(id);
+  });
+
+  it("removing the active shell clears the active id", () => {
+    const id = addShellPanel("t", { ...GEOMETRY });
+    setActiveShellPanel(id);
+    removeShellPanel(id);
+    expect(getActiveShellId()).toBeNull();
+  });
+
+  it("removing a non-active shell keeps the active id", () => {
+    const active = addShellPanel("t", { ...GEOMETRY });
+    const other = addShellPanel("t", { ...GEOMETRY });
+    setActiveShellPanel(active);
+    removeShellPanel(other);
+    expect(getActiveShellId()).toBe(active);
+  });
+
+  it("clearShellPanels resets the active id", () => {
+    const id = addShellPanel("t", { ...GEOMETRY });
+    setActiveShellPanel(id);
+    clearShellPanels();
+    expect(getActiveShellId()).toBeNull();
   });
 });

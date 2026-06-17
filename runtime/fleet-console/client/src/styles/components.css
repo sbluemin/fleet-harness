@@ -1409,6 +1409,73 @@
   pointer-events: none;
 }
 
+/* Radar 접기 토글 — 미니맵 우상단 모서리. */
+.canvas-minimap-toggle {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  color: var(--brass);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+/* 접힌 Radar — 우하단 단일 맵 아이콘 버튼(레이더 계기와 같은 브래스 글래스). */
+.canvas-minimap-fab {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 14;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid color-mix(in oklch, var(--brass) 30%, var(--surface-rim));
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(130% 100% at 50% 0%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 62%),
+    color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent));
+  color: var(--brass);
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  animation: codex-rise 420ms var(--ease-spring) both;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-minimap-toggle:hover,
+.canvas-minimap-toggle:focus-visible,
+.canvas-minimap-fab:hover,
+.canvas-minimap-fab:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
+}
+
+.canvas-minimap-toggle svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+.canvas-minimap-fab svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
 /* 좌하단 Map 단축키 도움 — 레이더 계기와 같은 심해 글래스 카드. 접으면 '?' FAB만 남는다. */
 .map-shortcuts {
   position: absolute;
