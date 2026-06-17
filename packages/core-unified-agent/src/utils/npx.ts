@@ -24,6 +24,8 @@ export function resolveNpxPath(
       stdio: 'pipe',
       timeout: 5000,
       env: env as NodeJS.ProcessEnv,
+      // 콘솔 없는 호스트에서 `where npx` 실행 시 콘솔 창이 깜빡이는 것을 방지한다.
+      windowsHide: true,
     }).trim();
 
     const candidates = result

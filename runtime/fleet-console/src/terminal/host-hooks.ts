@@ -78,6 +78,8 @@ export function runCodexCommand(command: CodexPluginRegistrationCommand): CodexC
     cwd: command.cwd,
     encoding: "utf8",
     env: command.env,
+    // 콘솔 없는 fleet-console 백엔드에서 codex 등록 명령 실행 시 콘솔 창이 깜빡이는 것을 방지한다.
+    windowsHide: true,
   });
   return {
     status: result.status,

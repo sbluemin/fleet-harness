@@ -92,6 +92,11 @@ export class BaseConnection extends EventEmitter {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: this.env as NodeJS.ProcessEnv,
             windowsVerbatimArguments: true,
+            // 콘솔이 없는 호스트(예: fleet-console 백엔드)에서 cmd.exe를 spawn하면
+            // Windows가 새 콘솔 창을 할당해 깜빡인다. stdio는 모두 pipe라 가시 콘솔이
+            // 불필요하므로 CREATE_NO_WINDOW로 창 생성을 억제한다. (fleet-cli처럼 콘솔이
+            // 이미 있는 경우에도 무해하다.)
+            windowsHide: true,
           },
         )
       : spawn(this.command, this.args, {

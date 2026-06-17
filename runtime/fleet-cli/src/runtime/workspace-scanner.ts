@@ -19,6 +19,8 @@ export function createWorkspaceChangeScanner(): WorkspaceChangeScanner {
 					encoding: "utf8",
 					maxBuffer: GIT_STATUS_MAX_BUFFER,
 					timeout: GIT_STATUS_TIMEOUT_MS,
+					// 콘솔 없는 호스트에서 git.exe 실행 시 콘솔 창이 깜빡이는 것을 방지한다(방어적).
+					windowsHide: true,
 				});
 				const entries = parseGitStatusPorcelainZ(stdout);
 				if (!entries) return null;
@@ -85,6 +87,8 @@ function execGitHashObject(cwd: string, paths: readonly string[]): Promise<strin
 				encoding: "utf8",
 				maxBuffer: GIT_HASH_MAX_BUFFER,
 				timeout: GIT_HASH_TIMEOUT_MS,
+				// 콘솔 없는 호스트에서 git.exe 실행 시 콘솔 창이 깜빡이는 것을 방지한다(방어적).
+				windowsHide: true,
 			},
 			(error, stdout) => {
 				if (error) {

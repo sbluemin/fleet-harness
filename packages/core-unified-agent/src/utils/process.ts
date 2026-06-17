@@ -32,6 +32,8 @@ export function killProcess(child: ChildProcess, forceTimeoutMs = 3000): void {
       execSync(`taskkill /PID ${child.pid} /T /F`, {
         stdio: 'pipe',
         timeout: 5000,
+        // 콘솔 없는 호스트에서 taskkill 호출 시 새 콘솔 창이 깜빡이는 것을 방지한다.
+        windowsHide: true,
       });
     } catch {
       // taskkill 실패 시 일반 kill 시도
