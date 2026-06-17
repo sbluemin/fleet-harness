@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import { createTheaterTerminalSession } from "../api.js";
 import { OperationLaunchMenu } from "../components/operation-launch-menu.js";
@@ -6,6 +6,7 @@ import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTe
 import type { AgentCliMetadata, ConsoleState } from "../types.js";
 import { animateViewportTo, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMaximized, useBackgroundAnimation, useCanvasState, useMaximized, type PanelGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
+import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasPanel } from "./canvas-panel.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { RubberBand } from "./rubber-band.js";
@@ -46,7 +47,19 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const sessions = theaterSessions(state);
   const [launchRequest, setLaunchRequest] = useState<LaunchRequest | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
+  // 미니맵의 뷰포트 인디케이터 계산에 필요한 캔버스 픽셀 크기를 ResizeObserver로 추적한다.
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const disabled = !state.activeTheaterId || state.agentClis.length === 0 || state.creatingTerminalSession || state.addingTheater;
+
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const update = () => setCanvasSize({ width: element.clientWidth, height: element.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
     disabled,
@@ -210,6 +223,17 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+      <CanvasMinimap
+        panels={canvas.panels}
+        shellPanels={shellPanels}
+        viewport={canvas.viewport}
+        canvasSize={canvasSize}
+        onJump={(center) => setViewport({
+          x: canvasSize.width / 2 - center.x * canvas.viewport.zoom,
+          y: canvasSize.height / 2 - center.y * canvas.viewport.zoom,
+          zoom: canvas.viewport.zoom,
+        })}
+      />
     </main>
   );
 }

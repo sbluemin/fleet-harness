@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { createTheaterTerminalSession, renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
-import { ensureDefaultGeometry, focusPanel } from "../canvas/canvas-store.js";
+import { ensureDefaultGeometry, focusPanel, useMaximized } from "../canvas/canvas-store.js";
 import { OperationLaunchMenu } from "./operation-launch-menu.js";
 import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
@@ -29,7 +29,13 @@ interface FloatingJobEntryProps {
 
 export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const maximized = useMaximized();
   const visibleSessionOrder = theaterSessionOrder(state);
+
+  // 맵 최대화(전체화면) 시 Operations 패널을 자동으로 접고, 해제하면 다시 펼친다.
+  useEffect(() => {
+    setCollapsed(maximized);
+  }, [maximized]);
 
   const focusSession = async (sessionId: string) => {
     const session = state.sessions[sessionId];

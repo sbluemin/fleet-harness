@@ -1,11 +1,11 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
-import { resumeTerminalSession, terminateTerminalSession } from "../api.js";
+import { renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { CarrierJobLines } from "../components/carrier-job-lines.js";
 import { Terminal } from "../components/terminal.js";
 import { sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { applySessionUpdate, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
+import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
 import { focusPanel, setPanelGeometry, setViewport, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
@@ -35,6 +35,11 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   const dragRef = useRef<DragState | null>(null);
   const lastTitlePointerRef = useRef<{ readonly time: number; readonly x: number; readonly y: number } | null>(null);
   const [restoreViewport, setRestoreViewport] = useState<CanvasViewport | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [draftLabel, setDraftLabel] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const committingRef = useRef(false);
+  const skipBlurCommitRef = useRef(false);
   const jobs = sessionJobs(state, session);
   const activeJobs = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).map(({ job }) => job);
   const activeJobCount = activeJobs.length;
@@ -120,6 +125,58 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
     focusPanel(session.sessionId, { width: canvasRect.width, height: canvasRect.height });
   };
 
+  useEffect(() => {
+    if (!renaming) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [renaming]);
+
+  // 이름 영역 더블클릭 → 인라인 이름 변경. Operations(FloatingSessionEntry)의 rename 동작을 그대로 따른다.
+  const beginRename = () => {
+    bringToFront();
+    skipBlurCommitRef.current = false;
+    setDraftLabel(displayLabel);
+    setRenaming(true);
+  };
+
+  const cancelRename = () => {
+    skipBlurCommitRef.current = true;
+    setRenaming(false);
+    setDraftLabel("");
+  };
+
+  const commitRename = async () => {
+    if (committingRef.current) return;
+    committingRef.current = true;
+    try {
+      applySessionUpdate(await renameTerminalSession(session.sessionId, draftLabel));
+    } catch (error) {
+      failRenameTerminalSession(error instanceof Error ? error.message : String(error));
+    } finally {
+      committingRef.current = false;
+      skipBlurCommitRef.current = true;
+      setRenaming(false);
+    }
+  };
+
+  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commitRename();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename();
+    }
+  };
+
+  // 이름 영역 pointerdown은 드래그/포커스 경로(beginDrag)로 전파하지 않는다 — 더블클릭은 오직 rename.
+  const onNamePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    event.stopPropagation();
+    bringToFront();
+  };
+
   const stopCanvasPointer = (event: ReactPointerEvent<HTMLElement>) => {
     event.stopPropagation();
     bringToFront();
@@ -153,7 +210,33 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         data-canvas-blocker
       >
         <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
-        <span className="canvas-panel-title">{displayLabel}</span>
+        {renaming ? (
+          <input
+            ref={inputRef}
+            className="canvas-panel-rename-input"
+            value={draftLabel}
+            aria-label={`${displayLabel} 이름 변경`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) => setDraftLabel(event.target.value)}
+            onKeyDown={handleRenameKeyDown}
+            onBlur={() => {
+              if (skipBlurCommitRef.current) {
+                skipBlurCommitRef.current = false;
+                return;
+              }
+              void commitRename();
+            }}
+          />
+        ) : (
+          <span
+            className="canvas-panel-title"
+            onPointerDown={onNamePointerDown}
+            onDoubleClick={beginRename}
+            title="Double-click to rename"
+          >
+            {displayLabel}
+          </span>
+        )}
         <span className="canvas-panel-cli">{session.cliLabel ?? session.cliId ?? "CLI"}</span>
         {activeJobCount > 0 ? <span className="canvas-panel-job-count">{activeJobCount}</span> : null}
         <button

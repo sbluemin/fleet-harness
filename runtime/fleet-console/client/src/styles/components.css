@@ -1306,6 +1306,50 @@
   color: var(--ink-fog);
 }
 
+/* 우하단 캔버스 미니맵 — 패널 분포와 현재 뷰포트 위치를 한눈에 보여주고, 드래그로 이동한다. */
+.canvas-minimap {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 14;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 82%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  overflow: hidden;
+}
+
+.canvas-minimap-inner {
+  position: absolute;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* Operation 패널 마커 — 중립 톤(브래스/아우로라 역할과 섞지 않는다). */
+.canvas-minimap-panel {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--ink-fog) 30%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 52%, transparent);
+}
+
+/* 순정 셸 패널 마커 — '살아있는 것' 아우로라. */
+.canvas-minimap-panel.is-shell {
+  background: color-mix(in oklch, var(--aurora) 26%, transparent);
+  border-color: color-mix(in oklch, var(--aurora) 52%, transparent);
+}
+
+/* 현재 뷰포트 인디케이터 — '지금 보고 있는 곳' 브래스. */
+.canvas-minimap-view {
+  position: absolute;
+  border: 1px solid color-mix(in oklch, var(--brass-bright) 72%, transparent);
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  pointer-events: none;
+}
+
 @keyframes radar-sweep {
   from {
     transform: translate(-50%, -50%) rotate(0deg);
@@ -1386,6 +1430,37 @@
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 이름 영역은 더블클릭 rename 대상 — 텍스트 커서로 드래그(grab)되는 띠바 영역과 시각적으로 구분한다. */
+  cursor: text;
+  padding: 2px 4px;
+  margin: 0 -2px;
+  border-radius: var(--radius-xs);
+}
+
+.canvas-panel-title:hover {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* 패널 이름 인라인 변경 입력 — Operations 사이드바 rename 입력과 같은 brass 포커스 언어를 띠바 폭에 맞춘다. */
+.canvas-panel-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in oklch, var(--brass) 44%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
+  color: var(--ink-pearl);
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+.canvas-panel-rename-input:focus {
+  border-color: color-mix(in oklch, var(--brass) 68%, var(--surface-rim));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--brass) 20%, transparent),
+    0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
 .canvas-panel-cli,
