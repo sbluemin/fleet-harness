@@ -228,6 +228,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTerminalSessionResume(req, res, decodeURIComponent(terminalSessionResumeMatch[1] ?? "")), res);
       return;
     }
+    const terminalSessionTurnMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)\/turn$/);
+    if (terminalSessionTurnMatch) {
+      runAsyncHandler(handleTerminalSessionTurn(req, res, decodeURIComponent(terminalSessionTurnMatch[1] ?? "")), res);
+      return;
+    }
     const terminalSessionItemMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)$/);
     if (terminalSessionItemMatch) {
       runAsyncHandler(handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? "")), res);
@@ -294,6 +299,33 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       workspaceCount: observability.workspaceCount(),
     };
     writeJson(res, 200, body);
+  }
+
+  // Agent CLI 턴 상태 hook 수신: provider CLI의 UserPromptSubmit/Stop hook이 lock 토큰으로 POST한다.
+  // 브라우저가 아닌 로컬 신뢰 프로세스이므로 terminal Origin 검사 대신 lock-token bearer로만 인증한다.
+  async function handleTerminalSessionTurn(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const token = lockHandle?.payload.token;
+    if (!token || req.headers.authorization !== `Bearer ${token}`) {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
+    const body = await readJsonBody<{ readonly phase?: unknown }>(req);
+    const turnState = body?.phase === "start" ? "running" : body?.phase === "end" ? "ended" : null;
+    if (turnState === null) {
+      writeJson(res, 400, { error: "invalid_phase" });
+      return;
+    }
+    const updated = observability.setTerminalSessionTurnState(sessionId, turnState);
+    if (!updated) {
+      writeJson(res, 404, { error: "terminal_session_not_found" });
+      return;
+    }
+    observability.notifySessionUpdated(updated);
+    writeJson(res, 200, { ok: true });
   }
 
   async function handleTerminalTicket(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

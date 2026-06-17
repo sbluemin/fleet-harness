@@ -68,6 +68,20 @@ export function describeTrackStatus(status: string): string {
   }
 }
 
+// Operation 인디케이터(tenant-beacon) 클래스. 우선순위(Job 우선):
+//   dormant(PTY 종료) → brass
+//   활성 캐리어 Job 있음 → aurora(is-live)            [US-3 및 턴 진행 중 Job 동시 케이스 포함]
+//   턴 진행 중(turnState=running) → 노랑(is-turn-running) [US-1]
+//   턴 종료(turnState=ended) → 그린(is-turn-ended)        [US-2]
+//   그 외(신규/턴 이력 없음) → 회색(기본)                 [US-0]
+export function sessionBeaconClassName(session: SessionInfo, activeJobCount: number): string {
+  if (session.status === "dormant") return "tenant-beacon is-dormant";
+  if (activeJobCount > 0) return "tenant-beacon is-live";
+  if (session.turnState === "running") return "tenant-beacon is-turn-running";
+  if (session.turnState === "ended") return "tenant-beacon is-turn-ended";
+  return "tenant-beacon";
+}
+
 export function statusTone(status: string): "live" | "ok" | "bad" | "idle" {
   switch (status) {
     case "stream":

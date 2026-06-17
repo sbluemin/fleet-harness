@@ -88,6 +88,9 @@ export interface CreateTheaterResponse extends ConsoleTheaterInfo {}
 
 export type ConsoleTerminalSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error" | "dormant";
 
+// Agent CLI 턴(host 처리) 상태. "none"=턴 이력 없음(신규), "running"=처리중, "ended"=종료(유휴).
+export type ConsoleTurnState = "none" | "running" | "ended";
+
 export interface ConsoleTerminalSessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
@@ -97,6 +100,7 @@ export interface ConsoleTerminalSessionInfo {
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly status: ConsoleTerminalSessionStatus;
+  readonly turnState: ConsoleTurnState;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;

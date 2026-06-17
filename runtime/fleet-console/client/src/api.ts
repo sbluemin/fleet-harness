@@ -223,6 +223,7 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     cliId: typeof payload.cliId === "string" ? payload.cliId : undefined,
     cliLabel: typeof payload.cliLabel === "string" ? payload.cliLabel : undefined,
     status: payload.status,
+    turnState: payload.turnState === "running" || payload.turnState === "ended" ? payload.turnState : "none",
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,

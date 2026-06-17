@@ -8,6 +8,7 @@ import type {
   ConsoleSessionUpdatedEvent,
   ConsoleTerminalSessionInfo,
   ConsoleTerminalSessionStatus,
+  ConsoleTurnState,
 } from "./api-types.js";
 import type { DurableOperation, ProviderSession } from "./durable-state.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
@@ -50,6 +51,7 @@ interface PendingTerminalSessionState {
   readonly theaterId: string;
   readonly terminalSessionId: string;
   status: ConsoleTerminalSessionStatus;
+  turnState?: ConsoleTurnState;
   registrationId?: string;
   cliRunId?: string;
   providerSession?: ProviderSession;
@@ -270,6 +272,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  function setTerminalSessionTurnState(sessionId: string, turnState: ConsoleTurnState): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    session.turnState = turnState;
+    return toTerminalSessionInfo(session);
+  }
+
   function transitionTerminalSessionToDormant(sessionId: string, providerSession: ProviderSession): ConsoleTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
@@ -343,6 +352,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     subscribeAll,
     updateTerminalSessionProviderSession,
     updateTerminalSessionStatus,
+    setTerminalSessionTurnState,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
@@ -416,6 +426,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     cliId: state.cliId,
     cliLabel: state.cliLabel,
     status: state.status,
+    turnState: state.turnState ?? "none",
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,

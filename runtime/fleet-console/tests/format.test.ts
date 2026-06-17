@@ -10,6 +10,7 @@ function makeSession(overrides: Partial<SessionInfo>): SessionInfo {
     cwdLabel: "alpha",
     sequence: 1,
     status: "terminal-only",
+    turnState: "none",
     createdAt: 1,
     resumeAvailable: false,
     ...overrides,

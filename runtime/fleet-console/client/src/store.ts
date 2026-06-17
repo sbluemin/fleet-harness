@@ -14,6 +14,7 @@ import type {
   ThemeId,
   TheaterBootstrap,
   TheaterInfo,
+  TurnState,
 } from "./types.js";
 
 type Listener = () => void;
@@ -23,7 +24,7 @@ export interface SessionJob {
   readonly tenant: TenantJobsView;
 }
 
-type SessionInput = Omit<SessionInfo, "resumeAvailable"> & { readonly resumeAvailable?: boolean };
+type SessionInput = Omit<SessionInfo, "resumeAvailable" | "turnState"> & { readonly resumeAvailable?: boolean; readonly turnState?: TurnState };
 
 const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
@@ -532,6 +533,7 @@ function normalizeSession(session: SessionInput): SessionInfo {
     ...session,
     terminalSessionId: session.terminalSessionId ?? session.sessionId,
     status: session.status === "starting" && session.tenantId ? "registered" : session.status,
+    turnState: session.turnState ?? "none",
     resumeAvailable: session.resumeAvailable === true,
   };
 }

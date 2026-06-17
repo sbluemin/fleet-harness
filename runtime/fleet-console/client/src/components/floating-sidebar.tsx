@@ -3,7 +3,7 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardE
 import { createTheaterTerminalSession, renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { ensureDefaultGeometry, focusPanel, useMaximized } from "../canvas/canvas-store.js";
 import { OperationLaunchMenu } from "./operation-launch-menu.js";
-import { describeJobStatus, formatCarrierName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
+import { describeJobStatus, formatCarrierName, sessionBeaconClassName, sessionDisplayLabel, shortJobId, statusTone } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs, theaterSessionOrder } from "../store.js";
 import type { SessionJob } from "../store.js";
@@ -143,7 +143,6 @@ const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, activ
   const skipBlurCommitRef = useRef(false);
   const activeCount = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).length;
   const dormant = session.status === "dormant";
-  const live = activeCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   const displayLabel = sessionDisplayLabel(session);
   const orderedJobs = [...jobs].sort((a, b) => Number(isTerminalJobStatus(a.job.status)) - Number(isTerminalJobStatus(b.job.status)));
 
@@ -196,7 +195,7 @@ const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, activ
       <div className="session-row-shell">
         {renaming ? (
           <div className={`session-row session-row-edit ${active ? "is-active" : ""}`}>
-            <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
+            <span className={sessionBeaconClassName(session, activeCount)} aria-hidden="true" />
             <input
               ref={inputRef}
               className="session-rename-input"
@@ -222,7 +221,7 @@ const FloatingSessionEntry = memo(function FloatingSessionEntry({ session, activ
             aria-current={active || undefined}
             aria-label={`Operation ${displayLabel}`}
           >
-            <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
+            <span className={sessionBeaconClassName(session, activeCount)} aria-hidden="true" />
             <span className="tenant-row-text">
               <span className="tenant-label">{displayLabel}</span>
               {dormant ? <span className="job-row-meta">Dormant</span> : null}

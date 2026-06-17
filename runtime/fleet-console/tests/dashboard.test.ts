@@ -44,7 +44,7 @@ describe("dashboard bridge derivation", () => {
         { tenantId: "tenant-a", tenantLabel: "Alpha CLI", createdAt: 1_000, sessions: 1, status: "live", theaterId: "theater-a", terminalSessionId: "session-a" },
       ],
       sessions: {
-        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "registered", createdAt: 1_500, theaterId: "theater-a", tenantId: "tenant-a", resumeAvailable: false },
+        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "registered", turnState: "none", createdAt: 1_500, theaterId: "theater-a", tenantId: "tenant-a", resumeAvailable: false },
       },
       sessionOrder: ["session-a"],
       activeTerminalSessionId: "session-a",
@@ -98,7 +98,7 @@ describe("dashboard bridge derivation", () => {
     const noJobs: ConsoleState = {
       ...noSessions,
       sessions: {
-        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1_000, theaterId: "theater-a", resumeAvailable: false },
+        "session-a": { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, status: "terminal-only", turnState: "none", createdAt: 1_000, theaterId: "theater-a", resumeAvailable: false },
       },
       sessionOrder: ["session-a"],
     };

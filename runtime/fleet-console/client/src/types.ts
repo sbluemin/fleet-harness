@@ -120,6 +120,9 @@ export interface CarrierSettingsMutationResult {
 
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
+// Agent CLI 턴(host 처리) 상태. "none"=턴 이력 없음(신규), "running"=처리중, "ended"=종료(유휴).
+export type TurnState = "none" | "running" | "ended";
+
 export interface SessionInfo {
   readonly sessionId: string;
   readonly terminalSessionId: string;
@@ -129,6 +132,7 @@ export interface SessionInfo {
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly status: SessionStatus;
+  readonly turnState: TurnState;
   readonly createdAt: number;
   readonly theaterId?: string;
   readonly tenantId?: string;

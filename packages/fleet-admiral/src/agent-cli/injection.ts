@@ -32,6 +32,9 @@ export interface InjectAgentCliProfileOptions {
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
   readonly captureSessionHookExec?: FleetHookExec;
+  // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
+  readonly turnStartHookExec?: FleetHookExec;
+  readonly turnEndHookExec?: FleetHookExec;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
   readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
@@ -47,6 +50,12 @@ interface AgentCliPluginMarketplaceLock {
 interface CodexFleetProfile {
   readonly profileName: string;
   readonly profilePath: string;
+}
+
+interface CodexProfileHookExecs {
+  readonly captureSessionHookExec?: FleetHookExec;
+  readonly turnStartHookExec?: FleetHookExec;
+  readonly turnEndHookExec?: FleetHookExec;
 }
 
 interface DedicatedMcpSession {
@@ -102,12 +111,18 @@ export async function injectAgentCliProfile(
       dataDir: options.dataDir,
       rootDir: options.pluginRootDir,
       captureSessionHookExec: options.captureSessionHookExec,
+      turnStartHookExec: options.turnStartHookExec,
+      turnEndHookExec: options.turnEndHookExec,
       hookExec: startupDefinitions.host === "claude" ? requireHookExec(options.hookExec) : undefined,
       withMarketplaceLock: options.withMarketplaceLock,
     });
     const codexPluginKeys = plugin.codexRegistrations.map((registration) => `${registration.pluginName}@${registration.marketplaceName}`);
     const codexProfile = profile.id === "codex"
-      ? writeCodexFleetProfile(profile.env, doctrine, codexPluginKeys, options.captureSessionHookExec, (cleanup) => tempCleanups.push(cleanup))
+      ? writeCodexFleetProfile(profile.env, doctrine, codexPluginKeys, {
+          captureSessionHookExec: options.captureSessionHookExec,
+          turnStartHookExec: options.turnStartHookExec,
+          turnEndHookExec: options.turnEndHookExec,
+        }, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const launchWarnings: string[] = [];
     // Codex CLI가 Windows .cmd shim이면 profile.bin은 cmd.exe, binPrefixArgs는 /d /s /c <shim>이다.
@@ -205,7 +220,7 @@ function writeCodexFleetProfile(
   env: Readonly<Record<string, string>>,
   doctrine: string,
   pluginKeys: readonly string[],
-  captureSessionHookExec: FleetHookExec | undefined,
+  hookExecs: CodexProfileHookExecs,
   onCleanup: (cleanup: () => void) => void,
 ): CodexFleetProfile {
   const codexHome = env.CODEX_HOME ?? path.join(env.HOME ?? os.homedir(), ".codex");
@@ -227,20 +242,38 @@ function writeCodexFleetProfile(
       "enabled = true",
       "",
     ]),
-    ...codexCaptureHookConfig(captureSessionHookExec),
+    ...codexHooksConfig(hookExecs),
   ].join("\n"));
   chmodBestEffort(profilePath, SYSTEM_PROMPT_FILE_MODE);
   return { profileName, profilePath };
 }
 
-function codexCaptureHookConfig(captureSessionHookExec: FleetHookExec | undefined): string[] {
-  if (captureSessionHookExec === undefined) return [];
-  const command = buildPosixShellCommand([captureSessionHookExec.command, ...captureSessionHookExec.args]);
-  return [
-    "[hooks]",
-    `UserPromptSubmit = [{ hooks = [{ type = "command", command = "${escapeTomlBasicString(command)}" }] }]`,
-    "",
-  ];
+function codexHooksConfig(hookExecs: CodexProfileHookExecs): string[] {
+  // UserPromptSubmit = 세션 캡처 + 턴 시작, Stop = 턴 종료. codex hook 이벤트 키는 PascalCase.
+  const userPromptSubmitExecs = [hookExecs.captureSessionHookExec, hookExecs.turnStartHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  const stopExecs = [hookExecs.turnEndHookExec]
+    .filter((exec): exec is FleetHookExec => exec !== undefined);
+  if (userPromptSubmitExecs.length === 0 && stopExecs.length === 0) return [];
+  const lines = ["[hooks]"];
+  if (userPromptSubmitExecs.length > 0) {
+    lines.push(`UserPromptSubmit = ${codexHookHandlersInline(userPromptSubmitExecs)}`);
+  }
+  if (stopExecs.length > 0) {
+    lines.push(`Stop = ${codexHookHandlersInline(stopExecs)}`);
+  }
+  lines.push("");
+  return lines;
+}
+
+function codexHookHandlersInline(execs: readonly FleetHookExec[]): string {
+  const handlers = execs
+    .map((exec) => {
+      const command = buildPosixShellCommand([exec.command, ...exec.args]);
+      return `{ type = "command", command = "${escapeTomlBasicString(command)}" }`;
+    })
+    .join(", ");
+  return `[{ hooks = [${handlers}] }]`;
 }
 
 function writeFileNoFollow(filePath: string, content: string): void {

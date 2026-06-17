@@ -120,6 +120,7 @@ function readSessionInfo(value: unknown): SessionInfo | null {
     cliId: typeof session.cliId === "string" ? session.cliId : undefined,
     cliLabel: typeof session.cliLabel === "string" ? session.cliLabel : undefined,
     status: session.status,
+    turnState: session.turnState === "running" || session.turnState === "ended" ? session.turnState : "none",
     createdAt: session.createdAt,
     theaterId: typeof session.theaterId === "string" ? session.theaterId : undefined,
     tenantId: typeof session.tenantId === "string" ? session.tenantId : undefined,

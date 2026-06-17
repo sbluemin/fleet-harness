@@ -25,6 +25,7 @@ import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
 import { runCaptureSessionHook } from "./session-capture.js";
 import { createConsoleStalePolicy } from "./stale.js";
+import { runTurnStateHook } from "./turn-state-hook.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
 
@@ -85,7 +86,7 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "subagents-context"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "subagents-context", "turn-start", "turn-end"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -113,12 +114,14 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   return mode;
 }
 
-export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "subagents-context" } {
+export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "subagents-context" } | { readonly command: "turn-start" } | { readonly command: "turn-end" } {
   const [commandName, ...rest] = argv;
   if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName)) {
     throw new Error("Unknown fleet-console hook command");
   }
   if (commandName === "subagents-context" && rest.length === 0) return { command: "subagents-context" };
+  if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
+  if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
   if (commandName === "capture-session" && rest.length === 1 && rest[0]) return { command: "capture-session", provider: rest[0] };
   throw new Error("Unknown fleet-console hook command");
 }
@@ -360,6 +363,11 @@ export async function main(): Promise<void> {
     const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
     if (hookCommand.command === "subagents-context") {
       process.stdout.write(`${runSubagentsContextHook(process.env)}\n`);
+      return;
+    }
+    if (hookCommand.command === "turn-start" || hookCommand.command === "turn-end") {
+      // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(codex Stop exit2=continuation, claude block 출력 금지).
+      await runTurnStateHook(hookCommand.command === "turn-start" ? "start" : "end", process.env);
       return;
     }
     await runCaptureSessionHook(hookCommand.provider, process.env);

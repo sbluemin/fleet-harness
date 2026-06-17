@@ -7,8 +7,8 @@ const THEATER_ALPHA: TheaterInfo = { id: "theater-alpha", label: "Alpha Harbor",
 const THEATER_BETA: TheaterInfo = { id: "theater-beta", label: "Beta Dock", createdAt: "2026-06-16T00:00:00.000Z", lastOpenedAt: "2026-06-16T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
 const THEATER_GAMMA: TheaterInfo = { id: "theater-gamma", label: "Alpha Harbor", createdAt: "2026-06-16T00:00:00.000Z", lastOpenedAt: "2026-06-16T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
 
-function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable"> & { readonly resumeAvailable?: boolean })[], theaters: readonly TheaterInfo[] = [THEATER_ALPHA, THEATER_BETA]): ConsoleState {
-  const entries: SessionInfo[] = sessions.map((session) => ({ ...session, resumeAvailable: session.resumeAvailable ?? false }));
+function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "turnState"> & { readonly resumeAvailable?: boolean; readonly turnState?: SessionInfo["turnState"] })[], theaters: readonly TheaterInfo[] = [THEATER_ALPHA, THEATER_BETA]): ConsoleState {
+  const entries: SessionInfo[] = sessions.map((session) => ({ ...session, resumeAvailable: session.resumeAvailable ?? false, turnState: session.turnState ?? "none" }));
   return {
     connection: "connecting",
     connectionError: null,

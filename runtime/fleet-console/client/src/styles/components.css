@@ -1025,6 +1025,18 @@
   box-shadow: 0 0 8px color-mix(in oklch, var(--brass) 30%, transparent);
 }
 
+/* Agent CLI 턴 진행 중 — 노랑(--warn). 처리 중을 알리되 aurora(살아있는 Job)와 구별한다. */
+.tenant-beacon.is-turn-running {
+  background: var(--warn);
+  box-shadow: 0 0 10px var(--warn-glow);
+}
+
+/* Agent CLI 턴 종료(유휴) — 그린(--positive). 입력 대기 상태. */
+.tenant-beacon.is-turn-ended {
+  background: var(--positive);
+  box-shadow: 0 0 9px var(--positive-glow);
+}
+
 .status-dot--lg {
   width: 10px;
   height: 10px;

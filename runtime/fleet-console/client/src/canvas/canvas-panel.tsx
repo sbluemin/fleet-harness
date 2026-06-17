@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, 
 import { renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { CarrierJobLines } from "../components/carrier-job-lines.js";
 import { Terminal } from "../components/terminal.js";
-import { sessionDisplayLabel } from "../format.js";
+import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
@@ -44,7 +44,6 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   const activeJobs = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).map(({ job }) => job);
   const activeJobCount = activeJobs.length;
   const dormant = session.status === "dormant";
-  const live = activeJobCount > 0 || session.status === "registered" || session.status === "live" || session.status === "terminal-only";
   const displayLabel = sessionDisplayLabel(session);
 
   const bringToFront = () => {
@@ -209,7 +208,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         onPointerCancel={endDrag}
         data-canvas-blocker
       >
-        <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
+        <span className={sessionBeaconClassName(session, activeJobCount)} aria-hidden="true" />
         {renaming ? (
           <input
             ref={inputRef}
