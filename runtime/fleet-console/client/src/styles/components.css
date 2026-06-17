@@ -2016,11 +2016,11 @@
   animation: codex-rise 520ms var(--ease-spring) both;
 }
 
-/* 접힘: OPERATIONS 패널은 렌더되지 않고, 화면 왼쪽 세로 중앙에 펼치기 버튼만 떠 있는다. */
+/* 접힘: OPERATIONS 패널은 렌더되지 않고, 화면 왼쪽 상단에 펼치기 버튼만 떠 있는다(shortcut 접기 단추와 상·하 대칭). */
 .floating-sidebar-layer.is-collapsed {
   width: auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .floating-sidebar-collapsed-toggle {
@@ -4621,35 +4621,30 @@
   box-shadow: 0 0 9px var(--positive-glow);
 }
 
-.operation-toast-actions {
-  display: flex;
+/* 토스트 본문 전체가 이동(Go) 트리거 — 점·텍스트를 품는 투명 버튼 표면. 닫기 버튼과 형제. */
+.operation-toast-go-surface {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-}
-
-/* 내비게이션 = brass 역할(doctrine: brass="지금 보고 있는 곳"). */
-.operation-toast-go {
-  flex: none;
-  padding: 4px 11px;
-  border: 1px solid color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--brass) 13%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  gap: var(--space-3);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
   cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
+  transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
-.operation-toast-go:hover {
-  background: color-mix(in oklch, var(--brass) 24%, transparent);
-  border-color: color-mix(in oklch, var(--brass) 64%, var(--surface-rim));
+.operation-toast-go-surface:hover {
+  opacity: 0.82;
+}
+
+/* brass = 항행/내비게이션 역할(doctrine: brass="지금 보고 있는 곳") — 키보드 포커스 링. */
+.operation-toast-go-surface:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
+  outline-offset: 3px;
 }
 
 .operation-search-overlay {
