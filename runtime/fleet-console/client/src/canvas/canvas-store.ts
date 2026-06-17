@@ -28,6 +28,7 @@ type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
 const BACKGROUND_ANIMATION_STORAGE_KEY = "fleet-console.canvas.backgroundAnimation";
+const MAXIMIZED_STORAGE_KEY = "fleet-console.canvas.maximized";
 const SAVE_DELAY_MS = 400;
 const DEFAULT_PANEL_WIDTH = 640;
 const DEFAULT_PANEL_HEIGHT = 400;
@@ -35,15 +36,25 @@ const DEFAULT_PANEL_OFFSET = 40;
 const PANEL_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
 const FOCUS_MAX_ZOOM = 1;
+// 줌 보간: 매 프레임 현재 viewport를 target 쪽으로 이 비율만큼 당긴다(지수 감쇠).
+const ZOOM_TWEEN_FACTOR = 0.2;
+// 이 임계치 미만으로 좁혀지면 target에 스냅하고 보간을 멈춘다(위치 px, 줌 배율).
+const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
+const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
 const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, panels: {} };
 
 const listeners = new Set<Listener>();
 const backgroundAnimationListeners = new Set<Listener>();
+const maximizedListeners = new Set<Listener>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let backgroundAnimationEnabled = readStoredBackgroundAnimation();
+let maximized = readStoredMaximized();
+// 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
+let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
+let zoomRaf: number | null = null;
 
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);
@@ -64,6 +75,10 @@ export function useBackgroundAnimation(): boolean {
   return useSyncExternalStore(subscribeBackgroundAnimation, getBackgroundAnimationSnapshot, getBackgroundAnimationSnapshot);
 }
 
+export function useMaximized(): boolean {
+  return useSyncExternalStore(subscribeMaximized, getMaximizedSnapshot, getMaximizedSnapshot);
+}
+
 export function setState(patch: Partial<CanvasState>): void {
   state = {
     viewport: patch.viewport ?? state.viewport,
@@ -73,8 +88,24 @@ export function setState(patch: Partial<CanvasState>): void {
   emit();
 }
 
+// 즉시 이동(pan 드래그·검색 이동 등). 진행 중 줌 보간을 취소하고 current·target을 같은 값으로 맞춘다.
 export function setViewport(viewport: CanvasViewport): void {
-  setState({ viewport: normalizeViewport(viewport) });
+  cancelZoomTween();
+  const next = normalizeViewport(viewport);
+  targetViewport = next;
+  setState({ viewport: next });
+}
+
+// 보간 이동(휠 줌). target만 갱신하고 rAF 루프가 current를 target으로 부드럽게 당긴다.
+// prefers-reduced-motion이거나 rAF를 못 쓰면 즉시 적용한다.
+export function animateViewportTo(viewport: CanvasViewport): void {
+  const next = normalizeViewport(viewport);
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function" || prefersReducedMotion()) {
+    setViewport(next);
+    return;
+  }
+  targetViewport = next;
+  if (zoomRaf === null) zoomRaf = window.requestAnimationFrame(stepZoomTween);
 }
 
 export function setPanelGeometry(sessionId: string, geometry: PanelGeometry): void {
@@ -117,8 +148,10 @@ export function prunePanels(validSessionIds: readonly string[]): void {
 
 export function loadForTheater(theaterId: string | null): void {
   flushScheduledSave();
+  cancelZoomTween();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
+  targetViewport = state.viewport;
   emit();
 }
 
@@ -129,12 +162,16 @@ export function focusPanel(sessionId: string, viewportSize: CanvasViewportSize):
     (viewportSize.width - PANEL_FOCUS_PADDING) / geometry.width,
     (viewportSize.height - PANEL_FOCUS_PADDING) / geometry.height,
   )));
+  const focusedViewport: CanvasViewport = {
+    x: viewportSize.width / 2 - (geometry.x + geometry.width / 2) * zoom,
+    y: viewportSize.height / 2 - (geometry.y + geometry.height / 2) * zoom,
+    zoom,
+  };
+  // 진행 중 줌 보간을 취소하고 target을 포커스 결과로 맞춰, 마지막 tween 프레임이 포커스를 되돌리지 못하게 한다.
+  cancelZoomTween();
+  targetViewport = focusedViewport;
   setState({
-    viewport: {
-      x: viewportSize.width / 2 - (geometry.x + geometry.width / 2) * zoom,
-      y: viewportSize.height / 2 - (geometry.y + geometry.height / 2) * zoom,
-      zoom,
-    },
+    viewport: focusedViewport,
     panels: {
       ...state.panels,
       [sessionId]: { ...normalizePanelGeometry(geometry, nextZIndex()), zIndex: nextZIndex() },
@@ -146,6 +183,17 @@ export function toggleBackgroundAnimation(): void {
   backgroundAnimationEnabled = !backgroundAnimationEnabled;
   writeStoredBackgroundAnimation(backgroundAnimationEnabled);
   emitBackgroundAnimation();
+}
+
+export function toggleMaximized(): void {
+  setMaximized(!maximized);
+}
+
+export function setMaximized(value: boolean): void {
+  if (maximized === value) return;
+  maximized = value;
+  writeStoredMaximized(maximized);
+  emitMaximized();
 }
 
 function subscribeBackgroundAnimation(listener: Listener): () => void {
@@ -165,6 +213,53 @@ function emit(): void {
 
 function emitBackgroundAnimation(): void {
   for (const listener of backgroundAnimationListeners) listener();
+}
+
+function subscribeMaximized(listener: Listener): () => void {
+  maximizedListeners.add(listener);
+  return () => {
+    maximizedListeners.delete(listener);
+  };
+}
+
+function getMaximizedSnapshot(): boolean {
+  return maximized;
+}
+
+function emitMaximized(): void {
+  for (const listener of maximizedListeners) listener();
+}
+
+// 줌 보간 한 프레임: current를 target 쪽으로 ZOOM_TWEEN_FACTOR만큼 당기고, 임계치 안이면 스냅 후 정지한다.
+function stepZoomTween(): void {
+  const current = state.viewport;
+  const dx = targetViewport.x - current.x;
+  const dy = targetViewport.y - current.y;
+  const dz = targetViewport.zoom - current.zoom;
+  if (Math.abs(dx) < ZOOM_TWEEN_POSITION_EPSILON && Math.abs(dy) < ZOOM_TWEEN_POSITION_EPSILON && Math.abs(dz) < ZOOM_TWEEN_ZOOM_EPSILON) {
+    zoomRaf = null;
+    setState({ viewport: targetViewport });
+    return;
+  }
+  setState({
+    viewport: {
+      x: current.x + dx * ZOOM_TWEEN_FACTOR,
+      y: current.y + dy * ZOOM_TWEEN_FACTOR,
+      zoom: current.zoom + dz * ZOOM_TWEEN_FACTOR,
+    },
+  });
+  zoomRaf = typeof window !== "undefined" ? window.requestAnimationFrame(stepZoomTween) : null;
+}
+
+function cancelZoomTween(): void {
+  if (zoomRaf === null || typeof window === "undefined") return;
+  window.cancelAnimationFrame(zoomRaf);
+  zoomRaf = null;
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function scheduleSave(): void {
@@ -227,6 +322,25 @@ function writeStoredBackgroundAnimation(value: boolean): void {
     window.localStorage.setItem(BACKGROUND_ANIMATION_STORAGE_KEY, String(value));
   } catch {
     // 배경 애니메이션 선호 저장 실패는 런타임 동작을 막지 않는다.
+  }
+}
+
+function readStoredMaximized(): boolean {
+  // 기본값 false: 저장된 선호가 없으면 GNB를 정상 노출해 첫 방문자가 내비게이션을 잃지 않는다.
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(MAXIMIZED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredMaximized(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MAXIMIZED_STORAGE_KEY, String(value));
+  } catch {
+    // 최대화 선호 저장 실패는 런타임 동작을 막지 않는다.
   }
 }
 

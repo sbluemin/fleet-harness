@@ -78,6 +78,8 @@ const DEFAULT_HOST = "127.0.0.1";
 // start()에서 srv.address()의 actualPort로 캡처해 락 파일에 기록한다.
 const DEFAULT_PORT = 0;
 const SHELL_TERMINAL_SESSION_ID = "shell";
+// 캔버스의 순정 셸 패널 세션 id 접두사. 이 접두사 + theaterId가 함께 오면 Theater 디렉터리에서 셸을 띄운다.
+const THEATER_SHELL_SESSION_PREFIX = "shell:";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -299,19 +301,34 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "Unauthorized" });
       return;
     }
-    const body = await readJsonBody<{ readonly sessionId?: string; readonly kind?: string }>(req);
+    const body = await readJsonBody<{ readonly sessionId?: string; readonly kind?: string; readonly theaterId?: string }>(req);
     const kind = body?.kind === "shell" ? "shell" : "fleet";
     const requestedSessionId = body?.sessionId;
+    const requestedTheaterId = typeof body?.theaterId === "string" ? body.theaterId : undefined;
     let sessionId: string;
+    let cwd: string | null;
     if (kind === "shell") {
-      sessionId = SHELL_TERMINAL_SESSION_ID;
+      if (typeof requestedSessionId === "string" && requestedSessionId.startsWith(THEATER_SHELL_SESSION_PREFIX) && requestedTheaterId) {
+        // theater-shell: 캔버스 순정 셸 패널. theaterId로 Theater 디렉터리를 서버 측에서만 해석한다(raw 경로 비노출).
+        const theater = theaters.get(requestedTheaterId);
+        if (!theater) {
+          writeJson(res, 404, { error: "theater_not_found" });
+          return;
+        }
+        sessionId = requestedSessionId;
+        cwd = theater.path;
+      } else {
+        // 싱글톤 셸 오버레이(Cmd+`) — 기존 계약 보존: 고정 sessionId + 빈 cwd(서버 cwd 폴백).
+        sessionId = SHELL_TERMINAL_SESSION_ID;
+        cwd = "";
+      }
     } else if (typeof requestedSessionId === "string" && requestedSessionId.length > 0) {
       sessionId = requestedSessionId;
+      cwd = observability.getLaunchCwd(sessionId);
     } else {
       writeJson(res, 400, { error: "terminal_session_not_found" });
       return;
     }
-    const cwd = kind === "shell" ? "" : observability.getLaunchCwd(sessionId);
     if (cwd === null) {
       writeJson(res, 404, { error: "terminal_session_not_found" });
       return;

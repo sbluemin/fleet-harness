@@ -6,7 +6,10 @@ interface CanvasInteractionOptions {
   readonly viewport: CanvasViewport;
   readonly disabled?: boolean;
   readonly consumePointerDown?: boolean;
+  // pan(드래그)은 즉시 적용한다.
   readonly onViewportChange: (viewport: CanvasViewport) => void;
+  // 휠 줌은 보간 경로로 보낸다(스토어 rAF tween).
+  readonly onZoom: (viewport: CanvasViewport) => void;
   readonly onCreate: (rect: CanvasRect, anchor: CanvasPoint) => void;
   readonly onConsumePointerDown?: () => void;
   readonly onClick?: () => void;
@@ -41,7 +44,7 @@ const MIN_CREATE_HEIGHT = 150;
 const CLICK_MOVE_THRESHOLD = 5;
 const ZOOM_STEP = 0.0018;
 
-export function useCanvasInteraction({ viewport, disabled = false, consumePointerDown = false, onViewportChange, onCreate, onConsumePointerDown, onClick }: CanvasInteractionOptions): CanvasInteractionResult {
+export function useCanvasInteraction({ viewport, disabled = false, consumePointerDown = false, onViewportChange, onZoom, onCreate, onConsumePointerDown, onClick }: CanvasInteractionOptions): CanvasInteractionResult {
   const dragRef = useRef<DragState | null>(null);
   const viewportRef = useRef(viewport);
   const [rubberBand, setRubberBand] = useState<CanvasRect | null>(null);
@@ -128,9 +131,10 @@ export function useCanvasInteraction({ viewport, disabled = false, consumePointe
     const screen = eventScreenPoint(event);
     const current = viewportRef.current;
     // 기본 휠 업/다운으로 포인터 위치를 기준점 삼아 줌 인/아웃한다(Ctrl/⌘ 보조키 없이). 맵 이동은 드래그가 담당한다.
+    // 줌 목표는 보간 경로(onZoom)로 보내 스토어 rAF tween이 부드럽게 수렴시킨다(기준점은 현재 viewport 기준으로 계산).
     const zoom = clamp(current.zoom * Math.exp(-event.deltaY * ZOOM_STEP), MIN_ZOOM, MAX_ZOOM);
     const canvas = screenToCanvas(screen, current);
-    onViewportChange({
+    onZoom({
       x: screen.x - canvas.x * zoom,
       y: screen.y - canvas.y * zoom,
       zoom,

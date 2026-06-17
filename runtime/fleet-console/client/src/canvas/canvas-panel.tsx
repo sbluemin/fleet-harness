@@ -1,11 +1,11 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 
-import { resumeTerminalSession, terminateTerminalSession } from "../api.js";
+import { renameTerminalSession, resumeTerminalSession, terminateTerminalSession } from "../api.js";
 import { CarrierJobLines } from "../components/carrier-job-lines.js";
 import { Terminal } from "../components/terminal.js";
 import { sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
-import { applySessionUpdate, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
+import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
 import { focusPanel, setPanelGeometry, setViewport, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
@@ -26,9 +26,20 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
+// 제목 탭 더블클릭 판정: beginDrag가 pointerdown에서 preventDefault/pointer-capture를 호출해
+// native dblclick이 신뢰되지 않으므로, 두 번의 pointerdown 간격·이동량으로 직접 더블클릭을 가린다.
+const TITLE_DOUBLE_CLICK_MS = 320;
+const TITLE_DOUBLE_CLICK_DISTANCE = 6;
+
 export function CanvasPanel({ state, session, geometry, viewport, active, getCanvasRect }: CanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
+  const lastTitlePointerRef = useRef<{ readonly time: number; readonly x: number; readonly y: number } | null>(null);
   const [restoreViewport, setRestoreViewport] = useState<CanvasViewport | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [draftLabel, setDraftLabel] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const committingRef = useRef(false);
+  const skipBlurCommitRef = useRef(false);
   const jobs = sessionJobs(state, session);
   const activeJobs = jobs.filter(({ job }) => !isTerminalJobStatus(job.status)).map(({ job }) => job);
   const activeJobCount = activeJobs.length;
@@ -52,6 +63,20 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    // 제목 탭 더블클릭 → 포커스 토글(확대 ↔ 복귀). 근접한 두 번째 pointerdown이면 드래그 대신 포커스로 처리한다.
+    const now = Date.now();
+    const last = lastTitlePointerRef.current;
+    if (
+      last
+      && now - last.time < TITLE_DOUBLE_CLICK_MS
+      && Math.abs(event.clientX - last.x) < TITLE_DOUBLE_CLICK_DISTANCE
+      && Math.abs(event.clientY - last.y) < TITLE_DOUBLE_CLICK_DISTANCE
+    ) {
+      lastTitlePointerRef.current = null;
+      handleFocusToggle();
+      return;
+    }
+    lastTitlePointerRef.current = { time: now, x: event.clientX, y: event.clientY };
     bringToFront();
     dragRef.current = {
       pointerId: event.pointerId,
@@ -100,6 +125,58 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
     focusPanel(session.sessionId, { width: canvasRect.width, height: canvasRect.height });
   };
 
+  useEffect(() => {
+    if (!renaming) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [renaming]);
+
+  // 이름 영역 더블클릭 → 인라인 이름 변경. Operations(FloatingSessionEntry)의 rename 동작을 그대로 따른다.
+  const beginRename = () => {
+    bringToFront();
+    skipBlurCommitRef.current = false;
+    setDraftLabel(displayLabel);
+    setRenaming(true);
+  };
+
+  const cancelRename = () => {
+    skipBlurCommitRef.current = true;
+    setRenaming(false);
+    setDraftLabel("");
+  };
+
+  const commitRename = async () => {
+    if (committingRef.current) return;
+    committingRef.current = true;
+    try {
+      applySessionUpdate(await renameTerminalSession(session.sessionId, draftLabel));
+    } catch (error) {
+      failRenameTerminalSession(error instanceof Error ? error.message : String(error));
+    } finally {
+      committingRef.current = false;
+      skipBlurCommitRef.current = true;
+      setRenaming(false);
+    }
+  };
+
+  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commitRename();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename();
+    }
+  };
+
+  // 이름 영역 pointerdown은 드래그/포커스 경로(beginDrag)로 전파하지 않는다 — 더블클릭은 오직 rename.
+  const onNamePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    event.stopPropagation();
+    bringToFront();
+  };
+
   const stopCanvasPointer = (event: ReactPointerEvent<HTMLElement>) => {
     event.stopPropagation();
     bringToFront();
@@ -133,7 +210,33 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         data-canvas-blocker
       >
         <span className={`tenant-beacon ${live ? "is-live" : dormant ? "is-dormant" : ""}`} aria-hidden="true" />
-        <span className="canvas-panel-title">{displayLabel}</span>
+        {renaming ? (
+          <input
+            ref={inputRef}
+            className="canvas-panel-rename-input"
+            value={draftLabel}
+            aria-label={`${displayLabel} 이름 변경`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) => setDraftLabel(event.target.value)}
+            onKeyDown={handleRenameKeyDown}
+            onBlur={() => {
+              if (skipBlurCommitRef.current) {
+                skipBlurCommitRef.current = false;
+                return;
+              }
+              void commitRename();
+            }}
+          />
+        ) : (
+          <span
+            className="canvas-panel-title"
+            onPointerDown={onNamePointerDown}
+            onDoubleClick={beginRename}
+            title="Double-click to rename"
+          >
+            {displayLabel}
+          </span>
+        )}
         <span className="canvas-panel-cli">{session.cliLabel ?? session.cliId ?? "CLI"}</span>
         {activeJobCount > 0 ? <span className="canvas-panel-job-count">{activeJobCount}</span> : null}
         <button
@@ -170,11 +273,11 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(nextGeometry) => setPanelGeometry(session.sessionId, nextGeometry)} />
     </article>
     {activeJobs.length > 0 ? (
-      // 캔버스 공간을 살려 진행 중 캐리어 스트림을 패널 '바깥 위'에 floating으로 띄운다(터미널 출력을 가리지 않음).
-      // world 좌표계에 두어 패널과 함께 이동·확대되며, CSS translateY로 패널 상단 위에 정렬한다.
+      // 진행 중 캐리어 스트림을 패널 '바깥 아래'에 floating으로 띄운다(터미널 출력을 가리지 않음).
+      // world 좌표계에 두어 패널과 함께 이동·확대되며, top을 패널 하단 모서리에 맞춰 그 아래로 정렬한다.
       <div
         className="canvas-panel-jobdock"
-        style={{ left: geometry.x, top: geometry.y, width: geometry.width, zIndex: geometry.zIndex }}
+        style={{ left: geometry.x, top: geometry.y + geometry.height, width: geometry.width, zIndex: geometry.zIndex }}
         data-canvas-blocker
         aria-label={`Active carrier jobs for ${displayLabel}`}
       >

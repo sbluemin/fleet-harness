@@ -8,6 +8,8 @@ export interface TerminalLike {
 export interface TerminalConnectionOptions {
   readonly sessionId: string;
   readonly kind?: "shell";
+  // theater-shell 패널의 ticket 발급에 쓰인다 — 서버가 이 id로 Theater cwd를 해석한다.
+  readonly theaterId?: string;
   readonly terminal: TerminalLike;
   readonly onStatus?: (status: TerminalConnectionStatus, message?: string) => void;
   // 서버가 세션을 종료(PTY exit 등)해 재연결이 의미 없을 때 호출된다.
@@ -73,7 +75,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       options.onStatus?.("connecting");
       try {
         const fetchTicket = options.fetchTicket ?? requestTerminalTicket;
-        const { ticket } = await fetchTicket(options.sessionId, { kind: options.kind, signal: abort.signal });
+        const { ticket } = await fetchTicket(options.sessionId, { kind: options.kind, theaterId: options.theaterId, signal: abort.signal });
         if (abort.signal.aborted) return;
         await attachSocket(buildTerminalWsUrl(ticket, options.location), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;

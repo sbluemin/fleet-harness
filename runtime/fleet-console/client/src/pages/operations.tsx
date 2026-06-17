@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
+import { clearShellPanels } from "../canvas/shell-panels.js";
 import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { FloatingSidebar } from "../components/floating-sidebar.js";
 import { useOperationsMode } from "../operations-mode.js";
 import { OperationsClassic } from "./operations-classic.js";
-import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
+import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, focusOperation, nextOperationId, selectTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationsProps {
@@ -18,10 +19,34 @@ export function Operations({ state }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const mode = useOperationsMode();
   const sessionOrder = theaterSessionOrder(state);
+  // 최신 state를 keydown 핸들러에서 읽기 위한 ref(핸들러는 한 번만 등록).
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     loadForTheater(state.activeTheaterId);
+    // Theater가 바뀌면 이전 Theater cwd에 묶인 ephemeral 셸 패널을 비운다(언마운트 → 백엔드 grace 정리).
+    clearShellPanels();
   }, [state.activeTheaterId]);
+
+  // Alt+←/→ 로 현재 Theater 내 Operation 포커스를 순환 이동한다(Map=resume+확대, Helm=선택). 두 모드 공통.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!event.altKey || event.metaKey || event.ctrlKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      // rename/검색 등 일반 입력 중에는 양보한다. 단, 터미널(xterm) 포커스 중에는 패널 전환을 허용한다.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
+      const order = theaterSessionOrder(stateRef.current);
+      if (order.length === 0) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const nextId = nextOperationId(order, stateRef.current.activeTerminalSessionId, event.key === "ArrowRight" ? 1 : -1);
+      if (nextId) focusOperation(nextId);
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, []);
 
   useEffect(() => {
     for (const sessionId of sessionOrder) ensureDefaultGeometry(sessionId);

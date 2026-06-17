@@ -400,6 +400,37 @@ describe("console static and terminal ticket boundary", () => {
     expect(shellBody.cwd).toBeUndefined();
   });
 
+  it("issues theater-shell tickets resolving Theater cwd server-side and rejects unknown Theaters", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-theater-shell-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      terminalPickFolder: async () => ({ kind: "selected", cwd: dir }),
+      terminalStartShell: () => createMockPty(),
+    });
+    const theater = await (await fetch(`${fixture.endpoint}observer/theaters`, { method: "POST" })).json() as { readonly id: string };
+
+    const issued = await fetch(`${fixture.endpoint}terminal/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "shell:1", kind: "shell", theaterId: theater.id }),
+    });
+    const issuedBody = await issued.json() as { readonly ticket?: unknown; readonly cwd?: unknown };
+
+    const unknownTheater = await fetch(`${fixture.endpoint}terminal/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "shell:2", kind: "shell", theaterId: "deadbeefdead" }),
+    });
+    const unknownBody = await unknownTheater.json();
+
+    expect(issued.status).toBe(200);
+    expect(typeof issuedBody.ticket).toBe("string");
+    // theater-shell ticket도 raw Theater 경로를 응답에 노출하지 않는다(cwd는 서버 측에서만 해석).
+    expect(issuedBody.cwd).toBeUndefined();
+    expect(unknownTheater.status).toBe(404);
+    expect(unknownBody).toEqual({ error: "theater_not_found" });
+  });
+
   it("keeps MCP bearer tokens out of terminal tickets, observer snapshots, SSE frames, static HTML, and launch errors", async () => {
     const fakeToken = "mcp-token-seeded-secret";
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-token-boundary-"));

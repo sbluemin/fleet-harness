@@ -210,6 +210,17 @@ export function consumeOperationFocus(): void {
   setState({ pendingOperationFocus: null });
 }
 
+// 포커스 순환(Alt+←/→)용 다음 Operation id 계산. delta>0=다음, delta<0=이전. 끝에서 순환(wrap)한다.
+// 현재 선택이 목록에 없으면(또는 null) delta 방향에 따라 첫/마지막 항목을 고른다.
+export function nextOperationId(order: readonly string[], currentId: string | null, delta: number): string | null {
+  if (order.length === 0) return null;
+  const current = currentId ? order.indexOf(currentId) : -1;
+  const nextIndex = current === -1
+    ? (delta > 0 ? 0 : order.length - 1)
+    : (current + delta + order.length) % order.length;
+  return order[nextIndex] ?? null;
+}
+
 export function openOperationSearch(): void {
   setState({ operationSearchOpen: true });
 }
