@@ -27,6 +27,7 @@ import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorksp
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
+import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createConsoleDataPaths } from "./paths.js";
@@ -191,6 +192,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
+  const globalSettingsRouter = createGlobalSettingsRouter({
+    globalOptionsService: infraServices.globalOptionsService,
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    writeJson,
+  });
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -262,6 +269,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/carrier-settings" || pathname.startsWith("/carrier-settings/")) {
       runAsyncBooleanHandler(carrierSettingsRouter({ req, res, pathname }), res);
+      return;
+    }
+    if (pathname === "/global-settings" || pathname.startsWith("/global-settings/")) {
+      runAsyncBooleanHandler(globalSettingsRouter({ req, res, pathname }), res);
       return;
     }
     if (pathname === "/observer/tenants") {

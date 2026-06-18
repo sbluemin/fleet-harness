@@ -177,19 +177,20 @@ async function createAgentCliLaunchSpec(options: {
       cliId: options.cliId,
       resumeSessionId: options.resumeSessionId,
     });
+    const globalSettings = readGlobalSettingsSnapshot(options.infraServices);
     const injectedProfile = await options.injectProfile(profile, {
       buildSystemPrompt: (injectTone) => createSystemPromptBuilder({ carrierRuntime: agentRuntime.carrierRuntime }).build(injectTone),
       carrierRuntime: agentRuntime.carrierRuntime,
       codexCommandRunner: runCodexCommand,
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
-      enableMetaphor: false,
+      enableMetaphor: globalSettings.enableMetaphor,
       captureSessionHookExec: buildConsoleCaptureHookCommand(options.hookEntry, profile.id),
       turnStartHookExec: buildConsoleTurnHookCommand(options.hookEntry, "start"),
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
       hookExec: buildConsoleHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
-      replaceSystemPrompt: false,
+      replaceSystemPrompt: globalSettings.replaceSystemPrompt,
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
@@ -295,5 +296,20 @@ function resolveOptionalPackage(id: string): string | undefined {
     return require.resolve(id);
   } catch {
     return undefined;
+  }
+}
+
+// 세션 launch 직전에 전역 옵션(~/.fleet/settings.json)을 1회 스냅샷한다. daemon 재시작 없이도
+// 신규 세션이 최신 토글 값을 반영하도록 부팅 캐시가 아닌 launch 시점에 읽는다. 로드 실패(락 타임아웃 등)는
+// 세션 launch를 막지 않고 기본값(append / 메타포 off)으로 폴백한다.
+function readGlobalSettingsSnapshot(infraServices: InfraServices): { readonly enableMetaphor: boolean; readonly replaceSystemPrompt: boolean } {
+  try {
+    const data = infraServices.globalOptionsService.load();
+    return {
+      enableMetaphor: data.enableMetaphor ?? false,
+      replaceSystemPrompt: data.replaceSystemPrompt ?? false,
+    };
+  } catch {
+    return { enableMetaphor: false, replaceSystemPrompt: false };
   }
 }
