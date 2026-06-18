@@ -56,6 +56,7 @@ let state: ConsoleState = {
   sessions: {},
   sessionOrder: [],
   activeTerminalSessionId: null,
+  operationsViewActive: false,
   creatingTerminalSession: false,
   terminalSessionError: null,
   tenantJobs: {},
@@ -91,6 +92,14 @@ export function subscribe(listener: Listener): () => void {
 export function setState(patch: Partial<ConsoleState>): void {
   state = { ...state, ...patch };
   emit();
+}
+
+// 라우트 변경 시 App이 호출해 Operations 뷰(/operations)의 화면 표시 여부를 추적한다.
+// 라우팅은 react-router, 관측 데이터는 store로 분리되어 있어 라우트 전이가 store를 직접 갱신하지 않으므로,
+// 토스트 억제 판단이 "활성 세션 선택"과 "그 세션 화면 표시"를 구분할 수 있도록 명시적으로 반영한다.
+export function setOperationsViewActive(active: boolean): void {
+  if (state.operationsViewActive === active) return;
+  setState({ operationsViewActive: active });
 }
 
 export function initThemeFromStorage(): void {
@@ -284,7 +293,10 @@ export function applySessionUpdate(session: SessionInput): void {
 // 현재 보고 있지 않은 Operation에 한해 입력 대기 토스트만 띄운다(현재 보는 Operation은 억제).
 export function applySessionAttention(session: SessionInput): void {
   const target = state.sessions[session.sessionId] ?? normalizeSession(session);
-  if (isActiveOperation(target)) return;
+  // Operations 뷰가 화면에 떠 있고(=/operations) 그 Operation을 실제로 보고 있을 때만 억제한다.
+  // Welcome·Codex 등 다른 화면에선 어떤 Operation도 보이지 않으므로 백그라운드 입력 대기를 반드시 알린다
+  // (라우트 전이가 activeTerminalSessionId를 비우지 않아 isActiveOperation만으로는 화면 밖을 구분 못 한다).
+  if (state.operationsViewActive && isActiveOperation(target)) return;
   // AskUserQuestion은 PreToolUse와 Notification을 함께 발화할 수 있고 입력 대기가 반복 알림될 수도 있다.
   // 같은 세션의 입력 대기 토스트가 아직 떠 있으면 중복 발행하지 않는다(닫히면 다음 대기 때 다시 뜬다).
   if (state.operationToasts.some((toast) => toast.kind === "input-waiting" && toast.sessionId === session.sessionId)) return;

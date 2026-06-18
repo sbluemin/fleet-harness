@@ -261,6 +261,9 @@ export interface ConsoleState {
   readonly sessions: Readonly<Record<string, SessionInfo>>;
   readonly sessionOrder: readonly string[];
   readonly activeTerminalSessionId: string | null;
+  // Operations 뷰(/operations)가 현재 화면에 떠 있는지. Welcome(/)·Codex(/codex)에선 false라
+  // 어떤 Operation도 화면에 없으므로 입력 대기 토스트를 억제하지 않는다.
+  readonly operationsViewActive: boolean;
   readonly creatingTerminalSession: boolean;
   readonly terminalSessionError: string | null;
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
