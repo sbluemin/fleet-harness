@@ -4,7 +4,7 @@ import type { Location } from "react-router-dom";
 
 import { useMaximized } from "./canvas/canvas-store.js";
 import { useOperationsMode } from "./operations-mode.js";
-import { hasUserChosenCodexMode, useCodexViewMode } from "./codex-view-mode.js";
+import { useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
@@ -34,6 +34,7 @@ export function App() {
   const maximized = useMaximized();
   const operationsMode = useOperationsMode();
   const codexViewMode = useCodexViewMode();
+  const codexUserChosen = useCodexUserChosen();
   // Codex는 옵션 A: 모든 모드에서 URL이 /codex로 따라가고, side은 직전 비-Codex 라우트를
   // 배경으로 유지한다(react-router background-location 패턴). 직접 deep-link/새로고침으로 들어오면
   // 배경이 없으므로 저장된 선호와 무관하게 Full(route)로 표시한다(선호값 자체는 보존).
@@ -43,6 +44,20 @@ export function App() {
   // 최대화는 localStorage에 영속되지만, GNB 숨김은 Map(canvas) Operations 화면에서만 적용한다 —
   // 다른 라우트(Welcome/Codex/Helm)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
   const maximizedActive = maximized && pathname.startsWith("/operations") && operationsMode === "canvas";
+  // Codex 표현 모드 도출 — 오버레이(side)는 배경이 있거나 사용자가 직접 모드를 고른 경우 허용한다.
+  // (deep-link로 막 들어온 첫 렌더에는 둘 다 아니므로 Full로 강등 → 승인된 "새로고침=Full".)
+  // codexUserChosen은 reactive 구독이라, deep-link Full 상태에서 같은 값(side)을 다시 눌러도 재렌더된다.
+  const codexOverlayActive =
+    isCodexRoute && codexViewMode !== "route" && (hasRealBackgroundRef.current || codexUserChosen);
+  const codexEffectiveMode = codexOverlayActive ? codexViewMode : "route";
+  // 배경이 없으면(직접 진입 후 사용자가 오버레이를 고른 경우) Welcome을 배경으로 둔다.
+  const codexBackground: Location = hasRealBackgroundRef.current
+    ? backgroundLocationRef.current
+    : { pathname: "/", search: "", hash: "", state: null, key: "codex-fallback" };
+  const displayLocation = codexOverlayActive ? codexBackground : location;
+  // 화면에 실제로 보이는 라우트가 Operations인지로 판단한다 — Side 오버레이가 /operations를 배경으로
+  // 띄우면 실제 URL(/codex)이 아니라 displayLocation 기준이어야 in-view Operation 토스트 억제가 유지된다.
+  const operationsViewVisible = displayLocation.pathname.startsWith("/operations");
 
   useEffect(() => {
     return startObserverConnection();
@@ -57,11 +72,11 @@ export function App() {
     }
   }, [isCodexRoute, location]);
 
-  // Operations 뷰(/operations)가 화면에 떠 있는지를 store에 반영한다. Welcome/Codex 등 다른 화면에선
+  // Operations 뷰가 화면에 떠 있는지를 store에 반영한다(Side 오버레이의 배경 포함). 다른 화면에선
   // 어떤 Operation도 보이지 않으므로, 백그라운드 Operation의 입력 대기 토스트가 잘못 억제되지 않게 한다.
   useEffect(() => {
-    setOperationsViewActive(pathname.startsWith("/operations"));
-  }, [pathname]);
+    setOperationsViewActive(operationsViewVisible);
+  }, [operationsViewVisible]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -119,16 +134,6 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Codex 표현 모드 도출 — 오버레이(side)는 배경이 있거나 사용자가 직접 모드를 고른 경우 허용한다.
-  // (deep-link로 막 들어온 첫 렌더에는 둘 다 아니므로 Full로 강등 → 승인된 "새로고침=Full".)
-  const codexOverlayActive =
-    isCodexRoute && codexViewMode !== "route" && (hasRealBackgroundRef.current || hasUserChosenCodexMode());
-  const codexEffectiveMode = codexOverlayActive ? codexViewMode : "route";
-  // 배경이 없으면(직접 진입 후 사용자가 오버레이를 고른 경우) Welcome을 배경으로 둔다.
-  const codexBackground: Location = hasRealBackgroundRef.current
-    ? backgroundLocationRef.current
-    : { pathname: "/", search: "", hash: "", state: null, key: "codex-fallback" };
-  const displayLocation = codexOverlayActive ? codexBackground : location;
   // 오버레이 닫기 = 배경 라우트로 복귀(없으면 Welcome). hash/state까지 보존해 정확히 직전 위치로 돌아간다.
   // /codex를 벗어나면 CodexSurface가 언마운트되며 정리된다.
   const handleCodexClose = () => {

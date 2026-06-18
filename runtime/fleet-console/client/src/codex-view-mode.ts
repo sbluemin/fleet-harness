@@ -39,8 +39,11 @@ export function setCodexViewMode(nextMode: CodexViewMode): void {
   emit();
 }
 
-export function hasUserChosenCodexMode(): boolean {
-  return userChoseMode;
+// reactive 구독 — deep-link로 Full 강등된 상태에서 사용자가 같은 값(side)을 다시 눌러도 userChoseMode가
+// false→true로 바뀌며 스냅샷이 갱신되어 구독 컴포넌트가 재렌더된다. (게터로는 useSyncExternalStore가
+// view-mode 스냅샷 불변으로 bail-out 해 재렌더가 일어나지 않는다.)
+export function useCodexUserChosen(): boolean {
+  return useSyncExternalStore(subscribe, getUserChosenSnapshot, getUserChosenSnapshot);
 }
 
 export function useCodexSideWidth(): number {
@@ -68,6 +71,10 @@ function getViewModeSnapshot(): CodexViewMode {
 
 function getSideWidthSnapshot(): number {
   return sideWidth;
+}
+
+function getUserChosenSnapshot(): boolean {
+  return userChoseMode;
 }
 
 function emit(): void {
