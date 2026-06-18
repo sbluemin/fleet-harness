@@ -818,6 +818,27 @@ describe("console static and terminal ticket boundary", () => {
     expect(remaining.theaters.find((entry) => entry.id === theater.id)).toBeUndefined();
   });
 
+  it("promotes the next most-recent Codex workspace as MRU when the active Theater is forgotten", async () => {
+    const dirA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-mru-a-"));
+    const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-mru-b-"));
+    tempDirs.push(dirA, dirB);
+    fs.mkdirSync(path.join(dirA, ".fleet", "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(dirB, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    await createTheater(fixture, dirA);
+    const theaterB = await createTheater(fixture, dirB); // 마지막 등록 = MRU
+
+    // MRU(B)를 forget하면 남은 A가 MRU로 승격되어, getMru() 기반 비프리픽스 라우트가
+    // deps.cwd 폴백이 아니라 A의 위키를 서빙해야 한다.
+    const deleted = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theaterB.id)}`, { method: "DELETE" });
+    const health = await fetch(`${fixture.endpoint}console/codex/api/health`, { redirect: "manual" });
+    const body = await health.json() as { readonly knowledgeRoot?: string };
+
+    expect(deleted.status).toBe(200);
+    expect(health.status).toBe(200);
+    expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirA), ".fleet", "knowledge"));
+  });
+
   it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);

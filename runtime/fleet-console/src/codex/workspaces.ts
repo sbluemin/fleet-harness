@@ -54,8 +54,10 @@ export class WorkspaceRegistry {
 
   remove(id: string): boolean {
     const deleted = this.#items.delete(id);
-    // MRU가 제거 대상이면 포인터를 비워 getMru()가 사라진 워크스페이스를 가리키지 않게 한다.
-    if (this.#mruId === id) this.#mruId = null;
+    // MRU를 제거하면 다음으로 최근에 열린 남은 워크스페이스를 MRU로 승격한다(없으면 null).
+    // null로 비우면 getMru() 기반 라우트(/console/codex, /console/codex/api/...)가 남은
+    // Theater 대신 deps.cwd 폴백으로 떨어지므로, TheaterRegistry.remove()와 동일하게 승계한다.
+    if (this.#mruId === id) this.#mruId = this.listRegistrations()[0]?.id ?? null;
     return deleted;
   }
 
