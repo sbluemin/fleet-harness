@@ -773,6 +773,31 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("providerSession");
   });
 
+  it("keeps a wiki Theater's hasWiki true after a console restart by re-registering its Codex workspace", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-haswiki-"));
+    tempDirs.push(dir);
+    // Theater 디렉터리에 Fleet Wiki 지식 루트를 만들어 hasWiki=true 조건을 충족시킨다.
+    fs.mkdirSync(path.join(dir, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, dir);
+
+    const beforeRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${fixture.endpoint}observer/theaters`);
+    await fixture.server.stop();
+
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-haswiki-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    const afterRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}observer/theaters`);
+
+    // 추가 직후에는 POST 경로가 워크스페이스를 등록하므로 hasWiki=true이고,
+    // 재시작 후에도 복원된 Theater의 워크스페이스를 재등록해 hasWiki가 유지되어야 한다.
+    expect(beforeRestart.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
+    expect(afterRestart.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
+  });
+
   it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);

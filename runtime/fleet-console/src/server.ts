@@ -861,7 +861,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     currentLock?.release();
   }
 
-  function rehydrateDurableState(): void {
+  async function rehydrateDurableState(): Promise<void> {
     let state: DurableConsoleState;
     try {
       state = durableStateStore.load();
@@ -871,6 +871,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       state = emptyDurableConsoleState();
       theaters.restore([]);
     }
+    // Codex WorkspaceRegistry는 인메모리라 재시작 시 비워진다. hasWiki 판정이 이 레지스트리에
+    // 의존하므로(getWorkspace !== null), 복원된 Theater를 재등록하지 않으면 위키가 있는 Theater도
+    // hasWiki=false가 되어 Console 재실행마다 Codex(Wiki)가 마운트되지 않는다. POST 추가 경로와
+    // 대칭으로 복원 Theater의 워크스페이스를 best-effort 재등록한다.
+    await restoreCodexWorkspaces();
     const merged = mergeProviderSessionCaptures(state, { capturesDir: durablePaths.capturesDir });
     syncProviderSessionsToObservability(merged);
     const restorable = {
@@ -890,6 +895,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const operation of restorable.operations) {
       if (theaters.get(operation.theaterId)) observability.injectDormantOperation(operation);
     }
+  }
+
+  async function restoreCodexWorkspaces(): Promise<void> {
+    await Promise.all(
+      theaters.list().map(async (theater) => {
+        try {
+          await codex.registerWorkspace(theater.path);
+        } catch (error) {
+          // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
+          if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
+            console.warn(`[fleet-console] Codex workspace restore skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }),
+    );
   }
 
   function persistDurableState(): void {
@@ -926,7 +946,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
-        rehydrateDurableState();
+        await rehydrateDurableState();
         await new Promise<void>((resolve, reject) => {
           const srv = createHttpServer(handleRequest, terminalUpgrade);
           srv.once("error", reject);
