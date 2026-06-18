@@ -188,7 +188,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
   return (
     <>
     <article
-      className={`canvas-panel ${active ? "is-active" : ""}`}
+      className={`canvas-panel ${active ? "is-active" : ""} ${activeJobCount > 0 ? "is-running" : ""}`}
       style={{
         left: geometry.x,
         top: geometry.y,

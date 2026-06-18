@@ -1676,6 +1676,48 @@
     0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
+/* 작업 진행 중(activeJobCount > 0)인 에이전트 패널 = "출항(underway)" 상태.
+   aurora("지금 살아있는 것") 언어로 선체를 정적으로 표현한다. brass(선택/포커스)와 역할이
+   분리되므로 선택+진행이 겹쳐도 brass 보더와 aurora 림이 각자 의미로 공존한다.
+   AGENTS.md 모션 규약상 ambient 무한 모션은 금지되므로 진행 신호는 정적 aurora 림+글로우로
+   표현하고, 살아있는 모션은 기존 허용된 라이브 비콘(점)에 맡긴다.
+   overflow: hidden을 피해 외곽 글로우는 패널 자체 box-shadow로, 외곽선은 inset 의사요소로 그린다. */
+.canvas-panel.is-running {
+  box-shadow:
+    var(--shadow-soft),
+    0 0 20px -6px var(--aurora-glow);
+}
+
+/* 선택(is-active) + 진행(is-running) 동시: brass 선택 링 + aurora 출항 글로우 공존 */
+.canvas-panel.is-running.is-active {
+  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent),
+    0 0 20px -6px var(--aurora-glow);
+}
+
+/* 상시 aurora 선체 림 — running의 정적 신호.
+   linear-gradient 마스크로 테두리 띠만 남겨 링을 만든다(가운데는 마스킹되어 비침). */
+.canvas-panel.is-running::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  padding: 1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: color-mix(in oklch, var(--aurora) 38%, transparent);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
    인라인으로 받고(top=패널 하단 모서리), translateY로 작은 간격만큼 아래로 내려 패널 하단에 정렬한다. */
 .canvas-panel-jobdock {
