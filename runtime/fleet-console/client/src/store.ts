@@ -34,6 +34,7 @@ const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
 const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
 const EXPANDED_SESSIONS_STORAGE_KEY = "fleet-console.expandedSessions";
+const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const DEFAULT_THEME: ThemeId = "maritime";
 const DEFAULT_RENDERER: TerminalRenderer = "webgl";
 export const SHELL_SESSION_ID = "shell";
@@ -63,6 +64,8 @@ let state: ConsoleState = {
   shellOpen: false,
   operationSearchOpen: false,
   shortcutsOpen: false,
+  onboardingOpen: false,
+  bootstrapped: false,
   pendingOperationFocus: null,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
@@ -317,6 +320,23 @@ export function closeShortcuts(): void {
 
 export function toggleShortcuts(): void {
   setState({ shortcutsOpen: !state.shortcutsOpen });
+}
+
+export function openOnboarding(): void {
+  if (state.onboardingOpen) return;
+  setState({ onboardingOpen: true });
+}
+
+export function closeOnboarding(): void {
+  writeStoredCommissioningSeen(true);
+  if (!state.onboardingOpen) return;
+  setState({ onboardingOpen: false });
+}
+
+export function resolveOnboardingOnBootstrap(): void {
+  if (state.bootstrapped) return;
+  const shouldOpen = state.theaters.length === 0 && !readStoredCommissioningSeen();
+  setState({ bootstrapped: true, onboardingOpen: shouldOpen ? true : state.onboardingOpen });
 }
 
 export function toggleTerminalZoom(sessionId: string): void {
@@ -681,6 +701,15 @@ function readStoredExpandedSessions(): readonly string[] {
   }
 }
 
+function readStoredCommissioningSeen(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(COMMISSIONING_SEEN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function writeStoredTheme(theme: ThemeId): void {
   if (typeof window === "undefined") return;
   try {
@@ -703,6 +732,15 @@ function writeStoredExpandedSessions(ids: readonly string[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(EXPANDED_SESSIONS_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
+function writeStoredCommissioningSeen(seen: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COMMISSIONING_SEEN_STORAGE_KEY, seen ? "1" : "0");
   } catch {
     // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }
