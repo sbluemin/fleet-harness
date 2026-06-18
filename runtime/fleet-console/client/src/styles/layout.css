@@ -59,6 +59,9 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 사이드 패널 폭(=컨테이너)에 따라 Codex 내부 레이아웃(nav/rail)을 접기 위한 컨테이너 컨텍스트.
+     Full(route)에서는 컨테이너가 넓어 3열을 유지하고, Side가 좁아지면 본문만 남는다(codex/styles/layout.css의 @container). */
+  container: codex-host / inline-size;
 }
 
 /* Operations 사이드바. 과거에는 `.sidebar`였으나 Codex 리딩 surface의 동명

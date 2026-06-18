@@ -17,6 +17,9 @@ type RouteListener = (route: Route) => void;
 export const CODEX_BASE_PATH = "/console/codex";
 
 const listeners = new Set<RouteListener>();
+// popstate 핸들러는 mount당 한 번만 설치하고 destroy에서 해제한다 — /codex 진입/이탈(특히 오버레이
+// 빈번 토글)에서 핸들러가 누적되면 Back/Forward 시 동일 라우트 처리·데이터 로드가 중복된다.
+let popstateHandler: (() => void) | null = null;
 
 export function currentRoute(): Route {
   const route = parseRoute(stripWorkspacePrefix(stripCodexBasePath(window.location.pathname)).pathname);
@@ -49,7 +52,15 @@ export function subscribeRoute(listener: RouteListener): () => void {
 }
 
 export function initRouter(): void {
-  window.addEventListener("popstate", () => emit(currentRoute()));
+  if (popstateHandler) return;
+  popstateHandler = () => emit(currentRoute());
+  window.addEventListener("popstate", popstateHandler);
+}
+
+export function destroyRouter(): void {
+  if (!popstateHandler) return;
+  window.removeEventListener("popstate", popstateHandler);
+  popstateHandler = null;
 }
 
 export function entryPath(id: string): string {

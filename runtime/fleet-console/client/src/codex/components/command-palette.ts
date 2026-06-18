@@ -75,6 +75,21 @@ export function initCommandPalette(): void {
   document.addEventListener("mouseover", handleDocumentMouseover);
 }
 
+// Codex unmount(=destroy) 시 전역 리스너를 반드시 해제한다. 오버레이를 빈번히 열고 닫으면
+// 해제하지 않은 리스너가 누적되어 Cmd+K가 여러 번 발동하는 누수가 생긴다.
+export function destroyCommandPalette(): void {
+  if (state.open) closeCommandPalette();
+  document.removeEventListener("keydown", handleDocumentKeydown);
+  document.removeEventListener("input", handleDocumentInput);
+  document.removeEventListener("click", handleDocumentClick);
+  document.removeEventListener("mouseover", handleDocumentMouseover);
+}
+
+// Codex가 보이는 오버레이의 Esc 핸들러가 팔레트에 Esc를 양보할지 판단할 때 쓰는 단일 출처.
+export function isCommandPaletteOpen(): boolean {
+  return state.open;
+}
+
 function handleDocumentKeydown(event: KeyboardEvent): void {
   const isCommandKey = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
   if (isCommandKey) {

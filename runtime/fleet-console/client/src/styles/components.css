@@ -6150,3 +6150,193 @@
     width: 100%;
   }
 }
+
+/* ============================================================
+   Codex 멀티-뷰 표면 — Full(route)·Side(우현 패널)·Modal(중앙)
+   토글은 GNB·Side 헤더·Modal 헤더 3곳에서 공유한다(같은 스토어 구독).
+   신규 토큰 없이 기존 글래스/brass·aurora/codex-rise 어휘만 사용한다.
+   ============================================================ */
+
+/* 3-way 모드 토글 — operations-mode-toggle 레시피를 Codex 표면용으로 복제. */
+.codex-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.codex-mode-option {
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+/* 활성/hover = "지금 보는 표현" → brass (aurora 역할과 혼용 금지) */
+.codex-mode-option:hover,
+.codex-mode-option:focus-visible,
+.codex-mode-option.is-active {
+  color: var(--brass-bright);
+  background: color-mix(in oklch, var(--brass) 13%, transparent);
+}
+
+/* ---- 공유 표면 크롬 (Side/Modal 헤더·본문 공통) ---- */
+.codex-surface-header {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.codex-surface-heading {
+  min-width: 0;
+}
+
+.codex-surface-eyebrow {
+  display: block;
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.codex-surface-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 560;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-surface-close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
+  color: var(--ink-fog);
+  font-size: 17px;
+  line-height: 1;
+  transition:
+    color var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
+}
+
+.codex-surface-close:hover,
+.codex-surface-close:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
+/* mount host(.codex-host)가 appendChild로 꽂히는 컨테이너 — 세 모드 공통 ref 대상. */
+.codex-surface-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.codex-surface-host > .codex-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+/* Side에서는 host 둘레에 살짝 가라앉은 면을 둬 글래스 카드와 분리한다(Full은 맨 면 유지). */
+.codex-side-panel .codex-surface-host {
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-deep) 38%, transparent);
+}
+
+/* ============================ FULL (전용 라우트) ============================ */
+/* console-shell 2행 그리드 셀을 그대로 채운다 — 기존 Codex 라우트와 동일한 점유/스크롤. */
+.codex-route-host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ============================ SIDE (우현 도킹) ============================ */
+/* topbar(64px) 아래에서 시작해 GNB 토글이 가려지지 않게 한다. 좌측 Operations 플로팅 사이드바와
+   충돌하지 않도록 우현 전용. 폭은 리사이즈로 --codex-side-width를 갱신한다. 폭 상한/하한은 두지
+   않고(대원수 지시) 뷰포트 넘침만 max-width로 막는다 — 좁아지면 Codex가 본문만 렌더(아래 컨테이너 쿼리). */
+.codex-side-layer {
+  position: fixed;
+  top: calc(64px + var(--space-4));
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 34;
+  width: var(--codex-side-width, 460px);
+  max-width: calc(100vw - var(--space-8));
+  pointer-events: none;
+}
+
+.codex-side-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  pointer-events: auto;
+  animation: codex-rise 520ms var(--ease-spring) both;
+}
+
+/* 좌측 모서리 리사이즈 핸들 — 우현 도킹이라 핸들은 좌측에 둔다. */
+.codex-side-resize {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 11px;
+  height: 100%;
+  cursor: ew-resize;
+  border-radius: 999px;
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-glide);
+  touch-action: none;
+}
+
+.codex-side-resize:hover,
+.codex-side-resize.is-dragging {
+  background: color-mix(in oklch, var(--brass) 22%, transparent);
+}
+
+/* prefers-reduced-motion: 표면 reveal 애니메이션 명시 차단(directory-browser와 동일 안전장치). */
+@media (prefers-reduced-motion: reduce) {
+  .codex-side-panel {
+    animation: none;
+  }
+}
