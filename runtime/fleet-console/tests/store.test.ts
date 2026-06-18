@@ -14,14 +14,17 @@ import {
   closeShell,
   completeCreateTerminalSession,
   closeOperationSearch,
+  closeOnboarding,
   failResumeTerminalSession,
   focusOperation,
   getState,
   hydrateTerminalSessions,
   hydrateTheaters,
+  openOnboarding,
   openOperationSearch,
   openShortcuts,
   readStoredRenderer,
+  resolveOnboardingOnBootstrap,
   selectJob,
   selectTerminalSession,
   selectedJob,
@@ -41,6 +44,7 @@ const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", cre
 const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
 const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
 const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
+const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, tenantId = "tenant-1", jobId = "job-1"): ObservedEvent {
   return { id, tenantId, jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };
@@ -84,6 +88,8 @@ beforeEach(() => {
     shellOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
+    onboardingOpen: false,
+    bootstrapped: false,
     pendingOperationFocus: null,
     selectedJobId: null,
   });
@@ -361,6 +367,52 @@ describe("store", () => {
 
     toggleShortcuts();
     expect(getState().shortcutsOpen).toBe(false);
+  });
+
+  it("opens commissioning automatically after bootstrap only when no Theaters are registered and it has not been seen", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    hydrateTheaters([]);
+    expect(getState()).toMatchObject({ bootstrapped: false, onboardingOpen: false });
+
+    resolveOnboardingOnBootstrap();
+
+    expect(getState()).toMatchObject({ bootstrapped: true, onboardingOpen: true });
+  });
+
+  it("does not open commissioning automatically when Theaters exist", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    hydrateTheaters([THEATER_A]);
+    resolveOnboardingOnBootstrap();
+
+    expect(getState()).toMatchObject({ bootstrapped: true, onboardingOpen: false });
+  });
+
+  it("does not open commissioning automatically after it has been dismissed", () => {
+    const storage = new Map<string, string>([[COMMISSIONING_SEEN_STORAGE_KEY, "1"]]);
+    mockLocalStorage(storage);
+
+    hydrateTheaters([]);
+    resolveOnboardingOnBootstrap();
+
+    expect(getState()).toMatchObject({ bootstrapped: true, onboardingOpen: false });
+  });
+
+  it("opens and closes commissioning manually while persisting the dismissed marker", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    expect(getState().onboardingOpen).toBe(false);
+
+    openOnboarding();
+    expect(getState().onboardingOpen).toBe(true);
+
+    closeOnboarding();
+    expect(getState().onboardingOpen).toBe(false);
+    expect(storage.get(COMMISSIONING_SEEN_STORAGE_KEY)).toBe("1");
   });
 
   it("binds hydrated terminal sessions to tenants without changing the active session", () => {

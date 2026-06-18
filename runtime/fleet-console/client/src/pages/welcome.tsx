@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { fetchCarriers, fetchObserverStatus } from "../api.js";
 import { buildBridgeView, type BridgeView, type TheaterReadiness } from "../dashboard.js";
 import { fetchKnowledgeReadiness, type KnowledgeReadinessSummary } from "../dashboard-knowledge.js";
+import { openOnboarding } from "../store.js";
 import type { CarrierReadinessEntry, ConsoleState, ObserverStatus } from "../types.js";
 
 interface WelcomeProps {
@@ -90,23 +91,40 @@ export function Welcome({ state }: WelcomeProps) {
 
   return (
     <main className="welcome-page">
+      <header className="welcome-header">
+        <div>
+          <p className="bridge-kicker">Bridge Readiness</p>
+          <h2>Welcome</h2>
+        </div>
+        <button type="button" className="welcome-guide-button" onClick={openOnboarding}>
+          Commissioning guide
+        </button>
+      </header>
+
       <section className="bridge-matrix" aria-labelledby="bridge-matrix-title">
         <div className="bridge-section-heading">
           <p className="bridge-kicker">Theater Capability Matrix</p>
           <h3 id="bridge-matrix-title">Registered Theaters</h3>
         </div>
-        <div className="bridge-matrix-table" role="table" aria-label="Theater capability matrix">
-          <div className="bridge-matrix-row bridge-matrix-head" role="row">
-            <span role="columnheader">Theater</span>
-            <span role="columnheader">Codex</span>
-            <span role="columnheader">Active</span>
-            <span role="columnheader">Terminals</span>
-            <span role="columnheader">Updated</span>
+        {view.theaters.length > 0 ? (
+          <div className="bridge-matrix-table" role="table" aria-label="Theater capability matrix">
+            <div className="bridge-matrix-row bridge-matrix-head" role="row">
+              <span role="columnheader">Theater</span>
+              <span role="columnheader">Codex</span>
+              <span role="columnheader">Active</span>
+              <span role="columnheader">Terminals</span>
+              <span role="columnheader">Updated</span>
+            </div>
+            {view.theaters.map((theater) => <TheaterRow key={theater.id} theater={theater} />)}
           </div>
-          {view.theaters.length > 0 ? view.theaters.map((theater) => <TheaterRow key={theater.id} theater={theater} />) : (
-            <p className="bridge-matrix-empty">No Theaters registered.</p>
-          )}
-        </div>
+        ) : (
+          <div className="bridge-matrix-empty bridge-matrix-empty--first-run">
+            <p>No Theaters registered. Set up a project directory first, then open an Operation from that Theater.</p>
+            <button type="button" className="bridge-matrix-empty-action" onClick={openOnboarding}>
+              Set up your fleet
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="bridge-carriers" aria-labelledby="bridge-carriers-title">

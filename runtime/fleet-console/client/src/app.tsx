@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useMaximized } from "./canvas/canvas-store.js";
 import { useOperationsMode } from "./operations-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
+import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
@@ -15,7 +16,7 @@ import { useConsoleState } from "./hooks/use-store.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { Codex } from "./pages/codex.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
+import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
@@ -38,10 +39,14 @@ export function App() {
   useEffect(() => {
     const abort = new AbortController();
     void fetchTheaterBootstrap(abort.signal)
-      .then(hydrateTheaterBootstrap)
+      .then((bootstrap) => {
+        hydrateTheaterBootstrap(bootstrap);
+        resolveOnboardingOnBootstrap();
+      })
       .catch((error) => {
         if (abort.signal.aborted) return;
         setState({ theaterError: error instanceof Error ? error.message : String(error) });
+        resolveOnboardingOnBootstrap();
       });
     void fetchTerminalSessions(abort.signal)
       .then(hydrateTerminalSessions)
@@ -100,6 +105,7 @@ export function App() {
       <ShellOverlay state={state} />
       <OperationSearch state={state} />
       <ShortcutsOverlay state={state} />
+      <CommissioningOverlay state={state} />
       <Toast
         open={state.connectionError !== null}
         tone="error"
