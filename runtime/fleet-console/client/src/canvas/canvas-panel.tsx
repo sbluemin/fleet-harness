@@ -37,6 +37,15 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
   const activeJobCount = activeJobs.length;
   const dormant = session.status === "dormant";
   const displayLabel = sessionDisplayLabel(session);
+  // 외곽 "물결(wake)" 효과 상태: 비콘(인디케이터)과 동일한 색 의미를 따른다.
+  // 활성 캐리어 job → "live"(aurora), 그 외 에이전트 턴 진행 → "turn"(warn/amber). dormant·idle은 효과 없음.
+  const underwayState: "live" | "turn" | null = dormant
+    ? null
+    : activeJobCount > 0
+      ? "live"
+      : session.turnState === "running"
+        ? "turn"
+        : null;
 
   const bringToFront = () => {
     selectTerminalSession(session.sessionId);
@@ -152,7 +161,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
   return (
     <>
     <article
-      className={`canvas-panel ${active ? "is-active" : ""} ${activeJobCount > 0 ? "is-running" : ""}`}
+      className={`canvas-panel ${active ? "is-active" : ""} ${underwayState ? `is-running is-running--${underwayState}` : ""}`}
       style={{
         left: geometry.x,
         top: geometry.y,

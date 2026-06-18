@@ -1858,29 +1858,39 @@
     0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-/* 작업 진행 중(activeJobCount > 0)인 에이전트 패널 = "출항(underway)" 상태.
-   aurora("지금 살아있는 것") 언어로 선체를 정적으로 표현한다. brass(선택/포커스)와 역할이
-   분리되므로 선택+진행이 겹쳐도 brass 보더와 aurora 림이 각자 의미로 공존한다.
-   AGENTS.md 모션 규약상 ambient 무한 모션은 금지되므로 진행 신호는 정적 aurora 림+글로우로
-   표현하고, 살아있는 모션은 기존 허용된 라이브 비콘(점)에 맡긴다.
-   overflow: hidden을 피해 외곽 글로우는 패널 자체 box-shadow로, 외곽선은 inset 의사요소로 그린다. */
+/* 작업 진행 중인 에이전트 패널 = "출항(underway)" 상태.
+   인디케이터(비콘) 색을 따르는 외곽 "물결(wake)" 애니메이션 + 정적 림으로 진행을 표시한다.
+   색 변형: is-running--live=aurora(활성 캐리어 job), is-running--turn=warn(에이전트 턴 진행 = "그냥 작업중").
+   외곽 글로우/물결은 패널 box-shadow(overflow:hidden 비클리핑), 림은 inset 의사요소로 그린다.
+   brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 물결이 각자 의미로 공존.
+   AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림+글로우로 단락). */
 .canvas-panel.is-running {
   box-shadow:
     var(--shadow-soft),
-    0 0 20px -6px var(--aurora-glow);
+    0 0 22px -6px var(--uw-glow);
+  animation: panel-wake-ripple 2.2s ease-out infinite;
 }
 
-/* 선택(is-active) + 진행(is-running) 동시: brass 선택 링 + aurora 출항 글로우 공존 */
+/* 인디케이터 색 추종 — live: aurora("지금 살아있는 것", 활성 캐리어 job) */
+.canvas-panel.is-running--live {
+  --uw-tint: var(--aurora);
+  --uw-glow: var(--aurora-glow);
+  --uw-ring: color-mix(in oklch, var(--aurora) 50%, transparent);
+}
+
+/* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 = "그냥 작업중") */
+.canvas-panel.is-running--turn {
+  --uw-tint: var(--warn);
+  --uw-glow: var(--warn-glow);
+  --uw-ring: color-mix(in oklch, var(--warn) 50%, transparent);
+}
+
+/* 선택(is-active) + 진행 동시: brass 선택 보더 + 인디케이터색 물결/글로우 공존 */
 .canvas-panel.is-running.is-active {
   border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent),
-    0 0 20px -6px var(--aurora-glow);
 }
 
-/* 상시 aurora 선체 림 — running의 정적 신호.
-   linear-gradient 마스크로 테두리 띠만 남겨 링을 만든다(가운데는 마스킹되어 비침). */
+/* 상시 외곽 림 — running의 정적 신호(색은 인디케이터 따라감). 마스크로 테두리 띠만 남긴다. */
 .canvas-panel.is-running::before {
   content: "";
   position: absolute;
@@ -1889,7 +1899,7 @@
   padding: 1.5px;
   border-radius: inherit;
   pointer-events: none;
-  background: color-mix(in oklch, var(--aurora) 38%, transparent);
+  background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -1898,6 +1908,16 @@
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   mask-composite: exclude;
+}
+
+/* prefers-reduced-motion: 물결 정지, 정적 림 + 정적 글로우만 유지(색은 인디케이터 따라감) */
+@media (prefers-reduced-motion: reduce) {
+  .canvas-panel.is-running {
+    animation: none;
+    box-shadow:
+      var(--shadow-soft),
+      0 0 22px -6px var(--uw-glow);
+  }
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를

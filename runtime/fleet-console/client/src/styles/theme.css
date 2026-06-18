@@ -305,6 +305,24 @@ a {
   }
 }
 
+/* 진행 중(running) Operation 패널 외곽의 "항적(wake)" 물결 — 한 겹의 링이 바깥으로 번지며 사라진다.
+   패널 자체 box-shadow로 그려 overflow: hidden 클리핑을 피한다(자식 의사요소의 외향 글로우는 잘림).
+   색(--uw-ring/--uw-glow)은 인디케이터(비콘)를 따른다. AGENTS.md 모션 규약의 sanctioned 예외. */
+@keyframes panel-wake-ripple {
+  0% {
+    box-shadow:
+      var(--shadow-soft),
+      0 0 22px -6px var(--uw-glow),
+      0 0 0 0 var(--uw-ring);
+  }
+  100% {
+    box-shadow:
+      var(--shadow-soft),
+      0 0 22px -6px var(--uw-glow),
+      0 0 2px 18px transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
