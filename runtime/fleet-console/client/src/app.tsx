@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import { setMaximized, useMaximized } from "./canvas/canvas-store.js";
+import { useMaximized } from "./canvas/canvas-store.js";
 import { useOperationsMode } from "./operations-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
@@ -15,7 +15,7 @@ import { useConsoleState } from "./hooks/use-store.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
 import { Codex } from "./pages/codex.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, getState, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
+import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
@@ -30,26 +30,9 @@ export function App() {
   // 최대화는 localStorage에 영속되지만, GNB 숨김은 Map(canvas) Operations 화면에서만 적용한다 —
   // 다른 라우트(Welcome/Codex/Helm)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
   const maximizedActive = maximized && pathname.startsWith("/operations") && operationsMode === "canvas";
-  // Esc 핸들러(capture, 한 번만 등록)에서 최신 maximizedActive를 읽기 위한 ref.
-  const maximizedActiveRef = useRef(maximizedActive);
-  maximizedActiveRef.current = maximizedActive;
 
   useEffect(() => {
     return startObserverConnection();
-  }, []);
-
-  // 최대화 중 Esc로 해제한다. capture 단계에서 가장 먼저 실행되며, 아직 어떤 모달/메뉴도 Esc로 닫히기 전이므로
-  // 라이브 store 상태를 읽어 상위 모달(셸·검색·단축키)이나 열린 메뉴가 있으면 그쪽 Esc에 양보한다(전체화면 유지).
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !maximizedActiveRef.current) return;
-      const live = getState();
-      if (live.shellOpen || live.operationSearchOpen || live.shortcutsOpen) return;
-      if (document.querySelector('[role="menu"], [role="dialog"]')) return;
-      setMaximized(false);
-    };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, []);
 
   useEffect(() => {

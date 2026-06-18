@@ -158,7 +158,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         data-canvas-blocker
         aria-label={maximized ? "맵 최대화 해제" : "맵 최대화"}
         aria-pressed={maximized}
-        title={maximized ? "Exit fullscreen (Esc)" : "Maximize map"}
+        title={maximized ? "Exit fullscreen" : "Maximize map"}
       >
         {maximized ? <RestoreIcon /> : <MaximizeIcon />}
       </button>
