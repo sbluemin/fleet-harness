@@ -305,6 +305,39 @@ a {
   }
 }
 
+/* 작업 진행 중(running) 에이전트 패널의 "출항(underway)" 시각효과 토큰.
+   --wake-angle: 선체 외곽을 순회하는 aurora 항적광의 각도.
+   --underway-glow: 선체 외곽 호흡 글로우의 blur 반경(@property 등록으로 부드러운 보간). */
+@property --wake-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@property --underway-glow {
+  syntax: "<length>";
+  initial-value: 18px;
+  inherits: false;
+}
+
+/* aurora 항적광이 선체를 한 바퀴 순회 */
+@keyframes panel-underway-orbit {
+  to {
+    --wake-angle: 360deg;
+  }
+}
+
+/* 선체 외곽 글로우가 호흡하듯 맥동(라이브 비콘과 동일 리듬) */
+@keyframes panel-underway-breathe {
+  0%,
+  100% {
+    --underway-glow: 14px;
+  }
+  50% {
+    --underway-glow: 28px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
