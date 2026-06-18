@@ -8,7 +8,7 @@ import {
   buildProvenanceContext,
   buildRelatedContextPack,
 } from "./components/copy-context-actions";
-import { configureCommandPalette, initCommandPalette } from "./components/command-palette";
+import { configureCommandPalette, destroyCommandPalette, initCommandPalette } from "./components/command-palette";
 import { renderConflictsList, renderConflictDetail } from "./components/conflicts-view";
 import { renderIndexMarkdownView } from "./components/index-md-view";
 import { renderManifestPanel } from "./components/manifest-panel";
@@ -29,6 +29,7 @@ import {
   currentWorkspaceId,
   currentRoute,
   entryPath,
+  destroyRouter,
   homePath,
   initRouter,
   logPath,
@@ -96,6 +97,8 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
       unsubscribeRoute();
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("submit", handleDocumentSubmit);
+      destroyCommandPalette();
+      destroyRouter();
       root.innerHTML = "";
     },
   };

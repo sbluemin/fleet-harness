@@ -3,12 +3,15 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater, ApiError, forgetTheater, issueTerminalFolderGrant } from "../api.js";
 import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
+import { setCodexViewMode, type CodexViewMode } from "../codex-view-mode.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
+import { CodexModeToggle } from "./codex-mode-toggle.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
 
 interface TopbarProps {
   readonly state: ConsoleState;
+  readonly codexMode: CodexViewMode;
 }
 
 interface NavItem {
@@ -35,13 +38,14 @@ const THEMES: readonly ThemeOption[] = [
   { id: "carbon", label: "Carbon", swatch: ["oklch(76% 0.115 62)", "oklch(80% 0.105 205)", "oklch(25% 0.007 252)"] },
 ];
 
-export function Topbar({ state }: TopbarProps) {
+export function Topbar({ state, codexMode }: TopbarProps) {
   // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
   const alert = state.connectionError !== null;
   // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다 — GNB nav 아이콘과 같은 도형을 공유해 일치를 보장한다. Welcome 등 그 외 라우트는 기본 Fleet 시질을 유지한다.
   const pathname = useLocation().pathname;
   const operationsMode = useOperationsMode();
   const operationsRoute = pathname.startsWith("/operations");
+  const codexRoute = pathname.startsWith("/codex");
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
     : pathname.startsWith("/carrier-settings")
@@ -92,6 +96,7 @@ export function Topbar({ state }: TopbarProps) {
                 <span>{item.label}</span>
               </NavLink>
               {item.icon === "operations" && operationsRoute ? <OperationsModeToggle mode={operationsMode} /> : null}
+              {item.icon === "codex" && codexRoute ? <CodexModeToggle mode={codexMode} onSelect={setCodexViewMode} /> : null}
             </Fragment>
           ))}
         </nav>
