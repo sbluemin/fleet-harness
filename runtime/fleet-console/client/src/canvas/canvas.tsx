@@ -189,7 +189,6 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
               geometry={geometry}
               viewport={canvas.viewport}
               active={state.activeTerminalSessionId === session.sessionId}
-              getCanvasRect={() => canvasRef.current?.getBoundingClientRect() ?? null}
             />
           );
         })}
