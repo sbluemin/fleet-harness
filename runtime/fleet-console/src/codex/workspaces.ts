@@ -52,6 +52,13 @@ export class WorkspaceRegistry {
     return this.#items.get(id) ?? null;
   }
 
+  remove(id: string): boolean {
+    const deleted = this.#items.delete(id);
+    // MRU가 제거 대상이면 포인터를 비워 getMru()가 사라진 워크스페이스를 가리키지 않게 한다.
+    if (this.#mruId === id) this.#mruId = null;
+    return deleted;
+  }
+
   getMru(): WorkspaceRegistration | null {
     return this.#mruId ? this.get(this.#mruId) : null;
   }

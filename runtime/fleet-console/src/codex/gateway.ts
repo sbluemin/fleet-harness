@@ -41,6 +41,7 @@ export interface CodexGateway {
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
   listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
   registerWorkspace(cwd: string): Promise<WorkspaceRegistration>;
+  unregisterWorkspace(id: string): boolean;
 }
 
 export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
@@ -112,6 +113,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     handle,
     listWorkspaceRegistrations: () => workspaces.listRegistrations(),
     registerWorkspace: (cwd) => workspaces.register(cwd),
+    unregisterWorkspace: (id) => workspaces.remove(id),
   };
 }
 

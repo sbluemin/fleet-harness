@@ -651,6 +651,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
     // 이미 달성된 것이므로 404가 아닌 성공으로 처리하고, 남아 있을 수 있는 소속 Operation도 함께 정리한다.
     theaters.remove(theaterId);
+    // Theater를 잊을 때 Codex 워크스페이스 등록도 함께 해제한다. 등록을 남겨두면
+    // /console/codex/w/:id/ 직접 URL이 재시작 전까지 잊은 Theater의 위키를 계속 서빙한다(등록/복원 경로와 대칭).
+    codex.unregisterWorkspace(theaterId);
     for (const operation of operations) forgetTerminalSession(operation.sessionId, { persist: false });
     persistDurableState();
     writeJson(res, 200, { ok: true });

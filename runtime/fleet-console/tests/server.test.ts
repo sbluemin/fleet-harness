@@ -798,6 +798,26 @@ describe("console static and terminal ticket boundary", () => {
     expect(afterRestart.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
   });
 
+  it("unregisters a Theater's Codex workspace when the Theater is forgotten", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-forget-"));
+    tempDirs.push(dir);
+    fs.mkdirSync(path.join(dir, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, dir);
+
+    // 등록 직후에는 codex 워크스페이스 라우트가 위키 health를 200으로 서빙한다.
+    const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/health`, { redirect: "manual" });
+    const deleted = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    // forget 후에는 워크스페이스가 해제되어 같은 라우트가 codex 홈으로 302 리다이렉트된다.
+    const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/health`, { redirect: "manual" });
+    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}observer/theaters`);
+
+    expect(beforeForget.status).toBe(200);
+    expect(deleted.status).toBe(200);
+    expect(afterForget.status).toBe(302);
+    expect(remaining.theaters.find((entry) => entry.id === theater.id)).toBeUndefined();
+  });
+
   it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);
