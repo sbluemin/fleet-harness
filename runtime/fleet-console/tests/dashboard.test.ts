@@ -20,6 +20,7 @@ const BASE_STATE: ConsoleState = {
   sessions: {},
   sessionOrder: [],
   activeTerminalSessionId: null,
+  operationsViewActive: false,
   creatingTerminalSession: false,
   terminalSessionError: null,
   tenantJobs: {},
