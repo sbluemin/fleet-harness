@@ -21,7 +21,7 @@ export class WorkspaceRegistry {
   readonly #items = new Map<string, WorkspaceRegistration>();
   #mruId: string | null = null;
 
-  async register(cwdInput: string): Promise<WorkspaceRegistration> {
+  async register(cwdInput: string, lastOpenedAt?: string): Promise<WorkspaceRegistration> {
     const cwd = path.resolve(cwdInput);
     const real = await canonicalizeTheaterPath(cwd);
     const paths = resolveFleetWikiMemoryPaths(real);
@@ -41,7 +41,9 @@ export class WorkspaceRegistry {
       label: path.basename(cwd),
       paths,
       registeredAt: existing?.registeredAt ?? now,
-      lastOpenedAt: now,
+      // 복원 경로는 durable lastOpenedAt을 그대로 보존해 재시작 후에도 워크스페이스 최근성
+      // 순서(MRU·listRegistrations 동순위 처리)가 durable 상태와 일치하게 한다. 일반 등록은 now.
+      lastOpenedAt: lastOpenedAt ?? now,
     };
     this.#items.set(id, item);
     this.#mruId = id;

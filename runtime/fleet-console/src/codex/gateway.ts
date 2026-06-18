@@ -40,7 +40,7 @@ export interface CodexGateway {
   getWorkspace(id: string): WorkspaceRegistration | null;
   handle(request: IncomingMessage, response: ServerResponse): Promise<boolean>;
   listWorkspaceRegistrations(): readonly WorkspaceRegistration[];
-  registerWorkspace(cwd: string): Promise<WorkspaceRegistration>;
+  registerWorkspace(cwd: string, lastOpenedAt?: string): Promise<WorkspaceRegistration>;
   unregisterWorkspace(id: string): boolean;
 }
 
@@ -115,7 +115,7 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     getWorkspace: (id) => workspaces.get(id),
     handle,
     listWorkspaceRegistrations: () => workspaces.listRegistrations(),
-    registerWorkspace: (cwd) => workspaces.register(cwd),
+    registerWorkspace: (cwd, lastOpenedAt) => workspaces.register(cwd, lastOpenedAt),
     unregisterWorkspace: (id) => {
       // 캐시된 initial workspace가 해제 대상이면 캐시를 비워, 이후 비프리픽스 라우트가
       // 레지스트리에서 사라진 등록을 계속 서빙하지 않게 한다(다음 접근 시 재평가).

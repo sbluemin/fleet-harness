@@ -901,13 +901,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function restoreCodexWorkspaces(): Promise<void> {
-    // durable lastOpenedAt 오름차순으로 순차 등록한다. register()가 매번 MRU를 갱신하므로
-    // 가장 최근에 열린 Theater가 마지막에 등록되어 codex MRU가 되고, getMru() 기반 라우트가
-    // 재시작 후에도 durable 최근성 순서를 유지한다(병렬 등록은 stat 완료 순서에 의존해 비결정적).
+    // durable lastOpenedAt 오름차순으로 순차 등록하면서 durable 타임스탬프를 그대로 보존한다.
+    // register()가 매번 MRU를 갱신하므로 가장 최근에 열린 Theater가 마지막에 등록되어 codex
+    // MRU가 되고, durable 타임스탬프 보존으로 listRegistrations()의 동순위(같은 밀리초) 모호성
+    // 없이 getMru() 기반 라우트가 재시작 후에도 durable 최근성 순서를 유지한다.
     const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
     for (const theater of ordered) {
       try {
-        await codex.registerWorkspace(theater.path);
+        await codex.registerWorkspace(theater.path, theater.lastOpenedAt);
       } catch (error) {
         // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
         if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
