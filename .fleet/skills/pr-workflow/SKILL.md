@@ -1,13 +1,13 @@
 ---
 name: pr-workflow
-description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work, open a PR as the authenticated user, await the Codex automated review, apply feedback under an Admiral judgment gate, request re-review, and detect approval. Supersedes the former pr-creates and pr-review-fixes skills.
+description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged work, open a PR as the authenticated user, await the Codex automated review, apply feedback under an Admiral judgment gate, request re-review, detect approval, and auto-merge the approved PR (rebasing the head onto canary and force-pushing first when it conflicts). Supersedes the former pr-creates and pr-review-fixes skills.
 ---
 
 # PR Workflow
 
-Use this skill to drive a change from committed work to an approved pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit → open PR → await Codex review → judge & apply feedback → re-review → detect approval**.
+Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit → open PR → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
 
-This is a single end-to-end workflow. Enter at Phase 1 for a fresh change; if the branch is already committed and pushed with an open PR, skip to Phase 3 to resume at the review loop.
+This is a single end-to-end workflow. Enter at Phase 1 for a fresh change; if the branch is already committed and pushed with an open PR, skip to Phase 3 to resume at the review loop; if the PR is already approved, resume at Phase 6 to merge it.
 
 ## Inputs
 
@@ -23,11 +23,13 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 - `<scope_hint>` — Optional. Free-form note restricting review-fix scope (e.g., "only Codex P1/P2"). If omitted, default to "every actionable, unresolved review comment on the PR".
 - `<review_poll_interval>` — Optional. Cadence for the Codex review wait loop (e.g., `5m`). If omitted, default `5m`.
 - `<repo>` — `owner/name` slug. Optional. If omitted, infer from `gh repo view --json nameWithOwner` (must be `sbluemin/fleet-harness`).
-- `<pr_number>` — Target PR number. When entering at Phase 1 it is produced by Phase 2 (PR creation). When **resuming** at Phase 3/4/5 for an already-open PR it is **required** — if absent, resolve it from the current branch via `gh pr view --json number,headRefName` before polling. `<headRefName>` (the PR head branch) is recorded alongside it and is the only branch Phases 4–5 push to.
+- `<merge_method>` — `squash` | `merge` | `rebase`. Optional. Default `squash` (the repo convention — squash-merge titles read `type(scope): summary (#N)`). Used by Phase 6 auto-merge.
+- `<auto_merge>` — `true` | `false`. Optional. Default `true`. When `true`, Phase 6 merges the PR after approval (rebasing the head onto `<base>` and force-pushing first when it conflicts). When `false`, stop at approval and report the PR as approved-but-unmerged (the legacy behavior).
+- `<pr_number>` — Target PR number. When entering at Phase 1 it is produced by Phase 2 (PR creation). When **resuming** at Phase 3/4/5/6 for an already-open PR it is **required** — if absent, resolve it from the current branch via `gh pr view --json number,headRefName` before polling. `<headRefName>` (the PR head branch) is recorded alongside it and is the only branch Phases 4–6 push to.
 
 ## Goal
 
-Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and stop when Codex signals approval.
+Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and — once Codex signals approval — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
 
 ## Admiral Judgment Policy
 
@@ -82,7 +84,7 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
    EOF
    )" $( [ "$draft" = "true" ] && echo "--draft" )
    ```
-5. Record the PR identity for the rest of the workflow: `<pr_number>` (number), `<repo>`, the PR URL, and `<headRefName>` (= `<head>`, the only branch Phases 4–5 push to). These are the target for Phases 3–6.
+5. Record the PR identity for the rest of the workflow: `<pr_number>` (number), `<repo>`, the PR URL, and `<headRefName>` (= `<head>`, the only branch Phases 4–6 push to). These are the target for Phases 3–7.
 
 ### Phase 3 — Await the Codex review (auto-polled)
 
@@ -91,7 +93,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 0. **Ensure PR metadata and the right branch.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit.
 1. **Arm the poll automatically.** On first entry to Phase 3, call `CronCreate` directly with `cron: "*/5 * * * *"` (or the cadence implied by `<review_poll_interval>`), `recurring: true`, and a `prompt` that re-enters this skill at Phase 3 carrying `<pr_number>` and `<repo>` explicitly — e.g. `"Resume pr-workflow Phase 3 for PR <pr_number> on <repo>: check Codex review state and act per the skill."`. Report the armed job ID. Do not block; the cron tick re-invokes the check. Arm exactly once — on later ticks, if a poll job already exists for this PR, do not arm a second.
 2. On each check (first entry and every tick), read: `gh pr view <pr_number> --repo <repo> --json reviews,comments,reviewDecision`; inline comments `gh api repos/<repo>/pulls/<pr_number>/comments`; top-level comments `gh api repos/<repo>/issues/<pr_number>/comments`; and the **approval signal** — Codex reactions on the PR body: `gh api repos/<repo>/issues/<pr_number>/reactions -H "Accept: application/vnd.github.squirrel-girl-preview+json"`.
-3. **Approval = completion.** When `chatgpt-codex-connector[bot]` leaves a `+1` reaction on the PR body **and** there are no new actionable review comments, the workflow is complete — go to Phase 6. Count the `+1` as approval **only if it is fresher than the latest change** — its `created_at` must be newer than both the latest pushed head commit and the most recent `@codex` re-review comment. A `+1` that predates the latest push is stale (carried over from an earlier pass, since GitHub keeps the old reaction), so ignore it and keep polling. A bare `eyes` reaction means the review is still in progress (pending), not approval.
+3. **Approval = merge trigger.** When `chatgpt-codex-connector[bot]` leaves a `+1` reaction on the PR body **and** there are no new actionable review comments, approval is final — go to Phase 6 (auto-merge). Count the `+1` as approval **only if it is fresher than the latest change** — its `created_at` must be newer than both the latest pushed head commit and the most recent `@codex` re-review comment. A `+1` that predates the latest push is stale (carried over from an earlier pass, since GitHub keeps the old reaction), so ignore it and keep polling. A bare `eyes` reaction means the review is still in progress (pending), not approval.
 4. If new actionable feedback exists, go to Phase 4. If neither (still pending — e.g. only `eyes`, or no reaction yet), do nothing this tick and let the next cron tick check again.
 
 ### Phase 4 — Judge & apply feedback
@@ -124,14 +126,33 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
    ```
 6. Return to Phase 3 to await the next review pass.
 
-### Phase 6 — Completion
+### Phase 6 — Auto-merge
 
-Stop the wait loop (`CronDelete` the poll job armed in Phase 3). Report in Korean:
+Reached only after Phase 3 confirms a final approval (a fresh Codex `+1` with no open actionable comments). When `<auto_merge>` is `false`, skip this phase: `CronDelete` the poll job and go straight to Phase 7, reporting the PR as approved-but-unmerged.
+
+1. **Stop the wait loop.** `CronDelete` the poll job armed in Phase 3 — approval is final, no more review polling.
+2. **Check mergeability.** `gh pr view <pr_number> --repo <repo> --json mergeable,mergeStateStatus,baseRefName,headRefName`.
+   - `mergeable: MERGEABLE` with `mergeStateStatus` `CLEAN` / `UNSTABLE` / `BEHIND` (no conflict) → go to step 4 (merge directly).
+   - `mergeable: CONFLICTING` or `mergeStateStatus: DIRTY` → the head conflicts with `<base>`; go to step 3 (rebase path).
+   - `mergeable: UNKNOWN` → GitHub is still computing mergeability; wait briefly and re-check before deciding.
+3. **Conflict path — rebase the head onto `<base>`, then force-push.**
+   1. Invoke the **rebase-on-canary** skill against the PR head (current-branch mode in the head's worktree, or its explicit `<worktree_path>`) with base = `<base>`. By default that skill auto-resolves conflicts by integrating both sides and validates the result.
+   2. rebase-on-canary escalates only a genuinely ambiguous/unsafe conflict or a post-rebase validation failure. If it escalates, **halt auto-merge** and surface its report to the Admiral of the Navy — do not merge.
+   3. On a successful rebase (clean or auto-resolved), confirm the current branch is `<headRefName>`, then publish the rewritten history with a lease: `git push --force-with-lease origin HEAD:<headRefName>`. Never `--force`; never force-push `<base>`.
+   4. Re-check mergeability (step 2). The rebase preserves the approved change reconciled with the new base; if `mergeable` is still not `MERGEABLE`, halt and escalate.
+4. **Merge.** `gh pr merge <pr_number> --repo <repo> --<merge_method>` (default `--squash`, matching the repo convention). Do not pass `--admin` or otherwise bypass branch protection or a required check — if the merge is rejected, halt and escalate.
+5. **Verify the merge.** `gh pr view <pr_number> --repo <repo> --json state,mergedAt,mergeCommit` — confirm `state: MERGED` and record the merge commit SHA.
+6. Go to Phase 7.
+
+### Phase 7 — Completion
+
+Report in Korean:
 - PR number, title, head/base, URL, draft flag.
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
 - Files changed, commit SHA(s), push target(s).
 - Validation commands and pass/fail status; note any check not run.
 - The approval signal observed (Codex `+1` on the PR body) and the `@codex` follow-up comment URL(s).
+- **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The poll job was stopped in Phase 6.
 
 ## Carrier Delegation Guidance
 
@@ -143,10 +164,11 @@ Stop the wait loop (`CronDelete` the poll job armed in Phase 3). Report in Korea
 
 ## Safety Rules
 
-- Do not push to `main` / `master` or any protected branch — push only to the PR's `headRefName`.
+- Do not push commits directly to `main` / `master` / `<base>` or any protected branch — local pushes target only the PR's `headRefName`. Phase 6 integrates into `<base>` exclusively through the server-side `gh pr merge`, never a local push to the base.
 - Do not address review items outside `<scope_hint>` that the user did not ask for.
 - Do not silently expand scope: no opportunistic refactors, formatting-only churn, or dependency bumps.
-- Do not create a new branch mid-flow, rebase, force-push, amend, or close/reopen the PR.
+- Do not create a new branch mid-flow, amend, or close/reopen the PR. Do not rebase or force-push **except** the Phase 6 auto-merge conflict path: it rebases the head onto `<base>` via the rebase-on-canary skill and force-pushes the result to `<headRefName>` with `--force-with-lease` only — never `--force`, never to `<base>`.
+- Phase 6 merges only via `gh pr merge` with `<merge_method>` (default `squash`); never pass `--admin` or bypass branch protection or a required check — halt and escalate if the merge is rejected.
 - Do not bypass Git hooks (`--no-verify`, `--no-gpg-sign`, etc.) without explicit user permission.
 - Do not commit secrets, `.env` files, or generated artifacts that are not part of the change.
 - Do not write commit messages in any language other than English.
