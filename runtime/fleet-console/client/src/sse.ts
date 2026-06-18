@@ -6,7 +6,7 @@ export interface SseFrame {
 }
 
 export interface ObserverFrame {
-  readonly kind: "event" | "truncation" | "session";
+  readonly kind: "event" | "truncation" | "session" | "attention";
   readonly tenantId: string;
   readonly tenantLabel?: string;
   readonly event?: ObservedEvent;
@@ -57,6 +57,11 @@ export function interpretObserverFrame(frame: SseFrame): ObserverFrame | null {
     const session = readSessionInfo(parsed.session);
     if (!session) return null;
     return { kind: "session", tenantId: session.tenantId ?? session.sessionId, session };
+  }
+  if (frame.event === "session:attention") {
+    const session = readSessionInfo(parsed.session);
+    if (!session) return null;
+    return { kind: "attention", tenantId: session.tenantId ?? session.sessionId, session };
   }
   const event = readObservedEvent(parsed.event) ?? readObservedEvent(parsed);
   if (!event) return null;

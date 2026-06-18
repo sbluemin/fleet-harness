@@ -5111,6 +5111,10 @@
   border-left-color: var(--positive);
 }
 
+.operation-toast--input-waiting {
+  border-left-color: var(--warn);
+}
+
 /* 캐리어 출격은 살아있는 상태(aurora) — beacon의 is-live와 동일하게 펄스. */
 .operation-toast--carrier-call .app-toast-dot {
   animation: aurora-pulse 1.8s ease-in-out infinite;
@@ -5181,6 +5185,16 @@
 .operation-toast--ended .app-toast-dot {
   background: var(--positive);
   box-shadow: 0 0 9px var(--positive-glow);
+}
+
+/* 입력 대기 = 주의 필요(amber/warn). 무한 ambient 모션 금지 도덕에 따라 정적 표시로 둔다. */
+.operation-toast--input-waiting {
+  border-color: color-mix(in oklch, var(--warn) 40%, var(--surface-rim));
+}
+
+.operation-toast--input-waiting .app-toast-dot {
+  background: var(--warn);
+  box-shadow: 0 0 9px var(--warn-glow);
 }
 
 /* 토스트 본문 전체가 이동(Go) 트리거 — 점·텍스트를 품는 투명 버튼 표면. 닫기 버튼과 형제. */

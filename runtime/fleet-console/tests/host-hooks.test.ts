@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildConsoleCaptureHookCommand } from "../src/terminal/host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleCaptureHookCommand } from "../src/terminal/host-hooks.js";
 
 describe("console terminal host hooks", () => {
   it("builds capture hook commands for JavaScript entries without a tsx loader", () => {
@@ -34,6 +34,18 @@ describe("console terminal host hooks", () => {
         "capture-session",
         "codex",
       ],
+    });
+  });
+
+  it("builds attention hook commands for the input-waiting signal", () => {
+    const exec = buildConsoleAttentionHookCommand({
+      entryPath: "/app/fleet-console/dist/cli.mjs",
+      execPath: "/usr/local/bin/node",
+    });
+
+    expect(exec).toEqual({
+      command: "/usr/local/bin/node",
+      args: ["/app/fleet-console/dist/cli.mjs", "hook", "attention"],
     });
   });
 });

@@ -69,6 +69,26 @@ describe("interpretObserverFrame", () => {
     expect(frame?.event).toBeUndefined();
   });
 
+  it("reads terminal session attention frames as a transient attention kind", () => {
+    const frame = interpretObserverFrame({
+      event: "session:attention",
+      data: JSON.stringify({
+        session: {
+          sessionId: "session-a",
+          terminalSessionId: "session-a",
+          cwdLabel: "alpha",
+          sequence: 1,
+          label: "Bridge",
+          status: "registered",
+          createdAt: 1_000,
+        },
+      }),
+    });
+
+    expect(frame).toMatchObject({ kind: "attention", session: { sessionId: "session-a", label: "Bridge" } });
+    expect(frame?.event).toBeUndefined();
+  });
+
   it("returns null for malformed payloads", () => {
     expect(interpretObserverFrame({ event: "message", data: "not-json" })).toBeNull();
     expect(interpretObserverFrame({ event: "message", data: "{}" })).toBeNull();

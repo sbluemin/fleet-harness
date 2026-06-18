@@ -36,6 +36,10 @@ export function buildConsoleTurnHookCommand(entry: ConsoleHookCommandEntry, phas
   return buildConsoleCliHookExec(entry, ["hook", phase === "start" ? "turn-start" : "turn-end"]);
 }
 
+export function buildConsoleAttentionHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
+  return buildConsoleCliHookExec(entry, ["hook", "attention"]);
+}
+
 export function buildConsoleCaptureHookCommand(entry: ConsoleHookCommandEntry, cliId: AgentCliId): FleetHookExec {
   const extension = path.extname(entry.entryPath);
   if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {

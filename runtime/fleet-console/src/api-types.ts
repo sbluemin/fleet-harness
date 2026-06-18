@@ -114,6 +114,13 @@ export interface ConsoleSessionUpdatedEvent {
   readonly session: ConsoleTerminalSessionInfo;
 }
 
+// Agent CLI가 사용자 입력을 기다리며 중단된 transient 신호(턴 상태는 "running" 유지). session:updated와 달리
+// 세션 메타를 갱신하지 않고 1회성 알림만 흘린다.
+export interface ConsoleSessionAttentionEvent {
+  readonly type: "session:attention";
+  readonly session: ConsoleTerminalSessionInfo;
+}
+
 export interface TerminalFolderListEntry {
   readonly name: string;
   readonly path: string;

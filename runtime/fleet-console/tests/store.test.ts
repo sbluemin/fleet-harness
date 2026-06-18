@@ -4,6 +4,7 @@ import {
   applyJobsSnapshot,
   applyObservedEvent,
   applyObserverStatus,
+  applySessionAttention,
   applySessionUpdate,
   applyTenantSnapshot,
   applyTruncation,
@@ -432,6 +433,38 @@ describe("store", () => {
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
 
     expect(getState().sessions["session-a"]).toMatchObject({ label: "Bridge", tenantId: "tenant-1", registrationId: "registration-a", theaterId: "theater-a" });
+  });
+
+  it("raises an input-waiting toast unless the active operation is actually on the Operations view", () => {
+    setState({ operationToasts: [] });
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    setActiveTheater("theater-a");
+    selectTerminalSession("session-a");
+    // Operations 뷰(/operations)에서 session-a를 보고 있는 상태.
+    setState({ operationsViewActive: true });
+
+    // 비활성 Operation(session-b, 다른 Theater) → 입력 대기 토스트 발행.
+    applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
+    expect(getState().operationToasts).toHaveLength(1);
+    expect(getState().operationToasts[0]).toMatchObject({ kind: "input-waiting", sessionId: "session-b", theaterLabel: "Beta" });
+
+    // 같은 세션 재알림(AskUserQuestion의 PreToolUse+Notification 동시 발화 등) → 중복 발행 안 함.
+    applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
+    expect(getState().operationToasts).toHaveLength(1);
+
+    // Operations 뷰에서 보고 있는 활성 Operation(session-a) → 억제(추가 토스트 없음).
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
+    expect(getState().operationToasts).toHaveLength(1);
+
+    // Operations 뷰를 벗어나면(Welcome/Codex) 같은 활성 세션이라도 화면 밖이므로 입력 대기를 알린다.
+    setState({ operationsViewActive: false });
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
+    expect(getState().operationToasts).toHaveLength(2);
+    expect(getState().operationToasts[1]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
   });
 
   it("selects a job into the centered overlay and toggles it closed", () => {

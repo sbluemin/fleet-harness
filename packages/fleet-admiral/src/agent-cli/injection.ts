@@ -35,6 +35,8 @@ export interface InjectAgentCliProfileOptions {
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
+  // 입력 대기(AskUserQuestion PreToolUse · 입력 대기 Notification) 신호 hook. Claude 전용 와이어링.
+  readonly inputWaitingHookExec?: FleetHookExec;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
   readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
@@ -113,6 +115,7 @@ export async function injectAgentCliProfile(
       captureSessionHookExec: options.captureSessionHookExec,
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
+      inputWaitingHookExec: options.inputWaitingHookExec,
       hookExec: startupDefinitions.host === "claude" ? requireHookExec(options.hookExec) : undefined,
       withMarketplaceLock: options.withMarketplaceLock,
     });

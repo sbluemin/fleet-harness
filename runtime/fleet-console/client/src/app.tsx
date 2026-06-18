@@ -17,7 +17,7 @@ import { CarrierSettings } from "./pages/carrier-settings.js";
 import { Codex } from "./pages/codex.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setState, toggleOperationSearch, toggleShell } from "./store.js";
+import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch, toggleShell } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
@@ -36,6 +36,12 @@ export function App() {
   useEffect(() => {
     return startObserverConnection();
   }, []);
+
+  // Operations 뷰(/operations)가 화면에 떠 있는지를 store에 반영한다. Welcome/Codex 등 다른 화면에선
+  // 어떤 Operation도 보이지 않으므로, 백그라운드 Operation의 입력 대기 토스트가 잘못 억제되지 않게 한다.
+  useEffect(() => {
+    setOperationsViewActive(pathname.startsWith("/operations"));
+  }, [pathname]);
 
   useEffect(() => {
     const abort = new AbortController();

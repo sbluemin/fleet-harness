@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { ConsoleObservedEvent, ConsoleObservedWorkspace, ConsoleSessionUpdatedEvent } from "./api-types.js";
+import type { ConsoleObservedEvent, ConsoleObservedWorkspace, ConsoleSessionAttentionEvent, ConsoleSessionUpdatedEvent } from "./api-types.js";
 import type { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 
@@ -61,7 +61,8 @@ export function writeAggregateObserverEvents(
   const unsubscribers = options.subscribeAll
     ? [
       store.subscribeAll((event) => {
-        if (isSessionUpdatedEvent(event)) {
+        // session:updated·session:attention은 동일하게 { session }만 직렬화한다(event.type이 식별자).
+        if (isSessionUpdatedEvent(event) || isSessionAttentionEvent(event)) {
           writeEvent(res, 0, event.type, { session: event.session });
           return;
         }
@@ -86,8 +87,12 @@ function writeEvent(res: http.ServerResponse, id: number, event: string, data: u
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-function isSessionUpdatedEvent(event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent): event is ConsoleSessionUpdatedEvent {
+function isSessionUpdatedEvent(event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent | ConsoleSessionAttentionEvent): event is ConsoleSessionUpdatedEvent {
   return event.type === "session:updated" && "session" in event;
+}
+
+function isSessionAttentionEvent(event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent | ConsoleSessionAttentionEvent): event is ConsoleSessionAttentionEvent {
+  return event.type === "session:attention" && "session" in event;
 }
 
 function workspaceSnapshot(workspace: ConsoleObservedWorkspace) {

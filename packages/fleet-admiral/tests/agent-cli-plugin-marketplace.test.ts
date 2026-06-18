@@ -165,6 +165,38 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(secondVersion).toBe(firstVersion);
     expect(thirdVersion).not.toBe(firstVersion);
   });
+
+  it("wires AskUserQuestion PreToolUse and input-waiting Notification hooks for Claude", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-hooks-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    mkdirSync(cwd, { recursive: true });
+    const hookExec = { command: "node", args: ["cli.mjs", "hook", "subagents-context"] };
+    const inputWaitingHookExec = { command: "node", args: ["cli.mjs", "hook", "attention"] };
+
+    const plugin = await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "claude",
+      cwd,
+      dataDir,
+      hookExec,
+      inputWaitingHookExec,
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+      readonly hooks: Record<string, unknown>;
+    };
+    // AskUserQuestion은 Notification 훅을 발화하지 않으므로 PreToolUse(정확 매처)로 잡는다.
+    expect(hooksJson.hooks.PreToolUse).toEqual([
+      { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
+    ]);
+    // 그 외 입력 대기는 입력 대기 Notification 타입만 |-구분 정확 매처로 거른다.
+    expect(hooksJson.hooks.Notification).toEqual([
+      { matcher: "permission_prompt|idle_prompt|elicitation_dialog", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
+    ]);
+  });
 });
 
 function createDeferred<T>(): Deferred<T> {

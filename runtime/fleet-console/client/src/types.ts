@@ -232,9 +232,10 @@ export interface TenantJobsView {
 
 export type ConnectionState = "connecting" | "live";
 
-// Operation 상태 전이 알림 토스트. kind는 인디케이터 상태에 대응:
-//   carrier-call=캐리어 출격(Job 발생, aurora) · ended=작업 완료(턴 종료, 그린).
-export type OperationToastKind = "carrier-call" | "ended";
+// Operation 상태 전이/입력 대기 알림 토스트. kind는 인디케이터 상태에 대응:
+//   carrier-call=캐리어 출격(Job 발생, aurora) · ended=작업 완료(턴 종료, 그린)
+//   · input-waiting=입력 대기(AskUserQuestion·권한/유휴/elicitation, amber).
+export type OperationToastKind = "carrier-call" | "ended" | "input-waiting";
 
 export interface OperationToast {
   readonly id: number;
@@ -260,6 +261,9 @@ export interface ConsoleState {
   readonly sessions: Readonly<Record<string, SessionInfo>>;
   readonly sessionOrder: readonly string[];
   readonly activeTerminalSessionId: string | null;
+  // Operations 뷰(/operations)가 현재 화면에 떠 있는지. Welcome(/)·Codex(/codex)에선 false라
+  // 어떤 Operation도 화면에 없으므로 입력 대기 토스트를 억제하지 않는다.
+  readonly operationsViewActive: boolean;
   readonly creatingTerminalSession: boolean;
   readonly terminalSessionError: string | null;
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
