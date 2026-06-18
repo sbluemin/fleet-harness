@@ -240,6 +240,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTerminalSessionTurn(req, res, decodeURIComponent(terminalSessionTurnMatch[1] ?? "")), res);
       return;
     }
+    const terminalSessionAttentionMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)\/attention$/);
+    if (terminalSessionAttentionMatch) {
+      runAsyncHandler(handleTerminalSessionAttention(req, res, decodeURIComponent(terminalSessionAttentionMatch[1] ?? "")), res);
+      return;
+    }
     const terminalSessionItemMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)$/);
     if (terminalSessionItemMatch) {
       runAsyncHandler(handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? "")), res);
@@ -336,6 +341,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     observability.notifySessionUpdated(updated);
+    writeJson(res, 200, { ok: true });
+  }
+
+  // 입력 대기 hook 수신: Agent CLI의 AskUserQuestion(PreToolUse) 또는 입력 대기 Notification이 lock 토큰으로 POST한다.
+  // turn 라우트와 동일하게 브라우저가 아닌 로컬 신뢰 프로세스이므로 lock-token bearer로만 인증하고,
+  // 세션 메타를 바꾸지 않는 1회성 attention 신호만 흘린다.
+  async function handleTerminalSessionAttention(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const token = lockHandle?.payload.token;
+    if (!token || req.headers.authorization !== `Bearer ${token}`) {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
+    const session = observability.getTerminalSessionInfo(sessionId);
+    if (!session) {
+      writeJson(res, 404, { error: "terminal_session_not_found" });
+      return;
+    }
+    observability.notifySessionAttention(session);
     writeJson(res, 200, { ok: true });
   }
 

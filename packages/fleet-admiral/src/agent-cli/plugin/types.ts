@@ -22,6 +22,9 @@ export interface CreateAgentCliPluginOptions {
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
+  // 입력 대기(AskUserQuestion의 PreToolUse · permission/idle/elicitation Notification) 신호를 호스트로
+  // 알리는 hook. AskUserQuestion은 Notification 훅을 발화하지 않으므로 두 이벤트 경로로 건다. Claude 전용.
+  readonly inputWaitingHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;

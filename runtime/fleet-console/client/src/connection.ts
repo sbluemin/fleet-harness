@@ -3,6 +3,7 @@ import { createSseFrameParser, interpretObserverFrame } from "./sse.js";
 import {
   applyJobsSnapshot,
   applyObservedEvent,
+  applySessionAttention,
   applySessionUpdate,
   applyTenantSnapshot,
   applyTruncation,
@@ -73,6 +74,10 @@ async function consumeStream(
       }
       if (interpreted.kind === "session" && interpreted.session) {
         applySessionUpdate(interpreted.session);
+        continue;
+      }
+      if (interpreted.kind === "attention" && interpreted.session) {
+        applySessionAttention(interpreted.session);
         continue;
       }
       if (interpreted.event) {

@@ -5,6 +5,7 @@ import type {
   ConsoleObservedJob,
   ConsoleObservedWorkspace,
   ConsoleObserverTruncation,
+  ConsoleSessionAttentionEvent,
   ConsoleSessionUpdatedEvent,
   ConsoleTerminalSessionInfo,
   ConsoleTerminalSessionStatus,
@@ -63,7 +64,7 @@ interface TenantJobState {
 }
 
 type ConsoleObservedEventListener = (event: ConsoleObservedEvent) => void;
-type ConsoleAllEventListener = (event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent) => void;
+type ConsoleAllEventListener = (event: ConsoleObservedEvent | ConsoleSessionUpdatedEvent | ConsoleSessionAttentionEvent) => void;
 
 const TENANT_EVENT_LIMIT = 1_000;
 const JOB_EVENT_LIMIT = 200;
@@ -310,6 +311,17 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     for (const listener of allListeners) listener(event);
   }
 
+  function getTerminalSessionInfo(sessionId: string): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    return session ? toTerminalSessionInfo(session) : null;
+  }
+
+  function notifySessionAttention(session: ConsoleTerminalSessionInfo): void {
+    const event: ConsoleSessionAttentionEvent = { type: "session:attention", session };
+    // 입력 대기 알림은 1회성 신호다. session:updated와 같은 aggregate 경로로 흘리되 세션 메타는 갱신하지 않는다.
+    for (const listener of allListeners) listener(event);
+  }
+
   function removeTerminalSession(sessionId: string): boolean {
     const workspace = workspacesByCliRunId.get(sessionId);
     if (workspace?.terminalSessionId === sessionId) {
@@ -345,7 +357,9 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     listWorkspaces,
     appendTerminalRuntimeEvent,
     createPendingTerminalSession,
+    getTerminalSessionInfo,
     injectDormantOperation,
+    notifySessionAttention,
     notifySessionUpdated,
     renameTerminalSession,
     subscribe,

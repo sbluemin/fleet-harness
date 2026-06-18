@@ -280,6 +280,17 @@ export function applySessionUpdate(session: SessionInput): void {
   });
 }
 
+// 입력 대기(AskUserQuestion·권한/유휴/elicitation) 1회성 신호. 세션 상태는 갱신하지 않고,
+// 현재 보고 있지 않은 Operation에 한해 입력 대기 토스트만 띄운다(현재 보는 Operation은 억제).
+export function applySessionAttention(session: SessionInput): void {
+  const target = state.sessions[session.sessionId] ?? normalizeSession(session);
+  if (isActiveOperation(target)) return;
+  // AskUserQuestion은 PreToolUse와 Notification을 함께 발화할 수 있고 입력 대기가 반복 알림될 수도 있다.
+  // 같은 세션의 입력 대기 토스트가 아직 떠 있으면 중복 발행하지 않는다(닫히면 다음 대기 때 다시 뜬다).
+  if (state.operationToasts.some((toast) => toast.kind === "input-waiting" && toast.sessionId === session.sessionId)) return;
+  setState({ operationToasts: [...state.operationToasts, makeOperationToast("input-waiting", target)] });
+}
+
 export function dismissOperationToast(id: number): void {
   setState({ operationToasts: state.operationToasts.filter((toast) => toast.id !== id) });
 }
