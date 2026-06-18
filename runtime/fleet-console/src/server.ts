@@ -651,6 +651,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // DELETE는 idempotent해야 한다 — Theater가 레지스트리에 이미 없어도(유령 항목이나 중복 forget) 목표 상태(부재)는
     // 이미 달성된 것이므로 404가 아닌 성공으로 처리하고, 남아 있을 수 있는 소속 Operation도 함께 정리한다.
     theaters.remove(theaterId);
+    // Theater를 잊을 때 Codex 워크스페이스 등록도 함께 해제한다. 등록을 남겨두면
+    // /console/codex/w/:id/ 직접 URL이 재시작 전까지 잊은 Theater의 위키를 계속 서빙한다(등록/복원 경로와 대칭).
+    codex.unregisterWorkspace(theaterId);
     for (const operation of operations) forgetTerminalSession(operation.sessionId, { persist: false });
     persistDurableState();
     writeJson(res, 200, { ok: true });
@@ -861,7 +864,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     currentLock?.release();
   }
 
-  function rehydrateDurableState(): void {
+  async function rehydrateDurableState(): Promise<void> {
     let state: DurableConsoleState;
     try {
       state = durableStateStore.load();
@@ -871,6 +874,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       state = emptyDurableConsoleState();
       theaters.restore([]);
     }
+    // Codex WorkspaceRegistry는 인메모리라 재시작 시 비워진다. hasWiki 판정이 이 레지스트리에
+    // 의존하므로(getWorkspace !== null), 복원된 Theater를 재등록하지 않으면 위키가 있는 Theater도
+    // hasWiki=false가 되어 Console 재실행마다 Codex(Wiki)가 마운트되지 않는다. POST 추가 경로와
+    // 대칭으로 복원 Theater의 워크스페이스를 best-effort 재등록한다.
+    await restoreCodexWorkspaces();
     const merged = mergeProviderSessionCaptures(state, { capturesDir: durablePaths.capturesDir });
     syncProviderSessionsToObservability(merged);
     const restorable = {
@@ -889,6 +897,26 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     for (const operation of restorable.operations) {
       if (theaters.get(operation.theaterId)) observability.injectDormantOperation(operation);
+    }
+  }
+
+  async function restoreCodexWorkspaces(): Promise<void> {
+    // durable lastOpenedAt 오름차순으로 순차 등록하면서 durable 타임스탬프를 그대로 보존한다.
+    // register()가 매번 MRU를 갱신하므로 가장 최근에 열린 Theater가 마지막에 등록되어 codex
+    // MRU가 되고, durable 타임스탬프 보존으로 listRegistrations()의 동순위(같은 밀리초) 모호성
+    // 없이 getMru() 기반 라우트가 재시작 후에도 durable 최근성 순서를 유지한다.
+    // 등록은 durable realpath로 한다. theater.path(심볼릭일 수 있음)를 다시 정규화하면 정지 중
+    // 심볼릭 타깃이 바뀐 경우 theater.id와 다른 workspaceHash로 등록되어 hasWiki 판정이 깨진다.
+    const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
+    for (const theater of ordered) {
+      try {
+        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt);
+      } catch (error) {
+        // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
+        if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
+          console.warn(`[fleet-console] Codex workspace restore skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
     }
   }
 
@@ -926,7 +954,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
-        rehydrateDurableState();
+        await rehydrateDurableState();
         await new Promise<void>((resolve, reject) => {
           const srv = createHttpServer(handleRequest, terminalUpgrade);
           srv.once("error", reject);

@@ -773,6 +773,134 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("providerSession");
   });
 
+  it("keeps a wiki Theater's hasWiki true after a console restart by re-registering its Codex workspace", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-haswiki-"));
+    tempDirs.push(dir);
+    // Theater 디렉터리에 Fleet Wiki 지식 루트를 만들어 hasWiki=true 조건을 충족시킨다.
+    fs.mkdirSync(path.join(dir, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, dir);
+
+    const beforeRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${fixture.endpoint}observer/theaters`);
+    await fixture.server.stop();
+
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-haswiki-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    const afterRestart = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}observer/theaters`);
+
+    // 추가 직후에는 POST 경로가 워크스페이스를 등록하므로 hasWiki=true이고,
+    // 재시작 후에도 복원된 Theater의 워크스페이스를 재등록해 hasWiki가 유지되어야 한다.
+    expect(beforeRestart.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
+    expect(afterRestart.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
+  });
+
+  it("unregisters a Theater's Codex workspace when the Theater is forgotten", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-forget-"));
+    tempDirs.push(dir);
+    fs.mkdirSync(path.join(dir, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, dir);
+
+    // 등록 직후에는 codex 워크스페이스 라우트가 위키 health를 200으로 서빙한다.
+    const beforeForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/health`, { redirect: "manual" });
+    const deleted = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}`, { method: "DELETE" });
+    // forget 후에는 워크스페이스가 해제되어 같은 라우트가 codex 홈으로 302 리다이렉트된다.
+    const afterForget = await fetch(`${fixture.endpoint}console/codex/w/${encodeURIComponent(theater.id)}/api/health`, { redirect: "manual" });
+    const remaining = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string }> }>(`${fixture.endpoint}observer/theaters`);
+
+    expect(beforeForget.status).toBe(200);
+    expect(deleted.status).toBe(200);
+    expect(afterForget.status).toBe(302);
+    expect(remaining.theaters.find((entry) => entry.id === theater.id)).toBeUndefined();
+  });
+
+  it("promotes the next most-recent Codex workspace as MRU when the active Theater is forgotten", async () => {
+    const dirA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-mru-a-"));
+    const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-mru-b-"));
+    tempDirs.push(dirA, dirB);
+    fs.mkdirSync(path.join(dirA, ".fleet", "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(dirB, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    await createTheater(fixture, dirA);
+    const theaterB = await createTheater(fixture, dirB); // 마지막 등록 = MRU
+
+    // MRU(B)를 forget하면 남은 A가 MRU로 승격되어, getMru() 기반 비프리픽스 라우트가
+    // deps.cwd 폴백이 아니라 A의 위키를 서빙해야 한다.
+    const deleted = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theaterB.id)}`, { method: "DELETE" });
+    const health = await fetch(`${fixture.endpoint}console/codex/api/health`, { redirect: "manual" });
+    const body = await health.json() as { readonly knowledgeRoot?: string };
+
+    expect(deleted.status).toBe(200);
+    expect(health.status).toBe(200);
+    expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirA), ".fleet", "knowledge"));
+  });
+
+  it("restores the most-recently-opened Codex workspace as MRU after a restart", async () => {
+    const dirA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-a-"));
+    const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-b-"));
+    tempDirs.push(dirA, dirB);
+    fs.mkdirSync(path.join(dirA, ".fleet", "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(dirB, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    await createTheater(fixture, dirA);
+    const theaterB = await createTheater(fixture, dirB);
+
+    // durable lastOpenedAt을 명시적으로 구분해 B를 가장 최근으로 만든다(생성 타이밍 의존 제거).
+    const statePath = path.join(fixture.carrierStoreDir, "console", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly theaters: { id: string; lastOpenedAt: string }[] };
+    for (const theater of state.theaters) {
+      theater.lastOpenedAt = theater.id === theaterB.id ? "2026-06-01T00:00:00.000Z" : "2026-01-01T00:00:00.000Z";
+    }
+    fs.writeFileSync(statePath, JSON.stringify(state));
+    await fixture.server.stop();
+
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    // 재시작 후 codex MRU는 가장 최근에 열린 B여야 하므로 비프리픽스 health가 B의 knowledgeRoot를 서빙한다.
+    const health = await fetch(`${restartedEndpoint}console/codex/api/health`, { redirect: "manual" });
+    const body = await health.json() as { readonly knowledgeRoot?: string };
+
+    expect(health.status).toBe(200);
+    expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirB), ".fleet", "knowledge"));
+  });
+
+  it("restores a symlinked Theater's Codex workspace from the durable realpath", async () => {
+    const realDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-real-"));
+    const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-other-"));
+    const linkDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-link-")), "theater");
+    tempDirs.push(realDir, otherDir, path.dirname(linkDir));
+    fs.mkdirSync(path.join(realDir, ".fleet", "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(otherDir, ".fleet", "knowledge"), { recursive: true });
+    fs.symlinkSync(realDir, linkDir);
+
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, linkDir); // 심볼릭 경로로 등록 → id는 realDir 기준
+    await fixture.server.stop();
+
+    // 정지 중 심볼릭 타깃을 다른 디렉터리로 바꾼다. theater.path를 다시 정규화하면 id가 달라지지만,
+    // durable realpath로 복원하면 원래 id를 그대로 유지해 hasWiki 판정이 깨지지 않아야 한다.
+    fs.unlinkSync(linkDir);
+    fs.symlinkSync(otherDir, linkDir);
+
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    const bootstrap = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}observer/theaters`);
+
+    expect(bootstrap.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
+  });
+
   it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);

@@ -27,6 +27,7 @@ function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "tu
     sessions: Object.fromEntries(entries.map((session) => [session.sessionId, session])),
     sessionOrder: entries.map((session) => session.sessionId),
     activeTerminalSessionId: null,
+    operationsViewActive: false,
     creatingTerminalSession: false,
     terminalSessionError: null,
     tenantJobs: {},

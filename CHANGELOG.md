@@ -18,6 +18,9 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Removed
 - [core] The Fleet Console Operations Map panel title bar no longer has a focus button for zooming a panel to fit, and the title-bar double-click that triggered the same zoom is removed along with it.
 
+### Fixed
+- [core] Fleet Console now keeps a Theater's Codex (Fleet Wiki) view available after the console is restarted; previously a restart made Theaters that have wiki data incorrectly appear to have no Codex until they were removed and added again.
+
 ## [1.7.1] - 2026-06-17
 
 Release v1.7.1
