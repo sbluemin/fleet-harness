@@ -11,6 +11,7 @@ function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "tu
   const entries: SessionInfo[] = sessions.map((session) => ({ ...session, resumeAvailable: session.resumeAvailable ?? false, turnState: session.turnState ?? "none" }));
   return {
     operationToasts: [],
+    operationsViewActive: false,
     connection: "connecting",
     connectionError: null,
     activeTheme: "maritime",
