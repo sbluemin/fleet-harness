@@ -118,6 +118,16 @@ export interface CarrierSettingsMutationResult {
   readonly state: CarrierSettingsState;
 }
 
+// 전역 설정(시스템 프롬프트 주입 방식 + 메타포) DTO — server src/global-settings-types.ts와 수동 동기화한다.
+export interface GlobalSettingsState {
+  readonly replaceSystemPrompt: boolean;
+  readonly enableMetaphor: boolean;
+}
+
+export interface GlobalSettingsMutationResult {
+  readonly state: GlobalSettingsState;
+}
+
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
 // Agent CLI 턴(host 처리) 상태. "none"=턴 이력 없음(신규), "running"=처리중, "ended"=종료(유휴).

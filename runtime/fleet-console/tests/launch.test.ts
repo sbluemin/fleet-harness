@@ -37,6 +37,20 @@ const baseProfile = {
 
 const TEMP_DIRS: string[] = [];
 
+// 전역 옵션(replaceSystemPrompt/enableMetaphor)을 고정 반환하는 InfraServices 스텁 —
+// launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
+function createFakeInfraServices(globalOptions: { readonly replaceSystemPrompt?: boolean; readonly enableMetaphor?: boolean } = {}) {
+  const data = { version: 1 as const, ...globalOptions };
+  return {
+    authService: {},
+    globalOptionsService: {
+      load: () => data,
+      save: () => data,
+      update: () => data,
+    },
+  };
+}
+
 describe("createDefaultTerminalLaunchResolver", () => {
   afterEach(() => {
     for (const dir of TEMP_DIRS.splice(0)) {
@@ -61,6 +75,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       cwd: "/work",
       env: { PATH: "/bin" } as NodeJS.ProcessEnv,
       agentRuntime: runtime as never,
+      infraServices: createFakeInfraServices() as never,
       injectProfile: injectProfile as never,
       resolveProfile: resolveProfile as never,
     });
@@ -83,6 +98,30 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ authEnvResolver: expect.any(Function) }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
+  });
+
+  it("injects global settings (metaphor + system prompt mode) into fleet-admiral injection", async () => {
+    const runtime = createFakeRuntime(() => undefined);
+    let captured: InjectAgentCliProfileOptions | null = null;
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
+    const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
+      captured = options;
+      return profile;
+    });
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: runtime as never,
+      infraServices: createFakeInfraServices({ replaceSystemPrompt: true, enableMetaphor: true }) as never,
+      injectProfile: injectProfile as never,
+      resolveProfile: resolveProfile as never,
+    });
+
+    await resolve("/work/project", { sessionId: "session-g" });
+
+    expect(captured).not.toBeNull();
+    expect(captured!.enableMetaphor).toBe(true);
+    expect(captured!.replaceSystemPrompt).toBe(true);
   });
 
   it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {

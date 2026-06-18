@@ -45,6 +45,8 @@ export function Topbar({ state }: TopbarProps) {
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
     : pathname.startsWith("/carrier-settings")
+      ? <CarriersIcon />
+    : pathname.startsWith("/settings")
       ? <SettingsIcon />
     : pathname.startsWith("/operations")
       ? <OperationsIcon />
@@ -104,6 +106,14 @@ export function Topbar({ state }: TopbarProps) {
           to="/carrier-settings"
           className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
           title="Carrier settings"
+        >
+          <span className="topbar-nav-icon" aria-hidden="true"><CarriersIcon /></span>
+          <span>Carriers</span>
+        </NavLink>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
+          title="Settings"
         >
           <span className="topbar-nav-icon" aria-hidden="true"><SettingsIcon /></span>
           <span>Settings</span>
@@ -513,13 +523,25 @@ function CodexIcon() {
 }
 
 function SettingsIcon() {
-  // Settings 시그니처 — 조정 노브 모티프. carrier 설정 화면과 GNB nav가 같은 도형을 공유한다.
+  // Settings 시그니처 — 조정 노브 모티프. 전역 설정(/settings) 화면과 GNB nav가 같은 도형을 공유한다.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3 4.4h10M3 8h10M3 11.6h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
       <circle cx="6.2" cy="4.4" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
       <circle cx="10" cy="8" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
       <circle cx="7.4" cy="11.6" r="1.3" fill="var(--surface-glass-strong)" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function CarriersIcon() {
+  // Carriers 시그니처 — 함장 로스터(점 + 라인 3행) 모티프. 캐리어 설정(/carrier-settings) 화면과 GNB nav가 같은 도형을 공유한다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="4" cy="4.2" r="1.15" fill="currentColor" />
+      <circle cx="4" cy="8" r="1.15" fill="currentColor" />
+      <circle cx="4" cy="11.8" r="1.15" fill="currentColor" />
+      <path d="M7.2 4.2h6M7.2 8h6M7.2 11.8h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
