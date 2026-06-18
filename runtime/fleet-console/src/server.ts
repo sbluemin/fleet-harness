@@ -901,18 +901,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function restoreCodexWorkspaces(): Promise<void> {
-    await Promise.all(
-      theaters.list().map(async (theater) => {
-        try {
-          await codex.registerWorkspace(theater.path);
-        } catch (error) {
-          // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
-          if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
-            console.warn(`[fleet-console] Codex workspace restore skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
-          }
+    // durable lastOpenedAt 오름차순으로 순차 등록한다. register()가 매번 MRU를 갱신하므로
+    // 가장 최근에 열린 Theater가 마지막에 등록되어 codex MRU가 되고, getMru() 기반 라우트가
+    // 재시작 후에도 durable 최근성 순서를 유지한다(병렬 등록은 stat 완료 순서에 의존해 비결정적).
+    const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
+    for (const theater of ordered) {
+      try {
+        await codex.registerWorkspace(theater.path);
+      } catch (error) {
+        // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
+        if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
+          console.warn(`[fleet-console] Codex workspace restore skipped for Theater ${theater.id}: ${error instanceof Error ? error.message : String(error)}`);
         }
-      }),
-    );
+      }
+    }
   }
 
   function persistDurableState(): void {

@@ -839,6 +839,39 @@ describe("console static and terminal ticket boundary", () => {
     expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirA), ".fleet", "knowledge"));
   });
 
+  it("restores the most-recently-opened Codex workspace as MRU after a restart", async () => {
+    const dirA = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-a-"));
+    const dirB = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-b-"));
+    tempDirs.push(dirA, dirB);
+    fs.mkdirSync(path.join(dirA, ".fleet", "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(dirB, ".fleet", "knowledge"), { recursive: true });
+    const fixture = await startFixture();
+    await createTheater(fixture, dirA);
+    const theaterB = await createTheater(fixture, dirB);
+
+    // durable lastOpenedAt을 명시적으로 구분해 B를 가장 최근으로 만든다(생성 타이밍 의존 제거).
+    const statePath = path.join(fixture.carrierStoreDir, "console", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as { readonly theaters: { id: string; lastOpenedAt: string }[] };
+    for (const theater of state.theaters) {
+      theater.lastOpenedAt = theater.id === theaterB.id ? "2026-06-01T00:00:00.000Z" : "2026-01-01T00:00:00.000Z";
+    }
+    fs.writeFileSync(statePath, JSON.stringify(state));
+    await fixture.server.stop();
+
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-mru-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    // 재시작 후 codex MRU는 가장 최근에 열린 B여야 하므로 비프리픽스 health가 B의 knowledgeRoot를 서빙한다.
+    const health = await fetch(`${restartedEndpoint}console/codex/api/health`, { redirect: "manual" });
+    const body = await health.json() as { readonly knowledgeRoot?: string };
+
+    expect(health.status).toBe(200);
+    expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirB), ".fleet", "knowledge"));
+  });
+
   it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);
