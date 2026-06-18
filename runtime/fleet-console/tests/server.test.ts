@@ -872,6 +872,35 @@ describe("console static and terminal ticket boundary", () => {
     expect(body.knowledgeRoot).toBe(path.join(fs.realpathSync.native(dirB), ".fleet", "knowledge"));
   });
 
+  it("restores a symlinked Theater's Codex workspace from the durable realpath", async () => {
+    const realDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-real-"));
+    const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-other-"));
+    const linkDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-link-")), "theater");
+    tempDirs.push(realDir, otherDir, path.dirname(linkDir));
+    fs.mkdirSync(path.join(realDir, ".fleet", "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(otherDir, ".fleet", "knowledge"), { recursive: true });
+    fs.symlinkSync(realDir, linkDir);
+
+    const fixture = await startFixture();
+    const theater = await createTheater(fixture, linkDir); // 심볼릭 경로로 등록 → id는 realDir 기준
+    await fixture.server.stop();
+
+    // 정지 중 심볼릭 타깃을 다른 디렉터리로 바꾼다. theater.path를 다시 정규화하면 id가 달라지지만,
+    // durable realpath로 복원하면 원래 id를 그대로 유지해 hasWiki 판정이 깨지지 않아야 한다.
+    fs.unlinkSync(linkDir);
+    fs.symlinkSync(otherDir, linkDir);
+
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-symlink-lock-"));
+    tempDirs.push(restartDir);
+    const restartedServer = createConsoleServer({ port: 0, version: "test", dataDir: fixture.carrierStoreDir });
+    servers.push(restartedServer);
+    const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    const bootstrap = await getJson<{ readonly theaters: ReadonlyArray<{ readonly id: string; readonly hasWiki: boolean }> }>(`${restartedEndpoint}observer/theaters`);
+
+    expect(bootstrap.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
+  });
+
   it("rehydrates durable state as dormant without starting PTYs and merges capture files server-side", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);

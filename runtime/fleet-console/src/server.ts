@@ -905,10 +905,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // register()가 매번 MRU를 갱신하므로 가장 최근에 열린 Theater가 마지막에 등록되어 codex
     // MRU가 되고, durable 타임스탬프 보존으로 listRegistrations()의 동순위(같은 밀리초) 모호성
     // 없이 getMru() 기반 라우트가 재시작 후에도 durable 최근성 순서를 유지한다.
+    // 등록은 durable realpath로 한다. theater.path(심볼릭일 수 있음)를 다시 정규화하면 정지 중
+    // 심볼릭 타깃이 바뀐 경우 theater.id와 다른 workspaceHash로 등록되어 hasWiki 판정이 깨진다.
     const ordered = [...theaters.list()].sort((left, right) => left.lastOpenedAt.localeCompare(right.lastOpenedAt));
     for (const theater of ordered) {
       try {
-        await codex.registerWorkspace(theater.path, theater.lastOpenedAt);
+        await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt);
       } catch (error) {
         // 위키 지식 루트가 없는 Theater는 Codex 미보유 상태가 정상이므로 조용히 건너뛴다.
         if (!(error instanceof Error && error.message === "knowledge_root_missing")) {
