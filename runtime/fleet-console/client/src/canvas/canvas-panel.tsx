@@ -7,7 +7,7 @@ import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
-import { focusPanel, setPanelGeometry, setViewport, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
+import { setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
 
 interface CanvasPanelProps {
@@ -16,7 +16,6 @@ interface CanvasPanelProps {
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
   readonly active: boolean;
-  readonly getCanvasRect: () => DOMRect | null;
 }
 
 interface DragState {
@@ -26,15 +25,8 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-// 제목 탭 더블클릭 판정: beginDrag가 pointerdown에서 preventDefault/pointer-capture를 호출해
-// native dblclick이 신뢰되지 않으므로, 두 번의 pointerdown 간격·이동량으로 직접 더블클릭을 가린다.
-const TITLE_DOUBLE_CLICK_MS = 320;
-const TITLE_DOUBLE_CLICK_DISTANCE = 6;
-
-export function CanvasPanel({ state, session, geometry, viewport, active, getCanvasRect }: CanvasPanelProps) {
+export function CanvasPanel({ state, session, geometry, viewport, active }: CanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
-  const lastTitlePointerRef = useRef<{ readonly time: number; readonly x: number; readonly y: number } | null>(null);
-  const [restoreViewport, setRestoreViewport] = useState<CanvasViewport | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -62,20 +54,6 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
-    // 제목 탭 더블클릭 → 포커스 토글(확대 ↔ 복귀). 근접한 두 번째 pointerdown이면 드래그 대신 포커스로 처리한다.
-    const now = Date.now();
-    const last = lastTitlePointerRef.current;
-    if (
-      last
-      && now - last.time < TITLE_DOUBLE_CLICK_MS
-      && Math.abs(event.clientX - last.x) < TITLE_DOUBLE_CLICK_DISTANCE
-      && Math.abs(event.clientY - last.y) < TITLE_DOUBLE_CLICK_DISTANCE
-    ) {
-      lastTitlePointerRef.current = null;
-      handleFocusToggle();
-      return;
-    }
-    lastTitlePointerRef.current = { time: now, x: event.clientX, y: event.clientY };
     bringToFront();
     dragRef.current = {
       pointerId: event.pointerId,
@@ -108,20 +86,6 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
 
   const stopButtonPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-  };
-
-  const handleFocusToggle = () => {
-    bringToFront();
-    if (restoreViewport) {
-      setViewport(restoreViewport);
-      setRestoreViewport(null);
-      return;
-    }
-    const canvasRect = getCanvasRect();
-    if (!canvasRect) return;
-    setRestoreViewport(viewport);
-    setPanelGeometry(session.sessionId, geometry);
-    focusPanel(session.sessionId, { width: canvasRect.width, height: canvasRect.height });
   };
 
   useEffect(() => {
@@ -240,16 +204,6 @@ export function CanvasPanel({ state, session, geometry, viewport, active, getCan
         {activeJobCount > 0 ? <span className="canvas-panel-job-count">{activeJobCount}</span> : null}
         <button
           type="button"
-          className={`canvas-panel-icon-button ${restoreViewport ? "is-active" : ""}`}
-          onPointerDown={stopButtonPointer}
-          onClick={handleFocusToggle}
-          aria-label={restoreViewport ? "터미널 포커스 복귀" : "터미널 확대 포커스"}
-          title={restoreViewport ? "Restore canvas" : "Focus terminal"}
-        >
-          {restoreViewport ? <CollapseIcon /> : <ExpandIcon />}
-        </button>
-        <button
-          type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
           onClick={() => { void closeSession(session.sessionId); }}
@@ -305,22 +259,6 @@ async function closeSession(sessionId: string): Promise<void> {
     return;
   }
   removeTerminalSession(sessionId);
-}
-
-function ExpandIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M5.8 3.4H3.4v2.4M10.2 3.4h2.4v2.4M5.8 12.6H3.4v-2.4M10.2 12.6h2.4v-2.4" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CollapseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.8 6h2.4V3.6M12.2 6H9.8V3.6M3.8 10h2.4v2.4M12.2 10H9.8v2.4" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function CloseIcon() {

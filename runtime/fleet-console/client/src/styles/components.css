@@ -1831,8 +1831,7 @@
 }
 
 .canvas-panel-icon-button:hover,
-.canvas-panel-icon-button:focus-visible,
-.canvas-panel-icon-button.is-active {
+.canvas-panel-icon-button:focus-visible {
   color: var(--brass-bright);
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
