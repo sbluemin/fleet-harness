@@ -44,6 +44,18 @@ export interface ObserverStatus {
   readonly wikiServerStatus: "available" | "unavailable" | "unknown";
 }
 
+export type ConsoleUpdateApplyError =
+  | "active_terminal_sessions"
+  | "console_not_ready"
+  | "local_channel"
+  | "update_already_in_progress"
+  | "update_not_available"
+  | "update_worker_unavailable";
+
+export interface ConsoleUpdateApplyAcceptedResponse {
+  readonly status: "accepted";
+}
+
 export interface CarrierReadinessEntry {
   readonly carrierId: string;
   readonly displayName: string;

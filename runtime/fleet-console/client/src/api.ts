@@ -1,4 +1,4 @@
-import type { AgentCliMetadata, CarrierReadinessEntry, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { AgentCliMetadata, CarrierReadinessEntry, ConsoleUpdateApplyAcceptedResponse, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TerminalFolderListEntry {
   readonly name: string;
@@ -74,6 +74,12 @@ export async function fetchObserverStatus(theaterId: string | null, signal?: Abo
   const response = await fetch(`/observer/status${suffix}`, { signal });
   await assertOk(response);
   return assertObserverStatus(await response.json(), response.status);
+}
+
+export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleUpdateApplyAcceptedResponse> {
+  const response = await fetch("/update/apply", { method: "POST", signal });
+  await assertOk(response);
+  return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
 }
 
 export async function fetchCarriers(signal?: AbortSignal): Promise<readonly CarrierReadinessEntry[]> {
@@ -338,6 +344,26 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     port: payload.port,
     wikiServerStatus: payload.wikiServerStatus,
   };
+}
+
+function assertConsoleUpdateApplyAccepted(value: unknown, status: number): ConsoleUpdateApplyAcceptedResponse {
+  const payload = value as Partial<ConsoleUpdateApplyAcceptedResponse> & {
+    readonly packageName?: unknown;
+    readonly packageVersion?: unknown;
+    readonly path?: unknown;
+    readonly token?: unknown;
+  };
+  if (
+    !payload
+    || payload.status !== "accepted"
+    || "packageName" in payload
+    || "packageVersion" in payload
+    || "path" in payload
+    || "token" in payload
+  ) {
+    throw new ApiError(status, "Invalid update apply response");
+  }
+  return { status: "accepted" };
 }
 
 function assertCarrierReadinessEntry(value: unknown, status: number): CarrierReadinessEntry {

@@ -23,7 +23,7 @@ import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
 import { migrateLegacyAuthStore, resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
-import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, TerminalFolderListResponse } from "./api-types.js";
+import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, TerminalFolderListResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
@@ -32,7 +32,7 @@ import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createModelAuthRouter } from "./model-auth-routes.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createConsoleDataPaths } from "./paths.js";
-import { readFleetConsoleRelease } from "./release.js";
+import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { tryServeStaticConsole } from "./static-console.js";
@@ -45,6 +45,7 @@ import { createWorkspaceChangeScanner } from "./terminal/workspace-scanner.js";
 import { createTerminalUpgradeHandler, TERMINAL_TICKET_PATH } from "./terminal/ws-handler.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
+import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "./update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "./update-check.js";
 
 export interface ConsoleServerDeps {
@@ -58,7 +59,9 @@ export interface ConsoleServerDeps {
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
+  readonly release?: FleetConsoleRelease;
   readonly updateCheck?: ConsoleUpdateCheckService;
+  readonly updateApply?: ConsoleUpdateApplyService;
 }
 
 export interface ConsoleServer {
@@ -75,6 +78,7 @@ type TerminalFolderGrantBody = { readonly path?: unknown };
 type CreateTerminalSessionBody = { readonly folderGrantId?: unknown; readonly cwd?: unknown; readonly cliId?: unknown };
 type CreateTheaterBody = { readonly folderGrantId?: unknown };
 type CreateTheaterSessionBody = { readonly cliId?: unknown };
+type UpdateApplyBody = Record<string, unknown>;
 
 const DEFAULT_HOST = "127.0.0.1";
 // 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
@@ -85,20 +89,23 @@ const SHELL_TERMINAL_SESSION_ID = "shell";
 const THEATER_SHELL_SESSION_PREFIX = "shell:";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
+const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
   const port = deps.port ?? DEFAULT_PORT;
+  const release = deps.release ?? readFleetConsoleRelease();
   // 버전은 런타임에 package.json을 읽는 release.ts SSoT에서 해석한다(channel과 동일 경로).
   // 과거 빌드타임 상수(__PKG_VERSION__)는 tsup define에 주입된 적이 없어 항상 "0.0.0-dev"로
   // 폴백되는 죽은 경로였다. deps.version은 테스트 오버라이드용으로 유지한다.
-  const version = deps.version ?? readFleetConsoleRelease().version;
-  const channel = readConsoleChannel();
+  const version = deps.version ?? release.version;
+  const channel = release.channel;
   const carrierRegistry = createCarrierRegistry();
   registerDefaultCarriers(carrierRegistry);
   const lock = createConsoleLock({ hostname: () => host });
   const observability = createConsoleObservabilityStore();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService();
+  const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
   const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
@@ -186,9 +193,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let server: http.Server | null = null;
   let loopbackServer: http.Server | null = null;
   let lockHandle: ConsoleLockHandle | null = null;
+  let activeLockFile: string | null = null;
   let activeEndpoint: string | null = null;
   let agentRuntimeStopped = false;
   let consoleResourcesDisposed = false;
+  let updateApplyInFlight = false;
   const carrierSettingsRouter = createCarrierSettingsRouter({
     registry: carrierRegistry,
     isAuthorized: isTerminalAuthorized,
@@ -277,6 +286,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/observer/status") {
       handleObserverStatus(req, res);
+      return;
+    }
+    if (pathname === "/update/apply") {
+      runAsyncHandler(handleUpdateApply(req, res), res);
       return;
     }
     if (pathname === "/observer/carriers") {
@@ -730,6 +743,70 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, payload);
   }
 
+  async function handleUpdateApply(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    if (!isExactConsoleOrigin(req)) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const body = await readJsonBody<UpdateApplyBody>(req);
+    if (body === null && requestHasBody(req)) {
+      writeJson(res, 400, { error: "invalid_update_apply_body" });
+      return;
+    }
+    if (body !== null && (!isPlainObject(body) || hasForbiddenUpdateApplyBodyKeys(body))) {
+      writeJson(res, 400, { error: "invalid_update_apply_body" });
+      return;
+    }
+    if (channel === "local") {
+      writeJson(res, 403, { error: "local_channel" });
+      return;
+    }
+    if (updateApplyInFlight) {
+      writeJson(res, 409, { error: "update_already_in_progress" });
+      return;
+    }
+    if (terminalSessions.hasLiveSessions()) {
+      writeJson(res, 409, { error: "active_terminal_sessions" });
+      return;
+    }
+    const freshStatus = await updateCheck.refresh({ force: true });
+    if (!freshStatus.updateAvailable || !freshStatus.latestVersion) {
+      writeJson(res, 409, { error: "update_not_available" });
+      return;
+    }
+    const handle = lockHandle;
+    if (!handle || !activeEndpoint || !activeLockFile) {
+      writeJson(res, 503, { error: "console_not_ready" });
+      return;
+    }
+    updateApplyInFlight = true;
+    try {
+      await updateApply.start({
+        currentEndpoint: activeEndpoint,
+        currentPackageRoot: release.packageRoot,
+        currentPid: process.pid,
+        dataDir: durablePaths.dir,
+        lockFile: activeLockFile,
+        targetVersion: freshStatus.latestVersion,
+      });
+    } catch {
+      updateApplyInFlight = false;
+      writeJson(res, 503, { error: "update_worker_unavailable" });
+      return;
+    }
+    res.once("finish", () => {
+      setImmediate(() => {
+        void stopAfterAcceptedUpdateApply();
+      });
+    });
+    const payload: ConsoleUpdateApplyAcceptedResponse = { status: "accepted" };
+    writeJson(res, 202, payload);
+  }
+
   function handleObserverCarriers(_req: http.IncomingMessage, res: http.ServerResponse): void {
     writeJson(res, 200, {
       carriers: readCarrierStatusEntries(carrierRegistry).map(toCarrierReadinessEntry),
@@ -787,6 +864,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (!lockHandle) return false;
     // Origin 검증으로 WS 경로와 동일한 출처 경계를 terminal 라우트에 적용한다.
     return isAllowedTerminalOrigin(req, lockHandle.payload.port ?? port);
+  }
+
+  function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
+    if (!lockHandle) return false;
+    return req.headers.origin === `http://127.0.0.1:${lockHandle.payload.port ?? port}`;
   }
 
   function listVisibleWorkspaces(requestedTenantId: string | null): readonly ConsoleObservedWorkspace[] {
@@ -849,6 +931,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     agentRuntimeStopped = true;
   }
 
+  async function stopAfterAcceptedUpdateApply(): Promise<void> {
+    try {
+      await stopServer();
+    } catch (error) {
+      console.warn(`[fleet-console] Update apply shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async function cleanupAfterFailedStart(): Promise<void> {
     const current = server;
     const currentLoopback = loopbackServer;
@@ -856,6 +946,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     server = null;
     loopbackServer = null;
     lockHandle = null;
+    activeLockFile = null;
     activeEndpoint = null;
     await Promise.all([
       closeHttpServer(current),
@@ -963,7 +1054,36 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  return {
+  async function stopServer(): Promise<void> {
+    const current = server;
+    const currentLoopback = loopbackServer;
+    const currentLock = lockHandle;
+    let cleanupError: unknown;
+    server = null;
+    loopbackServer = null;
+    lockHandle = null;
+    activeLockFile = null;
+    activeEndpoint = null;
+    try {
+      await Promise.all([
+        closeHttpServer(current),
+        closeHttpServer(currentLoopback),
+      ]);
+      await terminalSessions.stop();
+      if (!agentRuntimeStopped) {
+        try {
+          if (ownsAgentRuntime) await cleanupOwnedAgentRuntime();
+        } catch (error) {
+          cleanupError = error;
+        }
+      }
+    } finally {
+      disposeConsoleResources(currentLock);
+    }
+    if (cleanupError) throw cleanupError;
+  }
+
+  const returnedServer: ConsoleServer = {
     host,
     port,
     async start(lockPaths) {
@@ -983,6 +1103,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
               server = srv;
               loopbackServer = localLoopbackServer;
               lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
+              activeLockFile = lockPaths.lockFile;
               activeEndpoint = endpoint;
               resolve();
             } catch (err) {
@@ -1003,41 +1124,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return activeEndpoint;
     },
     async stop() {
-      const current = server;
-      const currentLoopback = loopbackServer;
-      const currentLock = lockHandle;
-      let cleanupError: unknown;
-      server = null;
-      loopbackServer = null;
-      lockHandle = null;
-      activeEndpoint = null;
-      try {
-        await Promise.all([
-          closeHttpServer(current),
-          closeHttpServer(currentLoopback),
-        ]);
-        await terminalSessions.stop();
-        if (!agentRuntimeStopped) {
-          try {
-            if (ownsAgentRuntime) await cleanupOwnedAgentRuntime();
-          } catch (error) {
-            cleanupError = error;
-          }
-        }
-      } finally {
-        disposeConsoleResources(currentLock);
-      }
-      if (cleanupError) throw cleanupError;
+      await stopServer();
     },
   };
-}
-
-function readConsoleChannel(): ConsoleObserverStatus["channel"] {
-  try {
-    return readFleetConsoleRelease().channel;
-  } catch {
-    return "unknown";
-  }
+  return returnedServer;
 }
 
 function resolveCarrierEventOrigin(event: ConsoleCarrierJobStreamEvent, jobOriginById: Map<string, string>): string | null {
@@ -1148,6 +1238,16 @@ function terminalFolderListStatus(error: TerminalFolderListError): number {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasForbiddenUpdateApplyBodyKeys(body: Record<string, unknown>): boolean {
+  return Object.keys(body).some((key) => UPDATE_APPLY_FORBIDDEN_BODY_KEYS.has(key));
+}
+
+function requestHasBody(req: http.IncomingMessage): boolean {
+  const contentLength = req.headers["content-length"];
+  if (typeof contentLength === "string" && contentLength !== "0") return true;
+  return req.headers["transfer-encoding"] !== undefined;
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {

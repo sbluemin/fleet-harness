@@ -9,7 +9,7 @@ export interface ConsoleUpdateStatus {
 
 export interface ConsoleUpdateCheckService {
   getStatus(): ConsoleUpdateStatus;
-  refresh(): Promise<ConsoleUpdateStatus>;
+  refresh(options?: ConsoleUpdateRefreshOptions): Promise<ConsoleUpdateStatus>;
 }
 
 export interface ConsoleUpdateCheckDeps {
@@ -18,6 +18,10 @@ export interface ConsoleUpdateCheckDeps {
   readonly isGreater?: (left: string, right: string) => boolean;
   readonly now?: () => number;
   readonly ttlMs?: number;
+}
+
+export interface ConsoleUpdateRefreshOptions {
+  readonly force?: boolean;
 }
 
 interface CachedConsoleUpdateStatus {
@@ -47,9 +51,9 @@ export function createConsoleUpdateCheckService(deps: ConsoleUpdateCheckDeps = {
     return current?.status ?? NO_UPDATE_STATUS;
   };
 
-  const refresh = async (): Promise<ConsoleUpdateStatus> => {
+  const refresh = async (options: ConsoleUpdateRefreshOptions = {}): Promise<ConsoleUpdateStatus> => {
     const current = cached;
-    if (current && now() - current.checkedAt < ttlMs) {
+    if (options.force !== true && current && now() - current.checkedAt < ttlMs) {
       return current.status;
     }
     if (inFlight) {

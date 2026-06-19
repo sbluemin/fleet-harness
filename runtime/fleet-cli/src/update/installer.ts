@@ -4,18 +4,20 @@ import { accessSync, constants, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-agent";
+import {
+  createGlobalPackageUpdater,
+  resolvePathBinary,
+  type GlobalPackageManagerInstall,
+  type GlobalPackageSpawnContext,
+  type GlobalPackageUpdater,
+} from "@dotobokuri/core-agent";
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
 import { stopRunningConsoleBeforeUpdate } from "./stop-console.js";
 import type { UpdateChannel } from "./registry.js";
 import type { UpdateCommandIo } from "./types.js";
 
-interface PackageManagerInstall {
-  readonly command: "npm" | "pnpm";
-  readonly globalRoot: string;
-  readonly resolved: ResolvedBinary;
-}
+type PackageManagerInstall = GlobalPackageManagerInstall;
 
 interface GlobalInstallTarget {
   readonly channel: UpdateChannel;
@@ -28,7 +30,6 @@ const FLEET_CLI_PACKAGE_NAME = "@dotobokuri/fleet-cli";
 const PACKAGE_JSON_CANDIDATES = ["../package.json", "../../package.json"] as const;
 
 export const __installerTestHooks = {
-  detectGlobalRoot,
   installFleetPackages,
 } as const;
 
@@ -39,7 +40,8 @@ export async function runFleetUpdate(io: UpdateCommandIo): Promise<number> {
     io.stdout.write(`Fleet is running from a local development build (v${release.version}) — nothing to update here.\n`);
     return 0;
   }
-  const target = resolveGlobalInstallTarget(channel, io);
+  const updater = createFleetPackageUpdater(io, release.version);
+  const target = await resolveGlobalInstallTarget(channel, updater);
   if (target.manager === undefined) {
     writeManualInstallMessage(io, target.channel, target.reason);
     return 0;
@@ -63,58 +65,31 @@ export async function runFleetUpdate(io: UpdateCommandIo): Promise<number> {
   return status;
 }
 
-function resolveGlobalInstallTarget(channel: UpdateChannel, io: UpdateCommandIo): GlobalInstallTarget {
-  const { manager, reason } = detectGlobalPackageManager(io);
+async function resolveGlobalInstallTarget(channel: UpdateChannel, updater: GlobalPackageUpdater): Promise<GlobalInstallTarget> {
+  const { manager, reason } = await updater.detectPackageManager();
   return { channel, manager, reason };
 }
 
-function detectGlobalPackageManager(io: UpdateCommandIo): { readonly manager: PackageManagerInstall | undefined; readonly reason: "local" | "permission" | undefined } {
-  const packageRoot = getCurrentPackageRoot();
-  if (packageRoot === undefined) {
-    return { manager: undefined, reason: "local" };
-  }
-  const npm = detectGlobalRoot("npm", packageRoot, io);
-  if (npm?.manager !== undefined || npm?.reason === "permission") {
-    return npm;
-  }
-  const pnpm = detectGlobalRoot("pnpm", packageRoot, io);
-  return pnpm ?? { manager: undefined, reason: "local" };
+function createFleetPackageUpdater(io: UpdateCommandIo, currentVersion = ""): GlobalPackageUpdater {
+  return createGlobalPackageUpdater({
+    packageNames: PACKAGE_NAMES,
+    resolveCurrentPackageRoot: getCurrentPackageRoot,
+    resolveCurrentVersion: () => currentVersion,
+    prepareInstall: () => stopRunningConsoleBeforeUpdate(io),
+    report: (message) => reportUpdaterMessage(io, message),
+    resolveBinary: (command, env, options) => resolvePathBinary(command, env, options),
+    execFile: (file, args) => execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),
+    spawnInstall: (file, args, context) => spawnInstallProcess(file, args, context, io),
+    realpath: (targetPath) => realpathSync(targetPath),
+    canWrite,
+  });
 }
 
-function detectGlobalRoot(command: "npm" | "pnpm", packageRoot: string, io: UpdateCommandIo): { readonly manager: PackageManagerInstall | undefined; readonly reason: "local" | "permission" | undefined } | undefined {
-  try {
-    const resolved = resolvePathBinary(command, process.env);
-    if (resolved === undefined) {
-      return undefined;
-    }
-    const globalRoot = execFileSync(resolved.bin, [...resolved.prefixArgs, "root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-    const resolvedRoot = normalizePath(realpathSync(path.resolve(globalRoot)));
-    // 직접 경로 포함 확인 (npm 표준 레이아웃)
-    if (isPathInside(normalizeExistingPath(packageRoot), resolvedRoot)) {
-      if (!canWrite(resolvedRoot)) {
-        return { manager: undefined, reason: "permission" };
-      }
-      return { manager: { command, globalRoot: resolvedRoot, resolved }, reason: undefined };
-    }
-    // pnpm 심링크 레이아웃 대응: 글로벌 루트 아래 패키지 심링크가
-    // 현재 패키지 경로로 resolve 되는지 역추적
-    const expectedPkgDir = path.join(globalRoot, FLEET_CLI_PACKAGE_NAME);
-    try {
-      const resolvedPkgDir = normalizePath(realpathSync(expectedPkgDir));
-      if (resolvedPkgDir === normalizeExistingPath(packageRoot)) {
-        if (!canWrite(resolvedRoot)) {
-          return { manager: undefined, reason: "permission" };
-        }
-        return { manager: { command, globalRoot: resolvedRoot, resolved }, reason: undefined };
-      }
-    } catch {
-      // 글로벌 루트에 패키지가 없으면 무시
-    }
-  } catch (error) {
-    io.stderr.write(`Failed to detect Fleet's global ${command} install: ${formatError(error)}\n`);
-    return undefined;
+function reportUpdaterMessage(io: UpdateCommandIo, message: string): void {
+  const match = /^Failed to detect global (npm|pnpm) install: (.+)$/.exec(message);
+  if (match !== null) {
+    io.stderr.write(`Failed to detect Fleet's global ${match[1]} install: ${match[2]}\n`);
   }
-  return undefined;
 }
 
 function getCurrentPackageRoot(): string | undefined {
@@ -124,7 +99,7 @@ function getCurrentPackageRoot(): string | undefined {
       const packageJsonPath = requireFromHere.resolve(candidate);
       const pkg = requireFromHere(packageJsonPath) as { name?: string };
       if (pkg.name === FLEET_CLI_PACKAGE_NAME) {
-        return normalizePath(realpathSync(path.dirname(packageJsonPath)));
+        return realpathSync(path.dirname(packageJsonPath));
       }
     } catch {}
   }
@@ -132,30 +107,26 @@ function getCurrentPackageRoot(): string | undefined {
 }
 
 function installFleetPackages(manager: PackageManagerInstall, versionOrChannel: string, io: UpdateCommandIo): Promise<number> {
-  const child = spawn(manager.resolved.bin, [...manager.resolved.prefixArgs, "i", "-g", "--force", ...PACKAGE_NAMES.map((name) => `${name}@${versionOrChannel}`)], {
-    stdio: "inherit",
+  return createFleetPackageUpdater(io).install(manager, versionOrChannel);
+}
+
+function spawnInstallProcess(file: string, args: readonly string[], context: GlobalPackageSpawnContext, io: UpdateCommandIo): ReturnType<typeof spawn> {
+  const child = spawn(file, args, { stdio: "inherit" });
+  child.on("error", (error) => {
+    io.stderr.write(`Failed to run ${context.manager.command} installer: ${formatError(error)}\n`);
   });
-  return new Promise((resolve) => {
-    child.on("error", (error) => {
-      io.stderr.write(`Failed to run ${manager.command} installer: ${formatError(error)}\n`);
-      resolve(1);
-    });
-    child.on("exit", (code, signal) => {
-      if (typeof code === "number") {
-        if (code !== 0) {
-          io.stderr.write(`${manager.command} installer exited with code ${code}.\n`);
-        }
-        resolve(code);
-        return;
+  child.on("exit", (code, signal) => {
+    if (typeof code === "number") {
+      if (code !== 0) {
+        io.stderr.write(`${context.manager.command} installer exited with code ${code}.\n`);
       }
-      if (signal) {
-        io.stderr.write(`${manager.command} installer exited after signal ${signal}.\n`);
-        resolve(1);
-        return;
-      }
-      resolve(0);
-    });
+      return;
+    }
+    if (signal) {
+      io.stderr.write(`${context.manager.command} installer exited after signal ${signal}.\n`);
+    }
   });
+  return child;
 }
 
 function writeManualInstallMessage(io: UpdateCommandIo, channel: UpdateChannel, reason: "local" | "permission" | undefined): void {
@@ -175,23 +146,6 @@ function writeManualInstallCommands(io: UpdateCommandIo, channel: UpdateChannel,
 
 function formatInstallCommand(command: "npm" | "pnpm", channel: UpdateChannel): string {
   return `${command} i -g ${PACKAGE_NAMES.map((name) => `${name}@${channel}`).join(" ")}`;
-}
-
-function isPathInside(child: string, parent: string): boolean {
-  return child === parent || child.startsWith(`${parent}${path.sep}`);
-}
-
-function normalizePath(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-}
-
-function normalizeExistingPath(value: string): string {
-  try {
-    return normalizePath(realpathSync(value));
-  } catch {
-    return normalizePath(value);
-  }
 }
 
 function canWrite(targetPath: string): boolean {
