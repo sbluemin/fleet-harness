@@ -27,15 +27,32 @@ interface FloatingJobEntryProps {
   readonly active: boolean;
 }
 
-export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  const maximized = useMaximized();
-  const visibleSessionOrder = theaterSessionOrder(state);
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.operationsCollapsed";
 
-  // 맵 최대화(전체화면) 시 Operations 패널을 자동으로 접고, 해제하면 다시 펼친다.
+export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
+  const maximized = useMaximized();
+  // 최초 마운트가 이미 최대화 상태일 수 있다(이전 세션의 maximized 영속, 또는 Codex Full 왕복 후 복귀).
+  // 이때 전환 effect는 동작하지 않으므로, 초기 상태도 maximized로 접어 전체화면 위에 패널이 펼쳐지는 것을
+  // 막는다(저장된 선호는 읽기만 하고 덮어쓰지 않는다).
+  const [collapsed, setCollapsedState] = useState(() => maximized || readSidebarCollapsed());
+  const visibleSessionOrder = theaterSessionOrder(state);
+  // 최대화 "전환" 감지용 직전 값 — 최대화를 유지하는 동안의 재렌더에는 자동 접기를 다시 적용하지 않기 위함.
+  const prevMaximizedRef = useRef(maximized);
+
+  // 최대화 전환(엣지)에서만 자동 동작한다. 최대화 진입은 패널을 임시로 접되 저장된 선호는 보존하고,
+  // 해제는 저장된 사용자 선호로 되돌린다(엣지에서 영속값을 덮어쓰지 않는다 — maximize/restore 왕복이
+  // 접힘 선호를 지우지 않게 한다). 최대화를 유지하는 동안에도 사용자가 수동으로 다시 펼칠 수 있으며,
+  // 그 수동 선호만 localStorage에 영속되어 Codex Full 모드 왕복으로 remount되어도 복원된다.
   useEffect(() => {
-    setCollapsed(maximized);
+    if (prevMaximizedRef.current === maximized) return;
+    prevMaximizedRef.current = maximized;
+    setCollapsedState(maximized ? true : readSidebarCollapsed());
   }, [maximized]);
+
+  const setCollapsed = (next: boolean) => {
+    setCollapsedState(next);
+    writeSidebarCollapsed(next);
+  };
 
   const focusSession = async (sessionId: string) => {
     const session = state.sessions[sessionId];
@@ -282,6 +299,24 @@ async function closeSession(sessionId: string): Promise<void> {
     return;
   }
   removeTerminalSession(sessionId);
+}
+
+function readSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(value));
+  } catch {
+    // Operations 사이드바 접힘 선호 저장 실패는 런타임 동작을 막지 않는다.
+  }
 }
 
 function CollapseListIcon() {
