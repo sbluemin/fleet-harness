@@ -2225,20 +2225,26 @@
     opacity 240ms ease;
 }
 
+/* dock는 토글 우측을 화면 중앙(right:50%)에 고정하므로 레일이 쓸 수 있는 폭은 캔버스의 좌측 절반(50vw)에서
+   토글·갭과 좌하단 단축키 계기 클리어런스를 뺀 만큼이다. 64vw처럼 절반을 넘기면 흔한 폭에서 레일이 가용 공간을
+   넘어 좌측 끝 페이저/과거 칩이 .operations-canvas overflow에 잘리거나 단축키를 덮는다. 380px = 토글(~72)+갭(8)
+   + 단축키 클리어런스(~300)로, 캡이 걸리는 폭에서 레일 좌측 모서리가 단축키 우측(≈266px) 밖에 머문다. */
 .canvas-dock.is-expanded .canvas-dock-rail {
-  max-width: min(64vw, 880px);
+  max-width: clamp(200px, calc(50vw - 380px), 880px);
   opacity: 1;
 }
 
 /* 칩 트랙(스크롤 뷰포트): 가용 폭(max-width)을 넘으면 페이저로 페이지 이동한다. overflow:hidden이라
    스크롤바·휠 스크롤은 없고 '<'/'>' 버튼의 scrollBy(clientWidth)로만 페이지를 넘긴다.
-   scroll-snap-align으로 페이지 경계가 칩 시작에 맞아 칩이 어중간하게 잘리지 않는다. */
+   scroll-snap-align으로 페이지 경계가 칩 시작에 맞아 칩이 어중간하게 잘리지 않는다.
+   상한은 큰 화면 기준 640px이고, 좁은 화면에선 레일 절반-캡(위) 안에서 flex-shrink로 더 줄어들며(min-width:0)
+   그만큼 더 많은 페이지로 나뉜다 — 별도 vw 캡 없이 레일이 가용 절반을 강제한다. */
 .canvas-dock-chips {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  max-width: min(46vw, 640px);
+  max-width: 640px;
   overflow: hidden;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
