@@ -147,6 +147,24 @@ describe("model auth routes", () => {
     expect(harness.deleteCalls).toBe(0);
   });
 
+  it("GET /model-auth/state migrates legacy auth before reading sign-in state", async () => {
+    const harness = createRouterHarness();
+    await harness.router({ req: req("GET"), res: res(), pathname: "/model-auth/state" });
+    expect(harness.migrateCalls).toBe(1);
+  });
+
+  it("PUT migrates legacy auth before validating and storing", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { apiKey: "sk-live" } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
+    expect(harness.migrateCalls).toBe(1);
+  });
+
+  it("DELETE migrates legacy auth before signing out", async () => {
+    const harness = createRouterHarness({ authorized: true, signedIn: true });
+    await harness.router({ req: req("DELETE"), res: res(), pathname: KIMI_PATH });
+    expect(harness.migrateCalls).toBe(1);
+  });
+
   it("returns false for the bare providers path so the host can fall through", async () => {
     const harness = createRouterHarness();
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/model-auth/providers" });
@@ -161,6 +179,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
   let validateCalls = 0;
   let setCalls = 0;
   let deleteCalls = 0;
+  let migrateCalls = 0;
   const router = createModelAuthRouter({
     authService: {
       setApiKey: async (providerId, apiKey) => { setCalls += 1; store.set(providerId, apiKey); },
@@ -171,6 +190,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
       validateCalls += 1;
       return (options.validation ?? { providerId: KIMI_PROVIDER_ID, status: "success" }) as never;
     },
+    migrateLegacyAuth: async () => { migrateCalls += 1; return {}; },
     isAuthorized: () => options.authorized ?? true,
     readJsonBody: async () => (options.bodyNull ? null : (options.body ?? { apiKey: "sk-test" })) as never,
     writeJson: (_res, status, body) => { writes.push({ status, body }); },
@@ -182,6 +202,7 @@ function createRouterHarness(options: RouterHarnessOptions = {}) {
     get validateCalls() { return validateCalls; },
     get setCalls() { return setCalls; },
     get deleteCalls() { return deleteCalls; },
+    get migrateCalls() { return migrateCalls; },
   };
 }
 

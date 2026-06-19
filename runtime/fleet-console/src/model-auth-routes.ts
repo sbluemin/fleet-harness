@@ -16,6 +16,7 @@ type AuthKeyValidation =
 interface ModelAuthRouteDeps {
   readonly authService: Pick<AuthService, "setApiKey" | "deleteApiKey" | "listProviderIds">;
   readonly validateApiKey: (cli: CliType, apiKey: string) => Promise<AuthKeyValidation>;
+  readonly migrateLegacyAuth: () => Promise<unknown>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -53,6 +54,9 @@ export function createModelAuthRouter(deps: ModelAuthRouteDeps): (context: Model
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
       }
+      // legacy 저장소(~/.fleet/agent/auth.json)만 가진 업그레이드 사용자도 정확한 signedIn을 보도록,
+      // fleet-cli의 auth/launch 경로와 동일하게 store를 읽기 전 legacy를 마이그레이션한다.
+      await deps.migrateLegacyAuth();
       // 상태 조회는 loopback GET이며 signedIn 불린만 반환하므로 global-settings/state와 대칭으로 게이트하지 않는다.
       deps.writeJson(res, 200, await buildModelAuthState(deps.authService));
       return true;
@@ -115,6 +119,8 @@ async function signInProvider(
     deps.writeJson(res, 500, { error: "provider_unavailable" });
     return;
   }
+  // 새 키를 legacy와 병합 저장하도록 store 쓰기 전 legacy를 마이그레이션한다(fleet-cli login과 동일).
+  await deps.migrateLegacyAuth();
   // 검증은 서버에서만 수행한다 — 키는 외부 provider 검증과 로컬 저장에만 쓰이고 브라우저로 되돌려보내지 않는다.
   const validation = await deps.validateApiKey(provider.cli, apiKey);
   if (validation.status !== "success") {
@@ -146,6 +152,8 @@ async function signOutProvider(
     deps.writeJson(res, 500, { error: "provider_unavailable" });
     return;
   }
+  // 로그아웃 대상이 legacy에만 있을 수 있으므로 삭제 전 legacy를 마이그레이션한다(fleet-cli logout과 동일).
+  await deps.migrateLegacyAuth();
   await deps.authService.deleteApiKey(providerId);
   await writeMutationState(res, deps);
 }

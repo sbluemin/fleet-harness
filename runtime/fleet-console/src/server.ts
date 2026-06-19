@@ -20,7 +20,7 @@ import {
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
-import { resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
+import { migrateLegacyAuthStore, resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, TerminalFolderListResponse } from "./api-types.js";
@@ -202,6 +202,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const modelAuthRouter = createModelAuthRouter({
     authService: infraServices.authService,
     validateApiKey: (cli, apiKey) => validateAuthKeyForCli(cli, apiKey),
+    migrateLegacyAuth: () => migrateLegacyAuthStore(),
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
