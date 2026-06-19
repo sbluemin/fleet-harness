@@ -25,15 +25,18 @@ interface RouterHarnessOptions {
 
 const KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 const KIMI_PATH = "/model-auth/providers/claude-kimi";
+const GLM_PROVIDER_ID = "Claude Code with ZhipuAI GLM";
+const GLM_PATH = "/model-auth/providers/claude-glm";
 
 describe("model auth routes", () => {
-  it("GET /model-auth/state reports the kimi provider and reflects signed-in status", async () => {
+  it("GET /model-auth/state reports the kimi and glm providers and reflects signed-in status", async () => {
     const harness = createRouterHarness({ signedIn: true });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/model-auth/state" });
     expect(handled).toBe(true);
     const body = harness.writes[0]?.body as { providers: Array<{ cli: string; signedIn: boolean }> };
-    expect(body.providers).toHaveLength(1);
+    expect(body.providers).toHaveLength(2);
     expect(body.providers[0]).toMatchObject({ cli: "claude-kimi", signedIn: true });
+    expect(body.providers[1]).toMatchObject({ cli: "claude-glm", signedIn: false });
   });
 
   it("GET /model-auth/state never serializes the api key or the internal provider storage key", async () => {
@@ -125,7 +128,16 @@ describe("model auth routes", () => {
     expect(harness.setCalls).toBe(0);
   });
 
-  it("rejects providers outside the kimi whitelist with 404", async () => {
+  it("PUT signs in the glm provider and stores under its own provider id", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { apiKey: "sk-glm" } });
+    const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: GLM_PATH });
+    expect(handled).toBe(true);
+    expect(harness.validateCalls).toBe(1);
+    expect(harness.setCalls).toBe(1);
+    expect(harness.store.get(GLM_PROVIDER_ID)).toBe("sk-glm");
+  });
+
+  it("rejects providers outside the whitelist with 404", async () => {
     const harness = createRouterHarness({ authorized: true, body: { apiKey: "x" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/model-auth/providers/claude-zai" });
     expect(harness.writes[0]?.status).toBe(404);
