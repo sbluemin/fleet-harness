@@ -61,7 +61,8 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
   };
 
   const handleSelect = async (cli: AgentCliMetadata) => {
-    if (disabled) return;
+    // 전역 비활성(세션 생성 중 등)과 개별 비활성(미설치/미로그인)을 모두 차단한다.
+    if (disabled || launchDisabledReason(cli) !== null) return;
     setOpen(false);
     triggerRef.current?.focus();
     await onSelect(cli);
@@ -105,14 +106,27 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
         <div className="operation-launch-menu theater-menu" role="menu" aria-label="Launch operation" tabIndex={-1} ref={menuRef} onKeyDown={handleMenuKeyDown}>
           {state.agentClis.length > 0 ? (
             <ul className="theater-menu-list">
-              {state.agentClis.map((cli) => (
-                <li key={cli.id}>
-                  <button type="button" role="menuitem" className="theater-menu-item operation-launch-menu-item" disabled={disabled} onClick={() => { void handleSelect(cli); }}>
-                    <span className="theater-menu-check" aria-hidden="true">{agentCliIcon(cli.id)}</span>
-                    <span className="theater-menu-label">{cli.label}</span>
-                  </button>
-                </li>
-              ))}
+              {state.agentClis.map((cli) => {
+                const reason = launchDisabledReason(cli);
+                const itemDisabled = disabled || reason !== null;
+                return (
+                  <li key={cli.id}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="theater-menu-item operation-launch-menu-item"
+                      disabled={itemDisabled}
+                      aria-disabled={itemDisabled}
+                      title={reason ?? undefined}
+                      onClick={() => { void handleSelect(cli); }}
+                    >
+                      <span className="theater-menu-check" aria-hidden="true">{agentCliIcon(cli.id)}</span>
+                      <span className="theater-menu-label">{cli.label}</span>
+                      {reason ? <span className="operation-launch-menu-reason">{reason}</span> : null}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="theater-menu-empty">No Agent CLI available.</p>
@@ -121,6 +135,15 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
       ) : null}
     </div>
   );
+}
+
+// 미설치/미로그인 CLI의 비활성 사유. 모든 Operation launch UI(사이드바 메뉴·캔버스 우클릭 메뉴)가
+// 동일 정책을 공유하도록 export한다. null이면 활성(실행 가능).
+export function launchDisabledReason(cli: AgentCliMetadata): string | null {
+  // 비활성 사유 우선순위: 미설치 > 미로그인. 설치돼 있어도 로그인 게이트 대상이면 미로그인을 표시한다.
+  if (!cli.available) return "Not installed";
+  if (!cli.signedIn) return "Sign-in required";
+  return null;
 }
 
 function clampedAnchorStyle(anchor: { readonly x: number; readonly y: number }, bounds: { readonly width: number; readonly height: number } | undefined): { readonly left: number; readonly top: number } {

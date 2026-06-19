@@ -275,10 +275,16 @@ function assertTerminalFolderListEntry(value: unknown, status: number): Terminal
 
 function assertAgentCliMetadata(value: unknown, status: number): AgentCliMetadata {
   const payload = value as Partial<AgentCliMetadata>;
-  if (!payload || typeof payload.id !== "string" || typeof payload.label !== "string") {
+  if (
+    !payload
+    || typeof payload.id !== "string"
+    || typeof payload.label !== "string"
+    || typeof payload.available !== "boolean"
+    || typeof payload.signedIn !== "boolean"
+  ) {
     throw new ApiError(status, "Invalid Agent CLI metadata response");
   }
-  return { id: payload.id, label: payload.label };
+  return { id: payload.id, label: payload.label, available: payload.available, signedIn: payload.signedIn };
 }
 
 function assertObservedTenant(value: unknown, status: number): ObservedTenant {

@@ -29,10 +29,11 @@ import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
 import { deriveOperationLabel } from "./auto-name.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
-import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
+import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cli-detect.js";
+import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 import { createAgentCliRouter } from "./agent-cli-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
-import { createModelAuthRouter } from "./model-auth-routes.js";
+import { buildModelAuthState, createModelAuthRouter } from "./model-auth-routes.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
@@ -60,6 +61,8 @@ export interface ConsoleServerDeps {
   readonly terminalLaunch?: TerminalLaunchResolver;
   readonly terminalLaunchResolverDeps?: Omit<TerminalLaunchResolverDeps, "agentRuntime" | "dataDir" | "infraServices" | "onRuntimeSessionStart">;
   readonly agentRuntime?: FleetAgentRuntimeLifecycle;
+  // Agent CLI 설치 탐지기. 테스트가 환경에 의존하지 않도록 주입할 수 있다(기본: PATH 실측).
+  readonly agentCliDetector?: AgentCliDetector;
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
   readonly release?: FleetConsoleRelease;
@@ -213,7 +216,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
-  const agentCliDetector = createDefaultAgentCliDetector();
+  const agentCliDetector = deps.agentCliDetector ?? createDefaultAgentCliDetector();
   const agentCliRouter = createAgentCliRouter({
     detect: agentCliDetector.detect,
     writeJson,
@@ -671,9 +674,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  // Operation 생성 메뉴에 내려보낼 Agent CLI 목록에 설치(available)·로그인(signedIn) 상태를 결합한다.
+  // IO(탐지/auth 조회)만 여기서 수행하고, 매핑은 순수 함수 combineAgentCliLaunchMetadata에 위임한다.
+  async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
+    const [detected, modelAuth] = await Promise.all([
+      agentCliDetector.detect(),
+      buildModelAuthState(infraServices.authService),
+    ]);
+    return combineAgentCliLaunchMetadata(getAgentCliMetadata(), detected, modelAuth.providers);
+  }
+
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method === "GET") {
-      writeJson(res, 200, { theaters: listTheaterInfos(), agentClis: getAgentCliMetadata() });
+      writeJson(res, 200, { theaters: listTheaterInfos(), agentClis: await buildAgentCliLaunchMetadata() });
       return;
     }
     if (req.method !== "POST") {
@@ -750,6 +763,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse, cliId?: AgentCliId): Promise<void> {
+    if (cliId) {
+      // UI 비활성화를 API 경계에서도 강제한다: 미설치/미로그인 CLI로의 세션 생성을 거부한다.
+      // launch 직전에 설치/auth를 재조회해 TOCTOU를 줄인다.
+      const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
+      if (!meta || !meta.available || !meta.signedIn) {
+        writeJson(res, 409, { error: "agent_cli_unavailable" });
+        return;
+      }
+    }
     const sessionId = crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
     try {
