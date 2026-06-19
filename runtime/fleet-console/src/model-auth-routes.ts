@@ -37,10 +37,12 @@ interface SignInBody {
   readonly apiKey?: unknown;
 }
 
-// kimi 우선 — console에 노출하는 모델 로그인 provider 화이트리스트. 다른 provider(claude-zai 등)는
+// console에 노출하는 모델 로그인 provider 화이트리스트. 다른 provider(claude-zai 등)는
 // 의도적으로 제외한다. 경로로 들어온 임의 cli는 이 목록 대조로만 통과한다.
+// displayName은 브라우저-안전 표기만 쓴다 — providerId(저장 키)는 절대 노출하지 않는다(Token Boundary).
 const MODEL_AUTH_PROVIDERS: readonly ModelAuthProviderDefinition[] = [
   { cli: "claude-kimi", displayName: "Moonshot Kimi" },
+  { cli: "claude-glm", displayName: "ZhipuAI GLM" },
 ];
 
 // 사용자 키 거부(400)와 외부 provider 검증 자체 장애(502)를 HTTP 상태로 구분한다.
