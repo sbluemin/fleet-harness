@@ -78,7 +78,7 @@ export function buildFleetHelpText(options: BuildFleetHelpTextOptions = {}): str
     "",
     section("USAGE", colorEnabled),
     `  ${command("fleet", colorEnabled)} ${dim("[options]", colorEnabled)}`,
-    `  ${command("fleet auth", colorEnabled)} ${dim("<login|list|logout> [claude-zai|claude-kimi]", colorEnabled)}`,
+    `  ${command("fleet auth", colorEnabled)} ${dim("<login|list|logout> [claude-zai|claude-kimi|claude-glm]", colorEnabled)}`,
     `  ${command("fleet hook subagents-context", colorEnabled)}`,
     `  ${command("fleet wiki", colorEnabled)} ${dim("[--host <addr>] [--port <port>] [--stop] [--help]", colorEnabled)}`,
     `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|status] [--help]", colorEnabled)}`,

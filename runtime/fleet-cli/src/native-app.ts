@@ -167,7 +167,7 @@ export async function runNativeApp(options: RunAppOptions = {}): Promise<void> {
         dataDir: runtime.dataDir,
         dedicatedMcpSession: runtime.dedicatedMcpSession,
         enableMetaphor: (launchOptions ?? sessionOptionsRuntime.getDraft()).enableMetaphor,
-        hookExec: profile.id === "claude" || profile.id === "claude-kimi"
+        hookExec: profile.id === "claude" || profile.id === "claude-kimi" || profile.id === "claude-glm"
           ? buildFleetHookCommand(options.pluginEntry)
           : undefined,
         onCleanup: (cleanup) => agentCliCleanupCallbacks.add(cleanup),

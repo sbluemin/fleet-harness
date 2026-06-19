@@ -36,6 +36,7 @@ describe("agent CLI catalog", () => {
     expect(getAgentCliIds()).toEqual([
       "claude",
       "claude-kimi",
+      "claude-glm",
       "codex",
     ]);
   });

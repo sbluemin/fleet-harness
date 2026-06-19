@@ -1,4 +1,5 @@
 import { claudeCli } from "./claude/claude.js";
+import { claudeGlmCli } from "./claude-glm/claude-glm.js";
 import { claudeKimiCli } from "./claude-kimi/claude-kimi.js";
 import { codexCli } from "./codex/codex.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile, AuthEnvResolver, AuthServiceLike } from "./types.js";
@@ -20,6 +21,7 @@ const DEFAULT_CLI_ID: AgentCliId = "claude";
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   claude: claudeCli,
   "claude-kimi": claudeKimiCli,
+  "claude-glm": claudeGlmCli,
   codex: codexCli,
 };
 

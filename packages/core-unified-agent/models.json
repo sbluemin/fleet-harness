@@ -43,6 +43,20 @@
         "opus": "kimi-k2.7-code"
       }
     },
+    "claude-glm": {
+      "name": "Claude Code with ZhipuAI GLM",
+      "defaultModel": "opus",
+      "models": [
+        { "modelId": "haiku", "name": "GLM-4.5-Air (Haiku slot)", "effort": { "supported": false } },
+        { "modelId": "sonnet", "name": "GLM-4.7 (Sonnet slot)", "effort": { "supported": false } },
+        { "modelId": "opus", "name": "GLM-5.1 (Opus slot)", "effort": { "supported": false } }
+      ],
+      "modelsMapping": {
+        "haiku": "glm-4.5-air",
+        "sonnet": "glm-4.7",
+        "opus": "glm-5.1"
+      }
+    },
     "codex": {
       "name": "OpenAI Codex CLI",
       "defaultModel": "gpt-5.4",

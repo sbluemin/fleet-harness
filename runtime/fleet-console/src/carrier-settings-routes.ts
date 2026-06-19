@@ -85,7 +85,7 @@ type JsonBodyResult<T> =
   | { readonly ok: true; readonly body: T }
   | { readonly ok: false };
 
-const SUBAGENT_CLI_TYPES = new Set<CliType>(["claude", "claude-zai", "claude-kimi"]);
+const SUBAGENT_CLI_TYPES = new Set<CliType>(["claude", "claude-zai", "claude-kimi", "claude-glm"]);
 const TASKFORCE_MIN_BACKENDS = 2;
 
 export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (context: CarrierSettingsRouteContext) => Promise<boolean> {
