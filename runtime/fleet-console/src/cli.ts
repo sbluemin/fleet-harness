@@ -27,6 +27,7 @@ import { createConsoleServer } from "./server.js";
 import { runCaptureSessionHook } from "./session-capture.js";
 import { createConsoleStalePolicy } from "./stale.js";
 import { runTurnStateHook } from "./turn-state-hook.js";
+import { runAutoNameHook } from "./auto-name-hook.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
 
@@ -87,7 +88,7 @@ export interface BuildConsoleHelpTextOptions {
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
 const DEFAULT_HELP_RELEASE = "local";
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "subagents-context", "turn-start", "turn-end", "attention"]);
+const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "subagents-context", "turn-start", "turn-end", "attention", "auto-name"]);
 
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   // 인자가 없으면 기본 동작은 start(서버 보장 + 브라우저 열기)다.
@@ -115,7 +116,7 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
   return mode;
 }
 
-export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "subagents-context" } | { readonly command: "turn-start" } | { readonly command: "turn-end" } | { readonly command: "attention" } {
+export function parseConsoleHookCommand(argv: readonly string[]): { readonly command: "capture-session"; readonly provider: string } | { readonly command: "subagents-context" } | { readonly command: "turn-start" } | { readonly command: "turn-end" } | { readonly command: "attention" } | { readonly command: "auto-name" } {
   const [commandName, ...rest] = argv;
   if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName)) {
     throw new Error("Unknown fleet-console hook command");
@@ -124,6 +125,7 @@ export function parseConsoleHookCommand(argv: readonly string[]): { readonly com
   if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
   if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
   if (commandName === "attention" && rest.length === 0) return { command: "attention" };
+  if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
   if (commandName === "capture-session" && rest.length === 1 && rest[0]) return { command: "capture-session", provider: rest[0] };
   throw new Error("Unknown fleet-console hook command");
 }
@@ -380,6 +382,11 @@ export async function main(): Promise<void> {
     if (hookCommand.command === "attention") {
       // 입력 대기 알림 hook도 무출력·exit 0 best-effort다(claude block/추가 stdout 금지).
       await runAttentionHook(process.env);
+      return;
+    }
+    if (hookCommand.command === "auto-name") {
+      // 자동 작명 hook도 무출력·exit 0 best-effort다(stdin prompt를 읽어 서버로 전달만 한다).
+      await runAutoNameHook(process.env);
       return;
     }
     await runCaptureSessionHook(hookCommand.provider, process.env);

@@ -197,6 +197,33 @@ describe("agent CLI plugin marketplace rendering", () => {
       { matcher: "permission_prompt|idle_prompt|elicitation_dialog", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
     ]);
   });
+
+  it("wires capture, turn-start, and auto-name hooks onto Claude UserPromptSubmit in order", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-uphooks-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    mkdirSync(cwd, { recursive: true });
+
+    const plugin = await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "claude",
+      cwd,
+      dataDir,
+      hookExec: { command: "node", args: ["cli.mjs", "hook", "subagents-context"] },
+      captureSessionHookExec: { command: "node", args: ["cli.mjs", "hook", "capture-session", "claude"] },
+      turnStartHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-start"] },
+      turnEndHookExec: { command: "node", args: ["cli.mjs", "hook", "turn-end"] },
+      autoNameHookExec: { command: "node", args: ["cli.mjs", "hook", "auto-name"] },
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+      readonly hooks: Record<string, ReadonlyArray<{ readonly hooks: ReadonlyArray<{ readonly args: readonly string[] }> }>>;
+    };
+    const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks.map((hook) => hook.args[2]);
+    expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
+  });
 });
 
 function createDeferred<T>(): Deferred<T> {

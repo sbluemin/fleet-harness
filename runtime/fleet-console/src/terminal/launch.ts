@@ -18,7 +18,7 @@ import { createInfraServices, getFleetDataDir, type InfraServices } from "@dotob
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
 
 import type { TerminalLaunchContext, TerminalLaunchSpec, TerminalPtyHandle } from "./types.js";
-import { buildConsoleAttentionHookCommand, buildConsoleCaptureHookCommand, buildConsoleHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;
@@ -189,6 +189,7 @@ async function createAgentCliLaunchSpec(options: {
       turnStartHookExec: buildConsoleTurnHookCommand(options.hookEntry, "start"),
       turnEndHookExec: buildConsoleTurnHookCommand(options.hookEntry, "end"),
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
+      autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
       hookExec: buildConsoleHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
       replaceSystemPrompt: globalSettings.replaceSystemPrompt,

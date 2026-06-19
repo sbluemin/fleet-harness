@@ -18,6 +18,8 @@ export interface ProviderSession {
   readonly capturedAt: string;
 }
 
+export type ConsoleLabelSource = "user" | "auto";
+
 export interface DurableOperation {
   readonly sessionId: string;
   readonly theaterId: string;
@@ -25,6 +27,9 @@ export interface DurableOperation {
   readonly cwdLabel: string;
   readonly sequence: number;
   readonly label?: string;
+  // 작전명 출처. 사용자가 수동 rename하면 "user", UserPromptSubmit 훅의 자동 작명이 설정하면 "auto".
+  // 미설정(레거시) 상태는 read-time에 label 유무로 해석한다: label이 있으면 user로 보수 해석해 자동 덮어쓰기를 막는다.
+  readonly labelSource?: ConsoleLabelSource;
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly createdAt: number;
@@ -173,6 +178,7 @@ function sanitizeDurableOperation(value: unknown): DurableOperation | null {
     cwdLabel,
     sequence,
     ...(readOptionalString(value.label) ? { label: readOptionalString(value.label) } : {}),
+    ...(readLabelSource(value.labelSource) ? { labelSource: readLabelSource(value.labelSource) } : {}),
     ...(readOptionalString(value.cliId) ? { cliId: readOptionalString(value.cliId) } : {}),
     ...(readOptionalString(value.cliLabel) ? { cliLabel: readOptionalString(value.cliLabel) } : {}),
     createdAt,
@@ -209,6 +215,10 @@ function readNonEmptyString(value: unknown): string | null {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readLabelSource(value: unknown): ConsoleLabelSource | undefined {
+  return value === "user" || value === "auto" ? value : undefined;
 }
 
 function readPositiveInteger(value: unknown): number | null {

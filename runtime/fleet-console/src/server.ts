@@ -27,6 +27,7 @@ import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorksp
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
+import { deriveOperationLabel } from "./auto-name.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createModelAuthRouter } from "./model-auth-routes.js";
@@ -256,6 +257,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleTerminalSessionAttention(req, res, decodeURIComponent(terminalSessionAttentionMatch[1] ?? "")), res);
       return;
     }
+    const terminalSessionAutoNameMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)\/auto-name$/);
+    if (terminalSessionAutoNameMatch) {
+      runAsyncHandler(handleTerminalSessionAutoName(req, res, decodeURIComponent(terminalSessionAutoNameMatch[1] ?? "")), res);
+      return;
+    }
     const terminalSessionItemMatch = pathname.match(/^\/terminal\/sessions\/([^/]+)$/);
     if (terminalSessionItemMatch) {
       runAsyncHandler(handleTerminalSessionItem(req, res, decodeURIComponent(terminalSessionItemMatch[1] ?? "")), res);
@@ -379,6 +385,31 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     observability.notifySessionAttention(session);
     writeJson(res, 200, { ok: true });
+  }
+
+  // 자동 작명 hook 수신: UserPromptSubmit hook이 prompt를 lock 토큰으로 POST한다. turn/attention 라우트와
+  // 동일하게 브라우저가 아닌 로컬 신뢰 프로세스이므로 lock-token bearer로만 인증한다. 사용자가 작전명을 수동
+  // 변경한 적 없을 때만(autoNameTerminalSession 내부 가드) prompt에서 도출한 라벨로 갱신한다.
+  // 자동 작명은 매 프롬프트마다 발생하므로 rename과 달리 PTY로 /rename 슬래시 명령을 주입하지 않는다.
+  async function handleTerminalSessionAutoName(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    const token = lockHandle?.payload.token;
+    if (!token || req.headers.authorization !== `Bearer ${token}`) {
+      writeJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
+    const body = await readJsonBody<{ readonly prompt?: unknown }>(req);
+    const label = deriveOperationLabel(body?.prompt);
+    // 후보가 없거나 저신호이거나, 세션이 없거나, 사용자 보호 라벨/주제 무변동이면 작전명을 바꾸지 않는다.
+    const updated = label === null ? null : observability.autoNameTerminalSession(sessionId, label);
+    if (updated) {
+      observability.notifySessionUpdated(updated);
+      persistDurableState();
+    }
+    writeJson(res, 200, { ok: true, renamed: updated !== null });
   }
 
   async function handleTerminalTicket(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
