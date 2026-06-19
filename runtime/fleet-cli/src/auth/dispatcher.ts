@@ -15,9 +15,9 @@ import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
 const AUTH_HELP_TEXT = `fleet auth — Authentication
 
 Usage:
-  fleet auth login [claude-zai|claude-kimi]
+  fleet auth login [claude-zai|claude-kimi|claude-glm]
   fleet auth list
-  fleet auth logout [claude-zai|claude-kimi]
+  fleet auth logout [claude-zai|claude-kimi|claude-glm]
 `;
 
 // [MEDIUM #6] authService는 Composition Root에서 주입받는다 — per-call createAuthService 제거

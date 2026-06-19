@@ -144,6 +144,7 @@ export function agentCliIcon(id: string) {
   // Agent CLI별로 시각 구별 마크를 부여한다: Claude=스파크, Claude Kimi=초승달, Codex=꺾쇠.
   if (id === "claude") return <ClaudeMarkIcon />;
   if (id === "claude-kimi") return <ClaudeKimiMarkIcon />;
+  if (id === "claude-glm") return <ClaudeGlmMarkIcon />;
   if (id === "codex") return <CodexMarkIcon />;
   return <TerminalIcon />;
 }
@@ -162,6 +163,15 @@ function ClaudeKimiMarkIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M9.7 3.2A5 5 0 1 0 9.7 12.8 4 4 0 1 1 9.7 3.2Z" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ClaudeGlmMarkIcon() {
+  // Claude GLM — ZhipuAI BigModel 백엔드를 뜻하는 육각형 마크.
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <polygon points="5,1 8.5,3 8.5,7 5,9 1.5,7 1.5,3" stroke="currentColor" strokeWidth="1.2" fill="none" />
     </svg>
   );
 }

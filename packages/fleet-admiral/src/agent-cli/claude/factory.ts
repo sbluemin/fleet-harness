@@ -3,9 +3,9 @@ import { createChildEnv, resolveBinary } from "@dotobokuri/core-agent";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
-  readonly id: Extract<AgentCliId, "claude" | "claude-kimi">;
+  readonly id: Extract<AgentCliId, "claude" | "claude-kimi" | "claude-glm">;
   readonly label: string;
-  readonly authCli?: Extract<AgentCliId, "claude-kimi">;
+  readonly authCli?: Extract<AgentCliId, "claude-kimi" | "claude-glm">;
 }
 
 export function createClaudeFamilyCliDefinition(

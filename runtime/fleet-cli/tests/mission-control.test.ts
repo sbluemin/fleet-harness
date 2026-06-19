@@ -497,7 +497,7 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
 
-    expect(authService.setCalls).toEqual([{ key: "secret-api-key", providerId: "Claude Code with Moonshot Kimi" }]);
+    expect(authService.setCalls).toEqual([{ key: "secret-api-key", providerId: "Claude Code with ZhipuAI GLM" }]);
     expect(hosts).toEqual([]);
   });
 
@@ -530,7 +530,7 @@ describe("Mission Control controller", () => {
     controller.ptyHost.write("\x1b[B");
     controller.ptyHost.write("\r");
     await waitForAsyncLaunch();
-    expect(authService.deleteCalls).toEqual(["Claude Code with Moonshot Kimi"]);
+    expect(authService.deleteCalls).toEqual(["Claude Code with ZhipuAI GLM"]);
     expect(renderPlain(controller)).toContain("Register API Key");
     expect(renderPlain(controller)).not.toContain("Delete API Key");
   });
@@ -1190,6 +1190,9 @@ describe("Mission Control controller", () => {
 
     controller.ptyHost.write("j");
     expect(renderPlain(controller)).toContain("▸ Claude Kimi");
+
+    controller.ptyHost.write("\x1b[B");
+    expect(renderPlain(controller)).toContain("▸ Claude GLM");
 
     controller.ptyHost.write("\x1b[B");
     expect(renderPlain(controller)).toContain("▸ Codex");

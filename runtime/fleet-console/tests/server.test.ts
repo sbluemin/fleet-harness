@@ -1392,6 +1392,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(listed.agentClis).toEqual([
       { id: "claude", label: "Claude" },
       { id: "claude-kimi", label: "Claude Kimi" },
+      { id: "claude-glm", label: "Claude GLM" },
       { id: "codex", label: "Codex" },
     ]);
     expect(payload).not.toHaveProperty("path");

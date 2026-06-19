@@ -377,7 +377,8 @@ export class AcpConnection extends BaseConnection {
     return (
       this.cliType === 'claude' ||
       this.cliType === 'claude-zai' ||
-      this.cliType === 'claude-kimi'
+      this.cliType === 'claude-kimi' ||
+      this.cliType === 'claude-glm'
     );
   }
 

@@ -29,7 +29,7 @@ export function renderAssetPluginRoot(
       writePrivateFile(path.join(pluginRoot, "agents", `${fileStem}.md`), claudeAgentFile(subagent), pluginRoot);
     }
   }
-  if (options.cliId === "claude" || options.cliId === "claude-kimi") {
+  if (options.cliId === "claude" || options.cliId === "claude-kimi" || options.cliId === "claude-glm") {
     writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options), pluginRoot);
   }
 }

@@ -24,10 +24,12 @@ interface AuthProviderDefinition {
 export const CLI_TO_AUTH_PROVIDER_ID: Partial<Record<CliType, string>> = {
   "claude-zai": "Claude Code with Z.AI GLM",
   "claude-kimi": "Claude Code with Moonshot Kimi",
+  "claude-glm": "Claude Code with ZhipuAI GLM",
 };
 
 const CLAUDE_ZAI_PROVIDER_ID = "Claude Code with Z.AI GLM";
 const CLAUDE_KIMI_PROVIDER_ID = "Claude Code with Moonshot Kimi";
+const CLAUDE_GLM_PROVIDER_ID = "Claude Code with ZhipuAI GLM";
 
 // env·baseUrl은 CLI provider 카탈로그 SSoT인 CLI_BACKENDS.defaultEnv에서 파생한다.
 // spawn env(UnifiedClaudeAgentClient)와 auth 검증 env가 갈라지는 회귀를 차단한다.
@@ -41,6 +43,11 @@ const AUTH_PROVIDER_DEFINITIONS: Partial<Record<CliType, AuthProviderDefinition>
     providerId: CLAUDE_KIMI_PROVIDER_ID,
     baseUrl: CLI_BACKENDS["claude-kimi"].defaultEnv.ANTHROPIC_BASE_URL,
     env: CLI_BACKENDS["claude-kimi"].defaultEnv,
+  },
+  "claude-glm": {
+    providerId: CLAUDE_GLM_PROVIDER_ID,
+    baseUrl: CLI_BACKENDS["claude-glm"].defaultEnv.ANTHROPIC_BASE_URL,
+    env: CLI_BACKENDS["claude-glm"].defaultEnv,
   },
 };
 

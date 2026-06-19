@@ -78,6 +78,30 @@ export const CLI_BACKENDS = {
       API_TIMEOUT_MS: '3000000',
     },
   },
+  'claude-glm': {
+    id: 'claude-glm',
+    cliCommand: 'claude',
+    protocol: 'acp',
+    authRequired: true,
+    npxPackage: '@agentclientprotocol/claude-agent-acp@0.33.1',
+    modes: [
+      { id: 'default', label: 'Default' },
+      { id: 'plan', label: 'Plan' },
+      { id: 'bypassPermissions', label: 'YOLO' },
+    ],
+    supportsSessionClose: true,
+    supportsSessionLoad: true,
+    requiresModelAtSpawn: false,
+    usesNpxBridge: true,
+    defaultMaxTokens: 16_384,
+    defaultEnv: {
+      ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4/',
+      ENABLE_TOOL_SEARCH: 'false',
+      ANTHROPIC_MODEL: 'glm-4-plus',
+      CLAUDE_CODE_SUBAGENT_MODEL: 'glm-4-plus',
+      API_TIMEOUT_MS: '3000000',
+    },
+  },
   codex: {
     id: 'codex',
     cliCommand: 'codex',
@@ -205,10 +229,10 @@ export function getBackendConfig(cli: CliType): CliBackendConfig {
  * Claude 계열 CLI인지 판별합니다.
  *
  * @param cli - CLI 종류
- * @returns Claude 계열('claude' | 'claude-zai' | 'claude-kimi') 여부
+ * @returns Claude 계열('claude' | 'claude-zai' | 'claude-kimi' | 'claude-glm') 여부
  */
-export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-zai' | 'claude-kimi' {
-  return cli === 'claude' || cli === 'claude-zai' || cli === 'claude-kimi';
+export function isClaudeFamily(cli: CliType): cli is 'claude' | 'claude-zai' | 'claude-kimi' | 'claude-glm' {
+  return cli === 'claude' || cli === 'claude-zai' || cli === 'claude-kimi' || cli === 'claude-glm';
 }
 
 /**
@@ -222,6 +246,7 @@ export function getYoloModeId(cli: CliType): string {
     case 'claude':
     case 'claude-zai':
     case 'claude-kimi':
+    case 'claude-glm':
       return 'bypassPermissions';
     case 'opencode-go':
       return 'build';

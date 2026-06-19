@@ -16,6 +16,7 @@ import type { AuthCliId, AuthCommandDeps, AuthCommandIo } from "./types.js";
 const AUTH_CLI_OPTIONS: Array<{ value: AuthCliId; label: string }> = [
   { value: "claude-zai", label: "Claude Code with Z.AI GLM" },
   { value: "claude-kimi", label: "Claude Code with Moonshot Kimi" },
+  { value: "claude-glm", label: "Claude Code with ZhipuAI GLM" },
 ];
 
 // [MEDIUM #6] authService는 Composition Root에서 주입받는다 — per-call createAuthService 제거
@@ -62,7 +63,7 @@ export function getAuthCliOptions(): readonly AuthCliId[] {
 }
 
 export function parseAuthCliId(value: string | undefined): AuthCliId | undefined {
-  if (value === "claude-zai" || value === "claude-kimi") return value;
+  if (value === "claude-zai" || value === "claude-kimi" || value === "claude-glm") return value;
   return undefined;
 }
 
