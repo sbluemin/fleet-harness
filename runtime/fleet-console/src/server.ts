@@ -677,6 +677,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Operation 생성 메뉴에 내려보낼 Agent CLI 목록에 설치(available)·로그인(signedIn) 상태를 결합한다.
   // IO(탐지/auth 조회)만 여기서 수행하고, 매핑은 순수 함수 combineAgentCliLaunchMetadata에 위임한다.
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
+    // /model-auth/state와 동일하게 legacy auth를 먼저 마이그레이션한다. legacy(~/.fleet/agent/auth.json)에만
+    // 키가 있는 업그레이드 사용자가 미로그인으로 오판돼 게이트(409)에 막히는 것을 막는다.
+    await migrateLegacyAuthStore();
     const [detected, modelAuth] = await Promise.all([
       agentCliDetector.detect(),
       buildModelAuthState(infraServices.authService),

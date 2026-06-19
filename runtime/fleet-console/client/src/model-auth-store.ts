@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
+import { fetchTheaterBootstrap } from "./api.js";
 import { fetchModelAuthState, signInModelProvider, signOutModelProvider } from "./model-auth-api.js";
+import { hydrateTheaterBootstrap } from "./store.js";
 import type { ModelAuthState } from "./types.js";
 
 interface ModelAuthStoreState {
@@ -51,6 +53,7 @@ export async function signInModel(cli: string, apiKey: string): Promise<boolean>
   try {
     const result = await signInModelProvider(cli, apiKey);
     setSnapshot({ state: result.state, busyCli: null, error: null });
+    await refreshLaunchMetadata();
     return true;
   } catch (error) {
     setSnapshot({ busyCli: null, error: toErrorMessage(error) });
@@ -63,10 +66,22 @@ export async function signOutModel(cli: string): Promise<boolean> {
   try {
     const result = await signOutModelProvider(cli);
     setSnapshot({ state: result.state, busyCli: null, error: null });
+    await refreshLaunchMetadata();
     return true;
   } catch (error) {
     setSnapshot({ busyCli: null, error: toErrorMessage(error) });
     return false;
+  }
+}
+
+// 로그인/로그아웃으로 signedIn이 바뀌면 launch 메뉴의 게이트가 즉시 반영되도록 theater bootstrap을 다시
+// 적재해 state.agentClis를 갱신한다(agentClis는 부트스트랩에서만 채워지므로 갱신하지 않으면 stale해진다).
+// 갱신 실패는 무시한다 — 기존 값이 유지되고 다음 부트스트랩에서 다시 동기화된다.
+async function refreshLaunchMetadata(): Promise<void> {
+  try {
+    hydrateTheaterBootstrap(await fetchTheaterBootstrap());
+  } catch {
+    // no-op
   }
 }
 
