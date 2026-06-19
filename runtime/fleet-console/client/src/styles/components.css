@@ -2114,38 +2114,35 @@
 }
 
 /* 작업 진행 중인 에이전트 패널 = "출항(underway)" 상태.
-   인디케이터(비콘) 색을 따르는 외곽 "물결(wake)" 애니메이션 + 정적 림으로 진행을 표시한다.
+   인디케이터(비콘) 색을 따르는 외곽 진행광 + 정적 글로우로 진행을 표시한다.
    색 변형: is-running--live=aurora(활성 캐리어 job), is-running--turn=warn(에이전트 턴 진행 = "그냥 작업중").
-   외곽 글로우/물결은 패널 box-shadow(overflow:hidden 비클리핑), 림은 inset 의사요소로 그린다.
-   brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 물결이 각자 의미로 공존.
+   외곽 진행광은 최소화 칩과 같은 perimeter-orbit 방식으로, 림은 inset 의사요소로 그린다.
+   brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 진행광이 각자 의미로 공존.
    AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림+글로우로 단락). */
 .canvas-panel.is-running {
   box-shadow:
     var(--shadow-soft),
     0 0 22px -6px var(--uw-glow);
-  animation: panel-wake-ripple 2.2s ease-out infinite;
 }
 
 /* 인디케이터 색 추종 — live: aurora("지금 살아있는 것", 활성 캐리어 job) */
 .canvas-panel.is-running--live {
   --uw-tint: var(--aurora);
   --uw-glow: var(--aurora-glow);
-  --uw-ring: color-mix(in oklch, var(--aurora) 50%, transparent);
 }
 
 /* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 = "그냥 작업중") */
 .canvas-panel.is-running--turn {
   --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
-  --uw-ring: color-mix(in oklch, var(--warn) 50%, transparent);
 }
 
-/* 선택(is-active) + 진행 동시: brass 선택 보더 + 인디케이터색 물결/글로우 공존 */
+/* 선택(is-active) + 진행 동시: brass 선택 보더 + 인디케이터색 진행광/글로우 공존 */
 .canvas-panel.is-running.is-active {
   border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
 }
 
-/* 상시 외곽 림 — running의 정적 신호(색은 인디케이터 따라감). 마스크로 테두리 띠만 남긴다. */
+/* 외곽 진행광 링 — 최소화된 칩과 같은 conic 하이라이트 호가 패널 테두리를 순환한다. */
 .canvas-panel.is-running::before {
   content: "";
   position: absolute;
@@ -2154,7 +2151,15 @@
   padding: 1.5px;
   border-radius: inherit;
   pointer-events: none;
-  background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
+  background: conic-gradient(
+    from var(--uw-angle),
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 18deg,
+    var(--uw-tint) 52deg,
+    color-mix(in oklch, var(--uw-tint) 55%, transparent) 92deg,
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 150deg,
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 360deg
+  );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -2163,15 +2168,14 @@
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   mask-composite: exclude;
+  animation: perimeter-orbit 2.4s linear infinite;
 }
 
-/* prefers-reduced-motion: 물결 정지, 정적 림 + 정적 글로우만 유지(색은 인디케이터 따라감) */
+/* prefers-reduced-motion: 순환 정지, 정적 림 + 정적 글로우만 유지(색은 인디케이터 따라감) */
 @media (prefers-reduced-motion: reduce) {
-  .canvas-panel.is-running {
+  .canvas-panel.is-running::before {
     animation: none;
-    box-shadow:
-      var(--shadow-soft),
-      0 0 22px -6px var(--uw-glow);
+    background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
   }
 }
 
@@ -2209,6 +2213,7 @@
 
 /* ── 접기/펼치기 핸들 (최소화 패널이 1개 이상일 때만 렌더된다) ── */
 .canvas-dock-toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2276,25 +2281,53 @@
   flex: none;
 }
 
-/* 알림: 접힌 핸들이 박동(접혀 있어도 "안에 살아있는 게 있다"를 알린다). 색은 신호를 따른다.
+/* 알림: 접힌 핸들이 외곽 진행광으로 "안에 살아있는 게 있다"를 알린다. 색은 신호를 따른다.
    펼친 상태에선 각 칩이 외곽 진행광으로 직접 상태를 표시하므로 토글 알림은 접힘(:not(.is-expanded))
-   상태에서만 작동한다 — 펼친 토글은 정적으로 둔다. 패널/칩과 동일한 panel-wake-ripple을 재사용하되
-   핸들은 --shadow-floating을 기준 그림자로 쓴다. */
+   상태에서만 작동한다 — 펼친 토글은 정적으로 둔다. */
 .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live,
 .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn {
-  animation: panel-wake-ripple 2.2s ease-out infinite;
+  box-shadow: var(--shadow-floating), 0 0 22px -6px var(--uw-glow);
 }
 
 .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live {
+  --uw-tint: var(--aurora);
   --uw-glow: var(--aurora-glow);
-  --uw-ring: color-mix(in oklch, var(--aurora) 45%, transparent);
   border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
 }
 
 .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn {
+  --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
-  --uw-ring: color-mix(in oklch, var(--warn) 45%, transparent);
   border-color: color-mix(in oklch, var(--warn) 40%, var(--surface-rim));
+}
+
+.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live::before,
+.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--uw-angle),
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 18deg,
+    var(--uw-tint) 52deg,
+    color-mix(in oklch, var(--uw-tint) 55%, transparent) 92deg,
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 150deg,
+    color-mix(in oklch, var(--uw-tint) 12%, transparent) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: perimeter-orbit 2.4s linear infinite;
 }
 
 .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live .canvas-dock-toggle-beacon {
@@ -2450,8 +2483,8 @@
   color: var(--brass-bright);
 }
 
-/* 알림(underway) = 진행 중 칩의 외곽 진행광. 숨결(panel-wake-ripple) 대신 conic 하이라이트 호가
-   칩 테두리 링을 시계방향으로 순환한다. 색 의미는 동일(live=aurora, turn=warn). 칩 자체의 codex-rise
+/* 알림(underway) = 진행 중 칩의 외곽 진행광. conic 하이라이트 호가 칩 테두리 링을
+   시계방향으로 순환한다. 색 의미는 동일(live=aurora, turn=warn). 칩 자체의 codex-rise
    등장 모션은 위 .is-expanded .canvas-dock-chip 규칙에서 그대로 유지된다. */
 .canvas-dock-chip--underway-live {
   --uw-tint: var(--aurora);
@@ -2501,13 +2534,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live,
-  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn {
-    animation: none;
-    box-shadow: var(--shadow-floating), 0 0 22px -6px var(--uw-glow);
-  }
   .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live .canvas-dock-toggle-beacon {
     animation: none;
+  }
+  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live::before,
+  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn::before {
+    animation: none;
+    background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
   }
   /* 칩 진행광: 순환 정지 + 정적 전체 림(전체 외곽을 옅게 유지). */
   .canvas-dock.is-expanded .canvas-dock-chip--underway::before {
@@ -2520,9 +2553,9 @@
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--ink-spectral);
 }
 
