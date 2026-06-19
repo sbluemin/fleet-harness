@@ -47,14 +47,14 @@
       "name": "Claude Code with ZhipuAI GLM",
       "defaultModel": "opus",
       "models": [
-        { "modelId": "haiku", "name": "GLM-4-Plus (Haiku slot)", "effort": { "supported": false } },
-        { "modelId": "sonnet", "name": "GLM-4-Plus (Sonnet slot)", "effort": { "supported": false } },
-        { "modelId": "opus", "name": "GLM-4-Plus (Opus slot)", "effort": { "supported": false } }
+        { "modelId": "haiku", "name": "GLM-4.5-Air (Haiku slot)", "effort": { "supported": false } },
+        { "modelId": "sonnet", "name": "GLM-4.7 (Sonnet slot)", "effort": { "supported": false } },
+        { "modelId": "opus", "name": "GLM-5.1 (Opus slot)", "effort": { "supported": false } }
       ],
       "modelsMapping": {
-        "haiku": "glm-4-plus",
-        "sonnet": "glm-4-plus",
-        "opus": "glm-4-plus"
+        "haiku": "glm-4.5-air",
+        "sonnet": "glm-4.7",
+        "opus": "glm-5.1"
       }
     },
     "codex": {

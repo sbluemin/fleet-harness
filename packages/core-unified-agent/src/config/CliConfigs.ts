@@ -95,10 +95,7 @@ export const CLI_BACKENDS = {
     usesNpxBridge: true,
     defaultMaxTokens: 16_384,
     defaultEnv: {
-      ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4/',
-      ENABLE_TOOL_SEARCH: 'false',
-      ANTHROPIC_MODEL: 'glm-4-plus',
-      CLAUDE_CODE_SUBAGENT_MODEL: 'glm-4-plus',
+      ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/anthropic',
       API_TIMEOUT_MS: '3000000',
     },
   },
