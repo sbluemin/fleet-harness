@@ -34,7 +34,7 @@ export interface ConsoleDaemonLifecycleDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
   readonly serverModulePath?: string;
-  readonly spawnDetached?: (execPath: string, args: readonly string[], options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore" }) => void;
+  readonly spawnDetached?: (execPath: string, args: readonly string[], options: { readonly detached: true; readonly env: NodeJS.ProcessEnv; readonly stdio: "ignore"; readonly windowsHide: true }) => void;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly health?: ReturnType<typeof createConsoleHealthClient>;
 }
@@ -193,7 +193,12 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const env = deps.env ?? process.env;
   const execPath = deps.execPath ?? process.execPath;
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
-  const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => { spawn(bin, [...args], options).unref(); });
+  const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => {
+    const child = spawn(bin, [...args], options);
+    // 데몬 spawn 실패는 이후 health probe 단계에서 처리하므로 여기서는 uncaught 'error'만 막는다.
+    child.once("error", () => {});
+    child.unref();
+  });
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const paths = createConsolePaths({ env });
   const lock = createConsoleLock();
@@ -242,7 +247,7 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
     if (current) await stop();
-    spawnDetached(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore" });
+    spawnDetached(execPath, [serverModulePath, "serve"], { detached: true, env, stdio: "ignore", windowsHide: true });
     for (let i = 0; i < 30; i += 1) {
       await sleep(100);
       const next = await probe();

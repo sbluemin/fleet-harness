@@ -7,6 +7,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - [core] Fleet Console adds a Model Sign-in section to the global Settings screen to register, verify, and remove a provider API key so carriers can run on that model, starting with Moonshot Kimi; keys are validated against the provider, stored locally, and never shown back in the browser.
+- [core] Installing Fleet Console globally via npm now automatically opens the console in the browser when the install finishes, limited to interactive desktop installs and skipped in CI, headless, or non-global installs; set `FLEET_CONSOLE_NO_AUTO_OPEN` to opt out.
 
 ### Fixed
 - [core] A Fleet Console run from source (`pnpm fleet-console`) now stores its persisted Theaters, Operations, and session captures under the project workspace instead of the shared home directory, so a development console no longer mixes its state with a globally installed Fleet Console.
