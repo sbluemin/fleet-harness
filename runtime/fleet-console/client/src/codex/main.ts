@@ -20,7 +20,7 @@ import type { NavMode } from "./components/nav-tree";
 import { renderRawView } from "./components/raw-view";
 import { renderQueueList } from "./components/queue-list";
 import { renderQueueDetail } from "./components/queue-detail";
-import { renderToc } from "./components/toc";
+import { installTocScrollSpy, renderToc } from "./components/toc";
 import { renderLogView } from "./components/log-view";
 import { clearQueueState, getQueueState, loadPatchDetail, loadQueueList, rejectCurrentPatch, subscribeQueueState, approveCurrentPatch } from "./queue-state";
 import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
@@ -54,6 +54,17 @@ import type { AppState } from "./state";
 
 let app: HTMLElement;
 let shellPainted = false;
+// Side 패널 헤더의 pane 토글이 제어하는 좌(nav)/우(rail) 수동 접힘 상태. localStorage 영속이며 render()가
+// app-shell 클래스에 반영한다 — 컨테이너 쿼리 자동 접힘과 독립적으로 넓은 폭에서도 접을 수 있다.
+const NAV_COLLAPSE_KEY = "fleet-console.codex.nav-collapsed";
+const RAIL_COLLAPSE_KEY = "fleet-console.codex.rail-collapsed";
+let navCollapsed = readStoredPaneCollapsed("nav");
+let railCollapsed = readStoredPaneCollapsed("rail");
+let cleanupTocScrollSpy: (() => void) | null = null;
+let tocDrawerReturnFocus: HTMLElement | null = null;
+// 현재 표현 모드. pane 접힘 토글은 Side 패널 헤더에만 있고 Full에는 복구 UI가 없으므로,
+// collapse 클래스는 Side일 때만 적용한다 — Full로 전환해도 접힘이 번져 갇히지 않게 한다.
+let currentPresentationMode: "route" | "side" = "route";
 
 export interface CodexAppController {
   navigateToWorkspace(workspaceId: string): void;
@@ -80,6 +91,7 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
 
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("submit", handleDocumentSubmit);
+  window.addEventListener("keydown", handleDocumentKeydown, true);
   installDiagramHydrator(root);
   if (options.initialWorkspaceId && currentWorkspaceId() !== options.initialWorkspaceId) {
     replace(workspaceHomePath(options.initialWorkspaceId));
@@ -97,11 +109,51 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
       unsubscribeRoute();
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("submit", handleDocumentSubmit);
+      window.removeEventListener("keydown", handleDocumentKeydown, true);
+      destroyTocScrollSpy();
+      closeTocDrawer(false);
       destroyCommandPalette();
       destroyRouter();
       root.innerHTML = "";
     },
   };
+}
+
+// Side 패널 헤더의 pane 토글이 호출하는 외부 제어 API. 상태를 갱신·영속하고 즉시 재렌더한다.
+export function setCodexPaneCollapsed(pane: "nav" | "rail", collapsed: boolean): void {
+  if (pane === "nav") navCollapsed = collapsed;
+  else railCollapsed = collapsed;
+  writeStoredPaneCollapsed(pane, collapsed);
+  if (app) render();
+}
+
+export function getCodexPaneCollapsed(pane: "nav" | "rail"): boolean {
+  return pane === "nav" ? navCollapsed : railCollapsed;
+}
+
+// React 측 CodexSurface가 표현 모드를 알린다 — Side일 때만 pane 접힘을 화면에 반영한다.
+export function setCodexPresentationMode(mode: "route" | "side"): void {
+  if (currentPresentationMode === mode) return;
+  currentPresentationMode = mode;
+  if (app) render();
+}
+
+function readStoredPaneCollapsed(pane: "nav" | "rail"): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(pane === "nav" ? NAV_COLLAPSE_KEY : RAIL_COLLAPSE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredPaneCollapsed(pane: "nav" | "rail", collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(pane === "nav" ? NAV_COLLAPSE_KEY : RAIL_COLLAPSE_KEY, String(collapsed));
+  } catch {
+    // 선호 저장 실패는 토글 동작을 막지 않는다.
+  }
 }
 
 async function boot(): Promise<void> {
@@ -166,39 +218,34 @@ async function handleRouteChange(route: Route): Promise<void> {
 
 function render(): void {
   const route = currentRoute();
-  if (route.name === "raw") {
-    renderRawShell();
-    return;
-  }
   renderAppShell(getState(), route);
-}
-
-function renderRawShell(): void {
-  app.innerHTML = `
-    ${renderRawView(getRawState())}
-    <div class="toast" id="toast" aria-live="polite"></div>
-  `;
 }
 
 function renderAppShell(state: AppState, route: Route): void {
   const currentId = route.name === "entry" ? route.id : null;
-  const isQueueRoute = route.name === "queue" || route.name === "queue-detail";
+  const shellModifierClass = renderShellModifierClass(route);
+  const shouldRenderSidebar = currentPresentationMode !== "side" || !navCollapsed;
+  const shouldRenderRail = !shouldSuppressRail(route) && (currentPresentationMode !== "side" || !railCollapsed);
   const renderedEntry = state.currentEntry ? renderMarkdownView(state.currentEntry, state.index) : null;
   configureCommandPalette(state.index, state.recentIds);
+  // pane 접힘은 Side 표현 모드에서만 반영한다(Full에는 복구 토글이 없어 접힘이 갇히는 것을 막는다).
+  const paneCollapseClass = currentPresentationMode === "side"
+    ? `${navCollapsed ? " app-shell--nav-collapsed" : ""}${railCollapsed ? " app-shell--rail-collapsed" : ""}`
+    : "";
+  destroyTocScrollSpy();
+  closeTocDrawer(false);
   app.innerHTML = `
-    <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}">
+    <div class="app-shell${shellModifierClass}${paneCollapseClass}">
       <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="Open menu">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
       </button>
-      ${renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname)}
+      ${shouldRenderSidebar ? renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname) : ""}
       <main class="content">
         ${renderMainContent(state, route, renderedEntry)}
       </main>
-      <div class="rail">
-        ${renderRailContent(state, route, renderedEntry)}
-      </div>
+      ${shouldRenderRail ? `<div class="rail">${renderRailContent(state, route, renderedEntry)}</div>` : ""}
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
   `;
@@ -207,9 +254,15 @@ function renderAppShell(state: AppState, route: Route): void {
   } else {
     shellPainted = true;
   }
+  if (route.name === "entry" && renderedEntry) {
+    cleanupTocScrollSpy = installTocScrollSpy(app, renderedEntry.toc);
+  }
 }
 
 function renderMainContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
+  if (route.name === "raw") {
+    return renderRawView(getRawState());
+  }
   if (route.name === "queue") {
     return renderQueueList(getQueueState());
   }
@@ -229,11 +282,30 @@ function renderMainContent(state: AppState, route: Route, renderedEntry: Markdow
 }
 
 function renderRailContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
-  if (route.name === "queue" || route.name === "queue-detail") return "";
+  if (shouldSuppressRail(route)) return "";
   return `
-    ${renderManifestPanel(state.currentEntry, state.index, state.currentMatchHint)}
     ${renderedEntry ? renderToc(renderedEntry.toc) : ""}
+    ${renderManifestPanel(state.currentEntry, state.index, state.currentMatchHint)}
   `;
+}
+
+function renderShellModifierClass(route: Route): string {
+  if (route.name === "raw") return " app-shell--raw";
+  if (isBrowseWideRoute(route)) return " app-shell--wide";
+  return "";
+}
+
+function isBrowseWideRoute(route: Route): boolean {
+  return route.name === "home"
+    || route.name === "index-md"
+    || route.name === "log"
+    || route.name === "conflicts"
+    || route.name === "queue"
+    || route.name === "queue-detail";
+}
+
+function shouldSuppressRail(route: Route): boolean {
+  return route.name === "raw" || isBrowseWideRoute(route);
 }
 
 function handleDocumentClick(event: MouseEvent): void {
@@ -263,6 +335,14 @@ function handleDocumentClick(event: MouseEvent): void {
   if (actionElement?.dataset.action === "toggle-tag") {
     toggleTag(actionElement.dataset.tag ?? "");
     render();
+    return;
+  }
+  if (actionElement?.dataset.action === "open-toc-drawer") {
+    openTocDrawer(actionElement);
+    return;
+  }
+  if (actionElement?.dataset.action === "close-toc-drawer") {
+    closeTocDrawer(true);
     return;
   }
   if (actionElement?.dataset.action === "copy-code") {
@@ -323,7 +403,8 @@ function handleDocumentClick(event: MouseEvent): void {
   const tocLink = target.closest<HTMLAnchorElement>("[data-toc-id]");
   if (tocLink) {
     event.preventDefault();
-    document.getElementById(tocLink.dataset.tocId ?? "")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(tocLink.dataset.tocId ?? "")?.scrollIntoView({ block: "start" });
+    closeTocDrawer(false);
     return;
   }
 
@@ -334,6 +415,77 @@ function handleDocumentClick(event: MouseEvent): void {
   event.preventDefault();
   document.body.classList.remove("nav-open");
   navigate(internalPath);
+}
+
+function handleDocumentKeydown(event: KeyboardEvent): void {
+  const drawer = document.querySelector<HTMLElement>("#toc-drawer:not([hidden])");
+  if (!drawer) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeTocDrawer(true);
+    return;
+  }
+  // modal drawer가 열린 동안 Tab/Shift+Tab을 내부 focusable 사이에서 순환시켜 포커스가 배경으로 새지 않게 한다(aria-modal 계약 보강).
+  if (event.key === "Tab") {
+    trapDrawerTab(drawer, event);
+    event.stopImmediatePropagation();
+    return;
+  }
+  const target = event.target;
+  const isInsideDrawer = target instanceof Node && drawer.contains(target);
+  const isGlobalShortcut = event.metaKey || event.ctrlKey || event.altKey;
+  if (!isInsideDrawer || isGlobalShortcut) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}
+
+function trapDrawerTab(drawer: HTMLElement, event: KeyboardEvent): void {
+  const focusables = [...drawer.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")]
+    .filter((el) => el.offsetParent !== null);
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  if (!drawer.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function openTocDrawer(trigger: HTMLElement): void {
+  const drawer = document.querySelector<HTMLElement>("#toc-drawer");
+  if (!drawer) return;
+  tocDrawerReturnFocus = trigger;
+  document.body.classList.remove("nav-open");
+  document.body.classList.add("toc-open");
+  drawer.hidden = false;
+  // backdrop은 전체 화면 close 버튼이라 DOM상 panel보다 먼저다 — selector에 넣으면 포커스가 거기로 잡혀
+  // Space/Enter 한 번에 drawer가 닫힌다. panel 안 첫 ToC 링크(없으면 panel 헤더의 close 버튼)에 포커스해
+  // 다이얼로그 내부에서 시작하게 한다.
+  (drawer.querySelector<HTMLElement>(".toc-drawer-link")
+    ?? drawer.querySelector<HTMLElement>(".toc-drawer-panel [data-action='close-toc-drawer']"))?.focus();
+}
+
+function closeTocDrawer(restoreFocus: boolean): void {
+  const drawer = document.querySelector<HTMLElement>("#toc-drawer");
+  if (!drawer) return;
+  drawer.hidden = true;
+  document.body.classList.remove("toc-open");
+  if (restoreFocus) tocDrawerReturnFocus?.focus();
+  tocDrawerReturnFocus = null;
+}
+
+function destroyTocScrollSpy(): void {
+  cleanupTocScrollSpy?.();
+  cleanupTocScrollSpy = null;
 }
 
 function handleDocumentSubmit(event: SubmitEvent): void {

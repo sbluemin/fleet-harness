@@ -1,5 +1,7 @@
+import { renderBreadcrumb } from "./breadcrumb";
 import { renderMetaChips, renderTagChips } from "./meta-chips";
 import { renderRelatedList } from "./related-list";
+import { renderTocDrawer, renderTocDrawerTrigger } from "./toc-drawer";
 import { renderMarkdown } from "../markdown/renderer";
 import type { TocItem } from "../markdown/renderer";
 import type { WikiEntryResponse, WikiIndexEntry } from "../api";
@@ -58,20 +60,23 @@ export function renderMarkdownView(
   entry: WikiEntryResponse,
   index: WikiIndexEntry[],
 ): MarkdownViewRender {
-  const rendered = renderMarkdown(entry.body);
+  const rendered = renderMarkdown(entry.body, { omitDuplicateTitle: entry.frontmatter.title });
   return {
     toc: rendered.toc,
     html: `
     <article class="document">
       <header class="document-header">
-        <p class="eyebrow">Wiki Entry</p>
+        ${renderBreadcrumb(entry, index)}
+        <p class="eyebrow">Current Entry</p>
         <h1>${escapeHtml(entry.frontmatter.title)}</h1>
         ${renderMetaChips(entry.frontmatter)}
+        ${renderTocDrawerTrigger(rendered.toc)}
       </header>
       <div class="markdown-body" id="markdown-body">
         ${rendered.html}
       </div>
       ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
+      ${renderTocDrawer(rendered.toc)}
     </article>
   `,
   };
@@ -92,4 +97,3 @@ export function renderError(message: string): string {
     </article>
   `;
 }
-

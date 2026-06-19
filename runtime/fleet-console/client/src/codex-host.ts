@@ -1,6 +1,9 @@
 import { mountCodexApp } from "./codex/main.js";
 import type { CodexAppController } from "./codex/main.js";
 
+// Side 패널 헤더의 pane 토글이 호출하는 Vanilla Codex 제어 API를 React 측에 노출한다(host 경계 단일 통로).
+export { getCodexPaneCollapsed, setCodexPaneCollapsed, setCodexPresentationMode } from "./codex/main.js";
+
 // Vanilla Codex는 모듈 싱글톤(state/router/command-palette 등)이라 동시에 한 인스턴스만 안전하다.
 // 그래서 mount host(`<div class="codex-host">`)와 controller를 이 모듈이 단독 소유하고,
 // route/side/modal 컨테이너 사이를 appendChild로 "이동"시킨다 — destroy+remount가 아니라

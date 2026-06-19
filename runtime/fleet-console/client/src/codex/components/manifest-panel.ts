@@ -39,13 +39,14 @@ export function renderManifestPanel(
     : `<span class="queue-dl-muted">None</span>`;
 
   return `
-    <aside class="manifest-card">
-      <div class="manifest-header">
-        <div class="manifest-titles">
-          <p class="drydock-eyebrow">MANIFEST · CODEX</p>
-          <p class="manifest-subtitle">Document Manifest</p>
-        </div>
-      </div>
+    <details class="manifest-card" open>
+      <summary class="manifest-summary" aria-label="Toggle document manifest">
+        <span class="manifest-summary-copy">
+          <span class="drydock-eyebrow">MANIFEST · CODEX</span>
+          <span class="manifest-subtitle">Document Manifest</span>
+        </span>
+        <span class="manifest-summary-indicator" aria-hidden="true"></span>
+      </summary>
       <dl class="queue-dl">
         <dt class="queue-dl-key">Created</dt>
         <dd class="queue-dl-value queue-dl-time">
@@ -69,6 +70,6 @@ export function renderManifestPanel(
         <dd class="queue-dl-value">${rawRefHtml}</dd>
       </dl>
       ${actionsHtml ? `<div class="manifest-actions">${actionsHtml}</div>` : ""}
-    </aside>
+    </details>
   `;
 }

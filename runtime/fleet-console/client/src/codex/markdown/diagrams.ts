@@ -62,7 +62,7 @@ const SVG_SANITIZE_CONFIG = {
 const INTERACTION_HANDLER_FLAG = "diagramInteractionBound";
 const OKLCH_PATTERN = /^oklch\s*\(\s*([^)]+)\s*\)$/i;
 const ANGLE_PATTERN = /^(-?\d+(?:\.\d+)?)(deg)?$/i;
-const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400] as const;
+const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200] as const;
 const PIE_THEME_SLOT_NAMES = [
   "pie1",
   "pie2",
@@ -199,6 +199,7 @@ function extractThemeVariables(): Record<string, string> {
     const value = styles.getPropertyValue(name).trim();
     return cssColorToHex(value || fallback);
   };
+  const readToken = (name: string, fallback: string): string => styles.getPropertyValue(name).trim() || fallback;
   const brass = read("--brass", "#c69a4a");
   const brassBright = read("--brass-bright", "#e6b86a");
   const brassDeep = read("--brass-deep", "#a0782a");
@@ -244,11 +245,11 @@ function extractThemeVariables(): Record<string, string> {
     clusterBkg: "transparent",
     clusterBorder: brass,
     pieTitleTextColor: brassBright,
-    pieTitleTextSize: "19px",
+    pieTitleTextSize: readToken("--font-size-title-lg", "19px"),
     pieSectionTextColor: inkPearl,
-    pieSectionTextSize: "13px",
+    pieSectionTextSize: readToken("--font-size-md", "13px"),
     pieLegendTextColor: inkPearl,
-    pieLegendTextSize: "14px",
+    pieLegendTextSize: readToken("--font-size-lg", "14px"),
     pieStrokeColor: brassDeep,
     pieStrokeWidth: "1.35px",
     pieOuterStrokeColor: brassBright,
