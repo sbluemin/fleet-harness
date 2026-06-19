@@ -54,6 +54,15 @@ import type { AppState } from "./state";
 
 let app: HTMLElement;
 let shellPainted = false;
+// Side 패널 헤더의 pane 토글이 제어하는 좌(nav)/우(rail) 수동 접힘 상태. localStorage 영속이며 render()가
+// app-shell 클래스에 반영한다 — 컨테이너 쿼리 자동 접힘과 독립적으로 넓은 폭에서도 접을 수 있다.
+const NAV_COLLAPSE_KEY = "fleet-console.codex.nav-collapsed";
+const RAIL_COLLAPSE_KEY = "fleet-console.codex.rail-collapsed";
+let navCollapsed = readStoredPaneCollapsed("nav");
+let railCollapsed = readStoredPaneCollapsed("rail");
+// 현재 표현 모드. pane 접힘 토글은 Side 패널 헤더에만 있고 Full에는 복구 UI가 없으므로,
+// collapse 클래스는 Side일 때만 적용한다 — Full로 전환해도 접힘이 번져 갇히지 않게 한다.
+let currentPresentationMode: "route" | "side" = "route";
 
 export interface CodexAppController {
   navigateToWorkspace(workspaceId: string): void;
@@ -102,6 +111,43 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
       root.innerHTML = "";
     },
   };
+}
+
+// Side 패널 헤더의 pane 토글이 호출하는 외부 제어 API. 상태를 갱신·영속하고 즉시 재렌더한다.
+export function setCodexPaneCollapsed(pane: "nav" | "rail", collapsed: boolean): void {
+  if (pane === "nav") navCollapsed = collapsed;
+  else railCollapsed = collapsed;
+  writeStoredPaneCollapsed(pane, collapsed);
+  if (app) render();
+}
+
+export function getCodexPaneCollapsed(pane: "nav" | "rail"): boolean {
+  return pane === "nav" ? navCollapsed : railCollapsed;
+}
+
+// React 측 CodexSurface가 표현 모드를 알린다 — Side일 때만 pane 접힘을 화면에 반영한다.
+export function setCodexPresentationMode(mode: "route" | "side"): void {
+  if (currentPresentationMode === mode) return;
+  currentPresentationMode = mode;
+  if (app) render();
+}
+
+function readStoredPaneCollapsed(pane: "nav" | "rail"): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(pane === "nav" ? NAV_COLLAPSE_KEY : RAIL_COLLAPSE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredPaneCollapsed(pane: "nav" | "rail", collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(pane === "nav" ? NAV_COLLAPSE_KEY : RAIL_COLLAPSE_KEY, String(collapsed));
+  } catch {
+    // 선호 저장 실패는 토글 동작을 막지 않는다.
+  }
 }
 
 async function boot(): Promise<void> {
@@ -185,8 +231,12 @@ function renderAppShell(state: AppState, route: Route): void {
   const isQueueRoute = route.name === "queue" || route.name === "queue-detail";
   const renderedEntry = state.currentEntry ? renderMarkdownView(state.currentEntry, state.index) : null;
   configureCommandPalette(state.index, state.recentIds);
+  // pane 접힘은 Side 표현 모드에서만 반영한다(Full에는 복구 토글이 없어 접힘이 갇히는 것을 막는다).
+  const paneCollapseClass = currentPresentationMode === "side"
+    ? `${navCollapsed ? " app-shell--nav-collapsed" : ""}${railCollapsed ? " app-shell--rail-collapsed" : ""}`
+    : "";
   app.innerHTML = `
-    <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}">
+    <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}${paneCollapseClass}">
       <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="Open menu">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h10" />

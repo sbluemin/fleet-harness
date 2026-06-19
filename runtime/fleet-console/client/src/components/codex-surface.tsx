@@ -1,6 +1,6 @@
-import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
-import { mountCodexInto, setCodexWorkspace, teardownCodex } from "../codex-host.js";
+import { getCodexPaneCollapsed, mountCodexInto, setCodexPaneCollapsed, setCodexPresentationMode, setCodexWorkspace, teardownCodex } from "../codex-host.js";
 import { setCodexSideWidth, useCodexSideWidth, type CodexViewMode } from "../codex-view-mode.js";
 import { isCommandPaletteOpen } from "../codex/components/command-palette.js";
 import type { ConsoleState } from "../types.js";
@@ -49,6 +49,8 @@ export function CodexSurface({ state, mode, onClose }: CodexSurfaceProps) {
   // 최초 마운트도 이 effect가 처리한다(initialWorkspaceId로 컨트롤러 생성).
   useEffect(() => {
     if (!shouldMountCodex || !bodyRef.current || !activeTheaterId) return;
+    // Vanilla Codex에 표현 모드를 알려 pane 접힘이 Side에서만 반영되게 한다(Full 누수 방지).
+    setCodexPresentationMode(mode);
     mountCodexInto(bodyRef.current, activeTheaterId);
   }, [mode, shouldMountCodex, activeTheaterId]);
 
@@ -134,13 +136,44 @@ export function CodexSurface({ state, mode, onClose }: CodexSurfaceProps) {
 }
 
 function CodexSurfaceHeader({ title, onClose }: CodexSurfaceHeaderProps) {
+  // pane 접힘은 Vanilla Codex가 SSoT(localStorage 영속) — 헤더는 초기값을 읽어 토글하고 setter로 위임한다.
+  const [navCollapsed, setNavCollapsed] = useState(() => getCodexPaneCollapsed("nav"));
+  const [railCollapsed, setRailCollapsed] = useState(() => getCodexPaneCollapsed("rail"));
+  const togglePane = (pane: "nav" | "rail") => {
+    const next = pane === "nav" ? !navCollapsed : !railCollapsed;
+    setCodexPaneCollapsed(pane, next);
+    if (pane === "nav") setNavCollapsed(next);
+    else setRailCollapsed(next);
+  };
   return (
     <header className="codex-surface-header">
       <div className="codex-surface-heading">
         <span className="codex-surface-eyebrow">Codex</span>
         <h2 className="codex-surface-title" title={title}>{title}</h2>
       </div>
-      <button type="button" className="codex-surface-close" onClick={onClose} aria-label="Close Codex">×</button>
+      <div className="codex-surface-actions">
+        <button
+          type="button"
+          className={`codex-pane-toggle ${navCollapsed ? "is-collapsed" : ""}`}
+          onClick={() => togglePane("nav")}
+          aria-pressed={!navCollapsed}
+          aria-label={navCollapsed ? "Nav 펼치기" : "Nav 접기"}
+          title={navCollapsed ? "Nav 펼치기" : "Nav 접기"}
+        >
+          <PaneLeftIcon />
+        </button>
+        <button
+          type="button"
+          className={`codex-pane-toggle ${railCollapsed ? "is-collapsed" : ""}`}
+          onClick={() => togglePane("rail")}
+          aria-pressed={!railCollapsed}
+          aria-label={railCollapsed ? "ToC 펼치기" : "ToC 접기"}
+          title={railCollapsed ? "ToC 펼치기" : "ToC 접기"}
+        >
+          <PaneRightIcon />
+        </button>
+        <button type="button" className="codex-surface-close" onClick={onClose} aria-label="Close Codex">×</button>
+      </div>
     </header>
   );
 }
@@ -167,5 +200,27 @@ function CodexEmpty({
       <h1>{activeTheater?.label ?? "This Theater"}</h1>
       <p>This Theater does not have Fleet Wiki data mounted.</p>
     </section>
+  );
+}
+
+function PaneLeftIcon() {
+  // 좌측 Nav pane 토글 — 좌측 열이 강조된 패널 모티프.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M6.1 3.5v9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="3.2" y="4.2" width="2.2" height="7.6" rx="0.7" fill="currentColor" opacity="0.5" stroke="none" />
+    </svg>
+  );
+}
+
+function PaneRightIcon() {
+  // 우측 ToC/Manifest pane 토글 — 우측 열이 강조된 패널 모티프.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M9.9 3.5v9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="10.6" y="4.2" width="2.2" height="7.6" rx="0.7" fill="currentColor" opacity="0.5" stroke="none" />
+    </svg>
   );
 }

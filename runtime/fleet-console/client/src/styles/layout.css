@@ -181,15 +181,30 @@
   }
 }
 
+/* 우현 오버레이(Side 패널·scrim·검색 팔레트)의 상단 오프셋 — topbar bottom에 맞춰 GNB를 덮지 않게 한다.
+   기본은 1행 topbar(64px) + 셸 여백. 좁은 폭에서 topbar가 2행으로 stack되면 아래 breakpoint가 갱신한다. */
+:root {
+  --console-topbar-offset: calc(64px + var(--space-4));
+}
+
 /* GNB가 2행으로 stack되는 폭(components.css의 ≤1080px ladder)에서는 고정 64px topbar 행으로는
    부족하므로, topbar 행을 내용 높이에 맞춰 본문으로 흘러내리지 않게 한다. */
 @media (max-width: 1080px) {
+  :root {
+    /* 2행 stack된 topbar 실제 높이(≈108px) + 좁은 폭 셸 padding(space-3). */
+    --console-topbar-offset: calc(108px + var(--space-3));
+  }
+
   .console-shell {
     grid-template-rows: auto minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
+  :root {
+    --console-topbar-offset: calc(108px + var(--space-2));
+  }
+
   .console-shell {
     grid-template-rows: auto minmax(0, 1fr);
     padding: var(--space-2);

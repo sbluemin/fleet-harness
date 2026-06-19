@@ -6445,7 +6445,7 @@
    않고(대원수 지시) 뷰포트 넘침만 max-width로 막는다 — 좁아지면 Codex가 본문만 렌더(아래 컨테이너 쿼리). */
 .codex-side-layer {
   position: fixed;
-  top: calc(64px + var(--space-4));
+  top: var(--console-topbar-offset);
   right: var(--space-4);
   bottom: var(--space-4);
   z-index: 34;
@@ -6491,8 +6491,132 @@
 }
 
 /* prefers-reduced-motion: 표면 reveal 애니메이션 명시 차단(directory-browser와 동일 안전장치). */
+/* ===== 우현 엣지 핸들 (항목①) — 비-Codex 화면에서 Side를 여는 가장자리 탭. ===== */
+.codex-edge-handle {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 33;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-right: none;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide);
+}
+
+.codex-edge-handle:hover,
+.codex-edge-handle:focus-visible {
+  transform: translateY(-50%) translateX(-3px);
+  color: var(--brass);
+  background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
+  outline: none;
+}
+
+.codex-edge-handle-chevron {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.codex-edge-handle-chevron svg {
+  width: 100%;
+  height: 100%;
+}
+
+.codex-edge-handle-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+/* ===== Side 헤더 pane 토글 (항목④) — 좌(Nav)/우(ToC) pane 수동 접기. ===== */
+.codex-surface-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.codex-pane-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide);
+}
+
+.codex-pane-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.codex-pane-toggle:hover,
+.codex-pane-toggle:focus-visible {
+  color: var(--ink-pearl);
+  background: var(--surface-glass);
+  border-color: var(--surface-rim);
+  outline: none;
+}
+
+/* 접힌 상태 = pane 숨김. brass로 '활성 토글'을 강조(focus-adjacent emphasis). */
+.codex-pane-toggle.is-collapsed {
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+}
+
+/* ===== Side 모드 ⌘K 검색 국한 (항목③) — 전체 화면 모달을 Side 패널 영역으로 가둔다. ===== */
+body[data-codex-side="true"] .command-overlay {
+  inset: var(--console-topbar-offset) var(--space-4) var(--space-4) auto;
+  width: var(--codex-side-width, 460px);
+  max-width: calc(100vw - var(--space-8));
+  padding: 0;
+  place-items: stretch;
+  background: color-mix(in oklch, var(--ink-abyss) 30%, transparent);
+  border-radius: var(--radius-xl);
+}
+
+body[data-codex-side="true"] .command-card {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .codex-side-panel {
     animation: none;
+  }
+
+  .codex-edge-handle,
+  .codex-pane-toggle {
+    transition: none;
+  }
+
+  .codex-edge-handle:hover,
+  .codex-edge-handle:focus-visible {
+    transform: translateY(-50%);
   }
 }

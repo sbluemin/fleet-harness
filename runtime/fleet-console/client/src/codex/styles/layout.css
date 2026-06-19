@@ -97,6 +97,30 @@
   display: none;
 }
 
+/* Side 패널 헤더 토글로 수동 접은 pane. 컨테이너 쿼리 자동 접힘과 독립적으로 넓은 폭에서도 접는다. */
+.app-shell--nav-collapsed {
+  grid-template-columns: minmax(0, 1fr) 272px;
+  grid-template-areas: "main rail";
+}
+
+.app-shell--nav-collapsed > .sidebar {
+  display: none;
+}
+
+.app-shell--rail-collapsed {
+  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-areas: "compass main";
+}
+
+.app-shell--rail-collapsed > .rail {
+  display: none;
+}
+
+.app-shell--nav-collapsed.app-shell--rail-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "main";
+}
+
 @media (max-width: 1280px) {
   .app-shell {
     grid-template-columns: 264px minmax(0, 1fr);

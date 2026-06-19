@@ -4,7 +4,7 @@ import type { Location } from "react-router-dom";
 
 import { useMaximized } from "./canvas/canvas-store.js";
 import { useOperationsMode } from "./operations-mode.js";
-import { useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
+import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
@@ -35,6 +35,7 @@ export function App() {
   const operationsMode = useOperationsMode();
   const codexViewMode = useCodexViewMode();
   const codexUserChosen = useCodexUserChosen();
+  const codexSideWidth = useCodexSideWidth();
   // Codex는 옵션 A: 모든 모드에서 URL이 /codex로 따라가고, side은 직전 비-Codex 라우트를
   // 배경으로 유지한다(react-router background-location 패턴). 직접 deep-link/새로고침으로 들어오면
   // 배경이 없으므로 저장된 선호와 무관하게 Full(route)로 표시한다(선호값 자체는 보존).
@@ -50,6 +51,8 @@ export function App() {
   const codexOverlayActive =
     isCodexRoute && codexViewMode !== "route" && (hasRealBackgroundRef.current || codexUserChosen);
   const codexEffectiveMode = codexOverlayActive ? codexViewMode : "route";
+  // Side 패널이 실제로 떠 있는지 — 엣지 핸들 노출(닫힘 시) 및 검색 국한 판단의 단일 기준.
+  const codexSideActive = isCodexRoute && codexEffectiveMode === "side";
   // 배경이 없으면(직접 진입 후 사용자가 오버레이를 고른 경우) Welcome을 배경으로 둔다.
   const codexBackground: Location = hasRealBackgroundRef.current
     ? backgroundLocationRef.current
@@ -77,6 +80,44 @@ export function App() {
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);
   }, [operationsViewVisible]);
+
+  // Side 패널이 떠 있는 동안 body에 표식과 패널 폭을 노출한다 — Codex 명령 팔레트(⌘K)를
+  // 전체 화면이 아닌 Side 패널 영역 안으로 국한하기 위한 CSS 훅(항목③).
+  useEffect(() => {
+    const { body } = document;
+    if (codexSideActive) {
+      body.dataset.codexSide = "true";
+      body.style.setProperty("--codex-side-width", `${codexSideWidth}px`);
+    } else {
+      delete body.dataset.codexSide;
+      body.style.removeProperty("--codex-side-width");
+    }
+    return () => {
+      delete body.dataset.codexSide;
+      body.style.removeProperty("--codex-side-width");
+    };
+  }, [codexSideActive, codexSideWidth]);
+
+  // 우현 오버레이(Side 패널·scrim·검색)의 상단 오프셋을 topbar 실제 bottom에 맞춘다 — topbar가 반응형으로
+  // 1행/2행이 바뀌거나 라우트별 토글로 높이가 달라져도 GNB를 덮지 않도록 정밀 동기화한다(CSS 값은 초기/폴백).
+  useEffect(() => {
+    const topbar = document.querySelector(".topbar");
+    if (!topbar) return;
+    const sync = () => {
+      document.documentElement.style.setProperty(
+        "--console-topbar-offset",
+        `${Math.round(topbar.getBoundingClientRect().bottom)}px`,
+      );
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(topbar);
+    window.addEventListener("resize", sync);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -148,6 +189,12 @@ export function App() {
     }
   };
 
+  // 어느 라우트에서든 Codex를 Side 패널로 연다 — /codex로 이동해 현재 화면을 배경으로 남기고 side 모드로 전환한다.
+  const handleOpenCodexSide = () => {
+    navigate("/codex");
+    setCodexViewMode("side");
+  };
+
   return (
     <div className={`console-shell ${maximizedActive ? "is-maximized" : ""}`}>
       <Topbar state={state} codexMode={codexEffectiveMode} />
@@ -161,6 +208,7 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {isCodexRoute ? <CodexSurface state={state} mode={codexEffectiveMode} onClose={handleCodexClose} /> : null}
+      {!isCodexRoute ? <CodexEdgeHandle onOpen={handleOpenCodexSide} /> : null}
       <ShellOverlay state={state} />
       <OperationSearch state={state} />
       <ShortcutsOverlay state={state} />
@@ -173,5 +221,26 @@ export function App() {
       />
       <OperationToastHost toasts={state.operationToasts} />
     </div>
+  );
+}
+
+// Side가 닫혀 있는 비-Codex 화면에서 뷰포트 우현 가장자리에 노출되는 Codex Side 열기 핸들.
+// Side가 열리면(=Codex 라우트) App이 이 핸들을 렌더하지 않아 자연히 숨겨진다.
+function CodexEdgeHandle({ onOpen }: { readonly onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      className="codex-edge-handle"
+      onClick={onOpen}
+      aria-label="Open Codex side panel"
+      title="Codex (Side)"
+    >
+      <span className="codex-edge-handle-chevron" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.5 4 5.5 8l4 4" />
+        </svg>
+      </span>
+      <span className="codex-edge-handle-label">Codex</span>
+    </button>
   );
 }
