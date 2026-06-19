@@ -27,28 +27,33 @@ describe("durable console state", () => {
     expect(sanitizeDurableConsoleState({ version: 1, theaters: [{ id: "" }], operations: [{ sessionId: "missing" }] })).toEqual({ version: 1, theaters: [], operations: [] });
   });
 
-  it("preserves a valid labelSource and drops malformed ones without dropping the operation", () => {
+  it("preserves valid auto-name metadata and drops malformed values without dropping the operation", () => {
     const base = { sessionId: "s", theaterId: "t", cwd: "/p", cwdLabel: "p", sequence: 1, createdAt: 1 };
     const sanitized = sanitizeDurableConsoleState({
       version: 1,
       theaters: [],
       operations: [
         { ...base, sessionId: "user-op", label: "Bridge Watch", labelSource: "user" },
-        { ...base, sessionId: "auto-op", label: "Fix the parser", labelSource: "auto" },
+        { ...base, sessionId: "auto-op", label: "Fix the parser", labelSource: "auto", autoNamePromptSeen: true },
+        { ...base, sessionId: "legacy-auto-op", label: "Existing auto label", labelSource: "auto" },
         { ...base, sessionId: "legacy-op", label: "Legacy label" },
-        { ...base, sessionId: "bad-op", label: "Bad source", labelSource: "operator" },
+        { ...base, sessionId: "bad-op", label: "Bad source", labelSource: "operator", autoNamePromptSeen: "yes" },
       ],
     });
 
     const bySession = Object.fromEntries(sanitized.operations.map((operation) => [operation.sessionId, operation]));
     expect(bySession["user-op"]?.labelSource).toBe("user");
     expect(bySession["auto-op"]?.labelSource).toBe("auto");
+    expect(bySession["auto-op"]?.autoNamePromptSeen).toBe(true);
+    // 기존 자동 작명 Operation은 marker가 없더라도 이미 최초 prompt가 처리된 것으로 보수 backfill한다.
+    expect(bySession["legacy-auto-op"]?.autoNamePromptSeen).toBe(true);
     // 레거시(labelSource 없는) Operation은 그대로 보존되며 labelSource는 undefined로 남는다(read-time에 user로 해석).
     expect(bySession["legacy-op"]).toBeDefined();
     expect(bySession["legacy-op"]?.labelSource).toBeUndefined();
-    // 잘못된 labelSource는 필드만 떨궈지고 Operation 자체는 유지된다.
+    // 잘못된 metadata는 필드만 떨궈지고 Operation 자체는 유지된다.
     expect(bySession["bad-op"]?.label).toBe("Bad source");
     expect(bySession["bad-op"]?.labelSource).toBeUndefined();
+    expect(bySession["bad-op"]?.autoNamePromptSeen).toBeUndefined();
   });
 
   it("creates the state store with sensitive durable JSON settings", () => {

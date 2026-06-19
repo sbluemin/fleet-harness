@@ -413,7 +413,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   // 자동 작명 hook 수신: UserPromptSubmit hook이 prompt를 lock 토큰으로 POST한다. turn/attention 라우트와
   // 동일하게 브라우저가 아닌 로컬 신뢰 프로세스이므로 lock-token bearer로만 인증한다. 사용자가 작전명을 수동
-  // 변경한 적 없을 때만(autoNameTerminalSession 내부 가드) prompt에서 도출한 라벨로 갱신한다.
+  // 변경한 적 없고 최초 UserPromptSubmit일 때만(autoNameTerminalSession 내부 가드) prompt에서 도출한 라벨로 갱신한다.
   // 자동 작명은 매 프롬프트마다 발생하므로 rename과 달리 PTY로 /rename 슬래시 명령을 주입하지 않는다.
   async function handleTerminalSessionAutoName(req: http.IncomingMessage, res: http.ServerResponse, sessionId: string): Promise<void> {
     if (req.method !== "POST") {
@@ -427,13 +427,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const body = await readJsonBody<{ readonly prompt?: unknown }>(req);
     const label = deriveOperationLabel(body?.prompt);
-    // 후보가 없거나 저신호이거나, 세션이 없거나, 사용자 보호 라벨/주제 무변동이면 작전명을 바꾸지 않는다.
-    const updated = label === null ? null : observability.autoNameTerminalSession(sessionId, label);
-    if (updated) {
-      observability.notifySessionUpdated(updated);
+    // 후보가 없거나 저신호여도 최초 UserPromptSubmit은 기록해 이후 prompt가 작전명을 바꾸지 못하게 한다.
+    const result = observability.autoNameTerminalSession(sessionId, label);
+    if (result?.renamed) {
+      observability.notifySessionUpdated(result.session);
+    }
+    if (result?.changed) {
       persistDurableState();
     }
-    writeJson(res, 200, { ok: true, renamed: updated !== null });
+    writeJson(res, 200, { ok: true, renamed: result?.renamed === true });
   }
 
   async function handleTerminalTicket(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
