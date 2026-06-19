@@ -33,7 +33,7 @@ Publish a PR authored by the authenticated user's GitHub account, carry it throu
 
 ## Changelog Fragment Requirement
 
-Every release-impacting PR must include one unique `.changelog.d/*.md` fragment unless the PR intentionally carries the `no-changelog` label. Fragments use `section: Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`, and English bullets tagged only with `[core-agent]`, `[core-unified-agent]`, `[fleet-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, or `[fleet-cli]`. Validate locally with `node scripts/compile-changelog-fragments.mjs --check`.
+Every release-impacting PR must include one unique `.changelog.d/*.md` fragment unless the PR intentionally carries the `no-changelog` label. Fragments use `section: Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`, and English bullets tagged only with `[core-agent]`, `[core-unified-agent]`, `[fleet-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, or `[fleet-cli]`. **Bullets must be ASCII-only English** — no `⌘`/arrow glyphs/em- or en-dashes/other non-ASCII (the compiler rejects them with "bullet summary must be English ASCII text"), so describe shortcuts as `Cmd+K`, not `⌘K`. Validate locally with `node scripts/compile-changelog-fragments.mjs --check` **before pushing** (a non-ASCII bullet blocks the merge-gate compile).
 
 ## Admiral Judgment Policy
 

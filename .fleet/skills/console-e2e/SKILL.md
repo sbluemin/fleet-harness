@@ -270,6 +270,23 @@ EOF
 
 깨짐은 "드물게" 발생하는 타이밍 의존 현상이므로 1회 관측으로 개선 여부를 단정할 수 없다. 스트레스 루프를 여러 번(최소 3회) 반복하고, A/B 간 깨짐 **빈도**를 비교해 판단한다. 이 하니스는 Windows 호스트에서만 의미 있으며, macOS/Linux에서는 ConPTY 경로가 다르므로 비교 결과가 무효다.
 
+### Scenario — 고정 UI 요소의 모달 경계 검증
+
+#### 배경
+
+`/console`에 항상 떠 있는 fixed 요소(예: Codex Side edge handle)나 새 모달/drawer를 추가하면, 기존 모달·오버레이와의 stacking·focus·단축키 경계에서 결함이 잘 생긴다. Codex 자동 리뷰는 이 영역(`aria-modal` 위반)을 특히 집요하게 잡으므로 — 한 PR에서 모달 관련 P2가 연달아 나올 수 있다 — PR 전에 아래를 선제 검증한다.
+
+#### 점검 항목
+
+- **항상 보이는 fixed 요소가 모달 위에서 클릭됨**: z-index만으로 "콘텐츠 위 + 모든 모달 아래"는 만족할 수 없다(콘텐츠 카드가 모달과 z-index 대역 1~30을 공유). z-index를 더 낮추는 핑퐁 대신, `body:has([aria-modal="true"]:not([hidden])) <el> { display: none; pointer-events: none; }`로 **활성 모달이 있으면 요소 자체를 숨겨** 배경 이탈을 막는다(미래 모달도 `aria-modal`만 달면 자동 커버). 검증: 평상시 표시 → DOM에 `[aria-modal="true"]` 더미 주입 시 `display:none` → 제거 후 복원.
+- **새 모달/drawer의 focus·trap·Escape**: `role="dialog"` + `aria-modal="true"` + Tab focus trap(first/last 순환) + Escape 닫기. 열 때 포커스는 **패널 내부 첫 콘텐츠/링크**로 — 전체 화면 backdrop이 DOM상 패널보다 먼저면 `querySelector`가 그쪽을 잡아 Space/Enter로 즉시 닫히니, selector를 `.panel`로 scope하라.
+- **전역 단축키 누수**: 모달이 열린 동안 ⌘K(command palette)·⌘` 등 배경 단축키가 작동하면 `aria-modal` 위반. 가드를 **`window` capture**(`addEventListener("keydown", h, true)`)에 등록해 document-bubble 팔레트·window-bubble Shell보다 먼저 `stopImmediatePropagation()`으로 선점한다. 닫히면 즉시 복원(early return)하고 cleanup에서 capture 리스너를 해제한다.
+- **반응형 trigger 일치**: drawer를 여는 trigger의 노출 조건을 rail을 숨기는 조건과 **동일 기준**으로 맞춘다 — viewport `@media`만이 아니라 `@container codex-host` 등 컨테이너 폭 기준도 포함해, Side 패널처럼 뷰포트는 넓어도 컨테이너만 좁아지는 경우에 trigger가 사라지지 않게 한다.
+
+#### 검증 절차 (playwriter)
+
+각 항목을 평상시/모달-활성/복원 3상태로 `getComputedStyle(el).display`·`document.activeElement`로 측정한다. 실제 모달 열기가 복잡하면 `document.body.appendChild(<div aria-modal="true">)` 더미 주입으로 `:has()` 규칙만 단독 검증할 수 있다(주입→`display:none` 확인→`remove()`→복원).
+
 ---
 
 ## Fleet-console specifics (gotchas)
