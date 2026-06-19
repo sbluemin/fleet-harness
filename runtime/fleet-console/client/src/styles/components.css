@@ -6497,7 +6497,9 @@
   top: 50%;
   right: 0;
   transform: translateY(-50%);
-  z-index: 33;
+  /* 모달 overlay(z-index 30: Local Shell·shortcuts 등) 아래에 둔다 — 모달이 떠 있을 때 핸들이
+     그 위로 올라와 잘못 클릭되어 Codex로 이탈하는 것을 막는다(모달 scrim이 핸들을 덮어 비활성화). */
+  z-index: 29;
   display: flex;
   flex-direction: column;
   align-items: center;
