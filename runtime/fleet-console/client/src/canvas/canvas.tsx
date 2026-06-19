@@ -4,10 +4,11 @@ import { createTheaterTerminalSession } from "../api.js";
 import { OperationLaunchMenu } from "../components/operation-launch-menu.js";
 import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectTerminalSession, theaterSessions } from "../store.js";
 import type { AgentCliMetadata, ConsoleState } from "../types.js";
-import { animateViewportTo, claimTopZIndex, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMaximized, useBackgroundAnimation, useCanvasState, useMaximized, type PanelGeometry } from "./canvas-store.js";
+import { animateViewportTo, claimTopZIndex, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMaximized, useBackgroundAnimation, useCanvasState, useMaximized, useMinimized, type PanelGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasPanel } from "./canvas-panel.js";
+import { CanvasDock } from "./canvas-dock.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { MapShortcuts } from "./map-shortcuts.js";
 import { RubberBand } from "./rubber-band.js";
@@ -44,6 +45,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const canvas = useCanvasState();
   const backgroundAnimationEnabled = useBackgroundAnimation();
   const maximized = useMaximized();
+  const minimized = useMinimized();
   const shellPanels = useShellPanels();
   const activeShellId = useActiveShellId();
   const sessions = theaterSessions(state);
@@ -67,6 +69,15 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   useEffect(() => {
     if (state.activeTerminalSessionId !== null) setActiveShellPanel(null);
   }, [state.activeTerminalSessionId]);
+  // 불변식: active Operation은 절대 최소화된(화면 밖) 세션이면 안 된다. 패널 최소화 액션은 물론,
+  // 리로드·Theater 전환 시 resolveVisibleSessionId가 canvas.minimized를 모른 채 최소화된 비-dormant 세션을
+  // active로 자동 선택하는 경로까지 한 곳에서 막는다 — 안 그러면 숨은 패널이 isActiveOperation 억제에 걸려
+  // 입력 대기·턴 종료·캐리어 토스트가 사라진다. (복원은 minimized 제거가 선행되므로 여기서 해제되지 않는다.)
+  useEffect(() => {
+    if (state.activeTerminalSessionId !== null && minimized.includes(state.activeTerminalSessionId)) {
+      selectTerminalSession(null);
+    }
+  }, [state.activeTerminalSessionId, minimized]);
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
     disabled,
@@ -137,6 +148,11 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
   };
 
+  const minimizedSet = new Set(minimized);
+  // 최소화된 패널은 캔버스에서 빠지므로 미니맵(캔버스 개관)에서도 제외해 "사라진 blip" 불일치를 막는다.
+  const visiblePanels = Object.fromEntries(
+    Object.entries(canvas.panels).filter(([sessionId]) => !minimizedSet.has(sessionId)),
+  );
   const hasContent = sessions.length > 0 || Object.keys(shellPanels).length > 0;
 
   return (
@@ -181,6 +197,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         {sessions.map((session) => {
           const geometry = canvas.panels[session.sessionId];
           if (!geometry) return null;
+          // 최소화된 패널은 캔버스에서 빠지고 하단 태스크바에 칩으로 표시된다(Terminal 언마운트→복원 시 재연결).
+          if (minimizedSet.has(session.sessionId)) return null;
           return (
             <CanvasPanel
               key={session.sessionId}
@@ -235,7 +253,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         />
       ) : null}
       <CanvasMinimap
-        panels={canvas.panels}
+        panels={visiblePanels}
         shellPanels={shellPanels}
         viewport={canvas.viewport}
         canvasSize={canvasSize}
@@ -247,6 +265,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       />
       {/* 콘텐츠가 없을 때는 좌하단 빈 상태 안내가 핵심 단축키를 이미 알려주므로, 겹침을 막기 위해 단축키 맵을 숨긴다. */}
       {hasContent ? <MapShortcuts /> : null}
+      {/* 최소화된 Operation 패널의 하단 중앙 Dock(world가 아닌 캔버스 고정 — 패널과 함께 이동·확대되지 않는다). */}
+      <CanvasDock state={state} sessions={sessions} minimized={minimized} />
     </main>
   );
 }
