@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { dismissOperationToast, focusOperation } from "../store.js";
@@ -8,17 +7,14 @@ interface OperationToastHostProps {
   readonly toasts: readonly OperationToast[];
 }
 
-// 상태 라벨 — fleet-harness 해군 메타포. 인디케이터 색(aurora/그린/amber)에 대응한다.
-//   sortie launched=캐리어 출격(aurora) · stood down=작업 완료(그린) · awaiting orders=입력 대기(amber).
+// 상태 라벨 — fleet-harness 해군 메타포. 인디케이터 색(그린/amber)에 대응한다.
+//   stood down=작업 완료(그린) · awaiting orders=입력 대기(amber).
 const TOAST_STATUS: Record<OperationToastKind, string> = {
-  "carrier-call": "Sortie launched",
   ended: "Stood down",
   "input-waiting": "Awaiting orders",
 };
 
-const OPERATION_TOAST_TTL_MS = 10_000;
-
-// Theater 무관 전역 Operation 상태 알림 스택. 상단 중앙 고정, 카드별 자동 닫힘(단 '완료' 상태는 계속 표시).
+// Theater 무관 전역 Operation 상태 알림 스택. 상단 중앙 고정, 수동 닫기 또는 클릭 이동으로 닫힌다.
 export function OperationToastHost({ toasts }: OperationToastHostProps) {
   if (toasts.length === 0) return null;
   return (
@@ -32,13 +28,6 @@ export function OperationToastHost({ toasts }: OperationToastHostProps) {
 
 function OperationToastCard({ toast }: { readonly toast: OperationToast }) {
   const navigate = useNavigate();
-  // US-7: 자동 닫힘 — 단, '완료'(ended)·'입력 대기'(input-waiting)는 시간제한 없이 계속 표시하고
-  // 클릭 이동 또는 수동 닫기로만 사라진다(자리를 비웠다 돌아와도 보이도록).
-  useEffect(() => {
-    if (toast.kind === "ended" || toast.kind === "input-waiting") return;
-    const timer = setTimeout(() => dismissOperationToast(toast.id), OPERATION_TOAST_TTL_MS);
-    return () => clearTimeout(timer);
-  }, [toast.id, toast.kind]);
 
   // US-5: 이동 — 해당 Theater로 전환 + Operation 선택 후 Operations로 이동, 토스트 닫기.
   const handleGo = () => {
