@@ -288,6 +288,9 @@ export interface ConsoleState {
   readonly shortcutsOpen: boolean;
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;
+  // 첫 terminal sessions 스냅샷이 적재(성공·실패 무관)되었는지. theater bootstrap과 sessions fetch가 독립
+  // 비동기라, 이 플래그가 true가 되기 전에는 빈 sessionOrder를 "아직 로딩 중"으로 보고 패널 prune을 보류한다.
+  readonly terminalSessionsHydrated: boolean;
   // 검색 등에서 특정 Operation으로 이동을 요청한 일회성 신호. Map 모드는 이를 소비해 해당 패널로 확대한다.
   readonly pendingOperationFocus: string | null;
   readonly selectedJobId: string | null;

@@ -94,6 +94,9 @@ export function App() {
       .then(hydrateTerminalSessions)
       .catch((error) => {
         if (abort.signal.aborted) return;
+        // 적재 실패 시에는 terminalSessionsHydrated를 올리지 않는다. sessions를 알 수 없는 상태에서 빈
+        // sessionOrder로 prune하면 방금 복원한 패널 레이아웃을 지우고 그 빈 상태를 영속해, 일시적 500·네트워크
+        // 오류가 사용자 레이아웃의 영구 손실이 된다. prune은 성공 적재(빈 배열 포함) 시에만 권위를 갖는다.
         setState({ terminalSessionError: error instanceof Error ? error.message : String(error) });
       });
     const refreshUpdateStatus = () => {

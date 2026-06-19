@@ -120,7 +120,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active }: 
         </button>
       </div>
       <div className="canvas-panel-terminal" onPointerDown={stopCanvasPointer} onWheel={stopCanvasWheel} data-canvas-blocker>
-        <Terminal sessionId={id} kind="shell" theaterId={theaterId} onExit={() => removeShellPanel(id)} />
+        <Terminal sessionId={id} kind="shell" theaterId={theaterId} active={active} onExit={() => removeShellPanel(id)} />
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(next) => setShellPanelGeometry(id, next)} />
     </article>

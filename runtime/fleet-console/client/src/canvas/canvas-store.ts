@@ -166,6 +166,12 @@ export function claimTopZIndex(): number {
   return topZIndex;
 }
 
+// 공유 카운터를 주어진 값 이상으로 끌어올린다. 셸 패널 레지스트리(별도 모듈)가 새로고침 복원 시
+// 복원된 셸의 최대 zIndex를 반영해, "활성화→최상단"이 Operations·셸을 가로질러 계속 성립하게 한다.
+export function liftTopZIndex(toAtLeast: number): void {
+  topZIndex = Math.max(topZIndex, toAtLeast);
+}
+
 export function ensureDefaultGeometry(sessionId: string): PanelGeometry {
   const existing = state.panels[sessionId];
   if (existing) return existing;
