@@ -17,12 +17,12 @@ Replace each `<placeholder>` before running. The LLM must infer whether the requ
 - `<tmux-session-name>` — Optional for `create`. Default `<worktree-name>`. Apply the same safety rejection as `<worktree-name>`; this skill owns the tmux convention because the Fleet repository does not currently define one elsewhere.
 - `<base-branch>` — Optional for `create`. Default `canary`. Reject `main` and `master`. Non-standard bases require Nimitz judgment before proceeding.
 - `<session>` — Optional for `remove`. Default to the current worktree directory basename. Kill this tmux session only if it exists.
-- `<force>` — Optional for `remove`. Default `no`. Use `git worktree remove --force` and `git branch -D` only when the user's request explicitly includes a force flag or equivalent instruction after dirty/unpushed/unmerged state has been reported.
+- `<force>` — Optional for `remove`. Default `yes` (autonomous cleanup). The remove flow self-applies `git worktree remove --force` and `git branch -D` as needed — including a squash-merged branch that `-d` rejects as unmerged — after reporting any dirty/unpushed/unmerged state. It never pauses for confirmation; the only hard stops are the main checkout and protected branches.
 - `<delete-remote>` — Optional for `remove`. Default `no`. Delete the remote tracking branch (`git push origin --delete <branch>`) only when the user's request explicitly asks for remote cleanup.
 
 ## Goal
 
-Create or remove a Fleet git worktree safely, without mutating unrelated files, without deleting the main checkout, and with the agent's subsequent command context fixed to the active worktree path when a new worktree is created. On removal, also clean up the associated local branch when it is safe to do so, while leaving protected branches and unmerged work intact unless the user explicitly authorizes a force delete.
+Create or remove a Fleet git worktree safely, without mutating unrelated files, without deleting the main checkout, and with the agent's subsequent command context fixed to the active worktree path when a new worktree is created. On removal, autonomously clean up the associated local branch — force-deleting it when needed (e.g. a squash-merged branch) — without pausing for confirmation, while never touching the main checkout or a protected branch (`main`/`master`/`canary`).
 
 ## Required Workflow
 
@@ -103,9 +103,9 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - `git -C <path> rev-list --left-right --count @{upstream}...HEAD` when an upstream exists.
    - If there are uncommitted changes or unpushed commits, report them clearly.
 
-5. **Confirm intent**:
-   - Unless the user's additional request text includes an explicit force/confirm flag, stop and ask for confirmation before removing the worktree.
-   - Dirty worktrees must never be force-removed without explicit user confirmation after the risk report.
+5. **Proceed autonomously**:
+   - Do not stop to ask for confirmation. After the risk inspection (step 4), continue the removal autonomously.
+   - If the worktree is dirty or has unpushed commits, surface that state in the final report, then proceed with the force removal anyway — the only hard stops are the main checkout (step 3) and protected branches (step 9).
 
 6. **Leave the worktree directory**:
    - Move out of the worktree before removal: `cd <parent-repo-root>`.
@@ -117,16 +117,14 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - If absent, continue without error.
 
 8. **Remove and prune**:
-   - Normal removal: `git worktree remove <path>`.
-   - Forced removal: `git worktree remove --force <path>` only when `<force>` is explicitly authorized by the user.
+   - Remove the worktree, self-applying `--force` as needed: `git worktree remove --force <path>` (untracked build artifacts such as `node_modules` otherwise block a plain removal).
    - `git worktree prune`
 
 9. **Delete the branch**:
-   - Refuse to delete protected branches: if `<branch>` is `main`, `master`, or `canary`, skip deletion and report the protection.
+   - Refuse to delete protected branches: if `<branch>` is `main`, `master`, or `canary`, skip deletion and report the protection. This is a hard safety stop, not an escalation.
    - Refuse if `<branch>` is empty or `HEAD` (detached).
-   - Attempt a safe delete first: `git branch -d <branch>`. If git reports the branch is not fully merged, do not retry automatically.
-   - Forced delete: only when `<force>` is explicitly authorized by the user, run `git branch -D <branch>` after reporting the unmerged state.
-   - Remote tracking branch deletion: only when `<delete-remote>` is explicitly authorized, run `git push origin --delete <branch>`. Otherwise leave the remote branch in place.
+   - Delete the local branch autonomously: try `git branch -d <branch>` first, and when git reports it is not fully merged (the normal case after a squash merge), run `git branch -D <branch>`. Report that the branch was force-deleted, but do not pause for authorization.
+   - Remote tracking branch deletion: only when `<delete-remote>` is set, run `git push origin --delete <branch>`. Otherwise leave the remote branch in place (GitHub usually auto-deletes a merged PR head).
 
 10. **Report in Korean**:
     - Removed worktree path.
@@ -142,13 +140,11 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 
 - Do not force the base to `main` or `master`; reject those bases by default.
 - Do not remove the main checkout under any circumstance.
-- Do not force-remove a dirty worktree without explicit user confirmation after reporting the dirty state.
 - Do not run `pnpm install`, `npm install`, or any other dependency installer as part of this skill; dependency setup is out of scope.
 - Do not create helper scripts; execute commands directly through the `Bash` tool.
 - Do not silently route free-form extra text outside the two lifecycle modes. Interpret it into `create` or `remove`, then allow changes only within that mode's workflow.
 - Do not overwrite an existing worktree path or branch. If the path or branch already exists, stop and report.
 - Do not delete protected branches (`main`, `master`, `canary`) under any circumstance.
-- Do not force-delete (`git branch -D`) an unmerged branch without explicit user authorization after reporting the unmerged state.
 - Do not delete the remote tracking branch (`git push origin --delete`) unless the user explicitly requests remote cleanup.
 - Do not use destructive git commands such as `git reset --hard` or `git checkout --` to clean a worktree.
 - Do not bypass hooks or hide command failures.

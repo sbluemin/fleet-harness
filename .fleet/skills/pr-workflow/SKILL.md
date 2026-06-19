@@ -150,15 +150,22 @@ Reached only after Phase 3 confirms a final approval (a fresh Codex `+1` with no
 5. **Verify the merge.** `gh pr view <pr_number> --repo <repo> --json state,mergedAt,mergeCommit` — confirm `state: MERGED` and record the merge commit SHA.
 6. Go to Phase 7.
 
-### Phase 7 — Completion
+### Phase 7 — Cleanup & completion
 
-Report in Korean:
+**Autonomous cleanup (only when the merge succeeded).** When Phase 6 confirmed `state: MERGED`, clean up the merged head branch's local artifacts yourself — do **not** ask the Admiral of the Navy. Follow the git-worktree skill's remove flow:
+1. If `<headRefName>` is checked out in a dedicated worktree under `.fleet/worktrees/`, run that remove flow against it: leave the worktree directory (`cd` to the main checkout), kill the matching tmux session if present, `git worktree remove --force <path>` + `git worktree prune`, then `git branch -D <headRefName>` (a squash merge leaves the branch "unmerged" to `-d`, so force-delete is expected).
+2. If the head branch was worked directly in the main checkout (no separate worktree), switch to `<base>` (`git switch <base>`) and `git branch -D <headRefName>`.
+3. Hard stops — never cross even autonomously: never delete the main checkout, and never delete a protected branch (`main` / `master` / `<base>`). The remote head branch is typically auto-deleted by GitHub on merge; otherwise leave it unless remote cleanup was requested.
+4. Skip cleanup entirely when `<auto_merge>` is `false` or the merge halted — the branch and its worktree must survive for follow-up.
+
+Then report in Korean:
 - PR number, title, head/base, URL, draft flag.
 - Each review item across all passes: fix / declined / deferred, with verification evidence.
 - Files changed, commit SHA(s), push target(s).
 - Validation commands and pass/fail status; note any check not run.
 - The approval signal observed (Codex `+1` on the PR body) and the `@codex` follow-up comment URL(s).
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The poll job was stopped in Phase 6.
+- **Cleanup outcome**: worktree removed / tmux session killed / local branch force-deleted, or skipped (with reason).
 
 ## Carrier Delegation Guidance
 
@@ -180,4 +187,5 @@ Report in Korean:
 - Do not write commit messages in any language other than English.
 - Do not post the `@codex` follow-up until the push has succeeded and the commit is visible on the remote.
 - Do not invent validation results — if a check was not run, say so.
+- Phase 7 autonomous cleanup runs only after Phase 6 confirms `state: MERGED`; it force-deletes only the merged head branch and its worktree/tmux session, never the main checkout or a protected branch (`main` / `master` / `<base>`).
 - Create PRs only against `sbluemin/fleet-harness` with this skill.
