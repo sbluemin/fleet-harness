@@ -30,15 +30,24 @@ interface FloatingJobEntryProps {
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.operationsCollapsed";
 
 export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
-  const [userCollapsed, setUserCollapsed] = useState(readSidebarCollapsed);
+  const [collapsed, setCollapsedState] = useState(readSidebarCollapsed);
   const maximized = useMaximized();
   const visibleSessionOrder = theaterSessionOrder(state);
+  // 최대화 "전환" 감지용 직전 값 — 최대화를 유지하는 동안의 재렌더에는 자동 접기를 다시 적용하지 않기 위함.
+  const prevMaximizedRef = useRef(maximized);
 
-  // 최대화(전체화면)는 Operations 패널을 강제로 접고, 그 외에는 사용자의 영속 선호를 따른다.
-  // Codex Full 모드 왕복으로 이 컴포넌트가 언마운트→재마운트되어도 localStorage에서 접힘 선호가 복원된다.
-  const collapsed = maximized || userCollapsed;
+  // 최대화 전환(엣지)에서만 Operations 패널을 자동으로 접고/펼친다. 최대화를 유지하는 동안에도
+  // 사용자가 수동으로 다시 펼칠 수 있다(상태를 maximized로 강제 OR하지 않는다). 접힘 선호는
+  // localStorage에 영속되어 Codex Full 모드 왕복으로 컴포넌트가 remount되어도 복원된다.
+  useEffect(() => {
+    if (prevMaximizedRef.current === maximized) return;
+    prevMaximizedRef.current = maximized;
+    setCollapsedState(maximized);
+    writeSidebarCollapsed(maximized);
+  }, [maximized]);
+
   const setCollapsed = (next: boolean) => {
-    setUserCollapsed(next);
+    setCollapsedState(next);
     writeSidebarCollapsed(next);
   };
 
