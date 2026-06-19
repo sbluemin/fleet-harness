@@ -37,6 +37,7 @@ function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "tu
     shortcutsOpen: false,
     onboardingOpen: false,
     bootstrapped: false,
+    terminalSessionsHydrated: false,
     pendingOperationFocus: null,
     selectedJobId: null,
     expandedSessionIds: [],

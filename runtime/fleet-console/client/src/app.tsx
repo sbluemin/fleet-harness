@@ -94,7 +94,9 @@ export function App() {
       .then(hydrateTerminalSessions)
       .catch((error) => {
         if (abort.signal.aborted) return;
-        setState({ terminalSessionError: error instanceof Error ? error.message : String(error) });
+        // 적재 실패도 "로딩 종료"로 본다 — terminalSessionsHydrated를 올려야 빈 sessionOrder가 권위를 얻어
+        // 패널 prune이 풀린다(올리지 않으면 fetch 1회 실패로 prune이 영구 보류된다).
+        setState({ terminalSessionError: error instanceof Error ? error.message : String(error), terminalSessionsHydrated: true });
       });
     const refreshUpdateStatus = () => {
       void fetchObserverStatus(state.activeTheaterId, abort.signal)

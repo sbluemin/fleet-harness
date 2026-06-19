@@ -67,6 +67,7 @@ let state: ConsoleState = {
   shortcutsOpen: false,
   onboardingOpen: false,
   bootstrapped: false,
+  terminalSessionsHydrated: false,
   pendingOperationFocus: null,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
@@ -149,6 +150,8 @@ export function hydrateTerminalSessions(sessions: readonly SessionInput[]): void
     sessions: merged,
     sessionOrder,
     activeTerminalSessionId: resolveVisibleSessionId(state.activeTheaterId, merged, sessionOrder, state.activeTerminalSessionId),
+    // 첫 스냅샷 적재 완료를 표시한다(단방향). 이후 패널 prune이 빈 sessionOrder를 권위 있는 상태로 신뢰한다.
+    terminalSessionsHydrated: true,
   });
 }
 

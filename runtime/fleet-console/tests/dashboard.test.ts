@@ -31,6 +31,7 @@ const BASE_STATE: ConsoleState = {
   shortcutsOpen: false,
   onboardingOpen: false,
   bootstrapped: false,
+  terminalSessionsHydrated: false,
   pendingOperationFocus: null,
   selectedJobId: null,
   expandedSessionIds: [],
