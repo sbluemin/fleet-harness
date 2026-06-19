@@ -1297,6 +1297,14 @@ kbd {
   border-color: var(--brass);
 }
 
+/* Side 모드에서는 codex-host 컨테이너가 좁아(layout.css의 @container 900px) rail이 숨겨지는데, trigger가 viewport
+   @media 760px로만 켜지면 데스크톱 Side 패널에서 rail도 trigger도 없어 ToC 접근이 막힌다 — 컨테이너 폭 기준으로도 노출한다. */
+@container codex-host (max-width: 900px) {
+  .toc-drawer-trigger {
+    display: inline-flex;
+  }
+}
+
 .toc-drawer {
   position: fixed;
   inset: 0;

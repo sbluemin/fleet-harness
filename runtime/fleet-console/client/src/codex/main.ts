@@ -467,7 +467,11 @@ function openTocDrawer(trigger: HTMLElement): void {
   document.body.classList.remove("nav-open");
   document.body.classList.add("toc-open");
   drawer.hidden = false;
-  drawer.querySelector<HTMLElement>(".toc-drawer-link, [data-action='close-toc-drawer']")?.focus();
+  // backdrop은 전체 화면 close 버튼이라 DOM상 panel보다 먼저다 — selector에 넣으면 포커스가 거기로 잡혀
+  // Space/Enter 한 번에 drawer가 닫힌다. panel 안 첫 ToC 링크(없으면 panel 헤더의 close 버튼)에 포커스해
+  // 다이얼로그 내부에서 시작하게 한다.
+  (drawer.querySelector<HTMLElement>(".toc-drawer-link")
+    ?? drawer.querySelector<HTMLElement>(".toc-drawer-panel [data-action='close-toc-drawer']"))?.focus();
 }
 
 function closeTocDrawer(restoreFocus: boolean): void {
