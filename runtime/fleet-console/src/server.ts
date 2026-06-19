@@ -20,7 +20,7 @@ import {
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
-import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
+import { resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, TerminalFolderListResponse } from "./api-types.js";
@@ -29,6 +29,7 @@ import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
+import { createModelAuthRouter } from "./model-auth-routes.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { readFleetConsoleRelease } from "./release.js";
@@ -198,6 +199,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
+  const modelAuthRouter = createModelAuthRouter({
+    authService: infraServices.authService,
+    validateApiKey: (cli, apiKey) => validateAuthKeyForCli(cli, apiKey),
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    writeJson,
+  });
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -278,6 +286,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/global-settings" || pathname.startsWith("/global-settings/")) {
       runAsyncBooleanHandler(globalSettingsRouter({ req, res, pathname }), res);
+      return;
+    }
+    if (pathname === "/model-auth" || pathname.startsWith("/model-auth/")) {
+      runAsyncBooleanHandler(modelAuthRouter({ req, res, pathname }), res);
       return;
     }
     if (pathname === "/observer/tenants") {

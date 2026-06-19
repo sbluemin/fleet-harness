@@ -422,6 +422,160 @@
   }
 }
 
+/* 모델 로그인 — provider API key 등록 행. global-settings-card를 그릇으로 재사용한다. */
+.model-auth-head {
+  display: grid;
+  gap: 8px;
+}
+
+.model-auth-row {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
+
+.model-auth-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.model-auth-name {
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.model-auth-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.model-auth-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-rim);
+}
+
+/* signedIn = aurora('살아있는 것'). 미로그인은 중립 ink. */
+.model-auth-status.is-on {
+  color: var(--aurora);
+}
+
+.model-auth-status.is-on::before {
+  background: var(--aurora);
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+.model-auth-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.model-auth-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--surface-glass) 60%, transparent);
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.model-auth-input::placeholder {
+  color: var(--ink-rim);
+}
+
+.model-auth-input:focus {
+  outline: none;
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+}
+
+.model-auth-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.model-auth-actions {
+  display: flex;
+}
+
+/* 액션 버튼 — brass('지금 보는/하는 것'). is-primary가 Sign in. */
+.model-auth-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 96px;
+  min-height: 34px;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.model-auth-button:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  color: var(--ink-pearl);
+}
+
+.model-auth-button.is-primary {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  color: var(--brass);
+}
+
+.model-auth-button.is-primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--ink-pearl);
+}
+
+.model-auth-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.model-auth-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 720px) {
+  .model-auth-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .carrier-settings-page {
   display: grid;
   align-content: start;

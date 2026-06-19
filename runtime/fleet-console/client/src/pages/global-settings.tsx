@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { ModelAuthSection } from "../components/model-auth-section.js";
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 
 interface SettingToggleRowProps {
@@ -63,6 +64,8 @@ export function GlobalSettings() {
         ) : null}
         <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
       </section>
+
+      <ModelAuthSection />
     </main>
   );
 }

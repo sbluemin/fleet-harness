@@ -128,6 +128,21 @@ export interface GlobalSettingsMutationResult {
   readonly state: GlobalSettingsState;
 }
 
+// 모델 로그인(provider API key 등록) DTO — server src/model-auth-types.ts와 수동 동기화한다.
+export interface ModelAuthProviderState {
+  readonly cli: string;
+  readonly displayName: string;
+  readonly signedIn: boolean;
+}
+
+export interface ModelAuthState {
+  readonly providers: readonly ModelAuthProviderState[];
+}
+
+export interface ModelAuthMutationResult {
+  readonly state: ModelAuthState;
+}
+
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
 // Agent CLI 턴(host 처리) 상태. "none"=턴 이력 없음(신규), "running"=처리중, "ended"=종료(유휴).
