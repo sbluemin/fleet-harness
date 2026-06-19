@@ -52,8 +52,8 @@ function claudeHooks(options: CreateAgentCliPluginOptions): unknown {
   if (!hookExec) {
     throw new Error("Fleet Claude session hook command is required");
   }
-  // UserPromptSubmit: 세션 캡처 + 턴 시작 신호를 같은 이벤트에 함께 건다(배열 순서대로 실행).
-  const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec]
+  // UserPromptSubmit: 세션 캡처 + 턴 시작 + 자동 작명 신호를 같은 이벤트에 함께 건다(배열 순서대로 실행).
+  const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   // Stop: 턴 종료 신호.
   const stopExecs = [options.turnEndHookExec]

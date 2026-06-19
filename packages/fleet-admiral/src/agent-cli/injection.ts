@@ -37,6 +37,8 @@ export interface InjectAgentCliProfileOptions {
   readonly turnEndHookExec?: FleetHookExec;
   // 입력 대기(AskUserQuestion PreToolUse · 입력 대기 Notification) 신호 hook. Claude 전용 와이어링.
   readonly inputWaitingHookExec?: FleetHookExec;
+  // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입하며 claude/codex 양쪽에 와이어링된다.
+  readonly autoNameHookExec?: FleetHookExec;
   readonly codexCommandRunner?: (command: CodexPluginRegistrationCommand) => CodexCommandResult;
   readonly hookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
@@ -58,6 +60,7 @@ interface CodexProfileHookExecs {
   readonly captureSessionHookExec?: FleetHookExec;
   readonly turnStartHookExec?: FleetHookExec;
   readonly turnEndHookExec?: FleetHookExec;
+  readonly autoNameHookExec?: FleetHookExec;
 }
 
 interface DedicatedMcpSession {
@@ -116,6 +119,7 @@ export async function injectAgentCliProfile(
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
       inputWaitingHookExec: options.inputWaitingHookExec,
+      autoNameHookExec: options.autoNameHookExec,
       hookExec: startupDefinitions.host === "claude" ? requireHookExec(options.hookExec) : undefined,
       withMarketplaceLock: options.withMarketplaceLock,
     });
@@ -125,6 +129,7 @@ export async function injectAgentCliProfile(
           captureSessionHookExec: options.captureSessionHookExec,
           turnStartHookExec: options.turnStartHookExec,
           turnEndHookExec: options.turnEndHookExec,
+          autoNameHookExec: options.autoNameHookExec,
         }, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const launchWarnings: string[] = [];
@@ -252,8 +257,8 @@ function writeCodexFleetProfile(
 }
 
 function codexHooksConfig(hookExecs: CodexProfileHookExecs): string[] {
-  // UserPromptSubmit = 세션 캡처 + 턴 시작, Stop = 턴 종료. codex hook 이벤트 키는 PascalCase.
-  const userPromptSubmitExecs = [hookExecs.captureSessionHookExec, hookExecs.turnStartHookExec]
+  // UserPromptSubmit = 세션 캡처 + 턴 시작 + 자동 작명, Stop = 턴 종료. codex hook 이벤트 키는 PascalCase.
+  const userPromptSubmitExecs = [hookExecs.captureSessionHookExec, hookExecs.turnStartHookExec, hookExecs.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   const stopExecs = [hookExecs.turnEndHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);

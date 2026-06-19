@@ -11,7 +11,7 @@ import type {
   ConsoleTerminalSessionStatus,
   ConsoleTurnState,
 } from "./api-types.js";
-import type { DurableOperation, ProviderSession } from "./durable-state.js";
+import type { ConsoleLabelSource, DurableOperation, ProviderSession } from "./durable-state.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
 
 export interface ConsoleObservabilityStoreDeps {
@@ -46,6 +46,7 @@ interface PendingTerminalSessionState {
   readonly cwdLabel: string;
   readonly sequence: number;
   label?: string;
+  labelSource?: ConsoleLabelSource;
   cliId?: string;
   cliLabel?: string;
   readonly createdAt: number;
@@ -224,6 +225,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       cwdLabel: operation.cwdLabel,
       sequence: operation.sequence,
       label: operation.label,
+      labelSource: operation.labelSource,
       cliId: operation.cliId,
       cliLabel: operation.cliLabel,
       createdAt: operation.createdAt,
@@ -248,6 +250,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       cwdLabel: session.cwdLabel,
       sequence: session.sequence,
       ...(session.label ? { label: session.label } : {}),
+      ...(session.labelSource ? { labelSource: session.labelSource } : {}),
       ...(session.cliId ? { cliId: session.cliId } : {}),
       ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
       createdAt: session.createdAt,
@@ -298,10 +301,29 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if (!session) return null;
     const label = rawLabel.trim().slice(0, 200);
     if (label.length === 0) {
+      // 빈 rename은 사용자가 기본 표시명(#N Operation)으로 되돌린 것이다. label과 labelSource를 같은 호출에서
+      // 함께 지워, 다음 프롬프트부터 자동 작명이 재활성화되게 한다(둘을 분리하면 영구 자동 작명 차단 위험).
       delete session.label;
+      delete session.labelSource;
     } else {
       session.label = label;
+      session.labelSource = "user";
     }
+    return toTerminalSessionInfo(session);
+  }
+
+  // 자동 작명: 사용자가 작전명을 수동 설정한 적이 없을 때만(effectiveSource !== "user") 후보 라벨을 적용한다.
+  // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다. 정규화 결과가
+  // 현재 라벨과 같으면(주제 무변동) sidebar churn을 피하려 변경하지 않는다.
+  function autoNameTerminalSession(sessionId: string, label: string): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const effectiveSource: ConsoleLabelSource | undefined = session.labelSource ?? (session.label ? "user" : undefined);
+    if (effectiveSource === "user") return null;
+    const next = label.trim().slice(0, 200);
+    if (next.length === 0 || next === session.label) return null;
+    session.label = next;
+    session.labelSource = "auto";
     return toTerminalSessionInfo(session);
   }
 
@@ -362,6 +384,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     notifySessionAttention,
     notifySessionUpdated,
     renameTerminalSession,
+    autoNameTerminalSession,
     subscribe,
     subscribeAll,
     updateTerminalSessionProviderSession,

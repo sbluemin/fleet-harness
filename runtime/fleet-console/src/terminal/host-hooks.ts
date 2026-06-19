@@ -40,6 +40,10 @@ export function buildConsoleAttentionHookCommand(entry: ConsoleHookCommandEntry)
   return buildConsoleCliHookExec(entry, ["hook", "attention"]);
 }
 
+export function buildConsoleAutoNameHookCommand(entry: ConsoleHookCommandEntry): FleetHookExec {
+  return buildConsoleCliHookExec(entry, ["hook", "auto-name"]);
+}
+
 export function buildConsoleCaptureHookCommand(entry: ConsoleHookCommandEntry, cliId: AgentCliId): FleetHookExec {
   const extension = path.extname(entry.entryPath);
   if (JAVASCRIPT_ENTRY_EXTENSIONS.has(extension)) {

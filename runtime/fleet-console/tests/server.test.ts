@@ -212,6 +212,55 @@ describe("console terminal observability", () => {
     expect(JSON.stringify(renamed)).not.toContain(dir);
   });
 
+  it("auto-names operations only when the operator has not set a label and records the auto source", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    // 첫 자동 작명: label 없음 → auto 적용 + labelSource "auto" 기록(영속 투영에 반영).
+    expect(store.autoNameTerminalSession("session-a", "Fix the login redirect bug")?.label).toBe("Fix the login redirect bug");
+    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Fix the login redirect bug", labelSource: "auto" });
+
+    // 동일 라벨 재요청은 sidebar churn을 막으려 변경 없음(null).
+    expect(store.autoNameTerminalSession("session-a", "Fix the login redirect bug")).toBeNull();
+    // 다른 라벨은 auto 소스이므로 갱신된다.
+    expect(store.autoNameTerminalSession("session-a", "Add the search index")?.label).toBe("Add the search index");
+
+    // 사용자가 수동 rename → labelSource "user" 기록.
+    store.renameTerminalSession("session-a", "Bridge Watch");
+    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Bridge Watch", labelSource: "user" });
+    // 사용자 라벨은 자동 작명이 절대 덮지 않는다.
+    expect(store.autoNameTerminalSession("session-a", "A brand new prompt topic")).toBeNull();
+    expect(store.listDurableOperations()[0]?.label).toBe("Bridge Watch");
+
+    // 빈 rename은 label과 labelSource를 함께 비워 다음 프롬프트부터 자동 작명을 재활성화한다.
+    store.renameTerminalSession("session-a", "   ");
+    const cleared = store.listDurableOperations()[0];
+    expect(cleared?.label).toBeUndefined();
+    expect(cleared?.labelSource).toBeUndefined();
+    expect(store.autoNameTerminalSession("session-a", "Re-enabled auto label")?.label).toBe("Re-enabled auto label");
+  });
+
+  it("protects legacy operator labels that predate labelSource from auto-naming", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-legacy-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    // labelSource 없이 label만 있는 레거시 dormant Operation을 복원한다.
+    store.injectDormantOperation({
+      sessionId: "legacy",
+      theaterId: workspaceHash(fs.realpathSync.native(dir)),
+      cwd: dir,
+      cwdLabel: path.basename(dir),
+      sequence: 1,
+      label: "Operator named",
+      createdAt: 1,
+    });
+    // read-time 해석: label이 있고 labelSource가 없으면 user로 보수 해석 → 자동 작명 차단.
+    expect(store.autoNameTerminalSession("legacy", "New auto topic")).toBeNull();
+    expect(store.listDurableOperations()[0]?.label).toBe("Operator named");
+  });
+
   it("replays existing observer events over SSE resync", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-sse-"));
     tempDirs.push(dir);
