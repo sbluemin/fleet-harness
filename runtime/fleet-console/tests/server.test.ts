@@ -212,34 +212,49 @@ describe("console terminal observability", () => {
     expect(JSON.stringify(renamed)).not.toContain(dir);
   });
 
-  it("auto-names operations only when the operator has not set a label and records the auto source", () => {
+  it("auto-names operations only on the first user prompt when the operator has not set a label", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-"));
     tempDirs.push(dir);
     const store = createConsoleObservabilityStore();
     store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
 
     // 첫 자동 작명: label 없음 → auto 적용 + labelSource "auto" 기록(영속 투영에 반영).
-    expect(store.autoNameTerminalSession("session-a", "Fix the login redirect bug")?.label).toBe("Fix the login redirect bug");
-    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Fix the login redirect bug", labelSource: "auto" });
+    const first = store.autoNameTerminalSession("session-a", "Fix the login redirect bug");
+    expect(first).toMatchObject({ changed: true, renamed: true });
+    expect(first?.session.label).toBe("Fix the login redirect bug");
+    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Fix the login redirect bug", labelSource: "auto", autoNamePromptSeen: true });
 
-    // 동일 라벨 재요청은 sidebar churn을 막으려 변경 없음(null).
-    expect(store.autoNameTerminalSession("session-a", "Fix the login redirect bug")).toBeNull();
-    // 다른 라벨은 auto 소스이므로 갱신된다.
-    expect(store.autoNameTerminalSession("session-a", "Add the search index")?.label).toBe("Add the search index");
+    // 두 번째 UserPromptSubmit부터는 같은 라벨이든 다른 라벨이든 작전명을 바꾸지 않는다.
+    expect(store.autoNameTerminalSession("session-a", "Fix the login redirect bug")).toMatchObject({ changed: false, renamed: false });
+    expect(store.autoNameTerminalSession("session-a", "Add the search index")).toMatchObject({ changed: false, renamed: false });
+    expect(store.listDurableOperations()[0]?.label).toBe("Fix the login redirect bug");
 
     // 사용자가 수동 rename → labelSource "user" 기록.
     store.renameTerminalSession("session-a", "Bridge Watch");
-    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Bridge Watch", labelSource: "user" });
+    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Bridge Watch", labelSource: "user", autoNamePromptSeen: true });
     // 사용자 라벨은 자동 작명이 절대 덮지 않는다.
-    expect(store.autoNameTerminalSession("session-a", "A brand new prompt topic")).toBeNull();
+    expect(store.autoNameTerminalSession("session-a", "A brand new prompt topic")).toMatchObject({ changed: false, renamed: false });
     expect(store.listDurableOperations()[0]?.label).toBe("Bridge Watch");
 
-    // 빈 rename은 label과 labelSource를 함께 비워 다음 프롬프트부터 자동 작명을 재활성화한다.
+    // 빈 rename은 label, labelSource, first-prompt marker를 함께 비워 다음 최초 프롬프트 자동 작명을 재활성화한다.
     store.renameTerminalSession("session-a", "   ");
     const cleared = store.listDurableOperations()[0];
     expect(cleared?.label).toBeUndefined();
     expect(cleared?.labelSource).toBeUndefined();
-    expect(store.autoNameTerminalSession("session-a", "Re-enabled auto label")?.label).toBe("Re-enabled auto label");
+    expect(cleared?.autoNamePromptSeen).toBeUndefined();
+    expect(store.autoNameTerminalSession("session-a", "Re-enabled auto label")?.session.label).toBe("Re-enabled auto label");
+  });
+
+  it("records a low-signal first user prompt so later prompts cannot auto-name the operation", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-empty-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    expect(store.autoNameTerminalSession("session-a", null)).toMatchObject({ changed: true, renamed: false });
+    expect(store.listDurableOperations()[0]).toMatchObject({ autoNamePromptSeen: true });
+    expect(store.autoNameTerminalSession("session-a", "Add the search index")).toMatchObject({ changed: false, renamed: false });
+    expect(store.listDurableOperations()[0]?.label).toBeUndefined();
   });
 
   it("protects legacy operator labels that predate labelSource from auto-naming", () => {
@@ -257,8 +272,28 @@ describe("console terminal observability", () => {
       createdAt: 1,
     });
     // read-time 해석: label이 있고 labelSource가 없으면 user로 보수 해석 → 자동 작명 차단.
-    expect(store.autoNameTerminalSession("legacy", "New auto topic")).toBeNull();
+    expect(store.autoNameTerminalSession("legacy", "New auto topic")).toMatchObject({ changed: false, renamed: false });
     expect(store.listDurableOperations()[0]?.label).toBe("Operator named");
+  });
+
+  it("treats restored auto labels without a first-prompt marker as already auto-named", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-legacy-auto-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    store.injectDormantOperation({
+      sessionId: "legacy-auto",
+      theaterId: workspaceHash(fs.realpathSync.native(dir)),
+      cwd: dir,
+      cwdLabel: path.basename(dir),
+      sequence: 1,
+      label: "Existing auto label",
+      labelSource: "auto",
+      autoNamePromptSeen: true,
+      createdAt: 1,
+    });
+
+    expect(store.autoNameTerminalSession("legacy-auto", "New auto topic")).toMatchObject({ changed: false, renamed: false });
+    expect(store.listDurableOperations()[0]).toMatchObject({ label: "Existing auto label", labelSource: "auto", autoNamePromptSeen: true });
   });
 
   it("replays existing observer events over SSE resync", async () => {

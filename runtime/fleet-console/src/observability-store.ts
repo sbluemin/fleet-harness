@@ -47,6 +47,7 @@ interface PendingTerminalSessionState {
   readonly sequence: number;
   label?: string;
   labelSource?: ConsoleLabelSource;
+  autoNamePromptSeen?: boolean;
   cliId?: string;
   cliLabel?: string;
   readonly createdAt: number;
@@ -57,6 +58,12 @@ interface PendingTerminalSessionState {
   registrationId?: string;
   cliRunId?: string;
   providerSession?: ProviderSession;
+}
+
+interface AutoNameTerminalSessionResult {
+  readonly session: ConsoleTerminalSessionInfo;
+  readonly changed: boolean;
+  readonly renamed: boolean;
 }
 
 interface TenantJobState {
@@ -226,6 +233,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       sequence: operation.sequence,
       label: operation.label,
       labelSource: operation.labelSource,
+      autoNamePromptSeen: operation.autoNamePromptSeen,
       cliId: operation.cliId,
       cliLabel: operation.cliLabel,
       createdAt: operation.createdAt,
@@ -251,6 +259,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       sequence: session.sequence,
       ...(session.label ? { label: session.label } : {}),
       ...(session.labelSource ? { labelSource: session.labelSource } : {}),
+      ...(session.autoNamePromptSeen ? { autoNamePromptSeen: true } : {}),
       ...(session.cliId ? { cliId: session.cliId } : {}),
       ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
       createdAt: session.createdAt,
@@ -302,29 +311,35 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     const label = rawLabel.trim().slice(0, 200);
     if (label.length === 0) {
       // 빈 rename은 사용자가 기본 표시명(#N Operation)으로 되돌린 것이다. label과 labelSource를 같은 호출에서
-      // 함께 지워, 다음 프롬프트부터 자동 작명이 재활성화되게 한다(둘을 분리하면 영구 자동 작명 차단 위험).
+      // 함께 지워, 다음 최초 프롬프트부터 자동 작명이 재활성화되게 한다(둘을 분리하면 영구 자동 작명 차단 위험).
       delete session.label;
       delete session.labelSource;
+      delete session.autoNamePromptSeen;
     } else {
       session.label = label;
       session.labelSource = "user";
+      session.autoNamePromptSeen = true;
     }
     return toTerminalSessionInfo(session);
   }
 
-  // 자동 작명: 사용자가 작전명을 수동 설정한 적이 없을 때만(effectiveSource !== "user") 후보 라벨을 적용한다.
-  // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다. 정규화 결과가
-  // 현재 라벨과 같으면(주제 무변동) sidebar churn을 피하려 변경하지 않는다.
-  function autoNameTerminalSession(sessionId: string, label: string): ConsoleTerminalSessionInfo | null {
+  // 자동 작명: 사용자 수동 라벨이 없고, 아직 UserPromptSubmit auto-name hook을 받은 적 없는 세션에만 적용한다.
+  // labelSource 미설정 레거시 세션은 label 유무로 보수 해석해 기존 사용자 라벨을 보호한다.
+  function autoNameTerminalSession(sessionId: string, label: string | null): AutoNameTerminalSessionResult | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     const effectiveSource: ConsoleLabelSource | undefined = session.labelSource ?? (session.label ? "user" : undefined);
-    if (effectiveSource === "user") return null;
-    const next = label.trim().slice(0, 200);
-    if (next.length === 0 || next === session.label) return null;
+    if (effectiveSource === "user" || session.autoNamePromptSeen) {
+      return { session: toTerminalSessionInfo(session), changed: false, renamed: false };
+    }
+    session.autoNamePromptSeen = true;
+    const next = label?.trim().slice(0, 200) ?? "";
+    if (next.length === 0 || next === session.label) {
+      return { session: toTerminalSessionInfo(session), changed: true, renamed: false };
+    }
     session.label = next;
     session.labelSource = "auto";
-    return toTerminalSessionInfo(session);
+    return { session: toTerminalSessionInfo(session), changed: true, renamed: true };
   }
 
   function notifySessionUpdated(session: ConsoleTerminalSessionInfo): void {
