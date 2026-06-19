@@ -2148,7 +2148,7 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  padding: 1.5px;
+  padding: 2px;
   border-radius: inherit;
   pointer-events: none;
   background: conic-gradient(
