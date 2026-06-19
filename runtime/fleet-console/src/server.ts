@@ -28,6 +28,8 @@ import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
+import { createDefaultAgentCliDetector } from "./agent-cli-detect.js";
+import { createAgentCliRouter } from "./agent-cli-routes.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createModelAuthRouter } from "./model-auth-routes.js";
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
@@ -201,6 +203,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
   });
+  const agentCliDetector = createDefaultAgentCliDetector();
+  const agentCliRouter = createAgentCliRouter({
+    detect: agentCliDetector.detect,
+    writeJson,
+  });
   const modelAuthRouter = createModelAuthRouter({
     authService: infraServices.authService,
     validateApiKey: (cli, apiKey) => validateAuthKeyForCli(cli, apiKey),
@@ -289,6 +296,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/global-settings" || pathname.startsWith("/global-settings/")) {
       runAsyncBooleanHandler(globalSettingsRouter({ req, res, pathname }), res);
+      return;
+    }
+    if (pathname === "/agent-cli" || pathname.startsWith("/agent-cli/")) {
+      runAsyncBooleanHandler(agentCliRouter({ req, res, pathname }), res);
       return;
     }
     if (pathname === "/model-auth" || pathname.startsWith("/model-auth/")) {
