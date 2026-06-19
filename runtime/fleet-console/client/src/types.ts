@@ -248,9 +248,8 @@ export interface TenantJobsView {
 export type ConnectionState = "connecting" | "live";
 
 // Operation 상태 전이/입력 대기 알림 토스트. kind는 인디케이터 상태에 대응:
-//   carrier-call=캐리어 출격(Job 발생, aurora) · ended=작업 완료(턴 종료, 그린)
-//   · input-waiting=입력 대기(AskUserQuestion·권한/유휴/elicitation, amber).
-export type OperationToastKind = "carrier-call" | "ended" | "input-waiting";
+//   ended=작업 완료(턴 종료, 그린) · input-waiting=입력 대기(AskUserQuestion·권한/유휴/elicitation, amber).
+export type OperationToastKind = "ended" | "input-waiting";
 
 export interface OperationToast {
   readonly id: number;

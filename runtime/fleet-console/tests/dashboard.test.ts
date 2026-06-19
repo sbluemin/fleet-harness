@@ -5,7 +5,6 @@ import type { ConsoleState, JobView } from "../client/src/types.js";
 
 const BASE_STATE: ConsoleState = {
   operationToasts: [],
-  operationsViewActive: false,
   connection: "live",
   connectionError: null,
   activeTheme: "maritime",

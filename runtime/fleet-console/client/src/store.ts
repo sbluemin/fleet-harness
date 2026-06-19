@@ -1,4 +1,4 @@
-import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
+import { applyEvent, createEmptyJob, isTerminalJobStatus, reduceSnapshotJob } from "./reduce.js";
 import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import type {
@@ -73,9 +73,6 @@ let state: ConsoleState = {
   operationToasts: [],
 };
 
-// 초기 SSE replay(재연결 포함)가 과거 job 이벤트를 재전송하므로, carrier-call 토스트는
-// 이벤트가 충분히 최신일 때만 띄워 과거/재연결 폭주를 막는다. session:updated는 라이브 전용이라 무관.
-const OPERATION_TOAST_FRESH_MS = 10_000;
 let operationToastSeq = 0;
 
 export function getState(): ConsoleState {
@@ -490,14 +487,8 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
     truncation: { droppedCount: 0 },
   };
   let nextTenant = tenantLabel && tenant.tenantLabel !== tenantLabel ? { ...tenant, tenantLabel } : tenant;
-  let carrierToast: OperationToast | null = null;
   if (event.jobId) {
     const existingJob = nextTenant.jobs[event.jobId];
-    // 새 jobId가 처음 등장 = 캐리어 호출(carrier_dispatch). 라이브 이벤트(최신)에 한해 알림한다.
-    if (!existingJob && Date.now() - event.at < OPERATION_TOAST_FRESH_MS) {
-      const session = state.sessions[event.tenantId];
-      if (session && !isActiveOperation(session)) carrierToast = makeOperationToast("carrier-call", session);
-    }
     const job = applyEvent(existingJob ?? createEmptyJob(event.tenantId, event.jobId, event.at), event);
     const jobOrder = existingJob ? nextTenant.jobOrder : [...nextTenant.jobOrder, event.jobId];
     nextTenant = {
@@ -513,7 +504,6 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
     connectionError: null,
     tenantJobs: nextTenantJobs,
     tenantOrder: state.tenantOrder.includes(event.tenantId) ? state.tenantOrder : [...state.tenantOrder, event.tenantId],
-    operationToasts: carrierToast ? [...state.operationToasts, carrierToast] : state.operationToasts,
   };
   emit();
   return { unknownTenant };
@@ -628,8 +618,27 @@ function makeOperationToast(kind: OperationToastKind, session: SessionInfo): Ope
 function buildTurnTransitionToasts(prev: SessionInfo, next: SessionInfo): readonly OperationToast[] {
   if (isActiveOperation(next)) return [];
   // 작업 완료(턴 종료)만 알린다. 턴 진행 시작(running)은 알리지 않는다.
-  if (prev.turnState !== "ended" && next.turnState === "ended") return [makeOperationToast("ended", next)];
+  // 캐리어 출격 중(미완료 job이 있음)에는 ended 알림을 억제한다 — 실제 작업은 계속 진행 중이므로.
+  if (prev.turnState !== "ended" && next.turnState === "ended" && !hasActiveCarrierJob(next)) {
+    return [makeOperationToast("ended", next)];
+  }
   return [];
+}
+
+function hasActiveCarrierJob(session: SessionInfo): boolean {
+  const tenantId = resolveSessionTenantId(session);
+  if (!tenantId) return false;
+  return tenantHasActiveJob(state.tenantJobs[tenantId]);
+}
+
+function tenantHasActiveJob(tenant: TenantJobsView | undefined): boolean {
+  if (!tenant) return false;
+  // finalize 이벤트가 보존 한도로 잘려 finishedAt이 비어도, 스냅샷이 신뢰한 종결 상태(done/error/aborted)로
+  // 완료를 판정한다 — 그렇지 않으면 복원된 완료 job이 영원히 진행 중으로 오인돼 stop 토스트가 영구 억제된다.
+  return tenant.jobOrder.some((jobId) => {
+    const job = tenant.jobs[jobId];
+    return job ? !job.finishedAt && !isTerminalJobStatus(job.status) : false;
+  });
 }
 
 function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, tenants: readonly ObservedTenant[]): Record<string, SessionInfo> {

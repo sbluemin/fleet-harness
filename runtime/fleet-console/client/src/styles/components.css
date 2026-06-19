@@ -5277,21 +5277,12 @@
 }
 
 /* 인디케이터와 동일한 색의 좌측 액센트 레일(계기판 느낌). */
-.operation-toast--carrier-call {
-  border-left-color: var(--aurora);
-}
-
 .operation-toast--ended {
   border-left-color: var(--positive);
 }
 
 .operation-toast--input-waiting {
   border-left-color: var(--warn);
-}
-
-/* 캐리어 출격은 살아있는 상태(aurora) — beacon의 is-live와 동일하게 펄스. */
-.operation-toast--carrier-call .app-toast-dot {
-  animation: aurora-pulse 1.8s ease-in-out infinite;
 }
 
 .operation-toast-text {
@@ -5343,17 +5334,8 @@
   opacity: 0.78;
 }
 
-.operation-toast--carrier-call {
-  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
-}
-
 .operation-toast--ended {
   border-color: color-mix(in oklch, var(--positive) 40%, var(--surface-rim));
-}
-
-.operation-toast--carrier-call .app-toast-dot {
-  background: var(--aurora);
-  box-shadow: 0 0 10px var(--aurora-glow);
 }
 
 .operation-toast--ended .app-toast-dot {
