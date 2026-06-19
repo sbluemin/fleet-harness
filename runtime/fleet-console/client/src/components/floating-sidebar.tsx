@@ -36,14 +36,14 @@ export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps
   // 최대화 "전환" 감지용 직전 값 — 최대화를 유지하는 동안의 재렌더에는 자동 접기를 다시 적용하지 않기 위함.
   const prevMaximizedRef = useRef(maximized);
 
-  // 최대화 전환(엣지)에서만 Operations 패널을 자동으로 접고/펼친다. 최대화를 유지하는 동안에도
-  // 사용자가 수동으로 다시 펼칠 수 있다(상태를 maximized로 강제 OR하지 않는다). 접힘 선호는
-  // localStorage에 영속되어 Codex Full 모드 왕복으로 컴포넌트가 remount되어도 복원된다.
+  // 최대화 전환(엣지)에서만 자동 동작한다. 최대화 진입은 패널을 임시로 접되 저장된 선호는 보존하고,
+  // 해제는 저장된 사용자 선호로 되돌린다(엣지에서 영속값을 덮어쓰지 않는다 — maximize/restore 왕복이
+  // 접힘 선호를 지우지 않게 한다). 최대화를 유지하는 동안에도 사용자가 수동으로 다시 펼칠 수 있으며,
+  // 그 수동 선호만 localStorage에 영속되어 Codex Full 모드 왕복으로 remount되어도 복원된다.
   useEffect(() => {
     if (prevMaximizedRef.current === maximized) return;
     prevMaximizedRef.current = maximized;
-    setCollapsedState(maximized);
-    writeSidebarCollapsed(maximized);
+    setCollapsedState(maximized ? true : readSidebarCollapsed());
   }, [maximized]);
 
   const setCollapsed = (next: boolean) => {
