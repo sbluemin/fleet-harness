@@ -215,9 +215,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
-          // 활성 패널을 최소화하면 활성 선택을 비운다 — 숨겨진 패널이 "지금 보는 Operation"으로 남으면
-          // 입력 대기·턴 종료·캐리어 토스트가 isActiveOperation 억제에 걸려 사라지기 때문이다.
-          onClick={() => { if (active) selectTerminalSession(null); minimizePanel(session.sessionId); }}
+          onClick={() => { minimizePanel(session.sessionId); }}
           aria-label={`Minimize operation ${displayLabel}`}
           title="Minimize panel"
         >

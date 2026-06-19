@@ -69,6 +69,15 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   useEffect(() => {
     if (state.activeTerminalSessionId !== null) setActiveShellPanel(null);
   }, [state.activeTerminalSessionId]);
+  // 불변식: active Operation은 절대 최소화된(화면 밖) 세션이면 안 된다. 패널 최소화 액션은 물론,
+  // 리로드·Theater 전환 시 resolveVisibleSessionId가 canvas.minimized를 모른 채 최소화된 비-dormant 세션을
+  // active로 자동 선택하는 경로까지 한 곳에서 막는다 — 안 그러면 숨은 패널이 isActiveOperation 억제에 걸려
+  // 입력 대기·턴 종료·캐리어 토스트가 사라진다. (복원은 minimized 제거가 선행되므로 여기서 해제되지 않는다.)
+  useEffect(() => {
+    if (state.activeTerminalSessionId !== null && minimized.includes(state.activeTerminalSessionId)) {
+      selectTerminalSession(null);
+    }
+  }, [state.activeTerminalSessionId, minimized]);
   const interaction = useCanvasInteraction({
     viewport: canvas.viewport,
     disabled,
