@@ -677,9 +677,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Operation 생성 메뉴에 내려보낼 Agent CLI 목록에 설치(available)·로그인(signedIn) 상태를 결합한다.
   // IO(탐지/auth 조회)만 여기서 수행하고, 매핑은 순수 함수 combineAgentCliLaunchMetadata에 위임한다.
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
-    // /model-auth/state와 동일하게 legacy auth를 먼저 마이그레이션한다. legacy(~/.fleet/agent/auth.json)에만
-    // 키가 있는 업그레이드 사용자가 미로그인으로 오판돼 게이트(409)에 막히는 것을 막는다.
-    await migrateLegacyAuthStore();
+    // signedIn은 현재 auth store만 보고 판정한다. legacy(~/.fleet/agent/auth.json) 마이그레이션은 여기서
+    // 의도적으로 하지 않는다 — sign-out 직후 refresh가 이 경로를 호출하므로, 여기서 migrate하면 방금
+    // sign-out으로 현재 store에서 지운 legacy 키가 되살아나 게이트가 다시 열린다(부활). legacy-only 키의
+    // 노출은 /model-auth/state(Settings 진입)의 migrate가 담당하며, 그 SSoT 결함 자체는 별도 후속 사안이다.
     const [detected, modelAuth] = await Promise.all([
       agentCliDetector.detect(),
       buildModelAuthState(infraServices.authService),
