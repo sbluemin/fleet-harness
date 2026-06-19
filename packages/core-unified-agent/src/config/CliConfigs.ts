@@ -96,6 +96,11 @@ export const CLI_BACKENDS = {
     defaultMaxTokens: 16_384,
     defaultEnv: {
       ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/anthropic',
+      // ZhipuAI Claude Code 권장 슬롯 매핑 — 직접 launch(Native PTY) 경로에서도
+      // haiku/sonnet/opus 별칭이 GLM 모델로 해석되도록 env로 고정한다.
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-4.5-air',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-4.7',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.1',
       API_TIMEOUT_MS: '3000000',
     },
   },
