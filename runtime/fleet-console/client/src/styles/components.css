@@ -6497,8 +6497,8 @@
   top: 50%;
   right: 0;
   transform: translateY(-50%);
-  /* 모달 overlay(z-index 30: Local Shell·shortcuts 등) 아래에 둔다 — 모달이 떠 있을 때 핸들이
-     그 위로 올라와 잘못 클릭되어 Codex로 이탈하는 것을 막는다(모달 scrim이 핸들을 덮어 비활성화). */
+  /* 평상시에는 카드/캔버스 위에 두되, aria-modal 오버레이가 활성화되면 아래 :has() 규칙으로 숨긴다.
+     z-index 하나로 콘텐츠 위 + 모든 모달 아래를 동시에 만족할 수 없기 때문에 stacking으로 해결하지 않는다. */
   z-index: 29;
   display: flex;
   flex-direction: column;
@@ -6517,6 +6517,11 @@
   transition: transform var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-glide),
     background var(--duration-fast) var(--ease-glide);
+}
+
+body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
+  display: none;
+  pointer-events: none;
 }
 
 .codex-edge-handle:hover,
