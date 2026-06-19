@@ -5,12 +5,6 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Changed
-- [core] Fleet Console now holds back an Operation's completion toast while that Operation still has a carrier job in flight, announcing completion only after the work has actually finished.
-
-### Removed
-- [core] Fleet Console no longer raises a toast when a carrier sorties; the live Operation panel already reflects the active job.
-
 ## [1.8.0] - 2026-06-18
 
 ### Added
