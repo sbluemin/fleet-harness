@@ -245,7 +245,7 @@
   display: grid;
   align-content: start;
   gap: var(--space-5);
-  width: min(720px, calc(100vw - 48px));
+  width: min(960px, calc(100vw - 48px));
   min-height: 0;
   height: 100%;
   margin: 0 auto;
