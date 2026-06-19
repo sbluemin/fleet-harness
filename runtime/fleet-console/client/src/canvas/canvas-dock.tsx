@@ -72,12 +72,16 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
     const overflow = maxScroll > 1;
     const sizable = overflow && clientWidth > 0;
     const pages = sizable ? Math.max(1, Math.ceil(scrollWidth / clientWidth)) : 1;
-    const idxFromRight = sizable ? Math.round((maxScroll - scrollLeft) / clientWidth) : 0;
+    const atEnd = scrollLeft >= maxScroll - 1;
+    // 페이지 번호(우측 끝=1): 우측 끝은 1로 고정하고, 그 외는 ceil로 올린다. round는 비정수 오버플로에서
+    // 좌측 끝을 과소보고하지만(예: cw=640·scrollWidth=1300이면 좌측 끝에서 round(660/640)+1=2≠pages),
+    // ceil((maxScroll-scrollLeft)/cw)+1은 좌측 끝에서 ceil(maxScroll/cw)+1=ceil(scrollWidth/cw)=pages로 정확히 맞는다.
+    const page = sizable ? (atEnd ? 1 : Math.min(pages, Math.ceil((maxScroll - scrollLeft) / clientWidth) + 1)) : 1;
     setPager({
       overflow,
       atStart: scrollLeft <= 1,
-      atEnd: scrollLeft >= maxScroll - 1,
-      page: Math.min(pages, idxFromRight + 1),
+      atEnd,
+      page,
       pages,
     });
   }, []);
