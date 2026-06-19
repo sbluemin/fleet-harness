@@ -25,6 +25,7 @@ export interface CreateConsolePathsDeps {
 
 export interface CreateConsoleDataPathsDeps {
   readonly channel?: FleetConsoleChannel;
+  readonly env?: NodeJS.ProcessEnv;
   readonly packageRoot?: string;
   readonly fleetDataDir?: string;
 }
@@ -66,11 +67,20 @@ function defaultConsoleBaseDir(deps: CreateConsolePathsDeps): string {
 }
 
 function defaultConsoleDataBaseDir(deps: CreateConsoleDataPathsDeps): string {
-  // 명시 fleetDataDir override(테스트/임베드)가 있으면 채널 추론보다 우선해 그 경로를 데이터 루트로 쓴다.
+  // 1순위: 명시 fleetDataDir override(테스트/임베드)는 결정적 제어를 위해 env·채널보다 우선한다.
   if (deps.fleetDataDir !== undefined) {
     return path.join(deps.fleetDataDir, CONSOLE_DATA_DIR_NAME);
   }
 
+  // 2순위: FLEET_CONSOLE_DIR escape hatch. lock(createConsolePaths)과 동일하게 durable state도
+  // override 슬롯에 co-locate한다 — read-only 체크아웃에서 쓰기 가능 런타임 슬롯을 지정하는 경우 등에
+  // state/captures가 체크아웃이 아닌 선택된 데몬 디렉터리에 격리되도록 보장한다.
+  const env = deps.env ?? process.env;
+  if (env.FLEET_CONSOLE_DIR) {
+    return env.FLEET_CONSOLE_DIR;
+  }
+
+  // 3순위: 채널 기반 경로.
   let release: ReturnType<typeof readFleetConsoleRelease> | undefined;
   const channel = deps.channel ?? (release = readFleetConsoleRelease()).channel;
 
