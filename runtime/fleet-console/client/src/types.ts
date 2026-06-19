@@ -143,6 +143,19 @@ export interface ModelAuthMutationResult {
   readonly state: ModelAuthState;
 }
 
+// Agent CLI 가용성(설치 여부 + 버전) DTO — server src/agent-cli-types.ts와 수동 동기화한다.
+// Token Boundary 하드룰에 따라 raw filesystem path는 포함하지 않는다.
+export interface AgentCliStatus {
+  readonly id: string;
+  readonly displayName: string;
+  readonly available: boolean;
+  readonly version: string | null;
+}
+
+export interface AgentCliState {
+  readonly clis: readonly AgentCliStatus[];
+}
+
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
 // Agent CLI 턴(host 처리) 상태. "none"=턴 이력 없음(신규), "running"=처리중, "ended"=종료(유휴).
