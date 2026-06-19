@@ -16,11 +16,17 @@ describe("console update apply worker", () => {
     expect(script).toContain('"@dotobokuri/fleet-cli"');
     expect(script).toContain('"@dotobokuri/fleet-console"');
     expect(script).toContain('"serve"');
+    expect(script).toContain('"/resolved/npm.cmd"');
+    expect(script).toContain('"/d","/s","/c","call","/resolved/npm.cmd "');
     expect(script).toContain("ensureGlobalRootWritable(manager)");
     expect(script).toContain("writeStatus(\"preflight-ok\"");
     expect(script).toContain("new health response did not expose a version; waiting for verified target");
     expect(script).toContain("return version === config.targetVersion;");
+    expect(script).toContain('execFileSync(configured.bin, [...configured.prefixArgs, "root", "-g"]');
+    expect(script).toContain('spawnExit(manager.bin, [...manager.prefixArgs, "i", "-g", "--force"');
     expect(script).not.toContain('if (command === "npm") return { command };');
+    expect(script).not.toContain('execFileSync(command, ["root", "-g"]');
+    expect(script).not.toContain('spawnExit(manager.command, ["i", "-g", "--force"');
     expect(script).not.toContain("target verification skipped");
   });
 
@@ -33,7 +39,7 @@ describe("console update apply worker", () => {
       execPath: "/node",
       makeDir: vi.fn(),
       now: () => 123,
-      preflightInstall: () => undefined,
+      preflightInstall: () => createPackageManagerSpec(),
       processPid: 456,
       serverModulePath: "/pkg/dist/cli.mjs",
       tmpDir: "/tmp",
@@ -62,6 +68,7 @@ describe("console update apply worker", () => {
     expect(writes[0]?.filePath).toBe("/tmp/fleet-console-update-123-456.mjs");
     expect(writes[0]?.content).toContain("/data/console/fleet-console-update-123-456.status.json");
     expect(writes[0]?.content).toContain("/data/console/fleet-console-update-123-456.log");
+    expect(writes[0]?.content).toContain('"/resolved/npm.cmd"');
     expect(writes[0]?.mode).toBe(0o600);
     expect(spawned).toEqual([{
       execPath: "/node",
@@ -106,10 +113,20 @@ function createConfig(): ConsoleUpdateWorkerScriptConfig {
     currentPid: 111,
     lockFile: "/tmp/console.lock",
     logFile: "/tmp/fleet-console-update.log",
+    packageManager: createPackageManagerSpec(),
     packageNames: ["@dotobokuri/fleet-cli", "@dotobokuri/fleet-console"],
     serverModulePath: "/pkg/dist/cli.mjs",
     statusFile: "/tmp/fleet-console-update.status.json",
     targetVersion: "1.2.3",
     workerPath: "/tmp/fleet-console-update.mjs",
+  };
+}
+
+function createPackageManagerSpec() {
+  return {
+    bin: "/resolved/npm.cmd",
+    command: "npm" as const,
+    globalRoot: "/global/root",
+    prefixArgs: ["/d", "/s", "/c", "call", "/resolved/npm.cmd "],
   };
 }

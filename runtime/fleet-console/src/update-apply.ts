@@ -1,9 +1,12 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+
+import { createGlobalPackageUpdater } from "@dotobokuri/core-agent";
+import type { GlobalPackageManagerCommand } from "@dotobokuri/core-agent";
 
 export interface ConsoleUpdateApplyService {
   start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult>;
@@ -28,7 +31,7 @@ export interface CreateConsoleUpdateApplyServiceDeps {
   readonly makeDir?: (dirPath: string, options: { readonly mode: number; readonly recursive: true }) => void;
   readonly now?: () => number;
   readonly processPid?: number;
-  readonly preflightInstall?: (currentPackageRoot: string) => void;
+  readonly preflightInstall?: (currentPackageRoot: string) => Promise<ConsoleUpdatePackageManagerSpec> | ConsoleUpdatePackageManagerSpec;
   readonly serverModulePath?: string;
   readonly spawnWorker?: ConsoleUpdateWorkerSpawner;
   readonly tmpDir?: string;
@@ -41,11 +44,19 @@ export interface ConsoleUpdateWorkerScriptConfig {
   readonly currentPid: number;
   readonly lockFile: string;
   readonly logFile: string;
+  readonly packageManager: ConsoleUpdatePackageManagerSpec;
   readonly packageNames: readonly [string, string];
   readonly serverModulePath: string;
   readonly statusFile: string;
   readonly targetVersion: string;
   readonly workerPath: string;
+}
+
+export interface ConsoleUpdatePackageManagerSpec {
+  readonly bin: string;
+  readonly command: GlobalPackageManagerCommand;
+  readonly globalRoot: string;
+  readonly prefixArgs: readonly string[];
 }
 
 export interface ConsoleUpdateWorkerProcess {
@@ -75,7 +86,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
   });
   const now = deps.now ?? Date.now;
   const processPid = deps.processPid ?? process.pid;
-  const preflightInstall = deps.preflightInstall ?? preflightPackageManager;
+  const preflightInstall = deps.preflightInstall ?? ((currentPackageRoot: string) => preflightPackageManager(currentPackageRoot, env));
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
   const spawnWorker = deps.spawnWorker ?? defaultSpawnWorker;
   const tmpDir = deps.tmpDir ?? os.tmpdir();
@@ -84,7 +95,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
   });
 
   async function start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult> {
-    preflightInstall(request.currentPackageRoot);
+    const packageManager = await preflightInstall(request.currentPackageRoot);
     const stamp = `${now()}-${processPid}`;
     const workerPath = path.join(tmpDir, `${WORKER_FILE_PREFIX}${stamp}${WORKER_FILE_SUFFIX}`);
     makeDir(request.dataDir, { recursive: true, mode: 0o700 });
@@ -96,6 +107,7 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       currentPid: request.currentPid,
       lockFile: request.lockFile,
       logFile,
+      packageManager,
       packageNames: PACKAGE_NAMES,
       serverModulePath,
       statusFile,
@@ -213,24 +225,23 @@ async function waitForOldConsoleExit() {
 }
 
 function detectPackageManager() {
-  for (const command of ["npm", "pnpm"]) {
-    try {
-      const root = execFileSync(command, ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-      if (!root) continue;
-      const rootReal = safeRealpath(root);
-      const packageReal = normalizeExistingPath(config.currentPackageRoot);
-      if (!rootReal || !packageReal) continue;
-      if (isPathInside(packageReal, rootReal)) {
-        return { command, root: rootReal };
-      }
-      for (const packageName of config.packageNames) {
-        if (packageReal === safeRealpath(path.join(root, packageName))) {
-          return { command, root: rootReal };
-        }
-      }
-    } catch {
-      // 다음 패키지 매니저 감지를 계속 시도한다.
+  const configured = config.packageManager;
+  try {
+    const root = execFileSync(configured.bin, [...configured.prefixArgs, "root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    if (!root) throw new Error("global package manager root is empty");
+    const rootReal = safeRealpath(root);
+    const packageReal = normalizeExistingPath(config.currentPackageRoot);
+    if (!rootReal || !packageReal) throw new Error("global package manager root could not be resolved");
+    if (isPathInside(packageReal, rootReal)) {
+      return { ...configured, root: rootReal };
     }
+    for (const packageName of config.packageNames) {
+      if (packageReal === safeRealpath(path.join(root, packageName))) {
+        return { ...configured, root: rootReal };
+      }
+    }
+  } catch (error) {
+    throw new Error("no supported global package manager found: " + sanitizeError(error));
   }
   throw new Error("no supported global package manager found");
 }
@@ -245,7 +256,7 @@ function ensureGlobalRootWritable(manager) {
 
 async function installPackages(manager) {
   const packages = config.packageNames.map((name) => name + "@" + config.targetVersion);
-  const code = await spawnExit(manager.command, ["i", "-g", "--force", ...packages]);
+  const code = await spawnExit(manager.bin, [...manager.prefixArgs, "i", "-g", "--force", ...packages]);
   if (code !== 0) throw new Error("global package install failed with exit code " + code);
 }
 
@@ -389,58 +400,26 @@ function sanitizeError(error) {
 `;
 }
 
-function preflightPackageManager(packageRoot: string): void {
-  const manager = detectPackageManager(packageRoot);
-  try {
-    fs.accessSync(manager.root, fs.constants.W_OK);
-  } catch {
-    throw new Error("global package manager root is not writable");
-  }
-}
-
-function detectPackageManager(packageRoot: string): { readonly command: "npm" | "pnpm"; readonly root: string } {
-  for (const command of ["npm", "pnpm"] as const) {
-    try {
-      const root = execFileSync(command, ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-      if (!root) continue;
-      const rootReal = safeRealpath(root);
-      const packageReal = normalizeExistingPath(packageRoot);
-      if (!rootReal || !packageReal) continue;
-      if (isPathInside(packageReal, rootReal)) {
-        return { command, root: rootReal };
-      }
-      for (const packageName of PACKAGE_NAMES) {
-        if (packageReal === safeRealpath(path.join(root, packageName))) {
-          return { command, root: rootReal };
-        }
-      }
-    } catch {
-      // 다음 패키지 매니저 감지를 계속 시도한다.
+async function preflightPackageManager(packageRoot: string, env: NodeJS.ProcessEnv): Promise<ConsoleUpdatePackageManagerSpec> {
+  const updater = createGlobalPackageUpdater({
+    env,
+    packageNames: PACKAGE_NAMES,
+    resolveCurrentPackageRoot: () => packageRoot,
+    resolveCurrentVersion: () => undefined,
+  });
+  const detection = await updater.detectPackageManager();
+  if (detection.manager === undefined) {
+    if (detection.reason === "permission") {
+      throw new Error("global package manager root is not writable");
     }
+    throw new Error("no supported global package manager found");
   }
-  throw new Error("no supported global package manager found");
-}
-
-function safeRealpath(targetPath: string): string {
-  try {
-    return normalizePath(fs.realpathSync(targetPath));
-  } catch {
-    return "";
-  }
-}
-
-function normalizeExistingPath(targetPath: string): string {
-  return safeRealpath(targetPath) || normalizePath(targetPath);
-}
-
-function normalizePath(targetPath: string): string {
-  const resolved = path.resolve(targetPath);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-}
-
-function isPathInside(targetPath: string, rootPath: string): boolean {
-  const relative = path.relative(rootPath, targetPath);
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+  return {
+    bin: detection.manager.resolved.bin,
+    command: detection.manager.command,
+    globalRoot: detection.manager.globalRoot,
+    prefixArgs: detection.manager.resolved.prefixArgs,
+  };
 }
 
 function spawnDetachedWorker(
@@ -477,7 +456,11 @@ function defaultSpawnWorker(
 }
 
 function resolveDefaultServerModulePath(): string {
-  const builtPath = new URL("../dist/cli.mjs", import.meta.url).pathname;
+  const builtPath = fileURLToPath(new URL("../dist/cli.mjs", import.meta.url));
   if (fs.existsSync(builtPath)) return builtPath;
-  return fileURLToPath(import.meta.url).replace(/update-apply\.ts$/, "cli.ts");
+  const sourcePath = fileURLToPath(import.meta.url);
+  if (sourcePath.endsWith(".ts")) {
+    return sourcePath.replace(/update-apply\.ts$/, "cli.ts");
+  }
+  return path.join(path.dirname(sourcePath), "cli.mjs");
 }
