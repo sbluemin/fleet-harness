@@ -305,27 +305,9 @@ a {
   }
 }
 
-/* 진행 중(running) Operation 패널 외곽의 "항적(wake)" 물결 — 한 겹의 링이 바깥으로 번지며 사라진다.
-   패널 자체 box-shadow로 그려 overflow: hidden 클리핑을 피한다(자식 의사요소의 외향 글로우는 잘림).
-   색(--uw-ring/--uw-glow)은 인디케이터(비콘)를 따른다. AGENTS.md 모션 규약의 sanctioned 예외. */
-@keyframes panel-wake-ripple {
-  0% {
-    box-shadow:
-      var(--shadow-soft),
-      0 0 22px -6px var(--uw-glow),
-      0 0 0 0 var(--uw-ring);
-  }
-  100% {
-    box-shadow:
-      var(--shadow-soft),
-      0 0 22px -6px var(--uw-glow),
-      0 0 2px 18px transparent;
-  }
-}
-
-/* 최소화된(진행 중) Operation 칩 외곽의 "진행광(running light)" — conic 하이라이트 호(arc)가 칩 테두리
+/* 진행 중 Operation 패널/최소화 Dock 외곽의 "진행광(running light)" — conic 하이라이트 호(arc)가 테두리
    링을 따라 한 방향으로 순환한다. 각도(--uw-angle)는 @property로 등록해야 커스텀 속성이 부드럽게
-   보간된다(미등록 시 이산 점프). 색(--uw-tint)은 인디케이터를 따른다. 칩이 최소화 dock에 떠 있을 때만,
+   보간된다(미등록 시 이산 점프). 색(--uw-tint)은 인디케이터를 따른다. 작업 중 신호가 있는 동안만,
    prefers-reduced-motion에선 정적 림으로 단락 — AGENTS.md 모션 규약의 sanctioned 예외(작업 중 신호). */
 @property --uw-angle {
   syntax: "<angle>";
