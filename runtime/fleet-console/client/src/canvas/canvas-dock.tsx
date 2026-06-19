@@ -61,6 +61,10 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
             : null;
       return { session, activeJobCount, underway, active: state.activeTerminalSessionId === session.sessionId };
     });
+  // 핀/페이지 effect의 의존 키: 칩 개수뿐 아니라 minimized 세션 ID 집합·순서까지 반영한다. 같은 개수의 다른
+  // Theater로 전환하거나(개수 불변) ID가 교체될 때도 effect가 재실행돼 우측 끝 핀·페이지 상태를 새 칩 세트
+  // 기준으로 재설정한다 — entries.length만 의존하면 이런 경우 stale scrollLeft/pinRight/pager가 재사용된다.
+  const entriesKey = entries.map((entry) => entry.session.sessionId).join(",");
 
   // 칩 트랙의 스크롤 위치로 페이지네이션 상태를 재계산한다(가용 폭 초과·양끝·현재/총 페이지).
   // 페이지 번호는 우측 끝(최신)=1, 좌측으로 갈수록 증가한다.
@@ -86,8 +90,9 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
     });
   }, []);
 
-  // 펼침·개수 변화 시 우측 끝(최신)으로 핀하고, ResizeObserver·scroll로 폭/위치 변화를 추적해 페이지 상태를
-  // 갱신한다. 핀 상태에선 레일 펼침 전환 등 폭이 변해도 최신 칩이 계속 우측에 노출되도록 다시 우측 끝에 맞춘다.
+  // 펼침·칩 세트(entriesKey) 변화 시 우측 끝(최신)으로 핀하고, ResizeObserver·scroll로 폭/위치 변화를 추적해
+  // 페이지 상태를 갱신한다. 핀 상태에선 레일 펼침 전환 등 폭이 변해도 최신 칩이 계속 우측에 노출되도록 다시
+  // 우측 끝에 맞춘다.
   useEffect(() => {
     const el = chipsRef.current;
     if (!el) return;
@@ -111,7 +116,7 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
       observer?.disconnect();
       el.removeEventListener("scroll", onScroll);
     };
-  }, [expanded, entries.length, measure]);
+  }, [expanded, entriesKey, measure]);
 
   if (entries.length === 0) return null;
 
