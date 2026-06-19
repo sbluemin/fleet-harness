@@ -1,13 +1,13 @@
 .app-shell {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr) 272px;
+  grid-template-columns: 256px minmax(0, 1fr) clamp(272px, 20vw, 320px);
   grid-template-areas: "compass main rail";
   gap: var(--space-6);
   align-items: start;
   justify-content: stretch;
   min-height: 100vh;
   padding: var(--space-8) var(--space-8) var(--space-12);
-  max-width: 1920px;
+  max-width: 1680px;
   margin: 0 auto;
 }
 
@@ -18,6 +18,9 @@
 .app-shell > .content {
   grid-area: main;
   min-width: 0;
+  transition:
+    padding-top var(--duration-base) var(--ease-spring),
+    gap var(--duration-base) var(--ease-spring);
 }
 
 .app-shell > .rail {
@@ -37,8 +40,8 @@
   padding: var(--space-6);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
 }
@@ -93,18 +96,15 @@
   grid-template-areas: "compass main";
 }
 
-.app-shell--wide > .rail {
-  display: none;
+.app-shell--raw {
+  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-areas: "compass main";
 }
 
 /* Side 패널 헤더 토글로 수동 접은 pane. 컨테이너 쿼리 자동 접힘과 독립적으로 넓은 폭에서도 접는다. */
 .app-shell--nav-collapsed {
-  grid-template-columns: minmax(0, 1fr) 272px;
+  grid-template-columns: minmax(0, 1fr) clamp(272px, 20vw, 320px);
   grid-template-areas: "main rail";
-}
-
-.app-shell--nav-collapsed > .sidebar {
-  display: none;
 }
 
 .app-shell--rail-collapsed {
@@ -112,11 +112,8 @@
   grid-template-areas: "compass main";
 }
 
-.app-shell--rail-collapsed > .rail {
-  display: none;
-}
-
-.app-shell--nav-collapsed.app-shell--rail-collapsed {
+/* nav가 접힌 상태에서 rail까지 없는 경우(수동 rail 접기, 또는 rail을 비우는 --wide/--raw route): 빈 track 없이 본문만 남긴다. */
+.app-shell:where(.app-shell--nav-collapsed):where(.app-shell--rail-collapsed, .app-shell--wide, .app-shell--raw) {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "main";
 }
@@ -133,6 +130,27 @@
   .rail {
     position: static;
     max-height: none;
+  }
+
+  .app-shell--wide,
+  .app-shell--raw {
+    grid-template-columns: 264px minmax(0, 1fr);
+    grid-template-areas: "compass main";
+  }
+
+  .app-shell--nav-collapsed {
+    grid-template-columns: minmax(0, 1fr) clamp(272px, 20vw, 320px);
+    grid-template-areas: "main rail";
+  }
+
+  .app-shell--rail-collapsed {
+    grid-template-columns: 264px minmax(0, 1fr);
+    grid-template-areas: "compass main";
+  }
+
+  .app-shell:where(.app-shell--nav-collapsed):where(.app-shell--rail-collapsed, .app-shell--wide, .app-shell--raw) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
   }
 }
 
@@ -154,8 +172,8 @@
     border-radius: var(--radius-md);
     border: 1px solid var(--surface-rim);
     background: var(--surface-glass-strong);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(var(--blur-glass));
+    -webkit-backdrop-filter: blur(var(--blur-glass));
     color: var(--ink-pearl);
     box-shadow: var(--shadow-soft);
     cursor: pointer;
@@ -173,7 +191,9 @@
     width: min(82vw, 320px);
     max-height: calc(100vh - var(--space-8));
     transform: translateX(calc(-100% - var(--space-6)));
-    transition: transform 320ms var(--ease-spring);
+    transition:
+      transform 320ms var(--ease-spring),
+      opacity var(--duration-base) var(--ease-spring);
   }
 
   body.nav-open .sidebar {
@@ -212,6 +232,12 @@
 
   .app-shell > .rail {
     display: none;
+  }
+
+  /* 이 폭에서 nav가 수동 접힘이면 compass track도 비므로 본문만 남긴다(빈 compass 방지). */
+  .app-shell:where(.app-shell--nav-collapsed) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main";
   }
 }
 

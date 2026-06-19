@@ -22,6 +22,10 @@ export interface RenderedMarkdown {
   toc: TocItem[];
 }
 
+export interface RenderMarkdownOptions {
+  omitDuplicateTitle?: string;
+}
+
 // SSoT: packages/fleet-wiki/src/links.ts WIKI_LINK_PATTERN
 // Inlined here because the client (Vite SPA) bundle cannot transitively pull
 // fleet-wiki's Node-only modules (fs/path/crypto). Keep these two regexes in sync.
@@ -37,11 +41,12 @@ const sanitizeConfig = {
 };
 const highlighter = configureHighlighter();
 
-export function renderMarkdown(body: string): RenderedMarkdown {
+export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}): RenderedMarkdown {
   const bodyWithWikiLinks = renderWikiLinks(body);
   const rawHtml = marked.parse(bodyWithWikiLinks, { async: false }) as string;
   const safeHtml = DOMPurify.sanitize(rawHtml, sanitizeConfig);
   const document = new DOMParser().parseFromString(safeHtml, "text/html");
+  removeDuplicateTitleHeading(document, options.omitDuplicateTitle);
   decorateHeadings(document);
   decorateCodeBlocks(document);
   decorateLinks(document);
@@ -88,6 +93,14 @@ function decorateHeadings(document: Document): void {
   }
 }
 
+function removeDuplicateTitleHeading(document: Document, title: string | undefined): void {
+  if (!title) return;
+  const firstHeading = document.body.querySelector("h1, h2, h3, h4, h5, h6");
+  if (!firstHeading || firstHeading.tagName.toLowerCase() !== "h1") return;
+  if (normalizeHeadingText(firstHeading.textContent ?? "") !== normalizeHeadingText(title)) return;
+  firstHeading.remove();
+}
+
 function decorateCodeBlocks(document: Document): void {
   for (const code of document.querySelectorAll("pre > code")) {
     const language = languageFromClass(code.className);
@@ -130,7 +143,8 @@ function buildCodeToolbar(document: Document, label: string): HTMLElement {
   button.className = "copy-code";
   button.type = "button";
   button.dataset.action = "copy-code";
-  button.textContent = "복사";
+  button.setAttribute("aria-label", `Copy ${label} code`);
+  button.textContent = "Copy";
   toolbar.append(dots, lang, button);
   return toolbar;
 }
@@ -191,4 +205,11 @@ function slugify(value: string): string {
     .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "section";
+}
+
+function normalizeHeadingText(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("en-US");
 }

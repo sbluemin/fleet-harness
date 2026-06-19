@@ -51,6 +51,37 @@
   --space-8: 32px;
   --space-10: 40px;
   --space-12: 48px;
+  --space-hair: 2px;
+  --space-tight: 6px;
+
+  --font-size-2xs: 10px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-compact: 12.5px;
+  --font-size-md: 13px;
+  --font-size-lg: 14px;
+  --font-size-base: 16px;
+  --font-size-code: 13.5px;
+  --font-size-body: 17px;
+  --font-size-title-sm: 18px;
+  --font-size-title-lg: 19px;
+  --font-size-title-md: 22px;
+  --font-size-title-xl: 26px;
+  --font-size-display-sm: 24px;
+  --font-size-display-md: 30px;
+  --font-size-display-lg: 36px;
+  --font-size-display-xl: 44px;
+  --font-size-display-2xl: 60px;
+  --font-size-display-hero-md: 72px;
+  --font-size-display-hero-sm: 56px;
+  --font-size-display-hero: 96px;
+
+  --blur-soft: 12px;
+  --blur-control: 14px;
+  --blur-rise: 6px;
+  --blur-glass: 18px;
+  --blur-pop: 20px;
+  --blur-overlay: 24px;
 
   --font-display: "Fraunces Variable", "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   --font-body: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -88,7 +119,7 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   font-weight: 400;
-  font-size: 16px;
+  font-size: var(--font-size-base);
   line-height: 1.6;
   letter-spacing: -0.005em;
   background: transparent;
@@ -165,7 +196,7 @@ a {
   from {
     opacity: 0;
     transform: translateY(14px);
-    filter: blur(6px);
+    filter: blur(var(--blur-rise));
   }
   to {
     opacity: 1;

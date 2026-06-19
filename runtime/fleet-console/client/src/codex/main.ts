@@ -20,7 +20,7 @@ import type { NavMode } from "./components/nav-tree";
 import { renderRawView } from "./components/raw-view";
 import { renderQueueList } from "./components/queue-list";
 import { renderQueueDetail } from "./components/queue-detail";
-import { renderToc } from "./components/toc";
+import { installTocScrollSpy, renderToc } from "./components/toc";
 import { renderLogView } from "./components/log-view";
 import { clearQueueState, getQueueState, loadPatchDetail, loadQueueList, rejectCurrentPatch, subscribeQueueState, approveCurrentPatch } from "./queue-state";
 import { clearRawState, getRawState, loadRawSource, subscribeRawState } from "./raw-state";
@@ -60,6 +60,8 @@ const NAV_COLLAPSE_KEY = "fleet-console.codex.nav-collapsed";
 const RAIL_COLLAPSE_KEY = "fleet-console.codex.rail-collapsed";
 let navCollapsed = readStoredPaneCollapsed("nav");
 let railCollapsed = readStoredPaneCollapsed("rail");
+let cleanupTocScrollSpy: (() => void) | null = null;
+let tocDrawerReturnFocus: HTMLElement | null = null;
 // 현재 표현 모드. pane 접힘 토글은 Side 패널 헤더에만 있고 Full에는 복구 UI가 없으므로,
 // collapse 클래스는 Side일 때만 적용한다 — Full로 전환해도 접힘이 번져 갇히지 않게 한다.
 let currentPresentationMode: "route" | "side" = "route";
@@ -89,6 +91,7 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
 
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("submit", handleDocumentSubmit);
+  document.addEventListener("keydown", handleDocumentKeydown);
   installDiagramHydrator(root);
   if (options.initialWorkspaceId && currentWorkspaceId() !== options.initialWorkspaceId) {
     replace(workspaceHomePath(options.initialWorkspaceId));
@@ -106,6 +109,9 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
       unsubscribeRoute();
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("submit", handleDocumentSubmit);
+      document.removeEventListener("keydown", handleDocumentKeydown);
+      destroyTocScrollSpy();
+      closeTocDrawer(false);
       destroyCommandPalette();
       destroyRouter();
       root.innerHTML = "";
@@ -212,43 +218,34 @@ async function handleRouteChange(route: Route): Promise<void> {
 
 function render(): void {
   const route = currentRoute();
-  if (route.name === "raw") {
-    renderRawShell();
-    return;
-  }
   renderAppShell(getState(), route);
-}
-
-function renderRawShell(): void {
-  app.innerHTML = `
-    ${renderRawView(getRawState())}
-    <div class="toast" id="toast" aria-live="polite"></div>
-  `;
 }
 
 function renderAppShell(state: AppState, route: Route): void {
   const currentId = route.name === "entry" ? route.id : null;
-  const isQueueRoute = route.name === "queue" || route.name === "queue-detail";
+  const shellModifierClass = renderShellModifierClass(route);
+  const shouldRenderSidebar = currentPresentationMode !== "side" || !navCollapsed;
+  const shouldRenderRail = !shouldSuppressRail(route) && (currentPresentationMode !== "side" || !railCollapsed);
   const renderedEntry = state.currentEntry ? renderMarkdownView(state.currentEntry, state.index) : null;
   configureCommandPalette(state.index, state.recentIds);
   // pane 접힘은 Side 표현 모드에서만 반영한다(Full에는 복구 토글이 없어 접힘이 갇히는 것을 막는다).
   const paneCollapseClass = currentPresentationMode === "side"
     ? `${navCollapsed ? " app-shell--nav-collapsed" : ""}${railCollapsed ? " app-shell--rail-collapsed" : ""}`
     : "";
+  destroyTocScrollSpy();
+  closeTocDrawer(false);
   app.innerHTML = `
-    <div class="app-shell${isQueueRoute ? " app-shell--wide" : ""}${paneCollapseClass}">
+    <div class="app-shell${shellModifierClass}${paneCollapseClass}">
       <button class="mobile-menu" type="button" data-action="toggle-nav" aria-label="Open menu">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h10" />
         </svg>
       </button>
-      ${renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname)}
+      ${shouldRenderSidebar ? renderNavTree(state.index, currentId, state.pendingPatchCount, state.workspaces, state.currentWorkspaceId, window.location.pathname) : ""}
       <main class="content">
         ${renderMainContent(state, route, renderedEntry)}
       </main>
-      <div class="rail">
-        ${renderRailContent(state, route, renderedEntry)}
-      </div>
+      ${shouldRenderRail ? `<div class="rail">${renderRailContent(state, route, renderedEntry)}</div>` : ""}
     </div>
     <div class="toast" id="toast" aria-live="polite"></div>
   `;
@@ -257,9 +254,15 @@ function renderAppShell(state: AppState, route: Route): void {
   } else {
     shellPainted = true;
   }
+  if (route.name === "entry" && renderedEntry) {
+    cleanupTocScrollSpy = installTocScrollSpy(app, renderedEntry.toc);
+  }
 }
 
 function renderMainContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
+  if (route.name === "raw") {
+    return renderRawView(getRawState());
+  }
   if (route.name === "queue") {
     return renderQueueList(getQueueState());
   }
@@ -279,11 +282,30 @@ function renderMainContent(state: AppState, route: Route, renderedEntry: Markdow
 }
 
 function renderRailContent(state: AppState, route: Route, renderedEntry: MarkdownViewRender | null): string {
-  if (route.name === "queue" || route.name === "queue-detail") return "";
+  if (shouldSuppressRail(route)) return "";
   return `
-    ${renderManifestPanel(state.currentEntry, state.index, state.currentMatchHint)}
     ${renderedEntry ? renderToc(renderedEntry.toc) : ""}
+    ${renderManifestPanel(state.currentEntry, state.index, state.currentMatchHint)}
   `;
+}
+
+function renderShellModifierClass(route: Route): string {
+  if (route.name === "raw") return " app-shell--raw";
+  if (isBrowseWideRoute(route)) return " app-shell--wide";
+  return "";
+}
+
+function isBrowseWideRoute(route: Route): boolean {
+  return route.name === "home"
+    || route.name === "index-md"
+    || route.name === "log"
+    || route.name === "conflicts"
+    || route.name === "queue"
+    || route.name === "queue-detail";
+}
+
+function shouldSuppressRail(route: Route): boolean {
+  return route.name === "raw" || isBrowseWideRoute(route);
 }
 
 function handleDocumentClick(event: MouseEvent): void {
@@ -313,6 +335,14 @@ function handleDocumentClick(event: MouseEvent): void {
   if (actionElement?.dataset.action === "toggle-tag") {
     toggleTag(actionElement.dataset.tag ?? "");
     render();
+    return;
+  }
+  if (actionElement?.dataset.action === "open-toc-drawer") {
+    openTocDrawer(actionElement);
+    return;
+  }
+  if (actionElement?.dataset.action === "close-toc-drawer") {
+    closeTocDrawer(true);
     return;
   }
   if (actionElement?.dataset.action === "copy-code") {
@@ -373,7 +403,8 @@ function handleDocumentClick(event: MouseEvent): void {
   const tocLink = target.closest<HTMLAnchorElement>("[data-toc-id]");
   if (tocLink) {
     event.preventDefault();
-    document.getElementById(tocLink.dataset.tocId ?? "")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(tocLink.dataset.tocId ?? "")?.scrollIntoView({ block: "start" });
+    closeTocDrawer(false);
     return;
   }
 
@@ -384,6 +415,61 @@ function handleDocumentClick(event: MouseEvent): void {
   event.preventDefault();
   document.body.classList.remove("nav-open");
   navigate(internalPath);
+}
+
+function handleDocumentKeydown(event: KeyboardEvent): void {
+  const drawer = document.querySelector<HTMLElement>("#toc-drawer:not([hidden])");
+  if (!drawer) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeTocDrawer(true);
+    return;
+  }
+  // modal drawer가 열린 동안 Tab/Shift+Tab을 내부 focusable 사이에서 순환시켜 포커스가 배경으로 새지 않게 한다(aria-modal 계약 보강).
+  if (event.key === "Tab") trapDrawerTab(drawer, event);
+}
+
+function trapDrawerTab(drawer: HTMLElement, event: KeyboardEvent): void {
+  const focusables = [...drawer.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")]
+    .filter((el) => el.offsetParent !== null);
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  if (!drawer.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function openTocDrawer(trigger: HTMLElement): void {
+  const drawer = document.querySelector<HTMLElement>("#toc-drawer");
+  if (!drawer) return;
+  tocDrawerReturnFocus = trigger;
+  document.body.classList.remove("nav-open");
+  document.body.classList.add("toc-open");
+  drawer.hidden = false;
+  drawer.querySelector<HTMLElement>(".toc-drawer-link, [data-action='close-toc-drawer']")?.focus();
+}
+
+function closeTocDrawer(restoreFocus: boolean): void {
+  const drawer = document.querySelector<HTMLElement>("#toc-drawer");
+  if (!drawer) return;
+  drawer.hidden = true;
+  document.body.classList.remove("toc-open");
+  if (restoreFocus) tocDrawerReturnFocus?.focus();
+  tocDrawerReturnFocus = null;
+}
+
+function destroyTocScrollSpy(): void {
+  cleanupTocScrollSpy?.();
+  cleanupTocScrollSpy = null;
 }
 
 function handleDocumentSubmit(event: SubmitEvent): void {
