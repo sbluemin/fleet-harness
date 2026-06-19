@@ -485,14 +485,14 @@ describe("store", () => {
     expect(getState().operationToasts).toHaveLength(0);
   });
 
-  it("suppresses the ended toast while a carrier job is in flight, then fires it after the job finalizes", () => {
+  it("suppresses the ended toast while a carrier job is in flight, then fires it on job finalization without a new turn", () => {
     setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
       { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
     ]);
-    // session-b를 보고 있으므로 session-a의 턴 종료 토스트는 발행 대상(비활성 Operation).
+    // session-b를 보고 있으므로 session-a의 작업 완료 토스트는 발행 대상(비활성 Operation).
     setActiveTheater("theater-b");
     selectTerminalSession("session-b");
     applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
@@ -505,9 +505,30 @@ describe("store", () => {
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
     expect(getState().operationToasts).toHaveLength(0);
 
-    // job 완료(finalized) 후 다음 턴 종료 전이에서는 ended 토스트가 발행된다.
+    // 새 턴 없이 job이 완료(finalized)되는 흔한 흐름 — 작업이 끝나는 이 시점에 완료 토스트가 발행된다.
     applyObservedEvent({ id: 2, tenantId: "tenant-1", jobId: "job-1", type: "job:finalized", at: Date.now(), event: { type: "job:finalized", jobId: "job-1", status: "done" } });
+    expect(getState().operationToasts).toHaveLength(1);
+    expect(getState().operationToasts[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
+  });
+
+  it("fires the ended toast on turn end when the carrier job already finished first", () => {
+    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    setActiveTheater("theater-b");
+    selectTerminalSession("session-b");
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    // job이 턴보다 먼저 끝나는 흐름: 등록→완료(턴은 아직 running) — job 완료만으로는 토스트 없음.
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
+    applyObservedEvent({ id: 1, tenantId: "tenant-1", jobId: "job-1", type: "job:registered", at: Date.now(), event: { type: "job:registered", jobId: "job-1" } });
+    applyObservedEvent({ id: 2, tenantId: "tenant-1", jobId: "job-1", type: "job:finalized", at: Date.now(), event: { type: "job:finalized", jobId: "job-1", status: "done" } });
+    expect(getState().operationToasts).toHaveLength(0);
+
+    // 턴 종료 시점엔 미완료 job이 없으므로 turn 전이 경로가 완료 토스트를 발행한다.
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
     expect(getState().operationToasts).toHaveLength(1);
     expect(getState().operationToasts[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
