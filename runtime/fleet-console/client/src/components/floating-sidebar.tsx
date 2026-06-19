@@ -27,15 +27,20 @@ interface FloatingJobEntryProps {
   readonly active: boolean;
 }
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.operationsCollapsed";
+
 export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [userCollapsed, setUserCollapsed] = useState(readSidebarCollapsed);
   const maximized = useMaximized();
   const visibleSessionOrder = theaterSessionOrder(state);
 
-  // 맵 최대화(전체화면) 시 Operations 패널을 자동으로 접고, 해제하면 다시 펼친다.
-  useEffect(() => {
-    setCollapsed(maximized);
-  }, [maximized]);
+  // 최대화(전체화면)는 Operations 패널을 강제로 접고, 그 외에는 사용자의 영속 선호를 따른다.
+  // Codex Full 모드 왕복으로 이 컴포넌트가 언마운트→재마운트되어도 localStorage에서 접힘 선호가 복원된다.
+  const collapsed = maximized || userCollapsed;
+  const setCollapsed = (next: boolean) => {
+    setUserCollapsed(next);
+    writeSidebarCollapsed(next);
+  };
 
   const focusSession = async (sessionId: string) => {
     const session = state.sessions[sessionId];
@@ -282,6 +287,24 @@ async function closeSession(sessionId: string): Promise<void> {
     return;
   }
   removeTerminalSession(sessionId);
+}
+
+function readSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(value));
+  } catch {
+    // Operations 사이드바 접힘 선호 저장 실패는 런타임 동작을 막지 않는다.
+  }
 }
 
 function CollapseListIcon() {
