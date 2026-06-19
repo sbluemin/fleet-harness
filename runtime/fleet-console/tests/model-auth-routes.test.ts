@@ -153,16 +153,11 @@ describe("model auth routes", () => {
     expect(harness.migrateCalls).toBe(1);
   });
 
-  it("PUT migrates legacy auth before validating and storing", async () => {
-    const harness = createRouterHarness({ authorized: true, body: { apiKey: "sk-live" } });
-    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: KIMI_PATH });
-    expect(harness.migrateCalls).toBe(1);
-  });
-
-  it("DELETE migrates legacy auth before signing out", async () => {
+  it("DELETE deletes from the current store only and does not migrate legacy (legacy purge is out of PR scope)", async () => {
     const harness = createRouterHarness({ authorized: true, signedIn: true });
     await harness.router({ req: req("DELETE"), res: res(), pathname: KIMI_PATH });
-    expect(harness.migrateCalls).toBe(1);
+    expect(harness.deleteCalls).toBe(1);
+    expect(harness.migrateCalls).toBe(0);
   });
 
   it("returns false for the bare providers path so the host can fall through", async () => {

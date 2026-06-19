@@ -119,8 +119,6 @@ async function signInProvider(
     deps.writeJson(res, 500, { error: "provider_unavailable" });
     return;
   }
-  // 새 키를 legacy와 병합 저장하도록 store 쓰기 전 legacy를 마이그레이션한다(fleet-cli login과 동일).
-  await deps.migrateLegacyAuth();
   // 검증은 서버에서만 수행한다 — 키는 외부 provider 검증과 로컬 저장에만 쓰이고 브라우저로 되돌려보내지 않는다.
   const validation = await deps.validateApiKey(provider.cli, apiKey);
   if (validation.status !== "success") {
@@ -152,8 +150,10 @@ async function signOutProvider(
     deps.writeJson(res, 500, { error: "provider_unavailable" });
     return;
   }
-  // 로그아웃 대상이 legacy에만 있을 수 있으므로 삭제 전 legacy를 마이그레이션한다(fleet-cli logout과 동일).
-  await deps.migrateLegacyAuth();
+  // 현재 store에서만 삭제한다. legacy(~/.fleet/agent/auth.json) 원본 영구 제거는 fleet-cli logout과
+  // 공유하는 fleet-infra/auth SSoT 한계(migrate는 복사만, deleteApiKey는 현재 store만 삭제)라 이 PR scope
+  // 밖이다(후속 분리). 여기서 migrate를 호출하면 legacy를 복사만 하고 원본이 남아 다음 read에서 부활하므로,
+  // 혼란을 피하려 migrate 없이 현재 store만 삭제한다.
   await deps.authService.deleteApiKey(providerId);
   await writeMutationState(res, deps);
 }
