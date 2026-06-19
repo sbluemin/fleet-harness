@@ -30,8 +30,11 @@ interface FloatingJobEntryProps {
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "fleet-console.map.operationsCollapsed";
 
 export function FloatingSidebar({ state, getViewportSize }: FloatingSidebarProps) {
-  const [collapsed, setCollapsedState] = useState(readSidebarCollapsed);
   const maximized = useMaximized();
+  // 최초 마운트가 이미 최대화 상태일 수 있다(이전 세션의 maximized 영속, 또는 Codex Full 왕복 후 복귀).
+  // 이때 전환 effect는 동작하지 않으므로, 초기 상태도 maximized로 접어 전체화면 위에 패널이 펼쳐지는 것을
+  // 막는다(저장된 선호는 읽기만 하고 덮어쓰지 않는다).
+  const [collapsed, setCollapsedState] = useState(() => maximized || readSidebarCollapsed());
   const visibleSessionOrder = theaterSessionOrder(state);
   // 최대화 "전환" 감지용 직전 값 — 최대화를 유지하는 동안의 재렌더에는 자동 접기를 다시 적용하지 않기 위함.
   const prevMaximizedRef = useRef(maximized);
