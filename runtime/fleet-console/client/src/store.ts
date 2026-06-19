@@ -1,4 +1,4 @@
-import { applyEvent, createEmptyJob, reduceSnapshotJob } from "./reduce.js";
+import { applyEvent, createEmptyJob, isTerminalJobStatus, reduceSnapshotJob } from "./reduce.js";
 import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import type {
@@ -487,8 +487,6 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
     truncation: { droppedCount: 0 },
   };
   let nextTenant = tenantLabel && tenant.tenantLabel !== tenantLabel ? { ...tenant, tenantLabel } : tenant;
-  // 이벤트 적용 전 미완료 job이 있었는지 — job 완료 전이(작업 완료 토스트) 판정용.
-  const hadActiveJob = tenantHasActiveJob(existingTenant);
   if (event.jobId) {
     const existingJob = nextTenant.jobs[event.jobId];
     const job = applyEvent(existingJob ?? createEmptyJob(event.tenantId, event.jobId, event.at), event);
@@ -500,21 +498,12 @@ export function applyObservedEvent(event: ObservedEvent, tenantLabel?: string): 
     };
   }
   const nextTenantJobs = { ...state.tenantJobs, [event.tenantId]: nextTenant };
-  // 작업 완료(ended) 토스트 — 턴이 이미 종료된 비활성 Operation에서 방금 마지막 미완료 job이
-  // 완료된 순간에만 발행한다. 턴 종료가 job보다 먼저 도착해 buildTurnTransitionToasts가 억제했던
-  // 완료 알림을, 실제 작업이 끝나는 이 시점에 마무리한다.
-  const session = findSessionByTenantId(event.tenantId);
-  const completionToast =
-    session && hadActiveJob && !tenantHasActiveJob(nextTenant) && session.turnState === "ended" && !isActiveOperation(session)
-      ? makeOperationToast("ended", session)
-      : null;
   state = {
     ...state,
     connection: "live",
     connectionError: null,
     tenantJobs: nextTenantJobs,
     tenantOrder: state.tenantOrder.includes(event.tenantId) ? state.tenantOrder : [...state.tenantOrder, event.tenantId],
-    operationToasts: completionToast ? [...state.operationToasts, completionToast] : state.operationToasts,
   };
   emit();
   return { unknownTenant };
@@ -629,8 +618,7 @@ function makeOperationToast(kind: OperationToastKind, session: SessionInfo): Ope
 function buildTurnTransitionToasts(prev: SessionInfo, next: SessionInfo): readonly OperationToast[] {
   if (isActiveOperation(next)) return [];
   // 작업 완료(턴 종료)만 알린다. 턴 진행 시작(running)은 알리지 않는다.
-  // 캐리어 출격 중(미완료 job이 있음)에는 ended 알림을 억제하고, 완료 토스트는 job이 끝나는 시점에
-  // applyObservedEvent가 마무리 발행한다 — 실제 작업은 계속 진행 중이므로.
+  // 캐리어 출격 중(미완료 job이 있음)에는 ended 알림을 억제한다 — 실제 작업은 계속 진행 중이므로.
   if (prev.turnState !== "ended" && next.turnState === "ended" && !hasActiveCarrierJob(next)) {
     return [makeOperationToast("ended", next)];
   }
@@ -645,11 +633,12 @@ function hasActiveCarrierJob(session: SessionInfo): boolean {
 
 function tenantHasActiveJob(tenant: TenantJobsView | undefined): boolean {
   if (!tenant) return false;
-  return tenant.jobOrder.some((jobId) => !tenant.jobs[jobId]?.finishedAt);
-}
-
-function findSessionByTenantId(tenantId: string): SessionInfo | undefined {
-  return Object.values(state.sessions).find((session) => resolveSessionTenantId(session) === tenantId);
+  // finalize 이벤트가 보존 한도로 잘려 finishedAt이 비어도, 스냅샷이 신뢰한 종결 상태(done/error/aborted)로
+  // 완료를 판정한다 — 그렇지 않으면 복원된 완료 job이 영원히 진행 중으로 오인돼 stop 토스트가 영구 억제된다.
+  return tenant.jobOrder.some((jobId) => {
+    const job = tenant.jobs[jobId];
+    return job ? !job.finishedAt && !isTerminalJobStatus(job.status) : false;
+  });
 }
 
 function mergeTenantBindings(sessions: Readonly<Record<string, SessionInfo>>, tenants: readonly ObservedTenant[]): Record<string, SessionInfo> {
