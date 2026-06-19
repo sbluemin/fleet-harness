@@ -265,7 +265,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       />
       {/* 콘텐츠가 없을 때는 좌하단 빈 상태 안내가 핵심 단축키를 이미 알려주므로, 겹침을 막기 위해 단축키 맵을 숨긴다. */}
       {hasContent ? <MapShortcuts /> : null}
-      {/* 최소화된 Operation 패널의 하단 중앙 Dock(world가 아닌 캔버스 고정 — 패널과 함께 이동·확대되지 않는다). */}
+      {/* 최소화된 Operation 패널의 하단 Dock(world가 아닌 캔버스 고정 — 토글을 화면 가로 중앙에 우측 앵커로
+          두고 칩은 그 왼쪽으로만 확장한다. 패널과 함께 이동·확대되지 않는다). */}
       <CanvasDock state={state} sessions={sessions} minimized={minimized} />
     </main>
   );
