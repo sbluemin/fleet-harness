@@ -7,7 +7,7 @@ import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
-import { setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
+import { minimizePanel, setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
 
 interface CanvasPanelProps {
@@ -215,6 +215,16 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
+          onClick={() => { minimizePanel(session.sessionId); }}
+          aria-label={`Minimize operation ${displayLabel}`}
+          title="Minimize panel"
+        >
+          <MinimizeIcon />
+        </button>
+        <button
+          type="button"
+          className="canvas-panel-icon-button"
+          onPointerDown={stopButtonPointer}
           onClick={() => { void closeSession(session.sessionId); }}
           aria-label={`${dormant ? "Forget" : "Terminate"} operation ${displayLabel}`}
           title={dormant ? "Forget operation" : "Terminate operation"}
@@ -268,6 +278,15 @@ async function closeSession(sessionId: string): Promise<void> {
     return;
   }
   removeTerminalSession(sessionId);
+}
+
+function MinimizeIcon() {
+  // 타이틀바 하단 수평선 — 패널이 아래(태스크바)로 가라앉는 방향성을 내재한 최소화 마크.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 11.5h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function CloseIcon() {
