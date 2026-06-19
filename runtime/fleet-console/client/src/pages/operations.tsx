@@ -51,10 +51,13 @@ export function Operations({ state }: OperationsProps) {
   }, []);
 
   useEffect(() => {
-    // 첫 sessions 스냅샷이 적재되기 전의 빈 sessionOrder는 "로딩 중"일 뿐이다. 이때 prune하면 방금 복원한
-    // 패널을 전부 지운다(theater bootstrap이 sessions보다 먼저 도착하는 race). 적재 완료 후에만 정리한다.
-    if (!state.terminalSessionsHydrated) return;
+    // 알려진 세션에는 항상 geometry를 보장한다 — 적재 실패 후 SSE로 늦게 도착한 세션도 캔버스에 보이게 한다
+    // (geometry가 없으면 OperationsCanvas가 그 패널을 렌더하지 않는다). ensureDefaultGeometry는 기존 패널을
+    // 덮어쓰지 않으므로 복원된 레이아웃에도 안전하다.
     for (const sessionId of sessionOrder) ensureDefaultGeometry(sessionId);
+    // prune만 가드한다 — 첫 sessions 스냅샷 적재 전 빈 sessionOrder는 "로딩 중"이라, 이때 정리하면 방금 복원한
+    // 패널을 지운다(bootstrap이 sessions보다 먼저 도착하는 race). 적재 완료(권위 있는 상태) 후에만 정리한다.
+    if (!state.terminalSessionsHydrated) return;
     prunePanels(sessionOrder);
   }, [sessionOrder, state.terminalSessionsHydrated]);
 
