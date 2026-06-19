@@ -65,6 +65,12 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
   // Theater로 전환하거나(개수 불변) ID가 교체될 때도 effect가 재실행돼 우측 끝 핀·페이지 상태를 새 칩 세트
   // 기준으로 재설정한다 — entries.length만 의존하면 이런 경우 stale scrollLeft/pinRight/pager가 재사용된다.
   const entriesKey = entries.map((entry) => entry.session.sessionId).join(",");
+  // 칩 폭에 영향을 주는 데이터(이름·CLI 라벨·활성 잡 수)의 서명. 같은 ID라도 이 값이 바뀌면 트랙 폭(scrollWidth)이
+  // 달라지지만 ResizeObserver는 콘텐츠 폭 변화엔 발화하지 않으므로, 이 키로 별도 effect를 돌려 페이지 수를
+  // 다시 측정한다(우측 핀 상태였으면 최신 칩을 계속 노출하고, 과거로 페이징한 상태면 위치를 보존).
+  const metricsKey = entries
+    .map((entry) => `${sessionDisplayLabel(entry.session)}${entry.session.cliLabel ?? entry.session.cliId ?? ""}${entry.activeJobCount}`)
+    .join("");
 
   // 칩 트랙의 스크롤 위치로 페이지네이션 상태를 재계산한다(가용 폭 초과·양끝·현재/총 페이지).
   // 페이지 번호는 우측 끝(최신)=1, 좌측으로 갈수록 증가한다.
@@ -73,14 +79,16 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
     if (!el) return;
     const { scrollLeft, clientWidth, scrollWidth } = el;
     const maxScroll = Math.max(0, scrollWidth - clientWidth);
-    const overflow = maxScroll > 1;
-    const sizable = overflow && clientWidth > 0;
-    const pages = sizable ? Math.max(1, Math.ceil(scrollWidth / clientWidth)) : 1;
+    // clientWidth가 0이면(접힘 시 레일 폭 0) overflow를 false로 둔다 — 안 그러면 scrollWidth>0인 비어있지 않은
+    // dock가 항상 overflow:true로 기록돼, 펼침 직후 stale 상태로 페이저가 떠 칩셋이 페이저 없이는 맞는데도
+    // 페이저가 계속 표시된다(페이저가 자기 폭만큼 트랙을 줄여 overflow를 자가 정당화).
+    const overflow = clientWidth > 0 && maxScroll > 1;
+    const pages = overflow ? Math.max(1, Math.ceil(scrollWidth / clientWidth)) : 1;
     const atEnd = scrollLeft >= maxScroll - 1;
     // 페이지 번호(우측 끝=1): 우측 끝은 1로 고정하고, 그 외는 ceil로 올린다. round는 비정수 오버플로에서
     // 좌측 끝을 과소보고하지만(예: cw=640·scrollWidth=1300이면 좌측 끝에서 round(660/640)+1=2≠pages),
     // ceil((maxScroll-scrollLeft)/cw)+1은 좌측 끝에서 ceil(maxScroll/cw)+1=ceil(scrollWidth/cw)=pages로 정확히 맞는다.
-    const page = sizable ? (atEnd ? 1 : Math.min(pages, Math.ceil((maxScroll - scrollLeft) / clientWidth) + 1)) : 1;
+    const page = overflow ? (atEnd ? 1 : Math.min(pages, Math.ceil((maxScroll - scrollLeft) / clientWidth) + 1)) : 1;
     setPager({
       overflow,
       atStart: scrollLeft <= 1,
@@ -117,6 +125,17 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
       el.removeEventListener("scroll", onScroll);
     };
   }, [expanded, entriesKey, measure]);
+
+  // 같은 ID 칩이라도 이름·CLI 라벨·활성 잡 수가 바뀌면 트랙 폭(scrollWidth)이 달라진다. ResizeObserver는
+  // 뷰포트 박스 크기만 보고 콘텐츠 폭 변화엔 발화하지 않으므로, metricsKey가 바뀌면 여기서 다시 측정해
+  // 페이지 수를 갱신한다. 위 effect(ID 세트 변화)와 달리 강제 우측 핀은 하지 않고, 이미 우측에 핀돼 있던
+  // 경우에만 최신 칩을 다시 노출하도록 우측 끝에 맞춰 사용자의 페이징 위치를 보존한다.
+  useEffect(() => {
+    const el = chipsRef.current;
+    if (!el || !expanded) return;
+    if (pinRightRef.current) el.scrollLeft = el.scrollWidth;
+    measure();
+  }, [expanded, metricsKey, measure]);
 
   if (entries.length === 0) return null;
 
