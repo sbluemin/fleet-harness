@@ -94,9 +94,10 @@ export function App() {
       .then(hydrateTerminalSessions)
       .catch((error) => {
         if (abort.signal.aborted) return;
-        // 적재 실패도 "로딩 종료"로 본다 — terminalSessionsHydrated를 올려야 빈 sessionOrder가 권위를 얻어
-        // 패널 prune이 풀린다(올리지 않으면 fetch 1회 실패로 prune이 영구 보류된다).
-        setState({ terminalSessionError: error instanceof Error ? error.message : String(error), terminalSessionsHydrated: true });
+        // 적재 실패 시에는 terminalSessionsHydrated를 올리지 않는다. sessions를 알 수 없는 상태에서 빈
+        // sessionOrder로 prune하면 방금 복원한 패널 레이아웃을 지우고 그 빈 상태를 영속해, 일시적 500·네트워크
+        // 오류가 사용자 레이아웃의 영구 손실이 된다. prune은 성공 적재(빈 배열 포함) 시에만 권위를 갖는다.
+        setState({ terminalSessionError: error instanceof Error ? error.message : String(error) });
       });
     const refreshUpdateStatus = () => {
       void fetchObserverStatus(state.activeTheaterId, abort.signal)

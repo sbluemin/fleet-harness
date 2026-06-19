@@ -16,8 +16,11 @@ const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
 
 const listeners = new Set<Listener>();
-// Theater별 localStorage에 영속한다(키: fleet-console.canvas.shell.<theaterId>). Operations 패널과 같은
-// theater-scoped 영속 패턴을 따르되, 두 레지스트리의 lifecycle은 분리한다(canvas-store의 CanvasState와 별개).
+// Theater별 sessionStorage에 영속한다(키: fleet-console.canvas.shell.<theaterId>). sessionStorage는 탭
+// 단위라 같은 탭의 새로고침에는 복원되지만 다른 탭과는 격리된다 — localStorage로 두면 두 번째 탭이 같은
+// shell:* PTY에 attach해 첫 탭의 세션을 가로채므로(terminal session manager가 sessionId 중복 attach 시
+// 이전 소켓을 replacement code로 닫는다) 의도적으로 탭별로 제한한다. Operations 패널(canvas-store)은 서버
+// durable 세션을 공유하므로 localStorage지만, 셸은 탭별 PTY라 영속 범위가 다르다.
 // 새로고침하면 모듈은 비워지지만 loadShellPanelsForTheater가 복원하며, 같은 패널 id로 백엔드 PTY에 재부착한다.
 let panels: Record<string, ShellPanelEntry> = {};
 // 활성(포커스) 셸 패널 id. Operations의 activeTerminalSessionId와 별개의 단일 활성 상태다.
@@ -138,7 +141,7 @@ function cancelScheduledSave(): void {
 function readStoredShellPanels(theaterId: string): Record<string, ShellPanelEntry> {
   if (typeof window === "undefined") return {};
   try {
-    const stored = window.localStorage.getItem(storageKey(theaterId));
+    const stored = window.sessionStorage.getItem(storageKey(theaterId));
     if (!stored) return {};
     return normalizeStoredShellPanels(JSON.parse(stored), theaterId);
   } catch {
@@ -149,7 +152,7 @@ function readStoredShellPanels(theaterId: string): Record<string, ShellPanelEntr
 function writeStoredShellPanels(theaterId: string | null, value: Record<string, ShellPanelEntry>): void {
   if (!theaterId || typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(storageKey(theaterId), JSON.stringify({ panels: value }));
+    window.sessionStorage.setItem(storageKey(theaterId), JSON.stringify({ panels: value }));
   } catch {
     // 저장 실패는 셸 복구성만 낮추므로 런타임 흐름을 막지 않는다.
   }
@@ -203,7 +206,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // 전역 고유 셸 패널 id. "shell:" prefix는 백엔드 theater-shell 판별을 위해 유지하되, 탭 간 충돌을 막도록
 // 무작위 성분을 붙인다 — 다른 브라우저 컨텍스트가 같은 sessionId로 서로의 PTY에 잘못 attach/대체되는 것을
-// 막는다. 같은 탭의 새로고침은 localStorage 복원으로 동일 id를 재사용해 살아 있는 PTY에 재부착한다.
+// 막는다. 같은 탭의 새로고침은 sessionStorage 복원으로 동일 id를 재사용해 살아 있는 PTY에 재부착한다.
 function newShellPanelId(): string {
   const unique = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
