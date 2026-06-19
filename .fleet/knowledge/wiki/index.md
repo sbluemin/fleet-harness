@@ -2,7 +2,7 @@
 
 ## Summary
 
-- total_entries: `29`
+- total_entries: `30`
 - generated_from: `index.json`
 - ordering: `id ascending`
 
@@ -87,6 +87,16 @@
 - summary: `# fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)`
 - raw_source_ref: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
 - raw_source_refs: `raw/2026-06-14-guide-007-package-structure-admiral-runtime-source-4088997b.md`
+
+### guide-008-development-release-workflow
+
+- title: `Guide - 008 Development & Release Workflow`
+- path: `wiki/guide-008-development-release-workflow.md`
+- tags: `guide, changelog, release, ci, workflow, contributing`
+- updated: `2026-06-19T14:27:24.277Z`
+- summary: `# Development & Release Workflow`
+- raw_source_ref: `raw/2026-06-19-guide-008-development-release-workflow-source-843e9231.md`
+- raw_source_refs: `raw/2026-06-19-guide-008-development-release-workflow-source-843e9231.md`
 
 ### guide-unified-agent-cursor-composer-25
 
@@ -356,6 +366,14 @@
 
 - [[wiki:guide-002-carrier-status]] — Guide - 002 Carrier Status 사용법
 
+### changelog
+
+- [[wiki:guide-008-development-release-workflow]] — Guide - 008 Development & Release Workflow
+
+### ci
+
+- [[wiki:guide-008-development-release-workflow]] — Guide - 008 Development & Release Workflow
+
 ### claude-code
 
 - [[wiki:guide-004-cli-subagent-injection]] — Guide - 004 외부 CLI spawn 시 native subagent 주입 메커니즘 비교 및 Codex 적용 방안
@@ -397,6 +415,10 @@
 ### composition-root
 
 - [[wiki:prd-fleet-agent-composition-root-consolidation]] — PRD: fleet-agent 내부 Composition Root 확립과 module-level singleton 전면 제거
+
+### contributing
+
+- [[wiki:guide-008-development-release-workflow]] — Guide - 008 Development & Release Workflow
 
 ### controls
 
@@ -562,6 +584,7 @@
 - [[wiki:guide-005-cli-hooks-io-comparison]] — Guide - 005 Claude Code vs Codex CLI Hook Input/Output 활용 기능 비교
 - [[wiki:guide-006-maritime-codex-design-language]] — Guide - 006 Maritime Codex 디자인 언어
 - [[wiki:guide-007-package-structure-admiral-runtime]] — Guide - 007 fleet-harness 패키지 구조 (Admiral 에이전트 런타임 통합 후)
+- [[wiki:guide-008-development-release-workflow]] — Guide - 008 Development & Release Workflow
 
 ### hooks
 
@@ -709,6 +732,10 @@
 
 - [[wiki:prd-tui-mission-control]] — PRD: 전용 CLI Mission Control 도입
 
+### release
+
+- [[wiki:guide-008-development-release-workflow]] — Guide - 008 Development & Release Workflow
+
 ### scroll
 
 - [[wiki:prd-tui-mouse-scroll-hybrid-routing]] — PRD: Fleet TUI Mouse Scroll Hybrid Routing
@@ -772,6 +799,7 @@
 ### workflow
 
 - [[wiki:guide-003-fleet-wiki]] — Guide - 003 fleet-wiki 사용법
+- [[wiki:guide-008-development-release-workflow]] — Guide - 008 Development & Release Workflow
 
 ### (untagged)
 

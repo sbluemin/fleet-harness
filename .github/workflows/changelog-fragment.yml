@@ -1,0 +1,52 @@
+name: Changelog Fragment
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changelog fragment presence
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          merge_base=$(git merge-base "$BASE_REF" "$HEAD_REF")
+          changed_files=$(git diff --name-only --diff-filter=AM "$merge_base" "$HEAD_REF")
+          fragment_files=$(printf '%s\n' "$changed_files" | grep -E '^\.changelog\.d/[^/]+\.md$' || true)
+          if node -e "const labels = JSON.parse(process.env.LABELS_JSON); process.exit(labels.some((label) => label.name === 'no-changelog') ? 0 : 1);"; then
+            has_no_changelog=true
+          else
+            has_no_changelog=false
+          fi
+
+          if [ -z "$fragment_files" ] && [ "$has_no_changelog" != "true" ]; then
+            echo "PRs must include at least one .changelog.d/*.md fragment or carry the no-changelog label."
+            exit 1
+          fi
+
+          if [ -n "$fragment_files" ]; then
+            printf 'Changed changelog fragments:\n%s\n' "$fragment_files"
+          elif [ "$has_no_changelog" = "true" ]; then
+            echo "No changelog fragment required because no-changelog label is present."
+          fi
+
+      - name: Validate changelog fragments
+        run: node scripts/compile-changelog-fragments.mjs --check --allow-empty

@@ -108,6 +108,19 @@
     ],
     "updated": "2026-06-14T12:06:45.215Z"
   },
+  "guide-008-development-release-workflow": {
+    "path": "wiki/guide-008-development-release-workflow.md",
+    "title": "Guide - 008 Development & Release Workflow",
+    "tags": [
+      "guide",
+      "changelog",
+      "release",
+      "ci",
+      "workflow",
+      "contributing"
+    ],
+    "updated": "2026-06-19T14:27:24.277Z"
+  },
   "guide-unified-agent-cursor-composer-25": {
     "path": "wiki/guide-unified-agent-cursor-composer-25.md",
     "title": "Guide - unified-agent Cursor Composer 2.5 모델 등록 및 ACP 연결",

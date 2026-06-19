@@ -3879,3 +3879,43 @@
 - result: `accepted`
 - target: `wiki/guide-007-package-structure-admiral-runtime.md`
 
+## 2026-06-19T14:25:05.539Z — drydock run
+
+- error_count: `0`
+- info_count: `7`
+- issue_count: `14`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-19T14:27:24.294Z — raw source added
+
+- id: `guide-008-development-release-workflow-source`
+- raw_source_ref: `raw/2026-06-19-guide-008-development-release-workflow-source-843e9231.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Guide - 008 Development & Release Workflow`
+
+## 2026-06-19T14:27:24.298Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-19T14-27-24-277Z-544c225b`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-19-guide-008-development-release-workflow-source-843e9231.md`
+- target: `wiki/guide-008-development-release-workflow.md`
+- warning_count: `0`
+
+## 2026-06-19T14:29:24.234Z — index rebuilt
+
+- entry_count: `30`
+
+## 2026-06-19T14:29:24.236Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-19T14-27-24-277Z-544c225b`
+- patch_set_id: `null`
+- proposer: `tool:wiki_ingest`
+- raw_source_ref: `raw/2026-06-19-guide-008-development-release-workflow-source-843e9231.md`
+- result: `accepted`
+- target: `wiki/guide-008-development-release-workflow.md`
+

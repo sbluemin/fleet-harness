@@ -1,15 +1,15 @@
 ---
 name: release-version-update
-description: 릴리스 버전을 업데이트하고 CHANGELOG.md를 정리하는 절차를 정의합니다.
+description: 릴리스 버전을 업데이트하고 changelog fragment를 컴파일하는 절차를 정의합니다.
 ---
 
 # Release Version Update
 
-Use this prompt when preparing a fleet-harness release version update and release notes.
+Use this prompt when preparing a fleet-harness release version update and release notes from `.changelog.d/*.md` fragments.
 
 ## Goal
 
-Update the root `fleet-harness` version and document the changes since `main` in `CHANGELOG.md`.
+Update the root `fleet-harness` version and compile the release notes from repository-owned changelog fragments.
 
 ## Required Workflow
 
@@ -37,17 +37,16 @@ Update the root `fleet-harness` version and document the changes since `main` in
    - Update root `package.json`.
    - Update matching root entries in `pnpm-lock.yaml` (the `importers."."` block).
    - Prefer `pnpm version <version> --no-git-tag-version` so the package metadata stays consistent without creating a tag.
-7. Update `CHANGELOG.md`:
-   - Keep `[Unreleased]` present and empty.
-   - Add `## [<version>] - YYYY-MM-DD` below `[Unreleased]`.
-   - Write all changelog prose in English.
-   - Follow Keep a Changelog sections: `Added`, `Changed`, `Fixed`, `Removed`, and `Breaking Changes` only when applicable.
-   - Base entries on the actual `main..HEAD` commits and diff, not speculation.
-   - Keep entries concise and user-facing, while naming important modules or files when useful.
+7. Compile changelog fragments:
+   - Require operators to add or verify one or more `.changelog.d/*.md` fragments before release compilation, unless this is an intentional no-changelog release.
+   - Keep `CHANGELOG.md` `[Unreleased]` present and empty; do not manually populate it.
+   - Validate fragments with `node scripts/compile-changelog-fragments.mjs --check`.
+   - Preview release notes with `node scripts/compile-changelog-fragments.mjs --dry-run --version <version> --date <YYYY-MM-DD>`.
+   - Write the release section with `node scripts/compile-changelog-fragments.mjs --version <version> --date <YYYY-MM-DD>`, adding `--allow-empty` only for intentional no-changelog releases.
 8. Validate:
    - Confirm `package.json` and `pnpm-lock.yaml` report the same version.
    - Run `git diff --check`.
-   - Review the final diff for `package.json`, `pnpm-lock.yaml`, and `CHANGELOG.md`.
+   - Review the final diff for `package.json`, `pnpm-lock.yaml`, `CHANGELOG.md`, and `.changelog.d`.
    - Run tests only if code changed as part of the release work, or if the user explicitly requests test execution.
 9. Report the result in Korean:
    - Current branch.

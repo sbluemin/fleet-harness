@@ -135,35 +135,7 @@ jobs:
           RELEASE_DATE=$(date -u +%F)
           export RELEASE_DATE
 
-          node <<'NODE'
-          const fs = require('fs');
-
-          const changelogPath = 'CHANGELOG.md';
-          const nextVersion = process.env.NEXT_VERSION;
-          const releaseDate = process.env.RELEASE_DATE;
-          const content = fs.readFileSync(changelogPath, 'utf8');
-          const unreleasedHeader = '## [Unreleased]';
-          const unreleasedIndex = content.indexOf(unreleasedHeader);
-
-          if (unreleasedIndex === -1) {
-            throw new Error('Missing [Unreleased] section in CHANGELOG.md');
-          }
-
-          const afterHeaderIndex = content.indexOf('\n', unreleasedIndex);
-          if (afterHeaderIndex === -1) {
-            throw new Error('Malformed [Unreleased] section in CHANGELOG.md');
-          }
-
-          const nextSectionIndex = content.indexOf('\n## [', afterHeaderIndex + 1);
-          const unreleasedBody = content.slice(afterHeaderIndex + 1, nextSectionIndex === -1 ? content.length : nextSectionIndex);
-          const trimmedBody = unreleasedBody.replace(/^\n+|\n+$/g, '');
-          const releaseHeader = `## [${nextVersion}] - ${releaseDate}`;
-          const releaseBody = trimmedBody.trim() ? trimmedBody : `Release v${nextVersion}`;
-          const replacement = `${unreleasedHeader}\n\n${releaseHeader}\n\n${releaseBody}\n\n`;
-          const updated = `${content.slice(0, unreleasedIndex)}${replacement}${nextSectionIndex === -1 ? '' : content.slice(nextSectionIndex + 1)}`;
-
-          fs.writeFileSync(changelogPath, updated);
-          NODE
+          node scripts/compile-changelog-fragments.mjs --version "$NEXT_VERSION" --date "$RELEASE_DATE" --allow-empty
 
       - name: Verify workspace version sync
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
@@ -245,7 +217,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
+          git add -A CHANGELOG.md .changelog.d
           git ls-files | grep -E '(^|/)package\.json$' | xargs git add
           git commit -m "chore(release): $NEXT_TAG"
           git push origin HEAD:main

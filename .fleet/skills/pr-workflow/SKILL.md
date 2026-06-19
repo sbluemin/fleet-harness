@@ -31,6 +31,10 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 
 Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and — once Codex signals approval — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
 
+## Changelog Fragment Requirement
+
+Every release-impacting PR must include one unique `.changelog.d/*.md` fragment unless the PR intentionally carries the `no-changelog` label. Fragments use `section: Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`, and English bullets tagged only with `[core-agent]`, `[core-unified-agent]`, `[fleet-infra]`, `[fleet-admiral]`, `[fleet-carriers]`, `[fleet-wiki]`, `[fleet-console]`, or `[fleet-cli]`. Validate locally with `node scripts/compile-changelog-fragments.mjs --check`.
+
 ## Admiral Judgment Policy
 
 Review comments are not accepted unconditionally. Every item must pass an Admiral-of-the-Navy judgment gate before being applied.
@@ -59,6 +63,7 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
 
 1. Confirm the environment in parallel: `pwd`; OS info (`uname -a`); shell (`echo "SHELL=$SHELL"`); `gh auth status`; `gh repo view --json nameWithOwner` (must equal `sbluemin/fleet-harness`).
 2. Read the repository root `AGENTS.md`. For each subdirectory the change touches, read its `AGENTS.md` too — child rules override parent rules within their scope.
+3. For release-impacting changes, confirm the PR will include a `.changelog.d/*.md` fragment or intentionally use the `no-changelog` label.
 
 ### Phase 1 — Commit
 
@@ -73,6 +78,7 @@ This policy governs Phase 4 (classification / verification) and Phase 5 (self-ve
 1. Resolve `<head>` (default current branch) and `<base>` (default `canary`; reject `main`/`master` unless overridden). If `<head>` equals `<base>`, stop and ask.
 2. `git push -u origin <head>` and verify `git status --short --branch` reports up-to-date with the remote.
 3. Build PR metadata: derive `<title>` (≤ 70 chars, Conventional Commits) and `<body>` (`## Summary` 1–3 bullets + `## Test Plan` checklist) if not provided.
+   - Include the changelog fragment checklist state from `.github/PULL_REQUEST_TEMPLATE.md`.
 4. Echo the final title/body/base/head/draft once for the record, then create directly — invoking this skill is itself the authorization to open the PR, so do not pause for a separate confirmation round-trip. The safety guards still bind: the base-branch guard rejects `main`/`master` unless explicitly overridden, and `<head>` must not equal `<base>` (step 1). Pause for the Admiral of the Navy only when metadata is genuinely ambiguous or a safety guard trips.
    ```bash
    gh pr create --repo sbluemin/fleet-harness --base "$base" --head "$head" \
