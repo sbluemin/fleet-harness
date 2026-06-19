@@ -467,6 +467,52 @@ describe("store", () => {
     expect(getState().operationToasts[1]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
   });
 
+  it("never raises a carrier-call toast when a fresh carrier job appears on an inactive operation", () => {
+    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    // session-b를 보고 있는 상태 → session-a는 비활성 Operation(예전이라면 carrier-call 토스트 대상).
+    setActiveTheater("theater-b");
+    selectTerminalSession("session-b");
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    // 갓 발생한(최신 타임스탬프) 새 carrier job — carrier-call 토스트가 폐지됐으므로 어떤 토스트도 뜨지 않는다.
+    applyObservedEvent({ id: 1, tenantId: "tenant-1", jobId: "job-1", type: "job:registered", at: Date.now(), event: { type: "job:registered", jobId: "job-1" } });
+
+    expect(getState().operationToasts).toHaveLength(0);
+  });
+
+  it("suppresses the ended toast while a carrier job is in flight, then fires it after the job finalizes", () => {
+    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    // session-b를 보고 있으므로 session-a의 턴 종료 토스트는 발행 대상(비활성 Operation).
+    setActiveTheater("theater-b");
+    selectTerminalSession("session-b");
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    // 턴 처리 시작 + 미완료 carrier job 발생.
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
+    applyObservedEvent({ id: 1, tenantId: "tenant-1", jobId: "job-1", type: "job:registered", at: Date.now(), event: { type: "job:registered", jobId: "job-1" } });
+
+    // 턴 종료 — job이 진행 중이므로 ended 토스트 억제.
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
+    expect(getState().operationToasts).toHaveLength(0);
+
+    // job 완료(finalized) 후 다음 턴 종료 전이에서는 ended 토스트가 발행된다.
+    applyObservedEvent({ id: 2, tenantId: "tenant-1", jobId: "job-1", type: "job:finalized", at: Date.now(), event: { type: "job:finalized", jobId: "job-1", status: "done" } });
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
+    expect(getState().operationToasts).toHaveLength(1);
+    expect(getState().operationToasts[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
+  });
+
   it("selects a job into the centered overlay and toggles it closed", () => {
     hydrateTerminalSessions([{ sessionId: "tenant-1", terminalSessionId: "tenant-1", cwdLabel: "alpha", sequence: 1, status: "terminal-only", createdAt: 1 }]);
     selectTerminalSession("tenant-1");
