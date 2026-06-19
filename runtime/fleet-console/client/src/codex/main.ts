@@ -91,7 +91,7 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
 
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("submit", handleDocumentSubmit);
-  document.addEventListener("keydown", handleDocumentKeydown);
+  window.addEventListener("keydown", handleDocumentKeydown, true);
   installDiagramHydrator(root);
   if (options.initialWorkspaceId && currentWorkspaceId() !== options.initialWorkspaceId) {
     replace(workspaceHomePath(options.initialWorkspaceId));
@@ -109,7 +109,7 @@ export function mountCodexApp(root: HTMLElement, options: MountCodexAppOptions =
       unsubscribeRoute();
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("submit", handleDocumentSubmit);
-      document.removeEventListener("keydown", handleDocumentKeydown);
+      window.removeEventListener("keydown", handleDocumentKeydown, true);
       destroyTocScrollSpy();
       closeTocDrawer(false);
       destroyCommandPalette();
@@ -422,11 +422,23 @@ function handleDocumentKeydown(event: KeyboardEvent): void {
   if (!drawer) return;
   if (event.key === "Escape") {
     event.preventDefault();
+    event.stopImmediatePropagation();
     closeTocDrawer(true);
     return;
   }
   // modal drawer가 열린 동안 Tab/Shift+Tab을 내부 focusable 사이에서 순환시켜 포커스가 배경으로 새지 않게 한다(aria-modal 계약 보강).
-  if (event.key === "Tab") trapDrawerTab(drawer, event);
+  if (event.key === "Tab") {
+    trapDrawerTab(drawer, event);
+    event.stopImmediatePropagation();
+    return;
+  }
+  const target = event.target;
+  const isInsideDrawer = target instanceof Node && drawer.contains(target);
+  const isGlobalShortcut = event.metaKey || event.ctrlKey || event.altKey;
+  if (!isInsideDrawer || isGlobalShortcut) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
 }
 
 function trapDrawerTab(drawer: HTMLElement, event: KeyboardEvent): void {
