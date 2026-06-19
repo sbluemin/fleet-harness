@@ -71,7 +71,9 @@ export function OperationLaunchMenu({ state, onSelect, mode = DEFAULT_MODE, anch
   const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
-    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
+    // 비활성(미설치/미로그인) 항목은 roving-focus 대상에서 제외한다. disabled 버튼은 .focus()가 no-op이라
+    // 포함하면 화살표 이동이 비활성 항목에서 멈춰 뒤의 활성 항목에 도달하지 못한다.
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']:not(:disabled)") ?? []);
     if (items.length === 0) return;
     const current = items.indexOf(document.activeElement as HTMLElement);
     // 아직 아무 항목도 포커스되지 않았으면(메뉴 컨테이너 포커스 상태) ArrowDown=첫 항목, ArrowUp=마지막 항목.
