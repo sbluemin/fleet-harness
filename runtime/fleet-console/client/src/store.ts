@@ -1,6 +1,7 @@
 import { applyEvent, createEmptyJob, isTerminalJobStatus, reduceSnapshotJob } from "./reduce.js";
 import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { clearStoredShellPanelsForTheater } from "./canvas/shell-panels.js";
 import type {
   ConsoleState,
   JobView,
@@ -385,6 +386,8 @@ export function failRenameTerminalSession(error: string): void {
 }
 
 export function removeTheater(theaterId: string): void {
+  // Theater의 Operations뿐 아니라 영속된 셸 패널 저장도 함께 정리한다 — stale 셸이 같은 폴더 재등록 시 부활하지 않게 한다.
+  clearStoredShellPanelsForTheater(theaterId);
   const theaters = state.theaters.filter((theater) => theater.id !== theaterId);
   const sessions: Record<string, SessionInfo> = {};
   const sessionOrder: string[] = [];

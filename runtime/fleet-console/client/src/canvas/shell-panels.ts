@@ -101,6 +101,28 @@ export function loadShellPanelsForTheater(theaterId: string | null): void {
   emit();
 }
 
+// Theater를 잊을 때 저장된 셸 패널도 함께 제거한다 — 안 그러면 같은 폴더를 같은 탭에서 재등록할 때 같은
+// theaterId의 stale 엔트리가 삭제했던 셸을 되살리고 새 PTY를 마운트한다. Operations 패널은 서버 발급
+// sessionId라 prune으로 자연 정리되지만, 셸 id는 클라이언트 발급이라 명시적 정리가 필요하다.
+export function clearStoredShellPanelsForTheater(theaterId: string): void {
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(storageKey(theaterId));
+    } catch {
+      // 정리 실패는 stale 복원 가능성만 남기므로 런타임 흐름을 막지 않는다.
+    }
+  }
+  // 잊는 Theater가 현재 로드된 것이면 보류 저장을 취소(잊은 키에 다시 쓰지 않도록)하고 메모리를 비운다.
+  // 이후 activeTheater 전환이 loadShellPanelsForTheater로 새 Theater를 재로드한다.
+  if (activeTheaterId === theaterId) {
+    cancelScheduledSave();
+    activeTheaterId = null;
+    panels = {};
+    activeShellId = null;
+    emit();
+  }
+}
+
 function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
