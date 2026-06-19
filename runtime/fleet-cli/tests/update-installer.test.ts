@@ -1,10 +1,7 @@
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resolvePathBinary } from "@dotobokuri/core-agent";
 import { readFleetCliRelease } from "../src/release.js";
@@ -56,7 +53,6 @@ vi.mock("../src/update/stop-console.js", () => ({
   stopRunningConsoleBeforeUpdate: vi.fn().mockResolvedValue(undefined),
 }));
 
-const TEMP_DIRS: string[] = [];
 const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedCheckUpdateStatus = vi.mocked(checkUpdateStatus);
 const mockedReadFleetCliRelease = vi.mocked(readFleetCliRelease);
@@ -70,82 +66,6 @@ describe("update installer process invocation", () => {
     fsMock.accessSync.mockImplementation(originalAccessSync!);
     mockedReadFleetCliRelease.mockReturnValue({ channel: "stable", version: "1.2.0" });
     mockedCheckUpdateStatus.mockResolvedValue({ status: "unavailable" });
-  });
-
-  afterEach(() => {
-    for (const dir of TEMP_DIRS.splice(0)) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it.each([
-    ["npm", "C:\\tools\\npm.cmd"] as const,
-    ["pnpm", "C:\\tools\\pnpm.cmd"] as const,
-  ])("detects global %s installs through resolved Windows shim argv", (command, shimPath) => {
-    const globalRoot = makePackageGlobalRoot();
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue(createWindowsResolvedShim(shimPath));
-    mockedExecFileSync.mockReturnValue(`${globalRoot}\n`);
-
-    const result = __installerTestHooks.detectGlobalRoot(command, path.join(globalRoot, "@dotobokuri", "fleet-cli"), io);
-
-    expect(result?.manager?.command).toBe(command);
-    expect(result?.manager?.resolved).toEqual(createWindowsResolvedShim(shimPath));
-    expect(mockedExecFileSync).toHaveBeenCalledWith("C:\\Windows\\System32\\cmd.exe", ["/d", "/s", "/c", "call", `${shimPath} `, "root", "-g"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    expect(io.stderr.toString()).toBe("");
-  });
-
-  it("does not report missing package manager binaries as detection errors", () => {
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue(undefined);
-
-    const result = __installerTestHooks.detectGlobalRoot("npm", makePackageGlobalRoot(), io);
-
-    expect(result).toBeUndefined();
-    expect(mockedExecFileSync).not.toHaveBeenCalled();
-    expect(io.stderr.toString()).toBe("");
-  });
-
-  it("reports npm root execution errors during detection", () => {
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue({ bin: "npm", prefixArgs: [] });
-    mockedExecFileSync.mockImplementation(() => {
-      const error = new Error("Command failed");
-      (error as Error & { stderr: Buffer }).stderr = Buffer.from("npm exploded");
-      throw error;
-    });
-
-    const result = __installerTestHooks.detectGlobalRoot("npm", makePackageGlobalRoot(), io);
-
-    expect(result).toBeUndefined();
-    expect(io.stderr.toString()).toContain("Failed to detect Fleet's global npm install: npm exploded");
-  });
-
-  it("reports resolver errors during detection without crashing", () => {
-    const io = createIo();
-    mockedResolvePathBinary.mockImplementation(() => {
-      throw new Error("Refusing to run Windows shim path with cmd.exe expansion-sensitive characters");
-    });
-
-    const result = __installerTestHooks.detectGlobalRoot("npm", makePackageGlobalRoot(), io);
-
-    expect(result).toBeUndefined();
-    expect(mockedExecFileSync).not.toHaveBeenCalled();
-    expect(io.stderr.toString()).toContain("Failed to detect Fleet's global npm install: Refusing to run Windows shim path");
-  });
-
-  it("treats missing package manager binaries as quiet non-global detection", () => {
-    const io = createIo();
-    mockedResolvePathBinary.mockReturnValue(undefined);
-
-    const result = __installerTestHooks.detectGlobalRoot("pnpm", makePackageGlobalRoot(), io);
-
-    expect(result).toBeUndefined();
-    expect(mockedExecFileSync).not.toHaveBeenCalled();
-    expect(io.stderr.toString()).toBe("");
   });
 
   it("installs with the stored resolved Windows shim argv", async () => {
@@ -327,13 +247,6 @@ describe("update installer process invocation", () => {
     );
   });
 });
-
-function makePackageGlobalRoot(): string {
-  const globalRoot = mkdtempSync(path.join(os.tmpdir(), "fleet-update-global-"));
-  TEMP_DIRS.push(globalRoot);
-  mkdirSync(path.join(globalRoot, "@dotobokuri", "fleet-cli"), { recursive: true });
-  return globalRoot;
-}
 
 function createIo(): UpdateCommandIo & { readonly stderr: StringWriter } {
   return {

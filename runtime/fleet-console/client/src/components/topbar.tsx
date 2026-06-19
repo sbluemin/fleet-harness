@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
-import { addTheater, ApiError, forgetTheater, issueTerminalFolderGrant } from "../api.js";
+import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTerminalFolderGrant } from "../api.js";
 import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
 import { setCodexViewMode, type CodexViewMode } from "../codex-view-mode.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
@@ -27,6 +27,15 @@ interface ThemeOption {
   readonly swatch: readonly [string, string, string];
 }
 
+type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
+
+interface UpdateApplyCopy {
+  readonly label: string;
+  readonly title: string;
+  readonly tone: "warn" | "live" | "blocked" | "error";
+  readonly disabled: boolean;
+}
+
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
@@ -37,6 +46,8 @@ const THEMES: readonly ThemeOption[] = [
   { id: "maritime", label: "Maritime", swatch: ["oklch(78% 0.13 75)", "oklch(82% 0.13 195)", "oklch(32% 0.04 248)"] },
   { id: "carbon", label: "Carbon", swatch: ["oklch(76% 0.115 62)", "oklch(80% 0.105 205)", "oklch(25% 0.007 252)"] },
 ];
+
+const UPDATE_APPLY_COMPLETE_DELAY_MS = 1_400;
 
 export function Topbar({ state, codexMode }: TopbarProps) {
   // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
@@ -71,17 +82,7 @@ export function Topbar({ state, codexMode }: TopbarProps) {
       </div>
       <TheaterControl state={state} />
       <div className="topbar-meta">
-        {state.updateAvailable ? (
-          <a
-            className="topbar-update-badge"
-            href="https://www.npmjs.com/package/@dotobokuri/fleet-console"
-            target="_blank"
-            rel="noreferrer"
-            title={state.latestVersion ? `Latest version: ${state.latestVersion}` : "Update available"}
-          >
-            Update available
-          </a>
-        ) : null}
+        {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
         <nav className="topbar-nav" aria-label="주 내비게이션">
           {NAV_ITEMS.map((item) => (
             <Fragment key={item.to}>
@@ -128,6 +129,102 @@ export function Topbar({ state, codexMode }: TopbarProps) {
       </div>
     </header>
   );
+}
+
+function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string | null }) {
+  const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const completionTimerRef = useRef<number | null>(null);
+  const copy = resolveUpdateApplyCopy(applyState, errorCode, latestVersion);
+
+  useEffect(() => {
+    return () => {
+      if (completionTimerRef.current !== null) window.clearTimeout(completionTimerRef.current);
+    };
+  }, []);
+
+  const handleApply = async () => {
+    if (copy.disabled) return;
+    if (completionTimerRef.current !== null) {
+      window.clearTimeout(completionTimerRef.current);
+      completionTimerRef.current = null;
+    }
+    setApplyState("applying");
+    setErrorCode(null);
+    try {
+      const result = await applyConsoleUpdate();
+      if (result.status !== "accepted") {
+        setApplyState("error");
+        setErrorCode("invalid_response");
+        return;
+      }
+      setApplyState("accepted");
+      completionTimerRef.current = window.setTimeout(() => {
+        completionTimerRef.current = null;
+        setApplyState("completed");
+      }, UPDATE_APPLY_COMPLETE_DELAY_MS);
+    } catch (error) {
+      const code = error instanceof ApiError ? error.message : "network_error";
+      setErrorCode(code);
+      setApplyState(isBlockedUpdateApplyError(code) ? "blocked" : "error");
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={`topbar-update-badge topbar-update-badge--${copy.tone}`}
+      onClick={handleApply}
+      disabled={copy.disabled}
+      title={copy.title}
+      aria-live="polite"
+    >
+      {copy.label}
+    </button>
+  );
+}
+
+function resolveUpdateApplyCopy(applyState: UpdateApplyState, errorCode: string | null, latestVersion: string | null): UpdateApplyCopy {
+  const latest = latestVersion ? `최신 버전 ${latestVersion}` : "업데이트 가능";
+  if (applyState === "applying") {
+    return { label: "요청 중", title: "업데이트 적용 요청을 보내는 중입니다.", tone: "live", disabled: true };
+  }
+  if (applyState === "accepted") {
+    return { label: "업데이트 중", title: "서버가 곧 재시작되고 새 창에서 콘솔을 엽니다.", tone: "live", disabled: true };
+  }
+  if (applyState === "completed") {
+    return { label: "완료: 새 창에서 계속", title: "새 창에서 재시작된 콘솔을 계속 사용하세요.", tone: "live", disabled: true };
+  }
+  if (applyState === "blocked") {
+    return resolveBlockedUpdateApplyCopy(errorCode);
+  }
+  if (applyState === "error") {
+    return { label: "재시도", title: "업데이트 요청에 실패했습니다. 다시 시도할 수 있습니다.", tone: "error", disabled: false };
+  }
+  return { label: "Update available", title: latest, tone: "warn", disabled: false };
+}
+
+function resolveBlockedUpdateApplyCopy(errorCode: string | null): UpdateApplyCopy {
+  if (errorCode === "local_channel") {
+    return { label: "로컬 빌드", title: "로컬 개발 빌드는 콘솔에서 업데이트하지 않습니다.", tone: "blocked", disabled: true };
+  }
+  if (errorCode === "active_terminal_sessions") {
+    return { label: "세션 종료 필요", title: "실행 중인 Operation을 종료한 뒤 업데이트하세요.", tone: "blocked", disabled: false };
+  }
+  if (errorCode === "update_already_in_progress") {
+    return { label: "이미 진행 중", title: "다른 업데이트 적용이 이미 진행 중입니다.", tone: "blocked", disabled: true };
+  }
+  if (errorCode === "update_not_available") {
+    return { label: "업데이트 없음", title: "서버 재확인 결과 적용할 업데이트가 없습니다.", tone: "blocked", disabled: true };
+  }
+  return { label: "콘솔 준비 안 됨", title: "콘솔이 업데이트를 시작할 준비가 되지 않았습니다. 잠시 뒤 다시 시도하세요.", tone: "error", disabled: false };
+}
+
+function isBlockedUpdateApplyError(code: string): boolean {
+  return code === "active_terminal_sessions"
+    || code === "local_channel"
+    || code === "update_already_in_progress"
+    || code === "update_not_available";
 }
 
 function OperationsModeToggle({ mode }: { readonly mode: OperationsMode }) {

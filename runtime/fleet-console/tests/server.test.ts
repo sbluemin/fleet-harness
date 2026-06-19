@@ -702,6 +702,142 @@ describe("console static and terminal ticket boundary", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects update apply without an exact console Origin", async () => {
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+    });
+
+    const response = await fetch(`${fixture.endpoint}update/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "unauthorized" });
+  });
+
+  it("rejects update apply when the browser provides package or version targets", async () => {
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+    });
+
+    const response = await fetch(`${fixture.endpoint}update/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({ packageName: "@dotobokuri/fleet-console", version: "9.9.9" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_update_apply_body" });
+  });
+
+  it("rejects update apply for local release channels", async () => {
+    const fixture = await startFixture({
+      release: { channel: "local", version: "1.0.0", packageRoot: "/pkg" },
+    });
+
+    const response = await fetch(`${fixture.endpoint}update/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "local_channel" });
+  });
+
+  it("rejects update apply while a live terminal session exists", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-update-live-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+      terminalLaunch: createMockLaunch,
+      terminalStartShell: () => createMockPty(),
+    });
+    await createTerminalSession(fixture, { "Content-Type": "application/json" }, dir);
+
+    const response = await fetch(`${fixture.endpoint}update/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "active_terminal_sessions" });
+  });
+
+  it("accepts update apply after fresh recheck and starts shutdown after the 202 response", async () => {
+    const updateApplyStart = vi.fn().mockResolvedValue({ accepted: true });
+    const refresh = vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" });
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+      updateApply: { start: updateApplyStart },
+      updateCheck: {
+        getStatus: () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+        refresh,
+      },
+    });
+
+    const response = await fetch(`${fixture.endpoint}update/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(body).toEqual({ status: "accepted" });
+    expect(refresh).toHaveBeenCalledWith({ force: true });
+    expect(updateApplyStart).toHaveBeenCalledWith({
+      currentEndpoint: fixture.endpoint,
+      currentPackageRoot: "/pkg",
+      currentPid: process.pid,
+      dataDir: path.join(fixture.carrierStoreDir, "console"),
+      lockFile: fixture.lockFile,
+      targetVersion: "1.2.3",
+    });
+  });
+
+  it("rejects concurrent update apply while the worker spawn is in flight", async () => {
+    let releaseWorker!: () => void;
+    let markWorkerStarted!: () => void;
+    const workerStarted = new Promise<void>((resolve) => {
+      markWorkerStarted = resolve;
+    });
+    const pendingWorker = new Promise<{ readonly accepted: true }>((resolve) => {
+      releaseWorker = () => resolve({ accepted: true });
+    });
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+      updateApply: {
+        start: vi.fn().mockImplementation(() => {
+          markWorkerStarted();
+          return pendingWorker;
+        }),
+      },
+      updateCheck: {
+        getStatus: () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+        refresh: vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" }),
+      },
+    });
+    const request = () => fetch(`${fixture.endpoint}update/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    const first = request();
+    await workerStarted;
+    const second = await request();
+    releaseWorker();
+    const firstResponse = await first;
+
+    expect(second.status).toBe(409);
+    await expect(second.json()).resolves.toEqual({ error: "update_already_in_progress" });
+    expect(firstResponse.status).toBe(202);
+  });
+
   it("creates terminal sessions from one-use folder grants and rejects raw cwd", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-session-"));
     tempDirs.push(dir);
@@ -1806,7 +1942,7 @@ describe("console static and terminal ticket boundary", () => {
       expectedHost: "127.0.0.1",
       getExpectedPort: () => 37283,
       tickets: { consume: () => null },
-      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false },
+      sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false, hasLiveSessions: () => false },
       validateHost: () => true,
     });
 
@@ -1844,6 +1980,7 @@ describe("console static and terminal ticket boundary", () => {
         terminate: () => false,
         stop: async () => undefined,
         writeToSession: () => false,
+        hasLiveSessions: () => false,
       },
       validateHost: () => true,
     });
@@ -1896,6 +2033,8 @@ async function startFixture(options: {
   readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
   readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
   readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
+  readonly release?: ConsoleServerDeps["release"];
+  readonly updateApply?: ConsoleServerDeps["updateApply"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
 } = {}): Promise<ServerFixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-server-"));
@@ -1912,6 +2051,8 @@ async function startFixture(options: {
     terminalLaunch: options.terminalLaunch,
     terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
     terminalStartShell: options.terminalStartShell,
+    release: options.release,
+    updateApply: options.updateApply,
     updateCheck: options.updateCheck,
   });
   servers.push(server);

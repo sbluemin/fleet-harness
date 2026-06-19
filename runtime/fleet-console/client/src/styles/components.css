@@ -151,6 +151,7 @@
 }
 
 .topbar-update-badge {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
@@ -161,6 +162,7 @@
   background: color-mix(in oklch, var(--warn) 13%, transparent);
   box-shadow: 0 0 18px -10px var(--warn-glow);
   color: var(--warn);
+  cursor: pointer;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
@@ -171,13 +173,44 @@
   transition:
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
 }
 
-.topbar-update-badge:hover {
+.topbar-update-badge:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--warn) 72%, var(--surface-rim));
   background: color-mix(in oklch, var(--warn) 18%, transparent);
   color: var(--ink-pearl);
+}
+
+.topbar-update-badge:disabled {
+  cursor: default;
+}
+
+.topbar-update-badge--live {
+  border-color: color-mix(in oklch, var(--aurora) 44%, var(--surface-rim));
+  background: color-mix(in oklch, var(--aurora) 12%, transparent);
+  box-shadow: 0 0 18px -10px var(--aurora-glow);
+  color: var(--aurora);
+}
+
+.topbar-update-badge--blocked {
+  border-color: color-mix(in oklch, var(--warn) 34%, var(--surface-rim));
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+  box-shadow: none;
+  color: color-mix(in oklch, var(--warn) 84%, var(--ink-muted));
+}
+
+.topbar-update-badge--error {
+  border-color: color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+  box-shadow: 0 0 18px -12px var(--coral-glow);
+  color: var(--coral);
+}
+
+.topbar-update-badge--error:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--coral) 70%, var(--surface-rim));
+  background: color-mix(in oklch, var(--coral) 15%, transparent);
 }
 
 .operations-mode-toggle {

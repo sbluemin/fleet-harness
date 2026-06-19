@@ -63,3 +63,14 @@ Preserve:
 - Detached-job acceptance vs completion-push distinction.
 - MCP/provider FIFO and archive behavior.
 - Multi-instance state integrity for shared `carriers.json`.
+
+## 6. Console Self-Update Operations
+
+The Fleet Console can update both `fleet-cli` and `fleet-console` globally through its own UI. Operators and contributors should keep the following behavioral facts in mind:
+
+- **Local builds are rejected.** The `POST /update/apply` route returns `403` for unpublished/local builds (for example `pnpm fleet-console` or `tsx` runs). Self-update only works against globally installed npm packages.
+- **Active Operations block the request.** If any console terminal session has a live PTY, the route returns `409` until the operator closes or terminates the active Operation(s). The update does not kill running carrier work.
+- **Preflight before stop.** A writable global `npm`/`pnpm` install that owns the current package is resolved *before* anything is torn down — first server-side (the `POST /update/apply` route returns `503` and never spawns a worker when no usable, writable global manager is found) and again inside the detached worker. A preflight failure leaves the running console untouched, so the operator can install by hand; the server-side rejection surfaces as the `503` response rather than a worker file. Only failures that occur after preflight — for example a `node-pty` native rebuild during the install step, which runs once the old server has begun stopping — produce the worker status/log files described below.
+- **Failure recovery is file-based.** The detached worker writes a JSON status file and a plain-text log file under the console data directory. If the worker fails before the new server starts, inspect those files; do not rely on browser state.
+- **New server, new random port.** After a successful install the worker stops the old server and starts a fresh one on a new OS-assigned loopback port, then opens that URL in a browser. The previous tab is intentionally not reused or auto-reloaded.
+- **Version parity risk.** `fleet-cli` and `fleet-console` are updated as a matched pair from the same latest release. A partial update (for example a global `fleet-cli` install without the matching `fleet-console`) can leave cross-package interfaces out of sync; always update both packages together.

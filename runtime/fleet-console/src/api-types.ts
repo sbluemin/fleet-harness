@@ -188,3 +188,7 @@ export interface ConsoleObserverAggregateJobsResponse {
 export interface ConsoleObserverWorkspacesResponse {
   readonly tenants: readonly ConsoleObservedWorkspace[];
 }
+
+export interface ConsoleUpdateApplyAcceptedResponse {
+  readonly status: "accepted";
+}

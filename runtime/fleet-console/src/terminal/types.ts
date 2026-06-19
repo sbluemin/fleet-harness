@@ -57,6 +57,7 @@ export interface TerminalSessionManager {
   canAttach(sessionId: string): boolean;
   createSession(context: TerminalTicketContext): Promise<void>;
   attach(socket: TerminalSocket, context: TerminalTicketContext): Promise<void>;
+  hasLiveSessions(): boolean;
   getSessionMessagePolicy(sessionId: string): CliMessagePolicy | undefined;
   // 세션이 실제로 launch한 Agent CLI 프로파일이 제공한 rename 슬래시 명령. 없으면 undefined.
   getSessionRenameCommand(sessionId: string): string | undefined;

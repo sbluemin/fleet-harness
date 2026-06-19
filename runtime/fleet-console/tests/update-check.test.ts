@@ -39,6 +39,23 @@ describe("console update check", () => {
     expect(lookupCount).toBe(1);
   });
 
+  it("force refresh bypasses a live TTL cache", async () => {
+    let lookupCount = 0;
+    const service = createConsoleUpdateCheckService({
+      readRelease: () => ({ channel: "stable", version: "1.0.0", packageRoot: "/console" }),
+      fetchLatest: async () => {
+        lookupCount += 1;
+        return lookupCount === 1 ? "1.1.0" : "1.2.0";
+      },
+      now: () => 1_000,
+      ttlMs: 60_000,
+    });
+
+    await expect(service.refresh()).resolves.toEqual({ updateAvailable: true, latestVersion: "1.1.0" });
+    await expect(service.refresh({ force: true })).resolves.toEqual({ updateAvailable: true, latestVersion: "1.2.0" });
+    expect(lookupCount).toBe(2);
+  });
+
   it("degrades to no update when the registry lookup fails", async () => {
     const service = createConsoleUpdateCheckService({
       readRelease: () => ({ channel: "stable", version: "1.0.0", packageRoot: "/console" }),
