@@ -96,11 +96,12 @@ export function Topbar({ state, codexMode }: TopbarProps) {
         <span className="topbar-preview-badge">Research Preview</span>
         {/* GitHub 홍보 컨트롤 — preview 배지와 한 묶음(brass 정체성)으로 묶되, 인터랙티브 링크라 hover 강조를 준다. */}
         <GithubLinks />
+        {/* What's new 버튼 — GitHub 컨트롤 바로 우측에 배치해 브랜드/홍보 묶음과 한 그룹으로 둔다. */}
+        <WhatsNewButton state={state} />
       </div>
       <TheaterControl state={state} />
       <div className="topbar-meta">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
-        <WhatsNewButton state={state} />
         <nav className="topbar-nav" aria-label="주 내비게이션">
           {NAV_ITEMS.map((item) => (
             <Fragment key={item.to}>
