@@ -27,15 +27,18 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
 
-  // commissioning(onboarding) 오버레이가 떠 있는 동안에는 What's new를 양보한다 — 두 모달이 동시에
-  // window capture 리스너를 걸면 뒤에 숨은 What's new가 visible 다이얼로그의 Esc/Tab을 가로채기 때문이다.
-  // onboarding이 닫히면 whatsNewOpen이 유지된 채 아래 효과/렌더가 다시 살아나 그때 표시된다.
-  if (state.whatsNewOpen && !state.onboardingOpen && returnFocusRef.current === null) {
+  // commissioning(onboarding)이 떠 있거나 아직 theater bootstrap이 끝나지 않은 동안에는 What's new를 양보한다.
+  // 두 모달이 동시에 window capture 리스너를 걸면 뒤에 숨은 What's new가 visible 다이얼로그의 Esc/Tab을
+  // 가로채기 때문이다. bootstrap 전에는 resolveOnboardingOnBootstrap()가 아직 돌지 않아 onboardingOpen이 false라,
+  // /observer/status가 /observer/theaters보다 먼저 도착하면 onboardingOpen만으로는 게이트가 새므로 bootstrapped도 함께 본다.
+  // 억제가 풀리면 whatsNewOpen이 유지된 채 아래 효과/렌더가 다시 살아나 그때 표시된다.
+  const whatsNewSuppressed = state.onboardingOpen || !state.bootstrapped;
+  if (state.whatsNewOpen && !whatsNewSuppressed && returnFocusRef.current === null) {
     returnFocusRef.current = document.activeElement as HTMLElement | null;
   }
 
   useEffect(() => {
-    if (!state.whatsNewOpen || state.onboardingOpen) return;
+    if (!state.whatsNewOpen || whatsNewSuppressed) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -53,9 +56,9 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
       returnFocusRef.current = null;
       target?.focus?.();
     };
-  }, [state.whatsNewOpen, state.onboardingOpen]);
+  }, [state.whatsNewOpen, whatsNewSuppressed]);
 
-  if (!state.whatsNewOpen || state.onboardingOpen || RELEASE_NOTES === null) return null;
+  if (!state.whatsNewOpen || whatsNewSuppressed || RELEASE_NOTES === null) return null;
 
   return (
     <div className="whatsnew-overlay" role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
