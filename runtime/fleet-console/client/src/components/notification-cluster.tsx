@@ -17,6 +17,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
 
 // 도킹 패널 열림/닫힘 상태 persistence — Codex Side와 같은 우현 도킹 토글.
 const DOCK_OPEN_STORAGE_KEY = "fleet-console.notificationsDockOpen";
+const DEFAULT_DOCK_OPEN = false;
 
 // 우현 도킹 알림 패널. Codex Side처럼 우측 가장자리에 붙어 엣지 핸들로 언제든 열고 닫는다.
 // 닫힘=엣지 핸들(신호+카운트), 열림=도킹 패널(Theater 그룹). 클러스터는 보이지 않는 세션만 렌더한다.
@@ -153,12 +154,12 @@ export function NotificationClusterHost() {
 }
 
 function readDockOpen(): boolean {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return DEFAULT_DOCK_OPEN;
   try {
     const stored = window.localStorage.getItem(DOCK_OPEN_STORAGE_KEY);
-    return stored === null ? true : stored === "true";
+    return stored === null ? DEFAULT_DOCK_OPEN : stored === "true";
   } catch {
-    return true;
+    return DEFAULT_DOCK_OPEN;
   }
 }
 
