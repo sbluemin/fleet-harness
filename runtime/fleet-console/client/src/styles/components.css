@@ -2203,12 +2203,28 @@
 .canvas-dock {
   position: absolute;
   bottom: var(--space-4);
-  right: 50%;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 15;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: var(--space-2);
-  animation: codex-rise 520ms var(--ease-spring) both;
+  /* 중앙정렬 dock가 좌우대칭으로 펼쳐질 때의 가로 가용폭 상한. 좌측 SHORTCUTS(좌단 --space-4 + 폭 250px =
+     우측끝 266px)·우측 RADAR(우단 --space-4 + 폭 256px = 좌측끝 272px) 계기 중 더 넓은 클리어런스(272px)에
+     숨돌리기 갭(--space-4)을 더해 양변 기준으로 잡는다 — 칩이 이 폭을 채우면 더 늘지 않고 페이지네이션으로
+     넘어간다(반응형: 화면이 좁아질수록 가용폭이 줄어 더 많은 페이지로 나뉜다). 초대형 화면 상한 1100px. */
+  max-width: min(1100px, calc(100vw - (272px + var(--space-4)) * 2));
+  /* 세로 스택이라 토글 행 좌우(rail이 넓을 때)에 투명 정렬 영역이 생긴다. dock 컨테이너는 입력을 통과시키고
+     인터랙티브 자식(토글·레일)만 입력을 받게 해, 그 빈 영역에서 캔버스 pan/zoom/우클릭이 막히지 않게 한다.
+     토글/레일 위 우클릭은 자식→dock(data-canvas-blocker) 버블링으로 여전히 컨텍스트 메뉴가 억제된다. */
+  pointer-events: none;
+  animation: codex-rise-centered 520ms var(--ease-spring) both;
+}
+
+.canvas-dock-toggle,
+.canvas-dock-rail {
+  pointer-events: auto;
 }
 
 /* ── 접기/펼치기 핸들 (최소화 패널이 1개 이상일 때만 렌더된다) ── */
@@ -2254,7 +2270,7 @@
   height: 14px;
 }
 
-/* 펼침 상태: chevron 180° 회전(›› → ‹‹) */
+/* 펼침 상태: chevron 180° 회전(∧ 위 → ∨ 아래) — 펼친 패널을 다시 접는 방향을 가리킨다. */
 .canvas-dock.is-expanded .canvas-dock-toggle-chevron {
   transform: rotate(180deg);
 }
@@ -2343,45 +2359,41 @@
   box-shadow: 0 0 8px var(--warn-glow);
 }
 
-/* ── 칩 레일: 펼침 시에만 표시되는 좌측 확장 영역(페이저 + 칩 트랙 + 페이지 표시).
-   접힘 시 max-width:0 + 페이드로 사라지고, overflow:hidden으로 펼침 전환을 깔끔히 와이프한다.
-   토글은 dock 우측 고정점이고 레일은 그 왼쪽에서만 좌측으로 늘어난다. ── */
+/* ── 칩 레일: 펼침 시 토글 "아래"에 나타나는 가로 행(페이저 + 칩 트랙 + 페이지 표시)을 화면 중앙으로
+   정렬한다. 접힘 시 max-height:0 + 페이드로 사라지고, overflow:hidden으로 수직 펼침 전환을 깔끔히 와이프한다.
+   가로 폭은 부모(.canvas-dock)의 침범경계 max-width가 제한하고, 칩 트랙이 그 안에서 줄며 페이지네이션된다. ── */
 .canvas-dock-rail {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  min-width: 0;
-  max-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  max-height: 0;
   opacity: 0;
   overflow: hidden;
   transition:
-    max-width 360ms var(--ease-spring),
+    max-height 360ms var(--ease-spring),
     opacity 240ms ease;
 }
 
-/* dock는 토글 우측을 화면 중앙(right:50%)에 고정하므로 레일이 쓸 수 있는 폭은 캔버스의 좌측 절반(50vw)에서
-   토글·갭과 좌하단 단축키 계기 클리어런스를 뺀 만큼이다. 64vw처럼 절반을 넘기면 흔한 폭에서 레일이 가용 공간을
-   넘어 좌측 끝 페이저/과거 칩이 .operations-canvas overflow에 잘리거나 단축키를 덮는다. 380px = 토글(~72)+갭(8)
-   + 단축키 클리어런스(~300)로, calc가 바인딩하는 폭에선 레일 좌측 모서리가 항상 화면 좌측 300px(단축키 우측
-   ≈266px 밖)에 머문다. 하한은 200px가 아니라 페이저가 보이는 최소치(120px)다 — 200px 하한은 좁은 폭(예:
-   1024px에서 calc=132px)에서 절반-캡을 무력화해 침범을 되살리므로, 그 대신 레일을 더 줄여 페이지 수를 늘린다.
-   120px 미만으로 더 좁아지는 폭(≲930px, 단축키는 접을 수 있고 dock는 z-index 위라 조작 가능)에서만 일부 겹친다. */
+/* 펼침: 한 줄 높이만큼(칩/페이저 34px + codex-rise 등장 오프셋·포커스 링 여유) 수직으로 와이프한다. */
 .canvas-dock.is-expanded .canvas-dock-rail {
-  max-width: clamp(120px, calc(50vw - 380px), 880px);
+  max-height: 56px;
   opacity: 1;
 }
 
-/* 칩 트랙(스크롤 뷰포트): 가용 폭(max-width)을 넘으면 페이저로 페이지 이동한다. overflow:hidden이라
-   스크롤바·휠 스크롤은 없고 '<'/'>' 버튼의 scrollBy(clientWidth)로만 페이지를 넘긴다.
-   scroll-snap-align으로 페이지 경계가 칩 시작에 맞아 칩이 어중간하게 잘리지 않는다.
-   상한은 큰 화면 기준 640px이고, 좁은 화면에선 레일 절반-캡(위) 안에서 flex-shrink로 더 줄어들며(min-width:0)
-   그만큼 더 많은 페이지로 나뉜다 — 별도 vw 캡 없이 레일이 가용 절반을 강제한다. */
+/* 칩 트랙(스크롤 뷰포트): 페이저/페이지 표시를 뺀 레일의 남는 가로폭을 차지하며(flex:0 1 auto + min-width:0),
+   콘텐츠가 그 폭을 넘으면 페이저로 페이지를 넘긴다. 폭 상한은 부모 .canvas-dock의 침범경계 max-width가
+   강제하므로 여기 별도 px 캡은 두지 않는다 — 화면이 좁을수록 트랙이 더 줄어 더 많은 페이지로 나뉜다.
+   overflow:hidden이라 스크롤바·휠 스크롤은 없고 '<'/'>' 버튼의 scrollBy(clientWidth)로만 페이지를 넘기며,
+   scroll-snap-align으로 페이지 경계가 칩 시작에 맞아 칩이 어중간하게 잘리지 않는다. */
 .canvas-dock-chips {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  max-width: 640px;
+  flex: 0 1 auto;
   overflow: hidden;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
@@ -2444,7 +2456,7 @@
   flex: none;
   gap: 6px;
   height: 34px;
-  padding: 0 6px 0 10px;
+  padding: 0 12px 0 10px;
   white-space: nowrap;
   cursor: pointer;
   scroll-snap-align: start;
@@ -2576,36 +2588,6 @@
   border: 1px solid color-mix(in oklch, var(--aurora) 28%, transparent);
   border-radius: var(--radius-sm);
   padding: 1px 6px;
-}
-
-.canvas-dock-chip-restore {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 22px;
-  height: 22px;
-  margin-left: 2px;
-  color: var(--ink-fog);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.canvas-dock-chip-restore:hover,
-.canvas-dock-chip-restore:focus-visible {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-}
-
-.canvas-dock-chip-restore svg {
-  display: block;
-  width: 12px;
-  height: 12px;
 }
 
 .canvas-panel-titlebar {
