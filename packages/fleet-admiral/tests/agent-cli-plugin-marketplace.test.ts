@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAgentCliPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/plugin/index.js";
+import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered } from "../src/agent-cli/plugin/index.js";
 import type { CodexCommandRunner } from "../src/agent-cli/plugin/index.js";
 
 interface Deferred<T> {
@@ -192,6 +192,116 @@ describe("agent CLI plugin marketplace rendering", () => {
     // 제거된 fleet-global 잔재는 사라지고, 활성 fleet 코어 플러그인은 보존된다.
     expect(existsSync(stalePluginDir)).toBe(false);
     expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet"))).toBe(true);
+  });
+});
+
+describe("deprecated codex plugin cleanup", () => {
+  function runCleanup(input: {
+    readonly marketplaceList: string;
+    readonly pluginList: string;
+    readonly cwd: string;
+    readonly targets: { readonly homeMarketplaceName: string; readonly homeMarketplaceRoot: string; readonly projectMarketplaceRoot: string };
+    readonly failOn?: string;
+  }): { readonly commands: string[]; readonly warning: Promise<string | undefined> } {
+    const commands: string[] = [];
+    const runCommand: CodexCommandRunner = (command) => {
+      const line = command.args.join(" ");
+      commands.push(line);
+      if (line === "plugin marketplace list") return { status: 0, stderr: "", stdout: input.marketplaceList };
+      if (line === "plugin list") return { status: 0, stderr: "", stdout: input.pluginList };
+      if (input.failOn !== undefined && line === input.failOn) return { status: 1, stderr: "codex boom", stdout: "" };
+      return { status: 0, stderr: "", stdout: "" };
+    };
+    const warning = cleanupDeprecatedCodexPluginState(
+      { args: [], bin: "codex", cwd: input.cwd, env: {} },
+      runCommand,
+      async (_target, fn) => fn(),
+      input.targets,
+    );
+    return { commands, warning };
+  }
+
+  it("removes the deprecated fleet-global plugin and keeps the home marketplace", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-cleanup-global-"));
+    tempDirs.push(root);
+    const { commands, warning } = runCleanup({
+      marketplaceList: `fleet-harness ${path.join(root, "marketplace")}\n`,
+      pluginList: "fleet@fleet-harness  installed, enabled\nfleet-global@fleet-harness  installed, enabled\n",
+      cwd: path.join(root, "project"),
+      targets: { homeMarketplaceName: "fleet-harness", homeMarketplaceRoot: path.join(root, "marketplace"), projectMarketplaceRoot: path.join(root, "project", ".fleet") },
+    });
+    expect(await warning).toBeUndefined();
+    expect(commands).toContain("plugin remove fleet-global -m fleet-harness");
+    expect(commands).not.toContain("plugin marketplace remove fleet-harness");
+  });
+
+  it("removes the project marketplace and flat filesystem residue for the current cwd", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-cleanup-project-"));
+    tempDirs.push(root);
+    const projectFleetRoot = path.join(root, "project", ".fleet");
+    for (const entry of [".agents", ".claude-plugin", "plugin", "knowledge"]) {
+      mkdirSync(path.join(projectFleetRoot, entry), { recursive: true });
+    }
+    const marketplaceName = "fleet-project-abc123def456";
+    const { commands, warning } = runCleanup({
+      marketplaceList: `fleet-harness ${path.join(root, "marketplace")}\n${marketplaceName} ${projectFleetRoot}\n`,
+      pluginList: `fleet@fleet-harness  installed, enabled\nfleet-project@${marketplaceName}  installed, enabled\n`,
+      cwd: path.join(root, "project"),
+      targets: { homeMarketplaceName: "fleet-harness", homeMarketplaceRoot: path.join(root, "marketplace"), projectMarketplaceRoot: projectFleetRoot },
+    });
+    expect(await warning).toBeUndefined();
+    expect(commands).toContain(`plugin remove fleet-project -m ${marketplaceName}`);
+    expect(commands).toContain(`plugin marketplace remove ${marketplaceName}`);
+    expect(existsSync(path.join(projectFleetRoot, ".agents"))).toBe(false);
+    expect(existsSync(path.join(projectFleetRoot, ".claude-plugin"))).toBe(false);
+    expect(existsSync(path.join(projectFleetRoot, "plugin"))).toBe(false);
+    // flat 잔재 3개만 제거하고 다른 .fleet 콘텐츠(knowledge)는 보존한다.
+    expect(existsSync(path.join(projectFleetRoot, "knowledge"))).toBe(true);
+  });
+
+  it("does not touch project marketplaces rooted at a different cwd", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-cleanup-other-"));
+    tempDirs.push(root);
+    const projectFleetRoot = path.join(root, "project", ".fleet");
+    const otherFleetRoot = path.join(root, "other", ".fleet");
+    mkdirSync(projectFleetRoot, { recursive: true });
+    mkdirSync(otherFleetRoot, { recursive: true });
+    const otherName = "fleet-project-999888777666";
+    const { commands, warning } = runCleanup({
+      marketplaceList: `${otherName} ${otherFleetRoot}\n`,
+      pluginList: `fleet-project@${otherName}  installed, enabled\n`,
+      cwd: path.join(root, "project"),
+      targets: { homeMarketplaceName: "fleet-harness", homeMarketplaceRoot: path.join(root, "marketplace"), projectMarketplaceRoot: projectFleetRoot },
+    });
+    expect(await warning).toBeUndefined();
+    expect(commands).not.toContain(`plugin marketplace remove ${otherName}`);
+    expect(existsSync(otherFleetRoot)).toBe(true);
+  });
+
+  it("is a no-op when no deprecated state remains", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-cleanup-noop-"));
+    tempDirs.push(root);
+    const { commands, warning } = runCleanup({
+      marketplaceList: `fleet-harness ${path.join(root, "marketplace")}\n`,
+      pluginList: "fleet@fleet-harness  installed, enabled\n",
+      cwd: path.join(root, "project"),
+      targets: { homeMarketplaceName: "fleet-harness", homeMarketplaceRoot: path.join(root, "marketplace"), projectMarketplaceRoot: path.join(root, "project", ".fleet") },
+    });
+    expect(await warning).toBeUndefined();
+    expect(commands).toEqual(["plugin marketplace list", "plugin list"]);
+  });
+
+  it("returns a warning without throwing when a codex remove command fails", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-cleanup-fail-"));
+    tempDirs.push(root);
+    const { warning } = runCleanup({
+      marketplaceList: `fleet-harness ${path.join(root, "marketplace")}\n`,
+      pluginList: "fleet-global@fleet-harness  installed, enabled\n",
+      cwd: path.join(root, "project"),
+      failOn: "plugin remove fleet-global -m fleet-harness",
+      targets: { homeMarketplaceName: "fleet-harness", homeMarketplaceRoot: path.join(root, "marketplace"), projectMarketplaceRoot: path.join(root, "project", ".fleet") },
+    });
+    expect(await warning).toContain("codex plugin remove fleet-global");
   });
 });
 

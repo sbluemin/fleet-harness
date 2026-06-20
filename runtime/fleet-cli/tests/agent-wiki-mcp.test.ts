@@ -265,6 +265,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
 
       expect(commands).toEqual([
 	        "plugin marketplace list",
+	        "plugin list",
+	        "plugin marketplace list",
 	        `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
 	        "plugin list",
 	        "plugin add fleet -m fleet-harness",
@@ -362,6 +364,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
       });
 
       expect(commands).toEqual([
+        "plugin marketplace list",
+        "plugin list",
         "plugin marketplace list",
         `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
         "plugin list",
