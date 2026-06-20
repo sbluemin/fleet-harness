@@ -25,6 +25,8 @@ import {
   openOperationSearch,
   openShortcuts,
   readStoredRenderer,
+  removeTerminalSession,
+  removeTheater,
   resolveOnboardingOnBootstrap,
   selectJob,
   selectTerminalSession,
@@ -779,7 +781,6 @@ describe("store", () => {
     ]);
 
     applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
-    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
     expect(getState().operationNotifications["session-a"]).toBeDefined();
 
     selectTerminalSession("session-a");
@@ -787,6 +788,39 @@ describe("store", () => {
 
     applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
     focusOperation("session-b");
+    expect(getState().operationNotifications["session-b"]).toBeUndefined();
+  });
+
+  it("clears a session notification when its turn resumes", () => {
+    setState({ operationNotifications: {} });
+    hydrateTheaters([THEATER_A]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+    ]);
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
+    expect(getState().operationNotifications["session-a"]).toBeDefined();
+    // 입력 대기 응답 후 턴이 재개(running)되면 stale 알림(보이는 패널 awaiting + 클러스터 행)을 자동 정리한다.
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
+    expect(getState().operationNotifications["session-a"]).toBeUndefined();
+  });
+
+  it("prunes notifications when a session or its Theater is removed", () => {
+    setState({ operationNotifications: {} });
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
+    applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
+
+    // 세션 삭제 — 해당 세션 알림만 제거되고 다른 세션 알림은 유지된다.
+    removeTerminalSession("session-a");
+    expect(getState().operationNotifications["session-a"]).toBeUndefined();
+    expect(getState().operationNotifications["session-b"]).toBeDefined();
+
+    // Theater 삭제 — 그 Theater의 모든 Operation 알림이 제거된다.
+    removeTheater("theater-b");
     expect(getState().operationNotifications["session-b"]).toBeUndefined();
   });
 

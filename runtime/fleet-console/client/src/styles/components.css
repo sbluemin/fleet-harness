@@ -5874,9 +5874,10 @@
 }
 
 /* ── Notification Cluster ──────────────────────────────────────────────
-   우상단 고정 알림 계기판. Theater 그룹이 펼침 없이 기본 표시되고,
+   우상단 고정 알림 계기판(함교 당직판). Theater 그룹이 펼침 없이 기본 표시되고,
    각 Operation 행은 kind 비콘으로 완료(--positive)·입력 대기(--warn)를 구분한다.
-   glass-strong 표면 + brass 구조색. aurora는 쓰지 않는다(brass/aurora 역할 혼용 금지). */
+   모든 색은 theme.css 토큰으로만 표현해 maritime/carbon 양 테마를 추종한다.
+   brass=구조색, aurora 미사용(역할 혼용 금지). 기존 operation-toast* 규칙은 제거됨. */
 .notification-cluster {
   position: fixed;
   top: var(--console-topbar-offset);
@@ -5902,6 +5903,7 @@
   opacity: 0.86;
 }
 
+/* ── Masthead (요약 헤더) ── */
 .notification-cluster-masthead {
   display: flex;
   align-items: center;
@@ -5920,11 +5922,11 @@
 }
 
 .notification-cluster-pennant:hover {
-  background: oklch(70% 0.05 248 / 10%);
+  background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
 }
 
+/* ensign — 함교 신호등. 활성 시 brass glow ring, 음소거 시 소등(ink). */
 .notification-cluster-ensign {
-  position: relative;
   width: 9px;
   height: 9px;
   border-radius: 999px;
@@ -5950,7 +5952,6 @@
   font-size: 19px;
   font-weight: 600;
   line-height: 1;
-  letter-spacing: 0;
   color: var(--ink-pearl);
 }
 
@@ -5992,6 +5993,7 @@
   flex-shrink: 0;
 }
 
+/* 헤더 우측 kind 합계 칩 — 완료/대기 비율을 한눈에. */
 .notification-cluster-tallies {
   display: flex;
   align-items: center;
@@ -6015,13 +6017,13 @@
 .notification-tally.is-input-waiting {
   color: var(--warn);
   background: var(--warn-glow);
-  box-shadow: inset 0 0 0 1px oklch(80% 0.13 85 / 35%);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 35%, transparent);
 }
 
 .notification-tally.is-ended {
   color: var(--positive);
   background: var(--positive-glow);
-  box-shadow: inset 0 0 0 1px oklch(80% 0.15 152 / 35%);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--positive) 35%, transparent);
 }
 
 .notification-cluster-cog {
@@ -6042,10 +6044,11 @@
 
 .notification-cluster-cog:hover,
 .notification-cluster-cog[aria-expanded="true"] {
-  background: oklch(70% 0.05 248 / 12%);
+  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
   color: var(--brass);
 }
 
+/* ── Deck (Theater 그룹 스크롤 컨테이너) ── */
 .notification-cluster-deck {
   display: flex;
   flex-direction: column;
@@ -6055,9 +6058,10 @@
   padding: 0 var(--space-1);
 }
 
+/* ── Theater 그룹 — 함대 편성 카드. brass 좌측 마커 + 미세 brass tint로 구획. ── */
 .notification-cluster-group {
   border-radius: var(--radius-md);
-  background: oklch(28% 0.04 248 / 38%);
+  background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
   border: 1px solid var(--surface-rim);
   overflow: hidden;
 }
@@ -6069,6 +6073,7 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--surface-rim);
   box-shadow: inset 3px 0 0 0 var(--brass-deep);
+  background: color-mix(in oklch, var(--brass) 5%, transparent);
 }
 
 .notification-cluster-theater {
@@ -6097,9 +6102,10 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--ink-spectral);
-  background: oklch(70% 0.05 248 / 16%);
+  background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
 }
 
+/* ── Operation 행 ── */
 .notification-cluster-roster {
   list-style: none;
   margin: 0;
@@ -6120,9 +6126,10 @@
 }
 
 .notification-row:hover {
-  background: oklch(70% 0.05 248 / 9%);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
+/* kind 비콘 — 완료=positive(에메랄드), 입력 대기=warn(amber). glow ring으로 신호등 처리. */
 .notification-row-beacon {
   width: 8px;
   height: 8px;
@@ -6131,7 +6138,7 @@
 }
 
 .notification-row.is-input-waiting {
-  border-left-color: oklch(80% 0.13 85 / 55%);
+  border-left-color: color-mix(in oklch, var(--warn) 55%, transparent);
 }
 
 .notification-row.is-input-waiting .notification-row-beacon {
@@ -6140,7 +6147,7 @@
 }
 
 .notification-row.is-ended {
-  border-left-color: oklch(80% 0.15 152 / 55%);
+  border-left-color: color-mix(in oklch, var(--positive) 55%, transparent);
 }
 
 .notification-row.is-ended .notification-row-beacon {
@@ -6194,7 +6201,7 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--ink-spectral);
-  background: oklch(70% 0.05 248 / 18%);
+  background: color-mix(in oklch, var(--ink-fog) 18%, transparent);
   flex-shrink: 0;
 }
 
@@ -6216,13 +6223,14 @@
   background: var(--brass-glow);
 }
 
+/* ── 설정 팝오버 ── */
 .notification-cluster-settings {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: oklch(22% 0.05 248 / 70%);
+  background: color-mix(in oklch, var(--surface-pillar) 82%, transparent);
   border: 1px solid var(--surface-rim);
   animation: codex-pop var(--duration-base) var(--ease-spring) both;
 }
@@ -6250,7 +6258,7 @@
 }
 
 .notification-cluster-setting:hover {
-  background: oklch(70% 0.05 248 / 9%);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
 .notification-cluster-setting input {

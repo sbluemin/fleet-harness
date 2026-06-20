@@ -9,13 +9,14 @@ import { focusOperation, setDnd, setGlobalMute, toggleTheaterMute } from "../sto
 import type { NotificationTheaterGroup } from "../reduce.js";
 import type { NotificationKind, OperationNotification } from "../types.js";
 
-// kind별 사용자 표기 — 완료(positive)·입력 대기(warn). 색은 CSS가 .is-<kind>로 분기한다.
+// kind별 사용자 표기 — 함대 메타포 영문 라벨. 완료=Stood down(전투배치 해제), 입력 대기=Awaiting orders(명령 대기).
+// 색은 CSS가 .is-<kind>로 분기한다(완료=--positive, 입력 대기=--warn).
 const KIND_LABEL: Record<NotificationKind, string> = {
-  ended: "완료",
-  "input-waiting": "입력 대기",
+  ended: "Stood down",
+  "input-waiting": "Awaiting orders",
 };
 
-// 우상단 고정 알림 계기판. Theater 그룹이 펼침 조작 없이 기본 표시되고(대원수 지시),
+// 우상단 고정 알림 계기판(함교 당직판). Theater 그룹이 펼침 조작 없이 기본 표시되고,
 // 각 Operation 행은 kind 비콘으로 완료/입력 대기를 구분한다. 클러스터는 보이지 않는 세션만 렌더한다.
 export function NotificationClusterHost() {
   const state = useConsoleState();
@@ -54,7 +55,7 @@ export function NotificationClusterHost() {
     <aside
       className={`notification-cluster ${collapsed ? "is-collapsed" : "is-open"} ${muted ? "is-muted" : ""}`}
       aria-live="polite"
-      aria-label="Operation 알림"
+      aria-label="Operation notifications"
     >
       <header className="notification-cluster-masthead">
         <button
@@ -62,12 +63,12 @@ export function NotificationClusterHost() {
           className="notification-cluster-pennant"
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
-          aria-label={collapsed ? "알림 펼치기" : "알림 접기"}
+          aria-label={collapsed ? "Expand notifications" : "Collapse notifications"}
         >
           <span className="notification-cluster-ensign" data-state={muted ? "muted" : "active"} aria-hidden="true" />
           <span className="notification-cluster-headline">
-            <span className="notification-cluster-count">{muted ? "음소거됨" : totalCount}</span>
-            <span className="notification-cluster-scope">{muted ? "Muted" : `${groups.length} Theater`}</span>
+            <span className="notification-cluster-count">{muted ? "Muted" : totalCount}</span>
+            <span className="notification-cluster-scope">{muted ? "Alerts paused" : `${groups.length} Theater`}</span>
           </span>
           <ChevronIcon className="notification-cluster-chevron" />
         </button>
@@ -83,8 +84,8 @@ export function NotificationClusterHost() {
             className="notification-cluster-cog"
             onClick={() => setSettingsOpen(!settingsOpen)}
             aria-expanded={settingsOpen}
-            aria-label="알림 설정"
-            title="알림 설정"
+            aria-label="Notification settings"
+            title="Notification settings"
           >
             <SettingsIcon />
           </button>
@@ -114,9 +115,9 @@ export function NotificationClusterHost() {
                       type="button"
                       className="notification-row-move"
                       onClick={() => handleMove(notification)}
-                      aria-label={`${group.theaterLabel} ${notification.operationLabel}로 이동`}
+                      aria-label={`Open ${group.theaterLabel} ${notification.operationLabel}`}
                     >
-                      이동
+                      Open
                     </button>
                   </li>
                 ))}
@@ -151,15 +152,15 @@ function NotificationSettings({ groups }: { readonly groups: readonly Notificati
   const state = useConsoleState();
   const muteableGroups = collectMuteableTheaterGroups(groups, state.notificationPreferences.mutedTheaterIds, state.theaters);
   return (
-    <div className="notification-cluster-settings" role="dialog" aria-label="알림 설정">
-      <p className="notification-cluster-settings-eyebrow">표시 제어</p>
+    <div className="notification-cluster-settings" role="dialog" aria-label="Notification settings">
+      <p className="notification-cluster-settings-eyebrow">Display</p>
       <label className="notification-cluster-setting">
         <input
           type="checkbox"
           checked={state.notificationPreferences.globalMute}
           onChange={(event) => setGlobalMute(event.currentTarget.checked)}
         />
-        <span>전체 음소거</span>
+        <span>Mute all</span>
       </label>
       <label className="notification-cluster-setting">
         <input
@@ -167,9 +168,9 @@ function NotificationSettings({ groups }: { readonly groups: readonly Notificati
           checked={state.notificationPreferences.dnd}
           onChange={(event) => setDnd(event.currentTarget.checked)}
         />
-        <span>방해 금지</span>
+        <span>Do not disturb</span>
       </label>
-      {muteableGroups.length > 0 ? <p className="notification-cluster-settings-eyebrow">Theater별</p> : null}
+      {muteableGroups.length > 0 ? <p className="notification-cluster-settings-eyebrow">By Theater</p> : null}
       {muteableGroups.map((group) => (
         <label className="notification-cluster-setting" key={group.theaterId}>
           <input

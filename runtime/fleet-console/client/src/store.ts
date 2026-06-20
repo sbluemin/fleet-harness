@@ -463,6 +463,8 @@ export function removeTheater(theaterId: string): void {
   }
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId === theaterId ? null : state.activeTheaterId);
   const expandedSessionIds = state.expandedSessionIds.filter((id) => sessions[id]);
+  // 삭제된 Theater의 Operation 알림도 클러스터에서 정리한다.
+  const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
   writeStoredActiveTheaterId(activeTheaterId);
   writeStoredExpandedSessions(expandedSessionIds);
   setState({
@@ -473,6 +475,7 @@ export function removeTheater(theaterId: string): void {
     activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
     selectedJobId: null,
     expandedSessionIds,
+    operationNotifications,
   });
 }
 
@@ -490,6 +493,8 @@ export function removeTerminalSession(sessionId: string): void {
     activeTerminalSessionId: wasActive ? resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, null) : state.activeTerminalSessionId,
     selectedJobId: wasActive ? null : state.selectedJobId,
     expandedSessionIds,
+    // 삭제된 세션의 알림이 클러스터에 stale 행으로 남지 않도록 정리한다(이동 액션으로도 해소 불가하므로).
+    operationNotifications: removeNotificationForSession(state.operationNotifications, sessionId),
   });
 }
 
@@ -687,6 +692,11 @@ function mergeTurnTransitionNotification(
   prev: SessionInfo,
   next: SessionInfo,
 ): Readonly<Record<string, OperationNotification>> {
+  // 작업 재개(running 진입): 이전 입력 대기/완료 알림은 무효이므로 해당 세션 알림을 제거한다.
+  // 입력 대기 응답 후 턴이 재개되면, 보이는 패널의 awaiting 신호와 클러스터 행이 stale로 남는 것을 막는다.
+  if (prev.turnState !== "running" && next.turnState === "running") {
+    return removeNotificationForSession(notifications, next.sessionId);
+  }
   // 작업 완료(턴 종료)만 알린다. 턴 진행 시작(running)은 알리지 않는다.
   // 캐리어 출격 중(미완료 job이 있음)에는 ended 알림을 억제한다 — 실제 작업은 계속 진행 중이므로.
   if (prev.turnState !== "ended" && next.turnState === "ended" && !hasActiveCarrierJob(next)) {
@@ -717,6 +727,22 @@ function removeNotificationForSession(
   const next = { ...notifications };
   delete next[sessionId];
   return next;
+}
+
+function pruneNotificationsForTheater(
+  notifications: Readonly<Record<string, OperationNotification>>,
+  theaterId: string,
+): Readonly<Record<string, OperationNotification>> {
+  let changed = false;
+  const next: Record<string, OperationNotification> = {};
+  for (const [sessionId, notification] of Object.entries(notifications)) {
+    if (notification.theaterId === theaterId) {
+      changed = true;
+      continue;
+    }
+    next[sessionId] = notification;
+  }
+  return changed ? next : notifications;
 }
 
 function hasActiveCarrierJob(session: SessionInfo): boolean {
