@@ -31,6 +31,8 @@ import {
   selectedJob,
   sessionJobs,
   setActiveTheater,
+  setDnd,
+  setGlobalMute,
   setTerminalRenderer,
   setState,
   theaterSessionOrder,
@@ -38,14 +40,16 @@ import {
   toggleOperationSearch,
   toggleShortcuts,
   toggleShell,
+  toggleTheaterMute,
 } from "../client/src/store.js";
-import type { ObservedEvent, ObservedTenant, TheaterInfo } from "../client/src/types.js";
+import type { ObservedEvent, ObservedTenant, OperationNotification, TheaterInfo } from "../client/src/types.js";
 
 const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", createdAt: 1, sessions: 1, theaterId: "theater-a" };
 const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
 const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
 const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
+const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, tenantId = "tenant-1", jobId = "job-1"): ObservedEvent {
   return { id, tenantId, jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };
@@ -63,6 +67,10 @@ function mockLocalStorage(storage: Map<string, string>): void {
       },
     },
   });
+}
+
+function currentNotifications(): readonly OperationNotification[] {
+  return Object.values(getState().operationNotifications);
 }
 
 beforeEach(() => {
@@ -93,6 +101,11 @@ beforeEach(() => {
     bootstrapped: false,
     pendingOperationFocus: null,
     selectedJobId: null,
+    operationsViewActive: false,
+    whatsNewOpen: false,
+    terminalSessionsHydrated: false,
+    operationNotifications: {},
+    notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
   });
 });
 
@@ -435,8 +448,8 @@ describe("store", () => {
     expect(getState().sessions["session-a"]).toMatchObject({ label: "Bridge", tenantId: "tenant-1", registrationId: "registration-a", theaterId: "theater-a" });
   });
 
-  it("raises an input-waiting toast unless the active operation is actually on the Operations view", () => {
-    setState({ operationToasts: [] });
+  it("merges input-waiting notifications by session and keeps visible sessions in the normalized map", () => {
+    setState({ operationNotifications: {} });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
@@ -447,28 +460,33 @@ describe("store", () => {
     // Operations 뷰(/operations)에서 session-a를 보고 있는 상태.
     setState({ operationsViewActive: true });
 
-    // 비활성 Operation(session-b, 다른 Theater) → 입력 대기 토스트 발행.
+    // 비활성 Operation(session-b, 다른 Theater) → 입력 대기 알림 발행.
     applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
-    expect(getState().operationToasts).toHaveLength(1);
-    expect(getState().operationToasts[0]).toMatchObject({ kind: "input-waiting", sessionId: "session-b", theaterLabel: "Beta" });
+    expect(currentNotifications()).toHaveLength(1);
+    const firstRaisedSeq = getState().operationNotifications["session-b"]?.lastRaisedSeq;
+    expect(getState().operationNotifications["session-b"]).toMatchObject({ kind: "input-waiting", sessionId: "session-b", theaterLabel: "Beta", count: 1 });
 
-    // 같은 세션 재알림(AskUserQuestion의 PreToolUse+Notification 동시 발화 등) → 중복 발행 안 함.
+    // 같은 세션 재알림(AskUserQuestion의 PreToolUse+Notification 동시 발화 등) → count 병합 + seq 갱신.
     applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
-    expect(getState().operationToasts).toHaveLength(1);
+    expect(currentNotifications()).toHaveLength(1);
+    expect(getState().operationNotifications["session-b"]).toMatchObject({ count: 2 });
+    expect(getState().operationNotifications["session-b"]?.lastRaisedSeq).toBeGreaterThan(firstRaisedSeq ?? 0);
 
-    // Operations 뷰에서 보고 있는 활성 Operation(session-a) → 억제(추가 토스트 없음).
+    // Operations 뷰에서 보고 있는 활성 Operation(session-a)도 맵에 남기고, 렌더 selector에서 visible로 분리한다.
     applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
-    expect(getState().operationToasts).toHaveLength(1);
+    expect(currentNotifications()).toHaveLength(2);
+    expect(getState().operationNotifications["session-a"]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
 
-    // Operations 뷰를 벗어나면(Welcome/Codex) 같은 활성 세션이라도 화면 밖이므로 입력 대기를 알린다.
+    // Operations 뷰를 벗어난 상태의 재알림도 같은 sessionId에 병합된다.
     setState({ operationsViewActive: false });
     applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
-    expect(getState().operationToasts).toHaveLength(2);
-    expect(getState().operationToasts[1]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
+    expect(currentNotifications()).toHaveLength(2);
+    expect(getState().operationNotifications["session-a"]).toMatchObject({ kind: "input-waiting", sessionId: "session-a", count: 2 });
   });
 
   it("never raises a carrier-call toast when a fresh carrier job appears on an inactive operation", () => {
-    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    setState({ operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} }, tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
@@ -482,11 +500,12 @@ describe("store", () => {
     // 갓 발생한(최신 타임스탬프) 새 carrier job — carrier-call 토스트가 폐지됐으므로 어떤 토스트도 뜨지 않는다.
     applyObservedEvent({ id: 1, tenantId: "tenant-1", jobId: "job-1", type: "job:registered", at: Date.now(), event: { type: "job:registered", jobId: "job-1" } });
 
-    expect(getState().operationToasts).toHaveLength(0);
+    expect(currentNotifications()).toHaveLength(0);
   });
 
   it("suppresses the ended toast while a carrier job is in flight and emits none on bare job finalization", () => {
-    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    setState({ operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} }, tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
@@ -503,15 +522,16 @@ describe("store", () => {
 
     // 턴 종료 — job이 진행 중이므로 ended 토스트 억제.
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
-    expect(getState().operationToasts).toHaveLength(0);
+    expect(currentNotifications()).toHaveLength(0);
 
     // 출격 작업의 완료(job:finalized)만으로는 완료 토스트를 발행하지 않는다 — 라이브 Operation 패널이 표시.
     applyObservedEvent({ id: 2, tenantId: "tenant-1", jobId: "job-1", type: "job:finalized", at: Date.now(), event: { type: "job:finalized", jobId: "job-1", status: "done" } });
-    expect(getState().operationToasts).toHaveLength(0);
+    expect(currentNotifications()).toHaveLength(0);
   });
 
   it("suppresses an idle_prompt attention toast while a carrier job is in flight, but keeps permission/absent reasons", () => {
-    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    setState({ operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} }, tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
@@ -528,21 +548,23 @@ describe("store", () => {
 
     // idle_prompt는 입력 대기가 아니라 비동기 작업 대기 → 출격 중 억제.
     applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" }, "idle_prompt");
-    expect(getState().operationToasts).toHaveLength(0);
+    expect(currentNotifications()).toHaveLength(0);
 
     // 권한 요청은 출격 중에도 실제 입력 대기 → 알림.
     applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" }, "permission_prompt");
-    expect(getState().operationToasts).toHaveLength(1);
-    expect(getState().operationToasts[0]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
+    expect(currentNotifications()).toHaveLength(1);
+    expect(currentNotifications()[0]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
 
     // reason 부재(예: AskUserQuestion=PreToolUse)는 idle로 추정하지 않고 알림을 유지한다.
-    setState({ operationToasts: [] });
+    setState({ operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} } });
     applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
-    expect(getState().operationToasts).toHaveLength(1);
+    expect(currentNotifications()).toHaveLength(1);
   });
 
   it("treats a snapshot-restored finished job without finishedAt as inactive so a later turn end still fires", () => {
-    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    setState({ operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} }, tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
@@ -565,12 +587,13 @@ describe("store", () => {
     // 출격은 이미 종결(done)이므로 턴 종료 시 stop 토스트가 정상 발행돼야 한다(영구 억제 회귀 방지).
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
-    expect(getState().operationToasts).toHaveLength(1);
-    expect(getState().operationToasts[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
+    expect(currentNotifications()).toHaveLength(1);
+    expect(currentNotifications()[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
   });
 
   it("fires the ended toast on turn end when the carrier job already finished first", () => {
-    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    setState({ operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} }, tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
     hydrateTerminalSessions([
       { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
@@ -584,12 +607,12 @@ describe("store", () => {
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
     applyObservedEvent({ id: 1, tenantId: "tenant-1", jobId: "job-1", type: "job:registered", at: Date.now(), event: { type: "job:registered", jobId: "job-1" } });
     applyObservedEvent({ id: 2, tenantId: "tenant-1", jobId: "job-1", type: "job:finalized", at: Date.now(), event: { type: "job:finalized", jobId: "job-1", status: "done" } });
-    expect(getState().operationToasts).toHaveLength(0);
+    expect(currentNotifications()).toHaveLength(0);
 
     // 턴 종료 시점엔 미완료 job이 없으므로 turn 전이 경로가 완료 토스트를 발행한다.
     applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "ended" });
-    expect(getState().operationToasts).toHaveLength(1);
-    expect(getState().operationToasts[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
+    expect(currentNotifications()).toHaveLength(1);
+    expect(currentNotifications()[0]).toMatchObject({ kind: "ended", sessionId: "session-a" });
   });
 
   it("selects a job into the centered overlay and toggles it closed", () => {
@@ -746,6 +769,48 @@ describe("store", () => {
       selectedJobId: null,
     });
     expect(storage.get("fleet-console.activeTheaterId")).toBe("theater-b");
+  });
+
+  it("dismisses notifications only from user-intent focus paths", () => {
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
+    applySessionUpdate({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a", turnState: "running" });
+    expect(getState().operationNotifications["session-a"]).toBeDefined();
+
+    selectTerminalSession("session-a");
+    expect(getState().operationNotifications["session-a"]).toBeUndefined();
+
+    applySessionAttention({ sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" });
+    focusOperation("session-b");
+    expect(getState().operationNotifications["session-b"]).toBeUndefined();
+  });
+
+  it("persists notification preferences as one versioned localStorage blob", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    setGlobalMute(true);
+    setDnd(true);
+    toggleTheaterMute("theater-a");
+
+    expect(getState().notificationPreferences).toEqual({
+      globalMute: true,
+      dnd: true,
+      mutedTheaterIds: { "theater-a": true },
+    });
+    expect(JSON.parse(storage.get(NOTIFICATION_PREFERENCES_STORAGE_KEY) ?? "{}")).toEqual({
+      version: 1,
+      preferences: {
+        globalMute: true,
+        dnd: true,
+        mutedTheaterIds: { "theater-a": true },
+      },
+    });
   });
 
   it("preserves theaterId across tenant snapshots and hides jobs from other Theaters", () => {

@@ -20,13 +20,20 @@
   overflow: hidden;
 }
 
-.stage::before {
+.stage::before,
+.operations-terminal-stage::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--brass), var(--aurora), transparent);
   pointer-events: none;
+}
+
+.operations-terminal-stage.is-input-waiting::before {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--warn), transparent);
+  box-shadow: 0 0 16px var(--warn-glow);
 }
 
 .topbar {
@@ -2205,10 +2212,15 @@
   --uw-glow: var(--aurora-glow);
 }
 
-/* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 = "그냥 작업중") */
-.canvas-panel.is-running--turn {
+/* 인디케이터 색 추종 — turn/awaiting: warn/amber(에이전트 턴 진행 또는 입력 대기) */
+.canvas-panel.is-running--turn,
+.canvas-panel.is-running--awaiting {
   --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
+}
+
+.canvas-panel.is-running--awaiting {
+  border-color: color-mix(in oklch, var(--warn) 46%, var(--surface-rim));
 }
 
 /* 선택(is-active) + 진행 동시: brass 선택 보더 + 인디케이터색 진행광/글로우 공존 */
@@ -5861,130 +5873,402 @@
   background: color-mix(in oklch, var(--ink-fog) 14%, transparent);
 }
 
-/* Operation 상태 전이 알림 토스트 — 상단 중앙 정렬 스택(연결 토스트의 우하단 host와 분리). */
-.operation-toast-stack {
-  top: var(--space-5);
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  transform: translateX(-50%);
+/* ── Notification Cluster ──────────────────────────────────────────────
+   우상단 고정 알림 계기판. Theater 그룹이 펼침 없이 기본 표시되고,
+   각 Operation 행은 kind 비콘으로 완료(--positive)·입력 대기(--warn)를 구분한다.
+   glass-strong 표면 + brass 구조색. aurora는 쓰지 않는다(brass/aurora 역할 혼용 금지). */
+.notification-cluster {
+  position: fixed;
+  top: var(--console-topbar-offset);
+  right: var(--space-4);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(340px, calc(100vw - var(--space-8)));
+  max-height: calc(100vh - var(--console-topbar-offset) - var(--space-6));
+  padding: var(--space-3);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-floating);
+  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
+}
+
+.notification-cluster.is-muted {
+  box-shadow: var(--shadow-soft);
+  opacity: 0.86;
+}
+
+.notification-cluster-masthead {
+  display: flex;
   align-items: center;
-  max-width: min(94vw, 620px);
+  gap: var(--space-2);
 }
 
-/* 한 줄 레이아웃: 상태 점 · 텍스트(말줄임) · 액션. 좌측에 상태색 계기 레일. */
-.operation-toast {
-  align-items: center;
-  width: max-content;
-  max-width: min(94vw, 620px);
-  border-left-width: 2.5px;
-}
-
-.operation-toast .app-toast-dot {
-  margin-top: 0;
-}
-
-/* 인디케이터와 동일한 색의 좌측 액센트 레일(계기판 느낌). */
-.operation-toast--ended {
-  border-left-color: var(--positive);
-}
-
-.operation-toast--input-waiting {
-  border-left-color: var(--warn);
-}
-
-.operation-toast-text {
+.notification-cluster-pennant {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
-  display: inline-flex;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease-glide);
+}
+
+.notification-cluster-pennant:hover {
+  background: oklch(70% 0.05 248 / 10%);
+}
+
+.notification-cluster-ensign {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--brass);
+  box-shadow: 0 0 0 4px var(--brass-glow);
+  flex-shrink: 0;
+}
+
+.notification-cluster-ensign[data-state="muted"] {
+  background: var(--ink-rim);
+  box-shadow: none;
+}
+
+.notification-cluster-headline {
+  display: flex;
   align-items: baseline;
-  gap: 7px;
-  white-space: nowrap;
-  overflow: hidden;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-/* 강조 1순위 — Theater. */
-.operation-toast-theater {
-  flex: none;
+.notification-cluster-count {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
   color: var(--ink-pearl);
-  font-weight: 650;
-  font-size: 12.5px;
-  letter-spacing: 0.01em;
 }
 
-/* brass = 항행/내비게이션 역할 — Theater → Operation 구분자(chevron). */
-.operation-toast-sep {
-  flex: none;
-  color: color-mix(in oklch, var(--brass) 72%, var(--ink-fog));
-  font-size: 13px;
+.notification-cluster.is-muted .notification-cluster-count {
+  font-size: 14px;
+  color: var(--ink-fog);
+}
+
+.notification-cluster-scope {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-fog);
+  white-space: nowrap;
+}
+
+.notification-cluster-chevron {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--ink-rim);
+  transition: transform var(--duration-base) var(--ease-spring), color var(--duration-fast) var(--ease-glide);
+}
+
+.notification-cluster.is-collapsed .notification-cluster-chevron {
+  transform: rotate(-90deg);
+}
+
+.notification-cluster-pennant:hover .notification-cluster-chevron {
+  color: var(--brass);
+}
+
+.notification-cluster-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.notification-cluster-tallies {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.notification-tally {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1;
 }
 
-/* 강조 2순위 — Operation(길면 말줄임). */
-.operation-toast-op {
+.notification-tally.is-input-waiting {
+  color: var(--warn);
+  background: var(--warn-glow);
+  box-shadow: inset 0 0 0 1px oklch(80% 0.13 85 / 35%);
+}
+
+.notification-tally.is-ended {
+  color: var(--positive);
+  background: var(--positive-glow);
+  box-shadow: inset 0 0 0 1px oklch(80% 0.15 152 / 35%);
+}
+
+.notification-cluster-cog {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.notification-cluster-cog svg {
+  width: 16px;
+  height: 16px;
+}
+
+.notification-cluster-cog:hover,
+.notification-cluster-cog[aria-expanded="true"] {
+  background: oklch(70% 0.05 248 / 12%);
+  color: var(--brass);
+}
+
+.notification-cluster-deck {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
+}
+
+.notification-cluster-group {
+  border-radius: var(--radius-md);
+  background: oklch(28% 0.04 248 / 38%);
+  border: 1px solid var(--surface-rim);
+  overflow: hidden;
+}
+
+.notification-cluster-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+  box-shadow: inset 3px 0 0 0 var(--brass-deep);
+}
+
+.notification-cluster-theater {
+  flex: 1;
   min-width: 0;
-  color: var(--ink-pearl);
-  font-weight: 560;
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brass-bright);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* 상태는 비강조 — 인디케이터 색이 상태를 전달하므로 muted mono eyebrow로 후행 표기. */
-.operation-toast-status {
-  flex: none;
-  margin-left: 2px;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  opacity: 0.78;
-}
-
-.operation-toast--ended {
-  border-color: color-mix(in oklch, var(--positive) 40%, var(--surface-rim));
-}
-
-.operation-toast--ended .app-toast-dot {
-  background: var(--positive);
-  box-shadow: 0 0 9px var(--positive-glow);
-}
-
-/* 입력 대기 = 주의 필요(amber/warn). 무한 ambient 모션 금지 도덕에 따라 정적 표시로 둔다. */
-.operation-toast--input-waiting {
-  border-color: color-mix(in oklch, var(--warn) 40%, var(--surface-rim));
-}
-
-.operation-toast--input-waiting .app-toast-dot {
-  background: var(--warn);
-  box-shadow: 0 0 9px var(--warn-glow);
-}
-
-/* 토스트 본문 전체가 이동(Go) 트리거 — 점·텍스트를 품는 투명 버튼 표면. 닫기 버튼과 형제. */
-.operation-toast-go-surface {
-  flex: 1;
-  min-width: 0;
+.notification-cluster-group-count {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  text-align: left;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-spectral);
+  background: oklch(70% 0.05 248 / 16%);
+}
+
+.notification-cluster-roster {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-xs);
+  border-left: 2px solid transparent;
+  transition: background var(--duration-fast) var(--ease-glide);
+}
+
+.notification-row:hover {
+  background: oklch(70% 0.05 248 / 9%);
+}
+
+.notification-row-beacon {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.notification-row.is-input-waiting {
+  border-left-color: oklch(80% 0.13 85 / 55%);
+}
+
+.notification-row.is-input-waiting .notification-row-beacon {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-glow);
+}
+
+.notification-row.is-ended {
+  border-left-color: oklch(80% 0.15 152 / 55%);
+}
+
+.notification-row.is-ended .notification-row-beacon {
+  background: var(--positive);
+  box-shadow: 0 0 0 3px var(--positive-glow);
+}
+
+.notification-row-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.notification-row-op {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-pearl);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-row-state {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.notification-row.is-input-waiting .notification-row-state {
+  color: var(--warn);
+}
+
+.notification-row.is-ended .notification-row-state {
+  color: var(--positive);
+}
+
+.notification-row-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-spectral);
+  background: oklch(70% 0.05 248 / 18%);
+  flex-shrink: 0;
+}
+
+.notification-row-move {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-fog);
+  border: 1px solid var(--surface-rim);
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+
+.notification-row-move:hover {
+  color: var(--brass-bright);
+  border-color: var(--surface-rim-strong);
+  background: var(--brass-glow);
+}
+
+.notification-cluster-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: oklch(22% 0.05 248 / 70%);
+  border: 1px solid var(--surface-rim);
+  animation: codex-pop var(--duration-base) var(--ease-spring) both;
+}
+
+.notification-cluster-settings-eyebrow {
+  margin: var(--space-1) 0 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-rim);
+}
+
+.notification-cluster-setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1);
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  color: var(--ink-spectral);
   cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
+  transition: background var(--duration-fast) var(--ease-glide);
 }
 
-.operation-toast-go-surface:hover {
-  opacity: 0.82;
+.notification-cluster-setting:hover {
+  background: oklch(70% 0.05 248 / 9%);
 }
 
-/* brass = 항행/내비게이션 역할(doctrine: brass="지금 보고 있는 곳") — 키보드 포커스 링. */
-.operation-toast-go-surface:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
-  outline-offset: 3px;
+.notification-cluster-setting input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brass);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-cluster,
+  .notification-cluster-settings {
+    animation: none;
+  }
+
+  .notification-cluster-chevron {
+    transition: none;
+  }
 }
 
 .operation-search-overlay {

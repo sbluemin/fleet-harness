@@ -1,10 +1,85 @@
 import { describe, expect, it } from "vitest";
 
-import { applyEvent, createEmptyJob, reduceSnapshotJob } from "../client/src/reduce.js";
-import type { ObservedEvent } from "../client/src/types.js";
+import {
+  applyEvent,
+  computeVisibleSessionIds,
+  createEmptyJob,
+  filterByPreferences,
+  groupNotificationsByTheater,
+  reduceSnapshotJob,
+  splitNotificationsByVisibility,
+} from "../client/src/reduce.js";
+import type { CanvasState } from "../client/src/canvas/canvas-store.js";
+import type { ConsoleState, NotificationPreferences, ObservedEvent, OperationNotification } from "../client/src/types.js";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, jobId = "job-1"): ObservedEvent {
   return { id, tenantId: "tenant-1", jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };
+}
+
+function makeNotification(
+  sessionId: string,
+  theaterId: string | null,
+  lastRaisedSeq: number,
+  count = 1,
+): OperationNotification {
+  return {
+    kind: "input-waiting",
+    sessionId,
+    theaterId,
+    theaterLabel: theaterId ?? "Unknown",
+    operationLabel: sessionId,
+    count,
+    lastRaisedSeq,
+  };
+}
+
+function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
+  return {
+    connection: "live",
+    connectionError: null,
+    activeTheme: "maritime",
+    terminalRenderer: "webgl",
+    version: "1.8.0",
+    updateAvailable: false,
+    latestVersion: null,
+    tenants: [],
+    theaters: [],
+    agentClis: [],
+    activeTheaterId: null,
+    addingTheater: false,
+    theaterError: null,
+    sessions: {},
+    sessionOrder: [],
+    activeTerminalSessionId: null,
+    operationsViewActive: false,
+    creatingTerminalSession: false,
+    terminalSessionError: null,
+    tenantJobs: {},
+    tenantOrder: [],
+    timelineOpen: false,
+    shellOpen: false,
+    operationSearchOpen: false,
+    shortcutsOpen: false,
+    whatsNewOpen: false,
+    onboardingOpen: false,
+    bootstrapped: true,
+    terminalSessionsHydrated: true,
+    pendingOperationFocus: null,
+    selectedJobId: null,
+    expandedSessionIds: [],
+    operationNotifications: {},
+    notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
+    ...patch,
+  };
+}
+
+function makeCanvasSnap(patch: Partial<CanvasState> = {}): CanvasState {
+  return {
+    viewport: { x: 0, y: 0, zoom: 1 },
+    panels: {},
+    minimized: [],
+    ...patch,
+  };
 }
 
 describe("applyEvent", () => {
@@ -138,5 +213,68 @@ describe("reduceSnapshotJob", () => {
       events: [makeEvent(1, "track:text", { trackId: "t1", text: "tail" })],
     });
     expect(job.status).toBe("done");
+  });
+});
+
+describe("notification selectors", () => {
+  it("computes visible sessions for classic Operations view and none outside Operations", () => {
+    const canvas = makeCanvasSnap();
+
+    expect([...computeVisibleSessionIds("classic", makeConsoleSnap({
+      operationsViewActive: true,
+      activeTerminalSessionId: "session-a",
+    }), canvas)]).toEqual(["session-a"]);
+
+    expect([...computeVisibleSessionIds("classic", makeConsoleSnap({
+      operationsViewActive: false,
+      activeTerminalSessionId: "session-a",
+    }), canvas)]).toEqual([]);
+  });
+
+  it("computes visible canvas sessions from non-minimized panels", () => {
+    const visible = computeVisibleSessionIds("canvas", makeConsoleSnap({ operationsViewActive: true }), makeCanvasSnap({
+      panels: {
+        "session-a": { x: 0, y: 0, width: 100, height: 100, zIndex: 1 },
+        "session-b": { x: 0, y: 0, width: 100, height: 100, zIndex: 2 },
+      },
+      minimized: ["session-b"],
+    }));
+
+    expect([...visible]).toEqual(["session-a"]);
+  });
+
+  it("splits hidden and visible notifications by session id", () => {
+    const sessionA = makeNotification("session-a", "theater-a", 1);
+    const sessionB = makeNotification("session-b", "theater-b", 2);
+
+    expect(splitNotificationsByVisibility([sessionA, sessionB], new Set(["session-a"]))).toEqual({
+      hidden: [sessionB],
+      visible: [sessionA],
+    });
+  });
+
+  it("groups notifications by Theater and sorts by last raised sequence", () => {
+    const groups = groupNotificationsByTheater([
+      makeNotification("session-a", "theater-a", 1, 2),
+      makeNotification("session-b", "theater-b", 5),
+      makeNotification("session-c", "theater-a", 3),
+    ]);
+
+    expect(groups.map((group) => [group.theaterId, group.totalCount, group.notifications.map((item) => item.sessionId)])).toEqual([
+      ["theater-b", 1, ["session-b"]],
+      ["theater-a", 3, ["session-c", "session-a"]],
+    ]);
+  });
+
+  it("filters notifications by global mute, DND, and Theater mute preferences", () => {
+    const notifications = [
+      makeNotification("session-a", "theater-a", 1),
+      makeNotification("session-b", "theater-b", 2),
+    ];
+    const base: NotificationPreferences = { globalMute: false, dnd: false, mutedTheaterIds: {} };
+
+    expect(filterByPreferences(notifications, { ...base, globalMute: true })).toEqual([]);
+    expect(filterByPreferences(notifications, { ...base, dnd: true })).toEqual([]);
+    expect(filterByPreferences(notifications, { ...base, mutedTheaterIds: { "theater-a": true } }).map((item) => item.sessionId)).toEqual(["session-b"]);
   });
 });

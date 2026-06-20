@@ -1,4 +1,6 @@
-import type { JobView, ObservedEvent, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
+import type { CanvasState } from "./canvas/canvas-store.js";
+import type { OperationsMode } from "./operations-mode.js";
+import type { ConsoleState, JobView, NotificationPreferences, ObservedEvent, OperationNotification, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
 
 interface TrackMetaPayload {
   readonly trackId?: string;
@@ -9,6 +11,18 @@ interface TrackMetaPayload {
   readonly subtitle?: string;
   readonly kind?: string;
   readonly startedAt?: number;
+}
+
+export interface NotificationTheaterGroup {
+  readonly theaterId: string | null;
+  readonly theaterLabel: string;
+  readonly notifications: readonly OperationNotification[];
+  readonly totalCount: number;
+}
+
+export interface VisibilitySplitNotifications {
+  readonly hidden: readonly OperationNotification[];
+  readonly visible: readonly OperationNotification[];
 }
 
 const JOB_RECENT_EVENT_LIMIT = 120;
@@ -114,6 +128,64 @@ export function createEmptyJob(tenantId: string, jobId: string, at: number): Job
 
 export function isTerminalJobStatus(status: string): boolean {
   return TERMINAL_JOB_STATUSES.has(status);
+}
+
+export function computeVisibleSessionIds(mode: OperationsMode, consoleSnap: ConsoleState, canvasSnap: CanvasState): ReadonlySet<string> {
+  if (!consoleSnap.operationsViewActive) return new Set();
+  if (mode === "classic") {
+    return consoleSnap.activeTerminalSessionId ? new Set([consoleSnap.activeTerminalSessionId]) : new Set();
+  }
+  const minimized = new Set(canvasSnap.minimized);
+  const visible = new Set<string>();
+  for (const sessionId of Object.keys(canvasSnap.panels)) {
+    if (!minimized.has(sessionId)) visible.add(sessionId);
+  }
+  return visible;
+}
+
+export function splitNotificationsByVisibility(
+  notifications: readonly OperationNotification[],
+  visibleIds: ReadonlySet<string>,
+): VisibilitySplitNotifications {
+  const hidden: OperationNotification[] = [];
+  const visible: OperationNotification[] = [];
+  for (const notification of notifications) {
+    if (visibleIds.has(notification.sessionId)) {
+      visible.push(notification);
+    } else {
+      hidden.push(notification);
+    }
+  }
+  return { hidden, visible };
+}
+
+export function groupNotificationsByTheater(notifications: readonly OperationNotification[]): readonly NotificationTheaterGroup[] {
+  const groups = new Map<string, { theaterId: string | null; theaterLabel: string; notifications: OperationNotification[]; totalCount: number }>();
+  for (const notification of [...notifications].sort((a, b) => b.lastRaisedSeq - a.lastRaisedSeq)) {
+    const key = notification.theaterId ?? "__unknown__";
+    const group = groups.get(key) ?? {
+      theaterId: notification.theaterId,
+      theaterLabel: notification.theaterLabel,
+      notifications: [],
+      totalCount: 0,
+    };
+    group.notifications.push(notification);
+    group.totalCount += notification.count;
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => {
+    const aLatest = a.notifications[0]?.lastRaisedSeq ?? 0;
+    const bLatest = b.notifications[0]?.lastRaisedSeq ?? 0;
+    return bLatest - aLatest;
+  });
+}
+
+export function filterByPreferences(
+  notifications: readonly OperationNotification[],
+  prefs: NotificationPreferences,
+): readonly OperationNotification[] {
+  if (prefs.globalMute || prefs.dnd) return [];
+  return notifications.filter((notification) => !notification.theaterId || prefs.mutedTheaterIds[notification.theaterId] !== true);
 }
 
 function applyJobRegistered(job: JobView, payload: Record<string, unknown>): JobView {

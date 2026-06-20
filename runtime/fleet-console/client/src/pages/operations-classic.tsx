@@ -15,10 +15,11 @@ export function OperationsClassic({ state }: OperationsClassicProps) {
     ? state.activeTerminalSessionId
     : null;
   const expanded = activeSessionId ? isSessionExpanded(state, activeSessionId) : false;
+  const awaitingInput = activeSessionId ? state.operationNotifications[activeSessionId]?.kind === "input-waiting" : false;
   return (
     <div className={`console-body is-classic ${expanded ? "is-expanded" : ""}`}>
       {expanded ? null : <Sidebar state={state} />}
-      <main className="operations-terminal-stage">
+      <main className={`operations-terminal-stage ${awaitingInput ? "is-input-waiting" : ""}`}>
         {activeSessionId ? (
           <>
             <Terminal key={activeSessionId} sessionId={activeSessionId} onExit={() => removeTerminalSession(activeSessionId)} />
