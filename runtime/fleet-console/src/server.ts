@@ -677,6 +677,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // Operation 생성 메뉴에 내려보낼 Agent CLI 목록에 설치(available)·로그인(signedIn) 상태를 결합한다.
   // IO(탐지/auth 조회)만 여기서 수행하고, 매핑은 순수 함수 combineAgentCliLaunchMetadata에 위임한다.
   async function buildAgentCliLaunchMetadata(): Promise<readonly AgentCliLaunchMetadata[]> {
+    const metadata = getAgentCliMetadata();
+    // FLEET_TERMINAL_CMD operator override가 설정되면 launch는 cliId를 무시하고 그 명령을 실행하므로,
+    // 모든 항목을 실행 가능으로 표시한다. 이렇게 override 처리를 한 곳에 모아 UI 메뉴와 서버 세션 생성
+    // 게이트가 일관되게 우회한다(override 존재 여부만 불린으로 반영하고 명령 값은 노출하지 않는다 — Token Boundary).
+    if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
+      return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
+    }
     // signedIn은 현재 auth store만 보고 판정한다. legacy(~/.fleet/agent/auth.json) 마이그레이션은 여기서
     // 의도적으로 하지 않는다 — sign-out 직후 refresh가 이 경로를 호출하므로, 여기서 migrate하면 방금
     // sign-out으로 현재 store에서 지운 legacy 키가 되살아나 게이트가 다시 열린다(부활). legacy-only 키의
@@ -685,7 +692,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       agentCliDetector.detect(),
       buildModelAuthState(infraServices.authService),
     ]);
-    return combineAgentCliLaunchMetadata(getAgentCliMetadata(), detected, modelAuth.providers);
+    return combineAgentCliLaunchMetadata(metadata, detected, modelAuth.providers);
   }
 
   async function handleObserverTheaters(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -767,12 +774,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse, cliId?: AgentCliId): Promise<void> {
-    // FLEET_TERMINAL_CMD operator override가 설정되면 launch는 cliId를 무시하고 그 명령으로 실행하므로
-    // 설치/로그인 게이트를 건너뛴다 — 게이트가 막아도 override launch는 유효하기 때문이다.
-    const hasTerminalCmdOverride = (process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0;
-    if (cliId && !hasTerminalCmdOverride) {
-      // UI 비활성화를 API 경계에서도 강제한다: 미설치/미로그인 CLI로의 세션 생성을 거부한다.
-      // launch 직전에 설치/auth를 재조회해 TOCTOU를 줄인다.
+    if (cliId) {
+      // UI 비활성화를 API 경계에서도 강제한다: 미설치/미로그인 CLI로의 세션 생성을 거부한다. launch 직전에
+      // 설치/auth를 재조회해 TOCTOU를 줄인다. FLEET_TERMINAL_CMD override 시에는 buildAgentCliLaunchMetadata가
+      // 모든 항목을 available로 반환하므로 이 게이트를 통과한다(UI와 동일 판정).
       const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
       if (!meta || !meta.available || !meta.signedIn) {
         writeJson(res, 409, { error: "agent_cli_unavailable" });
