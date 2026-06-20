@@ -4300,6 +4300,27 @@
   letter-spacing: 0.04em;
 }
 
+/* 미설치/미로그인 CLI 항목: 흐리게 표시하고 포인터를 막는다. */
+.operation-launch-menu-item:disabled {
+  color: color-mix(in oklch, var(--ink-fog) 45%, transparent);
+  cursor: not-allowed;
+}
+
+.operation-launch-menu-item:disabled .theater-menu-check {
+  color: color-mix(in oklch, var(--brass) 40%, transparent);
+}
+
+/* 비활성 사유(미설치/미로그인)를 항목 우측에 작은 보조 라벨로 표시한다. */
+.operation-launch-menu-reason {
+  margin-left: auto;
+  padding-left: var(--space-2);
+  flex: none;
+  color: color-mix(in oklch, var(--ink-fog) 70%, transparent);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .theater-menu-error {
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2);

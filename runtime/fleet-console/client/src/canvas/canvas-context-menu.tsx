@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { agentCliIcon } from "../components/operation-launch-menu.js";
+import { agentCliIcon, launchDisabledReason } from "../components/operation-launch-menu.js";
 import type { AgentCliMetadata, ConsoleState } from "../types.js";
 
 interface CanvasContextMenuProps {
@@ -55,20 +55,27 @@ export function CanvasContextMenu({ state, anchor, viewportBounds, onLaunchCli, 
         <p className="canvas-context-menu-group">New Operation</p>
         {state.agentClis.length > 0 ? (
           <ul className="theater-menu-list">
-            {state.agentClis.map((cli) => (
-              <li key={cli.id}>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="theater-menu-item operation-launch-menu-item"
-                  disabled={launchDisabled}
-                  onClick={() => onLaunchCli(cli)}
-                >
-                  <span className="theater-menu-check" aria-hidden="true">{agentCliIcon(cli.id)}</span>
-                  <span className="theater-menu-label">{cli.label}</span>
-                </button>
-              </li>
-            ))}
+            {state.agentClis.map((cli) => {
+              const reason = launchDisabledReason(cli);
+              const itemDisabled = launchDisabled || reason !== null;
+              return (
+                <li key={cli.id}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="theater-menu-item operation-launch-menu-item"
+                    disabled={itemDisabled}
+                    aria-disabled={itemDisabled}
+                    title={reason ?? undefined}
+                    onClick={() => { if (reason === null && !launchDisabled) onLaunchCli(cli); }}
+                  >
+                    <span className="theater-menu-check" aria-hidden="true">{agentCliIcon(cli.id)}</span>
+                    <span className="theater-menu-label">{cli.label}</span>
+                    {reason ? <span className="operation-launch-menu-reason">{reason}</span> : null}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="theater-menu-empty">No Agent CLI available.</p>

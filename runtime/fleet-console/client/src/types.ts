@@ -26,6 +26,11 @@ export interface TheaterInfo {
 export interface AgentCliMetadata {
   readonly id: string;
   readonly label: string;
+  // 설치(PATH 탐지) 여부. false면 Operation 생성 메뉴에서 비활성화한다.
+  readonly available: boolean;
+  // 로그인 여부. model-auth 게이트 대상(claude-kimi/glm)만 실제 상태를 반영하고,
+  // 자체 인증 CLI(claude/codex)는 항상 true다. false면 비활성화한다.
+  readonly signedIn: boolean;
 }
 
 export interface TheaterBootstrap {

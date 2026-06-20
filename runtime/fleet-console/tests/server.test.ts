@@ -10,6 +10,7 @@ import type { ConsoleLockPayload } from "../src/api-types.js";
 import { createConsoleLock } from "../src/lock.js";
 import { createConsoleObservabilityStore } from "../src/observability-store.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../src/server.js";
+import type { AgentCliDetector } from "../src/agent-cli-detect.js";
 import { workspaceHash } from "../src/theater.js";
 import { TheaterRegistry } from "../src/theaters.js";
 import { WorkspaceRegistry } from "../src/codex/workspaces.js";
@@ -407,6 +408,24 @@ describe("console terminal observability", () => {
     ]);
     expect(observerJobs.tenants[0]?.jobs[0]?.jobId).toBe("job-a");
   });
+
+  it("rejects a Theater session for a not-installed CLI with 409", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-gate-uninstalled-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({ agentCliDetector: createStubAgentCliDetector({ claude: false }) });
+    const theater = await createTheater(fixture, dir);
+    const res = await fetch(`${fixture.endpoint}observer/theaters/${encodeURIComponent(theater.id)}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cliId: "claude" }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "agent_cli_unavailable" });
+  });
+  // 참고: signedIn 게이트의 거부 경로는 위 미설치 테스트가 동일 조건문(!available || !signedIn)을 태워 커버하고,
+  // signedIn=false 판정 자체는 combineAgentCliLaunchMetadata 단위 테스트가 검증한다. signedIn은 글로벌
+  // ~/.fleet/auth.json(authService)에 의존하므로 통합 레벨에서 deterministic하게 만들 별도 주입점이 없어
+  // 환경 의존 테스트를 추가하지 않는다.
 });
 
 describe("console static and terminal ticket boundary", () => {
@@ -1609,12 +1628,18 @@ describe("console static and terminal ticket boundary", () => {
     expect(typeof payload.createdAt).toBe("string");
     expect(typeof payload.lastOpenedAt).toBe("string");
     expect(listed.theaters).toHaveLength(1);
-    expect(listed.agentClis).toEqual([
+    // id/label은 환경 무관하게 고정이지만 available/signedIn은 실제 설치/auth에 의존하므로
+    // 매핑(id/label)만 단언하고 게이트 불린은 타입만 확인한다. 결합 로직은 별도 단위 테스트가 검증한다.
+    expect((listed.agentClis ?? []).map((cli) => ({ id: cli.id, label: cli.label }))).toEqual([
       { id: "claude", label: "Claude" },
       { id: "claude-kimi", label: "Claude Kimi" },
       { id: "claude-glm", label: "Claude GLM" },
       { id: "codex", label: "Codex" },
     ]);
+    for (const cli of listed.agentClis ?? []) {
+      expect(typeof cli.available).toBe("boolean");
+      expect(typeof cli.signedIn).toBe("boolean");
+    }
     expect(payload).not.toHaveProperty("path");
     expect(listed.theaters[0]).not.toHaveProperty("path");
     expect(serialized).not.toContain(dir);
@@ -2064,6 +2089,7 @@ describe("observer theater forget", () => {
 
 async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
+  readonly agentCliDetector?: ConsoleServerDeps["agentCliDetector"];
   readonly beforeCreateServer?: (paths: { readonly carrierStoreDir: string }) => void;
   readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
   readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
@@ -2082,6 +2108,9 @@ async function startFixture(options: {
     port: 0,
     version: "test",
     agentRuntime: options.agentRuntime,
+    // 기본은 4개 바이너리 모두 설치된 것으로 stub해 기존 테스트(claude/codex 세션)가 PATH 환경에
+    // 의존하지 않게 한다. 게이트 거부 케이스는 개별 테스트가 overrides로 미설치를 주입한다.
+    agentCliDetector: options.agentCliDetector ?? createStubAgentCliDetector(),
     dataDir: carrierStoreDir,
     terminalLaunch: options.terminalLaunch,
     terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
@@ -2094,6 +2123,19 @@ async function startFixture(options: {
   const endpoint = await server.start({ dir, lockFile });
   const lock = createConsoleLock().readLock(lockFile)!;
   return { dir, carrierStoreDir, lockFile, server, endpoint, lock };
+}
+
+function createStubAgentCliDetector(overrides: Record<string, boolean> = {}): AgentCliDetector {
+  // cliCommand 단위 바이너리(claude/codex/opencode/cursor-agent)별 설치 여부를 stub한다. 기본 모두 설치됨.
+  const commands = ["claude", "codex", "opencode", "cursor-agent"];
+  return {
+    detect: async () => commands.map((id) => ({
+      id,
+      displayName: id,
+      available: overrides[id] ?? true,
+      version: null,
+    })),
+  };
 }
 
 async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>, cwd: string): Promise<{ readonly sessionId: string }> {

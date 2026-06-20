@@ -33,6 +33,14 @@ const BINARY_DISPLAY_NAMES: Record<string, string> = {
   "cursor-agent": "Cursor Agent",
 };
 
+// cliCommand → launch가 참조하는 바이너리 경로 override 환경변수(fleet-admiral resolveBinary와 동일).
+// claude 계열은 CLAUDE_BIN, codex는 CODEX_BIN을 쓴다. opencode/cursor-agent는 launch override가 없어 PATH로만
+// 해석한다. 이 매핑을 두지 않으면 PATH 밖 절대경로 override 사용자가 미설치로 오판돼 게이트(409)에 막힌다.
+const OVERRIDE_ENV_BY_COMMAND: Record<string, string> = {
+  claude: "CLAUDE_BIN",
+  codex: "CODEX_BIN",
+};
+
 // `--version` 실행 타임아웃(ms). 미설치/무응답이어도 설정 화면 로드를 막지 않도록 짧게 잡는다.
 const VERSION_PROBE_TIMEOUT_MS = 5000;
 
@@ -50,9 +58,20 @@ export function createAgentCliDetector(deps: AgentCliDetectorDeps): AgentCliDete
 
 export function createDefaultAgentCliDetector(): AgentCliDetector {
   return createAgentCliDetector({
-    resolve: (command) => resolvePathBinary(command, process.env),
+    resolve: (command) => resolveCommandWithOverride(command, process.env),
     runVersion: (bin, args) => execFileVersion(bin, args),
   });
+}
+
+// launch의 resolveBinary와 동일한 우선순위(override env → PATH)로 바이너리를 해석한다. override가 설정됐지만
+// 그 경로가 실재하지 않으면 undefined(미설치)로 본다 — launch도 동일 입력에서 실패하므로 게이트 판정이 일치한다.
+function resolveCommandWithOverride(command: string, env: NodeJS.ProcessEnv): ResolvedBinary | undefined {
+  const overrideName = OVERRIDE_ENV_BY_COMMAND[command];
+  const override = overrideName ? env[overrideName] : undefined;
+  if (override && override.trim().length > 0) {
+    return resolvePathBinary(override, env);
+  }
+  return resolvePathBinary(command, env);
 }
 
 // CLI_BACKENDS를 선언 순서 그대로 cliCommand 기준 중복제거한다(claude/codex/opencode/cursor-agent).
