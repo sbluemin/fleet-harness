@@ -767,7 +767,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   async function createTerminalSessionForCwd(cwd: string, res: http.ServerResponse, cliId?: AgentCliId): Promise<void> {
-    if (cliId) {
+    // FLEET_TERMINAL_CMD operator override가 설정되면 launch는 cliId를 무시하고 그 명령으로 실행하므로
+    // 설치/로그인 게이트를 건너뛴다 — 게이트가 막아도 override launch는 유효하기 때문이다.
+    const hasTerminalCmdOverride = (process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0;
+    if (cliId && !hasTerminalCmdOverride) {
       // UI 비활성화를 API 경계에서도 강제한다: 미설치/미로그인 CLI로의 세션 생성을 거부한다.
       // launch 직전에 설치/auth를 재조회해 TOCTOU를 줄인다.
       const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
