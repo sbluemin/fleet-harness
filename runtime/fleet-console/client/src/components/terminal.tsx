@@ -284,8 +284,13 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
     const fitAddon = fitAddonRef.current;
     if (!terminal || !fitAddon) return;
     terminal.options.fontSize = BASE_FONT_SIZE * appliedZoom;
-    // fontSize 변경 후 WebGL 글리프 atlas를 선제 무효화해 첫 프레임 깜빡임을 결정적으로 제거한다(DOM 렌더러는 무관).
-    webglAddonRef.current?.clearTextureAtlas();
+    // 여기서 WebglAddon.clearTextureAtlas()를 호출하면 안 된다. xterm WebGL의 글리프 atlas는 동일 설정(폰트·
+    // 테마·cell크기) 터미널들이 모듈 레벨 캐시(acquireTextureAtlas)에서 1개를 공유한다. 따라서 한 터미널이
+    // atlas를 비우면 형제 터미널이 쓰는 공유 atlas까지 함께 비워지고, 형제에는 재그리기 신호가 가지 않아
+    // 다른 터미널 화면이 깨진다(특히 마운트·복원 시 effect가 1회 실행되며 발생). 게다가 fontSize가 실제로
+    // 바뀌면 xterm이 옵션 변경 핸들러(_handleOptionsChanged→_refreshCharAtlas→acquireTextureAtlas)에서 새
+    // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
+    // fit + refresh로 재배치/재도색한다.
     fitAddon.fit();
     terminal.refresh(0, terminal.rows - 1);
   }, [appliedZoom]);
