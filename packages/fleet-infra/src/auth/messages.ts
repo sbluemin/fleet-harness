@@ -1,6 +1,5 @@
 import type {
   AuthMessageProviderRef,
-  AuthMigrationNoticeInput,
   AuthValidationFailureMessageInput,
 } from "./types.js";
 
@@ -9,13 +8,6 @@ export const AUTH_LOGIN_PROVIDER_PROMPT_MESSAGE = "Select a Claude-family provid
 export const AUTH_LOGIN_SECRET_PROMPT_MESSAGE = "Enter the auth token.";
 export const AUTH_COMMAND_CANCELLED_MESSAGE = "Auth command cancelled.";
 export const AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE = "Select a Claude-family provider to remove.";
-
-export function formatAuthMigrationNotice(input: AuthMigrationNoticeInput): string {
-  const skipped = input.skippedCount > 0
-    ? ` Skipped ${input.skippedCount} existing legacy entries to keep current auth entries unchanged.`
-    : "";
-  return `Migrated auth storage to ~/.fleet/auth.json. Merged ${input.migratedCount} auth entries.${skipped}`;
-}
 
 export function formatMissingAuthKeyMessage(input: AuthMessageProviderRef): string {
   const cliHint = input.cli ? `cli '${input.cli}'` : "selected CLI";

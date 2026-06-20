@@ -2,7 +2,6 @@ import { CLI_BACKENDS, type CliType } from "@dotobokuri/core-unified-agent";
 
 import { createAuthService, DEFAULT_AUTH_PATH } from "./auth-storage.js";
 import { formatMissingAuthKeyMessage } from "./messages.js";
-import { migrateLegacyAuthStore } from "./migration.js";
 import type {
   AuthService,
   AuthValidationFailureResult,
@@ -57,7 +56,6 @@ export async function resolveAuthEnv(
 ): Promise<Record<string, string>> {
   const provider = AUTH_PROVIDER_DEFINITIONS[cli];
   if (!provider) return {};
-  await migrateLegacyAuthStore();
   const auth = deps?.authService ?? createAuthService({ authPath: DEFAULT_AUTH_PATH });
   const token = await auth.getApiKey(provider.providerId);
   if (!token) {

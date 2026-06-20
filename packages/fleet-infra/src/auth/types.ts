@@ -3,31 +3,9 @@ export interface AuthStorageEntry {
   [extraField: string]: unknown;
 }
 
-export interface AuthMigrationMergeResult {
-  data: AuthStorageData;
-  migratedProviderIds: string[];
-  skippedProviderIds: string[];
-}
-
-export interface AuthMigrationResult {
-  legacyPath: string;
-  currentPath: string;
-  migratedCount: number;
-  skippedCount: number;
-  migratedProviderIds: string[];
-  skippedProviderIds: string[];
-  shouldPrintNotice: boolean;
-  status: "legacy-missing" | "migrated" | "unchanged";
-}
-
 export interface AuthMessageProviderRef {
   cli?: string;
   providerId: string;
-}
-
-export interface AuthMigrationNoticeInput {
-  migratedCount: number;
-  skippedCount: number;
 }
 
 export interface AuthValidationFailureMessageInput {

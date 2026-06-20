@@ -4,7 +4,7 @@
 
 ## Owns
 
-- `auth/` — CLI auth provider mapping, storage, migration, validation, and user-facing auth messages.
+- `auth/` — CLI auth provider mapping, storage, validation, and user-facing auth messages.
 - `data-dir/` — Fleet data directory resolution and legacy migration.
 - `global-options/` — host-agnostic global option I/O for Fleet startup behavior.
 - `fs-store/` — generic durable filesystem I/O primitive: atomic writes (temp+rename+fsync), advisory directory locks with quarantine-based stale recovery, secure directory/file modes, symlink guards, and path-traversal defenses. Consumed by global-options, auth, and carriers storage via explicit DI.

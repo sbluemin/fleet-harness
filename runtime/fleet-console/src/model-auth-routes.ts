@@ -16,7 +16,6 @@ type AuthKeyValidation =
 interface ModelAuthRouteDeps {
   readonly authService: Pick<AuthService, "setApiKey" | "deleteApiKey" | "listProviderIds">;
   readonly validateApiKey: (cli: CliType, apiKey: string) => Promise<AuthKeyValidation>;
-  readonly migrateLegacyAuth: () => Promise<unknown>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -56,9 +55,6 @@ export function createModelAuthRouter(deps: ModelAuthRouteDeps): (context: Model
         deps.writeJson(res, 405, { error: "Method not allowed" });
         return true;
       }
-      // legacy 저장소(~/.fleet/agent/auth.json)만 가진 업그레이드 사용자도 정확한 signedIn을 보도록,
-      // fleet-cli의 auth/launch 경로와 동일하게 store를 읽기 전 legacy를 마이그레이션한다.
-      await deps.migrateLegacyAuth();
       // 상태 조회는 loopback GET이며 signedIn 불린만 반환하므로 global-settings/state와 대칭으로 게이트하지 않는다.
       deps.writeJson(res, 200, await buildModelAuthState(deps.authService));
       return true;
@@ -152,10 +148,7 @@ async function signOutProvider(
     deps.writeJson(res, 500, { error: "provider_unavailable" });
     return;
   }
-  // 현재 store에서만 삭제한다. legacy(~/.fleet/agent/auth.json) 원본 영구 제거는 fleet-cli logout과
-  // 공유하는 fleet-infra/auth SSoT 한계(migrate는 복사만, deleteApiKey는 현재 store만 삭제)라 이 PR scope
-  // 밖이다(후속 분리). 여기서 migrate를 호출하면 legacy를 복사만 하고 원본이 남아 다음 read에서 부활하므로,
-  // 혼란을 피하려 migrate 없이 현재 store만 삭제한다.
+  // 현재 store에서 삭제한다. legacy auth 마이그레이션이 제거되어 legacy 키 부활 우려가 없다.
   await deps.authService.deleteApiKey(providerId);
   await writeMutationState(res, deps);
 }
