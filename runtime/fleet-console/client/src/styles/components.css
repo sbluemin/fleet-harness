@@ -4814,9 +4814,20 @@
   background: var(--warn);
 }
 
-.terminal-canvas {
+/* 줌 보정 레이어: position:relative 기준 박스를 제공해 .terminal-canvas의 역스케일(%-기반)이
+   측정 없이 inner 크기에 정확히 맞도록 한다. flex:1로 상태바 아래 남는 공간을 채운다. */
+.terminal-viewport {
+  position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+}
+
+/* xterm 마운트 단. 기본은 viewport를 가득 채우고(inset:0), 맵 줌 시 인라인 style로 width/height를 zoom배 +
+   transform:scale(1/zoom)을 받아 부모 scale(zoom)과 net 1로 상쇄된다(좌표 정정). transform-origin은 인라인에서 지정. */
+.terminal-canvas {
+  position: absolute;
+  inset: 0;
   border-radius: var(--radius-md);
   overflow: hidden;
 }
