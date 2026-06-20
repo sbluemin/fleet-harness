@@ -5882,7 +5882,7 @@
 .notification-handle {
   position: fixed;
   top: 50%;
-  right: 0;
+  left: 0;
   transform: translateY(-50%);
   z-index: 59;
   display: flex;
@@ -5891,8 +5891,8 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-2);
   border: 1px solid var(--surface-rim);
-  border-right: none;
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  border-left: none;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
   background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(18px) saturate(140%);
@@ -5904,7 +5904,7 @@
 
 .notification-handle:hover,
 .notification-handle:focus-visible {
-  transform: translateY(-50%) translateX(-3px);
+  transform: translateY(-50%) translateX(3px);
   color: var(--brass);
   background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
   outline: none;
@@ -5978,7 +5978,7 @@
 .notification-dock-layer {
   position: fixed;
   top: var(--console-topbar-offset);
-  right: 0;
+  left: 0;
   bottom: var(--space-4);
   z-index: 59;
   width: min(360px, calc(100vw - var(--space-6)));
@@ -5993,11 +5993,11 @@
   height: 100%;
   padding: var(--space-3) var(--space-4) var(--space-4);
   border: 1px solid var(--surface-rim);
-  border-right: none;
-  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  border-left: none;
+  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
   /* brass 코너 조명 + glass 본체 — 함교 계기판 깊이 */
   background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    radial-gradient(130% 60% at 0% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(20px) saturate(150%);

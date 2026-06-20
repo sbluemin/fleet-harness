@@ -46,8 +46,7 @@ export function NotificationClusterHost() {
   // 신호 상태 — 입력 대기가 있으면 awaiting(warn·perimeter wake), 완료만이면 ended(positive), 없으면 muted.
   const signalState = muted ? "muted" : waitingCount > 0 ? "awaiting" : "ended";
 
-  // 표시할 알림도 없고 활성 preference(음소거/DND/Theater mute)도 없으면 계기판 자체를 숨긴다.
-  if (muted && !preferencesActive) return null;
+  // 알림 사이드바는 알림 유무와 무관하게 항상 노출한다(대원수 지시) — 빈 상태도 핸들/패널을 유지한다.
 
   const handleMove = (notification: OperationNotification) => {
     focusOperation(notification.sessionId);
@@ -276,7 +275,7 @@ function CloseIcon() {
 function ChevronIcon({ className }: { readonly className?: string }) {
   return (
     <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M10 4 6 8l4 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
