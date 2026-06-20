@@ -20,13 +20,20 @@
   overflow: hidden;
 }
 
-.stage::before {
+.stage::before,
+.operations-terminal-stage::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--brass), var(--aurora), transparent);
   pointer-events: none;
+}
+
+.operations-terminal-stage.is-input-waiting::before {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--warn), transparent);
+  box-shadow: 0 0 16px var(--warn-glow);
 }
 
 .topbar {
@@ -2327,10 +2334,15 @@
   --uw-glow: var(--aurora-glow);
 }
 
-/* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 = "그냥 작업중") */
-.canvas-panel.is-running--turn {
+/* 인디케이터 색 추종 — turn/awaiting: warn/amber(에이전트 턴 진행 또는 입력 대기) */
+.canvas-panel.is-running--turn,
+.canvas-panel.is-running--awaiting {
   --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
+}
+
+.canvas-panel.is-running--awaiting {
+  border-color: color-mix(in oklch, var(--warn) 46%, var(--surface-rim));
 }
 
 /* 선택(is-active) + 진행 동시: brass 선택 보더 + 인디케이터색 진행광/글로우 공존 */
@@ -5864,130 +5876,493 @@
   background: color-mix(in oklch, var(--ink-fog) 14%, transparent);
 }
 
-/* Operation 상태 전이 알림 토스트 — 상단 중앙 정렬 스택(연결 토스트의 우하단 host와 분리). */
-.operation-toast-stack {
-  top: var(--space-5);
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  transform: translateX(-50%);
+/* ── Notification Dock — 우현 도킹 알림 패널 (Codex Side 패턴) ──────────
+   닫힘=우현 엣지 핸들, 열림=우현 도킹 패널. 입력 대기가 있으면 패널 in-progress와
+   동일한 warn perimeter wake를 두른다. 모든 색은 theme.css 토큰으로만(aurora 미사용).
+   Theater/Operation의 좌측 강조 막대·보더는 두지 않고 kind 비콘으로만 구분한다(대원수 지시). */
+
+/* ── 닫힘: 우현 엣지 핸들 ── */
+.notification-handle {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 59;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  max-width: min(94vw, 620px);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-left: none;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
 
-/* 한 줄 레이아웃: 상태 점 · 텍스트(말줄임) · 액션. 좌측에 상태색 계기 레일. */
-.operation-toast {
-  align-items: center;
-  width: max-content;
-  max-width: min(94vw, 620px);
-  border-left-width: 2.5px;
+.notification-handle:hover,
+.notification-handle:focus-visible {
+  transform: translateY(-50%) translateX(3px);
+  color: var(--brass);
+  background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
+  outline: none;
 }
 
-.operation-toast .app-toast-dot {
-  margin-top: 0;
+.notification-handle-count {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink-pearl);
 }
 
-/* 인디케이터와 동일한 색의 좌측 액센트 레일(계기판 느낌). */
-.operation-toast--ended {
-  border-left-color: var(--positive);
+.notification-handle.is-awaiting .notification-handle-count {
+  color: var(--warn);
 }
 
-.operation-toast--input-waiting {
-  border-left-color: var(--warn);
+.notification-handle.is-ended .notification-handle-count {
+  color: var(--positive);
 }
 
-.operation-toast-text {
-  flex: 1;
-  min-width: 0;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
-  white-space: nowrap;
+.notification-handle-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  color: var(--ink-fog);
+}
+
+.notification-handle-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-rim);
+}
+
+/* 핸들 perimeter wake — 입력 대기 시 warn 순환광 */
+.notification-handle.has-awaiting {
+  --uw-tint: var(--warn);
+  --uw-glow: var(--warn-glow);
+  box-shadow: var(--shadow-floating), 0 0 22px -8px var(--uw-glow);
+}
+
+.notification-handle.has-awaiting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--uw-angle),
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 0deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 20deg,
+    var(--uw-tint) 54deg,
+    color-mix(in oklch, var(--uw-tint) 50%, transparent) 96deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 156deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: perimeter-orbit 3s linear infinite;
+}
+
+/* ── 열림: 우현 도킹 레이어 + 패널 ── */
+.notification-dock-layer {
+  position: fixed;
+  top: var(--console-topbar-offset);
+  left: 0;
+  bottom: var(--space-4);
+  z-index: 59;
+  width: min(360px, calc(100vw - var(--space-6)));
+  pointer-events: none;
+}
+
+.notification-dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-left: none;
+  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+  /* brass 코너 조명 + glass 본체 — 함교 계기판 깊이 */
+  background:
+    radial-gradient(130% 60% at 0% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  pointer-events: auto;
+  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
   overflow: hidden;
 }
 
-/* 강조 1순위 — Theater. */
-.operation-toast-theater {
-  flex: none;
-  color: var(--ink-pearl);
-  font-weight: 650;
-  font-size: 12.5px;
-  letter-spacing: 0.01em;
+.notification-dock.has-awaiting {
+  --uw-tint: var(--warn);
+  --uw-glow: var(--warn-glow);
+  box-shadow: var(--shadow-floating), 0 0 28px -10px var(--uw-glow);
 }
 
-/* brass = 항행/내비게이션 역할 — Theater → Operation 구분자(chevron). */
-.operation-toast-sep {
-  flex: none;
-  color: color-mix(in oklch, var(--brass) 72%, var(--ink-fog));
-  font-size: 13px;
+.notification-dock.has-awaiting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--uw-angle),
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 0deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 20deg,
+    var(--uw-tint) 54deg,
+    color-mix(in oklch, var(--uw-tint) 50%, transparent) 96deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 156deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: perimeter-orbit 3.4s linear infinite;
+}
+
+/* 도킹 헤더 — 총갯수/인디케이터 없이 제목 + kind tally + 설정 + 닫기 */
+.notification-dock-head {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid color-mix(in oklch, var(--brass) 14%, var(--surface-rim));
+}
+
+.notification-dock-eyebrow {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-spectral);
+}
+
+.notification-dock-tallies {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.notification-dock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.notification-dock-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.notification-dock-icon:hover,
+.notification-dock-icon[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
+  color: var(--brass);
+}
+
+.notification-dock-empty {
+  position: relative;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-6) 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-rim);
+  text-align: center;
+}
+
+.notification-dock-deck {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
+}
+
+/* kind 합계 칩 — 점 + 수치 */
+.notification-tally {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 22px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1;
 }
 
-/* 강조 2순위 — Operation(길면 말줄임). */
-.operation-toast-op {
+.notification-tally::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.notification-tally.is-input-waiting {
+  color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 34%, transparent);
+}
+
+.notification-tally.is-ended {
+  color: var(--positive);
+  background: color-mix(in oklch, var(--positive) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--positive) 34%, transparent);
+}
+
+/* ── Theater 그룹 — 평면 카드(좌측 강조 막대·그라데이션 없음) ── */
+.notification-cluster-group {
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 46%, transparent);
+  border: 1px solid var(--surface-rim);
+  overflow: hidden;
+}
+
+.notification-cluster-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.notification-cluster-theater {
+  flex: 1;
   min-width: 0;
-  color: var(--ink-pearl);
-  font-weight: 560;
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--brass-bright);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* 상태는 비강조 — 인디케이터 색이 상태를 전달하므로 muted mono eyebrow로 후행 표기. */
-.operation-toast-status {
-  flex: none;
-  margin-left: 2px;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  opacity: 0.78;
-}
-
-.operation-toast--ended {
-  border-color: color-mix(in oklch, var(--positive) 40%, var(--surface-rim));
-}
-
-.operation-toast--ended .app-toast-dot {
-  background: var(--positive);
-  box-shadow: 0 0 9px var(--positive-glow);
-}
-
-/* 입력 대기 = 주의 필요(amber/warn). 무한 ambient 모션 금지 도덕에 따라 정적 표시로 둔다. */
-.operation-toast--input-waiting {
-  border-color: color-mix(in oklch, var(--warn) 40%, var(--surface-rim));
-}
-
-.operation-toast--input-waiting .app-toast-dot {
-  background: var(--warn);
-  box-shadow: 0 0 9px var(--warn-glow);
-}
-
-/* 토스트 본문 전체가 이동(Go) 트리거 — 점·텍스트를 품는 투명 버튼 표면. 닫기 버튼과 형제. */
-.operation-toast-go-surface {
-  flex: 1;
-  min-width: 0;
+.notification-cluster-group-count {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  text-align: left;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-spectral);
+  background: color-mix(in oklch, var(--ink-fog) 15%, transparent);
+}
+
+/* ── Operation 행 — 좌측 보더 없이 비콘으로만 kind 구분 ── */
+.notification-cluster-roster {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-xs);
+  transition: background var(--duration-fast) var(--ease-glide);
+}
+
+.notification-row:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+/* kind 비콘 — 신호등 glow ring (좌측 강조색을 대신하는 유일한 kind 구분) */
+.notification-row-beacon {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.notification-row.is-input-waiting .notification-row-beacon {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-glow), 0 0 8px 0 var(--warn-glow);
+}
+
+.notification-row.is-ended .notification-row-beacon {
+  background: var(--positive);
+  box-shadow: 0 0 0 3px var(--positive-glow);
+}
+
+.notification-row-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-row-op {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-pearl);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-row-state {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+}
+
+.notification-row.is-input-waiting .notification-row-state {
+  color: var(--warn);
+}
+
+.notification-row.is-ended .notification-row-state {
+  color: var(--positive);
+}
+
+.notification-row-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-spectral);
+  background: color-mix(in oklch, var(--ink-fog) 17%, transparent);
+  flex-shrink: 0;
+}
+
+.notification-row-move {
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-fog);
+  border: 1px solid var(--surface-rim);
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+
+.notification-row-move:hover {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+
+/* ── 설정 팝오버 ── */
+.notification-cluster-settings {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-pillar) 84%, transparent);
+  border: 1px solid var(--surface-rim);
+  animation: codex-pop var(--duration-base) var(--ease-spring) both;
+}
+
+.notification-cluster-settings-eyebrow {
+  margin: var(--space-1) 0 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-rim);
+}
+
+.notification-cluster-setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  color: var(--ink-spectral);
   cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
+  transition: background var(--duration-fast) var(--ease-glide);
 }
 
-.operation-toast-go-surface:hover {
-  opacity: 0.82;
+.notification-cluster-setting:hover {
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-/* brass = 항행/내비게이션 역할(doctrine: brass="지금 보고 있는 곳") — 키보드 포커스 링. */
-.operation-toast-go-surface:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
-  outline-offset: 3px;
+.notification-cluster-setting input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brass);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-dock,
+  .notification-cluster-settings {
+    animation: none;
+  }
+
+  .notification-handle.has-awaiting::after,
+  .notification-dock.has-awaiting::after {
+    animation: none;
+    background: color-mix(in oklch, var(--uw-tint) 36%, transparent);
+  }
 }
 
 .operation-search-overlay {

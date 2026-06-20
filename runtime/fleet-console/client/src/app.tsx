@@ -7,10 +7,10 @@ import { useOperationsMode } from "./operations-mode.js";
 import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
+import { NotificationClusterHost } from "./components/notification-cluster.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
 import { ShellOverlay } from "./components/shell-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
-import { OperationToastHost } from "./components/operation-toasts.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
 import { WhatsNewModal } from "./components/whatsnew-modal.js";
@@ -224,7 +224,7 @@ export function App() {
         title="Console link interrupted"
         message={state.connectionError ?? undefined}
       />
-      <OperationToastHost toasts={state.operationToasts} />
+      <NotificationClusterHost />
     </div>
   );
 }

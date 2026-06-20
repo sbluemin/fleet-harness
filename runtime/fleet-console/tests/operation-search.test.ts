@@ -10,7 +10,8 @@ const THEATER_GAMMA: TheaterInfo = { id: "theater-gamma", label: "Alpha Harbor",
 function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "turnState"> & { readonly resumeAvailable?: boolean; readonly turnState?: SessionInfo["turnState"] })[], theaters: readonly TheaterInfo[] = [THEATER_ALPHA, THEATER_BETA]): ConsoleState {
   const entries: SessionInfo[] = sessions.map((session) => ({ ...session, resumeAvailable: session.resumeAvailable ?? false, turnState: session.turnState ?? "none" }));
   return {
-    operationToasts: [],
+    operationNotifications: {},
+  notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     connection: "connecting",
     connectionError: null,
     activeTheme: "maritime",

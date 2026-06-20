@@ -298,16 +298,24 @@ export type AttentionReason =
   | "elicitation_complete"
   | "elicitation_response";
 
-// Operation 상태 전이/입력 대기 알림 토스트. kind는 인디케이터 상태에 대응:
-//   ended=작업 완료(턴 종료, 그린) · input-waiting=입력 대기(AskUserQuestion·권한/유휴/elicitation, amber).
-export type OperationToastKind = "ended" | "input-waiting";
+// Operation 상태 전이/입력 대기 알림. sessionId 기준으로 정규화해 같은 Operation의 최신 상태만 보존한다.
+// kind는 인디케이터 상태에 대응: ended=작업 완료(그린) · input-waiting=입력 대기(amber).
+export type NotificationKind = "ended" | "input-waiting";
 
-export interface OperationToast {
-  readonly id: number;
-  readonly kind: OperationToastKind;
+export interface OperationNotification {
+  readonly kind: NotificationKind;
   readonly sessionId: string;
+  readonly theaterId: string | null;
   readonly theaterLabel: string;
   readonly operationLabel: string;
+  readonly count: number;
+  readonly lastRaisedSeq: number;
+}
+
+export interface NotificationPreferences {
+  readonly globalMute: boolean;
+  readonly dnd: boolean;
+  readonly mutedTheaterIds: Readonly<Record<string, true>>;
 }
 
 export interface ConsoleState {
@@ -348,6 +356,7 @@ export interface ConsoleState {
   readonly pendingOperationFocus: string | null;
   readonly selectedJobId: string | null;
   readonly expandedSessionIds: readonly string[];
-  // Theater 무관 전역 Operation 상태 전이 알림 토스트 큐(현재 보는 Operation은 억제).
-  readonly operationToasts: readonly OperationToast[];
+  // Theater 무관 전역 Operation 상태 전이 알림. sessionId 기준 정규화 맵이며, 렌더 단계에서 보이는 세션은 제외한다.
+  readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
+  readonly notificationPreferences: NotificationPreferences;
 }

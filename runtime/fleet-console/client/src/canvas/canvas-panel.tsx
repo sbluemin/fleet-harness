@@ -37,11 +37,14 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
   const activeJobCount = activeJobs.length;
   const dormant = session.status === "dormant";
   const displayLabel = sessionDisplayLabel(session);
+  const awaitingInput = state.operationNotifications[session.sessionId]?.kind === "input-waiting";
   // 외곽 "물결(wake)" 효과 상태: 비콘(인디케이터)과 동일한 색 의미를 따른다.
-  // 활성 캐리어 job → "live"(aurora), 그 외 에이전트 턴 진행 → "turn"(warn/amber). dormant·idle은 효과 없음.
-  const underwayState: "live" | "turn" | null = dormant
+  // 입력 대기 → "awaiting"(warn/amber), 활성 캐리어 job → "live"(aurora), 그 외 에이전트 턴 진행 → "turn"(warn/amber).
+  const underwayState: "awaiting" | "live" | "turn" | null = dormant
     ? null
-    : activeJobCount > 0
+    : awaitingInput
+      ? "awaiting"
+      : activeJobCount > 0
       ? "live"
       : session.turnState === "running"
         ? "turn"

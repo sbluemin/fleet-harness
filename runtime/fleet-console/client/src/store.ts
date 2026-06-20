@@ -7,12 +7,13 @@ import type {
   AttentionReason,
   ConsoleState,
   JobView,
+  NotificationKind,
+  NotificationPreferences,
   ObservedEvent,
   ObservedTenant,
   ObserverStatus,
   ObserverTruncation,
-  OperationToast,
-  OperationToastKind,
+  OperationNotification,
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
@@ -39,8 +40,15 @@ const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
 const EXPANDED_SESSIONS_STORAGE_KEY = "fleet-console.expandedSessions";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
+const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
+const NOTIFICATION_PREFERENCES_VERSION = 1;
 const DEFAULT_THEME: ThemeId = "maritime";
 const DEFAULT_RENDERER: TerminalRenderer = "webgl";
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  globalMute: false,
+  dnd: false,
+  mutedTheaterIds: {},
+};
 export const SHELL_SESSION_ID = "shell";
 
 const listeners = new Set<Listener>();
@@ -80,10 +88,11 @@ let state: ConsoleState = {
   pendingOperationFocus: null,
   selectedJobId: null,
   expandedSessionIds: readStoredExpandedSessions(),
-  operationToasts: [],
+  operationNotifications: {},
+  notificationPreferences: readStoredNotificationPreferences(),
 };
 
-let operationToastSeq = 0;
+let operationNotificationSeq = 0;
 
 export function getState(): ConsoleState {
   return state;
@@ -226,7 +235,11 @@ export function failAddTheater(error: string): void {
 }
 
 export function selectTerminalSession(sessionId: string | null): void {
-  setState({ activeTerminalSessionId: sessionId, selectedJobId: null });
+  setState({
+    activeTerminalSessionId: sessionId,
+    selectedJobId: null,
+    operationNotifications: sessionId ? removeNotificationForSession(state.operationNotifications, sessionId) : state.operationNotifications,
+  });
 }
 
 export function focusOperation(sessionId: string): void {
@@ -238,6 +251,7 @@ export function focusOperation(sessionId: string): void {
     activeTerminalSessionId: sessionId,
     selectedJobId: null,
     pendingOperationFocus: sessionId,
+    operationNotifications: removeNotificationForSession(state.operationNotifications, sessionId),
   });
 }
 
@@ -295,35 +309,56 @@ export function applySessionUpdate(session: SessionInput): void {
     ? state.sessionOrder
     : [normalized.sessionId, ...state.sessionOrder.filter((sessionId) => sessionId !== normalized.sessionId)];
   // 기존 세션의 턴 상태 전이만 알림(신규 세션의 첫 프레임은 전이가 아니므로 제외).
-  const turnToasts = current ? buildTurnTransitionToasts(current, normalized) : [];
+  const nextNotifications = current
+    ? mergeTurnTransitionNotification(state.operationNotifications, current, normalized)
+    : state.operationNotifications;
   setState({
     sessions,
     sessionOrder,
     activeTerminalSessionId: resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
-    operationToasts: turnToasts.length > 0 ? [...state.operationToasts, ...turnToasts] : state.operationToasts,
+    operationNotifications: nextNotifications,
   });
 }
 
 // 입력 대기(AskUserQuestion·권한/유휴/elicitation) 1회성 신호. 세션 상태는 갱신하지 않고,
-// 현재 보고 있지 않은 Operation에 한해 입력 대기 토스트만 띄운다(현재 보는 Operation은 억제).
+// Operation 단위 알림 맵에 병합한다. 보이는 세션 제외는 Notification Cluster selector가 담당한다.
 export function applySessionAttention(session: SessionInput, reason?: AttentionReason): void {
   const target = state.sessions[session.sessionId] ?? normalizeSession(session);
-  // Operations 뷰가 화면에 떠 있고(=/operations) 그 Operation을 실제로 보고 있을 때만 억제한다.
-  // Welcome·Codex 등 다른 화면에선 어떤 Operation도 보이지 않으므로 백그라운드 입력 대기를 반드시 알린다
-  // (라우트 전이가 activeTerminalSessionId를 비우지 않아 isActiveOperation만으로는 화면 밖을 구분 못 한다).
-  if (state.operationsViewActive && isActiveOperation(target)) return;
   // 캐리어 출격 중(미완료 job 존재)의 idle_prompt는 입력 대기가 아니라 비동기 작업 대기다 —
-  // ended 경로(buildTurnTransitionToasts)와 동일 근거로 억제한다. 권한 요청·AskUserQuestion·elicitation
+  // ended 경로와 동일 근거로 억제한다. 권한 요청·AskUserQuestion·elicitation
   // (또는 reason 부재)은 출격 중에도 실제 입력 대기이므로 알림을 유지한다.
   if (reason === "idle_prompt" && hasActiveCarrierJob(target)) return;
-  // AskUserQuestion은 PreToolUse와 Notification을 함께 발화할 수 있고 입력 대기가 반복 알림될 수도 있다.
-  // 같은 세션의 입력 대기 토스트가 아직 떠 있으면 중복 발행하지 않는다(닫히면 다음 대기 때 다시 뜬다).
-  if (state.operationToasts.some((toast) => toast.kind === "input-waiting" && toast.sessionId === session.sessionId)) return;
-  setState({ operationToasts: [...state.operationToasts, makeOperationToast("input-waiting", target)] });
+  setState({ operationNotifications: mergeNotification(state.operationNotifications, makeNotification("input-waiting", target)) });
 }
 
-export function dismissOperationToast(id: number): void {
-  setState({ operationToasts: state.operationToasts.filter((toast) => toast.id !== id) });
+export function dismissNotificationsForSession(sessionId: string): void {
+  const operationNotifications = removeNotificationForSession(state.operationNotifications, sessionId);
+  if (operationNotifications === state.operationNotifications) return;
+  setState({ operationNotifications });
+}
+
+export function setGlobalMute(globalMute: boolean): void {
+  const notificationPreferences = { ...state.notificationPreferences, globalMute };
+  writeStoredNotificationPreferences(notificationPreferences);
+  setState({ notificationPreferences });
+}
+
+export function setDnd(dnd: boolean): void {
+  const notificationPreferences = { ...state.notificationPreferences, dnd };
+  writeStoredNotificationPreferences(notificationPreferences);
+  setState({ notificationPreferences });
+}
+
+export function toggleTheaterMute(theaterId: string): void {
+  const mutedTheaterIds = { ...state.notificationPreferences.mutedTheaterIds };
+  if (mutedTheaterIds[theaterId]) {
+    delete mutedTheaterIds[theaterId];
+  } else {
+    mutedTheaterIds[theaterId] = true;
+  }
+  const notificationPreferences = { ...state.notificationPreferences, mutedTheaterIds };
+  writeStoredNotificationPreferences(notificationPreferences);
+  setState({ notificationPreferences });
 }
 
 export function failCreateTerminalSession(error: string): void {
@@ -428,6 +463,8 @@ export function removeTheater(theaterId: string): void {
   }
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId === theaterId ? null : state.activeTheaterId);
   const expandedSessionIds = state.expandedSessionIds.filter((id) => sessions[id]);
+  // 삭제된 Theater의 Operation 알림도 클러스터에서 정리한다.
+  const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
   writeStoredActiveTheaterId(activeTheaterId);
   writeStoredExpandedSessions(expandedSessionIds);
   setState({
@@ -438,6 +475,7 @@ export function removeTheater(theaterId: string): void {
     activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
     selectedJobId: null,
     expandedSessionIds,
+    operationNotifications,
   });
 }
 
@@ -455,6 +493,8 @@ export function removeTerminalSession(sessionId: string): void {
     activeTerminalSessionId: wasActive ? resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, null) : state.activeTerminalSessionId,
     selectedJobId: wasActive ? null : state.selectedJobId,
     expandedSessionIds,
+    // 삭제된 세션의 알림이 클러스터에 stale 행으로 남지 않도록 정리한다(이동 액션으로도 해소 불가하므로).
+    operationNotifications: removeNotificationForSession(state.operationNotifications, sessionId),
   });
 }
 
@@ -629,35 +669,80 @@ function normalizeSession(session: SessionInput): SessionInfo {
   };
 }
 
-// 현재 보고 있는 Operation(활성 Theater + 활성 세션)인지. 활성 Operation은 토스트를 억제한다.
-function isActiveOperation(session: SessionInfo): boolean {
-  return state.activeTheaterId === (session.theaterId ?? null) && state.activeTerminalSessionId === session.sessionId;
-}
-
 function theaterLabelFor(theaterId: string | undefined): string {
   if (!theaterId) return "—";
   return state.theaters.find((theater) => theater.id === theaterId)?.label ?? theaterId;
 }
 
-function makeOperationToast(kind: OperationToastKind, session: SessionInfo): OperationToast {
-  operationToastSeq += 1;
+function makeNotification(kind: NotificationKind, session: SessionInfo): OperationNotification {
+  operationNotificationSeq += 1;
   return {
-    id: operationToastSeq,
     kind,
     sessionId: session.sessionId,
+    theaterId: session.theaterId ?? null,
     theaterLabel: theaterLabelFor(session.theaterId),
     operationLabel: sessionDisplayLabel(session),
+    count: 1,
+    lastRaisedSeq: operationNotificationSeq,
   };
 }
 
-function buildTurnTransitionToasts(prev: SessionInfo, next: SessionInfo): readonly OperationToast[] {
-  if (isActiveOperation(next)) return [];
+function mergeTurnTransitionNotification(
+  notifications: Readonly<Record<string, OperationNotification>>,
+  prev: SessionInfo,
+  next: SessionInfo,
+): Readonly<Record<string, OperationNotification>> {
+  // 작업 재개(running 진입): 이전 입력 대기/완료 알림은 무효이므로 해당 세션 알림을 제거한다.
+  // 입력 대기 응답 후 턴이 재개되면, 보이는 패널의 awaiting 신호와 클러스터 행이 stale로 남는 것을 막는다.
+  if (prev.turnState !== "running" && next.turnState === "running") {
+    return removeNotificationForSession(notifications, next.sessionId);
+  }
   // 작업 완료(턴 종료)만 알린다. 턴 진행 시작(running)은 알리지 않는다.
   // 캐리어 출격 중(미완료 job이 있음)에는 ended 알림을 억제한다 — 실제 작업은 계속 진행 중이므로.
   if (prev.turnState !== "ended" && next.turnState === "ended" && !hasActiveCarrierJob(next)) {
-    return [makeOperationToast("ended", next)];
+    return mergeNotification(notifications, makeNotification("ended", next));
   }
-  return [];
+  return notifications;
+}
+
+function mergeNotification(
+  notifications: Readonly<Record<string, OperationNotification>>,
+  notification: OperationNotification,
+): Readonly<Record<string, OperationNotification>> {
+  const existing = notifications[notification.sessionId];
+  return {
+    ...notifications,
+    [notification.sessionId]: {
+      ...notification,
+      count: existing?.kind === "input-waiting" && notification.kind === "input-waiting" ? existing.count + 1 : 1,
+    },
+  };
+}
+
+function removeNotificationForSession(
+  notifications: Readonly<Record<string, OperationNotification>>,
+  sessionId: string,
+): Readonly<Record<string, OperationNotification>> {
+  if (!notifications[sessionId]) return notifications;
+  const next = { ...notifications };
+  delete next[sessionId];
+  return next;
+}
+
+function pruneNotificationsForTheater(
+  notifications: Readonly<Record<string, OperationNotification>>,
+  theaterId: string,
+): Readonly<Record<string, OperationNotification>> {
+  let changed = false;
+  const next: Record<string, OperationNotification> = {};
+  for (const [sessionId, notification] of Object.entries(notifications)) {
+    if (notification.theaterId === theaterId) {
+      changed = true;
+      continue;
+    }
+    next[sessionId] = notification;
+  }
+  return changed ? next : notifications;
 }
 
 function hasActiveCarrierJob(session: SessionInfo): boolean {
@@ -768,6 +853,23 @@ function readStoredExpandedSessions(): readonly string[] {
   }
 }
 
+function readStoredNotificationPreferences(): NotificationPreferences {
+  if (typeof window === "undefined") return DEFAULT_NOTIFICATION_PREFERENCES;
+  try {
+    const stored = window.localStorage.getItem(NOTIFICATION_PREFERENCES_STORAGE_KEY);
+    if (!stored) return DEFAULT_NOTIFICATION_PREFERENCES;
+    const parsed: unknown = JSON.parse(stored);
+    if (!isNotificationPreferencesBlob(parsed)) return DEFAULT_NOTIFICATION_PREFERENCES;
+    return {
+      globalMute: parsed.preferences.globalMute,
+      dnd: parsed.preferences.dnd,
+      mutedTheaterIds: parsed.preferences.mutedTheaterIds,
+    };
+  } catch {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+}
+
 function readStoredCommissioningSeen(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -815,6 +917,18 @@ function writeStoredExpandedSessions(ids: readonly string[]): void {
   }
 }
 
+function writeStoredNotificationPreferences(preferences: NotificationPreferences): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NOTIFICATION_PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: NOTIFICATION_PREFERENCES_VERSION,
+      preferences,
+    }));
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
 function writeStoredCommissioningSeen(seen: boolean): void {
   if (typeof window === "undefined") return;
   try {
@@ -843,6 +957,25 @@ function pruneJobs(jobs: Record<string, JobView>, order: readonly string[]): Rec
     if (keep.has(jobId)) pruned[jobId] = jobs[jobId]!;
   }
   return pruned;
+}
+
+function isNotificationPreferencesBlob(value: unknown): value is {
+  readonly version: 1;
+  readonly preferences: NotificationPreferences;
+} {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as {
+    readonly version?: unknown;
+    readonly preferences?: {
+      readonly globalMute?: unknown;
+      readonly dnd?: unknown;
+      readonly mutedTheaterIds?: unknown;
+    };
+  };
+  if (candidate.version !== NOTIFICATION_PREFERENCES_VERSION || !candidate.preferences) return false;
+  if (typeof candidate.preferences.globalMute !== "boolean" || typeof candidate.preferences.dnd !== "boolean") return false;
+  const muted = candidate.preferences.mutedTheaterIds;
+  return Boolean(muted) && typeof muted === "object" && !Array.isArray(muted);
 }
 
 function emit(): void {
