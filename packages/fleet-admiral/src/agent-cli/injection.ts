@@ -13,7 +13,7 @@ import { buildClaudeNativeArgs } from "./builders/claude.js";
 import { buildCodexNativeArgs } from "./builders/codex.js";
 import { buildPosixShellCommand, escapeTomlBasicString, escapeTomlMultilineString } from "./builders/toml.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
-import { createAgentCliPlugin, ensureCodexPluginRegistered } from "./plugin/index.js";
+import { cleanupDeprecatedCodexPluginState, createAgentCliPlugin, ensureCodexPluginRegistered, FLEET_MARKETPLACE_NAME } from "./plugin/index.js";
 import type {
   AgentCliInjectionContext,
   AgentCliMcpServerArg,
@@ -133,6 +133,22 @@ export async function injectAgentCliProfile(
         }, (cleanup) => tempCleanups.push(cleanup))
       : undefined;
     const launchWarnings: string[] = [];
+    // 과거 fleet-global/fleet-project 렌더가 Codex 설정에 남긴 등록·flat marketplace 잔재를 등록 루프 전에 1회 정리한다.
+    if (profile.id === "codex") {
+      const cleanupWarning = await cleanupDeprecatedCodexPluginState({
+        args: [...(profile.binPrefixArgs ?? [])],
+        bin: profile.bin,
+        cwd: profile.cwd,
+        env: { ...profile.env },
+      }, requireCodexCommandRunner(options.codexCommandRunner), options.withMarketplaceLock, {
+        homeMarketplaceName: FLEET_MARKETPLACE_NAME,
+        homeMarketplaceRoot: path.join(options.pluginRootDir ?? options.dataDir, "marketplace"),
+        projectMarketplaceRoot: path.join(profile.cwd, ".fleet"),
+      });
+      if (cleanupWarning !== undefined) {
+        launchWarnings.push(`Deprecated Codex plugin cleanup failed: ${cleanupWarning}`);
+      }
+    }
     // Codex CLI가 Windows .cmd shim이면 profile.bin은 cmd.exe, binPrefixArgs는 /d /s /c <shim>이다.
     // 등록 명령은 이 prefixArgs를 base args로 실어야 PTY 실행 경로와 동일하게 codex가 호출된다(POSIX에선 빈 배열).
     for (const registration of plugin.codexRegistrations) {
