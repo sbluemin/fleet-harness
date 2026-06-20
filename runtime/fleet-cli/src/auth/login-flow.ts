@@ -5,9 +5,7 @@ import {
   AUTH_LOGIN_SECRET_PROMPT_MESSAGE,
   CLI_TO_AUTH_PROVIDER_ID,
   formatAuthLoginSuccessMessage,
-  formatAuthMigrationNotice,
   formatAuthValidationFailureMessage,
-  migrateLegacyAuthStore,
   validateAuthKeyForCli,
 } from "@dotobokuri/fleet-infra/auth";
 
@@ -34,11 +32,6 @@ export async function runAuthLoginFlow(
   });
   if (isCancel(apiKey) || typeof apiKey !== "string" || apiKey.trim().length === 0) {
     return cancelAuthCommand();
-  }
-
-  const migration = await migrateLegacyAuthStore();
-  if (migration.shouldPrintNotice) {
-    io.stdout.write(`${formatAuthMigrationNotice(migration)}\n`);
   }
 
   const validation = await validateAuthKeyForCli(selectedCli, apiKey.trim());

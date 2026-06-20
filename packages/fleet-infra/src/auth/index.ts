@@ -14,15 +14,8 @@ export {
   AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE,
   formatAuthLoginSuccessMessage,
   formatAuthLogoutSuccessMessage,
-  formatAuthMigrationNotice,
   formatAuthValidationFailureMessage,
 } from "./messages.js";
-export {
-  CURRENT_AUTH_PATH,
-  LEGACY_AUTH_PATH,
-  mergeAuthStoresNoOverwrite,
-  migrateLegacyAuthStore,
-} from "./migration.js";
 export {
   createAuthValidationError,
   isAuthValidationSuccess,
@@ -31,9 +24,6 @@ export {
 
 export type {
   AuthMessageProviderRef,
-  AuthMigrationMergeResult,
-  AuthMigrationNoticeInput,
-  AuthMigrationResult,
   AuthService,
   AuthStorageData,
   AuthStorageEntry,

@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   cancelMock: vi.fn(),
   deleteApiKeyMock: vi.fn(),
   listProviderIdsMock: vi.fn(),
-  migrateLegacyAuthStoreMock: vi.fn(),
   runAuthLoginFlowMock: vi.fn(),
   selectMock: vi.fn(),
 }));
@@ -38,14 +37,11 @@ vi.mock("@dotobokuri/fleet-infra/auth", () => ({
     listProviderIds: mocks.listProviderIdsMock,
   }),
   formatAuthLogoutSuccessMessage: (providerId: string) => `Removed: ${providerId}`,
-  formatAuthMigrationNotice: () => "Migration complete",
-  migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
 }));
 
 describe("auth dispatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.migrateLegacyAuthStoreMock.mockResolvedValue({ shouldPrintNotice: false });
     mocks.listProviderIdsMock.mockResolvedValue([]);
     mocks.deleteApiKeyMock.mockResolvedValue(true);
     mocks.runAuthLoginFlowMock.mockResolvedValue(0);

@@ -5,8 +5,6 @@ import {
   AUTH_LOGOUT_PROVIDER_PROMPT_MESSAGE,
   CLI_TO_AUTH_PROVIDER_ID,
   formatAuthLogoutSuccessMessage,
-  formatAuthMigrationNotice,
-  migrateLegacyAuthStore,
 } from "@dotobokuri/fleet-infra/auth";
 
 import { getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
@@ -47,11 +45,6 @@ export async function dispatchAuthCommand(
 }
 
 async function listAuthProviders(io: AuthCommandIo, deps: AuthCommandDeps): Promise<number> {
-  const migration = await migrateLegacyAuthStore();
-  if (migration.shouldPrintNotice) {
-    io.stdout.write(`${formatAuthMigrationNotice(migration)}\n`);
-  }
-
   const providerIds = await deps.authService.listProviderIds();
   if (providerIds.length === 0) {
     io.stdout.write(`${AUTH_LIST_EMPTY_MESSAGE}\n`);
@@ -73,11 +66,6 @@ async function logoutAuthProvider(
   if (!selectedCli) {
     cancel(AUTH_COMMAND_CANCELLED_MESSAGE);
     return 1;
-  }
-
-  const migration = await migrateLegacyAuthStore();
-  if (migration.shouldPrintNotice) {
-    io.stdout.write(`${formatAuthMigrationNotice(migration)}\n`);
   }
 
   const providerId = CLI_TO_AUTH_PROVIDER_ID[selectedCli];

@@ -4,7 +4,6 @@ import { runAuthLoginFlow } from "../../src/auth/login-flow.js";
 
 const mocks = vi.hoisted(() => ({
   cancelMock: vi.fn(),
-  migrateLegacyAuthStoreMock: vi.fn(),
   passwordMock: vi.fn(),
   selectMock: vi.fn(),
   setApiKeyMock: vi.fn(),
@@ -30,9 +29,7 @@ vi.mock("@dotobokuri/fleet-infra/auth", () => ({
     setApiKey: mocks.setApiKeyMock,
   }),
   formatAuthLoginSuccessMessage: (providerId: string) => `Registered: ${providerId}`,
-  formatAuthMigrationNotice: () => "Migration complete",
   formatAuthValidationFailureMessage: () => "Validation failed",
-  migrateLegacyAuthStore: mocks.migrateLegacyAuthStoreMock,
   validateAuthKeyForCli: mocks.validateAuthKeyForCliMock,
 }));
 
@@ -40,7 +37,6 @@ describe("auth login flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.passwordMock.mockResolvedValue("secret-token");
-    mocks.migrateLegacyAuthStoreMock.mockResolvedValue({ shouldPrintNotice: false });
     mocks.validateAuthKeyForCliMock.mockResolvedValue({
       providerId: "Claude Code with Z.AI GLM",
       status: "success",

@@ -20,7 +20,7 @@ import {
   type FleetAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
-import { migrateLegacyAuthStore, resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
+import { resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, TerminalFolderListResponse } from "./api-types.js";
@@ -224,7 +224,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const modelAuthRouter = createModelAuthRouter({
     authService: infraServices.authService,
     validateApiKey: (cli, apiKey) => validateAuthKeyForCli(cli, apiKey),
-    migrateLegacyAuth: () => migrateLegacyAuthStore(),
     isAuthorized: isTerminalAuthorized,
     readJsonBody,
     writeJson,
@@ -686,10 +685,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if ((process.env.FLEET_TERMINAL_CMD ?? "").trim().length > 0) {
       return metadata.map((meta) => ({ id: meta.id, label: meta.label, available: true, signedIn: true }));
     }
-    // signedIn은 현재 auth store만 보고 판정한다. legacy(~/.fleet/agent/auth.json) 마이그레이션은 여기서
-    // 의도적으로 하지 않는다 — sign-out 직후 refresh가 이 경로를 호출하므로, 여기서 migrate하면 방금
-    // sign-out으로 현재 store에서 지운 legacy 키가 되살아나 게이트가 다시 열린다(부활). legacy-only 키의
-    // 노출은 /model-auth/state(Settings 진입)의 migrate가 담당하며, 그 SSoT 결함 자체는 별도 후속 사안이다.
+    // signedIn은 현재 auth store만 보고 판정한다. legacy auth 마이그레이션은 제거되었다.
     const [detected, modelAuth] = await Promise.all([
       agentCliDetector.detect(),
       buildModelAuthState(infraServices.authService),
