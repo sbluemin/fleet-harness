@@ -93,6 +93,80 @@
   box-shadow: 0 0 8px var(--brass-glow);
 }
 
+/* GitHub 홍보 링크 그룹 — preview 배지와 hairline으로 가른 한 묶음. 보더리스 미니멀로 GNB를 가볍게 유지한다. */
+.topbar-github {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--surface-rim);
+}
+
+/* preview 배지가 접히는 폭(≤1800px)에서도 GitHub 마크는 끝까지 노출한다(홍보 목적). 배지 부재 시
+   hairline은 브랜드 타이틀과 GitHub를 가르므로 의미가 유지된다. */
+.topbar-github-link,
+.topbar-github-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: var(--radius-md);
+  color: var(--ink-fog);
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.topbar-github-link svg,
+.topbar-github-stars svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* star 별 외곽선은 hover 시 brass로 채워지므로, 채움 전환이 부드럽게 보이도록 path에 transition을 건다. */
+.topbar-github-stars svg path {
+  transition:
+    fill var(--duration-fast) var(--ease-spring),
+    stroke var(--duration-fast) var(--ease-spring);
+}
+
+.topbar-github-link:hover,
+.topbar-github-stars:hover {
+  color: var(--ink-pearl);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+/* star 수 — mono · tabular-nums로 폭을 안정시키고 brass 정체성 톤을 입힌다. */
+.topbar-github-stars-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+/* hover 시 별을 brass로 채워 '여기를 눌러 star' 의도를 시각화한다 — hover 한정이라 금지된 무한 모션이 아니다. */
+.topbar-github-stars:hover svg path {
+  fill: var(--brass-bright);
+  stroke: var(--brass-bright);
+}
+
+.topbar-github-stars:hover .topbar-github-stars-count {
+  color: var(--brass-bright);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-github-link,
+  .topbar-github-stars,
+  .topbar-github-stars svg path {
+    transition: none;
+  }
+}
+
 .topbar-sigil {
   display: grid;
   place-items: center;

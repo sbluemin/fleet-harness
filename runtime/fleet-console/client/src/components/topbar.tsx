@@ -36,6 +36,11 @@ interface UpdateApplyCopy {
   readonly disabled: boolean;
 }
 
+interface GithubStarsState {
+  readonly count: number | null;
+  readonly status: "idle" | "loading" | "ready" | "error";
+}
+
 // GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
@@ -48,6 +53,15 @@ const THEMES: readonly ThemeOption[] = [
 ];
 
 const UPDATE_APPLY_COMPLETE_DELAY_MS = 1_400;
+
+// GitHub 홍보 링크 — 레포 본체, stargazers(별) 페이지, 그리고 star 수를 읽는 공개 REST 엔드포인트.
+const GITHUB_REPO_URL = "https://github.com/sbluemin/fleet-harness";
+const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargazers";
+const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
+// star 수는 비민감 공개값이라 토큰 없이(Token Boundary 무위반) 호출한다. 비인증 rate limit(60/시간/IP)과
+// 새로고침 깜빡임을 피하려 마지막 값을 localStorage에 6시간 캐싱하고, 신선할 때는 네트워크 호출을 생략한다.
+const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
+const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 
 export function Topbar({ state, codexMode }: TopbarProps) {
   // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
@@ -79,6 +93,8 @@ export function Topbar({ state, codexMode }: TopbarProps) {
         </Link>
         {/* 리서치 프리뷰 단계임을 GNB에 상시 표기한다 — brass 정체성 배지(대문자 변환은 CSS가 담당). */}
         <span className="topbar-preview-badge">Research Preview</span>
+        {/* GitHub 홍보 컨트롤 — preview 배지와 한 묶음(brass 정체성)으로 묶되, 인터랙티브 링크라 hover 강조를 준다. */}
+        <GithubLinks />
       </div>
       <TheaterControl state={state} />
       <div className="topbar-meta">
@@ -536,6 +552,110 @@ function RendererToggle({ renderer }: { readonly renderer: TerminalRenderer }) {
   );
 }
 
+// GitHub 레포 이동 마크 + 라이브 star 카운트. 둘 다 새 탭으로 열리는 외부 링크다(noopener/noreferrer).
+function GithubLinks() {
+  const stars = useGithubStars();
+  const hasCount = stars.count !== null;
+  return (
+    <div className="topbar-github" role="group" aria-label="GitHub">
+      <a
+        className="topbar-github-link"
+        href={GITHUB_REPO_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="GitHub 저장소 열기"
+        title="GitHub 저장소"
+      >
+        <GithubMarkIcon />
+      </a>
+      <a
+        className="topbar-github-stars"
+        href={GITHUB_STARGAZERS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={hasCount ? `GitHub 스타 ${stars.count!.toLocaleString()}개 — 스타 누르기` : "GitHub에서 스타 누르기"}
+        title="GitHub에서 스타 누르기"
+      >
+        <StarIcon />
+        {hasCount ? <span className="topbar-github-stars-count">{formatStarCount(stars.count!)}</span> : null}
+      </a>
+    </div>
+  );
+}
+
+// 공개 REST에서 star 수를 읽어온다. 신선한 캐시는 즉시 사용하고, TTL이 지났을 때만 네트워크를 친다.
+// 실패해도 캐시값이 있으면 그대로 두고, 없으면 숫자를 숨겨 별 아이콘만 남기는 graceful degrade로 처리한다.
+function useGithubStars(): GithubStarsState {
+  const [state, setState] = useState<GithubStarsState>(() => {
+    const cached = readCachedStars();
+    return cached === null ? { count: null, status: "idle" } : { count: cached, status: "ready" };
+  });
+
+  useEffect(() => {
+    if (isStarCacheFresh()) return;
+    let cancelled = false;
+    setState((prev) => (prev.status === "ready" ? prev : { ...prev, status: "loading" }));
+    fetch(GITHUB_STARS_API_URL, { headers: { Accept: "application/vnd.github+json" } })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`status ${response.status}`))))
+      .then((data: { readonly stargazers_count?: unknown }) => {
+        if (cancelled) return;
+        const count = typeof data.stargazers_count === "number" ? data.stargazers_count : null;
+        if (count === null) {
+          setState((prev) => ({ count: prev.count, status: prev.count === null ? "error" : "ready" }));
+          return;
+        }
+        writeCachedStars(count);
+        setState({ count, status: "ready" });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setState((prev) => ({ count: prev.count, status: prev.count === null ? "error" : "ready" }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return state;
+}
+
+function readCachedStars(): number | null {
+  try {
+    const raw = window.localStorage.getItem(GITHUB_STARS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { readonly count?: unknown };
+    return typeof parsed.count === "number" ? parsed.count : null;
+  } catch {
+    return null;
+  }
+}
+
+function isStarCacheFresh(): boolean {
+  try {
+    const raw = window.localStorage.getItem(GITHUB_STARS_CACHE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { readonly at?: unknown };
+    return typeof parsed.at === "number" && Date.now() - parsed.at < GITHUB_STARS_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+function writeCachedStars(count: number): void {
+  try {
+    window.localStorage.setItem(GITHUB_STARS_CACHE_KEY, JSON.stringify({ count, at: Date.now() }));
+  } catch {
+    // localStorage 불가(프라이빗 모드 등)면 캐싱만 건너뛴다 — star 표시 기능 자체는 정상 동작한다.
+  }
+}
+
+// 좁은 GNB에서 폭을 일정하게 유지하려 1000 이상은 k 단위로 축약한다(예: 1234 → 1.2k, 12345 → 12k).
+function formatStarCount(count: number): string {
+  if (count < 1000) return String(count);
+  const thousands = count / 1000;
+  return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
 function TheaterSigil() {
   // 작전지역(Theater) — 닻 모티프로 '정박/거점'을 표상한다.
   return (
@@ -652,6 +772,33 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function GithubMarkIcon() {
+  // GitHub 공식 octocat 마크 — currentColor로 채워 GNB 톤(ink-fog → hover ink-pearl)을 따른다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+      />
+    </svg>
+  );
+}
+
+function StarIcon() {
+  // 5각 별 — 기본은 외곽선, star 링크 hover 시 CSS가 brass로 채워 '별 누르기' 의도를 시각화한다.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 2.2 9.41 6.26 13.71 6.35 10.28 8.94 11.53 13.05 8 10.6 4.47 13.05 5.72 8.94 2.29 6.35 6.59 6.26Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
