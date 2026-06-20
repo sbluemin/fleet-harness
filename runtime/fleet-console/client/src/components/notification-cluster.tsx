@@ -42,6 +42,8 @@ export function NotificationClusterHost() {
   const endedCount = countByKind(groups, "ended");
   const preferencesActive = preferencesAreActive(state.notificationPreferences);
   const muted = groups.length === 0;
+  // 신호등 상태 — 입력 대기가 있으면 awaiting(warn·perimeter wake), 완료만이면 ended(positive), 없으면 muted.
+  const signalState = muted ? "muted" : waitingCount > 0 ? "awaiting" : "ended";
 
   // 표시할 알림도 없고 활성 preference(음소거/DND/Theater mute)도 없으면 계기판 자체를 숨긴다.
   if (muted && !preferencesActive) return null;
@@ -53,7 +55,7 @@ export function NotificationClusterHost() {
 
   return (
     <aside
-      className={`notification-cluster ${collapsed ? "is-collapsed" : "is-open"} ${muted ? "is-muted" : ""}`}
+      className={`notification-cluster ${collapsed ? "is-collapsed" : "is-open"} ${muted ? "is-muted" : ""} ${signalState === "awaiting" ? "has-awaiting" : ""}`}
       aria-live="polite"
       aria-label="Operation notifications"
     >
@@ -65,7 +67,7 @@ export function NotificationClusterHost() {
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand notifications" : "Collapse notifications"}
         >
-          <span className="notification-cluster-ensign" data-state={muted ? "muted" : "active"} aria-hidden="true" />
+          <span className="notification-cluster-ensign" data-state={signalState} aria-hidden="true" />
           <span className="notification-cluster-headline">
             <span className="notification-cluster-count">{muted ? "Muted" : totalCount}</span>
             <span className="notification-cluster-scope">{muted ? "Alerts paused" : `${groups.length} Theater`}</span>

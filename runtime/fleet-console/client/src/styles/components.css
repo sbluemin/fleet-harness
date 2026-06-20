@@ -5874,10 +5874,10 @@
 }
 
 /* ── Notification Cluster ──────────────────────────────────────────────
-   우상단 고정 알림 계기판(함교 당직판). Theater 그룹이 펼침 없이 기본 표시되고,
+   우상단 고정 알림 계기판(함교 당직 계기). Theater 그룹이 펼침 없이 기본 표시되고,
    각 Operation 행은 kind 비콘으로 완료(--positive)·입력 대기(--warn)를 구분한다.
-   모든 색은 theme.css 토큰으로만 표현해 maritime/carbon 양 테마를 추종한다.
-   brass=구조색, aurora 미사용(역할 혼용 금지). 기존 operation-toast* 규칙은 제거됨. */
+   입력 대기가 있으면 패널 in-progress와 동일한 perimeter wake(--warn 순환광)를 외곽에 두른다.
+   모든 색은 theme.css 토큰으로만 — maritime/carbon 양 테마 추종, aurora 미사용(역할 혼용 금지). */
 .notification-cluster {
   position: fixed;
   top: var(--console-topbar-offset);
@@ -5886,12 +5886,15 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: min(340px, calc(100vw - var(--space-8)));
+  width: min(344px, calc(100vw - var(--space-8)));
   max-height: calc(100vh - var(--console-topbar-offset) - var(--space-6));
   padding: var(--space-3);
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  /* 우상단 brass 코너 조명 + glass 본체 — 계기판 깊이 */
+  background:
+    radial-gradient(130% 90% at 100% 0%, color-mix(in oklch, var(--brass) 8%, transparent), transparent 58%),
+    var(--surface-glass-strong);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-floating);
@@ -5900,14 +5903,53 @@
 
 .notification-cluster.is-muted {
   box-shadow: var(--shadow-soft);
-  opacity: 0.86;
+  opacity: 0.84;
 }
 
-/* ── Masthead (요약 헤더) ── */
+/* ── perimeter wake — 입력 대기 시 warn 순환광(패널 in-progress와 동일 언어) ── */
+.notification-cluster.has-awaiting {
+  --uw-tint: var(--warn);
+  --uw-glow: var(--warn-glow);
+  box-shadow: var(--shadow-floating), 0 0 26px -8px var(--uw-glow);
+}
+
+.notification-cluster.has-awaiting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--uw-angle),
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 0deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 20deg,
+    var(--uw-tint) 54deg,
+    color-mix(in oklch, var(--uw-tint) 50%, transparent) 96deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 156deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: perimeter-orbit 3s linear infinite;
+}
+
+/* ── Masthead — brass hairline으로 계기 구획 ── */
 .notification-cluster-masthead {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid color-mix(in oklch, var(--brass) 16%, var(--surface-rim));
 }
 
 .notification-cluster-pennant {
@@ -5916,7 +5958,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  padding: var(--space-1);
   border-radius: var(--radius-sm);
   transition: background var(--duration-fast) var(--ease-glide);
 }
@@ -5925,19 +5967,27 @@
   background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
 }
 
-/* ensign — 함교 신호등. 활성 시 brass glow ring, 음소거 시 소등(ink). */
+/* 신호등 ensign — awaiting=warn, ended=positive, muted=ink. glow ring으로 계기등 표현. */
 .notification-cluster-ensign {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
-  background: var(--brass);
-  box-shadow: 0 0 0 4px var(--brass-glow);
   flex-shrink: 0;
+  background: var(--ink-rim);
+}
+
+.notification-cluster-ensign[data-state="awaiting"] {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px var(--warn-glow), 0 0 10px 0 var(--warn-glow);
+}
+
+.notification-cluster-ensign[data-state="ended"] {
+  background: var(--positive);
+  box-shadow: 0 0 0 4px var(--positive-glow);
 }
 
 .notification-cluster-ensign[data-state="muted"] {
   background: var(--ink-rim);
-  box-shadow: none;
 }
 
 .notification-cluster-headline {
@@ -5949,7 +5999,7 @@
 
 .notification-cluster-count {
   font-family: var(--font-display);
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 600;
   line-height: 1;
   color: var(--ink-pearl);
@@ -5965,7 +6015,7 @@
   font-size: 10px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.1em;
   color: var(--ink-fog);
   white-space: nowrap;
 }
@@ -5987,13 +6037,15 @@
 }
 
 .notification-cluster-controls {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
-/* 헤더 우측 kind 합계 칩 — 완료/대기 비율을 한눈에. */
+/* kind 합계 칩 — 점 + 수치로 완료/대기 비율을 한눈에 */
 .notification-cluster-tallies {
   display: flex;
   align-items: center;
@@ -6003,10 +6055,10 @@
 .notification-tally {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 5px;
+  gap: 4px;
+  min-width: 22px;
+  height: 19px;
+  padding: 0 6px;
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -6014,16 +6066,24 @@
   line-height: 1;
 }
 
+.notification-tally::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 .notification-tally.is-input-waiting {
   color: var(--warn);
-  background: var(--warn-glow);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 35%, transparent);
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warn) 34%, transparent);
 }
 
 .notification-tally.is-ended {
   color: var(--positive);
-  background: var(--positive-glow);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--positive) 35%, transparent);
+  background: color-mix(in oklch, var(--positive) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--positive) 34%, transparent);
 }
 
 .notification-cluster-cog {
@@ -6048,8 +6108,10 @@
   color: var(--brass);
 }
 
-/* ── Deck (Theater 그룹 스크롤 컨테이너) ── */
+/* ── Deck (Theater 그룹 스크롤) ── */
 .notification-cluster-deck {
+  position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -6058,10 +6120,10 @@
   padding: 0 var(--space-1);
 }
 
-/* ── Theater 그룹 — 함대 편성 카드. brass 좌측 마커 + 미세 brass tint로 구획. ── */
+/* ── Theater 그룹 — 편성 카드. brass 좌측 계기 막대 + glass 깊이 ── */
 .notification-cluster-group {
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
+  background: color-mix(in oklch, var(--ink-deep) 50%, transparent);
   border: 1px solid var(--surface-rim);
   overflow: hidden;
 }
@@ -6073,7 +6135,7 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--surface-rim);
   box-shadow: inset 3px 0 0 0 var(--brass-deep);
-  background: color-mix(in oklch, var(--brass) 5%, transparent);
+  background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 9%, transparent), transparent 64%);
 }
 
 .notification-cluster-theater {
@@ -6083,7 +6145,7 @@
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   color: var(--brass-bright);
   white-space: nowrap;
   overflow: hidden;
@@ -6102,7 +6164,7 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--ink-spectral);
-  background: color-mix(in oklch, var(--ink-fog) 16%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 15%, transparent);
 }
 
 /* ── Operation 행 ── */
@@ -6129,10 +6191,10 @@
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-/* kind 비콘 — 완료=positive(에메랄드), 입력 대기=warn(amber). glow ring으로 신호등 처리. */
+/* kind 비콘 — 신호등 glow ring */
 .notification-row-beacon {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -6143,11 +6205,11 @@
 
 .notification-row.is-input-waiting .notification-row-beacon {
   background: var(--warn);
-  box-shadow: 0 0 0 3px var(--warn-glow);
+  box-shadow: 0 0 0 3px var(--warn-glow), 0 0 8px 0 var(--warn-glow);
 }
 
 .notification-row.is-ended {
-  border-left-color: color-mix(in oklch, var(--positive) 55%, transparent);
+  border-left-color: color-mix(in oklch, var(--positive) 50%, transparent);
 }
 
 .notification-row.is-ended .notification-row-beacon {
@@ -6160,7 +6222,7 @@
   flex: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .notification-row-op {
@@ -6175,10 +6237,10 @@
 
 .notification-row-state {
   font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
+  font-size: 9px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.11em;
 }
 
 .notification-row.is-input-waiting .notification-row-state {
@@ -6201,17 +6263,19 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--ink-spectral);
-  background: color-mix(in oklch, var(--ink-fog) 18%, transparent);
+  background: color-mix(in oklch, var(--ink-fog) 17%, transparent);
   flex-shrink: 0;
 }
 
 .notification-row-move {
   flex-shrink: 0;
-  padding: 4px 10px;
+  padding: 4px 11px;
   border-radius: var(--radius-xs);
-  font-family: var(--font-body);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--ink-fog);
   border: 1px solid var(--surface-rim);
   transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
@@ -6219,18 +6283,20 @@
 
 .notification-row-move:hover {
   color: var(--brass-bright);
-  border-color: var(--surface-rim-strong);
+  border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
   background: var(--brass-glow);
 }
 
 /* ── 설정 팝오버 ── */
 .notification-cluster-settings {
+  position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-pillar) 82%, transparent);
+  background: color-mix(in oklch, var(--surface-pillar) 84%, transparent);
   border: 1px solid var(--surface-rim);
   animation: codex-pop var(--duration-base) var(--ease-spring) both;
 }
@@ -6238,10 +6304,10 @@
 .notification-cluster-settings-eyebrow {
   margin: var(--space-1) 0 2px;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   color: var(--ink-rim);
 }
 
@@ -6249,7 +6315,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-1);
+  padding: var(--space-1);
   border-radius: var(--radius-xs);
   font-size: 13px;
   color: var(--ink-spectral);
@@ -6276,6 +6342,11 @@
 
   .notification-cluster-chevron {
     transition: none;
+  }
+
+  .notification-cluster.has-awaiting::after {
+    animation: none;
+    background: color-mix(in oklch, var(--uw-tint) 36%, transparent);
   }
 }
 
