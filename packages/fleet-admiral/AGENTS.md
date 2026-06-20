@@ -9,7 +9,7 @@
 - Standing orders used by the Admiral system prompt
 - Fleet-specific agent tool defaults and whitelist-only executor MCP tool exposure
 - Agent CLI launch spec building: profile resolution, provider args/env/cwd construction, binary resolution, and Fleet activation arguments
-- Fleet plugin/persona rendering for built-in Fleet assets, user-global `~/.fleet`, and project `.fleet` activation surfaces
+- Fleet plugin/persona rendering for built-in Fleet assets
 - Fleet-specific in-process MCP server assembly and executor session/token issuance using `@dotobokuri/core-agent` primitives
 
 ## Must Not Own

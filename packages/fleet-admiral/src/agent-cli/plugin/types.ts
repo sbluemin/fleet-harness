@@ -61,16 +61,7 @@ export interface AssetPluginBundle extends PluginBundleBase {
   readonly source: "asset";
 }
 
-export interface ProjectPluginBundle extends PluginBundleBase {
-  readonly source: "project";
-}
-
-export interface GlobalPluginBundle extends PluginBundleBase {
-  readonly source: "global";
-}
-
 export interface MarketplaceTarget {
-  readonly flat: boolean;
   readonly name: string;
   readonly root: string;
 }
@@ -80,14 +71,4 @@ export interface RenderablePluginBundle {
   readonly target: MarketplaceTarget;
 }
 
-export interface CopyDirectoryIntoPluginOptions {
-  readonly label?: string;
-  readonly required?: boolean;
-  readonly followSymlinks?: boolean;
-}
-
-export type PluginBundle = AssetPluginBundle | ProjectPluginBundle | GlobalPluginBundle;
-
-export type AssetEntry =
-  | { readonly kind: "file"; readonly relativePath: string }
-  | { readonly kind: "symlink"; readonly relativePath: string; readonly target: string };
+export type PluginBundle = AssetPluginBundle;

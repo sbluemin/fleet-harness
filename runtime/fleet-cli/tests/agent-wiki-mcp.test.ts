@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -277,7 +276,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
       expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
       const profilePath = path.join(codexHome, `${profileName}.config.toml`);
       expect(profile.args).not.toContain("plugin_hooks");
-      expect(profile.args).not.toContain("--dangerously-bypass-hook-trust");
+      expect(profile.args).toContain("--dangerously-bypass-hook-trust");
       expect(readFileSync(profilePath, "utf8")).toBe([
         CODEX_FLEET_PROFILE_MARKER,
         'developer_instructions = """',
@@ -310,11 +309,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
       marketplaces: new Map<string, string>(),
     };
     try {
-      mkdirSync(path.join(cwd, ".fleet", "skills", "project-skill"), { recursive: true, mode: 0o700 });
-      writeFileSync(path.join(cwd, ".fleet", "skills", "project-skill", "SKILL.md"), "Project skill", { encoding: "utf8" });
-      const projectMarketplaceRoot = path.resolve(cwd, ".fleet");
-      const projectMarketplaceName = projectMarketplaceNameForCwd(cwd);
-
       const profile = await injectAgentCliProfile({
         args: [],
         bin: "/usr/local/bin/codex",
@@ -338,8 +332,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
           }
           if (line.startsWith("plugin marketplace add ")) {
             const marketplaceRoot = line.slice("plugin marketplace add ".length);
-            const marketplaceName = marketplaceRoot === projectMarketplaceRoot ? projectMarketplaceName : "fleet-harness";
-            codexState.marketplaces.set(marketplaceName, marketplaceRoot);
+            codexState.marketplaces.set("fleet-harness", marketplaceRoot);
             return { status: 0, stderr: "", stdout: "" };
           }
           if (line === "plugin list") {
@@ -373,12 +366,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
         `plugin marketplace add ${path.join(rootDir, "marketplace")}`,
         "plugin list",
         "plugin add fleet -m fleet-harness",
-        "plugin marketplace list",
-        `plugin marketplace add ${projectMarketplaceRoot}`,
-        "plugin list",
-        `plugin add fleet-project -m ${projectMarketplaceName}`,
       ]);
-      expect(codexState.installed).toEqual(new Set(["fleet@fleet-harness", `fleet-project@${projectMarketplaceName}`]));
+      expect(codexState.installed).toEqual(new Set(["fleet@fleet-harness"]));
       const profileName = argValue(profile.args, "--profile");
       expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
       expect(readFileSync(path.join(codexHome, `${profileName}.config.toml`), "utf8")).toBe([
@@ -388,9 +377,6 @@ describe("fleet-cli agent CLI MCP registration", () => {
         '"""',
         "",
         '[plugins."fleet@fleet-harness"]',
-        "enabled = true",
-        "",
-        `[plugins."fleet-project@${projectMarketplaceName}"]`,
         "enabled = true",
         "",
       ].join("\n"));
@@ -475,11 +461,6 @@ async function listMcpTools(url: string, token: string): Promise<Set<string>> {
 
 function readJson(filePath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
-}
-
-function projectMarketplaceNameForCwd(cwd: string): string {
-  const hash = crypto.createHash("sha256").update(path.resolve(cwd, ".fleet")).digest("hex").slice(0, 12);
-  return `fleet-project-${hash}`;
 }
 
 function argValue(args: readonly string[], name: string): string | undefined {

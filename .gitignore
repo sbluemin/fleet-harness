@@ -12,8 +12,7 @@ keybindings.json
 !.fleet/knowledge/**
 !.fleet/prompts/
 !.fleet/prompts/**
-!.fleet/skills/
-!.fleet/skills/**
 .grand-fleet/
-.claude/
+.claude/*
+!.claude/skills
 packages/fleet-admiral/src/agent-cli/assets.generated.ts

@@ -12,10 +12,6 @@ interface Deferred<T> {
   resolve(value: T): void;
 }
 
-interface CodexPluginManifest {
-  readonly version?: unknown;
-}
-
 const tempDirs: string[] = [];
 
 afterEach(() => {
@@ -31,14 +27,10 @@ describe("agent CLI plugin marketplace rendering", () => {
     const dataDir = path.join(root, "data");
     const cwd = path.join(root, "project");
     const homeMarketplace = path.join(dataDir, "marketplace");
-    const projectFleetRoot = path.join(cwd, ".fleet");
     mkdirSync(path.join(dataDir, "skills", "custom"), { recursive: true });
     mkdirSync(path.join(homeMarketplace), { recursive: true });
-    mkdirSync(path.join(projectFleetRoot, "skills", "project"), { recursive: true });
     writeFileSync(path.join(homeMarketplace, "user-note.txt"), "home user file\n", { flag: "wx" });
-    writeFileSync(path.join(projectFleetRoot, "user-note.txt"), "project user file\n", { flag: "wx" });
     writeFileSync(path.join(dataDir, "skills", "custom", "SKILL.md"), "# Custom\n", { flag: "wx" });
-    writeFileSync(path.join(projectFleetRoot, "skills", "project", "SKILL.md"), "# Project\n", { flag: "wx" });
     let firstHomeLockHeld = false;
     const firstHomeEntered = createDeferred<void>();
     const releaseFirstHome = createDeferred<void>();
@@ -104,13 +96,10 @@ describe("agent CLI plugin marketplace rendering", () => {
 
     expect(first.pluginRoots).toEqual(second.pluginRoots);
     expect(lockLog.indexOf(`exit:${path.relative(root, homeMarketplace)}`)).toBeLessThan(lockLog.lastIndexOf(`enter:${path.relative(root, homeMarketplace)}`));
-    expect(lockLog.filter((entry) => entry.startsWith("enter:"))).toHaveLength(7);
+    expect(lockLog.filter((entry) => entry.startsWith("enter:"))).toHaveLength(3);
     expect(readFileSync(path.join(homeMarketplace, "user-note.txt"), "utf8")).toBe("home user file\n");
-    expect(readFileSync(path.join(projectFleetRoot, "user-note.txt"), "utf8")).toBe("project user file\n");
     expect(existsSync(path.join(homeMarketplace, ".agents", "plugins", "marketplace.json"))).toBe(true);
-    expect(existsSync(path.join(projectFleetRoot, ".agents", "plugins", "marketplace.json"))).toBe(true);
     expect(findStagingEntries(homeMarketplace)).toEqual([]);
-    expect(findStagingEntries(projectFleetRoot)).toEqual([]);
 
     const preservedPluginJson = readFileSync(path.join(second.pluginRoot, ".codex-plugin", "plugin.json"), "utf8");
     await expect(createAgentCliPlugin({
@@ -122,48 +111,6 @@ describe("agent CLI plugin marketplace rendering", () => {
     })).rejects.toThrow("Fleet Claude session hook command is required");
     expect(readFileSync(path.join(second.pluginRoot, ".codex-plugin", "plugin.json"), "utf8")).toBe(preservedPluginJson);
     expect(findStagingEntries(homeMarketplace)).toEqual([]);
-    expect(findStagingEntries(projectFleetRoot)).toEqual([]);
-  });
-
-  it("derives Codex plugin manifest versions from effective skill content", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-version-"));
-    tempDirs.push(root);
-    const dataDir = path.join(root, "data");
-    const cwd = path.join(root, "project");
-    const skillPath = path.join(dataDir, "skills", "custom", "SKILL.md");
-    mkdirSync(cwd, { recursive: true });
-    mkdirSync(path.dirname(skillPath), { recursive: true });
-    writeFileSync(skillPath, "# Custom\n\nFirst\n", { flag: "wx" });
-
-    const first = await createAgentCliPlugin({
-      claudeDefinitions: [],
-      cliId: "codex",
-      cwd,
-      dataDir,
-      withMarketplaceLock: async (_target, fn) => fn(),
-    });
-    const firstVersion = readCodexManifestVersion(first.codexRegistrations.find((registration) => registration.pluginName === "fleet-global")!.pluginRoot);
-    const second = await createAgentCliPlugin({
-      claudeDefinitions: [],
-      cliId: "codex",
-      cwd,
-      dataDir,
-      withMarketplaceLock: async (_target, fn) => fn(),
-    });
-    const secondVersion = readCodexManifestVersion(second.codexRegistrations.find((registration) => registration.pluginName === "fleet-global")!.pluginRoot);
-    writeFileSync(skillPath, "# Custom\n\nSecond\n");
-    const third = await createAgentCliPlugin({
-      claudeDefinitions: [],
-      cliId: "codex",
-      cwd,
-      dataDir,
-      withMarketplaceLock: async (_target, fn) => fn(),
-    });
-    const thirdVersion = readCodexManifestVersion(third.codexRegistrations.find((registration) => registration.pluginName === "fleet-global")!.pluginRoot);
-
-    expect(firstVersion).toMatch(/^0\.0\.0\+[0-9a-f]{12}$/);
-    expect(secondVersion).toBe(firstVersion);
-    expect(thirdVersion).not.toBe(firstVersion);
   });
 
   it("wires AskUserQuestion PreToolUse and input-waiting Notification hooks for Claude", async () => {
@@ -224,6 +171,28 @@ describe("agent CLI plugin marketplace rendering", () => {
     const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks.map((hook) => hook.args[2]);
     expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
   });
+
+  it("prunes stale plugin directories left by removed bundles", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-stale-"));
+    tempDirs.push(root);
+    const dataDir = path.join(root, "data");
+    const cwd = path.join(root, "project");
+    const stalePluginDir = path.join(dataDir, "marketplace", "plugins", "fleet-global");
+    mkdirSync(path.join(stalePluginDir, "skills", "legacy"), { recursive: true });
+    writeFileSync(path.join(stalePluginDir, "skills", "legacy", "SKILL.md"), "# Legacy\n", { flag: "wx" });
+
+    await createAgentCliPlugin({
+      claudeDefinitions: [],
+      cliId: "codex",
+      cwd,
+      dataDir,
+      withMarketplaceLock: async (_target, fn) => fn(),
+    });
+
+    // 제거된 fleet-global 잔재는 사라지고, 활성 fleet 코어 플러그인은 보존된다.
+    expect(existsSync(stalePluginDir)).toBe(false);
+    expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet"))).toBe(true);
+  });
 });
 
 function createDeferred<T>(): Deferred<T> {
@@ -238,12 +207,6 @@ function findStagingEntries(root: string): string[] {
   const entries: string[] = [];
   collectStagingEntries(root, entries);
   return entries.sort();
-}
-
-function readCodexManifestVersion(pluginRoot: string): string {
-  const manifest = JSON.parse(readFileSync(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")) as CodexPluginManifest;
-  expect(typeof manifest.version).toBe("string");
-  return manifest.version as string;
 }
 
 function collectStagingEntries(current: string, entries: string[]): void {
