@@ -43,6 +43,9 @@ const DEFAULT_RENDERER: TerminalRenderer = "webgl";
 export const SHELL_SESSION_ID = "shell";
 
 const listeners = new Set<Listener>();
+// localStorage가 막히거나(privacy/enterprise) 예외를 던지는 환경에서도 같은 세션 내 재팝업을 막는 in-memory 폴백.
+let whatsNewSeenVersionMemo: string | null = null;
+
 let state: ConsoleState = {
   connection: "connecting",
   connectionError: null,
@@ -770,6 +773,8 @@ function readStoredCommissioningSeen(): boolean {
 }
 
 function readStoredWhatsNewSeenVersion(): string | null {
+  // localStorage가 막힌 환경에서도 같은 세션 동안 닫힘 상태를 기억하도록 in-memory 폴백을 먼저 확인한다.
+  if (whatsNewSeenVersionMemo !== null) return whatsNewSeenVersionMemo;
   if (typeof window === "undefined") return null;
   try {
     return window.localStorage.getItem(WHATS_NEW_SEEN_VERSION_STORAGE_KEY);
@@ -815,11 +820,13 @@ function writeStoredCommissioningSeen(seen: boolean): void {
 }
 
 function writeStoredWhatsNewSeenVersion(version: string): void {
+  // localStorage 성공 여부와 무관하게 in-memory에 먼저 기록해 같은 세션 내 재팝업을 막는다.
+  whatsNewSeenVersionMemo = version;
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(WHATS_NEW_SEEN_VERSION_STORAGE_KEY, version);
   } catch {
-    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+    // 브라우저 저장소가 막힌 환경에서는 in-memory 폴백이 현재 세션 상태를 유지한다.
   }
 }
 
