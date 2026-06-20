@@ -2,6 +2,17 @@ export type ThemeId = "maritime" | "carbon";
 
 export type TerminalRenderer = "webgl" | "dom";
 
+export interface ReleaseNoteSection {
+  readonly heading: "Added" | "Changed" | "Fixed" | "Removed" | "Breaking Changes";
+  readonly items: readonly string[];
+}
+
+export interface ReleaseNotes {
+  readonly version: string;
+  readonly date: string;
+  readonly sections: readonly ReleaseNoteSection[];
+}
+
 export interface ObservedTenant {
   readonly tenantId: string;
   readonly tenantLabel: string;
@@ -294,6 +305,7 @@ export interface ConsoleState {
   readonly connectionError: string | null;
   readonly activeTheme: ThemeId;
   readonly terminalRenderer: TerminalRenderer;
+  readonly version: string;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;
   readonly tenants: readonly ObservedTenant[];
@@ -316,6 +328,7 @@ export interface ConsoleState {
   readonly shellOpen: boolean;
   readonly operationSearchOpen: boolean;
   readonly shortcutsOpen: boolean;
+  readonly whatsNewOpen: boolean;
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;
   // 첫 terminal sessions 스냅샷이 적재(성공·실패 무관)되었는지. theater bootstrap과 sessions fetch가 독립

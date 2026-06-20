@@ -7150,6 +7150,257 @@ body[data-codex-side="true"] .command-card {
   overflow-y: auto;
 }
 
+/* GNB의 다른 텍스트 트리거(Shell/Shortcuts)와 동일한 톤으로 다운 — 테두리/배경/그림자 없이
+   ink-fog 라벨만, hover에서만 brass로 점등한다. 과강조 배지가 아니라 차분한 보조 액션이다. */
+.topbar-whatsnew-button {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  padding: 6px var(--space-1);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.topbar-whatsnew-button:hover,
+.topbar-whatsnew-button:focus-visible {
+  color: var(--brass-bright);
+}
+
+.whatsnew-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 44px);
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
+}
+
+/* canonical 오버레이 규약: scrim은 약한 blur(4px)로 배경만 가라앉히고, 강한 glass blur는 카드가 진다. */
+.whatsnew-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 12%, color-mix(in oklch, var(--brass) 12%, transparent), transparent 42%),
+    color-mix(in oklch, var(--ink-abyss) 70%, transparent);
+  backdrop-filter: blur(4px) saturate(120%);
+  -webkit-backdrop-filter: blur(4px) saturate(120%);
+  cursor: default;
+}
+
+/* 기존 glass 카드(sidebar/shortcuts-overlay)와 동일한 질감: surface-glass 토큰 + backdrop blur(18px).
+   고정 ink 색상을 걷어내 maritime/carbon 테마를 그대로 추종한다. */
+.whatsnew-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(760px, 100%);
+  max-height: min(82vh, 780px);
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating), 0 0 44px -30px var(--brass);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.whatsnew-header {
+  padding: clamp(22px, 4vw, 34px) clamp(22px, 4vw, 36px) 18px;
+  border-bottom: 1px solid color-mix(in oklch, var(--brass) 14%, transparent);
+}
+
+.whatsnew-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.whatsnew-header h2 {
+  margin: 0;
+  color: var(--ink-pearl);
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4vw, 48px);
+  font-weight: 680;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.whatsnew-version-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklch, var(--brass) 34%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.whatsnew-date {
+  display: block;
+  margin-top: 10px;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.whatsnew-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide),
+    background var(--duration-fast) var(--ease-glide);
+}
+
+.whatsnew-close:hover,
+.whatsnew-close:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--brass-bright);
+}
+
+.whatsnew-body {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+  padding: 22px clamp(22px, 4vw, 36px);
+  overflow: auto;
+  scrollbar-color: color-mix(in oklch, var(--brass) 42%, transparent) transparent;
+}
+
+.whatsnew-section {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 54%, transparent);
+  padding: 18px 18px 16px;
+  animation: whatsnew-section-in var(--duration-slow) var(--ease-spring) both;
+  animation-delay: var(--whatsnew-delay, 0ms);
+}
+
+.whatsnew-section h3 {
+  margin: 0 0 12px;
+}
+
+.whatsnew-section-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--whatsnew-section-border);
+  border-radius: var(--radius-sm);
+  background: var(--whatsnew-section-bg);
+  color: var(--whatsnew-section-color);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.whatsnew-section ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: var(--ink-spectral);
+  font-size: 14px;
+  line-height: 1.68;
+}
+
+.whatsnew-section li::marker {
+  color: var(--whatsnew-section-color);
+}
+
+/* 섹션 의미색은 doctrine 토큰만 사용한다(aurora/warn 금지): 추가/수정=positive, 변경=brass, 제거/파괴=coral.
+   bg/border도 같은 토큰의 color-mix라 maritime/carbon 양쪽을 그대로 추종한다. */
+.whatsnew-section--added {
+  --whatsnew-section-bg: color-mix(in oklch, var(--positive) 11%, transparent);
+  --whatsnew-section-border: color-mix(in oklch, var(--positive) 34%, transparent);
+  --whatsnew-section-color: var(--positive);
+}
+
+.whatsnew-section--changed {
+  --whatsnew-section-bg: color-mix(in oklch, var(--brass) 10%, transparent);
+  --whatsnew-section-border: color-mix(in oklch, var(--brass) 32%, transparent);
+  --whatsnew-section-color: var(--brass-bright);
+}
+
+.whatsnew-section--fixed {
+  --whatsnew-section-bg: color-mix(in oklch, var(--positive) 9%, transparent);
+  --whatsnew-section-border: color-mix(in oklch, var(--positive) 28%, transparent);
+  --whatsnew-section-color: var(--positive);
+}
+
+.whatsnew-section--removed {
+  --whatsnew-section-bg: color-mix(in oklch, var(--coral) 8%, transparent);
+  --whatsnew-section-border: color-mix(in oklch, var(--coral) 22%, transparent);
+  --whatsnew-section-color: var(--coral);
+}
+
+.whatsnew-section--breaking-changes {
+  --whatsnew-section-bg: color-mix(in oklch, var(--coral) 14%, transparent);
+  --whatsnew-section-border: color-mix(in oklch, var(--coral) 45%, transparent);
+  --whatsnew-section-color: var(--coral);
+}
+
+.whatsnew-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px clamp(22px, 4vw, 36px) 22px;
+  border-top: 1px solid var(--surface-rim);
+}
+
+.whatsnew-done {
+  min-height: 38px;
+  padding: 0 18px;
+  border: 1px solid color-mix(in oklch, var(--brass) 36%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.whatsnew-done:hover,
+.whatsnew-done:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 58%, transparent);
+  background: color-mix(in oklch, var(--brass) 20%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .codex-side-panel {
     animation: none;
@@ -7163,5 +7414,55 @@ body[data-codex-side="true"] .command-card {
   .codex-edge-handle:hover,
   .codex-edge-handle:focus-visible {
     transform: translateY(-50%);
+  }
+
+  .topbar-whatsnew-button,
+  .whatsnew-overlay,
+  .whatsnew-card,
+  .whatsnew-section {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar-whatsnew-button > span {
+    display: none;
+  }
+
+  .topbar-whatsnew-button {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+
+  .topbar-whatsnew-button::before {
+    content: "New";
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 680px) {
+  .whatsnew-overlay {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .whatsnew-card {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-radius: var(--radius-lg);
+  }
+
+  .whatsnew-header {
+    padding-right: 64px;
+  }
+
+  .whatsnew-header h2 {
+    font-size: 32px;
+  }
+
+  .whatsnew-section {
+    padding: 15px;
   }
 }

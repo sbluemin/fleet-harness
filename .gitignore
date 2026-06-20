@@ -17,3 +17,4 @@ keybindings.json
 .grand-fleet/
 .claude/
 packages/fleet-admiral/src/agent-cli/assets.generated.ts
+runtime/fleet-console/client/src/release-notes.generated.ts

@@ -305,6 +305,37 @@ a {
   }
 }
 
+@keyframes whatsnew-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes whatsnew-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes whatsnew-section-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* 진행 중 Operation 패널/최소화 Dock 외곽의 "진행광(running light)" — conic 하이라이트 호(arc)가 테두리
    링을 따라 한 방향으로 순환한다. 각도(--uw-angle)는 @property로 등록해야 커스텀 속성이 부드럽게
    보간된다(미등록 시 이산 점프). 색(--uw-tint)은 인디케이터를 따른다. 작업 중 신호가 있는 동안만,
