@@ -4,8 +4,8 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTerminalFolderGrant } from "../api.js";
 import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
 import { setCodexViewMode, type CodexViewMode } from "../codex-view-mode.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, setActiveTheme, setTerminalRenderer, toggleShell } from "../store.js";
-import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, toggleShell } from "../store.js";
+import type { ConsoleState } from "../types.js";
 import { CodexModeToggle } from "./codex-mode-toggle.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
 import { WhatsNewButton } from "./whatsnew-button.js";
@@ -20,12 +20,6 @@ interface NavItem {
   readonly label: string;
   readonly end: boolean;
   readonly icon: "operations" | "codex";
-}
-
-interface ThemeOption {
-  readonly id: ThemeId;
-  readonly label: string;
-  readonly swatch: readonly [string, string, string];
 }
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
@@ -46,11 +40,6 @@ interface GithubStarsState {
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/operations", label: "Operation", end: false, icon: "operations" },
   { to: "/codex", label: "Codex", end: false, icon: "codex" },
-];
-
-const THEMES: readonly ThemeOption[] = [
-  { id: "maritime", label: "Maritime", swatch: ["oklch(78% 0.13 75)", "oklch(82% 0.13 195)", "oklch(32% 0.04 248)"] },
-  { id: "carbon", label: "Carbon", swatch: ["oklch(76% 0.115 62)", "oklch(80% 0.105 205)", "oklch(25% 0.007 252)"] },
 ];
 
 const UPDATE_APPLY_COMPLETE_DELAY_MS = 1_400;
@@ -142,8 +131,6 @@ export function Topbar({ state, codexMode }: TopbarProps) {
           <span className="topbar-nav-icon" aria-hidden="true"><SettingsIcon /></span>
           <span>Settings</span>
         </NavLink>
-        <ThemeControl activeTheme={state.activeTheme} />
-        <RendererToggle renderer={state.terminalRenderer} />
       </div>
     </header>
   );
@@ -443,117 +430,6 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
   );
 }
 
-function ThemeControl({ activeTheme }: { readonly activeTheme: ThemeId }) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const active = THEMES.find((theme) => theme.id === activeTheme) ?? THEMES[0]!;
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointer = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const menu = menuRef.current;
-    if (!menu) return;
-    const target = menu.querySelector<HTMLElement>('[data-active="true"]') ?? menu.querySelector<HTMLElement>("[role^='menuitem']");
-    target?.focus();
-  }, [open]);
-
-  const handleSelect = (theme: ThemeId) => {
-    setActiveTheme(theme);
-    setOpen(false);
-    triggerRef.current?.focus();
-  };
-
-  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    event.preventDefault();
-    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']") ?? []);
-    if (items.length === 0) return;
-    const current = items.indexOf(document.activeElement as HTMLElement);
-    const delta = event.key === "ArrowDown" ? 1 : -1;
-    const next = (current + delta + items.length) % items.length;
-    items[next]?.focus();
-  };
-
-  return (
-    <div className="theme-control" ref={containerRef}>
-      <button
-        type="button"
-        ref={triggerRef}
-        className={`theme-trigger ${open ? "is-open" : ""}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Theme"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <ThemeIcon />
-        <span className="theme-trigger-label">{active.label}</span>
-        <span className="theme-trigger-caret" aria-hidden="true"><CaretIcon /></span>
-      </button>
-      {open ? (
-        <div className="theme-menu" role="menu" aria-label="Theme" ref={menuRef} onKeyDown={handleMenuKeyDown}>
-          {THEMES.map((theme) => {
-            const isActive = theme.id === activeTheme;
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={isActive}
-                data-active={isActive ? "true" : undefined}
-                className={`theme-menu-item ${isActive ? "is-active" : ""}`}
-                onClick={() => handleSelect(theme.id)}
-              >
-                <span className="theme-swatch" aria-hidden="true">
-                  {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
-                </span>
-                <span className="theme-menu-label">{theme.label}</span>
-                <span className="theme-menu-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function RendererToggle({ renderer }: { readonly renderer: TerminalRenderer }) {
-  const nextRenderer = renderer === "webgl" ? "dom" : "webgl";
-  const label = renderer === "webgl" ? "WebGL" : "DOM";
-  return (
-    <button
-      type="button"
-      className="theme-trigger"
-      aria-label={`Terminal renderer: ${label}`}
-      title={`Terminal renderer: ${label}`}
-      onClick={() => setTerminalRenderer(nextRenderer)}
-    >
-      <RendererIcon />
-      <span className="theme-trigger-label">{label}</span>
-    </button>
-  );
-}
-
 // GitHub 레포 이동 마크 + 라이브 star 카운트. 둘 다 새 탭으로 열리는 외부 링크다(noopener/noreferrer).
 function GithubLinks() {
   const stars = useGithubStars();
@@ -668,15 +544,6 @@ function TheaterSigil() {
   );
 }
 
-function RendererIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2.5" y="3" width="11" height="8" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5.2 13h5.6M8 11v2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function CaretIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -697,18 +564,6 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.7 4.7 11.3 11.3M11.3 4.7 4.7 11.3" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ThemeIcon() {
-  // Theme — 세 톤 팔레트 모티프.
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M8 2.6a5.4 5.4 0 0 0-5.4 5.5c0 2.4 1.8 4.5 4.2 5 .8.2 1.2-.2 1.2-.8 0-.5-.4-.8-.4-1.3 0-.7.6-1.1 1.3-1.1h1.1c1.9 0 3.4-1.5 3.4-3.3C13.4 4.4 11 2.6 8 2.6Z" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinejoin="round" />
-      <circle cx="5.6" cy="6.4" r=".75" fill="currentColor" />
-      <circle cx="8" cy="5.2" r=".75" fill="currentColor" />
-      <circle cx="10.4" cy="6.5" r=".75" fill="currentColor" />
     </svg>
   );
 }

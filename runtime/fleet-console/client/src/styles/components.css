@@ -529,6 +529,128 @@
   }
 }
 
+/* Appearance — 테마/렌더러 단일선택 컨트롤. 선택 상태는 brass(지금 보고 있는 곳)로만 표기하고 aurora와 혼용하지 않는다. */
+
+/* 테마 선택 — GNB 드롭다운의 3톤 스와치를 보존한 카드형 단일선택 그룹. */
+.theme-picker {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.theme-card {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.theme-card:hover {
+  color: var(--ink-pearl);
+  border-color: color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
+}
+
+.theme-card.is-active {
+  color: var(--ink-pearl);
+  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent), var(--shadow-soft);
+}
+
+.theme-card:active {
+  transform: translateY(1px);
+}
+
+.theme-card-swatch {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.theme-card-swatch i {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+}
+
+.theme-card-label {
+  line-height: 1;
+}
+
+.theme-card-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--brass);
+}
+
+.theme-card-check svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* 터미널 렌더러 — 2지선다 세그먼트 컨트롤. 트랙 위 활성 세그먼트만 brass로 채운다. */
+.segmented {
+  display: inline-flex;
+  flex: none;
+  align-self: flex-start;
+  padding: 3px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-abyss) 42%, transparent);
+}
+
+.segmented-option {
+  min-width: 72px;
+  min-height: 30px;
+  padding: 5px var(--space-4);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.segmented-option:hover:not(.is-active) {
+  color: var(--ink-pearl);
+}
+
+.segmented-option.is-active {
+  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--brass);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
+}
+
 /* 모델 로그인 — provider API key 등록 행. global-settings-card를 그릇으로 재사용한다. */
 .model-auth-head {
   display: grid;
@@ -4051,125 +4173,6 @@
   padding-inline: var(--space-1);
 }
 
-.theme-control {
-  position: relative;
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-
-.theme-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-1);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.theme-trigger:hover,
-.theme-trigger.is-open {
-  color: var(--ink-pearl);
-}
-
-.theme-trigger svg {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
-.theme-trigger-caret {
-  display: grid;
-  place-items: center;
-  opacity: 0.62;
-}
-
-.theme-trigger-caret svg {
-  width: 11px;
-  height: 11px;
-}
-
-.theme-menu {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: 40;
-  min-width: 180px;
-  padding: var(--space-2);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar));
-  backdrop-filter: blur(20px) saturate(150%);
-  box-shadow: var(--shadow-floating);
-  animation: codex-rise var(--duration-fast) var(--ease-spring);
-}
-
-.theme-menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-align: left;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.theme-menu-item:hover,
-.theme-menu-item:focus-visible {
-  color: var(--ink-pearl);
-  background: color-mix(in oklch, var(--ink-pearl) 8%, transparent);
-}
-
-.theme-menu-item.is-active {
-  color: var(--ink-pearl);
-}
-
-.theme-swatch {
-  display: inline-flex;
-  flex: none;
-  gap: 3px;
-}
-
-.theme-swatch i {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  border: 1px solid var(--surface-rim);
-  border-radius: 999px;
-}
-
-.theme-menu-label {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-}
-
-.theme-menu-check {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--ink-pearl);
-}
-
-.theme-menu-check svg {
-  display: block;
-  width: 13px;
-  height: 13px;
-}
-
 .theater-control {
   position: relative;
   display: flex;
@@ -6707,17 +6710,16 @@
    2행으로 stack한다. 임계치는 meta 고유폭 실측(full 741 / 보조라벨숨김 518 / 전체아이콘 406)과
    트랙폭 회귀(track ≈ 0.5·vw − 157, 겹침0 ⇔ vw ≳ 2·meta + 314)에서 도출했다. */
 
-/* Tier A (≤1800px) — full 라벨은 ~1796px 이상에서만 안 겹친다. 보조 컨트롤(Shell·Settings·Theme·
-   Renderer) 라벨과 상시 PREVIEW 배지를 접어 meta 고유폭을 ~518px로 줄인다(안전 하한 ~1350px). */
+/* Tier A (≤1800px) — full 라벨은 ~1796px 이상에서만 안 겹친다. 보조 컨트롤(Shell·Settings)
+   라벨과 상시 PREVIEW 배지를 접어 meta 고유폭을 줄인다(안전 하한 ~1350px). */
 @media (max-width: 1800px) {
   .topbar-preview-badge {
     display: none;
   }
 
-  /* Shell 라벨 / Theme·Renderer 라벨 / Settings(=.topbar-meta 직속 nav-link) 라벨만 숨기고
+  /* Shell 라벨 / Settings(=.topbar-meta 직속 nav-link) 라벨만 숨기고
      주요 nav(Operation·Codex, =.topbar-nav 내부)는 이 단계에서 유지한다. */
   .topbar-shell-button > span,
-  .theme-trigger-label,
   .topbar-meta > .topbar-nav-link > span:not(.topbar-nav-icon) {
     display: none;
   }
