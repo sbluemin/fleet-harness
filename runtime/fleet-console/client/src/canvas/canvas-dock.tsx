@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
@@ -77,12 +77,12 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
   const measure = useCallback(() => {
     const el = chipsRef.current;
     if (!el) return;
-    const { scrollLeft, clientWidth, scrollWidth } = el;
+    const { scrollLeft, clientWidth, clientHeight, scrollWidth } = el;
     const maxScroll = Math.max(0, scrollWidth - clientWidth);
-    // clientWidth가 0이면(접힘 시 레일 폭 0) overflow를 false로 둔다 — 안 그러면 scrollWidth>0인 비어있지 않은
-    // dock가 항상 overflow:true로 기록돼, 펼침 직후 stale 상태로 페이저가 떠 칩셋이 페이저 없이는 맞는데도
-    // 페이저가 계속 표시된다(페이저가 자기 폭만큼 트랙을 줄여 overflow를 자가 정당화).
-    const overflow = clientWidth > 0 && maxScroll > 1;
+    // 칩 트랙이 보이지 않으면(접힘 시 레일 max-height:0 → 트랙 clientHeight:0) overflow를 false로 둔다 — 안 그러면
+    // scrollWidth>0인 비어있지 않은 dock가 항상 overflow:true로 기록돼, 펼침 직후 stale 상태로 페이저가 떠
+    // 칩셋이 페이저 없이는 맞는데도 페이저가 계속 표시된다(페이저가 자기 폭만큼 트랙을 줄여 overflow를 자가 정당화).
+    const overflow = clientWidth > 0 && clientHeight > 0 && maxScroll > 1;
     const pages = overflow ? Math.max(1, Math.ceil(scrollWidth / clientWidth)) : 1;
     const atEnd = scrollLeft >= maxScroll - 1;
     // 페이지 번호(우측 끝=1): 우측 끝은 1로 고정하고, 그 외는 ceil로 올린다. round는 비정수 오버플로에서
@@ -168,7 +168,24 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
 
   return (
     <div className={`canvas-dock ${expanded ? "is-expanded" : ""}`} data-canvas-blocker>
-      {/* 좌측 확장 레일: 페이저 + 칩 트랙 + 페이지 표시. 접힘 시 폭 0 + inert로 숨고, 토글 왼쪽에서만 늘어난다. */}
+      {/* 토글(접힘 핸들): dock 세로 스택의 위쪽. 접힘 시 화면 하단 가로 중앙에 단독으로 놓이고(∧ 위 chevron),
+          펼치면 아래 레일이 한 줄 높이만큼 솟아 토글이 한 칸 위로 밀린다(∨ 아래 chevron). */}
+      <button
+        type="button"
+        className={toggleClassName}
+        onClick={toggleDockExpanded}
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse minimized panels" : "Expand minimized panels"}
+        title={expanded ? "Collapse" : "Expand"}
+      >
+        <span className="canvas-dock-toggle-beacon" aria-hidden="true" />
+        <span className="canvas-dock-toggle-chevron" aria-hidden="true">
+          <ChevronIcon />
+        </span>
+        <span className="canvas-dock-toggle-count">{entries.length}</span>
+      </button>
+      {/* 토글 아래로 펼쳐지는 칩 행: 페이저 + 칩 트랙 + 페이지 표시. 화면 중앙에 정렬되고, 접힘 시 높이 0 +
+          inert로 숨는다. 칩이 가용폭(부모 max-width)을 넘으면 페이저로 페이지를 넘긴다. */}
       <div
         className="canvas-dock-rail"
         role="toolbar"
@@ -211,20 +228,6 @@ export function CanvasDock({ state, sessions, minimized }: CanvasDockProps) {
           </span>
         ) : null}
       </div>
-      <button
-        type="button"
-        className={toggleClassName}
-        onClick={toggleDockExpanded}
-        aria-expanded={expanded}
-        aria-label={expanded ? "Collapse minimized panels" : "Expand minimized panels"}
-        title={expanded ? "Collapse" : "Expand"}
-      >
-        <span className="canvas-dock-toggle-beacon" aria-hidden="true" />
-        <span className="canvas-dock-toggle-chevron" aria-hidden="true">
-          <ChevronIcon />
-        </span>
-        <span className="canvas-dock-toggle-count">{entries.length}</span>
-      </button>
     </div>
   );
 }
@@ -239,10 +242,6 @@ function CanvasDockChip({ entry, index }: CanvasDockChipProps) {
     selectTerminalSession(session.sessionId);
   };
 
-  const onRestoreButtonPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-  };
-
   const chipClassName = [
     "canvas-dock-chip",
     active ? "canvas-dock-chip--active" : "",
@@ -251,15 +250,16 @@ function CanvasDockChip({ entry, index }: CanvasDockChipProps) {
     .filter(Boolean)
     .join(" ");
 
+  // 칩 전체가 복원 트리거 — 단일 클릭(또는 키보드 Enter/Space)으로 패널을 되돌린다(별도 복원 버튼 없음).
   return (
     <div
       className={chipClassName}
       role="button"
       tabIndex={0}
       aria-label={`Restore operation ${displayLabel}`}
-      title="Double-click to restore"
+      title="Click to restore"
       style={{ "--i": index } as CSSProperties}
-      onDoubleClick={restore}
+      onClick={restore}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -271,34 +271,15 @@ function CanvasDockChip({ entry, index }: CanvasDockChipProps) {
       <span className="canvas-dock-chip-name">{displayLabel}</span>
       <span className="canvas-dock-chip-cli">{session.cliLabel ?? session.cliId ?? "CLI"}</span>
       {activeJobCount > 0 ? <span className="canvas-dock-chip-count">{activeJobCount}</span> : null}
-      <button
-        type="button"
-        className="canvas-dock-chip-restore"
-        onPointerDown={onRestoreButtonPointer}
-        onClick={(event) => { event.stopPropagation(); restore(); }}
-        aria-label={`Restore operation ${displayLabel}`}
-        title="Restore panel"
-      >
-        <RestoreIcon />
-      </button>
     </div>
   );
 }
 
 function ChevronIcon() {
-  // 더블 chevron ›› (펼치기). 펼친 상태에서는 컨테이너 .is-expanded가 180° 회전시켜 ‹‹ (접기)로 보인다.
+  // 단일 chevron ∧ (위, 펼치기). 펼친 상태에서는 컨테이너 .is-expanded가 180° 회전시켜 ∨ (아래, 접기)로 보인다.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 4l4 4-4 4M8 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function RestoreIcon() {
-  // 좌상향 L자 화살표 — 칩을 캔버스로 다시 끌어올리는(복원) 방향성.
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4 11V5h6M4 11l3-3.5M4 11l3 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 10l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
