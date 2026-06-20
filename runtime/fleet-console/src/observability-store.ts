@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type {
+  ConsoleAttentionReason,
   ConsoleObservedEvent,
   ConsoleObservedJob,
   ConsoleObservedWorkspace,
@@ -353,8 +354,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return session ? toTerminalSessionInfo(session) : null;
   }
 
-  function notifySessionAttention(session: ConsoleTerminalSessionInfo): void {
-    const event: ConsoleSessionAttentionEvent = { type: "session:attention", session };
+  function notifySessionAttention(session: ConsoleTerminalSessionInfo, reason?: ConsoleAttentionReason): void {
+    const event: ConsoleSessionAttentionEvent = { type: "session:attention", session, reason };
     // 입력 대기 알림은 1회성 신호다. session:updated와 같은 aggregate 경로로 흘리되 세션 메타는 갱신하지 않는다.
     for (const listener of allListeners) listener(event);
   }

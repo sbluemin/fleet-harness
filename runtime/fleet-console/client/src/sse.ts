@@ -1,4 +1,4 @@
-import type { ObservedEvent, ObserverTruncation, SessionInfo } from "./types.js";
+import type { AttentionReason, ObservedEvent, ObserverTruncation, SessionInfo } from "./types.js";
 
 export interface SseFrame {
   readonly event: string;
@@ -12,6 +12,7 @@ export interface ObserverFrame {
   readonly event?: ObservedEvent;
   readonly truncation?: ObserverTruncation;
   readonly session?: SessionInfo;
+  readonly reason?: AttentionReason;
 }
 
 interface AggregateFramePayload {
@@ -19,7 +20,17 @@ interface AggregateFramePayload {
   readonly event?: Partial<ObservedEvent>;
   readonly truncation?: ObserverTruncation;
   readonly session?: Partial<SessionInfo>;
+  readonly reason?: unknown;
 }
+
+const ATTENTION_REASONS: ReadonlySet<AttentionReason> = new Set([
+  "idle_prompt",
+  "permission_prompt",
+  "auth_success",
+  "elicitation_dialog",
+  "elicitation_complete",
+  "elicitation_response",
+]);
 
 /** SSE 바이트 스트림을 프레임 단위로 잘라내는 증분 파서. */
 export function createSseFrameParser(): (chunk: string) => readonly SseFrame[] {
@@ -61,7 +72,7 @@ export function interpretObserverFrame(frame: SseFrame): ObserverFrame | null {
   if (frame.event === "session:attention") {
     const session = readSessionInfo(parsed.session);
     if (!session) return null;
-    return { kind: "attention", tenantId: session.tenantId ?? session.sessionId, session };
+    return { kind: "attention", tenantId: session.tenantId ?? session.sessionId, session, reason: readAttentionReason(parsed.reason) };
   }
   const event = readObservedEvent(parsed.event) ?? readObservedEvent(parsed);
   if (!event) return null;
@@ -132,4 +143,10 @@ function readSessionInfo(value: unknown): SessionInfo | null {
     registrationId: typeof session.registrationId === "string" ? session.registrationId : undefined,
     resumeAvailable: session.resumeAvailable === true,
   };
+}
+
+function readAttentionReason(value: unknown): AttentionReason | undefined {
+  return typeof value === "string" && ATTENTION_REASONS.has(value as AttentionReason)
+    ? (value as AttentionReason)
+    : undefined;
 }

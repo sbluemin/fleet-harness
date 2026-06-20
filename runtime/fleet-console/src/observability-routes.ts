@@ -61,9 +61,13 @@ export function writeAggregateObserverEvents(
   const unsubscribers = options.subscribeAll
     ? [
       store.subscribeAll((event) => {
-        // session:updated·session:attention은 동일하게 { session }만 직렬화한다(event.type이 식별자).
-        if (isSessionUpdatedEvent(event) || isSessionAttentionEvent(event)) {
+        // session:updated는 { session }만, session:attention은 reason까지 직렬화한다(event.type이 식별자).
+        if (isSessionUpdatedEvent(event)) {
           writeEvent(res, 0, event.type, { session: event.session });
+          return;
+        }
+        if (isSessionAttentionEvent(event)) {
+          writeEvent(res, 0, event.type, { session: event.session, reason: event.reason });
           return;
         }
         writeEvent(res, event.id, event.type, { tenant: resolvedWorkspaceSnapshot(resolveWorkspace, event.tenantId), event });

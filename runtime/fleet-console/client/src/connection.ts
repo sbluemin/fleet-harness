@@ -77,7 +77,7 @@ async function consumeStream(
         continue;
       }
       if (interpreted.kind === "attention" && interpreted.session) {
-        applySessionAttention(interpreted.session);
+        applySessionAttention(interpreted.session, interpreted.reason);
         continue;
       }
       if (interpreted.event) {

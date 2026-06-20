@@ -277,6 +277,16 @@ export interface TenantJobsView {
 
 export type ConnectionState = "connecting" | "live";
 
+// Notification hook의 notification_type 신호. idle_prompt만 캐리어 출격 중 억제 대상이고,
+// 권한 요청·elicitation 등과 부재(예: AskUserQuestion=PreToolUse)는 실제 입력 대기로 간주해 알림을 유지한다.
+export type AttentionReason =
+  | "idle_prompt"
+  | "permission_prompt"
+  | "auth_success"
+  | "elicitation_dialog"
+  | "elicitation_complete"
+  | "elicitation_response";
+
 // Operation 상태 전이/입력 대기 알림 토스트. kind는 인디케이터 상태에 대응:
 //   ended=작업 완료(턴 종료, 그린) · input-waiting=입력 대기(AskUserQuestion·권한/유휴/elicitation, amber).
 export type OperationToastKind = "ended" | "input-waiting";

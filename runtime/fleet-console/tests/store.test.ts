@@ -510,6 +510,37 @@ describe("store", () => {
     expect(getState().operationToasts).toHaveLength(0);
   });
 
+  it("suppresses an idle_prompt attention toast while a carrier job is in flight, but keeps permission/absent reasons", () => {
+    setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
+    hydrateTheaters([THEATER_A, THEATER_B]);
+    hydrateTerminalSessions([
+      { sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" },
+      { sessionId: "session-b", terminalSessionId: "session-b", cwdLabel: "beta", sequence: 2, label: "Aux", status: "registered", createdAt: 2, theaterId: "theater-b" },
+    ]);
+    // session-b를 보고 있으므로 session-a는 비활성(백그라운드) Operation.
+    setActiveTheater("theater-b");
+    selectTerminalSession("session-b");
+    setState({ operationsViewActive: true });
+    applyTenantSnapshot([{ ...TENANT, terminalSessionId: "session-a", registrationId: "registration-a" }]);
+
+    // 캐리어 출격 중(미완료 job).
+    applyObservedEvent({ id: 1, tenantId: "tenant-1", jobId: "job-1", type: "job:registered", at: Date.now(), event: { type: "job:registered", jobId: "job-1" } });
+
+    // idle_prompt는 입력 대기가 아니라 비동기 작업 대기 → 출격 중 억제.
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" }, "idle_prompt");
+    expect(getState().operationToasts).toHaveLength(0);
+
+    // 권한 요청은 출격 중에도 실제 입력 대기 → 알림.
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" }, "permission_prompt");
+    expect(getState().operationToasts).toHaveLength(1);
+    expect(getState().operationToasts[0]).toMatchObject({ kind: "input-waiting", sessionId: "session-a" });
+
+    // reason 부재(예: AskUserQuestion=PreToolUse)는 idle로 추정하지 않고 알림을 유지한다.
+    setState({ operationToasts: [] });
+    applySessionAttention({ sessionId: "session-a", terminalSessionId: "session-a", cwdLabel: "alpha", sequence: 1, label: "Bridge", status: "registered", createdAt: 1, theaterId: "theater-a" });
+    expect(getState().operationToasts).toHaveLength(1);
+  });
+
   it("treats a snapshot-restored finished job without finishedAt as inactive so a later turn end still fires", () => {
     setState({ operationToasts: [], tenantJobs: {}, tenantOrder: [] });
     hydrateTheaters([THEATER_A, THEATER_B]);
