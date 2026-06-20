@@ -3,6 +3,7 @@ import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { clearStoredShellPanelsForTheater } from "./canvas/shell-panels.js";
 import type {
+  AttentionReason,
   ConsoleState,
   JobView,
   ObservedEvent,
@@ -292,12 +293,16 @@ export function applySessionUpdate(session: SessionInput): void {
 
 // 입력 대기(AskUserQuestion·권한/유휴/elicitation) 1회성 신호. 세션 상태는 갱신하지 않고,
 // 현재 보고 있지 않은 Operation에 한해 입력 대기 토스트만 띄운다(현재 보는 Operation은 억제).
-export function applySessionAttention(session: SessionInput): void {
+export function applySessionAttention(session: SessionInput, reason?: AttentionReason): void {
   const target = state.sessions[session.sessionId] ?? normalizeSession(session);
   // Operations 뷰가 화면에 떠 있고(=/operations) 그 Operation을 실제로 보고 있을 때만 억제한다.
   // Welcome·Codex 등 다른 화면에선 어떤 Operation도 보이지 않으므로 백그라운드 입력 대기를 반드시 알린다
   // (라우트 전이가 activeTerminalSessionId를 비우지 않아 isActiveOperation만으로는 화면 밖을 구분 못 한다).
   if (state.operationsViewActive && isActiveOperation(target)) return;
+  // 캐리어 출격 중(미완료 job 존재)의 idle_prompt는 입력 대기가 아니라 비동기 작업 대기다 —
+  // ended 경로(buildTurnTransitionToasts)와 동일 근거로 억제한다. 권한 요청·AskUserQuestion·elicitation
+  // (또는 reason 부재)은 출격 중에도 실제 입력 대기이므로 알림을 유지한다.
+  if (reason === "idle_prompt" && hasActiveCarrierJob(target)) return;
   // AskUserQuestion은 PreToolUse와 Notification을 함께 발화할 수 있고 입력 대기가 반복 알림될 수도 있다.
   // 같은 세션의 입력 대기 토스트가 아직 떠 있으면 중복 발행하지 않는다(닫히면 다음 대기 때 다시 뜬다).
   if (state.operationToasts.some((toast) => toast.kind === "input-waiting" && toast.sessionId === session.sessionId)) return;

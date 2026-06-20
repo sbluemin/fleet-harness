@@ -24,6 +24,7 @@ import { resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/a
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, TerminalFolderListResponse } from "./api-types.js";
+import { normalizeAttentionReason } from "./attention-hook.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { cleanupProviderSessionCaptures, createConsoleDurableStateStore, emptyDurableConsoleState, mergeProviderSessionCaptures, readProviderSessionCapture, unlinkProviderSessionCapture, type DurableConsoleState, type DurableOperation } from "./durable-state.js";
@@ -409,7 +410,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 404, { error: "terminal_session_not_found" });
       return;
     }
-    observability.notifySessionAttention(session);
+    // hook이 실은 reason(notification_type)을 best-effort로 동봉한다. 부재/미상은 undefined로 두어
+    // 클라이언트가 실제 입력 대기로 처리하게 한다(idle_prompt만 출격 중 억제 대상).
+    const body = await readJsonBody<{ readonly reason?: unknown }>(req);
+    observability.notifySessionAttention(session, normalizeAttentionReason(body?.reason));
     writeJson(res, 200, { ok: true });
   }
 

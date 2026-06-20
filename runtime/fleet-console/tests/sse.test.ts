@@ -89,6 +89,47 @@ describe("interpretObserverFrame", () => {
     expect(frame?.event).toBeUndefined();
   });
 
+  it("carries a known attention reason through the attention frame", () => {
+    const frame = interpretObserverFrame({
+      event: "session:attention",
+      data: JSON.stringify({
+        reason: "idle_prompt",
+        session: {
+          sessionId: "session-a",
+          terminalSessionId: "session-a",
+          cwdLabel: "alpha",
+          sequence: 1,
+          label: "Bridge",
+          status: "registered",
+          createdAt: 1_000,
+        },
+      }),
+    });
+
+    expect(frame).toMatchObject({ kind: "attention", reason: "idle_prompt", session: { sessionId: "session-a" } });
+  });
+
+  it("drops an unknown attention reason to undefined", () => {
+    const frame = interpretObserverFrame({
+      event: "session:attention",
+      data: JSON.stringify({
+        reason: "totally-bogus",
+        session: {
+          sessionId: "session-a",
+          terminalSessionId: "session-a",
+          cwdLabel: "alpha",
+          sequence: 1,
+          label: "Bridge",
+          status: "registered",
+          createdAt: 1_000,
+        },
+      }),
+    });
+
+    expect(frame).toMatchObject({ kind: "attention" });
+    expect(frame?.reason).toBeUndefined();
+  });
+
   it("returns null for malformed payloads", () => {
     expect(interpretObserverFrame({ event: "message", data: "not-json" })).toBeNull();
     expect(interpretObserverFrame({ event: "message", data: "{}" })).toBeNull();
