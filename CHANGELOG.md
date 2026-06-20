@@ -5,6 +5,57 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-06-20
+
+### Added
+- [fleet-console] Fleet Console adds a Model Sign-in section to the global Settings screen to register, verify, and remove a provider API key so carriers can run on that model, starting with Moonshot Kimi; keys are validated against the provider, stored locally, and never shown back in the browser.
+- [fleet-console] Installing Fleet Console globally via npm now automatically opens the console in the browser when the install finishes, limited to interactive desktop installs and skipped in CI, headless, or non-global installs; set `FLEET_CONSOLE_NO_AUTO_OPEN` to opt out.
+- [core-unified-agent][fleet-admiral][fleet-infra][fleet-cli] Add Claude GLM (ZhipuAI GLM) as a selectable Claude-family provider across the CLI and Console, including `fleet auth` login/logout support.
+- [fleet-console] The Settings Model Sign-in section now lists ZhipuAI GLM alongside Moonshot Kimi, so its API key can be registered, validated, and signed out directly from the Console.
+- [fleet-console] Settings now shows whether each Agent CLI (Claude Code, Codex CLI, OpenCode, Cursor Agent) is installed and its detected version.
+- [fleet-console] The Codex Side panel can be opened from a right-edge handle on any non-Codex view
+- [fleet-console] The Codex Side panel header offers manual collapse toggles for its left (Nav) and right (ToC/Manifest) panes
+- [fleet-console] The Codex Cmd+K search palette is scoped to the Side panel region in Side view instead of covering the full screen
+- [fleet-console] The Codex Wiki reading view caps the body to a single reading measure and reclaims wasted whitespace on wide screens, drops the empty rail on browse and index views, and folds the raw source view into the same shell
+- [fleet-console] The Codex Wiki reading rail lists the table of contents first with active-section highlighting above a collapsible manifest, adds a contents drawer on narrow viewports, and shows breadcrumbs on entries
+- [fleet-console] Console self-update flow applies a global `fleet-cli` + `fleet-console` update directly from the topbar button instead of opening an npm registry link.
+- [fleet-console] Self-update blocks while a terminal Operation has a live PTY and rejects local/unpublished builds, then restarts the console on a fresh random loopback port and opens it in a new browser window.
+- [fleet-cli] CLI update subsystem now shares the generic core-agent package-updater substrate while preserving CLI-specific shutdown and messaging lifecycle.
+- [core-agent] Generic global package updater factory for package-manager detection, global-root checks, version resolution, install spawning, and manual fallback messages.
+- [fleet-console] Fleet Console now shows a What's new popup that lists the installed version's changelog entries grouped by Added/Changed/Fixed/Removed; it opens automatically once after a version update and can be reopened anytime from a What's new control in the global navigation bar.
+- [fleet-console] Add a GitHub repository link and live star count beside the GNB Research Preview badge
+- [fleet-console] Fleet Console Operations Map panels can now be minimized to a collapsible bottom dock and restored to their original position and size by double-clicking the dock entry or its restore button; the dock collapses to a single expand/collapse handle, each entry shows the panel's status light, name, Agent CLI, and active job count, and both the collapsed handle and the entries pulse while a minimized panel is busy.
+- [fleet-console] Operations are now automatically named from the first meaningful line of each submitted prompt (for both Claude and Codex sessions), so a new Operation no longer stays as the generic "#N Operation" once work starts. A manual rename always takes over and is never overwritten by auto-naming, and clearing the name re-enables it.
+
+### Changed
+- [fleet-console] Fleet Console no longer raises an Operation's completion toast while that Operation still has a carrier job running, since the work is still in progress and the live Operation panel already reflects it.
+- [fleet-console] Replaced running Operation attention motion with a consistent perimeter signal across open panels and minimized Dock controls.
+- [fleet-console] Aligned minimized Operation labels with open panel title typography.
+- [fleet-console] The Operations Map minimized-panel dock now expands upward from a centered bottom handle (an up/down chevron), laying its entries out centered and growing them to fit the available screen width (kept clear of the left shortcuts and right radar instruments) before paging overflow behind previous/next controls with a page indicator, so existing entries no longer shift when the count changes.
+- [fleet-console] A busy minimized-panel entry now signals progress with a running light that travels around its full outline instead of an outward breathing pulse, and the dock handle's attention animation only plays while the dock is collapsed.
+- [fleet-console] A minimized operation now restores with a single click anywhere on its dock chip (previously a double-click), and the redundant per-chip restore button has been removed.
+- [fleet-console] Operation completion and input-waiting alerts now group by Theater in a left-docked notification panel that stays available and opens or closes from an edge handle instead of a flat stack of separate toasts, showing only Operations that are not currently visible.
+- [fleet-console] The notification cluster distinguishes completion and input-waiting per Operation, counts repeated input-waiting attention, and adds global mute, do-not-disturb, and per-Theater mute controls.
+- [fleet-console] Cluster alerts clear automatically when an Operation resumes work, and are removed when its session or Theater is deleted, so stale rows no longer linger.
+- [fleet-console] The Operation launch menus now disable an Agent CLI choice when its CLI is not installed, or when a sign-in-gated model is not signed in, labeling each disabled choice with the reason, and the server rejects session-creation requests for those CLIs.
+- [fleet-console] Theme selection and terminal renderer controls move out of the global navigation bar into a new Appearance section at the top of the Settings screen, decluttering the navigation bar; both still apply immediately and are remembered per browser.
+
+### Fixed
+- [fleet-console] A Fleet Console run from source (`pnpm fleet-console`) now stores its persisted Theaters, Operations, and session captures under the project workspace instead of the shared home directory, so a development console no longer mixes its state with a globally installed Fleet Console.
+- [fleet-console] Operation auto-naming now updates only from the first submitted prompt unless the operator clears the name to re-enable automatic naming.
+- [fleet-console] Stopped a carrier-dispatch idle pause from raising a false "Awaiting orders" notification while the dispatched carrier job is still running; genuine input-waiting prompts (permission requests, questions, elicitation dialogs) still notify as before.
+- [fleet-console] The Operations sidebar collapse state in the Map view now persists when navigating to Codex full mode and back, instead of resetting to expanded.
+- [fleet-console] Operations Map panel positions and sizes now persist across a browser refresh instead of resetting to defaults.
+- [fleet-console] Map shell panels now survive a browser refresh instead of disappearing.
+- [fleet-console] Fixed other open Operations terminals showing a corrupted display when an additional terminal was opened or a minimized terminal was restored from the dock.
+- [fleet-console] Mouse clicks and drag selections inside an Operations Map terminal now land on the correct cell after zooming the map in or out, instead of being offset until the view was reset.
+
+### Removed
+- [fleet-console] Fleet Console no longer raises a toast when a carrier sorties; the live Operation panel already reflects the active job.
+- [fleet-admiral] Fleet no longer renders user-global (`~/.fleet`) or project-local (`.fleet`) skills, agents, and hooks into Agent CLI sessions; only the built-in Fleet plugin is activated.
+- [fleet-admiral] Deprecated user-global and project plugin registrations and their leftover marketplace directories are pruned from Codex and the Fleet marketplace on launch.
+- [fleet-infra] [fleet-cli] [fleet-console] Removed the automatic migration of legacy auth credentials from the old `~/.fleet/agent/auth.json` location; Fleet now reads and writes only `~/.fleet/auth.json`, so credentials left in the old location are no longer picked up and must be re-added with `fleet auth login`.
+
 ## [1.8.0] - 2026-06-18
 
 ### Added
