@@ -16,3 +16,4 @@ keybindings.json
 .claude/*
 !.claude/skills
 packages/fleet-admiral/src/agent-cli/assets.generated.ts
+runtime/fleet-console/client/src/release-notes.generated.ts

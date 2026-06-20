@@ -8,6 +8,7 @@ import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, 
 import type { ConsoleState, TerminalRenderer, ThemeId } from "../types.js";
 import { CodexModeToggle } from "./codex-mode-toggle.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
+import { WhatsNewButton } from "./whatsnew-button.js";
 
 interface TopbarProps {
   readonly state: ConsoleState;
@@ -99,6 +100,7 @@ export function Topbar({ state, codexMode }: TopbarProps) {
       <TheaterControl state={state} />
       <div className="topbar-meta">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
+        <WhatsNewButton state={state} />
         <nav className="topbar-nav" aria-label="주 내비게이션">
           {NAV_ITEMS.map((item) => (
             <Fragment key={item.to}>

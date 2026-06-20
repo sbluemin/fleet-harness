@@ -13,6 +13,7 @@ import { OperationSearch } from "./components/operation-search.js";
 import { OperationToastHost } from "./components/operation-toasts.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
+import { WhatsNewModal } from "./components/whatsnew-modal.js";
 import { startObserverConnection } from "./connection.js";
 import { useConsoleState } from "./hooks/use-store.js";
 import { CarrierSettings } from "./pages/carrier-settings.js";
@@ -215,6 +216,7 @@ export function App() {
       <ShellOverlay state={state} />
       <OperationSearch state={state} />
       <ShortcutsOverlay state={state} />
+      <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
       <Toast
         open={state.connectionError !== null}
