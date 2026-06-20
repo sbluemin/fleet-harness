@@ -9,22 +9,23 @@ import { focusOperation, setDnd, setGlobalMute, toggleTheaterMute } from "../sto
 import type { NotificationTheaterGroup } from "../reduce.js";
 import type { NotificationKind, OperationNotification } from "../types.js";
 
-// kind별 사용자 표기 — 함대 메타포 영문 라벨. 완료=Stood down(전투배치 해제), 입력 대기=Awaiting orders(명령 대기).
-// 색은 CSS가 .is-<kind>로 분기한다(완료=--positive, 입력 대기=--warn).
+// kind별 사용자 표기 — 함대 메타포 영문 라벨. 완료=Stood down, 입력 대기=Awaiting orders.
 const KIND_LABEL: Record<NotificationKind, string> = {
   ended: "Stood down",
   "input-waiting": "Awaiting orders",
 };
 
-// 우상단 고정 알림 계기판(함교 당직판). Theater 그룹이 펼침 조작 없이 기본 표시되고,
-// 각 Operation 행은 kind 비콘으로 완료/입력 대기를 구분한다. 클러스터는 보이지 않는 세션만 렌더한다.
+// 도킹 패널 열림/닫힘 상태 persistence — Codex Side와 같은 우현 도킹 토글.
+const DOCK_OPEN_STORAGE_KEY = "fleet-console.notificationsDockOpen";
+
+// 우현 도킹 알림 패널. Codex Side처럼 우측 가장자리에 붙어 엣지 핸들로 언제든 열고 닫는다.
+// 닫힘=엣지 핸들(신호+카운트), 열림=도킹 패널(Theater 그룹). 클러스터는 보이지 않는 세션만 렌더한다.
 export function NotificationClusterHost() {
   const state = useConsoleState();
   const canvas = useCanvasState();
   const mode = useOperationsMode();
   const navigate = useNavigate();
-  // collapsed=전체 접기(헤더만). 기본값 false라 Theater 그룹이 곧바로 보인다.
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(readDockOpen);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const notifications = useMemo(
@@ -35,14 +36,14 @@ export function NotificationClusterHost() {
   const eligible = splitNotificationsByVisibility(notifications, visibleIds).hidden;
   const filtered = filterByPreferences(eligible, state.notificationPreferences);
   const groups = groupNotificationsByTheater(filtered);
-  // 설정 팝오버용 — preference로 가려진 Theater도 음소거 토글 대상으로 노출해야 하므로 미필터 그룹을 쓴다.
+  // 설정 팝오버용 — preference로 가려진 Theater도 음소거 토글 대상으로 노출하므로 미필터 그룹을 쓴다.
   const settingsGroups = groupNotificationsByTheater(eligible);
   const totalCount = groups.reduce((sum, group) => sum + group.totalCount, 0);
   const waitingCount = countByKind(groups, "input-waiting");
   const endedCount = countByKind(groups, "ended");
   const preferencesActive = preferencesAreActive(state.notificationPreferences);
   const muted = groups.length === 0;
-  // 신호등 상태 — 입력 대기가 있으면 awaiting(warn·perimeter wake), 완료만이면 ended(positive), 없으면 muted.
+  // 신호 상태 — 입력 대기가 있으면 awaiting(warn·perimeter wake), 완료만이면 ended(positive), 없으면 muted.
   const signalState = muted ? "muted" : waitingCount > 0 ? "awaiting" : "ended";
 
   // 표시할 알림도 없고 활성 preference(음소거/DND/Theater mute)도 없으면 계기판 자체를 숨긴다.
@@ -53,37 +54,46 @@ export function NotificationClusterHost() {
     navigate("/operations");
   };
 
+  const setDockOpen = (next: boolean) => {
+    setOpen(next);
+    writeDockOpen(next);
+  };
+
+  // ── 닫힘: 우현 엣지 핸들 ──
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className={`notification-handle is-${signalState} ${signalState === "awaiting" ? "has-awaiting" : ""}`}
+        onClick={() => setDockOpen(true)}
+        aria-label={`Open notifications (${totalCount})`}
+      >
+        <span className="notification-handle-count">{muted ? 0 : totalCount}</span>
+        <span className="notification-handle-label">Alerts</span>
+        <ChevronIcon className="notification-handle-chevron" />
+      </button>
+    );
+  }
+
+  // ── 열림: 우현 도킹 패널 ──
   return (
-    <aside
-      className={`notification-cluster ${collapsed ? "is-collapsed" : "is-open"} ${muted ? "is-muted" : ""} ${signalState === "awaiting" ? "has-awaiting" : ""}`}
-      aria-live="polite"
-      aria-label="Operation notifications"
-    >
-      <header className="notification-cluster-masthead">
-        <button
-          type="button"
-          className="notification-cluster-pennant"
-          onClick={() => setCollapsed(!collapsed)}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? "Expand notifications" : "Collapse notifications"}
-        >
-          <span className="notification-cluster-ensign" data-state={signalState} aria-hidden="true" />
-          <span className="notification-cluster-headline">
-            <span className="notification-cluster-count">{muted ? "Muted" : totalCount}</span>
-            <span className="notification-cluster-scope">{muted ? "Alerts paused" : `${groups.length} Theater`}</span>
-          </span>
-          <ChevronIcon className="notification-cluster-chevron" />
-        </button>
-        <div className="notification-cluster-controls">
+    <div className="notification-dock-layer">
+      <aside
+        className={`notification-dock ${signalState === "awaiting" ? "has-awaiting" : ""}`}
+        aria-live="polite"
+        aria-label="Operation notifications"
+      >
+        <header className="notification-dock-head">
+          <span className="notification-dock-eyebrow">Notifications</span>
           {!muted ? (
-            <span className="notification-cluster-tallies" aria-hidden="true">
+            <span className="notification-dock-tallies" aria-hidden="true">
               {waitingCount > 0 ? <span className="notification-tally is-input-waiting">{waitingCount}</span> : null}
               {endedCount > 0 ? <span className="notification-tally is-ended">{endedCount}</span> : null}
             </span>
           ) : null}
           <button
             type="button"
-            className="notification-cluster-cog"
+            className="notification-dock-icon"
             onClick={() => setSettingsOpen(!settingsOpen)}
             aria-expanded={settingsOpen}
             aria-label="Notification settings"
@@ -91,45 +101,75 @@ export function NotificationClusterHost() {
           >
             <SettingsIcon />
           </button>
-        </div>
-      </header>
+          <button
+            type="button"
+            className="notification-dock-icon"
+            onClick={() => setDockOpen(false)}
+            aria-label="Close notifications"
+            title="Close"
+          >
+            <CloseIcon />
+          </button>
+        </header>
 
-      {settingsOpen ? <NotificationSettings groups={settingsGroups} /> : null}
+        {settingsOpen ? <NotificationSettings groups={settingsGroups} /> : null}
 
-      {!collapsed && groups.length > 0 ? (
-        <div className="notification-cluster-deck">
-          {groups.map((group) => (
-            <section className="notification-cluster-group" key={group.theaterId ?? "__unknown__"}>
-              <header className="notification-cluster-group-head">
-                <span className="notification-cluster-theater">{group.theaterLabel}</span>
-                <span className="notification-cluster-group-count">{group.totalCount}</span>
-              </header>
-              <ul className="notification-cluster-roster">
-                {group.notifications.map((notification) => (
-                  <li className={`notification-row is-${notification.kind}`} key={notification.sessionId}>
-                    <span className="notification-row-beacon" aria-hidden="true" />
-                    <span className="notification-row-body">
-                      <span className="notification-row-op">{notification.operationLabel}</span>
-                      <span className="notification-row-state">{KIND_LABEL[notification.kind]}</span>
-                    </span>
-                    {notification.count > 1 ? <span className="notification-row-count">{notification.count}</span> : null}
-                    <button
-                      type="button"
-                      className="notification-row-move"
-                      onClick={() => handleMove(notification)}
-                      aria-label={`Open ${group.theaterLabel} ${notification.operationLabel}`}
-                    >
-                      Open
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      ) : null}
-    </aside>
+        {muted ? (
+          <p className="notification-dock-empty">No active alerts</p>
+        ) : (
+          <div className="notification-dock-deck">
+            {groups.map((group) => (
+              <section className="notification-cluster-group" key={group.theaterId ?? "__unknown__"}>
+                <header className="notification-cluster-group-head">
+                  <span className="notification-cluster-theater">{group.theaterLabel}</span>
+                  <span className="notification-cluster-group-count">{group.totalCount}</span>
+                </header>
+                <ul className="notification-cluster-roster">
+                  {group.notifications.map((notification) => (
+                    <li className={`notification-row is-${notification.kind}`} key={notification.sessionId}>
+                      <span className="notification-row-beacon" aria-hidden="true" />
+                      <span className="notification-row-body">
+                        <span className="notification-row-op">{notification.operationLabel}</span>
+                        <span className="notification-row-state">{KIND_LABEL[notification.kind]}</span>
+                      </span>
+                      {notification.count > 1 ? <span className="notification-row-count">{notification.count}</span> : null}
+                      <button
+                        type="button"
+                        className="notification-row-move"
+                        onClick={() => handleMove(notification)}
+                        aria-label={`Open ${group.theaterLabel} ${notification.operationLabel}`}
+                      >
+                        Open
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+      </aside>
+    </div>
   );
+}
+
+function readDockOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const stored = window.localStorage.getItem(DOCK_OPEN_STORAGE_KEY);
+    return stored === null ? true : stored === "true";
+  } catch {
+    return true;
+  }
+}
+
+function writeDockOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DOCK_OPEN_STORAGE_KEY, String(open));
+  } catch {
+    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
 }
 
 function preferencesAreActive(prefs: {
@@ -225,10 +265,18 @@ function SettingsIcon() {
   );
 }
 
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ChevronIcon({ className }: { readonly className?: string }) {
   return (
     <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4 6.5 8 10.5l4-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 4 6 8l4 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

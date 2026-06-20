@@ -5873,51 +5873,88 @@
   background: color-mix(in oklch, var(--ink-fog) 14%, transparent);
 }
 
-/* ── Notification Cluster ──────────────────────────────────────────────
-   우상단 고정 알림 계기판(함교 당직 계기). Theater 그룹이 펼침 없이 기본 표시되고,
-   각 Operation 행은 kind 비콘으로 완료(--positive)·입력 대기(--warn)를 구분한다.
-   입력 대기가 있으면 패널 in-progress와 동일한 perimeter wake(--warn 순환광)를 외곽에 두른다.
-   모든 색은 theme.css 토큰으로만 — maritime/carbon 양 테마 추종, aurora 미사용(역할 혼용 금지). */
-.notification-cluster {
+/* ── Notification Dock — 우현 도킹 알림 패널 (Codex Side 패턴) ──────────
+   닫힘=우현 엣지 핸들, 열림=우현 도킹 패널. 입력 대기가 있으면 패널 in-progress와
+   동일한 warn perimeter wake를 두른다. 모든 색은 theme.css 토큰으로만(aurora 미사용).
+   Theater/Operation의 좌측 강조 막대·보더는 두지 않고 kind 비콘으로만 구분한다(대원수 지시). */
+
+/* ── 닫힘: 우현 엣지 핸들 ── */
+.notification-handle {
   position: fixed;
-  top: var(--console-topbar-offset);
-  right: var(--space-4);
-  z-index: 60;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 59;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-2);
-  width: min(344px, calc(100vw - var(--space-8)));
-  max-height: calc(100vh - var(--console-topbar-offset) - var(--space-6));
-  padding: var(--space-3);
-  /* 우상단 brass 코너 조명 + glass 본체 — 계기판 깊이 */
-  background:
-    radial-gradient(130% 90% at 100% 0%, color-mix(in oklch, var(--brass) 8%, transparent), transparent 58%),
-    var(--surface-glass-strong);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  padding: var(--space-3) var(--space-2);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-lg);
+  border-right: none;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  color: var(--ink-fog);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
 
-.notification-cluster.is-muted {
-  box-shadow: var(--shadow-soft);
-  opacity: 0.84;
+.notification-handle:hover,
+.notification-handle:focus-visible {
+  transform: translateY(-50%) translateX(-3px);
+  color: var(--brass);
+  background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
+  outline: none;
 }
 
-/* ── perimeter wake — 입력 대기 시 warn 순환광(패널 in-progress와 동일 언어) ── */
-.notification-cluster.has-awaiting {
+.notification-handle-count {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink-pearl);
+}
+
+.notification-handle.is-awaiting .notification-handle-count {
+  color: var(--warn);
+}
+
+.notification-handle.is-ended .notification-handle-count {
+  color: var(--positive);
+}
+
+.notification-handle-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  color: var(--ink-fog);
+}
+
+.notification-handle-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-rim);
+}
+
+/* 핸들 perimeter wake — 입력 대기 시 warn 순환광 */
+.notification-handle.has-awaiting {
   --uw-tint: var(--warn);
   --uw-glow: var(--warn-glow);
-  box-shadow: var(--shadow-floating), 0 0 26px -8px var(--uw-glow);
+  box-shadow: var(--shadow-floating), 0 0 22px -8px var(--uw-glow);
 }
 
-.notification-cluster.has-awaiting::after {
+.notification-handle.has-awaiting::after {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 1;
   padding: 1px;
   border-radius: inherit;
   pointer-events: none;
@@ -5930,128 +5967,151 @@
     color-mix(in oklch, var(--uw-tint) 8%, transparent) 156deg,
     color-mix(in oklch, var(--uw-tint) 8%, transparent) 360deg
   );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   animation: perimeter-orbit 3s linear infinite;
 }
 
-/* ── Masthead — brass hairline으로 계기 구획 ── */
-.notification-cluster-masthead {
+/* ── 열림: 우현 도킹 레이어 + 패널 ── */
+.notification-dock-layer {
+  position: fixed;
+  top: var(--console-topbar-offset);
+  right: 0;
+  bottom: var(--space-4);
+  z-index: 59;
+  width: min(360px, calc(100vw - var(--space-6)));
+  pointer-events: none;
+}
+
+.notification-dock {
   position: relative;
-  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-right: none;
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  /* brass 코너 조명 + glass 본체 — 함교 계기판 깊이 */
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  pointer-events: auto;
+  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
+  overflow: hidden;
+}
+
+.notification-dock.has-awaiting {
+  --uw-tint: var(--warn);
+  --uw-glow: var(--warn-glow);
+  box-shadow: var(--shadow-floating), 0 0 28px -10px var(--uw-glow);
+}
+
+.notification-dock.has-awaiting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--uw-angle),
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 0deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 20deg,
+    var(--uw-tint) 54deg,
+    color-mix(in oklch, var(--uw-tint) 50%, transparent) 96deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 156deg,
+    color-mix(in oklch, var(--uw-tint) 8%, transparent) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: perimeter-orbit 3.4s linear infinite;
+}
+
+/* 도킹 헤더 — 총갯수/인디케이터 없이 제목 + kind tally + 설정 + 닫기 */
+.notification-dock-head {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding-bottom: var(--space-2);
-  border-bottom: 1px solid color-mix(in oklch, var(--brass) 16%, var(--surface-rim));
+  border-bottom: 1px solid color-mix(in oklch, var(--brass) 14%, var(--surface-rim));
 }
 
-.notification-cluster-pennant {
-  display: flex;
+.notification-dock-eyebrow {
   flex: 1;
-  align-items: center;
-  gap: var(--space-2);
   min-width: 0;
-  padding: var(--space-1);
-  border-radius: var(--radius-sm);
-  transition: background var(--duration-fast) var(--ease-glide);
-}
-
-.notification-cluster-pennant:hover {
-  background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
-}
-
-/* 신호등 ensign — awaiting=warn, ended=positive, muted=ink. glow ring으로 계기등 표현. */
-.notification-cluster-ensign {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  flex-shrink: 0;
-  background: var(--ink-rim);
-}
-
-.notification-cluster-ensign[data-state="awaiting"] {
-  background: var(--warn);
-  box-shadow: 0 0 0 4px var(--warn-glow), 0 0 10px 0 var(--warn-glow);
-}
-
-.notification-cluster-ensign[data-state="ended"] {
-  background: var(--positive);
-  box-shadow: 0 0 0 4px var(--positive-glow);
-}
-
-.notification-cluster-ensign[data-state="muted"] {
-  background: var(--ink-rim);
-}
-
-.notification-cluster-headline {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.notification-cluster-count {
-  font-family: var(--font-display);
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--ink-pearl);
-}
-
-.notification-cluster.is-muted .notification-cluster-count {
-  font-size: 14px;
-  color: var(--ink-fog);
-}
-
-.notification-cluster-scope {
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-fog);
-  white-space: nowrap;
+  letter-spacing: 0.16em;
+  color: var(--ink-spectral);
 }
 
-.notification-cluster-chevron {
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-  color: var(--ink-rim);
-  transition: transform var(--duration-base) var(--ease-spring), color var(--duration-fast) var(--ease-glide);
-}
-
-.notification-cluster.is-collapsed .notification-cluster-chevron {
-  transform: rotate(-90deg);
-}
-
-.notification-cluster-pennant:hover .notification-cluster-chevron {
-  color: var(--brass);
-}
-
-.notification-cluster-controls {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-/* kind 합계 칩 — 점 + 수치로 완료/대기 비율을 한눈에 */
-.notification-cluster-tallies {
+.notification-dock-tallies {
   display: flex;
   align-items: center;
   gap: var(--space-1);
 }
 
+.notification-dock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-fog);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.notification-dock-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.notification-dock-icon:hover,
+.notification-dock-icon[aria-expanded="true"] {
+  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
+  color: var(--brass);
+}
+
+.notification-dock-empty {
+  position: relative;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-6) 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-rim);
+  text-align: center;
+}
+
+.notification-dock-deck {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
+}
+
+/* kind 합계 칩 — 점 + 수치 */
 .notification-tally {
   display: inline-flex;
   align-items: center;
@@ -6086,44 +6146,10 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--positive) 34%, transparent);
 }
 
-.notification-cluster-cog {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
-}
-
-.notification-cluster-cog svg {
-  width: 16px;
-  height: 16px;
-}
-
-.notification-cluster-cog:hover,
-.notification-cluster-cog[aria-expanded="true"] {
-  background: color-mix(in oklch, var(--ink-fog) 12%, transparent);
-  color: var(--brass);
-}
-
-/* ── Deck (Theater 그룹 스크롤) ── */
-.notification-cluster-deck {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  overflow-y: auto;
-  margin: 0 calc(-1 * var(--space-1));
-  padding: 0 var(--space-1);
-}
-
-/* ── Theater 그룹 — 편성 카드. brass 좌측 계기 막대 + glass 깊이 ── */
+/* ── Theater 그룹 — 평면 카드(좌측 강조 막대·그라데이션 없음) ── */
 .notification-cluster-group {
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-deep) 50%, transparent);
+  background: color-mix(in oklch, var(--ink-deep) 46%, transparent);
   border: 1px solid var(--surface-rim);
   overflow: hidden;
 }
@@ -6134,8 +6160,6 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--surface-rim);
-  box-shadow: inset 3px 0 0 0 var(--brass-deep);
-  background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 9%, transparent), transparent 64%);
 }
 
 .notification-cluster-theater {
@@ -6167,7 +6191,7 @@
   background: color-mix(in oklch, var(--ink-fog) 15%, transparent);
 }
 
-/* ── Operation 행 ── */
+/* ── Operation 행 — 좌측 보더 없이 비콘으로만 kind 구분 ── */
 .notification-cluster-roster {
   list-style: none;
   margin: 0;
@@ -6183,7 +6207,6 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border-radius: var(--radius-xs);
-  border-left: 2px solid transparent;
   transition: background var(--duration-fast) var(--ease-glide);
 }
 
@@ -6191,7 +6214,7 @@
   background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
 }
 
-/* kind 비콘 — 신호등 glow ring */
+/* kind 비콘 — 신호등 glow ring (좌측 강조색을 대신하는 유일한 kind 구분) */
 .notification-row-beacon {
   width: 9px;
   height: 9px;
@@ -6199,17 +6222,9 @@
   flex-shrink: 0;
 }
 
-.notification-row.is-input-waiting {
-  border-left-color: color-mix(in oklch, var(--warn) 55%, transparent);
-}
-
 .notification-row.is-input-waiting .notification-row-beacon {
   background: var(--warn);
   box-shadow: 0 0 0 3px var(--warn-glow), 0 0 8px 0 var(--warn-glow);
-}
-
-.notification-row.is-ended {
-  border-left-color: color-mix(in oklch, var(--positive) 50%, transparent);
 }
 
 .notification-row.is-ended .notification-row-beacon {
@@ -6290,7 +6305,7 @@
 /* ── 설정 팝오버 ── */
 .notification-cluster-settings {
   position: relative;
-  z-index: 3;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -6335,16 +6350,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notification-cluster,
+  .notification-dock,
   .notification-cluster-settings {
     animation: none;
   }
 
-  .notification-cluster-chevron {
-    transition: none;
-  }
-
-  .notification-cluster.has-awaiting::after {
+  .notification-handle.has-awaiting::after,
+  .notification-dock.has-awaiting::after {
     animation: none;
     background: color-mix(in oklch, var(--uw-tint) 36%, transparent);
   }
