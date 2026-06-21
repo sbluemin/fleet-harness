@@ -184,6 +184,15 @@ export interface AgentCliState {
   readonly clis: readonly AgentCliStatus[];
 }
 
+// 백엔드 API 카탈로그 DTO — server observer catalog와 수동 동기화한다.
+export interface ApiCatalogEntry {
+  readonly method: string;
+  readonly path: string;
+  readonly summary: string;
+  readonly category: string;
+  readonly gate: string;
+}
+
 export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
 
 // Agent CLI 턴(host 처리) 상태. "none"=턴 이력 없음(신규), "running"=처리중, "ended"=종료(유휴).

@@ -1,6 +1,7 @@
 import type http from "node:http";
 
 import type { AgentCliState, AgentCliStatus } from "./agent-cli-types.js";
+import type { ApiCatalogEntry } from "./api-catalog.js";
 
 interface AgentCliRouteDeps {
   readonly detect: () => Promise<readonly AgentCliStatus[]>;
@@ -12,6 +13,16 @@ interface AgentCliRouteContext {
   readonly res: http.ServerResponse;
   readonly pathname: string;
 }
+
+export const AGENT_CLI_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: "/agent-cli/state",
+    summary: "설치된 Agent CLI 상태를 조회합니다.",
+    category: "Agent CLI",
+    gate: "loopback",
+  },
+];
 
 export function createAgentCliRouter(deps: AgentCliRouteDeps): (context: AgentCliRouteContext) => Promise<boolean> {
   return async function handleAgentCliRoute(context: AgentCliRouteContext): Promise<boolean> {

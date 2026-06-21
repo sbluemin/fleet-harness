@@ -7,6 +7,7 @@ import {
   type AuthValidationFailureResult,
 } from "@dotobokuri/fleet-infra/auth";
 
+import type { ApiCatalogEntry } from "./api-catalog.js";
 import type { ModelAuthMutationResult, ModelAuthProviderState, ModelAuthState } from "./model-auth-types.js";
 
 type AuthKeyValidation =
@@ -46,6 +47,30 @@ const MODEL_AUTH_PROVIDERS: readonly ModelAuthProviderDefinition[] = [
 
 // 사용자 키 거부(400)와 외부 provider 검증 자체 장애(502)를 HTTP 상태로 구분한다.
 const UPSTREAM_FAILURE_STATUSES: ReadonlySet<string> = new Set(["timeout", "network", "server"]);
+
+export const MODEL_AUTH_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: "/model-auth/state",
+    summary: "모델 로그인 상태를 조회합니다.",
+    category: "Model Auth",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/model-auth/providers/:cli",
+    summary: "모델 제공자 API 키를 등록합니다.",
+    category: "Model Auth",
+    gate: "terminal-origin",
+  },
+  {
+    method: "DELETE",
+    path: "/model-auth/providers/:cli",
+    summary: "모델 제공자 API 키를 삭제합니다.",
+    category: "Model Auth",
+    gate: "terminal-origin",
+  },
+];
 
 export function createModelAuthRouter(deps: ModelAuthRouteDeps): (context: ModelAuthRouteContext) => Promise<boolean> {
   return async function handleModelAuthRoute(context: ModelAuthRouteContext): Promise<boolean> {

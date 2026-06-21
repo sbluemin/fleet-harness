@@ -33,6 +33,7 @@ import {
   type ResolvedCarrierState,
 } from "@dotobokuri/fleet-carriers";
 
+import type { ApiCatalogEntry } from "./api-catalog.js";
 import type {
   CarrierSettingsCarrier,
   CarrierSettingsCliOption,
@@ -87,6 +88,72 @@ type JsonBodyResult<T> =
 
 const SUBAGENT_CLI_TYPES = new Set<CliType>(["claude", "claude-zai", "claude-kimi", "claude-glm"]);
 const TASKFORCE_MIN_BACKENDS = 2;
+
+export const CARRIER_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: "/carrier-settings/state",
+    summary: "캐리어 설정 상태를 조회합니다.",
+    category: "Carrier Settings",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/carrier-settings/options",
+    summary: "캐리어 설정 선택지를 조회합니다.",
+    category: "Carrier Settings",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/carrier-settings/carriers/:id/cli",
+    summary: "캐리어 Agent CLI를 변경합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+  {
+    method: "PUT",
+    path: "/carrier-settings/carriers/:id/model",
+    summary: "캐리어 모델 선택을 변경합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+  {
+    method: "PATCH",
+    path: "/carrier-settings/carriers/:id/display-name",
+    summary: "캐리어 표시 이름을 변경합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+  {
+    method: "PUT",
+    path: "/carrier-settings/carriers/:id/agent-mode",
+    summary: "캐리어 실행 모드를 변경합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+  {
+    method: "PUT",
+    path: "/carrier-settings/carriers/:id/taskforce/:cliType",
+    summary: "Task Force 백엔드 모델을 설정합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+  {
+    method: "DELETE",
+    path: "/carrier-settings/carriers/:id/taskforce/:cliType",
+    summary: "Task Force 백엔드 모델 설정을 해제합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+  {
+    method: "DELETE",
+    path: "/carrier-settings/carriers/:id/taskforce",
+    summary: "캐리어 Task Force 설정을 초기화합니다.",
+    category: "Carrier Settings",
+    gate: "terminal-origin",
+  },
+];
 
 export function createCarrierSettingsRouter(deps: CarrierSettingsRouteDeps): (context: CarrierSettingsRouteContext) => Promise<boolean> {
   const controller = createStatusOverlayController(deps.registry);

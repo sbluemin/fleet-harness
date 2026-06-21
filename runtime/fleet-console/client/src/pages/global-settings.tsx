@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { AgentCliSection } from "../components/agent-cli-section.js";
+import { BackendApiSection } from "../components/backend-api-section.js";
 import { ModelAuthSection } from "../components/model-auth-section.js";
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -96,6 +97,8 @@ export function GlobalSettings() {
       <AgentCliSection />
 
       <ModelAuthSection />
+
+      <BackendApiSection />
     </main>
   );
 }
