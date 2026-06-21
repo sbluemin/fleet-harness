@@ -371,7 +371,7 @@ async function runSingleCarrier(opts: CarrierBackgroundOptions): Promise<Carrier
 
   try {
     const execResult = await executeWithPool({
-      poolKey: buildCarrierExecutorPoolKey(opts.carrierId, opts.originSessionId),
+      poolKey: buildCarrierExecutorPoolKey(opts.carrierId, opts.originSessionId, opts.cwd),
       scopeId: opts.carrierId,
       authEnvResolver: opts.deps.authEnvResolver,
       reservedExternalMcpServerIds: opts.deps.reservedExternalMcpServerIds,

@@ -262,7 +262,7 @@ async function runTaskForceBackend(
 ): Promise<TaskForceResult> {
   const execStartedAt = Date.now();
   const progress = state.backends.get(cliType)!;
-  const poolKey = buildTaskForceExecutorPoolKey(carrierId, cliType, originSessionId);
+  const poolKey = buildTaskForceExecutorPoolKey(carrierId, cliType, originSessionId, cwd);
   const streamKey = buildTaskForceScopedRunId(requestKey, cliType);
   const modelInfo = trackModelInfoByCli.get(cliType);
   if (!modelInfo) throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
