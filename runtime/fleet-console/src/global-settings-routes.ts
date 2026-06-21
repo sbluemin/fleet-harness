@@ -27,14 +27,14 @@ export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: "/global-settings/state",
-    summary: "전역 콘솔 설정 상태를 조회합니다.",
+    summary: "Get the global console settings status.",
     category: "Global Settings",
     gate: "loopback",
   },
   {
     method: "PUT",
     path: "/global-settings",
-    summary: "전역 콘솔 설정을 저장합니다.",
+    summary: "Save the global console settings.",
     category: "Global Settings",
     gate: "terminal-origin",
   },

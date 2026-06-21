@@ -18,7 +18,7 @@ export const AGENT_CLI_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
     path: "/agent-cli/state",
-    summary: "설치된 Agent CLI 상태를 조회합니다.",
+    summary: "Get the installed Agent CLI status.",
     category: "Agent CLI",
     gate: "loopback",
   },
