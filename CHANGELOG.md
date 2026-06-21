@@ -5,6 +5,11 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-06-21
+
+### Fixed
+- [fleet-console] All backend API catalog descriptions in the Settings page are now shown in English; the remaining Korean entries have been translated.
+
 ## [1.10.0] - 2026-06-21
 
 ### Added
