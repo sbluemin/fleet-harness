@@ -58,23 +58,6 @@ export interface ConsoleObserverStatus {
   readonly wikiServerStatus: ConsoleObserverWikiServerStatus;
 }
 
-export interface ConsoleCarrierReadinessEntry {
-  readonly carrierId: string;
-  readonly displayName: string;
-  readonly role: string | null;
-  readonly model: string;
-  readonly effort: string | null;
-  readonly taskForceBackendCount: number;
-  readonly subagentMode: boolean;
-  readonly category?: "strategy" | "planning" | "operations";
-  readonly slot: number;
-  readonly cliType: string;
-}
-
-export interface ConsoleObserverCarriersResponse {
-  readonly carriers: readonly ConsoleCarrierReadinessEntry[];
-}
-
 export interface ConsoleObserverTheatersResponse {
   readonly theaters: readonly ConsoleTheaterInfo[];
   readonly agentClis?: readonly ConsoleAgentCliMetadata[];
