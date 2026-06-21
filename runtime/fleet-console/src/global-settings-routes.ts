@@ -2,6 +2,7 @@ import type http from "node:http";
 
 import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/fleet-infra";
 
+import type { ApiCatalogEntry } from "./api-catalog.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "./global-settings-types.js";
 
 interface GlobalSettingsRouteDeps {
@@ -21,6 +22,23 @@ interface GlobalSettingsBody {
   readonly replaceSystemPrompt?: unknown;
   readonly enableMetaphor?: unknown;
 }
+
+export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: "/global-settings/state",
+    summary: "전역 콘솔 설정 상태를 조회합니다.",
+    category: "Global Settings",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/global-settings",
+    summary: "전역 콘솔 설정을 저장합니다.",
+    category: "Global Settings",
+    gate: "terminal-origin",
+  },
+];
 
 export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (context: GlobalSettingsRouteContext) => Promise<boolean> {
   return async function handleGlobalSettingsRoute(context: GlobalSettingsRouteContext): Promise<boolean> {

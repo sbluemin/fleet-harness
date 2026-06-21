@@ -880,6 +880,119 @@
   box-shadow: 0 0 10px var(--aurora-glow);
 }
 
+/* 백엔드 API 카탈로그 — introspection 응답을 category별로 접고 펼친다. */
+.backend-api-section {
+  gap: var(--space-4);
+}
+
+.backend-api-control {
+  display: grid;
+  gap: 14px;
+}
+
+.backend-api-head {
+  display: grid;
+  gap: 8px;
+}
+
+.backend-api-groups,
+.backend-api-list {
+  display: grid;
+  gap: 8px;
+}
+
+.backend-api-group {
+  display: grid;
+  gap: 8px;
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
+
+.backend-api-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.backend-api-row {
+  display: grid;
+  grid-template-columns: minmax(68px, auto) minmax(180px, 0.9fr) minmax(220px, 1.2fr) minmax(92px, auto);
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 10px var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 45%, transparent);
+}
+
+.backend-api-method {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+
+.backend-api-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* 역할 설명문은 본문 UI 폰트(Manrope)로 — 식별자(method/path/gate=mono)와 타이포 위계를 분리한다. */
+.backend-api-summary {
+  min-width: 0;
+  color: var(--ink-fog);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.backend-api-gate {
+  min-width: 0;
+  justify-self: end;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .backend-api-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .backend-api-method {
+    justify-self: start;
+  }
+
+  .backend-api-gate {
+    justify-self: start;
+  }
+}
+
 .carrier-settings-page {
   display: grid;
   align-content: start;

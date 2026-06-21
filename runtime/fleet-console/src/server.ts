@@ -23,6 +23,7 @@ import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv, validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 
+import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import type { ConsoleCarrierReadinessEntry, ConsoleHealth, ConsoleObservedWorkspace, ConsoleObserverStatus, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, TerminalFolderListResponse } from "./api-types.js";
 import { normalizeAttentionReason } from "./attention-hook.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
@@ -97,6 +98,170 @@ const THEATER_SHELL_SESSION_PREFIX = "shell:";
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
+
+export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: "/observer/status",
+    summary: "콘솔 관측 상태를 조회합니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/api-catalog",
+    summary: "백엔드 API 카탈로그를 조회합니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/carriers",
+    summary: "캐리어 준비 상태를 조회합니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/tenants",
+    summary: "관측 중인 터미널 워크스페이스를 조회합니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/jobs",
+    summary: "관측 중인 작업 목록을 조회합니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/events",
+    summary: "관측 이벤트 스트림을 엽니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/theaters",
+    summary: "Theater 목록을 조회합니다.",
+    category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "POST",
+    path: "/observer/theaters",
+    summary: "새 Theater를 등록합니다.",
+    category: "Observer",
+    gate: "terminal-origin",
+  },
+  {
+    method: "DELETE",
+    path: "/observer/theaters/:theaterId",
+    summary: "Theater와 소속 Operation을 제거합니다.",
+    category: "Observer",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/observer/theaters/:theaterId/sessions",
+    summary: "Theater 안에 새 Operation을 생성합니다.",
+    category: "Observer",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/terminal/ticket",
+    summary: "터미널 WebSocket 접속 티켓을 발급합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/terminal/folders/list",
+    summary: "터미널 폴더 선택 목록을 조회합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/terminal/folders/grants",
+    summary: "터미널 폴더 접근 grant를 발급합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "GET",
+    path: "/terminal/sessions",
+    summary: "터미널 Operation 목록을 조회합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/terminal/sessions",
+    summary: "새 터미널 Operation을 생성합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/terminal/sessions/:sessionId/resume",
+    summary: "휴면 Operation을 다시 시작합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/terminal/sessions/:sessionId/turn",
+    summary: "Agent CLI 턴 상태 hook을 수신합니다.",
+    category: "Terminal",
+    gate: "lock-token",
+  },
+  {
+    method: "POST",
+    path: "/terminal/sessions/:sessionId/attention",
+    summary: "입력 대기 attention hook을 수신합니다.",
+    category: "Terminal",
+    gate: "lock-token",
+  },
+  {
+    method: "POST",
+    path: "/terminal/sessions/:sessionId/auto-name",
+    summary: "Operation 자동 이름 hook을 수신합니다.",
+    category: "Terminal",
+    gate: "lock-token",
+  },
+  {
+    method: "DELETE",
+    path: "/terminal/sessions/:sessionId",
+    summary: "터미널 Operation을 제거합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "PATCH",
+    path: "/terminal/sessions/:sessionId",
+    summary: "터미널 Operation 이름을 변경합니다.",
+    category: "Terminal",
+    gate: "terminal-origin",
+  },
+  {
+    method: "POST",
+    path: "/update/apply",
+    summary: "콘솔 업데이트 적용을 요청합니다.",
+    category: "Update",
+    gate: "console-origin",
+  },
+  {
+    method: "GET",
+    path: "/health",
+    summary: "락 토큰으로 콘솔 상태를 확인합니다.",
+    category: "Health",
+    gate: "lock-token",
+  },
+];
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
@@ -302,6 +467,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/observer/status") {
       handleObserverStatus(req, res);
+      return;
+    }
+    if (pathname === "/observer/api-catalog") {
+      handleObserverApiCatalog(req, res);
       return;
     }
     if (pathname === "/update/apply") {
@@ -819,6 +988,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       wikiServerStatus: resolveWikiServerStatus(theaterId),
     };
     writeJson(res, 200, payload);
+  }
+
+  function handleObserverApiCatalog(_req: http.IncomingMessage, res: http.ServerResponse): void {
+    writeJson(res, 200, { version, routes: buildApiCatalog() });
   }
 
   async function handleUpdateApply(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
