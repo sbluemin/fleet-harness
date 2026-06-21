@@ -367,6 +367,31 @@ a {
   }
 }
 
+/* 접힘 알림 핸들 외곽 "항적 펄스(wake pulse)" — 새 알림이 도착하는 순간 외곽 rim이 밝아졌다
+   glow ring이 바깥으로 부풀어 확산하며 사라지는 1회성 신호. perimeter-orbit(지속 신호)과 달리
+   이벤트 1회만 재생된다. 색(--pulse-tint/--pulse-glow)은 도착 알림 kind를 따른다.
+   prefers-reduced-motion에선 iteration-count:1 단락으로 1회 짧게 끝난다. */
+@keyframes notification-wake-pulse {
+  0% {
+    opacity: 0.85;
+    box-shadow:
+      0 0 0 0 var(--pulse-tint),
+      0 0 12px 1px var(--pulse-glow);
+  }
+  55% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 3px color-mix(in oklch, var(--pulse-tint) 42%, transparent),
+      0 0 28px 5px var(--pulse-glow);
+  }
+  100% {
+    opacity: 0;
+    box-shadow:
+      0 0 0 9px transparent,
+      0 0 40px 12px transparent;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

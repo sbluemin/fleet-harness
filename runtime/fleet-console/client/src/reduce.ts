@@ -1,4 +1,3 @@
-import type { CanvasState } from "./canvas/canvas-store.js";
 import type { OperationsMode } from "./operations-mode.js";
 import type { ConsoleState, JobView, NotificationPreferences, ObservedEvent, OperationNotification, SnapshotJob, TrackToolCall, TrackView } from "./types.js";
 
@@ -130,17 +129,14 @@ export function isTerminalJobStatus(status: string): boolean {
   return TERMINAL_JOB_STATUSES.has(status);
 }
 
-export function computeVisibleSessionIds(mode: OperationsMode, consoleSnap: ConsoleState, canvasSnap: CanvasState): ReadonlySet<string> {
+export function computeVisibleSessionIds(mode: OperationsMode, consoleSnap: ConsoleState): ReadonlySet<string> {
   if (!consoleSnap.operationsViewActive) return new Set();
   if (mode === "classic") {
     return consoleSnap.activeTerminalSessionId ? new Set([consoleSnap.activeTerminalSessionId]) : new Set();
   }
-  const minimized = new Set(canvasSnap.minimized);
-  const visible = new Set<string>();
-  for (const sessionId of Object.keys(canvasSnap.panels)) {
-    if (!minimized.has(sessionId)) visible.add(sessionId);
-  }
-  return visible;
+  // canvas 모드: 패널 최소화 여부와 무관하게 모든 Operation을 알림 대상으로 둔다(대원수 지시).
+  // 여러 패널을 동시에 보는 모드이므로 화면에 떠 있는 패널이라도 ALERTS dock으로 알림이 전송된다.
+  return new Set();
 }
 
 export function splitNotificationsByVisibility(

@@ -6090,6 +6090,24 @@
   animation: perimeter-orbit 3s linear infinite;
 }
 
+/* 새 알림 도착 외곽 펄스 — 접힘 핸들에서 lastRaisedSeq 증가 시 1회 재생되는 transient 신호.
+   색은 신호 상태를 따른다: 입력 대기=warn(amber), 완료=positive(emerald). aurora 미사용. */
+.notification-handle-pulse {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  --pulse-tint: var(--warn);
+  --pulse-glow: var(--warn-glow);
+  animation: notification-wake-pulse 1.05s var(--ease-glide) both;
+}
+
+.notification-handle.is-ended .notification-handle-pulse {
+  --pulse-tint: var(--positive);
+  --pulse-glow: var(--positive-glow);
+}
+
 /* ── 열림: 우현 도킹 레이어 + 패널 ── */
 .notification-dock-layer {
   position: fixed;

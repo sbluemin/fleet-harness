@@ -9,7 +9,6 @@ import {
   reduceSnapshotJob,
   splitNotificationsByVisibility,
 } from "../client/src/reduce.js";
-import type { CanvasState } from "../client/src/canvas/canvas-store.js";
 import type { ConsoleState, NotificationPreferences, ObservedEvent, OperationNotification } from "../client/src/types.js";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, jobId = "job-1"): ObservedEvent {
@@ -69,15 +68,6 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     expandedSessionIds: [],
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
-    ...patch,
-  };
-}
-
-function makeCanvasSnap(patch: Partial<CanvasState> = {}): CanvasState {
-  return {
-    viewport: { x: 0, y: 0, zoom: 1 },
-    panels: {},
-    minimized: [],
     ...patch,
   };
 }
@@ -218,29 +208,21 @@ describe("reduceSnapshotJob", () => {
 
 describe("notification selectors", () => {
   it("computes visible sessions for classic Operations view and none outside Operations", () => {
-    const canvas = makeCanvasSnap();
-
     expect([...computeVisibleSessionIds("classic", makeConsoleSnap({
       operationsViewActive: true,
       activeTerminalSessionId: "session-a",
-    }), canvas)]).toEqual(["session-a"]);
+    }))]).toEqual(["session-a"]);
 
     expect([...computeVisibleSessionIds("classic", makeConsoleSnap({
       operationsViewActive: false,
       activeTerminalSessionId: "session-a",
-    }), canvas)]).toEqual([]);
+    }))]).toEqual([]);
   });
 
-  it("computes visible canvas sessions from non-minimized panels", () => {
-    const visible = computeVisibleSessionIds("canvas", makeConsoleSnap({ operationsViewActive: true }), makeCanvasSnap({
-      panels: {
-        "session-a": { x: 0, y: 0, width: 100, height: 100, zIndex: 1 },
-        "session-b": { x: 0, y: 0, width: 100, height: 100, zIndex: 2 },
-      },
-      minimized: ["session-b"],
-    }));
-
-    expect([...visible]).toEqual(["session-a"]);
+  it("treats every canvas operation as hidden so alerts surface regardless of minimized state", () => {
+    // canvas 모드는 가시성에 의한 알림 억제를 하지 않는다 — 최소화하지 않은 패널도 ALERTS로 알림이 간다.
+    const visible = computeVisibleSessionIds("canvas", makeConsoleSnap({ operationsViewActive: true }));
+    expect([...visible]).toEqual([]);
   });
 
   it("splits hidden and visible notifications by session id", () => {

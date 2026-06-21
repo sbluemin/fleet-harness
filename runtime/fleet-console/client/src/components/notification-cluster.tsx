@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useCanvasState } from "../canvas/canvas-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useOperationsMode } from "../operations-mode.js";
 import { computeVisibleSessionIds, filterByPreferences, groupNotificationsByTheater, splitNotificationsByVisibility } from "../reduce.js";
@@ -23,7 +22,6 @@ const DEFAULT_DOCK_OPEN = false;
 // 닫힘=엣지 핸들(신호+카운트), 열림=도킹 패널(Theater 그룹). 클러스터는 보이지 않는 세션만 렌더한다.
 export function NotificationClusterHost() {
   const state = useConsoleState();
-  const canvas = useCanvasState();
   const mode = useOperationsMode();
   const navigate = useNavigate();
   const [open, setOpen] = useState(readDockOpen);
@@ -33,7 +31,7 @@ export function NotificationClusterHost() {
     () => Object.values(state.operationNotifications),
     [state.operationNotifications],
   );
-  const visibleIds = computeVisibleSessionIds(mode, state, canvas);
+  const visibleIds = computeVisibleSessionIds(mode, state);
   const eligible = splitNotificationsByVisibility(notifications, visibleIds).hidden;
   const filtered = filterByPreferences(eligible, state.notificationPreferences);
   const groups = groupNotificationsByTheater(filtered);
@@ -46,6 +44,25 @@ export function NotificationClusterHost() {
   const muted = groups.length === 0;
   // 신호 상태 — 입력 대기가 있으면 awaiting(warn·perimeter wake), 완료만이면 ended(positive), 없으면 muted.
   const signalState = muted ? "muted" : waitingCount > 0 ? "awaiting" : "ended";
+
+  // ── 접힘 상태 새 알림 외곽 펄스 ──
+  // filtered(음소거 제외) 알림의 최대 시퀀스를 watermark로 추적한다. lastRaisedSeq는 새 알림이
+  // 생성될 때만 단조 증가하므로, 증가分이 곧 "방금 도착한 새 알림"이다.
+  const latestSeq = useMemo(
+    () => filtered.reduce((max, notification) => Math.max(max, notification.lastRaisedSeq), 0),
+    [filtered],
+  );
+  const seenSeqRef = useRef(latestSeq);
+  const [pulseKey, setPulseKey] = useState(0);
+
+  useEffect(() => {
+    // 접힘 상태에서 시퀀스가 증가하면 외곽 펄스를 1회 재생한다. 펼침 상태에서 도착한 알림은
+    // 닫을 때 펄스가 몰아치지 않도록 watermark만 끌어올리고 트리거하지 않는다.
+    if (latestSeq > seenSeqRef.current && !open) {
+      setPulseKey((key) => key + 1);
+    }
+    seenSeqRef.current = latestSeq;
+  }, [latestSeq, open]);
 
   // 알림 사이드바는 알림 유무와 무관하게 항상 노출한다(대원수 지시) — 빈 상태도 핸들/패널을 유지한다.
 
@@ -71,6 +88,7 @@ export function NotificationClusterHost() {
         <span className="notification-handle-count">{muted ? 0 : totalCount}</span>
         <span className="notification-handle-label">Alerts</span>
         <ChevronIcon className="notification-handle-chevron" />
+        {pulseKey > 0 ? <span key={pulseKey} className="notification-handle-pulse" aria-hidden="true" /> : null}
       </button>
     );
   }
