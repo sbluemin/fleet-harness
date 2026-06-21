@@ -113,7 +113,7 @@ function AppearanceCard() {
           <p className="global-settings-resp-title">Theme</p>
           <p className="global-settings-help">Console color scheme. Applies immediately and is remembered on this browser.</p>
         </div>
-        {/* role="group" + aria-pressed — 기존 Operation Map/Helm 토글과 동일한 단일선택 패턴. 선택 = brass(지금 보고 있는 곳). */}
+        {/* role="group" + aria-pressed — 단일선택 패턴. 선택 = brass(지금 보고 있는 곳). */}
         <div className="theme-picker" role="group" aria-label="Theme">
           {THEMES.map((theme) => {
             const isActive = theme.id === activeTheme;

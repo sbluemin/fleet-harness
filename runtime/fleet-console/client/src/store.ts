@@ -37,7 +37,6 @@ const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
 const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
-const EXPANDED_SESSIONS_STORAGE_KEY = "fleet-console.expandedSessions";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
@@ -49,7 +48,6 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   dnd: false,
   mutedTheaterIds: {},
 };
-export const SHELL_SESSION_ID = "shell";
 
 const listeners = new Set<Listener>();
 // localStorage가 막히거나(privacy/enterprise) 예외를 던지는 환경에서도 같은 세션 내 재팝업을 막는 in-memory 폴백.
@@ -78,7 +76,6 @@ let state: ConsoleState = {
   tenantJobs: {},
   tenantOrder: [],
   timelineOpen: false,
-  shellOpen: false,
   operationSearchOpen: false,
   shortcutsOpen: false,
   whatsNewOpen: false,
@@ -87,7 +84,6 @@ let state: ConsoleState = {
   terminalSessionsHydrated: false,
   pendingOperationFocus: null,
   selectedJobId: null,
-  expandedSessionIds: readStoredExpandedSessions(),
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
 };
@@ -369,22 +365,6 @@ export function toggleTimeline(): void {
   setState({ timelineOpen: !state.timelineOpen });
 }
 
-export function toggleShell(): void {
-  if (state.shellOpen) {
-    closeShell();
-    return;
-  }
-  setState({ shellOpen: true });
-}
-
-export function closeShell(): void {
-  if (!state.shellOpen) return;
-  // 오버레이를 닫아도(X·Escape·scrim·토글) shell PTY는 종료하지 않는다 — 오버레이는 숨겨질 뿐이고
-  // 백엔드 세션은 살아남아, 다시 열 때 기존 셸 프로세스·scrollback·cwd에 그대로 재부착된다.
-  // shell PTY는 셸이 스스로 종료(exit)하거나 콘솔 서버가 멈출 때만 사라진다.
-  setState({ shellOpen: false });
-}
-
 export function openShortcuts(): void {
   if (state.shortcutsOpen) return;
   setState({ shortcutsOpen: true });
@@ -427,14 +407,6 @@ export function resolveOnboardingOnBootstrap(): void {
   setState({ bootstrapped: true, onboardingOpen: shouldOpen ? true : state.onboardingOpen });
 }
 
-export function toggleTerminalZoom(sessionId: string): void {
-  const expandedSessionIds = state.expandedSessionIds.includes(sessionId)
-    ? state.expandedSessionIds.filter((id) => id !== sessionId)
-    : [...state.expandedSessionIds, sessionId];
-  writeStoredExpandedSessions(expandedSessionIds);
-  setState({ expandedSessionIds });
-}
-
 export function failTerminateTerminalSession(error: string): void {
   // 종료 실패 시 카드는 남기고 사이드바 오류 라인에만 사유를 표기한다(살아있는 PTY를 숨기지 않는다).
   setState({ terminalSessionError: error });
@@ -462,11 +434,9 @@ export function removeTheater(theaterId: string): void {
     sessionOrder.push(sessionId);
   }
   const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId === theaterId ? null : state.activeTheaterId);
-  const expandedSessionIds = state.expandedSessionIds.filter((id) => sessions[id]);
   // 삭제된 Theater의 Operation 알림도 클러스터에서 정리한다.
   const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
   writeStoredActiveTheaterId(activeTheaterId);
-  writeStoredExpandedSessions(expandedSessionIds);
   setState({
     theaters,
     sessions,
@@ -474,7 +444,6 @@ export function removeTheater(theaterId: string): void {
     activeTheaterId,
     activeTerminalSessionId: resolveVisibleSessionId(activeTheaterId, sessions, sessionOrder, state.activeTerminalSessionId),
     selectedJobId: null,
-    expandedSessionIds,
     operationNotifications,
   });
 }
@@ -484,15 +453,12 @@ export function removeTerminalSession(sessionId: string): void {
   const sessions = { ...state.sessions };
   delete sessions[sessionId];
   const sessionOrder = state.sessionOrder.filter((id) => id !== sessionId);
-  const expandedSessionIds = state.expandedSessionIds.filter((id) => id !== sessionId);
   const wasActive = state.activeTerminalSessionId === sessionId;
-  writeStoredExpandedSessions(expandedSessionIds);
   setState({
     sessions,
     sessionOrder,
     activeTerminalSessionId: wasActive ? resolveVisibleSessionId(state.activeTheaterId, sessions, sessionOrder, null) : state.activeTerminalSessionId,
     selectedJobId: wasActive ? null : state.selectedJobId,
-    expandedSessionIds,
     // 삭제된 세션의 알림이 클러스터에 stale 행으로 남지 않도록 정리한다(이동 액션으로도 해소 불가하므로).
     operationNotifications: removeNotificationForSession(state.operationNotifications, sessionId),
   });
@@ -639,11 +605,6 @@ export function sessionJobs(current: ConsoleState, session: SessionInfo): readon
     if (job) jobs.push({ job, tenant });
   }
   return jobs;
-}
-
-export function isSessionExpanded(current: ConsoleState, sessionId: string | null): boolean {
-  if (!sessionId) return false;
-  return current.expandedSessionIds.includes(sessionId);
 }
 
 export function resolveSessionTenantId(session: SessionInfo | undefined): string | null {
@@ -841,18 +802,6 @@ function readStoredTheme(): ThemeId {
   }
 }
 
-function readStoredExpandedSessions(): readonly string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = window.localStorage.getItem(EXPANDED_SESSIONS_STORAGE_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
 function readStoredNotificationPreferences(): NotificationPreferences {
   if (typeof window === "undefined") return DEFAULT_NOTIFICATION_PREFERENCES;
   try {
@@ -903,15 +852,6 @@ function writeStoredRenderer(renderer: TerminalRenderer): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(RENDERER_STORAGE_KEY, renderer);
-  } catch {
-    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
-  }
-}
-
-function writeStoredExpandedSessions(ids: readonly string[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(EXPANDED_SESSIONS_STORAGE_KEY, JSON.stringify(ids));
   } catch {
     // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

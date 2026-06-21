@@ -2,9 +2,8 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeybo
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTerminalFolderGrant } from "../api.js";
-import { setOperationsMode, useOperationsMode, type OperationsMode } from "../operations-mode.js";
 import { setCodexViewMode, type CodexViewMode } from "../codex-view-mode.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater, toggleShell } from "../store.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { CodexModeToggle } from "./codex-mode-toggle.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
@@ -58,8 +57,6 @@ export function Topbar({ state, codexMode }: TopbarProps) {
   const alert = state.connectionError !== null;
   // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다 — GNB nav 아이콘과 같은 도형을 공유해 일치를 보장한다. Welcome 등 그 외 라우트는 기본 Fleet 시질을 유지한다.
   const pathname = useLocation().pathname;
-  const operationsMode = useOperationsMode();
-  const operationsRoute = pathname.startsWith("/operations");
   const codexRoute = pathname.startsWith("/codex");
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
@@ -104,16 +101,11 @@ export function Topbar({ state, codexMode }: TopbarProps) {
                 </span>
                 <span>{item.label}</span>
               </NavLink>
-              {item.icon === "operations" && operationsRoute ? <OperationsModeToggle mode={operationsMode} /> : null}
               {item.icon === "codex" && codexRoute ? <CodexModeToggle mode={codexMode} onSelect={setCodexViewMode} /> : null}
             </Fragment>
           ))}
         </nav>
-        <button type="button" className="topbar-shell-button" onMouseDown={(event) => event.preventDefault()} onClick={toggleShell} aria-label="Shell" title="Shell (⌘`)">
-          <ShellIcon />
-          <span>Shell</span>
-        </button>
-        <button type="button" className="topbar-shell-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
+        <button type="button" className="topbar-icon-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
           <KeyboardIcon />
         </button>
         <NavLink
@@ -231,31 +223,6 @@ function isBlockedUpdateApplyError(code: string): boolean {
     || code === "local_channel"
     || code === "update_already_in_progress"
     || code === "update_not_available";
-}
-
-function OperationsModeToggle({ mode }: { readonly mode: OperationsMode }) {
-  return (
-    <div className="operations-mode-toggle" role="group" aria-label="Operation view mode">
-      <button
-        type="button"
-        className={`operations-mode-option ${mode === "canvas" ? "is-active" : ""}`}
-        onClick={() => setOperationsMode("canvas")}
-        aria-pressed={mode === "canvas"}
-        title="Operation mode: Map"
-      >
-        Map
-      </button>
-      <button
-        type="button"
-        className={`operations-mode-option ${mode === "classic" ? "is-active" : ""}`}
-        onClick={() => setOperationsMode("classic")}
-        aria-pressed={mode === "classic"}
-        title="Operation mode: Helm"
-      >
-        Helm
-      </button>
-    </div>
-  );
 }
 
 // Theater 선택과 추가를 하나의 메뉴 컨트롤로 통합한다 — 트리거(현재 Theater) → 팝오버(목록 + 추가 액션).
@@ -657,15 +624,6 @@ function StarIcon() {
         strokeWidth="1.2"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function ShellIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M2.8 4.2h10.4v7.6H2.8z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="M5 6.7 6.8 8 5 9.3M8.2 9.4h2.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

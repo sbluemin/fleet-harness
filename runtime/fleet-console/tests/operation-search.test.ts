@@ -34,7 +34,6 @@ function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "tu
     tenantJobs: {},
     tenantOrder: [],
     timelineOpen: false,
-    shellOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
     whatsNewOpen: false,
@@ -43,7 +42,6 @@ function makeState(sessions: readonly (Omit<SessionInfo, "resumeAvailable" | "tu
     terminalSessionsHydrated: false,
     pendingOperationFocus: null,
     selectedJobId: null,
-    expandedSessionIds: [],
   };
 }
 

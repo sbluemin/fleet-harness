@@ -3,13 +3,11 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import type { Location } from "react-router-dom";
 
 import { useMaximized } from "./canvas/canvas-store.js";
-import { useOperationsMode } from "./operations-mode.js";
 import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
 import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { NotificationClusterHost } from "./components/notification-cluster.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
-import { ShellOverlay } from "./components/shell-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
@@ -20,7 +18,7 @@ import { CarrierSettings } from "./pages/carrier-settings.js";
 import { CodexSurface } from "./components/codex-surface.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch, toggleShell } from "./store.js";
+import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
@@ -33,7 +31,6 @@ export function App() {
   const pathname = location.pathname;
   const navigate = useNavigate();
   const maximized = useMaximized();
-  const operationsMode = useOperationsMode();
   const codexViewMode = useCodexViewMode();
   const codexUserChosen = useCodexUserChosen();
   const codexSideWidth = useCodexSideWidth();
@@ -43,9 +40,9 @@ export function App() {
   const isCodexRoute = pathname.startsWith("/codex");
   const backgroundLocationRef = useRef<Location>(location);
   const hasRealBackgroundRef = useRef<boolean>(!isCodexRoute);
-  // 최대화는 localStorage에 영속되지만, GNB 숨김은 Map(canvas) Operations 화면에서만 적용한다 —
-  // 다른 라우트(Welcome/Codex/Helm)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
-  const maximizedActive = maximized && pathname.startsWith("/operations") && operationsMode === "canvas";
+  // 최대화는 localStorage에 영속되지만, GNB 숨김은 Operations 화면에서만 적용한다 —
+  // 다른 라우트(Welcome/Codex)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
+  const maximizedActive = maximized && pathname.startsWith("/operations");
   // Codex 표현 모드 도출 — 오버레이(side)는 배경이 있거나 사용자가 직접 모드를 고른 경우 허용한다.
   // (deep-link로 막 들어온 첫 렌더에는 둘 다 아니므로 Full로 강등 → 승인된 "새로고침=Full".)
   // codexUserChosen은 reactive 구독이라, deep-link Full 상태에서 같은 값(side)을 다시 눌러도 재렌더된다.
@@ -168,17 +165,6 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "`") {
-        event.preventDefault();
-        toggleShell();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   // 오버레이 닫기 = 배경 라우트로 복귀(없으면 Welcome). hash/state까지 보존해 정확히 직전 위치로 돌아간다.
   // /codex를 벗어나면 CodexSurface가 언마운트되며 정리된다.
   const handleCodexClose = () => {
@@ -213,7 +199,6 @@ export function App() {
       </Routes>
       {isCodexRoute ? <CodexSurface state={state} mode={codexEffectiveMode} onClose={handleCodexClose} /> : null}
       {!isCodexRoute ? <CodexEdgeHandle onOpen={handleOpenCodexSide} /> : null}
-      <ShellOverlay state={state} />
       <OperationSearch state={state} />
       <ShortcutsOverlay state={state} />
       <WhatsNewModal state={state} />

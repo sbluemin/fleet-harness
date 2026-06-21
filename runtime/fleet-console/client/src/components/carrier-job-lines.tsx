@@ -16,7 +16,7 @@ interface CarrierJobLineProps {
 }
 
 // 진행 중 캐리어 job들을 한 줄씩(최신 스트림 미리보기 포함) 보여주는 공용 dock 본문.
-// Helm은 터미널 내부 상단(terminal-job-dock)에, Map은 패널 위 floating(canvas-panel-jobdock)에 감싸 쓴다.
+// Map 패널의 floating jobdock(canvas-panel-jobdock)에 감싸 쓴다.
 export function CarrierJobLines({ jobs, selectedJobId, onSelect }: CarrierJobLinesProps) {
   const select = onSelect ?? selectJob;
   return (

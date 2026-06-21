@@ -12,7 +12,6 @@ import {
   completeAddTheater,
   clearSelectedJob,
   closeShortcuts,
-  closeShell,
   completeCreateTerminalSession,
   closeOperationSearch,
   closeOnboarding,
@@ -41,7 +40,6 @@ import {
   theaterSessions,
   toggleOperationSearch,
   toggleShortcuts,
-  toggleShell,
   toggleTheaterMute,
 } from "../client/src/store.js";
 import type { ObservedEvent, ObservedTenant, OperationNotification, TheaterInfo } from "../client/src/types.js";
@@ -96,7 +94,6 @@ beforeEach(() => {
     creatingTerminalSession: false,
     terminalSessionError: null,
     timelineOpen: false,
-    shellOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
     onboardingOpen: false,
@@ -273,7 +270,6 @@ describe("store", () => {
 
   it("tracks operations landing and session creation state", () => {
     expect(getState().activeTerminalSessionId).toBeNull();
-    expect(getState().shellOpen).toBe(false);
     beginCreateTerminalSession();
     expect(getState()).toMatchObject({ creatingTerminalSession: true, terminalSessionError: null });
 
@@ -335,16 +331,6 @@ describe("store", () => {
     expect(getState().sessions["session-a"]).toMatchObject({ status: "dormant", resumeAvailable: true });
     expect(getState().sessionOrder).toEqual(["session-a"]);
     expect(getState().activeTerminalSessionId).toBeNull();
-  });
-
-  it("toggles and closes the free shell overlay", () => {
-    expect(getState().shellOpen).toBe(false);
-
-    toggleShell();
-    expect(getState().shellOpen).toBe(true);
-
-    closeShell();
-    expect(getState().shellOpen).toBe(false);
   });
 
   it("toggles and closes the operation search modal state", () => {

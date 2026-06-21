@@ -37,17 +37,6 @@
   overflow: hidden;
 }
 
-.console-body.is-classic {
-  display: grid;
-  grid-template-columns: 304px minmax(0, 1fr);
-  gap: var(--space-4);
-  overflow: visible;
-}
-
-.console-body.is-classic.is-expanded {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 /* Welcome 라우트는 console-shell 2행 전체를 차지하고 내용이 길면 스스로 스크롤한다. */
 .welcome-page {
   min-height: 0;
@@ -62,31 +51,6 @@
   /* 사이드 패널 폭(=컨테이너)에 따라 Codex 내부 레이아웃(nav/rail)을 접기 위한 컨테이너 컨텍스트.
      Full(route)에서는 컨테이너가 넓어 3열을 유지하고, Side가 좁아지면 본문만 남는다(codex/styles/layout.css의 @container). */
   container: codex-host / inline-size;
-}
-
-/* Operations 사이드바. 과거에는 `.sidebar`였으나 Codex 리딩 surface의 동명
-   클래스(`.sidebar,.rail { position:sticky; max-height; overflow-y:auto }`)와
-   전역 번들에서 충돌해, '+' 런치 팝오버가 사이드바 카드에 갇혀 잘리고 높이/스크롤
-   속성을 Codex 규칙에서 우연히 상속받는 취약 결합이 있었다. 클래스명을 분리하고
-   필요한 속성을 여기서 명시한다:
-   - flex 컬럼으로 헤딩은 고정, .session-list가 남는 높이를 스크롤한다.
-   - overflow:visible로 '+' 팝오버가 카드 밖으로 자유롭게 떠오른다.
-   - align-self:start + max-height로 내용 높이(상한 내)만큼만 차지하던 기존 모양을 유지한다. */
-.operations-sidebar {
-  display: flex;
-  flex-direction: column;
-  align-self: start;
-  min-height: 0;
-  /* 그리드 셀(=뷰포트 - topbar - gap/padding) 높이로 상한을 둔다. Codex 규칙의
-     calc(100vh - space-12)는 topbar 오프셋을 무시해 긴 목록에서 뷰포트를 넘쳤다. */
-  max-height: 100%;
-  overflow: visible;
-  /* 사이드바와 stage 모두 codex-rise(transform)로 stacking context가 되고 DOM
-     순서상 stage가 나중이라, 명시 z-index가 없으면 오른쪽으로 펼친 '+' 메뉴가
-     stage에 가린다. 그리드 아이템이라 position 없이 z-index가 먹는다. stage(auto)
-     위·topbar(10)/overlay(30)/toast(40) 아래에 오도록 5로 둔다. */
-  z-index: 5;
-  padding: var(--space-5) var(--space-4) var(--space-6);
 }
 
 .stage {
@@ -123,23 +87,8 @@
   animation-delay: 200ms;
 }
 
-.operations-terminal-stage {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-}
-
-.operations-landing {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
 .topbar,
-.operations-sidebar,
 .stage,
-.operations-terminal-stage,
 .welcome-page {
   animation: codex-rise 720ms var(--ease-spring) both;
 }
@@ -151,12 +100,7 @@
     transform var(--duration-slow) var(--ease-spring);
 }
 
-.operations-sidebar {
-  animation-delay: 120ms;
-}
-
 .stage,
-.operations-terminal-stage,
 .operations-canvas {
   animation-delay: 200ms;
 }
@@ -173,11 +117,6 @@
 
   .stage-content {
     padding: var(--space-4) var(--space-5) var(--space-8);
-  }
-
-  .console-body.is-classic {
-    grid-template-columns: 260px minmax(0, 1fr);
-    gap: var(--space-3);
   }
 }
 
@@ -213,16 +152,6 @@
   .console-body.is-canvas {
     overflow: hidden;
   }
-
-  .console-body.is-classic {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-
-  .operations-sidebar {
-    max-height: 34vh;
-  }
-
   .stage {
     min-height: 68vh;
   }

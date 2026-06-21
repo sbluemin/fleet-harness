@@ -1,5 +1,4 @@
 .topbar,
-.operations-sidebar,
 .stage,
 .timeline-dock,
 .job-summary {
@@ -11,7 +10,6 @@
 }
 
 .topbar,
-.operations-sidebar,
 .stage {
   border-radius: var(--radius-xl);
 }
@@ -20,8 +18,7 @@
   overflow: hidden;
 }
 
-.stage::before,
-.operations-terminal-stage::before {
+.stage::before {
   content: "";
   position: absolute;
   inset: 0 0 auto;
@@ -30,15 +27,9 @@
   pointer-events: none;
 }
 
-.operations-terminal-stage.is-input-waiting::before {
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--warn), transparent);
-  box-shadow: 0 0 16px var(--warn-glow);
-}
-
 .topbar {
   position: relative;
-  /* GNB가 본문 위 stacking context를 형성해야 Theater 팝오버(z-index 40)가 본문을 덮고 클릭을 받는다. shell-overlay(30)·toast(40)는 별도 sibling이라 영향 없음. */
+  /* GNB가 본문 위 stacking context를 형성해야 Theater 팝오버(z-index 40)가 본문을 덮고 클릭을 받는다. toast(40)는 별도 sibling이라 영향 없음. */
   z-index: 10;
   display: grid;
   /* minmax(0, …)으로 양쪽 트랙의 수축을 허용한다 — 1fr의 암묵적 auto 최소폭이 meta(우측 toolbar)
@@ -294,48 +285,9 @@
   background: color-mix(in oklch, var(--coral) 15%, transparent);
 }
 
-.operations-mode-toggle {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-}
-
-.operations-mode-option {
-  min-height: 24px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.operations-mode-option:hover,
-.operations-mode-option:focus-visible,
-.operations-mode-option.is-active {
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 13%, transparent);
-}
-
-.sidebar-eyebrow,
 .job-summary-eyebrow,
 .job-meta,
 .job-id,
-.tenant-count,
-.job-row-meta,
 .track-tag,
 .track-status,
 .stage-waiting,
@@ -1810,7 +1762,6 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink-fog) 20%, transparent);
 }
 
-.sidebar-eyebrow,
 .job-summary-eyebrow {
   margin: 2px var(--space-2) var(--space-3);
   color: var(--ink-fog);
@@ -1818,18 +1769,6 @@
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.sidebar-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.sidebar-heading .sidebar-eyebrow {
-  margin-bottom: 0;
 }
 
 .operation-launch-control {
@@ -3210,129 +3149,6 @@
   font-size: 11px;
 }
 
-.floating-sidebar-layer {
-  position: absolute;
-  top: var(--space-4);
-  bottom: var(--space-4);
-  left: var(--space-4);
-  z-index: 12;
-  width: min(304px, calc(100% - var(--space-8)));
-  pointer-events: none;
-}
-
-.floating-sidebar {
-  display: flex;
-  flex-direction: column;
-  max-height: 100%;
-  min-height: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  pointer-events: auto;
-  animation: codex-rise 520ms var(--ease-spring) both;
-}
-
-/* 접힘: OPERATIONS 패널은 렌더되지 않고, 화면 왼쪽 상단에 펼치기 버튼만 떠 있는다(shortcut 접기 단추와 상·하 대칭). */
-.floating-sidebar-layer.is-collapsed {
-  width: auto;
-  display: flex;
-  align-items: flex-start;
-}
-
-.floating-sidebar-collapsed-toggle {
-  pointer-events: auto;
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 46px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
-  color: var(--brass);
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 520ms var(--ease-spring) both;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.floating-sidebar-collapsed-toggle:hover,
-.floating-sidebar-collapsed-toggle:focus-visible {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
-}
-
-.floating-sidebar-collapsed-toggle svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
-
-.floating-sidebar-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.floating-sidebar-heading .sidebar-eyebrow {
-  margin-bottom: 0;
-}
-
-.floating-sidebar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.floating-sidebar-toggle {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
-  color: var(--brass);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.floating-sidebar-toggle:hover,
-.floating-sidebar-toggle:focus-visible {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-}
-
-.floating-sidebar-toggle svg {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
-.floating-session-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-height: 0;
-  margin: 0 0 var(--space-4);
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
 .floating-job-overlay {
   position: absolute;
   inset: 0;
@@ -3352,313 +3168,6 @@
 .theater-menu-forget:hover,
 .theater-menu-forget:focus-visible {
   color: var(--coral);
-}
-
-.session-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0 0 var(--space-4);
-  padding: 0;
-  list-style: none;
-  /* 사이드바(.operations-sidebar)는 overflow:visible이라 '+' 팝오버가 카드 밖으로
-     떠오른다. 대신 긴 세션 목록의 스크롤 책임을 여기로 이전한다: flex 컬럼에서 남는
-     높이를 차지하고(flex:1) min-height:0으로 줄어들어 내부 스크롤이 작동한다. */
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.session-item {
-  border-radius: var(--radius-lg);
-}
-
-/* Operation 카드 = 세션 행 위에 종료(X) 버튼을 우측 안쪽으로 겹쳐 앉히기 위한 포지셔닝 컨텍스트. */
-.session-row-shell {
-  position: relative;
-}
-
-.session-close {
-  position: absolute;
-  top: 50%;
-  right: var(--space-2);
-  transform: translateY(-50%);
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  /* Theater 박스 아이콘 언어(가는 stroke·둥근 끝)를 공유하되, 종료=파괴 동작이라 hover에서 coral로 신호한다. */
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    opacity var(--duration-fast) var(--ease-spring);
-}
-
-.session-close svg {
-  display: block;
-  width: 12px;
-  height: 12px;
-}
-
-/* 행 hover·키보드 포커스·활성 세션에서만 X를 드러낸다 — 휴지 상태는 조용히 유지(계기판 언어). */
-.session-row-shell:hover .session-close,
-.session-row-shell:focus-within .session-close,
-.session-item.is-active .session-close {
-  opacity: 0.72;
-  pointer-events: auto;
-}
-
-/* X가 드러날 때 우측 카운트 배지와 겹치지 않도록 카운트를 가린다. */
-.session-row-shell:hover .tenant-count,
-.session-row-shell:focus-within .tenant-count {
-  opacity: 0;
-}
-
-.session-close:hover,
-.session-close:focus-visible {
-  opacity: 1;
-  color: var(--coral);
-  border-color: color-mix(in oklch, var(--coral) 42%, transparent);
-  background: color-mix(in oklch, var(--coral) 14%, transparent);
-}
-
-.session-item.is-active {
-  padding-bottom: var(--space-2);
-  border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-mid) 45%, transparent);
-}
-
-.session-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: var(--space-2);
-  padding: 9px var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  text-align: left;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.session-row:hover {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  transform: translateX(1px);
-}
-
-.session-row.is-active {
-  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 12%, var(--ink-mid));
-}
-
-.session-row-edit {
-  padding-right: var(--space-3);
-}
-
-.session-row .tenant-count {
-  border-color: color-mix(in oklch, var(--aurora) 38%, var(--surface-rim));
-  color: var(--aurora);
-}
-
-.session-rename-input {
-  width: 100%;
-  min-width: 0;
-  padding: 5px 7px;
-  border: 1px solid color-mix(in oklch, var(--brass) 44%, var(--surface-rim));
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 84%, var(--surface-glass));
-  color: var(--ink-pearl);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 680;
-  outline: none;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 12%, transparent);
-}
-
-.session-rename-input:focus {
-  border-color: color-mix(in oklch, var(--brass) 68%, var(--surface-rim));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklch, var(--brass) 20%, transparent),
-    0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
-}
-
-.sidebar-error {
-  margin: 0 var(--space-2) var(--space-3);
-  color: var(--coral);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-.sidebar-empty {
-  margin: var(--space-5) var(--space-2);
-  color: var(--ink-fog);
-  font-size: 12.5px;
-  line-height: 1.7;
-}
-
-.tenant-group {
-  position: relative;
-  margin-bottom: var(--space-2);
-  border-radius: var(--radius-lg);
-}
-
-.tenant-group.is-expanded {
-  padding-bottom: var(--space-2);
-  border: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-mid) 45%, transparent);
-}
-
-.tenant-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: var(--space-2);
-  padding: 10px var(--space-3);
-  border-radius: var(--radius-md);
-  text-align: left;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.tenant-row:hover {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  transform: translateX(1px);
-}
-
-.tenant-row-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.tenant-label {
-  overflow: hidden;
-  color: var(--ink-pearl);
-  font-size: 13px;
-  font-weight: 680;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tenant-count {
-  padding: 2px 8px;
-  border: 1px solid var(--surface-rim);
-  border-radius: 999px;
-  color: var(--ink-spectral);
-  font-size: 10px;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.job-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: var(--space-1) var(--space-2) 0;
-  padding: 0;
-  list-style: none;
-}
-
-.session-job-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: var(--space-1) var(--space-2) 0;
-  padding: 0;
-  list-style: none;
-}
-
-.job-list-empty,
-.job-list-notice {
-  padding: var(--space-2) var(--space-3);
-  color: var(--ink-fog);
-  font-size: 11.5px;
-}
-
-.job-list-notice {
-  color: var(--warn);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.job-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: var(--space-2);
-  padding: 8px var(--space-3) 8px var(--space-5);
-  border-radius: var(--radius-md);
-  text-align: left;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.job-row::before {
-  content: "";
-  position: absolute;
-  left: var(--space-2);
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: var(--brass);
-  box-shadow: 0 0 9px var(--brass-glow);
-  opacity: 0;
-  transform: translate(-6px, -50%) scale(0);
-  transition:
-    opacity var(--duration-fast) var(--ease-spring),
-    transform var(--duration-base) var(--ease-spring);
-}
-
-.job-row:hover {
-  background: color-mix(in oklch, var(--brass) 7%, transparent);
-  transform: translateX(1px);
-}
-
-.job-row.is-active {
-  color: var(--brass-bright);
-}
-
-.job-row.is-active::before {
-  opacity: 1;
-  transform: translate(0, -50%) scale(1);
-}
-
-.job-row-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.job-row-label {
-  overflow: hidden;
-  color: var(--ink-spectral);
-  font-size: 12.5px;
-  font-weight: 620;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.job-row.is-active .job-row-label {
-  color: var(--brass-bright);
-}
-
-.job-row-meta {
-  color: var(--ink-fog);
-  font-size: 9.5px;
-  letter-spacing: 0.02em;
 }
 
 .job-head {
@@ -4268,8 +3777,8 @@
   background: color-mix(in oklch, var(--brass) 12%, transparent);
 }
 
-/* Shell 토글 — 박스 없이 이전 Workspaces stat(--ink-fog) 톤의 아이콘+라벨, 클릭만 한다. */
-.topbar-shell-button {
+/* GNB 보조 아이콘 버튼 — 박스 없이 이전 Workspaces stat(--ink-fog) 톤으로 클릭만 한다. */
+.topbar-icon-button {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
@@ -4284,11 +3793,11 @@
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-.topbar-shell-button:hover {
+.topbar-icon-button:hover {
   color: var(--ink-pearl);
 }
 
-.topbar-shell-button svg {
+.topbar-icon-button svg {
   display: block;
   width: 15px;
   height: 15px;
@@ -5024,61 +4533,6 @@
   height: 100%;
 }
 
-.terminal-zoom-toggle {
-  position: absolute;
-  top: var(--space-4);
-  right: var(--space-4);
-  z-index: 3;
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  color: var(--ink-spectral);
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.terminal-zoom-toggle:hover {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 9%, var(--surface-glass));
-  transform: translateY(-1px);
-}
-
-.terminal-zoom-toggle.is-expanded {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim));
-}
-
-.terminal-zoom-toggle svg {
-  width: 17px;
-  height: 17px;
-}
-
-.terminal-job-dock {
-  position: absolute;
-  top: var(--space-4);
-  left: var(--space-4);
-  right: var(--space-4);
-  z-index: 2;
-  max-height: 40%;
-  overflow-y: auto;
-  padding: var(--space-2) calc(var(--space-4) + 44px) var(--space-2) var(--space-2);
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-}
-
 .terminal-job-lines {
   display: flex;
   flex-direction: column;
@@ -5158,63 +4612,6 @@
   font-size: 10px;
 }
 
-.operations-landing {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-5);
-  padding: clamp(var(--space-5), 5vw, var(--space-10));
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(140%);
-}
-
-.operations-landing-mark {
-  width: 52px;
-  height: 4px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--brass), var(--aurora));
-  box-shadow: 0 0 18px color-mix(in oklch, var(--aurora) 38%, transparent);
-}
-
-.operations-landing-eyebrow,
-.operations-landing-status {
-  margin: 0;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.operations-landing h1 {
-  margin: 0 0 var(--space-2);
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: clamp(32px, 5vw, 58px);
-  font-weight: 650;
-  letter-spacing: 0;
-}
-
-.operations-landing p {
-  max-width: 560px;
-  margin: 0;
-  color: var(--ink-spectral);
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-.operations-landing-status.is-live {
-  color: var(--aurora);
-}
-
-.operations-landing-error {
-  color: var(--coral) !important;
-}
-
 /* JobOverlay: 터미널 위 중앙 카드 오버레이. position: absolute로
    normal flow에서 빠져 터미널 높이 계산을 침범하지 않는다. */
 .job-overlay {
@@ -5287,119 +4684,6 @@
   min-height: 0;
   width: 100%;
   border-radius: 0;
-}
-
-.shell-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-}
-
-.shell-overlay-scrim {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
-  backdrop-filter: blur(4px) saturate(120%);
-  cursor: default;
-}
-
-.shell-overlay-card {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  /* 오버레이는 콘솔 창(뷰포트) 전체를 덮으므로, 카드 폭은 콘솔 전체 가로폭의 80%로 맞춘다. */
-  width: 80vw;
-  height: 90vh;
-  max-height: 90vh;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 360ms var(--ease-spring) both;
-}
-
-.shell-overlay-header {
-  flex: 0 0 auto;
-  padding: var(--space-4) calc(var(--space-6) + 34px) var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--surface-rim);
-  background:
-    linear-gradient(90deg, color-mix(in oklch, var(--brass) 10%, transparent), transparent 68%),
-    color-mix(in oklch, var(--ink-mid) 42%, transparent);
-}
-
-.shell-overlay-kicker {
-  display: block;
-  margin-bottom: var(--space-1);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.shell-overlay-header h2 {
-  margin: 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 560;
-  letter-spacing: 0;
-}
-
-.shell-overlay-close {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 2;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
-  color: var(--brass-bright);
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  font-family: var(--font-mono);
-  font-size: 18px;
-  line-height: 1;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.shell-overlay-close:hover {
-  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass-strong));
-}
-
-.shell-overlay-terminal {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  padding: var(--space-3);
-}
-
-.shell-overlay-card .terminal-stage,
-.shell-overlay-card .terminal-shell {
-  width: 100%;
-  min-height: 0;
-}
-
-.shell-overlay-card .terminal-shell {
-  border-radius: var(--radius-lg);
-  box-shadow: none;
 }
 
 .shortcuts-overlay {
@@ -5866,7 +5150,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .job-overlay-card,
-  .shell-overlay-card,
   .operation-search-overlay,
   .shortcuts-overlay-card,
   .commissioning-card {
@@ -7216,16 +6499,14 @@
    2행으로 stack한다. 임계치는 meta 고유폭 실측(full 741 / 보조라벨숨김 518 / 전체아이콘 406)과
    트랙폭 회귀(track ≈ 0.5·vw − 157, 겹침0 ⇔ vw ≳ 2·meta + 314)에서 도출했다. */
 
-/* Tier A (≤1800px) — full 라벨은 ~1796px 이상에서만 안 겹친다. 보조 컨트롤(Shell·Settings)
+/* Tier A (≤1800px) — full 라벨은 ~1796px 이상에서만 안 겹친다. 보조 컨트롤(Settings)
    라벨과 상시 PREVIEW 배지를 접어 meta 고유폭을 줄인다(안전 하한 ~1350px). */
 @media (max-width: 1800px) {
   .topbar-preview-badge {
     display: none;
   }
 
-  /* Shell 라벨 / Settings(=.topbar-meta 직속 nav-link) 라벨만 숨기고
-     주요 nav(Operation·Codex, =.topbar-nav 내부)는 이 단계에서 유지한다. */
-  .topbar-shell-button > span,
+  /* Settings(=.topbar-meta 직속 nav-link) 라벨만 숨기고 주요 nav(Operation·Codex, =.topbar-nav 내부)는 이 단계에서 유지한다. */
   .topbar-meta > .topbar-nav-link > span:not(.topbar-nav-icon) {
     display: none;
   }
@@ -7236,7 +6517,7 @@
 }
 
 /* Tier B (≤1340px) — 주요 nav(Operation·Codex) 라벨까지 아이콘화하고 toolbar 간격을 더 좁혀
-   meta 고유폭을 ~366px로 줄인다(안전 하한 ~1050px). Map/Helm 모드 토글은 기능상 유지. */
+   meta 고유폭을 ~366px로 줄인다(안전 하한 ~1050px). */
 @media (max-width: 1340px) {
   .topbar-nav .topbar-nav-link > span:not(.topbar-nav-icon) {
     display: none;
@@ -7296,20 +6577,6 @@
 
   .timeline-row {
     grid-template-columns: 64px minmax(88px, 0.5fr) minmax(0, 1fr);
-  }
-
-  .shell-overlay {
-    padding: var(--space-3);
-  }
-
-  .shell-overlay-card {
-    width: 100%;
-    height: min(82vh, 720px);
-    max-height: calc(100vh - (var(--space-3) * 2));
-  }
-
-  .shell-overlay-header {
-    padding: var(--space-4) calc(var(--space-5) + 34px) var(--space-3) var(--space-4);
   }
 
   .shortcuts-overlay {
@@ -7429,7 +6696,7 @@
    신규 토큰 없이 기존 글래스/brass·aurora/codex-rise 어휘만 사용한다.
    ============================================================ */
 
-/* 3-way 모드 토글 — operations-mode-toggle 레시피를 Codex 표면용으로 복제. */
+/* 3-way Codex 모드 토글. */
 .codex-mode-toggle {
   display: inline-flex;
   align-items: center;
