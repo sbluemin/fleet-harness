@@ -56,7 +56,6 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     tenantJobs: {},
     tenantOrder: [],
     timelineOpen: false,
-    shellOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
     whatsNewOpen: false,
@@ -65,7 +64,6 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     terminalSessionsHydrated: true,
     pendingOperationFocus: null,
     selectedJobId: null,
-    expandedSessionIds: [],
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     ...patch,
@@ -207,13 +205,8 @@ describe("reduceSnapshotJob", () => {
 });
 
 describe("notification selectors", () => {
-  it("computes visible sessions for classic Operations view and none outside Operations", () => {
-    expect([...computeVisibleSessionIds("classic", makeConsoleSnap({
-      operationsViewActive: true,
-      activeTerminalSessionId: "session-a",
-    }))]).toEqual(["session-a"]);
-
-    expect([...computeVisibleSessionIds("classic", makeConsoleSnap({
+  it("computes no visible sessions outside Operations", () => {
+    expect([...computeVisibleSessionIds(makeConsoleSnap({
       operationsViewActive: false,
       activeTerminalSessionId: "session-a",
     }))]).toEqual([]);
@@ -221,7 +214,7 @@ describe("notification selectors", () => {
 
   it("treats every canvas operation as hidden so alerts surface regardless of minimized state", () => {
     // canvas 모드는 가시성에 의한 알림 억제를 하지 않는다 — 최소화하지 않은 패널도 ALERTS로 알림이 간다.
-    const visible = computeVisibleSessionIds("canvas", makeConsoleSnap({ operationsViewActive: true }));
+    const visible = computeVisibleSessionIds(makeConsoleSnap({ operationsViewActive: true }));
     expect([...visible]).toEqual([]);
   });
 

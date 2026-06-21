@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useConsoleState } from "../hooks/use-store.js";
-import { useOperationsMode } from "../operations-mode.js";
 import { computeVisibleSessionIds, filterByPreferences, groupNotificationsByTheater, splitNotificationsByVisibility } from "../reduce.js";
 import { focusOperation, setDnd, setGlobalMute, toggleTheaterMute } from "../store.js";
 import type { NotificationTheaterGroup } from "../reduce.js";
@@ -22,7 +21,6 @@ const DEFAULT_DOCK_OPEN = false;
 // 닫힘=엣지 핸들(신호+카운트), 열림=도킹 패널(Theater 그룹). 클러스터는 보이지 않는 세션만 렌더한다.
 export function NotificationClusterHost() {
   const state = useConsoleState();
-  const mode = useOperationsMode();
   const navigate = useNavigate();
   const [open, setOpen] = useState(readDockOpen);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -31,7 +29,7 @@ export function NotificationClusterHost() {
     () => Object.values(state.operationNotifications),
     [state.operationNotifications],
   );
-  const visibleIds = computeVisibleSessionIds(mode, state);
+  const visibleIds = computeVisibleSessionIds(state);
   const eligible = splitNotificationsByVisibility(notifications, visibleIds).hidden;
   const filtered = filterByPreferences(eligible, state.notificationPreferences);
   const groups = groupNotificationsByTheater(filtered);

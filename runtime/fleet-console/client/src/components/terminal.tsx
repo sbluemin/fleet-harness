@@ -18,7 +18,7 @@ interface TerminalProps {
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
-  // 맵 캔버스의 줌 배율(viewport.zoom). 캔버스 외(classic/overlay) 사용처는 기본 1.
+  // 맵 캔버스의 줌 배율(viewport.zoom). 캔버스 외 셸 패널 사용처는 기본 1.
   // 캔버스가 부모에 transform:scale(zoom)을 걸면 xterm의 마우스 셀 좌표 계산이 scale을 보정하지 못해
   // zoom≠1에서 커서/선택 위치가 어긋난다(분자=scale 반영 화면거리, 분모=scale 미반영 cellWidth). 이를
   // 터미널 마운트 단의 역스케일(scale(1/zoom)) + fontSize×zoom으로 net scale=1을 만들어 좌표를 정정한다.
@@ -177,7 +177,7 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
       connection.start();
       // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
       // 단, Map의 비활성 패널(active===false)은 건너뛴다 — 여러 패널이 마운트되며 포커스를 다투지 않게 한다.
-      // 단일 터미널(Shell/Helm, active===undefined)은 기존대로 포커스한다.
+      // 단일 셸 터미널(active===undefined)은 기존대로 포커스한다.
       if (activeRef.current !== false) terminal.focus();
     };
 
@@ -300,7 +300,7 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
   const isLive = status.startsWith("live");
   // 줌 보정: 마운트 단을 레이아웃상 zoom배로 키운 뒤 scale(1/zoom)으로 되돌려 부모 scale(zoom)과 net 1로 상쇄한다.
   // %는 position:relative인 .terminal-viewport 기준이라 별도 측정 없이 inner 크기에 정확히 맞춰진다. zoom=1이면
-  // 기본 스타일(.terminal-canvas의 inset:0)을 그대로 써 캔버스 외 사용처(classic/overlay)에 영향이 없다.
+  // 기본 스타일(.terminal-canvas의 inset:0)을 그대로 써 캔버스 외 셸 패널 사용처에 영향이 없다.
   const zoomStyle: CSSProperties | undefined = appliedZoom === 1
     ? undefined
     : {

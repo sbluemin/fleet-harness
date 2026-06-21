@@ -5,9 +5,6 @@ import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "
 import { loadShellPanelsForTheater } from "../canvas/shell-panels.js";
 import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
-import { FloatingSidebar } from "../components/floating-sidebar.js";
-import { useOperationsMode } from "../operations-mode.js";
-import { OperationsClassic } from "./operations-classic.js";
 import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, focusOperation, nextOperationId, selectTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
@@ -17,7 +14,6 @@ interface OperationsProps {
 
 export function Operations({ state }: OperationsProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const mode = useOperationsMode();
   // theaterSessionOrder는 매 호출 새 배열을 반환하므로 참조를 안정화한다 — 아래 prune effect가 매 렌더 도는 것을 막는다.
   const sessionOrder = useMemo(() => theaterSessionOrder(state), [state.sessions, state.sessionOrder, state.activeTheaterId]);
   // 최신 state를 keydown 핸들러에서 읽기 위한 ref(핸들러는 한 번만 등록).
@@ -31,7 +27,7 @@ export function Operations({ state }: OperationsProps) {
     loadShellPanelsForTheater(state.activeTheaterId);
   }, [state.activeTheaterId]);
 
-  // Alt+←/→ 로 현재 Theater 내 Operation 포커스를 순환 이동한다(Map=resume+확대, Helm=선택). 두 모드 공통.
+  // Alt+←/→ 로 현재 Theater 내 Operation 포커스를 순환 이동한다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!event.altKey || event.metaKey || event.ctrlKey) return;
@@ -63,15 +59,9 @@ export function Operations({ state }: OperationsProps) {
 
   // 검색 등에서 들어온 일회성 이동 요청을 처리한다. 위의 loadForTheater/ensureDefaultGeometry
   // effect가 먼저 선언되어 해당 Theater의 패널이 로드·보장된 뒤 실행되므로 focusPanel이 안전하다.
-  // Helm(classic)은 사이드바 선택만으로 해당 Operation이 보이므로 확대 없이 신호만 비운다.
   useEffect(() => {
     const sessionId = state.pendingOperationFocus;
     if (sessionId === null) return;
-    // Helm(classic)은 사이드바 선택만으로 보이므로 확대 없이 신호만 비운다.
-    if (mode === "classic") {
-      consumeOperationFocus();
-      return;
-    }
     // consumeOperationFocus()는 pendingOperationFocus를 비워 이 effect를 재실행시킨다. 최상단에서
     // 동기로 비우면 resume await 도중 cleanup이 cancelled를 세워 자기-취소되어(점프가 resume만 하고
     // 확대를 건너뜀) 버린다. 그래서 모든 작업을 마친 뒤 마지막에 비운다. sessions도 의존성에서 제외해
@@ -104,14 +94,11 @@ export function Operations({ state }: OperationsProps) {
     };
     // sessions는 의도적으로 의존성에서 제외한다(위 주석).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.pendingOperationFocus, mode]);
-
-  if (mode === "classic") return <OperationsClassic state={state} />;
+  }, [state.pendingOperationFocus]);
 
   return (
     <div className="console-body is-canvas" ref={bodyRef}>
       <OperationsCanvas state={state} />
-      <FloatingSidebar state={state} getViewportSize={() => viewportSizeFor(bodyRef.current)} />
       <FloatingJobOverlay state={state} />
     </div>
   );

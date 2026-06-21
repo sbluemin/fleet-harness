@@ -352,7 +352,6 @@ export interface ConsoleState {
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
   readonly tenantOrder: readonly string[];
   readonly timelineOpen: boolean;
-  readonly shellOpen: boolean;
   readonly operationSearchOpen: boolean;
   readonly shortcutsOpen: boolean;
   readonly whatsNewOpen: boolean;
@@ -364,7 +363,6 @@ export interface ConsoleState {
   // 검색 등에서 특정 Operation으로 이동을 요청한 일회성 신호. Map 모드는 이를 소비해 해당 패널로 확대한다.
   readonly pendingOperationFocus: string | null;
   readonly selectedJobId: string | null;
-  readonly expandedSessionIds: readonly string[];
   // Theater 무관 전역 Operation 상태 전이 알림. sessionId 기준 정규화 맵이며, 렌더 단계에서 보이는 세션은 제외한다.
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;

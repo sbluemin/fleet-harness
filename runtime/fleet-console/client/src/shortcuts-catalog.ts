@@ -13,7 +13,6 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     title: "Console",
     entries: [
       { combos: [["Mod", "K"]], description: "Search Operations across Theaters" },
-      { combos: [["Mod", "`"]], description: "Toggle the local shell" },
       { combos: [["Esc"]], description: "Close the open overlay or menu" },
     ],
   },
@@ -29,7 +28,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: "Map",
     entries: [
-      { combos: [["Alt", "←"], ["Alt", "→"]], description: "Focus the previous / next Operation (also in Helm)" },
+      { combos: [["Alt", "←"], ["Alt", "→"]], description: "Focus the previous / next Operation" },
       { combos: [["Drag"]], description: "Pan the operations map" },
       { combos: [["Shift", "Drag"]], description: "Draw a new Operation terminal" },
       { combos: [["Space", "Drag"]], description: "Pan even while a terminal has focus" },

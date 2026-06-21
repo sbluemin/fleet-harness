@@ -28,7 +28,6 @@ const BASE_STATE: ConsoleState = {
   tenantJobs: {},
   tenantOrder: [],
   timelineOpen: false,
-  shellOpen: false,
   operationSearchOpen: false,
   shortcutsOpen: false,
   whatsNewOpen: false,
@@ -37,7 +36,6 @@ const BASE_STATE: ConsoleState = {
   terminalSessionsHydrated: false,
   pendingOperationFocus: null,
   selectedJobId: null,
-  expandedSessionIds: [],
 };
 
 describe("dashboard bridge derivation", () => {
