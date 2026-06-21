@@ -19,7 +19,6 @@ import { CodexSurface } from "./components/codex-surface.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
 import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
-import { Welcome } from "./pages/welcome.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -41,7 +40,7 @@ export function App() {
   const backgroundLocationRef = useRef<Location>(location);
   const hasRealBackgroundRef = useRef<boolean>(!isCodexRoute);
   // 최대화는 localStorage에 영속되지만, GNB 숨김은 Operations 화면에서만 적용한다 —
-  // 다른 라우트(Welcome/Codex)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
+  // 다른 라우트(Codex 등)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
   const maximizedActive = maximized && pathname.startsWith("/operations");
   // Codex 표현 모드 도출 — 오버레이(side)는 배경이 있거나 사용자가 직접 모드를 고른 경우 허용한다.
   // (deep-link로 막 들어온 첫 렌더에는 둘 다 아니므로 Full로 강등 → 승인된 "새로고침=Full".)
@@ -51,10 +50,10 @@ export function App() {
   const codexEffectiveMode = codexOverlayActive ? codexViewMode : "route";
   // Side 패널이 실제로 떠 있는지 — 엣지 핸들 노출(닫힘 시) 및 검색 국한 판단의 단일 기준.
   const codexSideActive = isCodexRoute && codexEffectiveMode === "side";
-  // 배경이 없으면(직접 진입 후 사용자가 오버레이를 고른 경우) Welcome을 배경으로 둔다.
+  // 배경이 없으면(직접 진입 후 사용자가 오버레이를 고른 경우) Operations를 배경으로 둔다.
   const codexBackground: Location = hasRealBackgroundRef.current
     ? backgroundLocationRef.current
-    : { pathname: "/", search: "", hash: "", state: null, key: "codex-fallback" };
+    : { pathname: "/operations", search: "", hash: "", state: null, key: "codex-fallback" };
   const displayLocation = codexOverlayActive ? codexBackground : location;
   // 화면에 실제로 보이는 라우트가 Operations인지로 판단한다 — Side 오버레이가 /operations를 배경으로
   // 띄우면 실제 URL(/codex)이 아니라 displayLocation 기준이어야 in-view Operation 토스트 억제가 유지된다.
@@ -165,7 +164,7 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, []);
 
-  // 오버레이 닫기 = 배경 라우트로 복귀(없으면 Welcome). hash/state까지 보존해 정확히 직전 위치로 돌아간다.
+  // 오버레이 닫기 = 배경 라우트로 복귀(없으면 Operations). hash/state까지 보존해 정확히 직전 위치로 돌아간다.
   // /codex를 벗어나면 CodexSurface가 언마운트되며 정리된다.
   const handleCodexClose = () => {
     const background = backgroundLocationRef.current;
@@ -175,7 +174,7 @@ export function App() {
         { state: background.state },
       );
     } else {
-      navigate("/");
+      navigate("/operations");
     }
   };
 
@@ -187,15 +186,15 @@ export function App() {
 
   return (
     <div className={`console-shell ${maximizedActive ? "is-maximized" : ""}`}>
-      <Topbar state={state} codexMode={codexEffectiveMode} />
+      <Topbar state={state} />
       <Routes location={displayLocation}>
-        <Route path="/" element={<Welcome state={state} />} />
+        <Route path="/" element={<Navigate to="/operations" replace />} />
         <Route path="/operations" element={<Operations state={state} />} />
         <Route path="/carrier-settings" element={<CarrierSettings />} />
         <Route path="/settings" element={<GlobalSettings />} />
         {/* Codex는 <Routes> 밖 CodexSurface가 그린다 — 여기선 와일드카드 리다이렉트만 막는다. */}
         <Route path="/codex/*" element={null} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/operations" replace />} />
       </Routes>
       {isCodexRoute ? <CodexSurface state={state} mode={codexEffectiveMode} onClose={handleCodexClose} /> : null}
       {!isCodexRoute ? <CodexEdgeHandle onOpen={handleOpenCodexSide} /> : null}

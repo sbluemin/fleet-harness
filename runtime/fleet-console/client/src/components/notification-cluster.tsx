@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useConsoleState } from "../hooks/use-store.js";
@@ -24,6 +24,8 @@ export function NotificationClusterHost() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(readDockOpen);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const handleRef = useRef<HTMLButtonElement | null>(null);
+  const dockRef = useRef<HTMLElement | null>(null);
 
   const notifications = useMemo(
     () => Object.values(state.operationNotifications),
@@ -53,6 +55,11 @@ export function NotificationClusterHost() {
   const seenSeqRef = useRef(latestSeq);
   const [pulseKey, setPulseKey] = useState(0);
 
+  const setDockOpen = useCallback((next: boolean) => {
+    setOpen(next);
+    writeDockOpen(next);
+  }, []);
+
   useEffect(() => {
     // 접힘 상태에서 시퀀스가 증가하면 외곽 펄스를 1회 재생한다. 펼침 상태에서 도착한 알림은
     // 닫을 때 펄스가 몰아치지 않도록 watermark만 끌어올리고 트리거하지 않는다.
@@ -62,22 +69,37 @@ export function NotificationClusterHost() {
     seenSeqRef.current = latestSeq;
   }, [latestSeq, open]);
 
+  // dock이 열린 동안에만 바깥 클릭 닫기 리스너를 붙인다.
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        setDockOpen(false);
+        return;
+      }
+      if (dockRef.current?.contains(target) || handleRef.current?.contains(target)) return;
+      setDockOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [open, setDockOpen]);
+
   // 알림 사이드바는 알림 유무와 무관하게 항상 노출한다(대원수 지시) — 빈 상태도 핸들/패널을 유지한다.
 
   const handleMove = (notification: OperationNotification) => {
     focusOperation(notification.sessionId);
     navigate("/operations");
-  };
-
-  const setDockOpen = (next: boolean) => {
-    setOpen(next);
-    writeDockOpen(next);
+    setDockOpen(false);
   };
 
   // ── 닫힘: 우현 엣지 핸들 ──
   if (!open) {
     return (
       <button
+        ref={handleRef}
         type="button"
         className={`notification-handle is-${signalState} ${signalState === "awaiting" ? "has-awaiting" : ""}`}
         onClick={() => setDockOpen(true)}
@@ -95,6 +117,7 @@ export function NotificationClusterHost() {
   return (
     <div className="notification-dock-layer">
       <aside
+        ref={dockRef}
         className={`notification-dock ${signalState === "awaiting" ? "has-awaiting" : ""}`}
         aria-live="polite"
         aria-label="Operation notifications"
