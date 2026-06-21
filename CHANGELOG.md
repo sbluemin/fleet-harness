@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-06-21
+
+### Added
+- [fleet-console] Settings now lists the console's backend HTTP API catalog in a collapsible card, populated dynamically from backend introspection so newly added routes appear automatically.
+- [fleet-console] The collapsed Alerts dock now plays a one-shot outline pulse when a new alert arrives, giving peripheral feedback without expanding the dock; the pulse color follows the alert state (amber for awaiting, emerald for completed) and adapts to the active theme.
+- [fleet-console] Canvas-mode operations now raise Alerts even when their panel is not minimized, so a visible canvas panel no longer suppresses its own alert.
+- [fleet-carriers] carrier_dispatch now accepts an optional absolute `cwd` argument so a delegated carrier's CLI spawns at a specified working directory (such as a git worktree) instead of always the host session directory.
+
+### Changed
+- [fleet-console] The root path `/` and unknown paths now redirect to `/operations`.
+- [fleet-console] The console version is now shown beneath the top-bar "Research Preview" label.
+- [fleet-console] The commissioning guide now auto-appears only on the first visit.
+- [fleet-console] The Alerts notification dock now collapses on outside clicks, Escape, and when navigating to a different Operation.
+- [fleet-console] Settings is now a two-pane master-detail layout with Model Sign-in grouped under Agent CLI and the Backend API section expanded by default.
+- [fleet-console] The backend API catalog descriptions shown in the Settings page are now in English.
+
+### Removed
+- [fleet-console] Remove the Welcome dashboard page; Operations is now the sole entry surface.
+- [fleet-console] Remove the Operation and Codex navigation items from the global navigation bar; Codex is now reached only through the right-edge Side handle.
+- [fleet-console] Remove the Research Preview indicator dot from the top bar.
+- [fleet-console] Remove the Helm (classic) Operations mode and the Map/Helm view toggle; the Operations view is now the single Map canvas.
+- [fleet-console] Remove the Operations left sidebars (the classic fixed session list and the Map floating session list).
+- [fleet-console] Remove the global navigation Shell button, its overlay, and the local-shell keyboard shortcut. The in-canvas shell panel remains available.
+
 ## [1.9.0] - 2026-06-20
 
 ### Added
