@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyConsoleUpdate, fetchTenants } from "../client/src/api.js";
+import { applyConsoleUpdate, fetchReleaseNotes, fetchTenants } from "../client/src/api.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -45,6 +45,34 @@ describe("client api parsing", () => {
     await expect(fetchTenants()).rejects.toMatchObject({
       name: "ApiError",
       message: "Invalid tenants response",
+    });
+  });
+
+  it("fetches release notes through the observer proxy and validates the payload", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: ["fleet-console"], text: "Runtime notes." }] }] }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    }), { status: 200 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(fetchReleaseNotes({ force: true })).resolves.toMatchObject({ sourceRef: "main", notes: [{ version: "1.0.0" }] });
+
+    expect(fetchMock).toHaveBeenCalledWith("/observer/release-notes?force=true", { signal: undefined });
+  });
+
+  it("rejects malformed release note payloads", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: ["raw markdown"] }] }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    }), { status: 200 })) as typeof fetch;
+
+    await expect(fetchReleaseNotes()).rejects.toMatchObject({
+      name: "ApiError",
+      message: "Invalid release notes response",
     });
   });
 });

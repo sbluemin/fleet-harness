@@ -11,6 +11,7 @@ import { createConsoleLock } from "../src/lock.js";
 import { createConsoleObservabilityStore } from "../src/observability-store.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../src/server.js";
 import type { AgentCliDetector } from "../src/agent-cli-detect.js";
+import type { ConsoleReleaseNotesService } from "../src/release-notes/service.js";
 import { workspaceHash } from "../src/theater.js";
 import { TheaterRegistry } from "../src/theaters.js";
 import { WorkspaceRegistry } from "../src/codex/workspaces.js";
@@ -769,6 +770,62 @@ describe("console static and terminal ticket boundary", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "unauthorized" });
+  });
+
+  it("serves release notes through the observer loopback route", async () => {
+    const releaseNotes = createStubReleaseNotesService();
+    const fixture = await startFixture({ releaseNotes });
+
+    const response = await fetch(`${fixture.endpoint}observer/release-notes`);
+    const body = await response.json() as unknown;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      notes: [{ version: "1.0.0", date: "2026-06-20", sections: [] }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    });
+    expect(releaseNotes.calls).toEqual([false]);
+  });
+
+  it("passes release note force refresh without changing the public source ref", async () => {
+    const releaseNotes = createStubReleaseNotesService();
+    const fixture = await startFixture({ releaseNotes });
+
+    const response = await fetch(`${fixture.endpoint}observer/release-notes?force=true`);
+    const body = await response.json() as { readonly sourceRef?: unknown };
+
+    expect(response.status).toBe(200);
+    expect(body.sourceRef).toBe("main");
+    expect(releaseNotes.calls).toEqual([true]);
+  });
+
+  it("returns 503 when release notes are cold-unavailable", async () => {
+    const fixture = await startFixture({
+      releaseNotes: {
+        refresh: async () => {
+          const { ConsoleReleaseNotesUnavailableError } = await import("../src/release-notes/types.js");
+          throw new ConsoleReleaseNotesUnavailableError("cold_unavailable");
+        },
+      },
+    });
+
+    const response = await fetch(`${fixture.endpoint}observer/release-notes`);
+    const body = await response.json() as { readonly error?: unknown };
+
+    expect(response.status).toBe(503);
+    expect(body.error).toBe("release_notes_unavailable");
+  });
+
+  it("keeps release notes behind the existing host validation boundary", async () => {
+    const fixture = await startFixture({ releaseNotes: createStubReleaseNotesService() });
+
+    const response = await fetch(fixture.endpoint.replace("127.0.0.1", "localhost") + "observer/release-notes");
+    const body = await response.json() as { readonly error?: unknown };
+
+    expect(response.status).toBe(403);
+    expect(body.error).toBe("host_mismatch");
   });
 
   it("rejects update apply when the browser provides package or version targets", async () => {
@@ -2028,6 +2085,7 @@ async function startFixture(options: {
   readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
   readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
   readonly release?: ConsoleServerDeps["release"];
+  readonly releaseNotes?: ConsoleServerDeps["releaseNotes"];
   readonly updateApply?: ConsoleServerDeps["updateApply"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
 } = {}): Promise<ServerFixture> {
@@ -2049,6 +2107,7 @@ async function startFixture(options: {
     terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
     terminalStartShell: options.terminalStartShell,
     release: options.release,
+    releaseNotes: options.releaseNotes,
     updateApply: options.updateApply,
     updateCheck: options.updateCheck,
   });
@@ -2156,6 +2215,22 @@ function createFakePty(): TerminalPtyHandle {
     write: () => undefined,
     resize: () => undefined,
     kill: () => undefined,
+  };
+}
+
+function createStubReleaseNotesService(): ConsoleReleaseNotesService & { readonly calls: (boolean | undefined)[] } {
+  const calls: (boolean | undefined)[] = [];
+  return {
+    calls,
+    refresh: async (options) => {
+      calls.push(options?.force);
+      return {
+        notes: [{ version: "1.0.0", date: "2026-06-20", sections: [] }],
+        sourceRef: "main",
+        fetchedAt: 10,
+        stale: false,
+      };
+    },
   };
 }
 

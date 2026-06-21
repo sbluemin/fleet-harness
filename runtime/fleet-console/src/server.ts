@@ -37,6 +37,8 @@ import { buildModelAuthState, createModelAuthRouter } from "./model-auth-routes.
 import { writeAggregateObserverEvents, writeObserverEvents } from "./observability-routes.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
+import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "./release-notes/service.js";
+import { ConsoleReleaseNotesUnavailableError } from "./release-notes/types.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { tryServeStaticConsole } from "./static-console.js";
@@ -66,6 +68,7 @@ export interface ConsoleServerDeps {
   readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
   readonly release?: FleetConsoleRelease;
+  readonly releaseNotes?: ConsoleReleaseNotesService;
   readonly updateCheck?: ConsoleUpdateCheckService;
   readonly updateApply?: ConsoleUpdateApplyService;
 }
@@ -110,6 +113,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     path: "/observer/api-catalog",
     summary: "Get the backend API catalog.",
     category: "Observer",
+    gate: "loopback",
+  },
+  {
+    method: "GET",
+    path: "/observer/release-notes",
+    summary: "Get the console release notes.",
+    category: "Update",
     gate: "loopback",
   },
   {
@@ -267,6 +277,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   registerDefaultCarriers(carrierRegistry);
   const lock = createConsoleLock({ hostname: () => host });
   const observability = createConsoleObservabilityStore();
+  const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService();
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
@@ -462,6 +473,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/observer/api-catalog") {
       handleObserverApiCatalog(req, res);
+      return;
+    }
+    if (pathname === "/observer/release-notes") {
+      runAsyncHandler(handleObserverReleaseNotes(req, res), res);
       return;
     }
     if (pathname === "/update/apply") {
@@ -979,6 +994,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function handleObserverApiCatalog(_req: http.IncomingMessage, res: http.ServerResponse): void {
     writeJson(res, 200, { version, routes: buildApiCatalog() });
+  }
+
+  async function handleObserverReleaseNotes(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      const force = readUrl(req).searchParams.get("force") === "true";
+      writeJson(res, 200, await releaseNotes.refresh({ force }));
+    } catch (error) {
+      if (error instanceof ConsoleReleaseNotesUnavailableError) {
+        writeJson(res, 503, { error: "release_notes_unavailable" });
+        return;
+      }
+      throw error;
+    }
   }
 
   async function handleUpdateApply(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

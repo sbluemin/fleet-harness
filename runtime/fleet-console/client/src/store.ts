@@ -2,7 +2,6 @@ import { applyEvent, createEmptyJob, isTerminalJobStatus, reduceSnapshotJob } fr
 import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { clearStoredShellPanelsForTheater } from "./canvas/shell-panels.js";
-import { RELEASE_NOTES } from "./release-notes.generated.js";
 import type {
   AttentionReason,
   ConsoleState,
@@ -14,6 +13,7 @@ import type {
   ObserverStatus,
   ObserverTruncation,
   OperationNotification,
+  ReleaseNotesResponse,
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
@@ -79,6 +79,14 @@ let state: ConsoleState = {
   operationSearchOpen: false,
   shortcutsOpen: false,
   whatsNewOpen: false,
+  releaseNotes: [],
+  releaseNotesLoading: false,
+  releaseNotesError: null,
+  releaseNotesSourceRef: null,
+  releaseNotesFetchedAt: null,
+  releaseNotesStale: false,
+  automaticWhatsNewVersion: null,
+  selectedReleaseNoteKey: null,
   onboardingOpen: false,
   bootstrapped: false,
   terminalSessionsHydrated: false,
@@ -140,16 +148,44 @@ export function readStoredRenderer(): TerminalRenderer {
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
-  const shouldOpenWhatsNew =
-    RELEASE_NOTES !== null &&
-    RELEASE_NOTES.version === status.version &&
-    readStoredWhatsNewSeenVersion() !== status.version;
   setState({
     version: status.version,
     updateAvailable: status.updateAvailable,
     latestVersion: status.latestVersion ?? null,
-    whatsNewOpen: shouldOpenWhatsNew ? true : state.whatsNewOpen,
+    ...evaluateAutomaticWhatsNew({ ...state, version: status.version }),
   });
+}
+
+export function beginReleaseNotesFetch(): void {
+  setState({ releaseNotesLoading: true, releaseNotesError: null });
+}
+
+export function applyReleaseNotes(response: ReleaseNotesResponse): void {
+  const next = {
+    ...state,
+    releaseNotes: response.notes,
+    releaseNotesLoading: false,
+    releaseNotesError: null,
+    releaseNotesSourceRef: response.sourceRef,
+    releaseNotesFetchedAt: response.fetchedAt,
+    releaseNotesStale: response.stale,
+    selectedReleaseNoteKey: state.selectedReleaseNoteKey && releaseNoteKeyExists(response.notes, state.selectedReleaseNoteKey)
+      ? state.selectedReleaseNoteKey
+      : firstReleaseNoteKey(response.notes),
+  };
+  setState({
+    releaseNotes: next.releaseNotes,
+    releaseNotesLoading: next.releaseNotesLoading,
+    releaseNotesError: next.releaseNotesError,
+    releaseNotesSourceRef: next.releaseNotesSourceRef,
+    releaseNotesFetchedAt: next.releaseNotesFetchedAt,
+    releaseNotesStale: next.releaseNotesStale,
+    ...evaluateAutomaticWhatsNew(next),
+  });
+}
+
+export function failReleaseNotesFetch(error: string): void {
+  setState({ releaseNotesLoading: false, releaseNotesError: error });
 }
 
 export function applyThemeToDocument(theme: ThemeId): void {
@@ -380,14 +416,19 @@ export function toggleShortcuts(): void {
 }
 
 export function openWhatsNew(): void {
-  if (RELEASE_NOTES === null || state.whatsNewOpen) return;
-  setState({ whatsNewOpen: true });
+  if (state.releaseNotes.length === 0 || state.whatsNewOpen) return;
+  setState({ whatsNewOpen: true, selectedReleaseNoteKey: state.selectedReleaseNoteKey ?? firstReleaseNoteKey(state.releaseNotes) });
 }
 
 export function closeWhatsNew(): void {
   if (!state.whatsNewOpen) return;
-  if (state.version) writeStoredWhatsNewSeenVersion(state.version);
-  setState({ whatsNewOpen: false });
+  if (state.automaticWhatsNewVersion) writeStoredWhatsNewSeenVersion(state.automaticWhatsNewVersion);
+  setState({ whatsNewOpen: false, automaticWhatsNewVersion: null });
+}
+
+export function selectReleaseNote(key: string): void {
+  if (!releaseNoteKeyExists(state.releaseNotes, key)) return;
+  setState({ selectedReleaseNoteKey: key });
 }
 
 export function openOnboarding(): void {
@@ -628,6 +669,35 @@ function normalizeSession(session: SessionInput): SessionInfo {
     turnState: session.turnState ?? "none",
     resumeAvailable: session.resumeAvailable === true,
   };
+}
+
+function evaluateAutomaticWhatsNew(current: ConsoleState): Pick<ConsoleState, "whatsNewOpen" | "automaticWhatsNewVersion" | "selectedReleaseNoteKey"> {
+  const firstRealIndex = current.releaseNotes.findIndex((note) => note.version !== "Unreleased");
+  const firstReal = firstRealIndex >= 0 ? current.releaseNotes[firstRealIndex] : undefined;
+  if (!firstReal || !current.version || firstReal.version !== current.version || readStoredWhatsNewSeenVersion() === firstReal.version) {
+    return {
+      whatsNewOpen: current.whatsNewOpen,
+      automaticWhatsNewVersion: current.automaticWhatsNewVersion,
+      selectedReleaseNoteKey: current.selectedReleaseNoteKey,
+    };
+  }
+  return {
+    whatsNewOpen: true,
+    automaticWhatsNewVersion: firstReal.version,
+    selectedReleaseNoteKey: releaseNoteKey(firstReal.version, firstRealIndex),
+  };
+}
+
+function firstReleaseNoteKey(notes: readonly { readonly version: string }[]): string | null {
+  return notes[0] ? releaseNoteKey(notes[0].version, 0) : null;
+}
+
+function releaseNoteKeyExists(notes: readonly { readonly version: string }[], key: string): boolean {
+  return notes.some((note, index) => releaseNoteKey(note.version, index) === key);
+}
+
+function releaseNoteKey(version: string, index: number): string {
+  return `${version}:${index}`;
 }
 
 function theaterLabelFor(theaterId: string | undefined): string {

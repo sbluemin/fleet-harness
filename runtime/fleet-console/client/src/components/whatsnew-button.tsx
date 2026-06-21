@@ -1,4 +1,3 @@
-import { RELEASE_NOTES } from "../release-notes.generated.js";
 import { openWhatsNew } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
@@ -7,8 +6,9 @@ interface WhatsNewButtonProps {
 }
 
 export function WhatsNewButton({ state }: WhatsNewButtonProps) {
-  if (RELEASE_NOTES === null) return null;
-  const versionLabel = RELEASE_NOTES.version === state.version && state.version ? ` v${RELEASE_NOTES.version}` : "";
+  if (state.releaseNotesLoading || state.releaseNotes.length === 0 || (state.releaseNotesError && !state.releaseNotesStale)) return null;
+  const current = state.releaseNotes.find((note) => note.version === state.version);
+  const versionLabel = current && state.version ? ` v${current.version}` : "";
   return (
     <button
       type="button"

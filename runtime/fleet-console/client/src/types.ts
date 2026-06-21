@@ -4,13 +4,26 @@ export type TerminalRenderer = "webgl" | "dom";
 
 export interface ReleaseNoteSection {
   readonly heading: "Added" | "Changed" | "Fixed" | "Removed" | "Breaking Changes";
-  readonly items: readonly string[];
+  readonly items: readonly ReleaseNoteItem[];
+}
+
+export interface ReleaseNoteItem {
+  readonly packageTags: readonly string[];
+  readonly text: string;
 }
 
 export interface ReleaseNotes {
   readonly version: string;
-  readonly date: string;
+  readonly date: string | null;
   readonly sections: readonly ReleaseNoteSection[];
+}
+
+// 릴리스 노트 DTO — server src/release-notes/types.ts와 수동 동기화한다.
+export interface ReleaseNotesResponse {
+  readonly notes: readonly ReleaseNotes[];
+  readonly sourceRef: "main";
+  readonly fetchedAt: number;
+  readonly stale: boolean;
 }
 
 export interface ObservedTenant {
@@ -342,6 +355,14 @@ export interface ConsoleState {
   readonly operationSearchOpen: boolean;
   readonly shortcutsOpen: boolean;
   readonly whatsNewOpen: boolean;
+  readonly releaseNotes: readonly ReleaseNotes[];
+  readonly releaseNotesLoading: boolean;
+  readonly releaseNotesError: string | null;
+  readonly releaseNotesSourceRef: "main" | null;
+  readonly releaseNotesFetchedAt: number | null;
+  readonly releaseNotesStale: boolean;
+  readonly automaticWhatsNewVersion: string | null;
+  readonly selectedReleaseNoteKey: string | null;
   readonly onboardingOpen: boolean;
   readonly bootstrapped: boolean;
   // 첫 terminal sessions 스냅샷이 적재(성공·실패 무관)되었는지. theater bootstrap과 sessions fetch가 독립

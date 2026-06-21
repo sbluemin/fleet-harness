@@ -3865,7 +3865,11 @@
   gap: var(--space-2);
   padding: 6px var(--space-3);
   border-radius: var(--radius-xs);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   color: var(--ink-fog);
+  font-family: inherit;
   font-size: 12px;
   font-weight: 620;
   letter-spacing: 0.01em;
@@ -6737,11 +6741,27 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-date {
   display: block;
-  margin-top: 10px;
   color: var(--ink-fog);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 650;
+  letter-spacing: 0;
+}
+
+.whatsnew-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.whatsnew-stale,
+.whatsnew-error {
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 750;
   letter-spacing: 0;
 }
 
@@ -6780,6 +6800,89 @@ body[data-codex-side="true"] .command-card {
   padding: 22px clamp(22px, 4vw, 36px);
   overflow: auto;
   scrollbar-color: color-mix(in oklch, var(--brass) 42%, transparent) transparent;
+}
+
+.whatsnew-version-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.whatsnew-version-selector select,
+.whatsnew-refresh {
+  min-height: 38px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.whatsnew-version-selector select {
+  min-width: min(260px, 100%);
+  padding: 0 10px;
+}
+
+.whatsnew-refresh {
+  padding: 0 14px;
+  color: var(--aurora);
+}
+
+.whatsnew-refresh:hover,
+.whatsnew-refresh:focus-visible {
+  border-color: color-mix(in oklch, var(--aurora) 42%, transparent);
+  background: color-mix(in oklch, var(--aurora) 10%, transparent);
+}
+
+.whatsnew-refresh:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.whatsnew-pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.whatsnew-page-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 38px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.whatsnew-page-button:hover:not(:disabled),
+.whatsnew-page-button:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+}
+
+.whatsnew-page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.whatsnew-page-status {
+  min-width: 44px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  color: var(--ink-fog);
 }
 
 .whatsnew-section {
@@ -6823,6 +6926,32 @@ body[data-codex-side="true"] .command-card {
 
 .whatsnew-section li::marker {
   color: var(--whatsnew-section-color);
+}
+
+.whatsnew-package-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin: 0 6px 2px 0;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 820;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.whatsnew-package-chip--brass {
+  border: 1px solid color-mix(in oklch, var(--brass) 32%, transparent);
+  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  color: var(--brass-bright);
+}
+
+.whatsnew-package-chip--aurora {
+  border: 1px solid color-mix(in oklch, var(--aurora) 30%, transparent);
+  background: color-mix(in oklch, var(--aurora) 9%, transparent);
+  color: var(--aurora);
 }
 
 /* 섹션 의미색은 doctrine 토큰만 사용한다(aurora/warn 금지): 추가/수정=positive, 변경=brass, 제거/파괴=coral.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTerminalFolderGrant } from "../api.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater } from "../store.js";
@@ -41,6 +41,13 @@ export function Topbar({ state }: TopbarProps) {
   const alert = state.connectionError !== null;
   // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다. 그 외 라우트는 기본 Fleet 시질을 유지한다.
   const pathname = useLocation().pathname;
+  const navigate = useNavigate();
+  // GNB 진입 버튼은 토글로 동작한다 — 이미 해당 화면을 보고 있으면 캔버스(Operations)로 복귀하고, 아니면 진입한다.
+  const carriersActive = pathname.startsWith("/carrier-settings");
+  const settingsActive = pathname.startsWith("/settings");
+  const handleNavToggle = (target: string) => {
+    navigate(pathname.startsWith(target) ? "/operations" : target);
+  };
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
     : pathname.startsWith("/carrier-settings")
@@ -77,22 +84,26 @@ export function Topbar({ state }: TopbarProps) {
         <button type="button" className="topbar-icon-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
           <KeyboardIcon />
         </button>
-        <NavLink
-          to="/carrier-settings"
-          className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
-          title="Carrier settings"
+        <button
+          type="button"
+          className={`topbar-nav-link ${carriersActive ? "is-active" : ""}`}
+          title={carriersActive ? "Back to Operations" : "Carrier settings"}
+          aria-current={carriersActive ? "page" : undefined}
+          onClick={() => handleNavToggle("/carrier-settings")}
         >
           <span className="topbar-nav-icon" aria-hidden="true"><CarriersIcon /></span>
           <span>Carriers</span>
-        </NavLink>
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
-          title="Settings"
+        </button>
+        <button
+          type="button"
+          className={`topbar-nav-link ${settingsActive ? "is-active" : ""}`}
+          title={settingsActive ? "Back to Operations" : "Settings"}
+          aria-current={settingsActive ? "page" : undefined}
+          onClick={() => handleNavToggle("/settings")}
         >
           <span className="topbar-nav-icon" aria-hidden="true"><SettingsIcon /></span>
           <span>Settings</span>
-        </NavLink>
+        </button>
       </div>
     </header>
   );

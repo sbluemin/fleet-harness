@@ -1,4 +1,4 @@
-import type { AgentCliMetadata, ConsoleUpdateApplyAcceptedResponse, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { AgentCliMetadata, ConsoleUpdateApplyAcceptedResponse, ObservedTenant, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesResponse, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TerminalFolderListEntry {
   readonly name: string;
@@ -19,6 +19,11 @@ export interface TerminalTicketOptions {
   readonly kind?: "shell";
   // theater-shell(shell:<seq>) 티켓에서만 사용 — 서버가 이 id로 Theater 디렉터리를 cwd로 해석한다(raw 경로는 클라이언트에 없음).
   readonly theaterId?: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface ReleaseNotesFetchOptions {
+  readonly force?: boolean;
   readonly signal?: AbortSignal;
 }
 
@@ -74,6 +79,13 @@ export async function fetchObserverStatus(theaterId: string | null, signal?: Abo
   const response = await fetch(`/observer/status${suffix}`, { signal });
   await assertOk(response);
   return assertObserverStatus(await response.json(), response.status);
+}
+
+export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}): Promise<ReleaseNotesResponse> {
+  const suffix = options.force ? "?force=true" : "";
+  const response = await fetch(`/observer/release-notes${suffix}`, { signal: options.signal });
+  await assertOk(response);
+  return assertReleaseNotesResponse(await response.json(), response.status);
 }
 
 export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleUpdateApplyAcceptedResponse> {
@@ -362,6 +374,65 @@ function assertConsoleUpdateApplyAccepted(value: unknown, status: number): Conso
     throw new ApiError(status, "Invalid update apply response");
   }
   return { status: "accepted" };
+}
+
+function assertReleaseNotesResponse(value: unknown, status: number): ReleaseNotesResponse {
+  const payload = value as Partial<ReleaseNotesResponse> & { readonly url?: unknown; readonly token?: unknown; readonly path?: unknown };
+  if (
+    !payload
+    || !Array.isArray(payload.notes)
+    || payload.sourceRef !== "main"
+    || typeof payload.fetchedAt !== "number"
+    || typeof payload.stale !== "boolean"
+    || "url" in payload
+    || "token" in payload
+    || "path" in payload
+  ) {
+    throw new ApiError(status, "Invalid release notes response");
+  }
+  return {
+    notes: payload.notes.map((note) => assertReleaseNotes(note, status)),
+    sourceRef: "main",
+    fetchedAt: payload.fetchedAt,
+    stale: payload.stale,
+  };
+}
+
+function assertReleaseNotes(value: unknown, status: number): ReleaseNotes {
+  const payload = value as Partial<ReleaseNotes>;
+  if (
+    !payload
+    || typeof payload.version !== "string"
+    || (payload.date !== null && typeof payload.date !== "string")
+    || !Array.isArray(payload.sections)
+  ) {
+    throw new ApiError(status, "Invalid release notes response");
+  }
+  return {
+    version: payload.version,
+    date: payload.date,
+    sections: payload.sections.map((section) => assertReleaseNoteSection(section, status)),
+  };
+}
+
+function assertReleaseNoteSection(value: unknown, status: number): ReleaseNoteSection {
+  const payload = value as Partial<ReleaseNoteSection>;
+  if (
+    !payload
+    || (payload.heading !== "Added" && payload.heading !== "Changed" && payload.heading !== "Fixed" && payload.heading !== "Removed" && payload.heading !== "Breaking Changes")
+    || !Array.isArray(payload.items)
+  ) {
+    throw new ApiError(status, "Invalid release notes response");
+  }
+  return { heading: payload.heading, items: payload.items.map((item) => assertReleaseNoteItem(item, status)) };
+}
+
+function assertReleaseNoteItem(value: unknown, status: number): ReleaseNoteItem {
+  const payload = value as Partial<ReleaseNoteItem>;
+  if (!payload || !Array.isArray(payload.packageTags) || !payload.packageTags.every((tag) => typeof tag === "string") || typeof payload.text !== "string") {
+    throw new ApiError(status, "Invalid release notes response");
+  }
+  return { packageTags: payload.packageTags, text: payload.text };
 }
 
 function assertTheaterInfo(value: unknown, status: number): TheaterInfo {

@@ -4,6 +4,7 @@ import {
   applyJobsSnapshot,
   applyObservedEvent,
   applyObserverStatus,
+  applyReleaseNotes,
   applySessionAttention,
   applySessionUpdate,
   applyTenantSnapshot,
@@ -15,6 +16,7 @@ import {
   completeCreateTerminalSession,
   closeOperationSearch,
   closeOnboarding,
+  closeWhatsNew,
   failResumeTerminalSession,
   focusOperation,
   getState,
@@ -23,6 +25,7 @@ import {
   openOnboarding,
   openOperationSearch,
   openShortcuts,
+  openWhatsNew,
   readStoredRenderer,
   removeTerminalSession,
   removeTheater,
@@ -102,7 +105,15 @@ beforeEach(() => {
     selectedJobId: null,
     operationsViewActive: false,
     whatsNewOpen: false,
-    terminalSessionsHydrated: false,
+  terminalSessionsHydrated: false,
+    releaseNotes: [],
+    releaseNotesLoading: false,
+    releaseNotesError: null,
+    releaseNotesSourceRef: null,
+    releaseNotesFetchedAt: null,
+    releaseNotesStale: false,
+    automaticWhatsNewVersion: null,
+    selectedReleaseNoteKey: null,
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
   });
@@ -148,6 +159,69 @@ describe("store", () => {
 
     expect(getState().updateAvailable).toBe(true);
     expect(getState().latestVersion).toBe("1.1.0");
+  });
+
+  it("opens What's new when notes arrive before matching observer status", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+    applyReleaseNotes({
+      notes: [
+        { version: "Unreleased", date: null, sections: [{ heading: "Changed", items: [{ packageTags: ["fleet-console"], text: "Draft." }] }] },
+        { version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: ["fleet-console"], text: "Runtime notes." }] }] },
+        { version: "1.0.0", date: "2026-06-19", sections: [{ heading: "Fixed", items: [{ packageTags: [], text: "Duplicate version." }] }] },
+      ],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    });
+    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+
+    expect(getState()).toMatchObject({ whatsNewOpen: true, automaticWhatsNewVersion: "1.0.0", selectedReleaseNoteKey: "1.0.0:1" });
+  });
+
+  it("opens What's new when matching observer status arrives before notes", () => {
+    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+    applyReleaseNotes({
+      notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: [], text: "Runtime notes." }] }] }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    });
+
+    expect(getState().whatsNewOpen).toBe(true);
+  });
+
+  it("records the triggering release version when closing automatic What's new", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+    applyReleaseNotes({
+      notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: [], text: "Runtime notes." }] }] }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    });
+    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+
+    closeWhatsNew();
+
+    expect(storage.get("fleet-console.whatsNewSeenVersion")).toBe("1.0.0");
+    expect(getState().automaticWhatsNewVersion).toBeNull();
+  });
+
+  it("does not automatically open What's new without usable data or when already seen", () => {
+    const storage = new Map<string, string>([["fleet-console.whatsNewSeenVersion", "1.0.0"]]);
+    mockLocalStorage(storage);
+    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+    applyReleaseNotes({
+      notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: [], text: "Runtime notes." }] }] }],
+      sourceRef: "main",
+      fetchedAt: 10,
+      stale: false,
+    });
+
+    expect(getState().whatsNewOpen).toBe(false);
+    openWhatsNew();
+    expect(getState().whatsNewOpen).toBe(true);
   });
 
   it("applies a tenant snapshot without creating legacy selection state", () => {

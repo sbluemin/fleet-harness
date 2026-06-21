@@ -4,7 +4,7 @@ import type { Location } from "react-router-dom";
 
 import { useMaximized } from "./canvas/canvas-store.js";
 import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
-import { fetchObserverStatus, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
+import { fetchObserverStatus, fetchReleaseNotes, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { NotificationClusterHost } from "./components/notification-cluster.js";
 import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
@@ -18,7 +18,7 @@ import { CarrierSettings } from "./pages/carrier-settings.js";
 import { CodexSurface } from "./components/codex-surface.js";
 import { GlobalSettings } from "./pages/global-settings.js";
 import { Operations } from "./pages/operations.js";
-import { applyObserverStatus, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
+import { applyObserverStatus, applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch, hydrateTerminalSessions, hydrateTheaterBootstrap, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, toggleOperationSearch } from "./store.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 registry 응답보다
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
@@ -136,6 +136,13 @@ export function App() {
         // sessionOrder로 prune하면 방금 복원한 패널 레이아웃을 지우고 그 빈 상태를 영속해, 일시적 500·네트워크
         // 오류가 사용자 레이아웃의 영구 손실이 된다. prune은 성공 적재(빈 배열 포함) 시에만 권위를 갖는다.
         setState({ terminalSessionError: error instanceof Error ? error.message : String(error) });
+      });
+    beginReleaseNotesFetch();
+    void fetchReleaseNotes({ signal: abort.signal })
+      .then(applyReleaseNotes)
+      .catch((error) => {
+        if (abort.signal.aborted) return;
+        failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
       });
     const refreshUpdateStatus = () => {
       void fetchObserverStatus(state.activeTheaterId, abort.signal)
