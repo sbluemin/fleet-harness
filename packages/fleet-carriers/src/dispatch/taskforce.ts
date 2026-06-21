@@ -80,13 +80,15 @@ export interface TaskForceLaunchOptions {
   startedAt: number;
   toolName: `carrier_${string}`;
   ctx: AgentToolCtx;
+  /** carrier_dispatch에서 해석된 작업 디렉토리(명시 절대경로 또는 호스트 세션 cwd fallback). */
+  cwd: string;
   deps: CarrierToolSpecDeps;
 }
 
 const taskForceStateStore = new Map<string, TaskForceState>();
 
 export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<typeof launchResponseResult> {
-  const { registry, carrierId, request, label, startedAt, toolName, ctx, deps } = options;
+  const { registry, carrierId, request, label, startedAt, toolName, ctx, cwd, deps } = options;
   const requestKey = buildTaskForceRequestKey(carrierId, request);
   const backendIds = getConfiguredTaskForceBackends(carrierId);
 
@@ -145,7 +147,7 @@ export function launchTaskForceJob(options: TaskForceLaunchOptions): ReturnType<
     request,
     state,
     signal: launch.signal,
-    cwd: ctx.cwd,
+    cwd,
     permit: launch.permit,
     startedAt,
     toolName,
@@ -260,7 +262,7 @@ async function runTaskForceBackend(
 ): Promise<TaskForceResult> {
   const execStartedAt = Date.now();
   const progress = state.backends.get(cliType)!;
-  const poolKey = buildTaskForceExecutorPoolKey(carrierId, cliType, originSessionId);
+  const poolKey = buildTaskForceExecutorPoolKey(carrierId, cliType, originSessionId, cwd);
   const streamKey = buildTaskForceScopedRunId(requestKey, cliType);
   const modelInfo = trackModelInfoByCli.get(cliType);
   if (!modelInfo) throw new Error(`Task Force config missing for ${cliType} on carrier "${carrierId}".`);
