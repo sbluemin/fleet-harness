@@ -4,6 +4,8 @@
  * 모든 캐리어를 단일 carrier_dispatch 도구로 통합합니다.
  */
 
+import path from "node:path";
+
 import { Type } from "typebox";
 import type { CliType } from "@dotobokuri/core-unified-agent";
 
@@ -152,6 +154,9 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
         ` Only touch changes you made — never revert or overwrite modifications made by others.` +
         ` Prefer precise edits (edit) over full-file writes (write).` +
         ` Always re-read a file before modifying it, as it may have changed since your last read.`,
+      `When the carrier must work in a directory other than the host session cwd (e.g. a git worktree checkout),` +
+        ` pass cwd as an absolute path so the carrier's CLI spawns there; never pass a relative path.` +
+        ` Omit cwd to use the host session cwd.`,
     ],
     get parameters() {
       const carrierIds = getRegisteredOrder(registry);
@@ -168,12 +173,18 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
             `The task/prompt to send to the carrier. Required blocks per carrier -- see <fleet section="roster">.` +
             ` Missing blocks cause hard-error rejection.`,
         }),
+        cwd: Type.Optional(Type.String({
+          description:
+            `Optional absolute working directory for the carrier's CLI spawn.` +
+            ` MUST be an absolute path. Provide it when delegating work to a directory other than the host session cwd` +
+            ` (e.g. a git worktree checkout) so the carrier spawns deterministically at that path.` +
+            ` Omit to default to the host session cwd.`,
+        })),
       });
     },
 
     async execute(args: unknown, ctx) {
       const t0 = Date.now();
-      const cwd = ctx.cwd;
       const toolCallId = ctx.toolCallId ?? "";
       const jobId = buildCarrierJobId("carrier", toolCallId);
       const toolName: `carrier_${string}` = "carrier_dispatch";
@@ -185,6 +196,13 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
           error: "Invalid arguments: carrier_id, label, and request must be non-empty strings.",
         });
       }
+
+      // 명시 cwd 해석 — 절대경로만 허용하고, 미전달 시 호스트 세션 cwd로 fallback한다.
+      const cwdResolution = resolveDispatchCwd(args.cwd, ctx.cwd);
+      if (!cwdResolution.ok) {
+        return launchResponseResult({ job_id: jobId, accepted: false, error: cwdResolution.error });
+      }
+      const cwd = cwdResolution.cwd;
 
       const carrierId = args.carrier_id.trim();
       const label = args.label.trim();
@@ -224,6 +242,7 @@ export function buildCarrierDispatchToolSpec(registry: CarrierRegistry, deps: Ca
           startedAt: t0,
           toolName,
           ctx,
+          cwd,
           deps,
         });
       }
@@ -496,7 +515,7 @@ function buildCarrierDispatchRunId(jobId: string, carrierId: string): string {
   return `${jobId}:${carrierId}`;
 }
 
-function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string } {
+function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; request: string; cwd?: string } {
   if (typeof v !== "object" || v === null) return false;
   const obj = v as Record<string, unknown>;
   return (
@@ -505,8 +524,31 @@ function isDispatchArgs(v: unknown): v is { carrier_id: string; label: string; r
     typeof obj.label === "string" &&
     obj.label.trim().length > 0 &&
     typeof obj.request === "string" &&
-    obj.request.trim().length > 0
+    obj.request.trim().length > 0 &&
+    (obj.cwd === undefined || typeof obj.cwd === "string")
   );
+}
+
+/**
+ * carrier_dispatch가 전달받은 명시 cwd를 해석한다.
+ * - 미전달/빈 문자열: 호스트 세션 cwd(fallbackCwd)로 fallback해 하위 호환을 유지한다.
+ * - 절대경로: 그대로 사용해 결정론적 스폰 지점을 강제한다.
+ * - 상대경로: "어디 기준?" 모호성을 차단하기 위해 거절한다(존재성 검증은 spawn 자연 실패에 위임).
+ */
+function resolveDispatchCwd(
+  rawCwd: string | undefined,
+  fallbackCwd: string,
+): { ok: true; cwd: string } | { ok: false; error: string } {
+  if (rawCwd === undefined) return { ok: true, cwd: fallbackCwd };
+  const trimmed = rawCwd.trim();
+  if (trimmed.length === 0) return { ok: true, cwd: fallbackCwd };
+  if (!path.isAbsolute(trimmed)) {
+    return {
+      ok: false,
+      error: `Invalid cwd "${rawCwd}": must be an absolute path. Provide an absolute directory or omit cwd to use the host session cwd.`,
+    };
+  }
+  return { ok: true, cwd: trimmed };
 }
 
 // ═════════════════════════════════════════════════════════

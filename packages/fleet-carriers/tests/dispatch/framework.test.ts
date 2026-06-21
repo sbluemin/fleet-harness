@@ -870,6 +870,125 @@ describe("carrier_dispatch taskforce stream metadata", () => {
   });
 });
 
+describe("carrier_dispatch explicit cwd injection", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-dispatch-cwd-"));
+    initStore(tempDir);
+    vi.mocked(executeWithPool).mockResolvedValue({
+      status: "done",
+      responseText: "ok",
+      thoughtText: "",
+      toolCalls: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(executeWithPool).mockReset();
+    resetStoreForTests();
+    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  });
+
+  it("falls back to the host session cwd when no cwd argument is provided", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "No explicit cwd",
+      request: "Run with host cwd.",
+    }, {
+      cwd: "/host/session/cwd",
+      toolCallId: "dispatch-cwd-fallback",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      scopeId: "ohio",
+      cwd: "/host/session/cwd",
+    }));
+  });
+
+  it("forwards an explicit absolute cwd to the carrier spawn", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Explicit worktree cwd",
+      request: "Run in the worktree.",
+      cwd: "/abs/worktree/path",
+    }, {
+      cwd: "/host/session/cwd",
+      toolCallId: "dispatch-cwd-explicit",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(1);
+    });
+    expect(executeWithPool).toHaveBeenCalledWith(expect.objectContaining({
+      scopeId: "ohio",
+      cwd: "/abs/worktree/path",
+    }));
+  });
+
+  it("rejects a relative cwd before launching a job", async () => {
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    const result = await tool.execute({
+      carrier_id: "ohio",
+      label: "Relative cwd",
+      request: "Should be rejected.",
+      cwd: "relative/worktree",
+    }, {
+      cwd: "/host/session/cwd",
+      toolCallId: "dispatch-cwd-relative",
+    }) as CarrierDispatchToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual(expect.objectContaining({
+      job_id: "carrier:dispatch-cwd-relative",
+      accepted: false,
+    }));
+    expect(JSON.stringify(result.details)).toContain("must be an absolute path");
+    expect(executeWithPool).not.toHaveBeenCalled();
+  });
+
+  it("forwards an explicit absolute cwd to every Task Force backend spawn", async () => {
+    const claudeModel = firstModel("claude");
+    const codexModel = firstModel("codex");
+    updateTaskForceModelSelection("ohio", "claude", { model: claudeModel, effort: firstEffort("claude", claudeModel) });
+    updateTaskForceModelSelection("ohio", "codex", { model: codexModel, effort: firstEffort("codex", codexModel) });
+    setCarrierAgentMode("ohio", false, "subagent");
+    const registry = createCarrierRegistry();
+    registerCarrier(registry, createConfig("ohio", "Ohio"));
+    const tool = buildCarrierDispatchToolSpec(registry, testDeps);
+
+    await tool.execute({
+      carrier_id: "ohio",
+      label: "Task Force worktree cwd",
+      request: "Run Task Force in the worktree.",
+      cwd: "/abs/worktree/path",
+    }, {
+      cwd: "/host/session/cwd",
+      toolCallId: "dispatch-cwd-taskforce",
+    });
+
+    await vi.waitFor(() => {
+      expect(executeWithPool).toHaveBeenCalledTimes(2);
+    });
+    for (const [options] of vi.mocked(executeWithPool).mock.calls) {
+      expect(options.cwd).toBe("/abs/worktree/path");
+    }
+  });
+});
+
 function createConfig(id: string, displayName: string): CarrierConfig {
   return {
     id,
