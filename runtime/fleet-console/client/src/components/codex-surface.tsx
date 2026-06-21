@@ -22,6 +22,8 @@ interface ResizeState {
   readonly startWidth: number;
 }
 
+const ALERTS_DOCK_OPEN_BODY_DATASET_KEY = "alertsDockOpen";
+
 // Codex의 단일 mount host를 현재 모드(Full/Side/Modal)에 맞는 컨테이너에 배치한다. host 노드
 // 자체는 codex-host 모듈 싱글톤이 소유하고 appendChild로 옮겨 다니므로, 이 컴포넌트는 "어느
 // 컨테이너에 꽂을지"와 모드별 크롬(헤더/scrim/리사이즈)만 책임진다.
@@ -66,7 +68,7 @@ export function CodexSurface({ state, mode, onClose }: CodexSurfaceProps) {
   useEffect(() => {
     if (mode === "route") return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isCommandPaletteOpen()) return;
+      if (event.key !== "Escape" || isCommandPaletteOpen() || isAlertsDockOpen()) return;
       event.preventDefault();
       onClose();
     };
@@ -133,6 +135,10 @@ export function CodexSurface({ state, mode, onClose }: CodexSurfaceProps) {
       </div>
     </aside>
   );
+}
+
+function isAlertsDockOpen(): boolean {
+  return document.body.dataset[ALERTS_DOCK_OPEN_BODY_DATASET_KEY] === "true";
 }
 
 function CodexSurfaceHeader({ title, onClose }: CodexSurfaceHeaderProps) {
