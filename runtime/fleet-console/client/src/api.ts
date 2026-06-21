@@ -1,4 +1,4 @@
-import type { AgentCliMetadata, CarrierReadinessEntry, ConsoleUpdateApplyAcceptedResponse, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { AgentCliMetadata, ConsoleUpdateApplyAcceptedResponse, ObservedTenant, ObserverStatus, SessionInfo, SnapshotTenantJobs, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TerminalFolderListEntry {
   readonly name: string;
@@ -80,14 +80,6 @@ export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleU
   const response = await fetch("/update/apply", { method: "POST", signal });
   await assertOk(response);
   return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
-}
-
-export async function fetchCarriers(signal?: AbortSignal): Promise<readonly CarrierReadinessEntry[]> {
-  const response = await fetch("/observer/carriers", { signal });
-  await assertOk(response);
-  const payload = (await response.json()) as { carriers?: unknown };
-  if (!Array.isArray(payload.carriers)) throw new ApiError(response.status, "Invalid carrier readiness response");
-  return payload.carriers.map((carrier) => assertCarrierReadinessEntry(carrier, response.status));
 }
 
 export async function addTheater(folderGrantId: string, signal?: AbortSignal): Promise<TheaterInfo> {
@@ -370,56 +362,6 @@ function assertConsoleUpdateApplyAccepted(value: unknown, status: number): Conso
     throw new ApiError(status, "Invalid update apply response");
   }
   return { status: "accepted" };
-}
-
-function assertCarrierReadinessEntry(value: unknown, status: number): CarrierReadinessEntry {
-  const payload = value as Partial<CarrierReadinessEntry> & {
-    readonly token?: unknown;
-    readonly key?: unknown;
-    readonly credential?: unknown;
-    readonly cwd?: unknown;
-    readonly path?: unknown;
-    readonly persona?: unknown;
-    readonly prompt?: unknown;
-    readonly toolAllowlist?: unknown;
-    readonly allowedExecutorTools?: unknown;
-  };
-  if (
-    !payload
-    || typeof payload.carrierId !== "string"
-    || typeof payload.displayName !== "string"
-    || (payload.role !== null && typeof payload.role !== "string")
-    || typeof payload.model !== "string"
-    || (payload.effort !== null && typeof payload.effort !== "string")
-    || typeof payload.taskForceBackendCount !== "number"
-    || typeof payload.subagentMode !== "boolean"
-    || (payload.category !== undefined && payload.category !== "strategy" && payload.category !== "planning" && payload.category !== "operations")
-    || typeof payload.slot !== "number"
-    || typeof payload.cliType !== "string"
-    || "token" in payload
-    || "key" in payload
-    || "credential" in payload
-    || "cwd" in payload
-    || "path" in payload
-    || "persona" in payload
-    || "prompt" in payload
-    || "toolAllowlist" in payload
-    || "allowedExecutorTools" in payload
-  ) {
-    throw new ApiError(status, "Invalid carrier readiness response");
-  }
-  return {
-    carrierId: payload.carrierId,
-    displayName: payload.displayName,
-    role: payload.role,
-    model: payload.model,
-    effort: payload.effort,
-    taskForceBackendCount: payload.taskForceBackendCount,
-    subagentMode: payload.subagentMode,
-    ...(payload.category ? { category: payload.category } : {}),
-    slot: payload.slot,
-    cliType: payload.cliType,
-  };
 }
 
 function assertTheaterInfo(value: unknown, status: number): TheaterInfo {

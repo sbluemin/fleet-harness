@@ -18,7 +18,7 @@ interface ApiCatalogRowProps {
 
 export function BackendApiSection() {
   const store = useApiCatalogStore();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const groups = useMemo(() => groupApiCatalog(store.state ?? []), [store.state]);
   const count = store.state?.length ?? 0;
   const categoryCount = groups.length;

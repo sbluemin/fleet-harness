@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { AgentCliSection } from "../components/agent-cli-section.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
@@ -6,7 +6,7 @@ import { ModelAuthSection } from "../components/model-auth-section.js";
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { setActiveTheme, setTerminalRenderer } from "../store.js";
-import type { TerminalRenderer, ThemeId } from "../types.js";
+import type { GlobalSettingsState, TerminalRenderer, ThemeId } from "../types.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -29,6 +29,14 @@ interface RendererOption {
   readonly label: string;
 }
 
+type SettingsSectionId = "appearance" | "general" | "agent-cli" | "backend-api";
+
+interface SettingsSectionNavItem {
+  readonly id: SettingsSectionId;
+  readonly label: string;
+  readonly eyebrow: string;
+}
+
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
 const THEMES: readonly ThemeOption[] = [
   { id: "maritime", label: "Maritime", swatch: ["oklch(78% 0.13 75)", "oklch(82% 0.13 195)", "oklch(32% 0.04 248)"] },
@@ -40,10 +48,18 @@ const RENDERERS: readonly RendererOption[] = [
   { id: "dom", label: "DOM" },
 ];
 
+const SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
+  { id: "appearance", label: "Appearance", eyebrow: "Theme · Renderer" },
+  { id: "general", label: "General", eyebrow: "Prompt · Metaphor" },
+  { id: "agent-cli", label: "Agent CLI", eyebrow: "Availability · Sign-in" },
+  { id: "backend-api", label: "Backend API", eyebrow: "Loopback routes" },
+];
+
 export function GlobalSettings() {
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingField !== null;
+  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("appearance");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,42 +81,46 @@ export function GlobalSettings() {
 
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
 
-      <AppearanceCard />
+      <section className="global-settings-grid">
+        <div className="global-settings-list" aria-label="Settings sections">
+          {SETTINGS_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={`global-settings-nav-item ${section.id === activeSectionId ? "is-active" : ""}`}
+              aria-pressed={section.id === activeSectionId}
+              onClick={() => setActiveSectionId(section.id)}
+            >
+              <span className="global-settings-nav-label">{section.label}</span>
+              <span className="global-settings-nav-eyebrow">{section.eyebrow}</span>
+            </button>
+          ))}
+        </div>
 
-      <section className="global-settings-card" aria-label="Fleet global settings">
-        {settings.loading && !state ? <p className="global-settings-help">Loading settings.</p> : null}
-        {state ? (
-          <>
-            <SettingToggleRow
-              title="System Prompt Injection"
-              help="Append keeps the Agent CLI's built-in system prompt and layers Fleet doctrine on top. Replace swaps it entirely for Fleet doctrine. Affects Claude-family CLIs only; Codex always receives doctrine through its profile."
-              onLabel="Replace"
-              offLabel="Append"
-              value={state.replaceSystemPrompt}
-              disabled={saving}
-              onToggle={() => void setGlobalSettingsField("replaceSystemPrompt", !state.replaceSystemPrompt)}
-            />
-            <SettingToggleRow
-              title="Metaphor"
-              help="Enabled layers the naval tone overlay — clipped reporting cadence and Fleet vocabulary — onto every session. Off keeps the Admiral persona without the tone."
-              onLabel="Enabled"
-              offLabel="Off"
-              value={state.enableMetaphor}
-              disabled={saving}
-              onToggle={() => void setGlobalSettingsField("enableMetaphor", !state.enableMetaphor)}
-            />
-          </>
-        ) : null}
-        <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
+        <div key={activeSectionId} className="global-settings-detail">
+          {renderSettingsSection(activeSectionId, state, saving)}
+        </div>
       </section>
-
-      <AgentCliSection />
-
-      <ModelAuthSection />
-
-      <BackendApiSection />
     </main>
   );
+}
+
+function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean) {
+  switch (sectionId) {
+    case "appearance":
+      return <AppearanceCard />;
+    case "general":
+      return <GeneralSettingsCard state={state} saving={saving} />;
+    case "agent-cli":
+      return (
+        <>
+          <AgentCliSection />
+          <ModelAuthSection />
+        </>
+      );
+    case "backend-api":
+      return <BackendApiSection />;
+  }
 }
 
 // 외관 설정 — 테마와 터미널 렌더러. 콘솔 로컬(브라우저별) 선호값이며 선택 즉시 적용된다(세션 설정과 달리 재실행 불요).
@@ -160,6 +180,44 @@ function AppearanceCard() {
       </div>
 
       <p className="global-settings-foot">Appearance preferences apply immediately and are stored per browser, separate from session settings.</p>
+    </section>
+  );
+}
+
+function GeneralSettingsCard({
+  state,
+  saving,
+}: {
+  readonly state: GlobalSettingsState | null;
+  readonly saving: boolean;
+}) {
+  return (
+    <section className="global-settings-card" aria-label="General">
+      {state ? (
+        <>
+          <SettingToggleRow
+            title="System Prompt Injection"
+            help="Append keeps the Agent CLI's built-in system prompt and layers Fleet doctrine on top. Replace swaps it entirely for Fleet doctrine. Affects Claude-family CLIs only; Codex always receives doctrine through its profile."
+            onLabel="Replace"
+            offLabel="Append"
+            value={state.replaceSystemPrompt}
+            disabled={saving}
+            onToggle={() => void setGlobalSettingsField("replaceSystemPrompt", !state.replaceSystemPrompt)}
+          />
+          <SettingToggleRow
+            title="Metaphor"
+            help="Enabled layers the naval tone overlay — clipped reporting cadence and Fleet vocabulary — onto every session. Off keeps the Admiral persona without the tone."
+            onLabel="Enabled"
+            offLabel="Off"
+            value={state.enableMetaphor}
+            disabled={saving}
+            onToggle={() => void setGlobalSettingsField("enableMetaphor", !state.enableMetaphor)}
+          />
+        </>
+      ) : (
+        <p className="global-settings-help">Loading settings.</p>
+      )}
+      <p className="global-settings-foot">Changes apply to newly launched sessions. Running sessions keep their current configuration until relaunched.</p>
     </section>
   );
 }

@@ -49,7 +49,7 @@
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
-/* 브랜드 로고는 Welcome으로 가는 링크 — 클릭 가능함을 미세하게 알린다. */
+/* 브랜드 로고는 Operations로 가는 링크 — 클릭 가능함을 미세하게 알린다. */
 .topbar-brand:hover {
   opacity: 0.82;
 }
@@ -67,28 +67,31 @@
    brass는 '구조적/정체성' 역할이라 aurora=live, coral=error, warn=connecting 의미와 충돌하지 않는다. */
 .topbar-preview-badge {
   flex: 0 0 auto;
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 6px;
+  row-gap: 2px;
   color: var(--brass);
   font-family: var(--font-mono);
-  font-size: 9.5px;
   font-weight: 600;
-  letter-spacing: 0.12em;
   line-height: 1;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
-/* 시작 신호용 brass dot — 살아있음(aurora 펄스)이 아닌 정적 정체성 표식이라 무한 모션 없이 은은한 glow만 준다. */
-.topbar-preview-badge::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--brass-bright);
-  box-shadow: 0 0 8px var(--brass-glow);
+.topbar-preview-label {
+  color: var(--brass);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.topbar-preview-version {
+  /* RESEARCH PREVIEW 라벨(col2 트랙 폭을 결정) 기준으로 버전을 가로 중앙 정렬한다. */
+  justify-self: center;
+  color: color-mix(in oklch, var(--brass) 64%, var(--ink-fog));
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0;
 }
 
 /* GitHub 홍보 링크 그룹 — preview 배지와 hairline으로 가른 한 묶음. 보더리스 미니멀로 GNB를 가볍게 유지한다. */
@@ -311,7 +314,7 @@
   display: grid;
   align-content: start;
   gap: var(--space-5);
-  width: min(960px, calc(100vw - 48px));
+  width: min(1440px, calc(100vw - 48px));
   min-height: 0;
   height: 100%;
   margin: 0 auto;
@@ -350,6 +353,109 @@
   text-transform: uppercase;
 }
 
+.global-settings-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.global-settings-list {
+  position: sticky;
+  top: var(--space-2);
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100dvh - 132px);
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.global-settings-nav-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  animation: codex-rise var(--duration-slow) var(--ease-spring) both;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.global-settings-nav-item:nth-child(1) { animation-delay: 0ms; }
+.global-settings-nav-item:nth-child(2) { animation-delay: 40ms; }
+.global-settings-nav-item:nth-child(3) { animation-delay: 80ms; }
+.global-settings-nav-item:nth-child(4) { animation-delay: 120ms; }
+
+.global-settings-nav-item:hover {
+  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+  transform: translateX(2px);
+}
+
+.global-settings-nav-item.is-active {
+  border-color: color-mix(in oklch, var(--brass) 30%, transparent);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-anchor);
+}
+
+.global-settings-nav-label {
+  overflow: hidden;
+  color: var(--ink-spectral);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.global-settings-nav-item:hover .global-settings-nav-label,
+.global-settings-nav-item.is-active .global-settings-nav-label {
+  color: var(--ink-pearl);
+}
+
+.global-settings-nav-eyebrow {
+  overflow: hidden;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.global-settings-nav-item.is-active .global-settings-nav-eyebrow {
+  color: var(--brass-bright);
+}
+
+.global-settings-detail {
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+  min-width: 0;
+  min-height: 420px;
+}
+
 .global-settings-card {
   display: grid;
   gap: var(--space-5);
@@ -372,6 +478,33 @@
 .global-settings-row + .global-settings-row {
   padding-top: var(--space-5);
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
+}
+
+@media (max-width: 1120px) {
+  .global-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .global-settings-list {
+    position: static;
+    flex-flow: row wrap;
+  }
+
+  .global-settings-nav-item {
+    flex: 1 1 190px;
+  }
+}
+
+@media (max-width: 720px) {
+  .global-settings-page {
+    width: min(100vw - 28px, 760px);
+  }
+
+  .global-settings-hero,
+  .global-settings-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .global-settings-row-text {
@@ -479,13 +612,6 @@
   cursor: not-allowed;
   opacity: 0.45;
   transform: none;
-}
-
-@media (max-width: 720px) {
-  .global-settings-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
 }
 
 /* Appearance — 테마/렌더러 단일선택 컨트롤. 선택 상태는 brass(지금 보고 있는 곳)로만 표기하고 aurora와 혼용하지 않는다. */
@@ -950,7 +1076,7 @@
   align-content: start;
   gap: var(--space-5);
   width: min(1440px, calc(100vw - 48px));
-  /* 셸의 minmax(0,1fr) 행 안에서 페이지 자체가 스크롤 컨테이너가 된다(welcome-page와 동일 모델). */
+  /* 셸의 minmax(0,1fr) 행 안에서 페이지 자체가 스크롤 컨테이너가 된다. */
   min-height: 0;
   height: 100%;
   margin: 0 auto;
@@ -3733,12 +3859,6 @@
 }
 
 /* ── GNB (Topbar 내비게이션) ───────────────────────────── */
-.topbar-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
 .topbar-nav-link {
   display: inline-flex;
   align-items: center;
@@ -4060,59 +4180,6 @@
   text-transform: uppercase;
 }
 
-/* ── Welcome (메인 대시보드) ───────────────────────────── */
-.welcome-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-7);
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: var(--space-7) var(--space-6) var(--space-10);
-}
-
-.welcome-header {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 64%, transparent);
-}
-
-.welcome-header h2 {
-  margin: 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-variation-settings: "opsz" 42;
-  font-weight: 560;
-  letter-spacing: 0;
-}
-
-.welcome-guide-button {
-  min-height: 36px;
-  padding: 0 var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--brass) 32%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 42%, transparent);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 760;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
-}
-
-.welcome-guide-button:hover {
-  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-}
-
 .bridge-kicker {
   margin: 0;
   color: var(--ink-fog);
@@ -4121,347 +4188,6 @@
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-}
-
-.bridge-theater-live {
-  width: 9px;
-  height: 9px;
-  flex: none;
-  border-radius: 999px;
-  background: var(--ink-rim);
-}
-
-.bridge-theater-live.is-live {
-  background: var(--aurora);
-  box-shadow: 0 0 12px var(--aurora-glow);
-  animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-.bridge-matrix,
-.bridge-knowledge,
-.bridge-carriers,
-.bridge-health {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.bridge-section-heading {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.bridge-section-heading h3 {
-  margin: 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: 23px;
-  font-variation-settings: "opsz" 36;
-  font-weight: 560;
-}
-
-.bridge-card {
-  position: relative;
-  display: flex;
-  min-height: 96px;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: var(--space-1);
-  padding: 0 0 var(--space-4);
-  border: 0;
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 70%, transparent);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.bridge-card--live {
-  border-bottom-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
-}
-
-.bridge-card--good {
-  border-bottom-color: color-mix(in oklch, var(--positive) 42%, var(--surface-rim));
-}
-
-.bridge-card--bad {
-  border-bottom-color: color-mix(in oklch, var(--coral) 44%, var(--surface-rim));
-}
-
-.bridge-card--warn {
-  border-bottom-color: color-mix(in oklch, var(--warn) 44%, var(--surface-rim));
-}
-
-.bridge-card-label {
-  margin: 0;
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.bridge-card strong {
-  color: var(--ink-spectral);
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-variation-settings: "opsz" 40;
-  font-weight: 560;
-  line-height: 1.05;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* 지표값은 계기 판독값처럼 의미별로 색을 입는다: 중립은 차분한 ink-spectral,
-   상태값만 의미축(aurora=라이브 / positive=정상 / warn=주의 / coral=오류)으로 도드라진다. */
-.bridge-card--live strong {
-  color: var(--aurora);
-}
-
-.bridge-card--good strong {
-  color: var(--positive);
-}
-
-.bridge-card--warn strong {
-  color: var(--warn);
-}
-
-.bridge-card--bad strong {
-  color: var(--coral);
-}
-
-.bridge-card p {
-  margin: 0;
-  color: var(--ink-fog);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-.bridge-empty {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  color: var(--ink-fog);
-  font-size: 13px;
-}
-
-.bridge-empty p {
-  margin: 0;
-}
-
-.bridge-empty--warn {
-  color: var(--warn);
-}
-
-.bridge-knowledge-grid,
-.bridge-health-strip {
-  display: grid;
-  gap: var(--space-5);
-}
-
-.bridge-knowledge-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.bridge-health-strip {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.bridge-health-error {
-  margin: 0;
-  color: var(--warn);
-  font-size: 12px;
-}
-
-.bridge-carrier-table {
-  display: grid;
-  width: 100%;
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
-}
-
-.bridge-carrier-row {
-  display: grid;
-  grid-template-columns: minmax(96px, 0.7fr) minmax(180px, 1.35fr) minmax(124px, 0.95fr) minmax(76px, 0.55fr) minmax(76px, 0.55fr) minmax(84px, 0.55fr);
-  min-height: 46px;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
-  border: 0;
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 58%, transparent);
-  border-radius: 0;
-  color: var(--ink-fog);
-  font-size: 12px;
-}
-
-.bridge-carrier-head {
-  min-height: 34px;
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.bridge-carrier-row:not(.bridge-carrier-head) {
-  background: transparent;
-}
-
-.bridge-carrier-row span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bridge-carrier-row strong,
-.bridge-carrier-row small {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bridge-carrier-row strong {
-  color: var(--ink-pearl);
-  font-size: 12px;
-  font-weight: 760;
-}
-
-/* 캐리어 이름은 fleet-cli 로스터와 동일하게 CLI 타입 시그니처 색을 따른다.
-   Task Force 2개 이상(비-subagent)이면 프로바이더색 대신 taskforce 색으로 오버라이드 — getEntryColor 패리티. */
-.bridge-carrier-name[data-signature="claude"] strong {
-  color: var(--carrier-claude);
-}
-
-.bridge-carrier-name[data-signature="claude-zai"] strong {
-  color: var(--carrier-claude-zai);
-}
-
-.bridge-carrier-name[data-signature="claude-kimi"] strong {
-  color: var(--carrier-claude-kimi);
-}
-
-.bridge-carrier-name[data-signature="codex"] strong {
-  color: var(--carrier-codex);
-}
-
-.bridge-carrier-name[data-signature="opencode-go"] strong {
-  color: var(--carrier-opencode-go);
-}
-
-.bridge-carrier-name[data-signature="cursor"] strong {
-  color: var(--carrier-cursor);
-}
-
-.bridge-carrier-name[data-signature="taskforce"] strong {
-  color: var(--carrier-taskforce);
-}
-
-.bridge-carrier-row small {
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.bridge-matrix-table {
-  display: grid;
-  width: 100%;
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
-}
-
-.bridge-matrix-row {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.6fr) minmax(100px, 0.8fr) minmax(92px, 0.7fr) minmax(104px, 0.8fr) minmax(132px, 1fr);
-  min-height: 44px;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
-  border: 0;
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 58%, transparent);
-  border-radius: 0;
-  color: var(--ink-fog);
-  font-size: 12px;
-}
-
-.bridge-matrix-head {
-  min-height: 34px;
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.bridge-matrix-row.is-active {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  color: var(--ink-pearl);
-}
-
-.bridge-matrix-row span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bridge-matrix-row span:first-child {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.bridge-matrix-empty {
-  margin: 0;
-  padding: var(--space-4);
-  color: var(--ink-fog);
-  font-size: 13px;
-}
-
-.bridge-matrix-empty--first-run {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
-  border-bottom: 1px solid color-mix(in oklch, var(--surface-rim) 58%, transparent);
-}
-
-.bridge-matrix-empty--first-run p {
-  margin: 0;
-}
-
-.bridge-matrix-empty-action {
-  flex: none;
-  min-height: 38px;
-  padding: 0 var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--aurora) 48%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--aurora) 16%, transparent);
-  color: var(--ink-pearl);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 14%, transparent), 0 0 18px -8px var(--aurora-glow);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 780;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
-}
-
-.bridge-matrix-empty-action:hover {
-  border-color: color-mix(in oklch, var(--aurora) 64%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 22%, transparent);
 }
 
 /* ── Operations 터미널 ─────────────────────────────────────────────
@@ -6506,7 +6232,7 @@
     display: none;
   }
 
-  /* Settings(=.topbar-meta 직속 nav-link) 라벨만 숨기고 주요 nav(Operation·Codex, =.topbar-nav 내부)는 이 단계에서 유지한다. */
+  /* Settings(=.topbar-meta 직속 nav-link) 라벨을 숨겨 meta 고유폭을 줄인다. */
   .topbar-meta > .topbar-nav-link > span:not(.topbar-nav-icon) {
     display: none;
   }
@@ -6516,13 +6242,8 @@
   }
 }
 
-/* Tier B (≤1340px) — 주요 nav(Operation·Codex) 라벨까지 아이콘화하고 toolbar 간격을 더 좁혀
-   meta 고유폭을 ~366px로 줄인다(안전 하한 ~1050px). */
+/* Tier B (≤1340px) — toolbar 간격을 더 좁혀 meta 고유폭을 줄인다(안전 하한 ~1050px). */
 @media (max-width: 1340px) {
-  .topbar-nav .topbar-nav-link > span:not(.topbar-nav-icon) {
-    display: none;
-  }
-
   .topbar-meta {
     gap: var(--space-2);
   }
@@ -6559,9 +6280,6 @@
     justify-content: flex-end;
   }
 
-  .topbar-nav {
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 760px) {
@@ -6603,42 +6321,6 @@
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
     align-items: start;
-  }
-
-  .welcome-page {
-    padding: var(--space-6) var(--space-4);
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .welcome-header,
-  .bridge-matrix-empty--first-run {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .welcome-guide-button,
-  .bridge-matrix-empty-action {
-    width: 100%;
-  }
-
-  .bridge-knowledge-grid,
-  .bridge-health-strip {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .bridge-matrix-table {
-    overflow-x: auto;
-    padding-bottom: var(--space-1);
-  }
-
-  .bridge-carrier-table {
-    overflow-x: auto;
-    padding-bottom: var(--space-1);
-  }
-
-  .bridge-matrix-row,
-  .bridge-carrier-row {
-    min-width: 680px;
   }
 
   .operation-search-overlay {
@@ -6688,50 +6370,6 @@
   .commissioning-skip {
     width: 100%;
   }
-}
-
-/* ============================================================
-   Codex 멀티-뷰 표면 — Full(route)·Side(우현 패널)·Modal(중앙)
-   토글은 GNB·Side 헤더·Modal 헤더 3곳에서 공유한다(같은 스토어 구독).
-   신규 토큰 없이 기존 글래스/brass·aurora/codex-rise 어휘만 사용한다.
-   ============================================================ */
-
-/* 3-way Codex 모드 토글. */
-.codex-mode-toggle {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-}
-
-.codex-mode-option {
-  min-height: 24px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  color: var(--ink-fog);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-/* 활성/hover = "지금 보는 표현" → brass (aurora 역할과 혼용 금지) */
-.codex-mode-option:hover,
-.codex-mode-option:focus-visible,
-.codex-mode-option.is-active {
-  color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 13%, transparent);
 }
 
 /* ---- 공유 표면 크롬 (Side/Modal 헤더·본문 공통) ---- */

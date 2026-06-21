@@ -1,24 +1,14 @@
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTerminalFolderGrant } from "../api.js";
-import { setCodexViewMode, type CodexViewMode } from "../codex-view-mode.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
-import { CodexModeToggle } from "./codex-mode-toggle.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
 import { WhatsNewButton } from "./whatsnew-button.js";
 
 interface TopbarProps {
   readonly state: ConsoleState;
-  readonly codexMode: CodexViewMode;
-}
-
-interface NavItem {
-  readonly to: string;
-  readonly label: string;
-  readonly end: boolean;
-  readonly icon: "operations" | "codex";
 }
 
 type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
@@ -35,12 +25,6 @@ interface GithubStarsState {
   readonly status: "idle" | "loading" | "ready" | "error";
 }
 
-// GNB 항목 — Welcome으로의 이동은 브랜드 로고 클릭이 담당하므로 여기서는 제외한다.
-const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/operations", label: "Operation", end: false, icon: "operations" },
-  { to: "/codex", label: "Codex", end: false, icon: "codex" },
-];
-
 const UPDATE_APPLY_COMPLETE_DELAY_MS = 1_400;
 
 // GitHub 홍보 링크 — 레포 본체, stargazers(별) 페이지, 그리고 star 수를 읽는 공개 REST 엔드포인트.
@@ -52,12 +36,11 @@ const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harnes
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
 
-export function Topbar({ state, codexMode }: TopbarProps) {
+export function Topbar({ state }: TopbarProps) {
   // 연결 이상(connectionError)일 때만 브랜드 시질을 경보색으로 전환한다 — 정상 재연결 순간엔 error가 null이라 깜빡이지 않는다.
   const alert = state.connectionError !== null;
-  // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다 — GNB nav 아이콘과 같은 도형을 공유해 일치를 보장한다. Welcome 등 그 외 라우트는 기본 Fleet 시질을 유지한다.
+  // 활성 라우트에 맞춰 브랜드 시질을 해당 surface의 시그니처 심볼로 전환한다. 그 외 라우트는 기본 Fleet 시질을 유지한다.
   const pathname = useLocation().pathname;
-  const codexRoute = pathname.startsWith("/codex");
   const sigil = pathname.startsWith("/codex")
     ? <CodexIcon />
     : pathname.startsWith("/carrier-settings")
@@ -70,7 +53,7 @@ export function Topbar({ state, codexMode }: TopbarProps) {
   return (
     <header className="topbar">
       <div className="topbar-lead">
-        <Link className="topbar-brand" to="/" aria-label="Welcome으로 이동">
+        <Link className="topbar-brand" to="/operations" aria-label="Operations로 이동">
           <span className={`topbar-sigil ${alert ? "is-alert" : ""}`} aria-hidden="true" title={state.connectionError ?? undefined}>
             {sigil}
           </span>
@@ -79,7 +62,10 @@ export function Topbar({ state, codexMode }: TopbarProps) {
           </h1>
         </Link>
         {/* 리서치 프리뷰 단계임을 GNB에 상시 표기한다 — brass 정체성 배지(대문자 변환은 CSS가 담당). */}
-        <span className="topbar-preview-badge">Research Preview</span>
+        <span className="topbar-preview-badge">
+          <span className="topbar-preview-label">Research Preview</span>
+          {state.version ? <span className="topbar-preview-version">v{state.version}</span> : null}
+        </span>
         {/* GitHub 홍보 컨트롤 — preview 배지와 한 묶음(brass 정체성)으로 묶되, 인터랙티브 링크라 hover 강조를 준다. */}
         <GithubLinks />
         {/* What's new 버튼 — GitHub 컨트롤 바로 우측에 배치해 브랜드/홍보 묶음과 한 그룹으로 둔다. */}
@@ -88,23 +74,6 @@ export function Topbar({ state, codexMode }: TopbarProps) {
       <TheaterControl state={state} />
       <div className="topbar-meta">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
-        <nav className="topbar-nav" aria-label="주 내비게이션">
-          {NAV_ITEMS.map((item) => (
-            <Fragment key={item.to}>
-              <NavLink
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
-              >
-                <span className="topbar-nav-icon" aria-hidden="true">
-                  {item.icon === "operations" ? <OperationsIcon /> : <CodexIcon />}
-                </span>
-                <span>{item.label}</span>
-              </NavLink>
-              {item.icon === "codex" && codexRoute ? <CodexModeToggle mode={codexMode} onSelect={setCodexViewMode} /> : null}
-            </Fragment>
-          ))}
-        </nav>
         <button type="button" className="topbar-icon-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
           <KeyboardIcon />
         </button>
@@ -547,7 +516,7 @@ function FleetSigil() {
 }
 
 function OperationsIcon() {
-  // Operations 시그니처 — 레이더/측위 모티프. GNB nav 아이콘과 Operations 라우트 브랜드 시질이 같은 도형을 공유한다.
+  // Operations 시그니처 — 레이더/측위 모티프. Operations 라우트의 브랜드 시질로 사용한다.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" strokeWidth="1.2" />

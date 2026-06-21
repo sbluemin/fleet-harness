@@ -37,12 +37,6 @@
   overflow: hidden;
 }
 
-/* Welcome 라우트는 console-shell 2행 전체를 차지하고 내용이 길면 스스로 스크롤한다. */
-.welcome-page {
-  min-height: 0;
-  overflow-y: auto;
-}
-
 .codex-host {
   min-width: 0;
   min-height: 0;
@@ -88,8 +82,7 @@
 }
 
 .topbar,
-.stage,
-.welcome-page {
+.stage {
   animation: codex-rise 720ms var(--ease-spring) both;
 }
 
@@ -103,10 +96,6 @@
 .stage,
 .operations-canvas {
   animation-delay: 200ms;
-}
-
-.welcome-page {
-  animation-delay: 160ms;
 }
 
 @media (max-width: 1100px) {
