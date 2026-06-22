@@ -158,6 +158,10 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const visiblePanels = Object.fromEntries(
     Object.entries(canvas.panels).filter(([sessionId]) => !minimizedSet.has(sessionId)),
   );
+  // 최소화된 셸도 미니맵에서 제외한다(Operation과 동일) — 숨은 셸이 blip으로 남거나 미니맵 경계를 왜곡하지 않게.
+  const visibleShellPanels = Object.fromEntries(
+    Object.entries(shellPanels).filter(([id]) => !minimizedShellSet.has(id)),
+  );
   const hasContent = sessions.length > 0 || Object.keys(shellPanels).length > 0;
   const operationIds = sessions.map((session) => session.sessionId);
   const panelHandles = getPanelHandles(operationIds);
@@ -319,7 +323,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       ) : null}
       <CanvasMinimap
         panels={visiblePanels}
-        shellPanels={shellPanels}
+        shellPanels={visibleShellPanels}
         viewport={canvas.viewport}
         canvasSize={canvasSize}
         onJump={(center) => setViewport({
