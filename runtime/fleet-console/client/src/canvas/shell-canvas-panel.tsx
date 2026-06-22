@@ -6,6 +6,7 @@ import { failTerminateTerminalSession, selectTerminalSession } from "../store.js
 import { claimTopZIndex, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
 import { removeShellPanel, setActiveShellPanel, setShellPanelGeometry } from "./shell-panels.js";
+import { minimizeWindowPanel, shellPanelHandle } from "./window-registry.js";
 
 interface ShellCanvasPanelProps {
   readonly id: string;
@@ -13,6 +14,8 @@ interface ShellCanvasPanelProps {
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
   readonly active: boolean;
+  readonly onFocusRequest: () => void;
+  readonly onMaximize: () => void;
 }
 
 interface DragState {
@@ -22,7 +25,7 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active }: ShellCanvasPanelProps) {
+export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, onFocusRequest, onMaximize }: ShellCanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
 
   // 활성화: ① Operations 선택 해제(상호배타 — selectTerminalSession(null)) ② 이 셸을 활성으로 표시
@@ -103,11 +106,32 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active }: 
         onPointerMove={updateDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onDoubleClick={onFocusRequest}
         data-canvas-blocker
       >
         <span className="tenant-beacon is-live" aria-hidden="true" />
         <span className="canvas-panel-title">Shell</span>
         <span className="canvas-panel-cli">shell</span>
+        <button
+          type="button"
+          className="canvas-panel-icon-button"
+          onPointerDown={stopButtonPointer}
+          onClick={() => { minimizeWindowPanel(shellPanelHandle(id)); }}
+          aria-label="Minimize shell panel"
+          title="Minimize panel"
+        >
+          <MinimizeIcon />
+        </button>
+        <button
+          type="button"
+          className="canvas-panel-icon-button"
+          onPointerDown={stopButtonPointer}
+          onClick={onMaximize}
+          aria-label="Maximize shell panel"
+          title="Maximize panel"
+        >
+          <MaximizePanelIcon />
+        </button>
         <button
           type="button"
           className="canvas-panel-icon-button"
@@ -131,6 +155,22 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MinimizeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 11.5h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MaximizePanelIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.2 4.2h7.6v7.6H4.2z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
     </svg>
   );
 }

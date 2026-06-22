@@ -7,8 +7,9 @@ import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
-import { minimizePanel, setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
+import { setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
+import { minimizeWindowPanel, operationPanelHandle } from "./window-registry.js";
 
 interface CanvasPanelProps {
   readonly state: ConsoleState;
@@ -16,6 +17,8 @@ interface CanvasPanelProps {
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
   readonly active: boolean;
+  readonly onFocusRequest: () => void;
+  readonly onMaximize: () => void;
 }
 
 interface DragState {
@@ -25,7 +28,7 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function CanvasPanel({ state, session, geometry, viewport, active }: CanvasPanelProps) {
+export function CanvasPanel({ state, session, geometry, viewport, active, onFocusRequest, onMaximize }: CanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
@@ -182,6 +185,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
         onPointerMove={updateDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onDoubleClick={onFocusRequest}
         data-canvas-blocker
       >
         <span className={sessionBeaconClassName(session, activeJobCount)} aria-hidden="true" />
@@ -206,7 +210,10 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           <span
             className="canvas-panel-title"
             onPointerDown={onNamePointerDown}
-            onDoubleClick={beginRename}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              beginRename();
+            }}
             title="Double-click to rename"
           >
             {displayLabel}
@@ -218,11 +225,21 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
-          onClick={() => { minimizePanel(session.sessionId); }}
+          onClick={() => { minimizeWindowPanel(operationPanelHandle(session.sessionId)); }}
           aria-label={`Minimize operation ${displayLabel}`}
           title="Minimize panel"
         >
           <MinimizeIcon />
+        </button>
+        <button
+          type="button"
+          className="canvas-panel-icon-button"
+          onPointerDown={stopButtonPointer}
+          onClick={onMaximize}
+          aria-label={`Maximize operation ${displayLabel}`}
+          title="Maximize panel"
+        >
+          <MaximizePanelIcon />
         </button>
         <button
           type="button"
@@ -288,6 +305,14 @@ function MinimizeIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 11.5h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MaximizePanelIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.2 4.2h7.6v7.6H4.2z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
     </svg>
   );
 }

@@ -13,7 +13,8 @@ describe("ephemeral shell panel registry", () => {
     const id = addShellPanel("theater-a", { ...GEOMETRY });
     expect(id.startsWith("shell:")).toBe(true);
     const panels = getShellPanels();
-    expect(panels[id]).toEqual({ theaterId: "theater-a", geometry: { ...GEOMETRY } });
+    expect(panels[id]).toMatchObject({ theaterId: "theater-a", geometry: { ...GEOMETRY } });
+    expect(panels[id]?.createdAt).toBeGreaterThan(0);
   });
 
   it("assigns distinct ids to concurrent shell panels", () => {

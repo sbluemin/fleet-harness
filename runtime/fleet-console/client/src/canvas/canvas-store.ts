@@ -17,6 +17,7 @@ export interface CanvasViewport {
 export interface CanvasState {
   readonly viewport: CanvasViewport;
   readonly panels: Record<string, PanelGeometry>;
+  readonly panelCreatedAt: Record<string, number>;
   // 최소화된 Operation sessionId 목록. geometry는 panels에 그대로 보존되므로 복원은 원위치·원크기로 되돌린다.
   readonly minimized: readonly string[];
 }
@@ -30,8 +31,7 @@ type Listener = () => void;
 
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
 const BACKGROUND_ANIMATION_STORAGE_KEY = "fleet-console.canvas.backgroundAnimation";
-const MAXIMIZED_STORAGE_KEY = "fleet-console.canvas.maximized";
-const DOCK_EXPANDED_STORAGE_KEY = "fleet-console.canvas.dockExpanded";
+const MAP_FULLSCREEN_STORAGE_KEY = "fleet-console.canvas.maximized";
 const SAVE_DELAY_MS = 400;
 const DEFAULT_PANEL_WIDTH = 640;
 const DEFAULT_PANEL_HEIGHT = 400;
@@ -45,21 +45,20 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, panels: {}, minimized: [] };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, panels: {}, panelCreatedAt: {}, minimized: [] };
 
 const listeners = new Set<Listener>();
 const backgroundAnimationListeners = new Set<Listener>();
-const maximizedListeners = new Set<Listener>();
-const dockExpandedListeners = new Set<Listener>();
+const mapFullscreenListeners = new Set<Listener>();
 let activeTheaterId: string | null = null;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let backgroundAnimationEnabled = readStoredBackgroundAnimation();
-let maximized = readStoredMaximized();
-let dockExpanded = readStoredDockExpanded();
+let mapFullscreen = readStoredMapFullscreen();
 // 줌 보간 루프가 향하는 목표 viewport. 즉시 이동(pan/focus/load)은 이 값을 current와 동기화해 잔여 보간을 무효화한다.
 let targetViewport: CanvasViewport = DEFAULT_VIEWPORT;
 let zoomRaf: number | null = null;
+let createdAtCounter = 0;
 // 모든 패널(Operations + 셸)이 공유하는 단조 증가 z-index 발급기.
 // 두 레지스트리가 같은 카운터에서 값을 받아 "활성화한 패널이 최상단"이 패널 종류를 가로질러 성립한다.
 let topZIndex = 0;
@@ -83,8 +82,8 @@ export function useBackgroundAnimation(): boolean {
   return useSyncExternalStore(subscribeBackgroundAnimation, getBackgroundAnimationSnapshot, getBackgroundAnimationSnapshot);
 }
 
-export function useMaximized(): boolean {
-  return useSyncExternalStore(subscribeMaximized, getMaximizedSnapshot, getMaximizedSnapshot);
+export function useMapFullscreen(): boolean {
+  return useSyncExternalStore(subscribeMapFullscreen, getMapFullscreenSnapshot, getMapFullscreenSnapshot);
 }
 
 // 최소화 목록은 CanvasState의 일부라 메인 listeners/emit을 그대로 공유한다(별도 채널 불필요).
@@ -92,15 +91,11 @@ export function useMinimized(): readonly string[] {
   return useSyncExternalStore(subscribe, getMinimizedSnapshot, getMinimizedSnapshot);
 }
 
-// 하단 Dock(최소화 패널 트레이)의 펼침/접힘 — 브라우저별 UI 선호라 maximized와 같은 패턴으로 영속한다.
-export function useDockExpanded(): boolean {
-  return useSyncExternalStore(subscribeDockExpanded, getDockExpandedSnapshot, getDockExpandedSnapshot);
-}
-
 export function setState(patch: Partial<CanvasState>): void {
   state = {
     viewport: patch.viewport ?? state.viewport,
     panels: patch.panels ?? state.panels,
+    panelCreatedAt: patch.panelCreatedAt ?? state.panelCreatedAt,
     minimized: patch.minimized ?? state.minimized,
   };
   scheduleSave();
@@ -134,6 +129,7 @@ export function setPanelGeometry(sessionId: string, geometry: PanelGeometry): vo
       ...state.panels,
       [sessionId]: { ...normalizePanelGeometry(geometry, zIndex), zIndex },
     },
+    panelCreatedAt: ensurePanelCreatedAt(sessionId),
   });
 }
 
@@ -172,6 +168,15 @@ export function liftTopZIndex(toAtLeast: number): void {
   topZIndex = Math.max(topZIndex, toAtLeast);
 }
 
+export function claimPanelCreatedAt(): number {
+  createdAtCounter += 1;
+  return createdAtCounter;
+}
+
+export function liftPanelCreatedAt(toAtLeast: number): void {
+  createdAtCounter = Math.max(createdAtCounter, toAtLeast);
+}
+
 export function ensureDefaultGeometry(sessionId: string): PanelGeometry {
   const existing = state.panels[sessionId];
   if (existing) return existing;
@@ -183,7 +188,7 @@ export function ensureDefaultGeometry(sessionId: string): PanelGeometry {
     height: DEFAULT_PANEL_HEIGHT,
     zIndex: claimTopZIndex(),
   };
-  setState({ panels: { ...state.panels, [sessionId]: geometry } });
+  setState({ panels: { ...state.panels, [sessionId]: geometry }, panelCreatedAt: ensurePanelCreatedAt(sessionId) });
   return geometry;
 }
 
@@ -201,7 +206,9 @@ export function prunePanels(validSessionIds: readonly string[]): void {
   // 사라진 세션은 최소화 목록에서도 함께 제거해 유령 칩이 태스크바에 남지 않게 한다.
   const minimized = state.minimized.filter((sessionId) => valid.has(sessionId));
   const minimizedChanged = minimized.length !== state.minimized.length;
-  if (changed || minimizedChanged) setState({ panels, minimized });
+  const panelCreatedAt = Object.fromEntries(Object.entries(state.panelCreatedAt).filter(([sessionId]) => valid.has(sessionId)));
+  const createdAtChanged = Object.keys(panelCreatedAt).length !== Object.keys(state.panelCreatedAt).length;
+  if (changed || minimizedChanged || createdAtChanged) setState({ panels, panelCreatedAt, minimized });
 }
 
 export function loadForTheater(theaterId: string | null): void {
@@ -209,6 +216,7 @@ export function loadForTheater(theaterId: string | null): void {
   cancelZoomTween();
   activeTheaterId = theaterId;
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
+  liftPanelCreatedAt(maxCreatedAtOf(state.panelCreatedAt));
   targetViewport = state.viewport;
   // 복원된 패널의 최대 zIndex 위로 카운터를 끌어올린다 — 새로고침/Theater 전환 후에도 활성화→최상단을 보장한다.
   topZIndex = Math.max(topZIndex, maxZIndexOf(state.panels));
@@ -249,21 +257,15 @@ export function toggleBackgroundAnimation(): void {
   emitBackgroundAnimation();
 }
 
-export function toggleMaximized(): void {
-  setMaximized(!maximized);
+export function toggleMapFullscreen(): void {
+  setMapFullscreen(!mapFullscreen);
 }
 
-export function setMaximized(value: boolean): void {
-  if (maximized === value) return;
-  maximized = value;
-  writeStoredMaximized(maximized);
-  emitMaximized();
-}
-
-export function toggleDockExpanded(): void {
-  dockExpanded = !dockExpanded;
-  writeStoredDockExpanded(dockExpanded);
-  emitDockExpanded();
+export function setMapFullscreen(value: boolean): void {
+  if (mapFullscreen === value) return;
+  mapFullscreen = value;
+  writeStoredMapFullscreen(mapFullscreen);
+  emitMapFullscreen();
 }
 
 function subscribeBackgroundAnimation(listener: Listener): () => void {
@@ -285,38 +287,23 @@ function emitBackgroundAnimation(): void {
   for (const listener of backgroundAnimationListeners) listener();
 }
 
-function subscribeMaximized(listener: Listener): () => void {
-  maximizedListeners.add(listener);
+function subscribeMapFullscreen(listener: Listener): () => void {
+  mapFullscreenListeners.add(listener);
   return () => {
-    maximizedListeners.delete(listener);
+    mapFullscreenListeners.delete(listener);
   };
 }
 
-function getMaximizedSnapshot(): boolean {
-  return maximized;
+function getMapFullscreenSnapshot(): boolean {
+  return mapFullscreen;
 }
 
 function getMinimizedSnapshot(): readonly string[] {
   return state.minimized;
 }
 
-function emitMaximized(): void {
-  for (const listener of maximizedListeners) listener();
-}
-
-function subscribeDockExpanded(listener: Listener): () => void {
-  dockExpandedListeners.add(listener);
-  return () => {
-    dockExpandedListeners.delete(listener);
-  };
-}
-
-function getDockExpandedSnapshot(): boolean {
-  return dockExpanded;
-}
-
-function emitDockExpanded(): void {
-  for (const listener of dockExpandedListeners) listener();
+function emitMapFullscreen(): void {
+  for (const listener of mapFullscreenListeners) listener();
 }
 
 // 줌 보간 한 프레임: current를 target 쪽으로 ZOOM_TWEEN_FACTOR만큼 당기고, 임계치 안이면 스냅 후 정지한다.
@@ -394,6 +381,11 @@ function writeStoredState(theaterId: string | null, value: CanvasState): void {
   }
 }
 
+function ensurePanelCreatedAt(sessionId: string): Record<string, number> {
+  if (state.panelCreatedAt[sessionId] !== undefined) return state.panelCreatedAt;
+  return { ...state.panelCreatedAt, [sessionId]: claimPanelCreatedAt() };
+}
+
 function readStoredBackgroundAnimation(): boolean {
   if (typeof window === "undefined") return true;
   try {
@@ -414,43 +406,22 @@ function writeStoredBackgroundAnimation(value: boolean): void {
   }
 }
 
-function readStoredMaximized(): boolean {
+function readStoredMapFullscreen(): boolean {
   // 기본값 false: 저장된 선호가 없으면 GNB를 정상 노출해 첫 방문자가 내비게이션을 잃지 않는다.
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(MAXIMIZED_STORAGE_KEY) === "true";
+    return window.localStorage.getItem(MAP_FULLSCREEN_STORAGE_KEY) === "true";
   } catch {
     return false;
   }
 }
 
-function writeStoredMaximized(value: boolean): void {
+function writeStoredMapFullscreen(value: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(MAXIMIZED_STORAGE_KEY, String(value));
+    window.localStorage.setItem(MAP_FULLSCREEN_STORAGE_KEY, String(value));
   } catch {
-    // 최대화 선호 저장 실패는 런타임 동작을 막지 않는다.
-  }
-}
-
-function readStoredDockExpanded(): boolean {
-  // 기본값 true: 패널을 처음 최소화하면 곧바로 칩이 보이도록 펼친 상태로 시작한다.
-  if (typeof window === "undefined") return true;
-  try {
-    const stored = window.localStorage.getItem(DOCK_EXPANDED_STORAGE_KEY);
-    if (stored === null) return true;
-    return stored === "true";
-  } catch {
-    return true;
-  }
-}
-
-function writeStoredDockExpanded(value: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DOCK_EXPANDED_STORAGE_KEY, String(value));
-  } catch {
-    // Dock 펼침 선호 저장 실패는 런타임 동작을 막지 않는다.
+    // 맵 전체화면 선호 저장 실패는 런타임 동작을 막지 않는다.
   }
 }
 
@@ -464,9 +435,21 @@ function normalizeCanvasState(value: unknown): CanvasState {
   return {
     viewport: normalizeViewport(value.viewport),
     panels,
+    panelCreatedAt: normalizePanelCreatedAt(value.panelCreatedAt, panels),
     // 저장된 최소화 목록 중 실재하는 패널만 남긴다(stale 직렬화 방어).
     minimized: normalizeMinimized(value.minimized, panels),
   };
+}
+
+function normalizePanelCreatedAt(value: unknown, panels: Record<string, PanelGeometry>): Record<string, number> {
+  const result: Record<string, number> = {};
+  const stored = isRecord(value) ? value : {};
+  let fallback = 0;
+  for (const sessionId of Object.keys(panels)) {
+    fallback += 1;
+    result[sessionId] = readPositiveNumber(stored[sessionId], fallback);
+  }
+  return result;
 }
 
 function normalizeMinimized(value: unknown, panels: Record<string, PanelGeometry>): readonly string[] {
@@ -524,6 +507,10 @@ function nextZIndexForPanels(panels: Record<string, PanelGeometry>): number {
 
 function maxZIndexOf(panels: Record<string, PanelGeometry>): number {
   return Math.max(0, ...Object.values(panels).map((panel) => panel.zIndex));
+}
+
+function maxCreatedAtOf(value: Record<string, number>): number {
+  return Math.max(0, ...Object.values(value));
 }
 
 function readFiniteNumber(value: unknown, fallback: number): number {

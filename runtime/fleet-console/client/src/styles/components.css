@@ -2306,11 +2306,11 @@
   height: 18px;
 }
 
-/* 좌하단 Map 단축키 도움 — 레이더 계기와 같은 심해 글래스 카드. 접으면 '?' FAB만 남는다. */
+/* 좌상단 Map 단축키 도움 — 레이더 계기와 같은 심해 글래스 카드. 접으면 '?' FAB만 남는다. */
 .map-shortcuts {
   position: absolute;
   left: var(--space-4);
-  bottom: var(--space-4);
+  top: var(--space-4);
   z-index: 13;
   width: 250px;
   max-height: min(56%, 380px);
@@ -2327,7 +2327,8 @@
     inset 0 1px 0 color-mix(in oklch, var(--brass) 22%, transparent);
   backdrop-filter: blur(22px) saturate(150%);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
-  animation: codex-rise 520ms var(--ease-spring) both;
+  transform-origin: top left;
+  animation: shortcuts-drop 360ms var(--ease-spring) both;
 }
 
 .map-shortcuts-head {
@@ -2378,14 +2379,14 @@
 .map-shortcuts-fab {
   position: absolute;
   left: var(--space-4);
-  bottom: var(--space-4);
+  top: var(--space-4);
   z-index: 13;
   width: 36px;
   height: 36px;
   box-shadow: var(--shadow-anchor);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 420ms var(--ease-spring) both;
+  animation: shortcuts-drop 300ms var(--ease-spring) both;
 }
 
 .map-shortcuts-toggle svg {
@@ -2582,201 +2583,34 @@
   -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
-/* 최소화된 Operation 패널의 하단 Dock("잠망 트레이"). 미니맵·단축키와 같은 캔버스-고정(absolute) 계기다.
-   그룹 글래스 박스 없음 — 토글 핸들과 칩이 각자 독립 글래스로 떠 있다.
-   앵커: 토글 핸들의 우측 모서리를 화면 가로 중앙(right:50%)에 고정한다. 칩은 토글 왼쪽에서만 좌측으로
-   확장되므로 패널이 늘어도 토글은 제자리에 머물고 좌하단 단축키 계기와는 칩 트랙 max-width로 비킨다. */
+/* 최소화된 Operation/Shell 창 taskbar. world transform 밖 좌하단에 고정되어 패널과 함께 이동/확대되지 않는다. */
 .canvas-dock {
   position: absolute;
   bottom: var(--space-4);
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--space-4);
+  --canvas-dock-safe-inset: 58px;
   z-index: 15;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-2);
-  /* 중앙정렬 dock가 좌우대칭으로 펼쳐질 때의 가로 가용폭. 좌측 SHORTCUTS(좌단 --space-4 + 폭 250px =
-     우측끝 266px)·우측 RADAR(우단 --space-4 + 폭 256px = 좌측끝 272px) 계기 중 더 넓은 클리어런스(272px)에
-     숨돌리기 갭(--space-4)을 더해 양변 기준으로 잡는다(칩이 이 폭을 채우면 더 늘지 않고 페이지네이션으로
-     넘어간다 — 반응형으로 화면이 좁아질수록 가용폭이 줄어 더 많은 페이지로 나뉜다). 상한 1100px.
-     하한 260px: 약 800px 미만의 좁은 화면에선 calc 가용폭이 0/음수로 떨어져 펼친 칩·페이저가 통째로 잘려
-     복원조차 불가능해지므로, 칩+페이저 한 세트가 보이는 최소폭을 보장한다. 그 폭에선 side 계기와 일부
-     겹치나 dock가 z-index 15로 위에 있어 조작 가능하고, side 계기는 각자 FAB으로 접을 수 있다. */
-  max-width: clamp(260px, calc(100vw - (272px + var(--space-4)) * 2), 1100px);
-  /* 세로 스택이라 토글 행 좌우(rail이 넓을 때)에 투명 정렬 영역이 생긴다. dock 컨테이너는 입력을 통과시키고
-     인터랙티브 자식(토글·레일)만 입력을 받게 해, 그 빈 영역에서 캔버스 pan/zoom/우클릭이 막히지 않게 한다.
-     토글/레일 위 우클릭은 자식→dock(data-canvas-blocker) 버블링으로 여전히 컨텍스트 메뉴가 억제된다. */
+  max-width: min(920px, calc(100vw - var(--space-8)));
   pointer-events: none;
-  animation: codex-rise-centered 520ms var(--ease-spring) both;
+  animation: codex-rise 420ms var(--ease-spring) both;
 }
 
-.canvas-dock-toggle,
 .canvas-dock-rail {
   pointer-events: auto;
 }
 
-/* ── 접기/펼치기 핸들 (최소화 패널이 1개 이상일 때만 렌더된다) ── */
-.canvas-dock-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  height: 34px;
-  padding: 0 10px 0 9px;
-  cursor: pointer;
-  color: var(--ink-spectral);
-  background: var(--surface-glass-strong);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.canvas-dock-toggle:hover,
-.canvas-dock-toggle:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  color: var(--brass-bright);
-}
-
-.canvas-dock-toggle-chevron {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  transition: transform 320ms var(--ease-spring);
-}
-
-.canvas-dock-toggle-chevron svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-
-/* 펼침 상태: chevron 180° 회전(∧ 위 → ∨ 아래) — 펼친 패널을 다시 접는 방향을 가리킨다. */
-.canvas-dock.is-expanded .canvas-dock-toggle-chevron {
-  transform: rotate(180deg);
-}
-
-.canvas-dock-toggle-count {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-fog);
-}
-
-/* 접힘 상태에서만 카운트 강조 — 칩이 안 보이므로 개수를 brass로 또렷이 알린다. */
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle-count {
-  color: var(--brass-bright);
-}
-
-/* 접힘 핸들 안 알림 비콘 — 평소 숨김, 알림 시 신호색 점으로 표시한다. */
-.canvas-dock-toggle-beacon {
-  display: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-}
-
-/* 알림: 접힌 핸들이 외곽 진행광으로 "안에 살아있는 게 있다"를 알린다. 색은 신호를 따른다.
-   펼친 상태에선 각 칩이 외곽 진행광으로 직접 상태를 표시하므로 토글 알림은 접힘(:not(.is-expanded))
-   상태에서만 작동한다 — 펼친 토글은 정적으로 둔다. */
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live,
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn {
-  box-shadow: var(--shadow-floating), 0 0 22px -6px var(--uw-glow);
-}
-
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live {
-  --uw-tint: var(--aurora);
-  --uw-glow: var(--aurora-glow);
-  border-color: color-mix(in oklch, var(--aurora) 40%, var(--surface-rim));
-}
-
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn {
-  --uw-tint: var(--warn);
-  --uw-glow: var(--warn-glow);
-  border-color: color-mix(in oklch, var(--warn) 40%, var(--surface-rim));
-}
-
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live::before,
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  padding: 1.5px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--uw-angle),
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 18deg,
-    var(--uw-tint) 52deg,
-    color-mix(in oklch, var(--uw-tint) 55%, transparent) 92deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 150deg,
-    color-mix(in oklch, var(--uw-tint) 12%, transparent) 360deg
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  animation: perimeter-orbit 2.4s linear infinite;
-}
-
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live .canvas-dock-toggle-beacon {
-  display: block;
-  background: var(--aurora);
-  box-shadow: 0 0 8px var(--aurora-glow);
-  animation: beacon-pulse 1.8s ease-in-out infinite;
-}
-
-.canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn .canvas-dock-toggle-beacon {
-  display: block;
-  background: var(--warn);
-  box-shadow: 0 0 8px var(--warn-glow);
-}
-
-/* ── 칩 레일: 펼침 시 토글 "아래"에 나타나는 가로 행(페이저 + 칩 트랙 + 페이지 표시)을 화면 중앙으로
-   정렬한다. 접힘 시 max-height:0 + 페이드로 사라지고, overflow:hidden으로 수직 펼침 전환을 깔끔히 와이프한다.
-   가로 폭은 부모(.canvas-dock)의 침범경계 max-width가 제한하고, 칩 트랙이 그 안에서 줄며 페이지네이션된다. ── */
 .canvas-dock-rail {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-2);
   max-width: 100%;
-  min-height: 0;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition:
-    max-height 360ms var(--ease-spring),
-    opacity 240ms ease;
+  min-height: 40px;
 }
 
-/* 펼침: 한 줄 높이만큼(칩/페이저 34px + codex-rise 등장 오프셋·포커스 링 여유) 수직으로 와이프한다. */
-.canvas-dock.is-expanded .canvas-dock-rail {
-  max-height: 56px;
-  opacity: 1;
-}
-
-/* 칩 트랙(스크롤 뷰포트): 페이저/페이지 표시를 뺀 레일의 남는 가로폭을 차지하며(flex:0 1 auto + min-width:0),
-   콘텐츠가 그 폭을 넘으면 페이저로 페이지를 넘긴다. 폭 상한은 부모 .canvas-dock의 침범경계 max-width가
-   강제하므로 여기 별도 px 캡은 두지 않는다 — 화면이 좁을수록 트랙이 더 줄어 더 많은 페이지로 나뉜다.
-   overflow:hidden이라 스크롤바·휠 스크롤은 없고 '<'/'>' 버튼의 scrollBy(clientWidth)로만 페이지를 넘기며,
-   scroll-snap-align으로 페이지 경계가 칩 시작에 맞아 칩이 어중간하게 잘리지 않는다. */
 .canvas-dock-chips {
   display: flex;
   align-items: center;
@@ -2788,7 +2622,6 @@
   scroll-behavior: smooth;
 }
 
-/* ── 페이저: 칩이 가용 폭을 넘칠 때만 렌더된다(컴포넌트 조건부). 양끝 '<'/'>' + 'n/m' 표시. ── */
 .canvas-dock-pager {
   display: grid;
   place-items: center;
@@ -2826,7 +2659,6 @@
   height: 13px;
 }
 
-/* 페이지 표시 'n/m' — 토글 바로 왼쪽. tabular-nums로 자릿수 변화에도 흔들리지 않는다. */
 .canvas-dock-page {
   flex: none;
   font-family: var(--font-mono);
@@ -2837,7 +2669,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 칩: 최소화된 패널 하나. flex:none으로 스크롤 트랙 안에서 줄어들지 않는다. */
 .canvas-dock-chip {
   position: relative;
   display: flex;
@@ -2845,7 +2676,7 @@
   flex: none;
   gap: 6px;
   height: 34px;
-  padding: 0 12px 0 10px;
+  padding: 0 7px 0 10px;
   white-space: nowrap;
   cursor: pointer;
   scroll-snap-align: start;
@@ -2859,12 +2690,6 @@
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring);
-}
-
-/* 펼침 시 칩이 staggered codex-rise로 떠오른다(--i = 순번). */
-.canvas-dock.is-expanded .canvas-dock-chip {
-  animation: codex-rise 320ms var(--ease-spring) both;
-  animation-delay: calc(var(--i, 0) * 50ms);
 }
 
 .canvas-dock-chip:hover,
@@ -2885,8 +2710,7 @@
 }
 
 /* 알림(underway) = 진행 중 칩의 외곽 진행광. conic 하이라이트 호가 칩 테두리 링을
-   시계방향으로 순환한다. 색 의미는 동일(live=aurora, turn=warn). 칩 자체의 codex-rise
-   등장 모션은 위 .is-expanded .canvas-dock-chip 규칙에서 그대로 유지된다. */
+   시계방향으로 순환한다. 색 의미는 동일(live=aurora, turn=warn). */
 .canvas-dock-chip--underway-live {
   --uw-tint: var(--aurora);
   --uw-glow: var(--aurora-glow);
@@ -2901,7 +2725,7 @@
    회전하는 --uw-angle 기준으로 밝은 호가 한 바퀴 돌고, 나머지 둘레엔 옅은 상시 림이 남아 '전체 외곽'이
    정의된다. 펼친 dock의 칩에서만 표시 — 접힘 시엔 칩 자체가 숨겨지므로 토글 알림이 대신한다.
    AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림으로 단락). */
-.canvas-dock.is-expanded .canvas-dock-chip--underway::before {
+.canvas-dock-chip--underway::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -2930,22 +2754,17 @@
 }
 
 /* 진행 중 칩은 신호색 옅은 글로우를 정적으로 덧대 깊이를 준다(둘레 링 순환은 ::before가 담당). */
-.canvas-dock.is-expanded .canvas-dock-chip--underway {
+.canvas-dock-chip--underway {
   box-shadow: var(--shadow-soft), 0 0 18px -8px var(--uw-glow);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live .canvas-dock-toggle-beacon {
+  .canvas-dock,
+  .canvas-dock-chip--underway::before {
     animation: none;
   }
-  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-live::before,
-  .canvas-dock:not(.is-expanded) .canvas-dock-toggle--attention-turn::before {
-    animation: none;
-    background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
-  }
-  /* 칩 진행광: 순환 정지 + 정적 전체 림(전체 외곽을 옅게 유지). */
-  .canvas-dock.is-expanded .canvas-dock-chip--underway::before {
-    animation: none;
+
+  .canvas-dock-chip--underway::before {
     background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
   }
 }
@@ -2977,6 +2796,62 @@
   border: 1px solid color-mix(in oklch, var(--aurora) 28%, transparent);
   border-radius: var(--radius-sm);
   padding: 1px 6px;
+}
+
+.canvas-dock-chip-close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  margin-left: 2px;
+  cursor: pointer;
+  color: var(--ink-rim);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-dock-chip-close:hover,
+.canvas-dock-chip-close:focus-visible {
+  color: var(--coral);
+  border-color: color-mix(in oklch, var(--coral) 34%, transparent);
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+}
+
+.canvas-dock-chip-close svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.canvas-panel-maximized-layer {
+  position: absolute;
+  inset: 0 0 var(--canvas-dock-safe-inset, 58px) 0;
+  z-index: 14;
+  pointer-events: auto;
+  animation: codex-rise 260ms var(--ease-spring) both;
+}
+
+.canvas-panel-maximized-layer .canvas-panel {
+  max-width: none;
+  max-height: none;
+  border-radius: var(--radius-lg);
+}
+
+.canvas-panel-maximized-layer .canvas-panel-jobdock,
+.canvas-panel-maximized-layer .panel-resize-handle {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-panel-maximized-layer {
+    animation: none;
+  }
 }
 
 .canvas-panel-titlebar {
