@@ -229,8 +229,11 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           );
         })}
         {Object.entries(shellPanels).map(([id, entry]) => {
-          if (minimizedShellSet.has(id)) return null;
+          // 최대화된 셸은 오버레이에서 단독 렌더되므로 world 루프에서는 건너뛴다.
           if (maximizedPanelId === id) return null;
+          // 최소화된 셸은 언마운트하지 않고 visibility:hidden으로 숨긴다 — Terminal/WS를 살려둬
+          // theater-shell의 소켓 단절 grace(4s)가 발동해 실행 중 셸이 죽는 것을 막는다(복원 시 동일 PTY 재부착).
+          const minimizedShell = minimizedShellSet.has(id);
           const handle = panelHandles.find((panel) => panel.id === id) ?? shellPanelHandle(id);
           return (
             <ShellCanvasPanel
@@ -239,7 +242,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
               theaterId={entry.theaterId}
               geometry={entry.geometry}
               viewport={canvas.viewport}
-              active={activeShellId === id}
+              active={!minimizedShell && activeShellId === id}
+              minimized={minimizedShell}
               onFocusRequest={() => focusWindowPanel(shellPanelHandle(id), canvasSize)}
               onMaximize={() => maximizePanel(handle)}
             />

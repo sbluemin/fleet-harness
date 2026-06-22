@@ -14,6 +14,8 @@ interface ShellCanvasPanelProps {
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
   readonly active: boolean;
+  // 최소화 상태 — 언마운트 대신 숨겨 Terminal/WS를 살려둔다(theater-shell PTY가 grace로 죽지 않게).
+  readonly minimized?: boolean;
   readonly onFocusRequest: () => void;
   readonly onMaximize: () => void;
 }
@@ -25,7 +27,7 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, onFocusRequest, onMaximize }: ShellCanvasPanelProps) {
+export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, minimized = false, onFocusRequest, onMaximize }: ShellCanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
 
   // 활성화: ① Operations 선택 해제(상호배타 — selectTerminalSession(null)) ② 이 셸을 활성으로 표시
@@ -88,7 +90,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, on
 
   return (
     <article
-      className={`canvas-panel canvas-panel--shell ${active ? "is-active" : ""}`}
+      className={`canvas-panel canvas-panel--shell ${minimized ? "is-minimized" : ""} ${active ? "is-active" : ""}`}
       style={{
         left: geometry.x,
         top: geometry.y,
@@ -98,6 +100,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, on
       }}
       onPointerDown={bringToFront}
       data-canvas-panel
+      aria-hidden={minimized || undefined}
       aria-label="Shell panel"
     >
       <div

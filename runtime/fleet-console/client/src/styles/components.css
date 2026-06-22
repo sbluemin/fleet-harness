@@ -2125,6 +2125,14 @@
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
 }
 
+/* 최소화된 셸은 언마운트하지 않고 숨긴다 — Terminal/WS를 살려둬 theater-shell PTY가 단절 grace(4s)로
+   죽지 않게 한다. visibility:hidden은 박스 크기를 유지하므로 복원 시 xterm re-fit이 필요 없고,
+   pointer-events:none으로 숨은 패널이 캔버스 조작을 가로채지 않는다. Dock 칩이 최소화 표상을 담당한다. */
+.canvas-panel--shell.is-minimized {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* 우클릭 캔버스 컨텍스트 메뉴의 그룹(섹션) 라벨. */
 .canvas-context-menu-group {
   margin: 0;
@@ -2846,7 +2854,7 @@
 }
 
 .canvas-panel-maximized-layer .canvas-panel-jobdock,
-.canvas-panel-maximized-layer .panel-resize-handle {
+.canvas-panel-maximized-layer .canvas-panel-resize {
   display: none;
 }
 

@@ -83,7 +83,10 @@ export function getMinimizedPanelHandles(operationSessionIds: readonly string[])
 
 export function nextPanelHandle(handles: readonly WindowPanelHandle[], currentId: string | null, delta: number): WindowPanelHandle | null {
   if (handles.length === 0) return null;
-  const currentIndex = Math.max(0, handles.findIndex((handle) => handle.id === currentId));
+  const currentIndex = handles.findIndex((handle) => handle.id === currentId);
+  // 현재/활성 핸들이 없으면(포커스 해제·stale id) delta 방향의 가장자리에서 시작한다.
+  // Math.max(0,-1)로 0에 박으면 Alt+→가 첫 창을 건너뛰고 둘째를 고르는 회귀가 난다(이전 nextOperationId 동작 복원).
+  if (currentIndex === -1) return (delta >= 0 ? handles[0] : handles[handles.length - 1]) ?? null;
   return handles[(currentIndex + delta + handles.length) % handles.length] ?? null;
 }
 

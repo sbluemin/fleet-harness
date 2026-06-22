@@ -145,6 +145,17 @@ describe("window registry facade", () => {
     expect(nextPanelHandle(handles, "op-a", -1)?.id).toBe("op-b");
   });
 
+  it("starts Alt cycling from the edge when no handle matches the current id", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    const handles = getPanelHandles(["op-a", "op-b"]);
+
+    // currentId 없음/stale → 정방향은 첫 핸들, 역방향은 마지막 핸들에서 시작(Math.max(0,-1) 회귀 방지).
+    expect(nextPanelHandle(handles, null, 1)?.id).toBe("op-a");
+    expect(nextPanelHandle(handles, null, -1)?.id).toBe("op-b");
+    expect(nextPanelHandle(handles, "missing", 1)?.id).toBe("op-a");
+  });
+
   it("maximized cycling changes maximizedPanelId without viewport movement", () => {
     setPanelGeometry("op-a", { ...GEOMETRY });
     const shell = addShellPanel("theater-a", { ...GEOMETRY });
