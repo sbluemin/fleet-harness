@@ -7,8 +7,9 @@ import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSession, failTerminateTerminalSession, removeTerminalSession, selectJob, selectTerminalSession, sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
-import { minimizePanel, setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
+import { setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
+import { clearMaximizedPanelId, minimizeWindowPanel, operationPanelHandle } from "./window-registry.js";
 
 interface CanvasPanelProps {
   readonly state: ConsoleState;
@@ -16,6 +17,10 @@ interface CanvasPanelProps {
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
   readonly active: boolean;
+  // 최대화 오버레이 렌더 여부 — drag/geometry 영속을 막고 닫기 시 최대화를 해제한다.
+  readonly maximized?: boolean;
+  readonly onFocusRequest: () => void;
+  readonly onMaximize: () => void;
 }
 
 interface DragState {
@@ -25,7 +30,7 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function CanvasPanel({ state, session, geometry, viewport, active }: CanvasPanelProps) {
+export function CanvasPanel({ state, session, geometry, viewport, active, maximized = false, onFocusRequest, onMaximize }: CanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
@@ -52,7 +57,9 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
 
   const bringToFront = () => {
     selectTerminalSession(session.sessionId);
-    setPanelGeometry(session.sessionId, geometry);
+    // 최대화 오버레이에선 패널이 오버레이 전용 geometry를 받으므로 그것을 저장 geometry로 영속하면 안 된다
+    // (복원 시 원래 위치·크기 손실). 활성화만 하고 geometry 영속은 건너뛴다.
+    if (!maximized) setPanelGeometry(session.sessionId, geometry);
   };
 
   // dock의 job을 선택할 때, 비활성 패널이면 먼저 그 세션을 활성화해야 JobOverlay가 해당 tenant에서
@@ -64,6 +71,8 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // 최대화 상태에선 드래그 이동을 막는다(updateDrag가 오버레이 좌표를 저장 geometry에 덮어쓰지 않게).
+    if (maximized) return;
     event.preventDefault();
     event.stopPropagation();
     bringToFront();
@@ -182,6 +191,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
         onPointerMove={updateDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onDoubleClick={onFocusRequest}
         data-canvas-blocker
       >
         <span className={sessionBeaconClassName(session, activeJobCount)} aria-hidden="true" />
@@ -206,7 +216,10 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           <span
             className="canvas-panel-title"
             onPointerDown={onNamePointerDown}
-            onDoubleClick={beginRename}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              beginRename();
+            }}
             title="Double-click to rename"
           >
             {displayLabel}
@@ -218,7 +231,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
-          onClick={() => { minimizePanel(session.sessionId); }}
+          onClick={() => { minimizeWindowPanel(operationPanelHandle(session.sessionId)); }}
           aria-label={`Minimize operation ${displayLabel}`}
           title="Minimize panel"
         >
@@ -228,7 +241,17 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
           type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
-          onClick={() => { void closeSession(session.sessionId); }}
+          onClick={onMaximize}
+          aria-label={`Maximize operation ${displayLabel}`}
+          title="Maximize panel"
+        >
+          <MaximizePanelIcon />
+        </button>
+        <button
+          type="button"
+          className="canvas-panel-icon-button"
+          onPointerDown={stopButtonPointer}
+          onClick={() => { if (maximized) clearMaximizedPanelId(); void closeSession(session.sessionId); }}
           aria-label={`${dormant ? "Forget" : "Terminate"} operation ${displayLabel}`}
           title={dormant ? "Forget operation" : "Terminate operation"}
         >
@@ -242,7 +265,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active }: Canv
             <span className="canvas-panel-dormant-action">Resume</span>
           </button>
         ) : (
-          <Terminal sessionId={session.sessionId} active={active} zoom={viewport.zoom} onExit={() => removeTerminalSession(session.sessionId)} />
+          <Terminal sessionId={session.sessionId} active={active} zoom={viewport.zoom} onExit={() => { if (maximized) clearMaximizedPanelId(); removeTerminalSession(session.sessionId); }} />
         )}
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(nextGeometry) => setPanelGeometry(session.sessionId, nextGeometry)} />
@@ -288,6 +311,14 @@ function MinimizeIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 11.5h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MaximizePanelIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.2 4.2h7.6v7.6H4.2z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
     </svg>
   );
 }

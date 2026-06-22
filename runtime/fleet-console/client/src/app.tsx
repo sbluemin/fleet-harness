@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { Location } from "react-router-dom";
 
-import { useMaximized } from "./canvas/canvas-store.js";
+import { useMapFullscreen } from "./canvas/canvas-store.js";
 import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
 import { fetchObserverStatus, fetchReleaseNotes, fetchTerminalSessions, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
@@ -29,7 +29,7 @@ export function App() {
   const location = useLocation();
   const pathname = location.pathname;
   const navigate = useNavigate();
-  const maximized = useMaximized();
+  const isMapFullscreen = useMapFullscreen();
   const codexViewMode = useCodexViewMode();
   const codexUserChosen = useCodexUserChosen();
   const codexSideWidth = useCodexSideWidth();
@@ -41,7 +41,7 @@ export function App() {
   const hasRealBackgroundRef = useRef<boolean>(!isCodexRoute);
   // 최대화는 localStorage에 영속되지만, GNB 숨김은 Operations 화면에서만 적용한다 —
   // 다른 라우트(Codex 등)로 가거나 그 상태로 로드되어도 내비게이션이 사라지지 않게 한다.
-  const maximizedActive = maximized && pathname.startsWith("/operations");
+  const mapFullscreenActive = isMapFullscreen && pathname.startsWith("/operations");
   // Codex 표현 모드 도출 — 오버레이(side)는 배경이 있거나 사용자가 직접 모드를 고른 경우 허용한다.
   // (deep-link로 막 들어온 첫 렌더에는 둘 다 아니므로 Full로 강등 → 승인된 "새로고침=Full".)
   // codexUserChosen은 reactive 구독이라, deep-link Full 상태에서 같은 값(side)을 다시 눌러도 재렌더된다.
@@ -192,7 +192,7 @@ export function App() {
   };
 
   return (
-    <div className={`console-shell ${maximizedActive ? "is-maximized" : ""}`}>
+    <div className={`console-shell ${mapFullscreenActive ? "is-map-fullscreen" : ""}`}>
       <Topbar state={state} />
       <Routes location={displayLocation}>
         <Route path="/" element={<Navigate to="/operations" replace />} />

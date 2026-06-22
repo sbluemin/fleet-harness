@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-import { liftTopZIndex, type PanelGeometry } from "./canvas-store.js";
+import { claimPanelCreatedAt, claimTopZIndex, liftPanelCreatedAt, liftTopZIndex, type PanelGeometry } from "./canvas-store.js";
 
 export interface ShellPanelEntry {
   // 이 셸이 띄워진 Theater id. 백엔드 ticket이 이 id로 cwd(Theater 디렉터리)를 해석한다(raw 경로는 클라이언트에 없음).
   readonly theaterId: string;
   readonly geometry: PanelGeometry;
+  readonly createdAt: number;
 }
 
 type Listener = () => void;
@@ -23,6 +24,7 @@ const listeners = new Set<Listener>();
 // durable 세션을 공유하므로 localStorage지만, 셸은 탭별 PTY라 영속 범위가 다르다.
 // 새로고침하면 모듈은 비워지지만 loadShellPanelsForTheater가 복원하며, 같은 패널 id로 백엔드 PTY에 재부착한다.
 let panels: Record<string, ShellPanelEntry> = {};
+let minimized: readonly string[] = [];
 // 활성(포커스) 셸 패널 id. Operations의 activeTerminalSessionId와 별개의 단일 활성 상태다.
 // 두 종류가 동시에 활성으로 보이지 않도록 하는 상호배타는 상위(canvas) 레이어에서 조정한다.
 // 영속하지 않는다 — 새로고침 직후 어떤 셸도 활성 외형이 아니게 해 Operations 활성과 충돌하지 않게 한다.
@@ -47,6 +49,16 @@ export function getActiveShellId(): string | null {
   return activeShellId;
 }
 
+export function getMinimizedShellPanelIds(): readonly string[] {
+  return minimized;
+}
+
+// 최소화된 셸 id 목록 구독 — minimizeShellPanel/restoreShellPanel이 minimized를 새 배열 참조로 교체하므로,
+// 이 스냅샷을 구독하면 비활성 셸을 최소화해도(panels·activeShellId 불변) 소비자가 즉시 리렌더된다(숨김·Dock 칩 반영).
+export function useMinimizedShellPanelIds(): readonly string[] {
+  return useSyncExternalStore(subscribe, getMinimizedShellPanelIds, getMinimizedShellPanelIds);
+}
+
 // 셸 패널을 활성(최상단 포커스)으로 표시한다. null이면 활성 셸 없음. activeShellId는 비영속이라 저장하지 않는다.
 export function setActiveShellPanel(id: string | null): void {
   if (activeShellId === id) return;
@@ -56,7 +68,7 @@ export function setActiveShellPanel(id: string | null): void {
 
 export function addShellPanel(theaterId: string, geometry: PanelGeometry): string {
   const id = newShellPanelId();
-  panels = { ...panels, [id]: { theaterId, geometry } };
+  panels = { ...panels, [id]: { theaterId, geometry, createdAt: nextCreatedAt() } };
   scheduleSave();
   emit();
   return id;
@@ -70,11 +82,29 @@ export function setShellPanelGeometry(id: string, geometry: PanelGeometry): void
   emit();
 }
 
+export function minimizeShellPanel(id: string): void {
+  if (!(id in panels) || minimized.includes(id)) return;
+  minimized = [...minimized, id];
+  if (activeShellId === id) activeShellId = null;
+  scheduleSave();
+  emit();
+}
+
+export function restoreShellPanel(id: string): void {
+  if (!minimized.includes(id)) return;
+  minimized = minimized.filter((entry) => entry !== id);
+  const existing = panels[id];
+  if (existing) panels = { ...panels, [id]: { ...existing, geometry: { ...existing.geometry, zIndex: claimTopZIndex() } } };
+  scheduleSave();
+  emit();
+}
+
 export function removeShellPanel(id: string): void {
   if (!(id in panels)) return;
   const next = { ...panels };
   delete next[id];
   panels = next;
+  minimized = minimized.filter((entry) => entry !== id);
   if (activeShellId === id) activeShellId = null;
   scheduleSave();
   emit();
@@ -83,8 +113,9 @@ export function removeShellPanel(id: string): void {
 // 메모리 레지스트리만 비운다(영속 저장은 건드리지 않는다). Theater 전환·새로고침에는 전체 교체를 담당하는
 // loadShellPanelsForTheater를 쓰고, 이 함수는 영속 없이 화면만 비워야 하는 보조 경로용으로 남긴다.
 export function clearShellPanels(): void {
-  if (Object.keys(panels).length === 0 && activeShellId === null) return;
+  if (Object.keys(panels).length === 0 && activeShellId === null && minimized.length === 0) return;
   panels = {};
+  minimized = [];
   activeShellId = null;
   emit();
 }
@@ -94,7 +125,10 @@ export function clearShellPanels(): void {
 export function loadShellPanelsForTheater(theaterId: string | null): void {
   flushScheduledSave();
   activeTheaterId = theaterId;
-  panels = theaterId ? readStoredShellPanels(theaterId) : {};
+  const restored = theaterId ? readStoredShellPanels(theaterId) : { panels: {}, minimized: [] };
+  panels = restored.panels;
+  minimized = restored.minimized;
+  liftPanelCreatedAt(maxCreatedAtOf(panels));
   // 복원 직후에는 어떤 셸도 활성으로 두지 않는다(Operations 활성과의 상호배타를 깨지 않기 위함).
   activeShellId = null;
   liftTopZIndex(maxZIndexOf(panels));
@@ -118,6 +152,7 @@ export function clearStoredShellPanelsForTheater(theaterId: string): void {
     cancelScheduledSave();
     activeTheaterId = null;
     panels = {};
+    minimized = [];
     activeShellId = null;
     emit();
   }
@@ -160,21 +195,21 @@ function cancelScheduledSave(): void {
   saveTimer = null;
 }
 
-function readStoredShellPanels(theaterId: string): Record<string, ShellPanelEntry> {
-  if (typeof window === "undefined") return {};
+function readStoredShellPanels(theaterId: string): { readonly panels: Record<string, ShellPanelEntry>; readonly minimized: readonly string[] } {
+  if (typeof window === "undefined") return { panels: {}, minimized: [] };
   try {
     const stored = window.sessionStorage.getItem(storageKey(theaterId));
-    if (!stored) return {};
+    if (!stored) return { panels: {}, minimized: [] };
     return normalizeStoredShellPanels(JSON.parse(stored), theaterId);
   } catch {
-    return {};
+    return { panels: {}, minimized: [] };
   }
 }
 
 function writeStoredShellPanels(theaterId: string | null, value: Record<string, ShellPanelEntry>): void {
   if (!theaterId || typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(storageKey(theaterId), JSON.stringify({ panels: value }));
+    window.sessionStorage.setItem(storageKey(theaterId), JSON.stringify({ panels: value, minimized }));
   } catch {
     // 저장 실패는 셸 복구성만 낮추므로 런타임 흐름을 막지 않는다.
   }
@@ -185,14 +220,28 @@ function storageKey(theaterId: string): string {
 }
 
 // 저장된 셸 패널을 검증·정규화한다. 셸 id가 아니거나 theaterId가 저장 키와 어긋난 stale 항목은 버린다.
-function normalizeStoredShellPanels(value: unknown, theaterId: string): Record<string, ShellPanelEntry> {
-  if (!isRecord(value) || !isRecord(value.panels)) return {};
+function normalizeStoredShellPanels(value: unknown, theaterId: string): { readonly panels: Record<string, ShellPanelEntry>; readonly minimized: readonly string[] } {
+  if (!isRecord(value) || !isRecord(value.panels)) return { panels: {}, minimized: [] };
   const result: Record<string, ShellPanelEntry> = {};
+  let fallbackCreatedAt = 0;
   for (const [id, entry] of Object.entries(value.panels)) {
     if (!id.startsWith("shell:") || !isRecord(entry)) continue;
     // 저장 키가 theaterId별이므로 entry.theaterId는 그 값과 일치해야 한다. 어긋나면 손상으로 보고 버린다.
     if (entry.theaterId !== theaterId) continue;
-    result[id] = { theaterId, geometry: normalizeGeometry(entry.geometry) };
+    fallbackCreatedAt += 1;
+    result[id] = { theaterId, geometry: normalizeGeometry(entry.geometry), createdAt: readPositiveNumber(entry.createdAt, fallbackCreatedAt) };
+  }
+  return { panels: result, minimized: normalizeMinimized(value.minimized, result) };
+}
+
+function normalizeMinimized(value: unknown, currentPanels: Record<string, ShellPanelEntry>): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const id of value) {
+    if (typeof id !== "string" || seen.has(id) || !(id in currentPanels)) continue;
+    seen.add(id);
+    result.push(id);
   }
   return result;
 }
@@ -212,6 +261,14 @@ function normalizeGeometry(value: unknown): PanelGeometry {
 
 function maxZIndexOf(value: Record<string, ShellPanelEntry>): number {
   return Math.max(0, ...Object.values(value).map((entry) => entry.geometry.zIndex));
+}
+
+function maxCreatedAtOf(value: Record<string, ShellPanelEntry>): number {
+  return Math.max(0, ...Object.values(value).map((entry) => entry.createdAt));
+}
+
+function nextCreatedAt(): number {
+  return claimPanelCreatedAt();
 }
 
 function readFiniteNumber(value: unknown, fallback: number): number {

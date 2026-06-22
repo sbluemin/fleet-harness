@@ -91,10 +91,10 @@ function QuestionIcon() {
 }
 
 function CollapseIcon() {
-  // 좌하단으로 접는 방향을 가리키는 셰브런.
+  // 좌상단 도움말을 접는 방향을 가리키는 위쪽 셰브런.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M10.5 4.5 5.5 8l5 3.5M11 8H5.5" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.5 10.5 8 5.5l3.5 5M8 11V5.5" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

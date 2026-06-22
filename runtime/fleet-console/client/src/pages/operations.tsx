@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
-import { loadShellPanelsForTheater } from "../canvas/shell-panels.js";
+import { getActiveShellId, loadShellPanelsForTheater } from "../canvas/shell-panels.js";
+import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getPanelHandles, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
 import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
-import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, focusOperation, nextOperationId, selectTerminalSession, theaterSessionOrder } from "../store.js";
+import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
 
 interface OperationsProps {
@@ -36,11 +37,23 @@ export function Operations({ state }: OperationsProps) {
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
       const order = theaterSessionOrder(stateRef.current);
-      if (order.length === 0) return;
+      const handles = getPanelHandles(order);
+      if (handles.length === 0) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      const nextId = nextOperationId(order, stateRef.current.activeTerminalSessionId, event.key === "ArrowRight" ? 1 : -1);
-      if (nextId) focusOperation(nextId);
+      const maximizedPanelId = getMaximizedPanelId();
+      // 비-최대화 순환 앵커: 활성 Operation이 없으면 활성 Shell을 기준으로 삼아, 셸에 포커스된 채로도 순차 순환이 이어지게 한다.
+      const currentId = maximizedPanelId ?? stateRef.current.activeTerminalSessionId ?? getActiveShellId();
+      const delta = event.key === "ArrowRight" ? 1 : -1;
+      const next = nextPanelHandle(handles, currentId, delta);
+      if (!next) return;
+      if (maximizedPanelId) {
+        // 최대화 전환: 대상만 복원·최대화하고 이전 최대화 패널 포함 나머지는 Dock으로. viewport는 고정.
+        maximizeWindowPanel(next, handles);
+        return;
+      }
+      const viewportSize = viewportSizeFor(bodyRef.current);
+      if (viewportSize) focusWindowPanel(next, viewportSize);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -56,6 +69,14 @@ export function Operations({ state }: OperationsProps) {
     if (!state.terminalSessionsHydrated) return;
     prunePanels(sessionOrder);
   }, [sessionOrder, state.terminalSessionsHydrated]);
+
+  useEffect(() => {
+    pruneDanglingMaximizedPanelId(sessionOrder, {
+      operationSessionsHydrated: state.terminalSessionsHydrated,
+      shellPanelsHydrated: true,
+      theaterReady: state.activeTheaterId !== null,
+    });
+  }, [sessionOrder, state.activeTheaterId, state.terminalSessionsHydrated]);
 
   // 검색 등에서 들어온 일회성 이동 요청을 처리한다. 위의 loadForTheater/ensureDefaultGeometry
   // effect가 먼저 선언되어 해당 Theater의 패널이 로드·보장된 뒤 실행되므로 focusPanel이 안전하다.
@@ -84,6 +105,8 @@ export function Operations({ state }: OperationsProps) {
         }
       }
       if (cancelled) return;
+      // 검색/알림 점프는 패널 최대화를 해제한다(idempotent) — 안 그러면 대상이 최대화 오버레이 뒤로 포커스되어 화면이 그대로 보인다.
+      clearMaximizedPanelId();
       const viewportSize = viewportSizeFor(bodyRef.current);
       if (viewportSize) focusPanel(focusedSessionId, viewportSize);
       consumeOperationFocus();

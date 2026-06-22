@@ -4,7 +4,7 @@ import { createTheaterTerminalSession } from "../api.js";
 import { OperationLaunchMenu } from "../components/operation-launch-menu.js";
 import { beginCreateTerminalSession, completeCreateTerminalSession, failCreateTerminalSession, selectTerminalSession, theaterSessions } from "../store.js";
 import type { AgentCliMetadata, ConsoleState } from "../types.js";
-import { animateViewportTo, claimTopZIndex, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMaximized, useBackgroundAnimation, useCanvasState, useMaximized, useMinimized, type PanelGeometry } from "./canvas-store.js";
+import { animateViewportTo, claimTopZIndex, setPanelGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMinimized, type PanelGeometry } from "./canvas-store.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasPanel } from "./canvas-panel.js";
@@ -13,9 +13,10 @@ import { CanvasGrid } from "./canvas-grid.js";
 import { MapShortcuts } from "./map-shortcuts.js";
 import { RubberBand } from "./rubber-band.js";
 import { ShellCanvasPanel } from "./shell-canvas-panel.js";
-import { addShellPanel, setActiveShellPanel, useActiveShellId, useShellPanels } from "./shell-panels.js";
+import { addShellPanel, setActiveShellPanel, useActiveShellId, useMinimizedShellPanelIds, useShellPanels } from "./shell-panels.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
+import { clearMaximizedPanelId, focusWindowPanel, getPanelHandles, maximizeWindowPanel, operationPanelHandle, shellPanelHandle, useMaximizedPanelId, type WindowPanelHandle } from "./window-registry.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -44,10 +45,13 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const canvas = useCanvasState();
   const backgroundAnimationEnabled = useBackgroundAnimation();
-  const maximized = useMaximized();
+  const isMapFullscreen = useMapFullscreen();
   const minimized = useMinimized();
+  const maximizedPanelId = useMaximizedPanelId();
   const shellPanels = useShellPanels();
   const activeShellId = useActiveShellId();
+  // 최소화 셸 id를 구독한다 — opportunistic read만 하면 비활성 셸 최소화 시 리렌더가 안 일어난다(Codex P2).
+  const minimizedShellIds = useMinimizedShellPanelIds();
   const sessions = theaterSessions(state);
   const [launchRequest, setLaunchRequest] = useState<LaunchRequest | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -149,11 +153,27 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   };
 
   const minimizedSet = new Set(minimized);
+  const minimizedShellSet = new Set(minimizedShellIds);
   // 최소화된 패널은 캔버스에서 빠지므로 미니맵(캔버스 개관)에서도 제외해 "사라진 blip" 불일치를 막는다.
   const visiblePanels = Object.fromEntries(
     Object.entries(canvas.panels).filter(([sessionId]) => !minimizedSet.has(sessionId)),
   );
+  // 최소화된 셸도 미니맵에서 제외한다(Operation과 동일) — 숨은 셸이 blip으로 남거나 미니맵 경계를 왜곡하지 않게.
+  const visibleShellPanels = Object.fromEntries(
+    Object.entries(shellPanels).filter(([id]) => !minimizedShellSet.has(id)),
+  );
   const hasContent = sessions.length > 0 || Object.keys(shellPanels).length > 0;
+  const operationIds = sessions.map((session) => session.sessionId);
+  const panelHandles = getPanelHandles(operationIds);
+  const maximizedHandle = maximizedPanelId ? panelHandles.find((handle) => handle.id === maximizedPanelId) ?? null : null;
+  const maximizePanel = (target: WindowPanelHandle) => maximizeWindowPanel(target, panelHandles);
+  const maximizedOverlayGeometry = {
+    x: 0,
+    y: 0,
+    width: Math.max(320, canvasSize.width),
+    height: Math.max(240, canvasSize.height - 72),
+    zIndex: 20,
+  };
 
   return (
     <main
@@ -169,14 +189,14 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       <CanvasGrid viewport={canvas.viewport} backgroundAnimationEnabled={backgroundAnimationEnabled} />
       <button
         type="button"
-        className={`canvas-background-toggle canvas-maximize-toggle ${maximized ? "is-active" : ""}`}
-        onClick={toggleMaximized}
+        className={`canvas-background-toggle canvas-maximize-toggle ${isMapFullscreen ? "is-active" : ""}`}
+        onClick={toggleMapFullscreen}
         data-canvas-blocker
-        aria-label={maximized ? "맵 최대화 해제" : "맵 최대화"}
-        aria-pressed={maximized}
-        title={maximized ? "Exit fullscreen" : "Maximize map"}
+        aria-label={isMapFullscreen ? "맵 전체화면 해제" : "맵 전체화면"}
+        aria-pressed={isMapFullscreen}
+        title={isMapFullscreen ? "Exit map fullscreen" : "Enter map fullscreen"}
       >
-        {maximized ? <RestoreIcon /> : <MaximizeIcon />}
+        {isMapFullscreen ? <RestoreIcon /> : <MaximizeIcon />}
       </button>
       <button
         type="button"
@@ -199,6 +219,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           if (!geometry) return null;
           // 최소화된 패널은 캔버스에서 빠지고 하단 태스크바에 칩으로 표시된다(Terminal 언마운트→복원 시 재연결).
           if (minimizedSet.has(session.sessionId)) return null;
+          if (maximizedPanelId === session.sessionId) return null;
+          const handle = panelHandles.find((entry) => entry.id === session.sessionId) ?? operationPanelHandle(session.sessionId);
           return (
             <CanvasPanel
               key={session.sessionId}
@@ -207,20 +229,67 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
               geometry={geometry}
               viewport={canvas.viewport}
               active={state.activeTerminalSessionId === session.sessionId}
+              onFocusRequest={() => focusWindowPanel(operationPanelHandle(session.sessionId), canvasSize)}
+              onMaximize={() => maximizePanel(handle)}
             />
           );
         })}
-        {Object.entries(shellPanels).map(([id, entry]) => (
-          <ShellCanvasPanel
-            key={id}
-            id={id}
-            theaterId={entry.theaterId}
-            geometry={entry.geometry}
-            viewport={canvas.viewport}
-            active={activeShellId === id}
-          />
-        ))}
+        {Object.entries(shellPanels).map(([id, entry]) => {
+          // 최대화된 셸은 오버레이에서 단독 렌더되므로 world 루프에서는 건너뛴다.
+          if (maximizedPanelId === id) return null;
+          // 최소화된 셸은 언마운트하지 않고 visibility:hidden으로 숨긴다 — Terminal/WS를 살려둬
+          // theater-shell의 소켓 단절 grace(4s)가 발동해 실행 중 셸이 죽는 것을 막는다(복원 시 동일 PTY 재부착).
+          const minimizedShell = minimizedShellSet.has(id);
+          const handle = panelHandles.find((panel) => panel.id === id) ?? shellPanelHandle(id);
+          return (
+            <ShellCanvasPanel
+              key={id}
+              id={id}
+              theaterId={entry.theaterId}
+              geometry={entry.geometry}
+              viewport={canvas.viewport}
+              active={!minimizedShell && activeShellId === id}
+              minimized={minimizedShell}
+              onFocusRequest={() => focusWindowPanel(shellPanelHandle(id), canvasSize)}
+              onMaximize={() => maximizePanel(handle)}
+            />
+          );
+        })}
       </div>
+      {maximizedHandle ? (
+        <div className="canvas-panel-maximized-layer" data-canvas-blocker>
+          {sessions.map((session) => (
+            session.sessionId === maximizedHandle.id ? (
+              <CanvasPanel
+                key={session.sessionId}
+                state={state}
+                session={session}
+                geometry={maximizedOverlayGeometry}
+                viewport={{ x: 0, y: 0, zoom: 1 }}
+                maximized
+                active={state.activeTerminalSessionId === session.sessionId}
+                onFocusRequest={() => focusWindowPanel(maximizedHandle, canvasSize)}
+                onMaximize={clearMaximizedPanelId}
+              />
+            ) : null
+          ))}
+          {Object.entries(shellPanels).map(([id, entry]) => (
+            id === maximizedHandle.id ? (
+              <ShellCanvasPanel
+                key={id}
+                id={id}
+                theaterId={entry.theaterId}
+                geometry={maximizedOverlayGeometry}
+                viewport={{ x: 0, y: 0, zoom: 1 }}
+                maximized
+                active={activeShellId === id}
+                onFocusRequest={() => focusWindowPanel(maximizedHandle, canvasSize)}
+                onMaximize={clearMaximizedPanelId}
+              />
+            ) : null
+          ))}
+        </div>
+      ) : null}
       {!hasContent ? (
         <div className="operations-canvas-empty" data-canvas-blocker>
           <span className="operations-canvas-empty-mark" aria-hidden="true" />
@@ -254,7 +323,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       ) : null}
       <CanvasMinimap
         panels={visiblePanels}
-        shellPanels={shellPanels}
+        shellPanels={visibleShellPanels}
         viewport={canvas.viewport}
         canvasSize={canvasSize}
         onJump={(center) => setViewport({
@@ -267,7 +336,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       {hasContent ? <MapShortcuts /> : null}
       {/* 최소화된 Operation 패널의 하단 Dock(world가 아닌 캔버스 고정 — 토글을 화면 가로 중앙 하단에 두고
           펼치면 그 아래로 칩이 중앙정렬로 펼쳐진다. 패널과 함께 이동·확대되지 않는다). */}
-      <CanvasDock state={state} sessions={sessions} minimized={minimized} />
+      <CanvasDock state={state} sessions={sessions} />
     </main>
   );
 }
