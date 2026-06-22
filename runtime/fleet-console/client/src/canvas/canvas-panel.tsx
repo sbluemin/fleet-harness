@@ -9,7 +9,7 @@ import { applySessionUpdate, failRenameTerminalSession, failResumeTerminalSessio
 import type { ConsoleState, SessionInfo } from "../types.js";
 import { setPanelGeometry, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
-import { minimizeWindowPanel, operationPanelHandle } from "./window-registry.js";
+import { clearMaximizedPanelId, minimizeWindowPanel, operationPanelHandle } from "./window-registry.js";
 
 interface CanvasPanelProps {
   readonly state: ConsoleState;
@@ -17,6 +17,8 @@ interface CanvasPanelProps {
   readonly geometry: PanelGeometry;
   readonly viewport: CanvasViewport;
   readonly active: boolean;
+  // 최대화 오버레이 렌더 여부 — drag/geometry 영속을 막고 닫기 시 최대화를 해제한다.
+  readonly maximized?: boolean;
   readonly onFocusRequest: () => void;
   readonly onMaximize: () => void;
 }
@@ -28,7 +30,7 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function CanvasPanel({ state, session, geometry, viewport, active, onFocusRequest, onMaximize }: CanvasPanelProps) {
+export function CanvasPanel({ state, session, geometry, viewport, active, maximized = false, onFocusRequest, onMaximize }: CanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [draftLabel, setDraftLabel] = useState("");
@@ -55,7 +57,9 @@ export function CanvasPanel({ state, session, geometry, viewport, active, onFocu
 
   const bringToFront = () => {
     selectTerminalSession(session.sessionId);
-    setPanelGeometry(session.sessionId, geometry);
+    // 최대화 오버레이에선 패널이 오버레이 전용 geometry를 받으므로 그것을 저장 geometry로 영속하면 안 된다
+    // (복원 시 원래 위치·크기 손실). 활성화만 하고 geometry 영속은 건너뛴다.
+    if (!maximized) setPanelGeometry(session.sessionId, geometry);
   };
 
   // dock의 job을 선택할 때, 비활성 패널이면 먼저 그 세션을 활성화해야 JobOverlay가 해당 tenant에서
@@ -67,6 +71,8 @@ export function CanvasPanel({ state, session, geometry, viewport, active, onFocu
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // 최대화 상태에선 드래그 이동을 막는다(updateDrag가 오버레이 좌표를 저장 geometry에 덮어쓰지 않게).
+    if (maximized) return;
     event.preventDefault();
     event.stopPropagation();
     bringToFront();
@@ -245,7 +251,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, onFocu
           type="button"
           className="canvas-panel-icon-button"
           onPointerDown={stopButtonPointer}
-          onClick={() => { void closeSession(session.sessionId); }}
+          onClick={() => { if (maximized) clearMaximizedPanelId(); void closeSession(session.sessionId); }}
           aria-label={`${dormant ? "Forget" : "Terminate"} operation ${displayLabel}`}
           title={dormant ? "Forget operation" : "Terminate operation"}
         >

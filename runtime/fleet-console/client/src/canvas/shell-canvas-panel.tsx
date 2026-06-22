@@ -6,7 +6,7 @@ import { failTerminateTerminalSession, selectTerminalSession } from "../store.js
 import { claimTopZIndex, type CanvasViewport, type PanelGeometry } from "./canvas-store.js";
 import { PanelResizeHandles } from "./panel-resize.js";
 import { removeShellPanel, setActiveShellPanel, setShellPanelGeometry } from "./shell-panels.js";
-import { minimizeWindowPanel, shellPanelHandle } from "./window-registry.js";
+import { clearMaximizedPanelId, minimizeWindowPanel, shellPanelHandle } from "./window-registry.js";
 
 interface ShellCanvasPanelProps {
   readonly id: string;
@@ -16,6 +16,8 @@ interface ShellCanvasPanelProps {
   readonly active: boolean;
   // 최소화 상태 — 언마운트 대신 숨겨 Terminal/WS를 살려둔다(theater-shell PTY가 grace로 죽지 않게).
   readonly minimized?: boolean;
+  // 최대화 오버레이 렌더 여부 — drag/geometry 영속을 막고 닫기 시 최대화를 해제한다.
+  readonly maximized?: boolean;
   readonly onFocusRequest: () => void;
   readonly onMaximize: () => void;
 }
@@ -27,7 +29,7 @@ interface DragState {
   readonly geometry: PanelGeometry;
 }
 
-export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, minimized = false, onFocusRequest, onMaximize }: ShellCanvasPanelProps) {
+export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, minimized = false, maximized = false, onFocusRequest, onMaximize }: ShellCanvasPanelProps) {
   const dragRef = useRef<DragState | null>(null);
 
   // 활성화: ① Operations 선택 해제(상호배타 — selectTerminalSession(null)) ② 이 셸을 활성으로 표시
@@ -35,11 +37,14 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, mi
   const bringToFront = () => {
     selectTerminalSession(null);
     setActiveShellPanel(id);
-    setShellPanelGeometry(id, { ...geometry, zIndex: claimTopZIndex() });
+    // 최대화 오버레이에선 오버레이 전용 geometry를 저장 geometry로 영속하지 않는다(복원 시 원래 위치·크기 보존).
+    if (!maximized) setShellPanelGeometry(id, { ...geometry, zIndex: claimTopZIndex() });
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // 최대화 상태에선 드래그 이동을 막는다(updateDrag가 오버레이 좌표를 저장 geometry에 덮어쓰지 않게).
+    if (maximized) return;
     event.preventDefault();
     event.stopPropagation();
     bringToFront();
@@ -82,6 +87,9 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, mi
 
   // 닫기: 레지스트리에서 제거(언마운트)하고 백엔드 PTY도 즉시 종료한다(grace 대기 없이).
   const close = () => {
+    // 최대화된 셸을 닫으면 최대화 상태도 해제한다 — 안 그러면 maximizedPanelId가 사라진 셸을 가리켜
+    // 다음 Alt 순환이 의도치 않게 재최대화한다.
+    if (maximized) clearMaximizedPanelId();
     removeShellPanel(id);
     void terminateTerminalSession(id).catch((error) => {
       failTerminateTerminalSession(error instanceof Error ? error.message : String(error));

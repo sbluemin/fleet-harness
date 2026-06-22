@@ -260,6 +260,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
                 session={session}
                 geometry={maximizedOverlayGeometry}
                 viewport={{ x: 0, y: 0, zoom: 1 }}
+                maximized
                 active={state.activeTerminalSessionId === session.sessionId}
                 onFocusRequest={() => focusWindowPanel(maximizedHandle, canvasSize)}
                 onMaximize={clearMaximizedPanelId}
@@ -274,6 +275,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
                 theaterId={entry.theaterId}
                 geometry={maximizedOverlayGeometry}
                 viewport={{ x: 0, y: 0, zoom: 1 }}
+                maximized
                 active={activeShellId === id}
                 onFocusRequest={() => focusWindowPanel(maximizedHandle, canvasSize)}
                 onMaximize={clearMaximizedPanelId}
