@@ -2832,7 +2832,9 @@
 .canvas-panel-maximized-layer {
   position: absolute;
   inset: 0 0 var(--canvas-dock-safe-inset, 58px) 0;
-  z-index: 14;
+  /* world 패널 위, 그러나 떠 있는 캔버스 컨트롤(단축키 z13·토글/미니맵 z14·Dock z15) "아래"에 둔다 —
+     맵 전체화면+패널 최대화 동시 상태에서 우상단 '맵 전체화면 해제' 토글이 오버레이에 가려 클릭 불가가 되는 트랩을 막는다. */
+  z-index: 12;
   pointer-events: auto;
   animation: codex-rise 260ms var(--ease-spring) both;
 }

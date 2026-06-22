@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, minimizePanel, restorePanel, setPanelGeometry, type PanelGeometry } from "../client/src/canvas/canvas-store.js";
 import { addShellPanel, clearShellPanels, getActiveShellId, getMinimizedShellPanelIds, loadShellPanelsForTheater, minimizeShellPanel, restoreShellPanel } from "../client/src/canvas/shell-panels.js";
-import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, minimizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
+import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, maximizeWindowPanel, minimizeWindowPanel, nextPanelHandle, operationPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
 
 const GEOMETRY: PanelGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -72,6 +72,21 @@ describe("window registry facade", () => {
     expect(getMaximizedPanelId()).toBe("op-a");
     clearMaximizedPanelId();
     expect(getMaximizedPanelId()).toBeNull();
+  });
+
+  it("maximizeWindowPanel minimizes the others, restores the target, and replaces the previous maximize", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    const handles = getPanelHandles(["op-a", "op-b"]);
+
+    maximizeWindowPanel(operationPanelHandle("op-a"), handles);
+    expect(getMaximizedPanelId()).toBe("op-a");
+    expect(getSnapshot().minimized).toEqual(["op-b"]);
+
+    // 전환: op-b를 최대화하면 이전 최대화 op-a는 Dock으로 내려가고 op-b는 복원된다(유령 칩 없음).
+    maximizeWindowPanel(operationPanelHandle("op-b"), handles);
+    expect(getMaximizedPanelId()).toBe("op-b");
+    expect(getSnapshot().minimized).toEqual(["op-a"]);
   });
 
   it("clears maximizedPanelId when the maximized panel is minimized", () => {

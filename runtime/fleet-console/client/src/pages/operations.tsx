@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
 import { getActiveShellId, loadShellPanelsForTheater } from "../canvas/shell-panels.js";
-import { focusWindowPanel, getMaximizedPanelId, getPanelHandles, nextPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../canvas/window-registry.js";
+import { focusWindowPanel, getMaximizedPanelId, getPanelHandles, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
 import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
@@ -48,7 +48,8 @@ export function Operations({ state }: OperationsProps) {
       const next = nextPanelHandle(handles, currentId, delta);
       if (!next) return;
       if (maximizedPanelId) {
-        setMaximizedPanelId(next.id);
+        // 최대화 전환: 대상만 복원·최대화하고 이전 최대화 패널 포함 나머지는 Dock으로. viewport는 고정.
+        maximizeWindowPanel(next, handles);
         return;
       }
       const viewportSize = viewportSizeFor(bodyRef.current);

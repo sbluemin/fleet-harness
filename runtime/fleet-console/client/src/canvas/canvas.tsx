@@ -16,7 +16,7 @@ import { ShellCanvasPanel } from "./shell-canvas-panel.js";
 import { addShellPanel, getMinimizedShellPanelIds, setActiveShellPanel, useActiveShellId, useShellPanels } from "./shell-panels.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { clearMaximizedPanelId, focusWindowPanel, getPanelHandles, minimizeWindowPanel, operationPanelHandle, restoreWindowPanel, setMaximizedPanelId, shellPanelHandle, useMaximizedPanelId, type WindowPanelHandle } from "./window-registry.js";
+import { clearMaximizedPanelId, focusWindowPanel, getPanelHandles, maximizeWindowPanel, operationPanelHandle, shellPanelHandle, useMaximizedPanelId, type WindowPanelHandle } from "./window-registry.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -160,13 +160,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const operationIds = sessions.map((session) => session.sessionId);
   const panelHandles = getPanelHandles(operationIds);
   const maximizedHandle = maximizedPanelId ? panelHandles.find((handle) => handle.id === maximizedPanelId) ?? null : null;
-  const maximizePanel = (target: WindowPanelHandle) => {
-    for (const handle of panelHandles) {
-      if (handle.id !== target.id) minimizeWindowPanel(handle);
-    }
-    restoreWindowPanel(target);
-    setMaximizedPanelId(target.id);
-  };
+  const maximizePanel = (target: WindowPanelHandle) => maximizeWindowPanel(target, panelHandles);
   const maximizedOverlayGeometry = {
     x: 0,
     y: 0,

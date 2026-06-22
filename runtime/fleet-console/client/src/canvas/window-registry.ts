@@ -125,6 +125,18 @@ export function restoreWindowPanel(handle: WindowPanelHandle): void {
   setActiveShellPanel(handle.id);
 }
 
+// 패널 최대화 진입·전환의 단일 경로. 대상을 제외한 모든 핸들을 Dock으로 최소화하고(이전 최대화 패널도
+// minimizeWindowPanel의 clear 경유로 함께 내려감), 대상은 복원해 오버레이로 띄운다. restoreWindowPanel이
+// 종류별 활성(is-active) 상태까지 동기화하므로 별도 활성 처리가 필요 없다. viewport는 건드리지 않는다 —
+// 최대화 상태 Alt 순환이 "전환만, 카메라 고정"이 되도록.
+export function maximizeWindowPanel(target: WindowPanelHandle, allHandles: readonly WindowPanelHandle[]): void {
+  for (const handle of allHandles) {
+    if (handle.id !== target.id) minimizeWindowPanel(handle);
+  }
+  restoreWindowPanel(target);
+  setMaximizedPanelId(target.id);
+}
+
 export function closeWindowPanel(handle: WindowPanelHandle): void {
   if (handle.kind === "operation") {
     void terminateTerminalSession(handle.id)
