@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
 import { getActiveShellId, loadShellPanelsForTheater } from "../canvas/shell-panels.js";
-import { focusWindowPanel, getMaximizedPanelId, getPanelHandles, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
+import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getPanelHandles, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
 import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
@@ -105,6 +105,8 @@ export function Operations({ state }: OperationsProps) {
         }
       }
       if (cancelled) return;
+      // 검색/알림 점프는 패널 최대화를 해제한다(idempotent) — 안 그러면 대상이 최대화 오버레이 뒤로 포커스되어 화면이 그대로 보인다.
+      clearMaximizedPanelId();
       const viewportSize = viewportSizeFor(bodyRef.current);
       if (viewportSize) focusPanel(focusedSessionId, viewportSize);
       consumeOperationFocus();
