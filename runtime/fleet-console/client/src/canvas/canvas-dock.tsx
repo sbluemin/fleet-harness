@@ -186,6 +186,9 @@ function CanvasDockChip({ entry, index }: CanvasDockChipProps) {
       style={{ "--i": index } as CSSProperties}
       onClick={restore}
       onKeyDown={(event) => {
+        // 칩 본체에서 발생한 키만 복원으로 처리한다 — 닫기 버튼 등 중첩 컨트롤의 Enter/Space가 버블링되어
+        // preventDefault+restore가 닫기를 가로채는 것을 막는다(닫기 버튼은 자체 onClick으로 닫힌다).
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           restore();
