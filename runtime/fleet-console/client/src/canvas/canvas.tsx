@@ -13,7 +13,7 @@ import { CanvasGrid } from "./canvas-grid.js";
 import { MapShortcuts } from "./map-shortcuts.js";
 import { RubberBand } from "./rubber-band.js";
 import { ShellCanvasPanel } from "./shell-canvas-panel.js";
-import { addShellPanel, getMinimizedShellPanelIds, setActiveShellPanel, useActiveShellId, useShellPanels } from "./shell-panels.js";
+import { addShellPanel, setActiveShellPanel, useActiveShellId, useMinimizedShellPanelIds, useShellPanels } from "./shell-panels.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { clearMaximizedPanelId, focusWindowPanel, getPanelHandles, maximizeWindowPanel, operationPanelHandle, shellPanelHandle, useMaximizedPanelId, type WindowPanelHandle } from "./window-registry.js";
@@ -50,6 +50,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const maximizedPanelId = useMaximizedPanelId();
   const shellPanels = useShellPanels();
   const activeShellId = useActiveShellId();
+  // 최소화 셸 id를 구독한다 — opportunistic read만 하면 비활성 셸 최소화 시 리렌더가 안 일어난다(Codex P2).
+  const minimizedShellIds = useMinimizedShellPanelIds();
   const sessions = theaterSessions(state);
   const [launchRequest, setLaunchRequest] = useState<LaunchRequest | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
@@ -151,7 +153,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   };
 
   const minimizedSet = new Set(minimized);
-  const minimizedShellSet = new Set(getMinimizedShellPanelIds());
+  const minimizedShellSet = new Set(minimizedShellIds);
   // 최소화된 패널은 캔버스에서 빠지므로 미니맵(캔버스 개관)에서도 제외해 "사라진 blip" 불일치를 막는다.
   const visiblePanels = Object.fromEntries(
     Object.entries(canvas.panels).filter(([sessionId]) => !minimizedSet.has(sessionId)),

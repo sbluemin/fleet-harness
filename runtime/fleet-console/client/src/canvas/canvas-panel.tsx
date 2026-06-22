@@ -265,7 +265,7 @@ export function CanvasPanel({ state, session, geometry, viewport, active, maximi
             <span className="canvas-panel-dormant-action">Resume</span>
           </button>
         ) : (
-          <Terminal sessionId={session.sessionId} active={active} zoom={viewport.zoom} onExit={() => removeTerminalSession(session.sessionId)} />
+          <Terminal sessionId={session.sessionId} active={active} zoom={viewport.zoom} onExit={() => { if (maximized) clearMaximizedPanelId(); removeTerminalSession(session.sessionId); }} />
         )}
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(nextGeometry) => setPanelGeometry(session.sessionId, nextGeometry)} />

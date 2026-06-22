@@ -53,6 +53,12 @@ export function getMinimizedShellPanelIds(): readonly string[] {
   return minimized;
 }
 
+// 최소화된 셸 id 목록 구독 — minimizeShellPanel/restoreShellPanel이 minimized를 새 배열 참조로 교체하므로,
+// 이 스냅샷을 구독하면 비활성 셸을 최소화해도(panels·activeShellId 불변) 소비자가 즉시 리렌더된다(숨김·Dock 칩 반영).
+export function useMinimizedShellPanelIds(): readonly string[] {
+  return useSyncExternalStore(subscribe, getMinimizedShellPanelIds, getMinimizedShellPanelIds);
+}
+
 // 셸 패널을 활성(최상단 포커스)으로 표시한다. null이면 활성 셸 없음. activeShellId는 비영속이라 저장하지 않는다.
 export function setActiveShellPanel(id: string | null): void {
   if (activeShellId === id) return;

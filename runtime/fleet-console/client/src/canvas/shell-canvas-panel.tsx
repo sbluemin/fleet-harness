@@ -155,7 +155,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, mi
         </button>
       </div>
       <div className="canvas-panel-terminal" onPointerDown={stopCanvasPointer} onWheel={stopCanvasWheel} data-canvas-blocker>
-        <Terminal sessionId={id} kind="shell" theaterId={theaterId} active={active} zoom={viewport.zoom} onExit={() => removeShellPanel(id)} />
+        <Terminal sessionId={id} kind="shell" theaterId={theaterId} active={active} zoom={viewport.zoom} onExit={() => { if (maximized) clearMaximizedPanelId(); removeShellPanel(id); }} />
       </div>
       <PanelResizeHandles geometry={geometry} zoom={viewport.zoom} onResize={(next) => setShellPanelGeometry(id, next)} />
     </article>
