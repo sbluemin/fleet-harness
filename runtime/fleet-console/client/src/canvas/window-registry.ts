@@ -118,6 +118,9 @@ export function minimizeWindowPanel(handle: WindowPanelHandle): void {
 }
 
 export function restoreWindowPanel(handle: WindowPanelHandle): void {
+  // 다른 창을 월드로 되살릴 때 최대화를 해제한다 — 안 그러면 Dock 칩으로 복원한 창이 최대화 오버레이 뒤로
+  // 들어가 칩이 "아무 동작 안 함"처럼 보인다. (maximizeWindowPanel은 이 호출 직후 setMaximizedPanelId로 재설정한다.)
+  clearMaximizedPanelId();
   if (handle.kind === "operation") {
     restorePanel(handle.id);
     selectTerminalSession(handle.id);
