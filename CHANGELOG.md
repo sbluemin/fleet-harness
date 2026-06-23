@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-06-23
+
+### Changed
+- [fleet-console] Show every open panel in the Operations dock taskbar (not just minimized ones) and highlight the currently focused panel's chip; clicking a chip brings that panel to the front, and keeps maximized mode when a panel is maximized.
+- [fleet-console] Widen the Operations dock taskbar up to the radar minimap so the chip pager no longer appears too early.
+- [fleet-console] Add a "+" launcher button at the bottom-left of the Operations canvas that opens the new-panel menu, usable even while a panel is maximized.
+- [fleet-console] Move the Alerts notification toggle and panel to the right edge, above the Codex side handle.
+- [fleet-console] Hide the floating canvas controls (minimap, shortcuts, and the fullscreen and background-animation toggles) while a panel is maximized, and highlight the maximized panel's maximize button.
+- [fleet-console] Reworked the Operations canvas panels into an OS-style window system with a persistent taskbar, panel maximize, Shell parity, and stable panel cycling.
+
 ## [1.10.2] - 2026-06-21
 
 ### Changed
