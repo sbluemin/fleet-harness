@@ -5719,8 +5719,8 @@
   flex-direction: column;
   gap: var(--space-3);
   /* 피커는 대시보드가 아니라 계기다 — 80vw×90vh 과대 카드 대신 집중형 규격. */
-  width: min(640px, 92vw);
-  height: min(680px, 86vh);
+  width: min(760px, 94vw);
+  height: min(820px, 90vh);
   padding: var(--space-5) var(--space-5) var(--space-4);
   overflow: hidden;
   border: 1px solid var(--surface-rim-strong);
@@ -5798,6 +5798,57 @@
 .directory-browser-close:hover {
   border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
   color: var(--brass-bright);
+}
+
+.directory-browser-roots {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.directory-browser-roots .directory-browser-kicker {
+  flex: none;
+  color: var(--ink-rim);
+}
+
+.directory-browser-root-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.directory-browser-root-chip {
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-mid) 42%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-root-chip:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
+.directory-browser-root-chip.is-active {
+  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--brass-bright);
+}
+
+.directory-browser-root-chip:disabled {
+  color: var(--ink-rim);
+  cursor: not-allowed;
 }
 
 /* 항로(course) breadcrumb — 죽은 path 스트립을 대체하는 클릭형 경로 마디. */
@@ -5934,6 +5985,62 @@
 }
 
 .directory-browser-up:disabled {
+  color: var(--ink-rim);
+  cursor: not-allowed;
+}
+
+.directory-browser-jump {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.directory-browser-jump-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 46%, transparent);
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: border-color var(--duration-fast) var(--ease-glide), box-shadow var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-jump-input::placeholder {
+  color: var(--ink-rim);
+}
+
+.directory-browser-jump-input:focus {
+  border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
+  box-shadow: 0 0 0 3px var(--brass-glow);
+  outline: none;
+}
+
+.directory-browser-jump-button {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 46%, transparent);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+
+.directory-browser-jump-button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
+.directory-browser-jump-button:disabled {
   color: var(--ink-rim);
   cursor: not-allowed;
 }
