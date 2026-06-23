@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-06-23
+
+### Added
+- [fleet-console] Add Theater directory browser can now reach other drives through a drive rail (C:, D:, and so on) and jump straight to an absolute path via a direct path input, so projects outside the home drive can be registered; the picker is also enlarged for more visible folders.
+
+### Fixed
+- [fleet-console] Keep maximized mode when adding a new Operation or shell panel from the launcher while a panel is maximized; the newly created panel now takes over the maximized overlay instead of exiting maximized mode.
+
 ## [1.11.0] - 2026-06-23
 
 ### Changed
