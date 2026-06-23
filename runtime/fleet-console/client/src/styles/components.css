@@ -2120,6 +2120,17 @@
   right: calc(var(--space-4) + 36px + var(--space-2));
 }
 
+/* 패널 최대화 중에는 떠 있는 캔버스 컨트롤(미니맵·단축키·맵 풀스크린/배경 애니메이션 토글)을 숨긴다 —
+   최대화 패널이 캔버스를 점유하므로 컨트롤이 그 위를 덮지 않게 한다(좌하단 Dock은 유지). 해제 시 자동 복원.
+   .canvas-background-toggle 선택자는 배경 애니메이션 토글과 맵 풀스크린 토글(같은 클래스 공유)을 함께 가린다. */
+.operations-canvas.is-panel-maximized .canvas-background-toggle,
+.operations-canvas.is-panel-maximized .canvas-minimap,
+.operations-canvas.is-panel-maximized .canvas-minimap-fab,
+.operations-canvas.is-panel-maximized .map-shortcuts,
+.operations-canvas.is-panel-maximized .map-shortcuts-fab {
+  display: none;
+}
+
 /* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
 .canvas-panel--shell .canvas-panel-titlebar {
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
@@ -2964,6 +2975,14 @@
   color: var(--brass-bright);
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+}
+
+/* 최대화 상태 패널의 □ 버튼 — 활성(토글하면 복원) 상태를 brass로 또렷이 하이라이트한다(hover보다 강하게). */
+.canvas-panel-icon-button.is-active {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 22%, var(--surface-glass));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 30%, transparent);
 }
 
 .canvas-panel-icon-button svg {

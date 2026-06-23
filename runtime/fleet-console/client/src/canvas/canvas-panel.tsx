@@ -239,11 +239,11 @@ export function CanvasPanel({ state, session, geometry, viewport, active, maximi
         </button>
         <button
           type="button"
-          className="canvas-panel-icon-button"
+          className={`canvas-panel-icon-button ${maximized ? "is-active" : ""}`}
           onPointerDown={stopButtonPointer}
           onClick={onMaximize}
-          aria-label={`Maximize operation ${displayLabel}`}
-          title="Maximize panel"
+          aria-label={maximized ? `Restore operation ${displayLabel}` : `Maximize operation ${displayLabel}`}
+          title={maximized ? "Restore panel" : "Maximize panel"}
         >
           <MaximizePanelIcon />
         </button>

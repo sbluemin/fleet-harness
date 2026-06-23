@@ -108,7 +108,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, mi
       }}
       onPointerDown={bringToFront}
       data-canvas-panel
-      aria-hidden={minimized || undefined}
+      inert={minimized}
       aria-label="Shell panel"
     >
       <div
@@ -135,11 +135,11 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, mi
         </button>
         <button
           type="button"
-          className="canvas-panel-icon-button"
+          className={`canvas-panel-icon-button ${maximized ? "is-active" : ""}`}
           onPointerDown={stopButtonPointer}
           onClick={onMaximize}
-          aria-label="Maximize shell panel"
-          title="Maximize panel"
+          aria-label={maximized ? "Restore shell panel" : "Maximize shell panel"}
+          title={maximized ? "Restore panel" : "Maximize panel"}
         >
           <MaximizePanelIcon />
         </button>
