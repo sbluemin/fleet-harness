@@ -113,6 +113,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     const point = contextMenu?.canvasPoint;
     setContextMenu(null);
     if (!state.activeTheaterId || !point) return;
+    // 최대화 모드에서 '+' 런처로 생성한 새 패널이 최대화 오버레이에 가리지 않게 최대화를 해제한다.
+    clearMaximizedPanelId();
     beginCreateTerminalSession();
     try {
       const session = await createTheaterTerminalSession(state.activeTheaterId, cli.id);
@@ -130,6 +132,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     const point = contextMenu?.canvasPoint;
     setContextMenu(null);
     if (!state.activeTheaterId || !point) return;
+    // 최대화 모드에서 '+' 런처로 만든 새 셸이 최대화 오버레이에 가리지 않게 최대화를 해제한다.
+    clearMaximizedPanelId();
     // 새 셸은 생성 즉시 활성: Operations 선택을 해제하고 이 셸을 활성으로 표시한다.
     selectTerminalSession(null);
     const id = addShellPanel(state.activeTheaterId, { ...geometryAt(point, DEFAULT_SHELL_WIDTH, DEFAULT_SHELL_HEIGHT), zIndex: claimTopZIndex() });
@@ -139,6 +143,18 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const handleResetView = () => {
     setContextMenu(null);
     setViewport({ ...RESET_VIEWPORT });
+  };
+
+  // 좌하단 '+' 런처: 우클릭 컨텍스트 메뉴와 동일한 메뉴를 명시 버튼으로 연다(최대화 상태에서도 새 패널 생성 경로 확보).
+  // anchor는 버튼 위치(좌하단)로 두고 clampedAnchorStyle이 화면 안(버튼 위쪽)으로 클램프한다.
+  // 좌하단 고정 버튼이라 클릭 지점이 없으므로 새 패널은 캔버스 화면 중앙의 world 좌표에 생성한다.
+  const handleOpenLauncher = () => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const anchor: CanvasPoint = { x: 16, y: rect.height - 52 };
+    const canvasPoint = screenToCanvas({ x: rect.width / 2, y: rect.height / 2 }, canvas.viewport);
+    setLaunchRequest(null);
+    setContextMenu({ anchor, canvasPoint });
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
@@ -334,10 +350,32 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       />
       {/* 콘텐츠가 없을 때는 좌하단 빈 상태 안내가 핵심 단축키를 이미 알려주므로, 겹침을 막기 위해 단축키 맵을 숨긴다. */}
       {hasContent ? <MapShortcuts /> : null}
-      {/* 최소화된 Operation 패널의 하단 Dock(world가 아닌 캔버스 고정 — 토글을 화면 가로 중앙 하단에 두고
-          펼치면 그 아래로 칩이 중앙정렬로 펼쳐진다. 패널과 함께 이동·확대되지 않는다). */}
-      <CanvasDock state={state} sessions={sessions} />
+      {/* 좌하단 '+' 런처 — 우클릭 컨텍스트 메뉴(Operation/Shell 생성·뷰 리셋)를 명시 버튼으로도 연다.
+          Theater가 있을 때만 노출(없으면 빈 캔버스 안내가 대신한다). Dock 좌측, 최대화 상태에서도 보인다. */}
+      {state.activeTheaterId ? (
+        <button
+          type="button"
+          className="canvas-launcher-fab"
+          onClick={handleOpenLauncher}
+          data-canvas-blocker
+          aria-label="새 패널 만들기"
+          title="New panel"
+        >
+          <PlusIcon />
+        </button>
+      ) : null}
+      {/* 모든 패널(Operation+셸)을 항상 표시하는 하단 Dock 태스크바(world가 아닌 캔버스 고정 — 패널과 함께
+          이동·확대되지 않는다). 현재 포커스된 패널은 칩이 강조되고, 칩 클릭은 그 패널을 전면 활성화한다. */}
+      <CanvasDock state={state} sessions={sessions} canvasSize={canvasSize} />
     </main>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   );
 }
 

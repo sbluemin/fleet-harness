@@ -313,9 +313,10 @@ function CloseIcon() {
 }
 
 function ChevronIcon({ className }: { readonly className?: string }) {
+  // 우현 가장자리 핸들이라 안쪽(왼쪽)을 가리키는 셰브런으로 "패널 열림" 방향을 표시한다.
   return (
     <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 4l-4 4 4 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

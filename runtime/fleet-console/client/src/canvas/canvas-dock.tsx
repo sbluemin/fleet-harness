@@ -4,13 +4,17 @@ import { sessionBeaconClassName, sessionDisplayLabel } from "../format.js";
 import { isTerminalJobStatus } from "../reduce.js";
 import { sessionJobs } from "../store.js";
 import type { ConsoleState, SessionInfo } from "../types.js";
-import { closeWindowPanel, getMinimizedPanelHandles, restoreWindowPanel, type WindowPanelHandle } from "./window-registry.js";
+import type { CanvasViewportSize } from "./canvas-store.js";
+import { useActiveShellId } from "./shell-panels.js";
+import { activateWindowPanel, closeWindowPanel, getPanelHandles, type WindowPanelHandle } from "./window-registry.js";
 
 type Underway = "live" | "turn" | null;
 
 interface CanvasDockProps {
   readonly state: ConsoleState;
   readonly sessions: readonly SessionInfo[];
+  // 칩 클릭 시 패널을 전면 활성화하며 카메라를 그 패널로 이동하는 데 필요한 캔버스 픽셀 크기.
+  readonly canvasSize: CanvasViewportSize;
 }
 
 interface DockEntry {
@@ -26,6 +30,9 @@ interface DockEntry {
 interface CanvasDockChipProps {
   readonly entry: DockEntry;
   readonly index: number;
+  readonly canvasSize: CanvasViewportSize;
+  // 최대화 모드에서 칩 클릭이 maximizeWindowPanel로 전환할 때 넘길 전체 패널 핸들.
+  readonly allHandles: readonly WindowPanelHandle[];
 }
 
 interface PagerState {
@@ -38,16 +45,22 @@ interface PagerState {
 
 const INITIAL_PAGER: PagerState = { overflow: false, atStart: false, atEnd: true, page: 1, pages: 1 };
 
-export function CanvasDock({ state, sessions }: CanvasDockProps) {
+export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
   const chipsRef = useRef<HTMLDivElement | null>(null);
   const pinRightRef = useRef(true);
   const [pager, setPager] = useState<PagerState>(INITIAL_PAGER);
+  // 활성 셸 id를 구독한다 — 셸 칩의 포커스 강조가 포커스 전환에 즉시 반영되게 한다(opportunistic read는 리렌더 안 됨).
+  const activeShellId = useActiveShellId();
   const sessionById = new Map(sessions.map((session) => [session.sessionId, session]));
   const operationIds = sessions.map((session) => session.sessionId);
-  const entries = getMinimizedPanelHandles(operationIds)
+  // 태스크바는 최소화 여부와 무관하게 모든 패널(Operation+셸)을 항상 표시한다 — OS 윈도우 시스템의 태스크바처럼.
+  // panelHandles 전체는 최대화 모드 칩 전환(maximizeWindowPanel)에 그대로 넘겨야 하므로 변수로 보존한다.
+  const panelHandles = getPanelHandles(operationIds);
+  const entries = panelHandles
     .map((handle): DockEntry | null => {
       const session = sessionById.get(handle.id);
       if (!session) {
+        // 셸 패널: 세션 메타가 없다. 활성 셸이면 포커스 강조한다(Operation 활성과 상호배타라 동시에 둘이 켜지지 않는다).
         return {
           handle,
           label: "Shell",
@@ -55,7 +68,7 @@ export function CanvasDock({ state, sessions }: CanvasDockProps) {
           beaconClassName: "tenant-beacon is-live",
           activeJobCount: 0,
           underway: null,
-          active: false,
+          active: activeShellId === handle.id,
         };
       }
       const activeJobCount = sessionJobs(state, session).filter(({ job }) => !isTerminalJobStatus(job.status)).length;
@@ -138,19 +151,19 @@ export function CanvasDock({ state, sessions }: CanvasDockProps) {
 
   return (
     <div className="canvas-dock is-taskbar" data-canvas-blocker>
-      <div className="canvas-dock-rail" role="toolbar" aria-label="Minimized windows">
+      <div className="canvas-dock-rail" role="toolbar" aria-label="Open windows">
         {showPager ? (
-          <button type="button" className="canvas-dock-pager canvas-dock-pager--prev" onClick={() => turnPage(-1)} disabled={pager.atStart} aria-label="Show older minimized windows" title="Older">
+          <button type="button" className="canvas-dock-pager canvas-dock-pager--prev" onClick={() => turnPage(-1)} disabled={pager.atStart} aria-label="Show older windows" title="Older">
             <PagerCaret direction="prev" />
           </button>
         ) : null}
         <div className="canvas-dock-chips" ref={chipsRef}>
           {entries.map((entry, index) => (
-            <CanvasDockChip key={entry.handle.id} entry={entry} index={index} />
+            <CanvasDockChip key={entry.handle.id} entry={entry} index={index} canvasSize={canvasSize} allHandles={panelHandles} />
           ))}
         </div>
         {showPager ? (
-          <button type="button" className="canvas-dock-pager canvas-dock-pager--next" onClick={() => turnPage(1)} disabled={pager.atEnd} aria-label="Show newer minimized windows" title="Newer">
+          <button type="button" className="canvas-dock-pager canvas-dock-pager--next" onClick={() => turnPage(1)} disabled={pager.atEnd} aria-label="Show newer windows" title="Newer">
             <PagerCaret direction="next" />
           </button>
         ) : null}
@@ -160,15 +173,16 @@ export function CanvasDock({ state, sessions }: CanvasDockProps) {
   );
 }
 
-function CanvasDockChip({ entry, index }: CanvasDockChipProps) {
+function CanvasDockChip({ entry, index, canvasSize, allHandles }: CanvasDockChipProps) {
   const chipClassName = [
     "canvas-dock-chip",
     entry.active ? "canvas-dock-chip--active" : "",
     entry.underway ? `canvas-dock-chip--underway canvas-dock-chip--underway-${entry.underway}` : "",
   ].filter(Boolean).join(" ");
 
-  const restore = () => restoreWindowPanel(entry.handle);
-  // pointerdown은 전파만 막고(칩 복원·드래그 경로 차단), 실제 닫기는 click에서 한 번만 실행한다 —
+  // 칩 클릭 = 그 패널을 전면 활성화한다. 최대화 모드면 최대화를 유지한 채 전환, 아니면 최소화 복원·카메라 이동까지 흡수한다.
+  const activate = () => activateWindowPanel(entry.handle, allHandles, canvasSize);
+  // pointerdown은 전파만 막고(칩 활성화·드래그 경로 차단), 실제 닫기는 click에서 한 번만 실행한다 —
   // pointerdown과 click 양쪽에 닫기를 걸면 closeWindowPanel이 이중 호출되어 두 번째 terminate가 에러 토스트를 띄운다.
   const stopClosePointer = (event: SyntheticEvent<HTMLButtonElement>) => { event.stopPropagation(); };
   const close = (event: SyntheticEvent<HTMLButtonElement>) => {
@@ -181,17 +195,18 @@ function CanvasDockChip({ entry, index }: CanvasDockChipProps) {
       className={chipClassName}
       role="button"
       tabIndex={0}
-      aria-label={`Restore ${entry.label}`}
-      title="Click to restore"
+      aria-label={entry.active ? `${entry.label} (focused)` : `Focus ${entry.label}`}
+      aria-current={entry.active ? "true" : undefined}
+      title={entry.active ? "Focused" : "Click to focus"}
       style={{ "--i": index } as CSSProperties}
-      onClick={restore}
+      onClick={activate}
       onKeyDown={(event) => {
-        // 칩 본체에서 발생한 키만 복원으로 처리한다 — 닫기 버튼 등 중첩 컨트롤의 Enter/Space가 버블링되어
-        // preventDefault+restore가 닫기를 가로채는 것을 막는다(닫기 버튼은 자체 onClick으로 닫힌다).
+        // 칩 본체에서 발생한 키만 활성화로 처리한다 — 닫기 버튼 등 중첩 컨트롤의 Enter/Space가 버블링되어
+        // preventDefault+activate가 닫기를 가로채는 것을 막는다(닫기 버튼은 자체 onClick으로 닫힌다).
         if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          restore();
+          activate();
         }
       }}
     >

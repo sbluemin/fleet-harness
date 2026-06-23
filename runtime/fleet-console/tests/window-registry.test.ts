@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, minimizePanel, restorePanel, setPanelGeometry, type PanelGeometry } from "../client/src/canvas/canvas-store.js";
 import { addShellPanel, clearShellPanels, getActiveShellId, getMinimizedShellPanelIds, loadShellPanelsForTheater, minimizeShellPanel, restoreShellPanel } from "../client/src/canvas/shell-panels.js";
-import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, maximizeWindowPanel, minimizeWindowPanel, nextPanelHandle, operationPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
+import { activateWindowPanel, clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, maximizeWindowPanel, minimizeWindowPanel, nextPanelHandle, operationPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
 
 const GEOMETRY: PanelGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -112,6 +112,33 @@ describe("window registry facade", () => {
       theaterReady: true,
     })).toBe(true);
     expect(getMaximizedPanelId()).toBeNull();
+  });
+
+  it("activateWindowPanel restores and focuses a minimized panel when nothing is maximized", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    minimizePanel("op-a");
+    const handles = getPanelHandles(["op-a", "op-b"]);
+
+    // 비최대화 Dock 칩 클릭: 최소화 복원 + 카메라 이동(전면 활성화).
+    activateWindowPanel(operationPanelHandle("op-a"), handles, { width: 1000, height: 800 });
+
+    expect(getMaximizedPanelId()).toBeNull();
+    expect(getSnapshot().minimized).toEqual([]);
+  });
+
+  it("activateWindowPanel keeps maximized mode and swaps the target when a panel is maximized", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    minimizePanel("op-a");
+    const handles = getPanelHandles(["op-a", "op-b"]);
+    setMaximizedPanelId("op-b");
+
+    // 최대화 모드에서 최소화된 op-a 칩 클릭 → op-a가 최대화로 전환되고 op-b는 Dock으로 내려간다(최대화 모드 유지).
+    activateWindowPanel(operationPanelHandle("op-a"), handles, { width: 1000, height: 800 });
+
+    expect(getMaximizedPanelId()).toBe("op-a");
+    expect(getSnapshot().minimized).toEqual(["op-b"]);
   });
 
   it("focuses Shell panels through Shell geometry and center zoom", () => {

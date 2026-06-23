@@ -106,6 +106,19 @@ export function focusWindowPanel(handle: WindowPanelHandle, viewportSize: Canvas
   animateViewportTo(focusedViewportFor(panel.geometry, viewportSize));
 }
 
+// Dock(태스크바) 칩 클릭의 단일 활성화 경로. 현재 최대화 모드 여부로 동작이 갈린다:
+//  - 최대화 모드(maximizedPanelId != null): 최대화를 풀지 않고 대상을 최대화로 전환한다(maximizeWindowPanel).
+//    사용자가 최대화 모드를 의도한 상태이므로, 다른(최소화 포함) 칩을 눌러도 그 패널이 최대화 상태로 열려야 한다.
+//  - 비최대화: focusWindowPanel로 종류별 활성화·최소화 해제·최상단 z·카메라 이동을 한 번에 처리한다.
+//    restoreWindowPanel과 달리 카메라를 패널로 옮겨 화면 밖 패널도 "칩을 누르면 그리로 간다"가 성립하게 한다.
+export function activateWindowPanel(handle: WindowPanelHandle, allHandles: readonly WindowPanelHandle[], viewportSize: CanvasViewportSize): void {
+  if (maximizedPanelId !== null) {
+    maximizeWindowPanel(handle, allHandles);
+    return;
+  }
+  focusWindowPanel(handle, viewportSize);
+}
+
 export function minimizeWindowPanel(handle: WindowPanelHandle): void {
   // 최대화된 패널을 최소화하면 최대화 상태도 함께 해제한다 — 안 그러면 오버레이가 그 패널을 계속 렌더해
   // Dock 칩과 오버레이에 동시에 떠 있는 유령 상태가 된다.

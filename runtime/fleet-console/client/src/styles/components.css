@@ -2606,15 +2606,58 @@
 .canvas-dock {
   position: absolute;
   bottom: var(--space-4);
-  left: var(--space-4);
+  /* 좌하단 '+' 런처(36px) 오른쪽으로 민다: space-4(런처 left) + 36 + space-2(간격) = 60px. */
+  left: calc(var(--space-4) + 36px + var(--space-2));
   --canvas-dock-safe-inset: 58px;
   z-index: 15;
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  max-width: min(920px, calc(100vw - var(--space-8)));
+  /* 펼친 레이더(미니맵: 우측 space-4 + 256px) 직전까지 넓혀 pager가 너무 일찍 뜨지 않게 한다.
+     좌측(런처 60) + 미니맵폭(256) + 미니맵 우측여백(space-4 16) + 미니맵 간격(space-4 16) = 348px. */
+  max-width: calc(100vw - 348px);
   pointer-events: none;
   animation: codex-rise 420ms var(--ease-spring) both;
+}
+
+/* 좌하단 '+' 런처 — 캔버스 우클릭 컨텍스트 메뉴(Operation/Shell 생성·뷰 리셋)를 명시 버튼으로도 연다.
+   최대화 상태에서도 노출되어(is-panel-maximized 숨김 규칙에 미포함) 새 패널 생성 경로를 보존한다. */
+.canvas-launcher-fab {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
+  color: var(--brass);
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+  animation: codex-rise 420ms var(--ease-spring) both;
+}
+
+.canvas-launcher-fab:hover,
+.canvas-launcher-fab:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
+  outline: none;
+}
+
+.canvas-launcher-fab svg {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
 .canvas-dock-rail {
@@ -4914,9 +4957,10 @@
 /* ── 닫힘: 우현 엣지 핸들 ── */
 .notification-handle {
   position: fixed;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
+  /* 우현 가장자리에서 Codex 엣지 핸들(top:50% 중앙) 위쪽에 세로로 인접 배치. */
+  top: auto;
+  bottom: calc(50% + 84px);
+  right: 0;
   z-index: 59;
   display: flex;
   flex-direction: column;
@@ -4924,8 +4968,8 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-2);
   border: 1px solid var(--surface-rim);
-  border-left: none;
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  border-right: none;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   background: color-mix(in oklch, var(--surface-glass) 88%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(18px) saturate(140%);
@@ -4937,7 +4981,7 @@
 
 .notification-handle:hover,
 .notification-handle:focus-visible {
-  transform: translateY(-50%) translateX(3px);
+  transform: translateX(-3px);
   color: var(--brass);
   background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
   outline: none;
@@ -5029,7 +5073,7 @@
 .notification-dock-layer {
   position: fixed;
   top: var(--console-topbar-offset);
-  left: 0;
+  right: 0;
   bottom: var(--space-4);
   z-index: 59;
   width: min(360px, calc(100vw - var(--space-6)));
@@ -5044,11 +5088,11 @@
   height: 100%;
   padding: var(--space-3) var(--space-4) var(--space-4);
   border: 1px solid var(--surface-rim);
-  border-left: none;
-  border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
-  /* brass 코너 조명 + glass 본체 — 함교 계기판 깊이 */
+  border-right: none;
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  /* brass 코너 조명 + glass 본체 — 함교 계기판 깊이(우현 도킹이라 우상단 코너에서 발광) */
   background:
-    radial-gradient(130% 60% at 0% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(20px) saturate(150%);
