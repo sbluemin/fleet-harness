@@ -113,14 +113,16 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     const point = contextMenu?.canvasPoint;
     setContextMenu(null);
     if (!state.activeTheaterId || !point) return;
-    // 최대화 모드에서 '+' 런처로 생성한 새 패널이 최대화 오버레이에 가리지 않게 최대화를 해제한다.
-    clearMaximizedPanelId();
+    // 최대화 상태에서 패널을 추가하면 최대화를 풀지 않고 새 패널을 최대화로 전환한다(현재 상태 유지 — Dock 칩 전환과 동일 멘탈모델).
+    // 전환에 쓸 기존 핸들을 생성 전에 캡처한다(이들은 Dock으로 내려가고 새 패널이 오버레이로 올라온다).
+    const handlesToSwap = maximizedPanelId !== null ? panelHandles : null;
     beginCreateTerminalSession();
     try {
       const session = await createTheaterTerminalSession(state.activeTheaterId, cli.id);
       setPanelGeometry(session.sessionId, geometryAt(point, DEFAULT_OPERATION_WIDTH, DEFAULT_OPERATION_HEIGHT));
       completeCreateTerminalSession(session);
       selectTerminalSession(session.sessionId);
+      if (handlesToSwap) maximizeWindowPanel(operationPanelHandle(session.sessionId), handlesToSwap);
     } catch (error) {
       failCreateTerminalSession(error instanceof Error ? error.message : String(error));
     }
@@ -132,12 +134,13 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     const point = contextMenu?.canvasPoint;
     setContextMenu(null);
     if (!state.activeTheaterId || !point) return;
-    // 최대화 모드에서 '+' 런처로 만든 새 셸이 최대화 오버레이에 가리지 않게 최대화를 해제한다.
-    clearMaximizedPanelId();
+    // 최대화 상태에서 셸을 추가하면 최대화를 풀지 않고 새 셸을 최대화로 전환한다(현재 상태 유지).
+    const handlesToSwap = maximizedPanelId !== null ? panelHandles : null;
     // 새 셸은 생성 즉시 활성: Operations 선택을 해제하고 이 셸을 활성으로 표시한다.
     selectTerminalSession(null);
     const id = addShellPanel(state.activeTheaterId, { ...geometryAt(point, DEFAULT_SHELL_WIDTH, DEFAULT_SHELL_HEIGHT), zIndex: claimTopZIndex() });
     setActiveShellPanel(id);
+    if (handlesToSwap) maximizeWindowPanel(shellPanelHandle(id), handlesToSwap);
   };
 
   const handleResetView = () => {
