@@ -22,6 +22,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [jumpPath, setJumpPath] = useState("");
   const [highlight, setHighlight] = useState(0);
   const filterRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -66,6 +67,9 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
   }, [entries, query]);
 
   const breadcrumb = useMemo(() => (listing ? buildBreadcrumb(listing) : []), [listing]);
+  const activeDrive = listing ? getDrivePrefix(listing.path) : null;
+  const roots = listing?.roots ?? [];
+  const showRoots = roots.length > 1;
 
   // filtered가 줄면 하이라이트가 범위를 벗어날 수 있으니 항상 끝으로 클램프한다.
   const activeIndex = filtered.length === 0 ? -1 : Math.min(highlight, filtered.length - 1);
@@ -85,6 +89,11 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
 
   const goUp = () => {
     if (listing?.parentPath != null && loadingPath === null) void loadPath(listing.parentPath);
+  };
+
+  const jumpToPath = () => {
+    const target = jumpPath.trim();
+    if (target !== "" && loadingPath === null) void loadPath(target);
   };
 
   const currentPath = listing?.path ?? null;
@@ -142,6 +151,33 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           <button type="button" className="directory-browser-close" onClick={onCancel} aria-label="Close">×</button>
         </header>
 
+        {showRoots ? (
+          <div className="directory-browser-roots" role="group" aria-label="Drives">
+            <span className="directory-browser-kicker">Stations</span>
+            <div className="directory-browser-root-chips">
+              {roots.map((root) => {
+                const isActive = activeDrive != null && getDrivePrefix(root) === activeDrive;
+                return (
+                  <button
+                    type="button"
+                    key={root}
+                    className={`directory-browser-root-chip ${isActive ? "is-active" : ""}`}
+                    aria-current={isActive ? "location" : undefined}
+                    disabled={loadingPath !== null}
+                    title={root}
+                    onClick={() => {
+                      if (loadingPath === null) void loadPath(root);
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    {formatRootLabel(root)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <nav className="directory-browser-course" aria-label="Path">
           {breadcrumb.map((segment, index) => {
             const isLast = index === breadcrumb.length - 1;
@@ -191,6 +227,35 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           >
             <UpGlyph />
             <span>Up</span>
+          </button>
+        </div>
+
+        <div className="directory-browser-jump">
+          <input
+            type="text"
+            className="directory-browser-jump-input"
+            placeholder="Or jump to a path — e.g. D:\\projects"
+            aria-label="Jump to absolute path"
+            value={jumpPath}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => setJumpPath(event.target.value)}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Enter") {
+                event.preventDefault();
+                jumpToPath();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="directory-browser-jump-button"
+            disabled={jumpPath.trim() === "" || loadingPath !== null}
+            onClick={jumpToPath}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            Go
           </button>
         </div>
 
@@ -290,6 +355,15 @@ function detectSeparator(listing: TerminalFolderListResponse): "\\" | "/" {
   if (listing.roots.some((root) => /^[A-Za-z]:\\$/.test(root))) return "\\";
   if (/^[A-Za-z]:\\/.test(listing.path)) return "\\";
   return "/";
+}
+
+function getDrivePrefix(path: string): string | null {
+  const match = /^([A-Za-z]:)\\?/.exec(path);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function formatRootLabel(root: string): string {
+  return root.replace(/[\\/]+$/, "") || root;
 }
 
 function TheaterSigil() {
