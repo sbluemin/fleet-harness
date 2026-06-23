@@ -108,7 +108,7 @@ export function ShellCanvasPanel({ id, theaterId, geometry, viewport, active, mi
       }}
       onPointerDown={bringToFront}
       data-canvas-panel
-      aria-hidden={minimized || undefined}
+      inert={minimized}
       aria-label="Shell panel"
     >
       <div
