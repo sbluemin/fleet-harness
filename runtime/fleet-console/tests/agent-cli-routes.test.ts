@@ -2,8 +2,8 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createAgentCliRouter } from "../src/agent-cli-routes.js";
-import type { AgentCliStatus } from "../src/agent-cli-types.js";
+import { createAgentCliRouter } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-routes.js";
+import type { AgentCliStatus } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-types.js";
 
 interface WriteJsonCall {
   readonly status: number;

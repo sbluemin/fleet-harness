@@ -1,0 +1,41 @@
+{
+  "name": "@fleet-plugins/terminal",
+  "version": "1.9.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/routes.d.ts",
+      "default": "./dist/routes.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@dotobokuri/core-agent": "workspace:*",
+    "@dotobokuri/core-unified-agent": "workspace:*",
+    "@dotobokuri/fleet-admiral": "workspace:*",
+    "@dotobokuri/fleet-carriers": "workspace:*",
+    "@dotobokuri/fleet-infra": "workspace:*",
+    "@dotobokuri/fleet-wiki": "workspace:*",
+    "@fleet-console/sdk": "workspace:*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-unicode11": "^0.8.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
+    "react": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
+  }
+}

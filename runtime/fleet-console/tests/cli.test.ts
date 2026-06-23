@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ConsoleLockPayload } from "../src/api-types.js";
+import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import {
   buildConsoleHelpText,
   openFleetConsole,
@@ -12,8 +12,8 @@ import {
   parseConsoleHookCommand,
   runConsoleStatus,
   runConsoleStop,
-} from "../src/cli.js";
-import { captureSession } from "../src/session-capture.js";
+} from "../core/host/cli.js";
+import { captureSession } from "../../fleet-plugins/terminal/server/agent-api/session-capture.js";
 
 const LOCK: ConsoleLockPayload = {
   pid: 1234,

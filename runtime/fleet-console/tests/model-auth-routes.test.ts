@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createModelAuthRouter } from "../src/model-auth-routes.js";
+import { createModelAuthRouter } from "../core/host/model-auth-routes.js";
 
 interface WriteJsonCall {
   readonly status: number;

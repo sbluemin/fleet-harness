@@ -2,32 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyEvent,
-  computeVisibleSessionIds,
   createEmptyJob,
+  reduceSnapshotJob,
+} from "../../fleet-plugins/terminal/client/agent/reduce.js";
+import {
+  computeVisibleOperationIds,
   filterByPreferences,
   groupNotificationsByTheater,
-  reduceSnapshotJob,
   splitNotificationsByVisibility,
-} from "../client/src/reduce.js";
-import { createDefaultTerminalFontSettings } from "../client/src/terminal-font.js";
-import type { ConsoleState, NotificationPreferences, ObservedEvent, OperationNotification } from "../client/src/types.js";
+} from "../core/client/src/notification-reduce.js";
+import { createDefaultTerminalFontSettings } from "../core/client/src/terminal-font.js";
+import type { ObservedEvent } from "../../fleet-plugins/terminal/client/agent/types.js";
+import type { ConsoleState, NotificationPreferences, OperationNotification } from "../core/client/src/types.js";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, jobId = "job-1"): ObservedEvent {
   return { id, tenantId: "tenant-1", jobId, type, at: 1_000 + id, event: { type, jobId, ...event } };
 }
 
 function makeNotification(
-  sessionId: string,
+  operationId: string,
   theaterId: string | null,
   lastRaisedSeq: number,
   count = 1,
 ): OperationNotification {
   return {
     kind: "input-waiting",
-    sessionId,
+    operationId,
     theaterId,
     theaterLabel: theaterId ?? "Unknown",
-    operationLabel: sessionId,
+    operationLabel: operationId,
     count,
     lastRaisedSeq,
   };
@@ -47,21 +50,15 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     requestedPort: null,
     effectivePort: 0,
     portHonored: true,
-    tenants: [],
     theaters: [],
-    agentClis: [],
+    operations: [],
+    operationsHydrated: true,
     activeTheaterId: null,
+    activeOperationId: null,
+    operationStatus: {},
     addingTheater: false,
     theaterError: null,
-    sessions: {},
-    sessionOrder: [],
-    activeTerminalSessionId: null,
     operationsViewActive: false,
-    creatingTerminalSession: false,
-    terminalSessionError: null,
-    tenantJobs: {},
-    tenantOrder: [],
-    timelineOpen: false,
     operationSearchOpen: false,
     shortcutsOpen: false,
     whatsNewOpen: false,
@@ -75,9 +72,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     selectedReleaseNoteKey: null,
     onboardingOpen: false,
     bootstrapped: true,
-    terminalSessionsHydrated: true,
     pendingOperationFocus: null,
-    selectedJobId: null,
     operationNotifications: {},
     notificationPreferences: { globalMute: false, dnd: false, mutedTheaterIds: {} },
     ...patch,
@@ -134,12 +129,12 @@ describe("applyEvent", () => {
 
   it("merges tool call updates by toolCallId", () => {
     let job = createEmptyJob("tenant-1", "job-1", 1_000);
-    job = applyEvent(job, makeEvent(1, "track:tool", { trackId: "t1", toolCallId: "c1", title: "Read file", status: "running" }));
-    job = applyEvent(job, makeEvent(2, "track:tool", { trackId: "t1", toolCallId: "c1", title: "Read file", status: "done" }));
-    job = applyEvent(job, makeEvent(3, "track:tool", { trackId: "t1", title: "Grep", status: "running" }));
+    job = applyEvent(job, makeEvent(1, "track:tool", { trackId: "t1", toolId: "c1", name: "Read file", status: "running" }));
+    job = applyEvent(job, makeEvent(2, "track:tool", { trackId: "t1", toolId: "c1", name: "Read file", status: "done" }));
+    job = applyEvent(job, makeEvent(3, "track:tool", { trackId: "t1", toolId: "c2", name: "Grep", status: "running" }));
     expect(job.tracks.t1?.tools).toHaveLength(2);
-    expect(job.tracks.t1?.tools[0]).toMatchObject({ title: "Read file", status: "done" });
-    expect(job.tracks.t1?.tools[1]).toMatchObject({ title: "Grep", status: "running" });
+    expect(job.tracks.t1?.tools[0]).toMatchObject({ name: "Read file", status: "done" });
+    expect(job.tracks.t1?.tools[1]).toMatchObject({ name: "Grep", status: "running" });
   });
 
   it("finalizes tracks and jobs with status, error, and fallback text", () => {
@@ -219,26 +214,38 @@ describe("reduceSnapshotJob", () => {
 });
 
 describe("notification selectors", () => {
-  it("computes no visible sessions outside Operations", () => {
-    expect([...computeVisibleSessionIds(makeConsoleSnap({
+  it("computes no visible operations outside Operations", () => {
+    expect([...computeVisibleOperationIds(makeConsoleSnap({
       operationsViewActive: false,
-      activeTerminalSessionId: "session-a",
     }))]).toEqual([]);
   });
 
-  it("treats every canvas operation as hidden so alerts surface regardless of minimized state", () => {
-    // canvas 모드는 가시성에 의한 알림 억제를 하지 않는다 — 최소화하지 않은 패널도 ALERTS로 알림이 간다.
-    const visible = computeVisibleSessionIds(makeConsoleSnap({ operationsViewActive: true }));
-    expect([...visible]).toEqual([]);
+  it("computes visible operations while the Operations canvas is mounted", () => {
+    const visible = computeVisibleOperationIds(makeConsoleSnap({
+      operationsViewActive: true,
+      operations: [{
+        id: "operation-a",
+        theaterId: "theater-a",
+        parentId: null,
+        type: "shell",
+        pluginId: "terminal",
+        title: "Shell",
+        payload: {},
+        geometry: null,
+        state: {},
+        ts: { createdAt: 1, updatedAt: 1 },
+      }],
+    }));
+    expect([...visible]).toEqual(["operation-a"]);
   });
 
-  it("splits hidden and visible notifications by session id", () => {
-    const sessionA = makeNotification("session-a", "theater-a", 1);
-    const sessionB = makeNotification("session-b", "theater-b", 2);
+  it("splits hidden and visible notifications by operation id", () => {
+    const operationA = makeNotification("operation-a", "theater-a", 1);
+    const operationB = makeNotification("operation-b", "theater-b", 2);
 
-    expect(splitNotificationsByVisibility([sessionA, sessionB], new Set(["session-a"]))).toEqual({
-      hidden: [sessionB],
-      visible: [sessionA],
+    expect(splitNotificationsByVisibility([operationA, operationB], new Set(["operation-a"]))).toEqual({
+      hidden: [operationB],
+      visible: [operationA],
     });
   });
 
@@ -249,7 +256,7 @@ describe("notification selectors", () => {
       makeNotification("session-c", "theater-a", 3),
     ]);
 
-    expect(groups.map((group) => [group.theaterId, group.totalCount, group.notifications.map((item) => item.sessionId)])).toEqual([
+    expect(groups.map((group) => [group.theaterId, group.totalCount, group.notifications.map((item) => item.operationId)])).toEqual([
       ["theater-b", 1, ["session-b"]],
       ["theater-a", 3, ["session-c", "session-a"]],
     ]);
@@ -264,6 +271,6 @@ describe("notification selectors", () => {
 
     expect(filterByPreferences(notifications, { ...base, globalMute: true })).toEqual([]);
     expect(filterByPreferences(notifications, { ...base, dnd: true })).toEqual([]);
-    expect(filterByPreferences(notifications, { ...base, mutedTheaterIds: { "theater-a": true } }).map((item) => item.sessionId)).toEqual(["session-b"]);
+    expect(filterByPreferences(notifications, { ...base, mutedTheaterIds: { "theater-a": true } }).map((item) => item.operationId)).toEqual(["session-b"]);
   });
 });

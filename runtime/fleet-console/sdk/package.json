@@ -1,0 +1,102 @@
+{
+  "name": "@fleet-console/sdk",
+  "version": "1.9.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./operations": {
+      "types": "./operations/types.ts",
+      "import": "./operations/types.ts",
+      "default": "./operations/types.ts"
+    },
+    "./operations/browser": {
+      "types": "./operations/browser.ts",
+      "browser": "./operations/browser.ts",
+      "import": "./operations/browser.ts",
+      "default": "./operations/browser.ts"
+    },
+    "./launch": {
+      "types": "./launch/types.ts",
+      "import": "./launch/types.ts",
+      "default": "./launch/types.ts"
+    },
+    "./terminal": {
+      "types": "./terminal/types.ts",
+      "import": "./terminal/types.ts",
+      "default": "./terminal/types.ts"
+    },
+    "./terminal/browser": {
+      "types": "./terminal/browser.ts",
+      "browser": "./terminal/browser.ts",
+      "import": "./terminal/browser.ts",
+      "default": "./terminal/browser.ts"
+    },
+    "./terminal/node": {
+      "types": "./terminal/node.ts",
+      "node": "./terminal/node.ts",
+      "import": "./terminal/node.ts",
+      "default": "./terminal/node.ts"
+    },
+    "./plugin": {
+      "types": "./plugin/types.ts",
+      "import": "./plugin/types.ts",
+      "default": "./plugin/types.ts"
+    },
+    "./plugin/browser": {
+      "types": "./plugin/browser.ts",
+      "browser": "./plugin/browser.ts",
+      "import": "./plugin/browser.ts",
+      "default": "./plugin/browser.ts"
+    },
+    "./plugin/node": {
+      "types": "./plugin/node.ts",
+      "node": "./plugin/node.ts",
+      "import": "./plugin/node.ts",
+      "default": "./plugin/node.ts"
+    },
+    "./settings": {
+      "types": "./settings/types.ts",
+      "import": "./settings/types.ts",
+      "default": "./settings/types.ts"
+    },
+    "./settings/browser": {
+      "types": "./settings/browser.ts",
+      "browser": "./settings/browser.ts",
+      "import": "./settings/browser.ts",
+      "default": "./settings/browser.ts"
+    },
+    "./notifications": {
+      "types": "./notifications/types.ts",
+      "import": "./notifications/types.ts",
+      "default": "./notifications/types.ts"
+    },
+    "./notifications/browser": {
+      "types": "./notifications/browser.ts",
+      "browser": "./notifications/browser.ts",
+      "import": "./notifications/browser.ts",
+      "default": "./notifications/browser.ts"
+    },
+    "./routing": {
+      "types": "./routing/types.ts",
+      "import": "./routing/types.ts",
+      "default": "./routing/types.ts"
+    },
+    "./react/browser": {
+      "types": "./react/browser.ts",
+      "browser": "./react/browser.ts",
+      "import": "./react/browser.ts",
+      "default": "./react/browser.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^6.0.2"
+  }
+}

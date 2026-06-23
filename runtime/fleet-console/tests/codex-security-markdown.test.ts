@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { decodeMermaidSource, renderMarkdown } from "../client/src/codex/markdown/renderer";
+import { decodeMermaidSource, renderMarkdown } from "../core/client/src/codex/markdown/renderer";
 
 describe("security markdown", () => {
   it("renders canonical wiki links as internal SPA anchors", () => {

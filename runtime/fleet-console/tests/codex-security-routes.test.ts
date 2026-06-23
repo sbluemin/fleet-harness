@@ -7,8 +7,8 @@ import type { ServerResponse } from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildAllowedAccessSets } from "../src/codex/gateway.js";
-import { handleApiRequest, isLoopbackRemoteAddress } from "../src/codex/routes.js";
+import { buildAllowedAccessSets } from "../core/host/codex/gateway.js";
+import { handleApiRequest, isLoopbackRemoteAddress } from "../core/host/codex/routes.js";
 import { startCodexTestServer } from "./codex-test-server.js";
 import type { CodexTestServer } from "./codex-test-server.js";
 

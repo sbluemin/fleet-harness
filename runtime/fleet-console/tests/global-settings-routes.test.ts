@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter } from "../src/global-settings-routes.js";
+import { createGlobalSettingsRouter } from "../core/host/global-settings-routes.js";
 
 interface WriteJsonCall {
   readonly status: number;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextOperationId } from "../client/src/store.js";
+import { nextOperationId } from "../core/client/src/store.js";
 
 describe("nextOperationId — Alt+←/→ focus cycle", () => {
   const order = ["a", "b", "c"];

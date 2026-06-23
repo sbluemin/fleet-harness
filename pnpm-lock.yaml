@@ -213,6 +213,9 @@ importers:
       '@dotobokuri/fleet-wiki':
         specifier: workspace:*
         version: link:../../packages/fleet-wiki
+      '@fleet-console/sdk':
+        specifier: workspace:*
+        version: link:sdk
       '@xterm/addon-fit':
         specifier: ^0.10.0
         version: 0.10.0(@xterm/xterm@5.5.0)
@@ -286,6 +289,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.0.0
         version: 5.2.0(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.12)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.3)
@@ -300,6 +306,74 @@ importers:
         version: 7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: ^4.0.13
+        version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  runtime/fleet-console/sdk:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.7
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
+  runtime/fleet-plugins/terminal:
+    dependencies:
+      '@dotobokuri/core-agent':
+        specifier: workspace:*
+        version: link:../../../packages/core-agent
+      '@dotobokuri/core-unified-agent':
+        specifier: workspace:*
+        version: link:../../../packages/core-unified-agent
+      '@dotobokuri/fleet-admiral':
+        specifier: workspace:*
+        version: link:../../../packages/fleet-admiral
+      '@dotobokuri/fleet-carriers':
+        specifier: workspace:*
+        version: link:../../../packages/fleet-carriers
+      '@dotobokuri/fleet-infra':
+        specifier: workspace:*
+        version: link:../../../packages/fleet-infra
+      '@dotobokuri/fleet-wiki':
+        specifier: workspace:*
+        version: link:../../../packages/fleet-wiki
+      '@fleet-console/sdk':
+        specifier: workspace:*
+        version: link:../../fleet-console/sdk
+      '@xterm/addon-fit':
+        specifier: ^0.10.0
+        version: 0.10.0(@xterm/xterm@5.5.0)
+      '@xterm/addon-unicode11':
+        specifier: ^0.8.0
+        version: 0.8.0(@xterm/xterm@5.5.0)
+      '@xterm/addon-webgl':
+        specifier: ^0.18.0
+        version: 0.18.0(@xterm/xterm@5.5.0)
+      '@xterm/xterm':
+        specifier: ^5.5.0
+        version: 5.5.0
+      react:
+        specifier: ^19.2.3
+        version: 19.2.7
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.12.2
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.2.17
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.5
         version: 4.1.5(@types/node@24.12.2)(jsdom@29.1.1(canvas@3.2.3))(vite@7.3.2(@types/node@24.12.2)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.8.3))
 
 packages:
@@ -1039,6 +1113,11 @@ packages:
 
   '@xterm/addon-unicode11@0.8.0':
     resolution: {integrity: sha512-LxinXu8SC4OmVa6FhgwsVCBZbr8WoSGzBl2+vqe8WcQ6hb1r6Gj9P99qTNdPiFPh4Ceiu2pC8xukZ6+2nnh49Q==}
+    peerDependencies:
+      '@xterm/xterm': ^5.0.0
+
+  '@xterm/addon-webgl@0.18.0':
+    resolution: {integrity: sha512-xCnfMBTI+/HKPdRnSOHaJDRqEpq2Ugy8LEj9GiY4J3zJObo3joylIFaMvzBwbYRg8zLtkO0KQaStCeSfoaI2/w==}
     peerDependencies:
       '@xterm/xterm': ^5.0.0
 
@@ -2848,6 +2927,10 @@ snapshots:
       '@xterm/xterm': 5.5.0
 
   '@xterm/addon-unicode11@0.8.0(@xterm/xterm@5.5.0)':
+    dependencies:
+      '@xterm/xterm': 5.5.0
+
+  '@xterm/addon-webgl@0.18.0(@xterm/xterm@5.5.0)':
     dependencies:
       '@xterm/xterm': 5.5.0
 

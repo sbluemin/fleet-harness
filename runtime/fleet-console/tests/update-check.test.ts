@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createConsoleUpdateCheckService } from "../src/update-check.js";
+import { createConsoleUpdateCheckService } from "../core/host/update-check.js";
 
 describe("console update check", () => {
   it("skips npm lookup for local console builds", async () => {

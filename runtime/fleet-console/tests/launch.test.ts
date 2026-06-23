@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
 
-import { createDefaultTerminalLaunchResolver, resolveUseConptyDll } from "../src/terminal/launch.js";
-import type { TerminalLaunchSpec } from "../src/terminal/types.js";
+import { createDefaultTerminalLaunchResolver, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
+import { createShellTerminalLaunchResolver } from "../core/host/terminal/launch.js";
+import type { TerminalLaunchSpec } from "../core/host/terminal/types.js";
 
 interface FakeRuntime {
   readonly carrierRuntime: {
@@ -264,12 +265,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
   });
 
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {
-    const resolveProfile = vi.fn();
-    const resolve = createDefaultTerminalLaunchResolver({
+    const resolve = createShellTerminalLaunchResolver({
       cwd: "/work",
       env: { FLEET_TERMINAL_CMD: "bash -l", SHELL: "/bin/zsh" } as NodeJS.ProcessEnv,
       platform: "linux",
-      resolveProfile: resolveProfile as never,
     });
 
     const spec = await resolve("", { sessionId: "shell", kind: "shell" });
@@ -282,20 +281,17 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.env).toMatchObject({ TERM: "xterm-256color" });
     expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
     expect(spec.env.INIT_CWD).toBeUndefined();
-    expect(resolveProfile).not.toHaveBeenCalled();
   });
 
   it("resolves the user's Windows shell without Agent CLI injection for shell sessions", async () => {
     const shell = touch(path.join(makeTempDir(), "cmd.exe"));
-    const resolveProfile = vi.fn();
-    const resolve = createDefaultTerminalLaunchResolver({
+    const resolve = createShellTerminalLaunchResolver({
       cwd: "/work",
       env: {
         ComSpec: shell,
         PATH: path.dirname(shell),
       } as NodeJS.ProcessEnv,
       platform: "win32",
-      resolveProfile: resolveProfile as never,
     });
 
     const spec = await resolve("", { sessionId: "shell", kind: "shell" });
@@ -308,7 +304,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.env).toMatchObject({ TERM: "xterm-256color" });
     expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
     expect(spec.env.INIT_CWD).toBeUndefined();
-    expect(resolveProfile).not.toHaveBeenCalled();
   });
 
   it("runs injected cleanup once when the terminal session closes", async () => {

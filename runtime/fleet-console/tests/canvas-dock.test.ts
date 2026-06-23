@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { dropIndexFromPoint } from "../client/src/canvas/canvas-dock-hit-test.js";
+import { dropIndexFromPoint } from "../core/client/src/canvas/canvas-dock-hit-test.js";
 
 describe("canvas dock reorder hit testing", () => {
   it("ignores the dragged source chip when resolving the drop index", () => {

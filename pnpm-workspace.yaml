@@ -6,7 +6,9 @@ packages:
   - "packages/fleet-carriers"
   - "packages/fleet-wiki"
   - "runtime/fleet-console"
+  - "runtime/fleet-console/sdk"
   - "runtime/fleet-cli"
+  - "runtime/fleet-plugins/terminal"
 allowBuilds:
   esbuild: true
   node-pty: true

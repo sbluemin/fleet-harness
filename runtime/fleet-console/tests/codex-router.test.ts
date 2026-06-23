@@ -10,7 +10,7 @@ describe("Codex router", () => {
 
   it("parses console-mounted entry routes", async () => {
     history.replaceState(null, "", "/console/codex/entry/guide-001");
-    const { currentRoute, currentWorkspaceId } = await import("../client/src/codex/router");
+    const { currentRoute, currentWorkspaceId } = await import("../core/client/src/codex/router");
 
     expect(currentRoute()).toEqual({ name: "entry", id: "guide-001" });
     expect(currentWorkspaceId()).toBeNull();
@@ -18,7 +18,7 @@ describe("Codex router", () => {
 
   it("parses console-mounted workspace entry routes", async () => {
     history.replaceState(null, "", "/console/codex/w/ws-a/entry/shared");
-    const { currentRoute, currentWorkspaceId } = await import("../client/src/codex/router");
+    const { currentRoute, currentWorkspaceId } = await import("../core/client/src/codex/router");
 
     expect(currentRoute()).toEqual({ name: "entry", id: "shared" });
     expect(currentWorkspaceId()).toBe("ws-a");
@@ -26,7 +26,7 @@ describe("Codex router", () => {
 
   it("emits the parsed route after pushState navigation", async () => {
     history.replaceState(null, "", "/console/codex/");
-    const { navigate, subscribeRoute } = await import("../client/src/codex/router");
+    const { navigate, subscribeRoute } = await import("../core/client/src/codex/router");
     const seen: unknown[] = [];
     const unsubscribe = subscribeRoute((route) => seen.push(route));
 
@@ -39,14 +39,14 @@ describe("Codex router", () => {
 
   it("keeps generated entry paths under the console Codex mount", async () => {
     history.replaceState(null, "", "/console/codex/");
-    const { entryPath, homePath } = await import("../client/src/codex/router");
+    const { entryPath, homePath } = await import("../core/client/src/codex/router");
 
     expect(homePath()).toBe("/console/codex/");
     expect(entryPath("guide-003")).toBe("/console/codex/entry/guide-003");
   });
 
   it("builds workspace home paths under the console Codex mount", async () => {
-    const { workspaceHomePath } = await import("../client/src/codex/router");
+    const { workspaceHomePath } = await import("../core/client/src/codex/router");
 
     expect(workspaceHomePath("ws-a")).toBe("/console/codex/w/ws-a/");
   });

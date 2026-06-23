@@ -3919,3 +3919,51 @@
 - result: `accepted`
 - target: `wiki/guide-008-development-release-workflow.md`
 
+## 2026-06-21T11:33:35.242Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-21T11:36:23.875Z — raw source added
+
+- id: `architecture-console-panel-plugin-platform-source`
+- raw_source_ref: `raw/2026-06-21-architecture-console-panel-plugin-platform-source-fb3bce12.md`
+- source_type: `inline`
+- tag_count: `6`
+- title: `Console 패널 플러그인 플랫폼 확정 아키텍처 raw source`
+
+## 2026-06-21T11:36:23.878Z — patch enqueued
+
+- op: `create_wiki`
+- patch_id: `2026-06-21T11-36-23-857Z-3785d88d`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-06-21-architecture-console-panel-plugin-platform-source-fb3bce12.md`
+- target: `wiki/architecture-console-panel-plugin-platform.md`
+- warning_count: `0`
+
+## 2026-06-21T11:36:29.525Z — drydock run
+
+- error_count: `0`
+- info_count: `8`
+- issue_count: `15`
+- ok: `true`
+- warning_count: `7`
+
+## 2026-06-21T11:39:21.768Z — index rebuilt
+
+- entry_count: `31`
+
+## 2026-06-21T11:39:21.772Z — patch approved
+
+- op: `create_wiki`
+- patch_id: `2026-06-21T11-36-23-857Z-3785d88d`
+- patch_set_id: `null`
+- proposer: `chronicle`
+- raw_source_ref: `raw/2026-06-21-architecture-console-panel-plugin-platform-source-fb3bce12.md`
+- result: `accepted`
+- target: `wiki/architecture-console-panel-plugin-platform.md`
+

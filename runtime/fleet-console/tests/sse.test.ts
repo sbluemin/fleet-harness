@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createSseFrameParser, interpretObserverFrame } from "../client/src/sse.js";
+import { createSseFrameParser, interpretObserverFrame } from "../../fleet-plugins/terminal/client/agent/sse.js";
 
 describe("createSseFrameParser", () => {
   it("yields frames split across chunk boundaries", () => {
@@ -59,15 +59,13 @@ describe("interpretObserverFrame", () => {
           cwdLabel: "alpha",
           sequence: 1,
           label: "Bridge",
-          accent: "red",
           status: "terminal-only",
           createdAt: 1_000,
         },
       }),
     });
 
-    // accent를 통과시키지 않으면 SSE 업데이트마다 dock accent가 undefined로 지워진다(서버 영속값이 무시됨).
-    expect(frame).toMatchObject({ kind: "session", session: { sessionId: "session-a", label: "Bridge", accent: "red" } });
+    expect(frame).toMatchObject({ kind: "session", session: { sessionId: "session-a", label: "Bridge" } });
     expect(frame?.event).toBeUndefined();
   });
 

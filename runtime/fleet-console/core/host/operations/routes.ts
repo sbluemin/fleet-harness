@@ -1,0 +1,187 @@
+import type http from "node:http";
+
+import type { OperationCatalogPlugin } from "../plugin-host/types.js";
+import type { OperationCreateInput, OperationNode, OperationStore } from "./types.js";
+import { createSanitizedOpDto } from "./sanitize.js";
+
+export interface OperationsRouterDeps {
+  readonly store: OperationStore;
+  readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
+  readonly writeJson: (res: http.ServerResponse, status: number, payload: unknown) => void;
+  readonly persist: () => void;
+  readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
+  readonly resolveLaunchCatalog?: () => Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }>;
+}
+
+export type OperationsRouter = (ctx: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }) => Promise<boolean>;
+
+type CreateOperationBody = Partial<OperationCreateInput>;
+type PatchOperationBody = {
+  readonly title?: unknown;
+  readonly parentId?: unknown;
+  readonly accent?: unknown;
+  readonly payload?: unknown;
+  readonly state?: unknown;
+  readonly geometry?: unknown;
+};
+
+export function createOperationsRouter(deps: OperationsRouterDeps): OperationsRouter {
+  return async ({ req, res, pathname }) => {
+    if (pathname === "/operations") {
+      await handleCollection(req, res, deps);
+      return true;
+    }
+    if (pathname === "/operations/catalog") {
+      if (req.method !== "GET") {
+        deps.writeJson(res, 405, { error: "Method not allowed" });
+        return true;
+      }
+      deps.writeJson(res, 200, deps.resolveLaunchCatalog ? await deps.resolveLaunchCatalog() : { plugins: [] });
+      return true;
+    }
+    const childrenMatch = pathname.match(/^\/operations\/([^/]+)\/children$/);
+    if (childrenMatch) {
+      handleChildren(req, res, decodeURIComponent(childrenMatch[1] ?? ""), deps);
+      return true;
+    }
+    const itemMatch = pathname.match(/^\/operations\/([^/]+)$/);
+    if (itemMatch) {
+      await handleItem(req, res, decodeURIComponent(itemMatch[1] ?? ""), deps);
+      return true;
+    }
+    return false;
+  };
+}
+
+async function handleCollection(req: http.IncomingMessage, res: http.ServerResponse, deps: OperationsRouterDeps): Promise<void> {
+  if (req.method === "GET") {
+    const theaterId = readRequestUrl(req).searchParams.get("theaterId");
+    const nodes = theaterId ? deps.store.listByTheater(theaterId) : deps.store.list();
+    deps.writeJson(res, 200, { operations: nodes.map((node) => sanitizeOperationNode(node, deps)) });
+    return;
+  }
+  if (req.method !== "POST") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  const body = await deps.readJsonBody<CreateOperationBody>(req);
+  if (!body || typeof body.theaterId !== "string" || typeof body.type !== "string" || typeof body.pluginId !== "string" || typeof body.title !== "string") {
+    deps.writeJson(res, 400, { error: "invalid_operation" });
+    return;
+  }
+  if (body.accent !== undefined && typeof body.accent !== "string") {
+    deps.writeJson(res, 400, { error: "invalid_operation_accent" });
+    return;
+  }
+  try {
+    const node = deps.store.create({
+      id: typeof body.id === "string" ? body.id : undefined,
+      theaterId: body.theaterId,
+      parentId: typeof body.parentId === "string" || body.parentId === null ? body.parentId : null,
+      type: body.type,
+      pluginId: body.pluginId,
+      title: body.title,
+      ...(typeof body.accent === "string" ? { accent: body.accent } : {}),
+      payload: isRecord(body.payload) ? body.payload : {},
+      geometry: isRecord(body.geometry) ? readGeometry(body.geometry) : null,
+      state: isRecord(body.state) ? body.state : {},
+    });
+    deps.persist();
+    deps.writeJson(res, 201, { operation: sanitizeOperationNode(node, deps) });
+  } catch (error) {
+    deps.writeJson(res, error instanceof Error && error.message === "operation_depth_exceeded" ? 409 : 400, { error: error instanceof Error ? error.message : "invalid_operation" });
+  }
+}
+
+function handleChildren(req: http.IncomingMessage, res: http.ServerResponse, id: string, deps: OperationsRouterDeps): void {
+  if (req.method !== "GET") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  const parent = deps.store.get(id);
+  if (!parent) {
+    deps.writeJson(res, 404, { error: "operation_not_found" });
+    return;
+  }
+  deps.writeJson(res, 200, { operations: deps.store.listChildren(parent.theaterId, id).map((node) => sanitizeOperationNode(node, deps)) });
+}
+
+async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, id: string, deps: OperationsRouterDeps): Promise<void> {
+  if (req.method === "GET") {
+    const node = deps.store.get(id);
+    deps.writeJson(res, node ? 200 : 404, node ? { operation: sanitizeOperationNode(node, deps) } : { error: "operation_not_found" });
+    return;
+  }
+  if (req.method !== "PATCH" && req.method !== "DELETE") {
+    deps.writeJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  if (!deps.isAuthorized(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  if (req.method === "DELETE") {
+    const deleted = deps.store.delete(id);
+    if (deleted) deps.persist();
+    deps.writeJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "operation_not_found" });
+    return;
+  }
+  const body = await deps.readJsonBody<PatchOperationBody>(req);
+  if (!body) {
+    deps.writeJson(res, 400, { error: "invalid_operation_patch" });
+    return;
+  }
+  if (body.accent !== undefined && typeof body.accent !== "string") {
+    deps.writeJson(res, 400, { error: "invalid_operation_accent" });
+    return;
+  }
+  try {
+    const node = deps.store.patch(id, {
+      ...(typeof body.title === "string" ? { title: body.title } : {}),
+      ...(typeof body.parentId === "string" || body.parentId === null ? { parentId: body.parentId } : {}),
+      ...(typeof body.accent === "string" ? { accent: body.accent } : {}),
+      ...(isRecord(body.payload) ? { payload: body.payload } : {}),
+      ...(isRecord(body.state) ? { state: body.state } : {}),
+      ...(isRecord(body.geometry) || body.geometry === null ? { geometry: body.geometry === null ? null : readGeometry(body.geometry) } : {}),
+    });
+    if (!node) {
+      deps.writeJson(res, 404, { error: "operation_not_found" });
+      return;
+    }
+    deps.persist();
+    deps.writeJson(res, 200, { operation: sanitizeOperationNode(node, deps) });
+  } catch (error) {
+    deps.writeJson(res, error instanceof Error && error.message === "operation_depth_exceeded" ? 409 : 400, { error: error instanceof Error ? error.message : "invalid_operation_patch" });
+  }
+}
+
+function sanitizeOperationNode(node: OperationNode, deps: OperationsRouterDeps): OperationNode {
+  return createSanitizedOpDto(node, { sensitiveFields: deps.getPluginSensitiveFields?.(node.pluginId) ?? [] });
+}
+
+function readGeometry(value: Record<string, unknown>) {
+  const x = readFiniteNumber(value.x);
+  const y = readFiniteNumber(value.y);
+  const width = readFiniteNumber(value.width);
+  const height = readFiniteNumber(value.height);
+  const zIndex = readFiniteNumber(value.zIndex);
+  if (x === null || y === null || width === null || height === null || zIndex === null) return null;
+  return { x, y, width, height, zIndex };
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readRequestUrl(req: http.IncomingMessage): URL {
+  return new URL(req.url ?? "/", "http://127.0.0.1");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

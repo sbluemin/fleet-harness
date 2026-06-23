@@ -1,0 +1,451 @@
+:root {
+  color-scheme: dark;
+
+  --ink-abyss: oklch(15% 0.04 250);
+  --ink-deep: oklch(20% 0.045 248);
+  --ink-mid: oklch(28% 0.04 248);
+  --ink-veil: oklch(36% 0.035 248);
+  --ink-rim: oklch(48% 0.03 248);
+  --ink-fog: oklch(70% 0.02 248);
+  --ink-spectral: oklch(82% 0.018 90);
+  --ink-pearl: oklch(96% 0.012 88);
+
+  --brass: oklch(78% 0.13 75);
+  --brass-bright: oklch(86% 0.16 78);
+  --brass-deep: oklch(56% 0.13 65);
+  --brass-glow: oklch(82% 0.16 75 / 28%);
+
+  --aurora: oklch(82% 0.13 195);
+  --aurora-deep: oklch(58% 0.13 200);
+  --aurora-glow: oklch(82% 0.13 195 / 22%);
+
+  --coral: oklch(72% 0.17 25);
+  --coral-glow: oklch(72% 0.17 25 / 22%);
+  --warn: oklch(80% 0.13 85);
+  --warn-glow: oklch(80% 0.13 85 / 22%);
+  /* positive: 완료/성공 신호용 에메랄드 그린 — aurora(살아있음)·brass(보는 곳)와 의미가 겹치지 않는 별도 축 */
+  --positive: oklch(80% 0.15 152);
+  --positive-glow: oklch(80% 0.15 152 / 24%);
+
+  /* Operations 캔버스(map) 표면 — 본문보다 깊은 심해 색. 테마별로 분기한다(maritime=차가운 틸 심해). */
+  --canvas-abyss: oklch(7% 0.015 246);
+  --canvas-sea-core: oklch(15% 0.03 235);
+  --canvas-sea-near: oklch(9% 0.02 242);
+  --canvas-sea-mid: oklch(7% 0.015 246);
+  --canvas-sea-far: oklch(6% 0.012 250);
+
+  /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. */
+  --carrier-claude: oklch(78% 0.15 62);
+  --carrier-claude-zai: oklch(76% 0.13 155);
+  --carrier-claude-kimi: oklch(75% 0.15 315);
+  --carrier-codex: oklch(78% 0.035 248);
+  --carrier-opencode-go: oklch(76% 0.12 184);
+  --carrier-cursor: oklch(72% 0.13 238);
+  --carrier-taskforce: oklch(78% 0.12 216);
+  --captain-nimitz: #d4af37;
+  --captain-kirov: #e8a854;
+  --captain-genesis: #ff6b6b;
+  --captain-ohio: #a78bfa;
+  --captain-sentinel: #fb7185;
+  --captain-vanguard: #5fd673;
+  --captain-tempest: #3dd5f3;
+  --captain-chronicle: #3dd5f3;
+
+  --surface-glass: oklch(28% 0.04 248 / 60%);
+  --surface-glass-strong: oklch(32% 0.04 248 / 78%);
+  --surface-pillar: oklch(22% 0.05 248 / 86%);
+  --surface-rim: oklch(64% 0.04 248 / 24%);
+  --surface-rim-strong: oklch(72% 0.05 248 / 38%);
+
+  --shadow-soft: 0 1px 0 0 oklch(96% 0.01 90 / 6%) inset, 0 18px 38px -22px oklch(0% 0 0 / 70%);
+  --shadow-floating: 0 1px 0 0 oklch(96% 0.01 90 / 8%) inset, 0 32px 60px -28px oklch(0% 0 0 / 80%);
+  --shadow-anchor: 0 0 0 1px oklch(78% 0.13 75 / 16%), 0 12px 32px -16px oklch(78% 0.13 75 / 30%);
+
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --font-display: "Fraunces Variable", "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-body: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-glide: cubic-bezier(0.4, 0.14, 0.2, 1);
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
+
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.93  0 0 0 0 0.86  0 0 0 0.4 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/></svg>");
+}
+
+:root[data-theme="carbon"] {
+  --ink-abyss: oklch(14% 0.006 255);
+  --ink-deep: oklch(18% 0.007 255);
+  --ink-mid: oklch(25% 0.007 252);
+  --ink-veil: oklch(33% 0.006 252);
+  --ink-rim: oklch(45% 0.005 252);
+  --ink-fog: oklch(67% 0.005 250);
+  --ink-spectral: oklch(81% 0.004 250);
+  --ink-pearl: oklch(95% 0.003 250);
+
+  --brass: oklch(76% 0.115 62);
+  --brass-bright: oklch(84% 0.14 64);
+  --brass-deep: oklch(54% 0.11 55);
+  --brass-glow: oklch(80% 0.14 60 / 26%);
+
+  --aurora: oklch(80% 0.105 205);
+  --aurora-deep: oklch(56% 0.11 208);
+  --aurora-glow: oklch(80% 0.11 205 / 20%);
+
+  --coral: oklch(70% 0.16 25);
+  --coral-glow: oklch(70% 0.16 25 / 22%);
+  --warn: oklch(79% 0.12 80);
+  --warn-glow: oklch(79% 0.12 80 / 22%);
+  --positive: oklch(78% 0.13 158);
+  --positive-glow: oklch(78% 0.13 158 / 24%);
+
+  /* carbon=무채색 중립 다크 — 캔버스 표면에서 maritime의 틸을 걷어낸다. */
+  --canvas-abyss: oklch(8% 0.006 255);
+  --canvas-sea-core: oklch(15% 0.012 250);
+  --canvas-sea-near: oklch(10% 0.007 255);
+  --canvas-sea-mid: oklch(8% 0.006 255);
+  --canvas-sea-far: oklch(6% 0.005 258);
+
+  --surface-glass: oklch(25% 0.006 252 / 62%);
+  --surface-glass-strong: oklch(29% 0.007 252 / 80%);
+  --surface-pillar: oklch(20% 0.008 252 / 88%);
+  --surface-rim: oklch(62% 0.006 252 / 22%);
+  --surface-rim-strong: oklch(70% 0.007 252 / 36%);
+
+  --shadow-anchor: 0 0 0 1px oklch(76% 0.115 62 / 16%), 0 12px 32px -16px oklch(76% 0.115 62 / 30%);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+*::selection {
+  background: var(--brass-glow);
+  color: var(--ink-pearl);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+html {
+  background: var(--ink-abyss);
+  color: var(--ink-pearl);
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: transparent;
+  color: var(--ink-spectral);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+}
+
+body::before {
+  background:
+    radial-gradient(900px 720px at 8% 4%, oklch(48% 0.12 200 / 24%), transparent 60%),
+    radial-gradient(820px 700px at 92% 96%, oklch(52% 0.13 60 / 18%), transparent 62%),
+    radial-gradient(640px 520px at 68% 14%, oklch(82% 0.13 195 / 10%), transparent 68%),
+    radial-gradient(520px 480px at 28% 98%, oklch(78% 0.13 75 / 11%), transparent 70%),
+    var(--ink-abyss);
+}
+
+:root[data-theme="carbon"] body::before {
+  background:
+    radial-gradient(900px 720px at 8% 4%, oklch(40% 0.04 230 / 18%), transparent 60%),
+    radial-gradient(820px 700px at 92% 96%, oklch(46% 0.08 55 / 14%), transparent 62%),
+    radial-gradient(640px 520px at 68% 14%, oklch(70% 0.05 205 / 7%), transparent 68%),
+    radial-gradient(520px 480px at 28% 98%, oklch(70% 0.10 60 / 8%), transparent 70%),
+    var(--ink-abyss);
+}
+
+body::after {
+  z-index: -1;
+  background-image: var(--grain);
+  background-size: 220px 220px;
+  mix-blend-mode: overlay;
+  opacity: 0.45;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  font-feature-settings: inherit;
+}
+
+button {
+  border: none;
+  padding: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(50% 0.04 248 / 30%);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(70% 0.05 248 / 50%);
+  background-clip: padding-box;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: oklch(50% 0.04 248 / 45%) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@keyframes codex-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes shortcuts-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* 화면 하단 가로 중앙에 고정된 요소(canvas-dock)의 등장 reveal — codex-rise와 같은 모션이되
+   중앙정렬용 translateX(-50%)를 보존한 채 Y만 떠오른다(codex-rise는 translateX를 덮어써 중앙이 깨진다). */
+@keyframes codex-rise-centered {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(14px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes codex-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes aurora-pulse {
+  0%,
+  100% {
+    opacity: 0.58;
+    box-shadow: 0 0 0 0 var(--aurora-glow);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 14px 2px var(--aurora-glow);
+  }
+}
+
+@keyframes dock-close-arm-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--coral-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes whatsnew-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes whatsnew-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes whatsnew-section-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 진행 중 Operation 패널/최소화 Dock 외곽의 "진행광(running light)" — conic 하이라이트 호(arc)가 테두리
+   링을 따라 한 방향으로 순환한다. 각도(--uw-angle)는 @property로 등록해야 커스텀 속성이 부드럽게
+   보간된다(미등록 시 이산 점프). 색(--uw-tint)은 인디케이터를 따른다. 작업 중 신호가 있는 동안만,
+   prefers-reduced-motion에선 정적 림으로 단락 — AGENTS.md 모션 규약의 sanctioned 예외(작업 중 신호). */
+@property --uw-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes perimeter-orbit {
+  to {
+    --uw-angle: 360deg;
+  }
+}
+
+/* 접힘 알림 핸들 외곽 "항적 펄스(wake pulse)" — 새 알림이 도착하는 순간 외곽 rim이 밝아졌다
+   glow ring이 바깥으로 부풀어 확산하며 사라지는 1회성 신호. perimeter-orbit(지속 신호)과 달리
+   이벤트 1회만 재생된다. 색(--pulse-tint/--pulse-glow)은 도착 알림 kind를 따른다.
+   prefers-reduced-motion에선 iteration-count:1 단락으로 1회 짧게 끝난다. */
+@keyframes notification-wake-pulse {
+  0% {
+    opacity: 0.85;
+    box-shadow:
+      0 0 0 0 var(--pulse-tint),
+      0 0 12px 1px var(--pulse-glow);
+  }
+  55% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 3px color-mix(in oklch, var(--pulse-tint) 42%, transparent),
+      0 0 28px 5px var(--pulse-glow);
+  }
+  100% {
+    opacity: 0;
+    box-shadow:
+      0 0 0 9px transparent,
+      0 0 40px 12px transparent;
+  }
+}
+
+/* Operation 트리 간선의 "신호 전류(signal current)" — aurora 점선이 부모(기함)→자식(예하)으로
+   행진한다. parentId 지휘 계통이 살아있음을 보이는 기능적 상태 신호(ambient 장식 아님). 색은 aurora
+   고정("지금 살아있는 것"). dasharray 4 12(주기 16)와 정확히 한 주기(-16) 이동이라 이음매 없이 순환한다.
+   prefers-reduced-motion / 문서 숨김에서 단락 — AGENTS.md 모션 규약의 sanctioned 예외(상태 신호). */
+@keyframes operation-edge-flow {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

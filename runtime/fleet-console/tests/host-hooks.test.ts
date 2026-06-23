@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand } from "../src/terminal/host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand } from "../../fleet-plugins/terminal/server/agent-api/host-hooks.js";
 
 describe("console terminal host hooks", () => {
   it("builds capture hook commands for JavaScript entries without a tsx loader", () => {
@@ -19,7 +19,7 @@ describe("console terminal host hooks", () => {
 
   it("builds capture hook commands for TypeScript entries with a tsx loader", () => {
     const exec = buildConsoleCaptureHookCommand({
-      entryPath: "/app/fleet-console/src/cli.ts",
+      entryPath: "/app/fleet-console/core/host/cli.ts",
       execPath: "/usr/local/bin/node",
       tsxLoaderPath: "/app/fleet-console/node_modules/tsx/dist/loader.mjs",
     }, "codex");
@@ -29,7 +29,7 @@ describe("console terminal host hooks", () => {
       args: [
         "--import",
         pathToFileURL("/app/fleet-console/node_modules/tsx/dist/loader.mjs").href,
-        "/app/fleet-console/src/cli.ts",
+        "/app/fleet-console/core/host/cli.ts",
         "hook",
         "capture-session",
         "codex",

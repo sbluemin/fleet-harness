@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listTerminalFolders, normalizeFolderBrowserPath, TerminalFolderListError } from "../src/terminal/folder-browser.js";
-import { createFolderGrantStore, validateAbsoluteDirectory } from "../src/terminal/folder-grants.js";
+import { listTerminalFolders, normalizeFolderBrowserPath, TerminalFolderListError } from "../core/host/terminal/folder-browser.js";
+import { createFolderGrantStore, validateAbsoluteDirectory } from "../core/host/terminal/folder-grants.js";
 
 describe("folder grants", () => {
   it("consumes folder grants exactly once", () => {
