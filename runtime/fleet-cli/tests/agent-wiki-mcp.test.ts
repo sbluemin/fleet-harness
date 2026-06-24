@@ -272,7 +272,8 @@ describe("fleet-cli agent CLI MCP registration", () => {
 	        "plugin add fleet -m fleet-harness",
 	      ]);
       expect(profile.args).toContain("--enable");
-      expect(profile.args).toContain("child_agents_md");
+      // codex 0.142.0에서 제거된 기능 플래그라 인자에 포함되면 "Unknown feature flag"로 기동 실패한다.
+      expect(profile.args).not.toContain("child_agents_md");
       expect(profile.args).toContain("--profile");
       const profileName = argValue(profile.args, "--profile");
       expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
@@ -420,7 +421,7 @@ describe("fleet-cli agent CLI MCP registration", () => {
         withMarketplaceLock: WITH_TEST_MARKETPLACE_LOCK,
       });
 
-      expect(profile.args).toContain("child_agents_md");
+      expect(profile.args).not.toContain("child_agents_md");
       const profileName = argValue(profile.args, "--profile");
       expect(profileName).toMatch(FLEET_PROFILE_NAME_PATTERN);
       const profilePath = path.join(codexHome, `${profileName}.config.toml`);

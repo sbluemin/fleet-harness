@@ -10,8 +10,6 @@ export function buildCodexNativeArgs(context: AgentCliInjectionContext): string[
     "--enable",
     "plugins",
     "--enable",
-    "child_agents_md",
-    "--enable",
     "hooks",
     "--profile",
     profileName,
