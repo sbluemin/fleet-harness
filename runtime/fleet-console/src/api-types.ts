@@ -80,6 +80,7 @@ export interface ConsoleTerminalSessionInfo {
   readonly cwdLabel: string;
   readonly sequence: number;
   readonly label?: string;
+  readonly accent?: string;
   readonly cliId?: string;
   readonly cliLabel?: string;
   readonly status: ConsoleTerminalSessionStatus;

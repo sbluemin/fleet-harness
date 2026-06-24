@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getSnapshot, loadForTheater, minimizePanel, restorePanel, setPanelGeometry, type PanelGeometry } from "../client/src/canvas/canvas-store.js";
+import { forgetPanelMetadata, getSnapshot, loadForTheater, minimizePanel, prunePanels, restorePanel, setPanelAccent, setPanelGeometry, setPanelOrder, type PanelGeometry } from "../client/src/canvas/canvas-store.js";
 import { addShellPanel, clearShellPanels, getActiveShellId, getMinimizedShellPanelIds, loadShellPanelsForTheater, minimizeShellPanel, restoreShellPanel } from "../client/src/canvas/shell-panels.js";
 import { activateWindowPanel, clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, maximizeWindowPanel, minimizeWindowPanel, nextPanelHandle, operationPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
 
@@ -41,6 +41,133 @@ describe("window registry facade", () => {
       `shell:${shell}`,
       "operation:op-b",
     ]);
+  });
+
+  it("keeps empty panelOrder equivalent to createdAt fallback", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelOrder([]);
+
+    expect(getPanelHandles(["op-a", "op-b"]).map((handle) => handle.id)).toEqual(["op-a", shell, "op-b"]);
+  });
+
+  it("uses explicit panelOrder for Operation handles", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelGeometry("op-c", { ...GEOMETRY });
+    setPanelOrder(["op-c", "op-a", "op-b"]);
+
+    expect(getPanelHandles(["op-a", "op-b", "op-c"]).map((handle) => handle.id)).toEqual(["op-c", "op-a", "op-b"]);
+  });
+
+  it("uses one explicit panelOrder namespace for Operation and Shell handles", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelOrder(["op-b", shell, "op-a"]);
+
+    expect(getPanelHandles(["op-a", "op-b"]).map((handle) => `${handle.kind}:${handle.id}`)).toEqual([
+      "operation:op-b",
+      `shell:${shell}`,
+      "operation:op-a",
+    ]);
+  });
+
+  it("appends handles missing from panelOrder by createdAt fallback", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelOrder(["op-b"]);
+
+    expect(getPanelHandles(["op-a", "op-b"]).map((handle) => handle.id)).toEqual(["op-b", "op-a", shell]);
+  });
+
+  it("ignores stale ids in panelOrder", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelOrder(["missing", "op-b"]);
+
+    expect(getPanelHandles(["op-a", "op-b"]).map((handle) => handle.id)).toEqual(["op-b", "op-a"]);
+  });
+
+  it("orders minimized handles with the same explicit panelOrder", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    minimizePanel("op-a");
+    minimizePanel("op-b");
+    minimizeShellPanel(shell);
+    setPanelOrder(["op-b", shell, "op-a"]);
+
+    expect(getMinimizedPanelHandles(["op-a", "op-b"]).map((handle) => handle.id)).toEqual(["op-b", shell, "op-a"]);
+  });
+
+  it("normalizes panelAccent by dropping non-string keys and preserving palette keys", () => {
+    window.localStorage.setItem("fleet-console.canvas.theater-a", JSON.stringify({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      panels: { "op-a": GEOMETRY },
+      panelCreatedAt: { "op-a": 1 },
+      panelOrder: ["op-a"],
+      panelAccent: {
+        "op-a": "blue",
+        "op-b": 12,
+        "op-c": null,
+      },
+      minimized: [],
+    }));
+    loadForTheater("theater-a");
+
+    expect(getSnapshot().panelAccent).toEqual({ "op-a": "blue" });
+  });
+
+  it("prunes stale Operation panelOrder/panelAccent while always keeping shell ids", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelOrder(["missing", shell, "op-a"]);
+    setPanelAccent("missing", "blue");
+    setPanelAccent(shell, "violet");
+    setPanelAccent("op-a", "rose");
+
+    prunePanels(["op-a"]);
+
+    expect(getSnapshot().panelOrder).toEqual([shell, "op-a"]);
+    expect(getSnapshot().panelAccent).toEqual({ [shell]: "violet", "op-a": "rose" });
+  });
+
+  it("does not drop another tab's shell order/accent when pruning sees no shells", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    // shell:* id는 탭별이라 이 탭의 getShellPanels에는 없을 수 있다(다른 탭 소유). prune이 지우면 데이터 손실.
+    setPanelOrder(["shell:other-tab", "op-a"]);
+    setPanelAccent("shell:other-tab", "violet");
+
+    prunePanels(["op-a"]);
+
+    expect(getSnapshot().panelOrder).toEqual(["shell:other-tab", "op-a"]);
+    expect(getSnapshot().panelAccent).toEqual({ "shell:other-tab": "violet" });
+  });
+
+  it("preserves hidden shell ids when committing a visible panel order", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelOrder(["op-a", "shell:other-tab", "op-b"]);
+
+    setPanelOrder(["op-b", "op-a"]);
+
+    expect(getSnapshot().panelOrder).toEqual(["op-b", "op-a", "shell:other-tab"]);
+  });
+
+  it("forgetPanelMetadata drops order and accent for a single id, keeping the rest", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelOrder([shell, "op-a"]);
+    setPanelAccent(shell, "blue");
+    setPanelAccent("op-a", "rose");
+
+    forgetPanelMetadata(shell);
+
+    expect(getSnapshot().panelOrder).toEqual(["op-a"]);
+    expect(getSnapshot().panelAccent).toEqual({ "op-a": "rose" });
   });
 
   it("does not reorder handles when focus changes z-index", () => {
@@ -170,6 +297,18 @@ describe("window registry facade", () => {
     expect(nextPanelHandle(handles, "op-a", 1)?.id).toBe(shell);
     expect(nextPanelHandle(handles, shell, 1)?.id).toBe("op-b");
     expect(nextPanelHandle(handles, "op-a", -1)?.id).toBe("op-b");
+  });
+
+  it("cycles Operation and Shell handles in explicit panelOrder", () => {
+    setPanelGeometry("op-a", { ...GEOMETRY });
+    const shell = addShellPanel("theater-a", { ...GEOMETRY });
+    setPanelGeometry("op-b", { ...GEOMETRY });
+    setPanelOrder(["op-b", "op-a", shell]);
+    const handles = getPanelHandles(["op-a", "op-b"]);
+
+    expect(nextPanelHandle(handles, "op-b", 1)?.id).toBe("op-a");
+    expect(nextPanelHandle(handles, "op-a", 1)?.id).toBe(shell);
+    expect(nextPanelHandle(handles, "op-b", -1)?.id).toBe(shell);
   });
 
   it("starts Alt cycling from the edge when no handle matches the current id", () => {

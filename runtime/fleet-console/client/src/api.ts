@@ -177,6 +177,16 @@ export async function renameTerminalSession(sessionId: string, label: string): P
   return assertSessionInfo(await response.json(), response.status);
 }
 
+export async function setTerminalSessionAccent(sessionId: string, accent: string | null): Promise<SessionInfo> {
+  const response = await fetch(`/terminal/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accent }),
+  });
+  await assertOk(response);
+  return assertSessionInfo(await response.json(), response.status);
+}
+
 export async function fetchTerminalSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
   const response = await fetch("/terminal/sessions", { signal });
   await assertOk(response);
@@ -230,6 +240,7 @@ function assertSessionInfo(value: unknown, status: number): SessionInfo {
     cwdLabel: payload.cwdLabel,
     sequence: payload.sequence,
     label: typeof payload.label === "string" ? payload.label : undefined,
+    accent: typeof payload.accent === "string" ? payload.accent : undefined,
     cliId: typeof payload.cliId === "string" ? payload.cliId : undefined,
     cliLabel: typeof payload.cliLabel === "string" ? payload.cliLabel : undefined,
     status: payload.status,

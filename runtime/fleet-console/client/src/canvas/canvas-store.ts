@@ -18,6 +18,8 @@ export interface CanvasState {
   readonly viewport: CanvasViewport;
   readonly panels: Record<string, PanelGeometry>;
   readonly panelCreatedAt: Record<string, number>;
+  readonly panelOrder: readonly string[];
+  readonly panelAccent: Record<string, string>;
   // 최소화된 Operation sessionId 목록. geometry는 panels에 그대로 보존되므로 복원은 원위치·원크기로 되돌린다.
   readonly minimized: readonly string[];
 }
@@ -45,7 +47,7 @@ const ZOOM_TWEEN_FACTOR = 0.2;
 const ZOOM_TWEEN_POSITION_EPSILON = 0.5;
 const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
-const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, panels: {}, panelCreatedAt: {}, minimized: [] };
+const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, panels: {}, panelCreatedAt: {}, panelOrder: [], panelAccent: {}, minimized: [] };
 
 const listeners = new Set<Listener>();
 const backgroundAnimationListeners = new Set<Listener>();
@@ -96,6 +98,8 @@ export function setState(patch: Partial<CanvasState>): void {
     viewport: patch.viewport ?? state.viewport,
     panels: patch.panels ?? state.panels,
     panelCreatedAt: patch.panelCreatedAt ?? state.panelCreatedAt,
+    panelOrder: patch.panelOrder ?? state.panelOrder,
+    panelAccent: patch.panelAccent ?? state.panelAccent,
     minimized: patch.minimized ?? state.minimized,
   };
   scheduleSave();
@@ -156,6 +160,37 @@ export function restorePanel(sessionId: string): void {
   });
 }
 
+// dock 재배치는 항상 "전체 가시 순서"를 통째로 영속한다(canvas-dock의 드래그/키보드 핸들러가 새 순서를 만든다).
+// 희소 인덱스 기반 이동 헬퍼는 panelOrder가 비어 있을 때 인덱스 의미가 어긋나므로 두지 않는다.
+export function setPanelOrder(nextOrder: readonly string[]): void {
+  const visibleOrder = normalizePanelOrder(nextOrder);
+  const visibleIds = new Set(visibleOrder);
+  const hiddenShellOrder = state.panelOrder.filter((id) => id.startsWith("shell:") && !visibleIds.has(id));
+  setState({ panelOrder: [...visibleOrder, ...hiddenShellOrder] });
+}
+
+export function setPanelAccent(panelId: string, accentKey: string | null): void {
+  const panelAccent = { ...state.panelAccent };
+  if (accentKey === null || accentKey.trim() === "") {
+    delete panelAccent[panelId];
+  } else {
+    panelAccent[panelId] = accentKey;
+  }
+  setState({ panelAccent });
+}
+
+// 패널 1개의 order/accent 메타데이터를 즉시 폐기한다. Operation은 prunePanels(세션 변화 effect)로도 정리되지만,
+// shell 제거는 그 effect를 트리거하지 않으므로 닫기 경로에서 직접 호출해 canvas localStorage에 stale id가 쌓이지 않게 한다.
+export function forgetPanelMetadata(panelId: string): void {
+  const panelOrder = state.panelOrder.filter((id) => id !== panelId);
+  const orderChanged = panelOrder.length !== state.panelOrder.length;
+  const accentChanged = panelId in state.panelAccent;
+  if (!orderChanged && !accentChanged) return;
+  const panelAccent = { ...state.panelAccent };
+  delete panelAccent[panelId];
+  setState({ panelOrder, panelAccent });
+}
+
 // 공유 z-index 카운터에서 다음 최상단 값을 발급한다(Operations·셸 공통). 패널을 활성화·생성할 때 호출한다.
 export function claimTopZIndex(): number {
   topZIndex += 1;
@@ -193,22 +228,33 @@ export function ensureDefaultGeometry(sessionId: string): PanelGeometry {
 }
 
 export function prunePanels(validSessionIds: readonly string[]): void {
-  const valid = new Set(validSessionIds);
+  // panels/createdAt/minimized 는 Operation 전용(셸은 shell-panels.ts store) → Operation 세션 유효성으로만 정리한다.
+  const validOps = new Set(validSessionIds);
   const panels: Record<string, PanelGeometry> = {};
   let changed = false;
   for (const [sessionId, geometry] of Object.entries(state.panels)) {
-    if (valid.has(sessionId)) {
+    if (validOps.has(sessionId)) {
       panels[sessionId] = geometry;
     } else {
       changed = true;
     }
   }
   // 사라진 세션은 최소화 목록에서도 함께 제거해 유령 칩이 태스크바에 남지 않게 한다.
-  const minimized = state.minimized.filter((sessionId) => valid.has(sessionId));
+  const minimized = state.minimized.filter((sessionId) => validOps.has(sessionId));
   const minimizedChanged = minimized.length !== state.minimized.length;
-  const panelCreatedAt = Object.fromEntries(Object.entries(state.panelCreatedAt).filter(([sessionId]) => valid.has(sessionId)));
+  const panelCreatedAt = Object.fromEntries(Object.entries(state.panelCreatedAt).filter(([sessionId]) => validOps.has(sessionId)));
   const createdAtChanged = Object.keys(panelCreatedAt).length !== Object.keys(state.panelCreatedAt).length;
-  if (changed || minimizedChanged || createdAtChanged) setState({ panels, panelCreatedAt, minimized });
+  // panelOrder/panelAccent 는 Operation+셸 혼합이고 공유 localStorage 에 산다. 셸 id 는 탭별(sessionStorage)이라
+  // 이 탭이 다른 탭의 셸을 권위적으로 판별할 수 없다 → 셸 id 는 무조건 보존하고(닫을 때 forgetPanelMetadata 가 개별 정리),
+  // 무효 Operation id 만 제거한다. 그래야 두 번째 탭의 prune 이 첫 탭의 셸 order/accent 를 지우는 데이터 손실을 막는다.
+  const keepMetadata = (id: string): boolean => validOps.has(id) || id.startsWith("shell:");
+  const panelOrder = state.panelOrder.filter(keepMetadata);
+  const orderChanged = panelOrder.length !== state.panelOrder.length;
+  const panelAccent = Object.fromEntries(Object.entries(state.panelAccent).filter(([id]) => keepMetadata(id)));
+  const accentChanged = Object.keys(panelAccent).length !== Object.keys(state.panelAccent).length;
+  if (changed || minimizedChanged || createdAtChanged || orderChanged || accentChanged) {
+    setState({ panels, panelCreatedAt, panelOrder, panelAccent, minimized });
+  }
 }
 
 export function loadForTheater(theaterId: string | null): void {
@@ -436,9 +482,33 @@ function normalizeCanvasState(value: unknown): CanvasState {
     viewport: normalizeViewport(value.viewport),
     panels,
     panelCreatedAt: normalizePanelCreatedAt(value.panelCreatedAt, panels),
+    panelOrder: normalizePanelOrder(value.panelOrder),
+    panelAccent: normalizePanelAccent(value.panelAccent),
     // 저장된 최소화 목록 중 실재하는 패널만 남긴다(stale 직렬화 방어).
     minimized: normalizeMinimized(value.minimized, panels),
   };
+}
+
+function normalizePanelOrder(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const panelOrder: string[] = [];
+  for (const id of value) {
+    if (typeof id !== "string" || seen.has(id)) continue;
+    seen.add(id);
+    panelOrder.push(id);
+  }
+  return panelOrder;
+}
+
+function normalizePanelAccent(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const panelAccent: Record<string, string> = {};
+  for (const [id, accentKey] of Object.entries(value)) {
+    if (typeof accentKey !== "string") continue;
+    panelAccent[id] = accentKey;
+  }
+  return panelAccent;
 }
 
 function normalizePanelCreatedAt(value: unknown, panels: Record<string, PanelGeometry>): Record<string, number> {
