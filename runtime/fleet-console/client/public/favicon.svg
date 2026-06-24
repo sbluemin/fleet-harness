@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Fleet Console">
+  <!-- Maritime Console favicon · Bearing Scope: 심해 위 관측·지휘 계기와 살아있는 신호 -->
+  <defs>
+    <!-- 심해 잉크 타일 배경 (theme.css ink-mid → ink-deep → ink-abyss 계열) -->
+    <radialGradient id="fav-sea" cx="50%" cy="34%" r="78%">
+      <stop offset="0%" stop-color="#182b3c" />
+      <stop offset="58%" stop-color="#041729" />
+      <stop offset="100%" stop-color="#010c1b" />
+    </radialGradient>
+    <!-- 황동 계기 그라데이션 (brass-bright → brass-deep 계열) -->
+    <linearGradient id="fav-brass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffc23f" />
+      <stop offset="100%" stop-color="#a76100" />
+    </linearGradient>
+  </defs>
+  <!-- 둥근 사각 타일: solid 배경 금지 → 잉크 그라데이션 + rim 테두리 -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#fav-sea)" stroke="#515f6e" stroke-width="1.25" />
+  <!-- 계기 베젤 동심원 (brass = 지금 보고 있는 곳) -->
+  <g fill="none" stroke="url(#fav-brass)" stroke-linecap="round">
+    <circle cx="32" cy="32" r="18.5" stroke-width="3" />
+    <circle cx="32" cy="32" r="10.5" stroke-width="1.6" opacity="0.55" />
+  </g>
+  <!-- 방위 십자선 -->
+  <g stroke="#e8aa4e" stroke-width="2.4" stroke-linecap="round">
+    <line x1="32" y1="9" x2="32" y2="17" />
+    <line x1="32" y1="47" x2="32" y2="55" />
+    <line x1="9" y1="32" x2="17" y2="32" />
+    <line x1="47" y1="32" x2="55" y2="32" />
+  </g>
+  <!-- 계기 중심점 -->
+  <circle cx="32" cy="32" r="2.6" fill="#ffc23f" />
+  <!-- aurora 라이브 블립 (aurora = 지금 살아있는 신호) -->
+  <circle cx="44.7" cy="19.3" r="4.6" fill="#36dede" />
+  <circle cx="44.7" cy="19.3" r="7.6" fill="none" stroke="#36dede" stroke-width="1.4" opacity="0.45" />
+</svg>
