@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { resumeTerminalSession, setTerminalSessionAccent } from "../api.js";
+import { resumeTerminalSession } from "../api.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, getSnapshot, loadForTheater, prunePanels, setPanelAccent } from "../canvas/canvas-store.js";
 import { getActiveShellId, loadShellPanelsForTheater } from "../canvas/shell-panels.js";
@@ -19,7 +19,6 @@ export function Operations({ state }: OperationsProps) {
   const sessionOrder = useMemo(() => theaterSessionOrder(state), [state.sessions, state.sessionOrder, state.activeTheaterId]);
   // 최신 state를 keydown 핸들러에서 읽기 위한 ref(핸들러는 한 번만 등록).
   const stateRef = useRef(state);
-  const migratedAccentSessionIdsRef = useRef(new Set<string>());
   stateRef.current = state;
 
   useEffect(() => {
@@ -74,23 +73,16 @@ export function Operations({ state }: OperationsProps) {
 
   useEffect(() => {
     if (!state.terminalSessionsHydrated) return;
+    // 서버 durable accent가 단일 권위다 — 각 Operation의 로컬 옵티미즘 캐시(panelAccent)를 서버 값으로 정렬한다(설정·해제 모두).
+    // 로컬→서버 업로드 마이그레이션은 두지 않는다: 재마운트로 ref가 리셋되면 stale 로컬 accent가 (다른 탭에서 지운)
+    // 서버 값을 되살리는 부활 버그를 만든다. accent는 오직 chooseAccent의 명시적 PATCH로만 서버에 올라간다.
     const localAccent = getSnapshot().panelAccent;
     for (const sessionId of sessionOrder) {
       const session = state.sessions[sessionId];
       if (!session) continue;
       const serverAccent = session.accent ?? null;
       const currentAccent = localAccent[sessionId] ?? null;
-      if (serverAccent) {
-        migratedAccentSessionIdsRef.current.add(sessionId);
-        if (currentAccent !== serverAccent) setPanelAccent(sessionId, serverAccent);
-      } else if (currentAccent) {
-        if (!migratedAccentSessionIdsRef.current.has(sessionId)) {
-          migratedAccentSessionIdsRef.current.add(sessionId);
-          void setTerminalSessionAccent(sessionId, currentAccent).catch(() => undefined);
-        } else {
-          setPanelAccent(sessionId, null);
-        }
-      }
+      if (serverAccent !== currentAccent) setPanelAccent(sessionId, serverAccent);
     }
   }, [sessionOrder, state.sessions, state.terminalSessionsHydrated]);
 
