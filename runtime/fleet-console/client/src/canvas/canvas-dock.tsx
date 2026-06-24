@@ -33,6 +33,9 @@ interface CanvasDockChipProps {
   readonly canvasSize: CanvasViewportSize;
   // 최대화 모드에서 칩 클릭이 maximizeWindowPanel로 전환할 때 넘길 전체 패널 핸들.
   readonly allHandles: readonly WindowPanelHandle[];
+  readonly isCloseArmed: boolean;
+  readonly onArmClose: (handleId: string) => void;
+  readonly onDisarmClose: () => void;
 }
 
 interface PagerState {
@@ -44,11 +47,14 @@ interface PagerState {
 }
 
 const INITIAL_PAGER: PagerState = { overflow: false, atStart: false, atEnd: true, page: 1, pages: 1 };
+const CLOSE_ARM_DURATION_MS = 1500;
 
 export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
   const chipsRef = useRef<HTMLDivElement | null>(null);
   const pinRightRef = useRef(true);
+  const closeArmTimeoutRef = useRef<number | null>(null);
   const [pager, setPager] = useState<PagerState>(INITIAL_PAGER);
+  const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   // 활성 셸 id를 구독한다 — 셸 칩의 포커스 강조가 포커스 전환에 즉시 반영되게 한다(opportunistic read는 리렌더 안 됨).
   const activeShellId = useActiveShellId();
   const sessionById = new Map(sessions.map((session) => [session.sessionId, session]));
@@ -93,6 +99,26 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
   const entriesKey = entries.map((entry) => entry.handle.id).join(",");
   const metricsKey = entries.map((entry) => `${entry.label}\u0001${entry.meta}\u0001${entry.activeJobCount}`).join("\u0002");
 
+  const clearCloseArmTimer = useCallback(() => {
+    if (closeArmTimeoutRef.current === null) return;
+    window.clearTimeout(closeArmTimeoutRef.current);
+    closeArmTimeoutRef.current = null;
+  }, []);
+
+  const disarmClose = useCallback(() => {
+    clearCloseArmTimer();
+    setArmedCloseId(null);
+  }, [clearCloseArmTimer]);
+
+  const armClose = useCallback((handleId: string) => {
+    clearCloseArmTimer();
+    setArmedCloseId(handleId);
+    closeArmTimeoutRef.current = window.setTimeout(() => {
+      closeArmTimeoutRef.current = null;
+      setArmedCloseId(null);
+    }, CLOSE_ARM_DURATION_MS);
+  }, [clearCloseArmTimer]);
+
   const measure = useCallback(() => {
     const el = chipsRef.current;
     if (!el) return;
@@ -130,12 +156,20 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
     };
   }, [entriesKey, measure]);
 
+  useEffect(() => clearCloseArmTimer, [clearCloseArmTimer]);
+
   useEffect(() => {
     const el = chipsRef.current;
     if (!el) return;
     if (pinRightRef.current) el.scrollLeft = el.scrollWidth;
     measure();
   }, [metricsKey, measure]);
+
+  useEffect(() => {
+    if (armedCloseId === null) return;
+    if (entries.some((entry) => entry.handle.id === armedCloseId)) return;
+    disarmClose();
+  }, [armedCloseId, entries, disarmClose]);
 
   if (entries.length === 0) return null;
 
@@ -159,7 +193,16 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
         ) : null}
         <div className="canvas-dock-chips" ref={chipsRef}>
           {entries.map((entry, index) => (
-            <CanvasDockChip key={entry.handle.id} entry={entry} index={index} canvasSize={canvasSize} allHandles={panelHandles} />
+            <CanvasDockChip
+              key={entry.handle.id}
+              entry={entry}
+              index={index}
+              canvasSize={canvasSize}
+              allHandles={panelHandles}
+              isCloseArmed={armedCloseId === entry.handle.id}
+              onArmClose={armClose}
+              onDisarmClose={disarmClose}
+            />
           ))}
         </div>
         {showPager ? (
@@ -173,20 +216,32 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
   );
 }
 
-function CanvasDockChip({ entry, index, canvasSize, allHandles }: CanvasDockChipProps) {
+function CanvasDockChip({ entry, index, canvasSize, allHandles, isCloseArmed, onArmClose, onDisarmClose }: CanvasDockChipProps) {
   const chipClassName = [
     "canvas-dock-chip",
     entry.active ? "canvas-dock-chip--active" : "",
     entry.underway ? `canvas-dock-chip--underway canvas-dock-chip--underway-${entry.underway}` : "",
   ].filter(Boolean).join(" ");
+  const closeClassName = [
+    "canvas-dock-chip-close",
+    isCloseArmed ? "is-armed" : "",
+  ].filter(Boolean).join(" ");
 
   // 칩 클릭 = 그 패널을 전면 활성화한다. 최대화 모드면 최대화를 유지한 채 전환, 아니면 최소화 복원·카메라 이동까지 흡수한다.
-  const activate = () => activateWindowPanel(entry.handle, allHandles, canvasSize);
+  const activate = () => {
+    onDisarmClose();
+    activateWindowPanel(entry.handle, allHandles, canvasSize);
+  };
   // pointerdown은 전파만 막고(칩 활성화·드래그 경로 차단), 실제 닫기는 click에서 한 번만 실행한다 —
   // pointerdown과 click 양쪽에 닫기를 걸면 closeWindowPanel이 이중 호출되어 두 번째 terminate가 에러 토스트를 띄운다.
   const stopClosePointer = (event: SyntheticEvent<HTMLButtonElement>) => { event.stopPropagation(); };
   const close = (event: SyntheticEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    if (!isCloseArmed) {
+      onArmClose(entry.handle.id);
+      return;
+    }
+    onDisarmClose();
     closeWindowPanel(entry.handle);
   };
 
@@ -200,6 +255,9 @@ function CanvasDockChip({ entry, index, canvasSize, allHandles }: CanvasDockChip
       title={entry.active ? "Focused" : "Click to focus"}
       style={{ "--i": index } as CSSProperties}
       onClick={activate}
+      onFocus={() => {
+        if (!isCloseArmed) onDisarmClose();
+      }}
       onKeyDown={(event) => {
         // 칩 본체에서 발생한 키만 활성화로 처리한다 — 닫기 버튼 등 중첩 컨트롤의 Enter/Space가 버블링되어
         // preventDefault+activate가 닫기를 가로채는 것을 막는다(닫기 버튼은 자체 onClick으로 닫힌다).
@@ -214,8 +272,8 @@ function CanvasDockChip({ entry, index, canvasSize, allHandles }: CanvasDockChip
       <span className="canvas-dock-chip-name">{entry.label}</span>
       <span className="canvas-dock-chip-cli">{entry.meta}</span>
       {entry.activeJobCount > 0 ? <span className="canvas-dock-chip-count">{entry.activeJobCount}</span> : null}
-      <button type="button" className="canvas-dock-chip-close" onPointerDown={stopClosePointer} onClick={close} aria-label={`Close ${entry.label}`} title="Close">
-        <CloseIcon />
+      <button type="button" className={closeClassName} onPointerDown={stopClosePointer} onClick={close} aria-label={isCloseArmed ? `Confirm close ${entry.label}` : `Close ${entry.label}`} title={isCloseArmed ? "Confirm close" : "Close"}>
+        {isCloseArmed ? "Close?" : <CloseIcon />}
       </button>
     </div>
   );
