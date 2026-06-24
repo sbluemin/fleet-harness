@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 
+import { resumeTerminalSession } from "../api.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
-import { ensureDefaultGeometry, focusPanel, loadForTheater, prunePanels } from "../canvas/canvas-store.js";
+import { ensureDefaultGeometry, focusPanel, getSnapshot, loadForTheater, prunePanels, setPanelAccent } from "../canvas/canvas-store.js";
 import { getActiveShellId, loadShellPanelsForTheater } from "../canvas/shell-panels.js";
 import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getPanelHandles, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
-import { resumeTerminalSession } from "../api.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
@@ -31,7 +31,8 @@ export function Operations({ state }: OperationsProps) {
   // Alt+←/→ 로 현재 Theater 내 Operation 포커스를 순환 이동한다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!event.altKey || event.metaKey || event.ctrlKey) return;
+      // Alt+Shift+←/→ 는 Dock 칩 재배치(canvas-dock) 몫이므로 순환에서 양보한다 — shift 없는 Alt+←/→만 순환.
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       // rename/검색 등 일반 입력 중에는 양보한다. 단, 터미널(xterm) 포커스 중에는 패널 전환을 허용한다.
       const active = document.activeElement;
@@ -69,6 +70,21 @@ export function Operations({ state }: OperationsProps) {
     if (!state.terminalSessionsHydrated) return;
     prunePanels(sessionOrder);
   }, [sessionOrder, state.terminalSessionsHydrated]);
+
+  useEffect(() => {
+    if (!state.terminalSessionsHydrated) return;
+    // 서버 durable accent가 단일 권위다 — 각 Operation의 로컬 옵티미즘 캐시(panelAccent)를 서버 값으로 정렬한다(설정·해제 모두).
+    // 로컬→서버 업로드 마이그레이션은 두지 않는다: 재마운트로 ref가 리셋되면 stale 로컬 accent가 (다른 탭에서 지운)
+    // 서버 값을 되살리는 부활 버그를 만든다. accent는 오직 chooseAccent의 명시적 PATCH로만 서버에 올라간다.
+    const localAccent = getSnapshot().panelAccent;
+    for (const sessionId of sessionOrder) {
+      const session = state.sessions[sessionId];
+      if (!session) continue;
+      const serverAccent = session.accent ?? null;
+      const currentAccent = localAccent[sessionId] ?? null;
+      if (serverAccent !== currentAccent) setPanelAccent(sessionId, serverAccent);
+    }
+  }, [sessionOrder, state.sessions, state.terminalSessionsHydrated]);
 
   useEffect(() => {
     pruneDanglingMaximizedPanelId(sessionOrder, {

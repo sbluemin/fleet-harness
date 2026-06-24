@@ -1837,6 +1837,7 @@
 
 .status-dot,
 .tenant-beacon {
+  /* accent-immune: beacon dots are system status signals, never user accent fill. */
   width: 8px;
   height: 8px;
   flex: none;
@@ -2760,7 +2761,7 @@
   background: color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
 }
 
-/* 활성(지금 보고 있던 패널) = brass. 선택 의미를 패널 is-active와 동일하게 brass로 표현한다. */
+/* 활성(지금 보고 있던 패널) = brass. border/fill/ring 모두 brass — accent는 바깥 outline이라 그대로 공존한다. */
 .canvas-dock-chip--active {
   border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
@@ -2783,11 +2784,10 @@
   --uw-glow: var(--warn-glow);
 }
 
-/* 외곽 진행광 링: 테두리 띠만 남기는 마스크(패널 is-running 림과 동일 기법) + conic-gradient.
-   회전하는 --uw-angle 기준으로 밝은 호가 한 바퀴 돌고, 나머지 둘레엔 옅은 상시 림이 남아 '전체 외곽'이
-   정의된다. 펼친 dock의 칩에서만 표시 — 접힘 시엔 칩 자체가 숨겨지므로 토글 알림이 대신한다.
-   AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림으로 단락). */
-.canvas-dock-chip--underway::before {
+/* 칩 외곽 perimeter ring: 패널 가장자리 전체를 휘감는 1.6px 띠(테두리 띠만 남기는 content-box 마스크).
+   사용자 accent를 바로 이 자리(= In-progress 진행광과 동일 위치)에 정적 full 링으로 칠한다. 미설정 시 transparent → 비표시.
+   underway(작업 중)는 같은 ::before를 conic 회전 그라디언트로 덮어 애니메이션 상태로 전환한다(아래 규칙이 우선). */
+.canvas-dock-chip::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -2795,6 +2795,21 @@
   padding: 1.6px;
   border-radius: inherit;
   pointer-events: none;
+  background: var(--chip-accent, transparent);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+/* 외곽 진행광 링(underway): 같은 perimeter ::before를 conic-gradient로 덮고 회전 애니메이션을 건다 —
+   회전하는 --uw-angle 기준 밝은 호가 한 바퀴 돌고 나머지 둘레엔 옅은 상시 림이 남는다(live=aurora, turn=warn).
+   accent 정적 링보다 우선(작업 중=기능 상태). AGENTS.md 모션 규약의 sanctioned 예외(prefers-reduced-motion에서 정적 림으로 단락). */
+.canvas-dock-chip--underway::before {
   background: conic-gradient(
     from var(--uw-angle),
     color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
@@ -2804,20 +2819,40 @@
     color-mix(in oklch, var(--uw-tint) 12%, transparent) 150deg,
     color-mix(in oklch, var(--uw-tint) 12%, transparent) 360deg
   );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  mask-composite: exclude;
   animation: perimeter-orbit 2.4s linear infinite;
 }
 
 /* 진행 중 칩은 신호색 옅은 글로우를 정적으로 덧대 깊이를 준다(둘레 링 순환은 ::before가 담당). */
 .canvas-dock-chip--underway {
+  /* accent-immune: underway glow follows aurora/warn only. */
   box-shadow: var(--shadow-soft), 0 0 18px -8px var(--uw-glow);
+}
+
+/* 끄는 칩은 "들어 올려 손에 쥔 채 끌고 다니는" 감각으로 — 커서를 따라 translateX(--drag-dx)로 이동하면서
+   살짝 떠오르고(translateY) 커지고(scale) 기울며(rotate), 강한 그림자로 패널 위로 분리된다. z를 올려
+   이웃 칩·드롭 마커 위로 떠오르게 하고, transition을 끊어 포인터를 즉시 추종한다(지연 없는 직접 조작감). */
+.canvas-dock-chip--dragging {
+  z-index: 30;
+  transform: translateX(var(--drag-dx, 0)) translateY(-7px) scale(1.06) rotate(-2deg);
+  transition: none;
+  cursor: grabbing;
+  opacity: 0.96;
+  border-color: color-mix(in oklch, var(--ink-fog) 52%, var(--surface-rim));
+  box-shadow:
+    var(--shadow-floating),
+    0 14px 28px -10px oklch(0% 0 0 / 55%),
+    0 0 0 1px color-mix(in oklch, var(--ink-pearl) 14%, transparent);
+}
+
+.canvas-dock-chip--drop-target::after {
+  content: "";
+  position: absolute;
+  inset: 4px auto 4px -5px;
+  width: 2px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-spectral) 64%, transparent);
+  box-shadow: 0 0 12px color-mix(in oklch, var(--ink-spectral) 18%, transparent);
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2828,6 +2863,11 @@
 
   .canvas-dock-chip--underway::before {
     background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
+  }
+
+  /* 동작 최소화: 회전/확대/떠오름은 빼되, 커서 추종(translateX)은 직접 조작이므로 유지한다. */
+  .canvas-dock-chip--dragging {
+    transform: translateX(var(--drag-dx, 0));
   }
 }
 
@@ -2853,11 +2893,113 @@
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
+  /* accent-immune: count badge is an aurora activity channel. */
   color: var(--aurora);
   background: color-mix(in oklch, var(--aurora) 14%, transparent);
   border: 1px solid color-mix(in oklch, var(--aurora) 28%, transparent);
   border-radius: var(--radius-sm);
   padding: 1px 6px;
+}
+
+.canvas-dock-accent-trigger {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 22px;
+  flex: none;
+  cursor: pointer;
+  color: var(--ink-rim);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-dock-chip:hover .canvas-dock-accent-trigger,
+.canvas-dock-chip:focus-within .canvas-dock-accent-trigger {
+  opacity: 1;
+}
+
+.canvas-dock-accent-trigger:hover,
+.canvas-dock-accent-trigger:focus-visible {
+  border-color: color-mix(in oklch, var(--ink-fog) 34%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+}
+
+.canvas-dock-accent-trigger span {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
+}
+
+/* document.body로 포털되고 position/left/bottom은 인라인(position:fixed)으로 지정된다 —
+   dock의 .canvas-dock-chips overflow:hidden 클립을 벗어나 트리거 위에 띄우기 위함. z-index는 dock(15)·최대화 레이어 위. */
+.canvas-dock-accent-popover {
+  z-index: 40;
+  display: grid;
+  /* 16색을 8열 2행으로 — clear(None) 행은 전체 폭을 차지한다. */
+  grid-template-columns: repeat(8, 22px);
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 86%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.canvas-dock-accent-swatch {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+/* clear(None)는 색이 아니라 해제 동작이라 색 그리드와 분리해 전체 폭 행으로 둔다. */
+.canvas-dock-accent-swatch--clear {
+  grid-column: 1 / -1;
+  width: auto;
+  height: 20px;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-rim);
+  grid-auto-flow: column;
+}
+
+.canvas-dock-accent-swatch:hover,
+.canvas-dock-accent-swatch:focus-visible,
+.canvas-dock-accent-swatch[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--ink-fog) 38%, var(--surface-rim));
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+}
+
+.canvas-dock-accent-swatch span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 34%, transparent);
+  border-radius: 999px;
+}
+
+.canvas-dock-accent-swatch--clear span {
+  background:
+    linear-gradient(135deg, transparent 44%, color-mix(in oklch, var(--ink-rim) 82%, transparent) 46% 54%, transparent 56%),
+    color-mix(in oklch, var(--ink-spectral) 8%, transparent);
 }
 
 .canvas-dock-chip-close {
@@ -2868,6 +3010,7 @@
   flex: none;
   margin-left: 2px;
   cursor: pointer;
+  /* accent-immune: close affordance owns neutral/coral only. */
   color: var(--ink-rim);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -2881,6 +3024,7 @@
 
 .canvas-dock-chip-close:hover,
 .canvas-dock-chip-close:focus-visible {
+  /* accent-immune: close hover is coral only. */
   color: var(--coral);
   border-color: color-mix(in oklch, var(--coral) 34%, transparent);
   background: color-mix(in oklch, var(--coral) 10%, transparent);
@@ -2914,6 +3058,18 @@
   color: var(--ink-pearl);
   border-color: var(--coral);
   background: var(--coral);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .canvas-panel-maximized-layer {

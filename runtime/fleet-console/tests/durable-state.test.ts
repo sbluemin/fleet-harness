@@ -56,6 +56,26 @@ describe("durable console state", () => {
     expect(bySession["bad-op"]?.autoNamePromptSeen).toBeUndefined();
   });
 
+  it("sanitizes durable operation accents as optional trimmed short strings", () => {
+    const base = { sessionId: "s", theaterId: "t", cwd: "/p", cwdLabel: "p", sequence: 1, createdAt: 1 };
+    const sanitized = sanitizeDurableConsoleState({
+      version: 1,
+      theaters: [],
+      operations: [
+        { ...base, sessionId: "accent-op", accent: "  blue  " },
+        { ...base, sessionId: "long-accent-op", accent: "x".repeat(80) },
+        { ...base, sessionId: "blank-accent-op", accent: "   " },
+        { ...base, sessionId: "bad-accent-op", accent: 12 },
+      ],
+    });
+
+    const bySession = Object.fromEntries(sanitized.operations.map((operation) => [operation.sessionId, operation]));
+    expect(bySession["accent-op"]?.accent).toBe("blue");
+    expect(bySession["long-accent-op"]?.accent).toHaveLength(64);
+    expect(bySession["blank-accent-op"]?.accent).toBeUndefined();
+    expect(bySession["bad-accent-op"]?.accent).toBeUndefined();
+  });
+
   it("creates the state store with sensitive durable JSON settings", () => {
     let received: unknown;
     const paths: ConsoleDataPaths = {

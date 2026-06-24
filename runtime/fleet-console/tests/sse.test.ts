@@ -59,13 +59,15 @@ describe("interpretObserverFrame", () => {
           cwdLabel: "alpha",
           sequence: 1,
           label: "Bridge",
+          accent: "red",
           status: "terminal-only",
           createdAt: 1_000,
         },
       }),
     });
 
-    expect(frame).toMatchObject({ kind: "session", session: { sessionId: "session-a", label: "Bridge" } });
+    // accent를 통과시키지 않으면 SSE 업데이트마다 dock accent가 undefined로 지워진다(서버 영속값이 무시됨).
+    expect(frame).toMatchObject({ kind: "session", session: { sessionId: "session-a", label: "Bridge", accent: "red" } });
     expect(frame?.event).toBeUndefined();
   });
 

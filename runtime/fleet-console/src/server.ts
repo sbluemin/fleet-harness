@@ -775,12 +775,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     if (req.method === "PATCH") {
-      const body = await readJsonBody<{ readonly label?: unknown }>(req);
+      const body = await readJsonBody<{ readonly label?: unknown; readonly accent?: unknown }>(req);
       if (!body || (body.label !== undefined && typeof body.label !== "string")) {
         writeJson(res, 400, { error: "invalid_session_label" });
         return;
       }
-      const updated = observability.renameTerminalSession(sessionId, body.label ?? "");
+      if (body.accent !== undefined && body.accent !== null && typeof body.accent !== "string") {
+        writeJson(res, 400, { error: "invalid_session_accent" });
+        return;
+      }
+      let updated = observability.getTerminalSessionInfo(sessionId);
+      let renamed = false;
+      if (body.label !== undefined) {
+        updated = observability.renameTerminalSession(sessionId, body.label);
+        renamed = true;
+      }
+      if (body.accent !== undefined) {
+        updated = observability.setTerminalSessionAccent(sessionId, body.accent);
+      }
       if (!updated) {
         writeJson(res, 404, { error: "session_not_found" });
         return;
@@ -789,7 +801,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       observability.notifySessionUpdated(updated);
       // 작전 이름 변경을 실행 중인 Agent CLI 세션에도 동기화한다: carrier 결과 system-reminder와
       // 동일한 PTY 주입 파이프라인을 재사용해 해당 CLI의 rename 슬래시 명령을 그 세션에 주입한다.
-      injectRenameCommand(sessionId, updated.label);
+      if (renamed) injectRenameCommand(sessionId, updated.label);
       persistDurableState();
       writeJson(res, 200, updated);
       return;

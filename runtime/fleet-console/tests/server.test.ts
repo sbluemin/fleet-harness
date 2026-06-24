@@ -214,6 +214,23 @@ describe("console terminal observability", () => {
     expect(JSON.stringify(renamed)).not.toContain(dir);
   });
 
+  it("sets terminal session accent in memory and durable operation metadata", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-accent-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    const accented = store.setTerminalSessionAccent("session-a", "  blue  ");
+
+    expect(accented?.accent).toBe("blue");
+    expect(store.listDurableOperations()[0]?.accent).toBe("blue");
+    const reset = store.setTerminalSessionAccent("session-a", "");
+    expect(store.listDurableOperations()[0]?.accent).toBeUndefined();
+    expect(reset?.accent).toBeUndefined();
+    store.setTerminalSessionAccent("session-a", "x".repeat(80));
+    expect(store.listDurableOperations()[0]?.accent).toHaveLength(64);
+  });
+
   it("auto-names operations only on the first user prompt when the operator has not set a label", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-"));
     tempDirs.push(dir);

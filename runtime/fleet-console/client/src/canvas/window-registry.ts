@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { terminateTerminalSession } from "../api.js";
 import { failTerminateTerminalSession, removeTerminalSession, selectTerminalSession } from "../store.js";
-import { animateViewportTo, claimTopZIndex, focusPanel, getSnapshot, minimizePanel, restorePanel, type CanvasViewport, type CanvasViewportSize } from "./canvas-store.js";
+import { animateViewportTo, claimTopZIndex, focusPanel, forgetPanelMetadata, getSnapshot, minimizePanel, restorePanel, type CanvasViewport, type CanvasViewportSize } from "./canvas-store.js";
 import { getActiveShellId, getMinimizedShellPanelIds, getShellPanels, minimizeShellPanel, removeShellPanel, restoreShellPanel, setActiveShellPanel, setShellPanelGeometry } from "./shell-panels.js";
 
 export type WindowPanelKind = "operation" | "shell";
@@ -63,7 +63,7 @@ export function getPanelHandles(operationSessionIds: readonly string[]): readonl
     .map((id) => ({ kind: "operation" as const, id, createdAt: canvas.panelCreatedAt[id] ?? 0 }));
   const shellHandles = Object.entries(getShellPanels())
     .map(([id, entry]) => ({ kind: "shell" as const, id, createdAt: entry.createdAt }));
-  return [...operationHandles, ...shellHandles].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  return sortPanelHandles([...operationHandles, ...shellHandles], canvas.panelOrder);
 }
 
 export function getMinimizedPanelHandles(operationSessionIds: readonly string[]): readonly WindowPanelHandle[] {
@@ -78,7 +78,7 @@ export function getMinimizedPanelHandles(operationSessionIds: readonly string[])
     const panel = shellPanels[id];
     if (panel) shellHandles.push({ kind: "shell", id, createdAt: panel.createdAt });
   }
-  return [...operationHandles, ...shellHandles].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  return sortPanelHandles([...operationHandles, ...shellHandles], canvas.panelOrder);
 }
 
 export function nextPanelHandle(handles: readonly WindowPanelHandle[], currentId: string | null, delta: number): WindowPanelHandle | null {
@@ -165,6 +165,8 @@ export function closeWindowPanel(handle: WindowPanelHandle): void {
     return;
   }
   removeShellPanel(handle.id);
+  // shell 제거는 operations의 prune effect를 트리거하지 않으므로 canvas store의 order/accent 메타도 직접 폐기한다.
+  forgetPanelMetadata(handle.id);
   void terminateTerminalSession(handle.id).catch((error) => {
     failTerminateTerminalSession(error instanceof Error ? error.message : String(error));
   });
@@ -191,6 +193,23 @@ function subscribe(listener: Listener): () => void {
 
 function emit(): void {
   for (const listener of listeners) listener();
+}
+
+function sortPanelHandles(handles: readonly WindowPanelHandle[], panelOrder: readonly string[]): readonly WindowPanelHandle[] {
+  if (panelOrder.length === 0) return [...handles].sort(comparePanelHandlesByCreatedAt);
+  const explicitOrder = new Map(panelOrder.map((id, index) => [id, index]));
+  return [...handles].sort((a, b) => {
+    const aIndex = explicitOrder.get(a.id);
+    const bIndex = explicitOrder.get(b.id);
+    if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
+    if (aIndex !== undefined) return -1;
+    if (bIndex !== undefined) return 1;
+    return comparePanelHandlesByCreatedAt(a, b);
+  });
+}
+
+function comparePanelHandlesByCreatedAt(a: WindowPanelHandle, b: WindowPanelHandle): number {
+  return a.createdAt - b.createdAt || a.id.localeCompare(b.id);
 }
 
 function focusedViewportFor(geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, viewportSize: CanvasViewportSize): CanvasViewport {

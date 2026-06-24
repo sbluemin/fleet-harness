@@ -48,6 +48,7 @@ interface PendingTerminalSessionState {
   readonly sequence: number;
   label?: string;
   labelSource?: ConsoleLabelSource;
+  accent?: string;
   autoNamePromptSeen?: boolean;
   cliId?: string;
   cliLabel?: string;
@@ -234,6 +235,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       sequence: operation.sequence,
       label: operation.label,
       labelSource: operation.labelSource,
+      accent: operation.accent,
       autoNamePromptSeen: operation.autoNamePromptSeen,
       cliId: operation.cliId,
       cliLabel: operation.cliLabel,
@@ -260,6 +262,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       sequence: session.sequence,
       ...(session.label ? { label: session.label } : {}),
       ...(session.labelSource ? { labelSource: session.labelSource } : {}),
+      ...(session.accent ? { accent: session.accent } : {}),
       ...(session.autoNamePromptSeen ? { autoNamePromptSeen: true } : {}),
       ...(session.cliId ? { cliId: session.cliId } : {}),
       ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
@@ -320,6 +323,18 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       session.label = label;
       session.labelSource = "user";
       session.autoNamePromptSeen = true;
+    }
+    return toTerminalSessionInfo(session);
+  }
+
+  function setTerminalSessionAccent(sessionId: string, accent: string | null): ConsoleTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    const normalized = accent?.trim().slice(0, 64) ?? "";
+    if (normalized.length === 0) {
+      delete session.accent;
+    } else {
+      session.accent = normalized;
     }
     return toTerminalSessionInfo(session);
   }
@@ -400,6 +415,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     notifySessionAttention,
     notifySessionUpdated,
     renameTerminalSession,
+    setTerminalSessionAccent,
     autoNameTerminalSession,
     subscribe,
     subscribeAll,
@@ -476,6 +492,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): ConsoleTermi
     cwdLabel: state.cwdLabel,
     sequence: state.sequence,
     label: state.label,
+    accent: state.accent,
     cliId: state.cliId,
     cliLabel: state.cliLabel,
     status: state.status,

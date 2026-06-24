@@ -334,7 +334,7 @@ export function completeCreateTerminalSession(session: SessionInput): void {
 
 export function applySessionUpdate(session: SessionInput): void {
   const current = state.sessions[session.sessionId];
-  const normalized = normalizeSession({ ...(current ?? {}), ...session });
+  const normalized = normalizeSession({ ...(current ?? {}), ...session, label: session.label, accent: session.accent });
   const known = Boolean(current);
   const sessions = { ...state.sessions, [normalized.sessionId]: normalized };
   const sessionOrder = known

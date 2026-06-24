@@ -133,6 +133,7 @@ function readSessionInfo(value: unknown): SessionInfo | null {
     cwdLabel: session.cwdLabel,
     sequence: session.sequence,
     label: typeof session.label === "string" ? session.label : undefined,
+    accent: typeof session.accent === "string" ? session.accent : undefined,
     cliId: typeof session.cliId === "string" ? session.cliId : undefined,
     cliLabel: typeof session.cliLabel === "string" ? session.cliLabel : undefined,
     status: session.status,

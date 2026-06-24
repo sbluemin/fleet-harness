@@ -30,6 +30,7 @@ export interface DurableOperation {
   // 작전명 출처. 사용자가 수동 rename하면 "user", UserPromptSubmit 훅의 자동 작명이 설정하면 "auto".
   // 미설정(레거시) 상태는 read-time에 label 유무로 해석한다: label이 있으면 user로 보수 해석해 자동 덮어쓰기를 막는다.
   readonly labelSource?: ConsoleLabelSource;
+  readonly accent?: string;
   // 최초 UserPromptSubmit auto-name hook 수신 여부. true면 이후 prompt는 자동 작명 후보여도 작전명을 바꾸지 않는다.
   readonly autoNamePromptSeen?: boolean;
   readonly cliId?: string;
@@ -174,6 +175,7 @@ function sanitizeDurableOperation(value: unknown): DurableOperation | null {
   if (!sessionId || !theaterId || !cwd || !cwdLabel || sequence === null || createdAt === null) return null;
   const label = readOptionalString(value.label);
   const labelSource = readLabelSource(value.labelSource);
+  const accent = readOptionalAccent(value.accent);
   const autoNamePromptSeen = value.autoNamePromptSeen === true || (labelSource === "auto" && label !== undefined);
   const providerSession = sanitizeProviderSession(value.providerSession);
   return {
@@ -184,6 +186,7 @@ function sanitizeDurableOperation(value: unknown): DurableOperation | null {
     sequence,
     ...(label ? { label } : {}),
     ...(labelSource ? { labelSource } : {}),
+    ...(accent ? { accent } : {}),
     ...(autoNamePromptSeen ? { autoNamePromptSeen: true } : {}),
     ...(readOptionalString(value.cliId) ? { cliId: readOptionalString(value.cliId) } : {}),
     ...(readOptionalString(value.cliLabel) ? { cliLabel: readOptionalString(value.cliLabel) } : {}),
@@ -225,6 +228,12 @@ function readOptionalString(value: unknown): string | undefined {
 
 function readLabelSource(value: unknown): ConsoleLabelSource | undefined {
   return value === "user" || value === "auto" ? value : undefined;
+}
+
+function readOptionalAccent(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 64) : undefined;
 }
 
 function readPositiveInteger(value: unknown): number | null {
