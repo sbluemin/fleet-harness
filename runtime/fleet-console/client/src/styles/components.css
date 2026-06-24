@@ -2875,7 +2875,8 @@
   transition:
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
 }
 
 .canvas-dock-chip-close:hover,
@@ -2889,6 +2890,30 @@
   display: block;
   width: 12px;
   height: 12px;
+}
+
+.canvas-dock-chip-close.is-armed {
+  width: auto;
+  padding: 0 9px;
+  gap: 5px;
+  color: var(--ink-pearl);
+  border-color: var(--coral);
+  background: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: dock-close-arm-pulse 1.1s ease-in-out infinite;
+}
+
+.canvas-dock-chip-close.is-armed:hover,
+.canvas-dock-chip-close.is-armed:focus-visible {
+  color: var(--ink-pearl);
+  border-color: var(--coral);
+  background: var(--coral);
 }
 
 .canvas-panel-maximized-layer {
@@ -2914,6 +2939,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-panel-maximized-layer {
+    animation: none;
+  }
+
+  .canvas-dock-chip-close.is-armed {
     animation: none;
   }
 }

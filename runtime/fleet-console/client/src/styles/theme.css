@@ -322,6 +322,16 @@ a {
   }
 }
 
+@keyframes dock-close-arm-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--coral-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
 @keyframes caret-blink {
   0%,
   55% {
