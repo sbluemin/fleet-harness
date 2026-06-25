@@ -9,6 +9,7 @@ import {
   reduceSnapshotJob,
   splitNotificationsByVisibility,
 } from "../client/src/reduce.js";
+import { createDefaultTerminalFontSettings } from "../client/src/terminal-font.js";
 import type { ConsoleState, NotificationPreferences, ObservedEvent, OperationNotification } from "../client/src/types.js";
 
 function makeEvent(id: number, type: string, event: Record<string, unknown>, jobId = "job-1"): ObservedEvent {
@@ -38,6 +39,7 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     connectionError: null,
     activeTheme: "maritime",
     terminalRenderer: "webgl",
+    terminalFont: createDefaultTerminalFontSettings(),
     version: "1.8.0",
     updateAvailable: false,
     latestVersion: null,

@@ -26,6 +26,7 @@ import {
   openOperationSearch,
   openShortcuts,
   openWhatsNew,
+  readStoredTerminalFont,
   readStoredRenderer,
   removeTerminalSession,
   removeTheater,
@@ -37,6 +38,9 @@ import {
   setActiveTheater,
   setDnd,
   setGlobalMute,
+  setCustomTerminalFont,
+  setTerminalFont,
+  setTerminalFontSize,
   setTerminalRenderer,
   setState,
   theaterSessionOrder,
@@ -51,6 +55,7 @@ const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", cre
 const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
 const THEATER_B: TheaterInfo = { id: "theater-b", label: "Beta", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:01.000Z", hasWiki: false, activeAdmiralCount: 0 };
 const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
+const TERMINAL_FONT_STORAGE_KEY = "fleet-console.terminalFont";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 
@@ -82,6 +87,7 @@ beforeEach(() => {
     connection: "connecting",
     connectionError: null,
     terminalRenderer: "webgl",
+    terminalFont: readStoredTerminalFont(),
     updateAvailable: false,
     latestVersion: null,
     tenants: [],
@@ -143,6 +149,62 @@ describe("store", () => {
 
     expect(getState().terminalRenderer).toBe("dom");
     expect(storage.get(RENDERER_STORAGE_KEY)).toBe("dom");
+  });
+
+  it("reads terminal font settings with self-hosted Cascadia as the default", () => {
+    expect(readStoredTerminalFont()).toMatchObject({
+      source: "curated",
+      id: "cascadia",
+      customName: "",
+      family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      size: 14,
+    });
+
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+    storage.set(TERMINAL_FONT_STORAGE_KEY, JSON.stringify({
+      source: "curated",
+      id: "fira-code",
+      size: 18,
+    }));
+
+    expect(readStoredTerminalFont()).toMatchObject({
+      source: "curated",
+      id: "fira-code",
+      family: "\"Fira Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      size: 18,
+    });
+  });
+
+  it("persists terminal font family and size changes into state and localStorage", () => {
+    const storage = new Map<string, string>();
+    mockLocalStorage(storage);
+
+    setTerminalFont("source-code-pro");
+    expect(getState().terminalFont).toMatchObject({
+      source: "curated",
+      id: "source-code-pro",
+      family: "\"Source Code Pro Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      size: 14,
+    });
+
+    setTerminalFontSize(30);
+    expect(getState().terminalFont.size).toBe(22);
+
+    setCustomTerminalFont("MesloLGS NF");
+    expect(getState().terminalFont).toMatchObject({
+      source: "custom",
+      id: null,
+      customName: "MesloLGS NF",
+      family: "\"MesloLGS NF\", \"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      size: 22,
+    });
+    expect(JSON.parse(storage.get(TERMINAL_FONT_STORAGE_KEY) ?? "{}")).toEqual({
+      source: "custom",
+      id: null,
+      customName: "MesloLGS NF",
+      size: 22,
+    });
   });
 
   it("applies observer update status to the global state", () => {
