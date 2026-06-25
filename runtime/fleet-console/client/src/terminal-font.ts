@@ -24,8 +24,10 @@ const TERMINAL_FONT_FALLBACK_STACK = "ui-monospace, \"SF Mono\", Menlo, monospac
 const DEFAULT_TERMINAL_FONT_SIZE = 14;
 const MIN_TERMINAL_FONT_SIZE = 10;
 const MAX_TERMINAL_FONT_SIZE = 22;
+const MAX_CUSTOM_FONT_NAME_LENGTH = 128;
 const FONT_RESOLVE_THRESHOLD_PX = 0.5;
 const FONT_RESOLVE_PROBE = "mmmmmmmmmmwwwwiIl1 0O-_|┌ABCxyz";
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/g;
 
 export const TERMINAL_FONT_SIZE_RANGE = {
   min: MIN_TERMINAL_FONT_SIZE,
@@ -93,12 +95,12 @@ export function createCuratedTerminalFontSettings(id: TerminalFontId | null, siz
 }
 
 export function createCustomTerminalFontSettings(customName: string, size: number): TerminalFontSettings {
-  const trimmedName = customName.trim();
+  const sanitizedName = sanitizeCustomFontFamilyName(customName);
   return {
     source: "custom",
     id: null,
-    customName: trimmedName,
-    family: trimmedName ? `"${escapeFontFamilyName(trimmedName)}", ${DEFAULT_TERMINAL_FONT.family}` : DEFAULT_TERMINAL_FONT.family,
+    customName: sanitizedName,
+    family: sanitizedName ? `"${escapeFontFamilyName(sanitizedName)}", ${DEFAULT_TERMINAL_FONT.family}` : DEFAULT_TERMINAL_FONT.family,
     size: clampTerminalFontSize(size),
   };
 }
@@ -166,6 +168,10 @@ function measureFontWidth(context: CanvasRenderingContext2D, family: string): nu
 
 function isTerminalFontId(value: string): value is TerminalFontId {
   return CURATED_TERMINAL_FONTS.some((font) => font.id === value);
+}
+
+function sanitizeCustomFontFamilyName(name: string): string {
+  return name.replace(CONTROL_CHARACTER_PATTERN, "").trim().slice(0, MAX_CUSTOM_FONT_NAME_LENGTH);
 }
 
 function escapeFontFamilyName(name: string): string {

@@ -34,6 +34,32 @@ describe("terminal font settings", () => {
     });
   });
 
+  it("removes control characters and caps custom font names before building font-family", () => {
+    const longName = "A".repeat(140);
+    const settings = createCustomTerminalFontSettings(`\t\n  Meslo\r"NF"\\${longName}\f  `, 14);
+
+    expect(settings.customName).toHaveLength(128);
+    expect(settings.customName).not.toMatch(/[\x00-\x1F\x7F]/);
+    expect(settings.family).not.toMatch(/[\r\n\t\f]/);
+    expect(settings.family).toContain("\\\"NF\\\"");
+    expect(settings.family).toContain("\\\\");
+  });
+
+  it("sanitizes custom font names restored from localStorage", () => {
+    const settings = parseStoredTerminalFontSettings(JSON.stringify({
+      source: "custom",
+      customName: "\n\t  \f",
+      size: 14,
+    }));
+
+    expect(settings).toMatchObject({
+      source: "custom",
+      customName: "",
+      family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
+      size: 14,
+    });
+  });
+
   it("uses canvas width comparison to distinguish resolved custom fonts from fallback", () => {
     mockCanvasWidths({
       monospace: 100,

@@ -269,7 +269,7 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.fontFamily = terminalFont.family;
-    fitAndRefreshTerminal(terminal, fitAddonRef.current);
+    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current);
   }, [terminalFont.family]);
 
   // 줌 settle 감지: zoom prop은 rAF 보간 중 매 프레임 바뀌므로, 마지막 변경 후 ZOOM_SETTLE_MS가 지나야
@@ -296,7 +296,7 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
     // 바뀌면 xterm이 옵션 변경 핸들러(_handleOptionsChanged→_refreshCharAtlas→acquireTextureAtlas)에서 새
     // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
     // fit + refresh로 재배치/재도색한다.
-    fitAndRefreshTerminal(terminal, fitAddonRef.current);
+    fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current);
   }, [appliedZoom, terminalFont.size]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
@@ -335,7 +335,8 @@ function terminalThemeFor(theme: ThemeId): ITheme {
   return theme === "carbon" ? CARBON_TERMINAL_THEME : MARITIME_TERMINAL_THEME;
 }
 
-function fitAndRefreshTerminal(terminal: XtermTerminal, fitAddon: FitAddon | null): void {
+function fitResizeAndRefreshTerminal(terminal: XtermTerminal, fitAddon: FitAddon | null, connection: TerminalConnection | null): void {
   fitAddon?.fit();
+  connection?.resize(terminal.cols, terminal.rows);
   terminal.refresh(0, terminal.rows - 1);
 }
