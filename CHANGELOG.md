@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-06-25
+
+### Added
+- [fleet-console] Add a favicon so the console shows a distinct icon in the browser tab and bookmarks.
+- [fleet-console] Reorder dock taskbar panels by dragging a chip to a new position, or with Alt+Shift+Arrow while a chip is focused; the arrangement persists per Theater.
+- [fleet-console] Mark a dock taskbar panel with a custom accent color from a 16-color palette; the color rings the whole panel perimeter (the same edge the in-progress indicator rides) while system status signals stay intact, and the choice persists per Theater.
+
+### Changed
+- [fleet-console] Dock taskbar close now requires a second confirming click, preventing accidental panel removal.
+
+### Fixed
+- [fleet-admiral] Launching the Codex CLI no longer fails to start on Codex 0.142.0 and later; Fleet was passing a Codex feature flag that newer versions removed, which made Codex abort on startup.
+
 ## [1.12.0] - 2026-06-23
 
 ### Added
