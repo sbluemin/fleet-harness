@@ -4,7 +4,7 @@ import { resumeTerminalSession } from "../api.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { ensureDefaultGeometry, focusPanel, getSnapshot, loadForTheater, prunePanels, setPanelAccent } from "../canvas/canvas-store.js";
 import { getActiveShellId, loadShellPanelsForTheater } from "../canvas/shell-panels.js";
-import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getPanelHandles, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
+import { clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getPanelHandles, loadMaximizedPanelForTheater, maximizeWindowPanel, nextPanelHandle, pruneDanglingMaximizedPanelId } from "../canvas/window-registry.js";
 import { FloatingJobOverlay } from "../components/floating-job-overlay.js";
 import { applySessionUpdate, consumeOperationFocus, failResumeTerminalSession, selectTerminalSession, theaterSessionOrder } from "../store.js";
 import type { ConsoleState } from "../types.js";
@@ -26,6 +26,7 @@ export function Operations({ state }: OperationsProps) {
     // 셸 패널도 같은 activeTheaterId 기준으로 복원한다(새로고침 후 유지, Theater 전환 시 해당 Theater 셸로 교체).
     // Operations 패널의 loadForTheater와 대칭이며, 이전 Theater의 보류 저장은 내부에서 flush된다.
     loadShellPanelsForTheater(state.activeTheaterId);
+    loadMaximizedPanelForTheater(state.activeTheaterId);
   }, [state.activeTheaterId]);
 
   // Alt+←/→ 로 현재 Theater 내 Operation 포커스를 순환 이동한다.

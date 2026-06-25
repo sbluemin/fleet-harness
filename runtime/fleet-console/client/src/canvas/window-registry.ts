@@ -27,6 +27,8 @@ const FOCUS_MIN_ZOOM = 0.25;
 const FOCUS_MAX_ZOOM = 1;
 
 let maximizedPanelId: string | null = null;
+let activeTheaterId: string | null = null;
+const maximizedPanelIdsByTheater = new Map<string, string>();
 
 export function useMaximizedPanelId(): string | null {
   return useSyncExternalStore(subscribe, getMaximizedPanelId, getMaximizedPanelId);
@@ -36,13 +38,24 @@ export function getMaximizedPanelId(): string | null {
   return maximizedPanelId;
 }
 
+export function loadMaximizedPanelForTheater(theaterId: string | null): void {
+  saveMaximizedPanelForActiveTheater();
+  activeTheaterId = theaterId;
+  const next = theaterId ? maximizedPanelIdsByTheater.get(theaterId) ?? null : null;
+  if (maximizedPanelId === next) return;
+  maximizedPanelId = next;
+  emit();
+}
+
 export function setMaximizedPanelId(id: string): void {
+  if (activeTheaterId) maximizedPanelIdsByTheater.set(activeTheaterId, id);
   if (maximizedPanelId === id) return;
   maximizedPanelId = id;
   emit();
 }
 
 export function clearMaximizedPanelId(): void {
+  if (activeTheaterId) maximizedPanelIdsByTheater.delete(activeTheaterId);
   if (maximizedPanelId === null) return;
   maximizedPanelId = null;
   emit();
@@ -193,6 +206,15 @@ function subscribe(listener: Listener): () => void {
 
 function emit(): void {
   for (const listener of listeners) listener();
+}
+
+function saveMaximizedPanelForActiveTheater(): void {
+  if (!activeTheaterId) return;
+  if (maximizedPanelId) {
+    maximizedPanelIdsByTheater.set(activeTheaterId, maximizedPanelId);
+  } else {
+    maximizedPanelIdsByTheater.delete(activeTheaterId);
+  }
 }
 
 function sortPanelHandles(handles: readonly WindowPanelHandle[], panelOrder: readonly string[]): readonly WindowPanelHandle[] {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { forgetPanelMetadata, getSnapshot, loadForTheater, minimizePanel, prunePanels, restorePanel, setPanelAccent, setPanelGeometry, setPanelOrder, type PanelGeometry } from "../client/src/canvas/canvas-store.js";
 import { addShellPanel, clearShellPanels, getActiveShellId, getMinimizedShellPanelIds, loadShellPanelsForTheater, minimizeShellPanel, restoreShellPanel } from "../client/src/canvas/shell-panels.js";
-import { activateWindowPanel, clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, maximizeWindowPanel, minimizeWindowPanel, nextPanelHandle, operationPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
+import { activateWindowPanel, clearMaximizedPanelId, focusWindowPanel, getMaximizedPanelId, getMinimizedPanelHandles, getPanelHandles, loadMaximizedPanelForTheater, maximizeWindowPanel, minimizeWindowPanel, nextPanelHandle, operationPanelHandle, pruneDanglingMaximizedPanelId, setMaximizedPanelId } from "../client/src/canvas/window-registry.js";
 
 const GEOMETRY: PanelGeometry = { x: 0, y: 0, width: 100, height: 100, zIndex: 0 };
 
@@ -18,14 +18,16 @@ beforeEach(() => {
   window.sessionStorage.clear();
   loadForTheater("theater-a");
   loadShellPanelsForTheater("theater-a");
+  loadMaximizedPanelForTheater("theater-a");
   clearMaximizedPanelId();
 });
 
 afterEach(() => {
   clearShellPanels();
+  clearMaximizedPanelId();
+  loadMaximizedPanelForTheater(null);
   loadForTheater(null);
   loadShellPanelsForTheater(null);
-  clearMaximizedPanelId();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -199,6 +201,36 @@ describe("window registry facade", () => {
     expect(getMaximizedPanelId()).toBe("op-a");
     clearMaximizedPanelId();
     expect(getMaximizedPanelId()).toBeNull();
+  });
+
+  it("restores the maximized panel independently for each Theater", () => {
+    setMaximizedPanelId("op-a");
+
+    loadMaximizedPanelForTheater("theater-b");
+    expect(getMaximizedPanelId()).toBeNull();
+    setMaximizedPanelId("op-b");
+
+    loadMaximizedPanelForTheater("theater-a");
+    expect(getMaximizedPanelId()).toBe("op-a");
+
+    loadMaximizedPanelForTheater("theater-b");
+    expect(getMaximizedPanelId()).toBe("op-b");
+  });
+
+  it("does not clear another Theater's maximized panel when pruning the active Theater", () => {
+    setMaximizedPanelId("op-a");
+
+    loadMaximizedPanelForTheater("theater-b");
+    setMaximizedPanelId("missing");
+    expect(pruneDanglingMaximizedPanelId([], {
+      operationSessionsHydrated: true,
+      shellPanelsHydrated: true,
+      theaterReady: true,
+    })).toBe(true);
+    expect(getMaximizedPanelId()).toBeNull();
+
+    loadMaximizedPanelForTheater("theater-a");
+    expect(getMaximizedPanelId()).toBe("op-a");
   });
 
   it("maximizeWindowPanel minimizes the others, restores the target, and replaces the previous maximize", () => {
