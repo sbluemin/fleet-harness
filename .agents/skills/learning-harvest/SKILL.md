@@ -14,6 +14,7 @@ This is a **meta-skill**: its product is other skills, rules, tests, ADRs, or me
 - **End of substantive work** — the default trigger. After a feature / fix / refactor / investigation lands, before moving on.
 - **Friction detected** — something took unexpected time or tripped a trap; reverse-engineer the rule that would have made it trivial.
 - **Periodic pruning** — audit a persistent-output surface to delete weak or stale rules.
+- **Skill self-review** — the skills you invoked this task are first-class harvest targets: sharpen a skill you used (a missing gotcha, an inaccurate step, a stale boundary), or spawn a new skill when a recurring procedure has no home. See "Improve the skills you used" below.
 - **NOT for**: trivial one-off work with nothing generalizable; capturing speculation (encode only what was proven); restating what the code or git history already records.
 
 ## Trigger discipline (skill + self-trigger)
@@ -61,6 +62,15 @@ The "why" preserves context so a future reader can adapt when circumstances shif
 
 On a pruning pass, or whenever you touch a crowded surface, flag items that are stale, false, or weak: **keep / update / delete** with a one-line reason. **Encoding without pruning is debt** — few strong rules beat many weak ones.
 
+## Improve the skills you used (the meta-recursion)
+
+The skills you invoked while doing the task are **first-class harvest targets** — this is the loop turned on itself. After substantive work, list the skills you ran (e.g. `console-e2e`, `pr-workflow`, `git-worktree`) and ask of each:
+
+- **Sharpen an existing skill** — did it cost you a gotcha it should have warned about, a step that was inaccurate, or a boundary that was wrong or missing? If so, encode the fix **into that skill** — its Gotchas / Workflow / Must-not section is the SSoT home. A trap you hit once will hit the next run unless the skill itself carries the warning.
+- **Spawn a new skill** — did you perform a non-trivial, repeatable procedure that has **no** skill home? If it clears the three-condition gate, propose a new skill (this repo's `product-proposal` and `learning-harvest` were both born this way).
+
+Both paths obey the same guards: propose-then-approve, validate-before-encode, and SSoT (edit the one skill, never fork a copy). Skills are prompt-policy, so they carry the **highest overfitting risk** — a single incident is not yet a rule; weigh recurrence and generality hardest before touching one. A skill change is a code change: route it through the normal pipeline (worktree -> edit -> `pr-workflow`).
+
 ## Guards (do not skip)
 
 1. **Propose, then approve** - surface candidates; the Admiral of the Navy approves; encode only approved items. No silent auto-encoding.
@@ -73,7 +83,7 @@ On a pruning pass, or whenever you touch a crowded surface, flag items that are 
 
 ## Workflow
 
-1. **Retrospect** - recall the task's friction, discoveries, and judgment calls (one short list).
+1. **Retrospect** - recall the task's friction, discoveries, and judgment calls, AND list the skills you invoked this task — each skill is a candidate for sharpening (see "Improve the skills you used").
 2. **Extract** - apply the three-condition gate; drop what fails.
 3. **Route** - assign each survivor a single home (Stage 2 table); check for an existing duplicate first.
 4. **Draft encodings** - write each as `symptom -> action -> why` at the most-actionable layer.
