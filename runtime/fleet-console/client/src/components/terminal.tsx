@@ -25,10 +25,6 @@ interface TerminalProps {
   readonly zoom?: number;
 }
 
-// 기본 폰트 크기(CSS px). 맵 줌 보정 시 fontSize = BASE_FONT_SIZE × zoom으로 키워, 부모 scale(zoom)과
-// 합쳐도 painted 글자 크기가 동일하게 유지되고(=base×parentZoom) xterm 좌표 분모(cellWidth)가 분자 단위와 맞는다.
-const BASE_FONT_SIZE = 14;
-
 const TERMINAL_OPTIONS = {
   // Unicode11Addon은 terminal.unicode(proposed API)를 사용하므로 이 옵션이 true여야 한다.
   // false이면 addon.activate()가 "must set allowProposedApi" 오류를 던져 터미널 마운트가 깨진다.
@@ -36,8 +32,6 @@ const TERMINAL_OPTIONS = {
   convertEol: true,
   cursorBlink: true,
   cursorStyle: "block" as const,
-  fontFamily: "\"Cascadia Code\", \"Cascadia Mono\", \"JetBrains Mono Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
-  fontSize: BASE_FONT_SIZE,
   lineHeight: 1.2,
 };
 
@@ -94,7 +88,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
 };
 
 export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 }: TerminalProps) {
-  const { activeTheme, terminalRenderer } = useConsoleState();
+  const { activeTheme, terminalRenderer, terminalFont } = useConsoleState();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
@@ -117,7 +111,12 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
     if (!container) return;
 
     let disposed = false;
-    const terminal = new XtermTerminal({ ...TERMINAL_OPTIONS, theme: terminalThemeFor(activeTheme) });
+    const terminal = new XtermTerminal({
+      ...TERMINAL_OPTIONS,
+      fontFamily: terminalFont.family,
+      fontSize: terminalFont.size * appliedZoom,
+      theme: terminalThemeFor(activeTheme),
+    });
     terminalRef.current = terminal;
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -266,6 +265,13 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
     terminal.options.theme = terminalThemeFor(activeTheme);
   }, [activeTheme]);
 
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.fontFamily = terminalFont.family;
+    fitAndRefreshTerminal(terminal, fitAddonRef.current);
+  }, [terminalFont.family]);
+
   // 줌 settle 감지: zoom prop은 rAF 보간 중 매 프레임 바뀌므로, 마지막 변경 후 ZOOM_SETTLE_MS가 지나야
   // appliedZoom에 반영한다(타이머가 매 변경마다 리셋됨). 보간 중에는 부모 transform에 맡겨 글자가 부드럽게
   // 확대/축소되고, 보정(아래 effect)은 제스처당 1회만 발생한다.
@@ -281,9 +287,8 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
   // 그리드/픽셀 외형은 그대로 유지되며 xterm 좌표만 정정된다.
   useEffect(() => {
     const terminal = terminalRef.current;
-    const fitAddon = fitAddonRef.current;
-    if (!terminal || !fitAddon) return;
-    terminal.options.fontSize = BASE_FONT_SIZE * appliedZoom;
+    if (!terminal) return;
+    terminal.options.fontSize = terminalFont.size * appliedZoom;
     // 여기서 WebglAddon.clearTextureAtlas()를 호출하면 안 된다. xterm WebGL의 글리프 atlas는 동일 설정(폰트·
     // 테마·cell크기) 터미널들이 모듈 레벨 캐시(acquireTextureAtlas)에서 1개를 공유한다. 따라서 한 터미널이
     // atlas를 비우면 형제 터미널이 쓰는 공유 atlas까지 함께 비워지고, 형제에는 재그리기 신호가 가지 않아
@@ -291,9 +296,8 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
     // 바뀌면 xterm이 옵션 변경 핸들러(_handleOptionsChanged→_refreshCharAtlas→acquireTextureAtlas)에서 새
     // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
     // fit + refresh로 재배치/재도색한다.
-    fitAddon.fit();
-    terminal.refresh(0, terminal.rows - 1);
-  }, [appliedZoom]);
+    fitAndRefreshTerminal(terminal, fitAddonRef.current);
+  }, [appliedZoom, terminalFont.size]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
@@ -329,4 +333,9 @@ export function Terminal({ sessionId, kind, theaterId, onExit, active, zoom = 1 
 
 function terminalThemeFor(theme: ThemeId): ITheme {
   return theme === "carbon" ? CARBON_TERMINAL_THEME : MARITIME_TERMINAL_THEME;
+}
+
+function fitAndRefreshTerminal(terminal: XtermTerminal, fitAddon: FitAddon | null): void {
+  fitAddon?.fit();
+  terminal.refresh(0, terminal.rows - 1);
 }

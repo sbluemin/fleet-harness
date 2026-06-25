@@ -2,6 +2,12 @@ import { applyEvent, createEmptyJob, isTerminalJobStatus, reduceSnapshotJob } fr
 import { sessionDisplayLabel } from "./format.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { clearStoredShellPanelsForTheater } from "./canvas/shell-panels.js";
+import {
+  createCuratedTerminalFontSettings,
+  createCustomTerminalFontSettings,
+  parseStoredTerminalFontSettings,
+  serializeTerminalFontSettings,
+} from "./terminal-font.js";
 import type {
   AttentionReason,
   ConsoleState,
@@ -17,6 +23,8 @@ import type {
   SessionInfo,
   SnapshotTenantJobs,
   TenantJobsView,
+  TerminalFontId,
+  TerminalFontSettings,
   TerminalRenderer,
   ThemeId,
   TheaterBootstrap,
@@ -37,6 +45,7 @@ const TENANT_JOB_LIMIT = 200;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_STORAGE_KEY = "fleet-console.activeTheme";
 const RENDERER_STORAGE_KEY = "fleet-console.terminalRenderer";
+const TERMINAL_FONT_STORAGE_KEY = "fleet-console.terminalFont";
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 const WHATS_NEW_SEEN_VERSION_STORAGE_KEY = "fleet-console.whatsNewSeenVersion";
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
@@ -58,6 +67,7 @@ let state: ConsoleState = {
   connectionError: null,
   activeTheme: readStoredTheme(),
   terminalRenderer: readStoredRenderer(),
+  terminalFont: readStoredTerminalFont(),
   version: "",
   updateAvailable: false,
   latestVersion: null,
@@ -137,6 +147,26 @@ export function setTerminalRenderer(renderer: TerminalRenderer): void {
   setState({ terminalRenderer: renderer });
 }
 
+export function setTerminalFont(fontId: TerminalFontId): void {
+  const terminalFont = createCuratedTerminalFontSettings(fontId, state.terminalFont.size);
+  writeStoredTerminalFont(terminalFont);
+  setState({ terminalFont });
+}
+
+export function setCustomTerminalFont(customName: string): void {
+  const terminalFont = createCustomTerminalFontSettings(customName, state.terminalFont.size);
+  writeStoredTerminalFont(terminalFont);
+  setState({ terminalFont });
+}
+
+export function setTerminalFontSize(size: number): void {
+  const terminalFont = state.terminalFont.source === "custom"
+    ? createCustomTerminalFontSettings(state.terminalFont.customName, size)
+    : createCuratedTerminalFontSettings(state.terminalFont.id, size);
+  writeStoredTerminalFont(terminalFont);
+  setState({ terminalFont });
+}
+
 export function readStoredRenderer(): TerminalRenderer {
   if (typeof window === "undefined") return DEFAULT_RENDERER;
   try {
@@ -144,6 +174,15 @@ export function readStoredRenderer(): TerminalRenderer {
     return stored === "webgl" || stored === "dom" ? stored : DEFAULT_RENDERER;
   } catch {
     return DEFAULT_RENDERER;
+  }
+}
+
+export function readStoredTerminalFont(): TerminalFontSettings {
+  if (typeof window === "undefined") return parseStoredTerminalFontSettings(null);
+  try {
+    return parseStoredTerminalFontSettings(window.localStorage.getItem(TERMINAL_FONT_STORAGE_KEY));
+  } catch {
+    return parseStoredTerminalFontSettings(null);
   }
 }
 
@@ -922,6 +961,15 @@ function writeStoredRenderer(renderer: TerminalRenderer): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(RENDERER_STORAGE_KEY, renderer);
+  } catch {
+    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
+  }
+}
+
+function writeStoredTerminalFont(font: ConsoleState["terminalFont"]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(TERMINAL_FONT_STORAGE_KEY, serializeTerminalFontSettings(font));
   } catch {
     // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }

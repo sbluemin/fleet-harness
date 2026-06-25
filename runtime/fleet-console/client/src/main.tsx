@@ -3,6 +3,8 @@ import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/cascadia-code";
+import "@fontsource-variable/fira-code";
+import "@fontsource-variable/source-code-pro";
 import "./styles/theme.css";
 import "./styles/layout.css";
 import "./styles/components.css";

@@ -2,6 +2,18 @@ export type ThemeId = "maritime" | "carbon";
 
 export type TerminalRenderer = "webgl" | "dom";
 
+export type TerminalFontId = "cascadia" | "jetbrains" | "fira-code" | "source-code-pro";
+
+export type TerminalFontSource = "curated" | "custom";
+
+export interface TerminalFontSettings {
+  readonly source: TerminalFontSource;
+  readonly id: TerminalFontId | null;
+  readonly customName: string;
+  readonly family: string;
+  readonly size: number;
+}
+
 export interface ReleaseNoteSection {
   readonly heading: "Added" | "Changed" | "Fixed" | "Removed" | "Breaking Changes";
   readonly items: readonly ReleaseNoteItem[];
@@ -333,6 +345,7 @@ export interface ConsoleState {
   readonly connectionError: string | null;
   readonly activeTheme: ThemeId;
   readonly terminalRenderer: TerminalRenderer;
+  readonly terminalFont: TerminalFontSettings;
   readonly version: string;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;
