@@ -385,7 +385,7 @@ export async function main(): Promise<void> {
       await postAgentHook(`/sessions/${readHookSessionId(process.env)}/auto-name`, { input: await readStdinBestEffort() }, process.env);
       return;
     }
-    await postAgentHook("/capture", { provider: hookCommand.provider, input: await readStdinBestEffort() }, process.env);
+    await postAgentHook(`/sessions/${readHookSessionId(process.env)}/capture`, { provider: hookCommand.provider, input: await readStdinBestEffort() }, process.env);
     return;
   }
   if (process.argv[2] === "codex") {

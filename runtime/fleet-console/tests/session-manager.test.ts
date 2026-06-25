@@ -137,7 +137,10 @@ describe("terminal session manager", () => {
 
   it("stops a session that finishes launching while server shutdown is waiting", async () => {
     const launchGate = createDeferred<void>();
+    const exitGate = createDeferred<void>();
     const ptys: MockPty[] = [];
+    const exits: string[] = [];
+    let stoppedResolved = false;
     const manager = createTerminalSessionManager({
       launch: async (cwd, context) => {
         await launchGate.promise;
@@ -148,15 +151,27 @@ describe("terminal session manager", () => {
         ptys.push(pty);
         return pty;
       },
+      onSessionExit: async (sessionId) => {
+        exits.push(sessionId);
+        await exitGate.promise;
+      },
     });
 
     const created = manager.createSession({ sessionId: "session-a", cwd: "/a" });
-    const stopped = manager.stop();
+    const stopped = manager.stop().then(() => {
+      stoppedResolved = true;
+    });
     launchGate.resolve();
-    await Promise.all([created, stopped]);
+    await created;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(ptys).toHaveLength(1);
     expect(ptys[0]?.killed()).toBe(true);
+    expect(exits).toEqual(["session-a"]);
+    expect(stoppedResolved).toBe(false);
+    exitGate.resolve();
+    await stopped;
+    expect(stoppedResolved).toBe(true);
     expect(manager.writeToSession("session-a", "after-stop")).toBe(false);
   });
 

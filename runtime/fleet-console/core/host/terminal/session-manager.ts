@@ -10,7 +10,7 @@ export interface TerminalSessionManagerDeps {
   readonly maxSessions?: number;
   readonly scrollbackLimit?: number;
   // PTY가 종료되거나 세션이 정리될 때(멱등) 정확히 한 번 호출 — 콘솔 세션 목록 정리에 쓰인다.
-  readonly onSessionExit?: (sessionId: string) => void;
+  readonly onSessionExit?: (sessionId: string) => unknown;
 }
 
 interface TerminalSession {
@@ -111,6 +111,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       if (result.status === "fulfilled") sessionsToKill.add(result.value);
     }
     await Promise.all([...sessionsToKill].map((session) => killSession(session)));
+    await Promise.all([...sessionsToKill].map((session) => notifySessionExit(session.id)));
     sessions.clear();
   }
 
@@ -228,7 +229,11 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     void killSession(session, options);
     sessions.delete(session.id);
     // 인스턴스 일치 가드 덕분에 PTY 자가종료(onExit)와 운영자 terminate가 겹쳐도 세션당 한 번만 통지된다.
-    deps.onSessionExit?.(session.id);
+    void notifySessionExit(session.id);
+  }
+
+  async function notifySessionExit(sessionId: string): Promise<void> {
+    await deps.onSessionExit?.(sessionId);
   }
 
   async function killSession(session: TerminalSession, options: KillSessionOptions = {}): Promise<void> {

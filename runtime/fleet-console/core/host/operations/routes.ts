@@ -10,11 +10,20 @@ export interface OperationsRouterDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, payload: unknown) => void;
   readonly persist: () => void;
+  readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
   readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
   readonly resolveLaunchCatalog?: () => Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }>;
 }
 
 export type OperationsRouter = (ctx: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }) => Promise<boolean>;
+
+type OperationRenameEvent = {
+  readonly operationId: string;
+  readonly pluginId: string;
+  readonly type: string;
+  readonly title: string;
+  readonly previousTitle: string;
+};
 
 type CreateOperationBody = Partial<OperationCreateInput>;
 type PatchOperationBody = {
@@ -141,6 +150,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     return;
   }
   try {
+    const previousNode = typeof body.title === "string" ? deps.store.get(id) : null;
     const node = deps.store.patch(id, {
       ...(typeof body.title === "string" ? { title: body.title } : {}),
       ...(typeof body.parentId === "string" || body.parentId === null ? { parentId: body.parentId } : {}),
@@ -154,6 +164,15 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
       return;
     }
     deps.persist();
+    if (previousNode && previousNode.title !== node.title) {
+      deps.publishRenameEvent?.({
+        operationId: node.id,
+        pluginId: node.pluginId,
+        type: node.type,
+        title: node.title,
+        previousTitle: previousNode.title,
+      });
+    }
     deps.writeJson(res, 200, { operation: sanitizeOperationNode(node, deps) });
   } catch (error) {
     deps.writeJson(res, error instanceof Error && error.message === "operation_depth_exceeded" ? 409 : 400, { error: error instanceof Error ? error.message : "invalid_operation_patch" });

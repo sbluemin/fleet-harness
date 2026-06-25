@@ -1,4 +1,9 @@
+import type { OperationNode } from "@fleet-console/sdk/operations";
 import type { AgentCliMetadata, AgentCliState, ObservedTenant, SessionInfo, SnapshotTenantJobs } from "./types.js";
+
+export interface OperationsSnapshot {
+  readonly operations: readonly OperationNode[];
+}
 
 const FORBIDDEN_BROWSER_PAYLOAD_KEYS = ["canonicalCwd", "cwd", "providerSession", "ticket", "token", "transcriptPath", "prompt", "persona", "toolAllowlist"] as const;
 
@@ -50,6 +55,14 @@ export async function fetchSessions(signal?: AbortSignal): Promise<readonly Sess
   const payload = await response.json() as { readonly sessions?: unknown };
   if (!Array.isArray(payload.sessions)) throw new AgentApiError(response.status, "Invalid agent sessions response");
   return payload.sessions.map((session) => assertSessionInfo(session, response.status));
+}
+
+export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<OperationsSnapshot> {
+  const response = await fetch("/operations", { signal });
+  await assertOk(response);
+  const payload = await response.json() as { readonly operations?: unknown };
+  if (!Array.isArray(payload.operations)) throw new AgentApiError(response.status, "Invalid operations response");
+  return { operations: payload.operations.map((operation) => assertOperationNode(operation, response.status)) };
 }
 
 export async function createAgentSession(theaterId: string, cliId: string, signal?: AbortSignal): Promise<SessionInfo> {
@@ -139,6 +152,42 @@ function assertObservedTenant(value: unknown, status: number): ObservedTenant {
     throw new AgentApiError(status, "Invalid tenant response");
   }
   return payload as ObservedTenant;
+}
+
+function assertOperationNode(value: unknown, status: number): OperationNode {
+  const payload = value as Partial<OperationNode>;
+  if (
+    !payload
+    || typeof payload.id !== "string"
+    || typeof payload.theaterId !== "string"
+    || (payload.parentId !== null && typeof payload.parentId !== "string")
+    || typeof payload.type !== "string"
+    || typeof payload.pluginId !== "string"
+    || typeof payload.title !== "string"
+    || !payload.payload
+    || typeof payload.payload !== "object"
+    || Array.isArray(payload.payload)
+    || !payload.ts
+    || typeof payload.ts.createdAt !== "number"
+    || typeof payload.ts.updatedAt !== "number"
+    || hasForbiddenBrowserPayloadKey(payload)
+    || hasForbiddenBrowserPayloadKey(payload.payload)
+  ) {
+    throw new AgentApiError(status, "Invalid operation response");
+  }
+  return {
+    id: payload.id,
+    theaterId: payload.theaterId,
+    parentId: payload.parentId ?? null,
+    type: payload.type,
+    pluginId: payload.pluginId,
+    title: payload.title,
+    renamedTitle: typeof payload.renamedTitle === "string" ? payload.renamedTitle : undefined,
+    payload: payload.payload,
+    geometry: payload.geometry ?? null,
+    state: payload.state && typeof payload.state === "object" && !Array.isArray(payload.state) ? payload.state : {},
+    ts: payload.ts,
+  };
 }
 
 function hasForbiddenBrowserPayloadKey(value: unknown): boolean {

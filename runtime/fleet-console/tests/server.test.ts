@@ -1298,6 +1298,110 @@ describe("console static and terminal ticket boundary", () => {
     expect(serialized).not.toContain("providerSession");
   });
 
+  it("captures provider sessions through the session-scoped hook endpoint before exit persistence", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-route-"));
+    tempDirs.push(dir);
+    const ptys: ExitablePty[] = [];
+    const fixture = await startFixture({
+      terminalStartShell: () => {
+        const pty = createExitablePty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+    const theater = await createTheater(fixture, dir);
+    const created = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: theater.id, cliId: "claude" }),
+    });
+    const session = await created.json() as { readonly sessionId: string };
+    const capturePath = path.join(fixture.carrierStoreDir, "console", "captures", `${session.sessionId}.json`);
+
+    const capture = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions/${encodeURIComponent(session.sessionId)}/capture`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${fixture.lock.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "claude",
+        input: JSON.stringify({
+          session_id: "provider-session-secret",
+          transcript_path: "/secret/transcript.jsonl",
+          source: "startup",
+        }),
+      }),
+    });
+    const captureBody = await capture.json();
+
+    expect(created.status).toBe(200);
+    expect(capture.status).toBe(200);
+    expect(captureBody).toEqual({ ok: true });
+    expect(JSON.parse(fs.readFileSync(capturePath, "utf8"))).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
+    const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}operations`);
+    const serializedOperations = JSON.stringify(operationsResponse);
+
+    expect(capturedState.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(capturedState.operationNodes[0]?.payload?.status).not.toBe("dormant");
+    expect(serializedOperations).not.toContain("providerSession");
+    expect(serializedOperations).not.toContain("provider-session-secret");
+    expect(operationsResponse.operations[0]?.payload).not.toHaveProperty("providerSession");
+    expect(ptys).toHaveLength(1);
+
+    ptys[0]!.emitExit();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
+
+    expect(state.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+  });
+
+  it("persists captured provider sessions as dormant operation payloads on server stop", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-stop-"));
+    tempDirs.push(dir);
+    const ptys: ExitablePty[] = [];
+    const fixture = await startFixture({
+      terminalStartShell: () => {
+        const pty = createExitablePty();
+        ptys.push(pty);
+        return pty;
+      },
+    });
+    const theater = await createTheater(fixture, dir);
+    const created = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: theater.id, cliId: "claude" }),
+    });
+    const session = await created.json() as { readonly sessionId: string };
+    const capture = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions/${encodeURIComponent(session.sessionId)}/capture`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${fixture.lock.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "claude",
+        input: JSON.stringify({
+          session_id: "provider-session-secret",
+          transcript_path: "/secret/transcript.jsonl",
+          source: "startup",
+        }),
+      }),
+    });
+
+    expect(created.status).toBe(200);
+    expect(capture.status).toBe(200);
+    expect(ptys).toHaveLength(1);
+
+    await fixture.server.stop();
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.carrierStoreDir, "console", "state.json"), "utf8")) as { readonly operationNodes: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
+
+    expect(state.operationNodes[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operationNodes[0]?.payload?.status).toBe("dormant");
+  });
+
   it.skip("does not restore durable operations without provider sessions", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-empty-"));
     tempDirs.push(dir);

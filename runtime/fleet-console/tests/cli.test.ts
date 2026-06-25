@@ -2,17 +2,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConsoleLockPayload } from "../core/host/api-types.js";
 import {
   buildConsoleHelpText,
+  main,
   openFleetConsole,
   parseConsoleCliMode,
   parseConsoleHookCommand,
   runConsoleStatus,
   runConsoleStop,
 } from "../core/host/cli.js";
+import { createConsoleLock } from "../core/host/lock.js";
+import { createConsolePaths } from "../core/host/paths.js";
 import { captureSession } from "../../fleet-plugins/terminal/server/agent-api/session-capture.js";
 
 const LOCK: ConsoleLockPayload = {
@@ -86,6 +89,48 @@ describe("fleet console CLI", () => {
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
     expect(files).toEqual(["fleet-session-a.json"]);
+  });
+
+  it("posts capture-session hooks to the session-scoped capture endpoint", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-capture-hook-"));
+    TEMP_DIRS.push(dir);
+    const paths = createConsolePaths({ env: { FLEET_CONSOLE_DIR: dir } });
+    const lock = createConsoleLock().writeLock({
+      dir: paths.dir,
+      lockFile: paths.lockFile,
+      pid: process.pid,
+      port: 51239,
+      endpoint: "http://127.0.0.1:51239/",
+      version: "test",
+    });
+    const calls: Array<{ readonly url: string; readonly init: RequestInit | undefined }> = [];
+    const originalArgv = process.argv;
+    const originalFetch = globalThis.fetch;
+    const originalConsoleDir = process.env.FLEET_CONSOLE_DIR;
+    const originalSessionId = process.env.FLEET_CONSOLE_SESSION_ID;
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    process.argv = ["node", "fleet-console", "hook", "capture-session", "claude"];
+    process.env.FLEET_CONSOLE_DIR = dir;
+    process.env.FLEET_CONSOLE_SESSION_ID = "session-x";
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+      globalThis.fetch = originalFetch;
+      if (originalConsoleDir === undefined) delete process.env.FLEET_CONSOLE_DIR;
+      else process.env.FLEET_CONSOLE_DIR = originalConsoleDir;
+      if (originalSessionId === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
+      else process.env.FLEET_CONSOLE_SESSION_ID = originalSessionId;
+    }
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("http://127.0.0.1:51239/plugins/terminal/agent/sessions/session-x/capture");
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(`Bearer ${lock.payload.token}`);
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ provider: "claude" });
   });
 
   it("skips capture-session without fleet env or with an invalid provider without writing a capture", () => {

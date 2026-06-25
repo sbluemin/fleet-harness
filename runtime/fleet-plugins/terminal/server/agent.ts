@@ -26,14 +26,23 @@ type HookTurnBody = { readonly phase?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
 type HookCaptureBody = { readonly provider?: unknown; readonly input?: unknown };
+type OperationRenamedEvent = {
+  readonly operationId: string;
+  readonly pluginId: string;
+  readonly type: string;
+  readonly title: string;
+  readonly previousTitle: string;
+};
 
 const AGENT_OPERATION_TYPE = "agent";
+const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
+const TERMINAL_PLUGIN_ID = "terminal";
 
 export function registerAgentRoutes(ctx: FleetPluginServerContext): () => Promise<readonly OperationLaunchKind[]> {
   const api = createAgentApi(ctx);
   ctx.host.terminal.registerLaunchResolver(AGENT_OPERATION_TYPE, api.launch);
-  ctx.host.terminal.onExit((operationId) => {
-    api.handleExit(operationId);
+  ctx.host.terminal.onExit(async (operationId) => {
+    await api.handleExit(operationId);
   });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle);
@@ -84,6 +93,12 @@ function createAgentApi(ctx: FleetPluginServerContext) {
       return sessionId ? ctx.host.terminal.getMessagePolicy(sessionId) ?? {} : {};
     },
   });
+  const unsubscribeRename = ctx.host.events.subscribe(OPERATION_RENAMED_EVENT_CHANNEL, (payload) => {
+    if (!isOperationRenamedEvent(payload)) return;
+    if (payload.pluginId !== TERMINAL_PLUGIN_ID || payload.type !== AGENT_OPERATION_TYPE) return;
+    injectRenameCommand(payload.operationId, payload.title);
+  });
+  rehydrateDormantAgentOperations();
 
   async function handle({ req, res, pathname }: Parameters<FleetPluginServerContext["registerRouter"]>[1] extends (arg: infer T) => unknown ? T : never): Promise<boolean> {
     const path = pathname.slice(`${ctx.basePath}/agent`.length) || "/";
@@ -125,7 +140,7 @@ function createAgentApi(ctx: FleetPluginServerContext) {
       return true;
     }
     if (path === "/sessions") return handleSessions(req, res);
-    if (path === "/capture") return handleCapture(req, res);
+    if (path === "/capture") return handleCapture(req, res, "");
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessionMatch) return handleSessionItem(req, res, decodeURIComponent(sessionMatch[1] ?? ""), sessionMatch[2] ?? "");
     if (path === "/ticket") {
@@ -182,6 +197,7 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     if (action === "turn") return handleTurn(req, res, sessionId);
     if (action === "attention") return handleAttention(req, res, sessionId);
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
+    if (action === "capture") return handleCapture(req, res, sessionId);
     if (action === "resume") return handleResume(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -326,21 +342,30 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     return true;
   }
 
-  async function handleCapture(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
+  async function handleCapture(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
     const body = await ctx.host.http.readJsonBody<HookCaptureBody>(req);
-    if (typeof body?.provider !== "string" || typeof body.input !== "string") {
+    if (!sessionId || typeof body?.provider !== "string" || typeof body.input !== "string") {
       ctx.host.http.writeJson(res, 400, { error: "invalid_capture" });
       return true;
     }
     const result = captureSession({
       diagnostics: process.stderr,
-      env: process.env,
+      env: { ...process.env, FLEET_CONSOLE_SESSION_ID: sessionId },
       input: body.input,
       paths: ctx.host.paths,
       provider: body.provider,
     });
+    if (result) {
+      observability.updateTerminalSessionProviderSession(sessionId, result.providerSession);
+      const operation = ctx.host.operations.get(sessionId);
+      if (operation) {
+        ctx.host.operations.patch(sessionId, { payload: { ...operation.payload, providerSession: result.providerSession } });
+      } else {
+        console.warn(`[fleet-console] capture-session persisted without operation payload: ${sessionId}`);
+      }
+    }
     ctx.host.http.writeJson(res, 200, { ok: result !== null });
     return true;
   }
@@ -377,7 +402,7 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     return launchResolver(context.cwd, { sessionId: context.operationId, operationId: context.operationId, operationType: AGENT_OPERATION_TYPE, pluginId: ctx.pluginId, cliId, resumeSessionId: providerSession });
   }
 
-  function handleExit(operationId: string): void {
+  async function handleExit(operationId: string): Promise<void> {
     pendingRuntimeSessions.delete(operationId);
     const providerSession = readProviderSessionCapture(operationId, { capturesDir: ctx.host.paths.capturesDir }) ?? readProviderSession(ctx.host.operations.get(operationId)?.payload);
     if (providerSession) {
@@ -402,6 +427,7 @@ function createAgentApi(ctx: FleetPluginServerContext) {
   }
 
   async function cleanup(): Promise<void> {
+    unsubscribeRename();
     unsubscribeReminder();
     unsubscribeStream();
     await runtime.cleanup();
@@ -434,6 +460,16 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     });
   }
 
+  function rehydrateDormantAgentOperations(): void {
+    for (const operation of ctx.host.operations.list()) {
+      if (operation.pluginId !== ctx.pluginId || operation.type !== AGENT_OPERATION_TYPE) continue;
+      const providerSession = readProviderSession(operation.payload);
+      if (!providerSession || observability.getTerminalSessionInfo(operation.id)) continue;
+      const dormant = injectOperation(operation);
+      ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, ...toOperationPayload(dormant, providerSession) } });
+    }
+  }
+
   return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
@@ -454,11 +490,22 @@ function toOperationPayload(session: AgentTerminalSessionInfo, providerSession?:
     sequence: session.sequence,
     theaterId: session.theaterId,
     createdAt: session.createdAt,
+    status: session.status,
     ...(session.label ? { label: session.label } : {}),
     ...(session.cliId ? { cliId: session.cliId } : {}),
     ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
     ...(providerSession ? { providerSession } : {}),
   };
+}
+
+function isOperationRenamedEvent(payload: unknown): payload is OperationRenamedEvent {
+  if (typeof payload !== "object" || payload === null) return false;
+  const event = payload as Record<string, unknown>;
+  return typeof event.operationId === "string"
+    && typeof event.pluginId === "string"
+    && typeof event.type === "string"
+    && typeof event.title === "string"
+    && typeof event.previousTitle === "string";
 }
 
 function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServerContext["host"]["http"]["writeJson"]>[0]): AgentCliId | undefined | false {

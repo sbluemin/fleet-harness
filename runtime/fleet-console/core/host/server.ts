@@ -105,6 +105,7 @@ const MAX_CONSOLE_STATIC_PORT = 65535;
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
+const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
@@ -227,8 +228,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
     startShell: deps.terminalStartShell,
     maxSessions: deps.maxTerminalSessions,
-    onSessionExit: (sessionId) => {
-      for (const listener of terminalExitListeners) listener(sessionId);
+    onSessionExit: async (sessionId) => {
+      await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },
   });
   const terminalUpgrade = createTerminalUpgradeHandler({
@@ -245,7 +246,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
-  const terminalExitListeners = new Set<(operationId: string) => void>();
+  const terminalExitListeners = new Set<(operationId: string) => unknown>();
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     terminal: {
       issueTicket: (context) => terminalTickets.issue(resolvePluginTerminalContext(context)),
@@ -446,6 +447,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       ...(pluginPayloadSanitizers.get(pluginId) ?? []),
     ],
     resolveLaunchCatalog: resolveOperationCatalog,
+    publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
   });
   routeRegistry.register("/operations", operationsRouter);
   routeRegistry.register("/carrier-settings", carrierSettingsRouter);
