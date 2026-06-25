@@ -1,6 +1,6 @@
 ---
 name: learning-harvest
-description: After substantive work, run a compounding-engineering learning-harvest loop — retrospect the task, extract reusable learnings under a three-condition gate (recurrence, cost, generality), route each to its single best persistent home (an AGENTS.md rule, a new or edited skill, a test, a wiki-history ADR, persistent memory, or a skill's gotchas), encode it as "symptom -> action -> why", and prune weak or stale rules. Propose candidates for the Admiral of the Navy's approval and encode only approved ones, so the next task starts from a higher baseline. Use at the end of substantive work, when friction is detected, or on a periodic pruning pass. This is a meta-skill: it produces other skills and assets, not product code.
+description: After substantive work, run a compounding-engineering learning-harvest loop — retrospect the task, extract reusable learnings under a three-condition gate (recurrence, cost, generality), route each to its single best persistent home (an AGENTS.md rule, a new or edited skill, a test, a wiki-history ADR, persistent memory, or a skill's gotchas), encode it as "symptom -> action -> why", and prune weak or stale rules. Propose candidates for the Admiral of the Navy's approval and encode only approved ones, so the next task starts from a higher baseline. Use at the end of substantive work, when friction is detected, or on a periodic pruning pass. This is a meta-skill that produces other skills and assets, not product code.
 ---
 
 # Learning Harvest (compounding engineering)
