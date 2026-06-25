@@ -7,7 +7,7 @@ description: From a PO/PD lens, take a fleet-console product-improvement or new-
 
 Turn a vague product ask into a decision-ready proposal for the **fleet-console** product. The value is NOT in calling `console-e2e` and `frontend-design` — it is the **judgment wedged between them**: measure before claiming, solve the problem rather than the named fix, and let the decider touch the options before committing a line of code.
 
-This skill **orchestrates two existing skills** — `console-e2e` (real-browser measurement) and `frontend-design` (the interactive mock) — and adds the PO/PD reasoning that connects them. Read each skill's full docs when you reach its phase; this skill only adds the connective judgment on top.
+This skill **orchestrates two existing skills** — `console-e2e` (real-browser measurement; lives in this repo's `.agents/skills`) and `frontend-design` (the interactive mock; an Anthropic plugin skill, not vendored in this repo — the same way `console-e2e` itself depends on the external `playwriter` skill) — and adds the PO/PD reasoning that connects them. Read each skill's full docs when you reach its phase, and **invoke them as skills — do not inline or duplicate their procedures** (one home per procedure; SSoT). If `frontend-design` is unavailable in the environment, that is a missing-dependency condition to report, not a reason to vendor a copy of its workflow here. This skill only adds the connective judgment on top.
 
 ## When to use
 
