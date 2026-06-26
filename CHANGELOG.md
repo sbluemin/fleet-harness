@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-06-26
+
+### Added
+- [fleet-console][fleet-infra] Add a Settings -> General control to pin a static console port, with automatic fallback to a dynamic port and Settings feedback when the chosen port is unavailable.
+
+### Changed
+- [fleet-console] An in-progress operation no longer animates the running-light perimeter ring in both its canvas panel and its dock chip at the same time. The rotating ring now shows on the canvas panel while the panel is visible, and on the dock chip only while the panel is minimized, lowering GPU usage. The dock chip keeps its progress glow and beacon in both cases.
+
 ## [1.14.0] - 2026-06-26
 
 ### Added
