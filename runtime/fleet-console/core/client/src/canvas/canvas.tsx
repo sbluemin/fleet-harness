@@ -38,6 +38,9 @@ const DEFAULT_SHELL_HEIGHT = 360;
 const RESET_VIEWPORT = { x: 0, y: 0, zoom: 1 } as const;
 // 패널 최대화 시 하단 Dock(태스크바) 풋프린트만큼 남겨 Dock을 가리지 않게 한다(canary 동일 — safe-inset 58 + bottom 여백).
 const MAXIMIZED_DOCK_INSET = 72;
+// 사용자 close(헤더 X)와 PTY 자가종료(onExit→onClose)가 같은 operation의 close path를 중복 실행하는 것을 막는다.
+// 재진입은 이미 삭제된 operation에 중복 DELETE를 보내 404 콘솔 노이즈를 만든다(기능 영향은 없으나 race를 가린다).
+const closingOperationIds = new Set<string>();
 
 export function OperationsCanvas({ state }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -563,11 +566,18 @@ async function renamePluginOperation(operationId: string, title: string): Promis
 }
 
 async function closePluginOperation(operation: OperationNode): Promise<void> {
-  const plugin = clientPlugins.find((candidate) => candidate.id === operation.pluginId);
+  // close가 진행 중인 동안 onExit 재진입은 무시한다(중복 DELETE/404 방지). operation id는 한 번 닫히면 재사용되지 않는다.
+  if (closingOperationIds.has(operation.id)) return;
+  closingOperationIds.add(operation.id);
   try {
-    await plugin?.closeOperation?.(operation.id);
+    const plugin = clientPlugins.find((candidate) => candidate.id === operation.pluginId);
+    try {
+      await plugin?.closeOperation?.(operation.id);
+    } finally {
+      await fetch(`/operations/${encodeURIComponent(operation.id)}`, { method: "DELETE" }).catch(() => undefined);
+    }
+    await fetchOperations(null).then(hydrateOperations);
   } finally {
-    await fetch(`/operations/${encodeURIComponent(operation.id)}`, { method: "DELETE" }).catch(() => undefined);
+    closingOperationIds.delete(operation.id);
   }
-  await fetchOperations(null).then(hydrateOperations);
 }
