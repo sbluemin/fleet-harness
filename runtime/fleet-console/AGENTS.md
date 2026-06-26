@@ -51,6 +51,12 @@
 - Console must not deep-import `@dotobokuri/fleet-carriers/src/**`, `packages/fleet-carriers/src/**`, `runtime/fleet-cli/**`, or `@dotobokuri/fleet-cli`.
 - Carrier readiness/settings browser payloads must not serialize prompt bodies, raw persona instructions, executor tool allowlists, tokens, credential values, auth env details, terminal/session/admin tickets, or raw filesystem paths.
 
+## Settings Plugin Boundary
+
+- Core Settings owns the `Console` group and core console settings such as the console port controls.
+- Plugin Settings sections are discovered from `plugins[].settingsSections` and rendered under the `Plugins` group. The host derives plugin ownership from the plugin registration id and normalizes plugin active ids as `${pluginId}:${sectionId}`.
+- SDK settings descriptors remain minimal: `{ id, title, render }`. Do not add grouping, ordering, plugin ownership, or sensitivity metadata to `SettingsSectionDescriptor`.
+
 ## Server-side Dependency Boundary
 
 - `runtime/fleet-console/core/host/**` may import `@dotobokuri/fleet-admiral` public root exports for server-only Agent CLI launch/runtime assembly. `runtime/fleet-console/core/client/**` must not import `@dotobokuri/fleet-admiral`.

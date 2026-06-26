@@ -150,6 +150,20 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "terminal-origin",
   },
   {
+    method: "GET",
+    path: "/plugins/terminal/settings",
+    summary: "Get Terminal plugin prompt settings.",
+    category: "Terminal Plugin",
+    gate: "loopback",
+  },
+  {
+    method: "PUT",
+    path: "/plugins/terminal/settings",
+    summary: "Save Terminal plugin prompt settings.",
+    category: "Terminal Plugin",
+    gate: "terminal-origin",
+  },
+  {
     method: "POST",
     path: "/theaters/folders/list",
     summary: "Theater 폴더 선택 목록을 조회합니다.",

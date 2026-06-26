@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { plugins } from "virtual:fleet-plugins";
 
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { ModelAuthSection } from "../components/model-auth-section.js";
@@ -7,16 +8,6 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { setActiveTheme, setCustomTerminalFont, setTerminalFont, setTerminalFontSize, setTerminalRenderer } from "../store.js";
 import { CURATED_TERMINAL_FONTS, TERMINAL_FONT_SIZE_RANGE, curatedTerminalFontById, resolveTerminalFont } from "../terminal-font.js";
 import type { GlobalSettingsState, TerminalFontId, TerminalFontSettings, TerminalRenderer, ThemeId } from "../types.js";
-
-interface SettingToggleRowProps {
-  readonly title: string;
-  readonly help: string;
-  readonly onLabel: string;
-  readonly offLabel: string;
-  readonly value: boolean;
-  readonly disabled: boolean;
-  readonly onToggle: () => void;
-}
 
 interface ThemeOption {
   readonly id: ThemeId;
@@ -45,12 +36,28 @@ interface TerminalFontCardProps {
   readonly onSelect: () => void;
 }
 
-type SettingsSectionId = "appearance" | "general" | "model-auth" | "backend-api";
+type CoreSettingsSectionId = "appearance" | "general" | "model-auth" | "backend-api";
+type PluginSettingsSectionId = `${string}:${string}`;
+type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
 
 interface SettingsSectionNavItem {
-  readonly id: SettingsSectionId;
+  readonly id: CoreSettingsSectionId;
   readonly label: string;
   readonly eyebrow: string;
+}
+
+interface PluginSettingsNavItem {
+  readonly id: PluginSettingsSectionId;
+  readonly pluginId: string;
+  readonly pluginLabel: string;
+  readonly sectionTitle: string;
+  readonly render?: () => ReactNode;
+}
+
+interface PluginSettingsNavGroup {
+  readonly pluginId: string;
+  readonly pluginLabel: string;
+  readonly sections: readonly PluginSettingsNavItem[];
 }
 
 // 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
@@ -72,9 +79,9 @@ const PORT_MODES: readonly PortModeOption[] = [
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 
-const SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
+const CORE_SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
   { id: "appearance", label: "Appearance", eyebrow: "Theme · Renderer" },
-  { id: "general", label: "General", eyebrow: "Port · Prompt" },
+  { id: "general", label: "General", eyebrow: "Port" },
   { id: "model-auth", label: "Model Auth", eyebrow: "Sign-in" },
   { id: "backend-api", label: "Backend API", eyebrow: "Loopback routes" },
 ];
@@ -84,6 +91,8 @@ export function GlobalSettings() {
   const state = settings.state;
   const saving = settings.savingField !== null;
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("appearance");
+  const pluginSections = collectPluginSettingsSections();
+  const pluginGroups = groupPluginSettingsSections(pluginSections);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -107,7 +116,8 @@ export function GlobalSettings() {
 
       <section className="global-settings-grid">
         <div className="global-settings-list" aria-label="Settings sections">
-          {SETTINGS_SECTIONS.map((section) => (
+          <p className="global-settings-nav-group">Console</p>
+          {CORE_SETTINGS_SECTIONS.map((section) => (
             <button
               key={section.id}
               type="button"
@@ -119,17 +129,43 @@ export function GlobalSettings() {
               <span className="global-settings-nav-eyebrow">{section.eyebrow}</span>
             </button>
           ))}
+          {pluginSections.length > 0 ? (
+            <>
+              <p className="global-settings-nav-group">Plugins</p>
+              {pluginGroups.map((group) => (
+                <div key={group.pluginId} className="global-settings-plugin-group">
+                  <p className="global-settings-plugin-heading">{group.pluginLabel}</p>
+                  {group.sections.map((section) => (
+                    <button
+                      key={section.id}
+                      type="button"
+                      className={`global-settings-nav-item ${section.id === activeSectionId ? "is-active" : ""}`}
+                      aria-pressed={section.id === activeSectionId}
+                      onClick={() => setActiveSectionId(section.id)}
+                    >
+                      <span className="global-settings-nav-label">{section.sectionTitle}</span>
+                      <span className="global-settings-nav-eyebrow">{section.pluginLabel}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </>
+          ) : null}
         </div>
 
         <div key={activeSectionId} className="global-settings-detail">
-          {renderSettingsSection(activeSectionId, state, saving)}
+          {renderSettingsSection(activeSectionId, state, saving, pluginSections)}
         </div>
       </section>
     </main>
   );
 }
 
-function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean) {
+function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[]) {
+  if (sectionId.includes(":")) {
+    const pluginSection = pluginSections.find((section) => section.id === sectionId);
+    return pluginSection?.render ? pluginSection.render() : <p className="global-settings-help">Plugin settings unavailable.</p>;
+  }
   switch (sectionId) {
     case "appearance":
       return <AppearanceCard />;
@@ -140,6 +176,36 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
     case "backend-api":
       return <BackendApiSection />;
   }
+}
+
+function collectPluginSettingsSections(): readonly PluginSettingsNavItem[] {
+  return plugins.flatMap((plugin) =>
+    (plugin.settingsSections ?? []).map((section) => ({
+      id: `${plugin.id}:${section.id}` as const,
+      pluginId: plugin.id,
+      pluginLabel: formatPluginLabel(plugin.id),
+      sectionTitle: section.title,
+      render: section.render,
+    })),
+  );
+}
+
+function groupPluginSettingsSections(sections: readonly PluginSettingsNavItem[]): readonly PluginSettingsNavGroup[] {
+  const groups: PluginSettingsNavGroup[] = [];
+  for (const section of sections) {
+    const last = groups.at(-1);
+    if (last?.pluginId === section.pluginId) {
+      groups[groups.length - 1] = { ...last, sections: [...last.sections, section] };
+      continue;
+    }
+    groups.push({ pluginId: section.pluginId, pluginLabel: section.pluginLabel, sections: [section] });
+  }
+  return groups;
+}
+
+function formatPluginLabel(pluginId: string): string {
+  if (pluginId === "terminal") return "Terminal";
+  return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
 }
 
 // 외관 설정 — 테마, 터미널 렌더러, 터미널 폰트. 콘솔 로컬(브라우저별) 선호값이며 선택 즉시 적용된다(세션 설정과 달리 재실행 불요).
@@ -332,24 +398,6 @@ function GeneralSettingsCard({
       {state ? (
         <>
           <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
-          <SettingToggleRow
-            title="System Prompt Injection"
-            help="Append keeps the Agent CLI's built-in system prompt and layers Fleet doctrine on top. Replace swaps it entirely for Fleet doctrine. Affects Claude-family CLIs only; Codex always receives doctrine through its profile."
-            onLabel="Replace"
-            offLabel="Append"
-            value={state.replaceSystemPrompt}
-            disabled={saving}
-            onToggle={() => void setGlobalSettingsField("replaceSystemPrompt", !state.replaceSystemPrompt)}
-          />
-          <SettingToggleRow
-            title="Metaphor"
-            help="Enabled layers the naval tone overlay — clipped reporting cadence and Fleet vocabulary — onto every session. Off keeps the Admiral persona without the tone."
-            onLabel="Enabled"
-            offLabel="Off"
-            value={state.enableMetaphor}
-            disabled={saving}
-            onToggle={() => void setGlobalSettingsField("enableMetaphor", !state.enableMetaphor)}
-          />
         </>
       ) : (
         <p className="global-settings-help">Loading settings.</p>
@@ -460,26 +508,6 @@ function ConsolePortSettings({
 
         <p className="console-port-note">Applies when the console restarts. Console-wide — shared across every browser.</p>
       </div>
-    </div>
-  );
-}
-
-function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onToggle }: SettingToggleRowProps) {
-  return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">{title}</p>
-        <p className="global-settings-help">{help}</p>
-      </div>
-      <button
-        type="button"
-        className={`global-settings-toggle ${value ? "is-on" : ""}`}
-        disabled={disabled}
-        aria-pressed={value}
-        onClick={onToggle}
-      >
-        <span>{value ? onLabel : offLabel}</span>
-      </button>
     </div>
   );
 }

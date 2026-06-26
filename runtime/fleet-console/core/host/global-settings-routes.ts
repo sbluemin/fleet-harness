@@ -19,8 +19,6 @@ interface GlobalSettingsRouteContext {
 }
 
 interface GlobalSettingsBody {
-  readonly replaceSystemPrompt?: unknown;
-  readonly enableMetaphor?: unknown;
   readonly consolePortMode?: unknown;
   readonly consoleStaticPort?: unknown;
 }
@@ -90,14 +88,6 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_json" });
     return;
   }
-  if (body.replaceSystemPrompt !== undefined && typeof body.replaceSystemPrompt !== "boolean") {
-    deps.writeJson(res, 400, { error: "invalid_replace_system_prompt" });
-    return;
-  }
-  if (body.enableMetaphor !== undefined && typeof body.enableMetaphor !== "boolean") {
-    deps.writeJson(res, 400, { error: "invalid_enable_metaphor" });
-    return;
-  }
   if (body.consolePortMode !== undefined && body.consolePortMode !== "dynamic" && body.consolePortMode !== "static") {
     deps.writeJson(res, 400, { error: "invalid_console_port_mode" });
     return;
@@ -108,8 +98,6 @@ async function mutateGlobalSettings(
   }
   const updated = deps.globalOptionsService.update((current) => ({
     ...current,
-    ...(typeof body.replaceSystemPrompt === "boolean" ? { replaceSystemPrompt: body.replaceSystemPrompt } : {}),
-    ...(typeof body.enableMetaphor === "boolean" ? { enableMetaphor: body.enableMetaphor } : {}),
     ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
     ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
   }));
@@ -119,8 +107,6 @@ async function mutateGlobalSettings(
 
 function toGlobalSettingsState(data: GlobalOptionsData): GlobalSettingsState {
   return {
-    replaceSystemPrompt: data.replaceSystemPrompt ?? false,
-    enableMetaphor: data.enableMetaphor ?? false,
     consolePortMode: data.consolePortMode ?? "dynamic",
     consoleStaticPort: data.consoleStaticPort ?? null,
   };

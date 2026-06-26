@@ -166,8 +166,6 @@ export interface CarrierSettingsMutationResult {
 }
 
 export interface GlobalSettingsState {
-  readonly replaceSystemPrompt: boolean;
-  readonly enableMetaphor: boolean;
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
 }

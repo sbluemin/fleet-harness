@@ -1,7 +1,9 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
+import { createInfraServices } from "@dotobokuri/fleet-infra";
 
 import { registerAgentRoutes } from "./server/agent.js";
+import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
 import { createTerminalRuntime } from "./server/shared/index.js";
 import { registerShellRoutes } from "./server/shell.js";
 
@@ -18,6 +20,7 @@ export default definePlugin({
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerOperationType("agent.streaming");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
+    const infraServices = createInfraServices();
     const runtime = createTerminalRuntime(ctx);
     registerWsHandler(ctx, "/", runtime.handleUpgrade);
     ctx.host.lifecycle.registerCleanup(() => runtime.stop());
@@ -27,6 +30,7 @@ export default definePlugin({
     });
     ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
     registerShellRoutes(ctx, runtime);
+    registerTerminalSettingsRoutes(ctx, { globalOptionsService: infraServices.globalOptionsService });
     const agentLaunchKinds = registerAgentRoutes(ctx, runtime);
     registerLaunchCatalog(ctx, async () => [SHELL_LAUNCH_KIND, ...await agentLaunchKinds()]);
   },

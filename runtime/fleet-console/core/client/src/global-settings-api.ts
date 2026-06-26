@@ -38,16 +38,12 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
   const payload = value as Partial<GlobalSettingsState>;
   if (
     !payload
-    || typeof payload.replaceSystemPrompt !== "boolean"
-    || typeof payload.enableMetaphor !== "boolean"
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
   ) {
     throw new ApiError(status, "Invalid global settings state response");
   }
   return {
-    replaceSystemPrompt: payload.replaceSystemPrompt,
-    enableMetaphor: payload.enableMetaphor,
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
   };

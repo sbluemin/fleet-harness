@@ -2,8 +2,6 @@
 // 제외하고, 브라우저에 안전한 General 설정만 표면화한다.
 
 export interface GlobalSettingsState {
-  readonly replaceSystemPrompt: boolean;
-  readonly enableMetaphor: boolean;
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
 }
