@@ -62,7 +62,7 @@ Replace each `<placeholder>` before running. Optional inputs default as noted.
      FLEET_CONSOLE_DIR=/tmp/fleet-console-e2e node runtime/fleet-console/dist/cli.mjs stop
      ```
 
-   - **Seeding sessions without the OS folder picker.** A fresh isolated instance has no sessions, and the `+` Add-Theater button opens an OS-native folder dialog that cannot be automated. The `console.lock` carries a bearer `token`; use it to create sessions through the authorized API instead: `curl -X POST -H "Authorization: Bearer <token>" -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" -d '{}' http://127.0.0.1:<port>/observer/theaters/<theaterId>/sessions`. Optional `cliId` in the body selects a CLI; omitting it uses the default Agent CLI and spawns a real child process. List Theaters first with `GET /observer/theaters`. Clean up seeded sessions with `DELETE /terminal/sessions/<id>` (authorized) or by stopping the isolated instance.
+   - **Seeding sessions without the OS folder picker.** A fresh isolated instance has no sessions; the `+` Add-Theater button now opens an automatable console-owned browser folder modal, but seeding via the API stays faster. The `console.lock` carries a bearer `token`; use it to create sessions through the authorized API instead: `curl -X POST -H "Authorization: Bearer <token>" -H "Origin: http://127.0.0.1:<port>" -H "Content-Type: application/json" -d '{}' http://127.0.0.1:<port>/observer/theaters/<theaterId>/sessions`. Optional `cliId` in the body selects a CLI; omitting it uses the default Agent CLI and spawns a real child process. List Theaters first with `GET /observer/theaters`. Clean up seeded sessions with `DELETE /terminal/sessions/<id>` (authorized) or by stopping the isolated instance.
 
    - **Seeding dormant Operations without spawning a CLI.** For pure UI/layout checks, pre-write `<FLEET_CONSOLE_DIR>/state.json` before `start`: `{ "version": 1, "theaters": [{ id, path, realpath, label, registeredAt, lastOpenedAt }], "operations": [{ sessionId, theaterId, cwd, cwdLabel, sequence, label, cliId, cliLabel, createdAt, providerSession: { provider, sessionId, capturedAt } }] }`. Startup restores only operations with `providerSession`, and only when `theaterId` matches a restored theater. Use `theaterId = sha256(realpath(dir)).slice(0,12)` with `realpath`/`cwd` pointing at a real directory. Confirm with `GET /terminal/sessions` and select the theater in the browser with localStorage key `fleet-console.activeTheaterId`.
 
@@ -132,7 +132,7 @@ ab --session "$SESSION" --headed snapshot -i -s ".sidebar"
 
 - Session rows are `.session-row` buttons; terminal-only sessions show status text `terminal-only`.
 - At least two sessions are needed for switching tests.
-- The `+` Add-Theater button opens an OS-native folder dialog. Do not try to drive it. Reuse existing sessions or seed them through the API in Prerequisites.
+- The `+` Add-Theater button opens a console-owned browser folder modal (automatable — see Fleet-console specifics); for a fresh isolated instance you can also seed sessions through the API in Prerequisites.
 
 ### Phase 3 - Drive the interaction (observe -> act -> observe)
 
@@ -343,15 +343,18 @@ Check:
 - Global shortcuts must not leak while a modal is open.
 - Responsive drawer triggers must match the same viewport/container condition as the rail they replace.
 
-## Fleet-console specifics
+## Fleet-console specifics (gotchas)
 
-- **Static-serve reflection**: client changes need build + reload; backend changes need build + server restart.
-- **Auth/route**: loopback-only console renders `/console/operations` directly. If token handoff is active, launcher tokens belong in URL fragments, never query strings or logs.
-- **Sessions are backend-shared**: browser profile choice does not change registered sessions.
-- **Folder picker is OS-native**: cannot be automated; use existing sessions or seed through the authorized API.
-- **Terminal stack**: xterm.js + `@xterm/addon-webgl`; healthy WebGL render normally has three canvas layers.
-- **Seed canvas/minimized state by acting, not by writing localStorage**: localStorage writes are reliable for plain preferences (`fleet-console.terminalRenderer`, `fleet-console.activeTheaterId`, `fleet-console.canvas.dockExpanded`), not for store-managed collections.
+- **Static-serve reflection**: client changes need `build` + reload; backend (`src/**`) changes need `build` + **server restart**. A "fix that didn't work" is often just an unrestarted server or a stale bundle — verify the served `index-*.js` hash matches `dist` before re-debugging.
+- **Auth/route**: when the console runs loopback-only without a browser token gate, `/console/operations` renders directly. If a token handoff is in force, the launcher passes tokens once via the URL **fragment** (never a query string) — never inject tokens into query strings or logs.
+- **Sessions are backend-shared**: any Chrome profile observes the same registered sessions; profile choice doesn't change what you see.
+- **Folder picker is a browser modal, not OS-native**: Add Theater opens `DirectoryBrowserModal` backed by console-owned `POST /theaters/folders/{list,grants}` (loopback fs APIs, no OS dialog or child process), so it **is** browser-automatable — drive the modal directly to browse → select → register. (Pre-Wave-A this was an un-automatable OS-native picker; corrected 2026-06-27.) Raw absolute paths appear only in the folder list/grant responses, never in Theater/observer/SSE payloads. For switch tests you can still reuse existing sessions or seed via the authorized session API.
+- **Terminal stack**: xterm.js + `@xterm/addon-webgl` (WebGL renderer, DOM fallback). A healthy `.terminal-canvas` holds 3 `canvas` layers. Watch for WebGL `context lost` and dispose-time exceptions on unmount.
+- **Seed canvas/minimized state by acting, not by writing localStorage**: the canvas store re-derives per-theater state on load (`loadForTheater` + `ensureDefaultGeometry` + visible-session resolution), so a hand-written `fleet-console.canvas.<theaterId>` (e.g. a `minimized` array) is raced and overwritten — panels render visible and `minimized` clears. Seed structural facts via state.json/API, then drive the UI state through real actions: the panel **Minimize** button (`button[aria-label^="Minimize operation"]`) populates the dock; `.canvas-dock-chip-restore` shrinks it. `localStorage` writes are reliable only for plain preferences read once on load (`fleet-console.terminalRenderer`, `…activeTheaterId`, `…canvas.dockExpanded`), not for store-managed collections.
+- **Modal/fixed-element boundaries are regression-prone**: always-visible fixed elements must hide or become inert while `[aria-modal="true"]:not([hidden])` exists; new modal/drawer surfaces need `role="dialog"`, `aria-modal="true"`, a focus trap, Escape close, scoped initial focus, shortcut capture, and responsive triggers that match the rail/container condition. Verify normal/modal/restored states with the agent-browser modal-boundary scenario above.
 - **agent-browser refs are short-lived**: any navigation, rerender, dropdown, or dialog can invalidate `@eN`; snapshot again before the next ref interaction.
+- **Split long browser actions into small steps**: minimize/collapse/probe chains can time out or leave stale refs mid-way. Use one action group plus one probe per call with small waits between calls.
+- **Operation close has two buttons + a WebGL hit-test trap**: the same "close" intent lives on both the panel-header X **and** the dock chip. Target the panel-header button precisely via its article-scoped `aria-label="Close operation <title>"` — a loose locator hits strict-mode ambiguity and the WebGL canvas can swallow hit-tests, producing a **false-negative FAIL on a close that actually works**. Before reporting a broken close, confirm whether a delivered click would act: `closePluginOperation` runs a `finally` generic `DELETE /operations/:id`, so any click that reaches the handler always deletes. Suspect target accuracy first; force/DOM-click is not proof the feature is broken.
 
 ## Safety rules
 
