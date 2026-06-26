@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-06-26
+
+### Added
+- [fleet-console] Added per-browser terminal font family and size controls that apply live to all open terminals.
+
+### Fixed
+- [fleet-console] Preserve maximized Operation panel state independently across Theaters.
+
 ## [1.13.0] - 2026-06-25
 
 ### Added
