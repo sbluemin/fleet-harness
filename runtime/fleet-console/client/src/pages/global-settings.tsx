@@ -377,7 +377,10 @@ function ConsolePortSettings({
   const [draftPort, setDraftPort] = useState(state.consoleStaticPort?.toString() ?? "");
   const effectivePort = consoleState.effectivePort;
   const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
-  const requestedPort = consoleState.requestedPort ?? state.consoleStaticPort;
+  // runtimeRequestedPort는 마지막 기동에서 실제로 시도한 포트(런타임 사실)이고,
+  // 다음 재시작 동작은 저장된 설정(state)으로 안내해야 한다 — 둘을 섞으면 오안내가 된다.
+  const runtimeRequestedPort = consoleState.requestedPort;
+  const nextRestartStatic = state.consolePortMode === "static" && state.consoleStaticPort !== null;
   const trimmedDraftPort = draftPort.trim();
   const parsedPort = Number(trimmedDraftPort);
   const draftHasValue = trimmedDraftPort.length > 0;
@@ -450,9 +453,14 @@ function ConsolePortSettings({
           </div>
         </div>
 
-        {fallbackActive && requestedPort ? (
+        {fallbackActive && runtimeRequestedPort ? (
           <div className="console-port-warning" role="status">
-            Port <strong>{requestedPort}</strong> was unavailable — the console fell back to a <strong>Dynamic</strong> port and is running on <strong>127.0.0.1:{effectivePort || "..."}</strong>. It will retry <strong>{requestedPort}</strong> on the next restart.
+            Port <strong>{runtimeRequestedPort}</strong> was unavailable — the console fell back to a <strong>Dynamic</strong> port and is running on <strong>127.0.0.1:{effectivePort || "..."}</strong>.{" "}
+            {nextRestartStatic ? (
+              <>Next restart will try <strong>{state.consoleStaticPort}</strong>.</>
+            ) : (
+              <>Next restart will use a dynamic port.</>
+            )}
           </div>
         ) : null}
 

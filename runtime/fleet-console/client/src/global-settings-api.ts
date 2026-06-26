@@ -41,7 +41,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || typeof payload.replaceSystemPrompt !== "boolean"
     || typeof payload.enableMetaphor !== "boolean"
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
-    || (payload.consoleStaticPort !== null && typeof payload.consoleStaticPort !== "number")
+    || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
   ) {
     throw new ApiError(status, "Invalid global settings state response");
   }
@@ -51,4 +51,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     consolePortMode: payload.consolePortMode,
     consoleStaticPort: payload.consoleStaticPort,
   };
+}
+
+function isValidConsoleStaticPort(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1024 && value <= 65535;
 }
