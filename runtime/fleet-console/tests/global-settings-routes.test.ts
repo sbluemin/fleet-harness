@@ -17,11 +17,11 @@ interface RouterHarnessOptions {
 }
 
 describe("global settings routes", () => {
-  it("GET /global-settings/state returns only the two booleans without internal keys", async () => {
+  it("GET /global-settings/state returns the General settings surface without internal keys", async () => {
     const harness = createRouterHarness({ data: { replaceSystemPrompt: true, enableMetaphor: false } });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/global-settings/state" });
     expect(handled).toBe(true);
-    expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: true, enableMetaphor: false } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { replaceSystemPrompt: true, enableMetaphor: false, consolePortMode: "dynamic", consoleStaticPort: null } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("version");
   });
 
@@ -35,14 +35,14 @@ describe("global settings routes", () => {
     const harness = createRouterHarness({ authorized: true, body: { replaceSystemPrompt: true, enableMetaphor: true } });
     const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
     expect(handled).toBe(true);
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { replaceSystemPrompt: true, enableMetaphor: true } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { replaceSystemPrompt: true, enableMetaphor: true, consolePortMode: "dynamic", consoleStaticPort: null } } });
     expect(harness.currentData()).toMatchObject({ version: 1, replaceSystemPrompt: true, enableMetaphor: true });
   });
 
   it("PUT /global-settings applies only the provided field", async () => {
     const harness = createRouterHarness({ authorized: true, body: { enableMetaphor: true }, data: { replaceSystemPrompt: true } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
-    expect(harness.writes[0]?.body).toEqual({ state: { replaceSystemPrompt: true, enableMetaphor: true } });
+    expect(harness.writes[0]?.body).toEqual({ state: { replaceSystemPrompt: true, enableMetaphor: true, consolePortMode: "dynamic", consoleStaticPort: null } });
   });
 
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
@@ -68,6 +68,26 @@ describe("global settings routes", () => {
 
   it("PUT /global-settings rejects a missing body with 400", async () => {
     const harness = createRouterHarness({ authorized: true, bodyNull: true });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /global-settings stores a static console port", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { replaceSystemPrompt: false, enableMetaphor: false, consolePortMode: "static", consoleStaticPort: 8080 } } });
+  });
+
+  it("PUT /global-settings rejects an out-of-range static port with 400", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { consoleStaticPort: 80 } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /global-settings rejects an invalid console port mode with 400", async () => {
+    const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "auto" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/global-settings" });
     expect(harness.writes[0]?.status).toBe(400);
     expect(harness.updateCalls).toBe(0);

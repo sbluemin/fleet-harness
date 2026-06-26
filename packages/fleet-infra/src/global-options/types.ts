@@ -2,6 +2,8 @@ export interface GlobalOptionsData {
   readonly version: 1;
   readonly replaceSystemPrompt?: boolean;
   readonly enableMetaphor?: boolean;
+  readonly consolePortMode?: "dynamic" | "static";
+  readonly consoleStaticPort?: number;
 }
 
 export interface GlobalOptionsValidationResult {

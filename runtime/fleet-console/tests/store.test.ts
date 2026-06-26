@@ -49,7 +49,7 @@ import {
   toggleShortcuts,
   toggleTheaterMute,
 } from "../client/src/store.js";
-import type { ObservedEvent, ObservedTenant, OperationNotification, TheaterInfo } from "../client/src/types.js";
+import type { ObservedEvent, ObservedTenant, ObserverStatus, OperationNotification, TheaterInfo } from "../client/src/types.js";
 
 const TENANT: ObservedTenant = { tenantId: "tenant-1", tenantLabel: "Alpha", createdAt: 1, sessions: 1, theaterId: "theater-a" };
 const THEATER_A: TheaterInfo = { id: "theater-a", label: "Alpha", createdAt: "2026-06-13T00:00:00.000Z", lastOpenedAt: "2026-06-13T00:00:00.000Z", hasWiki: true, activeAdmiralCount: 1 };
@@ -81,6 +81,23 @@ function currentNotifications(): readonly OperationNotification[] {
   return Object.values(getState().operationNotifications);
 }
 
+function makeObserverStatus(patch: Partial<ObserverStatus> = {}): ObserverStatus {
+  return {
+    workspaces: 0,
+    jobs: 0,
+    version: "1.0.0",
+    channel: "stable",
+    updateAvailable: false,
+    port: 1,
+    portMode: "dynamic",
+    requestedPort: null,
+    effectivePort: 1,
+    portHonored: true,
+    wikiServerStatus: "unknown",
+    ...patch,
+  };
+}
+
 beforeEach(() => {
   Reflect.deleteProperty(globalThis, "window");
   setState({
@@ -90,6 +107,10 @@ beforeEach(() => {
     terminalFont: readStoredTerminalFont(),
     updateAvailable: false,
     latestVersion: null,
+    portMode: "dynamic",
+    requestedPort: null,
+    effectivePort: 0,
+    portHonored: true,
     tenants: [],
     theaters: [],
     activeTheaterId: null,
@@ -208,16 +229,13 @@ describe("store", () => {
   });
 
   it("applies observer update status to the global state", () => {
-    applyObserverStatus({
-      workspaces: 0,
-      jobs: 0,
+    applyObserverStatus(makeObserverStatus({
       version: "1.0.0",
-      channel: "stable",
       updateAvailable: true,
       latestVersion: "1.1.0",
       port: 1234,
-      wikiServerStatus: "unknown",
-    });
+      effectivePort: 1234,
+    }));
 
     expect(getState().updateAvailable).toBe(true);
     expect(getState().latestVersion).toBe("1.1.0");
@@ -236,13 +254,13 @@ describe("store", () => {
       fetchedAt: 10,
       stale: false,
     });
-    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+    applyObserverStatus(makeObserverStatus({ version: "1.0.0" }));
 
     expect(getState()).toMatchObject({ whatsNewOpen: true, automaticWhatsNewVersion: "1.0.0", selectedReleaseNoteKey: "1.0.0:1" });
   });
 
   it("opens What's new when matching observer status arrives before notes", () => {
-    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+    applyObserverStatus(makeObserverStatus({ version: "1.0.0" }));
     applyReleaseNotes({
       notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: [], text: "Runtime notes." }] }] }],
       sourceRef: "main",
@@ -262,7 +280,7 @@ describe("store", () => {
       fetchedAt: 10,
       stale: false,
     });
-    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+    applyObserverStatus(makeObserverStatus({ version: "1.0.0" }));
 
     closeWhatsNew();
 
@@ -273,7 +291,7 @@ describe("store", () => {
   it("does not automatically open What's new without usable data or when already seen", () => {
     const storage = new Map<string, string>([["fleet-console.whatsNewSeenVersion", "1.0.0"]]);
     mockLocalStorage(storage);
-    applyObserverStatus({ workspaces: 0, jobs: 0, version: "1.0.0", channel: "stable", updateAvailable: false, port: 1, wikiServerStatus: "unknown" });
+    applyObserverStatus(makeObserverStatus({ version: "1.0.0" }));
     applyReleaseNotes({
       notes: [{ version: "1.0.0", date: "2026-06-20", sections: [{ heading: "Changed", items: [{ packageTags: [], text: "Runtime notes." }] }] }],
       sourceRef: "main",

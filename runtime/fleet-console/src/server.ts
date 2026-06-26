@@ -88,11 +88,33 @@ type CreateTerminalSessionBody = { readonly folderGrantId?: unknown; readonly cw
 type CreateTheaterBody = { readonly folderGrantId?: unknown };
 type CreateTheaterSessionBody = { readonly cliId?: unknown };
 type UpdateApplyBody = Record<string, unknown>;
+type ConsolePortMode = "dynamic" | "static";
+type ConsolePortRuntimeState = {
+  readonly requestedPort: number | null;
+  readonly effectivePort: number;
+  readonly portMode: ConsolePortMode;
+  readonly portHonored: boolean;
+};
+type ConsolePortListenPlan = {
+  readonly port: number;
+  readonly requestedPort: number | null;
+  readonly portMode: ConsolePortMode;
+  readonly allowFallback: boolean;
+};
+type ConsolePortListenResult = {
+  readonly srv: http.Server;
+  readonly localLoopbackServer: http.Server | null;
+  readonly actualPort: number;
+  readonly endpoint: string;
+  readonly portState: ConsolePortRuntimeState;
+};
 
 const DEFAULT_HOST = "127.0.0.1";
 // 포트 0은 OS가 사용 가능한 임의 포트를 할당한다는 의미다. 실제 바인딩된 포트는
 // start()에서 srv.address()의 actualPort로 캡처해 락 파일에 기록한다.
 const DEFAULT_PORT = 0;
+const MIN_CONSOLE_STATIC_PORT = 1024;
+const MAX_CONSOLE_STATIC_PORT = 65535;
 const SHELL_TERMINAL_SESSION_ID = "shell";
 // 캔버스의 순정 셸 패널 세션 id 접두사. 이 접두사 + theaterId가 함께 오면 Theater 디렉터리에서 셸을 띄운다.
 const THEATER_SHELL_SESSION_PREFIX = "shell:";
@@ -266,7 +288,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
-  const port = deps.port ?? DEFAULT_PORT;
+  const injectedPort = deps.port ?? DEFAULT_PORT;
   const release = deps.release ?? readFleetConsoleRelease();
   // 버전은 런타임에 package.json을 읽는 release.ts SSoT에서 해석한다(channel과 동일 경로).
   // 과거 빌드타임 상수(__PKG_VERSION__)는 tsup define에 주입된 적이 없어 항상 "0.0.0-dev"로
@@ -311,7 +333,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     cwd: deps.codexCwd ?? process.cwd(),
     host,
     version,
-    getPort: () => lockHandle?.payload.port ?? port,
+    getPort: () => lockHandle?.payload.port ?? portState.effectivePort,
     getAdminToken: () => lockHandle?.payload.token ?? null,
   });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
@@ -359,7 +381,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const terminalUpgrade = createTerminalUpgradeHandler({
     expectedHost: host,
-    getExpectedPort: () => lockHandle?.payload.port ?? port,
+    getExpectedPort: () => lockHandle?.payload.port ?? portState.effectivePort,
     tickets: terminalTickets,
     sessions: terminalSessions,
     validateHost,
@@ -369,6 +391,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let lockHandle: ConsoleLockHandle | null = null;
   let activeLockFile: string | null = null;
   let activeEndpoint: string | null = null;
+  let portState: ConsolePortRuntimeState = {
+    requestedPort: null,
+    effectivePort: injectedPort,
+    portMode: "dynamic",
+    portHonored: true,
+  };
   let agentRuntimeStopped = false;
   let consoleResourcesDisposed = false;
   let updateApplyInFlight = false;
@@ -403,7 +431,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncBooleanHandler(codex.handle(req, res), res, () => tryServeStaticConsole(req, res, pathname));
       return;
     }
-    if (!validateHost(req, lockHandle?.payload.port ?? port)) {
+    if (!validateHost(req, lockHandle?.payload.port ?? portState.effectivePort)) {
       writeJson(res, 403, { error: "host_mismatch" });
       return;
     }
@@ -532,6 +560,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       startedAt: payload.startedAt,
       version: payload.version,
       workspaceCount: observability.workspaceCount(),
+      portMode: portState.portMode,
+      requestedPort: portState.requestedPort,
+      effectivePort: portState.effectivePort,
+      portHonored: portState.portHonored,
     };
     writeJson(res, 200, body);
   }
@@ -998,7 +1030,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       version,
       channel,
       ...updateCheck.getStatus(),
-      port: lockHandle?.payload.port ?? port,
+      port: lockHandle?.payload.port ?? portState.effectivePort,
+      portMode: portState.portMode,
+      requestedPort: portState.requestedPort,
+      effectivePort: portState.effectivePort,
+      portHonored: portState.portHonored,
       wikiServerStatus: resolveWikiServerStatus(theaterId),
     };
     writeJson(res, 200, payload);
@@ -1139,12 +1175,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function isTerminalAuthorized(req: http.IncomingMessage): boolean {
     if (!lockHandle) return false;
     // Origin 검증으로 WS 경로와 동일한 출처 경계를 terminal 라우트에 적용한다.
-    return isAllowedTerminalOrigin(req, lockHandle.payload.port ?? port);
+    return isAllowedTerminalOrigin(req, lockHandle.payload.port ?? portState.effectivePort);
   }
 
   function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
     if (!lockHandle) return false;
-    return req.headers.origin === `http://127.0.0.1:${lockHandle.payload.port ?? port}`;
+    return req.headers.origin === `http://127.0.0.1:${lockHandle.payload.port ?? portState.effectivePort}`;
   }
 
   function listVisibleWorkspaces(requestedTenantId: string | null): readonly ConsoleObservedWorkspace[] {
@@ -1346,36 +1382,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const returnedServer: ConsoleServer = {
     host,
-    port,
+    port: injectedPort,
     async start(lockPaths) {
       if (server && lockHandle) return lockHandle.payload.endpoint;
       try {
         await rehydrateDurableState();
-        await new Promise<void>((resolve, reject) => {
-          const srv = createHttpServer(handleRequest, terminalUpgrade);
-          srv.once("error", reject);
-          srv.listen(port, host, async () => {
-            srv.off("error", reject);
-            const address = srv.address();
-            const actualPort = typeof address === "object" && address ? address.port : port;
-            const endpoint = `http://${host}:${actualPort}/`;
-            try {
-              const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
-              server = srv;
-              loopbackServer = localLoopbackServer;
-              lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: actualPort, endpoint, version });
-              activeLockFile = lockPaths.lockFile;
-              activeEndpoint = endpoint;
-              resolve();
-            } catch (err) {
-              await closeHttpServer(srv);
-              await closeHttpServer(loopbackServer);
-              server = null;
-              loopbackServer = null;
-              reject(err);
-            }
-          });
-        });
+        const listenPlan = resolveConsolePortListenPlan();
+        const result = await listenConsolePort(listenPlan);
+        server = result.srv;
+        loopbackServer = result.localLoopbackServer;
+        portState = result.portState;
+        lockHandle = lock.writeLock({ dir: lockPaths.dir, lockFile: lockPaths.lockFile, pid: process.pid, port: result.actualPort, endpoint: result.endpoint, version });
+        activeLockFile = lockPaths.lockFile;
+        activeEndpoint = result.endpoint;
       } catch (error) {
         await cleanupAfterFailedStart();
         throw error;
@@ -1388,6 +1407,82 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await stopServer();
     },
   };
+
+  function resolveConsolePortListenPlan(): ConsolePortListenPlan {
+    if (deps.port !== undefined) {
+      return {
+        port: injectedPort,
+        requestedPort: null,
+        portMode: "dynamic",
+        allowFallback: false,
+      };
+    }
+    const options = infraServices.globalOptionsService.load();
+    if (options.consolePortMode === "static" && isValidConsoleStaticPort(options.consoleStaticPort)) {
+      return {
+        port: options.consoleStaticPort,
+        requestedPort: options.consoleStaticPort,
+        portMode: "static",
+        allowFallback: true,
+      };
+    }
+    return {
+      port: DEFAULT_PORT,
+      requestedPort: null,
+      portMode: "dynamic",
+      allowFallback: false,
+    };
+  }
+
+  async function listenConsolePort(plan: ConsolePortListenPlan): Promise<ConsolePortListenResult> {
+    try {
+      return await listenOnce(plan.port, {
+        requestedPort: plan.requestedPort,
+        portMode: plan.portMode,
+        portHonored: true,
+      });
+    } catch (error) {
+      if (!plan.allowFallback || plan.requestedPort === null) throw error;
+      return listenOnce(DEFAULT_PORT, {
+        requestedPort: plan.requestedPort,
+        portMode: "static",
+        portHonored: false,
+      });
+    }
+  }
+
+  function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
+    return new Promise((resolve, reject) => {
+      const srv = createHttpServer(handleRequest, terminalUpgrade);
+      const onError = (error: Error) => {
+        reject(error);
+      };
+      srv.once("error", onError);
+      srv.listen(portToBind, host, async () => {
+        srv.off("error", onError);
+        const address = srv.address();
+        const actualPort = typeof address === "object" && address ? address.port : portToBind;
+        const endpoint = `http://${host}:${actualPort}/`;
+        try {
+          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade);
+          resolve({
+            srv,
+            localLoopbackServer,
+            actualPort,
+            endpoint,
+            portState: {
+              ...statePatch,
+              effectivePort: actualPort,
+            },
+          });
+        } catch (err) {
+          await closeHttpServer(srv);
+          reject(err);
+        }
+      });
+    });
+  }
+
   return returnedServer;
 }
 
@@ -1567,6 +1662,10 @@ function validateHost(req: http.IncomingMessage, expectedPort: number): boolean 
   const hostHeader = req.headers.host;
   if (!hostHeader) return false;
   return hostHeader === `127.0.0.1:${expectedPort}`;
+}
+
+function isValidConsoleStaticPort(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
 }
 
 // 신규 terminal 라우트의 출처 경계. 브라우저 요청은 console origin과 일치해야 하고,

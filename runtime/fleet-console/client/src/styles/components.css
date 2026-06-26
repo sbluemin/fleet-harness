@@ -614,6 +614,179 @@
   transform: none;
 }
 
+/* Console Port — General 전역 포트 선호. brass는 현재 reachable 위치, warn은 static fallback 상태에만 사용한다. */
+.console-port-row {
+  position: relative;
+}
+
+.console-port-control {
+  display: grid;
+  gap: var(--space-4);
+  width: min(100%, 560px);
+}
+
+.console-port-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: calc(var(--space-2) * -1);
+  opacity: 0;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-spring),
+    margin var(--duration-fast) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-spring);
+}
+
+.console-port-reveal.is-open {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+}
+
+.console-port-reveal-inner {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  gap: var(--space-3);
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+
+.console-port-input-label {
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.console-port-input {
+  width: 130px;
+  min-height: 38px;
+  padding: 8px var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-deep) 86%, transparent);
+  color: var(--ink-pearl);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
+}
+
+.console-port-input::placeholder {
+  color: var(--ink-rim);
+}
+
+.console-port-input:focus {
+  outline: none;
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.console-port-input.is-invalid {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--coral) 22%, transparent);
+}
+
+.console-port-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.console-port-hint {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.console-port-hint.is-invalid {
+  color: var(--coral);
+}
+
+.console-port-effective {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-deep) 84%, transparent);
+}
+
+.console-port-effective-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 10px var(--brass-glow);
+}
+
+.console-port-effective.is-fallback .console-port-effective-dot {
+  background: var(--warn);
+  box-shadow: 0 0 10px var(--warn-glow);
+}
+
+.console-port-effective-label {
+  margin: 0;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.console-port-effective-value {
+  margin: 0;
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.console-port-effective-value span {
+  color: var(--brass-bright);
+}
+
+.console-port-effective.is-fallback .console-port-effective-value span {
+  color: var(--warn);
+}
+
+.console-port-warning {
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--warn) 46%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--warn-glow);
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.console-port-warning strong {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.console-port-note {
+  margin: 0;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-port-reveal {
+    transition: none;
+  }
+}
+
 /* Appearance — 테마/렌더러 단일선택 컨트롤. 선택 상태는 brass(지금 보고 있는 곳)로만 표기하고 aurora와 혼용하지 않는다. */
 
 /* 테마 선택 — GNB 드롭다운의 3톤 스와치를 보존한 카드형 단일선택 그룹. */

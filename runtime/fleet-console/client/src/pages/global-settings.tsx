@@ -30,6 +30,11 @@ interface RendererOption {
   readonly label: string;
 }
 
+interface PortModeOption {
+  readonly id: GlobalSettingsState["consolePortMode"];
+  readonly label: string;
+}
+
 interface TerminalFontCardProps {
   readonly active: boolean;
   readonly font: {
@@ -60,9 +65,17 @@ const RENDERERS: readonly RendererOption[] = [
   { id: "dom", label: "DOM" },
 ];
 
+const PORT_MODES: readonly PortModeOption[] = [
+  { id: "dynamic", label: "Dynamic" },
+  { id: "static", label: "Static" },
+];
+
+const MIN_CONSOLE_STATIC_PORT = 1024;
+const MAX_CONSOLE_STATIC_PORT = 65535;
+
 const SETTINGS_SECTIONS: readonly SettingsSectionNavItem[] = [
   { id: "appearance", label: "Appearance", eyebrow: "Theme · Renderer" },
-  { id: "general", label: "General", eyebrow: "Prompt · Metaphor" },
+  { id: "general", label: "General", eyebrow: "Port · Prompt" },
   { id: "agent-cli", label: "Agent CLI", eyebrow: "Availability · Sign-in" },
   { id: "backend-api", label: "Backend API", eyebrow: "Loopback routes" },
 ];
@@ -319,10 +332,12 @@ function GeneralSettingsCard({
   readonly state: GlobalSettingsState | null;
   readonly saving: boolean;
 }) {
+  const consoleState = useConsoleState();
   return (
     <section className="global-settings-card" aria-label="General">
       {state ? (
         <>
+          <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
           <SettingToggleRow
             title="System Prompt Injection"
             help="Append keeps the Agent CLI's built-in system prompt and layers Fleet doctrine on top. Replace swaps it entirely for Fleet doctrine. Affects Claude-family CLIs only; Codex always receives doctrine through its profile."
@@ -350,6 +365,103 @@ function GeneralSettingsCard({
   );
 }
 
+function ConsolePortSettings({
+  state,
+  saving,
+  consoleState,
+}: {
+  readonly state: GlobalSettingsState;
+  readonly saving: boolean;
+  readonly consoleState: ReturnType<typeof useConsoleState>;
+}) {
+  const [draftPort, setDraftPort] = useState(state.consoleStaticPort?.toString() ?? "");
+  const effectivePort = consoleState.effectivePort;
+  const fallbackActive = consoleState.portMode === "static" && !consoleState.portHonored;
+  const requestedPort = consoleState.requestedPort ?? state.consoleStaticPort;
+  const trimmedDraftPort = draftPort.trim();
+  const parsedPort = Number(trimmedDraftPort);
+  const draftHasValue = trimmedDraftPort.length > 0;
+  const draftIsValid = draftHasValue && isValidConsoleStaticPort(parsedPort);
+  const draftIsInvalid = state.consolePortMode === "static" && draftHasValue && !draftIsValid;
+
+  useEffect(() => {
+    setDraftPort(state.consoleStaticPort?.toString() ?? "");
+  }, [state.consoleStaticPort]);
+
+  return (
+    <div className="global-settings-row is-stack console-port-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">Console Port <span className="new-badge">New</span></p>
+        <p className="global-settings-help">
+          Dynamic lets the OS pick a free loopback port each time the console starts. Static pins a port you choose so the console URL stays the same across restarts.
+        </p>
+      </div>
+      <div className="console-port-control">
+        <div className="segmented" role="group" aria-label="Console port mode">
+          {PORT_MODES.map((mode) => {
+            const isActive = state.consolePortMode === mode.id;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                aria-pressed={isActive}
+                className={`segmented-option ${isActive ? "is-active" : ""}`}
+                disabled={saving}
+                onClick={() => void setGlobalSettingsField("consolePortMode", mode.id)}
+              >
+                {mode.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className={`console-port-reveal ${state.consolePortMode === "static" ? "is-open" : ""}`}>
+          <div className="console-port-reveal-inner">
+            <label className="console-port-input-label" htmlFor="console-static-port-input">Static port</label>
+            <input
+              id="console-static-port-input"
+              className={`console-port-input ${draftIsInvalid ? "is-invalid" : ""}`}
+              inputMode="numeric"
+              placeholder="8080"
+              value={draftPort}
+              disabled={saving}
+              aria-invalid={draftIsInvalid}
+              aria-describedby="console-static-port-hint"
+              onChange={(event) => {
+                const next = event.target.value;
+                setDraftPort(next);
+                const nextPort = Number(next.trim());
+                if (isValidConsoleStaticPort(nextPort)) void setGlobalSettingsField("consoleStaticPort", nextPort);
+              }}
+            />
+            <span id="console-static-port-hint" className={`console-port-hint ${draftIsInvalid ? "is-invalid" : ""}`}>
+              1024–65535
+            </span>
+          </div>
+        </div>
+
+        <div className={`console-port-effective ${fallbackActive ? "is-fallback" : ""}`} aria-live="polite">
+          <span className="console-port-effective-dot" aria-hidden="true" />
+          <div>
+            <p className="console-port-effective-label">Currently reachable on</p>
+            <p className="console-port-effective-value">
+              127.0.0.1:<span>{effectivePort || "..."}</span>{fallbackActive ? " · Dynamic" : ""}
+            </p>
+          </div>
+        </div>
+
+        {fallbackActive && requestedPort ? (
+          <div className="console-port-warning" role="status">
+            Port <strong>{requestedPort}</strong> was unavailable — the console fell back to a <strong>Dynamic</strong> port and is running on <strong>127.0.0.1:{effectivePort || "..."}</strong>. It will retry <strong>{requestedPort}</strong> on the next restart.
+          </div>
+        ) : null}
+
+        <p className="console-port-note">Applies when the console restarts. Console-wide — shared across every browser.</p>
+      </div>
+    </div>
+  );
+}
+
 function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onToggle }: SettingToggleRowProps) {
   return (
     <div className="global-settings-row">
@@ -368,6 +480,10 @@ function SettingToggleRow({ title, help, onLabel, offLabel, value, disabled, onT
       </button>
     </div>
   );
+}
+
+function isValidConsoleStaticPort(value: number): boolean {
+  return Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
 }
 
 function CheckIcon() {
