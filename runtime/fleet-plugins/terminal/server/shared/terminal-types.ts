@@ -44,11 +44,13 @@ export interface TerminalPtyDataDisposable {
 }
 
 export interface TerminalPtyHandle {
+  readonly fd?: number;
   onData(callback: (data: string) => void): TerminalPtyDataDisposable;
   onExit(callback: () => void): TerminalPtyDataDisposable;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
+  destroy?(): void;
 }
 
 export interface TerminalSocket {

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
 
 import { createDefaultTerminalLaunchResolver } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
-import { createShellTerminalLaunchResolver, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
+import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
 import type { TerminalLaunchSpec } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 
 interface FakeRuntime {
@@ -349,6 +349,15 @@ describe("resolveUseConptyDll", () => {
 
   it("honors the Windows enabled override", () => {
     expect(resolveUseConptyDll("win32", { FLEET_USE_CONPTY_DLL: "1" })).toBe(true);
+  });
+});
+
+describe("resolveNodePtyModulePath", () => {
+  it("prefers the fleet-console package resolver for plugin dev cache bundles", () => {
+    const repoRoot = path.resolve(process.cwd(), "../..");
+    const devCacheBundle = path.join(repoRoot, "runtime/fleet-plugins/terminal/node_modules/.cache/fleet-console-plugin-test/routes.mjs");
+
+    expect(resolveNodePtyModulePath(devCacheBundle)).toContain(path.join(repoRoot, "node_modules", ".pnpm", "node-pty@1.1.0"));
   });
 });
 

@@ -40,6 +40,7 @@ export type TerminalConnectionStatus = "connecting" | "live" | "closed";
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 const OPEN_READY_STATE = 1;
+const TERMINAL_UNAVAILABLE_CLOSE_CODE = 1013;
 const TERMINAL_REPLACED_CLOSE_CODE = 4000;
 const TERMINAL_CLOSED_CLOSE_CODE = 4001;
 
@@ -108,9 +109,14 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         const code = event?.code;
         if (code === TERMINAL_REPLACED_CLOSE_CODE) {
           abort.abort();
+          connectionOptions.onStatus?.("closed", "terminal_replaced");
         } else if (code === TERMINAL_CLOSED_CLOSE_CODE) {
           abort.abort();
+          connectionOptions.onStatus?.("closed", "terminal_closed");
           connectionOptions.onExit?.();
+        } else if (code === TERMINAL_UNAVAILABLE_CLOSE_CODE) {
+          abort.abort();
+          connectionOptions.onStatus?.("closed", "terminal_unavailable");
         }
         resolve();
       };

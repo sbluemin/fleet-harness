@@ -1,3 +1,5 @@
+import { closeSync, fstatSync, readdirSync } from "node:fs";
+
 import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
 
 import { startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
@@ -16,6 +18,7 @@ export interface TerminalSessionManagerDeps {
 interface TerminalSession {
   readonly id: string;
   readonly pty: TerminalPtyHandle;
+  readonly ptyFds: readonly number[];
   readonly disposables: { dispose(): void }[];
   readonly scrollback: Buffer[];
   readonly cleanup?: () => void | Promise<void>;
@@ -38,6 +41,8 @@ const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 const DEFAULT_SCROLLBACK_LIMIT = 512;
 const WS_OPEN_STATE = 1;
+const FILE_TYPE_MASK = 0o170000;
+const CHARACTER_DEVICE_TYPE = 0o020000;
 // 캔버스 순정 셸 패널 세션 id 접두사(싱글톤 오버레이 "shell"과 구별).
 const THEATER_SHELL_SESSION_PREFIX = "shell:";
 // theater-shell 소켓 단절 후 PTY를 정리하기까지의 유예(일시적 WS 끊김 재연결을 흡수).
@@ -155,8 +160,11 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.resumeSessionId ? { resumeSessionId: context.resumeSessionId } : {}),
     });
     let pty: TerminalPtyHandle;
+    let ptyFds: readonly number[] = [];
     try {
+      const beforePtyFds = readOpenCharacterDeviceFds();
       pty = startShell(launch, { cols: DEFAULT_COLS, rows: DEFAULT_ROWS });
+      ptyFds = readSpawnedPtyFds(beforePtyFds, pty);
     } catch (error) {
       await runLaunchCleanup(launch.cleanup);
       throw error;
@@ -164,6 +172,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     const session: TerminalSession = {
       id: context.sessionId,
       pty,
+      ptyFds,
       disposables: [],
       scrollback: [],
       cleanup: launch.cleanup,
@@ -175,12 +184,23 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       graceTimer: null,
       terminalQueryResidual: "",
     };
-    const dataDisposable = pty.onData((data) => handlePtyData(session, data));
-    // 자연종료 후에도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
-    const exitDisposable = pty.onExit(() => removeSession(session));
-    session.disposables.push(dataDisposable, exitDisposable);
-    sessions.set(session.id, session);
-    return session;
+    try {
+      const dataDisposable = pty.onData((data) => handlePtyData(session, data));
+      session.disposables.push(dataDisposable);
+      // 자연종료 후에도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
+      const exitDisposable = pty.onExit(() => removeSession(session));
+      session.disposables.push(exitDisposable);
+      sessions.set(session.id, session);
+      return session;
+    } catch (error) {
+      for (const disposable of session.disposables) disposable.dispose();
+      try {
+        killPtyBestEffort(pty, ptyFds);
+      } finally {
+        await runLaunchCleanup(launch.cleanup);
+      }
+      throw error;
+    }
   }
 
   function handlePtyData(session: TerminalSession, data: string): void {
@@ -257,7 +277,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     session.activeSocket = null;
     for (const disposable of session.disposables) disposable.dispose();
     try {
-      if (killPty) killPtyBestEffort(session.pty);
+      if (killPty) killPtyBestEffort(session.pty, session.ptyFds);
     } finally {
       await runLaunchCleanup(session.cleanup);
     }
@@ -274,12 +294,64 @@ async function runLaunchCleanup(cleanup: (() => void | Promise<void>) | undefine
   }
 }
 
-function killPtyBestEffort(pty: TerminalPtyHandle): void {
+function killPtyBestEffort(pty: TerminalPtyHandle, ptyFds: readonly number[] = []): void {
+  const fds = new Set(ptyFds);
+  if (typeof pty.fd === "number") fds.add(pty.fd);
+  if (typeof pty.destroy === "function") {
+    try {
+      pty.destroy();
+      closePtyFdsBestEffort(fds);
+      return;
+    } catch {
+      // 네이티브 stream close 경로가 실패하면 signal-only 종료로 한 번 더 시도한다.
+    }
+  }
   try {
     pty.kill();
   } catch {
-    // Teardown-only cleanup: kill failures must not block session exit or launch cleanup.
+    // 정리 전용 경로이므로 kill 실패가 세션 종료나 launch cleanup을 막으면 안 된다.
+  } finally {
+    closePtyFdsBestEffort(fds);
   }
+}
+
+function closePtyFdsBestEffort(fds: Iterable<number>): void {
+  for (const fd of fds) {
+    try {
+      closeSync(fd);
+    } catch {
+      // 이미 닫힌 fd이거나 네이티브 정리와 경합한 경우에는 종료 흐름을 막지 않는다.
+    }
+  }
+}
+
+function readSpawnedPtyFds(before: ReadonlySet<number>, pty: TerminalPtyHandle): readonly number[] {
+  const spawned = new Set<number>();
+  for (const fd of readOpenCharacterDeviceFds()) {
+    if (!before.has(fd)) spawned.add(fd);
+  }
+  if (typeof pty.fd === "number") spawned.add(pty.fd);
+  return [...spawned];
+}
+
+function readOpenCharacterDeviceFds(): ReadonlySet<number> {
+  const fds = new Set<number>();
+  let names: string[];
+  try {
+    names = readdirSync("/dev/fd");
+  } catch {
+    return fds;
+  }
+  for (const name of names) {
+    const fd = Number(name);
+    if (!Number.isInteger(fd) || fd < 0) continue;
+    try {
+      if ((fstatSync(fd).mode & FILE_TYPE_MASK) === CHARACTER_DEVICE_TYPE) fds.add(fd);
+    } catch {
+      continue;
+    }
+  }
+  return fds;
 }
 
 function isTheaterShell(sessionId: string): boolean {

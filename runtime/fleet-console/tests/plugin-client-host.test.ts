@@ -79,6 +79,42 @@ describe("client plugin host contract", () => {
     expect(attachedUrl).toBe("ws://127.0.0.1:4411/plugins/terminal/ws?ticket=one-shot");
   });
 
+  it("stops reconnecting when the terminal server rejects attach as unavailable", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      ticket: "one-shot",
+      ttlMs: 1000,
+    })));
+    const statuses: string[] = [];
+    let socketCount = 0;
+    const connection = createTerminalConnection({
+      operationId: "op_shell",
+      terminal: {
+        onData: () => ({ dispose: () => undefined }),
+        write: () => undefined,
+      },
+      ticketPath: "/plugins/terminal/shell/ticket",
+      wsPath: "/plugins/terminal/ws",
+      location: { host: "127.0.0.1:4411", protocol: "http:" },
+      webSocketFactory: () => {
+        socketCount += 1;
+        const socket = new FakeWebSocket();
+        queueMicrotask(() => {
+          socket.onopen?.();
+          socket.onclose?.({ code: 1013 });
+        });
+        return socket;
+      },
+      onStatus: (status, message) => statuses.push(message ? `${status}:${message}` : status),
+    });
+
+    connection.start();
+    await vi.waitUntil(() => statuses.includes("closed:terminal_unavailable"));
+
+    expect(socketCount).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    connection.dispose();
+  });
+
   it("builds websocket URLs without shell-specific branching", () => {
     expect(buildTerminalWsUrl("abc 123", { host: "localhost:9999", protocol: "https:" }, "/plugins/custom/ws")).toBe(
       "wss://localhost:9999/plugins/custom/ws?ticket=abc%20123",
