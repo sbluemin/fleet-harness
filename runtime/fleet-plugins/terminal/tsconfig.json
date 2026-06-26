@@ -29,5 +29,5 @@
       "react/jsx-runtime": ["../../fleet-console/node_modules/@types/react/jsx-runtime.d.ts"]
     }
   },
-  "include": ["routes.ts", "server/**/*.ts", "client/**/*.ts", "client-shared/**/*.ts", "server-shared/**/*.ts", "tests/**/*.ts"]
+  "include": ["routes.ts", "server/**/*.ts", "client/**/*.ts", "tests/**/*.ts"]
 }

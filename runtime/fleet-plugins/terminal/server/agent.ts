@@ -8,7 +8,7 @@ import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { createWorkspaceChangeScanner } from "../server-shared/index.js";
+import { createWorkspaceChangeScanner } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector } from "./agent-api/agent-cli-detect.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";

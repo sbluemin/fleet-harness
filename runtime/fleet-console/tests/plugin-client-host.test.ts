@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
-import { buildTerminalWsUrl, createTerminalConnection, type WebSocketLike } from "../../fleet-plugins/terminal/client-shared/terminal-connection.js";
+import { buildTerminalWsUrl, createTerminalConnection, type WebSocketLike } from "../../fleet-plugins/terminal/client/shared/terminal-connection.js";
 
 class FakeWebSocket implements WebSocketLike {
   binaryType: BinaryType = "arraybuffer";

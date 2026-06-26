@@ -3,7 +3,7 @@ import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { definePlugin, React, type PluginInstallContext } from "@fleet-console/sdk/plugin/browser";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { TerminalSurface } from "../../client-shared/index.js";
+import { TerminalSurface } from "../shared/index.js";
 
 import { createAgentSession, fetchAgentCliState, resumeAgentSession, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";

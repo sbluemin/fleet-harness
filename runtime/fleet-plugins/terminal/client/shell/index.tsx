@@ -1,7 +1,7 @@
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
-import { TerminalSurface } from "../../client-shared/index.js";
+import { TerminalSurface } from "../shared/index.js";
 
 const SHELL_TICKET_PATH = "/plugins/terminal/shell/ticket";
 const SHELL_WS_PATH = "/terminal/ws";
