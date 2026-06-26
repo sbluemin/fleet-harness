@@ -26,6 +26,7 @@ interface TerminalSession {
   rows: number;
   // theater-shell(캔버스 순정 셸) 전용: 소켓 단절 후 PTY 정리까지의 grace 타이머. 재연결 시 취소된다.
   graceTimer: ReturnType<typeof setTimeout> | null;
+  terminalQueryResidual: string;
 }
 
 interface KillSessionOptions {
@@ -41,6 +42,17 @@ const WS_OPEN_STATE = 1;
 const THEATER_SHELL_SESSION_PREFIX = "shell:";
 // theater-shell 소켓 단절 후 PTY를 정리하기까지의 유예(일시적 WS 끊김 재연결을 흡수).
 const THEATER_SHELL_DETACH_GRACE_MS = 4_000;
+const TERMINAL_QUERY_RESIDUAL_LIMIT = 64;
+const ANSI_ESCAPE = "\x1b";
+const ANSI_CSI_PREFIX = `${ANSI_ESCAPE}[`;
+const DSR_STATUS_QUERY = `${ANSI_CSI_PREFIX}5n`;
+const DSR_CURSOR_POSITION_QUERY = `${ANSI_CSI_PREFIX}6n`;
+const PRIMARY_DEVICE_ATTRIBUTES_QUERY = `${ANSI_CSI_PREFIX}c`;
+const PRIMARY_DEVICE_ATTRIBUTES_ZERO_QUERY = `${ANSI_CSI_PREFIX}0c`;
+const SECONDARY_DEVICE_ATTRIBUTES_QUERY = `${ANSI_CSI_PREFIX}>c`;
+const DSR_STATUS_RESPONSE = `${ANSI_CSI_PREFIX}0n`;
+const PRIMARY_DEVICE_ATTRIBUTES_RESPONSE = `${ANSI_CSI_PREFIX}?1;2c`;
+const SECONDARY_DEVICE_ATTRIBUTES_RESPONSE = `${ANSI_CSI_PREFIX}>0;0;0c`;
 
 export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): TerminalSessionManager {
   const startShell = deps.startShell ?? startTerminalShell;
@@ -161,6 +173,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
       graceTimer: null,
+      terminalQueryResidual: "",
     };
     const dataDisposable = pty.onData((data) => handlePtyData(session, data));
     // 자연종료 후에도 node-pty agent.kill() 경로를 한 번 지나 conout/inSocket 정리를 시도한다.
@@ -172,6 +185,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
 
   function handlePtyData(session: TerminalSession, data: string): void {
     const buffer = Buffer.from(data, "utf8");
+    respondToTerminalQueries(session, buffer);
     session.scrollback.push(buffer);
     while (session.scrollback.length > scrollbackLimit) session.scrollback.shift();
     if (session.activeSocket && session.activeSocket.readyState === WS_OPEN_STATE) {
@@ -276,6 +290,59 @@ function clearGraceTimer(session: TerminalSession): void {
   if (session.graceTimer === null) return;
   clearTimeout(session.graceTimer);
   session.graceTimer = null;
+}
+
+function respondToTerminalQueries(session: TerminalSession, buffer: Buffer): void {
+  const text = `${session.terminalQueryResidual}${buffer.toString("utf8")}`;
+  session.terminalQueryResidual = "";
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf(ANSI_CSI_PREFIX, cursor);
+    if (start === -1) {
+      session.terminalQueryResidual = readTrailingEscape(text);
+      break;
+    }
+    const end = findCsiSequenceEnd(text, start + ANSI_CSI_PREFIX.length);
+    if (end === -1) {
+      session.terminalQueryResidual = trimTerminalQueryResidual(text.slice(start));
+      break;
+    }
+    writeTerminalQueryResponse(session, resolveTerminalQueryResponse(session, text.slice(start, end + 1)));
+    cursor = end + 1;
+  }
+}
+
+function readTrailingEscape(text: string): string {
+  return text.endsWith(ANSI_ESCAPE) ? ANSI_ESCAPE : "";
+}
+
+function findCsiSequenceEnd(text: string, start: number): number {
+  for (let index = start; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= 0x40 && code <= 0x7e) return index;
+  }
+  return -1;
+}
+
+function resolveTerminalQueryResponse(session: TerminalSession, sequence: string): string | undefined {
+  if (sequence === DSR_CURSOR_POSITION_QUERY) return `${ANSI_CSI_PREFIX}${Math.max(1, session.rows)};${Math.max(1, session.cols)}R`;
+  if (sequence === DSR_STATUS_QUERY) return DSR_STATUS_RESPONSE;
+  if (sequence === PRIMARY_DEVICE_ATTRIBUTES_QUERY || sequence === PRIMARY_DEVICE_ATTRIBUTES_ZERO_QUERY) return PRIMARY_DEVICE_ATTRIBUTES_RESPONSE;
+  if (sequence === SECONDARY_DEVICE_ATTRIBUTES_QUERY) return SECONDARY_DEVICE_ATTRIBUTES_RESPONSE;
+  return undefined;
+}
+
+function writeTerminalQueryResponse(session: TerminalSession, response: string | undefined): void {
+  if (!response) return;
+  try {
+    session.pty.write(response);
+  } catch {
+    return;
+  }
+}
+
+function trimTerminalQueryResidual(residual: string): string {
+  return residual.slice(-TERMINAL_QUERY_RESIDUAL_LIMIT);
 }
 
 function toBuffer(data: TerminalSocketData): Buffer {

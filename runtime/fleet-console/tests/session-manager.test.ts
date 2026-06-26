@@ -220,6 +220,47 @@ describe("terminal session manager", () => {
     expect(firstB.sent.map((chunk) => chunk.toString("utf8"))).toEqual(["beta"]);
   });
 
+  it("responds to terminal device queries without altering output delivery", async () => {
+    const ptys = new Map<string, MockPty>();
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+    });
+    const socket = createMockSocket();
+
+    await manager.attach(socket, { sessionId: "session-a", cwd: "/a" });
+    socket.emitMessage(Buffer.from(JSON.stringify({ type: "resize", cols: 120, rows: 40 }), "utf8"), false);
+    ptys.get("session-a")?.emitData(`before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`);
+
+    expect(ptys.get("session-a")?.writes).toEqual(["\x1b[40;120R", "\x1b[0n", "\x1b[?1;2c", "\x1b[?1;2c", "\x1b[>0;0;0c"]);
+    expect(socket.sent.map((chunk) => chunk.toString("utf8"))).toEqual([`before\x1b[6nafter\x1b[5n\x1b[c\x1b[0c\x1b[>c\x1b[31m`]);
+  });
+
+  it("responds to terminal device queries split across pty chunks", async () => {
+    const ptys = new Map<string, MockPty>();
+    const manager = createTerminalSessionManager({
+      launch: async (cwd, context) => ({ bin: "mock", args: [], cwd: cwd ?? "/", env: { SESSION: context?.sessionId } }),
+      startShell: (launch) => {
+        const pty = createMockPty();
+        ptys.set(String(launch.env.SESSION), pty);
+        return pty;
+      },
+    });
+
+    await manager.createSession({ sessionId: "session-a", cwd: "/a" });
+    ptys.get("session-a")?.emitData("\x1b");
+    ptys.get("session-a")?.emitData("[");
+    ptys.get("session-a")?.emitData("6n");
+    ptys.get("session-a")?.emitData("\x1b[");
+    ptys.get("session-a")?.emitData(">c");
+
+    expect(ptys.get("session-a")?.writes).toEqual(["\x1b[24;80R", "\x1b[>0;0;0c"]);
+  });
+
   it("terminates a session, killing the pty and notifying exit exactly once", async () => {
     const ptys = new Map<string, MockPty>();
     const exits: string[] = [];
