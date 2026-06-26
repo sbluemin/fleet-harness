@@ -4,7 +4,7 @@ import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
 import { TerminalSurface } from "../shared/index.js";
 
 const SHELL_TICKET_PATH = "/plugins/terminal/shell/ticket";
-const SHELL_WS_PATH = "/terminal/ws";
+const SHELL_WS_PATH = "/plugins/terminal/ws";
 
 export const shellOperationKind = defineOperationKind({
   pluginId: "terminal",

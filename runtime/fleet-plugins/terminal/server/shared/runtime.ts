@@ -1,0 +1,106 @@
+import type { CliMessagePolicy } from "@dotobokuri/fleet-admiral";
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { UpgradeHandler } from "@fleet-console/sdk/routing";
+
+import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
+import { createTerminalSessionManager } from "./session-manager.js";
+import { createTerminalTicketRegistry } from "./tickets.js";
+import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec } from "./terminal-types.js";
+import { createTerminalUpgradeHandler } from "./ws.js";
+
+export interface TerminalRuntime {
+  readonly handleUpgrade: UpgradeHandler;
+  issueTicket(context: TerminalTicketContext): TerminalTicket;
+  canAttach(operationId: string): boolean;
+  attach(context: TerminalTicketContext): Promise<void>;
+  write(operationId: string, data: string): boolean;
+  terminate(operationId: string): boolean;
+  getMessagePolicy(operationId: string): CliMessagePolicy | undefined;
+  getRenameCommand(operationId: string): string | undefined;
+  onExit(callback: (operationId: string) => void | Promise<void>): () => void;
+  registerLaunchResolver(operationType: string, resolver: TerminalLaunchResolver): () => void;
+  stop(): Promise<void>;
+}
+
+export type { TerminalLaunchResolver };
+
+const SHELL_OPERATION_TYPE = "shell";
+
+export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRuntime {
+  const tickets = createTerminalTicketRegistry();
+  const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
+  const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
+  const defaultTerminalLaunch = createShellTerminalLaunchResolver();
+  terminalLaunchResolvers.set(SHELL_OPERATION_TYPE, (cwd, context) => defaultTerminalLaunch(cwd, { ...context, kind: "shell" }));
+  const sessions = createTerminalSessionManager({
+    launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
+    startShell: startTerminalShell,
+    onSessionExit: async (sessionId) => {
+      markTerminalStatus(ctx, sessionId, "dormant");
+      await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
+    },
+  });
+  const upgrade = createTerminalUpgradeHandler({
+    tickets,
+    sessions,
+    isAuthorized: ctx.host.security.isTerminalAuthorized,
+  });
+
+  return {
+    handleUpgrade: upgrade.handleUpgrade,
+    issueTicket: (context) => {
+      markTerminalStatus(ctx, context.operationId ?? context.sessionId, "live");
+      return tickets.issue(context);
+    },
+    canAttach: (operationId) => sessions.canAttach(operationId),
+    attach: async (context) => {
+      markTerminalStatus(ctx, context.operationId ?? context.sessionId, "live");
+      await sessions.createSession(context);
+    },
+    write: (operationId, data) => sessions.writeToSession(operationId, data),
+    terminate: (operationId) => {
+      markTerminalStatus(ctx, operationId, "closed");
+      return sessions.terminate(operationId);
+    },
+    getMessagePolicy: (operationId) => sessions.getSessionMessagePolicy(operationId),
+    getRenameCommand: (operationId) => sessions.getSessionRenameCommand(operationId),
+    onExit: (callback) => {
+      terminalExitListeners.add(callback);
+      return () => terminalExitListeners.delete(callback);
+    },
+    registerLaunchResolver: (operationType, resolver) => {
+      terminalLaunchResolvers.set(operationType, resolver);
+      return () => {
+        if (terminalLaunchResolvers.get(operationType) === resolver) terminalLaunchResolvers.delete(operationType);
+      };
+    },
+    stop: async () => {
+      upgrade.close();
+      await sessions.stop();
+      terminalExitListeners.clear();
+      terminalLaunchResolvers.clear();
+    },
+  };
+}
+
+function markTerminalStatus(ctx: FleetPluginServerContext, operationId: string, terminalStatus: "live" | "dormant" | "closed"): void {
+  const operation = ctx.host.operations.get(operationId);
+  if (!operation) return;
+  ctx.host.operations.patch(operationId, {
+    state: {
+      ...operation.state,
+      terminalStatus,
+    },
+  });
+}
+
+function createRegistryAwareTerminalLaunchResolver(defaultResolver: TerminalLaunchResolver, resolvers: ReadonlyMap<string, TerminalLaunchResolver>): TerminalLaunchResolver {
+  return async (cwd: string | undefined, context: TerminalLaunchContext | undefined): Promise<TerminalLaunchSpec> => {
+    const operationType = context?.operationType;
+    if (!operationType) return defaultResolver(cwd, context);
+    const resolver = resolvers.get(operationType);
+    if (resolver) return resolver(cwd, context);
+    if (operationType === "agent") return defaultResolver(cwd, context);
+    throw new Error(`terminal_launch_resolver_missing:${operationType}`);
+  };
+}

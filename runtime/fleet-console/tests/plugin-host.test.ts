@@ -12,19 +12,6 @@ import type { FleetPluginHostCapabilities } from "../core/host/plugin-host/types
 
 const tempDirs: string[] = [];
 const noopHostCapabilities: FleetPluginHostCapabilities = {
-  terminal: {
-    issueTicket: (context) => ({ ticket: context.operationId, ttlMs: 10_000 }),
-    consumeTicket: () => null,
-    canAttach: () => true,
-    attach: async () => {},
-    write: () => true,
-    terminate: () => true,
-    getMessagePolicy: () => undefined,
-    getRenameCommand: () => undefined,
-    handleUpgrade: () => true,
-    onExit: () => () => {},
-    registerLaunchResolver: () => () => {},
-  },
   operations: {
     list: () => [],
     get: () => null,
@@ -140,14 +127,13 @@ describe("plugin host", () => {
     const pluginRoot = path.join(dir, "runtime", "fleet-plugins", "demo");
     writePlugin(pluginRoot, "demo", {}, false);
     fs.writeFileSync(path.join(pluginRoot, "routes.ts"), [
-      "import { definePlugin, issueTicket, registerRouter, registerWsHandler } from \"@fleet-console/sdk/plugin/node\";",
+      "import { definePlugin, registerRouter, registerWsHandler } from \"@fleet-console/sdk/plugin/node\";",
       "interface Marker { readonly value: string }",
-      "const marker: Marker = { value: issueTicket };",
+      "const marker: Marker = { value: \"plugin-local\" };",
       "export default definePlugin({",
       "  id: \"demo\",",
       "  register(ctx) {",
-      "    const token: string = issueTicket(ctx, { operationId: \"operation-a\", cwd: \"/tmp\" }).ticket;",
-      "    registerRouter(ctx, \"api\", () => token === \"operation-a\" && marker.value === issueTicket && ctx.host.terminal.canAttach(\"operation-a\"));",
+      "    registerRouter(ctx, \"api\", () => marker.value === \"plugin-local\");",
       "    registerWsHandler(ctx, \"stream\", () => true);",
       "  },",
       "});",

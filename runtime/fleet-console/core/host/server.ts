@@ -23,7 +23,7 @@ import { createOperationsRouter } from "./operations/routes.js";
 import { createOperationStore } from "./operations/store.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createFleetPluginHost } from "./plugin-host/host.js";
-import type { FleetPluginHostCapabilities, FleetPluginTerminalContext, FleetPluginTerminalLaunchResolver, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/types.js";
+import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/types.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "./release-notes/service.js";
 import { ConsoleReleaseNotesUnavailableError } from "./release-notes/types.js";
@@ -33,11 +33,6 @@ import { withSecurityHeaders } from "./security-headers.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./terminal/folder-browser.js";
 import { createFolderGrantStore } from "./terminal/folder-grants.js";
-import { createShellTerminalLaunchResolver, type TerminalLaunchResolver, startTerminalShell } from "./terminal/launch.js";
-import { createTerminalSessionManager } from "./terminal/session-manager.js";
-import { createTerminalTicketRegistry } from "./terminal/tickets.js";
-import { createTerminalUpgradeHandler } from "./terminal/ws-handler.js";
-import type { TerminalLaunchContext, TerminalTicketContext } from "./terminal/types.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theater.js";
@@ -52,9 +47,7 @@ export interface ConsoleServerDeps {
   readonly dataDir?: string;
   readonly agentCliDetector?: unknown;
   readonly agentRuntime?: unknown;
-  readonly terminalLaunch?: TerminalLaunchResolver;
   readonly terminalLaunchResolverDeps?: unknown;
-  readonly terminalStartShell?: typeof startTerminalShell;
   readonly maxTerminalSessions?: number;
   readonly release?: FleetConsoleRelease;
   readonly releaseNotes?: ConsoleReleaseNotesService;
@@ -106,6 +99,7 @@ const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
+const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
@@ -205,7 +199,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const updateApply = deps.updateApply ?? createConsoleUpdateApplyService();
   const theaters = new TheaterRegistry();
   const operations = createOperationStore();
-  const terminalTickets = createTerminalTicketRegistry();
   const folderGrants = createFolderGrantStore();
   const infraServices = createInfraServices();
   const dataDir = deps.dataDir ?? getFleetDataDir();
@@ -221,24 +214,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     getPort: () => lockHandle?.payload.port ?? port,
     getAdminToken: () => lockHandle?.payload.token ?? null,
   });
-  const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
-  const defaultTerminalLaunch = deps.terminalLaunch ?? createShellTerminalLaunchResolver();
-  terminalLaunchResolvers.set("shell", (cwd, context) => defaultTerminalLaunch(cwd, { ...context, kind: "shell" }));
-  const terminalSessions = createTerminalSessionManager({
-    launch: createRegistryAwareTerminalLaunchResolver(defaultTerminalLaunch, terminalLaunchResolvers),
-    startShell: deps.terminalStartShell,
-    maxSessions: deps.maxTerminalSessions,
-    onSessionExit: async (sessionId) => {
-      await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
-    },
-  });
-  const terminalUpgrade = createTerminalUpgradeHandler({
-    expectedHost: host,
-    getExpectedPort: () => lockHandle?.payload.port ?? port,
-    tickets: terminalTickets,
-    sessions: terminalSessions,
-    validateHost,
-  });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
   const pluginOperationTypes = new Set<string>();
@@ -246,33 +221,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginLaunchCatalogProviders = new Map<string, OperationLaunchCatalogProvider[]>();
   const pluginCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
-  const terminalExitListeners = new Set<(operationId: string) => unknown>();
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
-    terminal: {
-      issueTicket: (context) => terminalTickets.issue(resolvePluginTerminalContext(context)),
-      consumeTicket: (ticket) => {
-        const context = terminalTickets.consume(ticket);
-        return context ? toPluginTerminalContext(context) : null;
-      },
-      canAttach: (operationId) => terminalSessions.canAttach(operationId),
-      attach: (context) => terminalSessions.createSession(resolvePluginTerminalContext(context)),
-      write: (operationId, data) => terminalSessions.writeToSession(operationId, data),
-      terminate: (operationId) => terminalSessions.terminate(operationId),
-      getMessagePolicy: (operationId) => terminalSessions.getSessionMessagePolicy(operationId),
-      getRenameCommand: (operationId) => terminalSessions.getSessionRenameCommand(operationId),
-      handleUpgrade: (req, socket, head) => terminalUpgrade.handleUpgrade(req, socket, head),
-      onExit: (callback) => {
-        terminalExitListeners.add(callback);
-        return () => terminalExitListeners.delete(callback);
-      },
-      registerLaunchResolver: (operationType, resolver) => {
-        const launchResolver = adaptPluginLaunchResolver(operationType, resolver);
-        terminalLaunchResolvers.set(operationType, launchResolver);
-        return () => {
-          if (terminalLaunchResolvers.get(operationType) === launchResolver) terminalLaunchResolvers.delete(operationType);
-        };
-      },
-    },
     operations: {
       list: () => operations.list(),
       get: (id) => operations.get(id),
@@ -446,6 +395,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     ],
     resolveLaunchCatalog: resolveOperationCatalog,
     publishRenameEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_RENAMED_EVENT_CHANNEL, event),
+    publishDeleteEvent: (event) => pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, event),
   });
   routeRegistry.register("/operations", operationsRouter);
   routeRegistry.register("/carrier-settings", carrierSettingsRouter);
@@ -641,7 +591,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // /console/codex/w/:id/ 직접 URL이 재시작 전까지 잊은 Theater의 위키를 계속 서빙한다(등록/복원 경로와 대칭).
     codex.unregisterWorkspace(theaterId);
     for (const operation of operations.listByTheater(theaterId)) {
-      terminalSessions.terminate(operation.id);
+      pluginHostCapabilities.events.publish(OPERATION_DELETED_EVENT_CHANNEL, {
+        operationId: operation.id,
+        pluginId: operation.pluginId,
+        type: operation.type,
+      });
     }
     operations.deleteByTheater(theaterId);
     persistDurableState();
@@ -730,7 +684,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 409, { error: "update_already_in_progress" });
       return;
     }
-    if (terminalSessions.hasLiveSessions()) {
+    if (hasLiveTerminalOperations()) {
       writeJson(res, 409, { error: "active_terminal_sessions" });
       return;
     }
@@ -788,6 +742,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return theaters.list().map((theater) => toTheaterInfo(theater, codex.getWorkspace(theater.id) !== null));
   }
 
+  function hasLiveTerminalOperations(): boolean {
+    return operations.list().some((operation) => {
+      if (operation.pluginId !== "terminal") return false;
+      const terminalStatus = operation.state.terminalStatus;
+      return terminalStatus === "live" || terminalStatus === "running";
+    });
+  }
+
   function toTheaterInfo(theater: TheaterRegistration, hasWiki: boolean): ConsoleTheaterInfo {
     return {
       id: theater.id,
@@ -826,7 +788,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       closeHttpServer(current),
       closeHttpServer(currentLoopback),
     ]);
-    await terminalSessions.stop();
     await disposeConsoleResources(currentLock);
   }
 
@@ -844,9 +805,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     pluginCleanupCallbacks.clear();
     pluginEventListeners.clear();
-    terminalExitListeners.clear();
-    terminalLaunchResolvers.clear();
-    terminalUpgrade.close();
     currentLock?.release();
   }
 
@@ -916,45 +874,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         closeHttpServer(current),
         closeHttpServer(currentLoopback),
       ]);
-      await terminalSessions.stop();
     } finally {
       await disposeConsoleResources(currentLock);
     }
-  }
-
-  function resolvePluginTerminalContext(context: FleetPluginTerminalContext): TerminalTicketContext {
-    const operation = operations.get(context.operationId);
-    if (!operation) throw new Error("plugin_terminal_operation_not_found");
-    const theaterId = context.theaterId ?? operation.theaterId;
-    if (theaterId !== operation.theaterId) throw new Error("plugin_terminal_theater_mismatch");
-    const cwd = context.cwd ?? theaters.get(theaterId)?.path;
-    if (!cwd) throw new Error("plugin_terminal_cwd_unavailable");
-    return {
-      cwd,
-      sessionId: context.operationId,
-      operationId: context.operationId,
-      operationType: operation.type,
-      pluginId: operation.pluginId,
-      theaterId,
-    };
-  }
-
-  function toPluginTerminalContext(context: TerminalTicketContext): FleetPluginTerminalContext {
-    return {
-      operationId: context.operationId ?? context.sessionId,
-      ...(context.theaterId ? { theaterId: context.theaterId } : {}),
-      ...(context.cwd ? { cwd: context.cwd } : {}),
-    };
-  }
-
-  function adaptPluginLaunchResolver(operationType: string, resolver: FleetPluginTerminalLaunchResolver): TerminalLaunchResolver {
-    return async (cwd, context) => resolver({
-      operationId: context?.operationId ?? context?.sessionId ?? "",
-      operationType: context?.operationType ?? operationType,
-      pluginId: context?.pluginId ?? "",
-      ...(context?.theaterId ? { theaterId: context.theaterId } : {}),
-      cwd: cwd ?? "",
-    });
   }
 
   const returnedServer: ConsoleServer = {
@@ -1031,7 +953,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
     return new Promise((resolve, reject) => {
-      const srv = createHttpServer(handleRequest, terminalUpgrade, upgradeRegistry);
+      const srv = createHttpServer(handleRequest, upgradeRegistry);
       const onError = (error: Error) => {
         reject(error);
       };
@@ -1042,7 +964,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const actualPort = typeof address === "object" && address ? address.port : portToBind;
         const endpoint = `http://${host}:${actualPort}/`;
         try {
-          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, terminalUpgrade, upgradeRegistry);
+          const localLoopbackServer = await maybeStartLoopbackServer(host, actualPort, handleRequest, upgradeRegistry);
           resolve({
             srv,
             localLoopbackServer,
@@ -1063,17 +985,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   return returnedServer;
 }
 
-function createRegistryAwareTerminalLaunchResolver(defaultResolver: TerminalLaunchResolver, resolvers: ReadonlyMap<string, TerminalLaunchResolver>): TerminalLaunchResolver {
-  return async (cwd: string | undefined, context: TerminalLaunchContext | undefined) => {
-    const operationType = context?.operationType;
-    if (!operationType) return defaultResolver(cwd, context);
-    const resolver = resolvers.get(operationType);
-    if (resolver) return resolver(cwd, context);
-    if (operationType === "agent") return defaultResolver(cwd, context);
-    throw new Error(`terminal_launch_resolver_missing:${operationType}`);
-  };
-}
-
 function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly builtInSourceRoot?: string; readonly builtInDistRoot: string } {
   const packageRootRepo = path.resolve(packageRoot, "..", "..");
   const sourceRoot = path.join(packageRootRepo, "runtime", "fleet-plugins");
@@ -1085,7 +996,6 @@ function resolveBuiltInPluginDiscoveryRoots(packageRoot: string): { readonly bui
 
 function createHttpServer(
   handler: http.RequestListener,
-  terminalUpgrade: ReturnType<typeof createTerminalUpgradeHandler>,
   upgradeRegistry: UpgradeRegistry,
 ): http.Server {
   const srv = http.createServer(handler);
@@ -1095,7 +1005,7 @@ function createHttpServer(
   srv.on("upgrade", (req, socket, head) => {
     const pathname = getPathname(req);
     if (upgradeRegistry.handle({ req, socket, head, pathname })) return;
-    if (!terminalUpgrade.handleUpgrade(req, socket, head)) socket.destroy();
+    socket.destroy();
   });
   return srv;
 }
@@ -1104,11 +1014,10 @@ async function maybeStartLoopbackServer(
   host: string,
   actualPort: number,
   handler: http.RequestListener,
-  terminalUpgrade: ReturnType<typeof createTerminalUpgradeHandler>,
   upgradeRegistry: UpgradeRegistry,
 ): Promise<http.Server | null> {
   if (isLoopbackHost(host) || isWildcardHost(host)) return null;
-  const srv = createHttpServer(handler, terminalUpgrade, upgradeRegistry);
+  const srv = createHttpServer(handler, upgradeRegistry);
   await new Promise<void>((resolve, reject) => {
     srv.once("error", reject);
     srv.listen(actualPort, "127.0.0.1", () => {

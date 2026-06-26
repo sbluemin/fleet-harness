@@ -6,9 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@dotobokuri/fleet-admiral";
 
-import { createDefaultTerminalLaunchResolver, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
-import { createShellTerminalLaunchResolver } from "../core/host/terminal/launch.js";
-import type { TerminalLaunchSpec } from "../core/host/terminal/types.js";
+import { createDefaultTerminalLaunchResolver } from "../../fleet-plugins/terminal/server/agent-api/launch.js";
+import { createShellTerminalLaunchResolver, resolveUseConptyDll } from "../../fleet-plugins/terminal/server/shared/pty.js";
+import type { TerminalLaunchSpec } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 
 interface FakeRuntime {
   readonly carrierRuntime: {

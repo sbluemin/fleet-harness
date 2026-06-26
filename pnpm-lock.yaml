@@ -359,9 +359,15 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
+      node-pty:
+        specifier: ^1.0.0
+        version: 1.1.0
       react:
         specifier: ^19.2.3
         version: 19.2.7
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.0
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

@@ -3,12 +3,13 @@ import process from "node:process";
 
 import { createCarrierResultReminderRouter, createFleetAgentRuntimeLifecycle, formatCarrierResultReminderMessage, getAgentCliMetadata, parseAgentCliId, sanitizeCarrierResultReminder, type AgentCliId } from "@dotobokuri/fleet-admiral";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
-import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
+import { createInfraServices } from "@dotobokuri/fleet-infra";
 import { getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
 import type { OperationLaunchKind, OperationNode } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { createWorkspaceChangeScanner } from "./shared/index.js";
+import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector } from "./agent-api/agent-cli-detect.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-api/agent-cli-launch-metadata.js";
@@ -38,10 +39,10 @@ const AGENT_OPERATION_TYPE = "agent";
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const TERMINAL_PLUGIN_ID = "terminal";
 
-export function registerAgentRoutes(ctx: FleetPluginServerContext): () => Promise<readonly OperationLaunchKind[]> {
-  const api = createAgentApi(ctx);
-  ctx.host.terminal.registerLaunchResolver(AGENT_OPERATION_TYPE, api.launch);
-  ctx.host.terminal.onExit(async (operationId) => {
+export function registerAgentRoutes(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime): () => Promise<readonly OperationLaunchKind[]> {
+  const api = createAgentApi(ctx, terminalRuntime);
+  terminalRuntime.registerLaunchResolver(AGENT_OPERATION_TYPE, api.launch);
+  terminalRuntime.onExit(async (operationId) => {
     await api.handleExit(operationId);
   });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
@@ -49,9 +50,9 @@ export function registerAgentRoutes(ctx: FleetPluginServerContext): () => Promis
   return api.launchKinds;
 }
 
-function createAgentApi(ctx: FleetPluginServerContext) {
+function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: TerminalRuntime) {
   const infraServices = createInfraServices();
-  const dataDir = getFleetDataDir();
+  const dataDir = ctx.host.paths.dataDir;
   const authEnvResolver = (cli: Parameters<typeof resolveAuthEnv>[0]) => resolveAuthEnv(cli, { authService: infraServices.authService });
   const runtime = createFleetAgentRuntimeLifecycle({
     authEnvResolver,
@@ -86,11 +87,11 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     streamRegister: runtime.carrierRuntime.jobs.streaming.register,
     resolveSink: (event) => {
       const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
-      return sessionId ? { write: (data) => ctx.host.terminal.write(sessionId, data) } : undefined;
+      return sessionId ? { write: (data) => terminalRuntime.write(sessionId, data) } : undefined;
     },
     resolvePolicy: (event) => {
       const sessionId = resolveCarrierEventOrigin(event as { readonly jobId: string; readonly type: string; readonly originSessionId?: string }, jobOriginById);
-      return sessionId ? ctx.host.terminal.getMessagePolicy(sessionId) ?? {} : {};
+      return sessionId ? terminalRuntime.getMessagePolicy(sessionId) ?? {} : {};
     },
   });
   const unsubscribeRename = ctx.host.events.subscribe(OPERATION_RENAMED_EVENT_CHANNEL, (payload) => {
@@ -154,7 +155,25 @@ function createAgentApi(ctx: FleetPluginServerContext) {
         ctx.host.http.writeJson(res, 400, { error: "terminal_session_not_found" });
         return true;
       }
-      ctx.host.http.writeJson(res, 200, ctx.host.terminal.issueTicket({ operationId: body.operationId }));
+      const operation = ctx.host.operations.get(body.operationId);
+      if (!operation) {
+        ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
+        return true;
+      }
+      const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId);
+      if (!cwd) {
+        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+        return true;
+      }
+      ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
+        cwd,
+        sessionId: operation.id,
+        operationId: operation.id,
+        operationType: operation.type,
+        pluginId: operation.pluginId,
+        theaterId: operation.theaterId,
+        cliId: readPayloadString(operation.payload, "cliId") ?? undefined,
+      }));
       return true;
     }
     return false;
@@ -247,7 +266,15 @@ function createAgentApi(ctx: FleetPluginServerContext) {
       createdAt: session.createdAt,
     });
     try {
-      await ctx.host.terminal.attach({ operationId: sessionId, theaterId, cwd });
+      await terminalRuntime.attach({
+        cwd,
+        sessionId,
+        operationId: sessionId,
+        operationType: AGENT_OPERATION_TYPE,
+        pluginId: ctx.pluginId,
+        theaterId,
+        cliId,
+      });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -279,7 +306,21 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     }
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
     try {
-      await ctx.host.terminal.attach({ operationId: sessionId, theaterId: node.theaterId, cwd: readPayloadString(node.payload, "cwd") });
+      const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
+      if (!cwd) {
+        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+        return true;
+      }
+      await terminalRuntime.attach({
+        cwd,
+        sessionId,
+        operationId: sessionId,
+        operationType: node.type,
+        pluginId: node.pluginId,
+        theaterId: node.theaterId,
+        cliId,
+        resumeSessionId: providerSession.sessionId,
+      });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
@@ -395,11 +436,12 @@ function createAgentApi(ctx: FleetPluginServerContext) {
     });
   }
 
-  function launch(context: { readonly operationId: string; readonly cwd: string }) {
-    const operation = ctx.host.operations.get(context.operationId);
+  function launch(cwd: string | undefined, context: { readonly operationId?: string } | undefined) {
+    const operationId = context?.operationId ?? "";
+    const operation = ctx.host.operations.get(operationId);
     const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
     const providerSession = readProviderSession(operation?.payload)?.sessionId;
-    return launchResolver(context.cwd, { sessionId: context.operationId, operationId: context.operationId, operationType: AGENT_OPERATION_TYPE, pluginId: ctx.pluginId, cliId, resumeSessionId: providerSession });
+    return launchResolver(cwd, { sessionId: operationId, operationId, operationType: AGENT_OPERATION_TYPE, pluginId: ctx.pluginId, cliId, resumeSessionId: providerSession });
   }
 
   async function handleExit(operationId: string): Promise<void> {
@@ -419,7 +461,7 @@ function createAgentApi(ctx: FleetPluginServerContext) {
   }
 
   function removeSession(sessionId: string): void {
-    ctx.host.terminal.terminate(sessionId);
+    terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
     ctx.host.operations.delete(sessionId);
@@ -435,13 +477,13 @@ function createAgentApi(ctx: FleetPluginServerContext) {
 
   function injectRenameCommand(sessionId: string, label: string | undefined): void {
     if (!label) return;
-    const renameCommand = ctx.host.terminal.getRenameCommand(sessionId);
+    const renameCommand = terminalRuntime.getRenameCommand(sessionId);
     if (!renameCommand) return;
     const safeLabel = sanitizeCarrierResultReminder(label.replace(/[\r\n\t]+/g, " ")).trim();
     if (safeLabel.length === 0) return;
-    const policy = ctx.host.terminal.getMessagePolicy(sessionId) ?? {};
+    const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
     for (const chunk of formatCarrierResultReminderMessage(policy, `${renameCommand} ${safeLabel}`)) {
-      ctx.host.terminal.write(sessionId, chunk);
+      terminalRuntime.write(sessionId, chunk);
     }
   }
 

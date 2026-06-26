@@ -1,5 +1,4 @@
 import type http from "node:http";
-import type { Duplex } from "node:stream";
 import type { ReactNode } from "react";
 
 import type { LaunchContext } from "../launch/types.js";
@@ -8,7 +7,7 @@ import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatal
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
-import type { TerminalLaunchSpec, TerminalMessagePolicy, TerminalTicket } from "../terminal/types.js";
+import type { TerminalTicket } from "../terminal/types.js";
 
 export type ConsoleTheme = "maritime" | "carbon";
 
@@ -147,7 +146,6 @@ export interface FleetPluginServerContext {
 }
 
 export interface FleetPluginHostCapabilities {
-  readonly terminal: FleetPluginTerminalHost;
   readonly operations: FleetPluginOperationsHost;
   readonly events: FleetPluginEventsHost;
   readonly paths: FleetPluginPathsHost;
@@ -156,36 +154,6 @@ export interface FleetPluginHostCapabilities {
   readonly security: FleetPluginSecurityHost;
   readonly modelAuth: FleetPluginModelAuthHost;
   readonly lifecycle: FleetPluginLifecycleHost;
-}
-
-export interface FleetPluginTerminalContext {
-  readonly operationId: string;
-  readonly theaterId?: string;
-  readonly cwd?: string;
-}
-
-export interface FleetPluginTerminalLaunchContext {
-  readonly operationId: string;
-  readonly operationType: string;
-  readonly pluginId: string;
-  readonly theaterId?: string;
-  readonly cwd: string;
-}
-
-export type FleetPluginTerminalLaunchResolver = (context: FleetPluginTerminalLaunchContext) => Promise<TerminalLaunchSpec>;
-
-export interface FleetPluginTerminalHost {
-  issueTicket(context: FleetPluginTerminalContext): TerminalTicket;
-  consumeTicket(ticket: string | null): FleetPluginTerminalContext | null;
-  canAttach(operationId: string): boolean;
-  attach(context: FleetPluginTerminalContext): Promise<void>;
-  write(operationId: string, data: string): boolean;
-  terminate(operationId: string): boolean;
-  getMessagePolicy(operationId: string): TerminalMessagePolicy | undefined;
-  getRenameCommand(operationId: string): string | undefined;
-  handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean;
-  onExit(callback: (operationId: string) => void): () => void;
-  registerLaunchResolver(operationType: string, resolver: FleetPluginTerminalLaunchResolver): () => void;
 }
 
 export interface FleetPluginOperationsHost {

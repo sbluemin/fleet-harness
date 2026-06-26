@@ -1,9 +1,11 @@
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
+import type { TerminalRuntime } from "./shared/index.js";
+
 type TicketBody = { readonly operationId?: unknown; readonly sessionId?: unknown };
 
-export function registerShellRoutes(ctx: FleetPluginServerContext): void {
+export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: TerminalRuntime): void {
     registerRouter(ctx, "shell/ticket", async ({ req, res }) => {
       if (req.method !== "POST") {
         ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -33,13 +35,18 @@ export function registerShellRoutes(ctx: FleetPluginServerContext): void {
         ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
         return true;
       }
-      if (!ctx.host.terminal.canAttach(operationId)) {
+      if (!runtime.canAttach(operationId)) {
         ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
         return true;
       }
-      ctx.host.http.writeJson(res, 200, ctx.host.terminal.issueTicket({
+      ctx.host.http.writeJson(res, 200, runtime.issueTicket({
+        cwd: theaterPath,
+        sessionId: operationId,
         operationId,
+        operationType: operation.type,
+        pluginId: operation.pluginId,
         theaterId: operation.theaterId,
+        kind: "shell",
       }));
       return true;
     });
@@ -53,7 +60,7 @@ export function registerShellRoutes(ctx: FleetPluginServerContext): void {
         ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
         return true;
       }
-      ctx.host.terminal.terminate(operationId);
+      runtime.terminate(operationId);
       ctx.host.operations.delete(operationId);
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;

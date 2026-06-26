@@ -17,6 +17,9 @@ export interface TerminalLaunchContext {
   readonly operationType?: string;
   readonly pluginId?: string;
   readonly theaterId?: string;
+  readonly kind?: "fleet" | "shell";
+  readonly cliId?: string;
+  readonly resumeSessionId?: string;
 }
 
 export interface TerminalTicket {
@@ -25,9 +28,15 @@ export interface TerminalTicket {
 }
 
 export interface TerminalTicketContext {
-  readonly operationId: string;
+  readonly cwd: string;
+  readonly sessionId: string;
+  readonly operationId?: string;
+  readonly operationType?: string;
+  readonly pluginId?: string;
   readonly theaterId?: string;
-  readonly cwd?: string;
+  readonly kind?: "fleet" | "shell";
+  readonly cliId?: string;
+  readonly resumeSessionId?: string;
 }
 
 export interface TerminalPtyDataDisposable {

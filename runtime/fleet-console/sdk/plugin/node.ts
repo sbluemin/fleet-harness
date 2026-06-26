@@ -1,7 +1,6 @@
 import type { OperationLaunchCatalogProvider } from "../operations/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
-import type { FleetPluginDefinition, FleetPluginServerContext, FleetPluginTerminalContext } from "./types.js";
-import type { TerminalTicket } from "../terminal/types.js";
+import type { FleetPluginDefinition, FleetPluginServerContext } from "./types.js";
 
 export function definePlugin(definition: FleetPluginDefinition): FleetPluginDefinition {
   return definition;
@@ -13,10 +12,6 @@ export function registerRouter(ctx: FleetPluginServerContext, path: string, hand
 
 export function registerWsHandler(ctx: FleetPluginServerContext, path: string, handler: UpgradeHandler): void {
   ctx.registerWsHandler(normalizePath(path), handler);
-}
-
-export function issueTicket(ctx: FleetPluginServerContext, context: FleetPluginTerminalContext): TerminalTicket {
-  return ctx.host.terminal.issueTicket(context);
 }
 
 export function registerLaunchCatalog(ctx: FleetPluginServerContext, provider: OperationLaunchCatalogProvider): () => void {

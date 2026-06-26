@@ -11,7 +11,7 @@ import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, use
 import type { AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
 
 const AGENT_TICKET_PATH = "/plugins/terminal/agent/ticket";
-const TERMINAL_WS_PATH = "/terminal/ws";
+const TERMINAL_WS_PATH = "/plugins/terminal/ws";
 
 export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",

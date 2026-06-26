@@ -11,4 +11,6 @@ export type {
 } from "./terminal-types.js";
 export { createTerminalTicketRegistry } from "./tickets.js";
 export type { TerminalTicketRegistry, TerminalTicketRegistryDeps } from "./tickets.js";
+export { createTerminalRuntime } from "./runtime.js";
+export type { TerminalRuntime, TerminalLaunchResolver } from "./runtime.js";
 export { createWorkspaceChangeScanner, parseGitStatusPorcelainZ } from "./workspace-scanner.js";

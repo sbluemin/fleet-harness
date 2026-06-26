@@ -11,6 +11,7 @@ export interface OperationsRouterDeps {
   readonly writeJson: (res: http.ServerResponse, status: number, payload: unknown) => void;
   readonly persist: () => void;
   readonly publishRenameEvent?: (event: OperationRenameEvent) => void;
+  readonly publishDeleteEvent?: (event: OperationDeleteEvent) => void;
   readonly getPluginSensitiveFields?: (pluginId: string) => readonly string[];
   readonly resolveLaunchCatalog?: () => Promise<{ readonly plugins: readonly OperationCatalogPlugin[] }>;
 }
@@ -23,6 +24,12 @@ type OperationRenameEvent = {
   readonly type: string;
   readonly title: string;
   readonly previousTitle: string;
+};
+
+type OperationDeleteEvent = {
+  readonly operationId: string;
+  readonly pluginId: string;
+  readonly type: string;
 };
 
 type CreateOperationBody = Partial<OperationCreateInput>;
@@ -135,8 +142,18 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     return;
   }
   if (req.method === "DELETE") {
+    const existing = deps.store.get(id);
     const deleted = deps.store.delete(id);
-    if (deleted) deps.persist();
+    if (deleted) {
+      deps.persist();
+      if (existing) {
+        deps.publishDeleteEvent?.({
+          operationId: existing.id,
+          pluginId: existing.pluginId,
+          type: existing.type,
+        });
+      }
+    }
     deps.writeJson(res, deleted ? 200 : 404, deleted ? { ok: true } : { error: "operation_not_found" });
     return;
   }

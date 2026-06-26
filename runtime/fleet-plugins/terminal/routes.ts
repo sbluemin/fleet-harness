@@ -1,12 +1,14 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import { definePlugin, registerLaunchCatalog } from "@fleet-console/sdk/plugin/node";
+import { definePlugin, registerLaunchCatalog, registerWsHandler } from "@fleet-console/sdk/plugin/node";
 
 import { registerAgentRoutes } from "./server/agent.js";
+import { createTerminalRuntime } from "./server/shared/index.js";
 import { registerShellRoutes } from "./server/shell.js";
 
 const TERMINAL_PLUGIN_ID = "terminal";
 const TERMINAL_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerSession", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const SHELL_LAUNCH_KIND = { id: "shell", type: "shell", title: "Shell" } as const satisfies OperationLaunchKind;
+const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 
 export default definePlugin({
   id: TERMINAL_PLUGIN_ID,
@@ -16,8 +18,22 @@ export default definePlugin({
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerOperationType("agent.streaming");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
-    registerShellRoutes(ctx);
-    const agentLaunchKinds = registerAgentRoutes(ctx);
+    const runtime = createTerminalRuntime(ctx);
+    registerWsHandler(ctx, "/", runtime.handleUpgrade);
+    ctx.host.lifecycle.registerCleanup(() => runtime.stop());
+    const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
+      if (!isOperationDeletedEvent(payload) || payload.pluginId !== ctx.pluginId) return;
+      runtime.terminate(payload.operationId);
+    });
+    ctx.host.lifecycle.registerCleanup(unsubscribeDelete);
+    registerShellRoutes(ctx, runtime);
+    const agentLaunchKinds = registerAgentRoutes(ctx, runtime);
     registerLaunchCatalog(ctx, async () => [SHELL_LAUNCH_KIND, ...await agentLaunchKinds()]);
   },
 });
+
+function isOperationDeletedEvent(value: unknown): value is { readonly operationId: string; readonly pluginId: string } {
+  if (!value || typeof value !== "object") return false;
+  const event = value as { readonly operationId?: unknown; readonly pluginId?: unknown };
+  return typeof event.operationId === "string" && typeof event.pluginId === "string";
+}

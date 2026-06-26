@@ -15,7 +15,7 @@ import { workspaceHash } from "../core/host/theater.js";
 import { TheaterRegistry } from "../core/host/theaters.js";
 import { WorkspaceRegistry } from "../core/host/codex/workspaces.js";
 import type { TerminalLaunchSpec, TerminalPtyHandle } from "../core/host/terminal/types.js";
-import { createTerminalUpgradeHandler } from "../core/host/terminal/ws-handler.js";
+import { createTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";
 
 const fleetAdmiralMock = vi.hoisted(() => ({
   agentRuntimeQueue: [] as unknown[],
@@ -69,6 +69,8 @@ let previousStaticIndex: string | null | undefined;
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop();
   fleetAdmiralMock.agentRuntimeQueue.length = 0;
+  delete (globalThis as { __fleetTerminalLaunch?: unknown }).__fleetTerminalLaunch;
+  delete (globalThis as { __fleetTerminalStartShell?: unknown }).__fleetTerminalStartShell;
   resetStoreForTests();
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
   restoreStaticIndex();
@@ -537,36 +539,21 @@ describe("console static and terminal ticket boundary", () => {
     expect(wrongKindBody).toEqual({ error: "invalid_shell_operation" });
   });
 
-  it("launches plugin terminal sessions through a registered operation-type resolver", async () => {
+  it("loads plugin routes without exposing host terminal runtime capabilities", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-launch-"));
     tempDirs.push(dir);
     const pluginPackage = createPluginPackageRoot({
       demoRoutes: [
         "export function register(ctx) {",
-        "  ctx.host.terminal.registerLaunchResolver('demo', async (context) => ({",
-        "    bin: 'plugin-demo-bin',",
-        "    args: [context.operationId, context.operationType, context.pluginId, context.theaterId ?? '', context.cwd],",
-        "    cwd: context.cwd,",
-        "    env: { PLUGIN_RESOLVED: '1' },",
-        "  }));",
         "  ctx.registerRouter('start', async ({ req, res }) => {",
         "    if (req.method !== 'POST') { ctx.host.http.writeJson(res, 405, { error: 'Method not allowed' }); return true; }",
-        "    const body = await ctx.host.http.readJsonBody(req);",
-        "    await ctx.host.terminal.attach({ operationId: body.operationId });",
-        "    ctx.host.http.writeJson(res, 200, { ok: true });",
+        "    ctx.host.http.writeJson(res, 200, { terminal: 'terminal' in ctx.host });",
         "    return true;",
         "  });",
         "}",
       ].join("\n"),
     });
-    const launches: TerminalLaunchSpec[] = [];
-    const fixture = await startFixture({
-      release: pluginPackage.release,
-      terminalStartShell: (launch) => {
-        launches.push(launch);
-        return createMockPty();
-      },
-    });
+    const fixture = await startFixture({ release: pluginPackage.release });
     const theater = await createTheater(fixture, dir);
     const operation = await createOperation(fixture, theater.id, { type: "demo", pluginId: "demo" });
 
@@ -577,12 +564,7 @@ describe("console static and terminal ticket boundary", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(launches).toEqual([{
-      bin: "plugin-demo-bin",
-      args: [operation.id, "demo", "demo", theater.id, dir],
-      cwd: dir,
-      env: { PLUGIN_RESOLVED: "1" },
-    }]);
+    expect(await response.json()).toEqual({ terminal: false });
   });
 
   it("awaits async plugin cleanup callbacks before server stop settles", async () => {
@@ -1077,15 +1059,15 @@ describe("console static and terminal ticket boundary", () => {
     await fixture.server.stop();
     const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-codex-restart-lock-"));
     tempDirs.push(restartDir);
+    (globalThis as { __fleetTerminalLaunch?: typeof createMockLaunch }).__fleetTerminalLaunch = createMockLaunch;
+    (globalThis as { __fleetTerminalStartShell?: (launch: TerminalLaunchSpec) => TerminalPtyHandle }).__fleetTerminalStartShell = (launch) => {
+      startedShells.push(launch.cwd);
+      return createMockPty();
+    };
     const restartedServer = createConsoleServer({
       port: 0,
       version: "test",
       dataDir: fixture.carrierStoreDir,
-      terminalLaunch: createMockLaunch,
-      terminalStartShell: (launch) => {
-        startedShells.push(launch.cwd);
-        return createMockPty();
-      },
     });
     servers.push(restartedServer);
     const restartedEndpoint = await restartedServer.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
@@ -2171,22 +2153,21 @@ describe("console static and terminal ticket boundary", () => {
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
     let destroyed = 0;
     const handler = createTerminalUpgradeHandler({
-      expectedHost: "127.0.0.1",
-      getExpectedPort: () => 37283,
       tickets: { consume: () => null },
       sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false, hasLiveSessions: () => false },
-      validateHost: () => true,
+      isAuthorized: () => true,
     });
 
-    const handled = handler.handleUpgrade(
-      {
-        url: "/terminal/ws",
+    const handled = handler.handleUpgrade({
+      req: {
+        url: "/plugins/terminal/ws",
         headers: { origin: "http://127.0.0.1:37283" },
         rawHeaders: ["Host", "127.0.0.1:37283"],
       } as never,
-      { destroy: () => { destroyed += 1; } } as never,
-      Buffer.alloc(0),
-    );
+      socket: { destroy: () => { destroyed += 1; } } as never,
+      head: Buffer.alloc(0),
+      pathname: "/plugins/terminal/ws",
+    });
 
     expect(handled).toBe(true);
     expect(destroyed).toBe(1);
@@ -2197,8 +2178,6 @@ describe("console static and terminal ticket boundary", () => {
     let destroyed = 0;
     const checkedSessionIds: string[] = [];
     const handler = createTerminalUpgradeHandler({
-      expectedHost: "127.0.0.1",
-      getExpectedPort: () => 37283,
       tickets: { consume: () => ({ sessionId: "session-a", cwd: "/tmp" }) },
       sessions: {
         canAttach: (sessionId) => {
@@ -2214,18 +2193,19 @@ describe("console static and terminal ticket boundary", () => {
         writeToSession: () => false,
         hasLiveSessions: () => false,
       },
-      validateHost: () => true,
+      isAuthorized: () => true,
     });
 
-    const handled = handler.handleUpgrade(
-      {
-        url: "/terminal/ws?ticket=ticket-a",
+    const handled = handler.handleUpgrade({
+      req: {
+        url: "/plugins/terminal/ws?ticket=ticket-a",
         headers: { origin: "http://127.0.0.1:37283" },
         rawHeaders: ["Host", "127.0.0.1:37283"],
       } as never,
-      { destroy: () => { destroyed += 1; } } as never,
-      Buffer.alloc(0),
-    );
+      socket: { destroy: () => { destroyed += 1; } } as never,
+      head: Buffer.alloc(0),
+      pathname: "/plugins/terminal/ws",
+    });
 
     expect(handled).toBe(true);
     expect(checkedSessionIds).toEqual(["session-a"]);
@@ -2263,9 +2243,9 @@ async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];
   readonly agentCliDetector?: ConsoleServerDeps["agentCliDetector"];
   readonly beforeCreateServer?: (paths: { readonly carrierStoreDir: string }) => void;
-  readonly terminalLaunch?: ConsoleServerDeps["terminalLaunch"];
+  readonly terminalLaunch?: (cwd?: string, context?: { readonly sessionId?: string; readonly cliId?: string; readonly resumeSessionId?: string }) => Promise<TerminalLaunchSpec>;
   readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
-  readonly terminalStartShell?: ConsoleServerDeps["terminalStartShell"];
+  readonly terminalStartShell?: (launch: TerminalLaunchSpec) => TerminalPtyHandle;
   readonly release?: ConsoleServerDeps["release"];
   readonly updateApply?: ConsoleServerDeps["updateApply"];
   readonly updateCheck?: ConsoleServerDeps["updateCheck"];
@@ -2274,6 +2254,12 @@ async function startFixture(options: {
   const carrierStoreDir = path.join(dir, "fleet-home");
   initStore(carrierStoreDir);
   options.beforeCreateServer?.({ carrierStoreDir });
+  const terminalHooks = globalThis as {
+    __fleetTerminalLaunch?: typeof options.terminalLaunch;
+    __fleetTerminalStartShell?: typeof options.terminalStartShell;
+  };
+  if (options.terminalLaunch) terminalHooks.__fleetTerminalLaunch = options.terminalLaunch;
+  if (options.terminalStartShell) terminalHooks.__fleetTerminalStartShell = options.terminalStartShell;
   tempDirs.push(dir);
   const lockFile = path.join(dir, "console.lock");
   const server = createConsoleServer({
@@ -2284,9 +2270,7 @@ async function startFixture(options: {
     // 의존하지 않게 한다. 게이트 거부 케이스는 개별 테스트가 overrides로 미설치를 주입한다.
     agentCliDetector: options.agentCliDetector ?? createStubAgentCliDetector(),
     dataDir: carrierStoreDir,
-    terminalLaunch: options.terminalLaunch,
     terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
-    terminalStartShell: options.terminalStartShell,
     release: options.release,
     updateApply: options.updateApply,
     updateCheck: options.updateCheck,
@@ -2531,7 +2515,7 @@ function createRecordingPty(): TerminalPtyHandle & { readonly writes: string[] }
   };
 }
 
-async function createMockLaunch(cwd?: string, context?: { readonly sessionId?: string }): Promise<TerminalLaunchSpec> {
+async function createMockLaunch(cwd?: string, context?: { readonly sessionId?: string; readonly cliId?: string; readonly resumeSessionId?: string }): Promise<TerminalLaunchSpec> {
   return {
     bin: "mock",
     args: [],

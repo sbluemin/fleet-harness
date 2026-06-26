@@ -70,6 +70,8 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
 
   return async (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();
+    const testLaunch = (globalThis as { __fleetTerminalLaunch?: TerminalLaunchResolver }).__fleetTerminalLaunch;
+    if (testLaunch) return testLaunch(cwd, context);
     const launchEnv = buildLaunchEnv(env, cwd, context?.sessionId);
     const override = parseTerminalCommand(env.FLEET_TERMINAL_CMD);
     if (override) {
@@ -102,12 +104,6 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
 }
 
 export const createDefaultTerminalLaunchResolver = createAgentTerminalLaunchResolver;
-
-export function resolveUseConptyDll(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): boolean {
-  if (platform !== "win32") return false;
-  const override = env.FLEET_USE_CONPTY_DLL?.toLowerCase();
-  return override !== "0" && override !== "false";
-}
 
 function resolveHookEntryPath(candidate: string | undefined): string {
   if (candidate && hasHookEntryExtension(candidate)) return candidate;
