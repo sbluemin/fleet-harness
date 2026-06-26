@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { addTheater, issueTerminalFolderGrant } from "../api.js";
+import { addTheater, issueTheaterFolderGrant } from "../api.js";
 import { beginAddTheater, closeOnboarding, completeAddTheater, failAddTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
@@ -67,7 +67,7 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
     setBrowserOpen(false);
     beginAddTheater();
     try {
-      const folderGrantId = await issueTerminalFolderGrant(path);
+      const folderGrantId = await issueTheaterFolderGrant(path);
       const result = await addTheater(folderGrantId);
       completeAddTheater(result);
     } catch (error) {

@@ -212,8 +212,6 @@ export interface FleetPluginPathsHost {
   resolveTheaterPath(theaterId: string): string | null;
   canonicalizeTheaterPath(cwd: string): string;
   workspaceHash(canonicalCwd: string): string;
-  listFolders(path: string | null): Promise<unknown>;
-  issueFolderGrant(path: string): string;
 }
 
 export interface FleetPluginStorageHost {

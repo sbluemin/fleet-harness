@@ -817,9 +817,9 @@ describe("console static and terminal ticket boundary", () => {
     expect(runtime.cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it("lists terminal folders through the browser API without native cancellation", async () => {
+  it("lists Theater folders through the browser API without native cancellation", async () => {
     const response = await fetchWithBlockedPortRetry((fixture) =>
-      fetch(`${fixture.endpoint}plugins/terminal/shell/folders/list`, {
+      fetch(`${fixture.endpoint}theaters/folders/list`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: null }),
@@ -831,10 +831,10 @@ describe("console static and terminal ticket boundary", () => {
     expect(Array.isArray(body.entries)).toBe(true);
   });
 
-  it("rejects terminal routes when the browser Origin is not the console origin", async () => {
+  it("rejects Theater folder routes when the browser Origin is not the console origin", async () => {
     const fixture = await startFixture();
 
-    const response = await fetch(`${fixture.endpoint}plugins/terminal/shell/folders/list`, {
+    const response = await fetch(`${fixture.endpoint}theaters/folders/list`, {
       method: "POST",
       headers: { origin: "http://evil.example", "Content-Type": "application/json" },
       body: JSON.stringify({ path: null }),
@@ -2317,12 +2317,6 @@ function createPluginPackageRoot(options: { readonly demoRoutes: string }): { re
   const pluginsRoot = path.join(dir, "runtime", "fleet-plugins");
   writeTestPlugin(path.join(pluginsRoot, "terminal"), "terminal", [
     "export function register(ctx) {",
-    "  ctx.registerRouter('shell/folders/grants', async ({ req, res }) => {",
-    "    if (req.method !== 'POST') { ctx.host.http.writeJson(res, 405, { error: 'Method not allowed' }); return true; }",
-    "    const body = await ctx.host.http.readJsonBody(req);",
-    "    ctx.host.http.writeJson(res, 200, { folderGrantId: ctx.host.paths.issueFolderGrant(body.path) });",
-    "    return true;",
-    "  });",
     "}",
   ].join("\n"));
   writeTestPlugin(path.join(pluginsRoot, "demo"), "demo", options.demoRoutes);
@@ -2381,7 +2375,7 @@ async function createShellOperation(fixture: ServerFixture, theaterId: string): 
 }
 
 async function issueFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
-  const response = await fetch(`${fixture.endpoint}plugins/terminal/shell/folders/grants`, {
+  const response = await fetch(`${fixture.endpoint}theaters/folders/grants`, {
     method: "POST",
     headers,
     body: JSON.stringify({ path: cwd }),

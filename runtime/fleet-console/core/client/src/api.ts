@@ -1,17 +1,17 @@
 import type { ConsoleUpdateApplyAcceptedResponse, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteSection, ReleaseNotes, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
-export interface TerminalFolderListEntry {
+export interface TheaterFolderListEntry {
   readonly name: string;
   readonly path: string;
   readonly kind: "dir";
   readonly accessible: boolean;
 }
 
-export interface TerminalFolderListResponse {
+export interface TheaterFolderListResponse {
   readonly path: string;
   readonly parentPath: string | null;
   readonly roots: readonly string[];
-  readonly entries: readonly TerminalFolderListEntry[];
+  readonly entries: readonly TheaterFolderListEntry[];
   readonly truncated?: true;
 }
 
@@ -81,19 +81,19 @@ export async function addTheater(folderGrantId: string, signal?: AbortSignal): P
   return assertTheaterInfo(payload, response.status);
 }
 
-export async function listTerminalFolders(path: string | null, signal?: AbortSignal): Promise<TerminalFolderListResponse> {
-  const response = await fetch("/plugins/terminal/shell/folders/list", {
+export async function listTheaterFolders(path: string | null, signal?: AbortSignal): Promise<TheaterFolderListResponse> {
+  const response = await fetch("/theaters/folders/list", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
     signal,
   });
   await assertOk(response);
-  return assertTerminalFolderList(await response.json(), response.status);
+  return assertTheaterFolderList(await response.json(), response.status);
 }
 
-export async function issueTerminalFolderGrant(path: string, signal?: AbortSignal): Promise<string> {
-  const response = await fetch("/plugins/terminal/shell/folders/grants", {
+export async function issueTheaterFolderGrant(path: string, signal?: AbortSignal): Promise<string> {
+  const response = await fetch("/theaters/folders/grants", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
@@ -322,8 +322,8 @@ function assertReleaseNoteItem(value: unknown, status: number): ReleaseNoteItem 
   return { packageTags: payload.packageTags, text: payload.text };
 }
 
-function assertTerminalFolderList(value: unknown, status: number): TerminalFolderListResponse {
-  const payload = value as Partial<TerminalFolderListResponse>;
+function assertTheaterFolderList(value: unknown, status: number): TheaterFolderListResponse {
+  const payload = value as Partial<TheaterFolderListResponse>;
   if (
     !payload
     || typeof payload.path !== "string"
@@ -338,13 +338,13 @@ function assertTerminalFolderList(value: unknown, status: number): TerminalFolde
     path: payload.path,
     parentPath: payload.parentPath ?? null,
     roots: payload.roots.filter((entry): entry is string => typeof entry === "string"),
-    entries: payload.entries.map((entry) => assertTerminalFolderListEntry(entry, status)),
+    entries: payload.entries.map((entry) => assertTheaterFolderListEntry(entry, status)),
     truncated: payload.truncated === true ? true : undefined,
   };
 }
 
-function assertTerminalFolderListEntry(value: unknown, status: number): TerminalFolderListEntry {
-  const payload = value as Partial<TerminalFolderListEntry>;
+function assertTheaterFolderListEntry(value: unknown, status: number): TheaterFolderListEntry {
+  const payload = value as Partial<TheaterFolderListEntry>;
   if (
     !payload
     || typeof payload.name !== "string"

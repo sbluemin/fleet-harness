@@ -124,22 +124,22 @@ export interface ConsoleSessionAttentionEvent {
   readonly reason?: ConsoleAttentionReason;
 }
 
-export interface TerminalFolderListEntry {
+export interface ConsoleTheaterFolderListEntry {
   readonly name: string;
   readonly path: string;
   readonly kind: "dir";
   readonly accessible: boolean;
 }
 
-export interface TerminalFolderListResponse {
+export interface ConsoleTheaterFolderListResponse {
   readonly path: string;
   readonly parentPath: string | null;
   readonly roots: readonly string[];
-  readonly entries: readonly TerminalFolderListEntry[];
+  readonly entries: readonly ConsoleTheaterFolderListEntry[];
   readonly truncated?: true;
 }
 
-export interface TerminalFolderGrantResponse {
+export interface ConsoleTheaterFolderGrantResponse {
   readonly folderGrantId: string;
 }
 

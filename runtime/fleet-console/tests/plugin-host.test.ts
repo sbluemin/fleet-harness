@@ -49,8 +49,6 @@ const noopHostCapabilities: FleetPluginHostCapabilities = {
     canonicalizeTheaterPath: (cwd) => path.resolve(cwd),
     workspaceHash: (canonicalCwd) => canonicalCwd,
     resolveTheaterPath: () => null,
-    listFolders: async () => ({ entries: [] }),
-    issueFolderGrant: () => "grant",
   },
   modelAuth: {
     state: async () => ({ providers: [] }),

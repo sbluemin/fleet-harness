@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { ApiError, listTerminalFolders, type TerminalFolderListResponse } from "../api.js";
+import { ApiError, listTheaterFolders, type TheaterFolderListResponse } from "../api.js";
 
 interface DirectoryBrowserModalProps {
   readonly open: boolean;
@@ -18,7 +18,7 @@ interface BreadcrumbSegment {
 const LIST_ID = "directory-browser-sectors";
 
 export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBrowserModalProps) {
-  const [listing, setListing] = useState<TerminalFolderListResponse | null>(null);
+  const [listing, setListing] = useState<TheaterFolderListResponse | null>(null);
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -34,7 +34,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
     setQuery("");
     setHighlight(0);
     try {
-      const next = await listTerminalFolders(path, signal);
+      const next = await listTheaterFolders(path, signal);
       setListing(next);
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === "AbortError") return;
@@ -328,7 +328,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
 }
 
 // 현재 절대 경로를 breadcrumb 마디 배열로 분해한다. 루트(/ 또는 C:\)가 항상 첫 마디다.
-function buildBreadcrumb(listing: TerminalFolderListResponse): BreadcrumbSegment[] {
+function buildBreadcrumb(listing: TheaterFolderListResponse): BreadcrumbSegment[] {
   const separator = detectSeparator(listing);
   if (separator === "/") {
     const segments: BreadcrumbSegment[] = [{ label: "/", path: "/" }];
@@ -351,7 +351,7 @@ function buildBreadcrumb(listing: TerminalFolderListResponse): BreadcrumbSegment
 }
 
 // win32 드라이브 루트(C:\)나 백슬래시 경로면 \, 그 외에는 POSIX /.
-function detectSeparator(listing: TerminalFolderListResponse): "\\" | "/" {
+function detectSeparator(listing: TheaterFolderListResponse): "\\" | "/" {
   if (listing.roots.some((root) => /^[A-Za-z]:\\$/.test(root))) return "\\";
   if (/^[A-Za-z]:\\/.test(listing.path)) return "\\";
   return "/";

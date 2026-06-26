@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
-import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTerminalFolderGrant } from "../api.js";
+import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTheaterFolderGrant } from "../api.js";
 import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
@@ -253,7 +253,7 @@ function TheaterControl({ state }: { readonly state: ConsoleState }) {
     setBrowserOpen(false);
     beginAddTheater();
     try {
-      const folderGrantId = await issueTerminalFolderGrant(path);
+      const folderGrantId = await issueTheaterFolderGrant(path);
       const result = await addTheater(folderGrantId);
       completeAddTheater(result);
     } catch (error) {

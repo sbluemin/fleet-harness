@@ -12,7 +12,7 @@ import { createInfraServices, getFleetDataDir } from "@dotobokuri/fleet-infra";
 import { validateAuthKeyForCli } from "@dotobokuri/fleet-infra/auth";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, TerminalFolderListResponse } from "./api-types.js";
+import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse } from "./api-types.js";
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
@@ -31,7 +31,7 @@ import { RouteRegistry } from "./route-registry/route-registry.js";
 import { UpgradeRegistry } from "./route-registry/upgrade-registry.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { createStaticConsoleHandler } from "./static-console.js";
-import { listTerminalFolders, TerminalFolderListError } from "./terminal/folder-browser.js";
+import { listTheaterFolders, TheaterFolderListError } from "./terminal/folder-browser.js";
 import { createFolderGrantStore } from "./terminal/folder-grants.js";
 import { createShellTerminalLaunchResolver, type TerminalLaunchResolver, startTerminalShell } from "./terminal/launch.js";
 import { createTerminalSessionManager } from "./terminal/session-manager.js";
@@ -69,8 +69,8 @@ export interface ConsoleServer {
   stop(): Promise<void>;
 }
 
-type TerminalFolderListBody = { readonly path?: unknown };
-type TerminalFolderGrantBody = { readonly path?: unknown };
+type TheaterFolderListBody = { readonly path?: unknown };
+type TheaterFolderGrantBody = { readonly path?: unknown };
 type CreateTheaterBody = { readonly folderGrantId?: unknown };
 type UpdateApplyBody = Record<string, unknown>;
 
@@ -159,16 +159,16 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "POST",
-    path: "/plugins/terminal/shell/folders/list",
-    summary: "Shell 폴더 선택 목록을 조회합니다.",
-    category: "Terminal Plugin",
+    path: "/theaters/folders/list",
+    summary: "Theater 폴더 선택 목록을 조회합니다.",
+    category: "Observer",
     gate: "terminal-origin",
   },
   {
     method: "POST",
-    path: "/plugins/terminal/shell/folders/grants",
-    summary: "Shell 폴더 접근 grant를 발급합니다.",
-    category: "Terminal Plugin",
+    path: "/theaters/folders/grants",
+    summary: "Theater 폴더 접근 grant를 발급합니다.",
+    category: "Observer",
     gate: "terminal-origin",
   },
   {
@@ -343,8 +343,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       resolveTheaterPath: (theaterId) => theaters.get(theaterId)?.path ?? null,
       canonicalizeTheaterPath: canonicalizeTheaterPathSync,
       workspaceHash,
-      listFolders: (folderPath) => listTerminalFolders(folderPath),
-      issueFolderGrant: (folderPath) => folderGrants.issue(folderPath),
     },
     storage: {
       readJson: (pluginId, key) => readPluginStorageJson(durablePaths.dir, pluginId, key),
@@ -480,6 +478,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleObserverTheaters(req, res), res);
       return;
     }
+    if (pathname === "/theaters/folders/list") {
+      runAsyncHandler(handleTheaterFoldersList(req, res), res);
+      return;
+    }
+    if (pathname === "/theaters/folders/grants") {
+      runAsyncHandler(handleTheaterFolderGrants(req, res), res);
+      return;
+    }
     const theaterItemMatch = pathname.match(/^\/theaters\/([^/]+)$/);
     if (theaterItemMatch) {
       runAsyncHandler(handleObserverTheaterItem(req, res, decodeURIComponent(theaterItemMatch[1] ?? "")), res);
@@ -535,7 +541,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     handleObserverStatus(req, res);
   }
 
-  async function handleTerminalFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function handleTheaterFoldersList(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
       return;
@@ -544,24 +550,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    const body = await readJsonBody<TerminalFolderListBody>(req);
+    const body = await readJsonBody<TheaterFolderListBody>(req);
     if (!isPlainObject(body) || (body.path !== undefined && body.path !== null && typeof body.path !== "string")) {
       writeJson(res, 400, { error: "invalid_path" });
       return;
     }
     try {
-      const payload: TerminalFolderListResponse = await listTerminalFolders(body.path === undefined ? null : body.path);
+      const payload: ConsoleTheaterFolderListResponse = await listTheaterFolders(body.path === undefined ? null : body.path);
       writeJson(res, 200, payload);
     } catch (error) {
-      if (error instanceof TerminalFolderListError) {
-        writeJson(res, terminalFolderListStatus(error), { error: error.code });
+      if (error instanceof TheaterFolderListError) {
+        writeJson(res, theaterFolderListStatus(error), { error: error.code });
         return;
       }
       throw error;
     }
   }
 
-  async function handleTerminalFolderGrants(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function handleTheaterFolderGrants(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
       return;
@@ -570,7 +576,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return;
     }
-    const body = await readJsonBody<TerminalFolderGrantBody>(req);
+    const body = await readJsonBody<TheaterFolderGrantBody>(req);
     if (!isPlainObject(body) || typeof body.path !== "string") {
       writeJson(res, 400, { error: "invalid_folder" });
       return;
@@ -1142,7 +1148,7 @@ function readUrl(req: http.IncomingMessage): URL {
   return new URL(req.url ?? "/", "http://127.0.0.1");
 }
 
-function terminalFolderListStatus(error: TerminalFolderListError): number {
+function theaterFolderListStatus(error: TheaterFolderListError): number {
   if (error.code === "forbidden") return 403;
   if (error.code === "not_found") return 404;
   return 400;

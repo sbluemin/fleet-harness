@@ -21,9 +21,9 @@ The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-
 | Channel | Purpose | Token Boundary |
 |---|---|---|
 | `/observer/*` | Browser snapshot and SSE observer surface. | Loopback-only; no browser bearer token. |
-| `POST /plugins/terminal/shell/folders/list` | Returns a directory listing (`{ path, parentPath, roots, entries, truncated? }`) for the given path, or the server home directory when `path` is null. Directories only, non-recursive, capped at 500 entries. | Requires the terminal Origin boundary (`isTerminalAuthorized`); no adminToken. |
-| `POST /plugins/terminal/shell/folders/grants` | Validates the client-supplied absolute path through `validateAbsoluteDirectory` and returns a one-use `{ folderGrantId }`. | Requires the terminal Origin boundary; no adminToken. |
-| `/plugins/terminal/shell/*` | Shell launch, ticket, and folder routes for the `shell` operation type. | Raw cwd values from browser requests are rejected; browser receives only one-use terminal tickets. |
+| `POST /theaters/folders/list` | Returns a directory listing (`{ path, parentPath, roots, entries, truncated? }`) for the given path, or the server home directory when `path` is null. Directories only, non-recursive, capped at 500 entries. | Requires the terminal Origin boundary (`isTerminalAuthorized`); no adminToken. |
+| `POST /theaters/folders/grants` | Validates the client-supplied absolute path through `validateAbsoluteDirectory` and returns a one-use `{ folderGrantId }`. | Requires the terminal Origin boundary; no adminToken. |
+| `/plugins/terminal/shell/*` | Shell launch and ticket routes for the `shell` operation type. | Shell cwd is resolved server-side from the selected Theater; browser receives only one-use terminal tickets. |
 | `/plugins/terminal/agent/*` | Agent launch, session, ticket, job, event, tenant, and state routes for the `agent` and `agent.streaming` operation types. | Requires the terminal Origin boundary; MCP/session tokens remain server-only. |
 | `/terminal/ws` | Shared browser PTY WebSocket transport used by Shell and Agent operations. | Browser reaches it through a one-use ticket from the terminal plugin routes. |
 | `/console/` | Static React client served from this package's `dist/client`. | Served directly from the loopback console URL. |
@@ -35,7 +35,7 @@ The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-
 
 When the console creates a terminal session, it generates a session id, resolves the selected Agent CLI through the shared fleet-admiral runtime, and keeps the selected absolute cwd server-side. The console records non-secret session metadata for observer hydration.
 
-Folder selection is handled entirely in the browser UI: the React directory browser modal calls `POST /plugins/terminal/shell/folders/list` to browse the server's local filesystem, then calls `POST /plugins/terminal/shell/folders/grants` once the operator confirms a directory. The resulting one-use grant is consumed by terminal plugin Shell/Agent launch routes or Theater registration; no OS-native dialog or child process is involved. The browser modal works in remote and headless browser sessions without any OS-level dialog support.
+Folder selection is handled entirely in the browser UI: the React directory browser modal calls the console-owned `POST /theaters/folders/list` route to browse the server's local filesystem, then calls `POST /theaters/folders/grants` once the operator confirms a directory. The resulting one-use grant is consumed by Theater registration; Shell and Agent launches resolve cwd from the Theater server-side. No OS-native dialog or child process is involved. The browser modal works in remote and headless browser sessions without any OS-level dialog support.
 
 Folder grants are one-use and in-memory. Browser-side cancellation stays local to the modal and does not call the server grant endpoint.
 
@@ -43,7 +43,7 @@ Folder grants are one-use and in-memory. Browser-side cancellation stays local t
 
 HTTP surfaces are loopback-only. Browser observer routes are directly available on loopback and terminal routes retain their Origin boundary (`isTerminalAuthorized`). MCP session tokens, bootstrap tokens, and selected absolute paths are not exposed through browser payloads, URL query strings, SSE frames, terminal tickets, logs, or static assets.
 
-`POST /plugins/terminal/shell/folders/list` and `POST /plugins/terminal/shell/folders/grants` both require `validateHost` and `isTerminalAuthorized`. No adminToken or bearer auth is used for folder endpoints. Selected absolute paths appear only in list and grant API responses; they are not included in session, Theater, observer, or SSE payloads. When a Theater is registered, the resolved cwd is stored in durable local state (`~/.fleet/console/state.json`, `sensitivity: "sensitive"`) exactly as before; this is a sensitive local file and is not transmitted to the browser.
+`POST /theaters/folders/list` and `POST /theaters/folders/grants` both require `validateHost` and `isTerminalAuthorized`. No adminToken or bearer auth is used for folder endpoints. Selected absolute paths appear only in list and grant API responses; they are not included in session, Theater, observer, or SSE payloads. When a Theater is registered, the resolved cwd is stored in durable local state (`~/.fleet/console/state.json`, `sensitivity: "sensitive"`) exactly as before; this is a sensitive local file and is not transmitted to the browser.
 
 Codex/Fleet Wiki routes preserve the migrated wiki security boundary: Host allowlist, Origin checks for write routes, loopback write gates, path containment, DOMPurify markdown sanitization, strict Mermaid rendering, and lockfile bearer auth for workspace registration.
 

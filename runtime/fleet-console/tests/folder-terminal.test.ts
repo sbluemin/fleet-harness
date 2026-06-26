@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listTerminalFolders, normalizeFolderBrowserPath, TerminalFolderListError } from "../core/host/terminal/folder-browser.js";
+import { listTheaterFolders, normalizeFolderBrowserPath, TheaterFolderListError } from "../core/host/terminal/folder-browser.js";
 import { createFolderGrantStore, validateAbsoluteDirectory } from "../core/host/terminal/folder-grants.js";
 
 describe("folder grants", () => {
@@ -45,9 +45,9 @@ describe("folder grants", () => {
   });
 });
 
-describe("terminal folder browser", () => {
+describe("Theater folder browser", () => {
   it("lists roots without spawning platform commands", async () => {
-    const listed = await listTerminalFolders(null, {
+    const listed = await listTheaterFolders(null, {
       platform: "linux",
       homedir: () => "/",
       stat: (async () => ({ isDirectory: () => true }) as fs.Stats) as unknown as typeof fs.promises.stat,
@@ -70,7 +70,7 @@ describe("terminal folder browser", () => {
     fs.symlinkSync(child, path.join(dir, "child-link"), "dir");
     fs.symlinkSync(path.join(dir, "missing"), path.join(dir, "broken-link"), "dir");
 
-    const listed = await listTerminalFolders(dir);
+    const listed = await listTheaterFolders(dir);
 
     expect(listed.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "child", kind: "dir", accessible: true }),
@@ -85,7 +85,7 @@ describe("terminal folder browser", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-browser-cap-"));
     for (let index = 0; index < 505; index += 1) fs.mkdirSync(path.join(dir, `d-${index}`));
 
-    const listed = await listTerminalFolders(dir);
+    const listed = await listTheaterFolders(dir);
 
     expect(listed.entries).toHaveLength(500);
     expect(listed.truncated).toBe(true);
@@ -101,7 +101,7 @@ describe("terminal folder browser", () => {
     let closed = false;
     let reads = 0;
 
-    const listed = await listTerminalFolders(path.resolve(os.tmpdir()), {
+    const listed = await listTheaterFolders(path.resolve(os.tmpdir()), {
       platform: "linux",
       stat: (async () => ({ isDirectory: () => true }) as fs.Stats) as unknown as typeof fs.promises.stat,
       opendir: (async () => ({
@@ -119,15 +119,15 @@ describe("terminal folder browser", () => {
   });
 
   it("rejects invalid paths before filesystem access", () => {
-    expect(() => normalizeFolderBrowserPath("relative")).toThrow(TerminalFolderListError);
-    expect(() => normalizeFolderBrowserPath("bad\0path")).toThrow(TerminalFolderListError);
-    expect(() => normalizeFolderBrowserPath("C:relative", "win32")).toThrow(TerminalFolderListError);
-    expect(() => normalizeFolderBrowserPath("\\root-relative", "win32")).toThrow(TerminalFolderListError);
+    expect(() => normalizeFolderBrowserPath("relative")).toThrow(TheaterFolderListError);
+    expect(() => normalizeFolderBrowserPath("bad\0path")).toThrow(TheaterFolderListError);
+    expect(() => normalizeFolderBrowserPath("C:relative", "win32")).toThrow(TheaterFolderListError);
+    expect(() => normalizeFolderBrowserPath("\\root-relative", "win32")).toThrow(TheaterFolderListError);
   });
 
   it("maps filesystem errors", async () => {
-    await expect(listTerminalFolders(path.join(os.tmpdir(), "fleet-console-missing-dir"))).rejects.toMatchObject({ code: "not_found" });
-    await expect(listTerminalFolders(os.tmpdir(), {
+    await expect(listTheaterFolders(path.join(os.tmpdir(), "fleet-console-missing-dir"))).rejects.toMatchObject({ code: "not_found" });
+    await expect(listTheaterFolders(os.tmpdir(), {
       stat: async () => {
         const error = new Error("denied") as NodeJS.ErrnoException;
         error.code = "EACCES";
