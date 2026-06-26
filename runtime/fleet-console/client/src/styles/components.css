@@ -3304,7 +3304,7 @@
 /* 외곽 진행광 링(underway): 같은 perimeter ::before를 conic-gradient로 덮고 회전 애니메이션을 건다 —
    회전하는 --uw-angle 기준 밝은 호가 한 바퀴 돌고 나머지 둘레엔 옅은 상시 림이 남는다(live=aurora, turn=warn).
    accent 정적 링보다 우선(작업 중=기능 상태). AGENTS.md 모션 규약의 sanctioned 예외(prefers-reduced-motion에서 정적 림으로 단락). */
-.canvas-dock-chip--underway::before {
+.canvas-dock-chip--underway-ring::before {
   background: conic-gradient(
     from var(--uw-angle),
     color-mix(in oklch, var(--uw-tint) 12%, transparent) 0deg,
@@ -3352,11 +3352,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-dock,
-  .canvas-dock-chip--underway::before {
+  .canvas-dock-chip--underway-ring::before {
     animation: none;
   }
 
-  .canvas-dock-chip--underway::before {
+  .canvas-dock-chip--underway-ring::before {
     background: color-mix(in oklch, var(--uw-tint) 38%, transparent);
   }
 

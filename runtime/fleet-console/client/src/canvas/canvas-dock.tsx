@@ -18,6 +18,7 @@ interface CanvasDockProps {
   readonly sessions: readonly SessionInfo[];
   // 칩 클릭 시 패널을 전면 활성화하며 카메라를 그 패널로 이동하는 데 필요한 캔버스 픽셀 크기.
   readonly canvasSize: CanvasViewportSize;
+  readonly minimizedIds: readonly string[];
 }
 
 interface DockEntry {
@@ -27,6 +28,7 @@ interface DockEntry {
   readonly beaconClassName: string;
   readonly activeJobCount: number;
   readonly underway: Underway;
+  readonly showRing: boolean;
   readonly active: boolean;
 }
 
@@ -105,7 +107,7 @@ const DOCK_ACCENTS: readonly DockAccent[] = [
   { key: "rose", label: "Rose", color: "oklch(72% 0.11 5)" },
 ] as const;
 
-export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
+export function CanvasDock({ state, sessions, canvasSize, minimizedIds }: CanvasDockProps) {
   const chipsRef = useRef<HTMLDivElement | null>(null);
   const pinRightRef = useRef(true);
   const closeArmTimeoutRef = useRef<number | null>(null);
@@ -122,6 +124,7 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
   // 태스크바는 최소화 여부와 무관하게 모든 패널(Operation+셸)을 항상 표시한다 — OS 윈도우 시스템의 태스크바처럼.
   // panelHandles 전체는 최대화 모드 칩 전환(maximizeWindowPanel)에 그대로 넘겨야 하므로 변수로 보존한다.
   const panelHandles = getPanelHandles(operationIds);
+  const minimizedSet = new Set(minimizedIds);
   const entries = panelHandles
     .map((handle): DockEntry | null => {
       const session = sessionById.get(handle.id);
@@ -134,6 +137,7 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
           beaconClassName: "tenant-beacon is-live",
           activeJobCount: 0,
           underway: null,
+          showRing: false,
           active: activeShellId === handle.id,
         };
       }
@@ -152,6 +156,7 @@ export function CanvasDock({ state, sessions, canvasSize }: CanvasDockProps) {
         beaconClassName: sessionBeaconClassName(session, activeJobCount),
         activeJobCount,
         underway,
+        showRing: underway !== null && minimizedSet.has(handle.id),
         active: state.activeTerminalSessionId === session.sessionId,
       };
     })
@@ -408,6 +413,7 @@ function CanvasDockChip({
     "canvas-dock-chip",
     entry.active ? "canvas-dock-chip--active" : "",
     entry.underway ? `canvas-dock-chip--underway canvas-dock-chip--underway-${entry.underway}` : "",
+    entry.showRing ? "canvas-dock-chip--underway-ring" : "",
     dragging ? "canvas-dock-chip--dragging" : "",
     dropTarget ? "canvas-dock-chip--drop-target" : "",
   ].filter(Boolean).join(" ");
