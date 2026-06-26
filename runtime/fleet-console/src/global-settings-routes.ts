@@ -21,7 +21,12 @@ interface GlobalSettingsRouteContext {
 interface GlobalSettingsBody {
   readonly replaceSystemPrompt?: unknown;
   readonly enableMetaphor?: unknown;
+  readonly consolePortMode?: unknown;
+  readonly consoleStaticPort?: unknown;
 }
+
+const MIN_CONSOLE_STATIC_PORT = 1024;
+const MAX_CONSOLE_STATIC_PORT = 65535;
 
 export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
@@ -93,10 +98,20 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_enable_metaphor" });
     return;
   }
+  if (body.consolePortMode !== undefined && body.consolePortMode !== "dynamic" && body.consolePortMode !== "static") {
+    deps.writeJson(res, 400, { error: "invalid_console_port_mode" });
+    return;
+  }
+  if (body.consoleStaticPort !== undefined && body.consoleStaticPort !== null && !isValidConsoleStaticPort(body.consoleStaticPort)) {
+    deps.writeJson(res, 400, { error: "invalid_console_static_port" });
+    return;
+  }
   const updated = deps.globalOptionsService.update((current) => ({
     ...current,
     ...(typeof body.replaceSystemPrompt === "boolean" ? { replaceSystemPrompt: body.replaceSystemPrompt } : {}),
     ...(typeof body.enableMetaphor === "boolean" ? { enableMetaphor: body.enableMetaphor } : {}),
+    ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
+    ...(isValidConsoleStaticPort(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
   }));
   const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
   deps.writeJson(res, 200, response);
@@ -106,10 +121,16 @@ function toGlobalSettingsState(data: GlobalOptionsData): GlobalSettingsState {
   return {
     replaceSystemPrompt: data.replaceSystemPrompt ?? false,
     enableMetaphor: data.enableMetaphor ?? false,
+    consolePortMode: data.consolePortMode ?? "dynamic",
+    consoleStaticPort: data.consoleStaticPort ?? null,
   };
 }
 
 function isJsonRequest(req: http.IncomingMessage): boolean {
   const contentType = req.headers["content-type"];
   return typeof contentType === "string" && contentType.toLowerCase().split(";")[0]?.trim() === "application/json";
+}
+
+function isValidConsoleStaticPort(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
 }

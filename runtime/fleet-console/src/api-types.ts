@@ -13,6 +13,10 @@ export interface ConsoleHealth {
   readonly pid: number;
   readonly host: string;
   readonly port: number;
+  readonly portMode: "dynamic" | "static";
+  readonly requestedPort: number | null;
+  readonly effectivePort: number;
+  readonly portHonored: boolean;
   readonly endpoint: string;
   readonly startedAt: number;
   readonly version: string;
@@ -55,6 +59,10 @@ export interface ConsoleObserverStatus {
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
   readonly port: number;
+  readonly portMode: "dynamic" | "static";
+  readonly requestedPort: number | null;
+  readonly effectivePort: number;
+  readonly portHonored: boolean;
   readonly wikiServerStatus: ConsoleObserverWikiServerStatus;
 }
 

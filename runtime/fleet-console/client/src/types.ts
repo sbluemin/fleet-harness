@@ -82,6 +82,10 @@ export interface ObserverStatus {
   readonly updateAvailable: boolean;
   readonly latestVersion?: string;
   readonly port: number;
+  readonly portMode: "dynamic" | "static";
+  readonly requestedPort: number | null;
+  readonly effectivePort: number;
+  readonly portHonored: boolean;
   readonly wikiServerStatus: "available" | "unavailable" | "unknown";
 }
 
@@ -162,6 +166,8 @@ export interface CarrierSettingsMutationResult {
 export interface GlobalSettingsState {
   readonly replaceSystemPrompt: boolean;
   readonly enableMetaphor: boolean;
+  readonly consolePortMode: "dynamic" | "static";
+  readonly consoleStaticPort: number | null;
 }
 
 export interface GlobalSettingsMutationResult {
@@ -349,6 +355,10 @@ export interface ConsoleState {
   readonly version: string;
   readonly updateAvailable: boolean;
   readonly latestVersion: string | null;
+  readonly portMode: "dynamic" | "static";
+  readonly requestedPort: number | null;
+  readonly effectivePort: number;
+  readonly portHonored: boolean;
   readonly tenants: readonly ObservedTenant[];
   readonly theaters: readonly TheaterInfo[];
   readonly agentClis: readonly AgentCliMetadata[];

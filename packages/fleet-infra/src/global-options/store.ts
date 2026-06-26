@@ -16,6 +16,8 @@ const GLOBAL_OPTIONS_FILE_NAME = "settings.json";
 const LOCK_DIR_NAME = "settings.json.lock";
 const LOCK_OWNER_FILE_NAME = "owner";
 const TEMP_FILE_PREFIX = `.tmp-${GLOBAL_OPTIONS_FILE_NAME}-`;
+const MIN_CONSOLE_STATIC_PORT = 1024;
+const MAX_CONSOLE_STATIC_PORT = 65535;
 
 export function createGlobalOptionsStore(deps: CreateGlobalOptionsStoreDeps = {}): GlobalOptionsStore {
   const dataDir = deps.dataDir ?? getFleetDataDir();
@@ -61,15 +63,23 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
     version: GLOBAL_OPTIONS_VERSION,
     ...(typeof value.replaceSystemPrompt === "boolean" ? { replaceSystemPrompt: value.replaceSystemPrompt } : {}),
     ...(typeof value.enableMetaphor === "boolean" ? { enableMetaphor: value.enableMetaphor } : {}),
+    ...(value.consolePortMode === "dynamic" || value.consolePortMode === "static" ? { consolePortMode: value.consolePortMode } : {}),
+    ...(isValidConsoleStaticPort(value.consoleStaticPort) ? { consoleStaticPort: value.consoleStaticPort } : {}),
   };
-  const allowedKeys = new Set(["version", "replaceSystemPrompt", "enableMetaphor"]);
+  const allowedKeys = new Set(["version", "replaceSystemPrompt", "enableMetaphor", "consolePortMode", "consoleStaticPort"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("replaceSystemPrompt" in value && typeof value.replaceSystemPrompt !== "boolean") ||
-    ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean");
+    ("enableMetaphor" in value && typeof value.enableMetaphor !== "boolean") ||
+    ("consolePortMode" in value && value.consolePortMode !== "dynamic" && value.consolePortMode !== "static") ||
+    ("consoleStaticPort" in value && !isValidConsoleStaticPort(value.consoleStaticPort));
 
   return { data, changed };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidConsoleStaticPort(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
 }

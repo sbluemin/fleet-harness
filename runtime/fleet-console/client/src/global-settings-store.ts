@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { fetchGlobalSettingsState, updateGlobalSettings } from "./global-settings-api.js";
 import type { GlobalSettingsState } from "./types.js";
 
-export type GlobalSettingsField = "replaceSystemPrompt" | "enableMetaphor";
+export type GlobalSettingsField = keyof GlobalSettingsState;
 
 interface GlobalSettingsStoreState {
   readonly loading: boolean;
@@ -48,7 +48,7 @@ export async function loadGlobalSettings(signal?: AbortSignal): Promise<void> {
   }
 }
 
-export async function setGlobalSettingsField(field: GlobalSettingsField, value: boolean): Promise<boolean> {
+export async function setGlobalSettingsField<Field extends GlobalSettingsField>(field: Field, value: GlobalSettingsState[Field]): Promise<boolean> {
   setSnapshot({ savingField: field, error: null });
   try {
     const result = await updateGlobalSettings({ [field]: value });

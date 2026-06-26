@@ -170,7 +170,25 @@ describe("fleet console CLI", () => {
   it("reports a running server with the console URL", async () => {
     const text = await runConsoleStatus({
       lifecycle: {
-        probe: async () => ({ healthy: true, lock: LOCK, buildStale: false, health: { ok: true, pid: LOCK.pid, host: LOCK.host, port: LOCK.port, endpoint: LOCK.endpoint, startedAt: LOCK.startedAt, version: LOCK.version, workspaceCount: 2 } }),
+        probe: async () => ({
+          healthy: true,
+          lock: LOCK,
+          buildStale: false,
+          health: {
+            ok: true,
+            pid: LOCK.pid,
+            host: LOCK.host,
+            port: LOCK.port,
+            portMode: "dynamic",
+            requestedPort: null,
+            effectivePort: LOCK.port,
+            portHonored: true,
+            endpoint: LOCK.endpoint,
+            startedAt: LOCK.startedAt,
+            version: LOCK.version,
+            workspaceCount: 2,
+          },
+        }),
       },
     });
     expect(text).toContain("running");

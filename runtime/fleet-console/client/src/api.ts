@@ -347,6 +347,10 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     || typeof payload.updateAvailable !== "boolean"
     || (payload.latestVersion !== undefined && typeof payload.latestVersion !== "string")
     || typeof payload.port !== "number"
+    || (payload.portMode !== "dynamic" && payload.portMode !== "static")
+    || (payload.requestedPort !== null && typeof payload.requestedPort !== "number")
+    || typeof payload.effectivePort !== "number"
+    || typeof payload.portHonored !== "boolean"
     || (payload.wikiServerStatus !== "available" && payload.wikiServerStatus !== "unavailable" && payload.wikiServerStatus !== "unknown")
     || "token" in payload
     || "path" in payload
@@ -363,6 +367,10 @@ function assertObserverStatus(value: unknown, status: number): ObserverStatus {
     updateAvailable: payload.updateAvailable,
     ...(payload.latestVersion !== undefined ? { latestVersion: payload.latestVersion } : {}),
     port: payload.port,
+    portMode: payload.portMode,
+    requestedPort: payload.requestedPort,
+    effectivePort: payload.effectivePort,
+    portHonored: payload.portHonored,
     wikiServerStatus: payload.wikiServerStatus,
   };
 }

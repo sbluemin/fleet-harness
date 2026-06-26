@@ -71,6 +71,10 @@ let state: ConsoleState = {
   version: "",
   updateAvailable: false,
   latestVersion: null,
+  portMode: "dynamic",
+  requestedPort: null,
+  effectivePort: 0,
+  portHonored: true,
   tenants: [],
   theaters: [],
   agentClis: [],
@@ -191,6 +195,10 @@ export function applyObserverStatus(status: ObserverStatus): void {
     version: status.version,
     updateAvailable: status.updateAvailable,
     latestVersion: status.latestVersion ?? null,
+    portMode: status.portMode,
+    requestedPort: status.requestedPort,
+    effectivePort: status.effectivePort,
+    portHonored: status.portHonored,
     ...evaluateAutomaticWhatsNew({ ...state, version: status.version }),
   });
 }
