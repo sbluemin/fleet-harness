@@ -20,23 +20,6 @@
       "import": "./launch/types.ts",
       "default": "./launch/types.ts"
     },
-    "./terminal": {
-      "types": "./terminal/types.ts",
-      "import": "./terminal/types.ts",
-      "default": "./terminal/types.ts"
-    },
-    "./terminal/browser": {
-      "types": "./terminal/browser.ts",
-      "browser": "./terminal/browser.ts",
-      "import": "./terminal/browser.ts",
-      "default": "./terminal/browser.ts"
-    },
-    "./terminal/node": {
-      "types": "./terminal/node.ts",
-      "node": "./terminal/node.ts",
-      "import": "./terminal/node.ts",
-      "default": "./terminal/node.ts"
-    },
     "./plugin": {
       "types": "./plugin/types.ts",
       "import": "./plugin/types.ts",

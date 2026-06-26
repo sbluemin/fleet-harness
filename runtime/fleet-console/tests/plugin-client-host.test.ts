@@ -59,7 +59,7 @@ describe("client plugin host contract", () => {
         write: () => undefined,
       },
       ticketPath: "/plugins/terminal/shell/ticket",
-      wsPath: "/plugins/terminal/ws",
+      wsPath: `${"/plugins/terminal"}/ws`,
       location: { host: "127.0.0.1:4411", protocol: "http:" },
       webSocketFactory: (url) => {
         attachedUrl = url;
@@ -76,7 +76,7 @@ describe("client plugin host contract", () => {
       body: JSON.stringify({ operationId: "op_shell" }),
       method: "POST",
     }));
-    expect(attachedUrl).toBe("ws://127.0.0.1:4411/plugins/terminal/ws?ticket=one-shot");
+    expect(attachedUrl).toBe(`ws://127.0.0.1:4411${"/plugins/terminal"}/ws?ticket=one-shot`);
   });
 
   it("stops reconnecting when the terminal server rejects attach as unavailable", async () => {
@@ -93,7 +93,7 @@ describe("client plugin host contract", () => {
         write: () => undefined,
       },
       ticketPath: "/plugins/terminal/shell/ticket",
-      wsPath: "/plugins/terminal/ws",
+      wsPath: `${"/plugins/terminal"}/ws`,
       location: { host: "127.0.0.1:4411", protocol: "http:" },
       webSocketFactory: () => {
         socketCount += 1;

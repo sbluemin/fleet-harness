@@ -21,7 +21,7 @@ export interface TerminalUpgradeHandler {
 
 const require = createRequire(import.meta.url);
 
-export function createTerminalUpgradeHandler(deps: TerminalUpgradeHandlerDeps): TerminalUpgradeHandler {
+export function createPluginTerminalUpgradeHandler(deps: TerminalUpgradeHandlerDeps): TerminalUpgradeHandler {
   let wsServer: WebSocketServerLike | null = null;
 
   const handleUpgrade: UpgradeHandler = ({ req, socket, head }) => {

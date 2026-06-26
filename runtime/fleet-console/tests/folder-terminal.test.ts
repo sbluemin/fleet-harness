@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listTheaterFolders, normalizeFolderBrowserPath, TheaterFolderListError } from "../core/host/terminal/folder-browser.js";
-import { createFolderGrantStore, validateAbsoluteDirectory } from "../core/host/terminal/folder-grants.js";
+import { listTheaterFolders, normalizeFolderBrowserPath, TheaterFolderListError } from "../core/host/theater-folder-browser.js";
+import { createFolderGrantStore, validateAbsoluteDirectory } from "../core/host/theater-folder-grants.js";
 
 describe("folder grants", () => {
   it("consumes folder grants exactly once", () => {

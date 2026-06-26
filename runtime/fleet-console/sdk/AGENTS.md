@@ -20,6 +20,6 @@
 ## File Rules
 
 - Keep TypeScript order as `imports -> types/interfaces -> constants -> functions`.
-- Domain modules live under `operations`, `launch`, `terminal`, `plugin`, `settings`, `notifications`, `routing`, and `react`.
+- Domain modules live under `operations`, `launch`, `plugin`, `settings`, `notifications`, `routing`, and `react`.
 - Use `types.ts` for pure contracts, `browser.ts` for browser helpers, and `node.ts` for Node/plugin authoring helpers.
 - Do not add `client` or `server` facade exports; consumers must import the domain subpath that matches their runtime.

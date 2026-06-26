@@ -1,20 +1,20 @@
 # Fleet Console
 
-Standalone loopback web console for observing carrier jobs, live output streams, and multi-session PTY terminal workspaces.
+Standalone loopback web console for observing carrier jobs, live output streams, and plugin-owned PTY terminal workspaces.
 
 ## What It Does
 
-Fleet Console owns its own local HTTP server. Terminal sessions are spawned by the console server and observed in-process; carrier events are streamed to the browser through the observer API.
+Fleet Console owns its own local HTTP server. The Terminal plugin owns Shell and Agent PTY runtime, tickets, launch, and WebSocket transport; carrier events are streamed to the browser through the observer API.
 
-- Console-owned terminal sessions and observed jobs in a navigable rail.
+- Plugin-owned terminal sessions and observed jobs in a navigable rail.
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.
-- Console-spawned Agent CLI PTYs with in-process observation.
+- Terminal plugin-spawned Agent CLI PTYs with in-process observation.
 - Per-job carrier tracks with incremental output text, reasoning folds, and tool-call activity.
 - Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 
-The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-plugins/terminal`). It is the single built-in plugin id `terminal`, provides operation types `shell`, `agent`, and `agent.streaming`, absorbs the former shared server/client helpers, and serves Shell/Agent plugin routes under `/plugins/terminal/{shell,agent}/*`. The Shell launch title is `Shell`.
+The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-plugins/terminal`). It is the single built-in plugin id `terminal`, provides operation types `shell`, `agent`, and `agent.streaming`, owns plugin-scoped WebSocket, ticket, PTY session, and launch runtime, and serves Shell/Agent plugin routes under `/plugins/terminal/{shell,agent}/*`. The console owns Theater folder selection through `/theaters/folders/*`. The Shell launch title is `Shell`.
 
 ## Runtime Channels
 
@@ -25,15 +25,15 @@ The built-in terminal plugin lives at `runtime/fleet-plugins/terminal` (`@fleet-
 | `POST /theaters/folders/grants` | Validates the client-supplied absolute path through `validateAbsoluteDirectory` and returns a one-use `{ folderGrantId }`. | Requires the terminal Origin boundary; no adminToken. |
 | `/plugins/terminal/shell/*` | Shell launch and ticket routes for the `shell` operation type. | Shell cwd is resolved server-side from the selected Theater; browser receives only one-use terminal tickets. |
 | `/plugins/terminal/agent/*` | Agent launch, session, ticket, job, event, tenant, and state routes for the `agent` and `agent.streaming` operation types. | Requires the terminal Origin boundary; MCP/session tokens remain server-only. |
-| `/terminal/ws` | Shared browser PTY WebSocket transport used by Shell and Agent operations. | Browser reaches it through a one-use ticket from the terminal plugin routes. |
+| Terminal plugin WebSocket route | Terminal plugin-owned browser PTY WebSocket transport used by Shell and Agent operations under the plugin namespace. | Browser reaches it through a one-use ticket from the terminal plugin routes. |
 | `/console/` | Static React client served from this package's `dist/client`. | Served directly from the loopback console URL. |
 | `/console/codex/*` | Console-owned Codex/Fleet Wiki web, workspace API, and migrated Maritime Codex client. | Admin workspace registration uses the lock bearer token; browser reads stay token-free on allowed local origins. |
 
-`/observer/tenants` may include `terminalSessionId` for console-owned terminal sessions. `/terminal/ws` keeps the same path and query shape while plugin HTTP routes live under `/plugins/terminal/{shell,agent}/*`.
+`/observer/tenants` may include `terminalSessionId` for plugin-owned terminal sessions. Shell and Agent HTTP routes plus WebSocket transport live under `/plugins/terminal/*`.
 
 ## Session Binding
 
-When the console creates a terminal session, it generates a session id, resolves the selected Agent CLI through the shared fleet-admiral runtime, and keeps the selected absolute cwd server-side. The console records non-secret session metadata for observer hydration.
+When the Terminal plugin creates a terminal session, it generates a session id, resolves the selected Agent CLI through the shared fleet-admiral runtime, and keeps the selected absolute cwd server-side. The plugin records non-secret session metadata for observer hydration through generic console operation and event capabilities.
 
 Folder selection is handled entirely in the browser UI: the React directory browser modal calls the console-owned `POST /theaters/folders/list` route to browse the server's local filesystem, then calls `POST /theaters/folders/grants` once the operator confirms a directory. The resulting one-use grant is consumed by Theater registration; Shell and Agent launches resolve cwd from the Theater server-side. No OS-native dialog or child process is involved. The browser modal works in remote and headless browser sessions without any OS-level dialog support.
 

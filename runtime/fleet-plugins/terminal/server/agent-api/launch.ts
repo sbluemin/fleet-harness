@@ -16,9 +16,9 @@ import {
 } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir, type InfraServices } from "@dotobokuri/fleet-infra";
 import { resolveAuthEnv } from "@dotobokuri/fleet-infra/auth";
-import type { TerminalLaunchContext, TerminalLaunchSpec } from "@fleet-console/sdk/terminal";
 
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleCaptureHookCommand, buildConsoleHookCommand, buildConsoleTurnHookCommand, runCodexCommand, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 
 export interface TerminalLaunchResolverDeps {
   readonly cwd?: string;

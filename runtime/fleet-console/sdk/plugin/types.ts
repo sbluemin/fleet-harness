@@ -7,13 +7,17 @@ import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatal
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
-import type { TerminalTicket } from "../terminal/types.js";
 
 export type ConsoleTheme = "maritime" | "carbon";
 
 export type TerminalRenderer = "webgl" | "dom";
 
 export type OperationActivity = "idle" | "running" | "awaiting" | "live" | "dormant";
+
+export interface TerminalTicket {
+  readonly ticket: string;
+  readonly ttlMs: number;
+}
 
 export interface FleetClientPlugin {
   readonly id: string;

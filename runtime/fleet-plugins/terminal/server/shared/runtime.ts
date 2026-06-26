@@ -4,9 +4,9 @@ import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalSessionManager } from "./session-manager.js";
-import { createTerminalTicketRegistry } from "./tickets.js";
+import { createPluginTerminalTicketRegistry } from "./tickets.js";
 import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec } from "./terminal-types.js";
-import { createTerminalUpgradeHandler } from "./ws.js";
+import { createPluginTerminalUpgradeHandler } from "./ws.js";
 
 export interface TerminalRuntime {
   readonly handleUpgrade: UpgradeHandler;
@@ -27,7 +27,7 @@ export type { TerminalLaunchResolver };
 const SHELL_OPERATION_TYPE = "shell";
 
 export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRuntime {
-  const tickets = createTerminalTicketRegistry();
+  const tickets = createPluginTerminalTicketRegistry();
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
   const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
   const defaultTerminalLaunch = createShellTerminalLaunchResolver();
@@ -40,7 +40,7 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
       await Promise.all([...terminalExitListeners].map((listener) => listener(sessionId)));
     },
   });
-  const upgrade = createTerminalUpgradeHandler({
+  const upgrade = createPluginTerminalUpgradeHandler({
     tickets,
     sessions,
     isAuthorized: ctx.host.security.isTerminalAuthorized,

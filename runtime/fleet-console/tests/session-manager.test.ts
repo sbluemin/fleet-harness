@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createTerminalSessionManager } from "../core/host/terminal/session-manager.js";
-import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../core/host/terminal/types.js";
+import { createTerminalSessionManager } from "../../fleet-plugins/terminal/server/shared/session-manager.js";
+import type { TerminalPtyDataDisposable, TerminalPtyHandle, TerminalSocket, TerminalSocketData } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
 
 interface MockPty extends TerminalPtyHandle {
   readonly writes: string[];

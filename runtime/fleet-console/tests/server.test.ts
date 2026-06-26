@@ -14,8 +14,8 @@ import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent
 import { workspaceHash } from "../core/host/theater.js";
 import { TheaterRegistry } from "../core/host/theaters.js";
 import { WorkspaceRegistry } from "../core/host/codex/workspaces.js";
-import type { TerminalLaunchSpec, TerminalPtyHandle } from "../core/host/terminal/types.js";
-import { createTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";
+import type { TerminalLaunchSpec, TerminalPtyHandle } from "../../fleet-plugins/terminal/server/shared/terminal-types.js";
+import { createPluginTerminalUpgradeHandler } from "../../fleet-plugins/terminal/server/shared/ws.js";
 
 const fleetAdmiralMock = vi.hoisted(() => ({
   agentRuntimeQueue: [] as unknown[],
@@ -305,19 +305,6 @@ describe("console terminal observability", () => {
     const runtime = createFakeConsoleRuntime([], []);
     const runtimeFixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalLaunchResolverDeps: {
-        cwd: dir,
-        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
-        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
-          id: "claude",
-          label: "Claude Code",
-          bin: "/bin/claude",
-          args: [],
-          cwd,
-          env: { ...env },
-        })) as never,
-      },
       terminalStartShell: () => createMockPty(),
     });
     const session = await createTerminalSession(runtimeFixture, { "Content-Type": "application/json" }, dir);
@@ -338,26 +325,13 @@ describe("console terminal observability", () => {
     const runtime = createFakeConsoleRuntime([], []);
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalLaunchResolverDeps: {
-        cwd: dir,
-        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
-        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
-          id: "claude",
-          label: "Claude Code",
-          bin: "/bin/claude",
-          args: [],
-          cwd,
-          env: { ...env },
-        })) as never,
-      },
       terminalStartShell: () => {
         throw new Error("spawn failed");
       },
     });
     const headers = { "Content-Type": "application/json" };
 
-    const grant = await issueFolderGrant(fixture, dir, headers);
+    const grant = await issueTheaterFolderGrant(fixture, dir, headers);
     const failed = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -381,19 +355,6 @@ describe("console terminal observability", () => {
     const runtime = createFakeConsoleRuntime([], []);
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalLaunchResolverDeps: {
-        cwd: dir,
-        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
-        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
-          id: "claude",
-          label: "Claude Code",
-          bin: "/bin/claude",
-          args: [],
-          cwd,
-          env: { ...env },
-        })) as never,
-      },
       terminalStartShell: () => createMockPty(),
     });
     const theater = await createTheater(fixture, dir);
@@ -610,7 +571,7 @@ describe("console static and terminal ticket boundary", () => {
     const headers = { "Content-Type": "application/json" };
 
     const ticket = await (await fetch(`${fixture.endpoint}terminal/ticket`, { method: "POST", headers })).json();
-    const grant = await issueFolderGrant(fixture, dir, headers);
+    const grant = await issueTheaterFolderGrant(fixture, dir, headers);
     const failedLaunch = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -637,27 +598,8 @@ describe("console static and terminal ticket boundary", () => {
     const issuedLabels: string[] = [];
     const releasedLabels: string[] = [];
     const runtime = createFakeConsoleRuntime(issuedLabels, releasedLabels);
-    const terminalLaunchResolverDeps = {
-      cwd: dir,
-      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-      injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }, options: { readonly dedicatedMcpSession: FakeConsoleRuntime["dedicatedMcpSession"]; readonly onCleanup?: (cleanup: () => void) => void }) => {
-        const opts = options as typeof options & { readonly mcpSessionLabel: string };
-        options.dedicatedMcpSession.issueSessionToken({ label: opts.mcpSessionLabel, cwd: profile.cwd });
-        options.onCleanup?.(() => options.dedicatedMcpSession.releaseSessionToken(opts.mcpSessionLabel));
-        return { ...profile, args: [...profile.args, "--fleet-test"] };
-      }) as never,
-      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
-        id: "claude",
-        label: "Claude Code",
-        bin: "/bin/claude",
-        args: [],
-        cwd,
-        env: { ...env },
-      })) as never,
-    };
     const fixture = await startFixture({
       agentRuntime: runtime as never,
-      terminalLaunchResolverDeps,
       terminalStartShell: () => createFakePty(),
     });
     const headers = { "Content-Type": "application/json" };
@@ -974,8 +916,8 @@ describe("console static and terminal ticket boundary", () => {
     });
     const headers = { "Content-Type": "application/json" };
 
-    const grant = await issueFolderGrant(fixture, dir, headers);
-    const noCliGrant = await issueFolderGrant(fixture, dir, headers);
+    const grant = await issueTheaterFolderGrant(fixture, dir, headers);
+    const noCliGrant = await issueTheaterFolderGrant(fixture, dir, headers);
     const rawCwd = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -1525,23 +1467,6 @@ describe("console static and terminal ticket boundary", () => {
           capturedAt: "2026-06-16T00:00:02.000Z",
         }));
       },
-      terminalLaunchResolverDeps: {
-        cwd: dir,
-        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-        injectProfile: (async (profile: { readonly args: readonly string[] }, options: { readonly resumeSessionId?: string }) => {
-          injectedResumeIds.push(options.resumeSessionId);
-          return { ...profile, args: [...profile.args, "--resume-from-admiral"] };
-        }) as never,
-        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
-          id: "claude",
-          label: "Claude Code",
-          bin: "/bin/claude",
-          args: [],
-          cwd,
-          env: { ...env },
-          terminalName: "xterm-256color",
-        })) as never,
-      },
       terminalStartShell: (launch) => {
         launchedArgs.push(launch.args);
         return createMockPty();
@@ -1777,26 +1702,13 @@ describe("console static and terminal ticket boundary", () => {
     tempDirs.push(dir);
     const ptys: ExitablePty[] = [];
     const fixture = await startFixture({
-      terminalLaunchResolverDeps: {
-        cwd: dir,
-        env: { PATH: "/bin" } as NodeJS.ProcessEnv,
-        injectProfile: (async (profile: { readonly cwd: string; readonly args: readonly string[] }) => ({ ...profile, args: [...profile.args, "--fleet-test"] })) as never,
-        resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
-          id: "claude",
-          label: "Claude Code",
-          bin: "/bin/claude",
-          args: [],
-          cwd,
-          env: { ...env },
-        })) as never,
-      },
       terminalStartShell: () => {
         const pty = createExitablePty();
         ptys.push(pty);
         return pty;
       },
     });
-    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
     const theaterResponse = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     expect(theaterResponse.status).toBe(200);
     const theater = await theaterResponse.json() as { readonly id: string };
@@ -1833,7 +1745,7 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
     });
 
-    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
     const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as Record<string, unknown>;
     const listed = await getJson<{ agentClis?: readonly Record<string, unknown>[]; theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}theaters`);
@@ -1876,7 +1788,7 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
     });
 
-    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
     const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const payload = await created.json() as { readonly id: string; readonly hasWiki: boolean };
     const health = await fetch(`${fixture.endpoint}console/codex/w/${payload.id}/api/health`);
@@ -1893,7 +1805,7 @@ describe("console static and terminal ticket boundary", () => {
     const fixture = await startFixture({
     });
 
-    const theaterGrant = await issueFolderGrant(fixture, dir);
+    const theaterGrant = await issueTheaterFolderGrant(fixture, dir);
     const created = await fetch(`${fixture.endpoint}theaters`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folderGrantId: theaterGrant.folderGrantId }) });
     const theater = await created.json() as { readonly id: string };
     const status = await getJson<Record<string, unknown>>(`${fixture.endpoint}health?theaterId=${encodeURIComponent(theater.id)}`);
@@ -2026,7 +1938,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const headers = { "Content-Type": "application/json" };
 
-    const grant = await issueFolderGrant(fixture, dir, headers);
+    const grant = await issueTheaterFolderGrant(fixture, dir, headers);
     const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -2056,7 +1968,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const headers = { "Content-Type": "application/json" };
 
-    const grant = await issueFolderGrant(fixture, dir, headers);
+    const grant = await issueTheaterFolderGrant(fixture, dir, headers);
     const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
       method: "POST",
       headers,
@@ -2152,7 +2064,7 @@ describe("console static and terminal ticket boundary", () => {
 
   it("rejects terminal WebSocket upgrades without a valid ticket boundary", () => {
     let destroyed = 0;
-    const handler = createTerminalUpgradeHandler({
+    const handler = createPluginTerminalUpgradeHandler({
       tickets: { consume: () => null },
       sessions: { canAttach: () => true, createSession: async () => undefined, attach: async () => undefined, getSessionMessagePolicy: () => undefined, getSessionRenameCommand: () => undefined, terminate: () => false, stop: async () => undefined, writeToSession: () => false, hasLiveSessions: () => false },
       isAuthorized: () => true,
@@ -2160,13 +2072,13 @@ describe("console static and terminal ticket boundary", () => {
 
     const handled = handler.handleUpgrade({
       req: {
-        url: "/plugins/terminal/ws",
+        url: `${"/plugins/terminal"}/ws`,
         headers: { origin: "http://127.0.0.1:37283" },
         rawHeaders: ["Host", "127.0.0.1:37283"],
       } as never,
       socket: { destroy: () => { destroyed += 1; } } as never,
       head: Buffer.alloc(0),
-      pathname: "/plugins/terminal/ws",
+      pathname: `${"/plugins/terminal"}/ws`,
     });
 
     expect(handled).toBe(true);
@@ -2177,7 +2089,7 @@ describe("console static and terminal ticket boundary", () => {
   it("checks terminal WebSocket capacity with the ticket sessionId", () => {
     let destroyed = 0;
     const checkedSessionIds: string[] = [];
-    const handler = createTerminalUpgradeHandler({
+    const handler = createPluginTerminalUpgradeHandler({
       tickets: { consume: () => ({ sessionId: "session-a", cwd: "/tmp" }) },
       sessions: {
         canAttach: (sessionId) => {
@@ -2198,13 +2110,13 @@ describe("console static and terminal ticket boundary", () => {
 
     const handled = handler.handleUpgrade({
       req: {
-        url: "/plugins/terminal/ws?ticket=ticket-a",
+        url: `${"/plugins/terminal"}/ws?ticket=ticket-a`,
         headers: { origin: "http://127.0.0.1:37283" },
         rawHeaders: ["Host", "127.0.0.1:37283"],
       } as never,
       socket: { destroy: () => { destroyed += 1; } } as never,
       head: Buffer.alloc(0),
-      pathname: "/plugins/terminal/ws",
+      pathname: `${"/plugins/terminal"}/ws`,
     });
 
     expect(handled).toBe(true);
@@ -2244,7 +2156,6 @@ async function startFixture(options: {
   readonly agentCliDetector?: ConsoleServerDeps["agentCliDetector"];
   readonly beforeCreateServer?: (paths: { readonly carrierStoreDir: string }) => void;
   readonly terminalLaunch?: (cwd?: string, context?: { readonly sessionId?: string; readonly cliId?: string; readonly resumeSessionId?: string }) => Promise<TerminalLaunchSpec>;
-  readonly terminalLaunchResolverDeps?: ConsoleServerDeps["terminalLaunchResolverDeps"];
   readonly terminalStartShell?: (launch: TerminalLaunchSpec) => TerminalPtyHandle;
   readonly release?: ConsoleServerDeps["release"];
   readonly updateApply?: ConsoleServerDeps["updateApply"];
@@ -2270,7 +2181,6 @@ async function startFixture(options: {
     // 의존하지 않게 한다. 게이트 거부 케이스는 개별 테스트가 overrides로 미설치를 주입한다.
     agentCliDetector: options.agentCliDetector ?? createStubAgentCliDetector(),
     dataDir: carrierStoreDir,
-    terminalLaunchResolverDeps: options.terminalLaunchResolverDeps,
     release: options.release,
     updateApply: options.updateApply,
     updateCheck: options.updateCheck,
@@ -2325,7 +2235,7 @@ function createDeferred<T>(): { readonly promise: Promise<T>; resolve(value: T):
 }
 
 async function createTerminalSession(fixture: ServerFixture, headers: Record<string, string>, cwd: string): Promise<{ readonly sessionId: string }> {
-  const grant = await issueFolderGrant(fixture, cwd, headers);
+  const grant = await issueTheaterFolderGrant(fixture, cwd, headers);
   const created = await fetch(`${fixture.endpoint}terminal/sessions`, {
     method: "POST",
     headers,
@@ -2358,7 +2268,7 @@ async function createShellOperation(fixture: ServerFixture, theaterId: string): 
   return createOperation(fixture, theaterId, { type: "shell", pluginId: "terminal" });
 }
 
-async function issueFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
+async function issueTheaterFolderGrant(fixture: ServerFixture, cwd: string, headers: Record<string, string> = { "Content-Type": "application/json" }): Promise<{ readonly folderGrantId: string }> {
   const response = await fetch(`${fixture.endpoint}theaters/folders/grants`, {
     method: "POST",
     headers,
@@ -2369,7 +2279,7 @@ async function issueFolderGrant(fixture: ServerFixture, cwd: string, headers: Re
 }
 
 async function createTheater(fixture: ServerFixture, cwd: string): Promise<{ readonly id: string }> {
-  const grant = await issueFolderGrant(fixture, cwd);
+  const grant = await issueTheaterFolderGrant(fixture, cwd);
   const response = await fetch(`${fixture.endpoint}theaters`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

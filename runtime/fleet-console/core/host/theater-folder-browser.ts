@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { ConsoleTheaterFolderListEntry, ConsoleTheaterFolderListResponse } from "../api-types.js";
+import type { ConsoleTheaterFolderListEntry, ConsoleTheaterFolderListResponse } from "./api-types.js";
 
 export type TheaterFolderListErrorCode = "invalid_path" | "not_found" | "forbidden";
 

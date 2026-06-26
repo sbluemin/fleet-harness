@@ -22,7 +22,7 @@ interface StoredTicket {
 
 const DEFAULT_TICKET_TTL_MS = 10_000;
 
-export function createTerminalTicketRegistry(deps: TerminalTicketRegistryDeps = {}): TerminalTicketRegistry {
+export function createPluginTerminalTicketRegistry(deps: TerminalTicketRegistryDeps = {}): TerminalTicketRegistry {
   const ttlMs = deps.ttlMs ?? DEFAULT_TICKET_TTL_MS;
   const now = deps.now ?? Date.now;
   const randomTicket = deps.randomTicket ?? (() => crypto.randomBytes(32).toString("base64url"));

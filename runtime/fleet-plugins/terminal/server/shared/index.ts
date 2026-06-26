@@ -9,7 +9,7 @@ export type {
   TerminalTicket,
   TerminalTicketContext,
 } from "./terminal-types.js";
-export { createTerminalTicketRegistry } from "./tickets.js";
+export { createPluginTerminalTicketRegistry } from "./tickets.js";
 export type { TerminalTicketRegistry, TerminalTicketRegistryDeps } from "./tickets.js";
 export { createTerminalRuntime } from "./runtime.js";
 export type { TerminalRuntime, TerminalLaunchResolver } from "./runtime.js";
