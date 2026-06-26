@@ -369,7 +369,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       ) : null}
       {/* 모든 패널(Operation+셸)을 항상 표시하는 하단 Dock 태스크바(world가 아닌 캔버스 고정 — 패널과 함께
           이동·확대되지 않는다). 현재 포커스된 패널은 칩이 강조되고, 칩 클릭은 그 패널을 전면 활성화한다. */}
-      <CanvasDock state={state} sessions={sessions} canvasSize={canvasSize} />
+      <CanvasDock state={state} sessions={sessions} canvasSize={canvasSize} minimizedIds={minimized} />
     </main>
   );
 }
