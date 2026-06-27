@@ -55,7 +55,7 @@ export function OperationsSideBarChip({
   onOpenAccent,
 }: SideBarChipProps) {
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, beaconClassName, notificationCount, underway } = entry;
+  const { operation, active, minimized, notificationCount, underway } = entry;
   const title = displayTitle(operation);
   const chipClassName = [
     "side-bar-chip",
@@ -93,8 +93,11 @@ export function OperationsSideBarChip({
     onDisarmClose();
     onClose(operation.id);
   };
-  const openAccent = (event: SyntheticEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  // accent 진입 = 우클릭(컨텍스트 메뉴) / 키보드 Menu 키. 칩 본클릭은 focus 전용이므로
+  // rail tier에서 중앙 아이콘을 눌러도 focus가 동작한다.
+  const openAccent = (event: SyntheticEvent<HTMLLIElement>) => {
+    event.preventDefault();
+    onDisarmClose();
     onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
   };
 
@@ -106,9 +109,10 @@ export function OperationsSideBarChip({
       tabIndex={0}
       aria-label={active ? `${title} (focused)` : `Focus operation ${title}`}
       aria-current={active ? "true" : undefined}
-      title={active ? "Focused" : "Click to focus"}
+      title={active ? "Focused · right-click to set accent" : "Click to focus · right-click to set accent"}
       style={chipStyle}
       onClick={focus}
+      onContextMenu={openAccent}
       onFocus={() => {
         if (!isCloseArmed) onDisarmClose();
       }}
@@ -140,20 +144,11 @@ export function OperationsSideBarChip({
       onPointerUpCapture={(event) => onPointerDragEnd(event)}
       onPointerCancelCapture={(event) => onPointerDragCancel(event)}
     >
-      <button
-        type="button"
-        className="side-bar-chip-beacon-button"
-        onPointerDown={stopClosePointer}
-        onClick={openAccent}
-        aria-label={`Set accent for operation ${title}`}
-        aria-haspopup="menu"
-        title="Set accent"
-      >
-        <span className="side-bar-chip-op-icon" aria-hidden="true">
+      <span className="side-bar-chip-beacon-button" aria-hidden="true">
+        <span className="side-bar-chip-op-icon">
           {entry.icon ?? <DefaultOpIcon />}
         </span>
-        <span className={beaconClassName} aria-hidden="true" />
-      </button>
+      </span>
       <span className="side-bar-chip-name">{title}</span>
       {notificationCount > 0 ? (
         <span className="side-bar-chip-count">{notificationCount}</span>
