@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { RailFolderEntry, RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import type { FileReadResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
-import { FileTree } from "./tree.js";
+import { FileTree, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
 import { ImageViewer } from "./viewer/image.js";
@@ -34,27 +35,61 @@ function readSplitRatio(): number {
   return DEFAULT_SPLIT_RATIO;
 }
 
-function FileExplorerPanel({ theaterId, host }: RailPanelContext) {
+function makeFilesClient(theaterId: string | null): PluginFilesClient {
+  return {
+    listFolder: async (relativePath?) => {
+      if (!theaterId) throw new Error("no_theater");
+      const res = await fetch("/plugins/file-explorer/files/list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId, relativePath: relativePath ?? "" }),
+      });
+      if (!res.ok) {
+        const payload = await res.json() as { error?: string };
+        throw new Error(payload.error ?? "list_failed");
+      }
+      return res.json() as Promise<FolderListResult>;
+    },
+  };
+}
+
+function FileExplorerPanel({ theaterId }: RailPanelContext) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [viewState, setViewState] = useState<ViewState>({ kind: "none" });
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const handleSelect = useCallback(async (entry: RailFolderEntry) => {
+  // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
+  const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+
+  const handleSelect = useCallback(async (entry: FolderEntry) => {
     if (entry.kind !== "file") return;
     setSelectedPath(entry.relativePath);
     const name = entry.name;
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
     if (IMAGE_EXTS.has(ext)) {
-      setViewState({ kind: "image", relativePath: entry.relativePath, name, src: host.files.imageUrl(entry.relativePath) });
+      const src = theaterId
+        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(entry.relativePath)}`
+        : "";
+      setViewState({ kind: "image", relativePath: entry.relativePath, name, src });
       return;
     }
 
     setViewState({ kind: "loading" });
     try {
-      const result = await host.files.readFile(entry.relativePath);
+      // files/read는 422(binary_file)를 error 바디로 반환하므로 raw fetch로 직접 처리한다.
+      const res = await fetch("/plugins/file-explorer/files/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId, relativePath: entry.relativePath }),
+      });
+      if (!res.ok) {
+        const payload = await res.json() as { error?: string };
+        throw new Error(payload.error ?? "read_failed");
+      }
+      const result = await res.json() as FileReadResult;
       if (result.binary) {
         setViewState({ kind: "binary", name });
         return;
@@ -68,7 +103,7 @@ function FileExplorerPanel({ theaterId, host }: RailPanelContext) {
         setViewState({ kind: "error", message: msg });
       }
     }
-  }, [host.files]);
+  }, [theaterId]);
 
   const handleCloseViewer = useCallback(() => {
     setViewState({ kind: "none" });
@@ -152,7 +187,7 @@ function FileExplorerPanel({ theaterId, host }: RailPanelContext) {
       )}
       <div className="fexp-tree-pane">
         <FileTree
-          files={host.files}
+          files={files}
           theaterId={theaterId}
           selectedPath={selectedPath}
           onSelect={handleSelect}

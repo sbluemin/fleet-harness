@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 
-import type { RailDiffFileEntry, RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import type { DiffFileEntry } from "../server/types.js";
 import "./diff.css";
 import { ChangedFiles } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
@@ -42,12 +43,12 @@ function readSplitRatio(): number {
 
 function DiffPanel({ ctx }: DiffPanelProps) {
   const [mode, setMode] = useState<DiffMode>(readDiffMode);
-  const [selectedFile, setSelectedFile] = useState<RailDiffFileEntry | null>(null);
+  const [selectedFile, setSelectedFile] = useState<DiffFileEntry | null>(null);
   const [splitRatio, setSplitRatioState] = useState(readSplitRatio);
   const splitRatioRef = useRef(splitRatio);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const handleSelectFile = useCallback((entry: RailDiffFileEntry | null) => {
+  const handleSelectFile = useCallback((entry: DiffFileEntry | null) => {
     setSelectedFile(entry);
   }, []);
 

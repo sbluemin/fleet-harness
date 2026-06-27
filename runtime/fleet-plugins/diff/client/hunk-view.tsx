@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 
-import type { RailDiffFileEntry, RailDiffHunkResult, RailPanelContext } from "@fleet-console/sdk/rail";
+import type { RailPanelContext } from "@fleet-console/sdk/rail";
+
+import type { DiffFileEntry, DiffHunkResult } from "../server/types.js";
 
 type DiffMode = "workdir" | "staged" | "commit";
 
 interface HunkViewProps {
   readonly ctx: RailPanelContext;
-  readonly file: RailDiffFileEntry;
+  readonly file: DiffFileEntry;
   readonly mode: DiffMode;
   readonly ref?: string;
 }
 
 type LoadState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly result: RailDiffHunkResult }
+  | { readonly kind: "ok"; readonly result: DiffHunkResult }
   | { readonly kind: "error"; readonly message: string };
 
 type HunkLine =
@@ -42,15 +44,24 @@ export function HunkView({ ctx, file, mode, ref: commitRef }: HunkViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
+    if (!ctx.theaterId) {
+      setState({ kind: "error", message: "no_theater" });
+      return;
+    }
     let cancelled = false;
     setState({ kind: "loading" });
-    ctx.host.diff.unifiedDiff(file.path, mode, commitRef).then((result) => {
+    ctx.api.fetch("diff", "file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: ctx.theaterId, filePath: file.path, mode, ref: commitRef }),
+    }).then(async (res) => {
+      const result = await res.json() as DiffHunkResult;
       if (!cancelled) setState({ kind: "ok", result });
     }).catch((err: unknown) => {
       if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.host.diff, file.path, mode, commitRef]);
+  }, [ctx.api, file.path, mode, commitRef, ctx.theaterId]);
 
   if (state.kind === "loading") {
     return <div className="diff-hunk-loading">Loading…</div>;

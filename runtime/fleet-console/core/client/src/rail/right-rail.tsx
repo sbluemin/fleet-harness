@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { RailDiffHunkResult, RailDiffListResult, RailFileReadResult, RailFolderListResult, RailHostCapabilities, RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
@@ -9,6 +10,7 @@ import { useRailPanels } from "./rail-registry.js";
 
 interface RightRailProps {
   readonly theaterId: string | null;
+  readonly api: ClientApiCapability;
 }
 
 const MIN_PANEL_WIDTH = 240;
@@ -26,7 +28,7 @@ function readStoredPanelWidth(): number {
   return DEFAULT_PANEL_WIDTH;
 }
 
-export function RightRail({ theaterId }: RightRailProps) {
+export function RightRail({ theaterId, api }: RightRailProps) {
   const activeId = useActiveRailPanelId();
   const pluginPanels = useRailPanels();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
@@ -63,8 +65,7 @@ export function RightRail({ theaterId }: RightRailProps) {
     document.addEventListener("pointerup", onUp);
   }, []);
 
-  const host = useHostCapabilities(theaterId);
-  const ctx: RailPanelContext = useMemo(() => ({ theaterId, host }), [theaterId, host]);
+  const ctx: RailPanelContext = useMemo(() => ({ theaterId, api }), [theaterId, api]);
 
   return (
     <div
@@ -144,69 +145,4 @@ function RailIcon({ panel, isActive }: RailIconProps) {
       {icon}
     </button>
   );
-}
-
-function useHostCapabilities(theaterId: string | null): RailHostCapabilities {
-  return useMemo<RailHostCapabilities>(() => ({
-    files: {
-      listFolder: async (relativePath?: string): Promise<RailFolderListResult> => {
-        if (!theaterId) throw new Error("no_theater");
-        const res = await fetch(`/theaters/${encodeURIComponent(theaterId)}/files/list`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ relativePath: relativePath ?? "" }),
-        });
-        if (!res.ok) {
-          const payload = await res.json() as { error?: string };
-          throw new Error(payload.error ?? "list_failed");
-        }
-        return res.json() as Promise<RailFolderListResult>;
-      },
-      readFile: async (relativePath: string): Promise<RailFileReadResult> => {
-        if (!theaterId) throw new Error("no_theater");
-        const res = await fetch(`/theaters/${encodeURIComponent(theaterId)}/files/read`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ relativePath }),
-        });
-        if (!res.ok) {
-          const payload = await res.json() as { error?: string };
-          throw new Error(payload.error ?? "read_failed");
-        }
-        return res.json() as Promise<RailFileReadResult>;
-      },
-      imageUrl: (relativePath: string): string => {
-        if (!theaterId) return "";
-        return `/theaters/${encodeURIComponent(theaterId)}/files/image?path=${encodeURIComponent(relativePath)}`;
-      },
-    },
-    diff: {
-      listChangedFiles: async (mode, ref?) => {
-        if (!theaterId) throw new Error("no_theater");
-        const res = await fetch(`/theaters/${encodeURIComponent(theaterId)}/diff`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, ref }),
-        });
-        if (!res.ok) {
-          const payload = await res.json() as { error?: string };
-          throw new Error(payload.error ?? "diff_failed");
-        }
-        return res.json() as Promise<RailDiffListResult>;
-      },
-      unifiedDiff: async (filePath, mode, ref?) => {
-        if (!theaterId) throw new Error("no_theater");
-        const res = await fetch(`/theaters/${encodeURIComponent(theaterId)}/diff/file`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filePath, mode, ref }),
-        });
-        if (!res.ok) {
-          const payload = await res.json() as { error?: string };
-          throw new Error(payload.error ?? "diff_file_failed");
-        }
-        return res.json() as Promise<RailDiffHunkResult>;
-      },
-    },
-  }), [theaterId]);
 }

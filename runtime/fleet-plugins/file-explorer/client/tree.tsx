@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { RailFolderEntry, RailFolderListResult, RailHostFiles } from "@fleet-console/sdk/rail";
+import type { FolderEntry, FolderListResult } from "../server/types.js";
 
 import { FileIcon, FolderIcon } from "./file-icon.js";
 
+export interface PluginFilesClient {
+  readonly listFolder: (relativePath?: string) => Promise<FolderListResult>;
+}
+
 interface FileTreeProps {
-  readonly files: RailHostFiles;
+  readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
-  readonly onSelect: (entry: RailFolderEntry) => void;
+  readonly onSelect: (entry: FolderEntry) => void;
 }
 
 interface FlatRow {
-  readonly entry: RailFolderEntry;
+  readonly entry: FolderEntry;
   readonly depth: number;
   readonly isSelected: boolean;
   readonly isExpanded: boolean;
@@ -25,8 +29,8 @@ const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
 
 function hasFilterMatch(
-  entries: readonly RailFolderEntry[],
-  childResults: Map<string, RailFolderListResult>,
+  entries: readonly FolderEntry[],
+  childResults: Map<string, FolderListResult>,
   low: string,
   showHidden: boolean,
 ): boolean {
@@ -42,12 +46,12 @@ function hasFilterMatch(
 }
 
 function buildFlatRows(
-  entries: readonly RailFolderEntry[],
+  entries: readonly FolderEntry[],
   depth: number,
   selectedPath: string | null,
   expandedDirs: Set<string>,
   loadingDirs: Set<string>,
-  childResults: Map<string, RailFolderListResult>,
+  childResults: Map<string, FolderListResult>,
   low: string,
   showHidden: boolean,
 ): FlatRow[] {
@@ -82,12 +86,12 @@ function buildFlatRows(
 }
 
 export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeProps) {
-  const [result, setResult] = useState<RailFolderListResult | null>(null);
+  const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string>("");
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
-  const [childResults, setChildResults] = useState<Map<string, RailFolderListResult>>(new Map());
+  const [childResults, setChildResults] = useState<Map<string, FolderListResult>>(new Map());
   const [filterText, setFilterText] = useState<string>("");
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
@@ -120,7 +124,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     return () => ro.disconnect();
   }, []);
 
-  const handleDirClick = useCallback((entry: RailFolderEntry) => {
+  const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -139,7 +143,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
     }
   }, [files, childResults]);
 
-  const handleEntryClick = useCallback((entry: RailFolderEntry) => {
+  const handleEntryClick = useCallback((entry: FolderEntry) => {
     if (entry.kind === "dir") handleDirClick(entry);
     else onSelect(entry);
   }, [handleDirClick, onSelect]);
@@ -269,7 +273,7 @@ export function FileTree({ files, theaterId, selectedPath, onSelect }: FileTreeP
 
 interface FlatTreeRowProps {
   readonly row: FlatRow;
-  readonly onEntryClick: (entry: RailFolderEntry) => void;
+  readonly onEntryClick: (entry: FolderEntry) => void;
 }
 
 function FlatTreeRow({ row, onEntryClick }: FlatTreeRowProps) {

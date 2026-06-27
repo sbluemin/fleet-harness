@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { RailDiffFileEntry, RailDiffListResult, RailPanelContext } from "@fleet-console/sdk/rail";
+import type { RailPanelContext } from "@fleet-console/sdk/rail";
+
+import type { DiffFileEntry, DiffListResult } from "../server/types.js";
 
 type DiffMode = "workdir" | "staged" | "commit";
 
@@ -8,23 +10,23 @@ interface ChangedFilesProps {
   readonly ctx: RailPanelContext;
   readonly mode: DiffMode;
   readonly selectedPath: string | null;
-  readonly onSelect: (entry: RailDiffFileEntry | null) => void;
+  readonly onSelect: (entry: DiffFileEntry | null) => void;
 }
 
 type LoadState =
   | { readonly kind: "idle" }
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly result: RailDiffListResult }
+  | { readonly kind: "ok"; readonly result: DiffListResult }
   | { readonly kind: "error"; readonly message: string };
 
-const STATUS_GLYPH: Record<RailDiffFileEntry["status"], string> = {
+const STATUS_GLYPH: Record<DiffFileEntry["status"], string> = {
   M: "M",
   A: "A",
   D: "D",
   R: "R",
 };
 
-const STATUS_LABEL: Record<RailDiffFileEntry["status"], string> = {
+const STATUS_LABEL: Record<DiffFileEntry["status"], string> = {
   M: "modified",
   A: "added",
   D: "deleted",
@@ -35,15 +37,24 @@ export function ChangedFiles({ ctx, mode, selectedPath, onSelect }: ChangedFiles
   const [state, setState] = useState<LoadState>({ kind: "idle" });
 
   useEffect(() => {
+    if (!ctx.theaterId) {
+      setState({ kind: "error", message: "no_theater" });
+      return;
+    }
     let cancelled = false;
     setState({ kind: "loading" });
-    ctx.host.diff.listChangedFiles(mode).then((result) => {
+    ctx.api.fetch("diff", "changed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: ctx.theaterId, mode }),
+    }).then(async (res) => {
+      const result = await res.json() as DiffListResult;
       if (!cancelled) setState({ kind: "ok", result });
     }).catch((err: unknown) => {
       if (!cancelled) setState({ kind: "error", message: err instanceof Error ? err.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.host.diff, mode, ctx.theaterId]);
+  }, [ctx.api, mode, ctx.theaterId]);
 
   const handleRefresh = useCallback(() => {
     setState({ kind: "idle" });
@@ -84,9 +95,9 @@ export function ChangedFiles({ ctx, mode, selectedPath, onSelect }: ChangedFiles
 }
 
 interface FileRowProps {
-  readonly entry: RailDiffFileEntry;
+  readonly entry: DiffFileEntry;
   readonly isSelected: boolean;
-  readonly onSelect: (entry: RailDiffFileEntry) => void;
+  readonly onSelect: (entry: DiffFileEntry) => void;
 }
 
 function FileRow({ entry, isSelected, onSelect }: FileRowProps) {

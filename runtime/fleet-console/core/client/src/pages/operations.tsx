@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 
+import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, loadForTheater, pruneOperations, setMaximizedOperationId, useMaximizedOperationId } from "../canvas/canvas-store.js";
+import { createHostCapabilities } from "../plugin-capabilities.js";
 import { RightRail } from "../rail/right-rail.js";
 import { consumeOperationFocus, focusOperation, nextOperationId, setActiveOperation } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
+
+const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 
 interface OperationsProps {
   readonly state: ConsoleState;
@@ -77,7 +82,7 @@ export function Operations({ state }: OperationsProps) {
       ref={bodyRef}
     >
       <OperationsCanvas state={state} />
-      <RightRail theaterId={state.activeTheaterId} />
+      <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
     </div>
   );
 }

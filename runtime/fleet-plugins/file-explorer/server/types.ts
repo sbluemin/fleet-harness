@@ -10,3 +10,11 @@ export interface FolderListResult {
   readonly entries: readonly FolderEntry[];
   readonly truncated?: true;
 }
+
+export interface FileReadResult {
+  readonly relativePath: string;
+  readonly content: string;
+  readonly lang: string;
+  readonly truncated?: boolean;
+  readonly binary?: boolean;
+}
