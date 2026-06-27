@@ -1,0 +1,187 @@
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
+
+import type { OperationNode } from "../types.js";
+
+export type SideBarUnderway = "live" | "turn" | "awaiting" | null;
+
+export interface SideBarEntry {
+  readonly operation: OperationNode;
+  readonly active: boolean;
+  readonly minimized: boolean;
+  readonly beaconClassName: string;
+  readonly notificationCount: number;
+  readonly underway: SideBarUnderway;
+  readonly showRing: boolean;
+}
+
+interface SideBarChipProps {
+  readonly entry: SideBarEntry;
+  readonly index: number;
+  readonly isCloseArmed: boolean;
+  readonly accentValue: string | null;
+  readonly dragging: boolean;
+  readonly dragOffsetY: number;
+  readonly dropTarget: boolean;
+  readonly onArmClose: (operationId: string) => void;
+  readonly onDisarmClose: () => void;
+  readonly onClose: (operationId: string) => void;
+  readonly onFocus: (operationId: string) => void;
+  readonly onKeyboardMove: (operationId: string, direction: -1 | 1) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => void;
+  readonly onPointerDragMove: (event: ReactPointerEvent<HTMLLIElement>) => void;
+  readonly onPointerDragEnd: (event: ReactPointerEvent<HTMLLIElement>) => void;
+  readonly onPointerDragCancel: (event: ReactPointerEvent<HTMLLIElement>) => void;
+  readonly onOpenAccent: (operationId: string, anchor: DOMRect) => void;
+}
+
+export function OperationsSideBarChip({
+  entry,
+  index,
+  isCloseArmed,
+  accentValue,
+  dragging,
+  dragOffsetY,
+  dropTarget,
+  onArmClose,
+  onDisarmClose,
+  onClose,
+  onFocus,
+  onKeyboardMove,
+  onPointerDragStart,
+  onPointerDragMove,
+  onPointerDragEnd,
+  onPointerDragCancel,
+  onOpenAccent,
+}: SideBarChipProps) {
+  const suppressClickRef = useRef(false);
+  const { operation, active, minimized, beaconClassName, notificationCount, underway } = entry;
+  const title = displayTitle(operation);
+  const chipClassName = [
+    "side-bar-chip",
+    active ? "side-bar-chip--active" : "",
+    minimized ? "side-bar-chip--minimized" : "",
+    underway ? `side-bar-chip--underway side-bar-chip--underway-${underway}` : "",
+    entry.showRing ? "side-bar-chip--underway-ring" : "",
+    dragging ? "side-bar-chip--dragging" : "",
+    dropTarget ? "side-bar-chip--drop-target" : "",
+  ].filter(Boolean).join(" ");
+  const closeClassName = ["side-bar-chip-close", isCloseArmed ? "is-armed" : ""].filter(Boolean).join(" ");
+  const chipStyle = {
+    "--i": index,
+    ...(accentValue ? { "--chip-accent": accentValue } : {}),
+    ...(dragging ? { "--drag-dy": `${Math.round(dragOffsetY)}px` } : {}),
+  } as CSSProperties;
+
+  const focus = () => {
+    onDisarmClose();
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onFocus(operation.id);
+  };
+  const stopClosePointer = (event: SyntheticEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  };
+  const close = (event: SyntheticEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!isCloseArmed) {
+      onArmClose(operation.id);
+      return;
+    }
+    onDisarmClose();
+    onClose(operation.id);
+  };
+  const openAccent = (event: SyntheticEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
+  };
+
+  return (
+    <li
+      data-side-bar-chip-id={operation.id}
+      className={chipClassName}
+      role="button"
+      tabIndex={0}
+      aria-label={active ? `${title} (focused)` : `Focus operation ${title}`}
+      aria-current={active ? "true" : undefined}
+      title={active ? "Focused" : "Click to focus"}
+      style={chipStyle}
+      onClick={focus}
+      onFocus={() => {
+        if (!isCloseArmed) onDisarmClose();
+      }}
+      onPointerDown={(event) => onPointerDragStart(event, operation.id)}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onPointerUp={(event) => {
+        if (dragging) suppressClickRef.current = true;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.stopPropagation();
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        // 재배치: Alt+Shift+↑/↓ — shift 없는 Alt+↑/↓는 operations의 Operation 순환이 가져간다.
+        if (event.altKey && event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+          event.preventDefault();
+          onKeyboardMove(operation.id, event.key === "ArrowUp" ? -1 : 1);
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          focus();
+        }
+      }}
+      onPointerMoveCapture={(event) => onPointerDragMove(event)}
+      onPointerUpCapture={(event) => onPointerDragEnd(event)}
+      onPointerCancelCapture={(event) => onPointerDragCancel(event)}
+    >
+      <button
+        type="button"
+        className="side-bar-chip-beacon-button"
+        onPointerDown={stopClosePointer}
+        onClick={openAccent}
+        aria-label={`Set accent for operation ${title}`}
+        aria-haspopup="menu"
+        title="Set accent"
+      >
+        <span className={beaconClassName} aria-hidden="true" />
+      </button>
+      <span className="side-bar-chip-name">{title}</span>
+      {notificationCount > 0 ? (
+        <span className="side-bar-chip-count">{notificationCount}</span>
+      ) : null}
+      <button
+        type="button"
+        className={closeClassName}
+        onPointerDown={stopClosePointer}
+        onClick={close}
+        aria-label={isCloseArmed ? `Confirm close operation ${title}` : `Close operation ${title}`}
+        title={isCloseArmed ? "Confirm close" : "Close operation"}
+      >
+        {isCloseArmed ? "Close?" : <SideBarCloseIcon />}
+      </button>
+    </li>
+  );
+}
+
+function displayTitle(operation: OperationNode): string {
+  return operation.renamedTitle ?? operation.title;
+}
+
+function SideBarCloseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
