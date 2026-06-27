@@ -2660,15 +2660,67 @@
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
 }
 
-/* 우클릭 캔버스 컨텍스트 메뉴의 그룹(섹션) 라벨. */
-.canvas-context-menu-group {
-  margin: 0;
-  padding: var(--space-2) var(--space-2) var(--space-1);
+/* Operations Control 헤더 — 레티클 마크 + 타이틀 + 활성 Theater 부제.
+   좌하단 런처와 우클릭 메뉴를 단순 'add'에서 작전 통제면으로 승격하는 정체성 블록. */
+.canvas-context-menu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.canvas-context-menu-reticle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  color: var(--brass);
+}
+
+.canvas-context-menu-reticle svg {
+  width: 30px;
+  height: 30px;
+}
+
+.canvas-context-menu-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.canvas-context-menu-head-text strong {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink-pearl);
+}
+
+.canvas-context-menu-head-text span {
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-fog);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Launch / Map 섹션 라벨 — 작전 통제면을 행위 카테고리로 나눈다(브래스="보는 곳"). */
+.canvas-context-menu-section {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
 }
 
 .canvas-context-menu-plugin {
@@ -3216,8 +3268,8 @@
   z-index: 15;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
@@ -3243,8 +3295,8 @@
 
 .canvas-launcher-fab svg {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 .canvas-dock-rail {

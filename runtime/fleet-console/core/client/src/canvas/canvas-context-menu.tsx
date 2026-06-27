@@ -7,6 +7,9 @@ interface CanvasContextMenuProps {
   readonly viewportBounds?: { readonly width: number; readonly height: number };
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
+  // Operations Control 헤더 부제 — 활성 Theater 라벨과 그 안의 Operation 수.
+  readonly theaterLabel?: string;
+  readonly operationCount?: number;
   // 아이콘은 플러그인 소유다 — console-core는 어떤 플러그인인지 모른 채 렌더만 위임한다.
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string, kind: OperationLaunchKind) => void;
@@ -15,10 +18,11 @@ interface CanvasContextMenuProps {
 }
 
 const MENU_WIDTH = 208;
-const MENU_MAX_HEIGHT = 360;
+// 헤더 + Launch/Map 섹션 라벨이 추가돼 메뉴가 더 길어졌으므로, 화면 안에 머물도록 클램프 높이를 키운다.
+const MENU_MAX_HEIGHT = 440;
 const MENU_MARGIN = 12;
 
-export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, renderKindIcon, onLaunchKind, onResetView, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, theaterLabel, operationCount, renderKindIcon, onLaunchKind, onResetView, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -49,8 +53,15 @@ export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, 
       style={clampedAnchorStyle(anchor, viewportBounds)}
       data-canvas-blocker
     >
-      <div className="operation-launch-menu theater-menu canvas-context-menu" role="menu" aria-label="Canvas actions" tabIndex={-1} ref={menuRef}>
-        <p className="canvas-context-menu-group">New Operation</p>
+      <div className="operation-launch-menu theater-menu canvas-context-menu" role="menu" aria-label="Operations Control" tabIndex={-1} ref={menuRef}>
+        <div className="canvas-context-menu-head">
+          <span className="canvas-context-menu-reticle" aria-hidden="true"><CommandReticleIcon /></span>
+          <span className="canvas-context-menu-head-text">
+            <strong>Operations Control</strong>
+            {theaterLabel ? <span>{`${theaterLabel} · ${operationCount ?? 0} ${operationCount === 1 ? "operation" : "operations"}`}</span> : null}
+          </span>
+        </div>
+        <p className="canvas-context-menu-section">Launch</p>
         {catalog.length > 0 ? catalog.map((plugin, index) => (
           <div key={plugin.id}>
             {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
@@ -75,13 +86,25 @@ export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, 
             })}
           </div>
         )) : <p className="theater-menu-empty">No operations available.</p>}
-        <div className="theater-menu-divider" role="separator" />
+        <p className="canvas-context-menu-section">Map</p>
         <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" onClick={onResetView}>
           <span className="theater-menu-check" aria-hidden="true"><ResetGlyph /></span>
           <span className="theater-menu-label">Reset view</span>
         </button>
       </div>
     </div>
+  );
+}
+
+// 좌하단 런처 FAB와 메뉴 헤더가 공유하는 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +
+// 중앙의 '+'(생성 의미 보존). 브랜드 베어링 스코프 계열로, 단순 plus를 Operations Control 진입점으로 승격한다.
+export function CommandReticleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M12 2.4v3.4M12 18.2v3.4M2.4 12h3.4M18.2 12h3.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M12 9.2v5.6M9.2 12h5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   );
 }
 

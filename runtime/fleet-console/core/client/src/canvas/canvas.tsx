@@ -11,7 +11,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode, TerminalFontSettings } from "../types.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { CanvasDock } from "./canvas-dock.js";
-import { CanvasContextMenu } from "./canvas-context-menu.js";
+import { CanvasContextMenu, CommandReticleIcon } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
 import { MapShortcuts } from "./map-shortcuts.js";
@@ -319,6 +319,8 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           viewportBounds={viewportBoundsFor(canvasRef.current)}
           catalog={catalog}
           canLaunch={!!state.activeTheaterId && !launchPending}
+          theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label}
+          operationCount={theaterOperations.length}
           renderKindIcon={renderKindIcon}
           onLaunchKind={handleLaunchKind}
           onResetView={handleResetView}
@@ -349,10 +351,10 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           className="canvas-launcher-fab"
           onClick={handleOpenLauncher}
           data-canvas-blocker
-          aria-label="새 패널 만들기"
-          title="New panel"
+          aria-label="Open Operations Control"
+          title="Operations Control"
         >
-          <PlusIcon />
+          <CommandReticleIcon />
         </button>
       ) : null}
       <CanvasDock
@@ -377,14 +379,6 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         }}
       />
     </main>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
   );
 }
 
