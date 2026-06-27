@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { FileReadError, readFileForTheater } from "../core/host/file-reader.js";
-import { ImageServeError, readImageForTheater } from "../core/host/image-server.js";
+import { FileReadError, readFileForTheater } from "../server/file-reader.js";
+import { ImageServeError, readImageForTheater } from "../server/image-server.js";
 
 let tmpDir: string;
 let theaterPath: string;

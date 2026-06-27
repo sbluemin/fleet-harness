@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isSafeGitRef } from "../core/host/server.js";
+import { isSafeGitRef } from "../server/diff.js";
 
 describe("isSafeGitRef", () => {
   it("accepts short SHA (7 hex)", () => {

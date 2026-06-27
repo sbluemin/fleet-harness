@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listTheaterContents } from "../core/host/theater-folder-browser.js";
+import { listTheaterContents } from "../server/folder-browser.js";
 
 describe("listTheaterContents", () => {
   it("dotfile(.env)과 dotfolder(.hidden)를 결과에 포함한다", async () => {

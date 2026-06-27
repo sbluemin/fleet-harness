@@ -15,10 +15,7 @@ import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResp
 import { createCarrierSettingsRouter } from "./carrier-settings-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, type DurableConsoleState } from "./durable-state.js";
-import { FileReadError, readFileForTheater } from "./file-reader.js";
-import { GitExecutorError, runGit } from "./git-executor.js";
 import { createGlobalSettingsRouter } from "./global-settings-routes.js";
-import { ImageServeError, readImageForTheater, writeImageResponse } from "./image-server.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { createOperationsRouter } from "./operations/routes.js";
 import { createOperationStore } from "./operations/store.js";
@@ -33,7 +30,7 @@ import { RouteRegistry } from "./route-registry/route-registry.js";
 import { UpgradeRegistry } from "./route-registry/upgrade-registry.js";
 import { withSecurityHeaders } from "./security-headers.js";
 import { createStaticConsoleHandler } from "./static-console.js";
-import { listTheaterContents, listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
+import { listTheaterFolders, TheaterFolderListError } from "./theater-folder-browser.js";
 import { createFolderGrantStore } from "./theater-folder-grants.js";
 import type { TheaterRegistration } from "./theaters.js";
 import { TheaterRegistry } from "./theaters.js";
@@ -100,9 +97,6 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
-// SHA(7-40 hex) 또는 브랜치/태그명(영숫자로 시작, 최대 251자). 선두 `-` 옵션류를 완전 차단한다.
-const REF_SAFE_RE = /^(?:[a-f0-9]{7,40}|[A-Za-z0-9][A-Za-z0-9/_.~^-]{0,250})$/;
-
 export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "GET",
@@ -204,41 +198,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
   {
     method: "POST",
-    path: "/theaters/:id/files/list",
-    summary: "Theater 내 디렉토리 목록을 조회합니다.",
-    category: "Observer",
-    gate: "terminal-origin",
-  },
-  {
-    method: "POST",
-    path: "/theaters/:id/files/read",
-    summary: "Theater 내 파일을 읽습니다.",
-    category: "Observer",
-    gate: "terminal-origin",
-  },
-  {
-    method: "GET",
-    path: "/theaters/:id/files/image",
-    summary: "Theater 내 이미지를 제공합니다.",
-    category: "Observer",
-    gate: "terminal-origin",
-  },
-  {
-    method: "POST",
-    path: "/theaters/:id/diff",
-    summary: "Theater git diff 변경 파일 목록을 조회합니다.",
-    category: "Observer",
-    gate: "terminal-origin",
-  },
-  {
-    method: "POST",
-    path: "/theaters/:id/diff/file",
-    summary: "Theater git diff 파일 내용을 조회합니다.",
-    category: "Observer",
-    gate: "terminal-origin",
-  },
-  {
-    method: "POST",
     path: "/update/apply",
     summary: "Request console update application.",
     category: "Update",
@@ -252,10 +211,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "lock-token",
   },
 ];
-
-export function isSafeGitRef(ref: string): boolean {
-  return REF_SAFE_RE.test(ref);
-}
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
@@ -513,31 +468,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       runAsyncHandler(handleObserverTheaterSessions(req, res, decodeURIComponent(theaterSessionMatch[1] ?? "")), res);
       return;
     }
-    const theaterFilesListMatch = pathname.match(/^\/theaters\/([^/]+)\/files\/list$/);
-    if (theaterFilesListMatch) {
-      runAsyncHandler(handleTheaterFilesList(req, res, decodeURIComponent(theaterFilesListMatch[1] ?? "")), res);
-      return;
-    }
-    const theaterFilesReadMatch = pathname.match(/^\/theaters\/([^/]+)\/files\/read$/);
-    if (theaterFilesReadMatch) {
-      runAsyncHandler(handleTheaterFilesRead(req, res, decodeURIComponent(theaterFilesReadMatch[1] ?? "")), res);
-      return;
-    }
-    const theaterFilesImageMatch = pathname.match(/^\/theaters\/([^/]+)\/files\/image$/);
-    if (theaterFilesImageMatch) {
-      runAsyncHandler(handleTheaterFilesImage(req, res, decodeURIComponent(theaterFilesImageMatch[1] ?? "")), res);
-      return;
-    }
-    const theaterDiffMatch = pathname.match(/^\/theaters\/([^/]+)\/diff$/);
-    if (theaterDiffMatch) {
-      runAsyncHandler(handleTheaterDiff(req, res, decodeURIComponent(theaterDiffMatch[1] ?? "")), res);
-      return;
-    }
-    const theaterDiffFileMatch = pathname.match(/^\/theaters\/([^/]+)\/diff\/file$/);
-    if (theaterDiffFileMatch) {
-      runAsyncHandler(handleTheaterDiffFile(req, res, decodeURIComponent(theaterDiffFileMatch[1] ?? "")), res);
-      return;
-    }
     if (pathname === "/settings/api-catalog") {
       handleObserverApiCatalog(req, res);
       return;
@@ -741,149 +671,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     writeJson(res, 410, { error: "agent_plugin_required" });
-  }
-
-  async function handleTheaterFilesList(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "POST") { writeJson(res, 405, { error: "Method not allowed" }); return; }
-    if (!isTerminalAuthorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
-    const body = await readJsonBody<{ readonly relativePath?: unknown }>(req);
-    if (!isPlainObject(body) && body !== null) { writeJson(res, 400, { error: "invalid_request" }); return; }
-    const rawRel = (body as Record<string, unknown> | null)?.relativePath;
-    const relPath = rawRel === undefined || rawRel === null ? "" : typeof rawRel === "string" ? rawRel : null;
-    if (relPath === null) { writeJson(res, 400, { error: "invalid_path" }); return; }
-    const theater = theaters.get(theaterId);
-    if (!theater) { writeJson(res, 404, { error: "theater_not_found" }); return; }
-    try {
-      const result = await listTheaterContents(theater.path, relPath);
-      writeJson(res, 200, result);
-    } catch (error) {
-      if (error instanceof TheaterFolderListError) {
-        writeJson(res, theaterFolderListStatus(error), { error: error.code });
-        return;
-      }
-      throw error;
-    }
-  }
-
-  async function handleTheaterFilesRead(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "POST") { writeJson(res, 405, { error: "Method not allowed" }); return; }
-    if (!isTerminalAuthorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
-    const body = await readJsonBody<{ readonly relativePath?: unknown }>(req);
-    if (!isPlainObject(body) || typeof body.relativePath !== "string") { writeJson(res, 400, { error: "invalid_path" }); return; }
-    const theater = theaters.get(theaterId);
-    if (!theater) { writeJson(res, 404, { error: "theater_not_found" }); return; }
-    try {
-      const result = await readFileForTheater(theater.path, body.relativePath);
-      writeJson(res, 200, result);
-    } catch (error) {
-      if (error instanceof FileReadError) {
-        const httpStatus = error.code === "path_outside_theater" || error.code === "forbidden" ? 403 : error.code === "binary_file" ? 422 : 404;
-        writeJson(res, httpStatus, { error: error.code });
-        return;
-      }
-      throw error;
-    }
-  }
-
-  async function handleTheaterFilesImage(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "GET") { writeJson(res, 405, { error: "Method not allowed" }); return; }
-    if (!isTerminalAuthorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
-    const relPath = readUrl(req).searchParams.get("path");
-    if (!relPath) { writeJson(res, 400, { error: "invalid_path" }); return; }
-    const theater = theaters.get(theaterId);
-    if (!theater) { writeJson(res, 404, { error: "theater_not_found" }); return; }
-    try {
-      const result = await readImageForTheater(theater.path, relPath);
-      writeImageResponse(res, result);
-    } catch (error) {
-      if (error instanceof ImageServeError) {
-        const httpStatus = error.code === "path_outside_theater" || error.code === "mime_not_allowed" || error.code === "forbidden" ? 403 : error.code === "size_exceeded" ? 413 : 404;
-        writeJson(res, httpStatus, { error: error.code });
-        return;
-      }
-      throw error;
-    }
-  }
-
-  async function handleTheaterDiff(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "POST") { writeJson(res, 405, { error: "Method not allowed" }); return; }
-    if (!isTerminalAuthorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
-    const body = await readJsonBody<{ readonly mode?: unknown; readonly ref?: unknown }>(req);
-    if (!isPlainObject(body)) { writeJson(res, 400, { error: "invalid_request" }); return; }
-    const mode = body.mode;
-    if (mode !== "workdir" && mode !== "staged" && mode !== "commit") {
-      writeJson(res, 400, { error: "invalid_mode" });
-      return;
-    }
-    const rawRef = typeof body.ref === "string" ? body.ref : undefined;
-    if (rawRef !== undefined && !isSafeGitRef(rawRef)) {
-      writeJson(res, 400, { error: "invalid_ref" });
-      return;
-    }
-    const ref = rawRef;
-    const theater = theaters.get(theaterId);
-    if (!theater) { writeJson(res, 404, { error: "theater_not_found" }); return; }
-    try {
-      const diffArgs = buildDiffArgs(mode, ref);
-      const nameStatusArgs = [...diffArgs, "--name-status", "--diff-filter=MADR"];
-      const numstatArgs = [...diffArgs, "--numstat", "--diff-filter=MADR"];
-      const [nameStatusResult, numstatResult] = await Promise.all([
-        runGit(nameStatusArgs, { cwd: theater.path }),
-        runGit(numstatArgs, { cwd: theater.path }),
-      ]);
-      const files = parseDiffFileList(nameStatusResult.stdout, numstatResult.stdout);
-      writeJson(res, 200, { files, truncated: nameStatusResult.truncated || numstatResult.truncated });
-    } catch (error) {
-      if (error instanceof GitExecutorError) {
-        if (error.code === "no_git_repo") { writeJson(res, 422, { error: "no_git_repo" }); return; }
-        writeJson(res, 500, { error: "git_failed" });
-        return;
-      }
-      throw error;
-    }
-  }
-
-  async function handleTheaterDiffFile(req: http.IncomingMessage, res: http.ServerResponse, theaterId: string): Promise<void> {
-    if (req.method !== "POST") { writeJson(res, 405, { error: "Method not allowed" }); return; }
-    if (!isTerminalAuthorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
-    const body = await readJsonBody<{ readonly filePath?: unknown; readonly mode?: unknown; readonly ref?: unknown }>(req);
-    if (!isPlainObject(body) || typeof body.filePath !== "string") {
-      writeJson(res, 400, { error: "invalid_request" });
-      return;
-    }
-    const mode = body.mode;
-    if (mode !== "workdir" && mode !== "staged" && mode !== "commit") {
-      writeJson(res, 400, { error: "invalid_mode" });
-      return;
-    }
-    const rawFilePath = body.filePath;
-    const theater = theaters.get(theaterId);
-    if (!theater) { writeJson(res, 404, { error: "theater_not_found" }); return; }
-    const resolvedPath = path.resolve(theater.path, rawFilePath);
-    if (!resolvedPath.startsWith(theater.path + path.sep) && resolvedPath !== theater.path) {
-      writeJson(res, 403, { error: "path_outside_theater" });
-      return;
-    }
-    const relativePath = path.normalize(rawFilePath);
-    if (relativePath.startsWith("..")) { writeJson(res, 403, { error: "path_outside_theater" }); return; }
-    const rawRef = typeof body.ref === "string" ? body.ref : undefined;
-    if (rawRef !== undefined && !isSafeGitRef(rawRef)) {
-      writeJson(res, 400, { error: "invalid_ref" });
-      return;
-    }
-    const ref = rawRef;
-    try {
-      const diffArgs = [...buildDiffArgs(mode, ref), "--unified=3", "--", relativePath];
-      const result = await runGit(diffArgs, { cwd: theater.path });
-      writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
-    } catch (error) {
-      if (error instanceof GitExecutorError) {
-        if (error.code === "no_git_repo") { writeJson(res, 422, { error: "no_git_repo" }); return; }
-        writeJson(res, 500, { error: "git_failed" });
-        return;
-      }
-      throw error;
-    }
   }
 
   function handleObserverStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -1458,43 +1245,3 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-function buildDiffArgs(mode: "workdir" | "staged" | "commit", ref?: string): string[] {
-  if (mode === "staged") return ["diff", "--cached"];
-  if (mode === "commit" && ref) return ["diff", `${ref}^`, ref];
-  return ["diff"];
-}
-
-interface DiffFileEntry {
-  readonly path: string;
-  readonly status: "M" | "A" | "D" | "R";
-  readonly additions: number;
-  readonly deletions: number;
-}
-
-function parseDiffFileList(nameStatusOutput: string, numstatOutput: string): DiffFileEntry[] {
-  const numstatMap = new Map<string, { readonly additions: number; readonly deletions: number }>();
-  for (const line of numstatOutput.split("\n")) {
-    const parts = line.split("\t");
-    if (parts.length < 3) continue;
-    const [adds, dels, filePath] = parts;
-    if (!filePath) continue;
-    numstatMap.set(filePath, {
-      additions: parseInt(adds ?? "0", 10) || 0,
-      deletions: parseInt(dels ?? "0", 10) || 0,
-    });
-  }
-
-  const files: DiffFileEntry[] = [];
-  for (const line of nameStatusOutput.split("\n")) {
-    if (!line.trim()) continue;
-    const [rawStatus, ...pathParts] = line.split("\t");
-    if (!rawStatus || pathParts.length === 0) continue;
-    const statusChar = rawStatus.charAt(0).toUpperCase();
-    if (statusChar !== "M" && statusChar !== "A" && statusChar !== "D" && statusChar !== "R") continue;
-    const filePath = statusChar === "R" ? (pathParts[1] ?? pathParts[0] ?? "") : (pathParts[0] ?? "");
-    if (!filePath) continue;
-    const nums = numstatMap.get(filePath) ?? { additions: 0, deletions: 0 };
-    files.push({ path: filePath, status: statusChar as "M" | "A" | "D" | "R", ...nums });
-  }
-  return files;
-}
