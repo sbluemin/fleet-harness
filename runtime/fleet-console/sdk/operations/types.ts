@@ -11,16 +11,6 @@ export interface OperationTimestamps {
   readonly updatedAt: number;
 }
 
-export type TerminalFontSource = "curated" | "custom";
-
-export interface TerminalFontSettings {
-  readonly source: TerminalFontSource;
-  readonly id: string | null;
-  readonly customName: string;
-  readonly family: string;
-  readonly size: number;
-}
-
 export interface OperationNode {
   readonly id: string;
   readonly theaterId: string;

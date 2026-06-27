@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import type { LaunchContext } from "../launch/types.js";
 import type { ClientNotification } from "../notifications/types.js";
-import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationNode, OperationPatchInput, OperationGeometry, TerminalFontSettings } from "../operations/types.js";
+import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
 import type { SettingsSectionDescriptor } from "../settings/types.js";
@@ -102,8 +102,6 @@ export interface OperationRenderContext extends OperationContext {
   readonly operation: OperationNode;
   readonly zoom: number;
   readonly theme: ConsoleTheme;
-  readonly terminalRenderer: TerminalRenderer;
-  readonly terminalFont?: TerminalFontSettings;
   readonly api: ClientApiCapability;
   readonly lifecycle: ClientLifecycleCapability;
   readonly terminal: ClientTerminalCapability;
