@@ -121,7 +121,8 @@ These guards are robustness measures on top of the trust model, not a replacemen
 - The host bridges plugin capabilities to console client state through `createHostCapabilities` (`core/client/src/plugin-capabilities.ts`). It overwrites the SDK no-op defaults for `notifications` and `status` with store-bound implementations:
   - `notifications.emit` feeds `operationNotifications` (ALERTS are shown only for Operations that are not currently visible).
   - `status.set` / `status.clear` feed `operationStatus`, which drives the running-panel perimeter progress rim and beacon.
-- `theme` and `terminalRenderer` are passed to plugins through `OperationRenderContext` (not through a capability), so plugins receive the current `ConsoleTheme` and `TerminalRenderer` reactively on every canvas render. Host token boundaries remain unchanged: these are transient client-only values; no tokens, paths, or credentials cross into plugin code.
+- `theme` is passed to plugins through `OperationRenderContext` (not through a capability), so plugins receive the current `ConsoleTheme` reactively on every canvas render. Host token boundaries remain unchanged: these are transient client-only values; no tokens, paths, or credentials cross into plugin code.
+- Terminal renderer and font preferences are **not** in `OperationRenderContext`. The Terminal plugin owns these prefs end-to-end through a module-scoped `useSyncExternalStore` store (`client/shared/terminal-prefs-store.ts`), stored under `fleet-plugin.terminal.renderer` and `fleet-plugin.terminal.font` localStorage keys. All mounted terminal panels subscribe directly and react instantly to settings changes. `fleet-plugin.terminal.*` keys are Terminal plugin-owned; core and other plugins must not read or write them.
 - The SDK contract is invariant. Host code may only extend capability implementations; it must not add new capability surface areas or require plugins to import core modules.
 
 ## Window System
