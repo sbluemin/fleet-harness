@@ -63,6 +63,59 @@
 - `runtime/fleet-console/core/host/**` may import `@dotobokuri/fleet-admiral` public root exports for server-only Agent CLI launch/runtime assembly. `runtime/fleet-console/core/client/**` must not import `@dotobokuri/fleet-admiral`.
 - Fleet Console core host, core client, and built-in plugins may import `@fleet-console/sdk` domain subpaths. The SDK is the plugin-facing contract SSoT and must not import back from core, `@dotobokuri/*`, or `@fleet-plugins/*`.
 
+## External Client Plugins
+
+Fleet Console can load third-party client plugins from `~/.fleet/plugins/<id>/` alongside the built-in Terminal plugin. Built-in plugins remain statically resolved through `virtual:fleet-plugins`; only external plugins are discovered and loaded at runtime.
+
+### Discovery & Manifest
+
+- External plugins are discovered under `~/.fleet/plugins/<id>/`. Each plugin directory must contain a `plugin.json` manifest.
+- Required and optional manifest fields:
+  - `id` (required): plugin identifier, must match `^[a-z0-9][a-z0-9-]*$`.
+  - `name?`: human-readable plugin name.
+  - `apiVersion?`: integer major version. External plugins must match the console SDK major version (`SDK_API_VERSION`); a mismatch causes the plugin to be hard-skipped.
+  - `client?`: relative path to the browser client entry (e.g. `client/index.tsx`).
+  - `routes?`: relative path to the Node server route module (e.g. `routes.ts`).
+  - `sensitiveFields?`: list of operation payload fields the plugin considers sensitive; these augment core sanitization for observer responses.
+- Plugin entry paths are validated to stay within the plugin root; absolute paths or `..` segments are rejected.
+
+### Server Runtime Routes
+
+- Core owns three dedicated routes under `/plugin-runtime/`:
+  - `GET /plugin-runtime/manifest` returns the external-plugin catalog DTO `{ plugins: { id, name?, clientUrl, apiVersion }[] }`.
+  - `GET /plugin-runtime/client/<id>.mjs` serves the bundled external plugin client.
+  - `GET /plugin-runtime/shim/<name>.mjs` serves React/SDK shims that re-export the console runtime singleton.
+- These routes are intentionally **not** under `/plugins/` or `/console/` to avoid overlap with plugin-scoped routes and static fallback handling.
+- External route modules (`.ts`) are bundled with esbuild into temporary ESM bundles; plain `.mjs`/`.js` files are served directly. `react`, `react/jsx-runtime`, `@fleet-console/sdk/*`, `@dotobokuri/*`, `@fleet-plugins/*`, and Node built-ins are external for server route bundles.
+
+### Client Loading & Singleton Runtime
+
+- `main.tsx` publishes the console's own React and SDK browser modules to `globalThis.__fleetConsoleRuntime__` before render.
+- Shim modules served from `/plugin-runtime/shim/<name>.mjs` read that global object and re-export the same React/SDK instances, so external plugins share the console's React singleton and avoid dual-React errors.
+- External plugin client sources (`.ts`/`.tsx`) are bundled with esbuild at server startup. `react`, `react/jsx-runtime`, and all `@fleet-console/sdk/*` specifiers are rewritten to shim URLs; import maps are not used.
+- During bootstrap `loadPluginRegistry()` fetches `/plugin-runtime/manifest`, dynamically imports each listed client module, and merges the resulting `operationKinds`, `settingsSections`, and `notificationKinds` into the client plugin registry.
+
+### Trust Model
+
+- **Installing an external plugin equals trusting it.** External plugins run with the same privileges as the console host process on loopback and share the browser origin. This is the same trust model as npm packages or IDE extensions.
+- The console intentionally does **not** sandbox external plugin server routes or client code. Third-party plugins may register full backend routes under their `/plugins/<id>/` namespace and execute in the host Node process.
+- Operators must not install plugins they do not trust. The platform assumes the principal who can write to `~/.fleet/plugins` already has local code-execution capability.
+
+### Safety Guards
+
+These guards are robustness measures on top of the trust model, not a replacement for it:
+
+- `apiVersion` compatibility gate applies only to external plugins; built-in plugins are exempt.
+- Duplicate plugin ids are resolved built-in-first; external duplicates are skipped with a warning.
+- **External plugin boot failures are quarantined**: a failing external plugin is skipped and logs a warning, but the console continues to boot. Built-in plugin boot failures remain hard failures.
+- Client bundling enforces **plugin-root containment** with symlink awareness: transitive imports that escape the plugin root are rejected at bundle time.
+- Manifest, shim, and bundled client payloads must not leak tokens, terminal tickets, raw filesystem paths, provider session ids, transcript paths, or sensitive fields. Bundle path comments are normalized relative to the plugin root so absolute home paths do not appear in browser payloads.
+- Three-layer error boundaries isolate plugin failures: loader-level, settings-section level, and operation-panel level (`PluginErrorBoundary` from `@fleet-console/sdk/react/browser`).
+
+### Sample
+
+- `examples/plugins/notes/` demonstrates a minimal external plugin with a custom Operation panel, a Settings section, and a backend route. To exercise the discovery path, copy the directory to `~/.fleet/plugins/notes` in an isolated HOME.
+
 ## Host↔Plugin Reactive Channel
 
 - The host bridges plugin capabilities to console client state through `createHostCapabilities` (`core/client/src/plugin-capabilities.ts`). It overwrites the SDK no-op defaults for `notifications` and `status` with store-bound implementations:

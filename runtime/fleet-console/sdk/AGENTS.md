@@ -16,6 +16,13 @@
 - `ClientOperationStatusCapability` lets a plugin report Operation activity: `set(operationId, status)` and `clear(operationId)`. The `status` value is an `OperationActivity` (`idle` | `running` | `awaiting` | `live` | `dormant`). The host uses this status to drive the running-panel perimeter rim / beacon.
 - **Capability defaulting pattern (important invariant)**: `createClientCapabilities` provides **no-op default implementations** only for capabilities that need host state (`notifications`, `status`). The host overwrites these with store-bound real implementations in `core/host` via `createHostCapabilities`. The SDK therefore remains the contract plus no-op defaults; the host owns the stateful wiring. The SDK must not depend on `core/`, plugin packages, or `@dotobokuri/*`.
 - Window state (maximize / minimize / active focus) is **host-owned chrome**, not part of the plugin contract. `OperationRenderContext` does not expose window state; minimize, maximize, and focus are handled by the host `OperationFrame`. Plugins render only their panel body and remain PTY- and window-state-agnostic.
+- The SDK exposes authoring helpers that make plugin code easier to write, but these are stateless helpers and existing capability consumers only; they do **not** add new host capability surface:
+  - Stateless UI components in `@fleet-console/sdk/settings/browser`: `SettingsCard`, `SettingsRow`, `SettingsToggle`, `SettingsSelect`, `SettingsField`.
+  - `OperationBody` in `@fleet-console/sdk/operations/browser`.
+  - Capability-consumer hooks in `@fleet-console/sdk/plugin/browser`: `usePluginApi`, `usePluginStorage`, `useOperationStatus` (setter-only).
+  - `PluginErrorBoundary` in `@fleet-console/sdk/react/browser`.
+  - `SDK_API_VERSION` exported from `@fleet-console/sdk/version`, consumed through `FleetPluginManifest.apiVersion` for compatibility gating.
+- `PluginInstallContext` and `OperationRenderContext` remain unchanged as the capability boundaries. `SettingsSectionDescriptor` stays minimal: `{ id, title, render }`.
 
 ## File Rules
 
