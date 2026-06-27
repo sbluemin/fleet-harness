@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RailFolderEntry, RailFolderListResult, RailHostFiles } from "@fleet-console/sdk/rail";
 
+import { FileIcon } from "./file-icon.js";
+
 interface FileTreeProps {
   readonly files: RailHostFiles;
   readonly theaterId: string | null;
@@ -287,26 +289,12 @@ function FlatTreeRow({ row, onEntryClick }: FlatTreeRowProps) {
       onClick={handleClick}
     >
       <span className="fexp-tree-icon" aria-hidden="true">
-        {isDir ? (isExpanded ? "▾" : "▸") : fileIcon(entry.name)}
+        {isDir ? (isExpanded ? "▾" : "▸") : <FileIcon name={entry.name} />}
       </span>
       <span className="fexp-tree-name">{entry.name}</span>
       {isLoading && <span className="fexp-tree-spin" aria-hidden="true">⋯</span>}
     </button>
   );
-}
-
-function fileIcon(name: string): string {
-  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
-  const icons: Record<string, string> = {
-    ts: "⟨⟩", tsx: "⟨⟩", js: "⟨⟩", jsx: "⟨⟩",
-    json: "{}", md: "¶", yaml: "∷", yml: "∷",
-    css: "≡", scss: "≡",
-    png: "◧", jpg: "◧", jpeg: "◧", gif: "◧", webp: "◧", svg: "◧",
-    sh: "$", bash: "$", zsh: "$",
-    go: "◈", rs: "◈", py: "◈",
-    txt: "≡",
-  };
-  return icons[ext] ?? "○";
 }
 
 function readShowHidden(): boolean {
