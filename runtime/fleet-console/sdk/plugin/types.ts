@@ -118,6 +118,7 @@ export interface OperationRenderContext extends OperationContext {
 
 export interface FleetPluginManifest {
   readonly id: string;
+  readonly apiVersion?: number;
   readonly name?: string;
   readonly client?: string;
   readonly routes?: string;

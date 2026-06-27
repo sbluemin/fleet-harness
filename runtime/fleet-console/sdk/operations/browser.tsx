@@ -1,4 +1,13 @@
+import * as React from "react";
+
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationNode } from "./types.js";
+
+export interface OperationBodyProps {
+  readonly children: React.ReactNode;
+  readonly className?: string;
+}
+
+const OPERATION_BODY_CLASS = "fc-operation-body";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -41,6 +50,10 @@ export function hasForbiddenBrowserPayloadKey(value: unknown): boolean {
   return containsForbiddenKey(value, new Set(["canonicalCwd", "cwd", "persona", "prompt", "providerSession", "ticket", "token", "toolAllowlist", "tools", "transcriptPath"]));
 }
 
+export function OperationBody({ children, className }: OperationBodyProps): React.ReactElement {
+  return <div className={joinClassNames(OPERATION_BODY_CLASS, className)}>{children}</div>;
+}
+
 function readCatalogPlugin(value: unknown): OperationCatalogPlugin | null {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.title !== "string" || !Array.isArray(value.kinds)) return null;
   const kinds = value.kinds.map(readLaunchKind).filter((kind): kind is OperationLaunchKind => kind !== null);
@@ -67,4 +80,8 @@ function containsForbiddenKey(value: unknown, forbidden: ReadonlySet<string>): b
   if (!value || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some((item) => containsForbiddenKey(item, forbidden));
   return Object.entries(value as Record<string, unknown>).some(([key, item]) => forbidden.has(key) || containsForbiddenKey(item, forbidden));
+}
+
+function joinClassNames(...classNames: readonly (string | undefined)[]): string {
+  return classNames.filter((className): className is string => Boolean(className)).join(" ");
 }

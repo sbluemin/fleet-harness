@@ -2,7 +2,26 @@ import * as React from "react";
 
 import { assertOperationNode, ApiError } from "../operations/browser.js";
 import type { OperationNode } from "../operations/types.js";
-import type { FleetClientPlugin, OperationKindDescriptor, PluginInstallContext, UseOperationsResult } from "./types.js";
+import type {
+  ClientApiCapability,
+  ClientOperationStatusCapability,
+  ClientPreferencesCapability,
+  FleetClientPlugin,
+  OperationActivity,
+  OperationKindDescriptor,
+  PluginInstallContext,
+  UseOperationsResult,
+} from "./types.js";
+
+export interface BoundPluginApi {
+  readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
+  readonly subscribe: (path: string, onMessage: (event: MessageEvent<string>) => void) => () => void;
+}
+
+export interface BoundOperationStatus {
+  readonly set: (activity: OperationActivity) => void;
+  readonly clear: () => void;
+}
 
 export { React };
 
@@ -123,6 +142,29 @@ export function useOperations(): UseOperationsResult {
     void refresh();
   }, [refresh]);
   return { operations, refresh };
+}
+
+export function usePluginApi(api: ClientApiCapability, pluginId: string): BoundPluginApi {
+  return React.useMemo(() => ({
+    fetch: (path, init) => api.fetch(pluginId, path, init),
+    subscribe: (path, onMessage) => api.subscribe(pluginId, path, onMessage),
+  }), [api, pluginId]);
+}
+
+export function usePluginStorage<T>(preferences: ClientPreferencesCapability, key: string, fallback: T): [T, (next: T) => void] {
+  const [value, setValue] = React.useState<T>(() => preferences.read(key, fallback));
+  const write = React.useCallback((next: T) => {
+    setValue(next);
+    preferences.write(key, next);
+  }, [preferences, key]);
+  return [value, write];
+}
+
+export function useOperationStatus(status: ClientOperationStatusCapability, operationId: string): BoundOperationStatus {
+  return React.useMemo(() => ({
+    set: (activity) => status.set(operationId, activity),
+    clear: () => status.clear(operationId),
+  }), [status, operationId]);
 }
 
 async function assertSafeResponse(response: Response): Promise<Response> {

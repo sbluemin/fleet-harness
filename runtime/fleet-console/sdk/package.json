@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/sdk",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,10 +10,15 @@
       "default": "./operations/types.ts"
     },
     "./operations/browser": {
-      "types": "./operations/browser.ts",
-      "browser": "./operations/browser.ts",
-      "import": "./operations/browser.ts",
-      "default": "./operations/browser.ts"
+      "types": "./operations/browser.tsx",
+      "browser": "./operations/browser.tsx",
+      "import": "./operations/browser.tsx",
+      "default": "./operations/browser.tsx"
+    },
+    "./version": {
+      "types": "./version.ts",
+      "import": "./version.ts",
+      "default": "./version.ts"
     },
     "./launch": {
       "types": "./launch/types.ts",
@@ -43,10 +48,10 @@
       "default": "./settings/types.ts"
     },
     "./settings/browser": {
-      "types": "./settings/browser.ts",
-      "browser": "./settings/browser.ts",
-      "import": "./settings/browser.ts",
-      "default": "./settings/browser.ts"
+      "types": "./settings/browser.tsx",
+      "browser": "./settings/browser.tsx",
+      "import": "./settings/browser.tsx",
+      "default": "./settings/browser.tsx"
     },
     "./notifications": {
       "types": "./notifications/types.ts",
@@ -65,10 +70,10 @@
       "default": "./routing/types.ts"
     },
     "./react/browser": {
-      "types": "./react/browser.ts",
-      "browser": "./react/browser.ts",
-      "import": "./react/browser.ts",
-      "default": "./react/browser.ts"
+      "types": "./react/browser.tsx",
+      "browser": "./react/browser.tsx",
+      "import": "./react/browser.tsx",
+      "default": "./react/browser.tsx"
     }
   },
   "scripts": {
