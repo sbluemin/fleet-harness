@@ -5,6 +5,8 @@ interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
+  // above = anchor.y를 캔버스 하단 거리로 보고 메뉴를 위로 띄운다(런처). cursor = anchor를 좌상단으로 본다(우클릭).
+  readonly placement?: "above" | "cursor";
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   // Operations Control 헤더 부제 — 활성 Theater 라벨과 그 안의 Operation 수.
@@ -25,12 +27,13 @@ interface CanvasContextMenuProps {
   readonly onClose: () => void;
 }
 
-const MENU_WIDTH = 208;
+// 'Operations Control' 헤더가 한 줄에 들어가도록 메뉴 폭을 넓혔다(우측 클램프 계산용).
+const MENU_WIDTH = 256;
 // 헤더 + Launch/Map 섹션 라벨이 추가돼 메뉴가 더 길어졌으므로, 화면 안에 머물도록 클램프 높이를 키운다.
 const MENU_MAX_HEIGHT = 440;
 const MENU_MARGIN = 12;
 
-export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, theaterLabel, operationCount, mapFullscreen, radarEnabled, recentlyClosed, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onReopen, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, theaterLabel, operationCount, mapFullscreen, radarEnabled, recentlyClosed, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onReopen, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,9 +59,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, catalog, canLaunch, 
 
   return (
     <div
-      className="operation-launch-control operation-launch-control--canvas"
+      className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
-      style={clampedAnchorStyle(anchor, viewportBounds)}
+      style={clampedAnchorStyle(anchor, viewportBounds, placement)}
       data-canvas-blocker
     >
       <div className="operation-launch-menu theater-menu canvas-context-menu" role="menu" aria-label="Operations Control" tabIndex={-1} ref={menuRef}>
@@ -143,12 +146,15 @@ export function CommandReticleIcon() {
 function clampedAnchorStyle(
   anchor: { readonly x: number; readonly y: number },
   bounds: { readonly width: number; readonly height: number } | undefined,
-): { readonly left: number; readonly top: number } {
-  if (!bounds) return { left: anchor.x, top: anchor.y };
-  return {
-    left: Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - MENU_WIDTH - MENU_MARGIN)),
-    top: Math.max(MENU_MARGIN, Math.min(anchor.y, bounds.height - MENU_MAX_HEIGHT - MENU_MARGIN)),
-  };
+  placement: "above" | "cursor",
+): { readonly left: number; readonly top?: number; readonly bottom?: number } {
+  const left = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - MENU_WIDTH - MENU_MARGIN)) : anchor.x;
+  if (placement === "above") {
+    // anchor.y = 캔버스 하단에서 메뉴 바닥까지의 거리. 메뉴는 위로 자라며 max-height로 화면 안에 가둔다.
+    return { left, bottom: Math.max(MENU_MARGIN, anchor.y) };
+  }
+  const top = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.y, bounds.height - MENU_MAX_HEIGHT - MENU_MARGIN)) : anchor.y;
+  return { left, top };
 }
 
 function ResetGlyph() {

@@ -32,6 +32,8 @@ interface ContextMenuRequest {
   readonly anchor: CanvasPoint;
   // 우클릭 지점의 캔버스(world) 좌표(새 패널 배치 기준).
   readonly canvasPoint: CanvasPoint;
+  // launcher = 좌하단 FAB로 연 경우(메뉴를 FAB 위로 띄우고 FAB를 활성 표시), canvas = 우클릭(커서 지점).
+  readonly via: "launcher" | "canvas";
 }
 
 interface PluginOperationRendererProps {
@@ -55,6 +57,9 @@ const DEFAULT_SHELL_HEIGHT = 360;
 const RESET_VIEWPORT = { x: 0, y: 0, zoom: 1 } as const;
 // 패널 최대화 시 하단 Dock(태스크바) 풋프린트만큼 남겨 Dock을 가리지 않게 한다(canary 동일 — safe-inset 58 + bottom 여백).
 const MAXIMIZED_DOCK_INSET = 72;
+// 좌하단 Operations Control 런처의 좌측 인셋(= --space-4)과, 메뉴 바닥의 캔버스 하단 거리(FAB bottom 16 + 높이 48 + 간격 12).
+const LAUNCHER_FAB_INSET = 16;
+const LAUNCHER_MENU_BOTTOM = 76;
 // 사용자 close(헤더 X)와 PTY 자가종료(onExit→onClose)가 같은 operation의 close path를 중복 실행하는 것을 막는다.
 // 재진입은 이미 삭제된 operation에 중복 DELETE를 보내 404 콘솔 노이즈를 만든다(기능 영향은 없으나 race를 가린다).
 const closingOperationIds = new Set<string>();
@@ -190,14 +195,19 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     void launchViaPlugin(snapshot.pluginId, fresh, state.activeTheaterId, geometry);
   };
 
-  // 좌하단 '+' 런처: 우클릭 컨텍스트 메뉴와 동일한 메뉴를 명시 버튼으로 연다.
-  // 클릭 지점이 없으므로 새 패널은 현재 캔버스 화면 중앙의 world 좌표에 생성한다.
+  // 좌하단 런처: 우클릭 컨텍스트 메뉴와 동일한 메뉴를 명시 버튼으로 연다. 다시 누르면 닫는 토글이며,
+  // 메뉴는 FAB 위로(아래 Dock과 겹치지 않게) 띄운다. 클릭 지점이 없으므로 새 패널은 화면 중앙의 world 좌표에 생성한다.
   const handleOpenLauncher = () => {
+    if (contextMenu?.via === "launcher") {
+      setContextMenu(null);
+      return;
+    }
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const anchor: CanvasPoint = { x: 16, y: rect.height - 52 };
+    // anchor.x = FAB 좌측 정렬, anchor.y = 캔버스 하단에서 메뉴 바닥까지 거리(FAB bottom 16 + 높이 48 + 간격 12).
+    const anchor: CanvasPoint = { x: LAUNCHER_FAB_INSET, y: LAUNCHER_MENU_BOTTOM };
     const canvasPoint = screenToCanvas({ x: rect.width / 2, y: rect.height / 2 }, canvas.viewport);
-    setContextMenu({ anchor, canvasPoint });
+    setContextMenu({ anchor, canvasPoint, via: "launcher" });
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   };
 
@@ -212,7 +222,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const anchor: CanvasPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport) });
+    setContextMenu({ anchor, canvasPoint: screenToCanvas(anchor, canvas.viewport), via: "canvas" });
     void fetchOperationCatalog().then(setCatalog).catch(() => {});
   };
 
@@ -365,6 +375,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           key={`${contextMenu.anchor.x}:${contextMenu.anchor.y}`}
           anchor={contextMenu.anchor}
           viewportBounds={viewportBoundsFor(canvasRef.current)}
+          placement={contextMenu.via === "launcher" ? "above" : "cursor"}
           catalog={catalog}
           canLaunch={!!state.activeTheaterId && !launchPending}
           theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label}
@@ -405,10 +416,11 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
       {state.activeTheaterId ? (
         <button
           type="button"
-          className="canvas-launcher-fab"
+          className={`canvas-launcher-fab ${contextMenu?.via === "launcher" ? "is-active" : ""}`}
           onClick={handleOpenLauncher}
           data-canvas-blocker
           aria-label="Open Operations Control"
+          aria-expanded={contextMenu?.via === "launcher"}
           title="Operations Control"
         >
           <CommandReticleIcon />

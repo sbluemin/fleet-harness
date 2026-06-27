@@ -2485,7 +2485,14 @@
 
 .operation-launch-control--canvas .operation-launch-menu {
   top: 0;
-  min-width: 184px;
+  /* 'Operations Control' 헤더가 한 줄에 들어가도록 폭을 넓힌다. */
+  min-width: 256px;
+}
+
+/* 런처로 연 경우 메뉴를 컨테이너 바닥에 정렬해 위로 펼친다(아래 FAB/Dock과 겹치지 않게). */
+.operation-launch-control--up .operation-launch-menu {
+  top: auto;
+  bottom: 0;
 }
 
 .operation-launch-control .operation-launch-menu-item .theater-menu-check {
@@ -2698,6 +2705,7 @@
   font-size: 15px;
   letter-spacing: -0.01em;
   color: var(--ink-pearl);
+  white-space: nowrap;
 }
 
 .canvas-context-menu-head-text span {
@@ -3292,10 +3300,10 @@
   z-index: 15;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 48px;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
   color: var(--brass);
   box-shadow: var(--shadow-anchor);
@@ -3317,10 +3325,18 @@
   outline: none;
 }
 
+/* 메뉴가 열린 동안 런처는 '눌림(활성)' 상태를 유지한다 — 브래스 강조 + 안쪽으로 눌린 그림자. */
+.canvas-launcher-fab.is-active {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 16%, var(--surface-glass));
+  box-shadow: var(--shadow-anchor), inset 0 2px 5px -2px oklch(0% 0 0 / 55%);
+}
+
 .canvas-launcher-fab svg {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 
 .canvas-dock-rail {
