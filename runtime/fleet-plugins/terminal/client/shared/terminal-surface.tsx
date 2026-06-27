@@ -30,6 +30,12 @@ export interface TerminalSurfaceProps {
   readonly zoom?: number;
 }
 
+interface TerminalOutputScheduler {
+  readonly write: (data: Uint8Array) => void;
+  readonly setActive: (active: boolean) => void;
+  readonly dispose: () => void;
+}
+
 const TERMINAL_OPTIONS = {
   // Unicode11Addon은 terminal.unicode(proposed API)를 사용하므로 이 옵션이 true여야 한다.
   // false이면 addon.activate()가 "must set allowProposedApi" 오류를 던져 터미널 마운트가 깨진다.
@@ -46,6 +52,9 @@ const DEFAULT_TERMINAL_FONT: TerminalSurfaceFontSettings = {
 };
 
 const RESIZE_DEBOUNCE_MS = 80;
+const ACTIVE_OUTPUT_FLUSH_MS = 16;
+const INACTIVE_OUTPUT_FLUSH_MS = 250;
+const MAX_BUFFERED_OUTPUT_BYTES = 1024 * 1024;
 // 줌 보간(rAF tween)이 멈춘 뒤 보정을 1회만 적용하기 위한 디바운스. zoom prop은 보간 중 매 프레임 바뀌므로,
 // 마지막 변경 후 이 시간이 지나야(=settle) counter-scale/fontSize/fit을 적용한다. 보간 중에는 부모 transform에
 // 맡겨 글자가 부드럽게 확대/축소되고, atlas 재생성을 제스처당 1회로 묶어 WebGL 비용을 억제한다.
@@ -105,6 +114,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
+  const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   // 줌 보정 effect에서 fit()을 재호출하기 위해 마운트 effect의 지역 FitAddon을 ref로 끌어올린다.
   const fitAddonRef = useRef<FitAddon | null>(null);
   // 실제 보정에 반영된 줌(=settle된 zoom). zoom prop은 보간 중 매 프레임 바뀌므로 디바운스로 이 값에 수렴시킨다.
@@ -150,11 +160,16 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
       return true;
     });
 
+    const outputScheduler = createTerminalOutputScheduler(terminal, activeRef.current !== false);
+    outputSchedulerRef.current = outputScheduler;
     const connection = createTerminalConnection({
       operationId,
       ticketPath,
       wsPath,
-      terminal,
+      terminal: {
+        onData: (listener) => terminal.onData(listener),
+        write: outputScheduler.write,
+      },
       onExit: () => onExitRef.current?.(),
       onStatus: (nextStatus, message) => {
         setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
@@ -201,8 +216,10 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
       resizeObserver.disconnect();
       if (resizeDebounce) clearTimeout(resizeDebounce);
       connection.dispose();
+      outputScheduler.dispose();
       terminalRef.current = null;
       connectionRef.current = null;
+      outputSchedulerRef.current = null;
       fitAddonRef.current = null;
       // xterm WebglAddon(0.19.0)은 terminal.dispose() 시 AddonManager가 addon을 자동 정리하는
       // 경로에 내부 버그가 있어 TypeError(reading "_isDisposed")를 던질 수 있다. 이 예외가
@@ -220,6 +237,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
   // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 줘
   // 마우스 클릭 없이 바로 입력되게 한다. 비활성 전환에서는 아무 것도 하지 않는다.
   useEffect(() => {
+    outputSchedulerRef.current?.setActive(active !== false);
     if (active) terminalRef.current?.focus();
   }, [active]);
 
@@ -345,6 +363,75 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
 
 function terminalThemeFor(theme: "maritime" | "carbon"): ITheme {
   return theme === "carbon" ? CARBON_TERMINAL_THEME : MARITIME_TERMINAL_THEME;
+}
+
+function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean): TerminalOutputScheduler {
+  let active = initiallyActive;
+  let disposed = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingBytes = 0;
+  let pending: Uint8Array[] = [];
+
+  const clearFlushTimer = () => {
+    if (!flushTimer) return;
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  };
+
+  const flush = () => {
+    clearFlushTimer();
+    if (disposed || pendingBytes === 0) return;
+    const output = concatTerminalOutput(pending, pendingBytes);
+    pending = [];
+    pendingBytes = 0;
+    terminal.write(output);
+  };
+
+  const scheduleFlush = () => {
+    if (disposed || flushTimer || pendingBytes === 0) return;
+    flushTimer = setTimeout(flush, active ? ACTIVE_OUTPUT_FLUSH_MS : INACTIVE_OUTPUT_FLUSH_MS);
+  };
+
+  return {
+    write: (data) => {
+      if (disposed || data.byteLength === 0) return;
+      pending.push(data);
+      pendingBytes += data.byteLength;
+      if (pendingBytes >= MAX_BUFFERED_OUTPUT_BYTES) {
+        flush();
+        return;
+      }
+      scheduleFlush();
+    },
+    setActive: (nextActive) => {
+      if (active === nextActive) return;
+      active = nextActive;
+      clearFlushTimer();
+      if (active) {
+        flush();
+        return;
+      }
+      scheduleFlush();
+    },
+    dispose: () => {
+      flush();
+      disposed = true;
+      pending = [];
+      pendingBytes = 0;
+      clearFlushTimer();
+    },
+  };
+}
+
+function concatTerminalOutput(chunks: readonly Uint8Array[], totalBytes: number): Uint8Array {
+  if (chunks.length === 1) return chunks[0] ?? new Uint8Array();
+  const output = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
 }
 
 function fitResizeAndRefreshTerminal(terminal: XtermTerminal, fitAddon: FitAddon | null, connection: TerminalConnection | null): void {
