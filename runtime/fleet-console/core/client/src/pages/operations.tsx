@@ -5,7 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations, patchOperation } from "../api.js";
-import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
+import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, loadForTheater, pruneOperations, restoreOperation, setMaximizedOperationId, setOperationGeometry, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
@@ -141,6 +141,14 @@ export function Operations({ state }: OperationsProps) {
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
+    // 최대화 중인 패널이 있고 클릭 대상이 다른 op면 최대화 패널을 전환하고 끝낸다.
+    // Alt+←/→ 순환(operations.tsx:73-76)과 동일 정책. getMaximizedOperationId()는 store 스냅샷에서 live로 읽으므로 [] deps 유지 가능.
+    const currentMaximized = getMaximizedOperationId();
+    if (currentMaximized !== null && currentMaximized !== operationId) {
+      setActiveOperation(operationId);
+      setMaximizedOperationId(operationId);
+      return;
+    }
     const snapshot = getCanvasSnapshot();
     const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
     if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
