@@ -34,11 +34,10 @@
 
 .console-body.is-canvas {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  /* 맵(col1)과 우현 레일(col2) 사이 간격 — 레일이 부유 카드로 떠 보이게 하고,
-     레일이 펼쳐질 때 맵이 "덮이는" 게 아니라 "자리를 내주며 축소"되는 것으로 읽히게 한다.
-     패널 최대화는 맵 캔버스(col1) 영역 안에서만 일어나며, Activity Rail(col2)은 항상 독립적으로
-     유지된다(operations.tsx가 더는 .console-body에 is-map-fullscreen을 부여하지 않는다). */
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  /* col1=사이드바(OperationsSideBar), col2=맵 캔버스, col3=우현 Activity Rail.
+     패널 최대화는 col2(맵 캔버스) 안에서만 일어나며, 사이드바(col1)·Rail(col3)은 항상 독립적으로
+     유지된다. col1 폭은 --side-bar-width CSS 변수로 제어한다. */
   column-gap: var(--space-3);
   overflow: hidden;
 }
