@@ -13,8 +13,7 @@ import { startAgentConnection } from "./connection.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth-store.js";
 import type { ModelAuthProviderState } from "./model-auth-api.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings-store.js";
-import { isTerminalJobStatus } from "./reduce.js";
-import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, sessionJobs, useAgentState } from "./store.js";
+import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
 import type { AgentCliStatus, JobView, SessionInfo, TrackView } from "./types.js";
 
 interface SettingToggleRowProps {
@@ -64,6 +63,14 @@ export const agentOperationKind = defineOperationKind({
   render: (context) => <AgentOperationView context={context} />,
 });
 
+export const agentStreamingOperationKind = defineOperationKind({
+  pluginId: "terminal",
+  type: "agent.streaming",
+  title: "Agent Stream",
+  subtitle: () => undefined,
+  render: (context) => <AgentStreamingOperationView context={context} />,
+});
+
 export const agentSettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: "Agent CLI",
@@ -77,7 +84,7 @@ export const agentAttentionNotification = defineNotificationKind({
 
 export const agentPlugin = definePlugin({
   id: "terminal",
-  operationKinds: [agentOperationKind],
+  operationKinds: [agentOperationKind, agentStreamingOperationKind],
   settingsSections: [agentSettingsSection],
   notificationKinds: [agentAttentionNotification],
   install: (ctx) => installAgentPlugin(ctx),
@@ -97,7 +104,7 @@ export const agentPlugin = definePlugin({
   renderLaunchIcon: () => <AgentGlyph />,
 });
 
-export const operationKinds = [agentOperationKind] as const;
+export const operationKinds = [agentOperationKind, agentStreamingOperationKind] as const;
 export const plugins = [agentPlugin] as const;
 
 function installAgentPlugin(ctx: PluginInstallContext): () => void {
@@ -112,75 +119,35 @@ function installAgentPlugin(ctx: PluginInstallContext): () => void {
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const [modalOpen, setModalOpen] = React.useState(false);
-
-  const jobs = sessionJobs(session);
-  const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
-  const primaryJob = activeJobs[0] ?? null;
-
-  // Escape 키로 모달 닫기 — capture phase로 전역 단축키보다 먼저 처리한다.
-  React.useEffect(() => {
-    if (!modalOpen) return;
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        setModalOpen(false);
-      }
-    };
-    document.addEventListener("keydown", handleKey, true);
-    return () => document.removeEventListener("keydown", handleKey, true);
-  }, [modalOpen]);
-
-  if (session.status === "dormant") {
-    return (
-      <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
-        <span className="canvas-operation-dormant-status">Dormant</span>
-        <span className="canvas-operation-dormant-action">Resume</span>
-      </button>
-    );
-  }
 
   return (
-    <div className="agent-stream-host">
-      {primaryJob ? (
-        <button
-          type="button"
-          className={`job-summary job-summary--banner ${jobSummaryModifier(primaryJob.status)}`}
-          aria-label={activeJobs.length > 1 ? `${activeJobs.length} carriers streaming — click to expand` : `${primaryJob.label ?? primaryJob.jobId} — click to expand`}
-          onClick={() => setModalOpen(true)}
-        >
-          <span className="job-summary-eyebrow">
-            {activeJobs.length > 1 ? `${activeJobs.length} carriers` : (primaryJob.ownerCarrierId ?? "Carrier")}
-          </span>
-          <p className="job-summary-text">{primaryJob.label ?? primaryJob.jobId}</p>
+    <>
+      {session.status === "dormant" ? (
+        <button type="button" className="canvas-operation-dormant" onClick={() => { void resumeSession(session.sessionId); }}>
+          <span className="canvas-operation-dormant-status">Dormant</span>
+          <span className="canvas-operation-dormant-action">Resume</span>
         </button>
-      ) : null}
-      <TerminalSurface
-        operationId={session.sessionId}
-        ticketPath={AGENT_TICKET_PATH}
-        wsPath={TERMINAL_WS_PATH}
-        active={context.active}
-        zoom={context.zoom}
-        theme={context.theme}
-        onExit={() => removeSession(session.sessionId)}
-      />
-      {modalOpen ? (
-        <div className="job-overlay" role="dialog" aria-modal="true" aria-label="Carrier stream details">
-          <button type="button" className="job-overlay-scrim" aria-label="Close" onClick={() => setModalOpen(false)} />
-          <div className="job-overlay-card">
-            <button type="button" className="job-overlay-close" aria-label="Close" onClick={() => setModalOpen(false)}>×</button>
-            <div className="job-overlay-body">
-              {activeJobs.length === 0 ? (
-                <p className="job-overlay-empty">No active streams.</p>
-              ) : (
-                activeJobs.map((job) => <JobDetailContent key={job.jobId} job={job} />)
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+      ) : (
+        <TerminalSurface
+          operationId={session.sessionId}
+          ticketPath={AGENT_TICKET_PATH}
+          wsPath={TERMINAL_WS_PATH}
+          active={context.active}
+          zoom={context.zoom}
+          theme={context.theme}
+          onExit={() => removeSession(session.sessionId)}
+        />
+      )}
+    </>
   );
+}
+
+function AgentStreamingOperationView({ context }: { readonly context: OperationRenderContext }) {
+  const state = useAgentState();
+  const tenantId = readPayloadString(context.operation.payload, "tenantId");
+  const jobId = readPayloadString(context.operation.payload, "jobId");
+  const job = tenantId && jobId ? state.tenantJobs[tenantId]?.jobs[jobId] : null;
+  return job ? <JobViewOperation job={job} /> : <p className="job-overlay-empty">Waiting for stream...</p>;
 }
 
 function AgentCliSection() {
@@ -382,9 +349,9 @@ function AgentCliRow({ cli }: { readonly cli: AgentCliStatus }) {
   );
 }
 
-function JobDetailContent({ job }: { readonly job: JobView }) {
+function JobViewOperation({ job }: { readonly job: JobView }) {
   return (
-    <>
+    <div className="job-overlay">
       <div className="job-overlay-head">
         <span className="job-overlay-kicker">{job.status}</span>
         <strong>{job.label ?? job.jobId}</strong>
@@ -395,7 +362,7 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
           return track ? <TrackCard key={track.trackId} track={track} /> : null;
         })}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -439,13 +406,6 @@ function sessionFromOperation(context: OperationRenderContext): SessionInfo {
     registrationId: readPayloadString(context.operation.payload, "registrationId") ?? undefined,
     resumeAvailable: readPayloadString(context.operation.payload, "status") === "dormant",
   };
-}
-
-function jobSummaryModifier(status: string): string {
-  if (status === "done") return "job-summary--ok";
-  if (status === "error" || status === "aborted") return "job-summary--bad";
-  if (status === "running" || status === "live") return "job-summary--live";
-  return "job-summary--idle";
 }
 
 function readPayloadString(payload: Record<string, unknown>, key: string): string | null {

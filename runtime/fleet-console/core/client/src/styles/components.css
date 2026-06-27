@@ -3977,23 +3977,6 @@
   min-height: 0;
 }
 
-/* agent-stream-host: 배너(조건부) + 터미널을 flex 컬럼으로 쌓는 호스트.
-   배너가 없으면 terminal-stage가 전체 높이를 회복한다. */
-.agent-stream-host {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-/* 배너 존재 시 terminal-stage가 남은 높이를 flex로 채우도록 보정.
-   .canvas-operation-terminal의 height:100% 규칙을 덮는다. */
-.agent-stream-host .terminal-stage {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-}
-
 .canvas-operation-terminal .terminal-shell {
   padding: var(--space-2);
   border: 0;
@@ -4587,47 +4570,6 @@
 .job-summary {
   padding: var(--space-4);
   border-radius: var(--radius-lg);
-}
-
-/* 배너 변형: 패널 상단 클릭 가능한 요약 스트립.
-   button reset + full-width + 클릭 어포던스를 제공한다. */
-.job-summary--banner {
-  display: block;
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--surface-rim);
-  border-radius: 0;
-  background: color-mix(in oklch, var(--surface-glass-strong) 72%, transparent);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-glide),
-    border-color var(--duration-fast) var(--ease-glide);
-}
-
-.job-summary--banner:hover,
-.job-summary--banner:focus-visible {
-  background: color-mix(in oklch, var(--surface-glass-strong) 90%, transparent);
-  outline: none;
-}
-
-.job-summary--banner.job-summary--live {
-  border-bottom-color: color-mix(in oklch, var(--aurora) 36%, var(--surface-rim));
-  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-glass-strong));
-}
-
-.job-summary--banner.job-summary--ok {
-  border-bottom-color: color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
-}
-
-.job-summary--banner.job-summary--bad {
-  border-bottom-color: color-mix(in oklch, var(--coral) 44%, var(--surface-rim));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .job-summary--banner {
-    transition: none;
-  }
 }
 
 .job-summary--live {
@@ -5328,48 +5270,6 @@
   min-height: 0;
   width: 100%;
   border-radius: 0;
-}
-
-/* job-overlay-body: 모달 카드 내 스크롤 영역.
-   card가 flex column이므로 body가 남은 높이를 채우고 내부를 스크롤한다. */
-.job-overlay-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.job-overlay-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--surface-rim);
-}
-
-.job-overlay-kicker {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-fog);
-}
-
-.job-overlay-tracks {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.job-overlay-empty {
-  color: var(--ink-fog);
-  font-size: 13px;
-  text-align: center;
-  padding: var(--space-6);
 }
 
 .commissioning-overlay {

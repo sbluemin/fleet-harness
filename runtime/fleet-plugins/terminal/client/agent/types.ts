@@ -149,5 +149,6 @@ export interface AgentClientState {
   readonly tenantJobs: Readonly<Record<string, TenantJobsView>>;
   readonly tenantOrder: readonly string[];
   readonly activeTerminalSessionId: string | null;
+  readonly selectedJobId: string | null;
   readonly turnState: Readonly<Record<string, TurnState>>;
 }
