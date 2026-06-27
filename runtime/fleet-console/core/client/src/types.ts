@@ -225,7 +225,6 @@ export interface ConsoleState {
   readonly theaterError: string | null;
   readonly operationsViewActive: boolean;
   readonly operationSearchOpen: boolean;
-  readonly shortcutsOpen: boolean;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
   readonly releaseNotesLoading: boolean;

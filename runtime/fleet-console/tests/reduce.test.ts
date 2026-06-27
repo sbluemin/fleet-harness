@@ -60,7 +60,6 @@ function makeConsoleSnap(patch: Partial<ConsoleState> = {}): ConsoleState {
     theaterError: null,
     operationsViewActive: false,
     operationSearchOpen: false,
-    shortcutsOpen: false,
     whatsNewOpen: false,
     releaseNotes: [],
     releaseNotesLoading: false,

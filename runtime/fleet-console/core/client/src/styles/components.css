@@ -2613,52 +2613,8 @@
   animation-play-state: paused;
 }
 
-.canvas-background-toggle {
-  position: absolute;
-  top: var(--space-4);
-  right: var(--space-4);
-  z-index: 14;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 80%, var(--ink-deep));
-  color: var(--ink-fog);
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.canvas-background-toggle:hover,
-.canvas-background-toggle:focus-visible,
-.canvas-background-toggle.is-active {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
-}
-
-.canvas-background-toggle svg {
-  display: block;
-  width: 19px;
-  height: 19px;
-}
-
-/* 맵 최대화 토글 — 레이더(배경 애니메이션) 토글 바로 왼쪽에 같은 칩 스타일로 배치한다. */
-.canvas-map-fullscreen-toggle {
-  right: calc(var(--space-4) + 36px + var(--space-2));
-}
-
-.operations-canvas.is-panel-maximized .canvas-background-toggle,
 .operations-canvas.is-panel-maximized .canvas-minimap,
-.operations-canvas.is-panel-maximized .canvas-minimap-fab,
-.operations-canvas.is-panel-maximized .map-shortcuts,
-.operations-canvas.is-panel-maximized .map-shortcuts-fab {
+.operations-canvas.is-panel-maximized .canvas-minimap-fab {
   display: none;
 }
 
@@ -2667,7 +2623,7 @@
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
 }
 
-/* Operations Control 헤더 — 레티클 마크 + 타이틀 + 활성 Theater 부제.
+/* Operations Control 헤더 — 레티클 마크 + 타이틀.
    좌하단 런처와 우클릭 메뉴를 단순 'add'에서 작전 통제면으로 승격하는 정체성 블록. */
 .canvas-context-menu-head {
   display: flex;
@@ -2708,18 +2664,70 @@
   white-space: nowrap;
 }
 
-.canvas-context-menu-head-text span {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-fog);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.canvas-context-menu-tabs {
+  display: flex;
+  gap: 2px;
+  margin: var(--space-3) var(--space-1) var(--space-1);
+  padding: 3px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
 }
 
-/* Launch / Map 섹션 라벨 — 작전 통제면을 행위 카테고리로 나눈다(브래스="보는 곳"). */
+.canvas-context-menu-tab {
+  position: relative;
+  flex: 1;
+  padding: 7px 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-context-menu-tab:hover {
+  color: var(--ink-spectral);
+}
+
+.canvas-context-menu-tab[aria-selected="true"] {
+  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass));
+  color: var(--ink-pearl);
+}
+
+.canvas-context-menu-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  right: 22%;
+  bottom: 2px;
+  left: 22%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--brass);
+  box-shadow: 0 0 8px var(--brass-glow);
+}
+
+.canvas-context-menu-tab:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.canvas-context-menu-panel {
+  padding-top: var(--space-1);
+}
+
+.canvas-context-menu-panel[hidden] {
+  display: none;
+}
+
+/* Operations / Map / Help 섹션 라벨 — 작전 통제면을 행위 카테고리로 나눈다(브래스="보는 곳"). */
 .canvas-context-menu-section {
   margin: var(--space-2) 0 0;
   padding: var(--space-1) var(--space-2);
@@ -2731,28 +2739,10 @@
   color: var(--brass);
 }
 
-/* 토글 항목(Radar sweep)의 On/Off 상태 꼬리표 — 신호 채널이 아닌 중립 정보라 ink 톤으로 둔다. */
-.canvas-context-menu-state {
-  margin-left: auto;
-  padding-left: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-fog);
-}
-
-/* Launch/Map/Recover 3개 섹션이 모두 차면 메뉴가 길어질 수 있으므로, 뷰포트를 넘기지 않게 내부 스크롤로 가둔다. */
 .canvas-context-menu {
-  max-height: 440px;
+  width: 288px;
+  max-height: 520px;
   overflow-y: auto;
-}
-
-/* Recover 항목의 "Reopen <title>" 라벨은 길 수 있어 한 줄로 줄여 말줄임 처리한다. */
-.canvas-context-menu-reopen-label {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .canvas-context-menu-plugin {
@@ -2763,6 +2753,177 @@
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.canvas-context-menu-switch {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-spectral);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-context-menu-switch:hover,
+.canvas-context-menu-switch:focus-visible {
+  outline: none;
+  border-color: var(--surface-rim);
+  background: var(--surface-glass);
+  color: var(--ink-pearl);
+}
+
+.canvas-context-menu-switch-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-fog);
+}
+
+.canvas-context-menu-switch-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.canvas-context-menu-switch.is-on .canvas-context-menu-switch-icon {
+  color: var(--brass);
+}
+
+.canvas-context-menu-switch-label {
+  flex: 1;
+  font-size: 13px;
+}
+
+.canvas-context-menu-switch-track {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 19px;
+  border: 1px solid var(--surface-rim);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-mid) 80%, transparent);
+  transition:
+    background var(--duration-base) var(--ease-glide),
+    border-color var(--duration-base) var(--ease-glide);
+}
+
+.canvas-context-menu-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ink-fog);
+  transition:
+    transform var(--duration-base) var(--ease-spring),
+    background var(--duration-base) var(--ease-glide);
+}
+
+.canvas-context-menu-switch.is-on .canvas-context-menu-switch-track {
+  border-color: var(--brass);
+  background: color-mix(in oklch, var(--brass) 60%, var(--brass-deep));
+}
+
+.canvas-context-menu-switch.is-on .canvas-context-menu-switch-track::after {
+  background: var(--ink-pearl);
+  transform: translateX(15px);
+}
+
+.canvas-context-menu-help {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.canvas-shortcuts-group {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.canvas-shortcuts-group h3 {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-2);
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.canvas-shortcuts-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.canvas-shortcuts-entry {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 3px var(--space-2);
+}
+
+.canvas-shortcuts-combos {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.canvas-shortcuts-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.canvas-shortcuts-or {
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+}
+
+.canvas-shortcuts-keyset {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.canvas-shortcuts-keyset kbd {
+  display: inline-grid;
+  min-width: 18px;
+  place-items: center;
+  padding: 2px 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  color: var(--ink-spectral);
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--ink-abyss) 70%, transparent);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.canvas-shortcuts-entry dd {
+  margin: 0;
+  color: var(--ink-fog);
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 /* 우하단 캔버스 미니맵 — 해군 레이더 스코프. 심해 글래스 위에 동심 링/그리드 텍스처를 깔고
@@ -2933,156 +3094,6 @@
   display: block;
   width: 18px;
   height: 18px;
-}
-
-/* 좌상단 Map 단축키 도움 — 레이더 계기와 같은 심해 글래스 카드. 접으면 '?' FAB만 남는다. */
-.map-shortcuts {
-  position: absolute;
-  left: var(--space-4);
-  top: var(--space-4);
-  z-index: 13;
-  width: 250px;
-  max-height: min(56%, 380px);
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--brass) 26%, var(--surface-rim));
-  border-radius: var(--radius-lg);
-  background:
-    radial-gradient(120% 90% at 0% 100%, color-mix(in oklch, var(--brass) 8%, transparent), transparent 60%),
-    color-mix(in oklch, var(--surface-glass) 62%, color-mix(in oklch, var(--ink-deep) 70%, transparent));
-  box-shadow:
-    var(--shadow-floating),
-    inset 0 1px 0 color-mix(in oklch, var(--brass) 22%, transparent);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  transform-origin: top left;
-  animation: shortcuts-drop 360ms var(--ease-spring) both;
-}
-
-.map-shortcuts-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.map-shortcuts-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: color-mix(in oklch, var(--brass-bright) 78%, var(--ink-fog));
-}
-
-.map-shortcuts-toggle,
-.map-shortcuts-fab {
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
-  color: var(--brass);
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.map-shortcuts-toggle {
-  width: 24px;
-  height: 24px;
-}
-
-.map-shortcuts-toggle:hover,
-.map-shortcuts-toggle:focus-visible,
-.map-shortcuts-fab:hover,
-.map-shortcuts-fab:focus-visible {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 11%, var(--surface-glass));
-}
-
-.map-shortcuts-fab {
-  position: absolute;
-  left: var(--space-4);
-  top: var(--space-4);
-  z-index: 13;
-  width: 36px;
-  height: 36px;
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  animation: shortcuts-drop 300ms var(--ease-spring) both;
-}
-
-.map-shortcuts-toggle svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-
-.map-shortcuts-fab svg {
-  display: block;
-  width: 18px;
-  height: 18px;
-}
-
-.map-shortcuts-list {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.map-shortcuts-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.map-shortcuts-combos {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-
-.map-shortcuts-or {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--ink-fog);
-}
-
-.map-shortcuts-keyset {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.map-shortcuts kbd {
-  display: inline-block;
-  min-width: 16px;
-  padding: 1px 5px;
-  border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-deep) 70%, var(--surface-glass));
-  color: color-mix(in oklch, var(--brass-bright) 72%, var(--ink-pearl));
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.5;
-  text-align: center;
-}
-
-.map-shortcuts-entry dd {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--ink-fog);
 }
 
 @keyframes radar-sweep {
@@ -4742,10 +4753,6 @@
   height: 15px;
 }
 
-.topbar-shortcuts-button {
-  padding-inline: var(--space-1);
-}
-
 .theater-control {
   position: relative;
   display: flex;
@@ -5231,213 +5238,6 @@
   border-radius: 0;
 }
 
-.shortcuts-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-}
-
-.shortcuts-overlay-scrim {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: color-mix(in oklch, var(--ink-abyss) 48%, transparent);
-  backdrop-filter: blur(4px) saturate(120%);
-  cursor: default;
-}
-
-.shortcuts-overlay-card {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  /* Local Shell 오버레이와 동일하게 콘솔 가로폭의 80%를 차지하는 대형 카드로 띄운다. */
-  width: 80vw;
-  height: 90vh;
-  max-height: 90vh;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xl);
-  background: var(--surface-glass);
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  animation: codex-rise 360ms var(--ease-spring) both;
-}
-
-.shortcuts-overlay-header {
-  flex: 0 0 auto;
-  padding: var(--space-5) calc(var(--space-6) + 34px) var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--surface-rim);
-  background:
-    linear-gradient(90deg, color-mix(in oklch, var(--brass) 10%, transparent), transparent 68%),
-    color-mix(in oklch, var(--ink-mid) 42%, transparent);
-}
-
-.shortcuts-overlay-kicker {
-  display: block;
-  margin-bottom: var(--space-1);
-  color: var(--brass-bright);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.shortcuts-overlay-header h2 {
-  margin: 0;
-  color: var(--ink-pearl);
-  font-family: var(--font-display);
-  font-size: 24px;
-  font-weight: 560;
-  letter-spacing: 0;
-}
-
-.shortcuts-overlay-close {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 2;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--surface-glass-strong) 82%, transparent);
-  color: var(--brass-bright);
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  font-family: var(--font-mono);
-  font-size: 18px;
-  line-height: 1;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.shortcuts-overlay-close:hover {
-  border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 14%, var(--surface-glass-strong));
-}
-
-.shortcuts-overlay-groups {
-  /* 헤더 아래 남은 카드 높이를 모두 채워 Local Shell처럼 꽉 찬 대형 프레임을 만든다. */
-  flex: 1 1 auto;
-  display: grid;
-  /* 섹션을 세로로 쌓지 않고 Console/Operations/Codex를 3-컬럼으로 펼치고, 한 행이 높이를 채운다. */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-  align-items: stretch;
-  gap: var(--space-4);
-  min-height: 0;
-  overflow: auto;
-  padding: var(--space-5);
-}
-
-.shortcuts-group {
-  display: grid;
-  align-content: start;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--surface-rim) 76%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--ink-mid) 24%, transparent);
-}
-
-.shortcuts-group h3 {
-  margin: 0;
-  color: var(--brass-bright);
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 560;
-  letter-spacing: 0;
-}
-
-.shortcuts-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.shortcuts-entry {
-  display: grid;
-  /* 3-컬럼 안에서는 폭이 좁으므로 키 조합을 위, 설명을 아래로 쌓아 가독성을 지킨다. */
-  gap: var(--space-2);
-  align-items: start;
-  padding: var(--space-3) 0;
-  border-top: 1px solid color-mix(in oklch, var(--surface-rim) 56%, transparent);
-}
-
-.shortcuts-entry:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.shortcuts-entry:last-child {
-  padding-bottom: 0;
-}
-
-.shortcuts-combos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-  margin: 0;
-}
-
-.shortcuts-combo {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.shortcuts-combo-separator {
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.shortcuts-keyset {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-}
-
-.shortcuts-keyset kbd {
-  display: inline-grid;
-  min-width: 30px;
-  min-height: 28px;
-  place-items: center;
-  padding: 0 var(--space-2);
-  border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--surface-rim));
-  border-radius: var(--radius-sm);
-  background:
-    linear-gradient(180deg, color-mix(in oklch, var(--brass) 8%, transparent), transparent),
-    color-mix(in oklch, var(--surface-glass-strong) 78%, transparent);
-  color: var(--ink-pearl);
-  box-shadow: var(--shadow-anchor);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.shortcuts-entry dd {
-  margin: 0;
-  color: var(--ink-spectral);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
 .commissioning-overlay {
   position: fixed;
   inset: 0;
@@ -5696,9 +5496,15 @@
 @media (prefers-reduced-motion: reduce) {
   .job-overlay-card,
   .operation-search-overlay,
-  .shortcuts-overlay-card,
   .commissioning-card {
     animation: none;
+  }
+
+  .canvas-context-menu-switch-track,
+  .canvas-context-menu-switch-track::after,
+  .canvas-context-menu-tab,
+  .canvas-context-menu-switch {
+    transition: none;
   }
 
   .commissioning-primary-action.is-live::before {
@@ -7224,32 +7030,6 @@
     grid-template-columns: 64px minmax(88px, 0.5fr) minmax(0, 1fr);
   }
 
-  .shortcuts-overlay {
-    padding: var(--space-3);
-  }
-
-  .shortcuts-overlay-card {
-    width: 100%;
-    height: auto;
-    max-height: calc(100vh - (var(--space-3) * 2));
-  }
-
-  .shortcuts-overlay-header {
-    padding: var(--space-4) calc(var(--space-5) + 34px) var(--space-3) var(--space-4);
-  }
-
-  .shortcuts-overlay-groups {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
-    padding: var(--space-4);
-  }
-
-  .shortcuts-entry {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-2);
-    align-items: start;
-  }
-
   .operation-search-overlay {
     padding: var(--space-5) var(--space-4);
   }
@@ -7606,7 +7386,7 @@ body[data-codex-side="true"] .command-card {
   cursor: default;
 }
 
-/* 기존 glass 카드(sidebar/shortcuts-overlay)와 동일한 질감: surface-glass 토큰 + backdrop blur(18px).
+/* 기존 glass 카드와 동일한 질감: surface-glass 토큰 + backdrop blur(18px).
    고정 ink 색상을 걷어내 maritime/carbon 테마를 그대로 추종한다. */
 .whatsnew-card {
   position: relative;

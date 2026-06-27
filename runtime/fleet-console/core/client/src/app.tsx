@@ -7,7 +7,6 @@ import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMo
 import { fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
 import { NotificationClusterHost } from "./components/notification-cluster.js";
-import { ShortcutsOverlay } from "./components/shortcuts-overlay.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
@@ -206,7 +205,6 @@ export function App() {
       {isCodexRoute ? <CodexSurface state={state} mode={codexEffectiveMode} onClose={handleCodexClose} /> : null}
       {!isCodexRoute ? <CodexEdgeHandle onOpen={handleOpenCodexSide} /> : null}
       <OperationSearch state={state} />
-      <ShortcutsOverlay state={state} />
       <WhatsNewModal state={state} />
       <CommissioningOverlay state={state} />
       <Toast

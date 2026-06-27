@@ -47,7 +47,6 @@ function makeState(operations: readonly OperationNode[], theaters: readonly Thea
     theaterError: null,
     operationsViewActive: false,
     operationSearchOpen: false,
-    shortcutsOpen: false,
     whatsNewOpen: false,
     releaseNotes: [],
     releaseNotesLoading: false,

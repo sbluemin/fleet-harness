@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { addTheater, ApiError, applyConsoleUpdate, forgetTheater, issueTheaterFolderGrant } from "../api.js";
-import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, openShortcuts, removeTheater, setActiveTheater } from "../store.js";
+import { beginAddTheater, cancelAddTheater, completeAddTheater, failAddTheater, removeTheater, setActiveTheater } from "../store.js";
 import type { ConsoleState } from "../types.js";
 import { DirectoryBrowserModal } from "./directory-browser-modal.js";
 import { WhatsNewButton } from "./whatsnew-button.js";
@@ -74,9 +74,6 @@ export function Topbar({ state }: TopbarProps) {
       <TheaterControl state={state} />
       <div className="topbar-meta">
         {state.updateAvailable ? <UpdateApplyControl latestVersion={state.latestVersion} /> : null}
-        <button type="button" className="topbar-icon-button topbar-shortcuts-button" onMouseDown={(event) => event.preventDefault()} onClick={openShortcuts} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
-          <KeyboardIcon />
-        </button>
         <NavLink
           to="/carrier-settings"
           className={({ isActive }) => `topbar-nav-link ${isActive ? "is-active" : ""}`}
@@ -593,15 +590,6 @@ function StarIcon() {
         strokeWidth="1.2"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function KeyboardIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2.4" y="4.1" width="11.2" height="7.8" rx="1.8" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4.5 6.3h.1M6.8 6.3h.1M9.1 6.3h.1M11.4 6.3h.1M4.5 8.2h.1M6.8 8.2h.1M9.1 8.2h.1M11.4 8.2h.1M5.8 10.1h4.4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }

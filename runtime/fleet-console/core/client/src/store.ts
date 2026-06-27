@@ -70,7 +70,6 @@ let state: ConsoleState = {
   theaterError: null,
   operationsViewActive: false,
   operationSearchOpen: false,
-  shortcutsOpen: false,
   whatsNewOpen: false,
   releaseNotes: [],
   releaseNotesLoading: false,
@@ -343,20 +342,6 @@ export function closeOperationSearch(): void {
 
 export function toggleOperationSearch(): void {
   setState({ operationSearchOpen: !state.operationSearchOpen });
-}
-
-export function openShortcuts(): void {
-  if (state.shortcutsOpen) return;
-  setState({ shortcutsOpen: true });
-}
-
-export function closeShortcuts(): void {
-  if (!state.shortcutsOpen) return;
-  setState({ shortcutsOpen: false });
-}
-
-export function toggleShortcuts(): void {
-  setState({ shortcutsOpen: !state.shortcutsOpen });
 }
 
 export function openWhatsNew(): void {
