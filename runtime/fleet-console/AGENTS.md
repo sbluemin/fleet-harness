@@ -163,20 +163,20 @@ Operation chrome (maximize, minimize, focus, and the bottom Dock) is host-owned.
 
 The right rail (`core/client/src/rail/`) is a persistent 48px vertical icon column at the right edge of the Operations canvas. Selecting an icon opens an inboard panel (312px) beside the icons; re-clicking the active icon collapses the panel while keeping the rail visible.
 
-**Right-edge handle separation** — three handles share the right edge and must not overlap:
+**Right-edge handle separation** — two handles share the right edge and must not overlap:
 
 | Handle | z-index token | Element | Notes |
 |--------|--------------|---------|-------|
 | Activity Rail | `--z-rail: 10` | `.right-rail` | Lowest; canvas-grid column 2 |
 | Codex Side | `--z-codex-side: 20` | `.codex-side-panel` | Overlay above canvas |
-| ALERTS dropdown | `--z-alerts-dropdown: 30` | `.alerts-dropdown` | Highest; always on top |
 
-These CSS variables are declared in `rail.css` and must not be inlined elsewhere. ALERTS and Codex Side coexist with the rail — they are **not** absorbed into or replaced by the rail.
+These CSS variables are declared in `rail.css` and must not be inlined elsewhere. Codex Side coexists with the rail as a separate edge overlay — it is **not** absorbed into the rail. ALERTS, by contrast, **is** a built-in rail panel pinned to the top of the icon column (see RailPanel registration below); the former floating right-edge ALERTS dock and its `--z-alerts-dropdown` token were removed.
 
 **RailPanel registration**:
 
 - `RailPanelDescriptor` is the sole SDK surface for rail panels, defined in `@fleet-console/sdk/rail`.
-- Built-in and external plugins both register rail panels via `FleetClientPlugin.railPanels[]` — there is no built-in fast-path; both flows pass through `rail-registry.ts` → `useRailPanels()`.
+- **Core built-in panels** (`rail/built-in-panels.ts` → `BUILT_IN_RAIL_PANELS`) are core-owned, do **not** pass through the plugin registry, and render **above** the plugin panels in the icon column, separated by a `.right-rail-divider`. ALERTS (`id: "alerts"`) is the first built-in panel, pinned to the top. A built-in panel may ignore the `RailPanelContext` host capabilities and read console state directly (ALERTS does this).
+- Plugins — both statically-resolved built-in plugins (File Explorer, Diff) and external plugins — register rail panels via `FleetClientPlugin.railPanels[]`, which flow through `rail-registry.ts` → `useRailPanels()` and render **after** the divider. `right-rail.tsx` resolves the active panel against the combined `[...builtInPanels, ...pluginPanels]` set.
 - Rail panel id deduplication is enforced in `plugin-registry.ts#createPluginRegistry`; the first plugin wins and subsequent duplicates are warned and skipped.
 - `apiVersion` compatibility gate applies to external plugins only (enforced in `plugin-registry.ts#loadExternalPlugin`).
 

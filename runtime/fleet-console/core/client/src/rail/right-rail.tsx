@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { RailDiffHunkResult, RailDiffListResult, RailFileReadResult, RailFolderListResult, RailHostCapabilities, RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import "../styles/rail.css";
+import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
 import { closeRailPanel, toggleRailPanel, useActiveRailPanelId } from "./rail-store.js";
 import { useRailPanels } from "./rail-registry.js";
 
@@ -27,8 +28,10 @@ function readStoredPanelWidth(): number {
 
 export function RightRail({ theaterId }: RightRailProps) {
   const activeId = useActiveRailPanelId();
-  const panels = useRailPanels();
-  const activePanel = panels.find((p) => p.id === activeId) ?? null;
+  const pluginPanels = useRailPanels();
+  const builtInPanels = BUILT_IN_RAIL_PANELS;
+  const allPanels = [...builtInPanels, ...pluginPanels];
+  const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const hasPanel = activePanel !== null;
 
   const [panelWidth, setPanelWidthState] = useState(readStoredPanelWidth);
@@ -104,7 +107,13 @@ export function RightRail({ theaterId }: RightRailProps) {
         )}
       </div>
       <nav className="right-rail-icons" role="tablist" aria-label="Activity tools">
-        {panels.map((panel) => (
+        {builtInPanels.map((panel) => (
+          <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
+        ))}
+        {builtInPanels.length > 0 && pluginPanels.length > 0 ? (
+          <div className="right-rail-divider" role="separator" aria-hidden="true" />
+        ) : null}
+        {pluginPanels.map((panel) => (
           <RailIcon key={panel.id} panel={panel} isActive={activeId === panel.id} />
         ))}
       </nav>

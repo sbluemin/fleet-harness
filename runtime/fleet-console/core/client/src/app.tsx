@@ -6,7 +6,6 @@ import { useMapFullscreen } from "./canvas/canvas-store.js";
 import { setCodexViewMode, useCodexSideWidth, useCodexUserChosen, useCodexViewMode } from "./codex-view-mode.js";
 import { fetchObserverStatus, fetchOperations, fetchReleaseNotes, fetchTheaterBootstrap } from "./api.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
-import { NotificationClusterHost } from "./components/notification-cluster.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { Toast } from "./components/toast.js";
 import { Topbar } from "./components/topbar.js";
@@ -213,7 +212,6 @@ export function App() {
         title="Console link interrupted"
         message={state.connectionError ?? undefined}
       />
-      <NotificationClusterHost />
     </div>
   );
 }
