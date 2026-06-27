@@ -3276,9 +3276,10 @@
 /* Operation taskbar. world transform 밖 좌하단에 고정되어 패널과 함께 이동/확대되지 않는다. */
 .canvas-dock {
   position: absolute;
-  bottom: var(--space-4);
-  /* 좌하단 '+' 런처(36px) 오른쪽으로 민다: space-4(런처 left) + 36 + space-2(간격) = 60px. */
-  left: calc(var(--space-4) + 36px + var(--space-2));
+  /* Operations Control 런처(높이 44px) 기준 수직 중앙정렬: space-4(16) + (런처 44 - Dock 행 40)/2 = 18px. */
+  bottom: 18px;
+  /* 좌하단 런처(폭 56px) 오른쪽으로 민다: space-4(런처 left 16) + 56 + space-2(간격 8) = 80px. */
+  left: calc(var(--space-4) + 56px + var(--space-2));
   --canvas-dock-safe-inset: 58px;
   z-index: 15;
   display: flex;
@@ -3300,8 +3301,9 @@
   z-index: 15;
   display: grid;
   place-items: center;
+  /* 폭만 넓힌 가로 직사각형 — 정사각형이 아니다. 높이는 기준값을 유지한다. */
   width: 56px;
-  height: 48px;
+  height: 44px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass) 78%, var(--ink-deep));
