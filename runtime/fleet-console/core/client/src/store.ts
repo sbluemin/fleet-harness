@@ -1,6 +1,7 @@
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { applyChannelAnimationDefaults } from "./canvas/canvas-store.js";
 import { buildOperationSearchEntries } from "./operation-search.js";
 import type {
   ConsoleState,
@@ -104,6 +105,8 @@ export function setActiveTheme(theme: ThemeId): void {
 }
 
 export function applyObserverStatus(status: ObserverStatus): void {
+  // 채널은 status로만 도착한다. local 채널이면 ambient 애니메이션 기본값을 끔으로 reconcile한다(사용자 선호는 존중).
+  applyChannelAnimationDefaults(status.channel);
   setState({
     version: status.version,
     updateAvailable: status.updateAvailable,

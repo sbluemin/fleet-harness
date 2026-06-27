@@ -308,6 +308,22 @@ export function togglePerimeterAnimation(): void {
   emitPerimeterAnimation();
 }
 
+// local 채널(미게시 pnpm 실행)에서는 ambient 애니메이션(레이더 스윕·패널 펄스)을 기본 끈다.
+// 채널은 status로 첫 페인트 이후 도착하므로 모듈 로드 기본값(켜짐) 이후 이 함수로 reconcile한다.
+// 사용자가 명시 토글한 선호(localStorage 존재)는 채널과 무관하게 존중하고, 여기서는 localStorage에 쓰지 않아
+// '저장된 선호'가 아닌 '기본값'으로만 작동하게 한다(stable 채널의 기존 켜짐 기본값은 불변).
+export function applyChannelAnimationDefaults(channel: "stable" | "local" | "unknown"): void {
+  if (channel !== "local") return;
+  if (backgroundAnimationEnabled && !hasStoredBackgroundAnimation()) {
+    backgroundAnimationEnabled = false;
+    emitBackgroundAnimation();
+  }
+  if (perimeterAnimationEnabled && !hasStoredPerimeterAnimation()) {
+    perimeterAnimationEnabled = false;
+    emitPerimeterAnimation();
+  }
+}
+
 export function toggleMapFullscreen(): void {
   setMapFullscreen(!mapFullscreen);
 }
@@ -507,6 +523,15 @@ function readStoredBackgroundAnimation(): boolean {
   }
 }
 
+function hasStoredBackgroundAnimation(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(BACKGROUND_ANIMATION_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 function writeStoredBackgroundAnimation(value: boolean): void {
   if (typeof window === "undefined") return;
   try {
@@ -524,6 +549,15 @@ function readStoredPerimeterAnimation(): boolean {
     return stored === "true";
   } catch {
     return true;
+  }
+}
+
+function hasStoredPerimeterAnimation(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(PERIMETER_ANIMATION_STORAGE_KEY) !== null;
+  } catch {
+    return false;
   }
 }
 
