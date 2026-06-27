@@ -16,7 +16,9 @@ type ShapeKey =
   | "database"
   | "archive"
   | "chip"
-  | "default";
+  | "default"
+  | "folderClosed"
+  | "folderOpen";
 
 interface IconSpec {
   readonly shape: ShapeKey;
@@ -25,6 +27,11 @@ interface IconSpec {
 
 interface FileIconProps {
   readonly name: string;
+}
+
+interface FolderIconProps {
+  readonly name: string;
+  readonly open: boolean;
 }
 
 // ── 색 토큰(축약) ── explorer.css의 --fexp-ic-<tone> 변수명과 1:1 대응
@@ -45,8 +52,38 @@ const TONE = {
   archive: "archive",
   binary: "binary",
   ruby: "ruby",
+  folder: "folder",
   default: "default",
 } as const;
+
+// ── 특수 폴더 → 색 토큰 ── 보편적으로 인지되는 폴더만 강조, 나머지는 차분한 기본 폴더색
+const SPECIAL_FOLDERS: Readonly<Record<string, string>> = {
+  src: TONE.ts,
+  lib: TONE.ts,
+  app: TONE.ts,
+  test: TONE.shell,
+  tests: TONE.shell,
+  __tests__: TONE.shell,
+  spec: TONE.shell,
+  specs: TONE.shell,
+  node_modules: TONE.binary,
+  vendor: TONE.binary,
+  dist: TONE.config,
+  build: TONE.config,
+  out: TONE.config,
+  target: TONE.config,
+  docs: TONE.md,
+  doc: TONE.md,
+  public: TONE.data,
+  assets: TONE.data,
+  static: TONE.data,
+  components: TONE.image,
+  scripts: TONE.js,
+  styles: TONE.css,
+  ".git": TONE.html,
+  ".github": TONE.config,
+  ".vscode": TONE.css,
+};
 
 // ── 확장자 → 아이콘 스펙 ──
 const EXT_SPECS: Readonly<Record<string, IconSpec>> = {
@@ -300,6 +337,20 @@ const SHAPES: Readonly<Record<ShapeKey, ReactElement>> = {
       <path d="M9 2.7V5.5h2.8" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
     </>
   ),
+  folderClosed: (
+    <>
+      <path d="M2.4 5.4c0-.69.56-1.25 1.25-1.25h2.7c.33 0 .65.13.88.37l.72.72c.23.23.55.37.88.37h3.15c.69 0 1.25.56 1.25 1.25v4.05c0 .69-.56 1.25-1.25 1.25H3.65c-.69 0-1.25-.56-1.25-1.25V5.4Z" fill="currentColor" opacity="0.2" />
+      <path d="M2.4 5.4c0-.69.56-1.25 1.25-1.25h2.7c.33 0 .65.13.88.37l.72.72c.23.23.55.37.88.37h3.15c.69 0 1.25.56 1.25 1.25v4.05c0 .69-.56 1.25-1.25 1.25H3.65c-.69 0-1.25-.56-1.25-1.25V5.4Z" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+    </>
+  ),
+  folderOpen: (
+    <>
+      <path d="M2.4 5.2c0-.69.56-1.25 1.25-1.25h2.7c.33 0 .65.13.88.37l.72.72c.23.23.55.37.88.37h3.15c.69 0 1.25.56 1.25 1.25v1.1H2.4V5.2Z" fill="currentColor" opacity="0.18" />
+      <path d="M1.45 7.55h12.1l-1.16 3.88c-.17.56-.69.97-1.28.97H3.89c-.59 0-1.11-.41-1.28-.97L1.45 7.55Z" fill="currentColor" opacity="0.26" />
+      <path d="M2.4 5.2c0-.69.56-1.25 1.25-1.25h2.7c.33 0 .65.13.88.37l.72.72c.23.23.55.37.88.37h3.15c.69 0 1.25.56 1.25 1.25v.8" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M1.45 7.55h12.1l-1.16 3.88c-.17.56-.69.97-1.28.97H3.89c-.59 0-1.11-.41-1.28-.97L1.45 7.55Z" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+    </>
+  ),
 };
 
 export function FileIcon({ name }: FileIconProps): ReactElement {
@@ -314,6 +365,22 @@ export function FileIcon({ name }: FileIconProps): ReactElement {
       style={{ color: `var(--fexp-ic-${spec.tone})` }}
     >
       {SHAPES[spec.shape]}
+    </svg>
+  );
+}
+
+export function FolderIcon({ name, open }: FolderIconProps): ReactElement {
+  const tone = SPECIAL_FOLDERS[name.toLowerCase()] ?? TONE.folder;
+  return (
+    <svg
+      className="fexp-file-svg"
+      width="15"
+      height="15"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      style={{ color: `var(--fexp-ic-${tone})` }}
+    >
+      {open ? SHAPES.folderOpen : SHAPES.folderClosed}
     </svg>
   );
 }

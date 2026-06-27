@@ -21,6 +21,7 @@
   --fexp-ic-archive: oklch(74% 0.08 70);
   --fexp-ic-binary: oklch(66% 0.02 250);
   --fexp-ic-ruby: oklch(68% 0.16 22);
+  --fexp-ic-folder: oklch(74% 0.055 255);
   --fexp-ic-default: oklch(70% 0.02 248);
 }
 
@@ -42,6 +43,7 @@
   --fexp-ic-archive: oklch(74% 0.05 70);
   --fexp-ic-binary: oklch(66% 0.012 250);
   --fexp-ic-ruby: oklch(69% 0.09 22);
+  --fexp-ic-folder: oklch(72% 0.025 255);
   --fexp-ic-default: oklch(67% 0.005 250);
 }
 

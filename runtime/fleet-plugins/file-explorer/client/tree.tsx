@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RailFolderEntry, RailFolderListResult, RailHostFiles } from "@fleet-console/sdk/rail";
 
-import { FileIcon } from "./file-icon.js";
+import { FileIcon, FolderIcon } from "./file-icon.js";
 
 interface FileTreeProps {
   readonly files: RailHostFiles;
@@ -289,7 +289,7 @@ function FlatTreeRow({ row, onEntryClick }: FlatTreeRowProps) {
       onClick={handleClick}
     >
       <span className="fexp-tree-icon" aria-hidden="true">
-        {isDir ? (isExpanded ? "▾" : "▸") : <FileIcon name={entry.name} />}
+        {isDir ? <FolderIcon name={entry.name} open={isExpanded} /> : <FileIcon name={entry.name} />}
       </span>
       <span className="fexp-tree-name">{entry.name}</span>
       {isLoading && <span className="fexp-tree-spin" aria-hidden="true">⋯</span>}
