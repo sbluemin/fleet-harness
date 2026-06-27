@@ -10,8 +10,6 @@ import type { SettingsSectionDescriptor } from "../settings/types.js";
 
 export type ConsoleTheme = "maritime" | "carbon";
 
-export type TerminalRenderer = "webgl" | "dom";
-
 export type OperationActivity = "idle" | "running" | "awaiting" | "live" | "dormant";
 
 export interface TerminalTicket {

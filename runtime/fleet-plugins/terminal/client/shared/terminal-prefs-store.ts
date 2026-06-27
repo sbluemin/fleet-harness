@@ -30,7 +30,8 @@ function initState(): TerminalPrefsState {
 export function migrateLegacyTerminalPrefs(): void {
   if (typeof window === "undefined") return;
   try {
-    // 새 키가 이미 존재하면 no-op(idempotent).
+    // 두 신규 키는 항상 함께 기록되므로(아래 setItem 2회) 둘 중 하나라도 있으면 이미 마이그레이션된 것으로 보고 no-op(idempotent).
+    // OR 가드는 의도적이다 — AND로 바꾸면 부분쓰기 후 legacy 삭제된 상태에서 재진입 시 default로 덮어쓸 위험이 있다.
     if (window.localStorage.getItem(RENDERER_KEY) !== null || window.localStorage.getItem(FONT_KEY) !== null) return;
     const legacyRenderer = window.localStorage.getItem(LEGACY_RENDERER_KEY);
     const legacyFont = window.localStorage.getItem(LEGACY_FONT_KEY);
