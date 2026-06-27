@@ -19,7 +19,6 @@ let state: AgentClientState = {
   tenantJobs: {},
   tenantOrder: [],
   activeTerminalSessionId: null,
-  selectedJobId: null,
   turnState: {},
 };
 
@@ -72,17 +71,12 @@ export function removeSession(sessionId: string): void {
     sessions,
     sessionOrder: state.sessionOrder.filter((id) => id !== sessionId),
     activeTerminalSessionId: state.activeTerminalSessionId === sessionId ? null : state.activeTerminalSessionId,
-    selectedJobId: state.activeTerminalSessionId === sessionId ? null : state.selectedJobId,
     turnState,
   });
 }
 
 export function selectSession(sessionId: string | null): void {
-  setAgentState({ activeTerminalSessionId: sessionId, selectedJobId: null });
-}
-
-export function selectJob(jobId: string | null): void {
-  setAgentState({ selectedJobId: state.selectedJobId === jobId ? null : jobId });
+  setAgentState({ activeTerminalSessionId: sessionId });
 }
 
 export function applyTenantSnapshot(tenants: readonly ObservedTenant[]): void {
