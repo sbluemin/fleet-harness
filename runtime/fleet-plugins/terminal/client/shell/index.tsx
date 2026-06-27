@@ -46,8 +46,6 @@ function ShellOperationView({ context }: { readonly context: OperationRenderCont
       ticketPath={SHELL_TICKET_PATH}
       wsPath={SHELL_WS_PATH}
       theme={context.theme}
-      renderer={context.terminalRenderer}
-      terminalFont={context.terminalFont}
       onExit={context.onClose}
     />
   );

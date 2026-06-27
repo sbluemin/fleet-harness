@@ -7,19 +7,13 @@ import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
-
-export interface TerminalSurfaceFontSettings {
-  readonly family: string;
-  readonly size: number;
-}
+import { useTerminalPrefs } from "./terminal-prefs-store.js";
 
 export interface TerminalSurfaceProps {
   readonly operationId: string;
   readonly ticketPath: string;
   readonly wsPath: string;
   readonly theme?: "maritime" | "carbon";
-  readonly renderer?: "webgl" | "dom";
-  readonly terminalFont?: TerminalSurfaceFontSettings;
   readonly onExit?: () => void;
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
@@ -44,11 +38,6 @@ const TERMINAL_OPTIONS = {
   cursorBlink: true,
   cursorStyle: "block" as const,
   lineHeight: 1.2,
-};
-
-const DEFAULT_TERMINAL_FONT: TerminalSurfaceFontSettings = {
-  family: "\"Cascadia Code Variable\", ui-monospace, \"SF Mono\", Menlo, monospace",
-  size: 14,
 };
 
 const RESIZE_DEBOUNCE_MS = 80;
@@ -106,10 +95,9 @@ const CARBON_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(95% 0.003 250)",
 };
 
-export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "maritime", renderer = "webgl", terminalFont, onExit, active, zoom = 1 }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "maritime", onExit, active, zoom = 1 }: TerminalSurfaceProps) {
   const activeTheme = theme;
-  const terminalRenderer = renderer;
-  const terminalFontSettings = terminalFont ?? DEFAULT_TERMINAL_FONT;
+  const { renderer: terminalRenderer, font: terminalFontSettings } = useTerminalPrefs();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
