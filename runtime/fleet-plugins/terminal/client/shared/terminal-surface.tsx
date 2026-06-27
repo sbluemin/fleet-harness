@@ -234,11 +234,16 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
     };
   }, [operationId, ticketPath, wsPath]);
 
-  // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 줘
-  // 마우스 클릭 없이 바로 입력되게 한다. 비활성 전환에서는 아무 것도 하지 않는다.
+  // 활성 전환 시(예: Map 검색으로 이동·확대된 직후) 이미 마운트된 xterm에 포커스를 다시 주고
+  // 스크롤백을 최신 출력으로 복귀시킨다. 비활성 전환에서는 scheduler 속도만 낮춘다.
   useEffect(() => {
     outputSchedulerRef.current?.setActive(active !== false);
-    if (active) terminalRef.current?.focus();
+    if (!active) return;
+    focusAndScrollTerminalToBottom(terminalRef.current);
+    const frame = window.requestAnimationFrame(() => {
+      if (activeRef.current === true) scrollTerminalToBottom(terminalRef.current);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [active]);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
@@ -363,6 +368,18 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "mari
 
 function terminalThemeFor(theme: "maritime" | "carbon"): ITheme {
   return theme === "carbon" ? CARBON_TERMINAL_THEME : MARITIME_TERMINAL_THEME;
+}
+
+function focusAndScrollTerminalToBottom(terminal: XtermTerminal | null): void {
+  if (!terminal) return;
+  terminal.focus();
+  scrollTerminalToBottom(terminal);
+}
+
+function scrollTerminalToBottom(terminal: XtermTerminal | null): void {
+  if (!terminal) return;
+  terminal.scrollToBottom();
+  if (terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
 }
 
 function createTerminalOutputScheduler(terminal: XtermTerminal, initiallyActive: boolean): TerminalOutputScheduler {
