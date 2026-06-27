@@ -3380,6 +3380,29 @@
   outline: none;
 }
 
+/* 설정 버튼 — 향후 팝오버 placeholder. 현재 disabled+dim */
+.side-bar-settings-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-fog);
+  cursor: not-allowed;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.side-bar-settings-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .operations-side-bar-chips {
   flex: 1;
   list-style: none;
@@ -3510,18 +3533,18 @@
   }
 }
 
-/* Beacon button (accent picker trigger) */
+/* Beacon button (accent picker trigger) — Operation 아이콘을 primary로, status beacon을 우하 코너 점으로 담는 복합 버튼 */
 .side-bar-chip-beacon-button {
+  position: relative;
   display: grid;
   place-items: center;
   flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0 -2px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   transition:
     border-color var(--duration-fast) var(--ease-spring),
@@ -3533,6 +3556,31 @@
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   outline: none;
+}
+
+/* Operation 아이콘 슬롯 */
+.side-bar-chip-op-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--ink-spectral);
+}
+
+.side-bar-chip-op-icon svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* status beacon을 아이콘 버튼 우하 코너로 이동 */
+.side-bar-chip-beacon-button .tenant-beacon {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
 }
 
 .side-bar-chip-name {
@@ -3547,7 +3595,7 @@
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
-/* rail tier: 라벨 숨김 */
+/* rail tier: 라벨 숨김 + 아이콘 가로 중앙정렬 */
 .operations-side-bar[data-tier="rail"] .side-bar-chip-name,
 .operations-side-bar[data-tier="rail"] .side-bar-chip-count,
 .operations-side-bar[data-tier="rail"] .side-bar-chip-close {
@@ -3555,6 +3603,16 @@
   pointer-events: none;
   max-width: 0;
   overflow: hidden;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-chip {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.operations-side-bar[data-tier="rail"] .side-bar-chip-beacon-button {
+  margin: 0;
 }
 
 .side-bar-chip-count {

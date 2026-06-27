@@ -58,6 +58,7 @@ const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
+const MENU_REQUIRED_WIDTH = 300;
 
 export function OperationsSideBar({
   operations,
@@ -95,6 +96,8 @@ export function OperationsSideBar({
   const minimizedSet = new Set(minimized);
   const entries: SideBarEntry[] = sortOperations(operations, canvas.operationOrder).map((operation) => {
     const underway = resolveUnderway(operation.id, operationStatus, operationNotifications);
+    const kind = catalog.find((p) => p.id === operation.pluginId)?.kinds.find((k) => k.type === operation.type) ?? null;
+    const icon = kind ? renderKindIcon(operation.pluginId, kind) : null;
     return {
       operation,
       active: activeOperationId === operation.id,
@@ -103,6 +106,7 @@ export function OperationsSideBar({
       notificationCount: operationNotifications[operation.id]?.count ?? 0,
       underway,
       showRing: underway !== null && minimizedSet.has(operation.id),
+      icon,
     };
   });
   const currentOrder = entries.map((entry) => entry.operation.id);
@@ -238,12 +242,14 @@ export function OperationsSideBar({
     }
     const rect = event.currentTarget.getBoundingClientRect();
     setNewMenu({
-      anchor: { x: rect.right + 8, y: rect.top },
+      anchor: { x: rect.left, y: rect.bottom + 4 },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
 
-  const displayWidth = collapsed ? MIN_RAIL_PX : width;
+  // newMenu 열림 시 사이드바 폭이 MENU_REQUIRED_WIDTH 미만이면 transient 확장해 메뉴가 잘리지 않게 한다.
+  // localStorage 영속 폭은 건드리지 않는다.
+  const displayWidth = collapsed ? MIN_RAIL_PX : (newMenu !== null && width < MENU_REQUIRED_WIDTH ? MENU_REQUIRED_WIDTH : width);
 
   if (entries.length === 0 && tier === "rail") {
     return (
@@ -308,6 +314,18 @@ export function OperationsSideBar({
           <NewIcon />
           {tier !== "rail" ? <span>New</span> : null}
         </button>
+        {tier !== "rail" ? (
+          <button
+            type="button"
+            className="side-bar-settings-btn"
+            disabled
+            aria-disabled="true"
+            aria-label="Sidebar settings"
+            title="Settings (coming soon)"
+          >
+            <SettingsIcon />
+          </button>
+        ) : null}
       </header>
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label="Operations">
@@ -473,6 +491,21 @@ function NewIcon() {
       <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.4" />
       <path d="M12 2.4v3.4M12 18.2v3.4M2.4 12h3.4M18.2 12h3.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       <path d="M12 9.2v5.6M9.2 12h5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.25" />
+      <path
+        d="M8 1.4v1.4M8 13.2v1.4M1.4 8h1.4M13.2 8h1.4M3.3 3.3l1 1M11.7 11.7l1 1M11.7 3.3l-1 1M3.3 11.7l-1 1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

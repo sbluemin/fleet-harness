@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
 import type { OperationNode } from "../types.js";
 
@@ -12,6 +12,7 @@ export interface SideBarEntry {
   readonly notificationCount: number;
   readonly underway: SideBarUnderway;
   readonly showRing: boolean;
+  readonly icon: ReactNode;
 }
 
 interface SideBarChipProps {
@@ -148,6 +149,9 @@ export function OperationsSideBarChip({
         aria-haspopup="menu"
         title="Set accent"
       >
+        <span className="side-bar-chip-op-icon" aria-hidden="true">
+          {entry.icon ?? <DefaultOpIcon />}
+        </span>
         <span className={beaconClassName} aria-hidden="true" />
       </button>
       <span className="side-bar-chip-name">{title}</span>
@@ -182,6 +186,14 @@ function SideBarCloseIcon() {
         strokeWidth="1.35"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function DefaultOpIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <rect x="2" y="2" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   );
 }
