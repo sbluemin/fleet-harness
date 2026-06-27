@@ -1,0 +1,450 @@
+/* File Explorer rail panel styles — rail-viewer.css 표면 준수 */
+
+/* ── 루트 레이아웃 ── */
+.fexp-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+}
+
+.fexp-root.has-viewer {
+  grid-template-columns: minmax(200px, 1fr) 4px minmax(160px, auto);
+}
+
+.fexp-tree-pane {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  border-left: 1px solid var(--surface-rim);
+}
+
+/* ── viewer↔tree 디바이더 ── */
+.fexp-divider {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--surface-rim);
+  transition: background 140ms;
+  flex-shrink: 0;
+}
+
+.fexp-divider:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.fexp-divider:active {
+  background: color-mix(in oklch, var(--brass) 80%, transparent);
+}
+
+.fexp-viewer-pane {
+  display: grid;
+  grid-template-rows: 46px 1fr;
+  overflow: hidden;
+  border-right: 1px solid var(--surface-rim);
+}
+
+/* ── 뷰어 헤더 ── */
+.fexp-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--surface-rim);
+  min-height: 46px;
+  background: var(--surface-glass);
+}
+
+.fexp-viewer-filename {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-spectral);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fexp-viewer-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color 0.12s;
+}
+
+.fexp-viewer-close:hover {
+  color: var(--ink-spectral);
+}
+
+.fexp-viewer-body {
+  overflow: hidden;
+  position: relative;
+}
+
+.fexp-viewer-loading,
+.fexp-viewer-error {
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-fog);
+}
+
+.fexp-viewer-error {
+  color: var(--coral);
+}
+
+/* ── 파일 트리 컨테이너 (필터 + 트리) ── */
+.fexp-tree-container {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fexp-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-filter-input {
+  flex: 1;
+  min-width: 0;
+  background: color-mix(in oklch, var(--ink-deep) 30%, transparent);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 8px;
+  outline: none;
+  transition: border-color 140ms;
+}
+
+.fexp-filter-input:focus {
+  border-color: var(--brass);
+}
+
+.fexp-filter-clear {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-fog);
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  transition: color 0.1s;
+}
+
+.fexp-filter-clear:hover {
+  color: var(--ink-spectral);
+}
+
+/* ── 파일 트리 ── */
+.fexp-tree {
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.fexp-tree-up {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-fog);
+}
+
+.fexp-tree-up:hover {
+  color: var(--ink-spectral);
+}
+
+.fexp-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-spectral);
+  transition: background 0.1s;
+}
+
+.fexp-tree-row:hover {
+  background: var(--surface-hover);
+}
+
+.fexp-tree-row.is-cur {
+  color: var(--brass);
+  background: var(--surface-active);
+}
+
+.fexp-tree-icon {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  width: 14px;
+  text-align: center;
+}
+
+.fexp-tree-row.is-cur .fexp-tree-icon {
+  color: var(--brass);
+}
+
+.fexp-tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.fexp-tree-spin {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  animation: none;
+}
+
+.fexp-tree-empty,
+.fexp-tree-loading,
+.fexp-tree-error {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--ink-fog);
+}
+
+.fexp-tree-error { color: var(--coral); }
+
+/* ── 코드 뷰어 ── */
+.fexp-code-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fexp-truncated-badge {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-code-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.fexp-code-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.fexp-line-num {
+  width: 38px;
+  padding: 0 8px;
+  text-align: right;
+  user-select: none;
+  color: var(--ink-fog);
+  vertical-align: top;
+  border-right: 1px solid var(--surface-rim);
+}
+
+.fexp-line-code {
+  padding: 0 12px;
+  white-space: pre;
+  color: var(--ink-spectral);
+  vertical-align: top;
+}
+
+/* 구문강조 토큰 팔레트 */
+.syn-key  { color: var(--brass-bright, var(--brass)); font-weight: 500; }
+.syn-str  { color: var(--positive); }
+.syn-num  { color: var(--warn); }
+.syn-com  { color: var(--ink-fog); font-style: italic; }
+.syn-fn   { color: var(--aurora); }
+.syn-tag  { color: var(--coral); }
+.syn-attr { color: var(--brass); }
+.syn-punct { color: var(--ink-fog); }
+
+/* ── 마크다운 뷰어 ── */
+.fexp-md-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fexp-md-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  color: var(--ink-spectral);
+  line-height: 1.7;
+}
+
+.fexp-md-h1, .fexp-md-h2, .fexp-md-h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 1.2em 0 0.5em;
+  color: var(--ink-bright);
+}
+
+.fexp-md-h4, .fexp-md-h5, .fexp-md-h6 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brass);
+  margin: 1em 0 0.4em;
+}
+
+.fexp-md-h1 { font-size: 20px; }
+.fexp-md-h2 { font-size: 17px; }
+.fexp-md-h3 { font-size: 15px; }
+
+.fexp-md-p { margin: 0 0 0.8em; }
+
+.fexp-md-pre {
+  background: var(--surface-sunken, color-mix(in oklch, var(--ink-deep) 40%, transparent));
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 1em;
+}
+
+.fexp-md-pre code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-spectral);
+}
+
+.fexp-md-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface-sunken, color-mix(in oklch, var(--ink-deep) 30%, transparent));
+  border: 1px solid var(--surface-rim);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.fexp-md-ul, .fexp-md-ol {
+  padding-left: 20px;
+  margin: 0 0 0.8em;
+}
+
+.fexp-md-bq {
+  border-left: 3px solid var(--brass);
+  margin: 0 0 0.8em;
+  padding-left: 12px;
+  color: var(--ink-fog);
+}
+
+.fexp-md-hr {
+  border: none;
+  border-top: 1px solid var(--surface-rim);
+  margin: 1.2em 0;
+}
+
+.fexp-md-link {
+  color: var(--aurora);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 이미지 뷰어 ── */
+.fexp-img-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.fexp-img-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-conic-gradient(
+    color-mix(in oklch, var(--ink-fog) 15%, transparent) 0% 25%,
+    transparent 0% 50%
+  ) 0 0 / 16px 16px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  width: 100%;
+  max-height: 360px;
+}
+
+.fexp-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.fexp-img-caption {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-fog);
+  text-align: center;
+}
+
+/* ── 바이너리 폴백 ── */
+.fexp-bin-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.fexp-bin-glyph {
+  font-size: 32px;
+  color: var(--ink-fog);
+}
+
+.fexp-bin-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-spectral);
+  margin: 0;
+}
+
+.fexp-bin-meta,
+.fexp-bin-hint {
+  font-size: 12px;
+  color: var(--ink-fog);
+  margin: 0;
+}

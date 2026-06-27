@@ -74,6 +74,11 @@
       "browser": "./react/browser.tsx",
       "import": "./react/browser.tsx",
       "default": "./react/browser.tsx"
+    },
+    "./rail": {
+      "types": "./rail/types.ts",
+      "import": "./rail/types.ts",
+      "default": "./rail/types.ts"
     }
   },
   "scripts": {

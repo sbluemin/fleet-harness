@@ -1,0 +1,6 @@
+{
+  "id": "file-explorer",
+  "name": "File Explorer",
+  "apiVersion": 2,
+  "client": "client/index.tsx"
+}

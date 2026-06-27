@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type { OperationKindDescriptor, FleetClientPlugin } from "@fleet-console/sdk/plugin";
+import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { plugins as builtInPlugins } from "virtual:fleet-plugins";
 
@@ -9,6 +10,7 @@ export interface PluginRegistry {
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
+  readonly railPanels: readonly RailPanelDescriptor[];
 }
 
 interface PluginRuntimeManifest {
@@ -90,11 +92,24 @@ async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<Fl
 }
 
 function createPluginRegistry(plugins: readonly FleetClientPlugin[]): PluginRegistry {
+  const railPanelIds = new Set<string>();
+  const railPanels: RailPanelDescriptor[] = [];
+  for (const plugin of plugins) {
+    for (const panel of plugin.railPanels ?? []) {
+      if (railPanelIds.has(panel.id)) {
+        console.warn(`Skipping rail panel with duplicate id: ${panel.id}`);
+        continue;
+      }
+      railPanelIds.add(panel.id);
+      railPanels.push(panel);
+    }
+  }
   return {
     plugins,
     operationKinds: plugins.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: plugins.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: plugins.flatMap((plugin) => plugin.notificationKinds ?? []),
+    railPanels,
   };
 }
 

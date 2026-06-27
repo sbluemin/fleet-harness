@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { clearMaximizedOperationId, ensureDefaultGeometry, focusOperation as focusCanvasOperation, loadForTheater, pruneOperations, setMaximizedOperationId, useMaximizedOperationId } from "../canvas/canvas-store.js";
+import { RightRail } from "../rail/right-rail.js";
 import { consumeOperationFocus, focusOperation, nextOperationId, setActiveOperation } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 
@@ -71,8 +72,12 @@ export function Operations({ state }: OperationsProps) {
   }, [state.pendingOperationFocus]);
 
   return (
-    <div className="console-body is-canvas" ref={bodyRef}>
+    <div
+      className={`console-body is-canvas${maximizedOperationId ? " is-map-fullscreen" : ""}`}
+      ref={bodyRef}
+    >
       <OperationsCanvas state={state} />
+      <RightRail theaterId={state.activeTheaterId} />
     </div>
   );
 }

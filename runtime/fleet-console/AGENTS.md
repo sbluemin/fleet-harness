@@ -41,6 +41,8 @@
 - MCP session tokens must never reach browser code, URL query strings, SSE payloads, terminal tickets, logs, or static assets.
 - Theater routes likewise do not expose admin bearer tokens, MCP/session tokens, terminal tickets, folder-grant identifiers, raw working-directory paths, provider session ids, or transcript paths to the browser.
 - Console-owned Theater folder browser routes (`POST /theaters/folders/list`, `POST /theaters/folders/grants`) are gated by `validateHost` then `isTerminalAuthorized` (the same Origin boundary as terminal routes). No adminToken or bearer auth is added. Folder selection is browser UI plus loopback fs APIs; no OS-native dialog or child process is spawned. Selected absolute paths appear only in list and grant responses; they are not included in session, Theater, observer, or SSE payloads. When a Theater is registered the resolved cwd is stored in durable local state (`sensitivity: "sensitive"`) as before — it is not transmitted to the browser.
+- **Symlink containment** — Theater file/image routes must verify containment _after_ resolving symlinks: call `fs.promises.realpath()` on both the target path and the Theater root, then re-check that the real path is within the real root before stat/read. Symptom without this: a symlink inside the Theater can point to `/etc/passwd` and pass the initial string-prefix check. Why: `path.resolve` + string prefix only catches traversal in the nominal path; `realpath` follows the actual OS link chain.
+- **Git ref option injection** — Any `ref` string passed to Theater diff routes must be validated against `isSafeGitRef()` (SHA or branch/tag — no leading `-`). Even with `shell: false`, git options like `--output=` or `--no-index` are interpreted by git as flags when passed as ref arguments. Symptom without this: a crafted `ref` can redirect git output or trigger unintended git operations. Why: git parses its own argv before the shell; format whitelisting is the only reliable guard.
 
 ## Carrier Readiness/Settings Boundary
 
@@ -155,6 +157,42 @@ Operation chrome (maximize, minimize, focus, and the bottom Dock) is host-owned.
 - Snapshot rebuild (`/observer/jobs`) and live SSE application must go through the same reducer (`applyEvent`) — no second interpretation of event payloads.
 - The output view keeps pin-to-bottom follow behavior: pinned within slack distance, released on upward scroll, restored via the follow button. Removing this is a UX regression.
 - `sentTextLength` tracks emitted length from `textLength` metadata so retention clamping on the console-backend side stays visible to the operator.
+
+## Right Rail (Activity Rail)
+
+The right rail (`core/client/src/rail/`) is a persistent 48px vertical icon column at the right edge of the Operations canvas. Selecting an icon opens an inboard panel (312px) beside the icons; re-clicking the active icon collapses the panel while keeping the rail visible.
+
+**Right-edge handle separation** — three handles share the right edge and must not overlap:
+
+| Handle | z-index token | Element | Notes |
+|--------|--------------|---------|-------|
+| Activity Rail | `--z-rail: 10` | `.right-rail` | Lowest; canvas-grid column 2 |
+| Codex Side | `--z-codex-side: 20` | `.codex-side-panel` | Overlay above canvas |
+| ALERTS dropdown | `--z-alerts-dropdown: 30` | `.alerts-dropdown` | Highest; always on top |
+
+These CSS variables are declared in `rail.css` and must not be inlined elsewhere. ALERTS and Codex Side coexist with the rail — they are **not** absorbed into or replaced by the rail.
+
+**RailPanel registration**:
+
+- `RailPanelDescriptor` is the sole SDK surface for rail panels, defined in `@fleet-console/sdk/rail`.
+- Built-in and external plugins both register rail panels via `FleetClientPlugin.railPanels[]` — there is no built-in fast-path; both flows pass through `rail-registry.ts` → `useRailPanels()`.
+- Rail panel id deduplication is enforced in `plugin-registry.ts#createPluginRegistry`; the first plugin wins and subsequent duplicates are warned and skipped.
+- `apiVersion` compatibility gate applies to external plugins only (enforced in `plugin-registry.ts#loadExternalPlugin`).
+
+**Layout contract**:
+
+- `.console-body.is-canvas` is `display:grid; grid-template-columns: minmax(0,1fr) auto`. The second column is the `<RightRail>` component.
+- When a panel is maximized (`maximizedOperationId !== null`), `operations.tsx` adds `is-map-fullscreen` to `.console-body.is-canvas`, forcing the second column to `0` via `layout.css`.
+- The `canvas.tsx` `ResizeObserver` naturally reflows the canvas width when the rail opens/closes — no manual layout math is needed.
+- `.console-shell` grid (64px header + 1fr body) is immutable; only `.console-body.is-canvas` grid changes.
+
+**Design rules for RailPanel chrome**:
+
+- Active icon = `--brass`; idle = `--ink-fog`; hover = `--ink-spectral`. Do **not** use `--aurora` for rail icon states.
+- Active icon carries a left-edge 2px `--brass` bar (`.right-rail-ico.is-active::before`).
+- Panel open/close transition = `width var(--duration-base) var(--ease-spring)`. `prefers-reduced-motion: reduce` must short-circuit to `0.01ms`.
+- Panel chrome (header 46px min-height + body 1fr) follows the mock `.panel` pattern. Panel body content is plugin-owned; chrome is host-owned.
+- Viewer-surface syntax/diff colors go in new surface CSS files (e.g., `rail-viewer.css`); `theme.css` is immutable.
 
 ## Design Identity — "Maritime Console"
 
