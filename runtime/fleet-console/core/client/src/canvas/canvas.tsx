@@ -9,7 +9,6 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationGeometry, setViewport, useCanvasState, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
-import { CanvasDock } from "./canvas-dock.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
@@ -60,8 +59,6 @@ interface PluginOperationRendererProps {
 const EMPTY_GUIDE = "Shift-drag to create a Shell. Right-click for actions. Drag to pan; scroll to zoom.";
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
-// 사용자 close(헤더 X)와 PTY 자가종료(onExit→onClose)가 같은 operation의 close path를 중복 실행하는 것을 막는다.
-const closingOperationIds = new Set<string>();
 
 export function OperationsCanvas({
   state,
@@ -274,23 +271,6 @@ export function OperationsCanvas({
           y: canvasSize.height / 2 - center.y * canvas.viewport.zoom,
           zoom: canvas.viewport.zoom,
         })}
-      />
-      <CanvasDock
-        operations={theaterOperations}
-        minimized={minimized}
-        activeOperationId={activePluginOperationId}
-        operationStatus={state.operationStatus}
-        operationNotifications={state.operationNotifications}
-        onClose={onClose}
-        onFocus={(operationId) => {
-          const operation = theaterOperations.find((candidate) => candidate.id === operationId);
-          if (!operation) return;
-          const snapshot = getCanvasSnapshot();
-          const geometry = snapshot.operations[operationId] ?? operation.geometry ?? ensurePluginGeometry(operation);
-          if (!snapshot.operations[operationId]) setOperationGeometry(operationId, geometry);
-          onFocus(operationId);
-        }}
-        onSetAccent={onSetAccent}
       />
     </main>
   );

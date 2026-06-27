@@ -298,7 +298,7 @@ a {
   }
 }
 
-/* 화면 하단 가로 중앙에 고정된 요소(canvas-dock)의 등장 reveal — codex-rise와 같은 모션이되
+/* 화면 하단 가로 중앙에 고정된 요소의 등장 reveal — codex-rise와 같은 모션이되
    중앙정렬용 translateX(-50%)를 보존한 채 Y만 떠오른다(codex-rise는 translateX를 덮어써 중앙이 깨진다). */
 @keyframes codex-rise-centered {
   from {
