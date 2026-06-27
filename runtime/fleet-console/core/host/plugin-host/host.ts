@@ -49,22 +49,34 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
   async function boot(): Promise<void> {
     for (const plugin of plugins) {
       if (!plugin.routesEntry) continue;
-      const mod = await importModule(plugin.routesEntry);
-      const register = resolveRegister(mod);
-      if (!register) continue;
-      await register({
-        pluginId: plugin.manifest.id,
-        manifest: plugin.manifest,
-        basePath: `/plugins/${plugin.manifest.id}`,
-        wsBasePath: `/plugins/${plugin.manifest.id}/ws`,
-        host: deps.host,
-        registerRouter: createScopedRouteRegistrar(deps.routes, `/plugins/${plugin.manifest.id}`),
-        registerWsHandler: createScopedUpgradeRegistrar(deps.upgrades, `/plugins/${plugin.manifest.id}/ws`),
-      });
+      if (!plugin.external) {
+        await bootPluginRoutes(plugin);
+        continue;
+      }
+      try {
+        await bootPluginRoutes(plugin);
+      } catch (error) {
+        console.warn(`[fleet-console] Plugin ${plugin.manifest.id} routes skipped: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
   return { plugins, sensitiveFieldsByPluginId, boot };
+
+  async function bootPluginRoutes(plugin: DiscoveredFleetPlugin): Promise<void> {
+    const mod = await importModule(plugin.routesEntry!);
+    const register = resolveRegister(mod);
+    if (!register) return;
+    await register({
+      pluginId: plugin.manifest.id,
+      manifest: plugin.manifest,
+      basePath: `/plugins/${plugin.manifest.id}`,
+      wsBasePath: `/plugins/${plugin.manifest.id}/ws`,
+      host: deps.host,
+      registerRouter: createScopedRouteRegistrar(deps.routes, `/plugins/${plugin.manifest.id}`),
+      registerWsHandler: createScopedUpgradeRegistrar(deps.upgrades, `/plugins/${plugin.manifest.id}/ws`),
+    });
+  }
 }
 
 function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): readonly DiscoveredFleetPlugin[] {

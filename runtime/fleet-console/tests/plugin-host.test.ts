@@ -190,6 +190,36 @@ describe("plugin host", () => {
     expect(host.sensitiveFieldsByPluginId.get("demo")).toEqual(["pluginSecret"]);
   });
 
+  it("quarantines external plugin route failures without stopping built-in route boot", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-quarantine-"));
+    tempDirs.push(dir);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "terminal"), "terminal");
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 1 });
+    const routes = new RouteRegistry();
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      routes,
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+      importModule: async (entry) => ({
+        register: (ctx) => {
+          if (entry.includes(`${path.sep}bad${path.sep}`)) {
+            ctx.registerRouter("/terminal", () => true);
+            return;
+          }
+          ctx.registerRouter("ready", () => true);
+        },
+      }),
+    });
+
+    await expect(host.boot()).resolves.toBeUndefined();
+
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/terminal/ready" })).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin bad routes skipped: plugin_route_outside_scope"));
+  });
+
   it("keeps the first plugin id when duplicate ids are discovered", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-dedupe-"));
     tempDirs.push(dir);

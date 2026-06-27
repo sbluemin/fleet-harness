@@ -1,5 +1,7 @@
 import { builtinModules } from "node:module";
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import * as reactNs from "react";
 import * as reactJsxRuntime from "react/jsx-runtime";
@@ -69,7 +71,7 @@ export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginCl
     for (const plugin of deps.plugins) {
       if (!plugin.external || !plugin.clientEntry) continue;
       try {
-        const source = await readClientSource(plugin.clientEntry);
+        const source = await readClientSource(plugin.clientEntry, plugin.root);
         clientSources.set(plugin.manifest.id, source);
         preparedPlugins.add(plugin.manifest.id);
       } catch (error) {
@@ -101,14 +103,17 @@ export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginCl
   return { prepare, manifest, getClient, getShim };
 }
 
-async function readClientSource(entry: string): Promise<string> {
-  if (entry.endsWith(".ts") || entry.endsWith(".tsx")) return bundleClientSource(entry);
+async function readClientSource(entry: string, pluginRoot: string): Promise<string> {
+  if (entry.endsWith(".ts") || entry.endsWith(".tsx")) return bundleClientSource(entry, pluginRoot);
   if (entry.endsWith(".js") || entry.endsWith(".mjs")) return await readFile(entry, "utf8");
   throw new Error("unsupported_client_entry");
 }
 
-async function bundleClientSource(entry: string): Promise<string> {
+async function bundleClientSource(entry: string, pluginRoot: string): Promise<string> {
   const { build } = await import("esbuild");
+  // 번들 주석에 절대 경로(사용자 홈/계정명)가 새지 않도록 plugin root realpath를 작업 디렉터리로 고정한다.
+  // 이렇게 하면 esbuild 모듈 경로 주석이 plugin root 기준 상대경로가 되어 브라우저 페이로드에 raw path가 노출되지 않는다.
+  const rootRealpath = realpathSync.native(pluginRoot);
   const output = await build({
     entryPoints: [entry],
     bundle: true,
@@ -119,14 +124,15 @@ async function bundleClientSource(entry: string): Promise<string> {
     sourcemap: false,
     write: false,
     logLevel: "silent",
-    plugins: [createShimExternalsPlugin()],
+    absWorkingDir: rootRealpath,
+    plugins: [createShimExternalsPlugin(rootRealpath)],
   });
   const bundled = output.outputFiles[0]?.text;
   if (!bundled) throw new Error("plugin_client_bundle_failed");
   return bundled;
 }
 
-function createShimExternalsPlugin(): Plugin {
+function createShimExternalsPlugin(rootRealpath: string): Plugin {
   return {
     name: "fleet-console-plugin-client-shim-externals",
     setup(build) {
@@ -135,6 +141,13 @@ function createShimExternalsPlugin(): Plugin {
         if (shimUrl) return { path: shimUrl, external: true };
         if (NODE_BUILTINS.has(args.path)) throw new Error(`Node builtin import is not allowed in plugin client: ${args.path}`);
         return null;
+      });
+      build.onLoad({ filter: /.*/, namespace: "file" }, (args) => {
+        const targetRealpath = realpathSync.native(args.path);
+        if (isSubpath(rootRealpath, targetRealpath)) return undefined;
+        return {
+          errors: [{ text: `plugin client import escapes plugin root: ${args.path}` }],
+        };
       });
     },
   };
@@ -149,4 +162,9 @@ function renderShim(definition: ShimDefinition): string {
     "export default ns.default;",
     "",
   ].join("\n");
+}
+
+function isSubpath(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

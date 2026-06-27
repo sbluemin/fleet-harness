@@ -62,6 +62,36 @@ describe("plugin client assets", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Node builtin import is not allowed"));
   });
 
+  it("allows browser client imports that stay inside the plugin root", async () => {
+    const plugin = writeClientPlugin("inside", "index.ts", [
+      "import { label } from \"./shared\";",
+      "export default { id: label };",
+    ].join("\n"));
+    fs.writeFileSync(path.join(plugin.root, "shared.ts"), "export const label = \"inside\";");
+    const assets = createPluginClientAssets({ plugins: [plugin] });
+
+    await assets.prepare();
+
+    expect(assets.getClient("inside")).toContain("inside");
+    expect(assets.manifest().plugins.map((entry) => entry.id)).toEqual(["inside"]);
+  });
+
+  it("rejects browser client imports that escape the plugin root", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const plugin = writeClientPlugin("escape", "index.ts", [
+      "import { secret } from \"../secret\";",
+      "export default { id: \"escape\", secret };",
+    ].join("\n"));
+    fs.writeFileSync(path.join(path.dirname(plugin.root), "secret.ts"), "export const secret = \"outside\";");
+    const assets = createPluginClientAssets({ plugins: [plugin] });
+
+    await assets.prepare();
+
+    expect(assets.getClient("escape")).toBeNull();
+    expect(assets.manifest()).toEqual({ plugins: [] });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("plugin client import escapes plugin root"));
+  });
+
   it("serves only prepared external client entries in the manifest DTO", async () => {
     const external = writeClientPlugin("external", "index.mjs", "export const plugin = { id: \"external\" };", { sensitiveFields: ["secret"], rootName: "external-root" });
     const builtIn = writeClientPlugin("terminal", "index.mjs", "export const plugin = { id: \"terminal\" };", { external: false, rootName: "terminal-root" });
