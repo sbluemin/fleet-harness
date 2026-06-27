@@ -12,6 +12,18 @@
   height: 100%;
   min-height: 0;
   z-index: var(--z-rail);
+  /* Glass 부유 카드 — 144df6c 이전 독립 ALERTS 도크의 함교 계기판 질감을 계승한다:
+     우상단 brass 코너 조명 + glass 본체, 둥근 모서리, 부유 그림자, 단일 blur 레이어.
+     자식(panel-slot·icons)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다. */
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--surface-rim);
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  overflow: hidden;
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
@@ -23,9 +35,6 @@
   overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr;
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  border-left: 1px solid var(--surface-rim);
   transition: width var(--duration-base) var(--ease-spring);
 }
 
@@ -84,9 +93,6 @@
 .right-rail-icons {
   width: 48px;
   flex-shrink: 0;
-  background: var(--surface-pillar);
-  backdrop-filter: blur(18px) saturate(140%);
-  border-left: 1px solid var(--surface-rim);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -94,6 +100,12 @@
   padding: 10px 0;
   list-style: none;
   margin: 0;
+}
+
+/* 패널이 열렸을 때만 panel-slot과 아이콘 컬럼 사이 내부 구분선을 둔다.
+   닫힌 상태(48px 카드)에선 구분선이 카드 좌측 모서리에 붙어 어색하므로 숨긴다. */
+.right-rail.is-open .right-rail-icons {
+  border-left: 1px solid var(--surface-rim);
 }
 
 .right-rail-ico {

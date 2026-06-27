@@ -35,12 +35,16 @@
 .console-body.is-canvas {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  /* 맵(col1)과 우현 레일(col2) 사이 간격 — 레일이 부유 카드로 떠 보이게 하고,
+     레일이 펼쳐질 때 맵이 "덮이는" 게 아니라 "자리를 내주며 축소"되는 것으로 읽히게 한다. */
+  column-gap: var(--space-3);
   overflow: hidden;
 }
 
-/* Operation 패널 최대화 시 우현 레일 column을 0으로 잠근다 */
+/* Operation 패널 최대화 시 우현 레일 column을 0으로 잠그고 간격도 제거해 맵이 가장자리까지 찬다 */
 .console-body.is-canvas.is-map-fullscreen {
   grid-template-columns: minmax(0, 1fr) 0;
+  column-gap: 0;
 }
 
 .codex-host {
