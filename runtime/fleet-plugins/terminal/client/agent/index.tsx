@@ -113,23 +113,59 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const [modalOpen, setModalOpen] = React.useState(false);
+  const summaryButtonRef = React.useRef<HTMLButtonElement>(null);
+  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const overlayRef = React.useRef<HTMLDivElement>(null);
 
   const jobs = sessionJobs(session);
   const activeJobs = jobs.filter((job) => !isTerminalJobStatus(job.status));
   const primaryJob = activeJobs[0] ?? null;
+  const totalTrackCount = activeJobs.reduce((sum, job) => sum + job.trackOrder.length, 0);
 
-  // Escape 키로 모달 닫기 — capture phase로 전역 단축키보다 먼저 처리한다.
+  const closeModal = React.useCallback(() => {
+    setModalOpen(false);
+    summaryButtonRef.current?.focus();
+  }, []);
+
+  // [M2] paint 전 동기 포커스 이동으로 순간 배경 포커스 잔류 방지
+  React.useLayoutEffect(() => {
+    if (modalOpen) {
+      closeButtonRef.current?.focus();
+    }
+  }, [modalOpen]);
+
+  // Escape 키로 모달 닫기 + focus trap — capture phase로 전역 단축키보다 먼저 처리한다.
   React.useEffect(() => {
     if (!modalOpen) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        setModalOpen(false);
+        closeModal();
+        return;
+      }
+      if (event.key === "Tab") {
+        // [L3] querySelector 대신 overlayRef로 방어성 강화
+        const overlay = overlayRef.current;
+        if (!overlay) return;
+        const focusable = Array.from(
+          overlay.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => !el.hasAttribute("disabled"));
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
       }
     };
     document.addEventListener("keydown", handleKey, true);
     return () => document.removeEventListener("keydown", handleKey, true);
-  }, [modalOpen]);
+  }, [modalOpen, closeModal]);
 
   if (session.status === "dormant") {
     return (
@@ -144,13 +180,25 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     <div className="agent-stream-host">
       {primaryJob ? (
         <button
+          ref={summaryButtonRef}
           type="button"
           className="job-summary job-summary--banner job-summary--live"
-          aria-label={activeJobs.length > 1 ? `${activeJobs.length} carriers streaming — click to expand` : `${primaryJob.label ?? primaryJob.jobId} — click to expand`}
+          aria-label={
+            activeJobs.length > 1
+              ? `${activeJobs.length} carriers streaming${totalTrackCount > 0 ? `, ${totalTrackCount} tracks` : ""} — click to expand`
+              : `${primaryJob.label ?? primaryJob.jobId}${totalTrackCount > 0 ? `, ${totalTrackCount} tracks` : ""} — click to expand`
+          }
           onClick={() => setModalOpen(true)}
         >
-          <span className="job-summary-eyebrow">
-            {activeJobs.length > 1 ? `${activeJobs.length} carriers` : (primaryJob.ownerCarrierId ?? "Carrier")}
+          <span className="job-summary-row">
+            <span className="job-summary-dot" aria-hidden="true" />
+            <span className="job-summary-eyebrow">
+              {activeJobs.length > 1 ? `${activeJobs.length} carriers` : (primaryJob.ownerCarrierId ?? "Carrier")}
+            </span>
+            {totalTrackCount > 0 ? (
+              <span className="job-summary-count" aria-hidden="true">{totalTrackCount}</span>
+            ) : null}
+            <span className="job-summary-chev" aria-hidden="true">›</span>
           </span>
           <p className="job-summary-text">{primaryJob.label ?? primaryJob.jobId}</p>
         </button>
@@ -165,10 +213,10 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onExit={() => removeSession(session.sessionId)}
       />
       {modalOpen ? (
-        <div className="job-overlay" role="dialog" aria-modal="true" aria-label="Carrier stream details">
-          <button type="button" className="job-overlay-scrim" aria-label="Close" onClick={() => setModalOpen(false)} />
+        <div ref={overlayRef} className="job-overlay" role="dialog" aria-modal="true" aria-label="Carrier stream details">
+          <button type="button" className="job-overlay-scrim" aria-label="Close" tabIndex={-1} onClick={closeModal} />
           <div className="job-overlay-card">
-            <button type="button" className="job-overlay-close" aria-label="Close" onClick={() => setModalOpen(false)}>×</button>
+            <button ref={closeButtonRef} type="button" className="job-overlay-close" aria-label="Close" onClick={closeModal}>×</button>
             <div className="job-overlay-body">
               {activeJobs.length === 0 ? (
                 <p className="job-overlay-empty">No active streams.</p>
@@ -400,18 +448,33 @@ function JobDetailContent({ job }: { readonly job: JobView }) {
 }
 
 function TrackCard({ track }: { readonly track: TrackView }) {
+  const modifier = trackCardModifier(track.status);
+  const isLive = modifier === "track-card--live";
   return (
-    <article className="track-card">
+    <article className={modifier ? `track-card ${modifier}` : "track-card"}>
       <header className="track-card-head">
         <span className="track-card-title">{track.displayName}</span>
         <span className="track-card-status">{track.status}</span>
       </header>
-      {track.thought ? <pre className="track-card-thought">{track.thought}</pre> : null}
-      {track.text ? <pre className="track-card-text">{track.text}</pre> : null}
+      {track.thought ? (
+        <div className="track-card-thought" role="group" aria-label="Thinking">
+          <span className="track-card-section-label" aria-hidden="true">thinking</span>
+          <pre>{track.thought}</pre>
+        </div>
+      ) : null}
+      {track.text ? (
+        <div className="track-card-text" role="group" aria-label="Output">
+          <span className="track-card-section-label track-card-section-label--output" aria-hidden="true">output</span>
+          <pre>{track.text}{isLive ? <span className="track-card-caret" aria-hidden="true" /> : null}</pre>
+        </div>
+      ) : null}
+      {track.error ? (
+        <div className="track-card-error" role="group" aria-label="Error">{track.error}</div>
+      ) : null}
       {track.tools.length > 0 ? (
-        <ol className="track-card-tools">
+        <ul className="track-card-tools">
           {track.tools.map((tool) => <li key={tool.id}>{tool.name ?? tool.id}</li>)}
-        </ol>
+        </ul>
       ) : null}
     </article>
   );
@@ -602,6 +665,15 @@ function terminalFontResolveText(font: TerminalFontSettings): string {
   return resolution.status === "resolved"
     ? `"${font.customName}" resolves on this machine`
     : `"${font.customName}" not found — falls back to ${resolution.fallbackName}`;
+}
+
+function trackCardModifier(status: string): string {
+  if (status === "stream" || status === "live" || status === "running" || status === "active") {
+    return "track-card--live";
+  }
+  if (status === "error") return "track-card--bad";
+  if (status === "done" || status === "aborted") return "track-card--idle";
+  return "";
 }
 
 function AgentGlyph() {

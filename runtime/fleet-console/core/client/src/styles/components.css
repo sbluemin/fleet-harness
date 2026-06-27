@@ -4338,6 +4338,148 @@
   border-color: var(--surface-rim);
 }
 
+/* ── track-card 내부 클래스 ──────────────────────────────
+   F1: 브라우저 기본 스타일 방치 → 실토큰으로 정의.          */
+
+.track-card-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.track-card-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-pearl);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-card-status {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* thought: 부차 사고 — 흐림·좌측 룰 */
+.track-card-thought {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid color-mix(in oklch, var(--ink-rim) 40%, transparent);
+}
+
+.track-card-thought pre {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* text: 주 출력 — 또렷 */
+.track-card-text {
+  margin: var(--space-3) 0 0;
+}
+
+.track-card-text pre {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-spectral);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 섹션 레이블 ("thinking" / "output") */
+.track-card-section-label {
+  display: block;
+  color: var(--ink-rim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.track-card-section-label--output {
+  color: color-mix(in oklch, var(--brass) 60%, var(--ink-rim));
+}
+
+/* aurora 스트림 캐럿 — live 트랙 text 끝에 표시 */
+.track-card-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 1px;
+  background: var(--aurora);
+  vertical-align: text-bottom;
+  animation: caret-blink 1.1s step-end infinite;
+}
+
+/* 에러 블록 — coral */
+.track-card-error {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--coral) 40%, var(--surface-rim));
+  border-radius: var(--radius-sm);
+  background: var(--coral-glow);
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* tools 목록 — 모노 brass 점 */
+.track-card-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.track-card-tools li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-fog);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.track-card-tools li::before {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--brass);
+  content: "";
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-card-caret {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .track-head {
   display: flex;
   align-items: center;
@@ -4656,6 +4798,61 @@
   color: var(--coral);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+/* ── job-summary 배너 신호 요소 (F3) ─────────────────────
+   배너 변형 전용: dot(aurora 펄스), count 뱃지, chev(brass). */
+
+/* 헤더 행: dot + eyebrow + count + chev 가로 정렬 */
+.job-summary-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+}
+
+/* aurora 라이브 펄스닷 */
+.job-summary-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aurora);
+  animation: aurora-pulse 1.4s ease-in-out infinite;
+}
+
+/* 활성 트랙 수 뱃지 */
+.job-summary-count {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 35%, var(--surface-rim));
+  border-radius: var(--radius-xs);
+  color: var(--aurora);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+/* 확장 셰브론 — brass(보는 곳/구조) */
+.job-summary-chev {
+  flex: none;
+  margin-left: auto;
+  color: var(--brass);
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 배너 변형: 텍스트 한 줄 말줄임 (pre-wrap 재정의) */
+.job-summary--banner .job-summary-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-summary-dot {
+    animation: none;
+  }
 }
 
 .follow-button {
