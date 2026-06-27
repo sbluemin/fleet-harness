@@ -23,12 +23,12 @@ export async function handleFilesList(
   if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return; }
 
   const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly relativePath?: unknown }>(req);
-  if (!isPlainObject(body) && body !== null) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  if (!isPlainObject(body)) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const rawTheaterId = (body as Record<string, unknown> | null)?.theaterId;
+  const rawTheaterId = body.theaterId;
   if (typeof rawTheaterId !== "string") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
 
-  const rawRel = (body as Record<string, unknown> | null)?.relativePath;
+  const rawRel = body.relativePath;
   const relPath = rawRel === undefined || rawRel === null ? "" : typeof rawRel === "string" ? rawRel : null;
   if (relPath === null) { ctx.host.http.writeJson(res, 400, { error: "invalid_path" }); return; }
 
