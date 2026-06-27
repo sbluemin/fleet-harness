@@ -3,12 +3,16 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 
 import { SHORTCUT_GROUPS } from "../shortcuts-catalog.js";
 
+export type CanvasContextMenuMode = "full" | "launch" | "controls";
+
 interface CanvasContextMenuProps {
   // 캔버스(<main>) 기준 화면 좌표. 메뉴를 이 지점에 띄운다.
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
   // above = anchor.y를 캔버스 하단 거리로 보고 메뉴를 위로 띄운다(런처). cursor = anchor를 좌상단으로 본다(우클릭).
   readonly placement?: "above" | "cursor";
+  // full(기본): 탭바+3패널. launch: Operations만(＋New용). controls: Map+Help 스택(⚙용).
+  readonly mode?: CanvasContextMenuMode;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
   // Map 탭 — 기존 canvas-store 토글 함수와 영속 키를 그대로 사용한다.
@@ -50,12 +54,17 @@ const CANVAS_CONTROL_TABS: readonly CanvasControlTabDefinition[] = [
 // 대소문자 무시(i)로 두 표기를 모두 Apple 플랫폼으로 인식해야 ⌘가 올바르게 표시된다.
 const MAC_PLATFORM_PATTERN = /mac|iphone|ipad|ipod/i;
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, mapFullscreen, radarEnabled, perimeterEnabled, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onTogglePerimeter, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", mode = "full", catalog, canLaunch, mapFullscreen, radarEnabled, perimeterEnabled, renderKindIcon, onLaunchKind, onResetView, onMaximizeMap, onToggleRadar, onTogglePerimeter, onClose }: CanvasContextMenuProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<CanvasControlTab, HTMLButtonElement | null>>({ operations: null, map: null, help: null });
-  const [activeTab, setActiveTab] = useState<CanvasControlTab>("operations");
+  // controls 모드에선 Map 패널을 기본으로, 그 외엔 Operations를 기본으로 시작한다.
+  const [activeTab, setActiveTab] = useState<CanvasControlTab>(mode === "controls" ? "map" : "operations");
   const modLabel = resolveModLabel();
+
+  const showTabs = mode === "full";
+  const showOperations = mode === "full" || mode === "launch";
+  const showMapAndHelp = mode === "full" || mode === "controls";
 
   useEffect(() => {
     const handlePointer = (event: MouseEvent) => {
@@ -113,120 +122,112 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             <strong>Operations Control</strong>
           </span>
         </div>
-        <div className="canvas-context-menu-tabs" role="tablist" aria-label="Operations Control sections">
-          {CANVAS_CONTROL_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              ref={(node) => { tabRefs.current[tab.id] = node; }}
-              type="button"
-              id={`canvas-control-tab-${tab.id}`}
-              className="canvas-context-menu-tab"
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              aria-controls={`canvas-control-panel-${tab.id}`}
-              tabIndex={activeTab === tab.id ? 0 : -1}
-              onClick={() => activateTab(tab.id)}
-              onKeyDown={handleTabKeyDown}
+        {showTabs ? (
+          <div className="canvas-context-menu-tabs" role="tablist" aria-label="Operations Control sections">
+            {CANVAS_CONTROL_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                ref={(node) => { tabRefs.current[tab.id] = node; }}
+                type="button"
+                id={`canvas-control-tab-${tab.id}`}
+                className="canvas-context-menu-tab"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`canvas-control-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => activateTab(tab.id)}
+                onKeyDown={handleTabKeyDown}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {showOperations ? (
+          <div
+            id="canvas-control-panel-operations"
+            role="tabpanel"
+            aria-labelledby="canvas-control-tab-operations"
+            className="canvas-context-menu-panel"
+            hidden={showTabs ? activeTab !== "operations" : undefined}
+          >
+            <p className="canvas-context-menu-section">Launch</p>
+            {catalog.length > 0 ? catalog.map((plugin, index) => (
+              <div key={plugin.id}>
+                {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
+                <p className="canvas-context-menu-plugin">{plugin.title}</p>
+                {plugin.kinds.map((kind) => {
+                  const disabled = kind.disabled === true || !canLaunch;
+                  return (
+                    <button
+                      key={`${plugin.id}:${kind.id}`}
+                      type="button"
+                      role="menuitem"
+                      className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
+                      disabled={disabled}
+                      title={kind.disabledReason}
+                      onClick={() => onLaunchKind(plugin.id, kind)}
+                    >
+                      <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
+                      <span className="theater-menu-label">{kind.title}</span>
+                      {kind.disabledReason ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )) : <p className="theater-menu-empty">No operations available.</p>}
+          </div>
+        ) : null}
+        {showMapAndHelp ? (
+          <>
+            <div
+              id="canvas-control-panel-map"
+              role="tabpanel"
+              aria-labelledby="canvas-control-tab-map"
+              className="canvas-context-menu-panel"
+              hidden={showTabs ? activeTab !== "map" : undefined}
             >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div
-          id="canvas-control-panel-operations"
-          role="tabpanel"
-          aria-labelledby="canvas-control-tab-operations"
-          className="canvas-context-menu-panel"
-          hidden={activeTab !== "operations"}
-        >
-          <p className="canvas-context-menu-section">Launch</p>
-          {catalog.length > 0 ? catalog.map((plugin, index) => (
-            <div key={plugin.id}>
-              {index > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
-              <p className="canvas-context-menu-plugin">{plugin.title}</p>
-              {plugin.kinds.map((kind) => {
-                const disabled = kind.disabled === true || !canLaunch;
-                return (
-                  <button
-                    key={`${plugin.id}:${kind.id}`}
-                    type="button"
-                    role="menuitem"
-                    className="theater-menu-item canvas-context-menu-item operation-launch-menu-item"
-                    disabled={disabled}
-                    title={kind.disabledReason}
-                    onClick={() => onLaunchKind(plugin.id, kind)}
-                  >
-                    <span className="theater-menu-check" aria-hidden="true">{renderKindIcon(plugin.id, kind) ?? <FallbackGlyph />}</span>
-                    <span className="theater-menu-label">{kind.title}</span>
-                    {kind.disabledReason ? <span className="operation-launch-menu-reason">{kind.disabledReason}</span> : null}
-                  </button>
-                );
-              })}
+              <p className="canvas-context-menu-section">View</p>
+              <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" onClick={onResetView}>
+                <span className="theater-menu-check" aria-hidden="true"><ResetGlyph /></span>
+                <span className="theater-menu-label">Reset view</span>
+              </button>
+              <div className="theater-menu-divider" role="separator" />
+              <p className="canvas-context-menu-section">Settings</p>
+              {onMaximizeMap ? (
+                <SwitchRow checked={!!mapFullscreen} label="Maximized map" onClick={onMaximizeMap}>
+                  <MapMaximizeGlyph />
+                </SwitchRow>
+              ) : null}
+              {onToggleRadar ? (
+                <SwitchRow checked={!!radarEnabled} label="Radar sweep" onClick={onToggleRadar}>
+                  <RadarGlyph />
+                </SwitchRow>
+              ) : null}
+              {onTogglePerimeter ? (
+                <SwitchRow checked={!!perimeterEnabled} label="Panel pulse" onClick={onTogglePerimeter}>
+                  <PanelPulseGlyph />
+                </SwitchRow>
+              ) : null}
             </div>
-          )) : <p className="theater-menu-empty">No operations available.</p>}
-        </div>
-        <div
-          id="canvas-control-panel-map"
-          role="tabpanel"
-          aria-labelledby="canvas-control-tab-map"
-          className="canvas-context-menu-panel"
-          hidden={activeTab !== "map"}
-        >
-          <p className="canvas-context-menu-section">View</p>
-          <button type="button" role="menuitem" className="theater-menu-item canvas-context-menu-item" onClick={onResetView}>
-            <span className="theater-menu-check" aria-hidden="true"><ResetGlyph /></span>
-            <span className="theater-menu-label">Reset view</span>
-          </button>
-          <div className="theater-menu-divider" role="separator" />
-          <p className="canvas-context-menu-section">Settings</p>
-          {onMaximizeMap ? (
-            <SwitchRow checked={!!mapFullscreen} label="Maximized map" onClick={onMaximizeMap}>
-              <MapMaximizeGlyph />
-            </SwitchRow>
-          ) : null}
-          {onToggleRadar ? (
-            <SwitchRow checked={!!radarEnabled} label="Radar sweep" onClick={onToggleRadar}>
-              <RadarGlyph />
-            </SwitchRow>
-          ) : null}
-          {onTogglePerimeter ? (
-            <SwitchRow checked={!!perimeterEnabled} label="Panel pulse" onClick={onTogglePerimeter}>
-              <PanelPulseGlyph />
-            </SwitchRow>
-          ) : null}
-        </div>
-        <div
-          id="canvas-control-panel-help"
-          role="tabpanel"
-          aria-labelledby="canvas-control-tab-help"
-          className="canvas-context-menu-panel canvas-context-menu-help"
-          hidden={activeTab !== "help"}
-        >
-          {SHORTCUT_GROUPS.map((group) => (
-            <section key={group.title} className="canvas-shortcuts-group" aria-labelledby={`canvas-shortcuts-${group.title.toLowerCase()}`}>
-              <h3 id={`canvas-shortcuts-${group.title.toLowerCase()}`}>{group.title}</h3>
-              <dl className="canvas-shortcuts-list">
-                {group.entries.map((entry) => (
-                  <div key={`${group.title}:${entry.description}`} className="canvas-shortcuts-entry">
-                    <dt className="canvas-shortcuts-combos">
-                      {entry.combos.map((combo, comboIndex) => (
-                        <span key={`${entry.description}:${combo.join("+")}`} className="canvas-shortcuts-combo">
-                          {comboIndex > 0 ? <span className="canvas-shortcuts-or">or</span> : null}
-                          <span className="canvas-shortcuts-keyset">
-                            {combo.map((key) => (
-                              <kbd key={key}>{key === "Mod" ? modLabel : key}</kbd>
-                            ))}
-                          </span>
-                        </span>
-                      ))}
-                    </dt>
-                    <dd>{entry.description}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          ))}
-        </div>
+            <div
+              id="canvas-control-panel-help"
+              role="tabpanel"
+              aria-labelledby="canvas-control-tab-help"
+              className="canvas-context-menu-panel canvas-context-menu-help"
+              hidden={showTabs ? activeTab !== "help" : undefined}
+            >
+              {mode === "controls" ? (
+                <details className="canvas-context-menu-help-details">
+                  <summary className="canvas-context-menu-section canvas-context-menu-help-summary">Shortcuts</summary>
+                  <ShortcutsContent modLabel={modLabel} />
+                </details>
+              ) : (
+                <ShortcutsContent modLabel={modLabel} />
+              )}
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -256,6 +257,37 @@ function clampedAnchorStyle(
   }
   const top = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.y, bounds.height - MENU_MAX_HEIGHT - MENU_MARGIN)) : anchor.y;
   return { left, top };
+}
+
+function ShortcutsContent({ modLabel }: { readonly modLabel: string }) {
+  return (
+    <>
+      {SHORTCUT_GROUPS.map((group) => (
+        <section key={group.title} className="canvas-shortcuts-group" aria-labelledby={`canvas-shortcuts-${group.title.toLowerCase()}`}>
+          <h3 id={`canvas-shortcuts-${group.title.toLowerCase()}`}>{group.title}</h3>
+          <dl className="canvas-shortcuts-list">
+            {group.entries.map((entry) => (
+              <div key={`${group.title}:${entry.description}`} className="canvas-shortcuts-entry">
+                <dt className="canvas-shortcuts-combos">
+                  {entry.combos.map((combo, comboIndex) => (
+                    <span key={`${entry.description}:${combo.join("+")}`} className="canvas-shortcuts-combo">
+                      {comboIndex > 0 ? <span className="canvas-shortcuts-or">or</span> : null}
+                      <span className="canvas-shortcuts-keyset">
+                        {combo.map((key) => (
+                          <kbd key={key}>{key === "Mod" ? modLabel : key}</kbd>
+                        ))}
+                      </span>
+                    </span>
+                  ))}
+                </dt>
+                <dd>{entry.description}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
+    </>
+  );
 }
 
 function SwitchRow({ checked, label, onClick, children }: { readonly checked: boolean; readonly label: string; readonly onClick: () => void; readonly children: ReactNode }) {
