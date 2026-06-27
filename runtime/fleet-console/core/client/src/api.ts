@@ -201,6 +201,8 @@ function assertOperationNode(value: unknown, status: number): OperationNode {
     renamedTitle: typeof payload.renamedTitle === "string" ? payload.renamedTitle : undefined,
     payload: payload.payload,
     geometry: payload.geometry ?? null,
+    // 서버가 영속한 accent를 노드에 보존한다. 누락 시 server→store 동기화가 사용자 accent를 null로 덮어쓴다.
+    accent: typeof payload.accent === "string" ? payload.accent : null,
     state: payload.state && typeof payload.state === "object" && !Array.isArray(payload.state) ? payload.state : {},
     ts: payload.ts,
   };

@@ -137,6 +137,41 @@ describe("operations platform", () => {
     expect(serialized).not.toContain("patched-secret");
   });
 
+  it("sets, preserves, and clears operation accent through PATCH", async () => {
+    const store = createOperationStore({ now: () => 10 });
+    store.create({ id: "op", theaterId: "theater", type: "agent", pluginId: "terminal", title: "Agent", accent: "sky" });
+    let requestBody: unknown = null;
+    const router = createOperationsRouter({
+      store,
+      isAuthorized: () => true,
+      readJsonBody: async <T>() => requestBody as T | null,
+      writeJson: (res, status, payload) => {
+        Object.assign(res, { status, payload });
+      },
+      persist: () => {},
+    });
+
+    requestBody = { accent: "blue" };
+    await dispatch(router, "PATCH", "/operations/op");
+    expect(store.get("op")?.accent).toBe("blue");
+
+    // accent 생략(undefined) → 무변경
+    requestBody = { title: "Renamed" };
+    await dispatch(router, "PATCH", "/operations/op");
+    expect(store.get("op")?.accent).toBe("blue");
+
+    // accent: null → 해제(geometry null-clear 계약과 동일)
+    requestBody = { accent: null };
+    await dispatch(router, "PATCH", "/operations/op");
+    expect(store.get("op")?.accent).toBeUndefined();
+
+    // 문자열·null 외 타입 → 400 거부, 상태 불변
+    requestBody = { accent: 42 };
+    const rejected = await dispatch(router, "PATCH", "/operations/op");
+    expect(rejected).toEqual({ error: "invalid_operation_accent" });
+    expect(store.get("op")?.accent).toBeUndefined();
+  });
+
   it("serves the operation launch catalog before item routes", async () => {
     const store = createOperationStore({ now: () => 10 });
     const router = createOperationsRouter({

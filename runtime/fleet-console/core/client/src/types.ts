@@ -97,6 +97,8 @@ export interface OperationNode {
   readonly renamedTitle?: string;
   readonly payload: Record<string, unknown>;
   readonly geometry: OperationGeometry | null;
+  // 사용자 지정 accent 키(서버 영속). 미설정 시 부재. Dock 칩 perimeter 링 색의 SSoT다.
+  readonly accent?: string | null;
   readonly state: Record<string, unknown>;
   readonly ts: {
     readonly createdAt: number;

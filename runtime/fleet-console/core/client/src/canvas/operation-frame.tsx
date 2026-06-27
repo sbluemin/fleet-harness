@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { AccentPopover } from "./accent-popover.js";
+
 interface OperationFrameProps {
   readonly operation: OperationNode;
   readonly active: boolean;
@@ -12,12 +14,14 @@ interface OperationFrameProps {
   readonly status?: OperationActivity;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
+  readonly accentKey?: string | null;
   readonly children: ReactNode;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onMinimize: () => void;
   readonly onMaximize?: () => void;
   readonly onRename: (title: string) => void;
+  readonly onSetAccent?: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
 }
@@ -40,7 +44,7 @@ const RESIZE_DIRECTIONS: readonly ResizeDirection[] = ["n", "ne", "e", "se", "s"
 const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 
-export function OperationFrame({ operation, active, geometry, zoom, subtitle, status, minimized = false, maximized = false, children, onActivate, onClose, onMinimize, onMaximize, onRename, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
+export function OperationFrame({ operation, active, geometry, zoom, subtitle, status, minimized = false, maximized = false, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit }: OperationFrameProps) {
   const operationRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
@@ -49,6 +53,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   const skipBlurCommitRef = useRef(false);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
+  const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const displayTitle = operation.renamedTitle ?? operation.title;
   const className = [
     "canvas-operation",
@@ -198,6 +203,11 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
     onMinimize();
   };
 
+  const openAccentPopover = (anchor: DOMRect) => {
+    onActivate();
+    setAccentAnchor(anchor);
+  };
+
   return (
     <article
       ref={operationRef}
@@ -216,7 +226,21 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
         onPointerCancel={endDrag}
         data-canvas-blocker
       >
-        <span className={beaconStatusClass(status)} aria-hidden="true" />
+        {onSetAccent ? (
+          <button
+            type="button"
+            className="canvas-operation-beacon-button"
+            onPointerDown={stopButtonPointer}
+            onClick={(event) => openAccentPopover(event.currentTarget.getBoundingClientRect())}
+            aria-label={`Set accent for operation ${displayTitle}`}
+            aria-haspopup="menu"
+            title="Set accent"
+          >
+            <span className={beaconStatusClass(status)} aria-hidden="true" />
+          </button>
+        ) : (
+          <span className={beaconStatusClass(status)} aria-hidden="true" />
+        )}
         {renaming ? (
           <input
             ref={inputRef}
@@ -267,6 +291,14 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
           aria-hidden="true"
         />
       ))}
+      {accentAnchor && onSetAccent ? (
+        <AccentPopover
+          anchor={accentAnchor}
+          accentKey={accentKey}
+          onSelect={onSetAccent}
+          onClose={() => setAccentAnchor(null)}
+        />
+      ) : null}
     </article>
   );
 }

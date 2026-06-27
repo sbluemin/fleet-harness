@@ -3470,8 +3470,7 @@
   opacity: 0.62;
 }
 
-.canvas-dock-chip--minimized .canvas-dock-chip-name,
-.canvas-dock-chip--minimized .canvas-dock-chip-cli {
+.canvas-dock-chip--minimized .canvas-dock-chip-name {
   color: var(--ink-fog);
 }
 
@@ -3587,6 +3586,32 @@
   }
 }
 
+/* 좌측 상태 인디케이터(beacon)를 감싼 클릭 어포던스 — 누르면 accent 팝업을 연다(최소화 패널의 유일한 accent 진입점).
+   accent-immune: 도트 fill은 상태색 단독, 버튼 테두리/배경은 중립 ink만 쓴다(사용자 accent 누출 금지). */
+.canvas-dock-chip-beacon-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0 -2px;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-dock-chip-beacon-button:hover,
+.canvas-dock-chip-beacon-button:focus-visible {
+  border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  outline: none;
+}
+
 .canvas-dock-chip-name {
   max-width: 140px;
   overflow: hidden;
@@ -3595,14 +3620,6 @@
   font-size: 13px;
   font-weight: 700;
   color: var(--ink-spectral);
-}
-
-.canvas-dock-chip-cli {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-rim);
 }
 
 .canvas-dock-chip-count {
@@ -3615,107 +3632,6 @@
   border: 1px solid color-mix(in oklch, var(--aurora) 28%, transparent);
   border-radius: var(--radius-sm);
   padding: 1px 6px;
-}
-
-.canvas-dock-accent-trigger {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 22px;
-  flex: none;
-  cursor: pointer;
-  color: var(--ink-rim);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  opacity: 0;
-  transition:
-    opacity var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
-}
-
-.canvas-dock-chip:hover .canvas-dock-accent-trigger,
-.canvas-dock-chip:focus-within .canvas-dock-accent-trigger {
-  opacity: 1;
-}
-
-.canvas-dock-accent-trigger:hover,
-.canvas-dock-accent-trigger:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 34%, transparent);
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-}
-
-.canvas-dock-accent-trigger span {
-  display: block;
-  width: 10px;
-  height: 10px;
-  border: 1px solid color-mix(in oklch, var(--ink-fog) 32%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
-}
-
-/* document.body로 포털되고 position/left/bottom은 인라인(position:fixed)으로 지정된다 —
-   dock의 .canvas-dock-chips overflow:hidden 클립을 벗어나 트리거 위에 띄우기 위함. z-index는 dock(15)·최대화 레이어 위. */
-.canvas-dock-accent-popover {
-  z-index: 40;
-  display: grid;
-  /* 16색을 8열 2행으로 — clear(None) 행은 전체 폭을 차지한다. */
-  grid-template-columns: repeat(8, 22px);
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 86%, var(--ink-deep));
-  box-shadow: var(--shadow-anchor);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-}
-
-.canvas-dock-accent-swatch {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-}
-
-/* clear(None)는 색이 아니라 해제 동작이라 색 그리드와 분리해 전체 폭 행으로 둔다. */
-.canvas-dock-accent-swatch--clear {
-  grid-column: 1 / -1;
-  width: auto;
-  height: 20px;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-rim);
-  grid-auto-flow: column;
-}
-
-.canvas-dock-accent-swatch:hover,
-.canvas-dock-accent-swatch:focus-visible,
-.canvas-dock-accent-swatch[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--ink-fog) 38%, var(--surface-rim));
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-}
-
-.canvas-dock-accent-swatch span {
-  display: block;
-  width: 14px;
-  height: 14px;
-  border: 1px solid color-mix(in oklch, var(--ink-fog) 34%, transparent);
-  border-radius: 999px;
-}
-
-.canvas-dock-accent-swatch--clear span {
-  background:
-    linear-gradient(135deg, transparent 44%, color-mix(in oklch, var(--ink-rim) 82%, transparent) 46% 54%, transparent 56%),
-    color-mix(in oklch, var(--ink-spectral) 8%, transparent);
 }
 
 .canvas-dock-chip-close {
@@ -3834,6 +3750,104 @@
 
 .canvas-operation-titlebar:active {
   cursor: grabbing;
+}
+
+/* 좌측 상태 인디케이터(beacon)를 감싼 클릭 어포던스 — 누르면 accent 설정 모달을 연다.
+   accent-immune: 도트 fill은 상태색 단독 소유이고, 버튼 테두리/배경은 중립 ink만 쓴다(사용자 accent 누출 금지). */
+.canvas-operation-beacon-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: -4px;
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring);
+}
+
+.canvas-operation-beacon-button:hover,
+.canvas-operation-beacon-button:focus-visible {
+  border-color: color-mix(in oklch, var(--ink-fog) 32%, transparent);
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  outline: none;
+}
+
+/* accent 설정 팝업 — 패널/Dock 좌측 인디케이터 클릭으로 열린다. 트리거에 앵커되는 오버레이 팝업.
+   오버레이는 바깥 클릭을 받아 닫는 투명 click-catcher(딤 없음), 카드는 인라인 좌표(position:fixed)로 트리거 옆에 뜬다. */
+.accent-popover-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.accent-popover-card {
+  position: fixed;
+  z-index: 1;
+  display: grid;
+  /* 16색을 8열 2행으로 — clear(None) 행은 전체 폭을 차지한다. */
+  grid-template-columns: repeat(8, 24px);
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep));
+  box-shadow: var(--shadow-anchor);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.accent-popover-swatch {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+/* clear(None)는 색이 아니라 해제 동작이라 색 그리드와 분리해 전체 폭 행으로 둔다. */
+.accent-popover-swatch--clear {
+  grid-column: 1 / -1;
+  width: auto;
+  height: 22px;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-rim);
+  grid-auto-flow: column;
+  justify-content: start;
+}
+
+.accent-popover-swatch:hover,
+.accent-popover-swatch:focus-visible,
+.accent-popover-swatch[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--ink-fog) 38%, var(--surface-rim));
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  outline: none;
+}
+
+.accent-popover-swatch span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in oklch, var(--ink-fog) 34%, transparent);
+  border-radius: 999px;
+}
+
+.accent-popover-swatch--clear span {
+  background:
+    linear-gradient(135deg, transparent 44%, color-mix(in oklch, var(--ink-rim) 82%, transparent) 46% 54%, transparent 56%),
+    color-mix(in oklch, var(--ink-spectral) 8%, transparent);
 }
 
 .canvas-operation-title {

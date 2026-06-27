@@ -11,6 +11,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import type { ConsoleState, OperationNode, TerminalFontSettings } from "../types.js";
 import { animateViewportTo, claimTopZIndex, clearMaximizedOperationId, focusOperation, getSnapshot as getCanvasSnapshot, minimizeOperation, restoreOperation, setMaximizedOperationId, setOperationAccent, setOperationGeometry, setViewport, toggleBackgroundAnimation, toggleMapFullscreen, togglePerimeterAnimation, useBackgroundAnimation, useCanvasState, useMapFullscreen, useMaximizedOperationId, useMinimized, usePerimeterAnimation, type OperationGeometry } from "./canvas-store.js";
 import { CanvasDock } from "./canvas-dock.js";
+import { operationAccentFromNode } from "./operation-accent.js";
 import { CanvasContextMenu, CommandReticleIcon } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { CanvasGrid } from "./canvas-grid.js";
@@ -239,6 +240,13 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
     setActiveOperation(operationId);
     focusOperation(operationId, canvasSize);
   };
+  // accent 설정 SSoT — 로컬 store를 즉시 갱신하고 서버에 영속한 뒤 재조회로 노드 accent까지 동기화한다.
+  const handleSetAccent = (operationId: string, accentKey: string | null) => {
+    setOperationAccent(operationId, accentKey);
+    void updatePluginOperationAccent(operationId, accentKey)
+      .then(() => fetchOperations(null).then(hydrateOperations))
+      .catch(() => undefined);
+  };
 
   return (
     <main
@@ -274,6 +282,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           viewportZoom: canvas.viewport.zoom,
           minimized: minimizedSet.has(operation.id),
           maximized: operationMaximized,
+          accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
           onActivate: () => {
             setActiveOperation(operation.id);
             if (!operationMaximized) setOperationGeometry(operation.id, canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation));
@@ -297,6 +306,9 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           },
           onRename: (title) => {
             void renamePluginOperation(operation.id, title);
+          },
+          onSetAccent: (accentKey) => {
+            handleSetAccent(operation.id, accentKey);
           },
           onGeometryChange: (geometry) => {
             if (!operationMaximized) setOperationGeometry(operation.id, geometry);
@@ -369,7 +381,6 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
         activeOperationId={activePluginOperationId}
         operationStatus={state.operationStatus}
         operationNotifications={state.operationNotifications}
-        getSubtitle={(operation) => getOperationSubtitle(operation, operationKindRegistry)}
         onClose={(operationId) => {
           const operation = theaterOperations.find((candidate) => candidate.id === operationId);
           if (!operation) return;
@@ -378,11 +389,7 @@ export function OperationsCanvas({ state }: OperationsCanvasProps) {
           void closePluginOperation(operation, registry.plugins);
         }}
         onFocus={handleDockFocus}
-        onSetAccent={(operationId, accent) => {
-          void updatePluginOperationAccent(operationId, accent)
-            .then(() => fetchOperations(null).then(hydrateOperations))
-            .catch(() => undefined);
-        }}
+        onSetAccent={handleSetAccent}
       />
     </main>
   );
@@ -436,11 +443,13 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly viewportZoom: number;
   readonly minimized: boolean;
   readonly maximized: boolean;
+  readonly accentKey: string | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onMinimize: () => void;
   readonly onMaximize: () => void;
   readonly onRename: (title: string) => void;
+  readonly onSetAccent: (accentKey: string | null) => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
 }) {
@@ -461,11 +470,13 @@ function renderPluginOperation(operation: OperationNode, options: {
       status={options.status}
       minimized={options.minimized}
       maximized={options.maximized}
+      accentKey={options.accentKey}
       onActivate={options.onActivate}
       onClose={options.onClose}
       onMinimize={options.onMinimize}
       onMaximize={options.onMaximize}
       onRename={options.onRename}
+      onSetAccent={options.onSetAccent}
       onGeometryChange={options.onGeometryChange}
       onGeometryCommit={options.onGeometryCommit}
     >
@@ -529,17 +540,8 @@ function PluginOperationRenderer({
   });
 }
 
-function getOperationSubtitle(operation: OperationNode, registry: readonly OperationKindDescriptor[]): string | undefined {
-  return registry.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type)?.subtitle?.(operation);
-}
-
 function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
   return operation.geometry ?? { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
-}
-
-function operationAccentFromNode(operation: OperationNode): string | null {
-  const accent = (operation as OperationNode & { readonly accent?: unknown }).accent;
-  return typeof accent === "string" ? accent : null;
 }
 
 function maximizedGeometryFor(viewport: { readonly x: number; readonly y: number; readonly zoom: number }, canvasSize: { readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {

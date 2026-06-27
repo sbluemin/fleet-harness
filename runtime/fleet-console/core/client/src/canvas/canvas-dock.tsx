@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "../types.js";
 import type { OperationNotification } from "../types.js";
 import { dropIndexFromPoint } from "./canvas-dock-hit-test.js";
-import { setOperationAccent, setOperationOrder, useCanvasState } from "./canvas-store.js";
+import { AccentPopover } from "./accent-popover.js";
+import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.js";
+import { setOperationOrder, useCanvasState } from "./canvas-store.js";
 
 interface CanvasDockProps {
   readonly operations: readonly OperationNode[];
@@ -13,17 +14,20 @@ interface CanvasDockProps {
   readonly activeOperationId: string | null;
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
-  readonly getSubtitle: (operation: OperationNode) => string | undefined;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
+}
+
+interface AccentPopoverState {
+  readonly operationId: string;
+  readonly anchor: DOMRect;
 }
 
 interface DockEntry {
   readonly operation: OperationNode;
   readonly active: boolean;
   readonly minimized: boolean;
-  readonly subtitle?: string;
   readonly beaconClassName: string;
   readonly notificationCount: number;
   readonly underway: Underway;
@@ -34,9 +38,7 @@ interface CanvasDockChipProps {
   readonly entry: DockEntry;
   readonly index: number;
   readonly isCloseArmed: boolean;
-  readonly accentKey: string | null;
   readonly accentValue: string | null;
-  readonly accentMenuOpen: boolean;
   readonly dragging: boolean;
   readonly dragOffsetX: number;
   readonly dropTarget: boolean;
@@ -49,8 +51,7 @@ interface CanvasDockChipProps {
   readonly onPointerDragMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onPointerDragEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
   readonly onPointerDragCancel: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  readonly onOpenAccentMenu: (operationId: string) => void;
-  readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
+  readonly onOpenAccent: (operationId: string, anchor: DOMRect) => void;
 }
 
 type Underway = "live" | "turn" | "awaiting" | null;
@@ -74,46 +75,20 @@ interface DragState {
   readonly dropIndex: number;
 }
 
-interface DockAccent {
-  readonly key: string;
-  readonly label: string;
-  readonly color: string;
-}
-
 const INITIAL_PAGER: PagerState = { overflow: false, atStart: false, atEnd: true, page: 1, pages: 1 };
 const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
-// 16색 큐레이션 팔레트 — hue 휠 전체(빨강/노랑/초록 포함). accent는 fill 채널 단독 소유이고 시스템 신호는
-// border/링/beacon/glow가 맡으므로, 신호색과 hue가 겹쳐도 채널 분리로 상태와 혼동되지 않는다(낮은 chroma 틴트).
-const DOCK_ACCENTS: readonly DockAccent[] = [
-  { key: "red", label: "Red", color: "oklch(70% 0.12 25)" },
-  { key: "orange", label: "Orange", color: "oklch(73% 0.12 50)" },
-  { key: "amber", label: "Amber", color: "oklch(78% 0.11 70)" },
-  { key: "yellow", label: "Yellow", color: "oklch(84% 0.11 95)" },
-  { key: "lime", label: "Lime", color: "oklch(81% 0.12 120)" },
-  { key: "green", label: "Green", color: "oklch(74% 0.12 145)" },
-  { key: "emerald", label: "Emerald", color: "oklch(73% 0.10 165)" },
-  { key: "teal", label: "Teal", color: "oklch(74% 0.09 185)" },
-  { key: "cyan", label: "Cyan", color: "oklch(76% 0.09 205)" },
-  { key: "sky", label: "Sky", color: "oklch(74% 0.10 230)" },
-  { key: "blue", label: "Blue", color: "oklch(70% 0.11 255)" },
-  { key: "indigo", label: "Indigo", color: "oklch(68% 0.11 278)" },
-  { key: "violet", label: "Violet", color: "oklch(70% 0.11 300)" },
-  { key: "purple", label: "Purple", color: "oklch(70% 0.12 320)" },
-  { key: "magenta", label: "Magenta", color: "oklch(71% 0.12 340)" },
-  { key: "rose", label: "Rose", color: "oklch(72% 0.11 5)" },
-] as const;
 
-export function CanvasDock({ operations, minimized, activeOperationId, operationStatus, operationNotifications, getSubtitle, onClose, onFocus, onSetAccent }: CanvasDockProps) {
+export function CanvasDock({ operations, minimized, activeOperationId, operationStatus, operationNotifications, onClose, onFocus, onSetAccent }: CanvasDockProps) {
   const chipsRef = useRef<HTMLDivElement | null>(null);
   const pinRightRef = useRef(true);
   const closeArmTimeoutRef = useRef<number | null>(null);
   const [pager, setPager] = useState<PagerState>(INITIAL_PAGER);
   const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [accentMenuId, setAccentMenuId] = useState<string | null>(null);
+  const [accentPopover, setAccentPopover] = useState<AccentPopoverState | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const canvas = useCanvasState();
   const minimizedSet = new Set(minimized);
@@ -125,7 +100,6 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
         operation,
         active: activeOperationId === operation.id,
         minimized: minimizedSet.has(operation.id),
-        subtitle: getSubtitle(operation),
         beaconClassName: beaconClassNameFor(underway, operationStatus[operation.id]),
         notificationCount: operationNotifications[operation.id]?.count ?? 0,
         underway,
@@ -133,7 +107,7 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
       };
     });
   const entriesKey = entries.map((entry) => entry.operation.id).join(",");
-  const metricsKey = entries.map((entry) => `${displayTitle(entry.operation)}\u0001${entry.subtitle ?? ""}\u0001${entry.notificationCount}`).join("\u0002");
+  const metricsKey = entries.map((entry) => `${displayTitle(entry.operation)}\u0001${entry.notificationCount}`).join("\u0002");
   const currentOrder = entries.map((entry) => entry.operation.id);
   const dragSourceIndex = drag ? currentOrder.indexOf(drag.sourceId) : -1;
 
@@ -209,26 +183,6 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
     disarmClose();
   }, [armedCloseId, entries, disarmClose]);
 
-  useEffect(() => {
-    if (accentMenuId === null) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Element && event.target.closest(".canvas-dock-accent-popover, .canvas-dock-accent-trigger")) return;
-      setAccentMenuId(null);
-    };
-    // 팝오버 좌표는 open 시점 트리거 rect로 한 번 고정되므로, dock 스크롤/창 리사이즈로 트리거가 움직이면
-    // 메뉴와 칩이 분리되지 않게 닫는다(재계산 대신 닫기로 단순·안전하게).
-    const closeMenu = () => setAccentMenuId(null);
-    const chips = chipsRef.current;
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("resize", closeMenu);
-    chips?.addEventListener("scroll", closeMenu, { passive: true });
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("resize", closeMenu);
-      chips?.removeEventListener("scroll", closeMenu);
-    };
-  }, [accentMenuId]);
-
   if (entries.length === 0) return null;
 
   const showPager = pager.overflow;
@@ -260,7 +214,7 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    setAccentMenuId(null);
+    setAccentPopover(null);
     disarmClose();
     setDrag({ sourceId: operationId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, currentX: event.clientX, dragging: false, dropIndex: currentOrder.indexOf(operationId) });
   };
@@ -288,11 +242,8 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
     if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setDrag(null);
   };
-  const chooseAccent = (operationId: string, accentKey: string | null) => {
-    setOperationAccent(operationId, accentKey);
-    onSetAccent(operationId, accentKey);
-    setAccentMenuId(null);
-  };
+  // 팝업 대상 Operation이 닫히거나 Theater 전환으로 사라지면 팝업도 함께 닫힌다(아래 렌더 가드).
+  const popoverOperation = accentPopover ? entries.find((entry) => entry.operation.id === accentPopover.operationId)?.operation ?? null : null;
 
   return (
     <div className="canvas-dock is-taskbar" data-canvas-blocker>
@@ -305,16 +256,14 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
         <div className="canvas-dock-chips" ref={chipsRef}>
           {entries.map((entry, index) => {
             const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
-            const accentValue = accentKey ? resolveDockAccentColor(accentKey) : null;
+            const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
             return (
               <CanvasDockChip
                 key={entry.operation.id}
                 entry={entry}
                 index={index}
                 isCloseArmed={armedCloseId === entry.operation.id}
-                accentKey={accentValue ? accentKey : null}
                 accentValue={accentValue}
-                accentMenuOpen={accentMenuId === entry.operation.id}
                 dragging={drag?.sourceId === entry.operation.id && drag.dragging}
                 dragOffsetX={drag?.sourceId === entry.operation.id && drag.dragging ? drag.currentX - drag.startX : 0}
                 dropTarget={drag?.dragging === true && drag.dropIndex === index && dragSourceIndex !== index}
@@ -327,8 +276,7 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
                 onPointerDragMove={updatePointerDrag}
                 onPointerDragEnd={finishPointerDrag}
                 onPointerDragCancel={cancelPointerDrag}
-                onOpenAccentMenu={setAccentMenuId}
-                onSetAccent={chooseAccent}
+                onOpenAccent={(operationId, anchor) => setAccentPopover({ operationId, anchor })}
               />
             );
           })}
@@ -341,6 +289,14 @@ export function CanvasDock({ operations, minimized, activeOperationId, operation
         {showPager ? <span className="canvas-dock-page" aria-label={`Page ${pager.page} of ${pager.pages}`}>{pager.page}/{pager.pages}</span> : null}
         <span className="sr-only" aria-live="polite">{statusMessage}</span>
       </div>
+      {accentPopover && popoverOperation ? (
+        <AccentPopover
+          anchor={accentPopover.anchor}
+          accentKey={canvas.operationAccent[popoverOperation.id] ?? operationAccentFromNode(popoverOperation)}
+          onSelect={(accentKey) => onSetAccent(popoverOperation.id, accentKey)}
+          onClose={() => setAccentPopover(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -349,9 +305,7 @@ function CanvasDockChip({
   entry,
   index,
   isCloseArmed,
-  accentKey,
   accentValue,
-  accentMenuOpen,
   dragging,
   dragOffsetX,
   dropTarget,
@@ -364,21 +318,11 @@ function CanvasDockChip({
   onPointerDragMove,
   onPointerDragEnd,
   onPointerDragCancel,
-  onOpenAccentMenu,
-  onSetAccent,
+  onOpenAccent,
 }: CanvasDockChipProps) {
   const suppressClickRef = useRef(false);
-  const accentTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const { operation, active, minimized, subtitle, beaconClassName, notificationCount, underway } = entry;
+  const { operation, active, minimized, beaconClassName, notificationCount, underway } = entry;
   const title = displayTitle(operation);
-  // 팝오버는 dock의 overflow:hidden(가로 스크롤 클립)에 잘리므로 document.body로 포털하고 position:fixed로 띄운다.
-  // 좌표는 트리거 버튼 rect에서 계산한다(트리거 위쪽, 좌측 정렬). 열릴 때마다 재계산한다.
-  const [accentMenuStyle, setAccentMenuStyle] = useState<CSSProperties | undefined>(undefined);
-  useLayoutEffect(() => {
-    if (!accentMenuOpen || !accentTriggerRef.current) return;
-    const rect = accentTriggerRef.current.getBoundingClientRect();
-    setAccentMenuStyle({ position: "fixed", left: Math.max(8, rect.left), top: "auto", bottom: Math.round(window.innerHeight - rect.top + 8) });
-  }, [accentMenuOpen]);
   const chipClassName = [
     "canvas-dock-chip",
     active ? "canvas-dock-chip--active" : "",
@@ -416,10 +360,11 @@ function CanvasDockChip({
     onDisarmClose();
     onClose(operation.id);
   };
-  const openAccent = (event: SyntheticEvent) => {
-    event.preventDefault();
+  // beacon(좌측 인디케이터) 클릭 = accent 팝업 열기. 칩 focus/restore로 버블되지 않게 stopPropagation한다
+  // (최소화 패널은 이 인디케이터가 accent 설정의 유일한 진입점이다).
+  const openAccent = (event: SyntheticEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    onOpenAccentMenu(operation.id);
+    onOpenAccent(operation.id, event.currentTarget.getBoundingClientRect());
   };
 
   return (
@@ -436,7 +381,6 @@ function CanvasDockChip({
       onFocus={() => {
         if (!isCloseArmed) onDisarmClose();
       }}
-      onContextMenu={openAccent}
       onPointerDown={(event) => onPointerDragStart(event, operation.id)}
       onPointerMove={(event) => {
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -465,27 +409,11 @@ function CanvasDockChip({
       onPointerUpCapture={(event) => onPointerDragEnd(event)}
       onPointerCancelCapture={(event) => onPointerDragCancel(event)}
     >
-      <span className={beaconClassName} aria-hidden="true" />
-      <span className="canvas-dock-chip-name">{title}</span>
-      {subtitle ? <span className="canvas-dock-chip-cli">{subtitle}</span> : null}
-      {notificationCount > 0 ? <span className="canvas-dock-chip-count">{notificationCount}</span> : null}
-      <button ref={accentTriggerRef} type="button" className="canvas-dock-accent-trigger" onPointerDown={stopClosePointer} onClick={openAccent} aria-label={`Accent operation ${title}`} title="Accent">
-        <span style={accentValue ? { background: accentValue } : undefined} />
+      <button type="button" className="canvas-dock-chip-beacon-button" onPointerDown={stopClosePointer} onClick={openAccent} aria-label={`Set accent for operation ${title}`} aria-haspopup="menu" title="Set accent">
+        <span className={beaconClassName} aria-hidden="true" />
       </button>
-      {accentMenuOpen && accentMenuStyle ? createPortal(
-        <div className="canvas-dock-accent-popover" role="menu" aria-label={`Accent operation ${title}`} style={accentMenuStyle} onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" className="canvas-dock-accent-swatch canvas-dock-accent-swatch--clear" role="menuitem" aria-label="No accent" aria-pressed={accentKey === null} onClick={(event) => { event.stopPropagation(); onSetAccent(operation.id, null); }}>
-            <span />
-            None
-          </button>
-          {DOCK_ACCENTS.map((accent) => (
-            <button key={accent.key} type="button" className="canvas-dock-accent-swatch" role="menuitem" aria-label={accent.label} aria-pressed={accentKey === accent.key} onClick={(event) => { event.stopPropagation(); onSetAccent(operation.id, accent.key); }}>
-              <span style={{ background: accent.color }} />
-            </button>
-          ))}
-        </div>,
-        document.body,
-      ) : null}
+      <span className="canvas-dock-chip-name">{title}</span>
+      {notificationCount > 0 ? <span className="canvas-dock-chip-count">{notificationCount}</span> : null}
       <button type="button" className={closeClassName} onPointerDown={stopClosePointer} onClick={close} aria-label={isCloseArmed ? `Confirm close operation ${title}` : `Close operation ${title}`} title={isCloseArmed ? "Confirm close" : "Close operation"}>
         {isCloseArmed ? "Close?" : <CloseIcon />}
       </button>
@@ -514,11 +442,6 @@ function compareOperationCreatedAt(left: OperationNode, right: OperationNode): n
   return left.ts.createdAt - right.ts.createdAt || left.id.localeCompare(right.id);
 }
 
-function operationAccentFromNode(operation: OperationNode): string | null {
-  const accent = (operation as OperationNode & { readonly accent?: unknown }).accent;
-  return typeof accent === "string" ? accent : null;
-}
-
 function resolveUnderway(
   operationId: string,
   operationStatus: Readonly<Record<string, OperationActivity>>,
@@ -536,10 +459,6 @@ function beaconClassNameFor(underway: Underway, status: OperationActivity | unde
   if (underway === "awaiting") return "tenant-beacon is-turn-ended";
   if (status === "dormant") return "tenant-beacon is-dormant";
   return "tenant-beacon is-live";
-}
-
-function resolveDockAccentColor(accentKey: string): string | null {
-  return DOCK_ACCENTS.find((accent) => accent.key === accentKey)?.color ?? null;
 }
 
 // 전체 가시 순서(source 포함)에서 source를 dropIndex 자리로 옮긴 새 순서를 만든다. dropIndex는

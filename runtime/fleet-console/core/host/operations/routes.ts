@@ -162,7 +162,8 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     deps.writeJson(res, 400, { error: "invalid_operation_patch" });
     return;
   }
-  if (body.accent !== undefined && typeof body.accent !== "string") {
+  // accent는 문자열(설정)·null(해제)·생략(무변경)만 허용한다. geometry의 null-clear 계약과 동일하다.
+  if (body.accent !== undefined && body.accent !== null && typeof body.accent !== "string") {
     deps.writeJson(res, 400, { error: "invalid_operation_accent" });
     return;
   }
@@ -171,7 +172,7 @@ async function handleItem(req: http.IncomingMessage, res: http.ServerResponse, i
     const node = deps.store.patch(id, {
       ...(typeof body.title === "string" ? { title: body.title } : {}),
       ...(typeof body.parentId === "string" || body.parentId === null ? { parentId: body.parentId } : {}),
-      ...(typeof body.accent === "string" ? { accent: body.accent } : {}),
+      ...(typeof body.accent === "string" || body.accent === null ? { accent: body.accent } : {}),
       ...(isRecord(body.payload) ? { payload: body.payload } : {}),
       ...(isRecord(body.state) ? { state: body.state } : {}),
       ...(isRecord(body.geometry) || body.geometry === null ? { geometry: body.geometry === null ? null : readGeometry(body.geometry) } : {}),
