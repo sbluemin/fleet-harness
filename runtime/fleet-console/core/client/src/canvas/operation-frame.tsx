@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { AccentPopover } from "./accent-popover.js";
+import { resolveAccentColor } from "./operation-accent.js";
 
 interface OperationFrameProps {
   readonly operation: OperationNode;
@@ -55,6 +56,8 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
   const [draftTitle, setDraftTitle] = useState("");
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const displayTitle = operation.renamedTitle ?? operation.title;
+  // accent를 패널 외곽 box-shadow 링으로 칠한다(--op-accent). status(테두리·진행광)·focus(brass)와 채널이 달라 공존한다.
+  const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   const className = [
     "canvas-operation",
     active ? "is-active" : "",
@@ -212,7 +215,7 @@ export function OperationFrame({ operation, active, geometry, zoom, subtitle, st
     <article
       ref={operationRef}
       className={className}
-      style={{ left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height, zIndex: geometry.zIndex }}
+      style={{ left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height, zIndex: geometry.zIndex, ...(accentColor ? { "--op-accent": accentColor } : {}) } as CSSProperties}
       onPointerDown={onActivate}
       data-canvas-operation
       aria-label={`Operation ${displayTitle}`}

@@ -3176,10 +3176,14 @@
   min-width: 320px;
   min-height: 200px;
   overflow: hidden;
-  border: 1px solid var(--surface-rim);
+  /* accent는 focus(brass)가 쓰던 외곽 채널(테두리+1px 링)을 그대로 점유한다 — 지정 시 brass를 대체하고,
+     포커스 여부와 무관하게 상시 노출된다(미설정 시 surface-rim/투명으로 폴백). status conic(::before)은 별개 채널. */
+  border: 1px solid var(--op-accent, var(--surface-rim));
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--surface-glass-strong) 78%, var(--ink-deep));
-  box-shadow: var(--shadow-soft);
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 1px var(--op-accent, transparent);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
@@ -3189,11 +3193,12 @@
   pointer-events: none;
 }
 
+/* 포커스 = 같은 외곽 채널에 brass — accent 지정 시 accent가 우선(brass 폴백), 미지정 시 brass로 포커스 표시. */
 .canvas-operation.is-active {
-  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
+  border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
   box-shadow:
     var(--shadow-soft),
-    0 0 0 1px color-mix(in oklch, var(--brass) 18%, transparent);
+    0 0 0 1px var(--op-accent, color-mix(in oklch, var(--brass) 18%, transparent));
 }
 
 /* 작업 진행 중인 에이전트 패널 = "출항(underway)" 상태.
@@ -3203,8 +3208,10 @@
    brass(선택)와 역할 분리 — 선택+진행이 겹쳐도 brass 보더와 인디케이터색 진행광이 각자 의미로 공존.
    AGENTS.md 모션 규약의 sanctioned 예외(작업 중에만, prefers-reduced-motion에서 정적 림+글로우로 단락). */
 .canvas-operation.is-running {
+  /* underway 진행광(conic ::before)+글로우는 status 채널, accent 외곽 링(있으면)은 그대로 유지 — 진행 중에도 accent 노출. */
   box-shadow:
     var(--shadow-soft),
+    0 0 0 1px var(--op-accent, transparent),
     0 0 22px -6px var(--uw-glow);
 }
 
@@ -3222,12 +3229,12 @@
 }
 
 .canvas-operation.is-running--awaiting {
-  border-color: color-mix(in oklch, var(--warn) 46%, var(--surface-rim));
+  border-color: var(--op-accent, color-mix(in oklch, var(--warn) 46%, var(--surface-rim)));
 }
 
-/* 선택(is-active) + 진행 동시: brass 선택 보더 + 인디케이터색 진행광/글로우 공존 */
+/* 선택(is-active) + 진행 동시: accent 지정 시 accent 보더(우선), 미지정 시 brass 선택 보더. 진행광/글로우는 status 채널로 공존. */
 .canvas-operation.is-running.is-active {
-  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
+  border-color: var(--op-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
 }
 
 /* 외곽 진행광 링 — 최소화된 칩과 같은 conic 하이라이트 호가 패널 테두리를 순환한다. */
@@ -3446,10 +3453,12 @@
   white-space: nowrap;
   cursor: pointer;
   scroll-snap-align: start;
-  border: 1px solid var(--surface-rim);
+  /* accent는 focus(brass)가 쓰던 외곽 테두리 채널을 점유 — 지정 시 brass를 대체하고 포커스 여부와 무관하게 상시 노출.
+     status 진행광은 ::before conic 별개 채널이라 공존한다(미설정 시 surface-rim 폴백). */
+  border: 1px solid var(--chip-accent, var(--surface-rim));
   border-radius: var(--radius-lg);
   background: var(--surface-glass-strong);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-soft), 0 0 0 1px var(--chip-accent, transparent);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   transition:
@@ -3460,15 +3469,16 @@
 
 .canvas-dock-chip:hover,
 .canvas-dock-chip:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 36%, var(--surface-rim));
+  border-color: var(--chip-accent, color-mix(in oklch, var(--ink-fog) 36%, var(--surface-rim)));
   background: color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
 }
 
-/* 활성(지금 보고 있던 패널) = brass. border/fill/ring 모두 brass — accent는 바깥 outline이라 그대로 공존한다. */
+/* 활성(지금 보고 있던 패널) = brass border/ring + brass fill. accent 지정 시 outline(border/ring)은 accent가 점유(우선),
+   brass fill은 활성 표시로 유지 — accent 칩이 활성일 때 outline=accent·fill=brass로 정체성과 포커스를 동시에 보인다. */
 .canvas-dock-chip--active {
-  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
+  border-color: var(--chip-accent, color-mix(in oklch, var(--brass) 54%, var(--surface-rim)));
   background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 16%, transparent), var(--shadow-soft);
+  box-shadow: 0 0 0 1px var(--chip-accent, color-mix(in oklch, var(--brass) 16%, transparent)), var(--shadow-soft);
 }
 
 .canvas-dock-chip--active .canvas-dock-chip-name {
@@ -3500,9 +3510,9 @@
   --uw-glow: var(--warn-glow);
 }
 
-/* 칩 외곽 perimeter ring: 패널 가장자리 전체를 휘감는 1.6px 띠(테두리 띠만 남기는 content-box 마스크).
-   사용자 accent를 바로 이 자리(= In-progress 진행광과 동일 위치)에 정적 full 링으로 칠한다. 미설정 시 transparent → 비표시.
-   underway(작업 중)는 같은 ::before를 conic 회전 그라디언트로 덮어 애니메이션 상태로 전환한다(아래 규칙이 우선). */
+/* 칩 외곽 perimeter ::before: status(underway) 진행광 conic 전용 채널(테두리 띠만 남기는 content-box 마스크).
+   accent는 더 이상 여기 칠하지 않는다 — accent는 바깥 box-shadow 링(--chip-accent)이 담당해 진행광과 공존한다.
+   최소화 underway 칩만 아래 --underway-ring 규칙이 이 ::before에 회전 conic을 입힌다(미설정 시 transparent → 비표시). */
 .canvas-dock-chip::before {
   content: "";
   position: absolute;
@@ -3511,7 +3521,7 @@
   padding: 1.6px;
   border-radius: inherit;
   pointer-events: none;
-  background: var(--chip-accent, transparent);
+  background: transparent;
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -3522,16 +3532,9 @@
   mask-composite: exclude;
 }
 
-/* underway면 accent 정적 링을 억제한다 — 작업 중(기능 상태)이 사용자 accent(identity tag)보다 우선이다(AGENTS.md).
-   보이는 패널의 진행광 회전 conic은 캔버스 패널 ::before가 담당하므로 dock 칩 ::before는 투명으로 두어 중복 회전을
-   없애고, 최소화된 칩만 아래 --underway-ring 규칙이 회전 conic을 입힌다. accent는 어느 쪽이든 노출되지 않는다. */
-.canvas-dock-chip--underway::before {
-  background: transparent;
-}
-
-/* 외곽 진행광 링(underway): 같은 perimeter ::before를 conic-gradient로 덮고 회전 애니메이션을 건다 —
+/* 외곽 진행광 링(underway): perimeter ::before를 conic-gradient로 채우고 회전 애니메이션을 건다 —
    회전하는 --uw-angle 기준 밝은 호가 한 바퀴 돌고 나머지 둘레엔 옅은 상시 림이 남는다(live=aurora, turn=warn).
-   accent 정적 링보다 우선(작업 중=기능 상태). AGENTS.md 모션 규약의 sanctioned 예외(prefers-reduced-motion에서 정적 림으로 단락). */
+   accent는 별개 channel(box-shadow border 링)이라 이 conic과 공존한다. AGENTS.md 모션 규약의 sanctioned 예외(prefers-reduced-motion에서 정적 림으로 단락). */
 .canvas-dock-chip--underway-ring::before {
   background: conic-gradient(
     from var(--uw-angle),
@@ -3545,10 +3548,13 @@
   animation: perimeter-orbit 2.4s linear infinite;
 }
 
-/* 진행 중 칩은 신호색 옅은 글로우를 정적으로 덧대 깊이를 준다(둘레 링 순환은 ::before가 담당). */
+/* 진행 중 칩은 신호색 옅은 글로우를 정적으로 덧대 깊이를 준다(둘레 링 순환은 ::before conic이 담당).
+   accent outline 링(--chip-accent)은 base와 동일하게 유지 — 진행 중에도 accent가 상시 노출된다. */
 .canvas-dock-chip--underway {
-  /* accent-immune: underway glow follows aurora/warn only. */
-  box-shadow: var(--shadow-soft), 0 0 18px -8px var(--uw-glow);
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 1px var(--chip-accent, transparent),
+    0 0 18px -8px var(--uw-glow);
 }
 
 /* 끄는 칩은 "들어 올려 손에 쥔 채 끌고 다니는" 감각으로 — 커서를 따라 translateX(--drag-dx)로 이동하면서
