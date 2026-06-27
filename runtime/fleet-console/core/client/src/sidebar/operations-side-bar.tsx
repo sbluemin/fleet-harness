@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
@@ -58,7 +59,6 @@ const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 6;
 const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
-const MENU_REQUIRED_WIDTH = 300;
 
 export function OperationsSideBar({
   operations,
@@ -91,6 +91,7 @@ export function OperationsSideBar({
   const [drag, setDrag] = useState<DragState | null>(null);
   const [accentPopover, setAccentPopover] = useState<AccentPopoverState | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
+  const [settingsMenu, setSettingsMenu] = useState<NewMenuState | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
 
   const minimizedSet = new Set(minimized);
@@ -102,7 +103,6 @@ export function OperationsSideBar({
       operation,
       active: activeOperationId === operation.id,
       minimized: minimizedSet.has(operation.id),
-      beaconClassName: beaconClassNameFor(underway, operationStatus[operation.id]),
       notificationCount: operationNotifications[operation.id]?.count ?? 0,
       underway,
       showRing: underway !== null && minimizedSet.has(operation.id),
@@ -240,16 +240,28 @@ export function OperationsSideBar({
       setNewMenu(null);
       return;
     }
+    setSettingsMenu(null);
     const rect = event.currentTarget.getBoundingClientRect();
     setNewMenu({
-      anchor: { x: rect.left, y: rect.bottom + 4 },
+      anchor: { x: rect.right + 8, y: rect.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
 
-  // newMenu 열림 시 사이드바 폭이 MENU_REQUIRED_WIDTH 미만이면 transient 확장해 메뉴가 잘리지 않게 한다.
-  // localStorage 영속 폭은 건드리지 않는다.
-  const displayWidth = collapsed ? MIN_RAIL_PX : (newMenu !== null && width < MENU_REQUIRED_WIDTH ? MENU_REQUIRED_WIDTH : width);
+  const openSettingsMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (settingsMenu) {
+      setSettingsMenu(null);
+      return;
+    }
+    setNewMenu(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setSettingsMenu({
+      anchor: { x: rect.right + 8, y: rect.top },
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+    });
+  };
+
+  const displayWidth = collapsed ? MIN_RAIL_PX : width;
 
   if (entries.length === 0 && tier === "rail") {
     return (
@@ -271,25 +283,21 @@ export function OperationsSideBar({
           </button>
         </header>
         <div className="operations-side-bar-resize-handle" onPointerDown={handleResizeDragStart} onDoubleClick={handleResizeDoubleClick} aria-hidden="true" />
-        {newMenu ? (
+        {newMenu ? createPortal(
           <CanvasContextMenu
             key={`${newMenu.anchor.x}:${newMenu.anchor.y}`}
             anchor={newMenu.anchor}
             viewportBounds={newMenu.viewportBounds}
             placement="cursor"
+            mode="launch"
             catalog={catalog}
             canLaunch={canLaunch}
-            mapFullscreen={mapFullscreen}
-            radarEnabled={radarEnabled}
-            perimeterEnabled={perimeterEnabled}
             renderKindIcon={renderKindIcon}
             onLaunchKind={(pluginId, kind) => { setNewMenu(null); onLaunchKind(pluginId, kind); }}
-            onResetView={() => { setNewMenu(null); onResetView(); }}
-            onMaximizeMap={onMaximizeMap}
-            onToggleRadar={onToggleRadar}
-            onTogglePerimeter={onTogglePerimeter}
+            onResetView={onResetView}
             onClose={() => setNewMenu(null)}
-          />
+          />,
+          document.body,
         ) : null}
       </aside>
     );
@@ -318,10 +326,10 @@ export function OperationsSideBar({
           <button
             type="button"
             className="side-bar-settings-btn"
-            disabled
-            aria-disabled="true"
-            aria-label="Sidebar settings"
-            title="Settings (coming soon)"
+            onClick={openSettingsMenu}
+            aria-expanded={settingsMenu !== null}
+            aria-label="Map and display controls"
+            title="Map and display controls"
           >
             <SettingsIcon />
           </button>
@@ -357,36 +365,6 @@ export function OperationsSideBar({
         })}
       </ol>
 
-      <footer className="operations-side-bar-footer">
-        <button
-          type="button"
-          className={`side-bar-footer-btn${mapFullscreen ? " is-active" : ""}`}
-          onClick={onMaximizeMap}
-          aria-label="Map fullscreen"
-          title="Map fullscreen"
-        >
-          <MapMaximizeIcon />
-        </button>
-        <button
-          type="button"
-          className={`side-bar-footer-btn${radarEnabled ? " is-active" : ""}`}
-          onClick={onToggleRadar}
-          aria-label="Radar sweep"
-          title="Radar sweep"
-        >
-          <RadarIcon />
-        </button>
-        <button
-          type="button"
-          className={`side-bar-footer-btn${perimeterEnabled ? " is-active" : ""}`}
-          onClick={onTogglePerimeter}
-          aria-label="Panel pulse"
-          title="Panel pulse"
-        >
-          <PanelPulseIcon />
-        </button>
-      </footer>
-
       <div
         className="operations-side-bar-resize-handle"
         onPointerDown={handleResizeDragStart}
@@ -394,25 +372,44 @@ export function OperationsSideBar({
         aria-hidden="true"
       />
 
-      {newMenu ? (
+      {newMenu ? createPortal(
         <CanvasContextMenu
           key={`${newMenu.anchor.x}:${newMenu.anchor.y}`}
           anchor={newMenu.anchor}
           viewportBounds={newMenu.viewportBounds}
           placement="cursor"
+          mode="launch"
+          catalog={catalog}
+          canLaunch={canLaunch}
+          renderKindIcon={renderKindIcon}
+          onLaunchKind={(pluginId, kind) => { setNewMenu(null); onLaunchKind(pluginId, kind); }}
+          onResetView={onResetView}
+          onClose={() => setNewMenu(null)}
+        />,
+        document.body,
+      ) : null}
+
+      {settingsMenu ? createPortal(
+        <CanvasContextMenu
+          key={`settings:${settingsMenu.anchor.x}:${settingsMenu.anchor.y}`}
+          anchor={settingsMenu.anchor}
+          viewportBounds={settingsMenu.viewportBounds}
+          placement="cursor"
+          mode="controls"
           catalog={catalog}
           canLaunch={canLaunch}
           mapFullscreen={mapFullscreen}
           radarEnabled={radarEnabled}
           perimeterEnabled={perimeterEnabled}
           renderKindIcon={renderKindIcon}
-          onLaunchKind={(pluginId, kind) => { setNewMenu(null); onLaunchKind(pluginId, kind); }}
-          onResetView={() => { setNewMenu(null); onResetView(); }}
+          onLaunchKind={onLaunchKind}
+          onResetView={() => { setSettingsMenu(null); onResetView(); }}
           onMaximizeMap={onMaximizeMap}
           onToggleRadar={onToggleRadar}
           onTogglePerimeter={onTogglePerimeter}
-          onClose={() => setNewMenu(null)}
-        />
+          onClose={() => setSettingsMenu(null)}
+        />,
+        document.body,
       ) : null}
 
       {accentPopover && popoverOperation ? (
@@ -458,13 +455,6 @@ function resolveUnderway(
   return null;
 }
 
-function beaconClassNameFor(underway: SideBarUnderway, status: OperationActivity | undefined): string {
-  if (underway === "turn") return "tenant-beacon is-turn-running";
-  if (underway === "awaiting") return "tenant-beacon is-turn-ended";
-  if (status === "dormant") return "tenant-beacon is-dormant";
-  return "tenant-beacon is-live";
-}
-
 function reorderIds(orderedIds: readonly string[], sourceId: string, dropIndex: number): string[] {
   const sourceIndex = orderedIds.indexOf(sourceId);
   if (sourceIndex === -1) return [...orderedIds];
@@ -506,35 +496,6 @@ function SettingsIcon() {
         strokeWidth="1.25"
         strokeLinecap="round"
       />
-    </svg>
-  );
-}
-
-function MapMaximizeIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M9.5 3.5h3v3M12.5 3.5 9 7M6.5 12.5h-3v-3M3.5 12.5 7 9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function RadarIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M8 8 12 5.6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="8" cy="8" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-
-function PanelPulseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="3" y="3.2" width="10" height="9.6" rx="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M10.9 3.2H13v2.1M5.1 12.8H3v-2.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.6 5.1c.5 1.4.4 2.9-.3 4.2M3.4 10.9c-.5-1.4-.4-2.9.3-4.2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="11.7" cy="4.2" r="0.9" fill="currentColor" />
     </svg>
   );
 }

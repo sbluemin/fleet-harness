@@ -8,7 +8,6 @@ export interface SideBarEntry {
   readonly operation: OperationNode;
   readonly active: boolean;
   readonly minimized: boolean;
-  readonly beaconClassName: string;
   readonly notificationCount: number;
   readonly underway: SideBarUnderway;
   readonly showRing: boolean;
