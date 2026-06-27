@@ -166,9 +166,9 @@
 /* ── 빌트인/플러그인 패널 구분선 ─────────────────────────────────
    아이콘 컬럼 내에서 빌트인 패널과 플러그인 패널을 시각적으로 분리한다. */
 .right-rail-divider {
-  width: 24px;
+  width: 28px;
   height: 1px;
-  background: var(--surface-rim);
+  background: var(--surface-rim-strong);
   margin: 4px auto;
   align-self: center;
 }
